@@ -51,8 +51,9 @@ def test_it_carries_the_findings_a_person_was_given(tmp_path):
     *"The final validation of the full script"* is the two together, not
     whichever the caller happened to hold."""
     body = _iron(tmp_path).read_text()
-    # the analyzer's open-shell advice -- the class this file exists for
-    assert "open-shell" in body.lower()
+    # the electronic state's advice -- a count an open-d metal decided,
+    # which warns until it is stated (ES8): the class this file exists for
+    assert "left blank, so it is" in body
     assert "WARN" in body
 
 
@@ -156,4 +157,5 @@ def test_an_error_raises_rather_than_printing():
     says why, so it travels as the exception rather than a line on stderr."""
     from molbuilder.validation import ValidationError
     with pytest.raises(ValidationError):
-        _printed(Issue("error", "impossible spin", "config.spin_total"))
+        _printed(Issue("error", "impossible spin",
+                       "config.unpaired_electrons"))

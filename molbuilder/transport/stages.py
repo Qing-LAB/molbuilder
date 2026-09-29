@@ -111,10 +111,14 @@ SEALED_ALWAYS = frozenset({"engine", "job_name", "bias_voltages_v"})
 #: (form A — fdf-is-truth, ruling Q5); OPEN when it is a labeled
 #: structure pair (form B — there is no deck to be truth, so these are
 #: the description's own fields).  transport-design.md § 4.1b.
-CONTRACT_FIELDS = frozenset({
-    "basis_size", "energy_shift_ry", "xc_functional", "xc_authors",
-    "siesta_mesh_cutoff_ry", "k_mesh_transverse",
-    "electronic_temperature_k"})
+#:
+#: THE RECORD'S OWN KEYS -- `parse/contract.py`'s one table (the record's
+#: names against ``SiestaConfig``'s), plus the transverse grid it carries
+#: apart -- so the recorded vocabulary and this set cannot drift.  They did:
+#: this was a hand-written seven, and when the record began carrying the
+#: electronic state (ES7, 2026-09-28) only the table learned it.
+from ..parse.contract import RECORD_TO_SIESTA_FIELD as _RECORD_FIELDS
+CONTRACT_FIELDS = frozenset(_RECORD_FIELDS) | {"k_mesh_transverse"}
 
 #: Both sets together — what a form-A citation refuses.
 SEALED_TRANSPORT_FIELDS = SEALED_ALWAYS | CONTRACT_FIELDS
@@ -345,8 +349,13 @@ def config_for(task, composed: ComposedJunction, *,
         # and they fill the config exactly as a cited deck would --
         # fdf-is-truth transferred to the recorded copy.  Only KNOWN
         # contract fields apply; kz is forced 1 like every fill here.
+        import dataclasses as _dcf
+        _holds = {f.name for f in _dcf.fields(TransportConfig)}
         for name, value in dict(recorded.get("contract") or {}).items():
-            if name not in CONTRACT_FIELDS:
+            # A recorded name this older config does not hold -- the
+            # electronic state -- reaches the decks through the template and
+            # `resolve`, the live path.
+            if name not in CONTRACT_FIELDS or name not in _holds:
                 continue
             if name == "k_mesh_transverse":
                 try:

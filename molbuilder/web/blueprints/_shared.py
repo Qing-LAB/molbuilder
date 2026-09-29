@@ -1001,6 +1001,9 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
         # never another rung's (those are on that rung's tab) and never a
         # shared one (the panel above).
         items = [it for it in items if not it.stages or rung in it.stages]
+    from molbuilder.electronic_state import KINDS, offered
+    _state_choices = (offered(engine, calculation)
+                      if calculation in KINDS else {})
     by_category: Dict[str, List[Dict[str, Any]]] = {}
     for it in items:
         panel = it.category[0] if it.category else "procedure"
@@ -1009,6 +1012,13 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
         # the fact a rung's tab folds its cards by, and the stage table
         # disables cells by.
         field["stages"] = list(it.stages)
+        # WHAT THIS ENGINE CAN RUN FOR THIS KIND, and nothing else (ES4,
+        # `science/chemistry-correctness.md` § 2a.3): the electronic state's
+        # choices narrowed by the capability table the settings gate refuses
+        # by, so the form never offers what prep would refuse -- no
+        # restricted-open on SIESTA, no floating moment on PySCF.
+        if it.name in _state_choices:
+            field["choices"] = list(_state_choices[it.name])
         by_category.setdefault(panel, []).append(field)
 
     sections = [{"name": cat, "title": cat.capitalize(),
@@ -1153,6 +1163,22 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
         origin = typing.get_origin(ann)
         args   = typing.get_args(ann)
 
+    # AN ENUM'S VALUE IS ONE OF ITS MEMBERS, WITH THE MEMBER'S TYPE
+    # (`engines/template.md` § 5): `unpaired_electrons` is 0-10 or "free",
+    # and a client that sends the text "2" means the member 2.  Matched on
+    # the member's own spelling, so "free" stays a word and "2" becomes a
+    # number; a value naming no member is refused here, by name.
+    choices = field.metadata.get("choices")
+    if choices:
+        from molbuilder.template import is_member
+        if is_member(value, choices):
+            return value
+        for c in choices:
+            if not isinstance(value, bool) and str(c) == str(value).strip():
+                return c
+        raise ValueError(f"{field.name} = {value!r} is not one of "
+                         f"{', '.join(map(repr, choices))}")
+
     if ann is bool:
         if isinstance(value, bool):
             return value
@@ -1290,12 +1316,6 @@ def config_from_params(cls, params: Dict[str, Any],
         # specific Optional fields the JS deliberately blanks out.
         if k in none_sentinels and (v == "" or v is None):
             kwargs[k] = None
-            continue
-        # net_charge: empty string from the form means "auto-detect"
-        # (don't pass the kwarg so the dataclass default of None
-        # kicks in and render_fdf falls back to the phosphate
-        # heuristic).
-        if k == "net_charge" and (v == "" or v is None):
             continue
         # Coercion failures (TypeError / ValueError) propagate to the
         # endpoint, which surfaces them as an error-severity Issue

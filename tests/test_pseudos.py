@@ -26,7 +26,6 @@ from pathlib import Path
 from tests.spectra._helpers import _spectra_cfg
 
 
-
 # Minimal PSML body covering the fields the parser reads.  Real
 # PseudoDojo files have 100+ KB of grid / orbital data we don't need
 # to fake here; the parser only touches the <header> + first
@@ -271,8 +270,9 @@ class TestCheckCoverage:
 
 
 # (picker_root_at_tmp retired 2026-08-22 with the seven C-doors tests
-#  it served -- install-pseudos/install-wrapper are gone, and the
-#  surviving analyze tests need no picker root.)
+#  it served -- install-pseudos/install-wrapper are gone.  The analyze
+#  route's tests left this file in the M6 review, for
+#  test_structure_analyze_endpoint.py and the card's browser test.)
 
 
 class TestResolvePsmlLib:
@@ -324,125 +324,8 @@ class TestResolvePsmlLib:
             assert "retired" in str(e.value)
 
 
-# (_envelope + _from_file_text retired 2026-08-22: their last
-#  caller left with the install-pseudos tests.)
 
 
-
-class TestPseudosEndpoint:
-    # (The seven install-pseudos / install-wrapper tests that opened this
-    #  class retired 2026-08-21 with their doors (C-doors): both endpoints
-    #  had zero browser callers -- `prep` writes the wrapper and resolves +
-    #  copies the pseudopotentials on the described route.  The class name
-    #  survives for the /api/structure/analyze tests below, which is the
-    #  door that remains.)
-
-    def test_structure_analyze_unknown_element_returns_400_not_500(self):
-        """Unknown element symbol (typo, bad PDB column fallback) must
-        return a clear 400 with the parser's message, NOT a 500
-        Internal Server Error (which leaks the stack trace to the
-        client).  Code-review fix 2026-05-23."""
-        from molbuilder.web.app import create_app
-        c = create_app(config={}).test_client()
-        # BY HAND, not through `_envelope`: the subject is what the ROUTE
-        # does with a symbol it cannot weigh, so the symbol has to reach it
-        # rather than die in this process's own parser.
-        r = c.post("/api/structure/analyze", json={"structure": {
-            "elements": ["Xy"], "positions": [[0.0, 0.0, 0.0]],
-            "metadata": {}}})
-        assert r.status_code == 400, r.data
-        body = r.get_json()
-        assert body["ok"] is False
-        # NAMES THE OFFENDING SYMBOL -- that is what makes the 400 actionable,
-        # and it is what this test is for.  The phrase "unknown element" was
-        # pinned here too until 2026-08-03; the parser now says "could not read
-        # XYZ: 'Xy'", which is the same fact in its own words.  The docstring
-        # above already delegates the wording ("with the parser's message"), so
-        # pinning a phrase contradicted the test's own stated contract.
-        assert "Xy" in body["error"]
-
-    @staticmethod
-    def _envelope(xyz: str) -> dict:
-        """The XYZ as the route takes it (`web-api.md` § 1).
-
-        These posted ``structure_text`` until 2026-09-02, when that field was
-        removed from the route -- it had gone from `/api/spectra/render` on
-        2026-08-03 and this door was missed by the sweep.  The file's own
-        `test_analyze_accepts_the_shape_its_callers_actually_send` recorded
-        the consequence a month earlier: *"No caller sends that … the covered
-        shape and the used shape are different, which is exactly how
-        install-pseudos answered 400 to every real save for weeks with its
-        own tests green."*  The chemistry below is unchanged; only the
-        delivery moved, and it moved onto the shape the tabs use.
-        """
-        from support.envelope import from_xyz
-        return {"structure": from_xyz(xyz)}
-
-    def test_structure_analyze_organic_no_metals(self):
-        """No metals -> closed-shell singlet (or doublet for odd-e)."""
-        from molbuilder.web.app import create_app
-        c = create_app(config={}).test_client()
-        water = "3\nwater\nO 0 0 0\nH 1 0 0\nH -1 0 0\n"
-        r = c.post("/api/structure/analyze", json=self._envelope(water))
-        body = r.get_json()
-        assert body["ok"] is True
-        assert body["metals"] == []
-        sug = body["suggested"]["pyscf"]
-        assert sug["net_charge"] == 0
-        assert sug["spin"]   == 0
-        assert sug["method"] == "RKS"
-
-    def test_structure_analyze_fe_porphyrin_suggests_uks_spin_2(self):
-        """A structure with Fe should suggest spin=2 (intermediate-
-        spin Fe(II), FeTPP-style) + UKS, with rationale text mentioning
-        the experimental-verification caveat."""
-        from molbuilder.web.app import create_app
-        c = create_app(config={}).test_client()
-        # 5 atoms: Fe with 4 N around it.  Total electrons = 26 + 4*7 = 54 (even).
-        # spin=2 (even) is parity-compatible.
-        xyz = "5\nFeN4\nFe 0 0 0\nN 2 0 0\nN -2 0 0\nN 0 2 0\nN 0 -2 0\n"
-        r = c.post("/api/structure/analyze", json=self._envelope(xyz))
-        body = r.get_json()
-        assert body["metals"] == ["Fe"]
-        sug = body["suggested"]["pyscf"]
-        assert sug["spin"]   == 2
-        assert sug["method"] == "UKS"
-        assert "Fe" in sug["rationale"]
-        # The rationale is engine-AGNOSTIC after the Phase-1c refactor
-        # (science/validation.md § 3) — it says "open-shell
-        # treatment", not "UKS" / "RKS" (those are PySCF strings that
-        # belong in the adapter output, not the analyzer's rationale).
-        # The UKS / RKS choice is pinned by the assert on
-        # ``sug["method"]`` two lines up.
-        assert "open-shell" in sug["rationale"]
-        # SIESTA equivalent: spin_treatment="polarized" + spin_total=2.0
-        ssug = body["suggested"]["siesta"]
-        assert ssug["spin_treatment"]   == "polarized"
-        assert ssug["spin_total"]       == 2.0
-
-
-# --------------------------------------------------------------------- #
-#  Security: path-traversal protection (2026-05-23 review fix)         #
-# --------------------------------------------------------------------- #
-
-
-class TestEndpointPathSecurity:
-    """Both new endpoints accept user-supplied paths.  Without picker-
-    root validation, a malicious POST could pass ``/etc/passwd`` or
-    ``/root/.ssh/id_rsa`` and the endpoint would happily read /
-    process it.  These tests pin the validation contract: paths
-    outside the picker roots must be 400-rejected."""
-
-    def test_structure_analyze_rejects_path_outside_roots(self):
-        """Same security check for /api/structure/analyze."""
-        from molbuilder.web.app import create_app
-        c = create_app(config={}).test_client()
-        r = c.post("/api/structure/analyze", json={
-            "structure_path": "/etc/passwd",
-        })
-        assert r.status_code == 400
-        msg = r.get_json()["error"].lower()
-        assert "outside" in msg or "root" in msg or "allowed" in msg
 
 
 # --------------------------------------------------------------------- #
@@ -472,12 +355,14 @@ class TestMetalAwareScriptTemplates:
     def test_siesta_fe_emits_spin_sweep_template(self):
         from molbuilder.siesta import render_fdf
         from molbuilder.config.siesta import SiestaConfig
-        fdf = render_fdf(self._fe(), SiestaConfig(
-            net_charge=0, spin_treatment="polarized", spin_total=2.0,
-        ))
-        assert "Spin-state sweep template" in fdf
-        assert "Fe(II) candidates" in fdf
-        assert "Fe(III) candidates" in fdf
+        # The spin left blank: the electronic state decides unrestricted,
+        # 2S = 2 for Fe, and the sweep lists Fe's own common counts -- from
+        # the hints table, for any open-d metal (it printed the same Fe
+        # text for every metal until 2026-09-28).
+        fdf = render_fdf(self._fe(), SiestaConfig(net_charge=0))
+        assert "Spin-state sweep template (Fe)" in fdf
+        assert "Fe(II), high-spin" in fdf
+        assert "Fe(III), high-spin" in fdf
         # Mossbauer / EPR / UV-Vis caveat -- user must verify.
         assert "Mossbauer" in fdf or "ssbauer" in fdf
 
@@ -485,7 +370,8 @@ class TestMetalAwareScriptTemplates:
         from molbuilder.siesta import render_fdf
         from molbuilder.config.siesta import SiestaConfig
         fdf = render_fdf(self._water(), SiestaConfig(
-            net_charge=0, spin_treatment="polarized", spin_total=0.0,
+            net_charge=0, spin_treatment="unrestricted",
+            unpaired_electrons=0,
         ))
         assert "Spin-state sweep template" not in fdf
 
@@ -493,7 +379,8 @@ class TestMetalAwareScriptTemplates:
         from molbuilder.pyscf.input import render_script
         from molbuilder.config.pyscf import PySCFConfig
         text = render_script(self._fe(), PySCFConfig(
-            method="UKS", spin=2, optimize=False,
+            spin_treatment="unrestricted", unpaired_electrons=2,
+            optimize=False,
         ))
         assert "Hard SCF (typical for open-shell metals like Fe)" in text
         assert "# mf.level_shift = 0.2" in text   # commented template
@@ -504,7 +391,7 @@ class TestMetalAwareScriptTemplates:
         from molbuilder.pyscf.input import render_script
         from molbuilder.config.pyscf import PySCFConfig
         text = render_script(self._water(), PySCFConfig(
-            method="RKS", spin=0, optimize=False,
+            spin_treatment="restricted", optimize=False,
         ))
         assert "Hard SCF (typical for open-shell metals" not in text
 
@@ -512,16 +399,20 @@ class TestMetalAwareScriptTemplates:
         # P3: the generator retired; the hint lives in the surviving
         # equilibrium-SCF emitter the vibration deck composes.
         from molbuilder.pyscf.vibration_emitters import _emit_equilibrium_scf
+        # The view resolves the state on the structure it is given -- the
+        # metals the hint reads are that structure's.
+        fe = self._fe()
         text = "\n".join(_emit_equilibrium_scf(_spectra_cfg(
-            method="UKS", spin=2,
-        ), self._fe()))
+            fe, spin_treatment="unrestricted", unpaired_electrons=2,
+        ), fe))
         assert "Hard SCF (typical for open-shell metals like Fe)" in text
         assert "# mf.level_shift = 0.2" in text
 
     def test_spectra_pyscf_organic_skips_level_shift_template(self):
         from molbuilder.pyscf.vibration_emitters import _emit_equilibrium_scf
+        water = self._water()
         text = "\n".join(_emit_equilibrium_scf(
-            _spectra_cfg(method="RKS", spin=0), self._water()))
+            _spectra_cfg(water, spin_treatment="restricted"), water))
         assert "Hard SCF (typical for open-shell metals" not in text
 
 
@@ -745,47 +636,6 @@ class TestErrorStatusesSharedBySurfaces:
                                                dest_dir=lib)
         assert any(i.severity == "error" for i in issues), \
             [(i.severity, i.message) for i in issues]
-
-
-def test_analyze_accepts_the_shape_its_callers_actually_send(tmp_path, monkeypatch):
-    """THE GAP THAT LET THE install-pseudos BREAK GO UNNOTICED, closed one door
-    over.
-
-    Every test above drove /api/structure/analyze with ``structure_text``.  No
-    caller sent that: structure-optimization, spectra and transport all send
-    ``structure_path`` (four call sites, checked 2026-08-04).  So the covered
-    shape and the used shape were different, which is exactly how
-    install-pseudos answered 400 to every real save for weeks with its own
-    tests green -- the suite exercised a request nobody makes.
-
-    **Closed at the source on 2026-09-02**: the field is gone from the route,
-    and the tests above now send the envelope.  This one stays, because the
-    gap it names is not "that field" -- it is *the covered shape drifting
-    from the used shape*, which the next field could reopen.
-
-    This pins the request the tabs actually make.  It is deliberately thin: the
-    chemistry is tested above and does not need repeating; what needs a test is
-    that THE SHAPE THE CLIENT SENDS REACHES AN ANSWER.
-    """
-    from molbuilder import diagnostics
-    from molbuilder.web.app import create_app
-
-    xyz = tmp_path / "water.xyz"
-    xyz.write_text("3\nwater\nO 0 0 0\nH 0.96 0 0\nH -0.24 0.93 0\n")
-    caps = diagnostics.Capabilities(
-        runtime_config={}, conda_binary=None, conda_envs=frozenset())
-    monkeypatch.setattr(type(caps), "file_picker_roots",
-                        lambda self: ((tmp_path.resolve(), "projects"),))
-    diagnostics.set_capabilities(caps)
-
-    c = create_app(config={}).test_client()
-    r = c.post("/api/structure/analyze",
-               json={"structure_path": str(xyz.resolve())})
-    assert r.status_code == 200, r.data
-    body = r.get_json()
-    assert body["ok"] is True
-    assert body["n_atoms"] == 3
-    assert sorted(body["elements"]) == ["H", "O"]
 
 
 def test_a_relative_lib_resolves_through_the_calculations_own_tree(

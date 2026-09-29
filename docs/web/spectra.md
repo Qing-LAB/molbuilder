@@ -454,10 +454,13 @@ On `/spectrum-calculation` the page is a short vertical workflow:
    ([`molview.md`](?doc=web/molview.md)). Pick a `.xyz`/`.pdb` in the Projects
    sidebar and load it; the card shows the 3D structure plus its atom count and
    formula, read straight off the loaded model.
-2. **Auto-detect the chemistry.** The page asks the server
-   (`POST /api/structure/analyze`) for a sensible charge, spin, and method for
-   this molecule and fills them into the form, with a one-line rationale. You can
-   override anything.
+2. **Charge and spin.** The chemistry card shows the charge and spin each
+   engine form's vibration will carry — the one electronic-state class's answer
+   for exactly what the form says, about the structure the viewer holds, each
+   value with its reason (`POST /api/structure/analyze`,
+   [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
+   § 2a). It fills nothing in: leave a field blank and it is worked out; type a
+   value to state it, and the card follows.
 3. **Pick the engine, set the parameters.** An engine strip — the same
    widget the Structure-optimization tab mounts, `lib/tab-strip.js` over
    the shared sheet, two buttons over two mounted forms — offers **PySCF**
@@ -474,7 +477,7 @@ On `/spectrum-calculation` the page is a short vertical workflow:
    2026-09-24). **The structure decides the default**: a structure that
    repeats or continues along an axis switches the strip to SIESTA and says
    why, because PySCF's gate refuses a periodic structure; a click on the
-   strip beats the default. Auto-detect fills both forms.
+   strip beats the default. The chemistry card answers for both forms.
 4. **Send to Task setup.** The Send button runs the general hand-over
    ([`handover-procedure.md`](?doc=web/handover-procedure.md), via
    `lib/task-handover.js` — the same door `/structure-optimization` uses):

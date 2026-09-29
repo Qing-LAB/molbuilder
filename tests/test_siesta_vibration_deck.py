@@ -384,6 +384,20 @@ def test_a_record_at_another_level_of_theory_warns(in_tree_psml):
                in i.message for i in pfound), pfound
 
 
+def test_a_record_at_another_charge_warns(in_tree_psml):
+    """ES7 (`science/chemistry-correctness.md` § 2a): the electronic state is
+    part of the level of theory the record is compared against, RESOLVED --
+    a frequency at a geometry relaxed at another charge is usually a
+    mistake.  H2 at -2 keeps the electron count even, so the parity rule
+    does not answer first."""
+    s = _relaxed_h2_with_record()
+    cfg = SiestaConfig(system_label="h2", psml_lib=in_tree_psml,
+                       already_relaxed=True, net_charge=-2)
+    found = [i for i in _record_findings(s, cfg) if i.severity == "warn"]
+    assert any("net_charge: relaxed with 0, this run -2" in i.message
+               for i in found), found
+
+
 def test_a_good_record_under_an_unticked_box_offers_the_skip(in_tree_psml):
     """Unticked with a record that already meets the criterion: the info
     line offers the skip (the record table, row 4; measured fixture)."""

@@ -457,7 +457,8 @@ before concluding anything.
 | `.workflow-group--stage` | **live** | composed from `role`; 11 SIESTA fields carry it; 2 matches measured on the Build form |
 | `.mb-dialog-title`, `.mb-dialog-field` | **declared API — keep** | both dialog modes opened; neither uses them. But `dialog.css`'s own header names them as the component's vocabulary, and that sheet exists *because* JS once wrote ten classes no stylesheet answered and the browser painted its own chrome. The one file that put a bare `<h2>` where the vocabulary says `.mb-dialog-title` was `modify/structure/save-dialog.js`, **retired 2026-09-02** when the Save panel moved onto `projects.chooseSavePath` — so the drift left with it rather than being patched. Any new dialog uses the vocabulary. |
 | `.mb-dialog::backdrop` | **live** | Trap 3 — not selectable, matches on every modal |
-| `.inspector-section{,-header,-hint}`, `.fdf-actions`, `.fdf-output`, `.disabled-tip`, `.workflow-group-apply-btn`, `.structure-error`, `.source-body-error` | **no builder found — deliberately NOT deleted** | no literal reference and no composition prefix, but never observed in their own state either |
+| `.inspector-section{,-header,-hint}`, `.fdf-actions`, `.fdf-output`, `.disabled-tip`, `.structure-error`, `.source-body-error` | **no builder found — deliberately NOT deleted** | no literal reference and no composition prefix, but never observed in their own state either |
+| `.workflow-group-apply-btn` | **deleted 2026-09-29** | the "Apply suggestions" button a card's suggested defaults were applied with. It stood in the row above until the electronic state retired suggestions altogether ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a: a blank field is the instruction, the chemistry card its answer, and nothing is filled in), so no builder can come back for it |
 
 ## 9. Checklist for changing the UI
 

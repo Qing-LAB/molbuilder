@@ -36,7 +36,9 @@ class TestSpectraDefaults:
 
     def test_a_spectra_calculations_science_defaults(self):
         """What a vibration run gets when the user chooses nothing:
-        B3LYP / def2-SVP / D3BJ, restricted, density-fitted.
+        B3LYP / def2-SVP / D3BJ, Kohn-Sham DFT, density-fitted -- and the
+        charge and spin left blank, for the electronic state to work out
+        from the structure (`science/chemistry-correctness.md` § 2a).
 
         Pinned HERE and nowhere else.  The catalogue-agreement gate
         mirrors help / range / unit / choices / label / engine_key
@@ -46,7 +48,9 @@ class TestSpectraDefaults:
         """
         cfg = _spectra_cfg()
         assert cfg.job_name   == "pyscf_relax"
-        assert cfg.method     == "RKS"
+        assert cfg.method     == "DFT"
+        assert (cfg.net_charge, cfg.spin_treatment,
+                cfg.unpaired_electrons) == (None, None, None)
         assert cfg.functional == "B3LYP"
         assert cfg.basis      == "def2-SVP"
         assert cfg.dispersion == "d3bj"

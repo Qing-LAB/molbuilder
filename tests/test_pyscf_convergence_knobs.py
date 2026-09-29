@@ -52,9 +52,11 @@ def _o2():
                      positions=np.array([[0., 0., 0.], [0., 0., 1.21]]))
 
 
-def _script(method="UKS", spin=2, **kw):
-    cfg = PySCFConfig(job_name="j", method=method, spin=spin,
-                      **{**_BASE, **kw})
+def _script(**kw):
+    """Triplet O2 on UKS -- the electronic state stated, so the deck's
+    class does not depend on what the structure would suggest."""
+    cfg = PySCFConfig(job_name="j", spin_treatment="unrestricted",
+                      unpaired_electrons=2, **{**_BASE, **kw})
     return render_script(_o2(), cfg)
 
 

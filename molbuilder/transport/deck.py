@@ -119,7 +119,7 @@ def rung_of(stage_token: Optional[str]) -> str:
 #  The layouts, as tables.                                              #
 # ===================================================================== #
 
-def _negf_layout(derived, frame):
+def _negf_layout(derived, frame, state_block):
     """The device and transmission rungs — an open-boundary NEGF deck.
 
     One layout serves both, and **that is not the old "same bytes" claim
@@ -152,8 +152,8 @@ def _negf_layout(derived, frame):
         # `DM.UseSaveDM` itself -- it is how the seed's density is picked
         # up -- and writing it twice is what the check gate refuses.  The
         # lift boundary is drawn at the keyword, not at the topic.
-        _sl.spin_section(polarized=derived["spin_polarized"],
-                         fixed=derived["spin_fixed"]),
+        _sl.spin_section(fixed=derived["spin_fixed"]),
+        state_block,
         _sl.mpi_section(block_size=derived.get("block_size"),
                         algorithm=derived.get("algorithm")),
         _sc.Block("the NEGF electrode declarations", _emit_negf_block),
@@ -243,7 +243,7 @@ def _legacy_view(cfg):
     return TransportConfig(engine="transiesta", **kw)
 
 
-def _electrode_layout(derived, frame):
+def _electrode_layout(derived, frame, state_block):
     """An electrode rung: a genuinely periodic BULK calculation.
 
     Read down it and the difference from the seed is three lines — and each
@@ -271,8 +271,8 @@ def _electrode_layout(derived, frame):
         _sl.SCF_SECTION,
         _sl.FREE_ENERGY_SECTION,
         _sl.SCF_TAIL_SECTION,
-        _sl.spin_section(polarized=derived["spin_polarized"],
-                         fixed=derived["spin_fixed"]),
+        _sl.spin_section(fixed=derived["spin_fixed"]),
+        state_block,
         _sl.mpi_section(block_size=derived.get("block_size"),
                         algorithm=derived.get("algorithm")),
         _sc.Block("what this rung must write", _emit_electrode_outputs),
@@ -372,7 +372,7 @@ def _emit_electrode_outputs(struct, cfg) -> str:
     ])
 
 
-def _seed_layout(derived, frame):
+def _seed_layout(derived, frame, state_block):
     """The seed rung: an ordinary periodic SIESTA pass (§ 4.2 stage 1).
 
     Read down it and you have read the deck's SCIENCE, in order.  Not the
@@ -395,8 +395,8 @@ def _seed_layout(derived, frame):
         _sl.SCF_SECTION,
         _sl.FREE_ENERGY_SECTION,
         _sl.SCF_TAIL_SECTION,
-        _sl.spin_section(polarized=derived["spin_polarized"],
-                         fixed=derived["spin_fixed"]),
+        _sl.spin_section(fixed=derived["spin_fixed"]),
+        state_block,
         _sl.mpi_section(block_size=derived.get("block_size"),
                         algorithm=derived.get("algorithm")),
         _sl.OUTPUT_SECTION,
@@ -576,7 +576,8 @@ def _emit_kgrid_block(struct, cfg) -> str:
 # ===================================================================== #
 
 def transport_spec(struct: Structure, cfg, *,
-                   stage_token: Optional[str] = None) -> "_sc.DeckSpec":
+                   stage_token: Optional[str] = None,
+                   state=None) -> "_sc.DeckSpec":
     """The ``DeckSpec`` for one transport rung.
 
     *cfg* is a :class:`~molbuilder.config.siesta.SiestaConfig` — carrying the
@@ -601,12 +602,22 @@ def transport_spec(struct: Structure, cfg, *,
     # "not on the seam yet" -- and `SHAPE_OF_RUNG`'s value set is exactly the
     # three keys below, so it could not fire.  It was the last text describing
     # a migration this module has finished.
-    derived = _derived_for(struct, cfg)
+    # THE ONE STATE of the calculation (`science/chemistry-correctness.md`
+    # § 2a): `prep` resolves it ONCE, on the whole junction, and hands it to
+    # every rung -- a rung's own structure (a lead, the device) is not where
+    # a blank spin is decided.  A caller that hands none is answered on this
+    # structure.
+    handed = state is not None
+    if state is None:
+        from ..electronic_state import electronic_state
+        state = electronic_state(struct, cfg, kind="transport")
+    derived = _derived_for(state, cfg)
     from .transiesta import engine_frame_for
     frame = engine_frame_for(struct)
     layout = {"seed": _seed_layout,
               "electrode": _electrode_layout,
-              "negf": _negf_layout}[shape](derived, frame)
+              "negf": _negf_layout}[shape](
+                  derived, frame, _state_block(state, on_junction=handed))
     return _sc.DeckSpec(
         engine="siesta",
         engine_frame=frame,
@@ -620,18 +631,44 @@ def transport_spec(struct: Structure, cfg, *,
     )
 
 
-def _derived_for(struct, cfg) -> dict:
+def _derived_for(state, cfg) -> dict:
     """What this deck worked out — W10's one per-render context.
 
     DECLARED on the form rather than only closed over, so a reader outside
     this module can see where a value came from.  The three groups
     :func:`molbuilder.siesta.layout.line` needs are the same ones the
     optimization deck derives; they are computed by the engine's own helper so
-    the two kinds cannot answer them differently.
+    the two kinds cannot answer them differently.  The spin's are the
+    calculation's one state -- for the transport kind the charge is 0 by rule
+    (the leads set the electron number) and the spin is the rungs' shared
+    answer.
     """
     from ..siesta.input import _parallel_facts, _spin_facts
 
     derived = {}
-    derived.update(_spin_facts(cfg))
+    derived.update(_spin_facts(state))
     derived.update(_parallel_facts(cfg))
     return derived
+
+
+def _state_block(state, *, on_junction: bool):
+    """WHERE THE CHARGE AND SPIN CAME FROM, in every rung's deck
+    (`science/chemistry-correctness.md` § 2a.5, ES2) -- each value beside its
+    source, as the optimization deck writes them.  The rungs wrote none until
+    the M6 review, and the spin `prep` handed them read as *stated* whatever
+    decided it."""
+    t, c, q = state.spin_treatment, state.unpaired_electrons, state.net_charge
+
+    def emit(struct, cfg) -> str:
+        lines = [f"# Spin: {t.value} ({t.said});",
+                 f"#   unpaired electrons (2S): {c.value} ({c.said})."]
+        if on_junction:
+            lines += ["#   Decided ONCE, on the whole junction, and the same "
+                      "on every rung:",
+                      "#   TranSIESTA joins the leads' self-energies to the "
+                      "device, so all",
+                      "#   five rungs solve the same spin channels."]
+        lines.append(f"# NetCharge: not written -- {q.value:+d} ({q.said}).")
+        return "\n".join(lines)
+
+    return _sc.Block("where the charge and spin came from", emit)

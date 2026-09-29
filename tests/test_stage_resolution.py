@@ -432,14 +432,15 @@ def test_an_OPTIONAL_float_is_widened_like_any_other():
     **It read the dataclass annotation and string-matched ``"float"``.** Under
     ``from __future__ import annotations`` a field's ``type`` is the source
     text, so ``Optional[float]`` is not ``"float"`` and two fields were
-    silently never widened — ``spin_total`` and ``md_target_temperature`` —
-    while ``mesh_cutoff`` beside them widened correctly.  The catalogue
-    declares all three ``float``, because a declared type is exactly *"what a
-    parser cannot know"* (`template.md` § 5).
+    silently never widened — ``spin_total`` (retired 2026-09-28 into the
+    count ``unpaired_electrons``) and ``md_target_temperature`` — while
+    ``mesh_cutoff`` beside them widened correctly.  The catalogue declares
+    them ``float``, because a declared type is exactly *"what a parser cannot
+    know"* (`template.md` § 5).
     """
     cfg = _template()
     assert isinstance(effective_config(cfg, {"mesh_cutoff": 300}).mesh_cutoff, float)
-    for name in ("spin_total", "md_target_temperature"):
+    for name in ("md_target_temperature",):
         got = getattr(effective_config(cfg, {name: 2}), name)
         assert isinstance(got, float), (
             f"{name} is declared float in the catalogue but an int override "

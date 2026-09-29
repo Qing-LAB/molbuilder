@@ -15,8 +15,10 @@ Defaults are tuned for "build a small/medium molecule and relax it":
       "def2-universal-jkfit" this docstring used to claim -- verified via
       ``mf.with_df.auxbasis`` on a real def2 hybrid.
     * geomeTRIC optimizer with maxsteps=200, grms=3e-4 Ha/Bohr
-    * Closed-shell RKS (spin=0); change to UKS for radicals
-    * NetCharge auto-detected from phosphate protonation state
+    * Kohn-Sham DFT, with the charge and the spin worked out from the
+      structure when left blank (`electronic_state`,
+      `science/chemistry-correctness.md` § 2a): the phosphate rule for the
+      charge, then open or closed shell at that charge
     * Pre-optimization stage off by default; opt-in for systems
       where the builder geometry is rough (long ssDNA, large
       peptides) so PBE/def2-SVP can clean it up before B3LYP runs.
@@ -25,10 +27,12 @@ Defaults are tuned for "build a small/medium molecule and relax it":
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
+from ..electronic_state import METHODS
 from ..identity import RestartGroup
 from ..selection import parse_index_list
+from . import state as _state
 from .siesta import _validate_basename     # shared with SiestaConfig
 
 
@@ -169,33 +173,18 @@ class PySCFConfig:
         "pattern":  r"^[A-Za-z0-9_\-]+$",
         "validate": _validate_basename("job_name"),
     })
-    # RENAMED from ``charge`` 2026-08-19, when the catalogue merged this with
-    # SIESTA's ``net_charge``: one question, one name.  ``net_charge`` is the
-    # survivor because ``charge`` is overloaded in this codebase -- atomic
-    # partial charges, formal charges, MolView's per-atom charge -- and reusing
-    # it for the whole system's charge invites exactly the fusing-things-that-
-    # sound-alike risk `template.md` § 6.3's merge gate exists to catch.
-    net_charge: Optional[int] = field(default=None, metadata={
-        "category": ("system",),
-        "section": "System",
-        # Run-profile identity — molecule's charge state.
-        "workflow_group": "profile",
-        "label":   "Net charge",
-        "engine_key":  "NetCharge (SIESTA) | gto.M(charge=...) (PySCF)",
-        "item_kind": "deck",
-        "expands": ("NetCharge", "gto.M"),
-        "null_label": "(auto-detect from phosphates)",
-        "range": (-10, 10),
-    })
-    spin: int = field(default=0, metadata={
-        "category": ("system",),
-        "section": "System",
-        # System characteristic — open-shell chemistry, not stage.
-        "workflow_group": "profile",
-        "label":   "Spin (2S)",
-        "engine_key":  'gto.M(spin=...)  # 2S, # of unpaired electrons',
-        "range":   (0, 10),
-    })
+    # THE ELECTRONIC STATE (`science/chemistry-correctness.md` § 2a) -- the
+    # three merged items, declared once in `config/state.py` for both
+    # engines, and `method` below.  A blank means *work it out*;
+    # `electronic_state` does, for the form, the checks and the deck alike.
+    # `net_charge` was `charge` until 2026-08-19 (``charge`` is overloaded
+    # here: partial charges, formal charges, MolView's per-atom charge), and
+    # `unpaired_electrons` was `spin` until 2026-09-28 -- the SCF class's R
+    # or U travelled inside `method` then, and PySCF re-ruled RKS with a
+    # nonzero spin into ROKS without a word.
+    net_charge: Optional[int] = _state.net_charge()
+    spin_treatment: Optional[str] = _state.spin_treatment()
+    unpaired_electrons: Optional[Union[int, str]] = _state.unpaired_electrons()
     symmetry: bool = field(default=False, metadata={
         "category": ("system",),
         "workflow_group": "profile",
@@ -215,13 +204,20 @@ class PySCFConfig:
     # one with the second engine (engines/vibration.md § 3.1).
 
     # ---------------- Method (main run) ----------------
-    method: str = field(default="RKS", metadata={
+    # WHICH THEORY -- Kohn-Sham DFT or Hartree-Fock -- and nothing else.  The
+    # SCF class is COMPOSED from this and `spin_treatment` and written
+    # explicitly (`dft.UKS`, `scf.ROHF`, ...; `pyscf/layout.scf_class`), never left
+    # to PySCF to re-rule.  It was the class itself (RKS / UKS / RHF / UHF)
+    # until 2026-09-28, which fused two questions into one field.
+    method: str = field(default="DFT", metadata={
         "category": ("method",),
         "section": "Method",
         "workflow_group": "profile",
-        "label":   "SCF method",
-        "engine_key":  'RKS / UKS / RHF / UHF  (PySCF class selection)',
-        "choices": ("RKS", "UKS", "RHF", "UHF"),
+        "label":   "Method",
+        "engine_key":  '(molbuilder: the SCF class module -- dft.<class> for DFT, scf.<class> for HF)',
+        "item_kind": "deck",
+        "expands": ("dft", "scf"),
+        "choices": METHODS,
     })
     functional: str = field(default="B3LYP", metadata={
         "category": ("method",),
@@ -876,18 +872,18 @@ class PySCFConfig:
 
     @property
     def is_dft(self) -> bool:
-        """Whether the method is a density functional -- RKS or UKS.  THE one
-        answer every reader of the level of theory asks: the decks' SCF
-        construction, headers, constants and line spellings, the grid
-        advisory and the Methods paragraph (`engines/vibration.md` § 4.10).
-        Hartree-Fock (RHF, UHF) has no functional and no integration grid,
-        whatever those items hold.  The dispersion correction is not asked
-        of this answer: HF takes it like any method -- it has no correlation
-        at all, so it misses dispersion entirely, D3 and D4 carry parameters
-        fitted for it, and PySCF applies them through the energy, gradient
-        and Hessian, reading the method as ``hf`` (`engines/pyscf.md`
-        § 7a)."""
-        return str(self.method).upper() in ("RKS", "UKS")
+        """Whether the method is a density functional.  THE one answer every
+        reader of the level of theory asks: the decks' SCF construction,
+        headers, constants and line spellings, the grid advisory and the
+        Methods paragraph (`engines/vibration.md` § 4.10).  Hartree-Fock has
+        no functional and no integration grid, whatever those items hold.
+        The dispersion correction is not asked of this answer: HF takes it
+        like any method -- it has no correlation at all, so it misses
+        dispersion entirely, D3 and D4 carry parameters fitted for it, and
+        PySCF applies them through the energy, gradient and Hessian, reading
+        the method as ``hf`` (`engines/pyscf.md` § 7a).  `method` is never
+        blank, so this asks the field directly."""
+        return self.method == "DFT"
 
     @property
     def explicit_modes(self) -> List[int]:

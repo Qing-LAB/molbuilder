@@ -6,7 +6,8 @@
  *      fetched by the shared form library) and collect what the user sets.
  *   3. Validate it live — POST /api/build/preflight — and place each finding
  *      beside the control it is about.
- *   4. Offer the auto-detected charge / spin — POST /api/structure/analyze.
+ *   4. Show the charge and spin each form's calculation will carry, and why
+ *      — the chemistry card (`lib/chemistry.js`, POST /api/structure/analyze).
  *   5. HAND THE DESCRIPTION OVER — POST /api/task-setup/handover, then write
  *      the returned files through the projects file layer (`safeSave`).  That
  *      is `task.1st.json` (`stages.md` § 6.5a): a partial description the Task
@@ -405,7 +406,8 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     // ----- Parameter compatibility rules -----------------------------
     //
     // When one input's value makes another field meaningless or
-    // forbidden (e.g. method=RKS forces spin=0), the dependent field
+    // forbidden (e.g. relax_type=none leaves the relaxation's step
+    // settings nothing to do), the dependent field
     // gets disabled with a "(locked: ...)" hint explaining why.  The
     // hints update live as the user changes options.
     //
@@ -442,17 +444,10 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
 
     // ---- PySCF rules -------------------------------------------------
     function applyPyscfCompatibility() {
-        // Method <-> Spin: restricted methods (RKS/RHF) require spin=0.
-        const method = $("py-method") ? $("py-method").value : null;
-        const restricted = (method === "RKS" || method === "RHF");
-        if (restricted) {
-            $("py-spin").value = "0";
-            setLock("py-spin",
-                "Restricted methods (RKS/RHF) require spin=0. Switch to "
-                + "UKS/UHF for open-shell systems.");
-        } else {
-            setLock("py-spin", null);
-        }
+        // (The method <-> spin lock went with the fused `method` field,
+        // 2026-09-28: which spin treatment goes with which count is the
+        // electronic state's rule, judged once by the server's gate and
+        // shown live on the chemistry card -- never a second copy here.)
 
         // optimize=false -> optimizer choice + per-stage ladder moot.
         // The stage-table widget renders its own enabled-stage rows;
@@ -475,23 +470,10 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
 
     // ---- SIESTA rules ------------------------------------------------
     function applySiestaCompatibility() {
-        // SpinTotal is only meaningful once the spin treatment is something
-        // other than non-polarized.
-        //
-        // THIS GATE WAS BROKEN, not merely stale (found 2026-08-15).  It read
-        // ``$("p-spin-polarized").checked`` -- a CHECKBOX that stopped
-        // existing when `spin_polarized` became the four-state
-        // `spin_treatment` enum.  ``$()`` returned null, the `&&` made the
-        // gate permanently false, and so `p-spin-total` was locked FOREVER
-        // with a message telling the user to tick a control that is not on
-        // the page.  A dead id does not throw; it quietly answers "no".
-        const spinSel = $("p-spin-treatment");
-        const polarised = !!spinSel && spinSel.value !== "non-polarized";
-        setLock("p-spin-total",
-                polarised ? null
-                          : "Set 'Spin treatment' to something other than "
-                            + "non-polarized; SpinTotal is ignored without "
-                            + "spin polarisation.");
+        // (The spin_total lock went with the item, 2026-09-28: the count and
+        // the treatment are the electronic state's, judged once by the
+        // server's gate -- `restricted` with a count is refused there, and
+        // the chemistry card shows what a blank resolves to.)
 
         // Relaxation type "none" -> per-step relaxation params moot.
         const relax = $("p-relax-type") && $("p-relax-type").value;
@@ -535,13 +517,13 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     // deferred.
     function wireCompatibilityListeners() {
         [
-            "py-method", "py-optimize", "py-solvent",
-            // ``p-spin-polarized`` -> ``p-spin-treatment`` (the checkbox
-            // became a four-state enum) and ``p-enable-gpu`` is gone from
-            // this form entirely.  Listening on a dead id is silent: the
-            // listener simply never attaches, so the gate it drives stops
-            // updating and nothing says so.
-            "p-spin-treatment", "p-relax-type", "p-diag-algorithm",
+            "py-optimize", "py-solvent",
+            // A listener on a dead id is silent -- it simply never
+            // attaches, so the gate it drives stops updating and nothing
+            // says so.  The spin fields left this list with their locks,
+            // and `p-diag-algorithm` with the rule that read it
+            // (2026-08-15).
+            "p-relax-type",
         ].forEach(id => {
             const el = $(id);
             if (el) el.addEventListener("change", applyCompatibility);
@@ -553,6 +535,27 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     // this; getFormIds() walks both
     // schemas to build the persistence ID list.
     const formSchemas = { siesta: null, pyscf: null };
+
+    // THE CHEMISTRY CARD (`lib/chemistry.js`): the charge and spin each
+    // engine form's calculation will carry, resolved by the one
+    // electronic-state class for exactly what that form says, with each
+    // value's reason (`science/chemistry-correctness.md` § 2a).  It is asked
+    // about THE STRUCTURE THIS TAB WOULD HAND OVER -- the viewer's, through
+    // the same door as the preflight and Generate -- on every load and
+    // restore, and on every edit to a charge or spin field (the module
+    // listens).  It fills nothing in: a blank field is already the
+    // instruction "work it out".  It replaced an Auto-detect button that
+    // copied a suggestion into both forms, overwriting them.
+    const _chemistry = window.molbuilder.chemistry.attach({
+        kind: "optimization",
+        forms: () => ({
+            siesta: { host: $("siesta-form-container"),
+                      schema: formSchemas.siesta },
+            pyscf:  { host: $("pyscf-form-container"),
+                      schema: formSchemas.pyscf },
+        }),
+        structure: _structureForRequest,
+    });
 
 
     /* ---------- what is not at the recommended value ----------------
@@ -709,6 +712,10 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
                 mountRecommended(engine, host, formSchemas[engine]);
             }
         }
+        // The forms exist now, so the chemistry card can answer for what
+        // they say -- a structure loaded before the schemas arrived was
+        // answered with every item blank.  A no-op with no structure yet.
+        _chemistry.refresh();
     }
 
     // ----- Sidebar-driven loading (Projects sidebar -> Build) ------- //
@@ -807,25 +814,12 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
                 return;
             }
             if (f === _sidebarLastFile) {
-                // H3 2026-06-14: same file as last commit -- skip
-                // the structure reload (cached) but RE-FIRE the
-                // auto-detect chip refresh.  The user may have
-                // edited the file on /molbuilder, saved under the
-                // same path, and navigated back to this tab; the
-                // structure-cache still matches the prior bytes,
-                // but ``/api/structure/analyze`` reads from disk,
-                // so the chip CAN refresh to reflect the on-disk
-                // change.  Pre-fix the bare early-return left the
-                // chip showing the verdict from before the edit
-                // (e.g. "closed-shell singlet" after the user just
-                // removed the metal atom).  Cheap fix: just re-
-                // fire the analyzer — the per-tab structure cache
-                // stays correct because the on-disk file might or
-                // might not have changed; the chip is the user-
-                // visible surface that needs to stay honest.
-                if (typeof _autoAnalyzeOnLoad === "function") {
-                    _autoAnalyzeOnLoad(_sidebarLastFile);
-                }
+                // Same file as the last commit: the structure on screen
+                // stays (the Load button is what fetches new bytes), and so
+                // does the card's answer, which is about that structure.
+                // It re-read the FILE here until the M6 review, so an
+                // on-disk edit changed the card while the viewer -- and
+                // the deck Generate would send -- kept the old atoms.
                 return;
             }
             // Form-dirty gate: if the user has typed parameter
@@ -897,12 +891,10 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             setStatus("load-status",
                 `Loaded ${(Array.isArray(_atoms) ? _atoms.length : "")}-atom `
                 + `${ext.toUpperCase()} from ${filename}.`, "ok");
-            // Flip the load-bar readout to "Loaded: <name>", refresh the auto-detect
-            // button, and auto-fire the analyzer (chemistry rationale visible by default;
-            // see science/validation.md § 4).  All hoisted, defined below in scope.
+            // Flip the load-bar readout to "Loaded: <name>" and ask the
+            // chemistry card for this structure's charge and spin.
             if (typeof _refreshLoadButton === "function") _refreshLoadButton();
-            if (typeof _refreshAutoDetectButton === "function") _refreshAutoDetectButton();
-            if (typeof _autoAnalyzeOnLoad === "function") _autoAnalyzeOnLoad(_sidebarLastFile);
+            _chemistry.refresh();
         }   // close _commitStructure
 
         // Universal commit subscription — dblclick on a structure
@@ -973,7 +965,12 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
                     `Restored ${_name} — ${saved.structure.elements.length} atoms.`,
                     "ok");
                 if (typeof _refreshLoadButton === "function") _refreshLoadButton();
-                if (typeof _refreshAutoDetectButton === "function") _refreshAutoDetectButton();
+                // ...and the chemistry card, which a restore left empty until
+                // 2026-09-28: the tab came back with atoms and no answer.
+                // About the RESTORED structure, which is the one on screen
+                // -- not the file it once came from, which may have moved
+                // on (or be none).
+                _chemistry.refresh();
                 return true;
             }
             if (!_initialFile) return false;
@@ -1085,119 +1082,6 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
                 _sidebarLastFile = "";
                 _commitStructure({ dir: _dir, file: _candidatePath });
             });
-        }
-
-        // -------- Auto-detect button (Phase 2 of the chemistry
-        // middle-layer work; see
-        // docs/science/validation.md).
-        //
-        // Posts the currently-loaded structure to
-        // /api/structure/analyze, then applies the engine-agnostic
-        // ChemistryAnalysis's per-engine translation onto BOTH the
-        // SIESTA + PySCF sub-forms in a single click.  Rationale +
-        // warnings are surfaced in the auto-detect-panel <details>
-        // so the user can see what was decided before generating.
-        //
-        // Disabled when no structure is loaded.  The endpoint
-        // accepts the same file path used by /api/build/load above,
-        // so we read it from _sidebarLastFile (the path the user
-        // most-recently committed via the Load button or sidebar
-        // double-click).
-        //
-        // Concurrency safety is lib/auto-detect.js's: it gates on
-        // its own analyze sequence, and this page reports a newer
-        // structure load through the isStale predicate.
-        // If the user clicks Auto-detect, then loads a different
-        // structure while the request is in flight, the in-flight
-        // response would otherwise apply to the new structure's
-        // form.  We snapshot the seq at request time and discard
-        // the response if a newer load (or another auto-detect) has
-        // happened since.
-        function _refreshAutoDetectButton() {
-            const btn = $("auto-detect-btn");
-            if (!btn) return;
-            btn.disabled = !_sidebarLastFile;
-        }
-        _refreshAutoDetectButton();
-        // Both halves of auto-detect -- the analyze call's
-        // supersede/abort protocol AND the panel renderer -- live in
-        // lib/auto-detect.js, so a fix cannot land on one tab and
-        // miss the others (audit-2026-08-05-tab-ui.md §§ C1, C2).
-        // Loaded as a classic script, hence defined before this
-        // module body runs.
-        const autoDetect = window.molbuilder.autoDetect;
-
-        const _autoBtn = $("auto-detect-btn");
-        if (_autoBtn) {
-            _autoBtn.addEventListener("click", async () => {
-                if (!_sidebarLastFile) return;
-                // Snapshot the path AND the load-seq: the module
-                // knows when a newer ANALYZE superseded this one,
-                // but only this page knows when a newer STRUCTURE
-                // LOAD did, which is what isStale reports.
-                const myLoadSeq = _sidebarLoadSeq;
-                const myPath    = _sidebarLastFile;
-                _autoBtn.disabled = true;
-                setStatus("auto-detect-status", "Analyzing…");
-                const res = await autoDetect.analyze(myPath, {
-                    isStale: () => myLoadSeq !== _sidebarLoadSeq,
-                });
-                // Superseded: the newer request owns the button and
-                // the panel.  Re-enabling here would fight it.
-                if (res.superseded) return;
-                _refreshAutoDetectButton();
-                if (!res.ok) {
-                    setStatus("auto-detect-status", res.error, "error");
-                    return;
-                }
-                _applyAutoDetectToForms(res.body);
-                autoDetect.renderPanel(res.body);
-                setStatus("auto-detect-status",
-                    "Applied to both forms.  Review rationale below.",
-                    "ok");
-            });
-        }
-
-        /**
-         * Phase 3 auto-analyze (fired automatically from
-         * _commitStructure on every successful load).  Hits the
-         * same /api/structure/analyze endpoint as the button, but
-         * does NOT apply the result to the forms — only renders
-         * the rationale panel + warnings so the user sees the
-         * chemistry conclusions without lifting a finger.
-         *
-         * Form-fill stays gated behind the explicit button click
-         * so we never silently mutate the user's params; we just
-         * surface the science.
-         */
-        function _autoAnalyzeOnLoad(path) {
-            const myLoadSeq = _sidebarLoadSeq;
-            return autoDetect.analyzeOnLoad(path, {
-                isStale: () => myLoadSeq !== _sidebarLoadSeq,
-                say: () => setStatus("auto-detect-status",
-                    "Chemistry analyzed — click Auto-detect to "
-                    + "apply suggested defaults to the forms.", null),
-            });
-        }
-
-        /**
-         * Spread the analyze response's suggested.<engine> blocks
-         * onto both engine sub-forms via formSchema.setValues.  The
-         * setter dispatches input/change events so the form-dirty
-         * tracker sees the programmatic edit.
-         */
-        function _applyAutoDetectToForms(resp) {
-            const fs = (window.molbuilder || {}).formSchema;
-            if (!fs || typeof fs.setValues !== "function") return;
-            const sug = (resp && resp.suggested) || {};
-            const siestaEl = $("siesta-form-container");
-            const pyscfEl  = $("pyscf-form-container");
-            if (siestaEl && formSchemas.siesta && sug.siesta) {
-                fs.setValues(siestaEl, formSchemas.siesta, sug.siesta);
-            }
-            if (pyscfEl && formSchemas.pyscf && sug.pyscf) {
-                fs.setValues(pyscfEl, formSchemas.pyscf, sug.pyscf);
-            }
         }
 
         });   // close runtime.whenReady("projects").then(...)
@@ -1344,11 +1228,12 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
      * Comments describing removed behaviour are worse than none: they are
      * read as the reason the function exists.
      *
-     * One normalisation stays and is PySCF's alone, for a stated reason:
-     * null-valued keys are dropped so a dataclass falls back to its own
-     * default instead of receiving None where it declares an int/float —
-     * `charge = null` in particular must leave the field ABSENT, because
-     * the server's auto-detect runs only when no charge key was sent.
+     * One normalisation stays and is PySCF's alone: null-valued keys are
+     * dropped so a dataclass falls back to its own default instead of
+     * receiving None where it declares an int/float.  (A blank charge or
+     * spin item is None either way -- dropped here or sent as null to the
+     * SIESTA door -- which is what "work it out" is: the electronic
+     * state's own blank, `science/chemistry-correctness.md` § 2a.)
      * `dispersion = "none"` is sent as itself: it is the value for no
      * correction, and turning it into null here DROPPED it, so the server
      * built the default D3BJ (fixed 2026-09-28).

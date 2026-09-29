@@ -197,10 +197,10 @@ rather than a crash — which is why they are guards in code and not advice.
 
 | # | must be true | enforced where | on the composite path? |
 |---|---|---|---|
-| 1 | device `kz = 1` | **error**, `validation._validate_transport_kind` — keyed on `task.calculation`, so it fires for whatever config class the deck renders from | ✅ on every prep. *(Named `TransiestaEngine.preflight` here until 2026-09-16; that one is keyed on `TransportConfig` in `_ENGINE_VALIDATORS` and every rung now resolves a `SiestaConfig`, so it dispatches for nothing. Its OTHER checks — region contiguity, the region partition, open shell — went silent with it and are not re-homed: see § 3.6a.)* |
+| 1 | device `kz = 1` | **error**, `validation._validate_transport_kind` — keyed on `task.calculation`, so it fires for whatever config class the deck renders from | ✅ on every prep. *(Named `TransiestaEngine.preflight` here until 2026-09-16; that one is keyed on `TransportConfig` in `_ENGINE_VALIDATORS` and every rung now resolves a `SiestaConfig`, so it dispatches for nothing. Its OTHER checks — region contiguity, the region partition — went silent with it: see § 3.6a. The open-shell question is the electronic state's, asked on every rung since 2026-09-28.)* |
 | 2 | electrode `kz` dense | default **40**, a catalogue row (`electrode_kz`) the electrode layout reads | ✅ **held** — the value reaches the deck (measured: the lead renders `0 0 40`), it is editable in the template, and since 2026-09-17 the gate is in the pass every prep runs: `_validate_transport_kind` refuses `electrode_kz = 1` and warns below 20 (`science/overview.md` § 4). *This row said the warn "still lives only in the standalone `molbuilder transport preflight` verb, so a composite run never sees it" — true when written, and left standing for several hours after the re-homing that fixed it.*
 | 3 | transverse k identical in lead and device | the electrode deck *reads* the device's | ✅ by construction |
-| 3a | the junction is neutral | **error**, `validation._validate_transport_kind` — the boundaries are open, so the electron count is the electrodes' to set, and a lead must stay neutral or the Fermi level every stage is measured against moves | ✅ on every prep, since 2026-09-16 (§ 2a.7's deferral, declared on the row and enforced at the gate) |
+| 3a | the junction is neutral | **error**, the electronic state's family (`validation/chemistry.py`, ES7) — and a cited run that carried a charge is refused at `init` — the boundaries are open, so the electron count is the electrodes' to set, and a lead must stay neutral or the Fermi level every stage is measured against moves | ✅ on every prep, since 2026-09-16 (§ 2a.7's deferral, declared on the row and enforced at the gate) |
 | 4 | basis, XC and mesh identical | ONE value shared by every stage, so they cannot disagree. *(Until 2026-09-16 this read **sealed** — taken from the cited run and uneditable. Superseded by § 2a.7: the cited run DEFAULTS them and the person may change them, everywhere at once. The invariant is unchanged; only its enforcement moves from inherited to single.)* | ✅ |
 
 > **Corrected 2026-09-15.** This table said all four were guards in code. Row 2
@@ -1047,7 +1047,7 @@ Edited in one panel. Changing any of these rebuilds all five stages.
 | `pao_energy_shift` | `PAO.EnergyShift` | Orbital confinement radius. Aggressive confinement truncates exactly the tails that conduct — transport is more sensitive to this than a total-energy run | 3 |
 | `mesh_cutoff` | `MeshCutoff` | Real-space grid: accuracy against cost, with egg-box error if too coarse | 3 |
 | `electronic_temperature` | `ElectronicTemperature` | Fermi broadening — sets the leads' distribution functions; affects metallic SCF convergence and T(E) near E_F | 3 |
-| `spin_treatment` · `spin_total` | `Spin` | Whether the physics is spin-resolved at all | 3 |
+| `spin_treatment` · `unpaired_electrons` | `Spin` · `Spin.Fix` + `Spin.Total` | Whether the physics is spin-resolved at all, and its count | 3 |
 | *the pseudopotentials* | — | Must be the same set everywhere, and must match the functional: SIESTA silently uses the pseudo's XC even when the deck disagrees | 2 |
 | `species_order` | — | **Structural, and easy to overlook.** It fixes the orbital ordering inside `.DM` and `.TSHS`. Two stages that order species differently write files the next stage cannot read correctly | 2 |
 | `kgrid` *(transverse part)* | `%block kgrid_Monkhorst_Pack` | The transverse Brillouin-zone sampling. Leads and device share one transverse cell, and the self-energy is folded in per transverse k-point, so two grids cannot be combined. *(Advisory as to whether the density suffices; checkable that they agree)* | 2 + 3 |
@@ -1390,20 +1390,23 @@ Three things qualify:
 | **a saved structure that remembers its run** | one `.xyz` with its `.molstruct.json`, and that sidecar carries the settings of the run it came out of | geometry · labels · **settings** | the record written when you exported it |
 | **a saved structure** | one `.xyz` with its `.molstruct.json` | geometry · labels | nobody yet — **you choose them** |
 
-**Settings** here means the six numbers every stage of the calculation must
-agree on: the basis, the exchange–correlation functional and its authors, the
-mesh cutoff, the orbital energy shift, the transverse k-grid and the electronic
-temperature. § 2a.3 calls them shared, and § 5 is why they cannot differ
-between the leads and the device.
+**Settings** here means what every stage of the calculation must agree on: the
+basis, the exchange–correlation functional and its authors, the mesh cutoff, the
+orbital energy shift, the transverse k-grid, the electronic temperature and the
+spin. § 2a.3 calls them shared, and § 5 is why they cannot differ between the
+leads and the device.
 
-> **The spin comes with the citation too** *(W34, decided 2026-09-25)*: until
-> now `spin_treatment` and `spin_total` were shared by every rung and *answered
-> by nobody's run* (§ 3.8.6), so a polarized relaxation was cited into a
-> non-polarized transport calculation without a word. The cited deck's spin
-> becomes the default, a cited run carrying a net charge is refused (§ 2a.7),
-> and a spin-polarized junction's transmission is read in both TBtrans
-> channels ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
-> §§ 2a.2 ES7, 2a.4).
+> **The spin comes with the citation too** *(W34, built 2026-09-28)*: until then
+> the spin was shared by every rung and *answered by nobody's run* (§ 3.8.6), so a
+> polarized relaxation was cited into a non-polarized transport calculation
+> without a word. The cited run's `spin_treatment` and `unpaired_electrons` are
+> now the defaults — read from its deck, in any word SIESTA accepts, or from its
+> record — a cited run carrying a net charge is refused by name (§ 2a.7), and a
+> spin left blank is decided ONCE, on the whole junction, and handed to every
+> rung, whose deck says where it came from
+> ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
+> § 2a, ES1, ES7). Reading a spin-polarized junction's transmission in both
+> TBtrans channels (§ 2a.4) is still open (plan § 5s, P5).
 
 **How the third one comes to remember.** You finish a relaxation, open it in
 the Results tab, and save the structure. The tab writes that run's own settings
@@ -1873,7 +1876,7 @@ fixed.**
 | ~~four rungs are still off the seam~~ | **Closed 2026-09-16.** The seam question — *what does a composite kind hand its renderer?* — is answered, and the answer is *a structure*, like every other kind: `prep` picks WHICH structure the rung describes (`composed.sorted.structure`, or `model.as_structure()` for a lead taken out by its region label) and `spec_for` is unchanged. Nothing reaches for the `ComposedJunction` from inside the renderer |
 | ~~`--pipeline-log` is still a no-op here~~ | **Closed.** `_prep_transport` opens a `PipelineLog` and carries it through resolve, the deck render and — since 2026-09-16 — `prep_jobset`, so STEP 4 (wrappers) and STEP 5 (run directories) reach the file too; it had lost those two by not passing `log=` |
 | ~~two settings-gate warnings are now visible and both are **wrong for transport**~~ | (a) `psml_lib`: `jobset init` refuses `--psml-lib` here because the pseudopotentials travel with the citation, yet the deck warned SIESTA "will refuse to start" — **FIXED 2026-09-25**: `prep` hands the gate the calculation folder, and the gate reads the files the run will open, the folder first, by the one rule `prep` fetches by (`pseudos.psml_sources`, `job-contracts.md` § 2.5a). The deck still states the pseudopotential provenance itself. (b) `structure.regions`: **FIXED 2026-09-23.** It said the region labels *"do NOT consume / do not shape this calculation"* on every transport deck, about the partition the whole ladder is built from. The claim that the checks "cannot see the kind" was wrong: `validation/__init__` has set `engine_kw["calculation"]` for every validator all along, and `check_unconsumed_region_labels` simply never asked. It asks now, and for transport the consumed set is `sort.PARTITION_LABELS` plus any `*-electrode` name — so a label transport genuinely cannot read is still named, which is § 4's rule |
-| ~~`calculation="transport"` composes no kind science~~ | **Closed, and one check had to be re-homed.** `_KIND_VALIDATORS["transport"]` is registered and fires on every rung. `TransiestaEngine.preflight` is keyed on `TransportConfig` in `_ENGINE_VALIDATORS`, so it dispatches for no rung any more — of what it carried, the region partition and the atom order are `sort`'s own refusals and structural on the ladder path, and open-shell runs from the siesta validator against the run's REAL spin treatment instead of preflight's hardcoded closed shell. The remainder was the **high-bias advisory**, which is now in the kind validator beside the kz≠1 refusal |
+| ~~`calculation="transport"` composes no kind science~~ | **Closed, and one check had to be re-homed.** `_KIND_VALIDATORS["transport"]` is registered and fires on every rung. `TransiestaEngine.preflight` is keyed on `TransportConfig` in `_ENGINE_VALIDATORS`, so it dispatches for no rung any more — of what it carried, the region partition and the atom order are `sort`'s own refusals and structural on the ladder path, and the open-shell question is the electronic state's one family, asked by `validate()` for every rung against the junction's resolved spin instead of preflight's hardcoded closed shell. The remainder was the **high-bias advisory**, which is now in the kind validator beside the kz≠1 refusal |
 | `validate_subject` is unanswered, so the gate judges a frame the deck does not express | Narrowed 2026-09-25: `_emit_geometry` writes the frame `cell.to_engine` places, and the gate's `cell.resolve` places the box at the same `−engine_offset` of the design, so containment is judged in the deck's frame. Still open for a lead that states no cell, whose deck box is transport's own vacuum box and not the one the gate resolves. The optimization spec sets that slot precisely because *"judging the input would judge something nobody runs"* |
 | the transport arm of `spec_for` silently drops `cell=` | The dispatch sits above every use of `cell` and forwards only `(struct, config, stage_token)`. No live caller passes it, so there is no failure today — it is a silent-drop hazard at a public signature |
 | the projection narrows one range | `TransportConfig.energy_shift_ry` allows `(0.0001, 0.1)`; `pao_energy_shift` allows `(0.001, 0.05)`. A citation whose deck says `PAO.EnergyShift 0.0005 Ry` is legal upstream and now draws a warn. Warn-only, so it cannot refuse a prep |
@@ -1989,8 +1992,10 @@ markers the catalogue carries, never by a list a blueprint keeps:
 **`citation` is not the same as `shared`, and treating it as one was the
 defect of 2026-09-23.** `citation` says *who supplies the default*; `shared`
 says *who it binds*. Every `citation` row is shared, and Class A contains
-more: `species_order`, `spin_treatment`, `spin_total`, the transverse grid's
-offset and the pseudopotentials are shared and answered by nobody's run.
+more: `species_order`, the transverse grid's offset and the pseudopotentials
+are shared and answered by nobody's run. *(The spin was too, until the citation
+began answering it on 2026-09-28: `spin_treatment` and `unpaired_electrons` are
+`citation` rows now.)*
 Both surfaces are served by `/api/transport/schema?surface=rung|shared`
 from `catalogue_to_form_schema(surface=)`; the shared one, given the
 citation, carries the citation's answers as its values and names their

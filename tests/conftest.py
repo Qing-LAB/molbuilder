@@ -888,9 +888,6 @@ _PSML_FIXTURE = """<?xml version="1.0" encoding="UTF-8"?>
 </psml>
 """
 
-_PSML_Z = {"H": 1, "C": 6, "N": 7, "O": 8, "S": 16, "Fe": 26, "Au": 79}
-
-
 def write_pseudos(dest, elements) -> None:
     """Put the ``.psml`` files a SIESTA calculation needs into *dest*.
 
@@ -913,9 +910,13 @@ def write_pseudos(dest, elements) -> None:
     landing.
     """
     from pathlib import Path as _P
+
+    from molbuilder.chemistry import atomic_number
+    # The element's Z from molbuilder's own table -- a seven-element copy
+    # stood here until 2026-09-29, and a phosphate could not be prepped.
     for el in elements:
         (_P(dest) / f"{el}.psml").write_text(
-            _PSML_FIXTURE.format(el=el, z=_PSML_Z[el]))
+            _PSML_FIXTURE.format(el=el, z=atomic_number(el)))
 
 
 @pytest.fixture(autouse=True)

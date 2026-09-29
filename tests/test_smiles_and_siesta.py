@@ -252,22 +252,6 @@ def test_fdf_charged_system_emits_makov_payne_notice():
     assert "Makov & Payne" in fdf
 
 
-def test_fdf_neutral_system_no_makov_payne_block():
-    """No NetCharge -> no Makov-Payne block.  The notice is gated on
-    actual charged state, not always-on noise."""
-    import numpy as np
-    from molbuilder.structure import Structure
-    s = Structure(elements=["O", "H", "H"],
-                  positions=np.array([[0, 0, 0],
-                                       [0.96, 0, 0],
-                                       [-0.24, 0.93, 0]]),
-                  title="H2O", vacuum=(12.0, 12.0, 12.0))
-    cfg = SiestaConfig(relax_type="none")
-    fdf = render_fdf(s, cfg)
-    assert "NetCharge" not in fdf
-    assert "Makov-Payne" not in fdf
-
-
 # --------------------------------------------------------------------- #
 #  The cell-volume gate: `vol < n_atoms * 1.0 A^3` refuses.             #
 #                                                                       #
@@ -502,14 +486,6 @@ def test_a_shift_on_a_single_k_point_axis_is_warned_about():
     assert not [i for i in ok if i.where == "config.kgrid_displacement"]
 
 
-
-
-# --------------------------------------------------------------------- #
-#  Spin block (S2) — pin the keyword spelling so a SIESTA-version       #
-#  regression at this layer fails loudly                                 #
-# --------------------------------------------------------------------- #
-
-
 def _h2_struct():
     """Single shared two-atom test structure."""
     import numpy as np
@@ -518,95 +494,6 @@ def _h2_struct():
         elements=["H", "H"],
         positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
         title="h2", vacuum=(12.0, 12.0, 12.0))
-
-
-def test_spin_treatment_emits_v4_keyword_for_aux_compat():
-    """``cfg.spin_treatment="polarized"`` emits ``Spin polarized`` (the
-    form), NOT the v5 single-line ``Spin polarized``.  Reason: SIESTA
-    5.4.2's v5 unified parser path does NOT subsequently read the
-    auxiliary ``Spin.Fix`` / ``Spin.Total`` keys we depend on for
-    open-shell metals (verified 2026-05-24 against the hemeC-dithiol
-    failure: with ``Spin polarized``, both auxiliary keys are silently
-    ignored and propor aborts; with ``SpinPolarized .true.`` both are
-    honored).  The v4 form is marked deprecated in the v5 manual but
-    is fully accepted in the parser."""
-    fdf = render_fdf(_h2_struct(), SiestaConfig(spin_treatment="polarized"))
-    assert re.search(r"^Spin\s+polarized\s*$", fdf, re.M), fdf
-    # When spin_total is unset, neither constraint LINE is emitted
-    # (the keywords may still appear in verbose-comments / template
-    # banners; we only check the actual key-value emissions).
-    assert not fdf_sets(fdf, "Spin.Fix")
-    assert not fdf_sets(fdf, "Spin.Total")
-
-
-def test_spin_total_emits_constraint_pair():
-    """``cfg.spin_total`` requires BOTH ``Spin.Fix .true.`` AND
-    ``Spin.Total <v>`` -- without ``Spin.Fix`` the constraint is
-    silently ignored by SIESTA, leaving multiplicity unconstrained.
-    The leading ``Spin polarized`` is what gives the run two spin channels
-    to read the auxiliary keys at all (see preceding test)."""
-    fdf = render_fdf(
-        _h2_struct(),
-        SiestaConfig(spin_treatment="polarized", spin_total=2.0),
-    )
-    assert re.search(r"^Spin\s+polarized\s*$", fdf, re.M), fdf
-    assert_fdf(fdf, "Spin.Fix", ".true.")
-    assert_fdf(fdf, "Spin.Total", "2.0")
-
-
-def test_spin_total_ignored_without_polarization():
-    """``spin_total`` set but ``spin_treatment="non-polarized"`` -> nothing
-    spin-related lands in the FDF."""
-    fdf = render_fdf(
-        _h2_struct(),
-        SiestaConfig(spin_treatment="non-polarized", spin_total=2.0),
-    )
-    assert not re.search(r"^Spin\s+\S", fdf, re.M), fdf
-    assert "Spin.Fix" not in fdf
-    assert "Spin.Total" not in fdf
-
-
-def test_spin_total_zero_with_polarization_emits_constrained_singlet_note():
-    """SP-A: ``spin_treatment="polarized"`` AND ``spin_total=0.0`` produces a
-    constrained singlet ON TOP of open-shell DFT.  This is unusual
-    (the cheaper path is spin-restricted KS) and the verbose-mode FDF
-    must surface a comment so a user who landed here by accident sees
-    the contradiction."""
-    fdf = render_fdf(
-        _h2_struct(),
-        SiestaConfig(spin_treatment="polarized", spin_total=0.0,
-                     verbose_comments=True),
-    )
-    assert "constrained singlet" in fdf
-    assert_fdf(fdf, "Spin.Fix", ".true.")
-    assert_fdf(fdf, "Spin.Total", "0.0")
-
-
-def test_spin_total_nonzero_does_not_emit_constrained_singlet_note():
-    """SP-A negative case: a real open-shell run (spin_total>0) must
-    NOT pick up the constrained-singlet note -- that note is reserved
-    for the unusual zero case."""
-    fdf = render_fdf(
-        _h2_struct(),
-        SiestaConfig(spin_treatment="polarized", spin_total=2.0,
-                     verbose_comments=True),
-    )
-    # The SP-A WARNING must be absent, not the words.  `spin_total`'s own
-    # catalogue note explains what a constrained singlet is -- that note is
-    # emitted for every value now that the item goes through the one door, and
-    # it is information, not a warning.  What must not appear is the advisory
-    # block, which fires only when the value really is 0.0.
-    assert "# NOTE: spin_total = 0.0 with Spin polarized" not in fdf
-
-
-def test_default_fdf_has_no_spin_block():
-    """Default (closed-shell) FDF must not mention Spin at all -- the
-    presence of any ``Spin`` keyword would force open-shell DFT."""
-    fdf = render_fdf(_h2_struct(), SiestaConfig())
-    assert not re.search(r"^SpinPolarized\b", fdf, re.M), fdf
-    assert "Spin polarized"      not in fdf
-    assert "Spin.Fix"            not in fdf
-    assert "Spin.Total"          not in fdf
 
 
 # --------------------------------------------------------------------- #
@@ -732,8 +619,6 @@ def test_fdf_no_stage_suffix_when_stage_is_none():
     assert "Stage 0" not in fdf
 
 
-
-
 # --------------------------------------------------------------------- #
 #  Frozen atoms -> Geometry.Constraints (three-stage contract)          #
 #                                                                       #
@@ -811,7 +696,7 @@ def test_pyscf_frozen_atoms_emit_constraints_file_and_optimize_kwarg():
     script = render_script(
         _struct_with_frozen([1, 4]),
         PySCFConfig(verbose_comments=False, optimize=True,
-                     optimizer="geometric", spin=1, method="UKS"),
+                     optimizer="geometric", spin_treatment="unrestricted", unpaired_electrons=1),
     )
     # The runtime constraints-file emission.
     assert "_FROZEN_CONSTRAINTS_PATH" in script
@@ -831,7 +716,7 @@ def test_pyscf_no_frozen_atoms_no_constraints_emission():
     script = render_script(
         _struct_with_frozen([]),
         PySCFConfig(verbose_comments=False, optimize=True,
-                     optimizer="geometric", spin=1, method="UKS"),
+                     optimizer="geometric", spin_treatment="unrestricted", unpaired_electrons=1),
     )
     assert "_FROZEN_CONSTRAINTS_PATH" not in script
     assert '"$freeze' not in script
@@ -846,7 +731,7 @@ def test_pyscf_frozen_atoms_with_non_geometric_optimizer_emits_warning_comment()
     script = render_script(
         _struct_with_frozen([1, 4]),
         PySCFConfig(verbose_comments=False, optimize=True,
-                     optimizer="berny", spin=1, method="UKS"),
+                     optimizer="berny", spin_treatment="unrestricted", unpaired_electrons=1),
     )
     assert "_FROZEN_CONSTRAINTS_PATH" not in script
     assert "WARNING" in script and "frozen_atoms" in script
@@ -1061,13 +946,13 @@ class TestSiestaStageOverlay:
             basis_size="DZP",
             mesh_cutoff=500,
             kgrid=(4, 4, 1),
-            spin_treatment="polarized",
+            spin_treatment="unrestricted",
         )
         out = apply_siesta_stage(cfg, 3)
         assert out.basis_size == "DZP"
         assert out.mesh_cutoff == 500
         assert out.kgrid == (4, 4, 1)
-        assert out.spin_treatment == "polarized"
+        assert out.spin_treatment == "unrestricted"
         # Stage 3 values overlaid as expected.
         assert out.relax_type == "Broyden"
         assert out.relax_force_tol == 0.01

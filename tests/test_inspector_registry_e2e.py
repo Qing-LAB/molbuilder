@@ -77,7 +77,7 @@ def ongoing_trajectory(isolated_projects_root_module) -> str:
             positions=np.array([[0.0, 0.0, 0.0],
                                 [0.0, 0.0, 1.30],
                                 [0.0, 0.0, -1.30]]))
-        cfg = PySCFConfig(job_name="probe", method="RHF", basis="STO-3G")
+        cfg = PySCFConfig(job_name="probe", method="HF", basis="STO-3G")
         deck = work / "probe.py"
         prepare_deck(spec_for(struct, cfg, calculation="optimization"),
                      struct, cfg, deck, verbose=False)

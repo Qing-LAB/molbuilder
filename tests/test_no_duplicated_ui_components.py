@@ -58,12 +58,6 @@ _ALLOWED = {
 #: with the argument.  The test for a real duplicate is not "these look alike"
 #: -- it is "a change to one of them should have reached the others".
 _ALLOWED_FUNCS = {
-    # Two callers of ONE shared API (`lib/auto-detect.js`).  What is left in
-    # each is the binding: this page's sequence counter and this page's
-    # wording.  Folding further would mean the module knowing which tab it is
-    # serving, which is the thing it was extracted to stop.
-    ("spectra/viewer.js", "_autoAnalyzeOnLoad"),
-    ("structure-optimization/viewer.js", "_autoAnalyzeOnLoad"),
     # A CRC-32 is a fixed algorithm with a fixed polynomial: there is no
     # future change to one copy that should have reached the other.  Both
     # live in modules that deliberately carry no imports -- the vibration

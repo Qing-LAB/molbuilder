@@ -49,7 +49,10 @@ _AXES = {
     "optimize":            [True, False],
     "density_fit":         [True, False],
     "solvent":             [None, "water"],
-    "method":              ["RKS", "UKS"],
+    # The theory and the spin treatment both change which class, module and
+    # stability block are emitted (`pyscf/layout.scf_class`).
+    "method":              ["DFT", "HF"],
+    "spin_treatment":      ["restricted", "unrestricted"],
     "use_gpu":             [False, True],
 }
 
@@ -64,8 +67,8 @@ def _decks():
     yielded = 0
     for combo in itertools.product(*values):
         over = dict(zip(names, combo))
-        if over["method"] == "UKS":
-            over["spin"] = 2
+        if over["spin_treatment"] == "unrestricted":
+            over["unpaired_electrons"] = 2       # water's even count
         try:
             cfg = dataclasses.replace(PySCFConfig(job_name="w"), **over)
             deck = str(render_script(_STRUCT, cfg))

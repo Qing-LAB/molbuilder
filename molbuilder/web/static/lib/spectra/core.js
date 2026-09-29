@@ -42,9 +42,14 @@
      * Parameters:
      *   rootEl -- DOM element (or document) that contains the
      *             spectra ids the inspector wires up.
-     *   opts   -- reserved for future use (e.g. ``{file?: string}``
-     *             to auto-load a results JSON on /results-side
-     *             mount).
+     *   opts   -- what the mounting page hands in:
+     *             ``file``               a results JSON to open (the
+     *                                    Results tab's pick);
+     *             ``mountVibrationView`` the page's door to the mode
+     *                                    viewer;
+     *             ``onFormsReady``       called when the forms are
+     *                                    rendered (the chemistry card
+     *                                    asks again).
      *
      * Returns a handle ``{ dispose() }`` so the registry can tear
      * down timers + Plotly listeners between inspector swaps.
@@ -753,6 +758,11 @@
             }
             wireCompatibilityListeners();
             applyCompatibility();
+            // The forms exist now: whoever shows what they will carry (the
+            // page's chemistry card) asks again.
+            if (opts && typeof opts.onFormsReady === "function") {
+                opts.onFormsReady();
+            }
         } catch (exc) {
             if (mySeq !== _schemaFetchSeq) return;
             for (const host of Object.values(els.form)) {
@@ -838,18 +848,19 @@
         refreshPreflightDebounced();
     }
 
-    /* AUTO-DETECT'S ANSWER, spread onto both forms by field name -- the
-     * analyzer answers per engine (`suggested.<engine>`), and the adapter's
-     * names are catalogue item names (form-schema.md § 3: setValues fires
-     * input/change, so the live checks see the fill). */
-    function applySuggested(suggested) {
-        const fs = (window.molbuilder || {}).formSchema;
-        if (!fs || typeof fs.setValues !== "function") return;
-        const sug = suggested || {};
+    /* THE FORMS THE CHEMISTRY CARD ANSWERS FOR (`lib/chemistry.js`): each
+     * engine's rendered form and its schema, so the card can ask for the
+     * charge and spin of exactly what each form says.  The page asks; it
+     * never reaches into the containers (overview.md § 1).  This was
+     * `applySuggested` until 2026-09-28, which spread an Auto-detect
+     * suggestion onto both forms, overwriting them. */
+    function stateForms() {
+        const out = {};
         for (const engine of ["pyscf", "siesta"]) {
             const host = els.form[engine], schema = state.schemas[engine];
-            if (host && schema && sug[engine]) fs.setValues(host, schema, sug[engine]);
+            if (host && schema) out[engine] = { host: host, schema: schema };
         }
+        return out;
     }
 
     // ----- Selector / compatibility (lock unused value fields) --
@@ -938,6 +949,18 @@
         return _viewer ? _viewer.data.getStructure() : null;
     }
 
+    /* THE STRUCTURE THIS TAB WOULD HAND OVER, as the envelope the server's
+     * doors read -- ONE READ OF THE VIEWER (molview.md § 9.3): `exportFile()`
+     * is the viewer's own producer, and it carries atoms, positions at the
+     * displayed frame, labels, regions (frozen atoms), the cell and its axis
+     * kinds, and the record of the run it came from.  The preflight, the
+     * hand-over and the chemistry card all read it here, so the three cannot
+     * be about different structures.  Null with nothing loaded. */
+    function structureForRequest() {
+        const out = _viewer ? _viewer.data.exportFile() : null;
+        return (out && out.structure) ? out.structure : null;
+    }
+
     // ----- Live preflight: gate ① for the vibration kind ---------
     //
     // The SAME verdict prep's settings gate gives later, surfaced
@@ -957,15 +980,15 @@
     }
 
     async function refreshPreflight() {
-        const _out = _viewer ? _viewer.data.exportFile() : null;
-        if (!_out || !_out.structure) return;
+        const _structure = structureForRequest();
+        if (!_structure) return;
         const engine = _activeEngine();
         try {
             const r = await fetch("/api/build/preflight", {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    structure:   _out.structure,
+                    structure:   _structure,
                     engine:      engine,
                     calculation: "vibration",
                     params:      collectParams(engine),
@@ -1021,13 +1044,11 @@
             say("error", "lib/task-handover.js is not loaded.");
             return;
         }
-        /* ONE READ OF THE VIEWER (molview.md § 9.3): `exportFile()` is
-         * the viewer's own producer and emits the exact envelope the
-         * hand-over door reads -- atoms, positions at the displayed
-         * frame, labels, regions (frozen atoms) and cell in one read.
-         * Frozen atoms REACH THE CALCULATION THIS WAY: they ride the
-         * structure's own files, not a form field (plan § 2). */
-        const _out = _viewer ? _viewer.data.exportFile() : null;
+        /* The structure through the tab's one read of the viewer
+         * (`structureForRequest`).  Frozen atoms REACH THE CALCULATION THIS
+         * WAY: they ride the structure's own files, not a form field
+         * (plan § 2). */
+        const _structure = structureForRequest();
         /* The engine is THE STRIP'S CHOICE -- the description's engine, the
          * same fact the Structure-optimization tab sends from its own strip
          * -- and the params are that engine's form.  (It was a one-choice
@@ -1037,7 +1058,7 @@
         await mb.taskHandover.send({
             projects:    mb.projects,
             say:         say,
-            structure:   (_out && _out.structure) ? _out.structure : null,
+            structure:   _structure,
             engine:      engine,
             params:      collectParams(engine),
             calculation: "vibration",
@@ -3666,8 +3687,7 @@
             // the declaration but left three writers, which threw a
             // strict-mode ReferenceError on every edit -- caught by
             // the 2026-08-21 full-text review.
-            // Live science check on every edit (and on auto-detect's
-            // programmatic fills -- setValues dispatches input).
+            // Live science check on every edit.
             _on(els.formContainer, "input",  refreshPreflightDebounced);
             _on(els.formContainer, "change", refreshPreflightDebounced);
 
@@ -3869,13 +3889,15 @@
         useViewer: useViewer,
         /* The engine strip's door, for the page that mounted this: which
          * engine is active, set it, tell the inspector a structure landed
-         * (so the structure can pick the default), and spread auto-detect's
-         * per-engine answer onto the forms.  The page never reaches into
-         * the containers (overview.md § 1). */
+         * (so the structure can pick the default), and hand over what the
+         * chemistry card answers for -- the forms, and the structure the
+         * tab would hand over.  The page never reaches into the containers
+         * (overview.md § 1). */
         activeEngine:    _activeEngine,
         setEngine:       setEngine,
         structureLoaded: structureLoaded,
-        applySuggested:  applySuggested,
+        stateForms:      stateForms,
+        structureForRequest: structureForRequest,
     };
 
     }   // ----- end of mountInspector(rootEl, opts) -----

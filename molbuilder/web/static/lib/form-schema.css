@@ -602,9 +602,9 @@ details.workflow-group[open] > summary.workflow-group-header::before {
     font-style: italic;
 }
 
-/* Detection chip on the right side of the header.  Used to surface
- * an analysis-derived hint ("232 atoms · 1 Au cluster"); when
- * present, signals that the group has auto-suggested defaults.
+/* Detection chip on the right side of the header: the form's own
+ * answer in a line ("4 atoms · closed shell · charge -1" on the Profile
+ * card, a size hint on the Budget card -- lib/detection-chip.js).
  * Tinted background uses color-mix against the group accent so a
  * theme change to the role tokens repaints the chip automatically. */
 .workflow-detection-chip {
@@ -622,36 +622,9 @@ details.workflow-group[open] > summary.workflow-group-header::before {
     white-space: nowrap;
 }
 
-/* "Apply suggestions" button: borrows the group's accent so the
- * affordance reads as "this acts on this card."  Uses the same
- * shape as the engine-key badge for consistency. */
-.workflow-group-apply-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-xs);
-    padding: 3px var(--space-md);
-    border: 1px solid var(--workflow-group-accent, var(--accent));
-    background: transparent;
-    color: var(--workflow-group-accent, var(--accent));
-    border-radius: var(--radius-sm);
-    font-size: var(--text-xs);
-    font-weight: var(--weight-medium);
-    cursor: pointer;
-    transition: background 120ms ease;
-}
-.workflow-group-apply-btn:hover {
-    background: color-mix(in srgb,
-                          var(--workflow-group-accent, var(--accent)) 12%,
-                          transparent);
-}
-.workflow-group-apply-btn:focus-visible {
-    outline: 2px solid var(--workflow-group-accent, var(--accent));
-    outline-offset: 1px;
-}
-
 /* Per-group accent: scoped variable set on the parent.  Descendants
- * inherit it via the var() fallback chain so chip + title + button
- * all pick up the role color from one place. */
+ * inherit it via the var() fallback chain so the chip and the title
+ * pick up the role color from one place. */
 .workflow-group--profile { --workflow-group-accent: var(--group-profile-accent); }
 .workflow-group--stage   { --workflow-group-accent: var(--group-stage-accent); }
 .workflow-group--budget  { --workflow-group-accent: var(--group-budget-accent); }

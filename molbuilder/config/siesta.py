@@ -31,9 +31,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ..identity import RestartGroup
+from . import state as _state
 
 # Job-layout v1 protocol (docs/execution/job-contracts.md): the basename
 # (= SystemLabel for SIESTA, job_name for PySCF) drives EVERY output
@@ -226,15 +227,6 @@ def _validate_basename(label: str):
         return None
     return _check
 
-
-#: How SIESTA treats spin.  THE one home: the form-field metadata below
-#: reads it, `siesta/auto_defaults.SiestaSuggestedParams` validates
-#: against it, and `validation/siesta.py` tests membership in it.  It was
-#: written out in four places until 2026-09-09, one of them a route test
-#: asserting `si["spin_treatment"] in (...)` -- a bean count standing in
-#: for a type.
-SPIN_TREATMENTS: "tuple[str, ...]" = (
-    "non-polarized", "polarized", "non-colinear", "spin-orbit")
 
 @dataclass
 class SiestaConfig:
@@ -1210,79 +1202,14 @@ class SiestaConfig:
         "item_kind": "produce",
     })
 
-    # Net charge.  When None (default), render_fdf auto-detects from the
-    # phosphate protonation state via formal_charge_from_phosphates.
-    net_charge: Optional[int] = field(default=None, metadata={
-        "category": ("system",),
-        "section": "System",
-        # Run-profile identity — molecule's charge state is a
-        # fundamental property of WHAT you're computing.
-        "workflow_group": "profile",
-        "label": "Net charge",
-        # MERGED with PySCF's `charge` 2026-08-19 -- one question, one name.
-        # The engine_key names both spellings because the item now belongs to
-        # both engines and neither spelling is THE answer (`template.md` § 6.3).
-        "engine_key":  "NetCharge (SIESTA) | gto.M(charge=...) (PySCF)",
-        "item_kind": "deck",
-        "expands": ("NetCharge", "gto.M"),
-        "null_label": "(auto-detect from phosphates)",
-        "range": (-10, 10),
-        "tier": "basic",
-    })
-
-    # HOW SPIN IS TREATED.  Four states, not a boolean (2026-08-15).
-    #
-    # SIESTA 5.4.2 consolidated three booleans -- ``SpinPolarized``,
-    # ``NonCollinearSpin`` and ``SpinOrbit`` -- into ONE keyword taking one
-    # of four words, and deprecated all three (``spin_subs.F90``:
-    # ``fdf_deprecated('SpinPolarized','Spin')``).  Three independent
-    # booleans could contradict each other; one enum cannot.
-    #
-    # WHY WE NO LONGER EMIT THE v4 FORM.  This field carried a comment
-    # saying SIESTA 5.4.2's ``Spin`` path "does not subsequently read
-    # Spin.Fix / Spin.Total, so open-shell metals abort at propor"
-    # (2026-05-24).  That is NOT true of 5.4.2 and the source says so
-    # plainly: ``spin_subs.F90`` reads the deprecated flags into ``opt_old``
-    # and then does ``opt = fdf_get('Spin', opt_old)`` -- one variable, the
-    # new spelling merely winning -- while ``Spin.Fix`` / ``Spin.Total`` are
-    # read in a DIFFERENT file (``read_options.F90``) gated only on
-    # ``nspin == 2``, which both spellings produce identically.  Whatever
-    # caused ``propor: ERROR: IMAX = 0`` in May, this mechanism is not it
-    # here.  Re-verified against the 5.4.2 source 2026-08-15.
-    #
-    # ``spin_total`` is only meaningful for ``polarized``: SIESTA DIES with
-    # *"You can only fix the spin of the system for collinear spin
-    # polarized calculations"* if ``Spin.Fix`` is set under non-colinear or
-    # spin-orbit.  The validator refuses that combination rather than
-    # letting the run reach the queue and abort.
-    spin_treatment: str = field(default="non-polarized", metadata={
-        "category": ("system",),
-        # Still carried for `dataclass_to_form_schema`, which Spectra and
-        # Transport still use and which gates visibility on `section`
-        # (`web/form-schema.md` 1a).  The Build tab reads the catalogue and
-        # ignores this.
-        "section":     "Spin",
-        # System characteristic — depends on chemistry (open-shell
-        # metals / radicals require it), not on stage.
-        "workflow_group": "profile",
-        "label":       "Spin treatment",
-        "choices":     SPIN_TREATMENTS,
-        "engine_key":  "Spin",
-    })
-    spin_total: Optional[float] = field(default=None, metadata={
-        "category": ("system",),
-        "section":     "Spin",
-        "item_kind":  "deck",
-        "expands":    ['Spin.Fix', 'Spin.Total'],
-        "workflow_group": "profile",
-        "label":       "Target spin moment",
-        "null_label":  "(default)",
-        # Emits TWO keys: Spin.Fix .true. + Spin.Total <v>.  Either
-        # alone is silently ignored by SIESTA (Spin.Fix without a
-        # value to fix; Spin.Total without Spin.Fix to gate the
-        # constraint).
-        "engine_key":  "Spin.Fix + Spin.Total",
-    })
+    # THE ELECTRONIC STATE (`science/chemistry-correctness.md` § 2a) -- the
+    # three merged items, declared once in `config/state.py` for both
+    # engines.  A blank means *work it out*; `electronic_state` does, for
+    # the form, the checks and the deck alike.  SIESTA has no `method`: it
+    # is a density-functional code.
+    net_charge: Optional[int] = _state.net_charge()
+    spin_treatment: Optional[str] = _state.spin_treatment()
+    unpaired_electrons: Optional[Union[int, str]] = _state.unpaired_electrons()
 
     # ================================================================== #
     #  The TRANSPORT kind's parameters                                    #

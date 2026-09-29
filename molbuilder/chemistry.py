@@ -15,17 +15,16 @@ Public surface (grouped by purpose):
     expected_pH7_peptide_charge(struct) -> Optional[int]
         Rough physiological-pH net charge for a peptide.
 
-  Electron / spin parity (open-shell guards):
+  Electron / spin parity:
     total_electrons(struct, charge) -> int
-    check_spin_charge_parity(struct, charge, spin) -> Optional[str]
+    check_spin_charge_parity(struct, charge, unpaired) -> Optional[str]
 
-  Open-shell transition metals:
-    detect_open_shell_metals(struct) -> List[str]
+  The structure's chemistry facts (the metals that bear on its spin):
+    analyze_structure(struct) -> ChemistryAnalysis
     explain_metal_spin(element, spin) -> Optional[str]
-    suggest_spin_total(metals) -> (preferred, alternatives)
-        Used by the SIESTA preflight to recommend a Spin.Total when
-        the user enables spin polarisation but leaves the target
-        spin unset (a zero-spin start can settle on the wrong state).
+        What (element, 2S) means for a metal centre.
+    The DECISION -- which charge and spin a calculation runs with -- is
+    `electronic_state.py`'s (science/chemistry-correctness.md § 2a).
 
   ECP selection (PySCF):
     resolve_pyscf_ecp(struct, ecp, basis) -> ECP-or-None
@@ -50,9 +49,8 @@ from __future__ import annotations
 import fnmatch
 import math
 import re
-from dataclasses import dataclass, field
-from typing import (Any, Dict, Iterable, List, Literal, Optional, Protocol, Sequence,
-                    Tuple, Type)
+from dataclasses import dataclass
+from typing import (Any, Dict, Iterable, List, Optional, Sequence, Tuple)
 
 import numpy as np
 
@@ -168,11 +166,11 @@ _AMINO_ACID_RESIDUE_NAMES = frozenset({
 # Open-shell transition metals + lanthanides.  Their ground-state
 # configurations have unpaired electrons in d (or f) shells in every
 # common oxidation state, so running them through a closed-shell
-# singlet SCF (spin=0, method=RKS) typically converges to a fictitious
-# state with garbage forces.  The user MUST either explicitly set
-# spin to a sensible value AND switch to UKS / ROKS, or accept that
-# the result is nonsensical.  We surface a preflight WARN for any
-# structure containing one of these.
+# (restricted) SCF typically converges to a fictitious state with
+# garbage forces.  A blank spin on a structure holding one is decided
+# unrestricted, at the metal's usual count (`electronic_state.recommend`),
+# and a stated restricted is warned (ES9, `science/chemistry-correctness.md`
+# § 2a).
 #
 # Source: ground-state electron configurations from NIST atomic
 # spectra database.
@@ -242,10 +240,11 @@ CLOSED_D10_METALS = frozenset({
 
 # The flat pre-2026-06-13 union is GONE (2026-09-16).  It survived the split
 # as a "backward-compat alias for the deprecation window", and the only thing
-# that ever read it was `detect_open_shell_metals` — the one caller the split
-# existed to correct.  So the window kept the bug alive rather than a caller:
-# `analyze_structure` called an Au junction closed-shell for three months
-# while the validator refused to generate it.
+# that ever read it was a second open-shell detector -- the one caller the
+# split existed to correct.  So the window kept the bug alive rather than a
+# caller: the analyzer called an Au junction closed-shell for three months
+# while the validator refused to generate it.  That detector is gone too
+# (2026-09-28): the one open-shell decision is the electronic-state class's.
 
 
 #: A species label is a name plus an optional trailing index: ``Au1`` is
@@ -528,35 +527,26 @@ def atomic_mass(element: str) -> float:
     return float(_M[atomic_number(element)])
 
 
-def check_spin_charge_parity(struct: Structure, charge: int, spin: int
-                              ) -> Optional[str]:
-    """Return a human-readable error string when the (charge, spin)
-    pair is impossible for ``struct``, else None.
+def check_spin_charge_parity(struct: Structure, charge: int,
+                             unpaired: int) -> Optional[str]:
+    """Return a human-readable error string when the (charge, 2S) pair is
+    impossible for ``struct``, else None.
 
-    Rule: PySCF's / SIESTA's spin counts UNPAIRED electrons (= 2S =
-    n_alpha - n_beta), so its parity must match the total electron
-    count's parity (Σ Z - charge).  Closed-shell singlet (spin=0)
-    requires an even electron count; doublet (spin=1) requires odd.
-    PySCF raises ``RuntimeError("Mol.nelectron N is odd, but spin =
-    0")`` at runtime on a mismatch; catching it at preflight gives
-    a clearer message before the user spends minutes on a doomed
-    SCF.
+    Rule: 2S counts UNPAIRED electrons (= n_alpha - n_beta), so its parity
+    must match the electron count's (ΣZ - charge): a closed shell (0) needs
+    an even count, a doublet (1) an odd one.  PySCF raises ``RuntimeError
+    ("Mol.nelectron N is odd, but spin = 0")`` at runtime on a mismatch;
+    catching it before the deck is written gives a clearer message before
+    anybody spends minutes on a doomed SCF.
 
-    Engine-independent: callers from BOTH _validate_pyscf and
-    _validate_siesta share this helper (electron count doesn't
-    care which code runs the SCF).
+    Engine-independent, and asked by exactly one caller: the electronic
+    state's check (``validation/chemistry.check_electronic_state``), which
+    applies it to a FINITE system only (ES3) -- a repeating cell's count per
+    cell is not a spin.
     """
-    # Reject non-integer / negative spin up front.  The existing
-    # _validate_pyscf has a separate "spin < 0" check; we add the
-    # type check here so the parity-vs-spin arithmetic never silently
-    # operates on a float (which would give a useless suggested fix
-    # like "change spin to 2.5 / 0.5").
-    if not isinstance(spin, int) or isinstance(spin, bool):
-        return (f"spin={spin!r} must be a non-negative int "
-                f"(2S = number of unpaired electrons)")
-    if spin < 0:
-        return (f"spin={spin} is negative; spin counts unpaired "
-                f"electrons (2S), must be 0 or positive")
+    # No type or sign check: the count arrives from the item's enum (0-10),
+    # validated where the template is read -- a float or a negative 2S has no
+    # way in, and a branch refusing one would be unreachable.
     # Parity IS an electron count, so it stands down on a label naming
     # no element rather than reporting it -- see `every_label_resolves`.
     if not every_label_resolves(struct):
@@ -565,28 +555,28 @@ def check_spin_charge_parity(struct: Structure, charge: int, spin: int
     # Electron-count sanity: over-ionised past the nucleus is impossible.
     if n_elec < 0:
         return (
-            f"charge={charge} removes more electrons than exist "
-            f"(sum(Z) - charge = {n_elec} < 0) -- the system has no "
-            f"electrons left.  Reduce the positive charge."
+            f"a charge of {charge:+d} removes more electrons than exist "
+            f"(ΣZ - charge = {n_elec} < 0) -- the system has no electrons "
+            f"left.  Reduce the positive charge."
         )
-    # Spin upper bound (EXACT): 2S = n_alpha - n_beta with n_alpha + n_beta =
-    # n_elec, so n_beta = (n_elec - spin)/2 >= 0 requires spin <= n_elec.  You
-    # cannot have more unpaired electrons than electrons.  (Parity alone let
-    # e.g. spin=10 on H2 pass.)
-    if spin > n_elec:
+    # Upper bound (EXACT): 2S = n_alpha - n_beta with n_alpha + n_beta =
+    # n_elec, so n_beta = (n_elec - 2S)/2 >= 0 requires 2S <= n_elec.
+    # (Parity alone let 2S = 10 on H2 pass.)
+    if unpaired > n_elec:
         return (
-            f"spin={spin} exceeds the electron count (sum(Z) - charge "
-            f"= {n_elec}): 2S = number of unpaired electrons cannot be "
-            f"larger than the total number of electrons.  Lower spin to "
-            f"at most {n_elec}."
+            f"unpaired_electrons = {unpaired} exceeds the electron count "
+            f"(ΣZ - charge = {n_elec}): there cannot be more unpaired "
+            f"electrons than electrons.  Use at most {n_elec}."
         )
-    if (n_elec % 2) != (spin % 2):
+    if (n_elec % 2) != (unpaired % 2):
+        parity = "even" if n_elec % 2 == 0 else "odd"
         return (
-            f"Electron-count parity mismatch: sum(Z) - charge "
-            f"= {n_elec}, which is {'even' if n_elec % 2 == 0 else 'odd'}; "
-            f"spin={spin} requires a{'n even' if spin % 2 == 0 else 'n odd'} "
-            f"electron count.  Either adjust charge by ±1 or change "
-            f"spin to {spin + 1} / {max(0, spin - 1)} to restore parity."
+            f"the electron count and the spin disagree: ΣZ - charge = "
+            f"{n_elec} is {parity}, and unpaired_electrons = {unpaired} "
+            f"needs an{'n' if unpaired % 2 == 0 else ''} "
+            f"{'even' if unpaired % 2 == 0 else 'odd'} count.  Change the "
+            f"charge by ±1, or the count to "
+            f"{unpaired + 1} / {max(0, unpaired - 1)}."
         )
     return None
 
@@ -638,133 +628,6 @@ def explain_metal_spin(element: str, spin: int) -> Optional[str]:
     except KeyError:
         return None                    # no hint for a label we cannot read
     return _METAL_SPIN_HINTS.get((sym, int(spin)))
-
-
-# Per-element "starting value" recommendation for Spin.Total.  Used by
-# the SIESTA preflight when Spin polarized + spin_total=None +
-# the structure contains an open-shell metal.  Without a starting value
-# the SCF begins at zero net spin on every atom, and for a d/f shell that
-# is a poor initial guess: it can converge to a state that is not the
-# ground state, or not converge, and say nothing either way.
-#
-# Each entry is (preferred_starting_value, ranked alternatives).  The
-# preferred value is the "most likely correct" guess for a typical
-# biological / coordination-chem context (heme-like for Fe, etc.);
-# the alternatives are ALL the registered (element, spin) hints sorted
-# from low-spin to high-spin so the user can sweep them if the first
-# guess doesn't converge.  Numbers are 2S (= Spin.Total in μB units),
-# matching SIESTA's convention.
-_SPIN_TOTAL_DEFAULTS: dict = {
-    # ----- First-row d-block (the bio + organometallic mainstays) -----
-    # Sc(III) is d⁰ closed-shell; Sc(II) is d¹ -- pick the open-shell
-    # case as default since the check fires only on OPEN-shell metals.
-    "Sc": 1.0,
-    # Ti(III) is d¹ S=1/2; Ti(II) is d² S=1.  Pick HS-leaning default.
-    "Ti": 2.0,
-    # V(III) is d² S=1 octahedral; V(II) d³ S=3/2; V(IV) d¹ S=1/2.
-    # Mid-row defaults to the most spin-active common state.
-    "V":  3.0,
-    # Cr(II) is d⁴ HS S=2; Cr(III) is d³ S=3/2.  Default to HS Cr(II)
-    # (most common bio context: Cr-acetate, organometallic precursors).
-    "Cr": 4.0,
-    # Mn(II) is overwhelmingly high-spin S=5/2 in biological contexts.
-    "Mn": 5.0,
-    # Fe: heme-like deoxy-bis-thiolate is the molbuilder hemeC use
-    # case -- high-spin Fe(II) S=2 is the most common starting point.
-    "Fe": 4.0,
-    # Co(II) octahedral is often high-spin S=3/2; low-spin variants
-    # need explicit override.
-    "Co": 3.0,
-    # Ni(II) square-planar is closed-shell; octahedral is S=1.  No
-    # safe default -- pick the higher-spin starting guess so SCF
-    # has somewhere non-trivial to land.
-    "Ni": 2.0,
-    # Cu(II) is d⁹ -- one unpaired electron, period.
-    "Cu": 1.0,
-    # ----- Second-row d-block (heavier, often via ECP) -----
-    # Mo(III) d³ S=3/2; Mo(IV) d² S=1.  Often HS in bio contexts
-    # (Mo-nitrogenase active site).
-    "Mo": 3.0,
-    # Ru(II) low-spin d⁶ S=0; Ru(III) low-spin d⁵ S=1/2.  Pick Ru(III)
-    # default since open-shell Ru is the case the check fires for.
-    "Ru": 1.0,
-    "Rh": 1.0,    # Rh(II) d⁷ S=1/2
-    # ----- Third-row d-block -----
-    "W":  2.0,    # W(IV) d² S=1
-    "Re": 2.0,    # Re(III) d⁴ low-spin S=1 (5d ⇒ strong field ⇒ low-spin;
-                  # 2S must be EVEN for even-electron d⁴ — 3.0 was parity-impossible)
-    "Os": 1.0,    # Os(III) d⁵ low-spin S=1/2
-    "Ir": 1.0,    # Ir(IV) d⁵ low-spin S=1/2
-    "Pt": 1.0,    # Pt(III) d⁷ S=1/2 (Pt(II) / Pt(IV) are closed-shell)
-    # ----- f-block (lanthanides + actinides) -----
-    # 4f shells are usually well-localised; Hund's-rule HS is the
-    # safe starting guess.  Numbers below are the free-ion ground-
-    # state 2S values (NOT 2J; SIESTA's Spin.Total is 2S).
-    "Ce": 1.0,    # 4f¹       2S=1
-    "Pr": 2.0,    # 4f²       2S=2
-    "Nd": 3.0,    # 4f³       2S=3
-    "Pm": 4.0,    # 4f⁴       2S=4
-    "Sm": 5.0,    # 4f⁵       2S=5
-    "Eu": 6.0,    # 4f⁶       2S=6  (Eu(II) is 4f⁷ -> 2S=7; pick the
-                  # less-extreme starter since Eu(III) more common)
-    "Gd": 7.0,    # 4f⁷ S=7/2 -- archetypal "max unpaired" lanthanide
-    "Tb": 6.0,    # 4f⁸       2S=6
-    "Dy": 5.0,    # 4f⁹       2S=5
-    "Ho": 4.0,    # 4f¹⁰      2S=4
-    "Er": 3.0,    # 4f¹¹      2S=3
-    "Tm": 2.0,    # 4f¹²      2S=2
-    "Yb": 1.0,    # 4f¹³      2S=1
-    # Actinides: defer to free-ion 2S for the +3 oxidation state.
-    "U":  3.0,    # U(III) 5f³  -- common organoactinide oxidation state
-    "Np": 4.0,    # Np(III) 5f⁴
-    "Pu": 5.0,    # Pu(III) 5f⁵
-}
-
-
-def suggest_spin_total(metals: "Iterable[str]") -> "tuple[float, list[tuple[float, str]]]":
-    """Recommend a starting ``Spin.Total`` (2S, in μB) for a structure
-    containing the named open-shell metals + a ranked alternatives list.
-
-    Pick rule when multiple metals are present: take the LARGEST per-
-    element default (most-unpaired starting guess).  Reasoning: an SCF
-    started with a moment can relax DOWN to a lower-spin ground state,
-    while one started at zero has no gradient toward a polarised
-    solution and tends to stay where it began -- so the asymmetry
-    favours the most spin-active atom setting the guess.
-
-    Args:
-      metals: result of detect_open_shell_metals(struct).
-
-    Returns:
-      (preferred_value, alternatives) where
-        preferred_value: float, what to set Spin.Total to as a START.
-        alternatives:    list of (value, "description") tuples drawn
-                         from the per-element hints, in order from
-                         low-spin to high-spin (so the user can sweep).
-        If no metals are recognised, returns (1.0, []) -- a safe
-        non-zero placeholder; the user will need to think about it.
-    """
-    # Already element symbols -- `detect_open_shell_metals` resolves through
-    # `resolve_element`, so there is nothing left to normalise here.
-    metals_seen = list(metals)
-    if not metals_seen:
-        return 1.0, []
-    # Preferred starting value: max per-element default across the
-    # metals present.  ``1.0`` is the fallback when a metal isn't
-    # in our table (better than zero -- see the ramp-down note above).
-    preferred = max(
-        (_SPIN_TOTAL_DEFAULTS.get(m, 1.0) for m in metals_seen),
-        default=1.0,
-    )
-    # Alternatives list: every (element, spin) hint we have registered
-    # for the metals present.  Sorted by spin value so the user reads
-    # low-spin -> high-spin (chemists think in that order).
-    alternatives: "list[tuple[float, str]]" = []
-    for (el, spin_2s), desc in _METAL_SPIN_HINTS.items():
-        if el in metals_seen:
-            alternatives.append((float(spin_2s), f"{el}: {desc}"))
-    alternatives.sort(key=lambda t: (t[0], t[1]))
-    return float(preferred), alternatives
 
 
 def resolve_pyscf_ecp(struct: Structure,
@@ -835,80 +698,6 @@ def resolve_pyscf_ecp(struct: Structure,
     return matched or None
 
 
-def detect_open_shell_metals(struct: Structure) -> List[str]:
-    """The metals that make ``struct`` open-shell, in first-appearance order.
-
-    **The noble metals are a question about the SYSTEM, not about the
-    element**, so this asks the structure and not a set.  Cu / Ag / Au are
-    ``nd¹⁰ (n+1)s¹`` as free atoms -- genuinely one unpaired electron -- and
-    closed-shell singlets in any extended metallic context, where the s-band
-    delocalises and the Stoner criterion fails.  A lone Au atom and an Au
-    junction therefore get opposite answers, which is why this is not a
-    membership test.
-
-    **What decides is the electron count's PARITY**: odd leaves one electron
-    unpaired and no amount of metallic bonding pairs it; even lets the s-band
-    close the shell.  :func:`analyze_structure` writes three branches over
-    :data:`_NOBLE_METAL_CLUSTER_THRESHOLD` and the single-atom case, but they
-    differ only in the RATIONALE each reports -- every one of them lands on
-    spin 0 for even and spin 1 for odd.  Reading the outcome off parity here
-    is therefore the same rule, not a second one.
-
-    ONE HOME, shared with :func:`analyze_structure`, which reaches the same
-    conclusion by the same two facts.  They disagreed from 2026-06-13 until
-    2026-09-16: the split that introduced the three categories rewired
-    ``analyze_structure`` and left this function reading the flat pre-split
-    union, so ``analyze_structure`` called an Au junction closed-shell while
-    this called it open -- and `validation/siesta.py` refused to generate it.
-
-    An open-d metal decides for the whole structure (an Fe co-adsorbate makes
-    an Au junction open-shell), and the noble metals present are reported
-    alongside it so the caller's message does not omit them.
-
-    A label names an element, so ``Au1`` / ``Au2`` are both gold.  A label
-    that resolves to nothing is skipped rather than folded -- case is not
-    corrected anywhere (``CA`` would become calcium), and
-    ``validation.chemistry.check_species_labels`` is what reports it.
-    """
-    found: List[str] = []
-    seen: set = set()
-    for el in struct.elements:
-        try:
-            key = resolve_element(el)
-        except KeyError:
-            continue
-        if key in seen:
-            continue
-        if key in OPEN_D_TRANSITION_METALS or key in NOBLE_METALS_S1:
-            seen.add(key)
-            found.append(key)
-    if not found:
-        return []
-    if any(k in OPEN_D_TRANSITION_METALS for k in found):
-        return found
-    # Noble metals only: parity decides, over the NEUTRAL count, because the
-    # charge is the caller's to state and this answers about the structure.
-    #
-    # AND THE COUNT NEEDS EVERY LABEL, which the loop above does not: it
-    # `continue`s past one that names no element, so the scan tolerates
-    # what the parity tail then crashed on.  Half a decision is not a
-    # decision -- the tail follows the scan and stands down, because a
-    # parity nobody can compute recommends nothing, and
-    # `check_species_labels` is what reports the label itself.
-    #
-    # This is the THIRD of the three whole-structure counts in this file
-    # (`check_spin_charge_parity`, `analyze_structure`, here).  The first
-    # stands down the same way; the second refuses on purpose and its two
-    # callers each catch that.  Missing this one left `validate()` raising
-    # `KeyError` out to the preflight as an HTTP 500 with no findings at
-    # all, for a noble-metal structure with one bad label.
-    if not every_label_resolves(struct):
-        return []
-    if total_electrons(struct, 0) % 2 == 0:
-        return []
-    return found
-
-
 # The full d-block (+ f-block) metal set for basis-adequacy checks: d-orbital
 # coverage matters for CLOSED-shell metals (Zn/Cd/Hg d10, Pd/Pt) too, not only
 # open-shell ones -- the concern is orbital coverage, orthogonal to spin state.
@@ -919,8 +708,8 @@ _ALL_TRANSITION_METALS = (OPEN_D_TRANSITION_METALS
 def detect_transition_metals(struct: Structure) -> List[str]:
     """Every transition / f-block metal present (open- AND closed-shell), in
     first-appearance order.  For basis-adequacy: Zn/Cd/Hg/Pd/Pt need proper
-    d/polarisation coverage even though ``detect_open_shell_metals`` skips
-    them."""
+    d/polarisation coverage although they carry no moment -- the concern is
+    orbital coverage, orthogonal to the spin state."""
     seen: List[str] = []
     seen_set: set = set()
     for el in struct.elements:
@@ -938,23 +727,23 @@ def detect_transition_metals(struct: Structure) -> List[str]:
 
 
 # --------------------------------------------------------------------- #
-#  L2 — engine-agnostic chemistry analyzer                              #
+#  L2 — the structure's chemistry FACTS                                  #
 #                                                                       #
-#  See docs/science/validation.md for the full         #
-#  contract.  The analyzer wraps the L1 primitives above into a typed   #
-#  ChemistryAnalysis the validators + the /api/structure/analyze        #
-#  endpoint both consume — single source of truth for the chemistry-    #
-#  driven (charge, spin, treatment) triplet plus open-shell-metal       #
-#  hints.                                                               #
+#  What a structure is, chemically: its elements, its electron count,   #
+#  the metals that bear on its spin and their usual spin states.  The   #
+#  DECISION -- which charge, which spin -- is the electronic-state       #
+#  class's (`molbuilder/electronic_state.py`,                            #
+#  `science/chemistry-correctness.md` § 2a), which reads these facts at #
+#  the calculation's own charge and periodicity.                        #
 # --------------------------------------------------------------------- #
 
 
 @dataclass(frozen=True)
 class SpinChoice:
-    """One ranked spin candidate for an open-shell transition metal.
+    """One spin state a transition metal commonly takes.
 
-    ``spin`` is 2S (= number of unpaired electrons), matching PySCF's
-    convention.  SIESTA's ``SpinTotal`` in μB equals ``float(spin)``.
+    ``spin`` is 2S, the number of unpaired electrons -- the convention of the
+    ``unpaired_electrons`` item (`chemistry-correctness.md` § 2a.1).
     """
     spin:  int
     label: str   # e.g. "Fe(II), intermediate (4-coord porphyrin)"
@@ -962,7 +751,7 @@ class SpinChoice:
 
 @dataclass(frozen=True)
 class MetalHint:
-    """Per-element common-spin hints for an open-shell transition metal.
+    """The common spin states of one metal present.
 
     ``common_spins`` are ordered low-spin → high-spin so a UI can show
     a sweep from "most-paired" to "most-unpaired" without sorting.
@@ -971,99 +760,27 @@ class MetalHint:
     common_spins: List[SpinChoice]
 
 
-# Per-element default 2S for open-shell transition metals — the
-# analyzer's suggested defaults for ``/api/structure/analyze``'s
-# Auto-detect button.
-#
-# Distinct (intentionally) from ``_SPIN_TOTAL_DEFAULTS`` above.  The
-# two tables have different design goals and may carry different
-# values for the same element:
-#
-#   * ``_SPIN_TOTAL_DEFAULTS`` is the SCF STARTING-VALUE table.  When
-#     the user selects Spin polarized without setting spin_total, the
-#     run needs a non-zero guess for its d/f shells.  Picks HIGH-SPIN-
-#     leaning values so the SCF can relax DOWN to a lower-spin state if
-#     that is the true ground state — a run started at zero has no
-#     gradient toward a polarised solution and tends to stay there.
-#     Fe→4 (HS), Co→3 (HS), Ni→2 (HS) etc.
-#
-#   * ``_ANALYZER_DEFAULT_SPIN`` (this table) is the chemistry-
-#     conservative default for the Auto-detect UI.  Picks the most
-#     COMMON-OXIDATION-STATE spin — what a coordination chemist
-#     would expect for "Fe in a porphyrin" or "Cu(II) in solution".
-#     Fe→2 (intermediate, the hemeC use case), Co→1 (LS as a safe
-#     pick), Ni→0 (square-planar LS) etc.  The user can always
-#     override via the form; the suggestion is meant to MATCH what
-#     they probably want, not what SIESTA can converge from.
-#
-# When the two tables AGREE (Mn=5, Cu=1), great — single chemistry
-# fact, two purposes.  When they DISAGREE (Fe 4 vs 2, Co 3 vs 1),
-# both are correct for their own purpose.  Don't unify; document.
-#
-# Conservative choices — favour the most common coordination
-# chemistry; the user MUST verify against experimental data.  See
-# docs/science/validation.md
-_ANALYZER_DEFAULT_SPIN: Dict[str, int] = {
-    "Fe": 2,    # Fe(II), intermediate-spin (S=1, 4-coord porphyrin —
-                # the molbuilder hemeC use case).  HS Fe(II) is 4;
-                # user can override.
-    "Mn": 5,    # Mn(II), high-spin S=5/2 — overwhelming default in
-                # bio/aqueous; LS Mn(II) is exceedingly rare.
-    "Co": 3,    # Co(II), HIGH-spin S=3/2 — the COMMON octahedral /
-                # aqueous / weak-field ligand case.  LS Co(II) (S=1/2)
-                # requires strong-field ligands (CN⁻, phen, bipy);
-                # user overrides to spin=1 for those.  Picking LS as
-                # default biases toward textbook ideal at the cost of
-                # the more common bio/coordination-chem reality.
-    "Ni": 0,    # Ni(II), square-planar LS d⁸ S=0 — the common case
-                # in metalloproteins + coordination chem.  Octahedral
-                # HS (S=1) is less common; user overrides if needed.
-    "Cu": 1,    # Cu(II), d⁹ S=1/2 — one unpaired electron, period.
-                # No realistic alternative.
-    "Cr": 3,    # Cr(III), d³ S=3/2 — the dominant oxidation state.
-    "V":  3,    # V(II), d³ S=3/2 — common low-V oxidation state.
-    "Ti": 2,    # Ti(II), d² S=1.
-    "Sc": 1,    # Sc(II), d¹ S=1/2 — rare; Sc(III) (d⁰) is closed-shell
-                # and wouldn't trigger this path.
-    # Second-row + third-row + f-block fall through to a safe 2.
-    # See ``_metal_hint`` for the full set of spin candidates a
-    # user can pick via the Auto-detect panel's per-metal hints.
-}
-
-
 @dataclass(frozen=True)
 class ChemistryAnalysis:
-    """Engine-agnostic chemistry conclusions about a Structure.
+    """What a structure IS, chemically -- facts, not a decision.
 
-    Single source of truth for every science-aware surface in the
-    system: UI auto-detect (``/api/structure/analyze``), pre-emission
-    validation (``validation.check_open_shell_metal``), future
-    Transport-tab Auto-detect, CLI ``molbuilder analyze``.  Two
-    surfaces consuming this dataclass cannot disagree about the
-    chemistry by construction.
-
-    All fields engine-agnostic.  Engine-specific translation lives
-    in per-engine adapter classes (see ``science/validation.md``
-    § 3); adapters consume an instance of this class and emit a
-    typed ``<Engine>SuggestedParams`` dataclass.
+    The electronic-state class (`electronic_state.py`) decides the charge and
+    the spin from these, at the calculation's own charge and periodicity; the
+    chemistry card shows the metal hints beside its answer.  Until 2026-09-28
+    this also carried a *suggested* charge, spin and treatment, judged at
+    charge 0 on the neutral structure whatever the cell -- which is how a
+    formate ion and a gold lead were both told to go open-shell.
     """
-    # Composition
     n_atoms:              int
-    elements:             List[str]      # unique, sorted
-    n_electrons_neutral:  int            # sum(Z) for neutral system
-
-    # Open-shell transition metals
-    metals:               List[str]      # ["Fe"], or [] for organics
+    elements:             List[str]      # unique element symbols, sorted
+    #: The metals that bear on the spin, each list sorted: the open-d
+    #: transition metals (``OPEN_D_TRANSITION_METALS``) and the noble s1
+    #: metals (Cu, Ag, Au), split once here so no reader filters again.
+    open_d_metals:        List[str]
+    noble_metals:         List[str]
+    #: Both, open-d first.  [] for organics.
+    metals:               List[str]
     metal_hints:          List[MetalHint]
-
-    # Engine-agnostic suggested defaults
-    suggested_charge:     int
-    suggested_spin:       int            # 2S = n_unpaired
-    suggested_treatment:  Literal["closed", "open"]
-
-    # Human-readable
-    rationale:            str
-    warnings:             List[str]
 
 
 def _metal_hint(element: str) -> MetalHint:
@@ -1077,7 +794,7 @@ def _metal_hint(element: str) -> MetalHint:
     return MetalHint(element=element, common_spins=spins)
 
 
-def _count_element(struct: Structure, symbol: str) -> int:
+def count_element(struct: Structure, symbol: str) -> int:
     """Number of atoms of the element ``symbol`` in struct.
 
     Counts by ELEMENT, so two gold species labelled ``Au1``/``Au2`` are two
@@ -1086,281 +803,31 @@ def _count_element(struct: Structure, symbol: str) -> int:
     return sum(1 for el in struct.elements if is_atom(el, symbol))
 
 
-# Noble-metal cluster size at which the metallic-bonding closed-shell
-# argument kicks in.  Below this size the per-atom open-shell state
-# can still survive — small Au_n clusters (n=2..4) have magic-number
-# physics where shell-closing is incomplete.  Above this size the
-# 6s band delocalizes and the system is closed-shell singlet for
-# even total electron count.  4 atoms is the conservative cutoff:
-# overwhelmingly what published Au transport / surface DFT does;
-# specialists working on Au_2 / Au_3 will override via the form.
-_NOBLE_METAL_CLUSTER_THRESHOLD = 4
-
-
 def analyze_structure(struct: Structure) -> ChemistryAnalysis:
-    """Run the chemistry analysis on ``struct``.  Pure function — no
-    I/O, no engine dependence, no global state.
+    """The chemistry facts of ``struct``.  Pure function — no I/O, no engine
+    dependence, no global state.
 
-    Returns a ``ChemistryAnalysis`` whose ``suggested_*`` fields
-    carry chemistry-driven defaults; the rationale + warnings
-    explain the choice.  Adapters translate these conclusions into
-    each engine's parameter shape (see
-    ``science/validation.md`` § 3).
+    EVERY LABEL MUST RESOLVE: ``resolve_element`` raises ``KeyError`` on a
+    label naming no element -- by design.  Every reader of these facts goes
+    on to count electrons, and a count with an unreadable atom left out is
+    not a smaller answer, it is a wrong one.
 
-    Spin policy (2026-06-13 — noble-metal-aware):
-
-      1. **Open-d transition metal present** (Fe, Co, Ni, Mn, Cr, Ru,
-         Rh, ...) → open-shell.  Spin from ``_ANALYZER_DEFAULT_SPIN``
-         (Fe→2, Cu→1, ...), parity-corrected.
-
-      2. **Noble metal only** (Cu / Ag / Au present, NO open-d metal):
-         the metallic-bonding argument decides.  ≥ 4 atoms of the
-         metal AND even electron count → closed-shell singlet
-         (standard Au transport treatment per Taylor/Brandbyge/Stokbro
-         PRB 63 (2001) 245407 + the Stoner-criterion-fails argument
-         in Marder Ch. 17).  Single noble-metal atom with odd electron
-         count → respect atomic open-shell state.  Other cases fall
-         through to parity.
-
-      3. **No open-shell metals** → ``treatment="closed"``, spin set
-         by electron-count parity (0 if even, 1 if odd).
+    The metals come from the structure's SORTED element list, never a
+    frozenset's iteration order (which CPython randomises per process), so the
+    metal that decides a multi-metal structure is the same on every run.
     """
-    # EVERY LABEL MUST RESOLVE, and the line above is what enforces it:
-    # `total_electrons` sums atomic numbers, so a label naming no element
-    # raises KeyError here -- by design, "catches typos before PySCF does the
-    # same".  An `if _resolves(el)` filter stood on the line below until
-    # 2026-09-10 and could never fire: nothing reaches it unless every label
-    # already resolved.  It read as tolerance this function does not have, and
-    # `_resolves`' own docstring ("skip what it cannot read rather than refuse
-    # the whole structure") described an intention no caller implemented.
-    #
-    # Refusing is right here: the answer IS an electron count, and a count
-    # with an unreadable atom left out is not a smaller answer, it is a wrong
-    # one.
-    n_e = total_electrons(struct, 0)
     elements_sorted = sorted({resolve_element(el) for el in struct.elements})
-
-    # Categorize present metals.  Iterate the SORTED element list, NOT the
-    # frozensets: a frozenset yields hash-order, which CPython randomizes per
-    # process (PYTHONHASHSEED), so `open_d[0]` (whose default spin + rationale
-    # get reported) would vary run-to-run for a multi-metal structure (e.g.
-    # Fe+Cr).  A validator must be deterministic; drive the pick off the
-    # structure's own sorted elements.
-    open_d  = [m for m in elements_sorted if m in OPEN_D_TRANSITION_METALS]
-    nobles  = [m for m in elements_sorted if m in NOBLE_METALS_S1]
-
-    # Build metal_hints for the UI Auto-detect panel.  Includes both
-    # categories — users still want to see hints for noble metals
-    # ("if this IS a small cluster, here's the open-shell spin
-    # you'd use").
-    metal_hints = [_metal_hint(m) for m in (open_d + nobles)]
-
-    warnings: List[str] = []
-    suggested_charge = 0   # always 0 for v1 — overridable by user
-
-    if open_d:
-        # Path 1: open-d metal forces open-shell consideration.
-        spin = _ANALYZER_DEFAULT_SPIN.get(open_d[0], 2)
-        if (n_e % 2) != (spin % 2):
-            old = spin
-            spin = spin + 1 if spin == 0 else spin - 1
-            warnings.append(
-                f"Adjusted suggested spin from {old} to {spin} to match "
-                f"electron-count parity (sum(Z)={n_e}, charge={suggested_charge})."
-            )
-        treatment: Literal["closed", "open"] = "open"
-        first_label = explain_metal_spin(open_d[0], spin) or "?"
-        # The list reported to the user includes any noble metals
-        # too, so the rationale doesn't omit them.
-        listed = ", ".join(open_d + nobles)
-        rationale = (
-            f"Detected open-shell d-block metal {listed}.  "
-            f"Suggesting spin={spin} ({first_label}) with open-shell "
-            f"treatment.  Verify against your experimental data "
-            f"(Mössbauer / UV-Vis / EPR) — the right spin depends on "
-            f"axial coordination, not just element identity."
-        )
-        metals_for_dataclass = open_d + nobles
-    elif nobles:
-        # Path 2: noble-metal-only system — cluster context decides.
-        # Total atoms of all noble metal species combined; usually
-        # a single species but a hypothetical Au/Ag alloy would still
-        # be metallic at any reasonable size.
-        n_noble_atoms = sum(_count_element(struct, m) for m in nobles)
-        even_electrons = (n_e % 2 == 0)
-        cluster_qualifies = n_noble_atoms >= _NOBLE_METAL_CLUSTER_THRESHOLD
-        if cluster_qualifies and even_electrons:
-            # Closed-shell singlet — the dominant case in published
-            # Au junction / surface work.
-            spin = 0
-            treatment = "closed"
-            rationale = (
-                f"Detected metallic {', '.join(nobles)} system "
-                f"({n_noble_atoms} atoms, even electron count). "
-                f"Noble-metal clusters / surfaces / junctions are "
-                f"conventionally treated as closed-shell singlet "
-                f"(spin-restricted DFT) — the s-band delocalizes "
-                f"and the Stoner criterion fails for Cu / Ag / Au, "
-                f"so no spontaneous magnetism develops in bulk.  "
-                f"Refs: Taylor, Brandbyge, Stokbro, PRB 63 (2001) "
-                f"245407 (Au-BDT-Au TranSIESTA benchmark); Marder, "
-                f"Condensed Matter Physics Ch. 17.  Override (set "
-                f"spin > 0, switch to UKS/ROKS) if you're modelling "
-                f"a sub-{_NOBLE_METAL_CLUSTER_THRESHOLD}-atom cluster, "
-                f"a single noble-metal adatom on an insulator, a noble "
-                f"metal with magnetic 3d co-adsorbate, or explicit "
-                f"Kondo / spin-orbit physics."
-            )
-        elif n_noble_atoms == 1 and not even_electrons:
-            # Single isolated noble-metal atom: respect the atomic
-            # open-shell ground state (5d¹⁰ 6s¹ for Au, S=½).
-            spin = 1
-            treatment = "open"
-            rationale = (
-                f"Detected single {nobles[0]} atom in an "
-                f"odd-electron system.  Noble-metal atomic ground "
-                f"state is nd¹⁰ (n+1)s¹ — open-shell doublet.  "
-                f"Suggesting spin=1 with open-shell treatment.  "
-                f"(Cluster-context override does NOT apply at n=1; "
-                f"that argument needs n ≥ "
-                f"{_NOBLE_METAL_CLUSTER_THRESHOLD} for the s-band "
-                f"to form.)"
-            )
-        else:
-            # Ambiguous (2–3 atom cluster, or odd-electron count
-            # with a multi-atom cluster).  Fall through to parity
-            # but include a note pointing at the closed-shell default
-            # if the user is in a junction context.
-            spin = 0 if even_electrons else 1
-            treatment = "open" if spin > 0 else "closed"
-            rationale = (
-                f"Detected small {nobles[0]} cluster "
-                f"({n_noble_atoms} atom{'s' if n_noble_atoms != 1 else ''}). "
-                f"At this size the noble-metal cluster-context closed-"
-                f"shell argument doesn't cleanly apply (needs n ≥ "
-                f"{_NOBLE_METAL_CLUSTER_THRESHOLD}).  Suggesting "
-                f"electron-count parity: spin={spin}, treatment={treatment}."
-            )
-        metals_for_dataclass = nobles
-    else:
-        # Path 3: no transition metals at all — pure organic, light
-        # main-group, or closed-d¹⁰ (Zn/Cd/Hg/Pd/Pt) systems.
-        # Closed-shell singlet for even electron count.
-        spin = 0 if (n_e % 2 == 0) else 1
-        treatment = "open" if spin > 0 else "closed"
-        rationale = (
-            f"No open-shell metals detected; suggesting closed-shell "
-            f"{'singlet' if spin == 0 else 'doublet'} "
-            f"(spin={spin}, treatment={treatment})."
-        )
-        metals_for_dataclass = []
-
-    # Preserve the legacy ``metals`` field shape: a flat list of
-    # transition-metal symbols present in the structure.  Callers
-    # downstream (validators, the UI's per-metal hint panel) iterate
-    # this list; semantics unchanged for open-d metals, and now
-    # includes noble metals when they're physically relevant.
-
+    open_d = [m for m in elements_sorted if m in OPEN_D_TRANSITION_METALS]
+    nobles = [m for m in elements_sorted if m in NOBLE_METALS_S1]
+    metals = open_d + nobles
     return ChemistryAnalysis(
-        n_atoms             = struct.n_atoms,
-        elements            = elements_sorted,
-        n_electrons_neutral = n_e,
-        metals              = metals_for_dataclass,
-        metal_hints         = metal_hints,
-        suggested_charge    = suggested_charge,
-        suggested_spin      = spin,
-        suggested_treatment = treatment,
-        rationale           = rationale,
-        warnings            = warnings,
+        n_atoms       = struct.n_atoms,
+        elements      = elements_sorted,
+        open_d_metals = open_d,
+        noble_metals  = nobles,
+        metals        = metals,
+        metal_hints   = [_metal_hint(m) for m in metals],
     )
-
-
-# --------------------------------------------------------------------- #
-#  L3 — engine parameter adapter Protocol + registry                    #
-#                                                                       #
-#  See docs/science/validation.md for the full         #
-#  contract.  Each engine module under molbuilder/<engine>/ exports an  #
-#  adapter class that translates a ChemistryAnalysis into a typed,      #
-#  engine-specific frozen dataclass.  Adapters register themselves on   #
-#  import via the @register_adapter decorator; the /api/structure/     #
-#  analyze endpoint iterates registered_adapters() to build the         #
-#  ``suggested.<engine>`` block — new engines need no endpoint change.  #
-# --------------------------------------------------------------------- #
-
-
-class EngineParameterAdapter(Protocol):
-    """Translate engine-agnostic ChemistryAnalysis conclusions into a
-    typed, engine-specific parameter dataclass.
-
-    Adapters live per-engine under ``molbuilder/<engine>/auto_defaults.py``
-    and register themselves at import time via ``@register_adapter``.
-
-    Design rules (see ``science/validation.md`` § 3):
-
-    * PURE translator.  An adapter MUST NOT re-do chemistry detection,
-      parity checks, or any other analysis.  All chemistry logic lives
-      in ``analyze_structure``; adapters only translate.
-    * TYPED dataclass output.  Returns a frozen dataclass (e.g.
-      ``SiestaSuggestedParams``), not a dict.  The HTTP boundary
-      serialises via ``dataclasses.asdict``.
-    * Field names match the engine's web-form / Config dataclass.
-      The UI's "apply suggestion" path just spreads the dataclass
-      into form values.
-    """
-
-    name: str   # registry key, e.g. "siesta", "pyscf"
-
-    @classmethod
-    def to_params(cls, analysis: "ChemistryAnalysis") -> Any:
-        """Return an engine-specific frozen dataclass carrying the
-        suggested defaults for this engine.  Always includes a
-        ``rationale`` field; MAY include engine-specific notes.
-        """
-        ...
-
-
-_ADAPTERS: Dict[str, Type[EngineParameterAdapter]] = {}
-
-
-def register_adapter(name: str):
-    """Decorator: register an adapter class under the given engine name.
-
-    Usage::
-
-        @register_adapter("siesta")
-        class SiestaAdapter:
-            name = "siesta"
-            @classmethod
-            def to_params(cls, analysis):
-                return SiestaSuggestedParams(...)
-
-    Imports of decorated classes have a side effect (registry
-    mutation).  The canonical place to ensure adapters get imported
-    at web-app startup is ``molbuilder/web/blueprints/__init__.py``;
-    direct callers (CLI, tests) import the adapter module explicitly.
-    """
-    def deco(cls: Type[EngineParameterAdapter]) -> Type[EngineParameterAdapter]:
-        _ADAPTERS[name] = cls
-        return cls
-    return deco
-
-
-def registered_adapters() -> Dict[str, Type[EngineParameterAdapter]]:
-    """Return a defensive copy of the current adapter registry.
-
-    Callers (notably ``/api/structure/analyze``) iterate the returned
-    dict.  Copying prevents a stray ``del`` or ``.clear()`` at a
-    consumer from poisoning the registry for the rest of the process.
-    """
-    return dict(_ADAPTERS)
-
-
-def _clear_adapters_for_test() -> None:
-    """Test-only: empty the registry.  Used by tests that want a
-    clean slate to verify the new-engine on-ramp; production code
-    must never call this.
-    """
-    _ADAPTERS.clear()
 
 
 def expected_pH7_peptide_charge(struct: Structure) -> Optional[int]:
@@ -1377,9 +844,10 @@ def expected_pH7_peptide_charge(struct: Structure) -> Optional[int]:
            amino-acid residue names).  For nucleic acids use
            ``formal_charge_from_phosphates`` instead.
 
-    Used by validators to surface the gap between
-    ``cfg.net_charge = 0`` (default neutral build) and the physiological
-    charge state the user often actually wants.  Never raises; never
+    Used by validators to surface the gap between the charge the
+    calculation carries (a peptide's blank charge resolves to 0: the builder
+    makes the gas-phase neutral form) and the physiological charge state the
+    user often actually wants.  Never raises; never
     silently mutates the input.
     """
     if struct.residue_names is None or struct.residue_ids is None:
@@ -1466,29 +934,6 @@ def formal_charge_from_phosphates(struct: Structure) -> int:
         missing = max(0, (n_nb - 1) - n_h)
         charge -= missing
     return charge
-
-
-def resolve_net_charge(struct: Structure,
-                      explicit_charge: Optional[int]) -> int:
-    """Resolve a molecule's net charge from an optional explicit override.
-
-    The rule lives here so the SIESTA and PySCF generators (which
-    name their dataclass fields differently -- ``cfg.net_charge`` vs
-    ``cfg.net_charge``) don't each carry their own copy:
-
-      1. Explicit override wins.  ``0`` is meaningful (forces neutral,
-         disables auto-detection); only ``None`` triggers the
-         auto-detect path.
-      2. Otherwise, count the deprotonated phosphate non-bridging
-         oxygens via :func:`formal_charge_from_phosphates`.
-
-    The heuristic only sees phosphate groups; charged side chains
-    (Asp / Glu / Lys / Arg / His) are NOT detected -- the user
-    must override with a non-None explicit value for those.
-    """
-    if explicit_charge is not None:
-        return int(explicit_charge)
-    return formal_charge_from_phosphates(struct)
 
 
 def protonate_phosphate_oxygens(struct: Structure) -> Tuple[Structure, int]:

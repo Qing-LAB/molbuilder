@@ -153,9 +153,9 @@ def _emit_header_docstring(struct: Structure,
     # since it has none, whatever that item holds; the dispersion
     # correction applies to either method (vibration.md § 4.10).
     if cfg.is_dft:
-        out.append(f"Method    : {cfg.method} / {cfg.functional} / {cfg.basis}")
+        out.append(f"Method    : {cfg.scf_class} / {cfg.functional} / {cfg.basis}")
     else:
-        out.append(f"Method    : {cfg.method} (Hartree-Fock) / {cfg.basis}")
+        out.append(f"Method    : {cfg.scf_class} (Hartree-Fock) / {cfg.basis}")
     if cfg.dispersion != "none":
         out.append(f"Dispersion: {cfg.dispersion}")
     out.append(f"Atoms     : {getattr(struct, 'n_atoms', len(struct.elements))}")
@@ -274,8 +274,10 @@ def _emit_constants(struct: Structure,
     out.append("PHASE_COMPLETE = 'complete'")
     out.append("PHASE_NOT_REQUESTED = 'not requested'   # never asked for; terminal (vibration.md 4.9)")
     out.append("")
-    out.append("# Method + functional + basis + dispersion.")
-    out.append(f"METHOD                     = {cfg.method!r}")
+    out.append("# The SCF class + functional + basis + dispersion.  The class is")
+    out.append("# composed from the method and the spin treatment (pyscf/layout.py")
+    out.append("# scf_class) -- never left for PySCF to re-rule.")
+    out.append(f"SCF_CLASS                  = {cfg.scf_class!r}")
     # A Hartree-Fock run has no functional (`PySCFConfig.is_dft`); the
     # constant says so rather than carry a value nothing reads
     # (vibration.md § 4.10).  The dispersion correction applies to either
@@ -377,9 +379,17 @@ def _emit_constants(struct: Structure,
 def _config_to_jsonable_dict(cfg: "VibrationConfigView") -> dict:
     """Reduce a VibrationConfigView to a plain JSON-safe dict (provenance
     payload for spectra.json.config).  Uses dataclasses.asdict so
-    new fields land in the snapshot automatically."""
+    new fields land in the snapshot automatically.
+
+    **And the electronic state as RESOLVED** (`electronic_state`,
+    `science/chemistry-correctness.md` § 2a): the config holds a blank where
+    the charge or the spin was worked out, so the config alone could not
+    say what charge this run carried (plan § 5s.4).  The resolved values and
+    where each came from ride beside it."""
     import dataclasses
-    return dataclasses.asdict(cfg)
+    out = dataclasses.asdict(cfg)
+    out["electronic_state"] = cfg.state.as_dict()
+    return out
 
 
 # --------------------------------------------------------------------- #
@@ -790,8 +800,13 @@ def _emit_build_mol(struct: Structure, cfg: "VibrationConfigView",
     out.append("    verbose    = VERBOSE,")
     out.append("    max_memory = MAX_MEMORY_MB,")
     out.append("    unit       = 'Angstrom',")
-    out.append(f"    charge     = {int(cfg.charge)},")
-    out.append(f"    spin       = {int(cfg.spin)},   # 2S = # unpaired electrons")
+    # THE ELECTRONIC STATE's values, each with where it came from
+    # (`science/chemistry-correctness.md` § 2a, ES2).
+    _st = cfg.state
+    out.append(f"    charge     = {_st.net_charge.value},   "
+               f"# {_st.net_charge.said}")
+    out.append(f"    spin       = {_st.unpaired_electrons.value},   # 2S -- "
+               f"{_st.unpaired_electrons.said}")
     out.append(")")
     out.append("ELEMENTS    = [a[0] for a in ATOMS]")
     out.append("N_ATOMS     = mol.natm")
@@ -935,11 +950,7 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure) -> List
     """Run the SCF at the input geometry; populate the
     equilibrium sub-dict of state and write the first JSON
     checkpoint."""
-    method = cfg.method.upper()
-    if method in ("RKS", "RHF"):
-        scf_class = "RKS" if method == "RKS" else "RHF"
-    else:
-        scf_class = "UKS" if method == "UKS" else "UHF"
+    scf_class = cfg.scf_class        # THE one composition (layout.scf_class)
 
     out: List[str] = []
     out.append("# ============================================================")
@@ -959,19 +970,10 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure) -> List
     out.append("    mf = mf.density_fit(**_MB_DF_KW)")
     out.append("mf = _mb_apply_solvent(mf)")
     out.append("mf = _mb_configure_scf(mf)")
-    # Hard-SCF hint when an open-shell metal is present.  Commented
-    # template -- discoverable without being prescriptive; the user
-    # uncomments + tunes if the equilibrium SCF won't converge.
-    from ..chemistry import detect_open_shell_metals
-    _metals = detect_open_shell_metals(struct)
-    if _metals:
-        out.append("# Hard SCF (typical for open-shell metals like "
-                   f"{', '.join(_metals)}):")
-        out.append("# Uncomment to apply a virtual-orbital level shift "
-                   "(Eh).  Typical 0.1-0.3;")
-        out.append("# helps when the HOMO-LUMO gap is small / open-shell "
-                   "mixing causes oscillation.")
-        out.append("# mf.level_shift = 0.2")
+    # Hard-SCF hint when an open-shell metal is present -- the one wording
+    # (`pyscf/layout.hard_scf_hint`), shared with the optimization deck.
+    from .layout import hard_scf_hint
+    out += hard_scf_hint(cfg.state)
     # Site extras per the § 7a role table: checkpoint write and the
     # Newton wrap ride the EQUILIBRIUM mf only (render-time branches
     # on the config -- self-documenting in the emitted text).
@@ -987,7 +989,8 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure) -> List
     # cannot record differently.  This deck printed none until 2026-09-26.
     from .input import _emit_effective_parameters
     out.extend(_emit_effective_parameters(cfg, cfg.is_dft,
-                                          calculation="vibration"))
+                                          calculation="vibration",
+                                          state=cfg.state))
     out.append("E_eq = mf.kernel()")
     out.append("if not mf.converged:")
     # The equilibrium SCF halts UNCONDITIONALLY on non-convergence --
@@ -1063,7 +1066,7 @@ def _emit_gpu_coverage_probe(cfg: "VibrationConfigView") -> List[str]:
     out.append("# gpu4pyscf's coverage is a moving target: as of 2026-05 it")
     out.append("# supports analytic Hessian for RKS/UKS but lags on others,")
     out.append("# and does not expose analytic CPHF polarizability at all.")
-    out.append("# Rather than hard-coding which (METHOD, stage) pairs work,")
+    out.append("# Rather than hard-coding which (SCF_CLASS, stage) pairs work,")
     out.append("# we probe the actual mf object after SCF: if Hessian()")
     out.append("# returns a gpu4pyscf-module object, the kernel works on")
     out.append("# GPU; otherwise we rebuild mf on CPU for the Hessian step.")
@@ -1345,11 +1348,11 @@ def _emit_displaced_scf_helpers(cfg: "VibrationConfigView") -> List[str]:
         out.append("    # _dft is gpu4pyscf when _USING_GPU else stock pyscf;")
         out.append("    # force_cpu overrides to stock pyscf regardless.")
         out.append("    _dft_mod = dft if force_cpu else _dft")
-        out.append("    _cls = _dft_mod.RKS if METHOD.upper() == 'RKS' else _dft_mod.UKS")
+        out.append("    _cls = getattr(_dft_mod, SCF_CLASS)")
         out.append("    _mf2 = _cls(_mol_new)")
     else:
         out.append("    _scf_mod = scf if force_cpu else _scf")
-        out.append("    _cls = _scf_mod.RHF if METHOD.upper() == 'RHF' else _scf_mod.UHF")
+        out.append("    _cls = getattr(_scf_mod, SCF_CLASS)")
         out.append("    _mf2 = _cls(_mol_new)")
     out.append("    _mf2 = _mb_configure_theory(_mf2)  # the one spelling (§ 7a)")
     out.append("    _use_df = DENSITY_FIT if density_fit is None else density_fit")
@@ -1735,7 +1738,7 @@ def _emit_es_loop(cfg: "VibrationConfigView") -> List[str]:
     out.append("        _disp_plus[_atom_idx]  += DISPLACEMENT_AMPLITUDE_ANG * _evec[_k_idx]")
     out.append("        _disp_minus[_atom_idx] -= DISPLACEMENT_AMPLITUDE_ANG * _evec[_k_idx]")
     out.append("    # Displaced-geometry SCFs.  Same setup as equilibrium")
-    out.append("    # (METHOD / FUNCTIONAL / BASIS / GRID_LEVEL / DENSITY_FIT);")
+    out.append("    # (SCF_CLASS / FUNCTIONAL / BASIS / GRID_LEVEL / DENSITY_FIT);")
     out.append("    # _build_mf_at handles the gpu4pyscf vs CPU branching")
     out.append("    # internally via the _USING_GPU flag.")
     out.append("    _mfp = _build_mf_at(_disp_plus)")
@@ -1824,13 +1827,10 @@ def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
     # API splits hessian.RKS / UKS / RHF / UHF.  Sun2020 +
     # Sun2018 cite the package itself; the analytic Hessian
     # API is covered by both.
-    method = cfg.method.upper()
-    hessian_module = {
-        "RKS": "pyscf.hessian.rks",
-        "UKS": "pyscf.hessian.uks",
-        "RHF": "pyscf.hessian.rhf",
-        "UHF": "pyscf.hessian.uhf",
-    }.get(method, "pyscf.hessian")
+    # The module is the composed class's own name (layout.scf_class):
+    # rks / uks / rhf / uhf -- the four PySCF has analytic Hessians for; a
+    # restricted-open vibration is refused before a deck exists (ES4).
+    hessian_module = f"pyscf.hessian.{cfg.scf_class.lower()}"
 
     parts = [
         "All electronic-structure calculations were performed "

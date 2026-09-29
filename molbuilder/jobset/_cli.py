@@ -449,6 +449,15 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     except ValueError as exc:
         raise click.ClickException(str(exc))
 
+    # THE TEMPLATE'S TEXT FIRST -- before the folder exists -- so a
+    # citation it refuses (one that carried a net charge, ES7,
+    # `science/chemistry-correctness.md` § 2a) leaves nothing behind: an
+    # empty folder was left until the M6 review.
+    from ..transport.citation_defaults import transport_template_text
+    try:
+        _tmpl_text = transport_template_text(_P(resolved), label=task.label)
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
     dest = out_dir if out_dir.is_absolute() else         _P(_resolve_bundle(None, None, str(out_dir), must_exist=False))
     dest.mkdir(parents=True, exist_ok=True)
     write_task(dest / TASK_FILENAME, task)
@@ -467,14 +476,12 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     # (`engines/transport.md` § 3.8.3).  This wrote the class default into
     # such rows until 2026-09-24, so a hand-built structure described on
     # the CLI claimed a basis no run had said.
-    from ..transport.citation_defaults import transport_template_text
     # THE ONE DOOR that forms this name (`template.template_path`).  Six
     # call sites spelled it by hand, in two incompatible ways, until
     # 2026-08-17; `test_doc_claims` walks the AST to keep it at one, and
     # caught this line the day it was written.
     tmpl = _T.template_path(dest, task.label)
-    tmpl.write_text(transport_template_text(_P(resolved), label=task.label),
-                    encoding="utf-8")
+    tmpl.write_text(_tmpl_text, encoding="utf-8")
 
     click.echo(f"Described transport '{task.run.name}' in {dest} -- "
                f"composes {citation}.")
@@ -3453,6 +3460,29 @@ def _probe_consent_merge(before, probed, *, yes: bool):
         f"took probed: {', '.join(took)}" if took else "",
         f"kept recorded: {', '.join(kept)}" if kept else ""])))
     return probed
+
+
+@jobset_group.command("migrate",
+                      short_help="rewrite a pre-2026-09-28 calculation's "
+                                 "charge and spin items")
+@_bundle_option()
+def migrate_cmd(bundle: str) -> None:
+    """Rewrite this calculation's template into the electronic state's items
+    (science/chemistry-correctness.md § 2a): PySCF's `spin` and the R/U inside
+    its `method`, SIESTA's `spin_treatment` spellings and `spin_total`.
+
+    What the run was is KEPT -- every old value becomes a stated one -- and
+    each change is printed.  The old template stays beside the new one as
+    `<name>.pre-m6`.  prep refuses a template that still carries an old item,
+    naming this command."""
+    from .migrate import MigrateError, migrate_state
+    try:
+        said = migrate_state(bundle)
+    except MigrateError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"migrated {bundle}:")
+    for line in said:
+        click.echo(f"  {line}")
 
 
 @jobset_group.command("machines",

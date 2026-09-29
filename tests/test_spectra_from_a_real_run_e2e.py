@@ -111,7 +111,7 @@ def _run_one(env, d, label, bond):
         positions=np.array([[0.0, 0.0, 0.0],
                             [0.0, 0.0, bond],
                             [0.0, 0.0, -bond]]))
-    cfg = PySCFConfig(job_name=label, method="RHF", basis="STO-3G",
+    cfg = PySCFConfig(job_name=label, method="HF", basis="STO-3G",
                       compute_ir=True, compute_raman=False,
                       optimize=False, already_relaxed=True)
     deck = d / f"{label}_vib.py"
@@ -190,7 +190,7 @@ def co2_run(isolated_projects_root_module):
             positions=np.array([[0.0, 0.0, 0.0],
                                 [0.0, 0.0, 1.16],
                                 [0.0, 0.0, -1.16]]))
-        cfg = PySCFConfig(job_name="co2", method="RHF", basis="STO-3G",
+        cfg = PySCFConfig(job_name="co2", method="HF", basis="STO-3G",
                           compute_ir=True, compute_raman=False,
                           optimize=False, already_relaxed=True)
         deck = d / "co2_vib.py"

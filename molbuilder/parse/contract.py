@@ -62,10 +62,19 @@ RECORD_TO_SIESTA_FIELD: Dict[str, str] = {
     "electronic_temperature_k": "electronic_temperature",
     "xc_functional":            "xc_functional",
     "xc_authors":               "xc_authors",
+    # THE ELECTRONIC STATE THE RUN CARRIED (`science/chemistry-correctness.md`
+    # § 2a, ES7) -- the four items' own names on both sides.
+    "net_charge":               "net_charge",
+    "spin_treatment":           "spin_treatment",
+    "unpaired_electrons":       "unpaired_electrons",
 }
 
+#: The electronic state's recorded keys -- compared RESOLVED, never raw
+#: (:func:`contract_fields_of`).
+STATE_RECORD_KEYS = ("net_charge", "spin_treatment", "unpaired_electrons")
 
-def contract_fields_of(cfg) -> Dict[str, Any]:
+
+def contract_fields_of(cfg, *, state=None) -> Dict[str, Any]:
     """The level of theory a config is ABOUT TO RUN, in the recorded
     contract's own field names -- the other half of :func:`_siesta_contract`,
     through :data:`RECORD_TO_SIESTA_FIELD`.  A consumer comparing a
@@ -73,11 +82,22 @@ def contract_fields_of(cfg) -> Dict[str, Any]:
     handed to compares this dict field by field.  Only fields the config
     class has appear; an engine with no recorded contract (PySCF today)
     answers ``{}``.
+
+    **The electronic state comes from ``state``, RESOLVED** -- a blank charge
+    or spin is the instruction "work it out", so the raw field would compare
+    nothing where the run will carry a value (ES7: a vibration at a geometry
+    relaxed for another state is warned).  Without a state they are left out.
     """
     out: Dict[str, Any] = {}
     for key, attr in RECORD_TO_SIESTA_FIELD.items():
+        if key in STATE_RECORD_KEYS:
+            continue
         if hasattr(cfg, attr) and getattr(cfg, attr) is not None:
             out[key] = getattr(cfg, attr)
+    if state is not None and out:
+        out["net_charge"] = state.net_charge.value
+        out["spin_treatment"] = state.spin_treatment.value
+        out["unpaired_electrons"] = state.unpaired_electrons.value
     return out
 
 
@@ -239,8 +259,18 @@ def _siesta_contract(deck: Path) -> Optional[Dict[str, Any]]:
         "siesta_mesh_cutoff_ry":    p.mesh_cutoff_ry,
         "k_mesh_transverse":        (list(p.kgrid) if p.kgrid else None),
         "electronic_temperature_k": p.electronic_temperature_k,
+        # What the run carried -- SIESTA's defaults answer what the deck
+        # leaves out, so these are always known (ES7's hand-over reads them).
+        "net_charge":               p.net_charge,
+        "spin_treatment":           p.spin_treatment,
+        "unpaired_electrons":       p.unpaired_electrons,
     }.items() if v is not None}
-    if not contract:
+    # THE STATE RIDES WITH A CONTRACT; IT DOES NOT MAKE ONE.  SIESTA's
+    # defaults answer it for every deck, so it is always known -- and a deck
+    # that states no level of theory has nothing to cite, whatever its
+    # state.  (With the state added, every deck became a contract, "SystemLabel
+    # x" alone included, until the M6 review's batch said so.)
+    if not set(contract) - set(STATE_RECORD_KEYS):
         return None
     return {
         "engine": "siesta",

@@ -20,6 +20,7 @@ exempt means named below with a reason.
 from __future__ import annotations
 
 import dataclasses
+import re
 
 import numpy as np
 import pytest
@@ -46,6 +47,9 @@ _NOT_IN_THE_DECK = {
         "calculation, not what the deck says",
     ("siesta", "psml_lib"):
         "names WHERE pseudopotentials are found; a deck never carries a host path",
+    ("siesta", "verbose_comments"):
+        "it is about the deck's COMMENTS -- what a person reads beside each "
+        "keyword -- and this file compares what SIESTA reads",
     ("siesta", "write_molwatch_log"):
         "SIESTA honours it at the PROMISES sub-step (3.12), not in the deck: "
         "`prep._seed_trajectory_log` and `convert()` skip seeding "
@@ -60,19 +64,40 @@ _ENABLING = {
     "md_target_temperature":  [{"relax_type": "Nose"}],
     "md_length_timestep":     [{"relax_type": "Nose"}],
     "md_max_cg_displ":        [{"relax_type": "Nose"}],
-    "spin_total":             [{"spin_treatment": "polarized"}],
     "diag_algorithm":         [{"diag_algorithm": "ELPA-2STAGE"}],
     "use_gpu":             [{"diag_algorithm": "ELPA-2STAGE"}],
     "auxbasis":               [{"density_fit": True}],
     "ecp_atoms":              [{"ecp": "def2-SVP"}],
     "solvent_method":         [{"solvent": "water"}],
-    "spin":                   [{"method": "UKS"}],
     "geom_continue_retries":  [{"on_nonconvergence": "continue"}],
 }
 
 
+#: Values that change what the ENGINE is asked for, where the first other
+#: choice would not: water is a closed shell, so ``restricted`` and a count
+#: of 0 are what a blank already resolves to (the electronic state,
+#: `science/chemistry-correctness.md` § 2a) and only the source comment
+#: beside them would differ.
+_PROBE = {"spin_treatment": "unrestricted", "unpaired_electrons": 2}
+
+
+def _engine_read(text) -> str:
+    """The deck as the ENGINE reads it: comment lines and trailing comments
+    out.  Every value of the electronic state is written beside its source,
+    so a spin a writer ignored would still change the comment next to it --
+    and a comparison of the whole text called that honoured (the M6 review).
+    """
+    out = []
+    for line in str(text).splitlines():
+        if line.strip() and not line.lstrip().startswith("#"):
+            out.append(re.sub(r"\s+#.*$", "", line))
+    return "\n".join(out)
+
+
 def _alternative(item, current):
     """A different, legal value for this item, or None if none can be built."""
+    if item.name in _PROBE and _PROBE[item.name] != current:
+        return _PROBE[item.name]
     choices = getattr(item, "choices", None)
     if choices:
         return next((c for c in choices if c != current), None)
@@ -127,7 +152,7 @@ def test_every_field_the_form_offers_changes_the_generated_deck(
 
     def deck(**over):
         cfg = dataclasses.replace(cls(**base_kw), **over)
-        return str(se.render_deck(spec_for(struct, cfg), struct, cfg))
+        return _engine_read(se.render_deck(spec_for(struct, cfg), struct, cfg))
 
     dead, unprobed = [], []
     for name, item in sorted(_form_fields(engine, prefix).items()):

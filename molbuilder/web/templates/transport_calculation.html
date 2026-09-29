@@ -34,9 +34,10 @@
 <!-- ============================================================ -->
 <!--  The composite's describe surface (transport-design.md 4.1):  -->
 <!--    1. The junction — cite a finished attempt; viewer follows   -->
-<!--    2. Analyze chemistry — informational check on the citation  -->
-<!--    3. Parameters — the override lane (transport-only knobs)    -->
-<!--    4. Describe — bias + the one button; writes task.json       -->
+<!--    2. Shared by every rung — the template's one description    -->
+<!--    3. Charge and spin — the junction's, for every rung         -->
+<!--    4. The physics, rung by rung — the override lane            -->
+<!--    5. Describe — bias + the one button; writes task.json       -->
 <!-- ============================================================ -->
 <main class="app-grid">
 
@@ -129,19 +130,15 @@
     </div>
   </section>
 
-  {#- ===================== 3. Analyze chemistry ===================== -#}
-  {% set hint %}<strong>Read the cited structure back before you
-      spend any compute on it.</strong>  Two things are reported: the
-      open-shell-metal check — whether this system wants a
-      spin-polarised run — and a count of the atoms carrying each
-      region label.  It runs automatically when you cite a junction;
-      the button re-runs it.  Nothing here changes a setting: the panel
-      is a reading, and acting on it means editing step 2 or step 4, or
-      relabelling in <a href="/molbuilder">Molbuilder</a>.{% endset %}
-  {% set title = "Re-run the chemistry analysis on the cited junction's structure.  Disabled until a junction is cited." %}
-  {% set button_label = "Re-analyze chemistry" %}
-  {% set analyze_step = 3 %}
-  {% include "_analyze_chemistry_card.html" %}
+  {#- ===================== 3. Charge and spin ===================== -#}
+  {% set hint %}<strong>Read the cited junction back before you spend any
+      compute on it.</strong>  A transport junction is neutral, and its spin
+      is ONE answer for all five rungs &mdash; the cited relaxation's, or,
+      left blank on the shared panel, worked out on the whole junction.  The
+      answer is below with its reason, and follows every edit to the shared
+      panel's spin fields.{% endset %}
+  {% set chemistry_step = 3 %}
+  {% include "_chemistry_card.html" %}
 
   {#- ===================== 4. The physics ===================== -#}
   <section class="card" id="parameters-card">
@@ -250,12 +247,12 @@
 {# MolView component stack (viewer + selection/cell panel) — card 1 mounts it
    for structure inspection.  Loaded before transport/core.js, which mounts it. #}
 {% include "_molview_scripts.html" %}
-{# `auto-detect.js` calls `molbuilder.fetchError.format` unguarded, so the
-   formatter has to be here too -- without it a network failure or a non-JSON
-   reply raises a TypeError INSIDE the catch, the promise rejects instead of
-   resolving to {ok:false,error}, and the user gets silence (2026-09-10). #}
+{# The chemistry card words a failed request through `lib/fetch-error.js`;
+   it degrades to the bare message without it, so this is for the wording,
+   not for the card to work. #}
 <script src="{{ url_for('static', filename='lib/fetch-error.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/auto-detect.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/dom.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/chemistry.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 {#- the rung strip of card 4 (engines/transport.md 3.8.2a) -- the same
     switcher the engine strips use -#}

@@ -56,6 +56,23 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
      * it also mounted.  One page, two things it owns, and it introduces them --
      * rather than either of them looking the other up. */
     let _inspector = null;
+    // THE CHEMISTRY CARD (`lib/chemistry.js`): the charge and spin each
+    // engine form's vibration will carry, resolved by the one
+    // electronic-state class for exactly what the form says, with each
+    // value's reason (`science/chemistry-correctness.md` § 2a) -- about the
+    // structure the tab would hand over, read by the inspector's one read
+    // of the viewer.  It asks on every structure load and every edit to a
+    // charge or spin field, and fills nothing in.  It replaced an
+    // Auto-detect button that spread a suggestion onto the forms,
+    // overwriting them.
+    const _chemistry = window.molbuilder.chemistry.attach({
+        kind: "vibration",
+        forms: () => (_inspector && typeof _inspector.stateForms === "function"
+                      ? _inspector.stateForms() : {}),
+        structure: () => (_inspector
+                          && typeof _inspector.structureForRequest === "function"
+                          ? _inspector.structureForRequest() : null),
+    });
 
     function _bootstrapSpectraCore() {
         // Defensive: if core.js failed to load (e.g. a CDN-block in
@@ -74,7 +91,10 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
         // Mount with ``document`` as the root so $() lookups find
         // /spectra's generate-side form ids (which live OUTSIDE any
         // partial; full-page mount).
-        _inspector = api.mount(document);
+        _inspector = api.mount(document, {
+            // The forms exist now: the chemistry card answers for them.
+            onFormsReady: () => { if (_chemistry) _chemistry.refresh(); },
+        });
     }
 
     /**
@@ -187,7 +207,12 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
                 }
                 return;
             }
-            if (f === _sidebarLastFile) return;
+            if (f === _sidebarLastFile) {
+                // Same file: the structure on screen stays, and so does the
+                // card's answer about it.  The Load button is what fetches
+                // new bytes (it clears this guard, below).
+                return;
+            }
             const mySeq = ++_loadSeq;
             setStatus("load-status",
                 `Loading ${_basename(f)}…`, null);
@@ -241,15 +266,9 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
             setStatus("load-status",
                 `Loaded ${_basename(f)}.`, "ok");
             _refreshLoadButton();
-            // Phase 3 (2026-06-10): auto-fire the analyzer so the
-            // chemistry rationale is visible by default, not gated
-            // behind the Auto-detect button.  Forms are NOT pre-
-            // filled — the button still owns that explicit step.
-            // See science/validation.md § 4; same hook on
-            // /structure-optimization in static/viewer.js.
-            if (typeof _autoAnalyzeOnLoad === "function") {
-                _autoAnalyzeOnLoad(f);
-            }
+            // The chemistry card: this structure's charge and spin, for
+            // exactly what the forms say.
+            _chemistry.refresh();
         }
 
         // Sidebar onChange / onCommit subscription + initial
@@ -294,105 +313,16 @@ import { molviewFiles } from "../lib/projects/molview-doors.js";
         if (loadBtn) {
             loadBtn.addEventListener("click", () => {
                 if (!_isLoadable(_candidatePath)) return;
+                // Explicit Load = "load the current file NOW", even the one
+                // already on screen: it may have changed on disk.  Clearing
+                // the same-file guard is how the Build tab's Load does it;
+                // this one skipped the reload until the M6 review.  (The
+                // sidebar's double-click path keeps the guard.)
+                _sidebarLastFile = "";
                 _commitStructure({ file: _candidatePath });
             });
         }
 
-        // -------- Auto-detect chemistry (Card 2 of the post-2026-06-10
-        // vertical workflow on /spectrum-calculation; matching the
-        // Optimization tab pattern from static/viewer.js).
-        //
-        // POST /api/structure/analyze with the currently-loaded
-        // structure path, then apply the PySCF adapter's
-        // (net_charge, spin, method) translation onto the vibration
-        // form.  The adapter's field names ARE catalogue item names
-        // (pyscf/auto_defaults.py's PyscfSuggestedParams), and
-        // setValues matches by field name -- one vocabulary, no map.
-        //
-        // Both engines' forms are filled (the analyzer answers per
-        // engine), the same as /structure-optimization.  Concurrency
-        // safety mirrors the _loadSeq pattern used by _commitStructure
-        // above.
-        function _refreshAutoDetectButton() {
-            const btn = _$("auto-detect-btn");
-            if (!btn) return;
-            btn.disabled = !_sidebarLastFile;
-        }
-        // Both halves of auto-detect -- the analyze call's
-        // supersede/abort protocol AND the panel renderer -- live in
-        // lib/auto-detect.js, so a fix cannot land on one tab and
-        // miss the others (audit-2026-08-05-tab-ui.md §§ C1, C2).
-        // Loaded as a classic script, hence defined before this
-        // module body runs.
-        const autoDetect = window.molbuilder.autoDetect;
-        const _autoBtn = _$("auto-detect-btn");
-        if (_autoBtn) {
-            _autoBtn.addEventListener("click", async () => {
-                if (!_sidebarLastFile) return;
-                const myLoadSeq = _loadSeq;
-                const myPath    = _sidebarLastFile;
-                _autoBtn.disabled = true;
-                setStatus("auto-detect-status", "Analyzing…", null);
-                const res = await autoDetect.analyze(myPath, {
-                    isStale: () => myLoadSeq !== _loadSeq,
-                });
-                // Superseded: a newer click, or a structure loaded
-                // mid-flight, owns the button and the panel now.
-                // Leave both to whoever won.
-                if (res.superseded) return;
-                _refreshAutoDetectButton();
-                if (!res.ok) {
-                    setStatus("auto-detect-status", res.error, "error");
-                    return;
-                }
-                await _applyAutoDetectToSpectraForm(res.body);
-                autoDetect.renderPanel(res.body);
-                setStatus("auto-detect-status",
-                    "Applied to the parameter form.  Review rationale below.",
-                    "ok");
-            });
-        }
-
-        /**
-         * Phase 3 auto-analyze (fired from _commitStructure on
-         * every successful load).  Same shape as the Optimization
-         * tab's helper in static/viewer.js: hits the analyzer,
-         * renders the rationale panel, does NOT touch the
-         * parameter form (the explicit button click still owns
-         * the form-fill).
-         */
-        function _autoAnalyzeOnLoad(path) {
-            const myLoadSeq = _loadSeq;
-            return autoDetect.analyzeOnLoad(path, {
-                isStale: () => myLoadSeq !== _loadSeq,
-                say: () => setStatus("auto-detect-status",
-                    "Chemistry analyzed — click Auto-detect to "
-                    + "apply suggested defaults to the form.", null),
-            });
-        }
-
-        /**
-         * Hand the analyzer's per-engine answer to the inspector, which
-         * owns both forms and spreads the values by field name (the
-         * adapters' names are catalogue item names).  The page does not
-         * reach into the form containers (overview.md § 1: a capability
-         * a tab needs is a door on the module, never a workaround here).
-         */
-        async function _applyAutoDetectToSpectraForm(resp) {
-            if (_inspector && typeof _inspector.applySuggested === "function") {
-                _inspector.applySuggested((resp && resp.suggested) || {});
-            }
-        }
-
-        // Refresh the Auto-detect button state every time the
-        // load handler finishes (success or failure path) by
-        // wrapping _refreshLoadButton with a sibling call.
-        const _origRefreshLoad = _refreshLoadButton;
-        _refreshLoadButton = function () {   // eslint-disable-line no-func-assign
-            _origRefreshLoad();
-            _refreshAutoDetectButton();
-        };
-        _refreshAutoDetectButton();
     }
 
     function bootstrapSpectraPage() {

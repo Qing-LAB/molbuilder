@@ -47,7 +47,6 @@ from molbuilder.transport.compose import (ComposeError,
 # value that comes back.
 from molbuilder.constants import BOHR_ANGSTROM as _BOHR_ANGSTROM
 _ANG_BOHR = 1.0 / _BOHR_ANGSTROM
-_Z = {"Au": 79, "S": 16, "C": 6, "N": 7}
 
 #: six 2.5 Å layers a side (12.5 Å span — over the wizard's 12 Å lead
 #: floor), the molecule between.
@@ -80,6 +79,9 @@ def _write_xv(path, struct, *, perturb_bridge=0.3, perturb_electrode=None):
     """A SIESTA-shaped .XV: cell rows then per-atom rows, in Bohr.
     Bridge atoms shift by ``perturb_bridge`` A (the 'relaxation');
     ``perturb_electrode=(index, dist)`` breaks one frozen atom."""
+    # molbuilder's own table -- a four-element copy stood here until
+    # 2026-09-29.
+    from molbuilder.chemistry import atomic_number
     pos = np.asarray(struct.positions, dtype=float).copy()
     for i in struct.regions.get(REGION_BRIDGE, ()):
         pos[i, 0] += perturb_bridge
@@ -93,7 +95,7 @@ def _write_xv(path, struct, *, perturb_bridge=0.3, perturb_electrode=None):
     lines.append(f"  {len(struct.elements)}")
     for i, el in enumerate(struct.elements):
         xyz = " ".join(f"{x * _ANG_BOHR:.9f}" for x in pos[i])
-        lines.append(f"  1  {_Z[el]}  {xyz}  0.0 0.0 0.0")
+        lines.append(f"  1  {atomic_number(el)}  {xyz}  0.0 0.0 0.0")
     path.write_text("\n".join(lines) + "\n")
     return pos
 

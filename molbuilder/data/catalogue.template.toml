@@ -1004,7 +1004,7 @@ The order the species are listed in, comma-separated (e.g. 'C,H,S,Au').  It fixe
 # rule 4 gates on already agreed; only the spellings differed.
 #
 # `kind = "deck"` with no anchor is what § 6.3 says a merged item becomes, and
-# it is not a new shape: `relax_steps` and `spin_total` already declare several
+# it is not a new shape: `relax_steps` and `unpaired_electrons` declare several
 # keywords and let the writer pick which one this run calls for.  The check
 # gate demands only the keyword the emitted line actually names, so SIESTA is
 # asked for `NetCharge` and PySCF for `gto.M` -- never each other's.
@@ -1029,6 +1029,11 @@ kind = "deck"
 category = ["system"]
 engines = ["siesta", "pyscf"]
 calculations = ["optimization", "vibration"]
+# THE STATE BELONGS TO THE CALCULATION, NEVER TO A STAGE (ES1,
+# `science/chemistry-correctness.md` § 2a): every rung's warm files are a
+# density for one electronic state.  `shared` is how the catalogue says it --
+# the Task setup columns leave it out and `prep` refuses a stage override.
+shared = ["optimization", "vibration"]
 expands = ["NetCharge", "gto.M"]
 engine_key = "NetCharge (SIESTA) | gto.M(charge=...) (PySCF)"
 manual = "SIESTA 5.4.2 §6.23 'Systems with net charge or dipole, and electric fields'; PySCF 2.13 pyscf.gto.mole.MoleBase 'charge'"
@@ -1036,56 +1041,79 @@ type = "int"
 range = [-10, 10]
 group = "profile"
 label = "Net charge"
-null_label = "(auto-detect from phosphates)"
+null_label = "(auto)"
 optional = true
 tier = "basic"
 help = """
 Net charge of the system, in units of |e|.  Sign convention: -1 = one extra electron; +1 = one missing electron.
 
-Left blank it auto-detects from phosphate protonation -- one negative charge per backbone phosphate, which is right for DNA/RNA from tleap.  For everything else (peptide, SMILES, PDB load) auto resolves to 0, so set this explicitly for a charged species: carboxylates (Asp/Glu), protonated amines (Lys/Arg/His+), sulfonates.
+Left blank it is worked out from the phosphate groups -- one negative charge per deprotonated backbone phosphate, which is right for DNA/RNA from tleap -- and the chemistry card says what it came to and why.  For everything else (peptide, SMILES, PDB load) that comes to 0, so state the charge of a charged species: carboxylates (Asp/Glu), protonated amines (Lys/Arg/His+), sulfonates.  The spin is then worked out at this charge.
 
 Get it wrong and the run solves for the wrong number of electrons, which is a different molecule from the one you meant.
 """
 
 [item.spin_treatment]
-kind = "engine"
-category = ["system"]
-engines = ["siesta"]
-shared = ["transport"]
-anchor = "Spin"
-engine_key = "Spin"
-manual = "SIESTA 5.4.2 §6.7 'Spin polarization'"
-type = "enum"
-choices = ["non-polarized", "polarized", "non-colinear", "spin-orbit"]
-value = "non-polarized"
-default = "non-polarized"
-group = "profile"
-label = "Spin treatment"
-help = """
-How the calculation treats electron spin.
-  non-polarized  spin-degenerate; the cheap default.
-  polarized      collinear open-shell; required for radicals, transition metals and triplets.
-  non-colinear   moments may point in any direction (canted or spiral magnetic order).
-  spin-orbit     couples spin to orbital motion; matters for heavy elements (Au, Bi, Pt) and REQUIRES fully-relativistic pseudopotentials.
-Only 'polarized' can carry a fixed total spin.
-"""
-
-[item.spin_total]
+# ONE OF THE ELECTRONIC STATE'S FOUR ITEMS (`science/chemistry-correctness.md`
+# § 2a, M6, 2026-09-28) -- merged across both engines in the engine-neutral
+# words, each engine spelling them its own way: SIESTA `Spin non-polarized` /
+# `polarized` / `non-colinear` / `spin-orbit`, PySCF the R / RO / U of its SCF
+# class.  Blank is AUTO: the electronic-state class works it out from the
+# structure at the resolved charge, exactly as a blank charge always was.
+# A form offers only what the engine can run for the kind (ES4:
+# `electronic_state.CAPABILITY`).
 kind = "deck"
 category = ["system"]
-engines = ["siesta"]
-shared = ["transport"]
-expands = ["Spin.Fix", "Spin.Total"]
-engine_key = "Spin.Fix + Spin.Total"
-type = "float"
+engines = ["siesta", "pyscf"]
+shared = ["optimization", "vibration", "transport"]
+expands = ["Spin"]
+engine_key = "Spin (SIESTA) | the SCF class's R / RO / U (PySCF)"
+manual = "SIESTA 5.4.2 §6.7 'Spin polarization'; PySCF 2.13 pyscf.scf 'RHF / ROHF / UHF'"
+# A transport calculation's cited run answers it -- the spin the junction was
+# relaxed at (ES7) -- read from its deck or its record.
+citation = ["transport"]
+type = "enum"
+choices = ["restricted", "restricted-open", "unrestricted", "non-collinear", "spin-orbit"]
 group = "profile"
-label = "Target spin moment"
-null_label = "(default)"
+label = "Spin treatment"
+null_label = "(auto)"
 optional = true
 help = """
-The target total spin moment the calculation is held to, in mu_B -- equivalently, the number of unpaired electrons.
-It emits BOTH `Spin.Fix .true.` and `Spin.Total <v>`: the first is required or the second is silently ignored, which is why one item writes two keywords. Only emitted with a polarized spin treatment.
-0.0 with a polarized treatment asks for a constrained singlet via open-shell DFT (broken-symmetry capable). Most users wanting a singlet are better served by the non-polarized treatment -- the spin-restricted formalism is cheaper and gives the same answer. Set 0.0 here only when you specifically want an anti-ferromagnetic / broken-symmetry singlet.
+How the two spin channels are solved.
+  restricted       every electron paired: one set of orbitals for both spins.  Closed-shell molecules, and metals that carry no moment (Cu, Ag, Au).
+  restricted-open  one set of spatial orbitals, the unpaired electrons in their own -- spin-pure.  PySCF only, and not for a vibration: PySCF has no analytic ROHF/ROKS Hessian.
+  unrestricted     the two spin channels solved separately.  Radicals, open-d transition metals (Fe, Co, Ni, Mn, ...), triplets.
+  non-collinear    moments may point in any direction.  SIESTA only.
+  spin-orbit       couples spin to orbital motion -- heavy elements (Au, Bi, Pt).  SIESTA only, and it needs fully-relativistic pseudopotentials.
+Left blank it is worked out from the structure: unrestricted for an open-d metal or an odd electron count in a molecule, restricted otherwise -- and a repeating cell is never made open-shell by its electron count.  The chemistry card says what it came to and why.
+"""
+
+[item.unpaired_electrons]
+# 2S = N-up - N-down, and NOT the multiplicity 2S+1 -- or `free`, a moment that
+# floats to whatever the SCF finds (M6, 2026-09-28).  An enum whose members are
+# whole numbers and one word (`engines/template.md` § 5), so a template reads
+# `unpaired_electrons = 2` or `unpaired_electrons = "free"`.  It replaced
+# SIESTA's `spin_total` (a float in mu_B, blank meaning "the moment floats")
+# and PySCF's `spin` (always pinned): one question, one item, and a blank that
+# means AUTO like every other state item.
+kind = "deck"
+category = ["system"]
+engines = ["siesta", "pyscf"]
+shared = ["optimization", "vibration", "transport"]
+expands = ["Spin.Fix", "Spin.Total", "gto.M"]
+engine_key = "Spin.Fix + Spin.Total (SIESTA) | gto.M(spin=...) (PySCF)"
+manual = "SIESTA 5.4.2 §6.7 'Spin polarization' (Spin.Fix, Spin.Total); PySCF 2.13 pyscf.gto.mole.MoleBase 'spin'"
+citation = ["transport"]
+type = "enum"
+choices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, "free"]
+group = "profile"
+label = "Unpaired electrons (2S)"
+null_label = "(auto)"
+optional = true
+help = """
+The number of unpaired electrons, 2S -- NOT the multiplicity 2S+1.  So 0 = closed shell, 1 = doublet, 2 = triplet, and so on.  Enter a multiplicity here by mistake and you ask for a different electronic state.
+free lets the moment float to whatever the SCF finds -- SIESTA only, and the only value under non-collinear and spin-orbit.  PySCF always fixes the count.
+Left blank it is worked out from the structure at the resolved charge: 0 for a closed shell, 1 for an odd count in a molecule, an open-d metal's usual count (Fe 2, Mn 5, Co 3, ...) -- which the prep report warns about until you state it, because the right count depends on the coordination, not on the element -- and free for a magnetic metal in a repeating cell.
+SIESTA writes a count as Spin.Fix + Spin.Total beside Spin polarized, and nothing at all for free.
 """
 
 [item.job_name]
@@ -1102,23 +1130,6 @@ pattern = "^[A-Za-z0-9_\\-]+$"
 help = """
 Name for this job.  Output files get it as a prefix, and the logs are named from it.
 Must match [A-Za-z0-9_-]+ -- letters, digits, underscore and hyphen, and no dots (the job-layout v1 rule).
-"""
-
-[item.spin]
-kind = "engine"
-category = ["system"]
-engines = ["pyscf"]
-anchor = "gto.M"
-engine_key = "gto.M(spin=...)  # 2S, # of unpaired electrons"
-manual = "PySCF 2.13 pyscf.gto.mole.MoleBase 'spin'"
-type = "int"
-value = 0
-default = 0
-range = [0, 10]
-group = "profile"
-label = "Spin (2S)"
-help = """
-The number of unpaired electrons, written as 2S -- NOT the multiplicity 2S+1.  So 0 = closed shell, 1 = doublet, 2 = triplet, and so on.  Enter a multiplicity here by mistake and you ask for a different electronic state: 1 on a closed-shell molecule requests a doublet, which does not exist for an even electron count.
 """
 
 [item.symmetry]
@@ -1141,22 +1152,28 @@ Leave it off unless you know the geometry is exact.
 """
 
 [item.method]
-kind = "engine"
+# WHICH THEORY, and nothing else (M6, 2026-09-28).  It was the SCF class --
+# RKS / UKS / RHF / UHF -- which fused this question with the spin treatment's;
+# the class is now COMPOSED from the two and written explicitly (`dft.UKS`,
+# `scf.ROHF`, ...), never left to PySCF to re-rule (`dft.RKS` with a nonzero
+# spin silently becomes ROKS inside PySCF).  Never worked out from the
+# structure: a theory is a choice, not a property of the molecule.
+kind = "deck"
 category = ["method"]
 engines = ["pyscf"]
-anchor = "RKS"
-engine_key = "RKS / UKS / RHF / UHF  (PySCF class selection)"
-manual = "PySCF 2.13 pyscf.dft.rks 'RKS / UKS / RHF / UHF'"
+shared = ["optimization", "vibration"]
+expands = ["dft", "scf"]
+engine_key = "(molbuilder: the SCF class module -- dft.<class> for DFT, scf.<class> for HF)"
+manual = "PySCF 2.13 pyscf.dft 'RKS / ROKS / UKS'; pyscf.scf 'RHF / ROHF / UHF'"
 type = "enum"
-choices = ["RKS", "UKS", "RHF", "UHF"]
-value = "RKS"
-default = "RKS"
+choices = ["DFT", "HF"]
+value = "DFT"
+default = "DFT"
 group = "profile"
-label = "SCF method"
+label = "Method"
 help = """
-Which self-consistent field the run solves.  RKS and UKS are Kohn-Sham DFT and use the functional you pick; RHF and UHF are Hartree-Fock and ignore it, and the integration grid with it.  The dispersion correction applies to both: Hartree-Fock has no electron correlation at all, so it misses dispersion entirely, and D3 and D4 carry parameters fitted for it -- RHF with d3bj is HF-D3(BJ).  Set dispersion to none for plain Hartree-Fock.
-R is restricted -- the two electrons of a pair share one spatial orbital.  U is unrestricted -- the two spin channels are solved separately and are allowed to differ, which is what a system with unpaired electrons needs.
-Choosing R where the spins are not paired is not a cheaper answer, it is a different one.
+Which theory the run solves.  DFT is Kohn-Sham density-functional theory and uses the functional you pick; HF is Hartree-Fock and ignores it, and the integration grid with it.  The dispersion correction applies to both: Hartree-Fock has no electron correlation at all, so it misses dispersion entirely, and D3 and D4 carry parameters fitted for it -- HF with d3bj is HF-D3(BJ).  Set dispersion to none for plain Hartree-Fock.
+The SCF class is this together with the spin treatment: DFT with unrestricted is UKS, HF with restricted-open is ROHF.
 """
 
 [item.functional]

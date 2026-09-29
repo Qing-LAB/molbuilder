@@ -18,7 +18,7 @@
  *
  *   * collectForm(container, schema) -- walks the schema and
  *     reads the current DOM values back, returning a dict like
- *     ``{system_label: "siesta", kgrid: [1,1,1], spin_total: null, ...}``
+ *     ``{system_label: "siesta", kgrid: [1,1,1], net_charge: null, ...}``
  *     that the existing build endpoints accept verbatim.
  *
  *   * diffFromDefaults(container, schema) -- which fields are not
@@ -717,7 +717,15 @@
                 const v = elx.value;
                 // Empty value on an Optional select -> null.
                 if (v === "" && (optional || f.null_option)) return null;
-                return v;
+                // AN ENUM'S MEMBER KEEPS ITS TYPE (`engines/template.md` § 5):
+                // an <option> carries String(member), so it is read back as
+                // the member itself -- `unpaired_electrons`' 2 is a number
+                // and "free" a word -- and what the form holds is the value
+                // the template and the card are about.  (The server's own
+                // coercion maps a text "2" to the member too, for a caller
+                // that sends one.)
+                const m = (f.choices || []).find((c) => String(c) === v);
+                return m !== undefined ? m : v;
             }
             case "tri-select": {
                 const v = elx.value;
@@ -813,10 +821,11 @@
      * changed control so dirty-tracking listeners observe the
      * programmatic change.
      *
-     * Used by the Auto-detect button (Optimization tab) to populate
-     * (charge, spin, method, ...) from
-     * ``/api/structure/analyze``'s ``suggested.<engine>`` block in
-     * one call.  See docs/science/validation.md
+     * Used by the Recommended panel's "Reset ticked" (Optimization tab)
+     * and by a tab restoring its saved form.  (The Auto-detect button that
+     * also filled forms through here retired on 2026-09-28: a blank charge
+     * or spin is now the instruction "work it out", and the chemistry card
+     * shows the answer -- `lib/chemistry.js`.)
      */
     function setValues(container, schema, values) {
         if (!container || !schema || !Array.isArray(schema.sections)) {

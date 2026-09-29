@@ -1387,7 +1387,7 @@ and a record of its state and nothing else, or none.)*
 | part | the question | read by |
 |---|---|---|
 | **computation** | what ran, where, for how long, on how much | the Run panel |
-| **setup** | every parameter the engine read: the default, what the run asked for, what the engine used | the Run panel; the electronic-state read-back (`science/chemistry-correctness.md` ES10) |
+| **setup** | every parameter the engine read: the default, what the run asked for, what the engine used | the Run panel; the electronic-state read-back once it is built (`science/chemistry-correctness.md` ES10; plan § 5s, P5 — open) |
 | **deck** | which file ran, its hash, whether it is still the stage's deck, what it was gathered from | the Run panel; the transport record |
 | **verdict** | how it ended, whether each phase converged, what was asked and not used | the Run panel; the transport record |
 
@@ -1686,8 +1686,9 @@ verdict are plan § 5t.3's P4, not yet built.*
   against the charge tolerance (§ 5d.5's criteria lines).
 * **The transport record** composes the rungs' records
   (`engines/transport.md` § 2a.12).
-* **The electronic-state read-back** compares the state asked with the one used
-  (`science/chemistry-correctness.md` ES10).
+* **The electronic-state read-back** — to be built (plan § 5s, P5) — will
+  compare the state asked with the one used (`science/chemistry-correctness.md`
+  ES10); nothing reads it yet.
 * **The monitor's reports** carry the same state, read by the same stdlib
   readers (§ 4a, `execution/run-reports.md` § 2.3).
 

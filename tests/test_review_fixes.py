@@ -54,47 +54,6 @@ def test_s1_t1_element_strip_propagates_to_species():
 
 
 # --------------------------------------------------------------------- #
-#  S2 -- net_charge override on SiestaConfig + PySCFConfig              #
-# --------------------------------------------------------------------- #
-
-
-def test_s2_siesta_net_charge_override():
-    """A peptide with charged side-chains needs an explicit override."""
-    from molbuilder.siesta import SiestaConfig, render_fdf
-    s = Structure(
-        elements=["C", "N", "O"],
-        positions=np.array([[0,0,0],[1.5,0,0],[0,1.5,0]]), vacuum=(12.0, 12.0, 12.0))
-    text_default = render_fdf(s, SiestaConfig(verbose_comments=False))
-    assert "NetCharge" not in text_default
-    text_charged = render_fdf(s, SiestaConfig(net_charge=-1, verbose_comments=False))
-    assert "NetCharge       -1" in text_charged
-    text_neutral = render_fdf(s, SiestaConfig(net_charge=0, verbose_comments=False))
-    assert "NetCharge" not in text_neutral
-
-
-def test_s2_siesta_net_charge_overrides_auto_detect(deprotonated_diester):
-    """User-specified charge wins over the phosphate heuristic."""
-    from molbuilder.siesta import SiestaConfig, render_fdf
-    s = deprotonated_diester
-    assert formal_charge_from_phosphates(s) == -1
-    auto = render_fdf(s, SiestaConfig(verbose_comments=False))
-    assert "NetCharge       -1" in auto
-    forced0 = render_fdf(s, SiestaConfig(net_charge=0, verbose_comments=False))
-    assert "NetCharge" not in forced0
-    forced3 = render_fdf(s, SiestaConfig(net_charge=-3, verbose_comments=False))
-    assert "NetCharge       -3" in forced3
-
-
-def test_s2_pyscf_charge_override():
-    from molbuilder.pyscf import PySCFConfig, render_script
-    s = Structure(
-        elements=["O", "H"],
-        positions=np.array([[0,0,0],[0.957,0,0]]), vacuum=(12.0, 12.0, 12.0))
-    text = render_script(s, PySCFConfig(net_charge=-1, verbose_comments=False))
-    assert "charge     = -1," in text
-
-
-# --------------------------------------------------------------------- #
 #  D3 -- vacuum comes with the STRUCTURE (cell_padding removed 2026-07)  #
 #                                                                       #
 #  render_fdf derives the vacuum box from struct.resolve_cell() (bbox + #

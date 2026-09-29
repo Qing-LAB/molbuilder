@@ -980,8 +980,8 @@ def test_a_field_off_its_recommended_value_raises_the_panel(
         num.dispatchEvent(new Event("input", {bubbles: true}));
         // The panel tags each row's checkbox with the SCHEMA field name,
         // which is the input's id minus the engine prefix, dashes to
-        // underscores -- `p-mesh-cutoff` -> `mesh_cutoff`, `py-spin` ->
-        // `spin`.  Matching on that ties the row to the field that moved
+        // underscores -- `p-mesh-cutoff` -> `mesh_cutoff`, `py-basis` ->
+        // `basis`.  Matching on that ties the row to the field that moved
         // without depending on how the label happens to be marked up.
         return {was: was, id: num.id,
                 name: num.id.replace(/^p(y)?-/, "").replace(/-/g, "_")};

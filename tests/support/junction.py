@@ -146,7 +146,7 @@ def spectra_sidecar(path):
         equilibrium_elements=list(s.elements),
         equilibrium_positions_ang=[[float(x) for x in row] for row in s.positions],
         modes=[],
-        config={"method": "UKS"},
+        config={"method": "DFT", "spin_treatment": "unrestricted"},
     )
     dump_spectra_json(results, path)
     return path

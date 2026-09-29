@@ -1,4 +1,5 @@
-/* dom.js — the one element builder the Results tab's record viewers share.
+/* dom.js — the one element builder the Results tab's record viewers and the
+ * chemistry card (lib/chemistry.js, on the three form tabs) share.
  *
  * `el(tag, cls, text)`: a new element with a class and, when given, its
  * text -- written as textContent, never as HTML, so a record's strings

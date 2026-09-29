@@ -16,7 +16,9 @@ from ..structure import Structure
 def spectra_render_checks(struct: Structure,
                           cfg) -> List[Issue]:
     """PySCF SCIENTIFIC advisories — THE render gate for a vibration
-    deck (grid / amplitude / parity / method / open-shell).
+    deck (grid / amplitude / the mode selection / the frozen set).  The
+    charge and the spin are the electronic state's one family, asked from
+    `validate` for every kind.
 
     MOVED at P3 (2026-08-21) from the retired
     ``PySCFSpectraEngine.render_checks`` classmethod, unchanged in
@@ -102,104 +104,13 @@ def spectra_render_checks(struct: Structure,
             where="config.scf_conv_tol",
         ))
 
-    # ---- Electron-count parity (THE standard pre-SCF check) ----
-    # PySCF's ``spin`` = 2S = n_unpaired = n_alpha - n_beta.  Its
-    # parity must match the total electron count
-    # (Σ Z - charge).  Catching this at preflight gives a clearer
-    # error than PySCF's runtime "Mol.nelectron is odd, but spin=0".
-    from ..chemistry import (check_spin_charge_parity,
-                              detect_open_shell_metals,
-                              explain_metal_spin)
-    # A LABEL NAMING NO ELEMENT DOES NOT ARRIVE HERE AS AN EXCEPTION.
-    # This used to catch `KeyError` and report the raw symbol itself;
-    # `check_spin_charge_parity` now stands down on an unresolvable label
-    # and returns None (`chemistry.every_label_resolves`), because the
-    # finding belongs to `check_species_labels`, which names the engine
-    # and says what to do.  Two reporters for one fact is what that move
-    # ended, so the catch went with it rather than sitting unreachable.
-    parity_err = check_spin_charge_parity(struct, cfg.charge, cfg.spin)
-    if parity_err:
-        # Severity is the explicit-vs-guessed rule, shared with the
-        # engine validator (G-1d) and mirroring _validate_siesta's: a
-        # mismatch is an ERROR whenever either number is the user's own
-        # claim -- a nonzero spin is always explicit (the default is 0),
-        # and a set net_charge is explicit.  Only the BOTH-GUESSES case
-        # (default spin 0, auto-detected charge) stays a WARN nudging
-        # toward an explicit charge: the phosphate heuristic sees only
-        # phosphates, so the guess may be what is wrong, not the
-        # physics, and refusing on two guesses would block a legitimate
-        # run.  A config with no `net_charge` field types its charge
-        # directly -- explicit.
-        _raw = getattr(cfg, "net_charge", "typed-directly")
-        if _raw is None and int(getattr(cfg, "spin", 0) or 0) == 0:
-            issues.append(Issue(
-                severity="warn",
-                message=(parity_err
-                         + "  The charge here came from auto-detection "
-                           "(phosphates only); if it missed something, "
-                           "set net_charge explicitly."),
-                where="config.charge",
-            ))
-        else:
-            issues.append(Issue(
-                severity="error",
-                message=parity_err,
-                where="config.charge",
-            ))
+    # The charge, the spin and the method are NOT judged here: they are the
+    # electronic state's, and `validate` asks its one family once for every
+    # engine and kind (`validation.chemistry.check_electronic_state`,
+    # `science/chemistry-correctness.md` § 2a).  This held a third parity
+    # copy with its own severity rule, a fourth closed-shell test, and a
+    # method whitelist the catalogue's choices already enforce.
 
-    # ---- Open-shell metal sanity check ----
-    # Delegated to the shared validator so the Spectra preflight,
-    # the SIESTA/PySCF Build-tab preflights, and the form's
-    # detection chip all read from the same source of truth
-    # (``ChemistryAnalysis.suggested_treatment``).  The pre-2026-06-13
-    # Au-BDT-Au incident was caused by a parallel ``metals``-only
-    # check in this very block — see docs/web/ui-contract.md
-    # Rule 1.  ``metals`` (the flat detection list) is still computed
-    # so the supplemental ``explain_metal_spin`` info-line below
-    # can echo (element, spin) → (likely oxidation state) for
-    # non-spin=0 cases.
-    from . import check_open_shell_metal
-    method_upper = cfg.method.upper()
-    is_closed_shell = (cfg.spin == 0
-                       and method_upper in ("RKS", "RHF"))
-    issues.extend(check_open_shell_metal(
-        struct,
-        is_closed_shell=is_closed_shell,
-        engine_label=f"PySCF spectra ({cfg.method})",
-    ))
-    metals = detect_open_shell_metals(struct)
-    if metals and not is_closed_shell:
-        # Metal present + the user DID pick a non-default spin.
-        # Echo back what their (element, spin) implies so they can
-        # sanity-check the oxidation state.  Severity=info so it
-        # doesn't add to the warn/error count; it just labels.
-        for m in metals:
-            hint = explain_metal_spin(m, cfg.spin)
-            if hint:
-                issues.append(Issue(
-                    severity="info",
-                    message=(
-                        f"{m} + spin={cfg.spin}: {hint}.  "
-                        f"Confirm against your experimental data "
-                        f"(Mössbauer / UV-Vis / EPR) or the "
-                        f"chemistry of the rest of the molecule "
-                        f"(porphyrin protonation, axial ligands)."
-                    ),
-                    where="config.spin",
-                ))
-
-    # Method / spin / functional compatibility.
-    method = cfg.method.upper()
-    if method not in ("RKS", "UKS", "RHF", "UHF"):
-        issues.append(Issue(
-            severity="error",
-            message=(f"SCF method '{cfg.method}' isn't supported "
-                     f"here.  Pick one of RKS (closed-shell DFT, "
-                     f"the usual default), UKS (open-shell DFT), "
-                     f"RHF (closed-shell Hartree-Fock), or UHF "
-                     f"(open-shell Hartree-Fock)."),
-            where="config.method",
-        ))
     # The explicit list, read by its one reader (`explicit_modes`).  Text
     # it cannot read is refused here, before a deck is written from it;
     # an empty list is a run that computes no orbital-energy data though
@@ -382,20 +293,6 @@ def spectra_render_checks(struct: Structure,
     # by the honesty gate's render probe: a validator claiming a
     # capability is absent is the same drift as a diagram drawing a
     # file that is gone.
-
-    # Method / spin consistency (ports the Build-tab guards from
-    # validation.pyscf; the old "cfg doesn't carry spin yet" note here
-    # was STALE -- SpectraConfig HAS a `spin` field, so RKS/RHF + spin>0
-    # and open-shell RKS on an odd-electron system used to pass the render
-    # gate unflagged).  A restricted method (RKS/RHF) forces nα=nβ ⇒ 2S=0,
-    # so a non-zero spin with it is a contradiction.
-    method_u = cfg.method.upper()
-    # (The restricted-method-with-spin refusal and the radical arm are
-    # the ENGINE validator's, unconditional for both kinds -- G-1c's
-    # error-level finding and the parity block's folded advice.  Copies
-    # of both stood here and double-fired on every vibration deck, one
-    # of them at a softer severity than the refusal it duplicated;
-    # deleted with the U6 close, 2026-08-22.)
 
     # Frozen-atom sanity: every explicit index must be within
     # the structure's atom range.  Element / residue rules are
@@ -740,15 +637,22 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
     # THE STRUCTURE'S OWN EVIDENCE beside the statement (vibration.md § 2.2):
     # the record a finished relaxation left on the pair, judged against
     # THIS calculation's tolerance and level of theory.
+    from ..chemistry import every_label_resolves
+    from ..electronic_state import electronic_state
     from ..parse.contract import contract_fields_of
     from .sidecar import check_relaxation_record
+    # The electronic state is part of the level of theory the record is
+    # compared against, RESOLVED (ES7): a frequency at a geometry relaxed
+    # for another charge or spin is usually a mistake.
+    _state = (electronic_state(struct, cfg, kind="vibration")
+              if every_label_resolves(struct) else None)
     # Against the FILE's coordinates (`design`), not the placed subject: a
     # placement is a rigid shift the record never saw (`validate`, ``design``).
     issues.extend(check_relaxation_record(
         design if design is not None else struct, engine="siesta",
         already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
         force_tolerance_ev_ang=(float(_tol) if _tol is not None else None),
-        level=contract_fields_of(cfg)))
+        level=contract_fields_of(cfg, state=_state)))
     from .sidecar import check_unconsumed_region_labels
     issues.extend(check_unconsumed_region_labels(
         struct, engine="SIESTA vibration"))

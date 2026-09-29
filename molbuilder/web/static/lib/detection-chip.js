@@ -1,30 +1,20 @@
 /**
- * detection-chip.js — shared chip text + injection helper.
+ * detection-chip.js — each form's one-line chemistry summary.
  *
- * Every engine tab that renders workflow-group cards (Profile /
- * Stage / Budget) and also asks the analyzer about the loaded
- * structure surfaces the same one-line chemistry summary on the
- * Profile + Budget cards.  The text is built from the
- * /api/structure/analyze response; the chip is a plain <span> with
- * class .workflow-detection-chip whose colour is auto-derived from
- * the host card's --workflow-group-accent token (see
- * lib/form-schema.css).
+ * The chip on a form's Profile card says what that FORM's calculation will
+ * carry -- its own charge and spin, as the electronic-state class resolved
+ * them for exactly what the form says (/api/structure/analyze's
+ * ``state.<engine>``, docs/science/chemistry-correctness.md § 2a).  One form,
+ * one chip, from that form's own answer: a page with a SIESTA and a PySCF form
+ * shows two chips that may differ, because the two forms may say different
+ * things.  The Budget card's chip is a size hint.
  *
- * Before this module existed (2026-06-13) the helpers lived inside
- * viewer.js as private closures, which meant the Transport tab —
- * which has the highest-value chip use case (Au junctions) —
- * silently rendered no chip even after analyzing.  Per web-ui-
- * coherence.md Rule 1 every UI surface that talks about open-vs-
- * closed shell reads ChemistryAnalysis.suggested_treatment from one
- * function; this module is the single chip implementation that
- * enforces that for the chip surface.
+ * (Until 2026-09-28 the chip read one analyzer verdict for the whole page,
+ * judged at charge 0, and never read the form's charge.)
  *
  * Exports (on window.molbuilder.detectionChip):
- *   buildText(resp) → { profile, budget } — pure text helper
- *   render(resp, opts) → number of headers patched
- *
- * resp shape (from /api/structure/analyze):
- *   { n_atoms, metals: [...], suggested: { pyscf: {...}, siesta: {...} } }
+ *   buildText(resp, engine) → { profile, budget } — pure text helper
+ *   render(resp, hosts) → number of headers patched (null resp: removed)
  */
 (function () {
     "use strict";
@@ -32,59 +22,33 @@
     var root = (typeof globalThis !== "undefined") ? globalThis
             : (typeof window !== "undefined") ? window : this;
 
-    function buildText(resp) {
+    function _spin(st) {
+        var t = st.spin_treatment.value, c = st.unpaired_electrons.value;
+        if (t === "restricted") return "closed shell";
+        return t + (c === "free" ? ", moment free" : ", 2S = " + c);
+    }
+
+    function buildText(resp, engine) {
         var n_atoms = (resp && typeof resp.n_atoms === "number")
             ? resp.n_atoms : null;
-        var metals = (resp && Array.isArray(resp.metals))
-            ? resp.metals : [];
-        // The analyzer's own verdict rides the response top-level
-        // (`suggested_treatment` -- the ONE function's answer, sent
-        // since the U6 close; the per-engine suggested blocks never
-        // carried it, so the old read order always fell through to the
-        // spin heuristic).  The heuristic stays as the last fallback
-        // for older responses.
-        var sug = (resp && resp.suggested) || {};
-        var sugP = sug.pyscf || sug.siesta || {};
-        var treatment = (resp && resp.suggested_treatment)
-            || ((typeof sugP.spin === "number" && sugP.spin > 0)
-                ? "open" : "closed");
-        var spinNum = (typeof sugP.spin === "number") ? sugP.spin : null;
+        var metals = (resp && Array.isArray(resp.metals)) ? resp.metals : [];
+        var st = resp && resp.state && resp.state[engine];
 
-        // --- Profile line --------------------------------------- //
-        // Format priority (highest first):
-        //   open-d metal      → "<N> atoms · <Metals> · open-shell (2S=<n>)"
-        //   noble-metal cluster→ "<N> atoms · <Metal> cluster · closed-shell singlet"
-        //   pure organic      → "<N> atoms · closed-shell singlet"
-        var sysLine = (n_atoms != null) ? (n_atoms + " atoms") : "";
-        if (metals.length > 0) {
-            var list = metals.join(", ");
-            if (treatment === "open") {
-                var spinHint = (spinNum != null)
-                    ? " (2S=" + spinNum + ")" : "";
-                sysLine = sysLine
-                    ? sysLine + " · " + list + " · open-shell" + spinHint
-                    : list + " · open-shell" + spinHint;
-            } else {
-                sysLine = sysLine
-                    ? sysLine + " · " + list
-                          + " cluster · closed-shell singlet"
-                    : list + " · closed-shell singlet";
-            }
-        } else {
-            var closed = (treatment === "closed");
-            var tag = closed
-                ? "closed-shell" + (spinNum === 0 ? " singlet" : "")
-                : "open-shell"
-                      + (spinNum != null ? " (2S=" + spinNum + ")" : "");
-            sysLine = sysLine ? sysLine + " · " + tag : tag;
+        // --- Profile line: this form's own state ------------------------- //
+        var parts = [];
+        if (n_atoms != null) parts.push(n_atoms + " atoms");
+        if (metals.length) parts.push(metals.join(", "));
+        if (st) {
+            parts.push(_spin(st));
+            var q = st.net_charge.value;
+            if (q) parts.push("charge " + (q > 0 ? "+" : "") + q);
         }
+        var sysLine = parts.join(" · ");
 
-        // --- Budget line ---------------------------------------- //
-        // Size-aware hint.  Au-BDT-Au-class systems (≥ 150 metallic
-        // atoms) get an explicit "bump the caps" nudge because the
-        // cluster-context closed-shell argument doesn't help
-        // convergence speed.  Pure organics under 100 atoms get a
-        // "defaults are fine" nudge so the user doesn't second-guess.
+        // --- Budget line ------------------------------------------------ //
+        // Size-aware hint.  Au-BDT-Au-class systems (≥ 150 metallic atoms)
+        // get an explicit "bump the caps" nudge; pure organics under 100
+        // atoms a "defaults are fine" so nobody second-guesses them.
         var budgetLine = (n_atoms != null) ? (n_atoms + " atoms") : "";
         if (n_atoms != null) {
             if (n_atoms >= 150 && metals.length > 0) {
@@ -103,37 +67,43 @@
     }
 
     /**
-     * Inject (or refresh) the chip inside every workflow-group
-     * profile + budget header under ``opts.root`` (default: document).
-     * Idempotent — re-running replaces the chip text in place.
-     * Returns the number of headers patched (for tests).
+     * Inject (or refresh) the chip in every Profile and Budget card header
+     * inside each engine's form host (``hosts``: {engine: element}).
+     * Idempotent — re-running replaces the chip text in place; a null
+     * ``resp`` removes the chips.  Returns the number of headers patched.
      */
-    function render(resp, opts) {
-        opts = opts || {};
-        var host = opts.root || (root.document ? root.document : null);
-        if (!host || !host.querySelectorAll) return 0;
-        var chips = buildText(resp);
+    function render(resp, hosts) {
+        var n = 0;
         var sel = ".workflow-group--profile .workflow-group-header, "
                 + ".workflow-group--budget .workflow-group-header";
-        var headers = host.querySelectorAll(sel);
-        var n = 0;
-        for (var i = 0; i < headers.length; i++) {
-            var header = headers[i];
-            var card = header.closest(".workflow-group");
-            if (!card) continue;
-            var role = card.classList.contains("workflow-group--profile")
-                ? "profile" : "budget";
-            var text = chips[role];
-            if (!text) continue;
-            var chip = header.querySelector(".workflow-detection-chip");
-            if (!chip) {
-                chip = root.document.createElement("span");
-                chip.className = "workflow-detection-chip";
-                header.appendChild(chip);
+        Object.keys(hosts || {}).forEach(function (engine) {
+            var host = hosts[engine];
+            if (!host || !host.querySelectorAll) return;
+            var chips = buildText(resp, engine);
+            var headers = host.querySelectorAll(sel);
+            for (var i = 0; i < headers.length; i++) {
+                var header = headers[i];
+                var card = header.closest(".workflow-group");
+                if (!card) continue;
+                var role = card.classList.contains("workflow-group--profile")
+                    ? "profile" : "budget";
+                var text = chips[role];
+                var chip = header.querySelector(".workflow-detection-chip");
+                if (!text) {
+                    // No answer (no structure, or the server could not
+                    // give one): the chip goes rather than keep the last.
+                    if (chip) chip.remove();
+                    continue;
+                }
+                if (!chip) {
+                    chip = root.document.createElement("span");
+                    chip.className = "workflow-detection-chip";
+                    header.appendChild(chip);
+                }
+                chip.textContent = text;
+                n++;
             }
-            chip.textContent = text;
-            n++;
-        }
+        });
         return n;
     }
 

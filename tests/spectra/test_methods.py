@@ -274,7 +274,8 @@ class TestRenderMethodsMdFragment:
         class, Raman prose riding only when compute_raman is on."""
         from molbuilder.spectra import render_methods_md
         from molbuilder.pyscf.vibration_emitters import pyscf_methods_fragment
-        cfg = _spectra_cfg(method="UKS", compute_raman=True)
+        cfg = _spectra_cfg(spin_treatment="unrestricted",
+                           unpaired_electrons=2, compute_raman=True)
         md = render_methods_md(cfg, fragment_md=pyscf_methods_fragment(cfg))
         assert "pyscf.hessian.uks" in md
         assert "[Sun2020, Sun2018]" in md

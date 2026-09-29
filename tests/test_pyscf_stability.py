@@ -38,9 +38,12 @@ def _o2():
                      positions=np.array([[0., 0., 0.], [0., 0., 1.21]]))
 
 
-def _script(method="UHF", spin=2, **kw):
-    cfg = PySCFConfig(job_name="j", method=method, spin=spin,
-                      **{**_BASE, **kw})
+def _script(method="HF", treatment="unrestricted", count=2, **kw):
+    """Triplet O2, UHF by default -- the method, the spin treatment and the
+    count are the electronic state's three items (the class is composed
+    from them, `pyscf/layout.scf_class`)."""
+    cfg = PySCFConfig(job_name="j", method=method, spin_treatment=treatment,
+                      unpaired_electrons=count, **{**_BASE, **kw})
     return render_script(_o2(), cfg)
 
 
@@ -106,7 +109,7 @@ def test_a_method_that_cannot_be_checked_says_so():
 def test_closed_shell_gets_no_stability_block_but_still_runs_scf():
     """Closed-shell stability is a singlet->triplet question the user
     rarely asked -- but the SCF itself must not go missing with it."""
-    t = _script(method="RHF", spin=0)
+    t = _script(treatment="restricted", count=0)
     # Anchor on the EXECUTED form, not the bare name: a troubleshooting
     # comment elsewhere in the script mentions `mf.stability()` as a
     # thing the user could try, and a substring test reads that as a
@@ -119,5 +122,5 @@ def test_closed_shell_gets_no_stability_block_but_still_runs_scf():
 def test_open_shell_single_point_does_not_run_two_scfs():
     """The stability block already converged it; a second kernel would
     repeat the work and discard the stabilised orbitals."""
-    t = _script(method="UHF", spin=2, optimize=False)
+    t = _script(optimize=False)
     assert t.count("e = mf.kernel()") == 1

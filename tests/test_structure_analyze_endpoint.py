@@ -1,31 +1,20 @@
-"""Endpoint-shape tests for ``/api/structure/analyze`` post Phase 1c.
+"""``/api/structure/analyze`` -- the chemistry card's one door: its REFUSALS.
 
-The endpoint is now a thin (~25 LoC) iterator over the adapter
-registry; the chemistry analysis happens in
-``molbuilder.chemistry.analyze_structure``, the per-engine
-translation in each ``molbuilder.<engine>.auto_defaults`` module.
+PINS: ``docs/web/web-api.md`` § 5's row for this route and
+``docs/science/chemistry-correctness.md`` § 2a.3 (which engine runs which
+kind).  API-level, and only for what the pages cannot reach: every page sends
+the envelope its viewer holds, with a form for each engine the kind runs, so a
+body with no structure, an unreadable one, a symbol that names no element or a
+form for an engine that does not run the kind comes only from a caller outside
+the pages -- and must be a 400 that says why, never a 500.
 
-These tests pin:
-
-* The response shape documented in
-  ``docs/web/web-api.md`` § 5's row for this route (every top-level
-  key + each ``suggested.<engine>`` sub-shape).  It cited a "§ 10"
-  that the contract has never had -- the shape had no home until
-  2026-09-02, so the row was written from this route's own source.
-* The new-engine on-ramp — a freshly-registered adapter appears
-  in ``suggested`` without any endpoint code change.
-* The engine-agnostic rationale (no PySCF / SIESTA keyword in
-  the analyzer's rationale text).
-* Error paths — bad inputs surface as HTTP 400 with the canonical
-  ``{ok: false, error: ...}`` envelope, NOT 500 with a stack trace.
-
-Existing flavour-detection tests in ``test_pseudos.py`` cover the
-SIESTA / PySCF adapter outputs against real fixtures; this file
-covers the endpoint contract specifically.
+The ANSWER is pinned where it is made and where it is read: the class through
+prep in ``tests/test_electronic_state.py``, and the card, driven the way a
+person drives it, in ``tests/test_chemistry_card_e2e.py``.  (Until the M6
+review this file pinned the answers too, and a ``structure_path`` door the
+server re-read the file through.)
 """
 from __future__ import annotations
-
-from dataclasses import asdict, dataclass
 
 import pytest
 
@@ -44,165 +33,39 @@ def _post_analyze(web, body):
     return r, r.get_json()
 
 
-def _as_envelope(xyz: str) -> dict:
-    """The XYZ these tests are written around, delivered the way the route
-    takes it.
-
-    They posted ``structure_text`` until 2026-09-02, when that field was
-    removed -- it had been retired from `/api/spectra/render` on 2026-08-03
-    (the viewer holds no coordinate document and writes none, `molview.md`
-    § 11.7) and this route was missed by the sweep, so no page ever posted it
-    and only these tests reached it.  **Their SUBJECTS are unaffected** --
-    the response shape, the per-engine `suggested` blocks, the metal hints,
-    the engine-agnostic rationale -- exactly as when the same field left the
-    PDB workflow tests; only the delivery moved.
-    """
-    from molbuilder.structure import Structure
-    st = Structure.from_xyz(xyz)
-    return {"structure": {"elements": list(st.elements),
-                          "positions": [list(map(float, r))
-                                        for r in st.positions],
-                          "metadata": {}}}
+_FORMATE = {"structure": {
+    "elements": ["C", "O", "O", "H"],
+    "positions": [[0, 0, 0], [1.26, 0, 0], [-0.63, 1.09, 0], [-0.55, -0.95, 0]],
+    "metadata": {}}}
 
 
-# --------------------------------------------------------------------- #
-#  Top-level envelope                                                   #
-# --------------------------------------------------------------------- #
-
-
-def test_response_shape_carries_every_documented_key(web):
-    """Every key documented in web-api.md § 4 (the route catalogue) must appear in the
-    response on the happy path.  Pin against a refactor that
-    silently drops a field."""
-    xyz = "1\nFe\nFe 0 0 0\n"
-    r, body = _post_analyze(web, _as_envelope(xyz))
-    assert r.status_code == 200
-    assert body["ok"] is True
-    for key in ("n_atoms", "elements", "n_electrons_neutral",
-                 "metals", "metal_hints", "suggested", "warnings"):
-        assert key in body, f"response missing documented key {key!r}"
-
-
-def test_response_suggested_includes_both_built_in_engines(web):
-    """The built-in adapter registry covers SIESTA and PySCF.  Pin
-    that both appear in the response."""
-    xyz = "1\nFe\nFe 0 0 0\n"
-    _, body = _post_analyze(web, _as_envelope(xyz))
-    sug = body["suggested"]
-    assert set(sug.keys()) >= {"siesta", "pyscf"}, (
-        f"suggested missing built-in engines: {set(sug.keys())}"
-    )
-
-
-def test_suggested_siesta_shape(web):
-    """SIESTA adapter's dataclass field names appear verbatim in
-    ``suggested.siesta``.  Pin so a SiestaSuggestedParams rename
-    breaks this test before it breaks the UI form-fill path."""
-    xyz = "1\nFe\nFe 0 0 0\n"
-    _, body = _post_analyze(web, _as_envelope(xyz))
-    si = body["suggested"]["siesta"]
-    # THE KEY SET STAYS, and not as a shape check: `auto-detect.js` and
-    # `form-schema.js` spell these names, so a rename sails through Python
-    # (the route is `asdict(...)`, which follows the dataclass) and breaks the
-    # form-fill silently.  No Python type spans that boundary -- this is the
-    # same arrangement as `test_contact_distance_reference.py`'s JSON-vs-JS
-    # copy.  The docstring above already said so.
-    assert set(si.keys()) == {
-        "net_charge", "spin_treatment", "spin_total", "rationale"
-    }
-    # `si["spin_treatment"] in (...)` and `isinstance(si["spin_total"], float)`
-    # stood here.  Both are enforced at construction now
-    # (`SiestaSuggestedParams.__post_init__`, 2026-09-09): the vocabulary is
-    # `config.siesta.SPIN_TREATMENTS` -- ONE home, which the form field's
-    # `choices` reads too -- and `spin_total` is coerced, with a non-numeric
-    # raising where the wrong value is written rather than where it is read.
-
-
-def test_suggested_pyscf_shape(web):
-    """Same for the PySCF adapter."""
-    xyz = "1\nFe\nFe 0 0 0\n"
-    _, body = _post_analyze(web, _as_envelope(xyz))
-    py = body["suggested"]["pyscf"]
-    # Key set for the same reason as its SIESTA twin above: a JS-side rename
-    # tripwire, not a shape assertion.
-    assert set(py.keys()) == {"net_charge", "spin", "method", "rationale"}
-    # `isinstance(py["spin"], int)` and `py["method"] in {...}` are enforced by
-    # `PyscfSuggestedParams.__post_init__` now.  `method`'s legal values lived
-    # in a COMMENT beside `method: str` until 2026-09-09.
-
-
-def test_metal_hints_are_dicts_not_dataclasses(web):
-    """The endpoint serialises via asdict at the HTTP boundary.
-    The wire shape MUST be plain dicts so the JS consumer doesn't
-    need to know about Python dataclass internals."""
-    xyz = "1\nFe\nFe 0 0 0\n"
-    _, body = _post_analyze(web, _as_envelope(xyz))
-    hint = body["metal_hints"][0]
-    assert isinstance(hint, dict)
-    assert hint["element"] == "Fe"
-    assert isinstance(hint["common_spins"], list)
-    assert isinstance(hint["common_spins"][0], dict)
-
-
-# --------------------------------------------------------------------- #
-#  Engine-agnostic rationale                                            #
-# --------------------------------------------------------------------- #
-
-
-def test_analyzer_rationale_does_not_leak_engine_strings(web):
-    """The analyzer's rationale is engine-agnostic by design
-    (science/validation.md § 3).  Engine-specific keywords
-    ("UKS", "RKS", "SpinPolarized") belong in the per-engine
-    ``suggested.<engine>`` block, not in the analyzer's rationale.
-
-    Pin so a future refactor that adds engine names to the
-    rationale (re-fragmenting cross-engine consistency) surfaces.
-    """
-    xyz = "1\nFe\nFe 0 0 0\n"
-    _, body = _post_analyze(web, _as_envelope(xyz))
-    # The analyzer's rationale is echoed into each adapter's
-    # ``rationale`` field.  Either adapter's value would do here;
-    # use PySCF.
-    rationale = body["suggested"]["pyscf"]["rationale"]
-    for engine_keyword in ("UKS", "RKS", "RHF", "UHF",
-                            "SpinPolarized", "Spin.Total"):
-        assert engine_keyword not in rationale, (
-            f"engine-specific keyword {engine_keyword!r} leaked into "
-            f"the engine-agnostic analyzer rationale: {rationale}"
-        )
-
-
-# --------------------------------------------------------------------- #
-#  Error paths                                                          #
-# --------------------------------------------------------------------- #
+def test_a_form_for_an_engine_the_kind_does_not_run_is_refused(web):
+    """Transport runs on SIESTA alone (`CAPABILITY`, § 2a.3): unasked, only
+    SIESTA is answered, and a PySCF form for a transport calculation is
+    refused naming who runs it -- the route's engine list is the capability
+    table's, not a second copy of it."""
+    r, body = _post_analyze(web, {**_FORMATE, "kind": "transport"})
+    assert r.status_code == 200, body
+    assert set(body["state"]) == {"siesta"}
+    r, body = _post_analyze(web, {**_FORMATE, "kind": "transport",
+                                  "forms": {"pyscf": {}}})
+    assert r.status_code == 400, body
+    assert "transport runs on siesta" in body["error"], body
 
 
 def test_missing_body_returns_400(web):
-    """An empty body is a 400 that NAMES THE WAYS IN.
-
-    It asserted the word "required", which the message happened to contain;
-    what makes a refusal useful is that it says what to send instead. The
-    envelope leads, because it is what this route reads first and what every
-    other door takes -- the message listed only the two convenience inputs
-    until 2026-09-02, pointing a caller away from the standard shape.
-    """
+    """An empty body is a 400 that says what to send: the structure the page
+    holds, in the envelope -- the one way in."""
     r, body = _post_analyze(web, {})
     assert r.status_code == 400
     assert body["ok"] is False
     said = body["error"].lower()
     assert "structure" in said and "envelope" in said, said
-    assert "structure_path" in said, (
-        f"the refusal does not name the other way in: {said}")
 
 
 def test_an_UNREADABLE_ENVELOPE_returns_400_not_500(web):
-    """Garbage in, a refusal out -- never a stack trace.
-
-    This posted ``structure_text: "garbage"`` until 2026-09-02.  With that
-    field gone, the same subject -- *a body this route cannot turn into a
-    structure is the CALLER's error* -- is reached through the envelope,
-    which is now the only shape carrying coordinates.
-    """
+    """Garbage in, a refusal out -- never a stack trace: a body this route
+    cannot turn into a structure is the CALLER's error."""
     r, body = _post_analyze(web, {"structure": {"elements": ["C"],
                                                 "positions": "not a list"}})
     assert r.status_code == 400, body
@@ -211,63 +74,11 @@ def test_an_UNREADABLE_ENVELOPE_returns_400_not_500(web):
 
 
 def test_unknown_element_returns_400_not_500(web):
-    """An unknown element symbol must surface as a clean 400 (it
-    propagates from ``total_electrons`` via the analyzer).  Pre-Phase-1c
-    this leaked a 500 with a stack trace."""
-    # 'Xx' is not a real element; total_electrons KeyErrors on it.
-    #
-    # Built BY HAND rather than through `_as_envelope`, which parses XYZ and
-    # would reject 'Xx' in the test process -- the subject is what the ROUTE
-    # does with an element it cannot weigh, so the symbol has to reach it.
+    """A symbol that names no element is a clean 400 with the parser's own
+    words: the answer is an electron count, and a count with an atom left
+    out is a wrong one (`chemistry.resolve_element`)."""
     r, body = _post_analyze(web, {"structure": {
         "elements": ["Xx"], "positions": [[0.0, 0.0, 0.0]], "metadata": {}}})
     assert r.status_code == 400
     assert body["ok"] is False
     assert "Xx" in body["error"] or "unknown" in body["error"].lower()
-
-
-# --------------------------------------------------------------------- #
-#  New-engine on-ramp (registered_adapters round-trip)                  #
-# --------------------------------------------------------------------- #
-
-
-def test_freshly_registered_adapter_appears_in_endpoint_response(web):
-    """The endpoint iterates ``registered_adapters()`` — registering
-    a new adapter at runtime must surface it in ``suggested.<name>``
-    on the next request.  Catches a regression where the endpoint
-    hardcodes the engine list (which was the pre-Phase-1c state).
-    """
-    from molbuilder.chemistry import (
-        register_adapter, registered_adapters, _clear_adapters_for_test,
-    )
-    # Save + restore the registry around this test so the synthetic
-    # adapter doesn't leak into sibling tests (per the
-    # ba96288 lesson about test-fixture isolation).
-    saved = registered_adapters()
-
-    @dataclass(frozen=True)
-    class StubParams:
-        stub_charge: int
-        rationale: str
-
-    @register_adapter("stub_engine")
-    class StubAdapter:
-        name = "stub_engine"
-        @classmethod
-        def to_params(cls, analysis):
-            return StubParams(
-                stub_charge=analysis.suggested_charge,
-                rationale=analysis.rationale,
-            )
-
-    try:
-        xyz = "1\nFe\nFe 0 0 0\n"
-        r, body = _post_analyze(web, _as_envelope(xyz))
-        assert r.status_code == 200
-        assert "stub_engine" in body["suggested"]
-        stub = body["suggested"]["stub_engine"]
-        assert stub == {"stub_charge": 0, "rationale": stub["rationale"]}
-    finally:
-        _clear_adapters_for_test()
-        for name, cls in saved.items():
-            register_adapter(name)(cls)

@@ -50,11 +50,19 @@ emits a SIESTA input deck with ``NetCharge != 0``:
    2*vacuum), and prints the corrected value.
 
 Why a post-process script rather than an in-FDF tweak?  SIESTA has
-no native Makov-Payne keyword.  The correction is a single-number
-energy shift; it has zero effect on geometry, density, or any other
-output of the SCF — it is purely a finite-size cosmetic.  Emitting
-a separate script keeps the SIESTA input bit-for-bit standard while
-giving the user a one-command way to extract the corrected number.
+no Makov-Payne keyword: it applies the monopole term ITSELF, but only
+when it sees a molecule in a simple, face- or body-centred cubic cell
+(``madelung.f``; printed as ``siesta: Emadel`` and already summed into
+E_KS), and otherwise prints "Energy correction terms can not be
+applied" and adds nothing.  So the script reads ``Emadel`` first and
+adds only what SIESTA did not -- it added its own term on top of
+SIESTA's until the M6 review, a double count for every cubic box.  The
+correction is a single-number energy shift with no effect on geometry
+or density, so a separate script keeps the SIESTA input standard while
+giving the user a one-command way to the corrected number.  It is
+written only for a FINITE charged system: the point-charge formula is
+the wrong one for a charged slab or crystal
+(``science/chemistry-correctness.md`` § 2b).
 """
 
 from __future__ import annotations
@@ -204,10 +212,12 @@ Run AFTER SIESTA has finished:
     python3 makov_payne_correction.py --epsilon 4.0
     python3 makov_payne_correction.py --out my-job.out
 
-Reads the converged total energy from the SIESTA .out file and the
-lattice vectors from the same file (SIESTA echoes the final
-LatticeVectors block), computes the leading Makov-Payne
-finite-size correction
+Reads the converged total energy from the SIESTA .out file, then
+SIESTA's own monopole correction, `siesta: Emadel`.  SIESTA applies it
+itself for a molecule in a simple, face- or body-centred cubic cell, and
+it is then already in E_KS: this script adds NOTHING and says so.
+Otherwise it reads the final lattice vectors, computes the leading
+Makov-Payne finite-size correction
 
     DeltaE_MP = alpha * q^2 / (2 * epsilon_r * L)
 
@@ -234,11 +244,9 @@ the script will silently compute the WRONG number for:
      SlabDipoleCorrection support for this).  Makov-Payne is the
      3-D-periodic formula; applying it to a 2-D slab over-counts.
 
-If your cell is anything other than a vacuum box containing an
-isolated charged molecule, IGNORE the corrected value below.
-molbuilder emits this script unconditionally on NetCharge != 0;
-the script does not know whether the cell SIESTA used was a
-vacuum box, a crystal, or a slab.
+molbuilder writes this script only for a finite (isolated) charged
+system.  If the cell was edited into anything else by hand, IGNORE the
+corrected value below: the script does not know what the cell holds.
 
 Emitted by molbuilder because the input deck has NetCharge = {q:+d}.
 See Makov & Payne, Phys. Rev. B 51, 4014 (1995).
@@ -332,6 +340,18 @@ def parse_lattice_vectors_angstrom(text):
     return rows if len(rows) == 3 else None
 
 
+def parse_emadel(text):
+    """SIESTA's own monopole correction in eV -- the LAST
+    ``siesta: Emadel  =`` line of the energy decomposition -- or None when
+    the output has none.  Zero when SIESTA did not apply it."""
+    pat = re.compile(
+        r"siesta:\\s*Emadel\\s*=\\s*(-?\\d+\\.?\\d*(?:[eEdD][-+]?\\d+)?)")
+    m = pat.findall(text)
+    if not m:
+        return None
+    return float(m[-1].replace("d", "e").replace("D", "e"))
+
+
 def lattice_volume_angstrom3(cell):
     a, b, c = cell
     bx = b[1] * c[2] - b[2] * c[1]
@@ -384,37 +404,48 @@ def main():
               file=sys.stderr)
         sys.exit(1)
 
-    cell = parse_lattice_vectors_angstrom(text)
-    if cell is None:
-        print(f"error: could not parse 'outcell: Unit cell vectors' "
-              f"from {{out_path}}", file=sys.stderr)
-        sys.exit(1)
-    V = lattice_volume_angstrom3(cell)
-    L = V ** (1.0 / 3.0)
-
-    dE = compute_correction(NET_CHARGE, L, args.epsilon, args.madelung)
+    # SIESTA'S OWN TERM FIRST: when it applied the correction, E_KS already
+    # carries it, and adding ours would count the image energy twice.
+    emadel = parse_emadel(text)
+    by_siesta = emadel is not None and abs(emadel) > 1e-6
+    if by_siesta:
+        dE = 0.0
+    else:
+        cell = parse_lattice_vectors_angstrom(text)
+        if cell is None:
+            print(f"error: could not parse 'outcell: Unit cell vectors' "
+                  f"from {{out_path}}", file=sys.stderr)
+            sys.exit(1)
+        V = lattice_volume_angstrom3(cell)
+        L = V ** (1.0 / 3.0)
+        dE = compute_correction(NET_CHARGE, L, args.epsilon, args.madelung)
+        # Cell-shape sanity: warn if the cell is markedly non-cubic
+        # (the cubic Madelung loses validity).  Heuristic: max/min of
+        # the three lattice norms beyond 1.5 is "non-cubic".
+        norms = [math.sqrt(sum(x * x for x in row)) for row in cell]
+        if max(norms) / max(min(norms), 1e-9) > 1.5:
+            print("warning: cell is markedly non-cubic; the cubic Madelung "
+                  "constant under-estimates the correction.  Re-run with "
+                  "--madelung for the appropriate shape constant.",
+                  file=sys.stderr)
     # ADD the (positive) correction: the raw charged-periodic energy is
     # spuriously too low (Makov-Payne Eq. 15; compensating-background
     # Madelung self-energy is stabilizing).  [SIGN FIX 2026-07.]
     E_corr = E_raw + dE
 
-    # Cell-shape sanity: warn if the cell is markedly non-cubic
-    # (the cubic Madelung loses validity).  Heuristic: max/min of
-    # the three lattice norms beyond 1.5 is "non-cubic".
-    norms = [math.sqrt(sum(x * x for x in row)) for row in cell]
-    if max(norms) / max(min(norms), 1e-9) > 1.5:
-        print("warning: cell is markedly non-cubic; the cubic Madelung "
-              "constant under-estimates the correction.  Re-run with "
-              "--madelung for the appropriate shape constant.",
-              file=sys.stderr)
-
     print(f"# Makov-Payne post-process correction")
     print(f"#   SystemLabel       = {{SYSTEM_LABEL}}")
     print(f"#   NetCharge q       = {{NET_CHARGE:+d}}")
-    print(f"#   epsilon_r         = {{args.epsilon}}")
-    print(f"#   Madelung alpha    = {{args.madelung}}")
-    print(f"#   Lattice volume V  = {{V:.4f}} A^3")
-    print(f"#   Effective L=V^1/3 = {{L:.4f}} A")
+    if by_siesta:
+        print(f"#   SIESTA applied the term itself: Emadel = {{emadel:.6f}} "
+              f"eV, already in E_KS -- nothing is added here.")
+    else:
+        print(f"#   SIESTA did not apply it (Emadel "
+              f"{{'absent' if emadel is None else '= 0'}}): added here.")
+        print(f"#   epsilon_r         = {{args.epsilon}}")
+        print(f"#   Madelung alpha    = {{args.madelung}}")
+        print(f"#   Lattice volume V  = {{V:.4f}} A^3")
+        print(f"#   Effective L=V^1/3 = {{L:.4f}} A")
     print(f"#")
     print(f"E_total (raw, eV)         = {{E_raw:.6f}}")
     print(f"DeltaE_MP (correction, eV) = {{dE:.6f}}")

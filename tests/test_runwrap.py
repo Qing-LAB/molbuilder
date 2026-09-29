@@ -217,10 +217,14 @@ def test_render_siesta_emits_propor_diagnostic():
     """On SIESTA exit-non-zero with propor: ERROR, the wrapper prints
     a MULTI-CAUSE diagnostic (2026-06-26): pseudopotential FIRST (a
     null KB projector / mismatched pseudo), then -np as a legitimate
-    tunable, then spin.  Pin the key text so a regression doesn't
-    silently drop the diagnostic or revert to the old
-    'it's-never-a-config-bug, just-lower-np' framing that masks a
-    defective pseudo."""
+    tunable.  Pin the key text so a regression doesn't silently drop the
+    diagnostic or revert to the old 'it's-never-a-config-bug,
+    just-lower-np' framing that masks a defective pseudo.
+
+    A third cause -- a missing net spin on an open-shell metal -- stood
+    last until 2026-09-29.  Spin cannot cause it: `propor` is called only
+    from `matel_table.F90`, and IMAX = 0 is an all-zero radial table
+    (`science/overview.md` retracted it on 2026-09-17)."""
     _bind()
     text = render_run_wrapper(Path("/x/hemeC.fdf"), resources=Resources(mpi_np=15))
     # Captured run, not exec.  2026-06-26: the launch is piped through
@@ -240,8 +244,7 @@ def test_render_siesta_emits_propor_diagnostic():
     # (measured 2026-09-09).  `.index` still raises on an absent cause, so
     # presence is checked by the same line that checks sequence.
     causes = ["Kleinman-Bylander",              # 1: the pseudopotential
-              "np IS a legitimate tunable",     # 2: ranks, as a tunable
-              "Spin.Total"]                     # 3: spin
+              "np IS a legitimate tunable"]     # 2: ranks, as a tunable
     at = [text.index(c) for c in causes]
     assert at == sorted(at), (
         "the propor diagnostic must name the pseudopotential FIRST; got "
@@ -250,6 +253,7 @@ def test_render_siesta_emits_propor_diagnostic():
     assert "ekb=0" in text
     assert "molbuilder pseudo check" in text
     assert "bash hemeC.run.sh -np 8" in text   # names the actual basename
+    assert "Spin.Total" not in text, "the retracted spin cause is back"
     # Re-exit with SIESTA's code.
     assert 'exit "$_siesta_exit"' in text
 

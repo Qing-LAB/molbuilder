@@ -478,21 +478,27 @@ class EngineSeam:
     provide_data: Optional[Callable] = None
 
 
-def _siesta_sibling_artifacts(struct, cfg, deck_path: Path) -> None:
+def _siesta_sibling_artifacts(struct, cfg, deck_path: Path, *,
+                              kind: str) -> None:
     """The sibling files a SIESTA deck's own text PROMISES.
 
     A charged deck instructs ``python3 makov_payne_correction.py`` in its
     header -- a promise only ``convert`` kept until E6 (redo 2026-08-12):
     the described route rendered the same header and never wrote the
     script, so `prep` shipped an instruction to run a file that did not
-    exist.  Same writer both routes, so they cannot drift."""
-    from ..chemistry import resolve_net_charge
+    exist.  Same writer both routes, so they cannot drift.
+
+    The charge is the electronic state's (`science/chemistry-correctness.md`
+    § 2a) -- the one the deck beside it was written from.  The deck has just
+    been written from that state, so a label naming no element cannot reach
+    here.  ONLY FOR A FINITE SYSTEM (§ 2b): the script's formula is a
+    molecule's in a vacuum box, and a charged slab or crystal -- whose deck
+    says it gets no formula -- got the script too until the M6 review."""
+    from ..electronic_state import electronic_state
     from ..siesta.makov_payne import emit_correction_script
-    try:
-        q = resolve_net_charge(struct, getattr(cfg, "net_charge", None))
-    except Exception:
-        q = 0
-    if q != 0:
+    state = electronic_state(struct, cfg, kind=kind)
+    q = state.net_charge.value
+    if q != 0 and state.finite:
         emit_correction_script(fdf_path=deck_path,
                                system_label=cfg.system_label, q=q)
 
@@ -1252,7 +1258,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             if seam.sibling_artifacts is not None:
                 with _calling("sibling_artifacts", engine=task.engine,
                               where=script, log=log):
-                    seam.sibling_artifacts(struct, cfg, _jdir / script)
+                    seam.sibling_artifacts(struct, cfg, _jdir / script,
+                                           kind=_render_kind)
             with _calling("label_of", engine=task.engine, log=log):
                 _label = seam.label_of(cfg)
             _seed_trajectory_log(struct, cfg, _jdir, engine=task.engine,
@@ -1577,23 +1584,12 @@ def _resolve_transport(base, task, stage: str, allocation,
     """
     from ..config.siesta import SiestaConfig
     from ..resolve import ResolveError, resolve
-    from ..template import catalogue, find_template, select
+    from ..template import find_template
 
-    # A SHARED VALUE IS NOT A PER-STAGE OVERRIDE, and this is where that is
-    # refused.  `resolve` will not catch it: to `resolve` these are ordinary
-    # schema fields, so a stage naming one would simply get it -- and the
-    # device would be free to disagree with its own leads about the basis
-    # the self-energies were built on, which is the single thing that must
-    # be impossible.
-    #
-    # WHICH items are shared is the catalogue's own answer -- the `shared`
-    # marker (`engines/template.md` § 6.4, `engines/transport.md` § 3.8.6):
-    # every row the cited run fills in at `init`, and the rows no run
-    # answers that still bind every rung (the species order, the spin
-    # treatment, the pseudopotentials).  Gating on `citation` alone let a
-    # `species_order` override through until 2026-09-24.  Asked, not listed.
-    _items = select(catalogue(), engine="siesta")
-    shared = {i.name for i in _items if "transport" in i.shared}
+    # A SHARED VALUE IS NOT A PER-STAGE OVERRIDE -- refused by `resolve`, the
+    # one door every kind's prep goes through (`template.shared_by_every_stage`
+    # + `why_shared`).  This step refused transport's own copy until
+    # 2026-09-28, and no other kind refused at all.
     # AND THE RUNG THAT OWNS A VALUE (`stages`, the same § 6.4): "only these
     # rungs may; it is not that rung's business anywhere else".  Asked of
     # THE ONE DOOR the describe door asks too
@@ -1619,20 +1615,6 @@ def _resolve_transport(base, task, stage: str, allocation,
             f"(engines/template.md 6.4, the `stages` declaration).  "
             f"Move {'it' if len(_names) == 1 else 'them'} to the "
             f"rung that owns {'it' if len(_names) == 1 else 'them'}.")
-    for bag in (task.stages or ()):
-        clash = sorted(set(bag.overrides or {}) & shared)
-        if clash:
-            raise PrepError(
-                f"stage {bag.name!r} overrides "
-                f"{', '.join(map(repr, clash))}, which "
-                f"{'is' if len(clash) == 1 else 'are'} SHARED by every "
-                f"stage of this calculation -- the electrode and the "
-                f"device must not be able to disagree about "
-                f"{'it' if len(clash) == 1 else 'them'}.  Change "
-                f"{'it' if len(clash) == 1 else 'them'} in the template, "
-                f"where the value applies to all five rungs at once; it "
-                f"was filled in from the run you cited and it is yours to "
-                f"change (engines/transport.md 2a.7).")
 
     tmpl = find_template(base)
     if tmpl is None:
@@ -1650,12 +1632,11 @@ def _resolve_transport(base, task, stage: str, allocation,
     try:
         ps = resolve(tmpl.read_text(encoding="utf-8"), task, SiestaConfig,
                      allocation=allocation, stage=stage)
-    except (ResolveError, ValueError) as exc:
-        # ValueError as well, and it is not a net cast wide.  `resolve`'s
-        # own refusals -- an override naming no field, a value outside its
-        # declared range -- come out of `effective_config` as ValueError,
-        # and every one of them is a person's typo in a file they edited.
-        # Uncaught, a misspelled knob reached the user as a traceback.
+    except ResolveError as exc:
+        # `resolve` translates the template's and the overrides' refusals
+        # (ValueError) into its own since 2026-09-28 -- this caller caught
+        # ValueError too, and the generic caller did not, so a refused
+        # template was a named refusal here and a traceback everywhere else.
         raise PrepError(str(exc)) from exc
     # ONE ELEMENT.  A transport rung is a production run; its one axis is the
     # bias, and that is the device's own directory level rather than a sweep
@@ -1877,6 +1858,26 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     res = element.resources
     if label != task.label:
         config = dataclasses.replace(config, system_label=label)
+    # THE ELECTRONIC STATE BELONGS TO THE CALCULATION (ES1,
+    # `science/chemistry-correctness.md` § 2a) -- and on a transport ladder
+    # that is physics, not bookkeeping: TranSIESTA joins the leads'
+    # self-energies to the device, so every rung must solve the same spin
+    # channels.  A blank spin is decided ONCE, on the JUNCTION, and every
+    # rung -- a lead included -- is handed that answer.  Decided per rung, a
+    # molecule with an open-d centre would polarize the device beside
+    # non-polarized leads.
+    # The VALUES are folded into the config, so every reader of the rung's
+    # config -- the gate, the record, the pseudopotential screening -- reads
+    # the junction's answer; the STATE itself, with where each value came
+    # from, is handed to the deck writer, which says so in every rung
+    # (§ 2a.5).  Folded alone, the rungs read it as *stated*.
+    from ..electronic_state import electronic_state
+    _junction_state = electronic_state(composed.sorted.structure, config,
+                                       kind="transport")
+    config = dataclasses.replace(
+        config,
+        spin_treatment=_junction_state.spin_treatment.value,
+        unpaired_electrons=_junction_state.unpaired_electrons.value)
 
     # The pseudopotentials travel with the citation, and the screening runs
     # against THIS config -- the one the deck renders from -- because what
@@ -1911,7 +1912,8 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
             try:
                 spec = _siesta_spec_for(struct, cfg,
                                         stage_token=(token or None),
-                                        calculation="transport")
+                                        calculation="transport",
+                                        state=_junction_state)
             except ValueError as exc:
                 # `transport_spec` refuses an unknown rung with a message
                 # written FOR a person, and `_user_error_as_prep` translates

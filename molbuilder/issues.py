@@ -32,7 +32,7 @@ class Issue:
     severity : "error" | "warn" | "info"
         Errors block emission (render_fdf / render_script raise);
         warnings print to stderr but the run proceeds; info entries
-        are advisory (e.g. "Fe + spin=4 -> high-spin Fe(II)") and
+        are advisory (e.g. "Fe with 2S = 4: high-spin Fe(II)") and
         don't add to the warn count.
     message : str
         Human-readable, single-line, no trailing punctuation.  Should

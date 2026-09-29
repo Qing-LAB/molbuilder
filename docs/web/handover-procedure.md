@@ -215,8 +215,9 @@ and two copies of a contract drift.
 way this section once predicted.**  A hand-over exists because Task setup
 owns questions the sending tab leaves open (shape, stages, what varies).
 The composite leaves NONE open: the five stages and the hierarchical shape
-are fixed by design, the electronic contract arrives from the cited
-attempt's own deck at prep, and the knobs ride the stages' override bags.
+are fixed by design, the electronic contract — its spin included — is
+defaulted into the template from the cited run at `init`, where the shared
+panel edits it for every rung, and the knobs ride the stages' override bags.
 So the Transport tab describes DIRECTLY — `POST /api/transport/describe`
 answers with the finished `task.json`, the browser writes it where the
 user chose, and **nothing is awaiting** ([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md)

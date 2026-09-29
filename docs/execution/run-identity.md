@@ -203,7 +203,8 @@ What is left is what those coordinates are *of*:
 | the molecule — its formula (§ 2.0) | **yes** | a `.XV` is a list of positions for *these* atoms. Different atoms, and every coordinate lands somewhere it does not belong |
 | the positions | no | the output (above) |
 | the cell | **no — reported instead** (§ 5) | a `.XV` carries the cell too, so on a continue the saved cell **wins** and the new one is silently ignored. That is a fact to report, not a difference to pin |
-| basis, spin, XC | no | the geometry stays valid across all of them, and tuning the electronics while continuing is ordinary practice. A `.DM` of the wrong shape is caught by the engine — a failure it already reports, traded for one it cannot |
+| basis, XC | no | the geometry stays valid across both, and tuning the electronics while continuing is ordinary practice. A `.DM` of the wrong shape is caught by the engine — a failure it already reports, traded for one it cannot |
+| the charge and spin | no — **not a stage's to change** | they belong to the calculation, and a stage override of one is refused (ES1, [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a): a `.DM` or `.chk` is a density for one electronic state, and a density for another is exactly what the engine does NOT catch — it runs, from the wrong start. Changing the template's spin between continuations is the same hazard, one level up, and is not pinned yet |
 | mesh, tolerances, force, steps, algorithm | no | exactly what a description's stages vary |
 | ranks, threads, GPU | no | how fast it ran says nothing about whether the answer may be continued |
 

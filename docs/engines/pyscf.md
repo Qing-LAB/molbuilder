@@ -18,7 +18,8 @@ entry point is `render_script(struct, config) -> str` (`pyscf/input.py`).
 > **Vocabulary.** Cross-cutting terms (DFT, SCF, open/closed-shell, RKS/UKS, ECP)
 > are in the [`science/overview.md` glossary](?doc=science/overview.md). Key PySCF
 > names: **`gto.M(...)`** builds the molecule object (geometry + basis +
-> charge/spin); **`mf`** is the mean-field SCF object from `scf.RKS(mol)` (carrying
+> charge/spin); **`mf`** is the mean-field SCF object — `dft.RKS(mol)`, `dft.UKS(mol)`,
+`scf.ROHF(mol)`, …, the class composed from the method and the spin treatment (carrying
 > `mf.xc`, `mf.conv_tol`, `mf.kernel()`, …); **`conv_tol`** is the SCF energy
 > self-consistency threshold (Ha); **`d3bj`** is the Grimme-D3(BJ) dispersion
 > correction; **RI-J** is resolution-of-the-identity Coulomb fitting (a speedup).
@@ -291,25 +292,28 @@ one-process loop, where nobody looked in between.
 *Budget example:* a `continue` stage with `max_steps=200` and `continue_retries=2`
 runs up to `200 × (1 + 2) = 600` steps before it finally halts.
 
-**Spin / method.** (`cfg.spin` here is 2S = the number of unpaired electrons, *not*
-the multiplicity 2S+1.) `render_script` raises `ValueError` at generation time only for an
-**unknown** method.  A **restricted** method (`RKS`/`RHF`) with `cfg.spin !=
-0` is refused by the GATE as an error-severity preflight finding at
-`config.method` (`validation/pyscf.py`, G-1c 2026-08-21) — a named issue, not
-a stack trace, and the message points at `UKS`/`UHF`.  PySCF itself would not
-refuse it: `dft.RKS` / `scf.RHF` with `mol.spin != 0` silently return ROKS /
-ROHF (`pyscf/dft/__init__.py`, `pyscf/scf/__init__.py`) — which is why the gate
-refuses, and why W34 makes restricted-open an explicit choice the deck writes by
-name ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
-§ 2a).  *(This said RKS/RHF "assume `mol.spin == 0`" until 2026-09-25.)*  The shared electron-count
-parity rule and the open-shell-metal check
-([`science/validation.md`](?doc=science/validation.md)) run in the same
-gate; a negative spin is a separate error.
+**Spin / method — the class is composed, never re-ruled.** The electronic state
+([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a)
+gives four items: `method` (`DFT` · `HF`, never blank), `spin_treatment`
+(`restricted` · `restricted-open` · `unrestricted`), `unpaired_electrons` (2S, the
+number of unpaired electrons, *not* the multiplicity 2S+1) and `net_charge`; a blank
+means *work it out*. `pyscf/layout.scf_class` composes the class from the method and
+the treatment — R / RO / U, then KS or HF — and the deck writes it explicitly
+(`dft.UKS(mol)`, `scf.ROHF(mol)`, …), with `mol.spin` the count. PySCF itself would
+re-rule a mismatch without a word: `dft.RKS` / `scf.RHF` with `mol.spin != 0` return
+ROKS / ROHF (`pyscf/dft/__init__.py`, `pyscf/scf/__init__.py`). So the settings gate
+refuses what cannot run, by name, before any text: `restricted` with a count above 0
+(ES5, at `config.spin_treatment`, naming restricted-open and unrestricted), `free` —
+PySCF occupies exactly N↑ and N↓, so no moment floats (ES6) — and restricted-open for
+a vibration, which takes the analytic Hessian ROHF/ROKS lack (ES4). Parity at the
+resolved charge (ES3) and the open-shell guard (ES9) are the state's one family,
+asked from `validate`.
 
-**Charge.** The `gto.M(...)` charge matches `_resolve_charge(struct, cfg)`
-(`input.py`): `cfg.net_charge` wins if set (including `0`); otherwise
-`formal_charge_from_phosphates(struct)` (phosphate heuristic — charged side chains
-Asp/Glu/Lys/Arg/His are **not** counted, override via `cfg.net_charge`).
+**Charge.** The `gto.M(...)` charge is the state's, resolved in the one order: a
+stated `net_charge` wins (including `0`); otherwise the charge of the run the
+structure came out of (ES7); otherwise `formal_charge_from_phosphates(struct)`
+(the backbone phosphate rule — charged side chains Asp/Glu/Lys/Arg/His are **not**
+counted: state the charge). The deck writes each value beside its source.
 
 **ECP — two plain fields, and nothing is chosen for you.** `cfg.ecp` names the
 potential (`"lanl2dz"`); `cfg.ecp_atoms` names which elements get it, as element
@@ -476,7 +480,7 @@ simple organic molecule (10–60 atoms), the one change that matters is the basi
 
 ```python
 mol = gto.M(..., basis="def2-TZVP")                # was def2-SVP — THE key upgrade
-mf  = scf.RKS(mol).density_fit()                   # what molbuilder emits (auxbasis auto-picked);
+mf  = dft.RKS(mol).density_fit()                   # what molbuilder emits (auxbasis auto-picked);
                                                    # PySCF selects the basis-matched JK set
                                                    # (def2-tzvp-jkfit for def2-TZVP) — fits BOTH
                                                    # Coulomb + exact exchange, 5–10× faster
@@ -621,7 +625,7 @@ computed on the wrong electronic state. The tell is usually indirect: an energy
 that disagrees with literature by a few kcal/mol, a spin contamination value
 that looks off, or imaginary frequencies at a geometry that should be a minimum.
 
-**What molbuilder does about it.** For open-shell runs (UHF/UKS) the script
+**What molbuilder does about it.** For an unrestricted run (UKS/UHF) the script
 converges the SCF, calls `mf.stability()`, and if better orbitals come back
 re-converges from them — up to **3 restarts**
 (`_STABILITY_MAX_RESTARTS`). A restart counts as a repair only if the energy
@@ -629,9 +633,9 @@ re-converges from them — up to **3 restarts**
 chemical significance (1 kcal/mol = 1.6e-3 Ha) and comfortably above SCF noise.
 
 This runs **before** any geometry work, because optimizing on the wrong state
-and finding out afterwards helps nobody. Closed-shell runs are not checked: a
-restricted→unrestricted instability is a singlet-versus-triplet question you
-would have asked deliberately.
+and finding out afterwards helps nobody. Restricted and restricted-open runs are
+not checked: a restricted→unrestricted instability is a singlet-versus-triplet
+question you would have asked deliberately.
 
 **Why the energy and not the orbitals.** Comparing orbital *coefficients* to
 decide "did this change" looks obvious and is wrong. A degenerate shell — O₂'s
@@ -655,7 +659,7 @@ prints exactly one verdict line — quoted here verbatim from the emitter:
 | `stability: NOT CHECKED. The energy below has not been tested for a broken-symmetry solution.` | no claim either way |
 | `stability: NOT CHECKED -- this method does not implement it (<error>)` | the method has no `stability()`; printed alongside the line above |
 
-A closed-shell (RHF/RKS) run emits no stability block at all — see § 7.3 for why.
+A restricted or restricted-open run emits no stability block at all — see § 7.3 for why.
 
 A run that exhausts its restarts **warns and continues**. A hint does not end
 your run — but do not publish that geometry without looking at it.
@@ -702,9 +706,10 @@ template asked for.)*
 
 **Hartree–Fock has no functional and no grid; it takes the dispersion
 correction like any method.** Whether the method is a density functional is
-one answer, `PySCFConfig.is_dft` (RKS, UKS), asked by every deck line and
-check that depends on it ([`engines/vibration.md`](?doc=engines/vibration.md)
-§ 4.10). Under RHF and UHF the deck sets no `mf.xc` and no `mf.grids.level`,
+one answer — the `method` item, `DFT` or `HF` (`PySCFConfig.is_dft`) — asked by
+every deck line and check that depends on it
+([`engines/vibration.md`](?doc=engines/vibration.md) § 4.10). Under Hartree–Fock
+the deck sets no `mf.xc` and no `mf.grids.level`,
 `prep` warns about a functional changed from its default — on **both kinds**
 — and the grid advisory says nothing. The dispersion item is applied as
 written: Hartree–Fock has no electron correlation at all, so it misses
@@ -759,6 +764,8 @@ renaming a promised output file is a **major** bump. Purely additive changes (a 
 optional field or output) are minor.
 
 **Tests:** `tests/test_pyscf.py` — behavioural assertions over the generated script
-(output-file set, the one-`optimize()`-call shape, unknown-method
-`ValueError`, molwatch blocks; the in-script stage loop retired with
-§ 1.1a, and the spin refusal is the gate's, pinned in `tests/validation/`).
+(output-file set, the one-`optimize()`-call shape, molwatch blocks; the
+in-script stage loop retired with § 1.1a).  The method is an enum, so a value
+outside `DFT` / `HF` is refused by the settings gate; the class composed from the
+state, and the spin refusals, are pinned through prep in
+`tests/test_electronic_state.py`.

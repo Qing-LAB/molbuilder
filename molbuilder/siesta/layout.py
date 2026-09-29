@@ -80,16 +80,36 @@ SCF_TAIL_SECTION = Section(
 )
 
 
-def spin_section(*, polarized: bool, fixed: bool) -> Section:
-    """Spin, when there is any — built **per render**.
+#: The spin treatment in SIESTA's own words (``Src/spin_subs.F90``).  The
+#: item holds the engine-neutral word (`science/chemistry-correctness.md`
+#: § 2a.1); spelling it is this engine's business, like `_FMT` below.
+#: ``restricted-open`` has no spelling: SIESTA has no such formalism, and
+#: the settings gate refuses it by name before a deck is written (ES4).
+SPIN_SPELLING = {
+    "restricted":    "non-polarized",
+    "unrestricted":  "polarized",
+    "non-collinear": "non-colinear",
+    "spin-orbit":    "spin-orbit",
+}
 
-    A non-polarized calculation writes nothing: SIESTA's own default is what a
-    silent deck means here, and saying so is the honest emptiness rather than
-    an omission.
+#: (Each spelling is one of the words SIESTA accepts for its treatment --
+#: every one of which a READER of a SIESTA deck must know:
+#: `parse/fdf.SPIN_WORDS`, which lives with the reader because it travels
+#: beside a job where this package is not installed.)
+
+
+def spin_section(*, fixed: bool) -> Section:
+    """The spin -- always ``Spin``, and ``Spin.Fix`` + ``Spin.Total`` for a
+    pinned count.  Built **per render**, because the second depends on the
+    answer.
+
+    Written in every state since 2026-09-28: a non-polarized run wrote
+    nothing and left SIESTA's default to answer, which `template.md` § 6.6
+    rules out -- nothing reaches the engine by omission, and a spin decided
+    from the structure is a decision the deck should state.
     """
-    if not polarized:
-        return Section("", ())
-    return Section("", ("spin_treatment",) + (("spin_total",) if fixed else ()))
+    return Section("Spin", ("spin_treatment",)
+                   + (("unpaired_electrons",) if fixed else ()))
 
 
 
@@ -243,10 +263,13 @@ def line(derived: dict):
       for a relaxation -- and a Nosé run with no target temperature holds it at
       the initial one, which is why that value is resolved before the
       is-it-set guard rather than after;
-    * **``spin_total`` expands to two keywords**: the constraint has to be
-      switched on as well as given a value, and SIESTA ignores the number
-      without ``Spin.Fix``.  The pair comes from the declaration's ``expands``,
-      so the deck cannot write one without the other.
+    * **the spin comes from the electronic state** (`_spin_facts`), not
+      from the config: a blank item is decided by the class, so the field
+      holds ``None`` where the deck must write the answer.  A pinned count
+      expands to two keywords -- the constraint has to be switched on as well
+      as given a value, and SIESTA ignores the number without ``Spin.Fix`` --
+      and the pair comes from the declaration's ``expands``, so the deck
+      cannot write one without the other.
 
     **It was four functions until 2026-08-18** -- ``line``, ``spin_line``,
     ``mpi_line`` and ``geometry_line`` -- and that is why the writer built a
@@ -320,7 +343,28 @@ def line(derived: dict):
         pad = _PAD.get(param.name)
         return f"{key:<{pad}}{value}" if pad else f"{key} {value}"
 
+    def _spin(param):
+        # THE ELECTRONIC STATE'S VALUES, never the raw fields: a blank item is
+        # decided by the class (§ 2a), so the config holds `None` where the
+        # deck must write the answer -- `_spin_facts` put the answer in the
+        # context.  The pair's two keywords are the declaration's first two
+        # -- SIESTA's; the third is PySCF's.
+        if param.name == "spin_treatment":
+            treatment = derived.get("spin_treatment")
+            if treatment is None:
+                return None
+            pad = _PAD.get(param.name)
+            return f"{param.writes[0]:<{pad}}{SPIN_SPELLING[treatment]}"
+        n = derived.get("spin_pinned")
+        if n is None:
+            return None
+        keys = param.writes
+        return (f"{keys[0]:<18}.true.\n"
+                f"{keys[1]:<18}{float(n):.1f}")
+
     def _line(param: Parameter) -> Optional[str]:
+        if param.name in ("spin_treatment", "unpaired_electrons"):
+            return _spin(param)
         if param.name in computed:
             return _mpi(param)
         if param.name in override or param.name == "md_target_temperature":

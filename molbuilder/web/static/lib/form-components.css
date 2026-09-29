@@ -103,50 +103,69 @@ button.danger:disabled {
     font-size: var(--text-base);
 }
 
-/* ---- Auto-detect bar + rationale panel (scientific-validation §2.5) ---- */
-.auto-detect-bar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-sm2);
-    margin: 0 0 var(--space-sm);
-    padding: var(--space-sm) var(--space-sm2);
+/* ---- The chemistry card: the charge and spin a calculation carries ----
+ * (science/chemistry-correctness.md § 2.5, § 2a; `lib/chemistry.js`).  Each
+ * engine's answer is a short list: the value, then where it came from, in
+ * the secondary colour so the number reads first.  The card's own box is
+ * here too, so the one partial looks the same on all three tabs (its
+ * padding and heading lived in the Build page's sheet until the M6 review). */
+#chemistry-card {
+    padding: var(--space-lg2) var(--space-lg2);
 }
-.auto-detect-bar #auto-detect-btn { flex: 0 0 auto; }
-.auto-detect-bar #auto-detect-status {
+#chemistry-card > h2 {
+    font-size: var(--text-md);
+    margin-bottom: var(--space-md);
+}
+#chemistry-card > .hint {
+    margin: 0 0 var(--space-md);
+    color: var(--text-secondary);
+    font-size: var(--text-base);
+    line-height: 1.5;
+}
+#chemistry-status {
+    display: block;
+    margin: 0 0 var(--space-sm);
     color: var(--text-secondary);
     font-size: var(--text-base);
 }
-.auto-detect-panel {
+.chemistry-panel {
     margin: 0 0 var(--space-sm2);
+    font-size: var(--text-base);
+}
+.chemistry-state {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm2);
+}
+.chemistry-engine {
+    flex: 1 1 22rem;
+    min-width: 0;
     padding: var(--space-sm) var(--space-sm2);
-    background: var(--bg-card);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius);
-    font-size: var(--text-base);
 }
-.auto-detect-panel summary {
-    cursor: pointer;
+.chemistry-engine-name {
+    margin: 0 0 var(--space-xs);
+    font-size: var(--text-base);
     font-weight: 600;
 }
-.auto-detect-panel .auto-detect-rationale {
-    margin: var(--space-sm) 0;
-    color: var(--text-primary);
+.chemistry-items {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-xs) var(--space-sm2);
+    margin: 0;
 }
-.auto-detect-panel .auto-detect-warnings {
-    margin: var(--space-xs) 0;
-    padding-left: var(--space-lg);
-    color: var(--text-secondary);
-}
-.auto-detect-panel .auto-detect-warnings:empty,
-.auto-detect-panel .auto-detect-metals:empty {
-    display: none;
-}
-.auto-detect-panel .auto-detect-metals { margin: 0.3rem 0; }
-.auto-detect-panel .auto-detect-metals dt {
+.chemistry-items dt { font-weight: 600; }
+.chemistry-items dd { margin: 0; overflow-wrap: anywhere; }
+.chemistry-why { color: var(--text-secondary); }
+.chemistry-metals-box { margin-top: var(--space-sm); }
+.chemistry-metals-box summary { cursor: pointer; font-weight: 600; }
+.chemistry-metals { margin: 0.3rem 0; }
+.chemistry-metals dt {
     font-weight: 600;
     margin-top: var(--space-xs);
 }
-.auto-detect-panel .auto-detect-metals dd {
+.chemistry-metals dd {
     margin: 0 0 0 1.2em;
     color: var(--text-secondary);
 }

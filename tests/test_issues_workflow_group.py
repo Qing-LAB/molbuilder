@@ -60,7 +60,7 @@ class TestResolveWorkflowGroup:
             "config.max_scf_iter", cfg) == "budget"
 
     def test_pyscf_method_resolves_to_profile(self):
-        """PySCF method (RKS / UKS) is profile-level."""
+        """PySCF method (DFT / HF) is profile-level."""
         cfg = PySCFConfig()
         assert resolve_workflow_group(
             "config.method", cfg) == "profile"

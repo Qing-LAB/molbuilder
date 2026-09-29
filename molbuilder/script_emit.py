@@ -1171,7 +1171,7 @@ class DeckSpec:
     #: the form so it can be READ, not only closed over.
     #:
     #: Both engines already keep exactly this dict: SIESTA fills it before the
-    #: layout (its MEMBERSHIP depends on ``spin_polarized`` and ``relax_kind``),
+    #: layout (its MEMBERSHIP depends on ``spin_fixed`` and ``relax_kind``),
     #: PySCF fills it as its blocks render.  Until it was declared here, the
     #: only readers were the engine's own closures — the syntax door, the
     #: layout, the record blocks — so a value like ``block_size = 8`` reached

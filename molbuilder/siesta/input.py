@@ -31,6 +31,7 @@ from ..structure import Structure
 # molbuilder.config.siesta (the canonical location) or from
 # molbuilder.siesta (re-exported by siesta/__init__.py).
 from ..config.siesta import SiestaConfig
+from ..electronic_state import FREE, electronic_state
 # § 4 rule 2's reading of `restart`, shared with PySCF -- one field, one
 # rule, one place that reads it.
 from ..identity import continues
@@ -454,18 +455,24 @@ def _bench_marks_for(struct, cfg, block_size, bs_range) -> dict:
     )
 
 
-def _spin_facts(cfg) -> dict:
-    """Whether this deck constrains the spin, and whether it pins a value.
+def _spin_facts(state) -> dict:
+    """The deck's spin, read off the ONE electronic state
+    (`science/chemistry-correctness.md` § 2a) -- never off the raw fields.
 
-    ``spin_total`` EXPANDS to two keywords -- SIESTA ignores the number
-    without ``Spin.Fix`` -- so *which* items the section carries depends
-    on the answer, and the layout cannot be read until it exists.
+    The spin section always writes ``Spin`` (`template.md` § 6.6: nothing
+    reaches the engine by omission); ``Spin.Fix`` + ``Spin.Total`` join it
+    only for a pinned count beside ``Spin polarized`` -- SIESTA ignores the
+    number without ``Spin.Fix`` and stops on ``Spin.Fix`` at any other spin
+    (``read_options.F90``).  So which items the section carries depends on
+    the answer, and the layout cannot be read until it exists.
     """
-    polarized = cfg.spin_treatment != "non-polarized"
+    fixed = (state.spin_treatment.value == "unrestricted"
+             and state.pinned is not None)
     return {
-        "spin_polarized": polarized,
-        "spin_fixed": (polarized and cfg.spin_total is not None
-                       and cfg.spin_treatment == "polarized"),
+        # Scalars, so the pipeline log's `derived` rows read as values.
+        "spin_treatment": state.spin_treatment.value,
+        "spin_pinned": state.pinned if fixed else None,
+        "spin_fixed": fixed,
     }
 
 
@@ -663,7 +670,8 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                *, cell: Optional[np.ndarray] = None,
                stage_token: Optional[str] = None,
                calculation: str = "optimization",
-               vibration: Optional[dict] = None) -> "_sc.RenderedDeck":
+               vibration: Optional[dict] = None,
+               state=None) -> "_sc.RenderedDeck":
     """Format a Structure as SIESTA .fdf text.
 
     ``vibration`` is a force-constant deck's `vibration` block, built by
@@ -671,6 +679,11 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     record as given and never read here, because only `prep` holds its facts
     (`engines/vibration.md` § 5.3).  A force-constant deck also names the
     bundle that finishes its run (`DeckSpec.finish`, § 5.5).
+
+    ``state`` is a transport calculation's electronic state, which `prep`
+    resolves ONCE on the whole junction and hands to every rung
+    (`science/chemistry-correctness.md` § 2a, ES1) -- a rung's own structure
+    is not where a blank spin is decided.
 
     The box is ``cell`` when a caller passes one (Angstrom, row vectors), else the
     structure's resolved cell -- the one it states, or ``struct.resolve_cell()``'s
@@ -696,7 +709,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # rather than restating them.
         from ..transport.deck import transport_spec
         return transport_spec(struct, config or SiestaConfig(),
-                              stage_token=stage_token)
+                              stage_token=stage_token, state=state)
     if calculation not in ("optimization", "vibration"):
         raise ValueError(
             f"SIESTA renders 'optimization', 'vibration' and 'transport'; "
@@ -723,15 +736,12 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     species = _species_order(struct.elements, cfg.species_order)
     species_index = {s: i + 1 for i, s in enumerate(species)}
 
-    # ---------- net charge: explicit override or auto-detect ----------
-    # The rule itself lives in molbuilder.chemistry.resolve_net_charge
-    # (shared with the PySCF generator); here we only also track a
-    # user-facing comment label so the emitted FDF says WHY the
-    # NetCharge value was picked.
-    from ..chemistry import resolve_net_charge
-    auto_charge = resolve_net_charge(struct, cfg.net_charge)
-    charge_source = ("user-specified" if cfg.net_charge is not None
-                     else "auto (phosphate protonation)")
+    # ---------- the electronic state: ONE answer ----------
+    # `science/chemistry-correctness.md` § 2a.  The charge and the spin are
+    # decided once, by the class every reader asks, and this deck spells the
+    # answer -- it resolves nothing itself.  Each value carries where it came
+    # from, which the comments below write beside it.
+    state = electronic_state(struct, cfg, kind=calculation)
 
     # Validate every element has a species index
     for el in struct.elements:
@@ -935,11 +945,11 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # the same dict.  ONE channel, not one argument list per reader.
     if _vibration:
         from . import vibration_deck as _vib_deck
-        _derived: dict = {**_spin_facts(cfg),
+        _derived: dict = {**_spin_facts(state),
                           **_parallel_facts(cfg),
                           "fc": _vib_deck.fc_facts(struct, cfg)}
     else:
-        _derived = {**_spin_facts(cfg),
+        _derived = {**_spin_facts(state),
                     **_parallel_facts(cfg),
                     **(_relaxation_facts(cfg) or {})}
 
@@ -977,9 +987,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             _layout.SCF_TAIL_SECTION,
             _sc.Block("the restart group",
                       lambda s, c: _restart_group(s, c)),
-            *((_layout.spin_section(
-                   polarized=True, fixed=_derived["spin_fixed"]),)
-              if _derived["spin_polarized"] else ()),
+            _layout.spin_section(fixed=_derived["spin_fixed"]),
             _sc.Block("spin notes, net charge and k-points",
                       lambda s, c: _after_spin(s, c)),
             _layout.mpi_section(block_size=_derived["block_size"],
@@ -1373,109 +1381,109 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         ]
         out += _restart_group_lines(cfg)
 
-        # ---- Spin polarisation ---------------------------------------
-        # Targeted SIESTA version range: 4.1 -- 5.x.
-        #
-        # v5 introduced a unified `Spin <option>` keyword that supersedes
-        # the older `SpinPolarized true` form.  Recognised options
-        # include `non-polarized`, `polarized`, `non-collinear`, `spin-orbit`.
-        # The single-line `Spin polarized` form is what current docs
-        # recommend; v4 back-compat keepers still accept `SpinPolarized
-        # true` but the v5 manual marks it deprecated (gap #2).
-        #
-        # The total-spin pin requires TWO lines, not one (gap #1):
-        #   `Spin.Fix true`           -- enable the constraint (otherwise
-        #                                Spin.Total below is silently ignored)
-        #   `Spin.Total <value>`      -- target total spin moment in mu_B
-        # Pre-fix the generator emitted a single `SpinTotal <v>` token
-        # which is NOT a real SIESTA keyword -- the parser silently
-        # ignored it and the user got the spin-unrestricted ground state
-        # despite asking for a constrained multiplicity.
+        # The spin is not written here: it is the "Spin" section's, spelled
+        # from the electronic state by `layout.SPIN_SPELLING` (SIESTA 5's one
+        # `Spin <option>` keyword; the v4 `SpinPolarized` flag is retired),
+        # and a pinned count is the two-line `Spin.Fix` + `Spin.Total` pair --
+        # a single `SpinTotal <v>` token, which an early generator wrote, is
+        # not a SIESTA keyword and was silently ignored.
         return "\n".join(out) if out else None
 
     def _after_spin(struct, cfg) -> Optional[str]:
         """The spin notes, the net charge and the k-grid.
 
-        The notes open with the same guard the section above them is chosen
-        by: a note about a keyword the deck did not write would be a claim
-        with nothing behind it.  The charge and the k-grid follow because
-        neither is a run of catalogue items -- one is auto-detected from the
-        structure, the other is an fdf ``%block``.
+        The spin notes describe the ONE state the section above spelled
+        (§ 2a), each value with where it came from -- a reader of the deck
+        months later sees *detected: Fe is an open-d metal* beside the
+        number, not a bare number.  The charge and the k-grid follow because
+        neither is a run of catalogue items -- one is resolved with the
+        state, the other is an fdf ``%block``.
         """
         out: List[str] = []
-        if cfg.spin_treatment != "non-polarized":
-            if cfg.spin_total is not None and cfg.spin_treatment == "polarized":
-                if v: out += [
-                    "# Spin.Fix + Spin.Total: target total spin moment in mu_B",
-                    "# (= number of unpaired electrons).  Spin.Fix true MUST",
-                    "# accompany Spin.Total or the constraint is silently ignored.",
-                    "# Helps SIESTA's initial guess converge to the right",
-                    "# multiplicity; without it SIESTA may settle into a wrong",
-                    "# spin state.",
-                ]
-                if v and cfg.spin_total == 0.0:
-                    # SP-A: a constrained singlet ON TOP of open-shell DFT
-                    # is unusual -- the cheaper path is Spin non-polarized
-                    # (spin-restricted Kohn-Sham).  Surface this so a user
-                    # who landed here by accident sees the contradiction.
-                    out += [
-                        "# NOTE: spin_total = 0.0 with Spin polarized asks",
-                        "# for a constrained singlet via open-shell DFT (broken-",
-                        "# symmetry capable).  Most users wanting a singlet are",
-                        "# better served by Spin non-polarized -- the",
-                        "# spin-restricted formalism is cheaper and gives the",
-                        "# same answer.  Keep this if you specifically want",
-                        "# anti-ferromagnetic / broken-symmetry singlet.",
-                    ]
-            # Spin-state-sweep template when an open-shell metal is in
-            # the structure.  The "right" spin state for a transition
-            # metal complex isn't computable from element identity alone
-            # (depends on coordination chemistry + axial ligand field);
-            # the practical resolution is to run with each plausible
-            # spin and pick the lowest-energy convergence.
-            from ..chemistry import detect_open_shell_metals
-            _metals = detect_open_shell_metals(struct)
-            if v and _metals:
+        treatment, count = state.spin_treatment, state.unpaired_electrons
+        if v:
+            out += [
+                f"# Spin: {treatment.value} ({treatment.said});",
+                f"#   unpaired electrons (2S): {count.value} ({count.said}).",
+            ]
+            if _derived["spin_fixed"]:
                 out += [
-                    "",
-                    f"# --- Spin-state sweep template ({', '.join(_metals)}) ---",
-                    "# The right spin state for an open-shell metal complex",
-                    "# depends on the axial ligand field, not just element",
-                    "# identity.  Standard practice: run with each plausible",
-                    "# Spin.Total, pick the lowest-energy convergence.",
-                    "#",
-                    "# Fe(II) candidates (Z=26, d6):",
-                    "#   Spin.Total 0.0   low-spin   (CO / CN heme, strong-field)",
-                    "#   Spin.Total 2.0   intermediate (4-coord Fe-porphyrin, FeTPP)",
-                    "#   Spin.Total 4.0   high-spin  (deoxy-heme, bis-thiolate)",
-                    "# Fe(III) candidates (d5):",
-                    "#   Spin.Total 1.0   low-spin   (bis-imidazole)",
-                    "#   Spin.Total 3.0   intermediate (cyt P450)",
-                    "#   Spin.Total 5.0   high-spin  (met-myoglobin)",
-                    "#",
-                    "# Workflow: rename SystemLabel per run (so .XV / .DM don't",
-                    "# stomp), run each, compare the converged E_KS values.",
-                    "# Verify the winning state against Mossbauer / EPR / UV-Vis",
-                    "# data; calc-energy minimum and experimental ground state",
-                    "# don't always agree for borderline cases (spin crossover).",
+                    "# Spin.Fix + Spin.Total: the total spin moment the run is",
+                    "# held to, in mu_B (= the number of unpaired electrons).",
+                    "# Spin.Fix MUST accompany Spin.Total or SIESTA ignores the",
+                    "# number.",
                 ]
+                if state.pinned == 0:
+                    out += [
+                        "# NOTE: 2S = 0 beside Spin polarized asks for a",
+                        "# constrained singlet in open-shell DFT (broken-symmetry",
+                        "# capable).  A plain singlet is cheaper and the same",
+                        "# answer under Spin non-polarized (restricted); keep this",
+                        "# only for an anti-ferromagnetic / broken-symmetry singlet.",
+                    ]
+            elif count.value == FREE:
+                out += [
+                    "# The moment floats: no Spin.Fix, so SIESTA starts every",
+                    "# atom at its largest moment, aligned (m_new_dm.F90), and",
+                    "# the SCF finds the total.",
+                ]
+        # THE SPIN-STATE SWEEP, for an open-d metal centre solved
+        # unrestricted: its right count is not computable from the element
+        # (it depends on the coordination), and the practice is to run each
+        # plausible count and keep the lowest energy.  The candidates are the
+        # metals' own hints (`chemistry._METAL_SPIN_HINTS`, the table the
+        # chemistry card shows) -- for every metal present, not the
+        # Fe(II)/Fe(III) text this printed for any metal until 2026-09-28.
+        # Not under non-collinear or spin-orbit, where SIESTA stops on the
+        # `Spin.Fix` each candidate needs (ES6), and not for a repeating cell,
+        # whose moment floats: the M6 review found it printed for both.
+        hinted = [h for h in state.facts.metal_hints
+                  if h.common_spins and h.element in state.facts.open_d_metals]
+        if v and state.spin_treatment.value == "unrestricted" \
+                and state.finite and hinted:
+            out += ["",
+                    f"# --- Spin-state sweep template "
+                    f"({', '.join(h.element for h in hinted)}) ---",
+                    "# The right spin state of an open-shell metal centre",
+                    "# depends on its ligand field, not on the element.",
+                    "# Standard practice: run each plausible count as",
+                    "# unpaired_electrons, keep the lowest-energy convergence."]
+            for h in hinted:
+                out.append("#")
+                for sc in h.common_spins:
+                    out.append(f"#   Spin.Total {float(sc.spin):.1f}   {sc.label}")
+            out += [
+                "#",
+                "# Workflow: one calculation per count (so .XV / .DM do not",
+                "# stomp), compare the converged E_KS values, and verify the",
+                "# winner against Mossbauer / EPR / UV-Vis data -- the",
+                "# calculated minimum and the experimental ground state do not",
+                "# always agree for borderline cases (spin crossover).",
+            ]
 
         # ---- NetCharge -----------------------------------------------
-        # Either user-specified (cfg.net_charge != None) or auto-detected
-        # from phosphate protonation state.  SIESTA defaults to neutral and
-        # silently adds compensating electrons; we MUST set NetCharge for
-        # any non-zero charge or the electronic structure is wrong.
-        if auto_charge != 0:
-            if v: out += [
-                "",
-                f"# NetCharge: {auto_charge:+d} ({charge_source}).",
+        # Written at 0 too: nothing reaches the engine by omission
+        # (`template.md` § 6.6).  SIESTA would add or remove electrons for a
+        # non-zero value without a word, so the value always stands beside
+        # where it came from.
+        q = state.net_charge.value
+        if v:
+            out += ["", f"# NetCharge: {q:+d} ({state.net_charge.said})."]
+        # THE CHARGED-SYSTEM NOTE, keyed on the calculation's system
+        # (`science/chemistry-correctness.md` § 2b): a charged MOLECULE in a
+        # vacuum box has an image-charge error with a known leading term; a
+        # charged repeating cell -- a slab, a defect in a crystal -- does
+        # not, and gets no formula.  Both got the molecule's note and its
+        # script until the M6 review.
+        if q != 0 and v and state.finite:
+            out += [
                 "# Note: SIESTA adds a uniform compensating background charge",
                 "# for periodic-cell consistency.  For vacuum calcs of charged",
                 "# molecules set the structure's vacuum >= 25 A per side (Modify ->",
                 "# Cell) to suppress image-image Coulomb interactions; molbuilder",
                 "# warns if it's thinner.  To make a neutral system instead,",
-                "# either build with protonate_phosphates=True or pass a",
-                "# Config(net_charge=0) override.",
+                "# either build with protonate_phosphates=True or state",
+                "# net_charge = 0.",
                 "#",
                 "# IMPORTANT: residual image-charge artefact (Makov-Payne).",
                 "# Padding alone does NOT remove the leading image-charge",
@@ -1489,16 +1497,33 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 "# (1 in vacuum).  For q = +/- 1 at L ~ 15-25 A this is",
                 "# 0.5-1.5 eV -- much larger than chemical accuracy.",
                 "#",
+                "# SIESTA applies this correction ITSELF when it sees a",
+                "# molecule in a simple, face- or body-centred cubic cell: the",
+                "# term is printed as `siesta: Emadel` and is already in",
+                "# E_KS (madelung.f).  Otherwise it prints \"Energy correction",
+                "# terms can not be applied\" and adds nothing.",
+                "#",
                 "# molbuilder emits ``makov_payne_correction.py`` next to",
                 "# this FDF.  After SIESTA finishes, run:",
                 "#     python3 makov_payne_correction.py",
-                "# The script reads the .out, extracts the converged total",
-                "# energy and the final lattice vectors, computes",
-                "# DeltaE_MP, and prints the corrected total in eV.  Pass",
-                "# --epsilon <eps_r> if your medium isn't vacuum.",
+                "# It reads `siesta: Emadel` first and adds only what SIESTA",
+                "# did not: nothing when SIESTA applied the term, and",
+                "# DeltaE_MP for the final lattice vectors when it did not.",
+                "# Pass --epsilon <eps_r> if your medium isn't vacuum.",
                 "# See Makov & Payne, Phys. Rev. B 51, 4014 (1995).",
             ]
-            out.append(f"NetCharge       {auto_charge:+d}")
+        elif q != 0 and v:
+            out += [
+                "# Note: a CHARGED REPEATING CELL.  SIESTA adds a uniform",
+                "# compensating background charge, so the total energy is",
+                "# not comparable with a neutral cell's, and SIESTA's own",
+                "# monopole correction does not apply (not a molecule).  A",
+                "# point-charge correction in a cubic box is the wrong",
+                "# formula for a slab or a defect in a crystal, so molbuilder",
+                "# writes none: the energy needs a defect-specific treatment",
+                "# (science/chemistry-correctness.md § 2b).",
+            ]
+        out.append(f"NetCharge       {q:+d}")
         out.append("")
 
         # k-grid.  The block's fourth column is SIESTA's ``displ(3)`` -- the grid

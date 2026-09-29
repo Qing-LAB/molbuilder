@@ -408,9 +408,10 @@ def api_transport_describe() -> Any:
     # free.  Three questions, three markers, one catalogue
     # (`engines/transport.md` § 3.8.2; `engines/template.md` § 6.4).
     _cat = _T.catalogue()
-    _shared_names = {it.name for it in _T.select(_cat, engine="siesta",
-                                                  shared=True)
-                     if "transport" in it.shared}
+    # The one rule for "binds every stage" (`template.shared_by_every_stage`),
+    # which `resolve` refuses at prep for every kind -- asked here too, so
+    # the tab refuses while changing it is still free.
+    _shared_names = _T.shared_by_every_stage("siesta", "transport")
     _role_names = {it.name for it in _T.select(_cat, engine="siesta",
                                                 role=True)
                    if "transport" in it.role}
@@ -437,20 +438,16 @@ def api_transport_describe() -> Any:
             # SHARED, therefore not a per-stage override -- and that is the
             # reason, not "the citation owns it" (`engines/transport.md`
             # § 2a.7: the cited run DEFAULTS these values; what stays true
-            # is that every rung shares them, so giving ONE rung its own
-            # would let the device disagree with its own leads).
+            # is that every rung shares them).
             return jsonify({"ok": False,
                             "error": f"{_name!r} is shared by every stage "
-                                     f"of this calculation, so it cannot "
-                                     f"be a per-stage override: the "
-                                     f"electrode and the device must not "
-                                     f"be able to disagree about it.  "
-                                     f"Change it on the shared panel, which "
-                                     f"edits the calculation's template -- "
-                                     f"there it applies to all five rungs at "
-                                     f"once; it was filled in from the run "
-                                     f"you cited, and it is yours to "
-                                     f"change."}), 400
+                                     f"of this calculation, so it cannot be a "
+                                     f"per-stage override: "
+                                     f"{_T.why_shared(_name)}.  Change it on "
+                                     f"the shared panel, which edits the "
+                                     f"calculation's template -- there it "
+                                     f"applies to all five rungs at once."
+                            }), 400
     # A RUNG'S VALUE ON A RUNG THAT DOES NOT OWN IT -- the one door prep
     # asks too, so the tab and the cluster refuse alike.
     _foreign = foreign_overrides(bags)
@@ -507,6 +504,20 @@ def api_transport_describe() -> Any:
             stages=tuple(stages_for_transport(bags)))
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+    # The template's text through the one door `jobset init` uses too -- and
+    # a citation it refuses (a cited run that carried a net charge, ES7)
+    # is said here, by name, rather than failing the whole response.
+    # A BLANK STATE ITEM IS AN ANSWER, not an omission: "work it out", on
+    # the whole junction at prep -- what the chemistry card beside the panel
+    # already shows.  Written valueless, the citation's value not applied.
+    from molbuilder.template import STATE_ITEMS
+    _blank = sorted(k for k in STATE_ITEMS
+                    if k in shared_chosen and shared_chosen[k] in (None, ""))
+    try:
+        _tmpl_text = transport_template_text(cited.path, label=task.label,
+                                             blank=_blank, **_chosen)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
     return jsonify({
         "ok": True,
@@ -529,9 +540,7 @@ def api_transport_describe() -> Any:
         "files": [{"name": TASK_FILENAME,
                    "text": json_text(task.to_dict())},
                   {"name": _T.template_filename(task.label),
-                   "text": transport_template_text(cited.path,
-                                                   label=task.label,
-                                                   **_chosen)}],
+                   "text": _tmpl_text}],
         "notices": [],
     })
 

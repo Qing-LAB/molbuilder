@@ -1,0 +1,46 @@
+{#- The chemistry card: the charge and spin this calculation will carry.
+
+    ONE markup, three tabs (`web/audit-2026-08-05-tab-ui.md` § C1: three
+    hand-pasted copies of one set of ids is three chances for a rename to
+    reach two of them).
+
+    A blank charge or spin item is the instruction "work it out", and the
+    electronic-state class answers it once for the form, the checks and the
+    deck (`science/chemistry-correctness.md` § 2a).  This card shows that
+    answer for exactly what the forms say -- each value with where it came
+    from -- and follows every edit to a charge or spin field.  It changes no
+    setting.  (It held an Auto-detect button until 2026-09-28, which copied
+    a suggestion into the forms and overwrote them.)
+
+    Parameters:
+      `hint`           - what this tab's card is about, in prose; the
+                         default is the one sentence the two structure
+                         tabs share.
+      `chemistry_step` - the page's step number (2, or 3 on the transport
+                         tab).
+
+    JS: `lib/chemistry.js` (the card and the analyze call),
+        `lib/detection-chip.js` (each form's chip), `lib/dom.js`.
+    CSS: `lib/form-components.css` -- `#chemistry-card`, `.chemistry-*`, so
+    the card looks the same on every tab. -#}
+<section class="card" id="chemistry-card">
+  {#- The step number is the PAGE's: this card is step 2 on the two tabs
+      whose first card is the structure, and step 3 on the transport tab,
+      where the shared panel comes between. -#}
+  <h2>{{ chemistry_step | default(2) }}. Charge and spin</h2>
+  <p class="hint">{% if hint %}{{ hint }}{% else %}Leave a charge or spin
+      field blank and it is worked out from the structure &mdash; the charge
+      from its phosphate groups, then open or closed shell at that charge,
+      knowing whether the cell repeats.  The answer is below, for each engine
+      form, with its reason; type a value to state it
+      instead.{% endif %}</p>
+  <span id="chemistry-status" class="status" role="status"
+        aria-live="polite"></span>
+  <div id="chemistry-panel" class="chemistry-panel" hidden>
+    <div id="chemistry-state" class="chemistry-state"></div>
+    <details id="chemistry-metals-box" class="chemistry-metals-box" hidden>
+      <summary>Common spin states of the metals present</summary>
+      <dl class="chemistry-metals" id="chemistry-metals"></dl>
+    </details>
+  </div>
+</section>

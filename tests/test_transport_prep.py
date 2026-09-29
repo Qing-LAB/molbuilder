@@ -2229,3 +2229,64 @@ class TestFormBContract:
             f"could edit one line of the template: {msg}")
         assert "template" in msg, (
             f"...and it must name where the value IS changed: {msg}")
+
+
+def test_a_blank_spin_is_decided_once_on_the_junction_and_said_on_every_rung(
+        tmp_path):
+    """ES1 on the ladder (`science/chemistry-correctness.md` § 2a, the
+    transport rules): a spin the template leaves blank is decided ONCE, on
+    the whole junction, and every rung -- a gold lead included -- carries
+    that answer and says where it came from.  TranSIESTA joins the leads'
+    self-energies to the device, so decided on the lead's own atoms (gold in
+    a repeating cell: restricted) it would sit beside a polarized device.
+
+    The bridge carries an iron centre, and the citation's spin is blanked on
+    the template: iron in a repeating cell floats its moment."""
+    root = tmp_path / "projects"
+    struct = _junction_struct()
+    elements = list(struct.elements)
+    elements[elements.index("C")] = "Fe"
+    struct = struct.replace(elements=elements)
+    _write_junction(root, struct)
+    write_pseudos(root / _CITE, ["Fe"])
+    calc = _describe_transport(root)
+    tmpl = calc / "T.template.toml"
+    text = tmpl.read_text()
+    for item in ("spin_treatment", "unpaired_electrons"):
+        i = text.index(f"[item.{item}]")
+        j = text.find("[item.", i + 1)
+        j = len(text) if j < 0 else j
+        block = re.sub(r"(?m)^value = .*\n", "", text[i:j])
+        text = text[:i] + block + text[j:]
+    tmpl.write_text(text)
+
+    prep_calculation(calc, "electrode_L")
+    lead = (calc / "02_electrode_L" / "T_02_electrode_L.fdf").read_text()
+    assert _says(lead, "Spin", "polarized"), lead
+    assert "Spin.Fix" not in lead, "a floating moment pins nothing"
+    assert ("# Spin: unrestricted (detected: Fe is an open-d metal in a "
+            "repeating cell") in lead, lead
+    assert "Decided ONCE, on the whole junction" in lead
+    assert "# NetCharge: not written -- +0 (rule:" in lead
+
+
+@pytest.mark.parametrize("spelled", ["Spin polarized", "Spin COLLINEAR",
+                                     "SpinPolarized .true."])
+def test_a_cited_decks_spin_is_read_in_any_word_siesta_accepts(
+        tmp_path, spelled):
+    """ES7 from a DECK (`science/chemistry-correctness.md` § 2a): the cited
+    run's spin is written into the transport template -- read in every word
+    SIESTA 5.4.2 accepts for it (`spin_subs.F90`, case-blind) and from the
+    retired flag SIESTA still honours.  A polarized run with no ``Spin.Fix``
+    let its moment float.  (The reader knew only the writer's own spelling
+    until the M6 review, and read ``collinear`` as restricted.)"""
+    from molbuilder.template import one, read_template
+    root = tmp_path / "projects"
+    _write_junction(root, _junction_struct())
+    deck = root / _CITE / "Relax_01_coarse.fdf"
+    deck.write_text(deck.read_text().replace(
+        "SystemLabel Relax\n", f"SystemLabel Relax\n{spelled}\n", 1))
+    tmpl = read_template(
+        (_describe_transport(root) / "T.template.toml").read_text())
+    assert one(tmpl, "spin_treatment").value == "unrestricted"
+    assert one(tmpl, "unpaired_electrons").value == "free"

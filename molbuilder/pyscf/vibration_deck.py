@@ -120,18 +120,31 @@ class VibrationConfigView:
         # set here as empty lists and read by one unreachable branch in the
         # Methods renderer; both went with `SpectraConfig` (2026-08-22).
         self.frozen_indices = list(frozen)
-        # THE one charge rule (chemistry.resolve_net_charge), resolved
-        # once at the lift boundary: explicit wins, 0 included; only an
-        # unset charge runs the phosphate auto-detection.  `net_charge
-        # or 0` silently dropped that detection, so a nucleic-acid
-        # vibration with charge unset was a DIFFERENT calculation than
-        # its optimization sibling.
-        from ..chemistry import resolve_net_charge
-        self._charge = int(resolve_net_charge(struct, cfg.net_charge))
+        self._struct = struct
+        self._state = None
 
     @property
-    def charge(self) -> int:
-        return self._charge
+    def state(self):
+        """THE ELECTRONIC STATE, resolved once at the lift boundary
+        (`science/chemistry-correctness.md` § 2a) -- the charge, the count
+        and the SCF class the deck writes all come from it.  Lazily, because
+        the kind's science reads this view too and must not fail on a label
+        naming no element: the state is an electron count, and the label
+        check owns that finding.  (`net_charge or 0` stood here once and
+        silently dropped the phosphate rule, so a nucleic-acid vibration was
+        a different calculation from its optimization sibling.)"""
+        if self._state is None:
+            from ..electronic_state import electronic_state
+            self._state = electronic_state(self._struct, self._cfg,
+                                           kind="vibration")
+        return self._state
+
+    @property
+    def scf_class(self) -> str:
+        """``RKS`` / ``UKS`` / ``RHF`` / ``UHF`` -- composed from the state
+        (`pyscf/layout.scf_class`), never read off one field."""
+        from .layout import scf_class
+        return scf_class(self.state)
 
     @property
     def max_memory_mb(self) -> int:
@@ -727,7 +740,12 @@ def vibration_spec(struct: Structure, cfg, *,
             # progress log states them as the optimization deck's does.
             from .input import (_emit_molwatch_emitter,
                                 emit_scf_criteria_readback)
-            out.append("_mb_scf_probe = _mb_configure_scf(scf.RHF(mol))")
+            # The probe is THIS run's class (`layout.scf_class`), not a
+            # hard-coded `scf.RHF` -- which PySCF turned into ROHF under a
+            # nonzero spin, and which was never the solver the run built.
+            from .layout import scf_module
+            out.append(f"_mb_scf_probe = _mb_configure_scf("
+                       f"{scf_module(view.state)}.{view.scf_class}(mol))")
             out += emit_scf_criteria_readback("_mb_scf_probe")
             out.append("del _mb_scf_probe")
             out += _emit_molwatch_emitter(
@@ -771,9 +789,9 @@ def vibration_spec(struct: Structure, cfg, *,
                           "relaxation/thermo/IR blocks)", _vib_deck),),
         # The engine's own line/provenance answers, shared with the
         # optimization deck -- one syntax per engine, not per kind.
-        # The DFT test is membership, not "anything but HF": RHF/UHF are
-        # Hartree-Fock spellings too, and classifying them as DFT would
-        # emit mf.xc / grids lines into a wavefunction-method deck.
+        # The DFT test reads the method item -- DFT or HF, nothing else
+        # since 2026-09-28 -- so a Hartree-Fock deck writes no mf.xc /
+        # grids lines.
         line=_layout.line(cfg,
                           is_dft=cfg.is_dft),
         provenance_defaults=lambda c: {

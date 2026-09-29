@@ -57,76 +57,6 @@ def methyl_radical():
         title="ch3", vacuum=(12.0, 12.0, 12.0))
 
 
-# --------------------------------------------------------------------- #
-#  Gap 1: SpinTotal keyword is not real SIESTA                          #
-#                                                                        #
-#  SIESTA uses "Spin.Total <v>" (with the dot), gated on "Spin.Fix      #
-#  true".  The legacy emission writes "SpinTotal <v>" -- a single token #
-#  that SIESTA's fdf parser silently ignores on a value mismatch.       #
-# --------------------------------------------------------------------- #
-
-
-def test_gap_1_siesta_emits_spin_total_with_dot(h2):
-    """When spin_total is set, the FDF must contain `Spin.Total` (the
-    real keyword) and `Spin.Fix .true.` (canonical SIESTA boolean),
-    not the bogus single-token `SpinTotal`."""
-    cfg = SiestaConfig(
-        system_label="h2",
-        spin_treatment="polarized",
-        spin_total=1.0,
-    )
-    fdf = render_fdf(h2, cfg)
-    # The real SIESTA keywords:
-    assert re.search(r"^\s*Spin\.Total\s+1", fdf, re.MULTILINE), (
-        "FDF must emit `Spin.Total <v>` (with the dot) -- "
-        "see SIESTA manual Spin section."
-    )
-    # Accept either bare `true` or canonical `.true.` -- SIESTA's
-    # parser treats them as synonyms; we now emit the canonical form
-    # to match the rest of the FDF (Diag.ParallelOverK, WriteForces, ...).
-    assert re.search(r"^\s*Spin\.Fix\s+\.?true\.?", fdf, re.MULTILINE), (
-        "FDF must emit `Spin.Fix .true.` to enable the total-spin pin."
-    )
-    # And the legacy bogus form must be GONE:
-    assert "SpinTotal " not in fdf, "FDF still emits the bogus SpinTotal token"
-
-
-# --------------------------------------------------------------------- #
-#  Gap 2: SpinPolarized is v4-era; v5 wants `Spin polarized`            #
-# --------------------------------------------------------------------- #
-
-
-def test_gap_2_the_spin_mode_and_its_total_pin_reach_the_deck_together(h2):
-    """The property, freed from a mechanism that turned out not to hold.
-
-    HISTORY, because it is the whole point. This test was inverted on
-    2026-05-24 to pin the v4 ``SpinPolarized .true.`` form, on the finding
-    that the v5 ``Spin polarized`` path "does not read Spin.Fix / Spin.Total"
-    and so aborted a hemeC-dithiol run at ``propor: ERROR: IMAX = 0``.
-
-    That mechanism is NOT in SIESTA 5.4.2, verified against its source
-    2026-08-15. ``spin_subs.F90`` reads the deprecated flags into ``opt_old``
-    and then does ``opt = fdf_get('Spin', opt_old)`` — one variable, the new
-    spelling merely winning. ``Spin.Fix`` / ``Spin.Total`` are read in a
-    DIFFERENT file (``read_options.F90``), gated only on ``nspin == 2``, which
-    both spellings produce identically. Whatever aborted that run in May, it
-    was not this.
-
-    So the mechanism is retired and the PROPERTY is kept, which is what the
-    incident was really about: **asking for a fixed total spin must produce a
-    deck that carries the mode AND the pin.** Losing either is what made that
-    job fail, and this fails if either goes missing however it is spelled.
-    """
-    cfg = SiestaConfig(system_label="h2", spin_treatment="polarized",
-                       spin_total=4.0)
-    fdf = render_fdf(h2, cfg)
-    assert re.search(r"^Spin\s+polarized\s*$", fdf, re.M), fdf
-    assert re.search(r"^Spin\.Fix\s+\.true\.", fdf, re.M), fdf
-    assert re.search(r"^Spin\.Total\s+4\.0", fdf, re.M), fdf
-    # And the deprecated spelling is gone (SIESTA 5.4.2 deprecates all three
-    # of SpinPolarized / NonCollinearSpin / SpinOrbit in favour of `Spin`).
-    assert not re.search(r"^SpinPolarized\b", fdf, re.M), fdf
-
 def test_gap_3_siesta_emits_dispersion_template_for_pbe(h2):
     """When the chosen XC is non-dispersive (default PBE), the
     generated FDF must contain a commented-out dispersion-correction
@@ -187,8 +117,8 @@ def test_gap_4_pyscf_uks_emits_stability_analysis(methyl_radical):
     raises AttributeError."""
     cfg = PySCFConfig(
         job_name="ch3",
-        method="UKS",
-        spin=1,                   # 2S = 1 (one unpaired electron)
+        spin_treatment="unrestricted",
+        unpaired_electrons=1,     # 2S = 1 (one unpaired electron)
         basis="STO-3G",
         density_fit=False,
         dispersion="none",

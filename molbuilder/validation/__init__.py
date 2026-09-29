@@ -33,15 +33,16 @@ Package layout (split 2026-06-13; see
 
 * :mod:`molbuilder.validation.geometry`  — engine-agnostic geometry
 * :mod:`molbuilder.validation.metadata`  — dataclass-field driven
-* :mod:`molbuilder.validation.chemistry` — analyzer-backed shared rules
+* :mod:`molbuilder.validation.chemistry` — the shared chemistry rules, the
+  electronic state's one family among them
 * :mod:`molbuilder.validation.sidecar`   — frozen-atoms / region INFO
 * :mod:`molbuilder.validation.siesta`    — SIESTA-specific + aggregator
 * :mod:`molbuilder.validation.pyscf`     — PySCF-specific + aggregator
 
 Pre-split this all lived in one ``validation.py``.  The flat file
 worked while only ``validate()``/``_validate_siesta``/``_validate_pyscf``
-were callers; once Spectra + Transport preflights needed
-``check_open_shell_metal`` the import path through a private
+were callers; once Spectra + Transport preflights needed the shared
+open-shell check the import path through a private
 underscore-name in a 1326-LoC flat module became the smell that
 preceded the 2026-06-13 Au-BDT-Au drift incident.  The split is
 purely organisational — every function body, signature, and
@@ -70,8 +71,7 @@ from ..structure import Structure
 # them is the follow-up promotion proposed in
 # `science/validation.md` § 7 and is out of scope for this commit.
 from .chemistry import (_check_metal_basis_adequacy,
-                        check_open_shell_metal,
-                        _check_peptide_protonation)
+                        check_electronic_state)
 from .geometry import (_check_polymer_orientation,
                        _min_image_distance,
                        validate_geometry)
@@ -81,7 +81,6 @@ from .sidecar import _check_frozen_atoms_consumed
 from .siesta import (_check_siesta_charged_makov_payne_notice,
                      _check_siesta_mesh_cutoff,
                      _check_siesta_pseudo_coverage,
-                     _check_siesta_spin_treatment_needs_spin_total,
                      _validate_siesta)
 
 
@@ -257,6 +256,13 @@ def validate(struct: Structure, cfg, *,
 
     issues += validate_geometry(struct, cell)
     issues += _validate_config_metadata(cfg)
+    # THE ELECTRONIC STATE, once, for every engine and every kind
+    # (`science/chemistry-correctness.md` § 2a): the state the deck will be
+    # written from, judged by one family of findings.  It was asked by each
+    # engine validator and by the vibration kind's science in their own
+    # words until 2026-09-28 -- three parity checks, four closed-shell
+    # tests, one open-shell guard judging a neutral non-repeating structure.
+    issues += check_electronic_state(struct, cfg, calculation=calculation)
 
     # Engine-specific dispatch via the registry.  isinstance() picks
     # up subclasses too, so a future engine config that subclasses
@@ -273,11 +279,12 @@ def validate(struct: Structure, cfg, *,
         engine_kw["design"] = design
     # The KIND rides along so an engine validator can defer a family the
     # kind's own science owns (the double-fire dedup, ruled 2026-08-21:
-    # one fact, one finding -- on a vibration deck the parity /
-    # open-shell-metal / grid / frozen verdicts are the kind's, and the
-    # engine copy firing too gave each fact two findings, one of them
-    # reasoned from the wrong calculation).  Validators that do not
-    # branch on it ignore it through **_.
+    # one fact, one finding -- on a vibration deck the grid and frozen-atom
+    # verdicts are the kind's, and the engine copy firing too gave each fact
+    # two findings, one of them reasoned from the wrong calculation).  The
+    # charge and spin are neither's: they are the electronic state's one
+    # family, asked once below for every engine and kind.  Validators that
+    # do not branch on it ignore it through **_.
     engine_kw["calculation"] = calculation
     for cfg_cls, fn in _ENGINE_VALIDATORS.items():
         if isinstance(cfg, cfg_cls):
@@ -353,9 +360,10 @@ _KIND_VALIDATORS: dict = {}
 
 def _validate_vibration_kind(struct: Structure, cfg, cell, *,
                              prior=None, design=None, **_) -> List[Issue]:
-    """The vibration kind's science (grid / amplitude / parity /
-    method / open-shell), over the deck's own config view.  Lazy
-    imports at call time, same cycle-avoidance as the engine
+    """The vibration kind's science (grid / amplitude / frozen atoms /
+    the relaxation record), over the deck's own config view -- the charge
+    and spin are the electronic state's one family, asked by ``validate``.
+    Lazy imports at call time, same cycle-avoidance as the engine
     validators above."""
     from ..config.pyscf import PySCFConfig
     if isinstance(cfg, PySCFConfig):
@@ -423,9 +431,9 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
     # person could describe 3 V and be told nothing on the road that runs.
     # The rest of what preflight carries survives elsewhere: the region
     # partition and the atom order are `sort`'s refusals and are structural
-    # on the ladder path, and the open-shell check runs from the siesta
-    # validator against the run's REAL spin treatment rather than that one's
-    # hardcoded closed shell.
+    # on the ladder path, and the open-shell check is the electronic state's
+    # (`check_electronic_state`, from `validate` for every kind) against the
+    # run's REAL spin treatment rather than that one's hardcoded closed shell.
     bias = getattr(cfg, "bias_voltage_v", None)
     if bias is not None and abs(float(bias)) > 2.0:
         out.append(Issue(
@@ -437,38 +445,6 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
             f"Landauer conductance (di Ventra, Electrical Transport in "
             f"Nanoscale Systems, 2008; Reed et al. 2006).",
             where="config.bias_voltage_v"))
-    # A NET CHARGE IS REFUSED, not dropped.  `engines/transport.md` 2a.7
-    # defers net charge and gating, and the reason is the boundary condition:
-    # a transport calculation is OPEN, so the device's electron number is set
-    # by the electrodes' chemical potentials and found by the contour
-    # integration rather than fixed by the deck -- and a lead is bulk metal
-    # that must stay neutral, because charging it moves the Fermi level every
-    # downstream stage is measured against.
-    #
-    # The ruling was written; the declaration was not changed to match.  So a
-    # transport template carried `net_charge`, a person could answer it, no
-    # rung wrote it, and the validation report beside the deck ASSERTED the
-    # charge was there (measured 2026-09-16).  The row now says the ruling and
-    # this refuses the value a config can still carry -- a hand-edited
-    # template written before today, or a caller building the config
-    # directly.  Silently neutralising someone's charged junction is the
-    # defect; saying so is the fix.
-    charge = getattr(cfg, "net_charge", None)
-    if charge:
-        out.append(Issue(
-            "error",
-            f"net_charge = {int(charge):+d}, and a transport calculation "
-            f"cannot carry one.  Its boundaries are OPEN: the device's "
-            f"electron count is set by the electrodes' chemical potentials "
-            f"and found by the contour integration, not fixed by the deck, "
-            f"and the leads are bulk metal that must stay neutral -- a "
-            f"charged lead moves the Fermi level every stage is measured "
-            f"against.  Net charge and gating are deferred by ruling "
-            f"(engines/transport.md 2a.7); a gated or electrochemical "
-            f"junction is separate work.  Remove net_charge from this "
-            f"calculation's template, or relax the charged species as an "
-            f"OPTIMIZATION, where the keyword is honoured.",
-            where="config.net_charge"))
     # THE POLE ENERGY AND THE TEMPERATURE ARE ONE QUESTION, so neither can be
     # checked alone.  This is not a fitted rule: it is TranSIESTA's own, read
     # out of SIESTA 5.4.2 `Src/m_ts_chem_pot.F90`, read 2026-09-16 rather than inferred.

@@ -266,14 +266,14 @@ _PATTERN_B_REGIONS = {"L-electrode": [0, 1, 2]}
 
 def test_preflight_returns_issues_for_siesta(web_client, peptide_xyz):
     """Validation-only endpoint runs validate(struct, cfg) without
-    rendering FDF text.  Setting spin_total without spin_treatment
-    is the canonical SIESTA-side validator trigger -- SIESTA would
-    silently ignore the total-spin pin -- and the validator emits a
-    warn that should round-trip through the preflight endpoint."""
+    rendering FDF text.  Unrestricted at 2S = 0 on a closed-shell peptide
+    -- a constrained singlet, the electronic state's own warning (ES9) --
+    round-trips through the preflight endpoint, keyed to the field."""
     r = web_client.post("/api/build/preflight", json={
         "structure": _env(peptide_xyz),
         "engine": "siesta",
-        "params": {"spin_total": 1.0},
+        "params": {"spin_treatment": "unrestricted",
+                   "unpaired_electrons": 0},
     })
     assert r.status_code == 200
     body = r.get_json()
@@ -281,28 +281,11 @@ def test_preflight_returns_issues_for_siesta(web_client, peptide_xyz):
     issues = body["issues"]
     assert isinstance(issues, list)
     assert any(i["severity"] == "warn"
-               and "spin_total" in (i["where"] or "")
-               for i in issues), f"expected spin_total warn; got {issues}"
+               and "spin_treatment" in (i["where"] or "")
+               for i in issues), f"expected spin_treatment warn; got {issues}"
     # Each entry has the JSON shape the UI expects.
     for i in issues:
         assert set(i.keys()) >= {"severity", "message", "where"}
-
-
-def test_preflight_returns_issues_for_pyscf(web_client, peptide_xyz):
-    """Symmetric coverage on the PySCF side: the validator catches the
-    UKS-with-spin-0 mistake (review-fix A) and the preflight surfaces
-    it without producing the ~20 KB script body."""
-    r = web_client.post("/api/build/preflight", json={
-        "structure": _env(peptide_xyz),
-        "engine": "pyscf",
-        "params": {"method": "UKS", "spin": 0},
-    })
-    body = r.get_json()
-    assert body["ok"] is True
-    issues = body["issues"]
-    assert any(i["severity"] == "warn"
-               and "method" in (i["where"] or "")
-               for i in issues), f"expected method warn; got {issues}"
 
 
 def test_preflight_rejects_bad_engine(web_client, peptide_xyz):
@@ -1581,7 +1564,9 @@ def test_pyscf_form_schema_matches_documented_layout():
         # `system` gained job_name (it leads the Setup card now, the
         # same treatment system_label got); `execution` is gone entirely --
         # threads and use_gpu were its only members and both are bench axes.
-        ("system",      6),
+        # +1 on 2026-09-28: the electronic state's `spin_treatment` beside
+        # the count that replaced `spin` (`unpaired_electrons`).
+        ("system",      7),
         ("method",      8),
         # +5 on 2026-08-17 with P1's stage ladder: the FIVE geomeTRIC criteria
         # (`geom_gmax`/`_grms`/`_dmax`/`_drms`/`_etol`) are one family
@@ -1698,14 +1683,15 @@ def test_engine_key_pins_load_bearing_siesta_keywords():
     sch = catalogue_to_form_schema("siesta", "p")
     fields_by_name = {f["name"]: f for f in _flatten_schema_fields(sch)}
     expected = {
-        # The 2026-05-24 SpinPolarized v4-vs-v5 incident hangs on
-        # this exact spelling.  Don't drift back to v5 "Spin polarized".
         # `Spin`, not `SpinPolarized`: the manual deprecates all three old
-        # spin booleans in favour of the one four-valued keyword.
-        "spin_treatment": "Spin",
-        # The "two keys, either alone is silently ignored" warning
-        # depends on the badge text mentioning BOTH.
-        "spin_total":     "Spin.Fix + Spin.Total",
+        # spin booleans in favour of the one four-valued keyword.  A MERGED
+        # item since 2026-09-28 (the electronic state), so the badge names
+        # both engines' spelling.
+        "spin_treatment": "Spin (SIESTA) | the SCF class's R / RO / U (PySCF)",
+        # The "two keys, either alone is silently ignored" rule depends on
+        # the badge naming BOTH of SIESTA's.
+        "unpaired_electrons": ("Spin.Fix + Spin.Total (SIESTA) | "
+                               "gto.M(spin=...) (PySCF)"),
         # Documented user-facing keywords -- ``MeshCutoff`` /
         # ``PAO.BasisSize`` are SIESTA's own names, and the help text
         # references them.
@@ -1730,15 +1716,17 @@ def test_engine_key_pins_load_bearing_siesta_keywords():
 
 def test_engine_key_pins_load_bearing_pyscf_keywords():
     """Same for PySCF.  The 2026-05-24 review surfaced that PySCF's
-    method= is a CLASS switch (RKS / UKS / RHF / UHF) not a string
-    kwarg -- the engine_key text should explain this."""
+    method= is a CLASS switch, not a string kwarg -- and the class is
+    composed from the method and the spin treatment since 2026-09-28, so
+    the two badges between them say which class (the treatment's is the
+    merged item's, pinned in the SIESTA test)."""
     from molbuilder.web.blueprints._shared import catalogue_to_form_schema
     from molbuilder.config.pyscf import PySCFConfig
     sch = catalogue_to_form_schema("pyscf", "py")
     fields_by_name = {f["name"]: f for f in _flatten_schema_fields(sch)}
+    # (The merged items -- the charge and the spin -- are ONE declaration
+    # for both engines, pinned once, in the SIESTA test above.)
     expected = {
-        "net_charge": "NetCharge (SIESTA) | gto.M(charge=...) (PySCF)",
-        "spin":     "gto.M(spin=...)  # 2S, # of unpaired electrons",
         "symmetry": "gto.M(symmetry=...)",
         "basis":    "gto.M(basis=...)",
         "functional": "mf.xc = ...",
@@ -1751,12 +1739,10 @@ def test_engine_key_pins_load_bearing_pyscf_keywords():
         assert f["engine_key"] == want, (
             f"{name}: engine_key={f['engine_key']!r}; expected {want!r}"
         )
-    # method= is the open-shell-vs-closed-shell selector.  Make
-    # sure the badge mentions the class names so the user knows
-    # they're picking RKS-vs-UKS, not a string.
+    # `method` says which theory, and the class is composed from it and the
+    # spin treatment (2026-09-28): the method's badge names the class
+    # MODULE it picks, the treatment's the R / RO / U it contributes -- so
+    # the person knows they are picking a class, not a string.
     method_key = fields_by_name["method"]["engine_key"]
-    for cls in ("RKS", "UKS", "RHF", "UHF"):
-        assert cls in method_key, (
-            f"method engine_key={method_key!r} should mention {cls} "
-            f"(it's a class-selection switch, not a kwarg)"
-        )
+    assert "dft.<class>" in method_key and "scf.<class>" in method_key, \
+        method_key

@@ -337,7 +337,16 @@ def resolve(template_text: str, task, config_cls, *,
     """
     from .template import config_from_template
 
-    base = config_from_template(template_text, config_cls)
+    # THE TEMPLATE'S OWN REFUSALS ARE RESOLVE'S -- an item the schema does
+    # not know, a value that is not one of today's choices, a pre-M6 item
+    # naming the migration.  They arrive as ValueError, and until 2026-09-28
+    # only transport's caller caught one: on every other kind a refused
+    # template reached the person as a traceback.  Translated here, once,
+    # so this function raises what its docstring says it raises.
+    try:
+        base = config_from_template(template_text, config_cls)
+    except ValueError as exc:
+        raise ResolveError(str(exc)) from exc
     provenance = {f.name: "template" for f in dataclasses.fields(config_cls)}
 
     # § 7's membership rule, spelled ONCE (template.template_fields): a
@@ -362,7 +371,31 @@ def resolve(template_text: str, task, config_cls, *,
                 f"description must never carry (engines/template.md § 7): "
                 f"they arrive as the ALLOCATION at prep, on the machine "
                 f"that runs the job.")
-        base = effective_config(base, stage_obj.overrides)
+        # A VALUE THAT BINDS EVERY STAGE is not one stage's (the
+        # catalogue's `shared`, `template.md` § 6.4) -- for every kind: the
+        # electronic state's four items everywhere (ES1), transport's shared
+        # rows on its ladder.  Refused HERE, the one door every kind's prep
+        # goes through; transport refused its own at its own prep step until
+        # 2026-09-28, and no other kind refused at all -- a ladder could
+        # change the spin between rungs and carry the `.DM` across.
+        from .template import engine_name, shared_by_every_stage, why_shared
+        bound = sorted(set(stage_obj.overrides) & shared_by_every_stage(
+            engine_name(config_cls),
+            getattr(task, "calculation", None) or "optimization"))
+        if bound:
+            raise ResolveError(
+                f"stage {stage_obj.name!r} overrides "
+                f"{', '.join(map(repr, bound))}, which "
+                f"{'is' if len(bound) == 1 else 'are'} shared by every "
+                f"stage of this calculation: {why_shared(bound[0])}.  "
+                f"Change {'it' if len(bound) == 1 else 'them'} in the "
+                f"template, where the value applies to every stage at once.")
+        try:
+            base = effective_config(base, stage_obj.overrides)
+        except ValueError as exc:
+            # An override naming no field, or a value outside its declared
+            # range -- a person's edit, said by name (the same translation).
+            raise ResolveError(str(exc)) from exc
         provenance.update({k: "stage" for k in stage_obj.overrides})
 
     pins = dict(pins or {})
@@ -711,11 +744,11 @@ def effective_config(template, overrides: Mapping[str, Any], *,
     # against the string ``"float"`` -- and under ``from __future__ import
     # annotations`` a field's ``type`` is the SOURCE TEXT, so ``Optional[float]``
     # is not ``"float"`` and two fields were silently never widened:
-    # ``spin_total`` and ``md_target_temperature``.  A stage overriding
-    # ``spin_total: 2`` got an int where the deck wanted 2.0, while
-    # ``mesh_cutoff: 300`` next to it widened correctly.
+    # ``spin_total`` (retired 2026-09-28) and ``md_target_temperature``.  A
+    # stage overriding ``spin_total: 2`` got an int where the deck wanted
+    # 2.0, while ``mesh_cutoff: 300`` next to it widened correctly.
     #
-    # The catalogue says ``float`` for all three, because that is what a
+    # The catalogue said ``float`` for all three, because that is what a
     # declared type is FOR (`template.md` § 5: what a parser cannot know).  So
     # the authority is the item, and the annotation is not consulted at all.
     #

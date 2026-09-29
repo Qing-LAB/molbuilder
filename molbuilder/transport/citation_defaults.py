@@ -52,37 +52,30 @@ _FROM_DECK = {
     "electronic_temperature_k": "electronic_temperature",
     "xc_functional":            "xc_functional",
     "xc_authors":               "xc_authors",
+    # THE SPIN THE CITED RUN CARRIED (`science/chemistry-correctness.md`
+    # § 2a, ES7): shared by every rung, defaulted from the run the junction
+    # was relaxed in.  Until 2026-09-28 it started at the class default
+    # whatever that run was, under a caption naming it.  The CHARGE is not a
+    # transport item -- a cited charge is refused instead
+    # (:func:`siesta_config_from_citation`).
+    "spin_treatment":           "spin_treatment",
+    "unpaired_electrons":       "unpaired_electrons",
 }
 
-#: The same six, arriving from a RECORD instead of a deck -> the catalogue's
-#: spelling.  The k-grid is the seventh and goes through the same
+#: The same answers, arriving from a RECORD instead of a deck -> the
+#: catalogue's spelling.  The k-grid goes through the same
 #: :func:`_apply_kgrid` as the deck's.
 #:
 #: The record's field names against ``SiestaConfig``'s -- the ONE table,
 #: kept beside `_siesta_contract` in `parse/contract.py` (which writes the
-#: record in those names) so the writer and this reader cannot drift.
-from molbuilder.parse.contract import RECORD_TO_SIESTA_FIELD as _FROM_RECORD
+#: record in those names) so the writer and this reader cannot drift.  The
+#: charge is read apart (a cited charge is refused, not defaulted).  A
+#: second, hand-written copy of this table stood below the import until
+#: 2026-09-28 and silently replaced it.
+from molbuilder.parse.contract import RECORD_TO_SIESTA_FIELD as _RECORD
+from molbuilder.parse.contract import STATE_RECORD_KEYS
 
-#: The same six, arriving from a RECORD instead of a deck -> the catalogue's
-#: spelling.  The k-grid is the seventh and goes through the same
-#: :func:`_apply_kgrid` as the deck's.
-#:
-#: `parse/contract.py::_siesta_contract` reads the very same `FdfParams` this
-#: module does and writes the block in ``TransportConfig``'s field names, so
-#: this table is `_FROM_DECK` with its left column respelled -- of the seven
-#: values only two are actually spelled differently (`mesh_cutoff_ry` ->
-#: `siesta_mesh_cutoff_ry`, `kgrid` -> `k_mesh_transverse`).  It is written out rather than derived
-#: because the two vocabularies are a fact about a class that is being
-#: retired (§ 2a.14: `TransportConfig` goes when the NEGF block is tabled),
-#: and a clever derivation would outlive the thing it derives from.
-_FROM_RECORD = {
-    "basis_size":               "basis_size",
-    "siesta_mesh_cutoff_ry":    "mesh_cutoff",
-    "energy_shift_ry":          "pao_energy_shift",
-    "electronic_temperature_k": "electronic_temperature",
-    "xc_functional":            "xc_functional",
-    "xc_authors":               "xc_authors",
-}
+_FROM_RECORD = {k: v for k, v in _RECORD.items() if k != "net_charge"}
 
 
 def _apply_kgrid(kw: dict, kgrid) -> None:
@@ -122,6 +115,10 @@ class CitationAnswers:
     values: Dict[str, Any]
     source: str
     source_name: str = ""
+    #: The charge the cited run carried -- 0 when it answers none.  Not a
+    #: value of the transport template (the junction is neutral by rule);
+    #: read so a charged citation can be refused by name (ES7).
+    net_charge: int = 0
 
 
 def citation_answers(cite_dir) -> CitationAnswers:
@@ -154,6 +151,16 @@ def citation_answers(cite_dir) -> CitationAnswers:
         from .compose import recorded_contract_of
         recorded = recorded_contract_of(cited)
         block = dict((recorded or {}).get("contract") or {})
+        # A STRUCTURE EDITED SINCE its run is no longer the one the run's
+        # charge and spin were for -- an added or deleted atom changes the
+        # very count -- so, by the electronic state's own rule
+        # (`electronic_state._recorded`), they are not taken: the spin is
+        # worked out on the junction and the charge is not refused.  The
+        # other recorded settings are inherited and warned about
+        # (`compose._warn_recorded_modified`).
+        if (recorded or {}).get("structure_modified"):
+            for key in STATE_RECORD_KEYS:
+                block.pop(key, None)
         for src, dst in _FROM_RECORD.items():
             v = block.get(src)
             if v is not None:
@@ -161,6 +168,7 @@ def citation_answers(cite_dir) -> CitationAnswers:
         _apply_kgrid(kw, block.get("k_mesh_transverse"))
         source = "record" if recorded else "none"
         source_name = str((recorded or {}).get("source") or "")
+        charge = int(block.get("net_charge") or 0)
     else:
         for src, dst in _FROM_DECK.items():
             v = getattr(p, src, None)
@@ -169,26 +177,48 @@ def citation_answers(cite_dir) -> CitationAnswers:
         if getattr(p, "kgrid", None):
             _apply_kgrid(kw, p.kgrid)      # the one rule, both sources
         source, source_name = "deck", cited.deck.name
+        charge = int(p.net_charge)
     if "mesh_cutoff" in kw:
         kw["mesh_cutoff"] = float(kw["mesh_cutoff"])
-    return CitationAnswers(values=kw, source=source, source_name=source_name)
+    return CitationAnswers(values=kw, source=source, source_name=source_name,
+                           net_charge=charge)
 
 
-def siesta_config_from_citation(cite_dir, *, label: str,
+def siesta_config_from_citation(cite_dir, *, label: str, blank=(),
                                 **chosen) -> "SiestaConfig":
     """The config `jobset init` and the describe door write a transport
     template from: the citation's answers (:func:`citation_answers`), then
     what the person chose on the shared panel (``chosen``, in the same
     field names) laid over them -- the person may change any of it, for
     all five rungs at once (`engines/transport.md` § 2a.7 ruling 1).
+
+    ``blank`` names the items the person emptied ON PURPOSE where a blank
+    is itself an answer -- the electronic state's, where it means "work it
+    out" (`science/chemistry-correctness.md` § 2a): the citation's value is
+    not applied to them.  (Any other emptied row stays "not chosen", and
+    the citation's value stands, § 3.8.3.)
     """
     from ..config.siesta import SiestaConfig
-    kw = dict(citation_answers(cite_dir).values)
+    answers = citation_answers(cite_dir)
+    if answers.net_charge:
+        # ES7 (`science/chemistry-correctness.md` § 2a): a transport
+        # calculation's boundaries are OPEN -- the leads set the electron
+        # number -- so the junction must be neutral, and a geometry relaxed
+        # at another charge is not this junction's.
+        raise ValueError(
+            f"the cited run carried a net charge of {answers.net_charge:+d} "
+            f"({answers.source_name or 'its record'}), and a transport "
+            f"calculation cannot: its boundaries are open and the leads set "
+            f"the electron number, so the junction must be neutral "
+            f"(engines/transport.md § 2a.7).  Relax the junction neutral and "
+            f"cite that run.")
+    kw = {k: v for k, v in answers.values.items() if k not in blank}
     kw.update({k: v for k, v in chosen.items() if v is not None})
     return SiestaConfig(system_label=label, **kw)
 
 
-def transport_template_text(cite_dir, *, label: str, **chosen) -> str:
+def transport_template_text(cite_dir, *, label: str, blank=(),
+                            **chosen) -> str:
     """The text of a transport description's template -- **the one door
     both roads write it through** (`jobset init` and the browser's describe
     door), so the file cannot differ by the road that made it.
@@ -207,10 +237,16 @@ def transport_template_text(cite_dir, *, label: str, **chosen) -> str:
     Until 2026-09-24 the CLI's `init` wrote those rows WITH the class
     default while the describe door wrote them valueless: two roads, two
     files, for one description.
+
+    ``blank`` (:func:`siesta_config_from_citation`) is written valueless
+    too: a spin the person left blank on the shared panel is the junction's
+    to work out at prep, as the chemistry card beside it says -- the
+    template wrote the citation's value there until the M6 review.
     """
     from .. import template as _T
-    cfg = siesta_config_from_citation(cite_dir, label=label, **chosen)
-    answered = set(citation_answers(cite_dir).values) | {
+    cfg = siesta_config_from_citation(cite_dir, label=label, blank=blank,
+                                      **chosen)
+    answered = (set(citation_answers(cite_dir).values) - set(blank)) | {
         k for k, v in chosen.items() if v is not None}
     unanswered = sorted(
         it.name for it in _T.select(_T.catalogue(), engine="siesta",

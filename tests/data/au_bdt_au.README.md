@@ -65,9 +65,10 @@ Geometry choice:
 
 - The TranSIESTA `.fdf` emits with every required NEGF keyword.
 - Preflight passes on the labeled structure (no errors).
-- The shared `check_open_shell_metal` check correctly returns no
-  warning (no open-shell metals — Au has a closed 5d¹⁰ shell as
-  far as the analyzer's open-shell-metals set is concerned).
+- The electronic state's check returns no spin finding: the junction
+  repeats along its transport axis, so the class decides it closed-shell
+  (restricted) whatever its count per cell — Au carries no moment
+  (`science/chemistry-correctness.md` § 2a.1b).
 - The atom-ordering preflight accepts the structure (contiguous
   L→bridge→R ordering).
 

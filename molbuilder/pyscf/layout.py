@@ -81,6 +81,53 @@ def geom_kwargs() -> "tuple":
         for n in GEOMETRY_SECTION.items)
 
 
+#: The R / RO / U of the SCF class for each spin treatment PySCF runs
+#: (`science/chemistry-correctness.md` § 2a.3).  non-collinear and
+#: spin-orbit have no entry: the settings gate refuses them on this engine
+#: by name before a deck is written (ES4).
+_SCF_LETTERS = {"restricted": "R", "restricted-open": "RO",
+                "unrestricted": "U"}
+
+
+def scf_class(state) -> str:
+    """The SCF class the deck builds -- ``RKS``, ``UKS``, ``ROHF``, ... --
+    COMPOSED from the electronic state's treatment and method (§ 2a.1) and
+    written explicitly.  Never left for PySCF to re-rule: ``dft.RKS(mol)``
+    with ``mol.spin != 0`` silently becomes ROKS inside PySCF
+    (``pyscf/dft/__init__.py``), a setting that changes without a word.
+
+    THE one composition, read by both decks.  Until 2026-09-28 the class
+    WAS the ``method`` field, and four readers mapped its first letter to
+    restricted or unrestricted in their own words."""
+    return (_SCF_LETTERS[state.spin_treatment.value]
+            + ("KS" if state.method.value == "DFT" else "HF"))
+
+
+def scf_module(state) -> str:
+    """Where the class lives: ``dft`` for Kohn-Sham, ``scf`` for
+    Hartree-Fock."""
+    return "dft" if state.method.value == "DFT" else "scf"
+
+
+def hard_scf_hint(state) -> list:
+    """A commented ``level_shift`` template when an open-d metal is present
+    -- the most common reason such an SCF will not converge -- and nothing
+    for a clean organic, where the line would be noise.  Discoverable, not
+    prescriptive: a person uncomments and tunes it.  THE one wording, read by
+    the optimization and the vibration deck (two copies until the M6
+    review)."""
+    metals = state.facts.open_d_metals
+    if not metals:
+        return []
+    return [f"# Hard SCF (typical for open-shell metals like "
+            f"{', '.join(metals)}):",
+            "# Uncomment to apply a virtual-orbital level shift (Eh).  "
+            "Typical 0.1-0.3;",
+            "# helps when the HOMO-LUMO gap is small or open-shell mixing "
+            "makes the SCF oscillate.",
+            "# mf.level_shift = 0.2"]
+
+
 def line(cfg, *, is_dft: bool):
     """**Door 2 — the engine's syntax, and there is one of it.**
 
@@ -230,12 +277,13 @@ def check_rules(text: str, struct=None, cfg=None):
 
 
 #: Items whose effective value is not read from the attribute the catalogue
-#: names.  ``charge`` / ``spin`` / ``basis`` / ``symmetry`` are ``gto.M(...)``
-#: arguments, so their anchor is the constructor rather than a path; the
-#: molecule keeps them under its own names.
+#: names.  ``net_charge`` / ``unpaired_electrons`` / ``basis`` / ``symmetry``
+#: are ``gto.M(...)`` arguments, so their anchor is the constructor rather
+#: than a path; the molecule keeps them under its own names (``charge``,
+#: ``spin``).
 _READBACK = {
     "net_charge":    "mol.charge",
-    "spin":          "mol.spin",
+    "unpaired_electrons": "mol.spin",
     "basis":         "mol.basis",
     "symmetry":      "mol.symmetry",
     "max_memory_mb": "mol.max_memory",

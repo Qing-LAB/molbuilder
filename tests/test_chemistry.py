@@ -244,82 +244,13 @@ class TestTotalElectrons:
             total_electrons(s, charge=0)
 
 
-class TestCheckSpinChargeParity:
-    def _h2o(self):
-        return Structure(elements=["O", "H", "H"],
-                         positions=np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]]))
-
-    def test_water_neutral_singlet_is_consistent(self):
-        from molbuilder.chemistry import check_spin_charge_parity
-        # 10 electrons, spin=0 -> parity matches.
-        assert check_spin_charge_parity(self._h2o(), 0, 0) is None
-
-    def test_water_neutral_doublet_is_inconsistent(self):
-        """10 electrons + spin=1 (one unpaired) is parity-impossible."""
-        from molbuilder.chemistry import check_spin_charge_parity
-        msg = check_spin_charge_parity(self._h2o(), 0, 1)
-        assert msg is not None
-        assert "parity" in msg.lower()
-        assert "even" in msg.lower()
-
-    def test_water_cation_doublet_is_consistent(self):
-        """OH₂⁺ = 9 electrons, spin=1 (radical) -> parity matches."""
-        from molbuilder.chemistry import check_spin_charge_parity
-        assert check_spin_charge_parity(self._h2o(), 1, 1) is None
-
-    def test_negative_spin_rejected(self):
-        from molbuilder.chemistry import check_spin_charge_parity
-        msg = check_spin_charge_parity(self._h2o(), 0, -2)
-        assert msg is not None
-        assert "negative" in msg.lower()
-
-    def test_non_integer_spin_rejected(self):
-        """Reject float spin BEFORE the parity arithmetic so we don't
-        emit a useless 'change spin to 2.5 / 0.5' suggestion (regression
-        from code-review round 2026-05-23)."""
-        from molbuilder.chemistry import check_spin_charge_parity
-        msg = check_spin_charge_parity(self._h2o(), 0, 1.5)
-        assert msg is not None
-        assert "non-negative int" in msg
-
-    def test_bool_spin_rejected(self):
-        """bool is technically a subclass of int in Python but is
-        meaningless for 2S; reject it explicitly."""
-        from molbuilder.chemistry import check_spin_charge_parity
-        msg = check_spin_charge_parity(self._h2o(), 0, True)
-        assert msg is not None
-        assert "non-negative int" in msg
-
-
-class TestDetectOpenShellMetals:
-    def test_d10_metals_excluded(self):
-        """Zn / Cd / Hg are d¹⁰ closed-shell; the workflow's closed-
-        shell SCF works for them and we MUST NOT false-positive the
-        open-shell warning."""
-        from molbuilder.chemistry import detect_open_shell_metals
-        for el in ("Zn", "Cd", "Hg"):
-            s = Structure(elements=[el, "Cl", "Cl"],
-                          positions=np.array([[0, 0, 0], [2, 0, 0], [-2, 0, 0]]))
-            assert detect_open_shell_metals(s) == []
-
-    def test_main_group_metals_excluded(self):
-        from molbuilder.chemistry import detect_open_shell_metals
-        for el in ("Na", "Mg", "Ca", "Al"):
-            s = Structure(elements=[el], positions=np.array([[0, 0, 0]]))
-            assert detect_open_shell_metals(s) == []
-
-    def test_first_row_transition_metals_detected(self):
-        from molbuilder.chemistry import detect_open_shell_metals
-        for el in ("Fe", "Mn", "Co", "Ni", "Cu", "Cr", "V", "Ti", "Sc"):
-            s = Structure(elements=[el], positions=np.array([[0, 0, 0]]))
-            assert detect_open_shell_metals(s) == [el]
-
+class TestAPdbMetalArrivesDecoded:
     def test_a_pdb_metal_arrives_decoded_so_nothing_downstream_folds(self):
         """SCIENCE, and the boundary rule along one real path.
 
         PDB columns 77-78 are written uppercase -- `FE`, `MG`, `CL` -- and the
         READER decodes that, because uppercase IS the field's convention.  So
-        `detect_open_shell_metals` never sees `FE` and has no reason to
+        the chemistry facts never see `FE` and have no reason to
         capitalize-match; folding downstream is what turns `CA` into calcium.
 
         The old test asserted the fold against a hand-built
@@ -331,7 +262,7 @@ class TestDetectOpenShellMetals:
         decoded at the format; a person's label is gated at create/add/modify;
         nothing anywhere folds case.
         """
-        from molbuilder.chemistry import detect_open_shell_metals
+        from molbuilder.chemistry import analyze_structure
         line = list(" " * 80)
         def put(col, text): line[col - 1:col - 1 + len(text)] = list(text)
         put(1, "HETATM"); put(7, "    1"); put(13, "FE  "); put(18, "HEM")
@@ -342,7 +273,7 @@ class TestDetectOpenShellMetals:
 
         assert s.elements   == ["Fe"], "the reader must decode cols 77-78"
         assert s.atom_names == ["FE"], "the atom NAME is carried verbatim"
-        assert detect_open_shell_metals(s) == ["Fe"]
+        assert analyze_structure(s).metals == ["Fe"]
 
 
 class TestExplainMetalSpin:
@@ -579,24 +510,22 @@ class TestSpeciesLabel:
         """A label must not hide an atom from the checks that read elements.
 
         Until 2026-09-09 these folded case instead of resolving, so a
-        deliberate `Fe1`/`Fe2` was invisible: `_count_element` answered 0 and
-        `detect_open_shell_metals` found no metal -- and that detector is what
-        drives the spin advice in `validation/siesta.py` and the SCF guidance
-        in both PySCF emitters.
+        deliberate `Fe1`/`Fe2` was invisible: the element count answered 0 and
+        the open-shell detector found no metal -- and the metals the facts
+        report are what the electronic state's detection decides from.
 
         Iron, not gold, because iron is where open-shell decides something:
         gold is closed-shell in any structure big enough to matter
-        (`_NOBLE_METAL_CLUSTER_THRESHOLD`, and the surface-DFT convention it
-        records).
+        (`electronic_state.NOBLE_CLUSTER_THRESHOLD`, and the surface-DFT
+        convention it records).
         """
-        from molbuilder.chemistry import (_count_element,
-                                          detect_open_shell_metals,
+        from molbuilder.chemistry import (analyze_structure, count_element,
                                           detect_transition_metals)
         two_irons = Structure(
             elements=["Fe1", "Fe2", "N"],
             positions=np.array([[0., 0., 0.], [2.5, 0., 0.], [0., 2., 0.]]))
-        assert _count_element(two_irons, "Fe") == 2
-        assert detect_open_shell_metals(two_irons) == ["Fe"]
+        assert count_element(two_irons, "Fe") == 2
+        assert analyze_structure(two_irons).metals == ["Fe"]
         assert detect_transition_metals(two_irons) == ["Fe"]
 
     def test_a_labelled_heavy_element_still_earns_its_ECP_warning(self):

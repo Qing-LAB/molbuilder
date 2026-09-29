@@ -101,29 +101,6 @@ _BUILDERS = {
 }
 
 
-def _resolve_path_within_roots(raw_path: str, *, must_exist: bool = True,
-                                require: str = "file"):
-    """Wrapper around files._resolve_within_roots so the two new
-    endpoints below share the same picker-root validation as
-    /api/selection/* and /api/files/*.  Without this the new
-    endpoints would accept ANY path -- including ``/etc/passwd`` --
-    a path-traversal / arbitrary-read security bug (caught in the
-    2026-05-23 code-review pass).
-
-    ``require``: "file" or "dir".  Returns the resolved Path on
-    success.  Raises ``_PickerError`` on any rejection (caller wraps
-    into a 400 JSON error).
-    """
-    from .files import _resolve_within_roots, _PickerError
-    resolved = _resolve_within_roots(raw_path)
-    if must_exist:
-        if require == "file" and not resolved.is_file():
-            raise _PickerError(400, f"path is not a file: {resolved}")
-        if require == "dir" and not resolved.is_dir():
-            raise _PickerError(400, f"path is not a directory: {resolved}")
-    return resolved
-
-
 def _sniff_structure_format(text: str) -> str:
     """Return ``"xyz"`` or ``"pdb"`` for raw structure text.
 
@@ -164,121 +141,106 @@ def _sniff_structure_format(text: str) -> str:
 
 @bp.route("/api/structure/analyze", methods=["POST"])
 def api_structure_analyze():
-    """Engine-agnostic chemistry analysis of a structure.
+    """The electronic state of a structure, for exactly what a form says.
 
     Body (JSON)::
 
-      {"structure": {elements, positions, metadata}}   # OR
-      {"structure_path": "/abs/path/to/<.xyz|.pdb>"}
+      "structure": {elements, positions, metadata[, info]}
+      "kind":  "optimization" | "vibration" | "transport"   (default optimization)
+      "forms": {"<engine>": {net_charge, spin_treatment,
+                             unpaired_electrons, method}}      (optional)
 
-    Returns the ``ChemistryAnalysis`` dataclass serialised plus a
-    ``suggested.<engine>`` block built by iterating every registered
-    parameter adapter.  See ``docs/science/validation.md``
-    § 5.1 for the response-shape contract and § 4 for the adapter
-    Protocol.
+    The structure is THE ENVELOPE the page would hand over -- the one its
+    viewer holds, the same the preflight and the hand-over send -- so the
+    answer is about the structure the deck will be written for, its cell,
+    its axis kinds and the record of the run it came from included.  (A
+    ``structure_path`` door stood beside it until the M6 review: the server
+    re-read the FILE, so after a restore, or with the file changed on disk,
+    the card answered for a structure the deck would not carry.)
 
-    The endpoint is deliberately thin (~20 LoC of logic) — the
-    chemistry analyzer (``molbuilder.chemistry.analyze_structure``)
-    holds every chemistry rule; the per-engine adapters
-    (``molbuilder.<engine>.auto_defaults``) hold every engine
-    translation.  Adding a new engine = drop an adapter file +
-    import it in ``web/blueprints/__init__.py``; this endpoint
-    needs no change.
+    Returns the structure's chemistry FACTS (``analyze_structure``: the atom
+    count, the metals and their usual spins) and, per engine, the
+    ``ElectronicState`` the class resolves for that form's own items -- each
+    value with where it came from (`science/chemistry-correctness.md`
+    § 2a.5).  A blank item is the instruction "work it out", so the card and
+    the chip show the answer the deck will carry, not a suggestion to copy:
+    this route and the deck writers and the checks read the same class, and
+    cannot disagree.  With no ``forms``, each engine that runs the kind is
+    answered with every item blank.
 
-    The same ``ChemistryAnalysis`` instance backs the pre-emission
-    validation pass (``validation.check_open_shell_metal``) —
-    auto-detect and validate cannot disagree by construction.
+    Until 2026-09-28 it returned per-engine SUGGESTIONS (two adapters over
+    an analysis judged at charge 0 on the neutral, non-repeating structure)
+    that the Auto-detect button copied into the forms, overwriting whatever
+    they held.
     """
-    from .files import _PickerError
-    from molbuilder.chemistry import analyze_structure, registered_adapters
-    from molbuilder.structure import Structure
-
     body = request.get_json(silent=True) or {}
-    # The structure ENVELOPE branch (2026-08-29): the same shape
-    # /api/build/load's {structure} branch takes -- a caller holding a
-    # composed structure (the Transport tab's cited relaxation, which
-    # has no .xyz on disk) analyzes the atoms directly through the one
-    # deserialiser.
-    if isinstance(body.get("structure"), dict):
-        from ._shared import struct_from_body
-        try:
-            struct = struct_from_body(body)
-        except (ValueError, TypeError) as exc:
-            return jsonify({"ok": False,
-                            "error": f"could not restore structure: "
-                                     f"{exc}"}), 400
-        return _analyze_response(struct, analyze_structure,
-                                 registered_adapters)
-    # `structure_text` WAS THE THIRD WAY IN, AND IT IS GONE (2026-09-02).
-    #
-    # It was retired from `/api/spectra/render` on 2026-08-03 for a reason
-    # that held here identically: the viewer holds no coordinate document and
-    # writes none (`molview.md` § 11.7), so no caller could send one.  The
-    # sweep missed this route.  Checked before removing: no page under
-    # `static/` posts it, no CLI path builds it, and the `<textarea
-    # id="structure-text">` that once backed it was itself retired in favour
-    # of an in-memory holder.  Only tests reached it -- which is the
-    # definition of a path that is not in production.
-    #
-    # Two ways in remain, and the browser uses both: the envelope for a
-    # structure it is holding, a path for one on disk.
-    path_in = body.get("structure_path")
-    if not path_in:
+    if not isinstance(body.get("structure"), dict):
         return jsonify({"ok": False,
-                        "error": "no structure given: send it in the envelope "
-                                 "-- {\"structure\": {elements, positions, "
-                                 "metadata}} -- or name a file with "
-                                 "`structure_path`"}), 400
+                        "error": "no structure given: send the one the page "
+                                 "holds, in the envelope -- {\"structure\": "
+                                 "{elements, positions, metadata}}"}), 400
+    from ._shared import struct_from_body
     try:
-        p = _resolve_path_within_roots(path_in, require="file")
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
-    text_in = p.read_text()
-    ext = p.suffix.lower()
-
-    try:
-        if ext == ".pdb":
-            struct = Structure.from_pdb(text_in)
-        else:
-            struct = Structure.from_xyz(text_in)
-    except (ValueError, IndexError) as exc:
+        struct = struct_from_body(body)
+    except (ValueError, TypeError) as exc:
         return jsonify({"ok": False,
-                        "error": f"could not parse structure: {exc}"}), 400
-
-    return _analyze_response(struct, analyze_structure,
-                             registered_adapters)
+                        "error": f"could not restore structure: {exc}"}), 400
+    return _analyze_response(struct, body)
 
 
-def _analyze_response(struct, analyze_structure, registered_adapters):
-    """The ONE analyze answer, whatever door the structure came in by
-    (path, text, or the structure envelope)."""
+def _analyze_response(struct, body):
+    """The ONE analyze answer for a structure and the forms' items."""
     from dataclasses import asdict
-    # analyze_structure raises KeyError on an unknown element symbol
-    # (typos, bad PDB column fallback) via total_electrons.  Catch -> 400
-    # with the parser's clear message; without this it would surface
-    # as a 500 Internal Server Error.
+    from molbuilder.chemistry import analyze_structure
+    from molbuilder.electronic_state import (KINDS, electronic_state,
+                                             engines_for)
+
+    kind = body.get("kind") or "optimization"
+    if kind not in KINDS:
+        return jsonify({"ok": False,
+                        "error": f"kind must be one of {', '.join(KINDS)}, "
+                                 f"not {kind!r}"}), 400
+    forms = body.get("forms")
+    if forms is not None and not isinstance(forms, dict):
+        return jsonify({"ok": False,
+                        "error": "`forms` maps an engine to its form's "
+                                 "items"}), 400
+    runs = engines_for(kind)
+    if not forms:
+        forms = {engine: {} for engine in runs}
+    # The facts need every label to name an element (the answer is an
+    # electron count): an unknown symbol is a 400 with the parser's own
+    # message, never a 500.
     try:
-        analysis = analyze_structure(struct)
+        facts = analyze_structure(struct)
     except KeyError as exc:
         return jsonify({"ok": False, "error": str(exc).strip("'")}), 400
-
+    states = {}
+    for engine, items in forms.items():
+        # WHO RUNS WHICH KIND is the capability table's (§ 2a.3): a form for
+        # an engine that does not run this kind has no state to ask for.
+        if engine not in runs:
+            return jsonify({"ok": False,
+                            "error": f"no {engine!r} form for a {kind} "
+                                     f"calculation: {kind} runs on "
+                                     f"{', '.join(runs)}"}), 400
+        # The form's items become the engine's config through the ONE
+        # params door -- the same coercion the preflight and the hand-over
+        # use -- so a blank means exactly what it means there.
+        try:
+            cfg = (_siesta_config_from_params(items or {})
+                   if engine == "siesta"
+                   else _pyscf_config_from_params(items or {}))
+        except (TypeError, ValueError) as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        states[engine] = electronic_state(struct, cfg, kind=kind).as_dict()
     return jsonify({
-        "ok":                  True,
-        "n_atoms":             analysis.n_atoms,
-        "elements":            analysis.elements,
-        "n_electrons_neutral": analysis.n_electrons_neutral,
-        "metals":              analysis.metals,
-        "metal_hints":         [asdict(h) for h in analysis.metal_hints],
-        # The detection chip's PRIMARY key (web-ui-coherence Rule 1:
-        # ChemistryAnalysis.suggested_treatment from the one function) --
-        # never sent until the U6 close, so the chip always fell through
-        # to its spin heuristic.
-        "suggested_treatment": analysis.suggested_treatment,
-        "suggested":           {
-            name: asdict(cls.to_params(analysis))
-            for name, cls in registered_adapters().items()
-        },
-        "warnings":            list(analysis.warnings),
+        "ok":          True,
+        "kind":        kind,
+        "n_atoms":     facts.n_atoms,
+        "metals":      facts.metals,
+        "metal_hints": [asdict(h) for h in facts.metal_hints],
+        "state":       states,
     })
 
 

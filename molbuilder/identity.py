@@ -534,7 +534,10 @@ def run_id(label: str, formula: str = "", *,
     continue from (§ 2).
 
     It is equally blind to everything a *stage* tunes: mesh, tolerances, force,
-    steps, algorithm, basis, spin, XC, ranks, threads, GPU (§ 2.1's table).
+    steps, algorithm, basis, XC, ranks, threads, GPU (§ 2.1's table).  (The
+    charge and spin are not among them: they belong to the calculation, and a
+    stage cannot change them -- ES1, `science/chemistry-correctness.md`
+    § 2a.)
     That blindness is not an oversight — it is what makes several stages one
     calculation rather than several.
 

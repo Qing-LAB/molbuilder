@@ -83,13 +83,13 @@ def test_a_hartree_fock_deck_emits_no_functional_and_no_grid_but_its_dispersion(
     question -- HF takes it like any method (engines/pyscf.md § 7a) -- so
     the default d3bj is written on an HF deck too, and "none" writes none.
     Until 2026-09-28 the door dropped it under HF."""
-    block = _theory_block(_render(method="RHF"))
+    block = _theory_block(_render(method="HF"))
     assert "mf.xc" not in block
     assert "mf.grids.level" not in block
     assert 'mf.disp = "d3bj"' in block, block
     # the ASSIGNMENT is the guarantee; the parameter record below the
     # section reads `mf.disp` back on purpose
-    assert "mf.disp = " not in _theory_block(_render(method="RHF",
+    assert "mf.disp = " not in _theory_block(_render(method="HF",
                                                      dispersion="none"))
 
 

@@ -457,7 +457,9 @@ def _warn_about_edits_since_the_contract_was_recorded(
             f"settings were recorded, so the mesh cutoff and transverse "
             f"k-mesh below come from the {engine} deck {source} and were "
             f"converged for a cell that is no longer there -- re-check them "
-            f"against the structure you are citing",
+            f"against the structure you are citing.  Its charge and spin "
+            f"are NOT taken from that record: they were for another "
+            f"structure, so the spin is worked out on this junction",
             where="citation.structure_modified"))
     if recorded.get("labels_modified"):
         found.append(Issue(

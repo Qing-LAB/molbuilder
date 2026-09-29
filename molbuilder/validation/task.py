@@ -44,6 +44,7 @@ import typing
 from typing import Any, Dict, List, Optional
 
 from ..issues import Issue, ValidationError
+from ..template import is_member
 
 
 def preflight(task, config_cls=None, *,
@@ -235,11 +236,12 @@ def _bench_points_fit_their_items(task) -> List[Issue]:
                     f"bench declares {name!r} = {v!r}; the item is a bool "
                     f"-- write true or false.",
                     where=f"task.bench.{name}"))
-            elif it.type == "enum" and it.choices and v not in it.choices:
+            elif it.type == "enum" and it.choices \
+                    and not is_member(v, it.choices):
                 out.append(Issue(
                     "error",
                     f"bench declares {name!r} = {v!r}; the choices are "
-                    f"{', '.join(it.choices)}.",
+                    f"{', '.join(map(str, it.choices))}.",
                     where=f"task.bench.{name}"))
         if len(pts) != len(set(pts)):
             out.append(Issue(
@@ -502,7 +504,7 @@ def _values_in_bounds(task, fields) -> List[Issue]:
                 continue                    # already reported by _names_exist
             rng = f.metadata.get("range")
             choices = f.metadata.get("choices")
-            if choices and value not in choices:
+            if choices and not is_member(value, choices):
                 out.append(Issue(
                     "error",
                     f"stage {st.name!r} sets {key} = {value!r}, which is not "

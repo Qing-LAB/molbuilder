@@ -94,21 +94,13 @@
        an in-memory holder on the inspector itself. #}
   </section>
 
-  {#- ===================== 2. Analyze chemistry ===================== -#}
-  {#- Same scientific-guard step as on /structure-optimization.  The
-      hemeC-dithiol incident (2026-05-22) was on THIS page — a
-      SpectraConfig missing charge/spin fields silently used PySCF
-      defaults and converged to a fictitious state.  The defaults
-      are now exposed AND auto-detect surfaces the rationale before
-      the user hits Generate.  See science/validation.md § 4. -#}
-  {% set hint %}Engine-agnostic chemistry check: detects open-shell
-      transition metals, picks a sensible <code>(charge, spin,
-      method)</code> for the typical coordination context, and
-      pre-fills the parameter form below.  Click after loading a
-      structure in step 1; review the rationale panel before
-      sending.{% endset %}
-  {% set title = "Analyse the loaded structure (open-shell metals, electron count) and pre-fill (charge, spin, method).  Disabled until a structure is loaded." %}
-  {% include "_analyze_chemistry_card.html" %}
+  {#- ===================== 2. Charge and spin ===================== -#}
+  {#- The hemeC-dithiol incident (2026-05-22) was on THIS page: a missing
+      charge/spin silently ran PySCF's (0, 0) and converged to a fictitious
+      state.  A blank now means "work it out", the card shows the answer and
+      its reason before anything is sent (science/chemistry-correctness.md
+      § 2.5, § 2a). -#}
+  {% include "_chemistry_card.html" %}
 
   <!-- ===================== 3. Parameters ===================== -->
   <section class="card" id="parameters-card">
@@ -226,7 +218,8 @@
 <script type="module" src="{{ url_for('static', filename='lib/validation-findings-global.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/fetch-error.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/detection-chip.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/auto-detect.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/dom.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/chemistry.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/task-handover.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects/projects-sidebar.js') }}"></script>

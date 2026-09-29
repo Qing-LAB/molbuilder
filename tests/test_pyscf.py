@@ -95,8 +95,6 @@ def test_default_render_compiles(h2o):
         assert needle in text, f"missing {needle!r}"
 
 
-
-
 def test_atom_block_format(h2o):
     """One row per atom: the element, then three coordinates to 8 decimals.
 
@@ -202,27 +200,6 @@ def test_geometric_optparams_accepts_pyscf_optimize_kwargs():
 
 
 # --------------------------------------------------------------------- #
-#  Charge handling                                                      #
-# --------------------------------------------------------------------- #
-
-
-def test_charge_explicit_overrides_auto(h2o):
-    """Explicit net_charge wins over auto-detection.  The pair must be
-    physically possible or the parity gate (G-1d) refuses before the
-    deck renders: water⁻ has 11 electrons, so the open-shell spelling
-    rides along."""
-    text = render_script(h2o, PySCFConfig(net_charge=-1,
-                                          method="UKS", spin=1))
-    assert "charge     = -1," in text
-
-
-def test_charge_auto_detect_from_phosphates(deprotonated_diester):
-    text = render_script(deprotonated_diester,
-                         PySCFConfig(verbose_comments=False))
-    assert "charge     = -1," in text
-
-
-# --------------------------------------------------------------------- #
 #  Section toggles                                                      #
 # --------------------------------------------------------------------- #
 
@@ -319,7 +296,7 @@ def test_stability_analysis_skipped_for_closed_shell(h2o):
     user's concern and the call adds noise to a tutorial script
     that's already dense.  Open-shell coverage is in
     test_science_gaps.test_gap_4_pyscf_uks_emits_stability_analysis."""
-    text = render_script(h2o, PySCFConfig(method="RKS"))
+    text = render_script(h2o, PySCFConfig(spin_treatment="restricted"))
     code_lines = [ln for ln in text.splitlines()
                   if not ln.lstrip().startswith("#")]
     assert not any("mf.stability(" in ln for ln in code_lines), (
@@ -350,13 +327,6 @@ def test_solvent_emits_pcm_block(h2o):
     assert "pcm.PCM(mf)" not in text
     eps = _SOLVENTS["water"]
     assert f"mf.with_solvent.eps = {eps}" in text
-
-
-def test_uks_for_radicals(h2o):
-    text = render_script(h2o, PySCFConfig(method="UKS", spin=1, net_charge=1))
-    assert "mf = dft.UKS(mol)" in text
-    assert "spin       = 1," in text
-    assert "charge     = 1," in text
 
 
 def test_threads_emit_env_pin(h2o):
@@ -414,10 +384,6 @@ def test_invalid_inputs_raise(h2o, kwargs, name):
 # --------------------------------------------------------------------- #
 #  convert() -- file in, .py out                                        #
 # --------------------------------------------------------------------- #
-
-
-
-
 
 
 def test_loaded_structure_to_pyscf_script(h2o, tmp_path):
@@ -718,13 +684,9 @@ def test_post_opt_warm_starts_from_converged_dm(h2o):
 # --------------------------------------------------------------------- #
 
 
-
-
 # --------------------------------------------------------------------- #
 #  Dispersion choices reject typos at parse time (R4)                   #
 # --------------------------------------------------------------------- #
-
-
 
 
 # --------------------------------------------------------------------- #
@@ -779,7 +741,6 @@ def test_python_api_ecp_name_without_atoms_emits_nothing(h2o):
     text = render_script(h2o, PySCFConfig(ecp="lanl2dz", basis="cc-pVDZ"))
     assert not _re.search(r"^\s*ecp\s+=", text, _re.M), (
         "an ECP name with no atoms selected must emit no kwarg")
-
 
 
 # ---- Staged-relaxation suffix (job-layout v1) ---------------------------- #

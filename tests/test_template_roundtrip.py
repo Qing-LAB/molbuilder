@@ -39,7 +39,7 @@ def cfg() -> SiestaConfig:
     return SiestaConfig(system_label="JOB", mesh_cutoff=275.0,
                         basis_size="TZP", kgrid=(3, 3, 1),
                         relax_type="Broyden", relax_steps=123,
-                        spin_treatment="polarized", net_charge=-2,
+                        spin_treatment="unrestricted", net_charge=-2,
                         restart="continue", continue_retries=4,
                         mpi_np=8, verbose_comments=False)
 
@@ -77,16 +77,17 @@ def test_the_round_trip_preserves_types_not_just_content(cfg):
     """
     back = T.config_from_template(T.template_with_values(cfg), SiestaConfig)
     assert back.copy_psml is True                 # a real bool stays a bool
-    assert back.spin_treatment == "polarized"     # an enum stays its own string
+    assert back.spin_treatment == "unrestricted"  # an enum stays its own string
     assert isinstance(back.relax_steps, int)
     assert isinstance(back.mesh_cutoff, float)
     assert isinstance(back.kgrid, tuple) and back.kgrid == (3, 3, 1)
 
 
 def test_an_unset_optional_comes_back_unset_not_defaulted():
-    """*Unset* is a real state: SIESTA gets no line at all, which is not the
-    same as getting the default.  A round trip that filled it in would turn
-    "let the engine decide" into "I chose this"."""
+    """*Unset* is a real state -- the engine's own default, or for the charge
+    and spin the instruction "work it out" -- which is not the same as a
+    value somebody chose.  A round trip that filled it in would turn "let it
+    be decided" into "I chose this"."""
     cfg = SiestaConfig(system_label="JOB", mpi_np=None, net_charge=None)
     back = T.config_from_template(T.template_with_values(cfg), SiestaConfig)
     assert back.mpi_np is None

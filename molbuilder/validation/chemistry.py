@@ -1,17 +1,17 @@
 """Chemistry-rule validators (engine-agnostic, callable from any engine).
 
-The home for every validator that asks a question the chemistry
-analyzer can answer.  Per docs/science/validation.md § 4 (chip and validator both derive from
-the ONE ``analyze_structure`` result, so they cannot disagree): every UI /
-preflight surface
-that gates on "open-shell or closed?", "metal basis adequate?",
-"protonation matches charge?" calls into THIS module — not its own
-parallel logic.
+The home for every check that asks a chemistry question of a structure and
+a calculation: whether each species label names an element, THE ELECTRONIC
+STATE'S ONE FAMILY (:func:`check_electronic_state` -- charge, parity, the
+open-shell guard, what an engine cannot run; `science/chemistry-
+correctness.md` § 2a), the peptide-protonation advisory, and whether a
+metal's basis and pseudopotential are adequate.  The facts come from
+``chemistry.analyze_structure`` and the state from
+``electronic_state.electronic_state`` -- the same two the chemistry card and
+the deck writers read -- so no surface keeps its own parallel logic.
 
-Split from the pre-2026-06-13 flat ``molbuilder/validation.py`` per
-docs/science/validation.md  Function bodies +
-signatures are identical to the pre-split versions; only the home
-moved.
+(Split from the flat ``molbuilder/validation.py`` on 2026-06-13; the spin
+checks were rebuilt as the one family on 2026-09-28.)
 """
 
 from __future__ import annotations
@@ -78,8 +78,7 @@ def check_species_labels(struct: Structure, *, engine_label: str = "the engine"
     return issues
 
 
-def _check_peptide_protonation(struct: Structure,
-                               cfg_charge) -> List[Issue]:
+def _check_peptide_protonation(struct: Structure, charge) -> List[Issue]:
     """Hint at the gap between gas-phase neutral build and
     physiological charge state for peptides with charged side chains.
 
@@ -88,12 +87,12 @@ def _check_peptide_protonation(struct: Structure,
     charged side chains carry a net charge.  Most users don't realise
     the script is silently using the gas-phase neutral form.
 
-    Triggered only when:
-      * the structure looks like a peptide (has standard amino-acid
-        residue names);
-      * the estimated pH-7 charge is non-zero;
-      * the user hasn't explicitly set cfg.net_charge to a non-zero
-        value (None or 0 means "auto / default neutral").
+    ``charge`` is the electronic state's resolved charge
+    (``electronic_state.Resolved``).  Triggered only when the structure
+    looks like a peptide, its estimated pH-7 charge is non-zero, and the
+    charge that will run is 0 -- whether the phosphate rule found nothing
+    (a peptide has no phosphates) or a person stated neutral: both build
+    the same gas-phase form, so both deserve to hear about the side chains.
 
     Severity: warn (not error).  The neutral build may be exactly
     what the user wants -- the surface emits SIESTA / PySCF input
@@ -102,23 +101,16 @@ def _check_peptide_protonation(struct: Structure,
     """
     from ..chemistry import expected_pH7_peptide_charge
     expected = expected_pH7_peptide_charge(struct)
-    if expected is None or expected == 0:
-        return []
-    # cfg_charge None -> auto-detection path; cfg_charge == 0 -> the
-    # user explicitly forced neutral.  Both paths produce the same
-    # gas-phase build, so both deserve the warning telling them about
-    # the side-chain mismatch.  An explicit non-zero cfg_charge means
-    # the user already accounted for this -- skip the warning.
-    if cfg_charge not in (None, 0):
+    if expected is None or expected == 0 or charge.value != 0:
         return []
     return [Issue(
         "warn",
         f"peptide has charged side chains (estimated charge at "
-        f"pH 7.4: {expected:+d}) but cfg.net_charge = 0; the script "
-        f"will build the gas-phase neutral form (Asp/Glu protonated, "
-        f"Lys/Arg neutral).  For physiological-state runs set "
-        f"cfg.net_charge = {expected} (and adjust spin / basis: open "
-        f"shells need diffuse functions like aug-cc-pVDZ for anions)",
+        f"pH 7.4: {expected:+d}) but the net charge is 0 ({charge.said}); "
+        f"the script will build the gas-phase neutral form (Asp/Glu "
+        f"protonated, Lys/Arg neutral).  For physiological-state runs "
+        f"state net_charge = {expected} (and consider the basis: an anion "
+        f"needs diffuse functions such as aug-cc-pVDZ)",
         "config.net_charge",
     )]
 
@@ -239,65 +231,223 @@ def _check_metal_basis_adequacy(struct: Structure, *,
     return []
 
 
-def check_open_shell_metal(struct: Structure, *,
-                              is_closed_shell: bool,
-                              engine_label: str) -> List[Issue]:
-    """Shared chemistry rule: structure whose ANALYZER recommends
-    open-shell DFT requires an open-shell SCF (PySCF UKS/UHF + spin>0;
-    SIESTA Spin polarized).  A closed-shell SCF on a true
-    open-shell complex converges to a fictitious electronic state
-    with garbage forces (hemeC-dithiol 2026-05-22 incident).
+def check_electronic_state(struct: Structure, cfg, *,
+                           calculation: str) -> List[Issue]:
+    """The electronic state's findings -- ONE family, for every engine and
+    every kind (`science/chemistry-correctness.md` § 2a, ES3-ES9).
 
-    Single source of truth: ``ChemistryAnalysis.suggested_treatment``.
-    Pre-2026-06-13 this function checked ``analysis.metals`` (non-
-    empty → warn) which incorrectly fired for Au-BDT-Au — Au IS a
-    transition metal but in a metallic cluster context the analyzer
-    correctly suggests closed-shell singlet (Stoner criterion fails
-    for noble metals; published Au transport DFT is RKS by
-    convention).  The validator was warning the user to "switch to
-    open-shell" while the detection chip on the SAME form said
-    "closed-shell singlet" — direct contradiction.  The fix:
-    delegate the closed-vs-open decision to the analyzer, which
-    already encodes the noble-metal cluster-context logic, and
-    only fire when the analyzer's recommendation truly disagrees
-    with the user's chosen treatment.
+    Asked once, by :func:`molbuilder.validation.validate`, of the state the
+    deck will be written from (``electronic_state``).  It replaced three
+    parity checks with three severity rules, four ways of asking "is this
+    closed-shell?", and ``check_open_shell_metal``, which judged a neutral,
+    non-repeating structure whatever the calculation said -- so a formate
+    ion prepared at -1 and a bulk gold lead were both told to go open-shell.
 
-    By construction the validator and the auto-detect surface cannot
-    disagree about the chemistry now; whatever the user sees on the
-    Auto-detect chip at load time is the same conclusion that gates
-    this warning at Generate time.  See
-    ``docs/science/validation.md`` § 5.3 and § 3.4
-    (noble-metal cluster-context rule).
+    At most one finding per fact (ES9), and the first that holds wins:
+
+    * **ES4 / ES6 / ES5 -- what cannot run** (errors): a treatment the
+      engine cannot run for this kind, a floating moment on PySCF, a fixed
+      count under non-collinear or spin-orbit, unpaired electrons beside
+      restricted;
+    * **ES3 -- parity**, for a finite system and a pinned count: an error
+      where the engine refuses it or a fixed count contradicts it, a warning
+      where SIESTA runs a restricted radical half-filled;
+    * **ES9 -- a stated closed shell where the structure implies an open
+      one** (the hemeC guard), and **a constrained singlet on a closed
+      shell**; a stated open-shell count on an even structure is not a
+      finding -- triplet O2 is exactly that, and parity cannot see it;
+    * **ES8 -- a count a metal decided** warns until it is stated;
+    * **ES7 -- a charge on a transport calculation** is refused: the rule
+      makes the junction neutral, so a stated charge would otherwise be
+      dropped without a word.
+
+    The spin's findings stand down on a label naming no element: the state
+    is an electron count, and ``check_species_labels`` owns that finding.
     """
-    from ..chemistry import analyze_structure, every_label_resolves
+    from ..chemistry import every_label_resolves
+    from ..electronic_state import CAPABILITY, KINDS, electronic_state
+    from ..template import engine_name
 
-    # The recommendation comes from an electron count, so it stands down
-    # on a label naming no element -- same rule as
-    # `_check_metal_basis_adequacy` above, and `check_species_labels`
-    # owns that finding.  Without this, `analyze_structure` raised
-    # `KeyError` out through `validate()` and reached the preflight as an
-    # HTML 500, taking every other finding with it.
-    if not every_label_resolves(struct):
+    # Whose schema this config is -- the one answer (`template.engine_name`),
+    # never an isinstance ladder here.  A config the capability table does
+    # not know has no electronic state to judge.
+    engine = engine_name(type(cfg))
+    if engine not in CAPABILITY or calculation not in KINDS:
         return []
+    out = _transport_charge(cfg) if calculation == "transport" else []
+    if not every_label_resolves(struct):
+        return out
+    st = electronic_state(struct, cfg, kind=calculation)
+    # The charge's own advisory is a separate fact from the spin's, so it
+    # rides beside whichever spin finding holds -- except on a transport
+    # calculation, whose charge is 0 by rule and refused when stated (ES7):
+    # advice to state one there would be advice this family refuses.
+    return (out + _spin_findings(struct, st, engine, calculation)
+            + (_check_peptide_protonation(struct, st.net_charge)
+               if calculation != "transport" else []))
 
-    analysis = analyze_structure(struct)
-    # Only warn when the analyzer's recommendation is OPEN-SHELL but
-    # the user picked a closed-shell SCF.  When the analyzer says
-    # closed-shell (Au cluster, organic, closed-d10), no warning —
-    # the chip's "closed-shell singlet" matches the validator's
-    # silence.
-    analyzer_says_open = (analysis.suggested_treatment == "open")
-    if analyzer_says_open and is_closed_shell:
+
+def _transport_charge(cfg) -> List[Issue]:
+    """ES7: a transport calculation carries no net charge.
+
+    The one place that reads the STATED charge of a transport config: the
+    state's rule makes the junction neutral (``electronic_state._charge``),
+    so a value in the template would otherwise be dropped without a word.
+    (It lived in the transport kind's validator until the M6 review, outside
+    the family.)
+
+    `engines/transport.md` 2a.7 defers net charge and gating, and the reason
+    is the boundary condition: a transport calculation is OPEN, so the
+    device's electron number is set by the electrodes' chemical potentials
+    and found by the contour integration rather than fixed by the deck --
+    and a lead is bulk metal that must stay neutral, because charging it
+    moves the Fermi level every downstream stage is measured against.  The
+    ruling was written before the declaration followed it, so a template can
+    still carry a value -- a hand-edited one written before 2026-09-16, or a
+    caller building the config directly.  Silently neutralising someone's
+    charged junction is the defect; saying so is the fix.
+    """
+    charge = getattr(cfg, "net_charge", None)
+    if not charge:
+        return []
+    return [Issue(
+        "error",
+        f"net_charge = {int(charge):+d}, and a transport calculation "
+        f"cannot carry one.  Its boundaries are OPEN: the device's "
+        f"electron count is set by the electrodes' chemical potentials "
+        f"and found by the contour integration, not fixed by the deck, "
+        f"and the leads are bulk metal that must stay neutral -- a "
+        f"charged lead moves the Fermi level every stage is measured "
+        f"against.  Net charge and gating are deferred by ruling "
+        f"(engines/transport.md 2a.7); a gated or electrochemical "
+        f"junction is separate work.  Remove net_charge from this "
+        f"calculation's template, or relax the charged species as an "
+        f"OPTIMIZATION, where the keyword is honoured.",
+        "config.net_charge")]
+
+
+def _spin_findings(struct: Structure, st, engine: str,
+                   calculation: str) -> List[Issue]:
+    """The spin's findings, first that holds wins (see
+    :func:`check_electronic_state`)."""
+    from ..chemistry import check_spin_charge_parity
+    from ..electronic_state import (ALWAYS_FREE, CAPABILITY, FLOATS, FREE,
+                                    cannot_run)
+
+    t, c, q = st.spin_treatment, st.unpaired_electrons, st.net_charge
+
+    # ES4 -- declared, not discovered.  Only a STATED treatment can land
+    # here: detection answers restricted or unrestricted, which every
+    # engine runs for every kind.
+    why = cannot_run(engine, calculation, t.value)
+    if why:
         return [Issue(
+            "error",
+            f"spin_treatment = {t.value} cannot run here: {why}.  Choose "
+            f"one of the treatments the form offers for this engine.",
+            "config.spin_treatment")]
+    # ES6 -- only SIESTA floats a moment.
+    if c.value == FREE and engine not in FLOATS:
+        return [Issue(
+            "error",
+            f"unpaired_electrons = free asks the moment to float, and "
+            f"PySCF fixes it: it occupies exactly N-up and N-down from "
+            f"mol.spin (pyscf/scf/uhf.py).  State the count -- 0 for a "
+            f"closed shell, 1 for a doublet, 2 for a triplet.",
+            "config.unpaired_electrons")]
+    if t.value in ALWAYS_FREE and c.value != FREE:
+        return [Issue(
+            "error",
+            f"{t.value} cannot hold a fixed count: SIESTA stops on Spin.Fix "
+            f"unless the spin is collinear and polarized (read_options.F90). "
+            f"Leave unpaired_electrons blank, or state free.",
+            "config.unpaired_electrons")]
+    # ES5 -- restricted means closed-shell.
+    if t.value == "restricted" and c.value != 0:
+        # What this engine can run for this kind -- the capability table's,
+        # never a second copy of it here (ES4).
+        ways = ("restricted-open (spin-pure, one set of spatial orbitals) "
+                "or unrestricted (the two channels relax separately)"
+                if "restricted-open" in CAPABILITY[engine].get(calculation, ())
+                else "unrestricted (the two channels relax separately)")
+        return [Issue(
+            "error",
+            f"restricted means every electron paired, and "
+            f"unpaired_electrons = {c.value} asks for "
+            f"{'a floating moment' if c.value == FREE else f'{c.value} unpaired'}. "
+            f"State {ways}.",
+            "config.spin_treatment")]
+
+    # ES3 -- parity binds a finite system with a pinned count.
+    if st.finite and c.value != FREE:
+        msg = check_spin_charge_parity(struct, q.value, int(c.value))
+        if msg:
+            half_filled = engine == "siesta" and t.value == "restricted"
+            detail = (f"  The charge is {q.value:+d} ({q.said}).")
+            if half_filled:
+                return [Issue(
+                    "warn",
+                    f"An odd electron count ({st.n_electrons}) under "
+                    f"restricted: SIESTA runs it with the top level half "
+                    f"filled -- a restricted description of a radical, not "
+                    f"its ground state.  State unrestricted (2S = 1) for a "
+                    f"radical, or check the charge.{detail}",
+                    "config.unpaired_electrons")]
+            return [Issue("error", msg[0].upper() + msg[1:] + detail,
+                          "config.unpaired_electrons")]
+
+    out: List[Issue] = []
+    rec = st.recommended
+    # ES9 -- one finding for the stated state against the structure's.
+    if t.source != "detected" and t.value == "restricted" \
+            and rec.spin_treatment != "restricted":
+        out.append(Issue(
             "warn",
-            (f"Analyzer recommends OPEN-SHELL DFT for this structure "
-             f"({', '.join(analysis.metals)}) but {engine_label} "
-             f"requests a closed-shell SCF.  Closed-shell SCF on a "
-             f"true open-shell complex converges to a fictitious "
-             f"state with unphysical forces.  Switch to open-shell "
-             f"SCF and set a sensible spin (see config-field help "
-             f"for the spin / spin_treatment field).  "
-             f"{analysis.rationale}"),
-            "config.spin",
-        )]
-    return []
+            f"The spin treatment is restricted ({t.said}), and the structure "
+            f"implies {rec.spin_treatment}, 2S = {rec.unpaired_electrons}: "
+            f"{rec.why}.  A closed-shell SCF on an open-shell system "
+            f"converges to a fictitious state with unphysical forces.  "
+            f"Leave the spin fields blank to take the structure's answer, "
+            f"or state the count.",
+            "config.spin_treatment"))
+    elif t.source != "detected" and t.value == "unrestricted" \
+            and c.value == 0 and rec.spin_treatment == "restricted":
+        out.append(Issue(
+            "warn",
+            f"unrestricted at 2S = 0 is a constrained singlet, and this "
+            f"structure is closed-shell ({rec.why}): the same answer as "
+            f"restricted at twice the cost.  Keep it only for a "
+            f"broken-symmetry singlet.",
+            "config.spin_treatment"))
+    # What a count SOMEBODY SAID means for each open-d metal present -- the
+    # person's, or the run's the structure came out of -- an echo, so the
+    # oxidation state it implies can be checked against the chemistry (info:
+    # it labels, it does not count).  Not an implied count: a stated
+    # restricted's 0 on an iron complex is ES9's finding already, and this
+    # said it a second time until the M6 review.
+    if c.source in ("stated", "recorded") and c.value != FREE:
+        from ..chemistry import explain_metal_spin
+        for m in st.facts.open_d_metals:
+            label = explain_metal_spin(m, int(c.value))
+            if label:
+                out.append(Issue(
+                    "info",
+                    f"{m} with 2S = {c.value}: {label}.  Confirm it against "
+                    f"your experimental data (Mössbauer / UV-Vis / EPR) or the "
+                    f"chemistry of the rest of the molecule (axial ligands, "
+                    f"protonation).",
+                    "config.unpaired_electrons"))
+    # ES8 -- a metal's usual count is a guess about the coordination.
+    if st.metal_driven:
+        hint = next((h for h in st.facts.metal_hints
+                     if h.element == rec.metal), None)
+        others = ([f"{sc.spin} ({sc.label.split(' -- ')[0]})"
+                   for sc in hint.common_spins] if hint else [])
+        out.append(Issue(
+            "warn",
+            f"unpaired_electrons was left blank, so it is {c.value}: "
+            f"{c.why}."
+            + (f"  {rec.metal}'s common counts: {'; '.join(others)}."
+               if others else ""),
+            "config.unpaired_electrons"))
+    return out

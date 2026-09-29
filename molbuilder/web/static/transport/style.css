@@ -2,7 +2,7 @@
  * transport_calculation.html.  Page-specific layout for the cite/bias/send
  * rows and the viewer host.  Everything shared lives in the lib sheets
  * (tokens / page-shell cards+buttons / form-schema fieldsets /
- * form-components .full-btn + .auto-detect-*) -- created 2026-07 when the
+ * form-components .full-btn + the chemistry card) -- created 2026-07 when the
  * template's inline styles + ownerless classes were pulled in here
  * (`web/ui-contract.md`: no inline styles, page sheets page-only). */
 

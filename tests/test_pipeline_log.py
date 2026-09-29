@@ -232,7 +232,7 @@ def test_the_engines_derived_context_is_in_the_log(tmp_path):
     _prep(dest, stages[0])
     text = _the_log(dest)
     assert "this deck's own derived context (W10)" in text
-    for name in ("algorithm", "block_size", "relax_kind", "spin_polarized"):
+    for name in ("algorithm", "block_size", "relax_kind", "spin_treatment"):
         assert re.search(rf"⊕\s+{name}\s+\S+\s+<- derived", text), \
             f"{name} missing from the derived context"
 

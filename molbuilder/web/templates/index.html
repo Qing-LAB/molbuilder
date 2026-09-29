@@ -48,10 +48,10 @@
 <!-- ============================================================ -->
 <!--  Vertical workflow (2026-06-08 cleanup, expanded 2026-06-10): -->
 <!--    1. Inspect — viewer + "Load from sidebar selection"        -->
-<!--    2. Analyze chemistry — Auto-detect + rationale panel       -->
-<!--       (the scientific-guard step; promoted from sub-affordance -->
-<!--       of card 1 because logically it sits BETWEEN inspect and  -->
-<!--       generate — see science/validation.md § 4)               -->
+<!--    2. Charge and spin — what each engine form's calculation   -->
+<!--       will carry, and why (the chemistry card; the scientific  -->
+<!--       guard sits BETWEEN inspect and generate — see            -->
+<!--       science/chemistry-correctness.md § 2.5, § 2a)            -->
 <!--    3. Generate input — SIESTA/PySCF form                      -->
 <!--  The legacy Build/Load card (sequence/SMILES build form +     -->
 <!--  local file upload) was retired; the Molbuilder tab is now    -->
@@ -93,27 +93,12 @@
     <div id="viewer-host" class="molviewer-host"></div>
   </section>
 
-  {#- Card 2 — Analyze chemistry.  Promoted from sub-affordance
-      of card 1 (Inspect structure) to its own workflow step
-      2026-06-10, since logically it sits BETWEEN inspect and
-      generate: the analyzer reads the loaded structure (output
-      of card 1) and pre-fills the form (input of card 3).
-
-      Button POSTs to /api/structure/analyze; the endpoint runs
-      the engine-agnostic ``ChemistryAnalysis`` + iterates the
-      adapter registry to translate per-engine.  The <details>
-      panel surfaces the rationale + warnings + per-metal hints
-      so the user sees what was decided AND why — see
-      docs/science/validation.md for the
-      scientific-guard role. -#}
-  {% set hint %}Engine-agnostic chemistry check: detects open-shell
-      transition metals, picks a sensible <code>(charge, spin,
-      method)</code> triplet for the typical coordination
-      context, and pre-fills BOTH engine sub-forms below.  Click
-      after loading a structure in step 1; review the rationale
-      panel before generating the script.{% endset %}
-  {% set title = "Analyse the loaded structure (open-shell metals, electron count) and pre-fill (charge, spin, method) on both engine sub-forms.  Disabled until a structure is loaded." %}
-  {% include "_analyze_chemistry_card.html" %}
+  {#- Card 2 — Charge and spin: what each engine form's calculation will
+      carry, resolved by the one electronic-state class for exactly what the
+      form says, each value with where it came from
+      (science/chemistry-correctness.md § 2a).  It follows every edit to a
+      charge or spin field and changes nothing. -#}
+  {% include "_chemistry_card.html" %}
 
   <section class="card" id="generate-card">
       <h2>3. Calculation parameters</h2>
@@ -312,7 +297,8 @@
 <script src="{{ url_for('static', filename='lib/task-handover.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/fetch-error.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/detection-chip.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/auto-detect.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/dom.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/chemistry.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/tab-strip.js') }}"></script>

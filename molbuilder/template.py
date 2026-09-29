@@ -68,7 +68,7 @@ import types
 import typing
 from pathlib import Path as _Path
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, NoReturn, Optional, Tuple
+from typing import Any, Dict, List, Mapping, NoReturn, Optional, Tuple, Union
 
 from .persist import check_schema
 
@@ -238,7 +238,9 @@ class Item:
     manual: str = ""
 
     # --- bounds and presentation ---
-    choices: Optional[Tuple[str, ...]] = None   # required when type == "enum"
+    #: Required when type == "enum".  A member is a string or a WHOLE NUMBER
+    #: (`engines/template.md` § 5): `unpaired_electrons` is 0-10 or "free".
+    choices: Optional[Tuple[Union[str, int], ...]] = None
     range:   Optional[Tuple[float, float]] = None
     unit:    Optional[str] = None
     group:   Optional[str] = None           # workflow_group: profile/stage/budget
@@ -368,11 +370,17 @@ class Item:
     #: spin treatment, species order, the pseudopotentials and the transverse
     #: k-sampling are decided once and may not be overridden on one rung.
     #: Every `citation` row is shared; Class A is larger -- `species_order`,
-    #: `spin_treatment`, `spin_total` and the pseudopotentials bind every rung
-    #: and no run answers them.  Filtering on `citation` for "shared" offered
-    #: those four as per-rung overrides (2026-09-23), and a species order
-    #: that differs between the leads and the device is the disagreement
+    #: `spin_treatment`, `unpaired_electrons` and the pseudopotentials bind
+    #: every rung.  Filtering on `citation` for "shared" offered those as
+    #: per-rung overrides (2026-09-23), and a species order that differs
+    #: between the leads and the device is the disagreement
     #: `model/chemistry.md` § 3a exists to make impossible.
+    #:
+    #: **And every kind, not only transport** (M6, 2026-09-28): the
+    #: electronic state's four items are `shared` for each kind that has
+    #: them, because the state belongs to the calculation, never to a stage
+    #: (`science/chemistry-correctness.md` § 2a, ES1) -- every rung's warm
+    #: files are a density for one electronic state.
     #:
     #: Three readers ask this one declaration: the shared panel (which shows
     #: these and nothing else), the per-rung form (which never offers them)
@@ -564,11 +572,18 @@ _UNION_ORIGINS = (typing.Union, types.UnionType)
 
 
 def _unwrap_optional(ann) -> Tuple[Any, bool]:
-    """``Optional[X]`` / ``X | None`` → ``(X, True)``; anything else → ``(ann, False)``."""
+    """``Optional[X]`` / ``X | None`` → ``(X, True)``; anything else → ``(ann, False)``.
+
+    ``X`` may itself be a union: ``Optional[Union[int, str]]`` -- the
+    electronic state's count, a whole number or ``free`` -- is optional with
+    ``Union[int, str]`` inside.  This answered "not optional" for any union of
+    two types beside ``None`` until 2026-09-28, the first field to have one.
+    """
     if typing.get_origin(ann) in _UNION_ORIGINS:
         args = [a for a in typing.get_args(ann) if a is not type(None)]
-        if len(args) == 1:
-            return args[0], True
+        if len(args) < len(typing.get_args(ann)):
+            return (args[0] if len(args) == 1
+                    else typing.Union[tuple(args)]), True
     return ann, False
 
 
@@ -1026,7 +1041,7 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
     meant to write — § 4.1 asks for exactly this.
     """
     parsed = read_template(catalogue or load_catalogue())
-    eng = engine or _engine_name(type(config))
+    eng = engine or engine_name(type(config))
     items = [
         dataclasses.replace(
             it,
@@ -1118,7 +1133,7 @@ def _emit(items, *, engines, title: str = "") -> str:
     return text
 
 
-def _engine_name(cls) -> str:
+def engine_name(cls) -> str:
     """Whose schema these items are — from the class, never guessed by a caller."""
     named = getattr(cls, "ENGINE", "")
     if named:
@@ -1247,7 +1262,9 @@ _TYPE_CHECKS = {
     "str":     lambda v: isinstance(v, str),
     "text":    lambda v: isinstance(v, str),
     "bool":    lambda v: isinstance(v, bool),
-    "enum":    lambda v: isinstance(v, str),
+    # A member is a string or a whole number (§ 5) -- membership, typed, is
+    # `_check_raw_value`'s: `2` is a member of 0-10 and `"2"` or `true` is not.
+    "enum":    lambda v: isinstance(v, str) or _is_int(v),
     # ``pow2`` CHECKS only that it is an int.  The power-of-two constraint is
     # not a refusal, it is a COERCION -- ``_shape`` snaps the value (user,
     # 2026-08-14: *"instead of accepting and refusing, it should correctly
@@ -1307,7 +1324,7 @@ def apply_recommended(config, calculation: str, *, engine: str = ""):
     """A copy of ``config`` carrying every recommendation the catalogue makes
     for ``calculation`` on its engine (§ 6.3a) -- what `init` writes a kind's
     template from, so the template starts where the kind says it should."""
-    eng = engine or _engine_name(type(config))
+    eng = engine or engine_name(type(config))
     updates = {}
     for it in select(catalogue(), engine=eng, calculation=calculation):
         rec = recommended_for(it, calculation)
@@ -1332,10 +1349,21 @@ def _check_raw_value(name: str, key: str, raw, type_: str,
             f"{key} is {raw!r}.  This file is hand-editable and the "
             f"declaration is the contract for the edit "
             f"(engines/template.md § 5).")
-    if type_ == "enum" and choices and raw not in choices:
+    if type_ == "enum" and choices and not is_member(raw, choices):
         raise ValueError(
             f"template: item {name!r} is an enum of "
             f"{', '.join(map(repr, choices))} but its {key} is {raw!r}.")
+
+
+def is_member(value, choices) -> bool:
+    """Whether ``value`` is one of an enum's ``choices`` WITH ITS OWN TYPE.
+
+    An enum's members are strings or whole numbers (§ 5).  Python's ``in``
+    compares by value, and ``True == 1``: a template writing
+    ``unpaired_electrons = true`` would pass as a count of one, and ``"2"``
+    would pass nowhere it should.  So the type is part of the question.
+    """
+    return any(type(value) is type(c) and value == c for c in choices)
 
 
 def _shape(v: Any, type_: str) -> Any:
@@ -1533,6 +1561,31 @@ def _check_engine(t: "Template", engine) -> None:
             f"that engine' (engines/template.md § 3).")
 
 
+#: The electronic state's four items (`science/chemistry-correctness.md`
+#: § 2a) -- `shared` for every kind that has them (ES1).
+STATE_ITEMS = ("net_charge", "spin_treatment", "unpaired_electrons", "method")
+
+
+def shared_by_every_stage(engine: str, kind: str) -> frozenset:
+    """The items that bind every stage of a ``kind`` calculation -- the
+    catalogue's `shared` (§ 6.4), asked rather than listed.  A stage override
+    naming one is refused (:func:`why_shared` says why), and the Task setup
+    table offers none of them as a column."""
+    return frozenset(it.name for it in select(catalogue(), engine=engine)
+                     if kind in it.shared)
+
+
+def why_shared(name: str) -> str:
+    """Why a `shared` item cannot be one stage's -- the clause a refusal
+    puts after *"is shared by every stage of this calculation"*."""
+    if name in STATE_ITEMS:
+        return ("the electronic state belongs to the calculation, never to "
+                "a stage -- every stage's warm files are a density for one "
+                "state (science/chemistry-correctness.md § 2a, ES1)")
+    return ("the electrode and the device must not be able to disagree "
+            "about it (engines/transport.md § 2a.7)")
+
+
 def select(t: "Template", *, category=None, engine=None,
            kind=None, read_by=None, allocation=None,
            citation=None, role=None, stages=None,
@@ -1676,7 +1729,7 @@ def config_from_template(text: str, config_cls):
     # an engine the file does not serve, so *"does not run on that engine"*
     # stays distinct from *"no items matched"*.
     parsed = read_template(text)
-    eng = _engine_name(config_cls)
+    eng = engine_name(config_cls)
     mine = select(parsed, engine=eng) if parsed.engines else parsed.items
     vals = {it.name: it.value for it in mine if it.is_set}
     machine = sorted(k for k in vals
@@ -1719,9 +1772,17 @@ def config_from_template(text: str, config_cls):
         # renders a deck missing what the person believes they set.  A
         # retired item is named as retired, so a template written before
         # the retirement is not sent looking for a misspelling.
+        migrated = [k for k in unknown if k in MIGRATED_ITEMS]
         retired = [k for k in unknown if k in RETIRED_ITEMS]
-        other = [k for k in unknown if k not in RETIRED_ITEMS]
+        other = [k for k in unknown
+                 if k not in RETIRED_ITEMS and k not in MIGRATED_ITEMS]
         why = []
+        if migrated:
+            why.append(
+                "template carries item(s) the electronic state replaced on "
+                "2026-09-28 (science/chemistry-correctness.md § 2a): "
+                + ", ".join(f"{k!r} ({MIGRATED_ITEMS[k]})" for k in migrated)
+                + ".  " + MIGRATE_HINT)
         if retired:
             why.append(
                 "template names item(s) retired from the schema -- delete "
@@ -1734,7 +1795,39 @@ def config_from_template(text: str, config_cls):
                 f"template item is a schema field (engines/template.md § 7); "
                 f"check the spelling against the schema's own names.")
         raise ValueError("  ".join(why))
+    # A VALUE MUST BE ONE OF THE CATALOGUE'S CHOICES -- today's, not the ones
+    # the file carries beside it.  The file's own declaration is what it was
+    # written against, so an enum the catalogue has since changed parses
+    # cleanly against itself and would reach the config as a value no
+    # reader expects: `method = "RKS"` under the DFT/HF vocabulary is read as
+    # Hartree-Fock (M6, 2026-09-28).  Refused by name instead.
+    decls = {it.name: it for it in select(catalogue(), engine=eng)}
+    stale = [(k, v) for k, v in vals.items()
+             if k in decls and decls[k].type == "enum" and decls[k].choices
+             and not is_member(v, decls[k].choices)]
+    if stale:
+        k, v = stale[0]
+        raise ValueError(
+            f"template's {k} = {v!r} is not one of today's choices "
+            f"({', '.join(map(repr, decls[k].choices))})."
+            + (f"  It was written before the electronic state's items "
+               f"(science/chemistry-correctness.md § 2a).  {MIGRATE_HINT}"
+               if k in STATE_ITEMS else ""))
     return config_cls(**vals)
+
+
+#: Items the electronic state replaced (M6, 2026-09-28) -- a template still
+#: carrying one is refused naming the migration, never told to delete a value
+#: that decided what the run was (`plan.md` § 5s.2, decision 7).
+MIGRATED_ITEMS = {
+    "spin": "PySCF's 2S, now `unpaired_electrons`",
+    "spin_total": "SIESTA's Spin.Total, now `unpaired_electrons`",
+}
+
+#: The one sentence every refusal of a pre-M6 template ends with.
+MIGRATE_HINT = ("Run `molbuilder jobset migrate --bundle <this calculation's "
+                "folder>`: it rewrites the old items and values into the "
+                "electronic state's, keeping what the run was.")
 
 
 #: Items a schema once declared and no longer does, each with where its
@@ -1759,4 +1852,5 @@ __all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES",
            "CATALOGUE", "catalogue", "load_catalogue",
            "template_with_values",
            "read_template", "config_from_template",
-           "template_fields"]
+           "template_fields", "engine_name", "is_member",
+           "STATE_ITEMS", "shared_by_every_stage", "why_shared"]

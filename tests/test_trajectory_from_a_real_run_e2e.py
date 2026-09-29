@@ -115,7 +115,7 @@ def co2_optimization(isolated_projects_root_module):
             positions=np.array([[0.0, 0.0, 0.0],
                                 [0.0, 0.0, _START_ANG],
                                 [0.0, 0.0, -_START_ANG]]))
-        cfg = PySCFConfig(job_name="co2opt", method="RHF", basis="STO-3G")
+        cfg = PySCFConfig(job_name="co2opt", method="HF", basis="STO-3G")
         deck = d / "co2opt.py"
         prepare_deck(spec_for(struct, cfg, calculation="optimization"),
                      struct, cfg, deck, verbose=False)
@@ -416,7 +416,7 @@ def test_the_scf_criteria_this_run_used_reach_the_page_in_ev(
 
     d = co2_optimization.parent
     log = d / "co2opt.molwatch.log"
-    cfg = PySCFConfig(job_name="co2opt", method="RHF", basis="STO-3G")
+    cfg = PySCFConfig(job_name="co2opt", method="HF", basis="STO-3G")
     grad = (cfg.scf_conv_tol_grad if cfg.scf_conv_tol_grad > 0
             else math.sqrt(cfg.scf_conv_tol))       # PySCF's own rule
     want = {"dE": cfg.scf_conv_tol * HARTREE_EV, "|g|": grad * HARTREE_EV}

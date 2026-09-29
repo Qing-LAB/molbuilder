@@ -5,7 +5,8 @@
 **Companions:** `structure.md` (the `Structure` these operate on),
 `science/chemistry-correctness.md` + `science/validation.md` (the
 **correctness** half of `chemistry.py` — spin/charge parity, open-shell metals,
-ECP resolution, the analyzer + engine adapters; migrating in the science wave),
+ECP resolution, the structure's facts — and the electronic state, which decides
+the charge and the spin from them, § 2a),
 `engines/siesta.md` + `engines/pyscf.md` (the emitters that consume the
 resolved net charge).
 
@@ -16,9 +17,9 @@ global state, no I/O) unless noted.
 
 > **Two halves, two domains.** The module also holds the scientific-correctness
 > machinery — spin/charge parity, open-shell-metal detection, PySCF ECP
-> resolution, and the `analyze_structure` analyzer + its engine-parameter
-> adapters. That half is a *science* concern (it decides whether a calculation
-> setup is physically valid) and lives in `science/` (see the pointer in § 4).
+> resolution, and the `analyze_structure` facts the electronic state decides
+> from. That half is a *science* concern (it decides whether a calculation
+> setup is physically valid) and lives in `science/` (see the pointer in § 5).
 > This doc covers the **structure-chemistry helpers**.
 
 ---
@@ -26,23 +27,36 @@ global state, no I/O) unless noted.
 ## 1. Net charge
 
 Charge is resolved in **one** place so the SIESTA and PySCF emitters don't each
-carry their own logic — both read one field, `cfg.net_charge` (two names until
-the 2026-08-19 merge).
+carry their own logic: the charge step of the electronic-state class
+([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a),
+`electronic_state(struct, cfg, kind=)`, which resolves the charge first and then
+the spin at that charge. Both engines' configs carry one field, `net_charge`
+(two names until the 2026-08-19 merge), and every deck writer and check reads
+`state.net_charge` — the value, where it came from, and why.
 
 ```mermaid
 flowchart LR
-    IN["resolve_net_charge(struct, explicit_charge)"]
-    Q{"explicit_charge<br/>is None?"}
-    OV["use it verbatim<br/>(0 = force neutral,<br/>disables auto-detect)"]
+    IN["the charge step<br/>electronic_state(struct, cfg, kind=)"]
+    T{"a transport<br/>calculation?"}
+    Q{"net_charge<br/>stated?"}
+    R{"the structure's run<br/>recorded a charge?"}
+    ZERO["0 — rule: the leads<br/>set the electron number"]
+    OV["use it as stated<br/>(0 is a statement,<br/>not a blank)"]
+    REC["the recorded charge (ES7)"]
     AUTO["formal_charge_from_phosphates(struct)<br/>(count deprotonated phosphate O⁻)"]
-    IN --> Q
-    Q -- no --> OV
-    Q -- yes --> AUTO
+    IN --> T
+    T -- yes --> ZERO
+    T -- no --> Q
+    Q -- yes --> OV
+    Q -- no --> R
+    R -- yes --> REC
+    R -- no --> AUTO
 ```
 
-- **`resolve_net_charge(struct, explicit_charge)` → int** — the one resolver.
-  An **explicit override wins**; `0` is meaningful (forces neutral, disables
-  auto-detection), and only `None` triggers the phosphate heuristic below.
+- **The charge step** — a transport calculation's charge is 0 by rule; otherwise
+  a **stated value wins**, `0` included (it is a statement, not a blank); a blank
+  takes the charge of the run the structure came out of when it carries that
+  record, and only then the phosphate rule below.
 - **`formal_charge_from_phosphates(struct)` → int** — the auto-detect
   heuristic. It looks **only at phosphate groups**. For each phosphorus:
   1. Find non-bridging oxygen neighbours (an O whose only heavy neighbour is
@@ -206,7 +220,7 @@ engine or listed for a reader**, and nothing else.
 | `describe.pseudo_species`, `prep`'s pseudopotential copy | ✅ | so the pseudos a description names are listed in deck order |
 | PySCF's emitters | — | they write atoms in the structure's own order and declare no species table. Nothing to order |
 | **`Structure.formula`** | ❌ **never** | it is an **identifier**, not chemistry: compared for equality, normalised into a run id (`run-identity.md` § 2.0a) and recorded in `task.json` as a witness. Its own docstring says so. Re-ordering it would change every run id, and the alphabetical order is what makes it a stable key |
-| `chemistry.analyze_structure` | ❌ | its sort exists to make a **pick** deterministic — `open_d[0]`'s spin hint is reported, and a frozenset's hash order varies per process. Reordering would change which metal is reported first, for no gain |
+| `chemistry.analyze_structure` | ❌ | its sort exists to make a **pick** deterministic — the first open-d metal decides the detection table's row (`electronic_state.recommend`), and a frozenset's hash order varies per process. Reordering would change which metal decides, for no gain |
 | `compose.py`'s `.ion` lookup | ❌ | builds a dict; the order never surfaces |
 
 **The test that distinguishes them:** is this list *shown* — to an engine as a
@@ -256,11 +270,11 @@ science wave), not the data model:
 
 | Function / type | What it decides | Doc |
 |---|---|---|
-| `check_spin_charge_parity(struct, charge, spin)` | is `(charge, spin)` electron-count-consistent? | `science/chemistry-correctness.md` |
-| `detect_open_shell_metals` / `detect_transition_metals` | which metals need open-shell treatment | `science/chemistry-correctness.md` |
-| `explain_metal_spin`, `suggest_spin_total` | plausible spin states for a metal centre | `science/chemistry-correctness.md` |
+| `check_spin_charge_parity(struct, charge, unpaired)` | is the (charge, 2S) pair electron-count-consistent? | `science/chemistry-correctness.md` |
+| `detect_transition_metals` | which transition metals are present (the basis-adequacy check) | `science/validation.md` |
+| `explain_metal_spin` | what a count means for a metal centre, in words | `science/chemistry-correctness.md` |
 | `resolve_pyscf_ecp(struct, …)` | which atoms need an effective core potential | `engines/pyscf.md` |
-| `analyze_structure(struct)` → `ChemistryAnalysis` + `register_adapter` / `registered_adapters` | the analyzer + per-engine parameter adapters (the validation call graph) | `science/validation.md` |
+| `analyze_structure(struct)` → `ChemistryAnalysis` | the structure's facts — the metals that bear on its spin and their usual spins — that the electronic state decides from | `science/validation.md` · `science/chemistry-correctness.md` § 2a |
 
 Keeping the correctness half in `science/` means a reviewer checking whether a
 default is scientifically defensible reads it alongside the other validation

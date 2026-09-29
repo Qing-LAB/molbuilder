@@ -1,9 +1,9 @@
 """Tests for ``window.molbuilder.formSchema.setValues`` — the
-public helper added in Phase 2 of the chemistry middle-layer
-work that backs the Auto-detect button's "apply suggestion"
-path.  See ``molbuilder/web/static/lib/form-schema.js`` for the
-helper, and ``docs/web/form-schema.md`` § 3.0a for what it
-guarantees.
+public helper a tab writes values into a rendered form through (the
+Recommended panel's reset, a restored form).  It was added for the
+Auto-detect button's "apply suggestion" path, retired 2026-09-28.  See
+``molbuilder/web/static/lib/form-schema.js`` for the helper, and
+``docs/web/form-schema.md`` § 3.0a for what it guarantees.
 
 It cited ``science/validation.md`` § 5.1 until 2026-09-02 -- a
 section that document has never had, and a document this does not
@@ -224,9 +224,9 @@ def test_setvalues_sets_int_triple_from_array(page, flask_server):
 
 
 def test_setvalues_applies_multiple_fields_in_one_call(page, flask_server):
-    """The Auto-detect path passes a dict like
-    {charge: 0, spin: 2, method: 'UKS'} — pin that multi-field
-    sets work in one call."""
+    """The Recommended reset passes a dict of every ticked field
+    (`structure-optimization/viewer.js`) — pin that multi-field sets work
+    in one call."""
     _mount(page, flask_server, ONE_OF_EACH_SCHEMA)
     page.evaluate(
         "() => window.molbuilder.formSchema.setValues("
@@ -248,10 +248,9 @@ def test_setvalues_applies_multiple_fields_in_one_call(page, flask_server):
 
 def test_setvalues_ignores_unknown_field_name(page, flask_server):
     """A value for a field not in the schema is silently skipped —
-    no error, no DOM mutation.  The auto-detect endpoint adds
-    new ``suggested.<engine>`` entries over time; an engine
-    refresh that adds a field the local form schema doesn't yet
-    have must not break the form-fill path."""
+    no error, no DOM mutation.  A saved form restored after a field
+    was renamed carries a name the schema no longer has, and that must
+    not break the restore."""
     _mount(page, flask_server, ONE_OF_EACH_SCHEMA)
     page.evaluate(
         "() => window.molbuilder.formSchema.setValues("
@@ -293,9 +292,8 @@ def test_setvalues_with_null_value_clears_text(page, flask_server):
 
 def test_setvalues_int_triple_rejects_wrong_arity(page, flask_server):
     """An int-triple value with the wrong length is silently
-    skipped (not crashing the call).  The auto-detect path won't
-    send wrong arities, but a buggy adapter could; pin the
-    defensive behaviour."""
+    skipped (not crashing the call).  No caller sends a wrong arity,
+    but a stale saved form could; pin the defensive behaviour."""
     _mount(page, flask_server, ONE_OF_EACH_SCHEMA)
     # Seed kgrid with [1,1,1] (the default after render).
     page.evaluate(
@@ -318,10 +316,10 @@ def test_setvalues_int_triple_rejects_wrong_arity(page, flask_server):
 
 
 def test_setvalues_dispatches_input_event_on_changed_fields(page, flask_server):
-    """Auto-detect's form-fill must trigger dirty-tracking
-    listeners on the Generate forms (so the form-dirty modal
-    fires on subsequent sidebar clicks).  Pin that ``input``
-    events fire on changed controls.
+    """A programmatic set -- the Recommended reset -- must trigger the
+    listeners a typed edit does (the dirty tracker, the preflight, the
+    chemistry card), or the page goes on describing the values it had.
+    Pin that ``input`` events fire on changed controls.
     """
     _mount(page, flask_server, ONE_OF_EACH_SCHEMA)
     # Install a counter that increments on every input event.

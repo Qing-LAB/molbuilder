@@ -124,6 +124,23 @@ def _validate_config_metadata(cfg) -> List[Issue]:
                          f"the field's type is wrong."),
                         f"config.{f.name}",
                     ))
+        # AN ENUM'S VALUE IS ONE OF ITS MEMBERS, with the member's type
+        # (`engines/template.md` § 5) -- the rule the template reader and the
+        # form's coercion already hold, here for a config built any other
+        # way.  Without it a stale caller's `method = "RKS"` (the SCF class,
+        # before the method became DFT or HF on 2026-09-28) was not refused:
+        # it was simply not "DFT", and the deck was written as Hartree-Fock.
+        choices = meta.get("choices")
+        if choices and value is not None:
+            from ..template import is_member
+            if not is_member(value, choices):
+                issues.append(Issue(
+                    "error",
+                    f"{meta.get('label', f.name)}{_keyword_suffix(meta)} = "
+                    f"{value!r} is not one of "
+                    f"{', '.join(map(repr, choices))}",
+                    f"config.{f.name}",
+                ))
         # Optional callable: meta["validate"] -> Issue or None
         validator = meta.get("validate")
         if validator is not None:

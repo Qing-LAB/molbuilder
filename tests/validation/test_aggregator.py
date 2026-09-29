@@ -24,8 +24,8 @@ from tests.spectra._helpers import _spectra_cfg
 
 def test_issue_severity_accepts_error_warn_info():
     """Severity is restricted to error / warn / info.  Info was
-    added 2026-05-22 for advisory hints (e.g. 'Fe + spin=4 implies
-    high-spin Fe(II)') that don't add to the warn count; renamed
+    added 2026-05-22 for advisory hints (e.g. 'Fe with 2S = 4: high-spin
+    Fe(II)') that don't add to the warn count; renamed
     from the old "error or warn only" pin."""
     Issue("error", "fine")
     Issue("warn",  "fine")
@@ -115,49 +115,27 @@ def test_render_fdf_raises_on_overlapping_atoms():
 
 
 def test_render_fdf_emits_warnings_to_stderr(capsys, water_struct):
-    """A spin_total without spin_treatment warning surfaces on stderr;
-    the FDF still gets emitted (warnings don't block)."""
+    """A warning surfaces on stderr and the FDF is still emitted (warnings
+    don't block): unrestricted at 2S = 0 on closed-shell water, the
+    constrained singlet the electronic state's family warns about (ES9)."""
     from molbuilder.siesta import render_fdf
-    cfg = SiestaConfig(spin_treatment="non-polarized", spin_total=1.0)
+    cfg = SiestaConfig(spin_treatment="unrestricted", unpaired_electrons=0)
     fdf = render_fdf(water_struct, cfg)
     err = capsys.readouterr().err
-    assert "spin_total" in err
+    assert "constrained singlet" in err
     # FDF was still generated:
     assert "SystemName" in fdf
 
 
-def test_render_script_raises_on_negative_spin(water_struct):
-    """spin = -1 -> error from validate(), render_script raises
-    ValidationError before emitting any Python text.
-
-    Use UKS so the gate's restricted-method refusal (error-level since
-    G-1c) doesn't pre-empt the negative-spin catch this test is about.
-    """
+def test_render_script_raises_on_an_error(water_struct):
+    """An error from validate() -- a floating moment on PySCF, which pins
+    the count (ES6) -- makes render_script raise ValidationError before any
+    Python text is emitted."""
     from molbuilder.pyscf import render_script
-    cfg = PySCFConfig(spin=-1, method="UKS")
+    cfg = PySCFConfig(unpaired_electrons="free")
     with pytest.raises(ValidationError) as exc:
         render_script(water_struct, cfg)
-    assert "spin" in str(exc.value)
-
-
-def test_render_script_warns_on_open_shell_with_rks(capsys, water_struct):
-    """Open-shell spin with closed-shell RKS / RHF method emits a
-    warning to stderr but doesn't block emission."""
-    from molbuilder.pyscf import render_script
-    # (The old pyscf.input ValueError guard for RKS+spin retired with
-    # G-1c, 2026-08-21 -- the GATE owns that refusal now, error-level.)
-    # A LEGITIMATE open-shell system: the water cation (9 electrons,
-    # one unpaired).  The old fixture said spin=1 on NEUTRAL water --
-    # 10 electrons, an impossible pair -- and passed only while nothing
-    # on this route checked parity (closed by G-1d, 2026-08-21).
-    cfg = PySCFConfig(spin=1, method="UKS", net_charge=1)
-    # For UKS + spin=1 on an odd-electron system the validator has
-    # nothing to flag; this test documents that a *legitimate*
-    # open-shell config doesn't warn.
-    render_script(water_struct, cfg)
-    err = capsys.readouterr().err
-    # No "config.method" warn for a properly-set UKS config.
-    assert "method" not in err or "warn [config.method]" not in err
+    assert "free" in str(exc.value)
 
 
 # --------------------------------------------------------------------- #

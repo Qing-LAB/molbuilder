@@ -613,7 +613,7 @@ def test_a_hartree_fock_deck_names_no_functional(tmp_path, monkeypatch):
         bundle = _describe(sub, monkeypatch)
         tpl = bundle / "W.template.toml"
         t = tpl.read_text()
-        for item, old, new in (("method", '"RKS"', '"RHF"'),
+        for item, old, new in (("method", '"DFT"', '"HF"'),
                                ("functional", '"B3LYP"', '"PBE0"'),
                                ("dispersion", '"d3bj"', f'"{disp}"'),
                                ("grid_level", "4", "3")):

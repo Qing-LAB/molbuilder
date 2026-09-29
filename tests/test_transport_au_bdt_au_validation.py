@@ -232,10 +232,11 @@ def test_the_canonical_junction_validates_clean():
     so this pins that the canonical system does not trip the SIESTA
     validator, the shared checks, or `_validate_transport_kind`.
 
-    Au has no entry in the open-shell-metals set (5d¹⁰ closed), so the
-    shared open-shell-metal check also returns clean — confirming the
-    cross-engine rule in `science/chemistry-correctness.md` § 2 does not
-    false-positive on closed-shell transition metals.
+    And NO SPIN FINDING of any severity: gold is a noble s1 metal, not an
+    open-d one, and the junction repeats, so the electronic state resolves
+    it restricted (`science/chemistry-correctness.md` § 2a.1b) -- the gold
+    lead once told to go open-shell, which is what the README beside the
+    fixture says this system shows.
 
     *(This drove `TransiestaEngine.preflight` and a bare `TransportConfig()`
     until 2026-09-17.  That class is deleted — it was registered under
@@ -253,6 +254,9 @@ def test_the_canonical_junction_validates_clean():
         f"clean Au-BDT-Au junction triggered validation errors: "
         f"{[(e.where, e.message[:70]) for e in errs]}"
     )
+    spin = [i for i in issues if i.where in ("config.spin_treatment",
+                                             "config.unpaired_electrons")]
+    assert not spin, [(i.severity, i.message[:90]) for i in spin]
 
 
 def test_each_electrode_block_declares_its_REGION_SIZE():

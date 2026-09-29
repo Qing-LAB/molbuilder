@@ -24,8 +24,8 @@ What this file pins
 
 * SyntaxError -> "Server returned non-JSON response ..."
 * TypeError / generic Error -> "Network error: <msg>"
-* The four user-visible call sites (load-status, fdf-status,
-  pyscf-status, auto-detect-status) all route through the helper.
+* The user-visible call sites (load-status, fdf-status, pyscf-status,
+  chemistry-status) all route through the helper.
 """
 from __future__ import annotations
 
@@ -204,11 +204,11 @@ def test_the_formatter_has_exactly_one_home():
 # `test_every_page_that_formats_a_fetch_error_loads_the_module` stood here: a
 # sweep over templates for a <script> tag.  It caught nothing for months
 # because it named two pages by hand, and `transport_calculation.html` -- which
-# loads auto-detect.js -- was not one of them.
+# loads the chemistry card's module -- was not one of them.
 #
 # Retired rather than widened.  A script-tag lint is neither an API contract
 # nor a correctness claim; the failure it guards is now UNCONSTRUCTIBLE:
 # `_formatFetchError` degrades to `e.message` when the formatter is absent
-# (auto-detect.js), so a page missing the module loses the nicer wording and
+# (lib/chemistry.js), so a page missing the module loses the nicer wording and
 # nothing else.  `test_the_formatter_has_exactly_one_home` below still keeps
 # the formatter itself from being re-implemented.

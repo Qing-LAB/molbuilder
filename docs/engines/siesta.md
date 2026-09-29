@@ -224,8 +224,8 @@ fineness (Ry); `PAO` = the pseudo-atomic-orbital basis.
 | 6 | Basis & grid | `MeshCutoff`, `PAO.BasisSize`, `PAO.EnergyShift` | |
 | 7 | XC (+ dispersion template) | `XC.functional`, `XC.authors` | commented DFT-D template for non-vdW XC |
 | 8 | SCF | `SolutionMethod`, `SCF.Mixer.Weight`, `SCF.Mixer.History`, `DM.Tolerance`, … | Pulay = the DM-mixing scheme using past iterations |
-| 9 | Spin | `Spin <option>` (v5 single-line) + optional `Spin.Fix`/`Spin.Total` | only if `spin_treatment` is not `non-polarized` — § 5 |
-| 10 | NetCharge | `NetCharge ±N` | only if resolved charge ≠ 0 — § 4 |
+| 9 | Spin | `Spin <option>` (v5 single-line) + `Spin.Fix`/`Spin.Total` for a pinned count | `Spin` always, `non-polarized` included — § 5 |
+| 10 | NetCharge | `NetCharge ±N` | always, at 0 too, beside where it came from; never on a transport rung (its junction is neutral by rule) — § 4 |
 | 11 | k-grid | `%block kgrid_Monkhorst_Pack` from `cfg.kgrid` | § 6 |
 | 12 | **Parallel (MPI)** | `BlockSize`, `Diag.ParallelOverK` | the ScaLAPACK/ELPA orbital-distribution block. **Tunable, and omitted entirely by default**, which is how SIESTA's own automatic is requested — the two states and the guidance are [`tuning.md § 2.11`](?doc=engines/tuning.md) |
 | 13 | Diagonalizer | `Diag.Algorithm` / `Diag.ELPA.GPU` | § 7 |
@@ -255,16 +255,21 @@ dropped `WriteHS`.
 
 ## 4. The charge contract
 
-Resolved charge is computed **once** per `render_fdf`, via
-`resolve_net_charge(struct, cfg.net_charge)` (`input.py:356` → `chemistry.py:1029`):
+The charge is the electronic state's (`electronic_state.electronic_state`,
+[`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a),
+resolved once per deck in the one order:
 
-- `cfg.net_charge is not None` → use it verbatim (including `0`, which disables
-  auto-detection);
-- otherwise → `formal_charge_from_phosphates(struct)` (the DNA/RNA phosphate
-  heuristic, see [`model/chemistry.md`](?doc=model/chemistry.md)).
+- a stated `net_charge` → used as it stands (including `0`, which is a statement,
+  not a blank);
+- otherwise the charge of the run the structure came out of, when it carries that
+  record (ES7);
+- otherwise the phosphate rule, `formal_charge_from_phosphates(struct)` (the
+  DNA/RNA backbone, see [`model/chemistry.md`](?doc=model/chemistry.md));
+- on a transport rung, 0 by rule — the leads set the electron number.
 
-A non-zero result emits `NetCharge ±N` (with a verbose comment naming the source:
-"user-specified" or "auto (phosphate protonation)").
+`NetCharge ±N` is written **always**, at 0 too — nothing reaches the engine by
+omission ([`template.md`](?doc=engines/template.md) § 6.6) — with a comment naming
+where it came from: *"NetCharge: -1 (detected: 1 deprotonated phosphate group)"*.
 
 **Vacuum adequacy — report, never mutate.** The cell comes from
 `struct.resolve_cell()` (isolated axes = bbox + 2·vacuum — see
@@ -323,38 +328,38 @@ formula does not hold, gets no script:
 
 ## 5. The spin contract
 
-SIESTA's default is spin-restricted (no `Spin` block → closed-shell DFT). An
-open-shell system (radical, transition metal, triplet) run without spin
-polarisation **silently produces the wrong electronic structure** — which is why
-the analyzer/preflight warns ([`science/validation.md`](?doc=science/validation.md)).
+An open-shell system (radical, transition metal, triplet) run without spin
+polarisation **silently produces the wrong electronic structure**, so the spin is
+never left to SIESTA's default: it is the electronic state's
+([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a),
+two template items shared with PySCF, where a blank means *work it out*.
 
-- `cfg.spin_treatment` (enum: `non-polarized` — the default — `polarized`,
-  `non-colinear`, `spin-orbit`) → the **v5 single-line keyword**
-  `Spin <option>` (the form the current manual recommends; the old
-  `SpinPolarized .true.` v4 spelling is what the generator RETIRED —
-  an earlier revision of this section defended keeping it on a premise
-  later measured false). `non-polarized` emits no spin lines at all.
-  `spin-orbit` REQUIRES fully-relativistic pseudopotentials — the
-  catalogue help says so beside the choice.
-- `cfg.spin_total` (float, μ_B ≈ one per unpaired electron) → **only** when
-  `spin_treatment = "polarized"` (the one collinear-constrainable
-  treatment), emit the **two-line** pin:
+- `spin_treatment`, in the engine-neutral words, spelled as SIESTA's **v5
+  single-line keyword** (`siesta/layout.SPIN_SPELLING`): `restricted` →
+  `Spin non-polarized`, `unrestricted` → `Spin polarized`, `non-collinear` →
+  `Spin non-colinear`, `spin-orbit` → `Spin spin-orbit`. `Spin` is written
+  **always**, `non-polarized` included. The v4 `SpinPolarized .true.` spelling is
+  retired. `spin-orbit` REQUIRES fully-relativistic pseudopotentials — the
+  catalogue help and the pseudopotential check say so. `restricted-open` is a
+  formalism SIESTA does not have, refused by name (ES4).
+- `unpaired_electrons` — 2S, 0 to 10, or `free`. A pinned count beside
+  `unrestricted` is the **two-line** pin (`Spin.Total` splits the electrons
+  N↑ = (N + Spin.Total)/2, so it is the count of unpaired electrons):
 
   ```fdf
   Spin.Fix    .true.       # without this line, Spin.Total is silently ignored
-  Spin.Total  2.0          # target total spin moment in mu_B
+  Spin.Total  2.0          # the unpaired-electron count, 2S
   ```
 
-  With any other treatment, `spin_total` is not emitted — and the validator
-  warns rather than letting the contradiction ride. The method-vs-spin
-  science is validated for SIESTA as for PySCF, with one gap: the shared
-  electron-count parity rule (`chemistry.check_spin_charge_parity`) runs in
-  `_validate_siesta` only when `net_charge` is typed — ERROR when the user
-  asserted the spin, WARN when the default did — and with the charge left to
-  auto-detection it does not run at all (measured 2026-09-25). W34 makes it
-  run at the resolved charge
-  ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
-  § 2a, ES3; [`science/validation.md`](?doc=science/validation.md)).
+  `free` writes no pin: the moment floats, and SIESTA starts every atom at its
+  largest moment, aligned (`m_new_dm.F90`). Under `non-collinear` or `spin-orbit`
+  the count can only float — SIESTA stops on `Spin.Fix` there — so a fixed count
+  is refused (ES6), and `restricted` with a count above 0 is refused too (ES5).
+
+The checks are the state's one family, asked for every engine and kind: parity
+at the resolved charge for a finite system (ES3), the open-shell guard (ES9), a
+metal-driven count warned until it is stated (ES8)
+([`science/validation.md`](?doc=science/validation.md)).
 
 ---
 

@@ -38,7 +38,7 @@ deck states), `web/blueprints/transport.py`.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 # TWO WAYS, because this reader travels: the SIESTA vibration's finish reads
 # the deck with it beside the job (`runwrap.VIBRATION_COMPANIONS`), where the
@@ -49,6 +49,24 @@ try:                                        # inside molbuilder
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from constants import BOHR_ANGSTROM as _BOHR_ANG
     from units import energy_ry, length_ang, temperature_k
+
+
+#: EVERY word SIESTA accepts for each electronic-state treatment, compared
+#: case-blind (SIESTA 5.4.2 ``spin_subs.F90``, ``leqi``) -- what a READER of
+#: any SIESTA deck must know, not only the one spelling molbuilder's writer
+#: uses (`siesta/layout.SPIN_SPELLING`, among these).  A word outside them
+#: stops SIESTA ("Spin: unknown flag"), so a deck carrying one never ran.
+#: HERE, not beside the writer, because this reader travels (above).  Until
+#: the M6 review it knew only the writer's four, and read ``collinear`` as
+#: restricted.
+SPIN_WORDS = {
+    "restricted":    ("none", "non-polarized", "non-polarised", "np", "n-p"),
+    "unrestricted":  ("polarized", "polarised", "collinear", "colinear", "p"),
+    "non-collinear": ("non-collinear", "non-colinear", "nc", "n-c"),
+    "spin-orbit":    tuple(f"{w}{tail}"
+                           for w in ("spin-orbit", "s-o", "soc", "so")
+                           for tail in ("", "+offsite", "+onsite")),
+}
 
 
 def _norm(key: str) -> str:
@@ -137,6 +155,62 @@ class FdfParams:
     #: that re-emits them -- the transport composite's `config_for`).
     xc_functional: Optional[str] = None
     xc_authors: Optional[str] = None
+    #: THE ELECTRONIC STATE THE DECK RAN WITH, in the four items' own words
+    #: (`science/chemistry-correctness.md` § 2a) -- what a hand-over carries
+    #: into the next calculation (ES7).  SIESTA's defaults answer what the
+    #: deck leaves out: no ``NetCharge`` is neutral, no ``Spin`` is
+    #: non-polarized.  ``unpaired_electrons`` is ``None`` for a fixed moment
+    #: that is not a whole number, which no count can state; both spin items
+    #: are ``None`` for a ``Spin`` word SIESTA does not know -- it stops on
+    #: one, so that deck never ran and says nothing.
+    net_charge: int = 0
+    spin_treatment: Optional[str] = "restricted"
+    unpaired_electrons: Optional[Union[int, str]] = 0
+
+
+def _is_true(toks) -> bool:
+    """fdf's boolean: a keyword present with no value is ``.true.``."""
+    return (not toks) or toks[0].lower() in ("t", "true", ".true.", "yes")
+
+
+def _read_state(sc, p: "FdfParams") -> None:
+    """The deck's electronic state -- the reverse of the writer's spelling
+    (`siesta/layout.SPIN_SPELLING`), read in the four items' own words.
+
+    Reads SIESTA 5's ``Spin <option>`` in any of the words SIESTA accepts
+    (:data:`SPIN_WORDS`) and, when it is absent, the retired flags
+    SIESTA still honours in its place (``SpinOrbit``, ``NonCollinearSpin``,
+    ``SpinPolarized`` -- `spin_subs.F90`'s own order), and otherwise its
+    default, non-polarized.  A word SIESTA does not know stops SIESTA, so
+    the deck never ran: nothing is claimed for it.  ``Spin.Total`` counts
+    only with ``Spin.Fix`` (``read_options.F90``); a polarized run without
+    it let the moment float.
+    """
+    if sc.get("netcharge"):
+        v = _to_float(sc["netcharge"][0])
+        if v is not None:
+            p.net_charge = int(round(v))
+    if sc.get("spin"):
+        word = sc["spin"][0].lower()
+        p.spin_treatment = next((t for t, ws in SPIN_WORDS.items()
+                                 if word in ws), None)
+    elif "spinorbit" in sc and _is_true(sc["spinorbit"]):
+        p.spin_treatment = "spin-orbit"
+    elif "noncollinearspin" in sc and _is_true(sc["noncollinearspin"]):
+        p.spin_treatment = "non-collinear"
+    elif "spinpolarized" in sc and _is_true(sc["spinpolarized"]):
+        p.spin_treatment = "unrestricted"
+    if p.spin_treatment is None:
+        p.unpaired_electrons = None
+    elif p.spin_treatment == "restricted":
+        p.unpaired_electrons = 0
+    elif p.spin_treatment != "unrestricted" or not (
+            "spinfix" in sc and _is_true(sc["spinfix"])):
+        p.unpaired_electrons = "free"
+    else:
+        total = _to_float((sc.get("spintotal") or ["0"])[0])
+        p.unpaired_electrons = (int(total) if total is not None
+                                and float(total) == int(total) else None)
 
 
 def parse_fdf_params(text: str, *, source: str = "the deck") -> FdfParams:
@@ -188,6 +262,8 @@ def parse_fdf_params(text: str, *, source: str = "the deck") -> FdfParams:
 
     if "solutionmethod" in sc and sc["solutionmethod"]:
         p.solution_method = sc["solutionmethod"][0].lower()
+
+    _read_state(sc, p)
 
     # TS.HS.Save / TS.SaveHS / SaveHS  (any truthy => writes .TSHS)
     for k in ("tshssave", "tssavehs", "savehs"):

@@ -79,7 +79,7 @@ is where the *data* comes from.
 
 | key | why the form cannot derive it |
 |---|---|
-| `optional` | *unset* is a real state and the control must offer it. It is **not** inferable from `null_label`: of **16** optional items only **13** carry one, so three would silently lose their *(auto)* option |
+| `optional` | *unset* is a real state and the control must offer it. It is **not** inferable from `null_label`: of **17** optional items only **14** carry one, so three would silently lose their *(auto)* option |
 | `tier` | `basic` / `advanced`. A judgement about the parameter, not about the widget — the form dims advanced fields |
 | `pattern` | a regex the value must match. Two items have one (`system_label`, `job_name`) and nothing else can express it |
 
@@ -366,7 +366,7 @@ control. The nine kinds:
 | `int` | a whole-number input |
 | `float` | a number input |
 | `str` | a text box |
-| a fixed set of choices | a dropdown |
+| a fixed set of choices | a dropdown — and a choice is read back as **the member itself, with its own type**: `unpaired_electrons`' `2` comes back the number 2 and `free` the word, never the text `"2"` ([`engines/template.md`](?doc=engines/template.md) § 5; an optional one's blank reads back `null`) |
 | `Optional[bool]` | a three-way select (yes / no / leave default) |
 | three integers (e.g. a k-grid) | three linked integer inputs |
 | a list of numbers | a comma-separated number box |

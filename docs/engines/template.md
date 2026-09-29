@@ -248,12 +248,15 @@ they have no catalogue row (`TransportConfig`'s own spellings, `num_threads`,
 `log_level`); `help_for` returns `""` for those and the caller falls back.
 
 **The rest of that duplication is the debt, and it is measured rather than
-guarded.** **482 facts live in two places** (measured 2026-08-20 at 307, 618
+guarded.** **487 facts live in two places** (measured 2026-08-20 at 307, 618
 on 2026-09-15 when the transport rows landed, 485 once `help` moved out, 490 with the SIESTA vibration item, 486 once the one-choice `engine` item retired, and 489 with `already_relaxed` on SIESTA, all 2026-09-24, and 486 once
-`wrap_into_cell` retired on 2026-09-25, and 482 on 2026-09-28 once PySCF's
-`es_top_n` and `es_threshold` were removed and `temperature_K` joined SIESTA —
-every fall in the series came from deleting a home rather than from adding a
-check).
+`wrap_into_cell` retired on 2026-09-25, 482 on 2026-09-28 once PySCF's
+`es_top_n` and `es_threshold` were removed and `temperature_K` joined SIESTA,
+and 487 the same day when the electronic state's `spin_treatment` and
+`unpaired_electrons` became items both engines declare — every fall in the
+series came from deleting a home rather than from adding a check, and that
+rise is two merged items gaining a second engine, whose declarations
+`config/state.py` writes once).
 **The six mirrored facts are compared on every run** — `MIRRORED` plus
 `workflow_group`, by `test_every_mirrored_fact_agrees`, which goes red naming
 the item and the key and printing both values. What it does **not** do is
@@ -567,19 +570,23 @@ the environment (only the source build has GPU-capable ELPA) AND the GPU runtime
 -- the gres ask, MPS, the NUMA pin.  So the value leaves the deck and reaches
 the launch, which is what read_by records."""
 
-# kind = "deck" — molbuilder's own item, reaching the deck as TWO keywords.
-# This is the shape § 8.1 uses to show why splicing cannot work.
-[item.spin_total]
+# kind = "deck" — molbuilder's own item, reaching the deck as TWO keywords
+# where it writes any: a pinned count is `Spin.Fix` + `Spin.Total`.  This is
+# the shape § 8.1 uses to show why splicing cannot work.  (A merged item: the
+# third keyword is PySCF's -- § 6.3's one imprecise row.)
+[item.unpaired_electrons]
 kind     = "deck"
 category = ["system"]
-expands  = ["Spin.Fix", "Spin.Total"]
-type     = "float"
+expands  = ["Spin.Fix", "Spin.Total", "gto.M"]
+type     = "enum"
+choices  = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, "free"]
 optional = true
 group    = "profile"
 help     = """
-Target total spin moment in Bohr magnetons (= unpaired electrons).  Emits BOTH
-`Spin.Fix .true.` and `Spin.Total <v>`; the first is required or the second is
-silently ignored, which is why one item writes two keywords."""
+2S, the number of unpaired electrons -- or free, a moment that floats.  A count
+beside Spin polarized emits BOTH `Spin.Fix .true.` and `Spin.Total <n>`; the
+first is required or the second is silently ignored, which is why one item
+writes two keywords.  Blank is auto: the electronic state works it out."""
 
 # kind = "produce" — shapes HOW the script is written without becoming a
 # keyword.  It orders the ChemicalSpeciesLabel block; it does not produce it,
@@ -623,9 +630,10 @@ written verbatim (tuning.md § 2.11)."""
 
 **Two absences in this file are meaningful and neither is an omission.**
 `block_size` has no `value` — that is *explicitly unset* (§ 3), the state a
-missing key encodes. `spin_total` has neither `value` nor `default` — it is
-`optional`, so *unset* is one of its legal answers and there is no default to
-fall back to.
+missing key encodes. `unpaired_electrons` has neither `value` nor `default` —
+it is `optional`, so *unset* is one of its legal answers and there is no default
+to fall back to: unset is *auto*, answered by the electronic-state class
+(`science/chemistry-correctness.md` § 2a).
 
 ---
 
@@ -700,7 +708,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 |---|---|
 | `kind` | which layer owns this item — § 6's closed vocabulary |
 | `value` | the value in force. Absent means **explicitly unset** |
-| `type` | the **validation** type — `int` · `float` · `str` · `bool` · `enum` · `pow2` · `int3` · `float3` · `strlist` · `intlist` · `text` |
+| `type` | the **validation** type — `int` · `float` · `str` · `bool` · `enum` · `pow2` · `int3` · `float3` · `strlist` · `intlist` · `text`. An `enum`'s members are strings **or whole numbers**, and a value must be one of them with its own type: `unpaired_electrons` is `0`–`10` or `"free"`, so `2` is a member and `"2"` or `true` is not *(2026-09-28, M6 — a count that also has a named state is a list, not a number with a magic value)* |
 | `default` | what untouched means. A surface compares it to `value` to show whether the user set this |
 | `anchor` | the engine keyword this becomes. A bare keyword, never a sentence — it is what a **deck writer** matches on |
 | `engine_key` | how the engine **spells** this, in full — `gto.M(basis=...)`, `mf = mf.density_fit()`, or a `(molbuilder: …)` note when the setting never reaches the deck. A different fact from `anchor`, and a **surface** shows this one. Collapsing the two lost it on 29 items (2026-08-14→15): four PySCF controls all read `gto.M`, three read `mf`, and every molbuilder note vanished — and the note is the only way a reader learns the setting is not an engine keyword at all |
@@ -714,13 +722,13 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `refs` | citation keys into `docs/science/references.bib` — the paper(s) behind a scientific knob's guidance. Resolved server-side (title + DOI) and rendered in the form's help; `tests/test_catalogue_refs.py` pins that every key resolves |
 | `allocation` | **the scheduler answers this one** — ranks, threads, memory (§ 6.4). One boolean; it replaced a `resolver` NAME plus a list of which names counted, neither of which anything dispatched on |
 | `citation` | **a cited run answers this one, for these kinds** — `citation = ["transport"]` on `basis_size`, `mesh_cutoff`, `kgrid`, `pao_energy_shift`, `electronic_temperature`, `xc_functional`, `xc_authors`. It is a LIST and not a boolean because those are the **same rows** an optimization uses, where the person answers them. It replaced two hand-maintained frozensets plus a predicate spelled twice in two files (`engines/transport.md` § 3.3.3) |
-| `shared` | **binds every rung of these kinds** — `shared = ["transport"]` on the seven `citation` rows and on `species_order`, `spin_treatment`, `spin_total`, `kgrid_displacement`, `psml_lib` and `system_label` (Class A, `engines/transport.md` § 2a.3). Three readers ask it: the shared panel shows these and nothing else, the per-rung form never offers one, and `prep` refuses a stage override naming one (§ 3.8.2). Filtering on `citation` for this question offered the species order as a per-rung override (2026-09-23) |
+| `shared` | **binds every rung of these kinds** — `shared = ["transport"]` on the seven `citation` rows and on `species_order`, `kgrid_displacement`, `psml_lib` and `system_label` (Class A, `engines/transport.md` § 2a.3); and on the electronic state's four items for **every** kind that has them — `net_charge` and `method` for optimization and vibration, `spin_treatment` and `unpaired_electrons` for those and transport — because the state belongs to the calculation, never to a stage (`science/chemistry-correctness.md` § 2a, ES1; M6). Three readers ask it: the transport tab's shared panel shows these and nothing else, the per-rung form never offers one, and `prep` refuses a stage override naming one — for every kind, at the one resolve door (§ 3.8.2). Filtering on `citation` for this question offered the species order as a per-rung override (2026-09-23) |
 | `label` | the **human name** — *"MPI ranks (np)"*. Not the field name; a surface shows this |
 | ~~`section`~~ | **RETIRED at `@2` — use `category` (§ 6.2).** It held a free-text fieldset name per engine (*"SCF"*, *"Compute & budget"*), so two engines expressing one idea disagreed on the label and no surface could group across them. A section-less item was still an item, and that stays true of `category`: membership is TOTAL (§ 7) |
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
 | `range` · `unit` · `choices` | bounds, unit label, enum members |
 | `group` | **which card**, from the closed vocabulary `template.GROUPS`, in render order: `setup` (what the run is called and where its pseudopotentials come from — nothing can be built without these, so they come first) · `profile` (what you're computing) · `stage` (what counts as converged — the set a staged sequence tightens, and what makes *vary per stage* start ticked) · `budget` (how much compute) · `output` (what the run writes) · `staging` (answered by the staging surface, not by a parameter form). Optional on a template item — it is presentation, and `prep` reading one headlessly never asks — but **required on every item of the catalogue**, which is what a form is built from: an item with none renders loose below the cards and its findings fall to the residual panel |
-| `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — and it is **not** inferable from `null_label`: of 16 optional items only 13 carry one, so three would silently lose the option *(`dispersion` stopped being optional on 2026-09-28: its "none" is a value, [`engines/pyscf.md`](?doc=engines/pyscf.md) § 7a)* (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
+| `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — and it is **not** inferable from `null_label`: of 17 optional items only 14 carry one, so three would silently lose the option *(`dispersion` stopped being optional on 2026-09-28: its "none" is a value, [`engines/pyscf.md`](?doc=engines/pyscf.md) § 7a)* (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
 | `tier` | `basic` or `advanced`. A judgement about the **parameter**, not about the widget: a surface dims the advanced ones so a first-time reader is not asked to weigh every knob at once |
 | `pattern` | a regex the value must match. Two items have one — `system_label`, `job_name` — and nothing else in the vocabulary can express *"letters, digits, hyphens, underscores; no dots"* |
 | `help` | what this is, in prose. Multi-line is ordinary TOML |
@@ -957,14 +965,14 @@ a bare word — and returns `""` when it leads with none. So the *shape* of
 | `engine_key` shape | example (real, from this catalogue) | derived `anchor` | the `kind` you must declare |
 |---|---|---|---|
 | **a bare keyword** | `MeshCutoff` | `MeshCutoff` | `engine` — the default, declare nothing |
-| **a conjunction** `A + B` | `Spin.Fix + Spin.Total` | `Spin.Fix` | `deck`, **explicitly** — and list every keyword in `expands` |
+| **a conjunction** `A + B` | `Spin.Fix + Spin.Total` (SIESTA's half of `unpaired_electrons`) | `Spin.Fix` | `deck`, **explicitly** — and list every keyword in `expands` |
 | **an alternation** `A \| B` | `MD.Steps (CG / Broyden / FIRE) \| MD.FinalTimeStep (Verlet / Nosé)` | `MD.Steps` | `deck`, **explicitly** — `expands` lists every keyword it *may* write |
 | **a note** `(molbuilder: …)` | `(molbuilder: .run.sh mpirun -np N only)` | `""` | anything but `engine` — `deck`, `wrapper`, `produce` or `monitor` |
 
 > **Why a conjunction and an alternation are both `deck`.** The difference is
 > whether the item writes *all* of them or *one* of them, and neither is a
 > single keyword the deck writer can look up — which is exactly what `deck`
-> means. `spin_total` writes both of its keywords, always; `relax_steps` writes
+> means. A pinned `unpaired_electrons` writes both of SIESTA's keywords, always; `relax_steps` writes
 > whichever the run mode calls for, never both.
 
 **The refusal, and what it is telling you.** Leave the kind at its default with
@@ -1022,20 +1030,22 @@ help = "The real-space integration grid, in Ry."
 **2 · One question, several keywords written together.**
 
 ```toml
-[item.spin_total]
+[item.unpaired_electrons]
 kind = "deck"            # NOT engine: two keywords, no single anchor
-engine_key = "Spin.Fix + Spin.Total"
-expands = ["Spin.Fix", "Spin.Total"]
+engine_key = "Spin.Fix + Spin.Total (SIESTA) | gto.M(spin=...) (PySCF)"
+expands = ["Spin.Fix", "Spin.Total", "gto.M"]
 category = ["system"]
-engines = ["siesta"]
-type = "float"
+engines = ["siesta", "pyscf"]
+type = "enum"
+choices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, "free"]
 optional = true
-help = "Target total spin moment in Bohr magnetons.  SIESTA ignores the number unless Spin.Fix is also set, which is why one item writes both."
+help = "2S, or free.  SIESTA ignores Spin.Total unless Spin.Fix is also set, which is why a count writes both."
 ```
 ```python
-"engine_key": "Spin.Fix + Spin.Total",
+# config/state.py -- declared once for both engines' configs
+"engine_key": "Spin.Fix + Spin.Total (SIESTA) | gto.M(spin=...) (PySCF)",
 "item_kind":  "deck",
-"expands":    ("Spin.Fix", "Spin.Total"),
+"expands":    ("Spin.Fix", "Spin.Total", "gto.M"),
 ```
 
 **3 · One question, a keyword chosen at render time.** Same shape, `|` instead
@@ -1182,8 +1192,8 @@ is the semantics; how many panels they become is the surface's call.
 
 | # | `category` | the question | SIESTA | PySCF |
 |---|---|---|---|---|
-| 1 | `system` | *what am I calculating?* | `net_charge`, `spin_treatment`, `spin_total` | `charge`, `spin`, `symmetry`, `solvent` |
-| 2 | `method` | *at what level of theory?* | `xc_functional`, `xc_authors`, `basis_size` | `method`, `functional`, `basis`, `ecp`, `dispersion` |
+| 1 | `system` | *what am I calculating?* | `net_charge`, `spin_treatment`, `unpaired_electrons` | the same three, `symmetry`, `solvent` |
+| 2 | `method` | *at what level of theory?* | `xc_functional`, `xc_authors`, `basis_size` | `method` (DFT or HF), `functional`, `basis`, `ecp`, `dispersion` |
 | 3 | `accuracy` | *how precisely are the equations solved?* | `mesh_cutoff`, `kgrid`, `dm_tolerance` | `grid_level`, `scf_conv_tol`, `scf_conv_tol_grad` |
 | 4 | `convergence` | *how do I reach it when it fights?* | `max_scf_iter` | `scf_max_cycle`, `level_shift`, `damp`, `diis_space`, `scf_soscf` |
 | 5 | `procedure` | *what does the run carry out, and what does it leave behind?* | `relax_type`, `relax_steps`, the `write_*` set | `optimize`, `chkfile`, `save_*` (the old `compute_frequencies` retired with the vibration kind) |
@@ -1300,10 +1310,13 @@ nothing is derived.
 |---|---|---|
 | `use_gpu` | `Diag.ELPA.GPU` (with the ELPA solver gate) | the GPU backend selection |
 | `net_charge` | `NetCharge` | `gto.M(charge=)` |
+| `spin_treatment` | `Spin non-polarized` / `polarized` / `non-colinear` / `spin-orbit` | the R / RO / U of the SCF class it composes |
+| `unpaired_electrons` | `Spin.Fix` + `Spin.Total` when pinned; nothing for `free` | `gto.M(spin=)` |
 | `verbose_comments`, `write_molwatch_log` | *(no keyword — `kind="produce"`)* | same |
 
-> **Both merges have landed** *(corrected 2026-09-25 — this note said they
-> were ruled but not yet renamed)*. `use_gpu` — a user ruling of 2026-08-13,
+> **Every merge has landed** *(corrected 2026-09-25 — this note said they
+> were ruled but not yet renamed; the two spin items merged on 2026-09-28 with
+> the electronic state, `science/chemistry-correctness.md` § 2a)*. `use_gpu` — a user ruling of 2026-08-13,
 > restated 2026-08-14 and marked *do not re-open*
 > ([`template-unification-plan.md`](?doc=archive/2026-08-19-template-unification-plan.md)
 > § 5.5) — is one item, SIESTA's `enable_gpu` renamed to it; the charge (§ 1
@@ -1319,19 +1332,19 @@ are two questions and stay two items. The old rule refused every merge to avoid
 fusing things that merely sound alike; the test refuses exactly those and
 permits the rest.
 
-> **Spin is the case that needs care, and it is not merged — now for a
-> sharper reason than when this was written.** SIESTA carries
-> `spin_treatment` (a four-valued enum: `non-polarized` / `polarized` /
-> `non-colinear` / `spin-orbit`, since 2026-08-15) **and** `spin_total`;
-> PySCF carries `spin`.
+> **Spin was the case that needed care, and why it was not merged as one
+> number still holds.** Until 2026-09-28 SIESTA carried `spin_treatment` (a
+> four-valued enum in its own words: `non-polarized` / `polarized` /
+> `non-colinear` / `spin-orbit`, since 2026-08-15) **and** `spin_total`, and
+> PySCF carried `spin`.
 >
 > The rename is what made the answer obvious. SIESTA's field was briefly
 > called `spin`, and the catalogue **refused to parse** — TOML cannot declare
 > `[item.spin]` twice, and PySCF already had one. That refusal was correct and
 > is the merge rule doing its job: PySCF's `spin` is *2S, a count of unpaired
 > electrons*; SIESTA's is *which formalism to use*. Same word, different
-> question, so they cannot be one item.
-> Both numbers are *the count of unpaired electrons* — the same quantity — but
+> question, so they could not be one item.
+> Both numbers were *the count of unpaired electrons* — the same quantity — but
 > the answer is **decomposed differently**, and there is a third state the
 > count alone cannot express: *polarized, moment free* (SIESTA `Spin
 > polarized` without `Spin.Fix` — and only SIESTA: PySCF's UKS pins N↑ and N↓
@@ -1339,13 +1352,16 @@ permits the rest.
 > moment, `pyscf/scf/uhf.py`; corrected 2026-09-25). A shared flag beside a
 > shared number expresses all three; one merged number does not.
 >
-> **And that is how spin merges** *(decided 2026-09-25, W34)*: a flag,
-> `spin_treatment` (`restricted` · `restricted-open` · `unrestricted` ·
-> `non-collinear` · `spin-orbit`), beside a number, `unpaired_electrons` (2S;
-> blank = the moment floats, where the engine can float it), with PySCF's
-> `method` left to say HF or DFT —
+> **And that is how spin merges** *(decided 2026-09-25, W34; amended and built
+> 2026-09-28, M6)*: a flag, `spin_treatment` (`restricted` · `restricted-open` ·
+> `unrestricted` · `non-collinear` · `spin-orbit`), beside a count,
+> `unpaired_electrons` (2S, or `free` — the moment floats, where the engine can
+> float it), with PySCF's `method` left to say HF or DFT. A blank flag or count
+> means *auto*, decided by the one electronic-state class the way a blank
+> `net_charge` always was —
 > [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
-> § 2a. Until W34's P1 lands, the catalogue carries the three items above.
+> § 2a. SIESTA's `spin_total` and PySCF's `spin` are gone; `jobset migrate`
+> rewrites a template that still carries them.
 
 #### How a merge is DECLARED — the field name is the item name
 
@@ -1695,7 +1711,7 @@ Five obligations, each naming the reader it binds.
 
 | | obligation | held by |
 |---|---|---|
-| **1 — declared once** | The catalogue states, for every item, **who answers it** — the person; a cited run (`citation`); the rung's role (`role`); the scheduler (`allocation`); the catalogue default when nobody has — and **where it binds**: every rung of a kind (`shared`), named rungs (`stages`), or this rung alone. **Whether the person may edit it, and where, is DERIVED from those two and never declared separately**: the owner's surface edits it, every other surface echoes it. | § 6.4 and its markers. `shared` is the one not yet declared — [`transport.md`](?doc=engines/transport.md) § 3.8.6 |
+| **1 — declared once** | The catalogue states, for every item, **who answers it** — the person; a cited run (`citation`); the rung's role (`role`); the scheduler (`allocation`); the catalogue default when nobody has — and **where it binds**: every rung of a kind (`shared`), named rungs (`stages`), or this rung alone. **Whether the person may edit it, and where, is DERIVED from those two and never declared separately**: the owner's surface edits it, every other surface echoes it. | § 6.4 and its markers, `shared` among them (§ 5) |
 | **2 — recorded with its source** | The description on disk — this calculation's template, and the stage bags in `task.json` — carries each item's value **and where it came from**. The four states a shared panel shows (*from the run you cited · from the record saved with your structure · you set this · not chosen*) are states of the FILE, not of a screen. A file that holds `400` and cannot say whose `400` it is holds a number nobody can check. | § 4.3's writer; `transport/citation_defaults.py` at `init` |
 | **3 — shown everywhere, edited in one place** | Every surface that presents the calculation presents **every** parameter of it, at every rung: as a control where this surface owns it, otherwise as a **read-only echo naming the source and the reason** — *shared by all five rungs, change it in the shared block* · *fixed by this rung's role* · *the scheduler answers this at prep*. Leaving a parameter off a screen because it is not editable there is a defect: it makes the parameter look absent, which is the failure every rebuilt transport form has had. | [`form-schema.md`](?doc=web/form-schema.md); [`transport.md`](?doc=engines/transport.md) § 2a.6, *one editing surface, many read-only echoes* |
 | **4 — explicit in the deck** | Every item of a rung's layout is written into that rung's deck with the value that will apply. A value nobody chose is written as the documented default **and marked as such**. An item deliberately unset (`optional`, at `None`) states so in the deck, naming the engine default that therefore applies. **No value reaches the engine by omission.** § 6.4's third state — *absent from the file: not a parameter of this calculation* — still says which items a KIND has; it no longer licenses silence for an item the kind has. | § 8.1 `prep`; the deck writers |
@@ -1703,9 +1719,10 @@ Five obligations, each naming the reader it binds.
 
 **Measured against the tree, 2026-09-23 — where it does not yet hold:**
 
-* there is no `shared` declaration; both doors that refuse a per-rung
-  override of a shared value filter on `citation` instead (obligation 1;
-  [`transport.md`](?doc=engines/transport.md) § 3.8.6);
+* ~~there is no `shared` declaration~~ — **closed 2026-09-28**: `shared` is
+  declared on the item (§ 5), and `resolve` refuses a stage override of an item
+  shared by every stage of its kind, for every kind, naming why
+  (`template.why_shared`; obligation 1);
 * `citation_defaults` fills the template at `init` and marks nothing, and an
   item has no key for a source, so obligation 2's four states cannot be
   produced from the file;
@@ -1715,11 +1732,17 @@ Five obligations, each naming the reader it binds.
   shared value"* was written inside that limitation and now reads *never as a
   control, always as an echo*;
 * an `optional` item at `None` writes nothing: `BlockSize`
-  (`siesta/input.py:497`), `Spin.Fix` / `Spin.Total` (`:1449`); and
-  `TBT.Verbosity` reaches every transport deck from a field no catalogue row
-  declares ([`transport.md`](?doc=engines/transport.md) § 2a.13);
-* the spin treatment itself reaches SIESTA by silence: no deck writes `Spin`
-  (measured 2026-09-24, on every transport rung);
+  (`siesta/input.py:497`); and `TBT.Verbosity` reaches every transport deck
+  from a field no catalogue row declares
+  ([`transport.md`](?doc=engines/transport.md) § 2a.13);
+* ~~the spin treatment itself reaches SIESTA by silence: no deck writes `Spin`
+  (measured 2026-09-24, on every transport rung)~~ — **closed 2026-09-28
+  (M6)**: every SIESTA deck writes `Spin`, `non-polarized` included, and an
+  optimization or vibration deck writes `NetCharge` at 0 too, each with where
+  its value came from; a blank charge or spin is resolved by the electronic
+  state and written, never left to the engine
+  ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
+  § 2a);
 * the per-parameter trace (`config_rows`) is written only when a person passes
   `jobset prep --pipeline-log` on the CLI; the browser road writes none
   (`plan.md` W20). Obligation 5 holds on one road of two.
@@ -1879,7 +1902,7 @@ a fact about the engine, not about our code:
 | the shape | the example | why splicing fails |
 |---|---|---|
 | **one parameter decides where another lands** | a stage moving `relax_type` from `CG` to `Verlet` moves the step budget from `MD.Steps` to `MD.FinalTimeStep` | the site itself is chosen by another value, so there is no fixed place to aim at |
-| **one parameter writes two keywords** | `spin_total` writes `Spin.Fix` *and* `Spin.Total`, and the first is required or the second is silently ignored | substituting one keyword writes one line |
+| **one parameter writes two keywords** | a pinned `unpaired_electrons` writes `Spin.Fix` *and* `Spin.Total`, and the first is required or the second is silently ignored | substituting one keyword writes one line |
 | **a parameter writes no line at all** | ten SIESTA fields emit nothing at their defaults | there is nothing to substitute into — it would have to *insert*, and where to insert is the emitter's knowledge |
 
 > **The alternative considered and rejected** was to allow only single-keyword,
@@ -2414,7 +2437,10 @@ correlation.**
 
 **One item, one question.** SIESTA's spin field was briefly named `spin`, and
 the catalogue *refused to parse* — TOML cannot declare `[item.spin]` twice and
-PySCF already had one. PySCF's is *2S, a count*; SIESTA's is *which formalism*.
+PySCF already had one. PySCF's was *2S, a count*; SIESTA's was *which formalism*.
+*(Since 2026-09-28 they are the two merged items the questions always were —
+`spin_treatment` and `unpaired_electrons` — and neither engine has an item
+named `spin`.)*
 **The flat item table is what makes a bad merge impossible rather than merely
 discouraged** (§ 6.3's merge rule, enforced by the format itself).
 

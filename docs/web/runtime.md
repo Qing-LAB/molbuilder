@@ -131,11 +131,13 @@ different, coarser thing that the platform half-honours anyway.)*
 **These are *not* runtime primitives** — they were catalogued here only because
 they share the `lib/` folder, but their substance lives with their real subject:
 
-- **`detection-chip.js`** — *not a neutral UI widget.* It classifies open- vs
-  closed-shell and **hardcodes compute-budget heuristics** (atom-count × metal
-  thresholds → relax/SCF advice) in the frontend. That's chemistry + science, not
-  a primitive — its home is the chemistry-analysis / validation domain, and a
-  clean-up / merge / re-validate review is **task #108**.
+- **`detection-chip.js`** — *not a neutral UI widget.* It shows each form's own
+  electronic state in one line — the answer the server's electronic-state class
+  gave for what that form says — and **hardcodes compute-budget heuristics**
+  (atom-count × metal thresholds → relax/SCF advice) in the frontend. That's
+  chemistry + science, not a primitive — its home is the chemistry card's
+  domain (`science/chemistry-correctness.md` § 2.5), and a clean-up / re-validate
+  review of the budget line is **task #108**.
 - **`system-load-monitor.js`** — a self-mounting CPU/RAM/GPU sparkline strip on
   the **Results tab only**, not a shared block; documented with the Results tab.
 - **`region-label-definitions.js`** (+ its popover) — the transport **device-role

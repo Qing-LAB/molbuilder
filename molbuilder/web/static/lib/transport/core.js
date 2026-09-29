@@ -255,12 +255,6 @@ const WORKSPACE_TAG = "transport";
         btn.disabled = !_junction;
     }
 
-    function _refreshAnalyzeButton() {
-        var btn = _$("auto-detect-btn");
-        if (!btn) return;
-        btn.disabled = !_junctionStructure;
-    }
-
     // The mounted MolView handle (null until the first structure is committed
     // or a saved session is restored at init).
     var _mvHandle = null;
@@ -401,45 +395,20 @@ const WORKSPACE_TAG = "transport";
         });
     }
 
-    // ---------- Auto-detect chemistry (Card 2) ---------- //
+    // ---------- The chemistry card (step 3) ---------- //
     //
-    // The SHARED surface (lib/auto-detect.js): analyze() owns the
-    // supersede protocol, renderPanel() owns the card + the detection
-    // chips.  This tab carried its own copy of all three until
-    // 2026-08-29 -- the recorded hold-out, retired with the redesign
-    // round it was deferred to.
-
-    function _analyzeStructure(path) {
-        var ad = root.molbuilder && root.molbuilder.autoDetect;
-        var st = root.molbuilder && root.molbuilder.status;
-        if (!ad || typeof ad.analyze !== "function") return;
-        var btn = _$("auto-detect-btn");
-        if (btn) btn.disabled = true;
-        if (st) st.set("auto-detect-status", "Analyzing chemistry…");
-        ad.analyze(path).then(function (res) {
-            if (res && res.superseded) return;
-            if (!res || !res.ok) {
-                if (st) st.set("auto-detect-status",
-                    (res && res.error) || "Analyze failed.", "error");
-                _refreshAnalyzeButton();
-                return;
-            }
-            ad.renderPanel(res.body);
-            if (st) st.set("auto-detect-status",
-                "Chemistry analyzed — review the rationale panel "
-                + "before sending.");
-            _refreshAnalyzeButton();
-        });
-    }
-
-    function _wireAutoDetectButton() {
-        var btn = _$("auto-detect-btn");
-        if (!btn) return;
-        btn.addEventListener("click", function () {
-            if (!_junctionStructure) return;
-            _analyzeStructure({ structure: _junctionStructure });
-        });
-    }
+    // THE SHARED SURFACE (`lib/chemistry.js`): the junction's charge and
+    // spin, resolved by the one electronic-state class for exactly what the
+    // shared panel says -- the transport kind, so the charge is 0 by rule --
+    // about the composed junction, the structure the description sends.
+    // Attached once at start-up (`_init`); asked when the shared panel has
+    // been rendered for a citation -- so never with the previous panel's
+    // values -- and again on every edit to the panel's spin fields.  A
+    // citation that does not compose leaves nothing to answer, and the card
+    // is hidden.  It changes no setting.  (A "Re-analyze chemistry" button
+    // stood here until 2026-09-28; the card follows the panel now, so there
+    // is nothing to press.)
+    var _chemistry = null;
 
     /* =================================================================
      *  The COMPOSITE (transport-design.md § 4.1): cite the junction,
@@ -576,7 +545,6 @@ const WORKSPACE_TAG = "transport";
         _offerFix(described);
         _writePanelNote();
         _refreshSendButton();
-        _refreshAnalyzeButton();
         /* The contract lane follows the FORM (4.1b): a relaxation's
          * deck owns the electronic contract (fields hidden); a plain
          * labeled pair has no deck, so the fields are the
@@ -600,7 +568,6 @@ const WORKSPACE_TAG = "transport";
             : "";
         if (_junctionStructure) {
             _showStructure(_junctionStructure);
-            _analyzeStructure({ structure: _junctionStructure });
             _setStatus((statusPrefix || "Cited ")
                 + _junction + " — the viewer shows the cited junction."
                 + late);
@@ -754,8 +721,12 @@ const WORKSPACE_TAG = "transport";
         var host = _$("transport-shared-container");
         if (!host || !formSchema) return Promise.resolve();
         return _fetchSurface("shared", host, formSchema).then(function (body) {
+            if (body) _sharedSchema = body.schema;
+            // The panel is rendered for the junction now (or could not be):
+            // the chemistry card answers for what it says, about the
+            // junction the tab holds -- or hides, with none.
+            if (_chemistry) _chemistry.refresh();
             if (!body) return;
-            _sharedSchema = body.schema;
             var line = _$("transport-shared-source");
             if (!line) return;
             var src = body.source || {kind: "none", name: ""};
@@ -804,14 +775,25 @@ const WORKSPACE_TAG = "transport";
             );
             return;
         }
+        var chem = root.molbuilder && root.molbuilder.chemistry;
+        if (chem && typeof chem.attach === "function") {
+            _chemistry = chem.attach({
+                kind: "transport",
+                forms: function () {
+                    var host = _$("transport-shared-container");
+                    return (host && _sharedSchema)
+                        ? { siesta: { host: host, schema: _sharedSchema } }
+                        : {};
+                },
+                structure: function () { return _junctionStructure; },
+            });
+        }
         _fetchAndRender(formContainer, formSchema);
         _fetchAndRenderShared(formSchema);
         _restoreSession();
         _wireJunctionPicker();
         _wireSendButton(formContainer);
-        _wireAutoDetectButton();
         _refreshSendButton();
-        _refreshAnalyzeButton();
     }
 
     if (root.document) {

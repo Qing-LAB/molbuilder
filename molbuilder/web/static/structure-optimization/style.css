@@ -3,9 +3,10 @@
  * Shared vocabulary moved out (`web/ui-contract.md` § 1, CSS-migration step 2):
  *   - global base (header / button / input / .card / .status / scrollbar) →
  *     lib/page-shell.css (loaded on every page)
- *   - form-page COMPONENTS (.app-grid, .auto-detect-*, .viewer-*, .issues-panel,
- *     .hint, .fdf-*, button.primary, .card h2) → lib/form-components.css
- * What remains here is genuinely index-only: the #generate/#analyze cards, the
+ *   - form-page COMPONENTS (.app-grid, the chemistry card, .viewer-*,
+ *     .issues-panel, .hint, .fdf-*, button.primary, .card h2) →
+ *     lib/form-components.css
+ * What remains here is genuinely index-only: the #generate card, the
  * SIESTA/PySCF .tabs, the index fieldset forms, #viewer, the footer, tooltips.
  * Design tokens live in lib/tokens.css; use them via var(--…).
  */
@@ -23,23 +24,13 @@ html, body { height: 100%; }
 }
 
 /* ---- Generate / Analyze cards (vertical workflow) ---- */
-#generate-card,
-#analyze-card {
+#generate-card {
     padding: var(--space-lg2) var(--space-lg2);
 }
-#generate-card > h2,
-#analyze-card > h2 {
+#generate-card > h2 {
     font-size: var(--text-md);
     margin-bottom: var(--space-md);
 }
-#analyze-card > .hint {
-    margin: 0 0 var(--space-md);
-    color: var(--text-secondary);
-    font-size: var(--text-base);
-    line-height: 1.5;
-}
-#analyze-card .auto-detect-bar { padding: 0; margin: 0 0 0.6rem; }
-#analyze-card .auto-detect-panel { margin: 0; }
 #generate-card .tabs {
     margin-bottom: var(--space-sm2);
 }

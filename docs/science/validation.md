@@ -7,11 +7,14 @@ advisory-while-editing / enforcing-at-generation rule); `chemistry-correctness.m
 (the chemistry facts the analyzer encodes); [`model/chemistry.md`](?doc=model/chemistry.md)
 (the L1 chemistry primitives this composes); the engine emitters (the consumers).
 
-This is **how** molbuilder realises scientific correctness at runtime: one
-engine-agnostic chemistry **analyzer**, a per-engine **adapter registry**, and
-the surfaces that read each conclusion. Every boundary passes a **frozen
-dataclass** (an immutable typed record — never an untyped dict); JSON appears
-only at the HTTP wire (the network boundary), via `dataclasses.asdict()`.
+This is **how** molbuilder realises scientific correctness at runtime: the
+structure's chemistry **facts** (`analyze_structure`), the one **electronic
+state** every calculation carries (`electronic_state`,
+[`chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a), and the
+surfaces that read them — the checks, the deck writers, the chemistry card. Every
+boundary passes a **frozen dataclass** (an immutable typed record — never an
+untyped dict); JSON appears only at the HTTP wire (the network boundary), via the
+record's own `as_dict()` or `dataclasses.asdict()`.
 
 The core idea is **open-shell vs closed-shell**: *closed-shell* = every electron
 paired (non-magnetic, most organics); *open-shell* = some electrons unpaired
@@ -28,34 +31,32 @@ narrower ones are glossed inline below.)
 ```mermaid
 flowchart TB
     subgraph L1["L1 — chemistry primitives (engine-agnostic, pure)"]
-        chem["chemistry.py — detect_open_shell_metals · total_electrons ·<br/>check_spin_charge_parity · explain_metal_spin · suggest_spin_total"]
+        chem["chemistry.py — resolve_element · total_electrons ·<br/>check_spin_charge_parity · explain_metal_spin · formal_charge_from_phosphates"]
     end
-    subgraph L2["L2 — the analyzer (engine-agnostic)"]
+    subgraph L2["L2 — the facts (engine-agnostic)"]
         an["analyze_structure(struct) → ChemistryAnalysis"]
     end
-    subgraph L3["L3 — engine adapters (registry)"]
-        si["SiestaAdapter → SiestaSuggestedParams"]
-        py["PyscfAdapter → PyscfSuggestedParams"]
+    subgraph L3["L3 — the electronic state (one class, every engine)"]
+        es["electronic_state(struct, cfg, kind=) → ElectronicState"]
     end
     subgraph L4["L4 — surfaces (consumers)"]
-        api["/api/structure/analyze (UI auto-detect)"]
-        val["validation/ — check_open_shell_metal (pre-emission)"]
-        chip["lib/detection-chip.js (the UI chip)"]
+        val["validation/ — check_electronic_state (the one family)"]
+        deck["the deck writers — SIESTA, PySCF, the transport rungs"]
+        api["/api/structure/analyze → the chemistry card + each form's chip"]
     end
-    chem --> an
-    an --> si --> api
-    an --> py --> api
-    an --> val
-    api --> chip
+    chem --> an --> es
+    es --> val
+    es --> deck
+    es --> api
 ```
 
 Three typed boundaries:
 
 | Boundary | Owner | Input → output |
 |---|---|---|
-| `analyze_structure(struct)` | `chemistry.py` | `Structure` → `ChemistryAnalysis` |
-| `Adapter.to_params(analysis)` | per-engine `auto_defaults.py` | `ChemistryAnalysis` → engine `*SuggestedParams` |
-| `check_open_shell_metal(struct, …)` | `validation/chemistry.py` | `Structure` + engine params → `List[Issue]` |
+| `analyze_structure(struct)` | `chemistry.py` | `Structure` → `ChemistryAnalysis` — facts, no decision |
+| `electronic_state(struct, cfg, *, kind)` | `electronic_state.py` | `Structure` + a config's four state items → `ElectronicState` |
+| `check_electronic_state(struct, cfg, *, calculation)` | `validation/chemistry.py` | the same → `List[Issue]`, one finding per fact |
 
 ### 1.1 Three kinds of question, one door *(framework, 2026-09-03)*
 
@@ -109,55 +110,49 @@ surface would be a finding put in the wrong layer.
 
 ---
 
-## 2. The analyzer (L2)
+## 2. The facts (L2)
 
-`chemistry.analyze_structure(struct) → ChemistryAnalysis` (`chemistry.py`)
-is the engine-agnostic middle layer — the single source of truth every
-science-aware surface reads, so two surfaces cannot disagree about the
-chemistry by construction.
+`chemistry.analyze_structure(struct) → ChemistryAnalysis` (`chemistry.py`) says
+what a structure IS, chemically — the metals that bear on its spin, and their
+usual spins — and decides nothing:
 
 ```python
 @dataclass(frozen=True)
 class ChemistryAnalysis:           # chemistry.py
-    n_atoms:             int
-    elements:            List[str]              # unique, sorted
-    n_electrons_neutral: int                    # Σ Z for the neutral system
-    metals:              List[str]              # ["Fe"], or [] for organics
-    metal_hints:         List[MetalHint]        # ranked spin choices per metal
-    suggested_charge:    int
-    suggested_spin:      int                    # 2S = n_unpaired
-    suggested_treatment: Literal["closed", "open"]
-    rationale:           str
-    warnings:            List[str]
+    n_atoms:        int
+    elements:       List[str]          # unique, sorted
+    open_d_metals:  List[str]          # the open-d transition metals present
+    noble_metals:   List[str]          # Cu, Ag, Au present
+    metals:         List[str]          # both, open-d first; [] for organics
+    metal_hints:    List[MetalHint]    # each metal's usual spins, low → high
 ```
 
 **Design rules.** Pure function (no I/O, no engine imports); engine-agnostic
-vocabulary (`treatment ∈ {closed, open}`, not `UKS`/`SpinPolarized` — those live
-in the adapters); **parity is enforced here, once** — if
-`(n_electrons_neutral − suggested_charge)` parity doesn't match `suggested_spin`,
-the analyzer bumps the spin and records it in `warnings`, so adapters never
-re-do parity work.
+vocabulary; **facts, not a decision** — the charge and the spin are decided by the
+electronic state (§ 3), at the calculation's own charge and periodicity. Every
+label must name an element: `resolve_element` raises `KeyError` on one that does
+not, because every reader goes on to count electrons, and a count with an atom
+left out is a wrong one. The metal lists are split once here, so no reader
+filters `metals` again.
 
-> **Decided 2026-09-25 (W34): the analyzer judges the resolved electronic
-> state** — the run's own charge, and whether the cell repeats — not the
-> neutral structure alone ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
-> § 2a, ES2, ES3, ES9). Until W34's P2 it counts electrons at charge 0 and
-> reads parity in a repeating cell, which is how a formate ion at −1 and a bulk
-> gold lead were both told to go open-shell.
+> *(Until 2026-09-28 it also carried a **suggested** charge, spin and treatment,
+> judged at charge 0 on the neutral structure whatever its cell — which is how a
+> formate ion at −1 and a bulk gold lead were both told to go open-shell. Deciding
+> moved to the electronic state; § 10.)*
 
 ### 2.1 The noble-metal distinction — three categories, not one flat set
 
 The flat `OPEN_SHELL_METALS` set wrongly treated gold junctions as
-open-shell. The analyzer splits metals into three physically-grounded sets
+open-shell. The metals are split into three physically-grounded sets
 (`chemistry.py`). The flat set survived the split as a back-compat alias and
 was **deleted 2026-09-17**, once it turned out its only reader was the one
 function the split existed to correct — see § 5:
 
-| Set | Elements | Physics | Treatment |
+| Set | Elements | Physics | What a blank spin becomes |
 |---|---|---|---|
-| `OPEN_D_TRANSITION_METALS` | Sc–Ni (3d), Y–Rh (4d, not Pd), Hf–Ir (5d, not Pt/Au), lanthanides, common actinides | incomplete d-shell; Stoner criterion / itinerant moments | **force open-shell** |
-| `NOBLE_METALS_S1` | Cu, Ag, Au | atomic nd¹⁰(n+1)s¹, but in any extended metallic context (cluster ≥ 4, surface, junction, bulk) the s-band delocalises | **closed-shell singlet** for even electron count |
-| `CLOSED_D10_METALS` | Zn, Cd, Hg, **Pd** (4d¹⁰5s⁰), **Pt** (5d⁹6s¹ atom; metallic Pt closed-shell in surface DFT) | filled/effectively-filled d | closed-shell |
+| `OPEN_D_TRANSITION_METALS` | Sc–Ni (3d), Y–Rh (4d, not Pd), Hf–Ir (5d, not Pt/Au), lanthanides, common actinides | incomplete d-shell; Stoner criterion / itinerant moments | **unrestricted** — the metal's usual count in a finite system, a floating moment in a repeating cell; warned until stated (ES8) |
+| `NOBLE_METALS_S1` | Cu, Ag, Au | atomic nd¹⁰(n+1)s¹, but in any extended metallic context (cluster ≥ 4, surface, junction, bulk) the s-band delocalises | **restricted** for a cluster of four or more with an even count, and in any repeating cell; a single atom keeps its doublet |
+| `CLOSED_D10_METALS` | Zn, Cd, Hg, **Pd** (4d¹⁰5s⁰), **Pt** (5d⁹6s¹ atom; metallic Pt closed-shell in surface DFT) | filled/effectively-filled d | no row of its own — the electron count's parity decides |
 
 *(Plain-language keys: a **d-shell** is the set of d orbitals; **d¹⁰** = full (10
 electrons, non-magnetic), an **incomplete** d-shell is the magnetic case. The
@@ -166,78 +161,42 @@ electrons to turn magnetic — it fails for Cu/Ag/Au, so they stay non-magnetic.
 **NEGF** / **TranSIESTA**, in the references below, is the electron-transport
 method these gold-junction papers used.)*
 
-**Decision tree** (`analyze_structure`) — read top-down; the first matching
-branch wins, so **open-d is checked before the noble-metal rules**:
+**The decision is the detection table** —
+[`chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a.1b,
+`electronic_state.recommend`. The first row that matches wins, so an open-d metal
+decides even beside gold; a repeating cell never reads its count per cell as a
+spin (ES3). The 4-atom cutoff (`NOBLE_CLUSTER_THRESHOLD = 4`,
+`electronic_state.py`) is the conservative choice — overwhelmingly what published
+Au transport / surface DFT does. When the noble closed-shell answer is wrong
+(sub-4-atom Au cluster, single adatom on an insulator, a magnetic 3d co-adsorbate,
+explicit Kondo / spin-orbit physics), state the spin.
 
-```mermaid
-flowchart TD
-    S["Structure"] --> Q1{"any OPEN_D<br/>transition metal?"}
-    Q1 -->|yes| OD["→ OPEN · spin = per-element default<br/>(open-d wins, even with nobles present)"]
-    Q1 -->|no| Q2{"a noble metal is the<br/>only metal present?"}
-    Q2 -->|"no open-d / noble metal<br/>(incl. closed-d¹⁰: Zn·Cd·Hg·Pd·Pt)"| P0["→ PARITY: closed singlet if even e⁻,<br/>doublet if odd"]
-    Q2 -->|yes| Q3{"≥ 4 noble atoms<br/>AND even e⁻ count?"}
-    Q3 -->|yes| C0["→ CLOSED · spin 0<br/>(cluster-context override)"]
-    Q3 -->|no| Q4{"single noble atom<br/>AND odd e⁻ count?"}
-    Q4 -->|yes| O1["→ OPEN · spin 1<br/>(atomic ground state)"]
-    Q4 -->|"otherwise (2–3-atom cluster,<br/>or ≥4 atoms with odd e⁻)"| PP["→ PARITY by electron count<br/>(the ambiguous regime)"]
-```
-
-> **In a repeating cell parity is not asked** *(W34, ES3, decided 2026-09-25)*:
-> a noble-metal surface, lead or junction is closed-shell whatever its count per
-> cell. Until P2 the tree above sends a 27-atom gold lead with an odd count per
-> cell to the parity branch.
-
-The 4-atom cutoff (`_NOBLE_METAL_CLUSTER_THRESHOLD = 4`, `chemistry.py`) is
-the conservative choice — overwhelmingly what published Au transport / surface
-DFT does. When the noble closed-shell default is wrong (sub-4-atom Au cluster,
-single adatom (one atom on a surface) on an insulator, magnetic 3d co-adsorbate
-(a second magnetic species nearby), explicit Kondo / spin-orbit physics), the
-`rationale` string lists those override scenarios so the user knows the boundary.
-
-**Two spin defaults, intentionally distinct.** The `spin = per-element default`
-the analyzer emits for an open-d metal comes from `_ANALYZER_DEFAULT_SPIN`
-(`chemistry.py`) — the *most-likely-correct* chemistry guess (Fe → 2S = 2,
-the intermediate-spin 4-coordinate-porphyrin case). SIESTA's spin-*sweep* starting
-value is a **different** table, `_SPIN_TOTAL_DEFAULTS` (Fe → 4.0 high-spin,
-ramp down from there). Where they disagree (Fe 2 vs 4, Co 1 vs 3) both are correct
-for their own purpose; the code's rule is *don't unify — document*
-(`chemistry.py`).
-
-**Worked example — the two verdicts, end to end.** The same call decides both
-directions; here is the closed one (an **Au-BDT-Au** junction — gold /
-benzene-1,4-dithiol / gold, ≥4 Au atoms, even electron count) and the open one
-(an Fe centre):
+**Worked example — both directions, end to end.** An **Au-BDT-Au** junction
+(gold / benzene-1,4-dithiol / gold) and an Fe centre:
 
 ```python
->>> from molbuilder.chemistry import analyze_structure
->>> from molbuilder.siesta.auto_defaults import SiestaAdapter
->>> from molbuilder.pyscf.auto_defaults  import PyscfAdapter
+>>> from molbuilder.electronic_state import electronic_state
+>>> from molbuilder.validation.chemistry import check_electronic_state
 
-# --- CLOSED: the Au junction ---
->>> a = analyze_structure(au_bdt_au)
->>> a.metals, a.suggested_treatment, a.suggested_spin
-(['Au'], 'closed', 0)                        # cluster-context override
->>> a.rationale
-'Detected metallic Au system (N atoms, even electron count). Noble-metal clusters /
- surfaces / junctions are conventionally treated as closed-shell singlet …'  # real head, abridged
->>> SiestaAdapter.to_params(a)
-SiestaSuggestedParams(net_charge=0, spin_polarized=False, spin_total=0.0, rationale='…')
-# The retired flat OPEN_SHELL_METALS alias would have returned 'open' here — WRONG.
+# --- CLOSED: the Au junction, a repeating cell ---
+>>> st = electronic_state(au_bdt_au, SiestaConfig(), kind="transport")
+>>> st.spin_treatment.value, st.unpaired_electrons.value
+('restricted', 0)
+>>> st.spin_treatment.said
+'detected: metallic Au in a repeating cell: the s-band delocalises and no moment forms'
+# The retired flat OPEN_SHELL_METALS alias would have said open-shell here — WRONG.
 
-# --- OPEN: an Fe centre (open-d 3d metal) ---
->>> b = analyze_structure(fe_porphyrin)
->>> b.metals, b.suggested_treatment, b.suggested_spin
-(['Fe'], 'open', 2)                          # open-d → open-shell; analyzer default 2S = 2
->>> PyscfAdapter.to_params(b)                 # PySCF: open-shell → UKS
-PyscfSuggestedParams(charge=0, spin=2, method='UKS', rationale='…')
->>> SiestaAdapter.to_params(b)               # SIESTA: spin-polarized, Spin.Total in μB
-SiestaSuggestedParams(net_charge=0, spin_polarized=True, spin_total=2.0, rationale='…')
+# --- OPEN: an Fe centre (open-d 3d metal), the spin fields blank ---
+>>> st = electronic_state(fe_porphyrin, PySCFConfig(), kind="optimization")
+>>> st.spin_treatment.value, st.unpaired_electrons.value
+('unrestricted', 2)          # Fe's usual count — a guess about coordination (ES8)
 
-# REVERSE gate — the user forces a closed-shell SCF on the open-shell Fe system:
->>> from molbuilder.validation.chemistry import check_open_shell_metal
->>> check_open_shell_metal(fe_porphyrin, is_closed_shell=True, engine_label='PySCF (RKS)')
-[Issue(severity='warn', message='Analyzer recommends OPEN-SHELL DFT … but PySCF (RKS)
-       requests a closed-shell SCF … converges to a fictitious state …', where='config.spin')]
+# REVERSE — a closed shell stated on the open-shell Fe system:
+>>> check_electronic_state(fe_porphyrin, PySCFConfig(spin_treatment="restricted"),
+...                        calculation="optimization")
+[Issue(severity='warn', message='The spin treatment is restricted (stated), and the
+       structure implies unrestricted, 2S = 2: … converges to a fictitious state …',
+       where='config.spin_treatment')]
 ```
 
 **References** (the noble-metal-is-closed-shell basis): Taylor, Brandbyge,
@@ -245,105 +204,68 @@ Stokbro, *PRB* **63**, 245407 (2001) — the original TranSIESTA Au-BDT-Au paper
 Ke, Baranger, Yang, *JCP* **122**, 074704 (2005) — Au-BDT-Au NEGF; Verzijl &
 Thijssen, *JPCC* **116**, 24811 (2012) — DFT+Σ Au-alkanedithiol benchmark;
 Marder, *Condensed Matter Physics* Ch. 17 — the Stoner-criterion derivation
-(Cu/Ag/Au explicitly non-magnetic in bulk). Pinned by
-`tests/test_chemistry_analyzer.py` (Au₄ / Au-BDT-Au / single Au / Au₂ / Cu₄ /
-Pd₂ / Au+Fe), which also asserts the three sets are pairwise disjoint and Pd/Pt
-are excluded from `OPEN_D_TRANSITION_METALS`.
+(Cu/Ag/Au explicitly non-magnetic in bulk). The table's rows are pinned through
+prep in `tests/test_electronic_state.py` (Au₄, Au₁, the gold lead, Fe, bcc Fe on
+SIESTA; Au₂, Au₃, Au₅, Pd₂ and more on PySCF); `tests/test_chemistry_analyzer.py`
+asserts the three sets are pairwise disjoint and Pd/Pt are excluded from
+`OPEN_D_TRANSITION_METALS`.
 
 ---
 
-## 3. The adapter layer (L3)
+## 3. The electronic state (L3)
 
-Adapters translate one `ChemistryAnalysis` into each engine's parameter
-dataclass. The registry (`chemistry.py`):
+One class decides the charge and the spin of a calculation — for the form, the
+checks and every deck: `electronic_state(struct, cfg, *, kind)`. Its contract —
+the four items, the one order a blank is answered in (stated → implied → recorded
+→ detected), the detection table, what each engine can run, ES1–ES10 — is
+[`chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a; this is
+where it sits in the machinery. Each value is a `Resolved(value, source, why)`
+with its phrasing `said`, so the deck comment, the prep report and the card say
+the same words.
 
-```python
-def register_adapter(name): ...          # decorator
-def registered_adapters() -> dict: ...   # {name: AdapterClass}
-```
-
-Every adapter satisfies the `EngineParameterAdapter` **Protocol** (the formal
-interface, `chemistry.py`): a `name: str` plus a
-`to_params(cls, analysis) -> <Engine>SuggestedParams` classmethod — that is the
-*entire* contract a new engine implements.
-
-Each engine ships an `auto_defaults.py` that defines a frozen `*SuggestedParams`
-(field names matching the engine's web form) and an adapter that
-`@register_adapter`s itself:
-
-```python
-# siesta/auto_defaults.py                # pyscf/auto_defaults.py
-@register_adapter("siesta")              @register_adapter("pyscf")
-class SiestaAdapter:                     class PyscfAdapter:
-    → SiestaSuggestedParams(             → PyscfSuggestedParams(
-        net_charge, spin_polarized,          charge, spin,
-        spin_total, rationale)               method="UKS"|"RKS", rationale)
-```
-
-(*UKS* = unrestricted / open-shell Kohn-Sham; *RKS* = restricted / closed-shell —
-PySCF's open- vs closed-shell DFT solve; SIESTA's `spin_polarized` bool is the
-equivalent switch.)
-
-> **Superseded by the electronic state** — `science/chemistry-correctness.md`
-> § 2a (W34): four engine-neutral items (`net_charge`, `spin_treatment`,
-> `unpaired_electrons`, `method`) replace these per-engine fields, and PySCF's
-> class is composed and written explicitly (ROHF/ROKS included) rather than
-> named here as UKS or RKS. This block describes the code as it is until W34's
-> P1 lands.
-
-**Adapter rules:** a pure translator — **must not** re-do chemistry detection or
-parity (if you're importing `chemistry.py` inside an adapter, the logic belongs
-in the analyzer); returns a frozen dataclass, not a dict; `rationale` always
-present (may append one engine-specific sentence). Spectra reuses `PyscfAdapter`
-(it emits PySCF). Enforced by `test_chemistry_adapters.py::test_an_adapter_translates_the_analysis_and_never_re_derives_it`,
-which hands every registered adapter conclusions that contradict the composition
-they came with: a translator follows the analysis, and one that re-derives
-answers what the composition says.
+*(Until 2026-09-28 this layer was a per-engine **adapter registry** —
+`siesta/auto_defaults.py` and `pyscf/auto_defaults.py` translating one analysis
+into each engine's suggested fields, for an Auto-detect button to copy into the
+forms. Deleted with the button: the suggestion was judged at charge 0 on the
+neutral structure, and the copy overwrote the person's own values.)*
 
 ---
 
 ## 4. The consumers (L4)
 
-**`/api/structure/analyze`** (`build.py`) — the UI auto-detect. Returns the
-analysis plus `suggested.<engine> = asdict(adapter.to_params(analysis))` for
-**every** registered adapter (`asdict` turns a dataclass into a plain JSON-able
-dict — the single serialisation point), so a new engine appears the moment its
-adapter module is imported — endpoint code unchanged.
+**The settings gate** — `check_electronic_state` (`validation/chemistry.py`),
+asked **once** by `validate()` for every engine and every kind: what the engine
+cannot run (ES4–ES6), parity at the resolved charge for a finite system (ES3), a
+stated closed shell on an open-shell structure and a constrained singlet (ES9), a
+count a metal decided until it is stated (ES8), a charge on a transport
+calculation (ES7). At most one finding per fact. The engine validators READ the
+state — SIESTA's charged-cell notice and vacuum threshold, its spin-orbit
+pseudopotential check — but raise none of its findings.
+[`overview.md`](?doc=science/overview.md) § 4 lists them with their severities.
 
-**`check_open_shell_metal(struct, *, is_closed_shell, engine_label)`**
-(`validation/chemistry.py`) — the pre-emission validator. It calls the
-**same** `analyze_structure` and gates on `analysis.suggested_treatment == "open"`
-(not the flat `metals` list — that's what fired for Au-BDT-Au before the
-category split), returning a `warn` `Issue` carrying the analyzer's rationale
-when the user requests a closed-shell SCF against an open-shell recommendation.
+**The deck writers** — SIESTA optimization and vibration, the five transport
+rungs, PySCF optimization and vibration — each spells the state its own way
+(`Spin` / `Spin.Fix` + `Spin.Total` / `NetCharge`; PySCF's composed class and
+`gto.M(charge=, spin=)`) and writes each value beside its source. A transport
+ladder's rungs are handed the junction's state, decided once at prep.
 
-Four engine surfaces route through this reverse check (a *preflight* = the checks
-run at Generate-time, before engine input is written) — SIESTA + PySCF Build
-preflight (`validation/siesta.py`, `validation/pyscf.py`) and the Spectra
-render gate (`validation/spectra.py`). *(A fourth, "Transport preflight
-(`transport/transiesta.py`)", stood here until 2026-09-18: that preflight
-was deleted 2026-09-17 and transiesta holds no validator. Transport is not
-a fourth surface — each rung resolves a `SiestaConfig`, so it reaches the
-SIESTA surface already named.)* The UI chip (`lib/detection-chip.js`) reads the
-**forward** side instead — `suggested_treatment` straight off the
-`/api/structure/analyze` response — not this validator. **The invariant**
-(`web-ui-coherence.md` Rule 1): chip and validator both derive from the one
-`analyze_structure` result, so they cannot disagree — the remedy for two-surface
-drift (the "closed-shell singlet" chip vs a "switch to open-shell" warning two
-panels down) is to delete the parallel path, not patch it. So the analyzer runs
-in two directions over the one analysis: **forward** (auto-detect pre-fills the
-form) and **reverse** (Generate-time check).
+**The forms** — `/api/structure/analyze` (`build.py`) takes the structure the page
+would hand over (the envelope its viewer holds — the one the preflight and the
+hand-over send) and each form's four items, and answers per engine
+`ElectronicState.as_dict()` beside the facts. `lib/chemistry.js` shows it on the
+chemistry card, each value with its source; `lib/detection-chip.js` in one line
+on each form's chip. It is asked on every load and restore and on every edit to
+one of the four items, and it **fills nothing in** — a blank is already the
+instruction "work it out", and the card is its answer. With no structure or no
+answer, the card is hidden.
 
-**Forward is two steps, and only the first is automatic.** Loading a structure
-fires the analysis at once (`lib/auto-detect.js::analyzeOnLoad`, shared by the
-Build and Spectra pages), so the chemistry rationale is on screen before you
-touch anything — *"Chemistry analyzed — click Auto-detect to apply suggested
-defaults to the form."* **The form is not filled in.** Writing values into a
-form is a decision about the calculation, so it stays behind the Auto-detect
-button; showing you what the molecule is, is not, and gating that behind a
-click is how a person generates a closed-shell SCF for an open-shell metal
-without ever seeing the reason not to. A stale-load guard drops the answer if
-you loaded something else while it was in flight.
+**The invariant** (`web-ui-coherence.md` Rule 1): the card, the chip, the checks
+and the deck read one class, so they cannot disagree — the remedy for two-surface
+drift is to delete the parallel path, not patch it. *(Until 2026-09-28 the
+forward side was the Auto-detect button — the analysis fired on load, and a click
+copied its suggestion into the forms — and the reverse side was
+`check_open_shell_metal`, which judged the neutral, non-repeating structure; the
+chip read one verdict for the whole page at charge 0.)*
 
 ---
 
@@ -503,14 +425,19 @@ the labels drive the whole device/electrode split, so the
 
 ## 6. Adding a new engine
 
-1. Create `<engine>/auto_defaults.py`: a frozen `<Engine>SuggestedParams` +
-   an adapter class `@register_adapter("<engine>")` with `to_params(cls, analysis)`.
-2. Import the module in `web/blueprints/__init__.py` so it registers at startup.
-3. (Optional) route the engine's validator through `check_open_shell_metal`.
-4. Add adapter tests (the cross-engine consistency invariant runs over the
-   registry).
+1. Declare what it can run: a row per kind in `electronic_state.CAPABILITY`
+   (and in `FLOATS` / `MOLECULAR` if it floats a moment or builds the atoms as one
+   molecule), with a reason in `_CANNOT` for what it cannot. The form then offers
+   exactly that, and the gate refuses the rest by name (ES4).
+2. Give its config the four state items from `config/state.py` (the factories
+   every engine's config uses), and `method` if it has one.
+3. Spell the state in its deck writer — read `electronic_state(...)`, never the
+   raw fields — and write each value beside its source.
+4. Register its validator in `_ENGINE_VALIDATORS`; the state's findings come to it
+   through `validate()` without a line of its own. Pin its decks through prep.
 
-No endpoint change; the new engine surfaces in `suggested.<engine>` automatically.
+No endpoint change: `/api/structure/analyze` answers every engine `CAPABILITY`
+names for the kind.
 
 ---
 
@@ -526,17 +453,19 @@ validation/
 │                   # registry (_KIND_VALIDATORS, fact-keyed) + re-exports
 ├── geometry.py     # validate_geometry + geometry checks
 ├── metadata.py     # dataclass-field-driven config validation (range/validate/choices)
-├── chemistry.py    # check_open_shell_metal, metal-basis adequacy, peptide protonation
+├── chemistry.py    # species labels; THE ELECTRONIC STATE'S ONE FAMILY
+│                   # (check_electronic_state); metal-basis adequacy;
+│                   # peptide protonation
 ├── identity.py     # names and labels (run identity, basenames)
 ├── sidecar.py      # frozen-atoms-consumed + unconsumed-region-label (Pattern-B) checks;
 │                   # the relaxation-record check (engines/vibration.md § 2.2)
 ├── stages.py       # stage-ladder checks (shared by describe/dispatch)
 ├── task.py         # the TASK preflight — a description that is not one refuses
-├── siesta.py       # SIESTA preflight aggregator + pseudo/mesh/Makov-Payne/spin checks
+├── siesta.py       # SIESTA preflight aggregator + pseudo/mesh/Makov-Payne/vacuum checks
 ├── pyscf.py        # PySCF preflight aggregator
-└── spectra.py      # the vibration kind's render gate (grid/amplitude/parity/
-                    # method/open-shell) — moved whole from the retired engine
-                    # class at the spectra migration's P3
+└── spectra.py      # the vibration kind's render gate (grid/amplitude/frozen
+                    # atoms/the relaxation record) — moved whole from the retired
+                    # engine class at the spectra migration's P3
 ```
 
 *(This tree drifted once — it listed seven files while the package held
@@ -545,7 +474,7 @@ eleven; reconciled 2026-08-21 during the diagram-faithfulness review.)*
 Two rules make this safe to extend: **the call order inside `_validate_siesta` /
 `_validate_pyscf` is the per-engine public contract** — load-bearing, since
 tests count issues by position — and a helper **loses its `_` prefix when it
-gains a cross-module caller** (e.g. `check_open_shell_metal` is public; the
+gains a cross-module caller** (e.g. `check_electronic_state` is public; the
 others stay private until a PR forces the promotion, no back-compat shim). The
 engine registry (`_ENGINE_VALIDATORS`, populated at import) holds **two**
 configs (SIESTA / PySCF), and the calculation-kind
@@ -554,15 +483,17 @@ described fact — `validate(struct, cfg, calculation=…)` is the
 one per-engine gate. Tests mirror the layout under `tests/validation/`.
 
 **One fact, one finding.** The kind's validator owns the families the kind's
-science answers — on a vibration: the parity of the electron count, the
-open-shell metal, the grid, the held atoms and what survives the freeze, and
-the region labels the run does not consume — and the engine validator, which
+science answers — on a vibration: the grid, the held atoms and what survives the
+freeze, and the region labels the run does not consume — and the engine
+validator, which
 receives `calculation`, **defers** those families on that kind rather than
 firing its own copy. Two findings for one fact is the failure this rule
 closes: the engine's copy is reasoned from the wrong calculation (a
 *"held fixed during relaxation"* line on a force-constant run that relaxes
 nothing — seen on the Spectrum tab, 2026-09-24). Both engine validators
 branch on the kind the same way (`validation/pyscf.py`, `validation/siesta.py`).
+The charge and spin are neither's: they are the electronic state's one family,
+asked once by `validate()` for every engine and kind (§ 4).
 The same wrong calculation reached the transport kind: its rungs write no MD
 block — the junction was relaxed upstream and every rung computes at that
 geometry — so SIESTA's frozen-atom family is not asked there at all, rather
@@ -583,8 +514,9 @@ relaxation"*, 2026-09-25).
 
 ## 8. What the analyzer does NOT cover
 
-Its scope is the chemistry-driven **`(charge, spin, treatment)` triplet + the
-open-shell-metal hints** — the place silent chemistry errors hide. Out of scope
+Its scope is the chemistry that decides the **electronic state** — the charge, the
+spin treatment and the count — **+ the open-shell-metal hints**: the place silent
+chemistry errors hide. Out of scope
 (and why): basis set + XC functional (user preference / budget), k-points / mesh
 cutoff (geometry, not chemistry), pseudopotential family (covered by the
 `pseudopotentials.md` validator pass), convergence thresholds and optimisation /
@@ -595,25 +527,26 @@ cross-engine consistency claim.
 
 ## 9. Test invariants
 
-- **Cross-engine agreement** — all registered adapters reach the same open-vs-closed
-  decision (SIESTA `spin_polarized` iff PySCF `UKS`) and the same 2S for a given
-  structure: `test_chemistry_adapters.py::test_all_adapters_agree_on_treatment`
-  (parametrised over CH₄ / Fe / Cu / Mn). *(W34 restates the agreement over the
-  electronic state's items — `science/chemistry-correctness.md` § 2a.)*
-- **Validator ↔ analyzer** — `check_open_shell_metal` reads its conclusion from
-  `analyze_structure` and echoes its rationale, proved by *monkeypatching* the
-  analyzer (a test temporarily swaps it for a stub):
-  `tests/validation/test_chemistry.py::TestCheckOpenShellMetalUsesAnalyzer`.
-- **Endpoint shape** — `/api/structure/analyze` carries every documented key and
-  each `suggested.<engine>` matches its dataclass fields
-  (`test_structure_analyze_endpoint.py::test_response_shape_carries_every_documented_key`).
-- **New-engine on-ramp** — a freshly-registered synthetic adapter appears in the
-  endpoint response (`…::test_freshly_registered_adapter_appears_in_endpoint_response`),
-  catching a hardcoded engine list.
-- **Adapter purity** — each registered adapter, handed an analysis whose
-  conclusions (open shell, spin 2, charge +1) contradict its composition
-  (methane), must answer exactly as it does for the same conclusions over copper:
-  `test_chemistry_adapters.py::test_an_adapter_translates_the_analysis_and_never_re_derives_it`.
+- **One state, every deck** — each deck kind (SIESTA optimization, vibration, the
+  transport rungs; PySCF optimization and vibration) carries the class's answer,
+  each value beside its source, pinned through `jobset prep`:
+  `tests/test_electronic_state.py` (the detection table on both engines, the
+  charge step on every deck, the refusals, the recorded step, the migration) and
+  `tests/test_transport_prep.py` (a blank spin decided once, on the junction).
+- **The card and the chip** — they answer for exactly what each form says, about
+  the structure the page holds, fill nothing in, and hide with nothing to answer:
+  `tests/test_chemistry_card_e2e.py` (the three tabs, in a browser) and
+  `tests/test_chemistry_module_js.py` (the supersede protocol, what the card
+  says).
+- **The route's refusals** — no structure, an unreadable one, a label naming no
+  element, a form for an engine that does not run the kind:
+  `tests/test_structure_analyze_endpoint.py`.
+- **Every field reaches the deck** — a state item changes what the ENGINE reads,
+  not only the comment beside it: `tests/test_every_form_field_reaches_the_deck.py`.
+
+*(The adapter-agreement, adapter-purity, new-engine-registration and
+`check_open_shell_metal` invariants went with the adapters on 2026-09-28: one
+class leaves nothing to agree.)*
 
 ---
 
@@ -638,6 +571,16 @@ Three decisions produced this structure (fuller provenance in git history):
   recommends closed-shell singlet for Au junctions (§ 2.1) and
   `check_open_shell_metal` gates on `suggested_treatment` instead of the flat
   `metals` list.
+- **The electronic state (2026-09-28, M6).** The analyzer's suggestion, its two
+  adapters, the Auto-detect button that copied them into the forms, and
+  `check_open_shell_metal` were replaced by one class, `electronic_state`, which
+  decides the charge and the spin at the calculation's own charge and
+  periodicity, for the form, the checks and every deck alike
+  ([`chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a).
+  Measured before it: a formate ion prepared at −1 and a bulk gold lead both told
+  to go open-shell; a blank charge written as 0 by the fill, switching the
+  phosphate rule off; a person's Hartree–Fock turned into DFT; `dft.RKS` with a
+  nonzero spin re-ruled by PySCF into ROKS without a word.
 - **The alias deleted, and the split finished (2026-09-17).** The 2026-06-13
   entry above claimed to have killed the Au-BDT-Au chip-vs-validator
   contradiction. It killed it on the **chip**. There were three readers of the
@@ -649,10 +592,11 @@ Three decisions produced this structure (fuller provenance in git history):
   **refused to generate it**, advising 1 μB of spin on the system whose own
   rationale cites the spin-restricted TranSIESTA benchmark. The window
   preserved the bug rather than a caller, which is what the
-  no-backward-compat rule exists to prevent.  `detect_open_shell_metals` now
-  asks the structure: an open-d metal decides for everything, and a
-  nobles-only system is decided by electron parity — the same rule
-  `analyze_structure` reaches.
+  no-backward-compat rule exists to prevent.  `detect_open_shell_metals` then
+  asked the structure: an open-d metal decided for everything, and a
+  nobles-only system was decided by electron parity — the same rule
+  `analyze_structure` reached (both retired with the electronic state, the
+  entry above).
 
 ---
 

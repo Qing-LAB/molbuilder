@@ -18,13 +18,14 @@ import numpy as np
 
 from ..issues import Issue
 from ..structure import Structure
-from .chemistry import (check_open_shell_metal, check_species_labels,
-                        _check_peptide_protonation)
+from .chemistry import check_species_labels
 from .sidecar import _check_frozen_atoms_consumed
 
 
 def _check_siesta_pseudo_coverage(struct: Structure, cfg,
-                                    *, dest_dir=None) -> List[Issue]:
+                                    *, dest_dir=None,
+                                    relativistic: str = "scalar"
+                                    ) -> List[Issue]:
     """Run molbuilder.pseudos.check_coverage on the pseudopotentials THIS RUN
     WILL OPEN, so the SIESTA Build->Generate preflight catches:
       * missing .psml files (SIESTA's ``pseudo_read: ERROR: Pseudopotential
@@ -47,6 +48,12 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
     answer, and an unset one is a WARN; with a folder, a species in neither
     place is an ERROR.  Suggests projects/pseudopotential/ as the convention
     since that's where the new-project skeleton creates one.
+
+    ``relativistic`` is what the run needs of each file -- ``spin-orbit`` for
+    a spin-orbit treatment, which needs fully-relativistic pseudopotentials
+    (`science/chemistry-correctness.md` § 2a.3), ``scalar`` otherwise.  The
+    caller reads it off the electronic state; until 2026-09-28 nothing passed
+    it, so a spin-orbit run was screened as scalar.
     """
     from ..pseudos import (PsmlLibError, check_coverage, ERROR_STATUSES,
                            expected_xc_family, psml_sources, resolve_psml_lib)
@@ -141,6 +148,7 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
             els, directory,
             expected_xc_family=expected_family,
             expected_xc_authors=xc_authors or None,
+            expected_relativistic=relativistic,
         ):
             if entry.status == "ok":
                 continue
@@ -316,7 +324,7 @@ def _check_siesta_mesh_cutoff(cfg, struct=None, *, dest_dir=None) -> List[Issue]
 
 
 def _check_siesta_charged_makov_payne_notice(struct: Structure,
-                                              cfg) -> List[Issue]:
+                                              state) -> List[Issue]:
     """SIESTA-specific: charged system in a periodic supercell carries
     an image-charge artefact that padding alone does NOT remove.
 
@@ -329,32 +337,43 @@ def _check_siesta_charged_makov_payne_notice(struct: Structure,
 
     molbuilder does NOT auto-apply the Makov-Payne correction; this
     warn surfaces the issue so users computing redox / pKa /
-    deprotonation energies know to apply it post-hoc.  Deferred for a
-    future "Makov-Payne emission" capability (see design.md decisions
-    log; task #165 retains the open item).
+    deprotonation energies know to apply it post-hoc.
 
     Severity: WARN (not ERROR) -- the calculation still runs and a
     user doing a single-point screening calc may not care.  We're
     nudging, not blocking.
 
-    Skip conditions:
-      * net_charge unset or zero
-      * The caller passed a non-vacuum cell explicitly AND that cell
-        looks like a real crystal (no auto-padding bump signature) --
-        we don't have enough info to know if the user wants to model
-        a periodic crystal (in which case the artefact IS the
-        physics) or a vacuum supercell.  Conservative: still warn,
-        the user can dismiss.
+    ``state`` is the electronic state the deck carries
+    (`science/chemistry-correctness.md` § 2a): its charge -- stated, the
+    run's, or the phosphate rule's; 0 on a transport rung, whose junction is
+    neutral by rule (this fired on every rung of a charged citation until
+    2026-09-28) -- and whether its system is finite.  Skipped at charge 0.
+
+    KEYED ON THE SYSTEM (§ 2b, the M6 review): a charged MOLECULE gets the
+    estimate, and the word that SIESTA applies the leading term itself in a
+    cubic cell (``siesta: Emadel``, already in E_KS), which the companion
+    script reads first.  A charged REPEATING cell -- a slab, a defect in a
+    crystal -- gets no formula, because the point-charge correction is the
+    wrong one there; it is told its energy needs a defect-specific
+    treatment.  Both got the molecule's message until then.
     """
-    # Resolve charge: explicit user override or auto-detected.
-    from ..chemistry import resolve_net_charge
     from ..siesta.makov_payne import compute_correction
-    try:
-        q = resolve_net_charge(struct, getattr(cfg, "net_charge", None))
-    except Exception:
-        return []
+    q = int(state.net_charge.value)
     if q == 0:
         return []
+    if not state.finite:
+        return [Issue(
+            "warn",
+            (f"Charged repeating cell (NetCharge = {q:+d}).  SIESTA adds a "
+             f"uniform compensating background charge, so the total energy "
+             f"is not comparable with a neutral cell's, and SIESTA's own "
+             f"monopole correction does not apply (it corrects a molecule "
+             f"only).  A point-charge correction in a cubic box is the wrong "
+             f"formula for a slab or a defect in a crystal, so molbuilder "
+             f"writes none: the energy needs a defect-specific treatment "
+             f"(science/chemistry-correctness.md § 2b)."),
+            "config.net_charge.makov_payne",
+        )]
     # Estimate the correction magnitude at a representative vacuum
     # cell size.  Real SIESTA cells vary; the message gives the user
     # the order-of-magnitude before they actually run.  Cell sizes
@@ -373,10 +392,12 @@ def _check_siesta_charged_makov_payne_notice(struct: Structure,
          f"correction magnitude (vacuum, cubic-Madelung): "
          f"~{dE_15:.2f} eV at L=15 Å, ~{dE_20:.2f} eV at L=20 Å, "
          f"~{dE_25:.2f} eV at L=25 Å — well above chemical accuracy.  "
-         f"molbuilder emits a companion ``makov_payne_correction.py`` "
-         f"script alongside the FDF; after SIESTA finishes, run it "
-         f"to get the corrected total for the cell SIESTA actually "
-         f"used.  See Makov & Payne, PRB 51, 4014 (1995)."),
+         f"SIESTA applies the leading term itself when the cell is simple, "
+         f"face- or body-centred cubic (``siesta: Emadel``, already in "
+         f"E_KS), and not otherwise.  molbuilder emits a companion "
+         f"``makov_payne_correction.py`` beside the FDF; after SIESTA "
+         f"finishes, run it: it reads ``Emadel`` first and adds only what "
+         f"SIESTA did not.  See Makov & Payne, PRB 51, 4014 (1995)."),
         "config.net_charge.makov_payne",
     )]
 
@@ -390,7 +411,8 @@ _VACUUM_MIN_NEUTRAL = 8.0
 _VACUUM_MIN_CHARGED = 25.0
 
 
-def _check_siesta_vacuum_adequacy(struct: Structure, cfg) -> List[Issue]:
+def _check_siesta_vacuum_adequacy(struct: Structure,
+                                  charge: int) -> List[Issue]:
     """Too little vacuum on an ISOLATED axis lets the molecule interact with
     its own periodic images.
 
@@ -405,12 +427,11 @@ def _check_siesta_vacuum_adequacy(struct: Structure, cfg) -> List[Issue]:
     ``render_fdf``'s own ``report(validate(...))``.
 
     Periodic / transport axes are skipped: a crystal or a device sets the box
-    there, not the vacuum.  Never mutates -- the structure is the truth."""
-    from ..chemistry import resolve_net_charge
-    try:
-        q = resolve_net_charge(struct, getattr(cfg, "net_charge", None))
-    except Exception:                      # noqa: BLE001 -- charge is advisory here
-        q = 0
+    there, not the vacuum.  Never mutates -- the structure is the truth.
+
+    ``charge`` is the electronic state's resolved charge: a charged system
+    needs far more vacuum (its image bias decays only as 1/L)."""
+    q = int(charge)
     min_vac = _VACUUM_MIN_CHARGED if q else _VACUUM_MIN_NEUTRAL
     kinds = struct.axis_kind or ("isolated", "isolated", "isolated")
 
@@ -446,79 +467,6 @@ def _check_siesta_vacuum_adequacy(struct: Structure, cfg) -> List[Issue]:
          f"changed for you."),
         "cell.vacuum_thin",
     )]
-
-
-def _check_siesta_spin_treatment_needs_spin_total(struct: Structure,
-                                                    cfg) -> List[Issue]:
-    """SIESTA: spin polarization on, ``spin_total`` unset, an open-shell
-    metal present -> WARN.
-
-    **This is about the SCF's STARTING POINT, not about a crash.**  A
-    spin-polarized run with no stated moment begins with zero net spin on
-    every atom.  For an open-d metal that is a poor place to start: the SCF
-    can settle into a state that is not the ground state, or fail to converge
-    at all, and neither announces itself.  Naming a ``Spin.Total`` puts the
-    initial density matrix where the chemistry says it belongs.  The
-    suggestion and its alternatives come from
-    :func:`~molbuilder.chemistry.suggest_spin_total`, so the reader gets
-    numbers rather than a pointer to ligand-field tables.
-
-    **WARN, because nothing here refuses to run** (user ruling 2026-09-16).
-    This was an ERROR that blocked generation, on the stated grounds that
-    SIESTA would abort with ``propor: ERROR: IMAX = 0``.  That mechanism is
-    not real.  ``propor`` is a forty-line vector-proportionality utility
-    (SIESTA ``Src/propor.f``), called only from ``matel_table.F90`` to
-    deduplicate radial-function tables; it takes no spin argument, and
-    ``IMAX = 0`` means it was handed an all-zero table -- a defective
-    pseudopotential.  **That failure is already guarded here, correctly and
-    as an error**, by the ``dead_projector`` status in
-    :func:`_check_pseudopotential_coverage`.
-
-    The spin reading was the second of four accounts of one 2026-05-24
-    incident.  The other three were retracted where they lived --
-    ``siesta/input.py::_auto_block_size`` carries the sweep that disproved
-    the BlockSize theory, and ``runwrap.py``'s occupancy notice records
-    deleting a rank clamp because *"that abort came from a PSML problem"*.
-    This one had no earlier home to correct, only a new validator, so it
-    outlived the theory it came from.
-    """
-    if not (getattr(cfg, "spin_treatment", "non-polarized") != "non-polarized"):
-        return []
-    # The check ALSO fires when the user explicitly set spin_total=0.0:
-    # that's the exact propor IMAX=0 trigger we're trying to catch
-    # (zero net spin on a d/f shell has no valid proportional split).
-    # Earlier ``is not None`` gate let this silently through (caught in
-    # the 2026-05-25 review).  Now: fire when spin_total is None OR
-    # numerically zero.
-    _spin = getattr(cfg, "spin_total", None)
-    if _spin is not None and float(_spin) != 0.0:
-        return []
-    from ..chemistry import detect_open_shell_metals, suggest_spin_total
-    metals = detect_open_shell_metals(struct)
-    if not metals:
-        return []
-    preferred, alternatives = suggest_spin_total(metals)
-    lines = [
-        f"Spin polarization is on but spin_total is not set, and the "
-        f"structure contains open-shell metal(s): {', '.join(metals)}.  "
-        f"The SCF then starts from zero net spin on every atom, which "
-        f"for an open-shell metal can converge to the wrong spin state "
-        f"or not converge at all -- neither of which announces itself.",
-        "",
-        f"START HERE: set cfg.spin_total = {preferred}  "
-        f"(2S, in μB; SIESTA emits this as ``Spin.Total``).  "
-        f"This is the most common starting value for the metals "
-        f"detected; adjust if SCF doesn't converge to the chemistry "
-        f"you expect.",
-    ]
-    if alternatives:
-        lines.append("")
-        lines.append("Alternatives to sweep through if the starting "
-                      "value doesn't match the chemistry (run with "
-                      "each, pick lowest-energy SCF):")
-        for value, desc in alternatives:
-            lines.append(f"  spin_total = {value:>4g}  -- {desc}")
-    return [Issue("warn", "\n".join(lines), "config.spin_total")]
 
 
 # --------------------------------------------------------------------- #
@@ -579,37 +527,48 @@ def _validate_siesta(struct: Structure, cfg,
     # rather than raising from inside the emitter.
     issues += check_species_labels(struct, engine_label="SIESTA")
 
-    # Peptide protonation hint -- same as PySCF side; see
-    # _check_peptide_protonation for the full rationale.
-    issues += _check_peptide_protonation(struct, getattr(cfg, "net_charge", None))
+    # THE ELECTRONIC STATE THE DECK WILL CARRY (`science/chemistry-
+    # correctness.md` § 2a) -- the charge and the treatment the checks
+    # below are about.  Its own findings (parity, the open-shell guard, what
+    # SIESTA cannot run) are one family asked from `validate` for every
+    # engine; here it is only READ.  None when a species label names no
+    # element: the state is an electron count, and the label check above
+    # owns that finding.
+    from ..chemistry import every_label_resolves
+    from ..electronic_state import KINDS, electronic_state
+    state = (electronic_state(struct, cfg, kind=calculation)
+             if calculation in KINDS and every_label_resolves(struct)
+             else None)
 
     # Pseudopotential coverage (the actionable use of pseudos.py).
     # Wired into preflight + render: missing files become ERROR
     # Issues (SIESTA hard-fails without them); XC mismatches
-    # become WARN (silent wrong bond lengths otherwise).
-    issues += _check_siesta_pseudo_coverage(struct, cfg, dest_dir=dest_dir)
+    # become WARN (silent wrong bond lengths otherwise).  A spin-orbit run
+    # needs fully-relativistic files.
+    issues += _check_siesta_pseudo_coverage(
+        struct, cfg, dest_dir=dest_dir,
+        relativistic=("spin-orbit" if state is not None
+                      and state.spin_treatment.value == "spin-orbit"
+                      else "scalar"))
 
     # MeshCutoff floor: warn below 150 Ry (production-defensible
     # threshold).  The dataclass slider lower bound is 100 Ry; this
     # rule catches the 100-149 Ry window with a soft nudge.
     issues += _check_siesta_mesh_cutoff(cfg, struct, dest_dir=dest_dir)
 
-    # Makov-Payne notice: charged-supercell image-charge bias.
-    # We DON'T auto-apply the correction (see function docstring +
-    # design.md decisions log); we surface it so the user knows
-    # what's missing.
-    issues += _check_siesta_charged_makov_payne_notice(struct, cfg)
-
-    # Vacuum adequacy on isolated axes (R5: was a warnings.warn in the
-    # emitter, invisible to the web; now a finding on every surface).
-    issues += _check_siesta_vacuum_adequacy(struct, cfg)
-
-    # Open-shell metal + closed-shell SCF: shared rule with PySCF.
-    issues += check_open_shell_metal(
-        struct,
-        is_closed_shell=not (getattr(cfg, "spin_treatment", "non-polarized") != "non-polarized"),
-        engine_label="SIESTA (Spin non-polarized)",
-    )
+    # The checks that read the CHARGE the deck carries.  With no state -- a
+    # label naming no element, the label check's finding above -- they stand
+    # down rather than judge the structure as neutral: this took 0 there
+    # until the M6 review, whatever charge the template stated.
+    if state is not None:
+        # Makov-Payne notice: charged-supercell image-charge bias.  We DON'T
+        # auto-apply the correction (see function docstring + design.md
+        # decisions log); we surface it so the user knows what's missing.
+        issues += _check_siesta_charged_makov_payne_notice(struct, state)
+        # Vacuum adequacy on isolated axes (R5: was a warnings.warn in the
+        # emitter, invisible to the web; now a finding on every surface).
+        issues += _check_siesta_vacuum_adequacy(struct,
+                                                state.net_charge.value)
 
     # Frozen-atom carrier (three-stage contract).  SIESTA honors
     # struct.frozen_atoms via %block Geometry.Constraints which is
@@ -652,82 +611,6 @@ def _validate_siesta(struct: Structure, cfg,
     # description's ladder is read (the render-time copy in
     # ``_enabled_stages`` died with its producers, step 6 u5).  Cross-stage findings -- a ladder that loosens -- are
     # P2 unit 6 and carry no stage label (§ 4).
-
-    # SIESTA-specific: spin_treatment + no spin_total + open-shell metal
-    # -> propor: ERROR: IMAX = 0 (initial-DM constructor abort).  See
-    # the 2026-05-24 hemeC-dithiol incident for the failure mode
-    # walk-through: SIESTA tries to find a zero-net-spin split for
-    # the metal's d/f shell using its semicore-rich pseudo, can't
-    # land on a valid IMAX, and exits before SCF starts.  Trigger
-    # this proactively at preflight so the user fixes the .fdf in
-    # the form (or sees the recipe) instead of paying a 30-second
-    # SIESTA startup just to be told "IMAX = 0".
-    issues += _check_siesta_spin_treatment_needs_spin_total(struct, cfg)
-
-    # Electron-count parity (cross-engine).  SIESTA's "spin" is
-    # expressed as spin_total (μ_B); when spin_treatment=False it's
-    # implicitly 0.  We need an integer 2S to call the shared parity
-    # helper, so derive: round(spin_total) -> 2S.  Skip when
-    # net_charge is unset (auto-detect path handles it inside
-    # render_fdf via resolve_net_charge).
-    #
-    # Severity rule (refined 2026-05-23 from the original always-ERROR):
-    #   * ERROR only when the user EXPLICITLY set spin_total -- a real
-    #     user-asserted contradiction with the electron count.
-    #   * WARN when spin_total is None (dataclass default) -- the user
-    #     didn't actually claim spin=0; the default did.  For odd-
-    #     electron systems we nudge them toward spin_treatment=True
-    #     without blocking the render.  Avoids surprising failures
-    #     when callers pass net_charge=0 to a synthetic / fictitious
-    #     state (e.g. test fixtures, charge-override sweeps).
-    from ..chemistry import check_spin_charge_parity
-    if getattr(cfg, "net_charge", None) is not None:
-        spin_explicit = getattr(cfg, "spin_total", None) is not None
-        spin_total = getattr(cfg, "spin_total", None) or 0.0
-        spin_2s = int(round(spin_total))
-        if cfg.spin_treatment == "non-polarized" and spin_2s != 0:
-            # User asked for non-zero spin without spin_treatment;
-            # already handled by the warning above + the existing
-            # spin_total-without-polarized warning.  Skip parity
-            # (SIESTA will accept it but won't use it).
-            pass
-        else:
-            err = check_spin_charge_parity(struct, cfg.net_charge, spin_2s)
-            if err:
-                severity = "error" if spin_explicit else "warn"
-                issues.append(Issue(severity, err, "config.spin_total"))
-
-    # Spin.Total set without spin polarised: SIESTA silently ignores it.
-    # THE TOTAL-SPIN PIN IS COLLINEAR-ONLY, and the two ways of getting that
-    # wrong fail differently -- so they are two findings, not one.
-    if cfg.spin_total is not None and cfg.spin_treatment == "non-polarized":
-        issues.append(Issue(
-            "warn",
-            f"Fixed total spin (Spin.Total) = {cfg.spin_total} is set but the "
-            f"spin treatment (Spin) is non-polarized, so there are no separate "
-            f"spin channels to pin; SIESTA reads the value and ignores it. "
-            f"Set the spin treatment to 'polarized' or clear the total spin",
-            "config.spin_total",
-        ))
-    elif (cfg.spin_total is not None
-            and cfg.spin_treatment in ("non-colinear", "spin-orbit")):
-        # NOT a warning.  SIESTA does not ignore this one -- ``read_options.F90``
-        # calls die(): *"You can only fix the spin of the system for collinear
-        # spin polarized calculations"*.  A warning would let the job reach the
-        # queue and abort there, which is the failure this preflight exists to
-        # move earlier.  The emitter drops the pin rather than writing a deck
-        # that cannot start, so without this the setting would vanish in
-        # silence -- and a setting that disappears without a word is the thing
-        # this project refuses.
-        issues.append(Issue(
-            "error",
-            f"Fixed total spin (Spin.Total) = {cfg.spin_total} cannot be "
-            f"combined with the '{cfg.spin_treatment}' spin treatment: SIESTA "
-            f"accepts Spin.Fix only for collinear ('polarized') calculations "
-            f"and aborts at start-up otherwise. Either use 'polarized', or "
-            f"clear the total spin and let the moment relax",
-            "config.spin_total",
-        ))
 
     # A VALUE THAT CANNOT MATTER, said out loud.  The free-energy tolerance is
     # loaded by SIESTA either way and installed as a criterion only when
@@ -820,14 +703,14 @@ def _validate_siesta(struct: Structure, cfg,
     # all kgrid axes == 1 (Gamma-only sampling, no PBC physics
     # intended).  A genuine periodic crystal with k>1 is meant to
     # carry image-image interactions and shouldn't trip this warning.
-    if all(k == 1 for k in cfg.kgrid) and len(struct.positions) > 0:
+    if state is not None and all(k == 1 for k in cfg.kgrid) \
+            and len(struct.positions) > 0:
         try:
-            from ..chemistry import (estimate_dipole_moment_debye,
-                                    formal_charge_from_phosphates)
-            net_charge = (cfg.net_charge if cfg.net_charge is not None
-                          else formal_charge_from_phosphates(struct))
-            dipole = estimate_dipole_moment_debye(struct,
-                                                  total_charge=float(net_charge))
+            from ..chemistry import estimate_dipole_moment_debye
+            # The state's charge -- this spelled the charge rule out inline
+            # until 2026-09-28, a second copy of it.
+            dipole = estimate_dipole_moment_debye(
+                struct, total_charge=float(state.net_charge.value))
         except Exception:
             dipole = 0.0
         if dipole > 1.0:

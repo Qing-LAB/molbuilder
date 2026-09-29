@@ -686,7 +686,7 @@ def test_a_dispersion_turned_off_on_the_form_is_off_in_the_deck(
         [[0, 0, 0.117], [0, 0.757, -0.467], [0, -0.757, -0.467]])}
     r = web_client.post("/api/task-setup/handover", json=dict(
         env, engine="pyscf", name="nodisp",
-        params={"method": "RKS", "dispersion": "none"}))
+        params={"method": "DFT", "dispersion": "none"}))
     assert r.status_code == 200, r.get_json()
     out = r.get_json()
     for f in out["structure_files"]:
@@ -1413,7 +1413,7 @@ def test_transport_describe_writes_the_shared_panels_values_into_the_template(
     _cited_junction(isolated_projects_root)
     r = web_client.post("/api/transport/describe", json=dict(
         engine="siesta", name="T", junction=_T_CITE, bias=[0.0],
-        stages={}, shared={"mesh_cutoff": "450", "spin_treatment": "polarized",
+        stages={}, shared={"mesh_cutoff": "450", "spin_treatment": "unrestricted",
                               "species_order": ""}))
     assert r.status_code == 200, r.get_json()
     tmpl = next(f["text"] for f in r.get_json()["files"]
@@ -1422,7 +1422,7 @@ def test_transport_describe_writes_the_shared_panels_values_into_the_template(
     # typed as text on the form, a number in the template (the one
     # params-to-config door, R5); a blank is not chosen and is not written
     assert items["mesh_cutoff"]["value"] == 450.0
-    assert items["spin_treatment"]["value"] == "polarized"
+    assert items["spin_treatment"]["value"] == "unrestricted"
     assert "value" not in items["species_order"], items["species_order"]
     from molbuilder.template import read_template   # the template is readable
     read_template(tmpl)

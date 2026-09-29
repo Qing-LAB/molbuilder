@@ -38,7 +38,7 @@ flowchart TD
 
 | Doc | Open it when you… |
 |---|---|
-| [`validation.md`](?doc=science/validation.md) | need the analyzer / adapter / consumer machinery (`analyze_structure` → `ChemistryAnalysis`, the per-engine registry, `check_open_shell_metal`, the `validation/` package) |
+| [`validation.md`](?doc=science/validation.md) | need the checks' machinery — the `validation/` package, the one pass `validate()`, the structure's facts (`analyze_structure` → `ChemistryAnalysis`) and the electronic state's one family of findings (`check_electronic_state`) |
 | [`chemistry-correctness.md`](?doc=science/chemistry-correctness.md) | are auditing whether the chemistry is right — the 5 control points, the spin/charge science, the pure primitives, the hemeC-dithiol post-mortem |
 | [`normal-modes.md`](?doc=science/normal-modes.md) | touch anything that counts, filters, warns about or displays vibrational modes — why `3N−6` becomes `3·N_free − n_rigid(F)` when atoms are held, and why the leftover whole-body motions are removed before diagonalisation rather than detected after |
 | [`pseudopotentials.md`](?doc=science/pseudopotentials.md) | work on `.psml` pseudopotential checks (coverage, XC, dead KB projector, generator-version) |
@@ -110,11 +110,12 @@ emits the same `List[Issue]` as **JSON to stdout** for shell-driven pre-flight c
 
 **What may carry `error` severity** is deliberately narrow — only "physically
 impossible or wrong" (atoms overlapping, a degenerate cell, a missing or
-defective pseudopotential, or a `spin_total` set on a spin treatment SIESTA
-refuses it for). Everything advisory stays `warn` — including an open-shell
-metal paired with a *closed*-shell SCF, and a polarized run left without a
-`spin_total`: both are strong warnings about where the SCF starts, and
-neither stops it running. Pattern-B "noticed-but-unused" notes are `info`.
+defective pseudopotential, a charge and spin the electron count cannot hold, or a
+spin state the engine cannot run). Everything advisory stays `warn` — including a
+closed shell stated on an open-shell structure, and a spin count decided from a
+metal's usual count: both are strong warnings about the state the SCF is asked
+for, and neither stops it running. Pattern-B "noticed-but-unused" notes are
+`info`.
 
 ---
 
@@ -150,14 +151,31 @@ states the *why* so the thresholds don't drift silently.
 | `kgrid > 1` on a vacuum axis | warn | k-points along a vacuum direction is wasted |
 | `kgrid == 1` on a periodic/spanning axis while another axis uses k > 1 | warn | likely under-converged sampling |
 
-### Spin & charge (`siesta.py` + the shared chemistry helpers)
+### Spin & charge — the electronic state's one family (`validation/chemistry.py::check_electronic_state`, every engine and kind)
+
+Asked once by `validate()`, of the state the deck will be written from
+([`chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a) — a
+blank item is decided, never an absence. At most one finding per fact (ES9); the
+first that holds wins.
+
 | Check | Severity | Why |
 |---|---|---|
-| spin treatment other than `non-polarized` but `spin_total` unset, open-shell metal present | warn | the moment then floats from SIESTA's default start — every atom at its maximum atomic moment, aligned (`m_new_dm.F90`); *"zero net spin on every atom"*, which this row said until 2026-09-25 and the finding's own text still says (W34 P2), is not what SIESTA does — and for an open-shell metal that can settle into a state which is not the ground state, or fail to converge — neither of which announces itself; the starting value and its alternatives come from `chemistry.suggest_spin_total`. **Whether the structure is open-shell is asked of the STRUCTURE**, so a gold junction is closed-shell and this stays quiet (§ 2.1 of [`validation.md`](?doc=science/validation.md)). This was **error** until 2026-09-17, citing a `propor: ERROR: IMAX = 0` abort that spin cannot cause: `propor` is a vector-proportionality utility called only from `matel_table.F90`, and `IMAX = 0` means an all-zero radial table — a defective pseudopotential, which the `dead_projector` row above already blocks |
-| `spin_total` set with `Spin non-polarized` | warn | there are no separate spin channels to pin, and molbuilder writes neither `Spin.Fix` nor `Spin.Total` without `Spin polarized`: SIESTA reads `Spin.Total` only under `Spin.Fix`, and stops on `Spin.Fix` at any spin but collinear-polarized (`read_options.F90`) — so the value is dropped, which this row said until 2026-09-26 SIESTA did itself |
-| `spin_total` set with `Spin non-colinear` or `spin-orbit` | **error** | SIESTA does NOT ignore this one — `read_options.F90` calls `die()`: *"You can only fix the spin of the system for collinear spin polarized calculations"*. A warning would let the job reach the queue and abort there, which is the failure this preflight exists to move earlier |
-| open-shell metal paired with a *closed*-shell SCF | warn | closed-shell SCF on a true open-shell complex converges to a fictitious state — a strong warning, not a block → [`chemistry-correctness.md`](?doc=science/chemistry-correctness.md) (`check_open_shell_metal`) |
-| `(charge, spin)` parity mismatch | (engine) | caught pre-emission for a clearer message than PySCF's runtime error |
+| a treatment the engine cannot run for this kind — SIESTA's restricted-open, PySCF's non-collinear / spin-orbit, PySCF's restricted-open vibration (ES4) | **error** | declared, not discovered: the form does not offer it, and the gate refuses it by name before a deck is written |
+| `unpaired_electrons = free` on PySCF (ES6) | **error** | PySCF occupies exactly N↑ and N↓ from `mol.spin`; only SIESTA floats a moment |
+| a fixed count under non-collinear or spin-orbit (ES6) | **error** | SIESTA stops on `Spin.Fix` unless the spin is collinear and polarized (`read_options.F90`) — a warning would let the job reach the queue and abort there |
+| `restricted` with a count above 0 (ES5) | **error** | restricted means every electron paired |
+| the count's parity against the electron count, for a finite system (ES3) | **error**; **warn** for SIESTA restricted with an odd count, which runs half-filled | PySCF refuses the pair at run time; a repeating cell's count per cell is not a spin |
+| `restricted` stated where the structure implies an open shell (ES9) | warn | a closed-shell SCF on an open-shell system converges to a fictitious state (the hemeC guard) |
+| `unrestricted` at 2S = 0 on a closed shell (ES9) | warn | a constrained singlet — the same answer as restricted at twice the cost; kept only for a broken-symmetry singlet |
+| a count decided from a metal's usual count, the spin fields blank (ES8) | warn | the right count depends on the coordination, not the element — verify it and state it; the warning goes when the count is stated |
+| a count somebody stated on an open-d metal | info | what it implies for each metal, to check against the chemistry |
+| a charge on a transport calculation (ES7) | **error** | its boundaries are open and the leads set the electron number |
+
+A triplet O₂ stated as such is not a finding: an open shell on an even count is
+exactly what parity cannot see, and a person who stated it meant it. *(This table
+listed the retired `spin_total` rules and the analyzer's `check_open_shell_metal`
+until 2026-09-28; the `propor: ERROR: IMAX = 0` abort once blamed on a missing spin
+is a defective pseudopotential's, which the `dead_projector` row above blocks.)*
 
 ### Transport, the calculation KIND (`validation/__init__.py::_validate_transport_kind`)
 
@@ -200,11 +218,16 @@ mesh_cutoff: float = field(default=300.0, metadata={
 # validation/metadata.py reads .range and emits a warn Issue if the value is out of range
 ```
 
+An item with `choices` is checked the same way, and more strictly: a value that is
+not one of them is an **error**, named — `method = "RKS"` under today's `DFT` /
+`HF` vocabulary would otherwise have been read as Hartree–Fock without a word
+(2026-09-28).
+
 ### Pseudopotentials & chemistry
 The `.psml` checks (C1–C6) are in
-[`pseudopotentials.md`](?doc=science/pseudopotentials.md); the chemistry-driven
-`(charge, spin, treatment)` analysis is in
-[`chemistry-correctness.md`](?doc=science/chemistry-correctness.md) +
+[`pseudopotentials.md`](?doc=science/pseudopotentials.md); the electronic state —
+the charge and spin every engine reads, and its one family of findings — is in
+[`chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a +
 [`validation.md`](?doc=science/validation.md).
 
 ---
@@ -212,30 +235,27 @@ The `.psml` checks (C1–C6) are in
 ## 5. Cross-engine consistency
 
 Any scientific check that depends on chemistry (charge / spin / coordination /
-basis suitability) lives in **one shared helper** called from **both**
-`_validate_siesta` and `_validate_pyscf` (and the engine preflights + the UI
-auto-detect) — same physical facts, same warning. This is structural, not
-aspirational: every science-aware surface consumes the same `ChemistryAnalysis`
-instance and cannot disagree.
+basis suitability) lives in **one shared helper**, asked for every engine — same
+physical facts, same finding. For the charge and spin this is one class: every
+science-aware surface reads the same `ElectronicState`, resolved from the same
+facts for exactly what its form says, and cannot disagree by construction.
 
 ```mermaid
 flowchart TD
-    S["struct"] --> AN["analyze_structure()"]
-    AN --> CA["ChemistryAnalysis<br/>(one shared instance)"]
-    CA --> VS["_validate_siesta"]
-    CA --> VP["_validate_pyscf"]
-    CA --> EP["engine preflights<br/>(spectra / transport)"]
-    CA --> UI["UI auto-detect<br/>/api/structure/analyze → chip"]
-    VS --> R["same conclusion —<br/>no surface can disagree"]
-    VP --> R
-    EP --> R
+    S["struct + the form's four items"] --> AN["analyze_structure()<br/>the facts"]
+    AN --> ES["electronic_state()<br/>the one state"]
+    ES --> V["check_electronic_state<br/>(asked once by validate(), every engine and kind)"]
+    ES --> DW["the deck writers<br/>(each value beside its source)"]
+    ES --> UI["the chemistry card + each form's chip<br/>/api/structure/analyze"]
+    V --> R["same state —<br/>no surface can disagree"]
+    DW --> R
     UI --> R
 ```
 
-The realisation (the analyzer, the adapter registry, the "adapters must not re-do
-detection" rule) is in [`validation.md`](?doc=science/validation.md); the
-chemistry motivation is in
-[`chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2.4.
+The realisation (the class, the order a blank is answered in, the detection table)
+is [`chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a; how the
+checks reach every engine is [`validation.md`](?doc=science/validation.md); the
+chemistry motivation is § 2.4 there.
 
 ---
 
@@ -299,8 +319,15 @@ glosses its own specialised terms inline; this is the common core.)
   metals (Fe, Mn, Co, …) are the common open-shell case; most organics are
   closed-shell.
 - **spin (2S)** — molbuilder and PySCF count spin as **2S = the number of unpaired
-  electrons**: 0 = singlet, 1 = doublet, 2 = triplet, … This is *not* the
-  "multiplicity" (2S+1) that ORCA/Gaussian report.
+  electrons** (the item `unpaired_electrons`): 0 = singlet, 1 = doublet, 2 =
+  triplet, … This is *not* the "multiplicity" (2S+1) that ORCA/Gaussian report.
+  **`free`** asks the moment to float to whatever the SCF finds (SIESTA only).
+- **restricted / restricted-open / unrestricted** — how the two spin channels are
+  solved (the item `spin_treatment`): *restricted*, every electron paired in one
+  set of orbitals (a closed shell); *restricted-open*, one set of spatial orbitals
+  with some singly occupied (spin-pure; PySCF only); *unrestricted*, the two
+  channels solved separately. **non-collinear** and **spin-orbit** (SIESTA) let
+  the spin point in any direction, the second coupling it to orbital motion.
 - **μB (Bohr magneton)** — the unit SIESTA's `Spin.Total` uses for the net spin
   moment (≈ one μB per unpaired electron).
 - **parity** — the even/odd match: an even electron count needs an even 2S, odd
@@ -341,8 +368,8 @@ glosses its own specialised terms inline; this is the common core.)
 
 - **dataclass (frozen)** — a plain typed record; *frozen* = immutable once created.
   **the wire** — the network boundary where these records become JSON.
-- **adapter / registry** — an *adapter* is a small per-engine translator; the
-  *registry* is the lookup table each adapter registers itself into, so adding an
-  engine needs no change to the callers.
+- **registry** — a lookup table each engine's validator registers itself into
+  (`validation._ENGINE_VALIDATORS`), so adding an engine needs no change to the
+  callers.
 - **preflight** — the validation pass run just before an input script is written.
   **the gate** — the single point (`report()`) that can stop generation.

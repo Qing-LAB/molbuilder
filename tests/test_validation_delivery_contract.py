@@ -182,22 +182,21 @@ class TestF4GateDerivesWhatChecksNeed:
         down rather than taking the request with them.
 
         THE STRUCTURE IS A NOBLE-METAL CLUSTER ON PURPOSE.  An electron
-        count is reached from three places in `chemistry.py`, and two of
-        them are behind a metal: `detect_open_shell_metals` returns early
-        unless it finds one, and returns early AGAIN on an open-d metal
-        without counting -- so Au, not Fe, and not a bare molecule.  An
-        earlier version of this test used `["Xx", "H"]`, passed, and left
-        `validate()` still raising `KeyError` out to the preflight as an
-        HTTP 500 with no findings at all.  The kinds are here for the
-        same reason: the vibration route reaches the count through
-        `validation/spectra.py`, which the optimization route does not.
+        count was reached from three places, two of them behind a metal
+        (a detector that returned early unless it found one) -- so Au,
+        not Fe, and not a bare molecule.  An earlier version of this test
+        used `["Xx", "H"]`, passed, and left `validate()` still raising
+        `KeyError` out to the preflight as an HTTP 500 with no findings at
+        all.  Since 2026-09-28 the count is the electronic state's alone,
+        asked by `validate` for every kind; the kinds stay here because
+        the vibration route reads the state through its own view too.
         """
         if engine == "pyscf":
             from molbuilder.config.pyscf import PySCFConfig
             cfg = PySCFConfig()
         else:
             cfg = SiestaConfig(system_label="probe",
-                               spin_treatment="polarized")
+                               spin_treatment="unrestricted")
         s = Structure(
             elements=["Au", "Au", "Au", "Au", "Xx"],
             positions=np.array([[0.0, 0.0, 0.0], [2.9, 0.0, 0.0],

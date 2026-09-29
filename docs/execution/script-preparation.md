@@ -620,7 +620,7 @@ spec is a small form the engine fills in, and it has twelve slots:
 | asks | *is this a sound calculation?* | *does this deck say what it was meant to say?* |
 | reads | the resolved settings and the structure | **the written file**, reopened from disk |
 | when | before a line of text exists | after the deck is written |
-| catches | a restricted method with unpaired electrons; a missing pseudopotential; a vacuum too thin | a generated program that does not parse; an identity that is not the one stamped; a keyword written twice, where libfdf silently takes the first; **a line the layout said to write that is not in the file, verbatim** — so a dropped setting AND a mangled value, both |
+| catches | a restricted treatment with unpaired electrons; a missing pseudopotential; a vacuum too thin | a generated program that does not parse; an identity that is not the one stamped; a keyword written twice, where libfdf silently takes the first; **a line the layout said to write that is not in the file, verbatim** — so a dropped setting AND a mangled value, both |
 | whose | the existing validation framework, shared with the form's preflight | the engine's `check_rules` plus the shared rules |
 
 **The second one is the genuinely new capability.** Every other validator in

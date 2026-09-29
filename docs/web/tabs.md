@@ -172,16 +172,23 @@ the one door every path shares.
 ## 3. Structure optimization — generate a relaxation script
 
 `/structure-optimization` is a **three-card generator**: inspect a structure,
-auto-detect its chemistry, generate an input script. It mounts:
+read the charge and spin it will carry, describe the calculation. It mounts:
 
 - a **read-only MolView** (`mode: "readonly", owner: "structure-opt"`) — you look,
   you don't edit;
 - two **schema-built forms** (one SIESTA, one PySCF), rendered by form-schema from
   `GET /api/build/schema/siesta` and `.../pyscf`;
-- the **detection chip** that shows the auto-detected charge/spin/method.
+- the **chemistry card** ("Charge and spin", `lib/chemistry.js`) and each form's
+  **chip** (`lib/detection-chip.js`): the charge and spin each form's calculation
+  will carry, resolved by the one electronic-state class for exactly what that
+  form says, each value with its reason
+  ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
+  § 2a, § 2.5). It fills nothing in — a blank field is the instruction "work it
+  out" — and it follows every edit to a charge or spin field.
 
-The flow: **inspect** → **Auto-detect** (`POST /api/structure/analyze` pre-fills
-both sub-forms) → ~~**Generate**~~ *(the two emit routes were **deleted**
+The flow: **inspect** → **Charge and spin** (`POST /api/structure/analyze` with the
+structure the viewer holds and both forms' four state items, on every load,
+restore and edit) → ~~**Generate**~~ *(the two emit routes were **deleted**
 2026-08-17; a deck is rendered by `prep`, never by a browser)* →
 **Save to current dir**. There is no browser render route at all — both
 engines' were deleted with the same rule (a deck is rendered by `prep`).
@@ -217,12 +224,19 @@ pair); a script isn't a molecule, so it takes the plain file-write door.
    **MolView** follows the citation: it re-opens the cited calculation's
    labeled structure on every cite and every reload (labels are assigned
    where the junction is built — never here).
-2. **Analyze chemistry** — the shared open-shell check, run on the CITED
-   structure; informational only.
-3. **Parameters** — the OVERRIDE lane only (`GET /api/transport/schema`
-   filters the sealed electronic-contract fields: those are the citation's
-   to say).  Overrides travel as device-stage `varies` promotions.
-4. **Describe** — the bias list plus one button.  `POST
+2. **Shared by every rung** — the template's one electronic description,
+   defaulted from the citation (its spin included) and editable here for all
+   five rungs at once.
+3. **Charge and spin** — the chemistry card for the transport kind: the CITED
+   junction's state for what the shared panel says — the charge 0 by rule, the
+   spin the one answer every rung is handed, the cited run's or, blank, worked
+   out on the whole junction. It follows every edit to the panel's spin fields
+   and changes nothing.
+4. **The physics, rung by rung** — the OVERRIDE lane only (`GET
+   /api/transport/schema` filters the sealed electronic-contract fields: those
+   are the template's to say).  Overrides travel as device-stage `varies`
+   promotions.
+5. **Describe** — the bias list plus one button.  `POST
    /api/transport/describe` answers with the finished `task.json`; the
    browser writes it into the selected folder and does NOT navigate, and
    the status names the folder it wrote.  The destination must be the
@@ -440,10 +454,10 @@ This is enforced where it can't be bypassed — on the server:
 - On any atom-count change (an add or delete), the client **clears the selection**
   — so no stale index can point at an atom that no longer exists.
 
-There's a **chemistry** half too: a single analyzer (`analyze_structure`) is the
-one source of truth for open- vs closed-shell, every generator tab shows its
-verdict through the same `detection-chip`, and a validator finding attaches to the
-workflow card it belongs to. (The *visual* coherence rules — palette, role
+There's a **chemistry** half too: one class (`electronic_state`) is the one source
+of truth for the charge and spin, every generator tab shows its answer through the
+same chemistry card and chip, and a validator finding attaches to the workflow
+card it belongs to. (The *visual* coherence rules — palette, role
 vocabulary — live in [`ui-contract.md`](?doc=web/ui-contract.md), not here.)
 
 ## 8. Where the tab controllers stand — ESM status

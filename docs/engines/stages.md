@@ -190,7 +190,8 @@ place; each names the file that holds it, so the claim is checkable.**
 #### What a PySCF rung varies
 
 A `Stage` (`task.py`) carries `name`, `enabled` and `overrides`, and § 2 says
-`overrides` may name **any field of the shared schema**. So a PySCF rung is
+`overrides` may name **any field of the shared schema** except the few bound to
+the whole calculation (below). So a PySCF rung is
 declared exactly as a SIESTA one is:
 
 ```
@@ -298,7 +299,8 @@ is what limited a stage to four values.**
 
 Today's four relaxation values are a **default selection** over that catalogue —
 and not a privileged class of parameter. Any field of the shared schema can be
-selected.
+selected, except the items bound to the whole calculation — the items the catalogue marks `shared` for the kind, the
+electronic state first among them (§ 1.3's note; ES1).
 
 ### 1.3 The default selection is a group each engine declares, not a list in code
 
@@ -358,8 +360,9 @@ limited to.
 > now continues, which is what a ladder is.
 >
 > ⚠ **The tag is a default, never a restriction.** Any field of the shared schema
-> may be promoted, whatever group it carries — § 1.2's rule stands. The group only
-> decides what is *already ticked* when the tab opens.
+> may be promoted, whatever group it carries — § 1.2's rule stands, with its one
+> exception: an item bound to the whole calculation (`shared`) is not a column at
+> all. The group only decides what is *already ticked* when the tab opens.
 >
 > **What the tag was actually built for, since it is easy to over-read.** It is a
 > **UI grouping**, added 2026-06-13 to fix a reported bug: the form used to mix
@@ -562,9 +565,13 @@ written twice: every tab already has a schema, so every tab gets this.
 | `execution` | map | *(added 2026-09-02)* what THIS rung runs at, when it differs from the calculation's own answer — one value per parameter, laid over the top-level block field by field (§ 6.8d). Absent means *"runs at what the calculation says"* |
 
 `overrides` may name **any field of the shared schema** and **never** `name` or
-`enabled`. A description carrying a stage-field name inside `overrides` is
-refused: two homes for one fact is how the previous model produced fields that
-lived in both places and silently disagreed.
+`enabled`, nor an item bound to the whole calculation — the items the catalogue marks `shared` for the kind (the
+electronic state's four for every kind; transport's electronic description). A
+description carrying a stage-field name inside `overrides` is refused: two homes
+for one fact is how the previous model produced fields that lived in both places
+and silently disagreed. A bound item there is refused by name at resolve, saying
+why it is the calculation's (`template.why_shared`; ES1 for the state: every rung's
+`.DM` or `.chk` is a density for one electronic state).
 
 **`overrides` and `execution` are not two names for one thing**, and the
 difference is what reads them. `overrides` changes what the calculation *is* —
@@ -1034,7 +1041,9 @@ that omits a varied key renders with the template's value for it (§ 4).
 > it is not allowed to hold may not.**
 
 There is no separate list of promotable settings, and there must not be one: § 1.2
-already says a stage may name any field of the shared schema, and the description
+already says a stage may name any field of the shared schema but the ones bound to
+the whole calculation (the catalogue's `shared` marker, which the columns read
+too), and the description
 is already forbidden to hold the settings the machine answers *as a column* —
 how many ranks, how many cores per rank, how much memory. Those two rules
 together give the column set with nothing left to decide.
@@ -1202,6 +1211,7 @@ In order, and all of it before anything is written:
 | the engine is one this backend has a generator for | refuse, naming what it has |
 | every named field exists in the shared schema | refuse, naming the field |
 | no `overrides` key names a stage field (§ 2) | refuse, naming the field |
+| no `overrides` key names an item bound to the whole calculation (`shared` for the kind — the electronic state for every kind, ES1) | refuse at resolve, naming the item and why it is the calculation's |
 | every stage `name` matches `[A-Za-z0-9_]+` | refuse, naming the stage and the rule |
 | **stage names are unique**, compared case-insensitively | refuse, naming the repeat |
 | every value is one its field's declared type can hold | refuse, naming the field, the value and what the field declares |

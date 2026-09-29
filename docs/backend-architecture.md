@@ -51,7 +51,7 @@ tells you *what job it does*. Keep both straight.
 | Layer | Data management | Construction | Validation (science) | Execution (workflow) |
 |---|---|---|---|---|
 | **L3** surfaces | `web/blueprints/*` · `cli.py` — every surface is *deserialize → verb → serialize* | | | |
-| **L2** domain verbs | `parse/` · `sidecars/` · `workingcopy_structure` · `script_emit` · `projects` | `peptide` · `nucleic` · `smiles` · `pubchem` · `modify` · `builders/backends` | `validation/` (the pass + engine adapters) | `jobset/` · `bench/` · `runwrap` · `envs/` · `diagnostics` · `runtime_config` · `transport/` (compose · stages · record) |
+| **L2** domain verbs | `parse/` · `sidecars/` · `workingcopy_structure` · `script_emit` · `projects` | `peptide` · `nucleic` · `smiles` · `pubchem` · `modify` · `builders/backends` | `validation/` (the pass; the electronic state's one family) · `electronic_state` (the one charge-and-spin answer) | `jobset/` · `bench/` · `runwrap` · `envs/` · `diagnostics` · `runtime_config` · `transport/` (compose · stages · record) |
 | **L1** core types | `structure` · `frame` · `selection` · `config/` · `trajectory_log` · `persist` · `issues` | *(none — construction is all L2 verbs)* | `chemistry` · `pseudos` · `residues` | `checkpoint` *(git-backed, parameterized glob tables)* |
 
 The four core types — `Structure`, `Frame`, `Config`, `Issue` — are the wire
@@ -160,12 +160,15 @@ a surface calls once.
 
 ### What is unified (was already good, still good)
 
-The chemistry `(charge, spin, treatment)` invariant — the place silent errors
-hide — is genuinely single-sourced. `chemistry.analyze_structure` (L1,
-engine-agnostic) plus the shared `check_open_shell_metal` helper are consumed by
-`validation/`, both engine emitters, the spectra preflight, and the transport
-preflight. `pseudos.check_coverage` is the single pseudopotential owner (C1–C6).
-No engine reimplements the chemistry.
+The chemistry invariant — the charge and spin a calculation carries, the place
+silent errors hide — is genuinely single-sourced: one class,
+`electronic_state.electronic_state`, decides it from the structure's facts
+(`chemistry.analyze_structure`, engine-agnostic) for the form, the checks and
+every deck; its findings are one family, `validation/chemistry.py::check_electronic_state`,
+asked once by `validate()` for every engine and kind
+([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a).
+`pseudos.check_coverage` is the single pseudopotential owner (C1–C6). No engine
+reimplements the chemistry.
 
 ### What was scattered — fixed 2026-07
 
@@ -182,8 +185,8 @@ a pinning test:
 | V5 | **Doc drift** — `chemistry-correctness` pointed at a non-existent `molbuilder/analyzer.py` / `analysis_notes`. | Repointed to `chemistry.py::analyze_structure` / field `warnings` / the real deterministic-analyzer test. |
 
 **The render gate is the science alone.** The vibration deck's gate is
-`validation/spectra.py::spectra_render_checks` (grid, amplitude, parity,
-method, open shell), run by the render path and by `validate()` through the
+`validation/spectra.py::spectra_render_checks` (grid, amplitude, the held
+atoms; the charge and spin are the electronic state's family), run by the render path and by `validate()` through the
 kind's own step (`validation/__init__._validate_vibration_kind`). *(It once had
 a preflight-only sibling, `selector_checks`, for the `top_n` / `threshold`
 selectors' wish for prior Raman data, registered beside a `SpectraConfig`

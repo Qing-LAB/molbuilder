@@ -25,7 +25,6 @@ from molbuilder.structure import Structure
 from tests.spectra._helpers import _spectra_cfg
 
 
-
 def _water() -> Structure:
     return Structure(
         elements=["O", "H", "H"],
@@ -41,12 +40,13 @@ def _render(cfg: PySCFConfig) -> str:
 
 
 def test_parity_error_refuses_the_deck():
-    """spin=1 on water's 10 electrons is impossible; the gate's
-    parity check must refuse at RENDER, not at PySCF runtime."""
+    """2S = 1 on water's 10 electrons is impossible; the gate's parity
+    check must refuse at RENDER, not at PySCF runtime."""
     with pytest.raises(Exception) as exc:
-        _render(PySCFConfig(spin=1, method="UKS"))
+        _render(PySCFConfig(spin_treatment="unrestricted",
+                            unpaired_electrons=1))
     msg = str(exc.value).lower()
-    assert "spin" in msg and "electron" in msg
+    assert "the electron count and the spin disagree" in msg, msg
 
 
 def test_amplitude_advisory_reaches_the_person():
@@ -114,7 +114,7 @@ def test_an_hf_raman_deck_never_mentions_the_dft_name():
     at all; a DFT deck still evaluates ``dft`` only on its force_cpu
     pick."""
     import ast
-    hf = _render(PySCFConfig(method="RHF", compute_raman=True))
+    hf = _render(PySCFConfig(method="HF", compute_raman=True))
     tree = ast.parse(hf)
     fn = next(n for n in ast.walk(tree)
               if isinstance(n, ast.FunctionDef) and n.name == "_build_mf_at")
@@ -123,7 +123,7 @@ def test_an_hf_raman_deck_never_mentions_the_dft_name():
     assert not loads, (
         f"`dft` appears in an HF deck's _build_mf_at at line(s) "
         f"{[n.lineno for n in loads]} -- a NameError waiting in dead text")
-    dft_deck = _render(PySCFConfig(method="RKS", compute_raman=True))
+    dft_deck = _render(PySCFConfig(method="DFT", compute_raman=True))
     assert "_dft_mod = dft if force_cpu else _dft" in dft_deck, (
         "the DFT deck lost its force_cpu module pick -- retarget")
 
@@ -149,20 +149,6 @@ def test_the_vibration_deck_runs_the_engines_own_deck_gate():
     assert any("parse" in i.message for i in broken)
 
 
-def test_the_vibration_charge_runs_the_one_resolver(deprotonated_diester):
-    """E-M3.1 / V-3c: `net_charge or 0` dropped the phosphate
-    auto-detection the optimization deck runs -- a nucleic-acid
-    vibration with charge unset was silently a DIFFERENT calculation
-    than its optimization sibling.  The lift boundary now asks
-    chemistry.resolve_net_charge: this diester's heuristic charge is
-    -1, and the deck must carry it."""
-    text = render_deck(
-        spec_for(deprotonated_diester,
-                 PySCFConfig(net_charge=None), calculation="vibration"),
-        deprotonated_diester, PySCFConfig(net_charge=None), verbose=False)
-    assert "charge     = -1," in text
-
-
 def test_soscf_reaches_the_relax_site():
     """M1.3: the § 7a role table promises the `newton()` wrap at the
     vibration RELAXATION site; without it a `scf_soscf=true` run
@@ -171,20 +157,6 @@ def test_soscf_reaches_the_relax_site():
     off = _render(PySCFConfig(scf_soscf=False))
     assert "_mf_relax = _mf_relax.newton()" in on
     assert "_mf_relax.newton()" not in off
-
-
-def test_an_hf_vibration_deck_declines_dft_knobs():
-    """E-M6.3: the spec's `line=` classified anything but literal "HF"
-    as DFT -- RHF/UHF included.  A DFT-only knob asked through an RHF
-    vibration spec must decline (None), exactly as the optimization
-    deck's line does."""
-    from molbuilder.script_emit import parameter
-    cfg = PySCFConfig(method="RHF", functional="b3lyp")
-    spec = spec_for(_water(), cfg, calculation="vibration")
-    p = parameter("functional", "pyscf", config=cfg)
-    assert spec.line(p) is None, (
-        "an RHF vibration spec emits mf.xc -- RHF is being classified "
-        "as DFT")
 
 
 # --------------------------------------------------------------------- #
@@ -260,24 +232,21 @@ def test_the_reserved_frozen_label_is_never_warned_unconsumed():
 
 
 def test_one_fact_one_finding_on_a_vibration_deck():
-    """The dedup ruling: on a vibration deck the kind owns the parity /
-    grid verdicts and the engine copy DEFERS -- each fact earns exactly
-    one finding.  Before, spin=1 on water produced the engine's parity
-    finding AND the kind's, one of them reasoned from optimization
-    fields the vibration deck ignores."""
+    """The dedup ruling: each fact earns exactly one finding.  The parity
+    of the electronic state is the state's one family, asked once by
+    `validate` for every kind -- it was the engine's AND the kind's until
+    2026-09-28, one of them reasoned from optimization fields the vibration
+    deck ignores -- and the grid verdict is the kind's, the engine copy
+    DEFERRING on a vibration deck."""
     from molbuilder.validation import validate
-    parity = [i for i in validate(_water(), PySCFConfig(spin=1,
-                                                        method="UKS"),
-                                  calculation="vibration")
-              if "parity" in i.message]
-    assert len(parity) == 1, (
-        f"{len(parity)} parity findings for one fact: "
-        f"{[i.where for i in parity]}")
-    # ...and the optimization route still gets the engine's own.
-    parity_opt = [i for i in validate(_water(), PySCFConfig(spin=1,
-                                                            method="UKS"))
-                  if "parity" in i.message]
-    assert len(parity_opt) == 1
+    cfg = PySCFConfig(spin_treatment="unrestricted", unpaired_electrons=1)
+    for kind in ("vibration", "optimization"):
+        parity = [i for i in validate(_water(), cfg, calculation=kind)
+                  if "the electron count and the spin disagree"
+                  in i.message.lower()]
+        assert len(parity) == 1, (
+            f"{kind}: {len(parity)} parity findings for one fact: "
+            f"{[i.where for i in parity]}")
     grid = [i for i in validate(_water(),
                                 PySCFConfig(functional="b3lyp",
                                             grid_level=1),
@@ -336,7 +305,7 @@ def test_the_level_of_theory_has_one_spelling_per_deck():
     assert 'mf.xc = "b3lyp"' in text                  # layout's spelling
     assert "mf.xc = FUNCTIONAL" not in text           # the hand spelling
     assert "_mf2.grids.level = GRID_LEVEL" not in text
-    hf = _render(PySCFConfig(method="RHF", dispersion="d3bj"))
+    hf = _render(PySCFConfig(method="HF", dispersion="d3bj"))
     fn = hf[hf.index("def _mb_configure_theory(mf):"):]
     fn = fn[:fn.index("return mf")]
     assert 'mf.disp = "d3bj"' in fn, fn

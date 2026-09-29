@@ -279,8 +279,9 @@ def _paragraph_vibrational(cfg: "VibrationConfigView",
     basis = cfg.basis
     # THE LEVEL OF THEORY AS RUN (engines/vibration.md § 4.10): the one
     # answer the deck's SCF construction asks, `is_dft`.  Hartree-Fock is
-    # named with its method and basis -- it has no functional, whatever
-    # that item still holds.  The dispersion correction is named on either
+    # named with its SCF class (composed from the method and the spin
+    # treatment, `pyscf/layout.scf_class`) and basis -- it has no
+    # functional, whatever that item still holds.  The dispersion correction is named on either
     # method: HF takes it too, with parameters fitted for it (HF-D3(BJ)).
     if cfg.is_dft:
         fxc = cfg.functional
@@ -291,7 +292,7 @@ def _paragraph_vibrational(cfg: "VibrationConfigView",
         fxc_cite = " [Becke1993]" if fxc.upper().startswith("B3") else ""
         level = f"{fxc}/{basis}{fxc_cite}"
     else:
-        level = f"Hartree-Fock ({str(cfg.method).upper()})/{basis}"
+        level = f"Hartree-Fock ({cfg.scf_class})/{basis}"
     disp_clause = ""
     if cfg.dispersion != "none":
         name, cite = _DISPERSION_PROSE[cfg.dispersion]
