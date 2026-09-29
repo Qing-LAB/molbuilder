@@ -4664,7 +4664,7 @@ first would be rewritten twice.
   (its text is in the run's log); `kgrid_displacement` on transport carries the
   cited run's offset — a `citation` item, written through the one door on every
   rung, the transport axis 0 as both engines use it, and the transmission's
-  `TBT.k` in its block form when displaced (the list form carries no offset).
+  `TBT.k` in its block form when displaced (the list form carries no offset); one value on every rung is what TranSIESTA itself demands — it compares each lead's grid and offset with the device's and stops on *"found incompatible k-grids"* (`ts_electrode.F90`). The item's help gains the caveat for a hexagonal cell (Au(111)): an offset of 0.5 does not respect the six-fold symmetry, so Γ-centred is the usual choice there — SIESTA folds only k with −k, so nothing is computed wrong, the sampling is lopsided and converges more slowly.
 * **K9's scope** — **ruled: the declaration first; the check against a measured
   run comes with the e2e step.**
 
