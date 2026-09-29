@@ -198,12 +198,11 @@ def _validate_pyscf(struct: Structure, cfg,
 
     # Periodicity vs what this emitter can express.  FIRST, because it changes
     # what every other finding is about: the rest describe a cluster
-    # calculation, and this says whether you asked for one.  The vibration
-    # kind REFUSES a repeating axis itself (validation/spectra.py), so this
-    # warning defers there -- one fact, one finding (science/validation.md
-    # § 7).
-    if not vibration:
-        issues += _check_periodic_structure_in_a_gas_phase_script(struct)
+    # calculation, and this says whether you asked for one.  EVERY KIND, a
+    # vibration among them: the vibration gate refused a repeating axis until
+    # 2026-09-29, and now this note is the one finding (user: "just note that
+    # periodicity will not be respected in pySCF").
+    issues += _check_periodic_structure_in_a_gas_phase_script(struct)
 
     # The charge and the spin are NOT judged here: they are the electronic
     # state's, and `validate` asks its one family once for every engine and

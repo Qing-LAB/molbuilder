@@ -262,29 +262,16 @@ def spectra_render_checks(struct: Structure,
             where=f"config.{_window[0][0]}",
         ))
 
-    # THIS ENGINE COMPUTES A MOLECULE IN FREE SPACE.  gto.M has no lattice, so
-    # a structure that repeats or continues along an axis would be computed
-    # as a cluster in silence -- and the harmonic analysis would then remove
-    # the six motions of a free molecule where the structure's own periodicity
-    # says three (science/normal-modes.md 3.1a).  Refused, naming the axis and
-    # the two honest ways out.
-    _kinds = tuple(getattr(struct, "axis_kind", None) or ())
-    _repeating = [f"{'xyz'[i]} ({k})" for i, k in enumerate(_kinds)
-                  if k != "isolated"]
-    if _repeating:
-        issues.append(Issue(
-            severity="error",
-            message=(
-                f"this structure states a repeating or continuing axis "
-                f"({', '.join(_repeating)}), and a PySCF vibration computes a "
-                f"molecule in free space: it would be run as a cluster while "
-                f"the description says periodic.  If a cluster is what you "
-                f"mean, make every axis isolated on the Cell page; a "
-                f"vibration of the periodic system belongs to the SIESTA "
-                f"engine (science/normal-modes.md 3.1a)."
-            ),
-            where="structure.axis_kind",
-        ))
+    # A STRUCTURE THAT REPEATS IS COMPUTED AS A CLUSTER, AND SAID SO -- a note,
+    # not a refusal (user, 2026-09-29: "why should it be a refusal? just note
+    # that periodicity will not be respected in pySCF").  gto.M builds a
+    # molecule in free space, and the script's harmonic analysis removes the
+    # motions of that free cluster (it passes isolated kinds to
+    # `vibrational_modes`), so the calculation agrees with itself; what it
+    # does not do is respect the cell, and the engine's one check,
+    # `cell.periodic_in_gas_phase` (`validation/pyscf.py`), says that for every
+    # PySCF calculation, a vibration among them.  Until 2026-09-29 this gate
+    # refused a repeating axis instead.
 
     # compute_ir advisory RETIRED 2026-08-21 -- it warned that IR
     # was "not implemented", which P1 falsified (the deck computes IR

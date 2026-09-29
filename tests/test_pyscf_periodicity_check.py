@@ -119,3 +119,46 @@ def test_it_reaches_the_tab_before_generate():
     assert WHERE in wheres, (
         f"the periodicity warning did not reach the tab's panel: {wheres}"
     )
+
+
+def test_a_periodic_vibration_preps_as_a_cluster_and_says_so(tmp_path,
+                                                            monkeypatch):
+    """Through `jobset init` and `prep`: a PySCF vibration of a structure
+    that repeats is computed as an isolated cluster, and the check says so --
+    a note, not a refusal (user, 2026-09-29: "just note that periodicity will
+    not be respected in pySCF"; `engines/vibration.md` § 3).  The atoms the
+    structure holds still reach the script: water in a periodic 10 Å cell,
+    its oxygen held, preps with the note and writes the held atom in."""
+    import json
+    from click.testing import CliRunner
+
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from molbuilder.workingcopy_structure import StructureCodec
+    tree = tmp_path / "projects"
+    (tree / "P" / "structure").mkdir(parents=True)
+    water = Structure(
+        elements=["O", "H", "H"],
+        positions=np.array([[5.0, 5.0, 5.119], [5.0, 5.757, 4.523],
+                            [5.0, 4.243, 4.523]]),
+        cell=np.eye(3) * 10.0, axis_kind=("periodic",) * 3,
+        frozen_atoms=[0])
+    StructureCodec().write(water, tree / "P" / "structure" / "w.xyz")
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
+    monkeypatch.chdir(tmp_path)
+    run = CliRunner()
+    r = run.invoke(jobset_group, [
+        "init", "--structure", "P/structure/w.xyz", "--bundle",
+        "P/spectrum/V", "--engine", "pyscf", "--shape", "flat",
+        "--calculation", "vibration", "--name", "W"])
+    assert r.exit_code == 0, r.output
+    bundle = tree / "P" / "spectrum" / "V"
+    (bundle / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate"}}))
+    r = run.invoke(jobset_group, ["prep", "run", "freq", "--bundle",
+                                  str(bundle)])
+    assert r.exit_code == 0, r.output
+    assert f"[{WHERE}]" in r.output, r.output
+    decks = list(bundle.rglob("W*.py"))
+    assert decks, r.output
+    assert "FROZEN_INDICES_USER        = [0]" in decks[0].read_text()

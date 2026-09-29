@@ -427,8 +427,14 @@ rule: how many atoms are held, how many whole-body motions survive and will
 be removed, and how many modes will be reported (R7). PySCF's adds the
 finite-difference and amplitude checks and the cost of what was ticked (the
 parity of the electron count is the electronic state's, asked for every engine), stated from what the code does (R8); SIESTA's
-checks are § 5.8. A structure with a repeating axis is refused at the PySCF
-gate rather than computed as a cluster.
+checks are § 5.8. **A structure with a repeating axis is computed as an
+isolated cluster, and the check says so** — PySCF builds a molecule in free
+space, so the periodicity is not respected (`cell.periodic_in_gas_phase`, the
+engine's one note for every PySCF calculation). A note, not a refusal *(user,
+2026-09-29: "just note that periodicity will not be respected in pySCF"; it was
+refused here until then)*: the script's harmonic analysis removes the motions
+of the free cluster it computes, so the result agrees with itself, and whether
+a cluster is what the person means is theirs to judge.
 
 ---
 
