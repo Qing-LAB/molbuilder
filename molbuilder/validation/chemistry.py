@@ -137,20 +137,16 @@ def _check_ecp_declared_for_the_atoms_that_usually_want_one(
     other half of the same ruling: *"you can still have the validation
     function to give hints -- that should be confirmed."*
 
-    Two ways for an element to be covered, and both are honest answers:
-
-    * a ``def2-*`` basis, which brings its own Stuttgart ECP; or
-    * an ``ecp`` name whose ``ecp_atoms`` patterns select that element.
-
-    Neither is inferred from the other, and a covered element is simply not
-    mentioned.
+    An element is covered by an ``ecp`` name whose ``ecp_atoms`` patterns
+    select it -- and by nothing else.  **A def2 basis does NOT cover it by
+    itself**, which this check assumed until 2026-09-29: PySCF's def2 files
+    carry the core potential (``def2-svp.dat``: *Au nelec 60*), but
+    ``gto.M`` applies one only when ``ecp`` is given (PySCF 2.14
+    ``gto/mole.py``, ``build``; ``check_sanity`` merely warns), and the deck
+    gives one only when the person declares it.  So on a def2 basis the hint
+    names that basis's own core potential -- the one it was built for.
     """
     from ..chemistry import atomic_number, resolve_pyscf_ecp
-
-    # def2-* carries its own ECP for exactly these elements -- a fact about
-    # the basis, not a rule this function applies to anything else.
-    if (basis or "").lower().replace("_", "").replace("-", "").startswith("def2"):
-        return []
 
     covered = resolve_pyscf_ecp(struct, ecp, ecp_atoms) or {}
     uncovered: List[str] = []
@@ -168,23 +164,34 @@ def _check_ecp_declared_for_the_atoms_that_usually_want_one(
         return []
 
     named = ", ".join(uncovered)
-    return [Issue(
-        "warn",
-        (f"No effective core potential covers {named}, so {engine_label} "
-         f"will treat {'them' if len(uncovered) > 1 else 'it'} "
-         f"ALL-ELECTRON on basis '{basis}'.  For elements past Kr that is "
-         f"usually wrong twice over: the cost is large (Pt alone carries 78 "
-         f"electrons), and without a scalar-relativistic ECP the bond "
-         f"lengths and orbital energies are off -- Pt-Pt by ~0.1 A, Au gaps "
-         f"by ~1 eV.  To use one, name it and say which atoms get it: "
-         f"ecp = 'lanl2dz' with ecp_atoms = {uncovered!r} (or ['*'] for "
-         f"every element present).  A def2-* basis is the other route -- it "
-         f"brings its own ECP and this check stays quiet.  "
-         f"If you meant all-electron, this is the confirmation: nothing is "
-         f"added for you.  (Named here because Z > {_ECP_HINT_Z}; that "
-         f"bound decides what gets mentioned, nothing else.)"),
-        "config.ecp",
-    )]
+    them = "them" if len(uncovered) > 1 else "it"
+    if (basis or "").lower().replace("_", "").replace("-", "").startswith("def2"):
+        # THE BASIS'S OWN CORE POTENTIAL, named: a def2 basis for these
+        # elements is a valence basis built for it, so all-electron on it is
+        # not a cheaper answer but a broken one.
+        message = (
+            f"No effective core potential covers {named}, so "
+            f"{engine_label} will put every electron of {them} into basis "
+            f"'{basis}' -- a valence basis, built for its own core potential "
+            f"({'these elements' if len(uncovered) > 1 else 'this element'} "
+            f"past Kr).  {engine_label} applies that core potential only when "
+            f"the script names it, and nothing names it for you.  To use it: "
+            f"ecp = '{basis}' with ecp_atoms = {uncovered!r}.")
+    else:
+        message = (
+            f"No effective core potential covers {named}, so {engine_label} "
+            f"will treat {them} ALL-ELECTRON on basis '{basis}'.  For "
+            f"elements past Kr that is usually wrong twice over: the cost is "
+            f"large (Pt alone carries 78 electrons), and without a "
+            f"scalar-relativistic ECP the bond lengths and orbital energies "
+            f"are off -- Pt-Pt by ~0.1 A, Au gaps by ~1 eV.  To use one, name "
+            f"it and say which atoms get it: ecp = 'lanl2dz' with ecp_atoms = "
+            f"{uncovered!r} (or ['*'] for every element present); a def2 "
+            f"basis's own is named the same way, ecp = the basis.  If you "
+            f"meant all-electron, this is the confirmation: nothing is added "
+            f"for you.  (Named here because Z > {_ECP_HINT_Z}; that bound "
+            f"decides what gets mentioned, nothing else.)")
+    return [Issue("warn", message, "config.ecp")]
 
 
 def _check_metal_basis_adequacy(struct: Structure, *,

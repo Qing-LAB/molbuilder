@@ -139,10 +139,10 @@ def test_a_selector_that_MISSES_the_element_still_warns():
     assert len(found) == 1 and "Pt" in found[0].message
 
 
-def test_def2_brings_its_own_and_the_check_stays_quiet():
-    """A fact about that basis family, not a rule applied elsewhere."""
-    for basis in ("def2-SVP", "def2_SVP", "def2svp", "DEF2-TZVP"):
-        assert _ecp_findings(_pt_complex(), basis=basis) == [], basis
+# `test_def2_brings_its_own_and_the_check_stays_quiet` retired 2026-09-29
+# with its premise: PySCF applies a def2 basis's core potential only when the
+# script names it, so the hint now speaks on def2 too -- through the road,
+# `test_science_gaps.py::test_a_def2_basis_on_gold_asks_for_its_core_potential`.
 
 
 def test_light_elements_are_never_mentioned():

@@ -332,9 +332,10 @@ def test_empty_means_empty():
 
 
 def test_a_def2_basis_no_longer_suppresses_a_declared_ecp():
-    """**A deliberate behaviour change.**  def2-* brings its own Stuttgart
-    ECP, and the retired rule silently dropped any ECP the user named on a
-    def2 basis -- across eight spellings of the basis name.  Silently
+    """**A deliberate behaviour change.**  The retired rule silently dropped
+    any ECP the user named on a def2 basis -- across eight spellings of the
+    basis name -- on the belief that def2 brings its own (it does not: PySCF
+    applies one only when it is named).  Silently
     discarding an explicit instruction is the implicit behaviour the whole
     rewrite removes: if you name one on def2, you get it, and whether that
     double-counts is a question for validation to raise, not for the
@@ -348,6 +349,57 @@ def test_a_def2_basis_no_longer_suppresses_a_declared_ecp():
             if re.match(r"\s*ecp\s*=", ln)]
     assert line and "stuttgart" in line[0], (
         f"a declared ECP must survive a def2 basis; got {line}")
+
+
+def test_a_def2_basis_on_gold_asks_for_its_core_potential(tmp_path,
+                                                         monkeypatch):
+    """Through `jobset init` and `prep`: PySCF applies a core potential only
+    when the script names it (PySCF 2.14 `gto/mole.py`, `build`), so gold on
+    def2-SVP with none declared is every electron in a valence basis -- and
+    the settings check says so, naming the basis's own (`config.ecp`).
+    Declared as it says, the hint goes and the potential reaches `gto.M`."""
+    import dataclasses
+    import json
+    from click.testing import CliRunner
+
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from molbuilder.template import _emit, find_template, read_template
+    tree = tmp_path / "projects"
+    (tree / "P" / "structure").mkdir(parents=True)
+    (tree / "P" / "structure" / "a.xyz").write_text(
+        "2\ngold hydride\nAu 0.0 0.0 0.0\nH 0.0 0.0 1.524\n")
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
+    monkeypatch.chdir(tmp_path)
+    run = CliRunner()
+    r = run.invoke(jobset_group, [
+        "init", "--structure", "P/structure/a.xyz", "--bundle",
+        "P/spectrum/A", "--engine", "pyscf", "--shape", "flat",
+        "--calculation", "vibration", "--name", "A"])
+    assert r.exit_code == 0, r.output
+    bundle = tree / "P" / "spectrum" / "A"
+    (bundle / ".molbuilder.json").write_text(json.dumps(
+        {"script_generation": {"activation": "conda activate"}}))
+
+    def prep():
+        r = run.invoke(jobset_group, ["prep", "run", "freq", "--bundle",
+                                      str(bundle)])
+        assert r.exit_code == 0, r.output
+        return r.output, next(bundle.rglob("A*.py")).read_text()
+
+    out, deck = prep()
+    assert "[config.ecp]" in out and "ecp = 'def2-SVP'" in out, out
+    assert "ecp        =" not in deck
+    tmpl = find_template(bundle)
+    tmpl.write_text(_emit(
+        [dataclasses.replace(i, value={"ecp": "def2-SVP",
+                                       "ecp_atoms": ["Au"]}[i.name])
+         if i.name in ("ecp", "ecp_atoms") else i
+         for i in read_template(tmpl.read_text()).items],
+        engines=("pyscf",)))
+    out, deck = prep()
+    assert "[config.ecp]" not in out, out
+    assert "ecp        = {'Au': 'def2-SVP'}," in deck
 
 
 # --------------------------------------------------------------------- #

@@ -657,9 +657,11 @@ def resolve_pyscf_ecp(struct: Structure,
     Both halves of that heuristic were deleted on the user's ruling:
     *"there is no point to limit matching to heavy -- who defines heavy?
     there is no clear reasoning or standard ... explicit is better than
-    implicit."*  ``basis`` left the signature with the def2 special case;
-    a def2 basis brings its own ECP, and declaring another on top of it
-    is now a visible choice rather than something silently suppressed.
+    implicit."*  ``basis`` left the signature with the def2 special case,
+    and an ECP named on a def2 basis is written as named.  *(This said "a
+    def2 basis brings its own ECP"; it does not -- PySCF applies a core
+    potential only when ``ecp`` names it, and a def2 basis's own is named
+    like any other: ``ecp = "def2-SVP"``, 2026-09-29.)*
 
     ``validation`` still HINTS when a structure looks like it wants an ECP
     and none is declared.  A hint is confirmed by a person; it is not this

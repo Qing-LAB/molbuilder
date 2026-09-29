@@ -270,7 +270,7 @@ many functions describe each valence orbital.
 | Tier | Basis | Rationale |
 |---|---|---|
 | screening / loose | `def2-SVP` | double-zeta is too small for publication — noticeably larger geometry/energy errors than triple-zeta on conjugated systems. The bare `cfg.basis` default. |
-| publishable | **`def2-TZVP`** | the modern organic-chemistry standard; ECPs (effective core potentials — a heavy atom's core electrons replaced by a potential) bundled to Rn |
+| publishable | **`def2-TZVP`** | the modern organic-chemistry standard; ECPs (effective core potentials — a heavy atom's core electrons replaced by a potential) bundled to Rn — in the basis file, applied only when named (`ecp = 'def2-TZVP'` with `ecp_atoms`, `engines/pyscf.md` § 3) |
 | tight | `def2-TZVPP` / `def2-QZVP` | energy comparisons across structures; a final single-point after a publishable geometry |
 
 **Density fitting (resolution-of-identity).** `cfg.density_fit` is **on by default**, so

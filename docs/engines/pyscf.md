@@ -342,6 +342,12 @@ one for me*.
 >
 > `validation` still **hints** when a structure looks like it wants an ECP and
 > none is declared — a hint a person confirms, not a choice the generator makes.
+> **On a `def2` basis too** *(since 2026-09-29)*: the basis files carry their
+> core potentials (`def2-svp.dat`: *Au nelec 60*), but PySCF applies one only
+> when `gto.M` is given `ecp` (PySCF 2.14 `gto/mole.py`, `build`) — so gold on
+> `def2-SVP` with none declared is every electron in a valence basis. The hint
+> names the basis's own: `ecp = 'def2-SVP'` with `ecp_atoms = ['Au']`. *(It
+> stayed quiet on `def2`, on the belief that the basis brought its own.)*
 
 ---
 
