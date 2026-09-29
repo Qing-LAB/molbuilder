@@ -495,12 +495,8 @@ The transferable part. A new gate should be able to point at one of these.
 | The reload gate — **404 not 403** on either missing condition; the availability answer in four configurations; the respawn loop; the supervisor never importing the app; a reload refused, 409, while `molbuilder.json` cannot be read (`deployment.md` § 1.0b) | `tests/test_admin_reload.py` |
 | Revalidation staying invisible to the limiter (the § 4.3 assumption) | `tests/test_static_revalidates.py` |
 | No inline `<script>` anywhere (the CSP's `script-src 'self'` would break silently otherwise) | `tests/test_no_inline_scripts.py` |
-
-**Two gaps, both known.** The **header values themselves** — CSP directives,
-HSTS-only-over-HTTPS, `nosniff`, `X-Frame-Options` — have no test; only the
-no-inline-script rule that CSP depends on does. That is part of **task #15**.
-And the **bind guard's** loopback-or-TLS refusal is covered only through the
-`--no-auth` case above; the `--host 0.0.0.0` without TLS path is not pinned.
+| The header values themselves — the CSP's directives, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin` on a page and on an API answer; HSTS over HTTPS (direct or `X-Forwarded-Proto`) and never over plain HTTP | `tests/test_security_headers.py` *(since 2026-09-29; a known gap until then)* |
+| The bind guard's refusal of a public interface without TLS (`serve --host 0.0.0.0`, no certificate), before anything binds | `tests/test_security_headers.py::test_a_public_bind_without_tls_is_refused` *(since 2026-09-29; pinned only through `--no-auth` until then)* |
 
 ---
 
