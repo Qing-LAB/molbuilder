@@ -393,7 +393,12 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
 def _vib_gradient_check() -> List[str]:
     """The already-relaxed assertion's honesty check — placed AFTER the
     equilibrium SCF (the mean field exists there), warns with the numbers,
-    never refuses: skipping was a deliberate choice."""
+    never refuses: skipping was a deliberate choice.  Its remedy is THE one
+    text the SIESTA finish and `prep` write too
+    (`vibrational_analysis.nonstationary_remedy`, `engines/vibration.md`
+    § 5.5), written into the deck as a literal at render time."""
+    from ..spectra.vibrational_analysis import nonstationary_remedy
+    _remedy = nonstationary_remedy(None)
     return [
         "",
         "if ALREADY_RELAXED:",
@@ -418,7 +423,8 @@ def _vib_gradient_check() -> List[str]:
         "                  f'The frequencies are the curvature at this point, '",
         "                  f'not at the minimum, and will be off -- the low '",
         "                  f'ones most.  already_relaxed was stated, so this '",
-        "                  f'run carries on.')",
+        "                  f'run carries on.  '",
+        f"                  + {_remedy!r})",
         "            print('WARNING: ' + _w)",
         "            state['relaxation']['warning'] = _w",
         "        _atomic_write_json(state, JSON_PATH)",

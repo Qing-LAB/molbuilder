@@ -81,6 +81,7 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
                          force_criterion_ev_ang: Optional[float] = None,
                          already_relaxed: bool = False,
                          ladder_relaxation: Optional[Mapping[str, Any]] = None,
+                         relaxation_stage: Optional[str] = None,
                          temperature_K: float,
                          config: Optional[Mapping[str, Any]] = None,
                          engine_metadata: Optional[Mapping[str, Any]] = None,
@@ -102,7 +103,8 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
     ``ladder_relaxation`` is the relaxation record of the stage that relaxed
     first (`parse.contract.relaxation_of_output`): the result then says the
     relaxation ran, how many steps it took, and ``phase_relaxation`` is
-    complete; without it the phase is `not requested`.
+    complete; without it the phase is `not requested`.  ``relaxation_stage``
+    names that stage, for the remedy (:func:`nonstationary_remedy`).
 
     Raises ``ValueError`` naming the mismatch -- every atom held, a
     permutation or a force table that does not fit the atoms.
@@ -202,7 +204,8 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
 
     relaxation = _stationarity(reference_forces_ev_ang, n, free_b,
                                force_criterion_ev_ang, geometry_note,
-                               already_relaxed, ladder_relaxation)
+                               already_relaxed, ladder_relaxation,
+                               relaxation_stage)
     return SpectraResults(
         schema_version=SCHEMA_VERSION,
         engine=str(engine),
@@ -249,10 +252,34 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
     )
 
 
+def nonstationary_remedy(relaxation_stage: Optional[str]) -> str:
+    """THE remedy for a reference geometry that is not a stationary point
+    (`engines/vibration.md` § 2.2, § 5.5, § 5.8) — one text, written by
+    `prep` at a force-constant stage, by the SIESTA finish into the result,
+    and by the PySCF deck's gradient check, so the three cannot advise
+    differently for one fact.
+
+    ``relaxation_stage`` is the ladder's stage that relaxed the geometry, or
+    ``None`` when the person stated it relaxed.  Until 2026-09-29 the finish
+    told a laddered run to untick ``already_relaxed``, which the ladder had
+    already done (the M11 review, plan § 5w K6)."""
+    if relaxation_stage:
+        s = str(relaxation_stage)
+        return (f"Continue the `{s}` stage from its newest attempt -- "
+                f"`molbuilder jobset prep run {s} --from <that attempt>` "
+                f"starts from the geometry it stopped at, then `molbuilder "
+                f"jobset launch run {s}` -- and prep this stage again once "
+                f"it has concluded.")
+    return ("Relax first -- untick `already_relaxed` so the calculation "
+            "relaxes first, or relax elsewhere at this level of theory and "
+            "hand the result over -- or keep this run knowing that.")
+
+
 def _stationarity(reference_forces_ev_ang, n: int, free: Sequence[int],
                   criterion_ev_ang: Optional[float], geometry_note: str,
                   already_relaxed: bool,
-                  ladder_relaxation: Optional[Mapping[str, Any]]) -> dict:
+                  ladder_relaxation: Optional[Mapping[str, Any]],
+                  relaxation_stage: Optional[str]) -> dict:
     """The result's ``relaxation`` block: the forces at the block's geometry
     judged against the criterion (R5 -- the largest absolute Cartesian
     COMPONENT over the free atoms, the convention the PySCF deck judges its
@@ -291,11 +318,10 @@ def _stationarity(reference_forces_ev_ang, n: int, free: Sequence[int],
                            f"(relax_force_tol) of "
                            f"{float(criterion_ev_ang):g} eV/Å.  The "
                            f"frequencies are the curvature at this point, not "
-                           f"at the minimum, and will be off.  Relax first -- "
-                           f"untick `already_relaxed` so the calculation "
-                           f"relaxes first, or relax elsewhere at this level of "
-                           f"theory and hand the result over -- or keep this "
-                           f"run knowing that")
+                           f"at the minimum, and will be off.  "
+                           + nonstationary_remedy(
+                               relaxation_stage if isinstance(
+                                   ladder_relaxation, Mapping) else None))
     ladder = ladder_relaxation if isinstance(ladder_relaxation, Mapping) else None
     return {"enabled": ladder is not None,
             "already_relaxed": bool(already_relaxed),
@@ -305,4 +331,4 @@ def _stationarity(reference_forces_ev_ang, n: int, free: Sequence[int],
             "converged": converged, "warning": warning}
 
 
-__all__ = ["vibrational_analysis"]
+__all__ = ["vibrational_analysis", "nonstationary_remedy"]

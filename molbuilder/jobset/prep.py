@@ -742,12 +742,17 @@ def _vibration_block(stage: str, cfg, relaxed_by) -> dict:
     its resolved config, the relax run it read the coordinates from
     (:func:`_vibration_stage_geometry`), the molbuilder rendering the deck."""
     from .. import __version__ as _mb_version
+    from ..pyscf.stages import VIBRATION_RELAX_STAGE
     from ..spectra.siesta_vibration import vibration_record
+    # The record is of the `relax` stage: `_vibration_stage_geometry` read it
+    # from that stage's output, found by this name -- so the block names it,
+    # and the finish's remedy can (`engines/vibration.md` § 5.3, § 5.5).
     return vibration_record(
         stage=stage,
         force_criterion_ev_ang=getattr(cfg, "relax_force_tol", None),
         already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
         relaxation=relaxed_by,
+        relaxation_stage=VIBRATION_RELAX_STAGE,
         temperature_K=float(cfg.temperature_K),
         molbuilder_version=str(_mb_version))
 

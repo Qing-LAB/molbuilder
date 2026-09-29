@@ -4699,10 +4699,17 @@ reviewers' probes (the archive's § E lists) among its runs.
   step — a cost of a step or two per batch at ordinary budgets. *No test pins*
   the step-SCF guard under `proceed`: the road cannot make a step SCF fail
   inside the declared ranges; it is one literal in the one function.
-  *Left*: SS-C2 (one remedy text), SS-C3 (retry resumability from the kind's
-  warm-state declaration), PO-C2 (a capability the engine lacks, declared),
-  PS-C10 with V1.31 (the run's own relaxation record on its pair), then the
-  full review.
+  *Step 2 done 2026-09-29* (SS-C2): the remedy for a reference geometry that
+  is not stationary is one text, `vibrational_analysis.nonstationary_remedy`,
+  written by `prep` at a force-constant stage, by the SIESTA finish and by the
+  PySCF deck's gradient check — continue the ladder's stage that relaxed it, or
+  relax first when the person stated it relaxed; the `vibration` block names
+  the stage its relaxation record is of (`relaxation_stage`), so the finish
+  names it without the ladder's vocabulary. The measured-fixture finish test
+  asserts both routes, red under the old text.
+  *Left*: SS-C3 (retry resumability from the kind's warm-state declaration),
+  PO-C2 (a capability the engine lacks, declared), PS-C10 with V1.31 (the
+  run's own relaxation record on its pair), then the full review.
 
 ---
 

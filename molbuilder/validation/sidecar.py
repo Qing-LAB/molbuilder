@@ -413,11 +413,10 @@ def _ladder_relaxation_findings(struct: Structure, rec: Mapping[str, Any],
     """
     issues: List[Issue] = []
     where = "config.already_relaxed"
-    remedy = (f"  Continue the `{stage}` stage from its newest attempt -- "
-              f"`molbuilder jobset prep run {stage} --from <that attempt>` "
-              f"starts from the geometry it stopped at, then `molbuilder "
-              f"jobset launch run {stage}` -- and prep this stage again once "
-              f"it has concluded.")
+    # THE one remedy text, the finish's and the PySCF deck's too
+    # (`engines/vibration.md` § 5.5).
+    from ..spectra.vibrational_analysis import nonstationary_remedy
+    remedy = "  " + nonstationary_remedy(stage)
     held = _held_sets_differ(struct, rec)
     if held is not None:
         issues.append(Issue(

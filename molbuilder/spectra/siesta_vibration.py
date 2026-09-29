@@ -97,15 +97,16 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
                      already_relaxed: bool,
                      relaxation: Optional[Mapping[str, Any]],
                      temperature_K: float,
-                     molbuilder_version: str) -> dict:
+                     molbuilder_version: str,
+                     relaxation_stage: Optional[str] = None) -> dict:
     """The deck's ``vibration`` block (`engines/vibration.md` § 5.3): what
     the finish reads back and no SIESTA keyword states.  Built by `prep`,
     which holds every fact -- the stage it prepares, the stage's resolved
     config (``relax_force_tol``, ``already_relaxed``), the `relax` stage's
     relaxation record it read the coordinates from
-    (`parse.contract.relaxation_of_output`, ``None`` without one), the
-    thermochemistry's temperature, and the molbuilder that renders the
-    deck -- and placed in the deck as given
+    (`parse.contract.relaxation_of_output`, ``None`` without one) and that
+    stage's name, the thermochemistry's temperature, and the molbuilder that
+    renders the deck -- and placed in the deck as given
     (`script_emit.emit_vibration_record`).  Its keys are read by
     :func:`result_of` -- and, before the deck is written, its
     ``relaxation`` by the stage's own checks (`validate`'s ``prior``,
@@ -116,6 +117,9 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
             "already_relaxed": bool(already_relaxed),
             "relaxation": (dict(relaxation) if relaxation is not None
                            else None),
+            "relaxation_stage": (str(relaxation_stage)
+                                 if relaxation is not None
+                                 and relaxation_stage else None),
             "temperature_K": float(temperature_K),
             "molbuilder_version": str(molbuilder_version)}
 
@@ -279,6 +283,7 @@ def result_of(run: ForceConstantRun) -> SpectraResults:
         force_criterion_ev_ang=criterion,
         already_relaxed=bool(rec.get("already_relaxed")),
         ladder_relaxation=rec.get("relaxation"),
+        relaxation_stage=rec.get("relaxation_stage"),
         temperature_K=float(rec["temperature_K"]),
         config={"engine": "siesta", "calculation": "vibration",
                 "stage": rec.get("stage")},

@@ -244,7 +244,8 @@ forces SIESTA evaluated at its FC step 0 (§ 5.5). Both judge the largest
 absolute force component over the **free** atoms (R5) against the template's
 own force tolerance — `geom_gmax` on PySCF, `relax_force_tol` on SIESTA — the
 one the person set or left at the kind's recommendation; both write the
-number and the verdict into the result, and the viewer shows them.
+number and the verdict into the result, and the viewer shows them; above the
+tolerance, the remedy is one text on both engines (§ 5.5).
 
 **The structure can carry its own evidence** *(user direction 2026-09-24:
 "if the info meta data is present, we should display it and check against
@@ -1169,6 +1170,7 @@ states:
 #   "force_criterion_ev_ang":0.01,    # relax_force_tol, resolved for this stage
 #   "already_relaxed":false,          # the person's statement, as made
 #   "relaxation":{...},               # the relax stage's relaxation record, or null
+#   "relaxation_stage":"relax",       # the stage that record is of, or null
 #   "temperature_K":298.15,           # the thermochemistry's temperature (§ 4.7)
 #   "molbuilder_version":"1.1.0"      # the molbuilder that prepared it -> the result
 # }
@@ -1179,7 +1181,9 @@ states:
 in `relaxation_of`'s shape) of the `relax` stage's output the coordinates
 were read from — the one read `prep` makes of
 that run (§ 5.2a), so the finish never re-picks an attempt — and `null` when
-the ladder holds no `relax` stage. The block is written by `script_emit.emit_vibration_record`, assembled by
+the ladder holds no `relax` stage; `relaxation_stage` names the stage that
+record is of, the one `prep` read it from, so the finish can name it in the
+remedy (§ 5.5) without knowing the ladder's vocabulary. The block is written by `script_emit.emit_vibration_record`, assembled by
 the framework from `DeckSpec.vibration` — the engine places the values `prep`
 built (`spectra.siesta_vibration.vibration_record`), as it does the bench
 marks' — and read by `deck_record.extract_vibration_record`, beside the
@@ -1269,7 +1273,7 @@ is guessed at on the node:
 |---|---|---|
 | `SystemLabel`; the species (atomic number per label); the atoms in the deck's order (held first, § 5.2); the lattice; `FC.First` / `FC.Last` — the atoms the run nudged, read through the one door for engine numbering (`engine_atom_index`); the held atoms are the rest, which in the held-first copy is exactly the set `Geometry.Constraints` names (I6), and a range that is not the trailing run is refused | the deck | the fdf reader, `parse/fdf.py` |
 | the axis kinds — which whole-body turns survive (R3) | the deck's `engine-offset` block | the block's one reader, `deck_record.extract_engine_offset` — the grammar of every molbuilder block and its one JSON reader, below `script_emit`, which writes them |
-| the stationarity criterion (`relax_force_tol`, resolved for the stage), the person's statement (`already_relaxed`), the ladder's relaxation — the `relax` stage's relaxation record (`parse/contract.relaxation_of_output`), read by `prep` from the output its coordinates came from — the thermochemistry's temperature (`temperature_K`), the stage's name, and the molbuilder that prepared the deck | the deck's `vibration` block, written by `prep` | its reader beside that one, `deck_record.extract_vibration_record` |
+| the stationarity criterion (`relax_force_tol`, resolved for the stage), the person's statement (`already_relaxed`), the ladder's relaxation — the `relax` stage's relaxation record (`parse/contract.relaxation_of_output`), read by `prep` from the output its coordinates came from, and that stage's name — the thermochemistry's temperature (`temperature_K`), the stage's name, and the molbuilder that prepared the deck | the deck's `vibration` block, written by `prep` | its reader beside that one, `deck_record.extract_vibration_record` |
 | the force constants | `<label>.FC` | `parse/engines/siesta_fc.py` |
 | the reference geometry and its forces (FC step 0); SIESTA's version | the run's output | SIESTA's one reading pass, `siesta_reader` |
 | the order back to the input's | `atom-permutation.json`, in the attempt as part of the calculation's shared package | `atom_permutation.read_permutation` |
@@ -1357,9 +1361,15 @@ number used. *(Until 2026-09-24 the catalogue's general default stood in for
 it.)* The positions the projection and the artifact use are the run's own
 reference geometry, its FC step 0 (§ 5.2a). The judged
 number is the **largest absolute Cartesian component** over the free atoms, the
-convention the PySCF deck's own check uses (§ 4.3). Above it the block carries a warning naming the number and the
-two ways out, the finish says it in the session log, and the viewer's relaxation row shows the
-force. And the block's honesty about its own numerics:
+convention the PySCF deck's own check uses (§ 4.3). Above it the block carries a warning naming the number and
+the one remedy for how the geometry was reached — **one text,
+`vibrational_analysis.nonstationary_remedy`, which `prep` (§ 5.8) and the
+PySCF deck (§ 4.3) write too**: when the ladder's stage relaxed it (the block's
+`relaxation_stage`), continue that stage and run this one again; when the person
+stated it relaxed, relax first — or keep the run knowing that. The finish says
+it in the session log, and the viewer's relaxation row shows the force.
+*(Until 2026-09-29 the finish told a laddered run to untick `already_relaxed`,
+which the ladder had already done — the M11 review, plan § 5w K6.)* And the block's honesty about its own numerics:
 `engine_metadata.fc_asymmetry_max_ev_ang2` is `max |H_ij − H_ji|` over the
 free block **before** it is symmetrised — the first number to look at when
 `FC.Displacement` is suspected of being too small (noise) or too large
@@ -1458,7 +1468,7 @@ not said in those words — the box's two states and the input's record are
 moot once the `relax` stage has run — and the stage is told that stage's
 outcome instead (§ 5.2a): its largest remaining force on the moved atoms
 against this calculation's tolerance, as information when within it and as a
-**warning** when above it, naming the one remedy — continue the `relax` stage
+**warning** when above it, naming the one remedy (`vibrational_analysis.nonstationary_remedy`, the same text the finish writes, § 5.5) — continue the `relax` stage
 from its newest attempt (`prep run relax --from <that attempt>`, then
 `launch run relax`), and prep this stage again once it has concluded; and a
 held set changed between the two stages, which leaves free atoms that

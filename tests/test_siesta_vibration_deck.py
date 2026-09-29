@@ -143,13 +143,15 @@ def _relaxed_h2():
                      axis_kind=("isolated",) * 3)
 
 
-def _fc_attempt(root, *, criterion=0.02):
+def _fc_attempt(root, *, criterion=0.02, relaxation=None):
     """A finished force-constant attempt built from the measured relaxed H2
     fixtures -- what a job's finish finds beside itself
     (`engines/vibration.md` § 5.5): the measured deck (`h2.fdf`, the held
     atom first) with the two blocks the finish reads written by their own
     writers, the run's output and force constants, and the permutation of a
-    held-last input written by the sort.  Returns ``(deck, output)``."""
+    held-last input written by the sort.  ``relaxation`` stands for the
+    ladder's `relax` stage record, as `prep` hands it on.  Returns
+    ``(deck, output)``."""
     import shutil
     from types import SimpleNamespace
 
@@ -161,7 +163,8 @@ def _fc_attempt(root, *, criterion=0.02):
                             cell=[[10.0, 0.0, 0.0], [0.0, 10.0, 0.0],
                                   [0.0, 0.0, 10.0]], stated=True)
     rec = vibration_record(stage="freq", force_criterion_ev_ang=criterion,
-                           already_relaxed=True, relaxation=None,
+                           already_relaxed=relaxation is None,
+                           relaxation=relaxation, relaxation_stage="relax",
                            temperature_K=298.15, molbuilder_version="fixture")
     (root / "h2.fdf").write_text(
         (fx / "h2.fdf").read_text() + "\n"
@@ -206,6 +209,19 @@ def test_the_finish_judges_the_reference_forces_by_the_decks_criterion(tmp_path)
     d2 = json.loads(finish(*_fc_attempt(tmp_path / "b", criterion=1e-5))
                     .read_text())
     assert d2["relaxation"]["converged"] is False
+    # ...and the one remedy for how the geometry was reached, the text
+    # `prep` and the PySCF deck write too (§ 5.5): stated relaxed, relax
+    # first; relaxed by the ladder's stage, continue that stage.
+    # MUTATION THIS MUST FAIL AGAINST: the finish telling a laddered run to
+    # untick `already_relaxed` -- the text before 2026-09-29.
+    from molbuilder.spectra.vibrational_analysis import nonstationary_remedy
+    assert nonstationary_remedy(None) in d2["relaxation"]["warning"]
+    d3 = json.loads(finish(*_fc_attempt(
+        tmp_path / "c", criterion=1e-5,
+        relaxation={"engine": "siesta", "n_steps": 7})).read_text())
+    assert d3["relaxation"]["converged"] is False
+    assert nonstationary_remedy("relax") in d3["relaxation"]["warning"], (
+        d3["relaxation"]["warning"])
 
 
 def test_the_mass_calibrated_displacement_rides_every_mode(tmp_path):
