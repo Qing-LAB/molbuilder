@@ -524,10 +524,10 @@ class TransportConfig:
 
     # ================= Leads =================
 
-    elecs_bulk: bool = field(default=True, metadata={
+    electrodes_bulk: bool = field(default=True, metadata={
         "section": "Leads",
         "workflow_group": "stage",
-        "label":   "Use the electrode's own bulk Hamiltonian",
+        "label":   "Use the electrodes' own bulk Hamiltonian",
         "tier":    "advanced",
         "engine_key": 'TS.Elecs.Bulk  (transiesta)',
     })
@@ -663,9 +663,8 @@ class TransportConfig:
         "label":   "Log verbosity",
         "choices": ("warning", "info", "debug"),
         "engine_key": 'TBT.Verbosity  (tbtrans)',
-        "help":    "engine log verbosity.  debug emits per-iteration "
-                   "NEGF residuals + density-matrix norms; useful "
-                   "when investigating convergence problems.  Maps onto "
-                   "TBT.Verbosity, an integer 0-10 defaulting to 5 "
-                   "(TBtrans reference): warning=2, info=5, debug=8.",
+        "help":    "engine log verbosity.  Read by nothing since "
+                   "2026-09-29: TBT.Verbosity is the catalogue row "
+                   "`tbt_verbosity` now (engines/transport.md § 6.1b), and "
+                   "this class retires with M5 step 3.",
     })

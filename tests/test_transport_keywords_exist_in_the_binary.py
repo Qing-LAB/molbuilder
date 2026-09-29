@@ -190,7 +190,8 @@ def _refuse_unknown_labels(deck: str, binary_text: str, where: str) -> None:
 
 @pytest.mark.parametrize("token,rung", [("01_seed", "seed"),
                                         ("02_electrode_L", "electrode"),
-                                        ("04_device", "negf")])
+                                        ("04_device", "device"),
+                                        ("05_transmission", "transmission")])
 def test_every_label_a_PREPPED_RUNG_emits_is_known_to_the_binary(
         binary_text, token, rung):
     """THE DECKS THAT ACTUALLY RUN — the gap this file had until 2026-09-16.
@@ -209,7 +210,8 @@ def test_every_label_a_PREPPED_RUNG_emits_is_known_to_the_binary(
     a binary at all.
 
     One case per deck SHAPE rather than per rung: `SHAPE_OF_RUNG` maps the
-    five rungs onto three texts, and device and transmission are one text.
+    five rungs onto four texts -- the device and the transmission became two
+    on 2026-09-29, because two programs read them (`transport.md` § 6.1b).
     """
     import numpy as np
 
@@ -232,6 +234,37 @@ def test_every_label_a_PREPPED_RUNG_emits_is_known_to_the_binary(
         "this rung carries none of the engine's section set -- the test "
         "would pass vacuously on a deck that had fallen off the seam")
     _refuse_unknown_labels(deck, binary_text, rung)
+
+
+def test_the_device_deck_holds_no_label_siesta_cannot_read():
+    """`siesta` alone runs the device deck, so every label in it is checked
+    against `siesta`'s binary ALONE (`engines/transport.md` § 6.1b).  The
+    check above pools both programs' strings, which is right for asking
+    whether ANY installed binary knows a label, and blind to a `TBT.*` line
+    finding its way back into the device deck -- a line `tbtrans` knows and
+    `siesta`, which reads this deck, never will."""
+    import numpy as np
+
+    from molbuilder import script_emit as sc
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.siesta.input import spec_for
+    from molbuilder.structure import Structure
+
+    bins = _engine_binaries()
+    siesta = next((b for b in (bins or ()) if b.name == "siesta"), None)
+    if siesta is None:
+        pytest.skip("molbuilder-siesta is not installed -- nothing to measure")
+    struct = Structure(
+        elements=["Au", "Au", "S", "C", "Au", "Au"],
+        positions=np.array([[0, 0, 2.0 * i] for i in range(6)], dtype=float),
+        cell=np.array([[8.0, 0, 0], [0, 8.0, 0], [0, 0, 14.0]], dtype=float),
+        regions={"L-electrode": [0, 1], "bridge": [2, 3],
+                 "R-electrode": [4, 5]})
+    cfg = SiestaConfig(system_label="kwcheck", kgrid=(2, 2, 1))
+    deck = sc.render_deck(
+        spec_for(struct, cfg, stage_token="04_device",
+                 calculation="transport"), struct, cfg)
+    _refuse_unknown_labels(deck, _strings(siesta), "device (siesta alone)")
 
 
 def _junction_and_config():
@@ -303,9 +336,10 @@ def test_every_electrode_block_carries_the_manuals_required_lines(with_buffer):
         elements=["Au"] * n,
         positions=np.array([[0, 0, 2.0 * i] for i in range(n)], dtype=float),
         regions=regions)
-    # THE LIVE DECK.  `_emit_transiesta_block` -- the emitter this checks --
-    # survives and is reached through `transport/deck.py`; what went on
-    # 2026-09-17 is the second writer that used to call it here.  The
+    # THE LIVE DECK.  `emit_electrode_declarations` -- the emitter this
+    # checks (`_emit_transiesta_block` until 2026-09-29) -- is reached through
+    # `transport/deck.py`; what went on 2026-09-17 is the second writer that
+    # used to call it here.  The
     # `elec-pos begin` / `elec-pos end` pairing below is real science
     # (an off-by-one computes transmission through the wrong region and
     # converges while doing it), so the check follows the emitter rather

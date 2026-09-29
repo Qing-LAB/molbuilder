@@ -184,7 +184,10 @@ different things:
 A grid fine enough for the density is routinely far too coarse for the
 transmission. **`TBT.k` defaults to inheriting the SCF's** — which is why
 `T(E_F)` against `TBT.k` is the standard convergence study, and why not being
-able to set it was the largest gap in this tab until 2026-09-15.
+able to set it was the largest gap in this tab until 2026-09-15. *(And setting
+it has changed nothing since: the deck wrote it as a bare triple, which
+`tbtrans` skips for the SCF's grid — read in its source, § 6.1b. Written as a
+list from M5 step 1.)*
 
 *(A denser `TBT.k` cannot rescue a device SCF whose own `k⊥` was too coarse:
 that `H` is simply wrong, and evaluating a wrong `H` at more k-points does
@@ -1052,6 +1055,7 @@ Edited in one panel. Changing any of these rebuilds all five stages.
 | `species_order` | — | **Structural, and easy to overlook.** It fixes the orbital ordering inside `.DM` and `.TSHS`. Two stages that order species differently write files the next stage cannot read correctly | 2 |
 | `kgrid` *(transverse part)* | `%block kgrid_Monkhorst_Pack` | The transverse Brillouin-zone sampling. Leads and device share one transverse cell, and the self-energy is folded in per transverse k-point, so two grids cannot be combined. *(Advisory as to whether the density suffices; checkable that they agree)* | 2 + 3 |
 | `kgrid_displacement` | same block | The grid's offset — same argument. An offset that differs is a different sampling | 2 |
+| `electrodes_bulk` | `TS.Elecs.Bulk` | Whether the lead region inside the device takes the lead's own bulk Hamiltonian. True is right whenever the region really is bulk — which is what the region labels assert. **Shared since 2026-09-29, and the device's alone before** (`elecs_bulk`, `stages = ["device"]`): TranSIESTA reads it for the device and `tbtrans` takes it as the default of its own setting, so the transmission must read the same value (§ 6.1b) | 3 |
 | *the lead layer count inside the device* | — | Not a transport parameter at all: **geometry**, settled when the junction was built and relaxed. Screening must be complete before the lead boundary, or the self-energy attaches to a region that is not bulk-like. Transport **inherits and verifies** it | 2 |
 
 #### Class C — Stage-local · binds nothing, except the bias point
@@ -1084,7 +1088,6 @@ one set for all of them is a compromise none of them asked for.
 | `negf_eq_pole_ev` | `TS.Contours.Eq.Pole` | Where the equilibrium contour's poles sit on the imaginary axis | 3 |
 | *the equilibrium contour* | `contour.eq` in each `%block TS.ChemPot.<name>` | **Stated, not left to the engine**: a circle and a tail whose lower bound sits below the seed's lowest eigenvalue — the manual's own rule. Without `contour.eq` TranSIESTA falls back to a continued fraction of 42 poles (`Src/m_ts_chem_pot.F90`), under the 50 the manual asks for; on a real device that lost 29 electrons on the first NEGF step, before any mixing, where 123 poles conserved the charge. The settings gate refuses a contour that cannot cover the spectrum | 2 |
 | `negf_neq_eta_ev` | `TS.Contours.nEq.Eta` | The non-equilibrium contour's broadening. **Inert at zero bias** — there is no non-equilibrium window to integrate | 3 |
-| `elecs_bulk` | `TS.Elecs.Bulk` | Whether the lead region inside the device uses the lead's own bulk Hamiltonian. True is right whenever the region really is bulk — which is what the region labels assert | 3 |
 
 **The transmission owns** — and this is the cheap, iterative panel: none of it
 binds anything, so re-running against an unchanged device costs seconds.
@@ -1099,6 +1102,7 @@ binds anything, so re-running against an unchanged device costs seconds.
 | `tbt_spin` | `TBT.Spin` | Which spin channel is reported | 3 |
 | `tbt_t_eig` | `TBT.T.Eig` | Eigenchannel decomposition — what turns one number into a picture of which orbital pathway carries the current | 3 |
 | `tbt_t_bulk` · `tbt_t_all` | `TBT.T.Bulk` · `TBT.T.All` | The pristine-lead baseline; every electrode pair rather than the first | 3 |
+| `tbt_verbosity` | `TBT.Verbosity` | How much tbtrans writes to its log — the log only, never the transmission. 5 is tbtrans's own default *(row since 2026-09-29)* | 3 |
 | `tbt_dos_gf` · `tbt_dos_a` · `tbt_dos_elecs` | `TBT.DOS.*` | Where on the molecule a transmitting state sits; which lead it is fed from; the bulk leads' own DOS | 3 |
 
 **Per-stage output preferences** — no effect on the answer, so each stage
@@ -1157,7 +1161,7 @@ failure it exists to prevent:
 | **`TS.HS.Save`** | Class D for the leads — their essential output, and the one the device actually reads |
 | **the equilibrium pole COUNT** | `TS.Contours.Eq.Pole` gives the pole *energy*; the *number* of poles is a separate keyword, and too few makes the device abort |
 | **the bias point** | `TS.Voltage` — Class C at the device, and the axis § 2a.10 is built on |
-| **`TBT.Verbosity`** | *(added 2026-09-23.)* Class C at the transmission, an output preference like `write_forces`. **Every transport deck already writes it** — from `TransportConfig.log_level`, which no catalogue row declares and no description can set, so the map above says "every parameter a transport deck can carry" while the deck carries one more. Not a wrong answer today: the value it writes, 5, IS tbtrans's own default, so the line states the default and moves nothing. It is the *shape* that is the defect — a keyword entering a deck from outside the catalogue — and it is now the only one: of the 19 fields the lifted NEGF block reads, the other 18 are reachable from a description (measured 2026-09-23) |
+| **`TBT.Verbosity`** | *(added 2026-09-23; its row lands with M5 step 1, § 6.1b.)* Class C at the transmission, an output preference like `write_forces`. **Closed 2026-09-29** — the row `tbt_verbosity` (the transmission's table above). Until then both NEGF decks wrote it from `TransportConfig.log_level`, which no catalogue row declared and no description could set: not a wrong answer, since the value, 5, IS tbtrans's own default, but a keyword entering a deck from outside the catalogue — the last of them, of the 19 fields the lifted NEGF block read |
 
 
 ### 2a.14 What landed — the map, as built *(2026-09-16)*
@@ -1229,8 +1233,8 @@ of an open boundary**, and the reason the two are computed separately at all.
 | | |
 |---|---|
 | **the bias has two homes** | `task.bias` (the description's axis, giving the `v*` directories) and `bias_voltage_v` (a template row with a range and help). The axis wins today: each point's deck is the resolved config with that voltage replaced. It works, and it is two representations of one concept — **open** |
-| **the NEGF electrode block is lifted, not tabled** | `%block TS.Elecs` and the per-electrode blocks are still the pre-seam emitter's, wrapped in one `Block`, with one small projection at the boundary. Deliberate: TranSIESTA identifies each electrode by a **contiguous atom range**, so an off-by-one computes transmission through a region that is not the molecule *and converges while doing it*. That emitter has been measured against a live 5.4.2 binary; a rewrite would have to earn that again for no gain |
-| **`TransportConfig` survives** | only to feed that lifted emitter. TR4 already deleted the general projection when the template made it unnecessary; this is the last one, and it goes when the block is tabled |
+| **the NEGF electrode block is lifted, not tabled** | `%block TS.Elecs` and the per-electrode blocks are still the pre-seam emitter's, wrapped in one `Block` *(with one small projection at the boundary until 2026-09-29, when the block's VALUES moved to the catalogue and the projection went — § 6.1b)*. Deliberate: TranSIESTA identifies each electrode by a **contiguous atom range**, so an off-by-one computes transmission through a region that is not the molecule *and converges while doing it*. That emitter has been measured against a live 5.4.2 binary; a rewrite would have to earn that again for no gain |
+| **`TransportConfig` survives** | only to feed that lifted emitter. TR4 already deleted the general projection when the template made it unnecessary; this is the last one, and it goes when the block is tabled. *(It went 2026-09-29, § 6.1b; the class retires with M5 step 3)* |
 | **net charge and gating** | deferred by ruling (§ 2a.7) |
 
 #### Two defects this work found in itself
@@ -1637,7 +1641,7 @@ So transport supplies **four layout tables**, selected by the `stage_token` that
 | `seed` | an ordinary SCF | the electronic contract; no TS/TBT rows |
 | `electrode_L`, `electrode_R` | a bulk lead | contract + `electrode_kz` + semi-infinite direction |
 | `device` | the NEGF SCF | contract + `TS.*` contour rows + the chemical potentials; transport axis forced to `kz = 1` |
-| `transmission` | **the same text as `device`** | plus the `TBT.*` rows; the binary changes, not the deck (`Resources.program = tbtrans`, § 4.2) |
+| `transmission` | **its own text since 2026-09-29** (the same text as `device` until then) | the `TS.*` junction description `tbtrans` reads plus the `TBT.*` rows; the binary is `Resources.program = tbtrans` (§ 6.1b) |
 
 An item absent from a stage's layout is simply not written into that stage's
 deck. No control flow, no per-item stage key, and the whole mapping is readable
@@ -1743,7 +1747,9 @@ cannot be done first.** Each line is falsifiable.
    path `siesta/input` has taken since 2026-08-19.
    **✅ DONE 2026-09-16 — all five rungs** (§ 2a.14). What survives of the
    pre-seam emitter is the lifted NEGF electrode block —
-   `transiesta._emit_transiesta_block`, wrapped in one `Block` — for the reason
+   `transiesta.emit_electrode_declarations` (`_emit_transiesta_block` until
+   2026-09-29, when its values moved to the catalogue), wrapped in one
+   `Block` — for the reason
    § 2a.14 gives: an off-by-one in a contiguous atom range computes
    transmission through the wrong region *and converges*. **`render_script`
    itself is deleted** (2026-09-17): it was a SECOND writer of a device deck,
@@ -1756,6 +1762,14 @@ cannot be done first.** Each line is falsifiable.
    the block emitter, a list by the list emitter. `TBT.k` in a form the parser
    rejects becomes structurally unavailable rather than fixed — and so does
    the next one nobody has found.
+   **✅ DONE 2026-09-29 — M5 step 1** (§ 6.1b). The eighteen `TS.*` /
+   `TBT.*` values the lifted NEGF block wrote as f-strings are catalogue
+   items with their notes: fourteen through the section walk, where the
+   check gate sees each line; `TS.Voltage` (a `role` item) and the T(E)
+   window's three values through the rung's own blocks, each asked of the
+   framework's door and written with its note — the k-grid block's
+   precedent. `TBT.k` is written as the bracketed list it has to be.
+   `TBT.HS` stays a rung line derived from the label, with no row.
 3. **Every stage deck has a `.validation.txt` and a USER-CUSTOM zone**, and a
    deck that fails its own read-back check refuses instead of running.
    **✅ DONE 2026-09-16 — all five** (§ 2a.14). It has already earned itself
@@ -1784,8 +1798,9 @@ cannot be done first.** Each line is falsifiable.
 6. `molbuilder/config/transport.py` **does not exist**; the shape is
    `SiestaConfig` plus the `citation` marker. **Half done 2026-09-16**: every
    rung resolves a `SiestaConfig`, and TR4 deleted the general projection when
-   the template made it unnecessary. One projection survives, at the boundary
-   of the lifted NEGF block, and goes with it.
+   the template made it unnecessary. The last projection, at the boundary
+   of the lifted NEGF block (`deck._legacy_view`), went 2026-09-29 with the
+   block's values (§ 6.1b); the class retires in M5 step 3.
 7. `dataclass_to_form_schema` **has no production caller** and is to be
    deleted; the transport form is generated from the catalogue.
    ⚠️ **Two corrections (2026-09-23).** *"and is deleted"* — it is not;
@@ -1818,7 +1833,7 @@ cannot be done first.** Each line is falsifiable.
 
 ### 3.6a The seed rung, on the seam — what that changed and what it did not
 
-*2026-09-15.  § 3.6 items 1–4, for one of the three deck shapes.*
+*2026-09-15.  § 3.6 items 1–4, for one of the deck shapes (three then, four since 2026-09-29).*
 
 **The shape of the fix, and why it is not a patch.**  `siesta/input.py::spec_for`
 gained **one** dispatch line for `calculation == "transport"`, and the kind's own
@@ -2113,7 +2128,7 @@ six scattered versions could not do.
 | a foreign rung's cell on the stage table is disabled, naming the owners | ✅ **done 2026-09-24** — the column payload carries `stages`; the cell is shown and not editable |
 | the shared values echoed read-only, with their source, on Task setup | ❌ **not built** — the template file is shown whole, and the form schema has no read-only state (`template.md` § 6.6 obligation 3; `form-schema.md` § 1.1) |
 | a value nobody chose is MARKED as such in the deck, and the file records each value's source | ❌ **not built** — `template.md` § 6.6 obligations 4 and 2; the mechanism is the open choice under § 6.6 |
-| the device deck carries only what `siesta` reads | ❓ **to measure** — § 2a.7 ruling 2 says the device deck has no reason to carry `TBT.*`; the device deck rendered today carries the `TBT.Contour` block (a test asserted it until 2026-09-24). Inert for `siesta`; whether it stays is a deck-layout question, not this surface's |
+| the device deck carries only what `siesta` reads | ❌ **measured 2026-09-29, not built** — `siesta` reads no `TBT.*` keyword (its binary holds none) and the last device run's report shows none of them, so the `TBT.*` set the device deck carries today is dead text; the transmission deck, for its part, must keep the `TS.*` declarations `tbtrans` reads (§ 6.1b). M5 step 1 |
 | one panel per engine (§ 3.8.8) | ❌ **not built** |
 | the per-rung form is a tab per rung, its group cards foldable, each tab opening with the rung's note (§ 3.8.2a) | ✅ **done 2026-09-24** |
 
@@ -2269,7 +2284,7 @@ finds out here rather than from a result that quietly ignored it. (The warning
 is raised before the missing-region check returns, so it surfaces even on an
 incomplete region set.)
 
-**Emitter behavior** (`transiesta.py::_emit_transiesta_block`,
+**Emitter behavior** (`transiesta.py::emit_electrode_declarations`,
 `_find_electrode_regions`): electrode regions are discovered, **sorted by
 z-centroid** (lowest first), and the modern SIESTA 4.1+/5.x syntax is emitted — one
 `%block TS.Elec.<name>` per lead (the block name is the label minus the
@@ -2439,7 +2454,7 @@ be.
 | Composition | `transport/compose.py` | citation → parsed `.XV` → categorical sort → electrode extraction, which IS the lead gate (frozen, unmoved, evenly spaced — `wizard.extract_electrode_model`, consolidated there 2026-09-20); the travelling record (`junction.xyz` + `junction.cited.fdf` + sidecars). Holds I11 — it reads real orbital ranges from the citation's `.ion` files and refuses a lead thinner than its own principal layer |
 | Electrode extraction | `transport/wizard.py` (`ElectrodeModel`, `extract_electrode_model`) | **derives** a bulk lead from the labeled device — it ASKS `transiesta._find_electrode_regions` for the partition and `cell.detect_layers` / `cell.bulk_z_period` for the z-period (§ 7.1) rather than re-deriving either. `as_structure()` hands `prep` a `Structure`, so the lead renders through the same seam as every other rung |
 | Stages | `transport/stages.py` | the five-rung ladder, its DAG (`stage_inputs` — which stage consumes which concluded stage before it, § 1), the one config from the citation's deck (`config_for`), the per-stage renders |
-| Deck | `transport/deck.py` | the NEGF arm of `spec_for` — **the one writer of all five rung texts**, reached as `siesta.input.spec_for(struct, cfg, calculation="transport")` → `DeckSpec` → `prepare_deck`. It reuses `transiesta._emit_geometry`, `_emit_basis_and_xc` and `_emit_transiesta_block` as its emission library |
+| Deck | `transport/deck.py` | the NEGF arm of `spec_for` — **the one writer of all five rung texts**, reached as `siesta.input.spec_for(struct, cfg, calculation="transport")` → `DeckSpec` → `prepare_deck`. It reuses `transiesta._emit_geometry` and `emit_electrode_declarations` as its emission library (`_emit_basis_and_xc` was deleted 2026-09-18; `_emit_transiesta_block` became `emit_electrode_declarations` on 2026-09-29, its values moving to the catalogue) |
 | Kind gate | `validation/__init__.py` (`_validate_transport_kind`) | the invariants that must fire on **every** transport prep, keyed on `task.calculation`: I8 (device `kz` = 1), I9 (lead `kz` dense), I12 (z-vacuum at the leads). § 5 names which holder holds which |
 | Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize run`); a point whose transmission has not run reads as **pending**, never as a failure |
 
@@ -2560,7 +2575,7 @@ named tables are, because each one is a contract a reader acts on.
 
 ---
 
-### 6.1 Five stages, three deck texts, two binaries — and what integrates them
+### 6.1 Five stages, four deck texts, two binaries — and what integrates them
 
 The diagram above follows the *files*.  This one follows the *scripts*,
 because "one calculation" here is **five separate executions of an engine
@@ -2570,12 +2585,18 @@ off.
 
 Two things are easy to get wrong and both are visible here:
 
-* **Five stages do not mean five deck texts.**  There are **three** as
-  built: the device and the transmission deck are currently the **same
-  bytes**, and only the binary pointed at them differs
-  (`Resources.program`).  `TBT.*` keywords are inert to `siesta` and `TS.*`
-  to `tbtrans`, so one text *can* serve both.
-  > **Resolved 2026-09-16 (§ 2a.14).** Both rungs render from ONE layout but
+* **Five stages do not mean five deck texts.**  There are **four** since
+  2026-09-29 — the device and the transmission are separate texts, because
+  two programs read them (§ 6.1b).  *(Three until then: the device and the
+  transmission deck were the same text, only the binary pointed at them
+  differing (`Resources.program`), on the claim that "`TBT.*` keywords are
+  inert to `siesta` and `TS.*` to `tbtrans`, so one text can serve both".
+  Measured 2026-09-29, the first half holds and the second does not —
+  `tbtrans` reads the `TS.*` electrode and chemical-potential declarations
+  and takes several `TS.*` values as its defaults.)*
+  > **Resolved 2026-09-16 (§ 2a.14), and superseded 2026-09-29 (§ 6.1b)** —
+  > the two rungs have a layout each since, because two programs read them.
+  > As it stood: both rungs render from ONE layout but
   > each resolves its OWN config, so the two decks share their *shape* — the
   > same junction, the same electrode declarations, the same electronic
   > description — and differ in exactly those values a person tuned for the
@@ -2591,18 +2612,19 @@ Two things are easy to get wrong and both are visible here:
 
 ```mermaid
 flowchart TB
-    subgraph TXT["the three deck TEXTS (floor 3's output)"]
+    subgraph TXT["the four deck TEXTS (floor 3's output)"]
       direction LR
       T1["seed text<br/><i>deck.py::_seed_layout</i><br/>SolutionMethod diagon"]
       T2["electrode text (x2, one per side)<br/><i>deck.py::_electrode_layout</i><br/>diagon · dense kz · TS.HS.Save"]
-      T3["device text<br/><i>deck.py::_negf_layout</i><br/>SolutionMethod transiesta + TBT.* block"]
+      T3["device text<br/><i>deck.py::_device_layout</i><br/>SolutionMethod transiesta · the TS.* settings"]
+      T4["transmission text<br/><i>deck.py::_transmission_layout</i><br/>the TS.* junction tbtrans reads · the TBT.* settings"]
     end
 
     T1 --> S1
     T2 --> S2
     T2 --> S3
     T3 --> S4
-    T3 -.->|"shares the TS.* half;<br/>tbtrans binary"| S5
+    T4 -->|"tbtrans binary"| S5
 
     subgraph RUN["five executions, five directories"]
       direction TB
@@ -2648,7 +2670,7 @@ reason a *single* set of parameter values cannot describe the ladder:
 | seed | `diagon` | 1 | `.DM` | an ordinary closed periodic SCF, only to give the NEGF cycle a starting density |
 | electrode | `diagon` | **dense** (`electrode_kz`) | `.TSHS` | a genuinely periodic *bulk* run — its Fermi level must be well converged, so this axis must be sampled |
 | device | `transiesta` | 1 | `.TS.HSX`, `.TSDE` | an **open** boundary: there is no periodicity along transport to sample |
-| transmission | (inert) | `TBT.k` | `.TBT.nc` | reads the device's saved H; samples the *transverse* BZ for T(E) |
+| transmission | none written — `tbtrans` runs no SCF | `TBT.k` | `.TBT.nc` | reads the device's saved H; samples the *transverse* BZ for T(E) |
 
 Two rows of that table are the same keyword — `SolutionMethod` — carrying
 **two different values within one calculation**.  That is not expressible as
@@ -2668,7 +2690,7 @@ device — so it reads like a parameter whose unit of resolution should be the
 [`SIESTA_STAGE_PRESETS`](?doc=engines/stages.md), stated once per rung and
 sealed against the person.  That was built, and it was wrong.
 
-**These values are not parameters.  They are the identity of three emitters.**
+**These values are not parameters.  They are the identity of the rung emitters.**
 The dispatch is *total and exclusive* over the five rungs — `SHAPE_OF_RUNG` is
 the table, and every rung renders through `transport/deck.py`:
 
@@ -2676,7 +2698,8 @@ the table, and every rung renders through `transport/deck.py`:
 |---|---|---|---|
 | seed | `seed` | `deck.py::_seed_layout` | `SolutionMethod diagon` is what makes it *the seed deck* |
 | electrode_L / electrode_R | `electrode` | `deck.py::_electrode_layout` | `diagon` + `TS.HS.Save true` is what makes it *an electrode deck* |
-| device / transmission | `negf` | `deck.py::_negf_layout` | `SolutionMethod transiesta` is what makes it *an NEGF deck* |
+| device | `device` | `deck.py::_device_layout` | `SolutionMethod transiesta` is what makes it *an NEGF deck* |
+| transmission | `transmission` | `deck.py::_transmission_layout` | `TBT.HS` naming the device's Hamiltonian, and no `SolutionMethod`, is what makes it *a tbtrans deck* (since 2026-09-29, § 6.1b; the device and the transmission shared `_negf_layout` until then) |
 
 > **Corrected 2026-09-16.** This table named `stages.py::_render_seed` (deleted),
 > `wizard.py::render_electrode_fdf` and `transiesta.py::render_script`, dispatched
@@ -2738,6 +2761,113 @@ was deleted 2026-09-17. § 2a.14 measured the lead deck rendering `0 0 40` and
 § 5 I9 names `_validate_transport_kind` as its holder. The row reaches the deck.
 What does still exist is the unread module constant `wizard.DEFAULT_ELECTRODE_KZ`
 — § 3.7's last row, and X1 ②.)*
+
+---
+
+### 6.1b The two programs, and what each one reads — measured *(2026-09-29)*
+
+**Two programs run a transport calculation, and they read the same kind of
+file.** The keyword prefix says which program a line is for:
+
+| prefix | the program | the rung | what it does |
+|---|---|---|---|
+| `TS.*` | **TranSIESTA** — `siesta` itself, switched into NEGF mode by `SolutionMethod transiesta` | the **device** | solves the junction self-consistently with the two leads attached as semi-infinite reservoirs, at one bias; writes the converged Hamiltonian, `<label>.TS.HSX` |
+| `TBT.*` | **TBtrans** — the separate `tbtrans` program | the **transmission** | no self-consistency: reads the device's converged Hamiltonian and the leads' `.TSHS`, and computes T(E) on an energy grid — plus, when asked, densities of states and eigenchannels. Cheap, so it is re-run freely against an unchanged device |
+
+The electrode rungs also carry one `TS.*` keyword, `TS.HS.Save`, which makes a
+lead's ordinary SIESTA run write the `.TSHS` the device attaches.
+
+#### What each program reads — the evidence, and where it came from
+
+Read in the engine's own source at the tag this project installs — SIESTA
+5.4.2, `Util/TS/TBtrans/` and the `libfdf` it pins (commit `206a3d6c`) — and
+cross-checked against the installed binaries (2026-09-29):
+
+| what | the engine's own rule | where |
+|---|---|---|
+| **`siesta` reads no `TBT.*` keyword** | the `siesta` binary holds no `TBT.` label, and the last device run's report of its settings lists none | the 5.4.2 binary; `claude-w33` device run-1, 2026-09-26 |
+| **`tbtrans` reads the `TS.*` junction description** | the electrodes are `TBT.Elecs` / `TBT.Elec.<name>`, and when none is given, `TS.Elecs` / `TS.Elec.<name>`; the same for the chemical potentials (`TBT.ChemPots` → `TS.ChemPots`) and the buffer atoms | `m_tbt_options.F90` 116–118, 156–195, 261–337 |
+| **and several `TS.*` values as the defaults of its own — and a plain SIESTA one** | `TBT.Voltage` defaults to `TS.Voltage`; `TBT.Elecs.Bulk` to `TS.Elecs.Bulk` (itself true by default); `TBT.Elecs.Eta` to `TS.Elecs.Eta` (itself 1 meV); the temperature is SIESTA's own `ElectronicTemperature`, then `TS.ElectronicTemperature`, then `TBT.ElectronicTemperature` | `m_tbt_hs.F90` 109–110; `m_tbt_options.F90` 151–153, 285–289 |
+| **`TBT.k` is a list or a block — nothing else** | `TBT.k [2 2 1]` or `%block TBT.k` is read; any other form falls through to `%block TBT.kgrid.MonkhorstPack`, then to the SCF's own `kgrid.MonkhorstPack` — which is `kgrid_Monkhorst_Pack`, since fdf drops `_ . -` and case when it compares labels. **A list is only a list in brackets** | `m_tbt_kpoint.F90` 800–810 (`setup_kpoint_grid`), 103–127; `libfdf` `parse.F90` 1726 (*"if the token starts with [ and ends with ], it will be a list"*), `utils.F90` 113–162 (`labeleq`) |
+| **the device Hamiltonian is found by name** | `TBT.HS` when given; otherwise the first of `<label>.TS.HSX`, `.TSHS`, `.HSX` that exists | `m_tbt_hs.F90` 210–220 |
+| **`TBT.Verbosity` defaults to 5** | `init_verbosity('TBT.Verbosity', 5)` | `tbt_reinit_m.F90` 206 |
+
+**A defect this found, in the deck as it was written until 2026-09-29:** the
+transmission rung wrote `TBT.k                  2 2 1` — three integers,
+neither a list nor a block — so `tbtrans` skipped it and samples the SCF's grid from the same deck. It
+has not changed an answer yet: `jobset init` sets `tbt_k_grid` to the cited
+run's transverse grid, which is the SCF's. But a person who raises it for the
+convergence study § 0.3 describes would be ignored in silence. Written
+`TBT.k [2 2 1]`, it is read. *(Nothing ever caught it: no transmission rung has
+run since `TBT.k` joined the deck on 2026-09-15.)*
+
+**And a reason this document gave that the source does not support:** the
+device-deck comment says `tbtrans` "looks for `<SystemLabel>.HSX` unless told",
+citing the 2026-08-29 failure *"Could not read CT.HSX"*. The source looks for
+`.TS.HSX` first, so that failure means `CT.TS.HSX` was not in the directory. The
+explicit `TBT.HS` line stays — it names the file rather than leaving the choice
+to which files happen to exist — and its comment gives the source's rule.
+
+*(This section replaces a claim § 6.1 made — "`TBT.*` keywords are inert to
+`siesta` and `TS.*` to `tbtrans`, so one text can serve both" — and that the
+device deck's own header repeated. The first half holds; the second does not.)*
+
+#### What the device run actually used — traced, 2026-09-26
+
+The device rung of `claude-w33/transport/au333bdt-t` (run-1, SIESTA 5.4.2),
+its deck set beside TranSIESTA's own report of what it used:
+
+| what it decides | the deck molbuilder wrote | what TranSIESTA reported using | came from |
+|---|---|---|---|
+| which atoms each lead is, and its bulk file | `%block TS.Elec.L` / `.R`: the `.TSHS`, 27 atoms from the first / to the last, `bloch 1 1 1`, semi-infinite −A3 / +A3 | 27 / 27 atoms at 1–27 and 94–120, Bloch 1×1×1, negative / positive along E3 | the deck — derived from the region labels |
+| the two reservoirs and the bias between them | `TS.ChemPot.Left` / `.Right` at μ = ±V/2, `TS.Voltage 0.0000 eV` | voltage 0, chemical shift 0 | the deck |
+| the lead region inside the device takes the lead's bulk Hamiltonian | `TS.Elecs.Bulk true` | "Bulk H, S in electrode region = T" | the deck |
+| how the equilibrium density integral is taken | `TS.Contours.Eq.Pole 10.0000 eV` | a continued fraction with 123 poles | the engine's rule, on the deck's value |
+| the leads' self-energy broadening | — not written | 1 meV | TranSIESTA's default |
+| the solver; the electrostatic boundary | — not written | the BTD solver; the Hartree potential fixed at the cell boundary (`-C`) | TranSIESTA's defaults |
+| the 300 K smearing | `ElectronicTemperature` (a shared value) | 300 K, on both leads too | the deck |
+
+The same deck also carried the whole `TBT.*` set, and the run's report shows
+none of it: it was text `siesta` never read.
+
+#### The rulings that follow *(M5 step 1; user, 2026-09-29)*
+
+* **Each deck carries what its own program reads** — § 2a.7's second ruling,
+  now measured. The **device** deck carries no `TBT.*` line: `siesta` ignores
+  them, and a reader of the deck would take them for settings of the run. The
+  **transmission** deck carries its `TBT.*` settings AND the `TS.*`
+  declarations `tbtrans` reads — the electrodes, the chemical potentials, the
+  voltage, the leads' bulk treatment. It also keeps the SIESTA settings the two
+  rungs share: `tbtrans` reads at least one of them (`ElectronicTemperature`),
+  and which others it reads is an audit of its source not yet made — so none is
+  removed until that audit says it may be.
+* **The leads' bulk treatment is ONE value for the device and the
+  transmission** — `electrodes_bulk`, a shared value. TranSIESTA reads it for
+  the device's self-consistent run, and `tbtrans` takes `TS.Elecs.Bulk` as the
+  default of its own `TBT.Elecs.Bulk` (`m_tbt_options.F90` 285–286); were it
+  the device's alone (as `elecs_bulk` was, `stages = ["device"]`), a change
+  there would leave the transmission deck on the template's value, and
+  `tbtrans` would treat the leads differently from the device it reads. *(Named `elecs_bulk` until 2026-09-29. The name is
+  molbuilder's, so it is written out — user: "electrodes_bulk would be my
+  recommendation"; the keyword `TS.Elecs.Bulk` is TranSIESTA's own word and
+  unchanged.)*
+* **Every `TS.*` and `TBT.*` value that is a setting reaches the deck
+  through the catalogue** (§ 3.6 item 2), with its note above it saying what
+  it decides and which program reads it; each section's heading says whose
+  run it belongs to, since the deck is that rung's. Most are written by the
+  section walk, where the check gate sees each line; `TS.Voltage` (a `role`
+  item — the rung's bias point) and the T(E) window's three values are
+  written by the rung's own blocks, each asked of the framework's door and
+  written with its note. `TBT.HS` is a rung line derived from the label, not
+  a setting, and has no row. An item left at a zero that means *the
+  program's own rule* writes nothing, and its note says so. The electrode
+  declarations stay a block: they are derived from the region labels, and no
+  parameter models them.
+* **`TBT.k` is written as a list, `TBT.k [2 2 1]`** — the only line form
+  `tbtrans` reads (§ 3.6 item 2's list emitter); the bare triple it carried
+  until 2026-09-29 was skipped.
+* **`TBT.Verbosity` gets its catalogue row** (§ 2a.13, *what this map says is
+  missing*), at `tbtrans`'s own default, 5 (`tbt_reinit_m.F90` 206).
 
 ---
 

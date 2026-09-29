@@ -637,9 +637,10 @@ def _register_default_engines() -> None:
     # NO TRANSPORT ROW EITHER, and for the same reason one step later.
     # It keyed on `TransportConfig` and ran `TransiestaEngine.preflight`.
     # Every transport rung resolves a `SiestaConfig` (`engines/transport.md`
-    # 2a.14), so it dispatched for nothing; the two sites that still build a
-    # `TransportConfig` build it as a projection for the lifted NEGF emitter
-    # and never validate it.  It survived that because ONE surface did both
+    # 2a.14), so it dispatched for nothing; the sites that built a
+    # `TransportConfig` then built it as a projection for the lifted NEGF
+    # emitter and never validated it (the last live one went 2026-09-29).
+    # It survived that because ONE surface did both
     # -- `POST /api/transport/render` -- and that route was deleted
     # 2026-09-17.  Transport's science is the KIND's, below.  Every check the
     # engine preflight carried has a named live holder; the tombstone in

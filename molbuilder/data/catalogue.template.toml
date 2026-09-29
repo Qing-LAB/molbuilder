@@ -2398,6 +2398,26 @@ Write the transmission between every pair of electrodes, not only the first pair
 For a two-terminal junction the two are the same, so this only adds anything on a device with more than two electrodes.
 """
 
+[item.tbt_verbosity]
+stages = ["transmission"]
+kind = "engine"
+category = ["procedure"]
+engines = ["siesta"]
+calculations = ["transport"]
+anchor = "TBT.Verbosity"
+engine_key = "TBT.Verbosity"
+manual = "SIESTA 5.4.2 TBtrans §'Output options'"
+type = "int"
+value = 5
+default = 5
+range = [0, 10]
+group = "output"
+label = "How much tbtrans reports"
+tier = "advanced"
+help = """
+How much tbtrans writes to its own log, 0 to 10 -- smaller numbers print less.  5 is tbtrans's own default (`Util/TS/TBtrans/tbt_reinit_m.F90`: `init_verbosity('TBT.Verbosity', 5)`), so the deck states the default rather than moving anything.  It changes the log, never the transmission.
+"""
+
 [item.negf_eq_pole_ev]
 stages = ["device"]
 kind = "engine"
@@ -2501,8 +2521,8 @@ help = """
 The small imaginary part added to the energy along the non-equilibrium contour, which smooths that integration.  0 leaves the engine's own default in place.  It is inert at zero bias, where there is no non-equilibrium window to integrate.
 """
 
-[item.elecs_bulk]
-stages = ["device"]
+[item.electrodes_bulk]
+shared = ["transport"]
 kind = "engine"
 category = ["method"]
 engines = ["siesta"]
@@ -2514,10 +2534,12 @@ type = "bool"
 value = true
 default = true
 group = "stage"
-label = "Use the electrode's own bulk Hamiltonian"
+label = "Use the electrodes' own bulk Hamiltonian"
 tier = "advanced"
 help = """
-Use the lead's own converged bulk Hamiltonian inside the electrode region, rather than the values the device run produced there.  True is right whenever the electrode region really is bulk -- which is what the region labels assert.
+Use each lead's own converged bulk Hamiltonian inside its electrode region, rather than the values the device run produced there.  True is right whenever the electrode region really is bulk -- which is what the region labels assert.
+
+ONE value for the device and the transmission.  TranSIESTA reads it for the device's self-consistent run, and tbtrans takes `TS.Elecs.Bulk` as the default of its own `TBT.Elecs.Bulk` (SIESTA 5.4.2, `Util/TS/TBtrans/m_tbt_options.F90`), so both decks write it and they cannot differ: a device converged one way and a transmission computed the other would describe two different junctions.
 """
 
 [item.electrode_kz]

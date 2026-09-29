@@ -1963,9 +1963,11 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
 
     # ---- 4 + 5, the shared tail ---------------------------------------- #
     if stage == "transmission":
-        # TBtrans post-processes the device run FROM THE SAME DECK TEXT,
-        # so the binary cannot be read off the deck -- it rides the
-        # allocation road (`model.Resources.program`) into the wrapper.
+        # TBtrans post-processes the device run from its own deck (the
+        # device's and the transmission's are two texts since 2026-09-29,
+        # `engines/transport.md` § 6.1b); which binary runs it is not
+        # read off the deck -- it rides the allocation road
+        # (`model.Resources.program`) into the wrapper.
         res = dataclasses.replace(res, program="tbtrans")
     job = Job(name=stage, script=script, resources=res,
               warm=warm_declaration(stage, task.label, base))

@@ -438,7 +438,7 @@ def test_the_presets_come_from_the_shipped_table(web_client):
     # column.  A transport rung owns none of the relaxation fields, so its
     # rows get no menu; a vibration ladder's relax rung owns them all.
     # Until 2026-09-24 every transport rung offered coarse/medium/tight
-    # (plan W31), a menu whose every entry `prep` would refuse.
+    # (plan W31, archived 2026-09-29), a menu whose every entry `prep` would refuse.
     t = web_client.get("/api/task-setup/presets?engine=siesta"
                        "&calculation=transport").get_json()
     assert t["ok"] and t["presets"] == [], t

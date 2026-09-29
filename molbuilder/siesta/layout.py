@@ -202,6 +202,16 @@ _UNIT = {
     "md_length_timestep":     "fs",
     "electronic_temperature": "K",
     "fc_displacement":        "Bohr",
+    # TranSIESTA / TBtrans (`engines/transport.md` § 6.1b).  fdf reads each as
+    # an ENERGY, and says so with the unit word.  `bias_voltage_v` is held in
+    # volts and spelled in eV: the energy an electron gains across V volts is
+    # V electron-volts, so the number is the same and only the word differs
+    # (its catalogue note says so to a reader of the deck).
+    "bias_voltage_v":         "eV",
+    "negf_eq_pole_ev":        "eV",
+    "negf_neq_eta_ev":        "eV",
+    "tbt_elecs_eta_ev":       "eV",
+    "tbt_contours_eta_ev":    "eV",
 }
 
 #: Items whose keyword is padded so a related pair reads as a column.
@@ -221,11 +231,34 @@ _PAD = {
     "use_gpu": 19,
     "md_target_temperature": 22,
     "max_scf_iter": 18, "spin_treatment": 18,
+    # The NEGF and transmission settings read as one column, as the block that
+    # wrote them by hand did.
+    "bias_voltage_v": 23, "electrodes_bulk": 23, "negf_eq_pole_ev": 23,
+    "negf_neq_eta_ev": 23, "tbt_k_grid": 23, "tbt_elecs_eta_ev": 23,
+    "tbt_contours_eta_ev": 23, "tbt_spin": 23, "tbt_dos_gf": 23,
+    "tbt_dos_a": 23, "tbt_dos_elecs": 23, "tbt_t_eig": 23, "tbt_t_bulk": 23,
+    "tbt_t_all": 23, "tbt_verbosity": 23,
 }
 
 #: Items SIESTA wants in scientific notation.  Formatting is spelling, so it
 #: is the engine's business and lives beside the rest of the spelling.
-_FMT = {"dm_tolerance": ".0e", "dm_energy_tolerance": ".0e"}
+_FMT = {"dm_tolerance": ".0e", "dm_energy_tolerance": ".0e",
+        "bias_voltage_v": ".4f", "negf_eq_pole_ev": ".4f",
+        "negf_neq_eta_ev": ".6f", "tbt_elecs_eta_ev": ".6f",
+        "tbt_contours_eta_ev": ".6f"}
+
+#: Items whose 0 means LEAVE IT TO THE ENGINE, so 0 writes nothing.  Each of
+#: these engine defaults is a FORMULA rather than a number -- the continued
+#: fraction's pole energy scales with the temperature, the non-equilibrium
+#: and the device Green function's broadenings are the leads' smallest over
+#: ten -- and a number written in its place would REPLACE the rule: an
+#: explicit `TS.Contours.Eq.Pole 0` sends TranSIESTA to a pole count of 8
+#: and a refused run (`m_ts_chem_pot.F90`), an explicit 0 broadening
+#: overrides the formula (`engines/transport.md` § 6.1b; each item's note
+#: says what 0 leaves).  Where the default IS a number, the item writes it:
+#: `TBT.Spin 0` is tbtrans's own default, all channels (`m_tbt_hs.F90`).
+_ZERO_LEAVES_IT_TO_THE_ENGINE = frozenset({
+    "negf_eq_pole_ev", "negf_neq_eta_ev", "tbt_contours_eta_ev"})
 
 
 def note_lead(param: Parameter) -> Tuple[str, ...]:
@@ -332,6 +365,24 @@ def line(derived: dict):
             shown = ".true." if param.value else ".false."
             pad = _PAD.get(param.name)
             return f"{key:<{pad}}{shown}" if pad else f"{key} {shown}"
+        if isinstance(param.value, (list, tuple)):
+            # AN fdf LIST IS WRITTEN IN BRACKETS, and only then is it a list:
+            # libfdf's tokenizer calls a token a list when it "starts with [
+            # and ends with ]" (`parse.F90`), and a reader that asks for a list
+            # (`fdf_islist`) finds nothing in three bare numbers.  `TBT.k 2 2 1`
+            # was skipped that way -- tbtrans fell through to the SCF's grid in
+            # silence (`engines/transport.md` § 6.1b).  A list is of NUMBERS:
+            # the tokenizer knows integer and real lists only, so a list of
+            # words has no fdf spelling here and is refused rather than
+            # written as something no reader parses.
+            if not all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                       for v in param.value):
+                raise TypeError(
+                    f"{param.name}: an fdf list holds numbers only, and "
+                    f"this value is {param.value!r}")
+            shown = "[" + " ".join(str(v) for v in param.value) + "]"
+            pad = _PAD.get(param.name)
+            return f"{key:<{pad}}{shown}" if pad else f"{key} {shown}"
         fmt = _FMT.get(param.name)
         shown = format(param.value, fmt) if fmt else f"{param.value}"
         unit = _UNIT.get(param.name)
@@ -370,6 +421,8 @@ def line(derived: dict):
         if param.name in override or param.name == "md_target_temperature":
             return _geometry(param)
         if not param.known or param.value is None:
+            return None
+        if param.name in _ZERO_LEAVES_IT_TO_THE_ENGINE and not param.value:
             return None
         if len(param.writes) == 2:
             return _pair(param)

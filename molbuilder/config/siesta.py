@@ -1362,6 +1362,16 @@ class SiestaConfig:
         "tier":        "advanced",
     })
 
+    tbt_verbosity: int = field(default=5, metadata={
+        "category": ("procedure", ),
+        "item_kind":  "engine",
+        "workflow_group": "output",
+        "label":       "How much tbtrans reports",
+        "engine_key":  "TBT.Verbosity",
+        "range":       (0, 10),
+        "tier":        "advanced",
+    })
+
     negf_eq_pole_ev: float = field(default=0.0, metadata={
         "category": ("convergence", ),
         "item_kind":  "engine",
@@ -1404,11 +1414,11 @@ class SiestaConfig:
         "tier":        "advanced",
     })
 
-    elecs_bulk: bool = field(default=True, metadata={
+    electrodes_bulk: bool = field(default=True, metadata={
         "category": ("method", ),
         "item_kind":  "engine",
         "workflow_group": "stage",
-        "label":       "Use the electrode's own bulk Hamiltonian",
+        "label":       "Use the electrodes' own bulk Hamiltonian",
         "engine_key":  "TS.Elecs.Bulk",
         "tier":        "advanced",
     })

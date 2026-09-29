@@ -3,9 +3,12 @@
 **THIS MODULE NO LONGER WRITES A DECK OF ITS OWN** (2026-09-17).  It is a
 set of emitters the two live writers reach into, plus the engine preflight:
 
-* :func:`_emit_transiesta_block` and :func:`_emit_geometry` — reused by
+* :func:`emit_electrode_declarations` and :func:`_emit_geometry` — reused by
   `transport/deck.py`, the pipeline every one of the five rungs renders
-  through.
+  through.  *(The first was `_emit_transiesta_block` until 2026-09-29, which
+  also wrote every TranSIESTA and TBtrans VALUE as an f-string; those are
+  catalogue items now, written by the section walk with their notes —
+  `engines/transport.md` § 6.1b.)*
 * :func:`_compute_cell_from_extents` and
   :func:`_find_electrode_regions` — reused by `transport/wizard.py`, whose
   `extract_electrode_model` derives the lead `compose.py` hands to prep.
@@ -39,7 +42,6 @@ from ..config.transport import (
     REGION_BUFFER,
     REGION_LEFT_ELECTRODE,
     REGION_RIGHT_ELECTRODE,
-    TransportConfig,
     is_electrode_label,
 )
 from ..structure import Structure
@@ -106,18 +108,6 @@ def electrode_hs_stem(job_name: str, label: str) -> str:
     the device will ask for.
     """
     return f"{job_name}_{label}"
-
-
-#: `log_level`'s three words as the integer `TBT.Verbosity` takes.
-#:
-#: **Sourced, not invented** (TBtrans reference, checked 2026-09-15):
-#: `TBT.Verbosity` is an integer in 0-10, default 5, "for smaller numbers
-#: less information will be printed".  The field claimed `WriteVerbosity`
-#: until then -- zero occurrences in the 5.4.2 binary -- and a mapping was
-#: NOT invented for it in the same pass that retired
-#: `transmission_relative_to_ef` precisely for want of a sourced one
-#: (`plan.md` § 5o).  `info` is the engine's own default.
-_TBT_VERBOSITY = {"warning": 2, "info": 5, "debug": 8}
 
 
 def _find_electrode_regions(
@@ -466,45 +456,36 @@ def _emit_geometry(struct: Structure,
 # recorded that the two restated each other.
 
 
-def _emit_transiesta_block(struct: Structure,
-                            cfg: TransportConfig) -> List[str]:
-    """The TS.* block — modern (SIESTA 4.1+ / 5.x) NEGF syntax.
+def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
+    """The junction as TranSIESTA and tbtrans read it -- which atoms are each
+    lead and where its bulk Hamiltonian is, the two reservoirs and the bias
+    between them, the buffer atoms (`engines/transport.md` § 6.1b).
 
-    2026-06-18 modernization (audit SCI-B1, verified against
-    SIESTA 5.4.2 binary):
+    **Structure, not settings**, and that is why it is a block: every line is
+    derived from the region labels (`struct.regions`), and no parameter models
+    which atoms a lead is.  Both programs read it -- TranSIESTA for the device,
+    and `tbtrans`, which falls back to these `TS.*` blocks when it is given no
+    `TBT.*` ones -- so the device and the transmission decks carry the same
+    text.  The settings beside it (the voltage, the bulk treatment, the
+    contours, the transmission's own) are catalogue items written with their
+    notes; this writes none of them.
 
-    * Per-electrode blocks ``%block TS.Elec.<name>`` carry the
-      electrode metadata (``HS``, ``chem-pot``, ``used-atoms``,
-      ``bloch``, ``semi-inf-direction``) instead of the legacy
-      ``TS.HSFile<Left|Right>`` + ``TS.NumUsedAtoms<Left|Right>``
-      flat keys.
-    * Chemical potentials are declared in ``%block TS.ChemPots``
-      and configured per-name in ``%block TS.ChemPot.<name>``;
-      the implicit ``±V/2`` of the legacy form is gone, the
-      bias is explicit per chempot.
-    * Electrodes are discovered from ``struct.regions`` by the
-      ``*-electrode`` label convention (any region whose label
-      ends with ``-electrode`` becomes an electrode block);
-      ``L-electrode`` / ``R-electrode`` (the defaults) fit
-      naturally.  Order is by z-centroid, so the LOWER block gets
-      ``semi-inf-direction -A3`` and the first ``elec-pos``; the
-      ``Left``/``Right`` chempot binding is by region NAME, and the
-      deck states which lead ends up at µ = +V/2.
+    Modern (SIESTA 4.1+ / 5.x) syntax, verified against the 5.4.2 binary
+    (audit SCI-B1, 2026-06-18): per-electrode ``%block TS.Elec.<name>`` with
+    ``HS``, ``chem-pot``, ``used-atoms``, ``elec-pos``, ``bloch`` and
+    ``semi-inf-direction``; chemical potentials in ``%block TS.ChemPots`` and
+    one ``%block TS.ChemPot.<name>`` each.  Electrodes are the regions whose
+    label ends in ``-electrode``, ordered by z-centroid: the LOWER block gets
+    ``semi-inf-direction -A3`` and the first ``elec-pos``; the ``Left`` /
+    ``Right`` chemical potential binds by the region's NAME, and the deck says
+    which lead ends up at mu = +V/2.
 
-    For the canonical 2-terminal case (the only fully-validated
-    scope today), the emitter produces exactly the verified
-    Au-BDT-Au template.  Multi-terminal (3+ electrodes) is a
-    planned follow-up; today such a structure emits a single
-    notice in render_script's pre-emit pass.
-
-    **The TBtrans half DID migrate, and this docstring said it had
-    not** -- "its keyword names didn't migrate in 4.1+", which is the
-    false belief that kept four SIESTA-3.x scalars in this emitter
-    until 2026-09-15.  They are a `%block TBT.Contour` now; the block
-    below carries the measurement (`plan.md` § 5o).
+    **Not rewritten, and deliberately so.**  TranSIESTA identifies each
+    electrode by a CONTIGUOUS ATOM RANGE, so an off-by-one in a position line
+    computes transmission through a region that is not the molecule, and
+    converges while doing it.  This text has been measured against a live
+    5.4.2 run (§ 6.1b: 27 / 27 atoms at 1-27 and 94-120, as written).
     """
-    bias = cfg.bias_voltages_v[0] if cfg.bias_voltages_v else 0.0
-
     electrodes = _find_electrode_regions(struct)
     # Canonical 2-terminal naming: the z-min electrode binds to the
     # ``Left`` chempot (mu = +V/2); z-max binds to ``Right`` (mu = -V/2).
@@ -521,12 +502,10 @@ def _emit_transiesta_block(struct: Structure,
     if is_two_terminal and canonical:
         # Bind the chempot by the region's own NAME.  Under the one
         # convention (L-electrode = low z; sort.py refuses anything
-        # else, and the preflight below repeats it for structures that
-        # never went through prep) this is identical to binding by
-        # z-centroid -- so the deck reads `TS.Elec.L -> chem-pot Left`
-        # with no inversion possible, and `V = V_left - V_right` means
-        # what the labels say.  Naming it keeps the deck honest if the
-        # gate ever moves.
+        # else) this is identical to binding by z-centroid -- so the deck
+        # reads `TS.Elec.L -> chem-pot Left` with no inversion possible,
+        # and `V = V_left - V_right` means what the labels say.  Naming it
+        # keeps the deck honest if the gate ever moves.
         for label, block_name, _idxs in electrodes:
             chempot_for[block_name] = (
                 "Left" if label == REGION_LEFT_ELECTRODE else "Right")
@@ -545,31 +524,14 @@ def _emit_transiesta_block(struct: Structure,
             chempot_for[block_name] = block_name
 
     lines: List[str] = [
-        "# --- TranSIESTA NEGF (modern syntax, SIESTA 4.1+ / 5.x) ---",
-        "",
-        "# ``SolutionMethod transiesta`` switches the SCF cycle to NEGF.",
-        "# (``TS.SolutionMethod`` exists as a separate keyword for the",
-        "# NEGF inversion algorithm, NOT the engine selector — emitting",
-        "# ``TS.SolutionMethod transiesta`` triggers 'Unrecognized "
-        "TranSiesta",
-        "# solution method' in SIESTA 5.4.2.  Empirically verified "
-        "2026-06-18.)",
-        "SolutionMethod         transiesta",
-        "",
-        "# Start the NEGF SCF from a saved density when one is present:",
-        "# the transport ladder's seed stage leaves <SystemLabel>.DM",
-        "# beside this deck (transport-design.md 4.2; SIESTA's default",
-        "# for this keyword is false, so without it the seed would sit",
-        "# unread -- 'present but not honoured').  With no file, SIESTA",
-        "# initialises from atomic densities as usual.  A .TSDE needs no",
-        "# keyword: TranSIESTA reads it by presence.",
-        "DM.UseSaveDM           true",
-        "",
-        "# Electrode declarations.  Each electrode is a region in the",
-        "# input structure whose label ends with ``-electrode``; the",
-        "# emitter discovers them from ``struct.regions`` and emits one",
-        "# %block TS.Elec.<name> per side.  See "
-        "docs/engines/transport.md.",
+        "# --- The junction: its electrodes and reservoirs ---",
+        "#",
+        "# Read by BOTH programs: TranSIESTA solves the device with these",
+        "# leads attached, and tbtrans -- given no TBT.* electrode blocks --",
+        "# reads these same TS.* ones (SIESTA 5.4.2, Util/TS/TBtrans/",
+        "# m_tbt_options.F90).  Every line is derived from the region labels:",
+        "# a region named `*-electrode` is a lead, and its atoms are the",
+        "# contiguous range written below.",
         "%block TS.Elecs",
     ]
     for _label, block_name, _idxs in electrodes:
@@ -577,7 +539,7 @@ def _emit_transiesta_block(struct: Structure,
     lines.append("%endblock TS.Elecs")
     lines.append("")
 
-    # Buffer atoms (transport-design.md § 3, last bullet): padding at
+    # Buffer atoms (engines/transport.md § 4, the `buffer` label): padding at
     # the OUTER ends, excluded from the NEGF region via TS.Atoms.Buffer.
     # With buffers present TranSIESTA's DEFAULT electrode placement
     # (first electrode = first atoms, last = last atoms) no longer
@@ -592,22 +554,19 @@ def _emit_transiesta_block(struct: Structure,
         sid = semi_inf.get(i, "+A3")
         lines.append(f"%block TS.Elec.{block_name}")
         lines.append(f"  HS                 "
-                     f"{electrode_hs_stem(cfg.job_name, label)}.TSHS")
+                     f"{electrode_hs_stem(cfg.system_label, label)}.TSHS")
         lines.append(f"  chem-pot           {cp}")
         lines.append(f"  used-atoms         {len(idxs)}")
         # ALWAYS, because the manual lists it among the four lines a
         # `%block TS.Elec.<name>` MUST carry -- HS, semi-inf-dir,
-        # electrode-pos, chem-pot (SIESTA 5.4.0 manual;
-        # `engines/transport.md` 3.3).
+        # electrode-pos, chem-pot (SIESTA 5.4.0 manual).
         #
         # This sat inside `if buffer_idx:` until 2026-09-15, so an ORDINARY
         # junction -- no buffer atoms -- got two electrode blocks without
         # it.  Probably harmless, and that is the problem: molbuilder sorts
         # the junction so the electrodes ARE the first and last atoms, which
         # is where an omitted position would land anyway, so the deck relied
-        # on an undocumented default agreeing with the truth.  It stops
-        # agreeing the moment a junction is not sorted that way or a third
-        # electrode appears -- and the indices are right here.
+        # on an undocumented default agreeing with the truth.
         #
         # `begin` / `end` are the binary's own tokens (it accepts
         # elec-pos | start | begin | end), which is more permissive than the
@@ -625,9 +584,7 @@ def _emit_transiesta_block(struct: Structure,
         # 2026-09-15 -- see `config/transport.py`).  molbuilder derives
         # the electrode from the junction's own labelled atoms, so the
         # electrode cell IS the device cross-section and no expansion
-        # applies; and nothing here adjusts the electrode's transverse
-        # grid to match one, which is what made any other value a
-        # silently mismatched lead.
+        # applies.
         lines.append("  bloch              1 1 1")
         lines.append(f"  semi-inf-direction {sid}")
         lines.append(f"%endblock TS.Elec.{block_name}")
@@ -638,8 +595,7 @@ def _emit_transiesta_block(struct: Structure,
     # convention.  The semi-infinite directions came from the GEOMETRY
     # (``electrodes`` is z-sorted) and mu comes from the NAME, so on a
     # junction labeled the other way round these two lines name
-    # different blocks.  That disagreement is the fact a reader most
-    # needs and is the one the deck used to hide.
+    # different blocks.
     if is_two_terminal:
         low_label = electrodes[0][0]
         plus_label = next((lab for lab, name, _i in electrodes
@@ -663,15 +619,15 @@ def _emit_transiesta_block(struct: Structure,
                     "convention, and intentional")
                 lines.append(
                     "#   unless the labels were swapped by mistake "
-                    "(transport-design.md 4.1a).")
+                    "(engines/transport.md § 4).")
     lines.append(
-        "# Chemical potentials.  ``%block TS.ChemPots`` lists the names; "
-        "each is")
+        "# The two reservoirs.  `%block TS.ChemPots` names them; each is")
     lines.append(
-        "# defined in its own %block TS.ChemPot.<name>.  At zero bias the")
+        "# defined in its own %block TS.ChemPot.<name>.  V is TS.Voltage,")
     lines.append(
-        "# ±V/2 split is conventional and inert; at finite bias it sets the")
-    lines.append("# left- vs right-Fermi-level offset.")
+        "# written with its note beside this block: at zero bias the ±V/2")
+    lines.append(
+        "# split is inert; at a finite bias it sets the two Fermi levels.")
     lines.append("%block TS.ChemPots")
     if is_two_terminal:
         lines.append("  Left")
@@ -713,7 +669,7 @@ def _emit_transiesta_block(struct: Structure,
         lines.append("# Buffer atoms: padding outside the electrode "
                      "blocks, excluded from")
         lines.append("# the NEGF region entirely "
-                     "(transport-design.md § 3).")
+                     "(engines/transport.md § 4, the `buffer` label).")
         lines.append("%block TS.Atoms.Buffer")
         run_start = prev = buffer_idx[0]
         for j in buffer_idx[1:] + [None]:
@@ -723,106 +679,6 @@ def _emit_transiesta_block(struct: Structure,
             prev = j if j is not None else prev
         lines.append("%endblock TS.Atoms.Buffer")
         lines.append("")
-
-    lines.extend([
-        "# Bias voltage (used by the ``V`` substitution in the chempot "
-        "mu lines).",
-        "# Single value per .fdf today; the bias-scan workflow emits one "
-        ".fdf per bias.",
-        f"TS.Voltage             {bias:.4f} eV",
-        "",
-        "# THE NEGF DENSITY CONTOUR, and the lead treatment.",
-        "# Defaults are the SIESTA 5.4.0 manual's; a 0 above means \"leave",
-        "# it to the engine\" for the two whose default is a FORMULA rather",
-        "# than a number, and nothing is emitted for those",
-        "# (`engines/transport.md` 3.3 -- the template shape).",
-        f"TS.Elecs.Bulk          "
-        f"{'true' if cfg.elecs_bulk else 'false'}",
-    ] + ([f"TS.Contours.Eq.Pole    {cfg.negf_eq_pole_ev:.4f} eV"]
-         if cfg.negf_eq_pole_ev > 0 else []) + (
-        [f"TS.Contours.nEq.Eta    {cfg.negf_neq_eta_ev:.6f} eV"]
-         if cfg.negf_neq_eta_ev > 0 else []) + [
-        "",
-        "# TBtrans transmission post-processing.",
-        "# Brandbyge et al., Phys. Rev. B 65, 165401 (2002) § IV.",
-        "#",
-        "# A CONTOUR BLOCK, NOT SCALARS.  This emitted four `TS.TBT.*`",
-        "# scalars until 2026-09-15 -- named in `plan.md` § 5o, and NOT",
-        "# spelled here on purpose: two tests assert a keyword by plain",
-        "# substring over the whole deck, so naming the dead tokens in a",
-        "# COMMENT made both pass on this prose (caught 2026-09-15, hours",
-        "# after writing it).  A comment must not be able to satisfy an",
-        "# assertion.  They were SIESTA-3.x spellings that the 5.4.2 tbtrans",
-        "# this project installs cannot read: `strings` on the binary finds",
-        "# zero occurrences of their stems in any spelling or prefix.",
-        "# fdf ignores a label nobody queries, so the",
-        "# run completed and T(E) came out on tbtrans's DEFAULT energy grid",
-        "# while the form said otherwise -- a wrong answer that looks right",
-        "# (`plan.md` § 5o).",
-        "#",
-        "# The modern mechanism is `TBT.Contours` naming one or more blocks.",
-        "# `part line` is not a choice: tbtrans refuses anything else with",
-        "# \"Unrecognized contour type for tbtrans, MUST be a line part\" --",
-        "# its own string, which is where this grammar was read from.",
-        "%block TBT.Contours",
-        "  window",
-        "%endblock TBT.Contours",
-        "",
-        "%block TBT.Contour.window",
-        "  part line",
-        f"   from {cfg.transmission_emin_ev:.5f} eV "
-        f"to {cfg.transmission_emax_ev:.5f} eV",
-        f"    points {cfg.transmission_n_points}",
-        "     method mid-rule",
-        "%endblock TBT.Contour.window",
-        "",
-        "# THE REST OF TBTRANS'S OWN SURFACE (`engines/transport.md` 3.3).",
-        "#",
-        "# `TBT.k` IS THE ONE THAT MATTERS.  tbtrans inherits the SCF's",
-        "# kgrid_Monkhorst_Pack, and a grid converged for a total energy is",
-        "# routinely far too coarse for transmission -- T(E) is an integral",
-        "# over the transverse Brillouin zone.  0 0 0 in the form means",
-        "# inherit, which is the old behaviour, so nothing is written.",
-        "#",
-        "# Every output below defaults to false in tbtrans, so a run wrote",
-        "# transmission and NOTHING else until 2026-09-15 -- which is why",
-        "# the Results transmission inspector had no DOS or eigenchannel",
-        "# data to read even in principle.",
-        # ALWAYS WRITTEN.  This was emitted only `if any(cfg.tbt_k_grid)`,
-        # so an all-zero triple meant "inherit" and a PARTIAL zero -- which
-        # the range allowed -- went into the deck verbatim, asking tbtrans
-        # for zero k-points along an axis.  The grid is a fact the deck
-        # records, like every other number here.
-        f"TBT.k                  "
-        f"{cfg.tbt_k_grid[0]} {cfg.tbt_k_grid[1]} {cfg.tbt_k_grid[2]}",
-    ] + (
-        [f"TBT.Spin               {cfg.tbt_spin}"]
-        if cfg.tbt_spin else []) + [
-        f"TBT.Elecs.Eta          {cfg.tbt_elecs_eta_ev:.6f} eV",
-    ] + ([f"TBT.Contours.Eta       {cfg.tbt_contours_eta_ev:.6f} eV"]
-         if cfg.tbt_contours_eta_ev > 0 else []) + [
-        f"TBT.DOS.Gf             "
-        f"{'true' if cfg.tbt_dos_gf else 'false'}",
-        f"TBT.DOS.A              "
-        f"{'true' if cfg.tbt_dos_a else 'false'}",
-        f"TBT.DOS.Elecs          "
-        f"{'true' if cfg.tbt_dos_elecs else 'false'}",
-        f"TBT.T.Eig              {cfg.tbt_t_eig}",
-        f"TBT.T.Bulk             "
-        f"{'true' if cfg.tbt_t_bulk else 'false'}",
-        f"TBT.T.All              "
-        f"{'true' if cfg.tbt_t_all else 'false'}",
-        f"TBT.Verbosity          {_TBT_VERBOSITY.get(cfg.log_level, 5)}",
-        "# WHERE the device Hamiltonian is: SIESTA 5.x TranSIESTA writes",
-        "# the converged H as <SystemLabel>.TS.HSX (the sparse container",
-        "# that replaced the 4.x device .TSHS), and tbtrans 5.x looks for",
-        "# <SystemLabel>.HSX unless told -- measured live 2026-08-29 on",
-        "# 5.4.2: without this line it stops with 'Could not read",
-        "# CT.HSX'.  Inert for the SCF run itself (TBT.* keys are",
-        "# tbtrans's own).",
-        f"TBT.HS                 {cfg.job_name}.TS.HSX",
-        "",
-    ])
     return lines
 
 
@@ -836,10 +692,13 @@ def _emit_transiesta_block(struct: Structure,
 # The class ended as one classmethod, `preflight`, reached only through
 # `_ENGINE_VALIDATORS[TransportConfig]` in `validation/__init__.py`.  **Nothing
 # validates a `TransportConfig`.**  Every rung resolves a `SiestaConfig`
-# (`engines/transport.md` 2a.14), and the two sites that still BUILD a
-# `TransportConfig` -- `deck.py::_legacy_view` and `stages.py::config_for` --
-# build it as a projection to feed the lifted NEGF block emitter and never
-# validate it.  So the registration dispatched for nothing.
+# (`engines/transport.md` 2a.14), and the two sites that built a
+# `TransportConfig` then -- `deck.py::_legacy_view` and
+# `stages.py::config_for` -- built it as a projection to feed the lifted
+# NEGF block emitter and never validated it.  So the registration
+# dispatched for nothing.  (`_legacy_view` went on 2026-09-29, when the
+# block's values moved to the catalogue; `config_for` has no production
+# caller.)
 #
 # It was kept after that became true because one surface still built a
 # `TransportConfig` and validated it: `POST /api/transport/render`.  That route
@@ -869,10 +728,11 @@ def _emit_transiesta_block(struct: Structure,
 # reuses.  MEASURED 2026-09-18, because this list used to assert callers that
 # do not exist:
 #
-#   `_emit_geometry` ............. `deck.py` (all three deck shapes, so every
+#   `_emit_geometry` ............. `deck.py` (all four deck shapes, so every
 #                                  one of the five rungs)
-#   `_emit_transiesta_block` ..... `deck.py`, the `negf` shape -- the device
-#                                  and transmission rungs
+#   `emit_electrode_declarations`  `deck.py`, the device and transmission
+#                                  shapes (`_emit_transiesta_block` until
+#                                  2026-09-29, when its values left it)
 #   `electrode_hs_stem` .......... `stages.py` x2 and `jobset/prep.py` -- NOT
 #                                  `deck.py`/`wizard.py`, which the old list
 #                                  claimed

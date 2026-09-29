@@ -7,18 +7,21 @@ here:
   * :mod:`.compose`   — resolve the citation, extract + gate the
     electrodes, the travelling compose record.
   * :mod:`.stages`    — TRANSPORT_STAGES, the per-stage input DAG, and
-    ``route_overrides`` (which rung owns each override).
+    ``foreign_overrides`` (the override a rung's ``stages`` declaration does
+    not own).
   * :mod:`.deck`      — ``transport_spec``: the ``DeckSpec`` every one of
     the five rungs renders through, and ``SHAPE_OF_RUNG``, the table
-    saying which of the three deck shapes each rung gets.
+    saying which of the four deck shapes each rung gets.
   * :mod:`.citation_defaults` — what the cited run contributes to the
     template, once, at ``jobset init``.
   * :mod:`.record`    — ``summarize run``'s ``<label>.transport.json``
     (``molbuilder/transport-result@1``).
   * :mod:`.transiesta` — the TranSIESTA **emission library**: the
-    geometry table every rung writes and the NEGF electrode block the
-    device and transmission rungs write, reused unchanged by
-    :mod:`.deck`; :mod:`.wizard` — the bulk-electrode derivation;
+    geometry table every rung writes and the electrode and reservoir
+    declarations the device and transmission rungs write, reused by
+    :mod:`.deck` (their VALUES are catalogue items since 2026-09-29,
+    `engines/transport.md` § 6.1b); :mod:`.wizard` — the bulk-electrode
+    derivation;
     :mod:`.sort` — the categorical atom sort.
 
 **THERE IS NO ENGINE REGISTRY, and this paragraph used to say there was.**

@@ -1531,8 +1531,8 @@ class TestTheGather:
 class TestTheLaunchSide:
 
     def test_the_transmission_wrapper_launches_tbtrans(self, calc):
-        """The same deck text, a different program: the binary rides
-        Resources.program into the wrapper (P5)."""
+        """The transmission's own deck, a different program: the binary
+        rides Resources.program into the wrapper (P5)."""
         prep_calculation(calc, "transmission")
         prep_calculation(calc, "seed")
         trans = (calc / "05_transmission" / "T_05_transmission.run.sh"
@@ -2290,3 +2290,238 @@ def test_a_cited_decks_spin_is_read_in_any_word_siesta_accepts(
         (_describe_transport(root) / "T.template.toml").read_text())
     assert one(tmpl, "spin_treatment").value == "unrestricted"
     assert one(tmpl, "unpaired_electrons").value == "free"
+
+
+class TestEachDeckCarriesWhatItsProgramReads:
+    """`engines/transport.md` § 6.1b, through `molbuilder jobset prep`:
+    two programs read the NEGF rungs' decks, and each deck carries what its
+    own program reads, every value with its note.
+
+    Read in the engine's source (SIESTA 5.4.2): `siesta` holds no `TBT.*`
+    label, so the device deck carries none; `tbtrans` reads the `TS.*`
+    junction description and takes `TS.Voltage` and `TS.Elecs.Bulk` as the
+    defaults of its own settings, so the transmission deck carries them; and
+    `tbtrans` reads `TBT.k` only as a bracketed list or a block, so the bare
+    triple the deck wrote until 2026-09-29 was skipped for the SCF's grid.
+    """
+
+    def _cli(self, args, root, monkeypatch):
+        from click.testing import CliRunner
+        from molbuilder.jobset._cli import jobset_group
+        from molbuilder.projects import PROJECTS_ROOT_ENV
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
+        return CliRunner().invoke(jobset_group, args)
+
+    def _ladder(self, tmp_path, monkeypatch, *, edit=None):
+        """A single-bias ladder prepped rung by rung through the CLI, each
+        upstream rung concluded as a finished run leaves it; the device and
+        transmission decks."""
+        root = tmp_path / "projects"
+        _write_junction(root, _junction_struct())
+        calc = _describe_transport(root, bias=(0.0,))
+        if edit is not None:
+            edit(calc)
+        products = {"seed": ["T.DM"],
+                    "electrode_L": ["T_L-electrode.TSHS"],
+                    "electrode_R": ["T_R-electrode.TSHS"],
+                    "device": ["T.TS.HSX"]}
+        for stage in _STAGES:
+            r = self._cli(["prep", "run", stage, "--bundle", "J/transport/T"],
+                          root, monkeypatch)
+            assert r.exit_code == 0, (stage, r.output)
+            if stage in products:
+                _conclude(calc, stage, products[stage])
+        return ((calc / "04_device" / "T_04_device.fdf").read_text(),
+                (calc / "05_transmission" / "T_05_transmission.fdf").read_text())
+
+    @staticmethod
+    def _settings(deck):
+        """The deck's non-comment lines -- what a program reads."""
+        return [ln.strip() for ln in deck.splitlines()
+                if ln.strip() and not ln.lstrip().startswith("#")]
+
+    def test_each_deck_carries_what_its_own_program_reads(self, tmp_path,
+                                                         monkeypatch):
+        device, transmission = self._ladder(tmp_path, monkeypatch)
+        dev = self._settings(device)
+        assert not [ln for ln in dev if ln.upper().startswith(("TBT.",
+                                                            "%BLOCK TBT"))], (
+            "siesta reads no TBT.* keyword, so the device deck carries none")
+        assert "SolutionMethod         transiesta" in dev
+        assert any(ln.startswith("TS.Elecs.Bulk") for ln in dev)
+
+        tr = self._settings(transmission)
+        # the junction as tbtrans reads it, and the bias it reads it at
+        for needed in ("%block TS.Elecs", "%block TS.ChemPots",
+                       "TBT.HS                 T.TS.HSX"):
+            assert needed in tr, needed
+        assert any(ln.startswith("TS.Voltage") for ln in tr)
+        assert any(ln.startswith("TS.Elecs.Bulk") for ln in tr)
+        assert not any(ln.startswith("SolutionMethod") for ln in tr), (
+            "tbtrans runs no SCF")
+        # TBT.k is the bracketed list tbtrans reads -- the cited run's
+        # transverse grid, which `jobset init` put in the template
+        from molbuilder.template import read_template, find_template
+        k = next(i.value for i in read_template(
+            find_template(tmp_path / "projects" / "J" / "transport" / "T")
+            .read_text()).items if i.name == "tbt_k_grid")
+        want = "[" + " ".join(str(v) for v in k) + "]"
+        assert f"TBT.k                  {want}" in tr, (want, [
+            ln for ln in tr if ln.startswith("TBT.k")])
+        assert "TBT.Verbosity          5" in tr
+        # every TBT.* value is written with its note above it: the note is
+        # headed by the keyword it explains
+        lines = transmission.splitlines()
+        for i, ln in enumerate(lines):
+            if ln.startswith("TBT.") and not ln.startswith("TBT.HS"):
+                key = ln.split()[0]
+                above = "\n".join(lines[max(0, i - 25):i])
+                assert f"# {key}" in above, f"{key} has no note above it"
+
+    def test_the_leads_bulk_treatment_is_one_value_for_both_decks(
+            self, tmp_path, monkeypatch):
+        """`electrodes_bulk` is shared: set on the template it reaches both
+        NEGF decks, and a single rung may not carry its own -- the device and
+        the transmission would describe two different junctions.
+
+        The road is `jobset prep`; the rung's own value is injected into
+        `task.json` with `write_task`, the way a hand edit would put it there,
+        because no door writes a shared item into a rung's bag."""
+        from molbuilder.template import _emit, find_template, read_template
+        import dataclasses
+
+        def bulk_off(calc):
+            tmpl = find_template(calc)
+            items = [dataclasses.replace(i, value=False)
+                     if i.name == "electrodes_bulk" else i
+                     for i in read_template(tmpl.read_text()).items]
+            tmpl.write_text(_emit(items, engines=("siesta",)))
+
+        device, transmission = self._ladder(tmp_path, monkeypatch,
+                                            edit=bulk_off)
+        for deck in (device, transmission):
+            assert "TS.Elecs.Bulk          .false." in self._settings(deck)
+
+        # ...and one rung's own value is refused rather than taken
+        from molbuilder.task import read_task, write_task
+        calc = tmp_path / "projects" / "J" / "transport" / "T"
+        task = read_task(calc / "task.json")
+        write_task(calc / "task.json", dataclasses.replace(
+            task, varies=("electrodes_bulk",),
+            stages=tuple(dataclasses.replace(
+                s, overrides={"electrodes_bulk": True})
+                if s.name == "device" else s for s in task.stages)))
+        r = self._cli(["prep", "run", "device", "--bundle", "J/transport/T"],
+                      tmp_path / "projects", monkeypatch)
+        assert r.exit_code != 0 and "electrodes_bulk" in r.output, r.output
+
+    def test_a_template_naming_the_old_spelling_is_told_the_new_one(
+            self, tmp_path, monkeypatch):
+        """`elecs_bulk` became `electrodes_bulk` on 2026-09-29.  A template
+        written before is refused -- never read as the new name -- and the
+        refusal says what to rename the line to.  (The old template is made
+        by renaming the row in a new one: no door writes the old name.)"""
+        root = tmp_path / "projects"
+        _write_junction(root, _junction_struct())
+        calc = _describe_transport(root, bias=(0.0,))
+        from molbuilder.template import find_template
+        tmpl = find_template(calc)
+        tmpl.write_text(tmpl.read_text().replace("[item.electrodes_bulk]",
+                                                 "[item.elecs_bulk]"))
+        r = self._cli(["prep", "run", "seed", "--bundle", "J/transport/T"],
+                      root, monkeypatch)
+        assert r.exit_code != 0, r.output
+        assert "'elecs_bulk' is now 'electrodes_bulk'" in r.output, r.output
+
+    def test_a_zero_that_means_the_programs_own_rule_writes_nothing(
+            self, tmp_path, monkeypatch):
+        """Three defaults are FORMULAS, and a 0 written in their place replaces
+        the formula: an explicit `TS.Contours.Eq.Pole 0` sends TranSIESTA to a
+        pole count of 8 and a refused run (`m_ts_chem_pot.F90`), an explicit
+        0 broadening overrides min(eta)/10.  So at 0 nothing is written.
+        `TBT.Spin`'s default IS a number -- 0, every channel (`m_tbt_hs.F90`)
+        -- so it is written."""
+        device, transmission = self._ladder(tmp_path, monkeypatch)
+        dev, tr = self._settings(device), self._settings(transmission)
+        for key in ("TS.Contours.Eq.Pole", "TS.Contours.nEq.Eta"):
+            assert not any(ln.startswith(key) for ln in dev), key
+        assert not any(ln.startswith("TBT.Contours.Eta") for ln in tr)
+        assert "TBT.Spin               0" in tr
+
+    def test_each_bias_points_transmission_reads_that_points_voltage(
+            self, tmp_path, monkeypatch):
+        """tbtrans takes `TS.Voltage` as the default of its own voltage, and
+        a transmission point must read its own point's converged device: its
+        deck carries that point's voltage.  (tbtrans only WARNS when the
+        voltage disagrees with the Hamiltonian it reads, `m_tbt_contour.F90`.)"""
+        root = tmp_path / "projects"
+        _write_junction(root, _junction_struct())
+        calc = _describe_transport(root, bias=(0.0, 0.2))
+        for stage, files in (("seed", ["T.DM"]),
+                             ("electrode_L", ["T_L-electrode.TSHS"]),
+                             ("electrode_R", ["T_R-electrode.TSHS"])):
+            r = self._cli(["prep", "run", stage, "--bundle", "J/transport/T"],
+                          root, monkeypatch)
+            assert r.exit_code == 0, (stage, r.output)
+            _conclude(calc, stage, files)
+        r = self._cli(["prep", "run", "device", "--bundle", "J/transport/T"],
+                      root, monkeypatch)
+        assert r.exit_code == 0, r.output
+        for point in ("v0", "v0.2"):
+            _conclude(calc, "device", ["T.TS.HSX"], point=point)
+        r = self._cli(["prep", "run", "transmission", "--bundle",
+                       "J/transport/T"], root, monkeypatch)
+        assert r.exit_code == 0, r.output
+        for point, volts in (("v0", "0.0000"), ("v0.2", "0.2000")):
+            dev = (calc / "04_device" / point / "T_04_device.fdf").read_text()
+            tr = (calc / "05_transmission" / point
+                  / "T_05_transmission.fdf").read_text()
+            for deck in (dev, tr):
+                assert f"TS.Voltage             {volts} eV" in (
+                    self._settings(deck)), (point, volts)
+
+    def test_a_migration_keeps_a_renamed_items_value(self, tmp_path,
+                                                      monkeypatch):
+        """`jobset migrate` rewrites a template written before the electronic
+        state; one that also names `elecs_bulk` keeps its value under
+        `electrodes_bulk` and says so -- a migration keeps what the run was,
+        and dropping the value would write the default in its place.
+        (The pre-2026-09-28 template is made by editing a new one: no door
+        writes the old spellings.)"""
+        import re as _re
+        root = tmp_path / "projects"
+        _write_junction(root, _junction_struct())
+        calc = _describe_transport(root, bias=(0.0,))
+        from molbuilder.template import find_template
+        tmpl = find_template(calc)
+        def row_span(text, name):
+            # a row runs from its header to the next item's header
+            start = text.index(f"[item.{name}]")
+            end = text.find("\n[item.", start + 1)
+            return start, (len(text) if end < 0 else end)
+
+        text = tmpl.read_text().replace("[item.electrodes_bulk]",
+                                        "[item.elecs_bulk]")
+        s, e = row_span(text, "elecs_bulk")
+        text = text[:s] + _re.sub(r"^value = .*$", "value = false",
+                                  text[s:e], count=1, flags=_re.M) + text[e:]
+        # the spin row as SIESTA's own vocabulary wrote it before 2026-09-28,
+        # declaration and all -- what `jobset migrate` exists to rewrite
+        s, e = row_span(text, "spin_treatment")
+        text = text[:s] + (
+            '[item.spin_treatment]\nkind = "engine"\ncategory = ["system"]\n'
+            'anchor = "Spin"\nengine_key = "Spin"\ntype = "enum"\n'
+            'choices = ["non-polarized", "polarized", "non-colinear", '
+            '"spin-orbit"]\nvalue = "non-polarized"\ngroup = "profile"\n'
+            'help = "old"\n') + text[e:]
+        tmpl.write_text(text)
+        assert "value = false" in text and '"non-polarized"' in text
+        r = self._cli(["migrate", "--bundle", "J/transport/T"], root,
+                      monkeypatch)
+        assert r.exit_code == 0, r.output
+        assert "elecs_bulk = False -> electrodes_bulk (renamed)" in r.output, (
+            r.output)
+        from molbuilder.template import read_template
+        got = {i.name: i.value for i in read_template(tmpl.read_text()).items}
+        assert got["electrodes_bulk"] is False, got.get("electrodes_bulk")
+

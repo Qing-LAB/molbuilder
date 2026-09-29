@@ -1774,8 +1774,10 @@ def config_from_template(text: str, config_cls):
         # the retirement is not sent looking for a misspelling.
         migrated = [k for k in unknown if k in MIGRATED_ITEMS]
         retired = [k for k in unknown if k in RETIRED_ITEMS]
+        renamed = [k for k in unknown if k in RENAMED_ITEMS]
         other = [k for k in unknown
-                 if k not in RETIRED_ITEMS and k not in MIGRATED_ITEMS]
+                 if k not in RETIRED_ITEMS and k not in MIGRATED_ITEMS
+                 and k not in RENAMED_ITEMS]
         why = []
         if migrated:
             why.append(
@@ -1788,6 +1790,13 @@ def config_from_template(text: str, config_cls):
                 "template names item(s) retired from the schema -- delete "
                 "them: " + ", ".join(f"{k!r} ({RETIRED_ITEMS[k]})"
                                      for k in retired) + ".")
+        if renamed:
+            why.append(
+                "template names item(s) under a name the schema no longer "
+                "uses -- rename the line, keeping its value: "
+                + ", ".join(f"{k!r} is now {RENAMED_ITEMS[k][0]!r} "
+                            f"({RENAMED_ITEMS[k][1]})" for k in renamed)
+                + ".")
         if other:
             why.append(
                 f"template names item(s) the {config_cls.__name__} schema "
@@ -1838,6 +1847,18 @@ RETIRED_ITEMS = {
                 "engines/vibration.md § 4.8",
     "es_threshold": "the threshold selector, retired 2026-09-28 -- "
                     "engines/vibration.md § 4.8",
+}
+
+
+#: Items renamed, each with its new name and where the rename is recorded --
+#: read by the refusal above, so a template written before the rename is told
+#: the new spelling rather than to check it.  The old name is REFUSED, never
+#: read as the new one: a template is a file people edit, and a quiet alias
+#: would leave two spellings of one parameter alive.
+RENAMED_ITEMS = {
+    "elecs_bulk": ("electrodes_bulk",
+                   "renamed 2026-09-29, and shared by the device and the "
+                   "transmission -- engines/transport.md 6.1b"),
 }
 
 

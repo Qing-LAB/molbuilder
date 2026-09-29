@@ -719,12 +719,20 @@ def effective_config(template, overrides: Mapping[str, Any], *,
 
     unknown = sorted(k for k in overrides if k not in known)
     if unknown:
+        # A RENAMED name is told its new spelling -- the table the template
+        # reader refuses by (`template.RENAMED_ITEMS`), so a description and
+        # a template written before a rename get the same answer.
+        from .template import RENAMED_ITEMS
+        renamed = [f"{k!r} is now {RENAMED_ITEMS[k][0]!r} "
+                   f"({RENAMED_ITEMS[k][1]})" for k in unknown
+                   if k in RENAMED_ITEMS]
         raise ValueError(
             f"{where + ': ' if where else ''}override(s) "
             f"{', '.join(repr(k) for k in unknown)} name no field of "
             f"{type(template).__name__}. A stage may override any field of "
             f"the shared schema, but only a field of it "
             f"(engines/stages.md 1.2, 6.6)."
+            + (f"  Renamed: {'; '.join(renamed)}." if renamed else "")
         )
 
     # An override that arrived from JSON carries JSON's types, and JSON has

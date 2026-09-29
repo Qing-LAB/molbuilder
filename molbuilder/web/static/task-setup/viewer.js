@@ -237,7 +237,7 @@ function renderStages(task) {
         // the server's answer for THIS folder's kind (`task-setup.md` § 9):
         // a kind whose rungs own none of a tier's fields -- transport --
         // gets an empty list, and a row draws no menu rather than one that
-        // would add columns `prep` refuses (W31, 2026-09-24).
+        // would add columns `prep` refuses (plan W31, 2026-09-24; archived 2026-09-29).
         let preset = null;
         if ((_presets || []).length) {
             preset = el("select", { class: "ts-preset",
@@ -1791,7 +1791,7 @@ async function loadPresets(engine) {
     /* Keyed by (ENGINE, KIND), like `_cols` (R2-1): a stale cache here
      * APPLIED SIESTA tier values into a PySCF description opened second --
      * and, keyed by engine alone, offered an optimization's tiers on every
-     * transport rung of the folder opened next (W31). */
+     * transport rung of the folder opened next (plan W31, archived 2026-09-29). */
     const kind = (_task && _task.calculation)
         || (_handover && _handover.calculation) || "optimization";
     const key = (engine || "siesta") + ":" + kind;

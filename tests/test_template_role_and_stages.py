@@ -118,7 +118,13 @@ class TestStages:
         assert owned["electrode_L"] == owned["electrode_R"] == {
             "electrode_kz", "ts_hs_save"}
         assert owned["device"] == {"negf_eq_pole_ev", "negf_neq_eta_ev",
-                                   "elecs_bulk", "bias_voltage_v"}
+                                   "bias_voltage_v"}
+        # THE LEADS' BULK TREATMENT IS NO RUNG'S ALONE (2026-09-29): tbtrans
+        # takes it as the default of its own, so it is one shared value the
+        # device and the transmission both write (`transport.md` § 6.1b).
+        assert "electrodes_bulk" not in set().union(*owned.values())
+        assert "transport" in T.one(cat, "electrodes_bulk",
+                                    engine="siesta").shared
         assert owned["seed"] == set(), (
             "the seed owns nothing of its own -- it only obeys")
         assert "transmission_emin_ev" in owned["transmission"]

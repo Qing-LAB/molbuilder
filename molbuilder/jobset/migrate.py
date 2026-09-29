@@ -161,6 +161,17 @@ def migrate_state(base) -> List[str]:
     mine = (_T.select(parsed, engine=engine) if parsed.engines
             else parsed.items)
     vals = {it.name: it.value for it in mine if it.is_set}
+    # A RENAMED ITEM KEEPS ITS VALUE, under its new name and said as such --
+    # the table the template reader refuses the old name by
+    # (`template.RENAMED_ITEMS`).  Filtering on today's schema alone dropped
+    # it and wrote the default in its place, which is the opposite of this
+    # module's promise: what the run was is kept.
+    renamed: List[str] = []
+    for old_name, (new_name, _why) in _T.RENAMED_ITEMS.items():
+        if old_name in vals and new_name not in vals:
+            vals[new_name] = vals.pop(old_name)
+            renamed.append(f"{old_name} = {vals[new_name]!r} -> {new_name} "
+                           f"(renamed)")
     old_items = set(_OLD_NAMES) & set(vals)
     old_values = {k for k in ("method", "spin_treatment")
                   if k in vals and vals[k] in (_PYSCF_CLASS if k == "method"
@@ -185,6 +196,7 @@ def migrate_state(base) -> List[str]:
             f"again.")
 
     state, said = _map_state(engine, vals)
+    said = renamed + said
     config_cls = PySCFConfig if engine == "pyscf" else SiestaConfig
     known = _T.template_fields(config_cls)
     kept = {k: v for k, v in vals.items()

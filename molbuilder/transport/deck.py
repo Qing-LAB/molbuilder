@@ -37,8 +37,10 @@ The boundary is drawn by a single question, and it is the question
   :mod:`molbuilder.siesta.layout`'s sections already name them, and transport
   is a calculation KIND on the siesta engine (39 shared rows, measured in
   § 3.3) so it reuses those sections rather than restating them.
-* **structural text is a BLOCK** — the coordinate table, ``%block TS.Elecs``,
-  the contour blocks.  Those are lifted whole.
+* **structural text is a BLOCK** — the coordinate table, ``%block TS.Elecs``
+  and the reservoir blocks.  Those are lifted whole; a block whose VALUES are
+  catalogue items (the T(E) window) asks each value through the framework's
+  door and writes it with its note.
 
 ``_emit_basis_and_xc`` is therefore NOT lifted: its six keywords are exactly
 ``BASIS_SECTION`` + ``XC_SECTION`` + ``electronic_temperature``, and lifting
@@ -46,20 +48,17 @@ it beside them would write each twice — which ``layout.check_rules`` now
 catches ("written twice with different values"), because a migrated deck gets
 the engine's check gate for the first time.
 
-THE ADAPTER, and why it is here rather than in the emitters.  The lifted
-emitters read four names the shared config spells differently —
-``siesta_mesh_cutoff_ry``, ``energy_shift_ry``, ``electronic_temperature_k``,
-``k_mesh_transverse`` against the catalogue's ``mesh_cutoff``,
-``pao_energy_shift``, ``electronic_temperature``, ``kgrid``.  That is the same
-count and the same shape as vibration's four, and vibration's module records
-why the adapter is the seam's right answer: *"the kind's science and the
-emitters both read one view, so a check and the deck it checks cannot
-disagree about a value"*.  Renaming inside the old emitters instead would be
-repatching the old path.
+NO ADAPTER ANY MORE.  The lifted NEGF emitter read a ``TransportConfig``,
+so this module projected the engine's config into one (``_legacy_view``) --
+the last place the two vocabularies met.  Since 2026-09-29 its VALUES are
+catalogue items written by the section walk with their notes (the three
+sections below), and what is left of it -- the electrode and reservoir
+declarations -- reads the engine's own config
+(`engines/transport.md` § 6.1b).
 
-**ALL FIVE RUNGS ARE ON THE SEAM.**  Three deck shapes serve them
+**ALL FIVE RUNGS ARE ON THE SEAM.**  Four deck shapes serve them
 (:data:`SHAPE_OF_RUNG`), and each is a layout in this module.  The seam
-question that held ``electrode`` and ``negf`` back — *what does a composite
+question that held ``electrode`` and the NEGF rungs back — *what does a composite
 kind hand its renderer, when the deck describes something the citation was
 composed into?* — is answered, and the answer is that it hands a
 **structure**, like every other kind: `prep` picks WHICH structure the rung
@@ -68,7 +67,7 @@ describes (the junction, or the lead taken out of it by its region label) and
 ``ComposedJunction`` from inside here.
 
 Which shape a rung gets is a TABLE.  Choosing the LAYOUT for a shape is a
-dispatch in :func:`transport_spec` over that table's three values.  A rung the
+dispatch in :func:`transport_spec` over that table's four values.  A rung the
 table does not name is refused BY NAME rather than rendered partially; `prep`
 translates that refusal, so it reaches a person as a message and not a
 traceback.
@@ -76,29 +75,29 @@ traceback.
 """
 from __future__ import annotations
 
-import dataclasses as _dc
 from typing import Optional
 
 from .. import script_emit as _sc
 from ..siesta import layout as _sl
 from ..structure import Structure
 
-#: Which deck SHAPE each rung renders — a table, because THREE texts serve
+#: Which deck SHAPE each rung renders — a table, because FOUR texts serve
 #: FIVE rungs (`engines/transport.md` § 6.1) and which text a rung gets is a
 #: fact about the ladder, not a decision to re-derive per call.
 #:
-#: The device and the transmission share one SHAPE deliberately -- not the
-#: same bytes, which is a retired claim (`_negf_layout`): each rung resolves
-#: its own config, so a tuned transmission parameter makes the two decks
-#: differ in exactly that value.  What the shared shape buys is that they
-#: cannot drift apart about what the junction IS -- same geometry, same
-#: electrode declarations, same electronic description.
+#: The device and the transmission are two texts because two PROGRAMS read
+#: them (§ 6.1b): `siesta` reads no `TBT.*` keyword, so the device deck
+#: carries none, and `tbtrans` reads the `TS.*` junction description, so the
+#: transmission deck carries it beside its own settings.  What keeps them
+#: from drifting apart about what the junction IS is shared text, not shared
+#: bytes: one geometry block, one electrode-declaration block
+#: (`transiesta.emit_electrode_declarations`), one electronic description.
 SHAPE_OF_RUNG = {
     "seed":         "seed",
     "electrode_L":  "electrode",
     "electrode_R":  "electrode",
-    "device":       "negf",
-    "transmission": "negf",
+    "device":       "device",
+    "transmission": "transmission",
 }
 
 
@@ -119,26 +118,58 @@ def rung_of(stage_token: Optional[str]) -> str:
 #  The layouts, as tables.                                              #
 # ===================================================================== #
 
-def _negf_layout(derived, frame, state_block):
-    """The device and transmission rungs — an open-boundary NEGF deck.
+#: TranSIESTA's own settings for the device's self-consistent run -- read by
+#: `siesta` in NEGF mode.  The voltage is not here: it is a `role` item, the
+#: bias point this rung is for, so the rung's own block writes it
+#: (`_emit_device_run`).
+TS_DEVICE_SECTION = _sc.Section(
+    "TranSIESTA -- how the device's open-boundary run is solved",
+    ("electrodes_bulk", "negf_eq_pole_ev", "negf_neq_eta_ev"),
+    note=(
+        "# Read by siesta in its NEGF mode (TranSIESTA) -- this rung.  An item",
+        "# absent below was left at 0, which leaves it to TranSIESTA: its own",
+        "# default there is a rule, not a number (engines/transport.md 6.1b).",
+    ))
 
-    One layout serves both, and **that is not the old "same bytes" claim
-    returning.**  Each rung resolves its OWN config, so where a person has
-    tuned a transmission parameter the two decks differ in exactly that value
-    — which is what § 2a.7's ruling asks for.  What they share is the shape:
-    the same junction, the same electrode declarations, the same electronic
-    description, so the two runs cannot drift apart about what the junction
-    IS.
+#: What tbtrans reads of TranSIESTA's settings: `TBT.Elecs.Bulk` defaults to
+#: `TS.Elecs.Bulk` (SIESTA 5.4.2, `m_tbt_options.F90`), so the one shared
+#: value is written here too.  The contour settings are not: they say how the
+#: device's density is integrated, and tbtrans integrates none.
+TS_READ_BY_TBTRANS_SECTION = _sc.Section(
+    "TranSIESTA settings tbtrans reads",
+    ("electrodes_bulk",),
+    note=(
+        "# tbtrans takes this as the default of its own TBT.Elecs.Bulk, so",
+        "# the transmission treats the leads as the device run did.",
+    ))
 
-    The electrode declarations stay a ``Block``.  ``%block TS.Elecs`` and the
-    per-electrode blocks are derived from the structure's own ``regions`` —
-    which atoms are a lead, and therefore which contiguous range TranSIESTA
-    is told about — and no parameter models that.  It is lifted whole from
-    the emitter that has been getting it right, rather than rewritten: this
-    is the part where a mistake is silent and expensive.
+#: TBtrans's own settings -- read by `tbtrans` alone; `siesta` holds no
+#: `TBT.*` keyword, which is why the device deck carries none.
+TBT_SECTION = _sc.Section(
+    "TBtrans -- how T(E) is computed from the device's Hamiltonian",
+    ("tbt_k_grid", "tbt_elecs_eta_ev", "tbt_contours_eta_ev", "tbt_spin",
+     "tbt_dos_gf", "tbt_dos_a", "tbt_dos_elecs", "tbt_t_eig", "tbt_t_bulk",
+     "tbt_t_all", "tbt_verbosity"),
+    note=(
+        "# Read by tbtrans, which runs no SCF: it takes the converged",
+        "# Hamiltonian the device rung wrote (TBT.HS above) and the leads'",
+        "# .TSHS, and evaluates T(E) on the window above.  An item absent",
+        "# below was left at 0, which leaves it to tbtrans's own rule.",
+    ))
+
+
+def _device_layout(derived, frame, state_block):
+    """The device rung -- TranSIESTA's open-boundary NEGF run, at one bias.
+
+    Read by `siesta` alone, so it carries TranSIESTA's settings and no
+    `TBT.*` line (`engines/transport.md` § 6.1b: the binary holds no `TBT.`
+    label).  The electrode declarations stay a ``Block``: they are derived
+    from the structure's own ``regions`` -- which atoms are a lead, and
+    therefore which contiguous range TranSIESTA is told about -- and no
+    parameter models that.
     """
     return (
-        _sc.Block("identity and what this rung computes", _emit_negf_header),
+        _sc.Block("identity and what this rung computes", _emit_device_header),
         _sc.Block("cell, coordinates and region metadata",
                   _geometry_block(frame)),
         _sl.BASIS_SECTION,
@@ -148,35 +179,76 @@ def _negf_layout(derived, frame, state_block):
         _sl.SCF_SECTION,
         _sl.FREE_ENERGY_SECTION,
         _sl.SCF_TAIL_SECTION,
-        # NO RESTART BLOCK HERE.  The NEGF block below writes
-        # `DM.UseSaveDM` itself -- it is how the seed's density is picked
-        # up -- and writing it twice is what the check gate refuses.  The
-        # lift boundary is drawn at the keyword, not at the topic.
+        # NO RESTART BLOCK HERE.  `_emit_device_run` writes `DM.UseSaveDM`
+        # -- it is how the seed's density is picked up -- and writing it
+        # twice is what the check gate refuses.  The boundary is drawn at
+        # the keyword, not at the topic.
         _sl.spin_section(fixed=derived["spin_fixed"]),
         state_block,
         _sl.mpi_section(block_size=derived.get("block_size"),
                         algorithm=derived.get("algorithm")),
-        _sc.Block("the NEGF electrode declarations", _emit_negf_block),
+        _sc.Block("what this rung runs, and at which bias",
+                  _device_run_block(derived)),
+        _sc.Block("the junction: its electrodes and reservoirs",
+                  _emit_electrode_block),
+        TS_DEVICE_SECTION,
         _sl.OUTPUT_SECTION,
     )
 
 
+def _transmission_layout(derived, frame, state_block):
+    """The transmission rung -- `tbtrans` on the device's converged
+    Hamiltonian.
+
+    Read by `tbtrans`, which reads the junction description (the electrode
+    and reservoir blocks, the voltage, the bulk treatment) as TranSIESTA
+    wrote it and its own `TBT.*` settings.  **It keeps the SIESTA settings
+    the rungs share**: `tbtrans` reads at least one of them -- its
+    temperature starts from `ElectronicTemperature` (`m_tbt_options.F90`) --
+    and which others it reads is an audit of its source not yet made, so
+    none is dropped until that says it may be (§ 6.1b).
+    """
+    return (
+        _sc.Block("identity and what this rung computes",
+                  _emit_transmission_header),
+        _sc.Block("cell, coordinates and region metadata",
+                  _geometry_block(frame)),
+        _sl.BASIS_SECTION,
+        _sl.XC_SECTION,
+        _sc.Block("the transverse k-mesh (the transport axis is not sampled)",
+                  _emit_kgrid_block),
+        _sl.SCF_SECTION,
+        _sl.FREE_ENERGY_SECTION,
+        _sl.SCF_TAIL_SECTION,
+        _sl.spin_section(fixed=derived["spin_fixed"]),
+        state_block,
+        _sl.mpi_section(block_size=derived.get("block_size"),
+                        algorithm=derived.get("algorithm")),
+        _sc.Block("what this rung reads, and at which bias",
+                  _transmission_run_block(derived)),
+        _sc.Block("the junction: its electrodes and reservoirs",
+                  _emit_electrode_block),
+        TS_READ_BY_TBTRANS_SECTION,
+        _sc.Block("the energy window T(E) is computed on", _emit_tbt_window),
+        TBT_SECTION,
+        _sl.OUTPUT_SECTION,
+    )
 
 
-def _emit_negf_header(struct, cfg) -> str:
+def _emit_device_header(struct, cfg) -> str:
     label = cfg.system_label
     return "\n".join([
         "# ================================================================== #",
         f"#  TranSIESTA DEVICE .fdf — {label}",
-        "#  The open-boundary NEGF calculation on the composed junction.",
-        "#  The leads are not solved here: each one's Hamiltonian was",
-        "#  computed by its own rung and is read from the .TSHS named in",
-        "#  the TS.Elec block below, which is what makes this an OPEN",
+        "#  The open-boundary NEGF calculation on the composed junction, at",
+        "#  one bias.  The leads are not solved here: each one's Hamiltonian",
+        "#  was computed by its own rung and is read from the .TSHS named in",
+        "#  the TS.Elec blocks below, which is what makes this an OPEN",
         "#  boundary rather than a bigger periodic cell.",
         "#",
-        "#  The same text serves the transmission rung, run under tbtrans:",
-        "#  TS.* keywords are inert to tbtrans and TBT.* to siesta, so each",
-        "#  binary reads its own half.",
+        "#  Read by siesta (TranSIESTA) alone.  The transmission rung has its",
+        "#  own deck for tbtrans; siesta reads no TBT.* keyword, so none is",
+        "#  written here (engines/transport.md 6.1b).",
         "# ================================================================== #",
         "",
         f"SystemLabel            {label}",
@@ -184,63 +256,132 @@ def _emit_negf_header(struct, cfg) -> str:
     ])
 
 
-def _emit_negf_block(struct, cfg) -> str:
-    """The NEGF half, LIFTED from the emitter that has been getting it right.
+def _emit_transmission_header(struct, cfg) -> str:
+    label = cfg.system_label
+    return "\n".join([
+        "# ================================================================== #",
+        f"#  TBtrans TRANSMISSION .fdf — {label}",
+        "#  T(E) from the device rung's converged Hamiltonian, at the same",
+        "#  bias.  No self-consistent run happens here: tbtrans reads the",
+        f"#  device's {label}.TS.HSX and the leads' .TSHS and evaluates the",
+        "#  transmission on the energy window below.",
+        "#",
+        "#  Read by tbtrans.  It reads the junction as TranSIESTA wrote it --",
+        "#  the TS.Elec and TS.ChemPot blocks, TS.Voltage, TS.Elecs.Bulk --",
+        "#  and its own TBT.* settings (engines/transport.md 6.1b).  The",
+        "#  SIESTA settings are kept: tbtrans reads at least",
+        "#  ElectronicTemperature among them.",
+        "# ================================================================== #",
+        "",
+        f"SystemLabel            {label}",
+        f"SystemName             Transport transmission for {label}",
+    ])
 
-    ``%block TS.Elecs``, one ``%block TS.Elec.<name>`` per side with its
-    ``.TSHS`` filename, atom count, chemical potential, semi-infinite
-    direction and explicit position; the buffer atoms; the contour settings;
-    and the TBtrans window.
 
-    **Not rewritten, and deliberately so.** This is where a mistake is silent
-    and expensive: TranSIESTA identifies each electrode by a CONTIGUOUS ATOM
-    RANGE, so an off-by-one in a position line computes transmission through
-    a region that is not the molecule, and converges while doing it. The
-    emitter that produces it has been measured against a live 5.4.2 binary;
-    a second implementation would have to earn that again for no gain.
+def _notes(cfg, lines):
+    """A block's explanation, dropped when the deck is asked to be quiet --
+    what the section walk does with a section's note (`verbose`)."""
+    return list(lines) if getattr(cfg, "verbose_comments", True) else []
+
+
+def _voltage_lines(cfg, derived):
+    """``TS.Voltage`` with its note -- a `role` item (the bias point this rung
+    is for), so the rung writes it, through the catalogue's door and the
+    engine's one syntax door, handed THIS deck's context (W10)."""
+    p = _sc.parameter("bias_voltage_v", "siesta", config=cfg)
+    return [*_notes(cfg, p.note(*_sl.note_lead(p))), _sl.line(derived)(p)]
+
+
+def _device_run_block(derived):
+    return lambda struct, cfg: _emit_device_run(struct, cfg, derived)
+
+
+def _transmission_run_block(derived):
+    return lambda struct, cfg: _emit_transmission_run(struct, cfg, derived)
+
+
+def _emit_device_run(struct, cfg, derived) -> str:
+    """What makes this deck the device's: TranSIESTA, started from the seed's
+    density, at this rung's bias point."""
+    return "\n".join([
+        "# --- TranSIESTA, at this rung's bias point ---",
+        "#",
+        "# `SolutionMethod transiesta` switches the SCF cycle to NEGF -- the",
+        "# rung's identity, not a setting (`role`).  (`TS.SolutionMethod` is a",
+        "# different keyword -- the NEGF inversion algorithm -- and naming the",
+        "# engine there stops SIESTA 5.4.2 with 'Unrecognized TranSiesta",
+        "# solution method'; measured 2026-06-18.)",
+        "SolutionMethod         transiesta",
+        "",
+        "# Start the NEGF SCF from a saved density when one is present: the",
+        "# seed rung leaves <SystemLabel>.DM beside this deck, and SIESTA's",
+        "# default for this keyword is false, so without it the seed would sit",
+        "# unread.  With no file, SIESTA starts from atomic densities; a .TSDE",
+        "# needs no keyword -- TranSIESTA reads it by presence.",
+        "DM.UseSaveDM           true",
+        *_voltage_lines(cfg, derived),
+        "",
+    ])
+
+
+def _emit_transmission_run(struct, cfg, derived) -> str:
+    """What makes this deck the transmission's: the device Hamiltonian it
+    reads, named, and the bias point it reads it at."""
+    label = cfg.system_label
+    return "\n".join([
+        "# --- tbtrans, on the device rung's converged Hamiltonian ---",
+        "#",
+        "# No SolutionMethod: tbtrans runs no SCF.  The bias below is the",
+        "# device rung's own point -- tbtrans reads TS.Voltage as the default",
+        "# of TBT.Voltage (m_tbt_hs.F90), and it must be the voltage the",
+        "# device was converged at.",
+        *_voltage_lines(cfg, derived),
+        "",
+        "# WHERE the device Hamiltonian is.  tbtrans would pick the first of",
+        f"# {label}.TS.HSX, .TSHS and .HSX that exists (m_tbt_hs.F90); naming it",
+        "# says which one this transmission is of, rather than leaving that to",
+        "# whichever file is present.",
+        f"TBT.HS                 {label}.TS.HSX",
+        "",
+    ])
+
+
+def _emit_electrode_block(struct, cfg) -> str:
+    """The electrode and reservoir declarations -- one text for both NEGF
+    rungs (`transiesta.emit_electrode_declarations`)."""
+    from .transiesta import emit_electrode_declarations
+    return "\n".join(emit_electrode_declarations(struct, cfg))
+
+
+def _emit_tbt_window(struct, cfg) -> str:
+    """``%block TBT.Contour.window`` -- the energy grid T(E) is computed on.
+
+    A ``%block`` is structural, so it is a block; its three VALUES are three
+    catalogue rows, each asked through the framework's door so each arrives
+    with its note -- the k-grid block's precedent (`_emit_kgrid_block`).
     """
-    from .transiesta import _emit_transiesta_block
-
-    # The lifted emitter reads a TransportConfig.  It is projected here, at
-    # the boundary, exactly as `vibration_deck` projects for its own lifted
-    # emitters -- and it dies when that emitter is tabled (TR5c).
-    view = _legacy_view(cfg)
-    return "\n".join(_emit_transiesta_block(struct, view))
-
-
-def _legacy_view(cfg):
-    """A ``TransportConfig`` carrying this rung's answers.
-
-    The NEGF emitter above predates the seam and reads the older config. One
-    projection, at the one place the two vocabularies still meet, rather than
-    a rename inside a proven emitter — which is the direction the rulings
-    forbid (*"repatching the old path"*).
-
-    It is the last of its kind: TR4 deleted the general projection when the
-    template made it unnecessary, and this one goes when the NEGF block is
-    tabled.
-    """
-    from ..config.transport import TransportConfig
-
-    known = {f.name for f in _dc.fields(TransportConfig)}
-    kw = {}
-    for src, dst in (("system_label", "job_name"),
-                     ("mesh_cutoff", "siesta_mesh_cutoff_ry"),
-                     ("pao_energy_shift", "energy_shift_ry"),
-                     ("electronic_temperature", "electronic_temperature_k"),
-                     ("kgrid", "k_mesh_transverse")):
-        if hasattr(cfg, src) and dst in known:
-            kw[dst] = getattr(cfg, src)
-    for f in _dc.fields(type(cfg)):
-        if f.name in known and f.name not in kw:
-            kw[f.name] = getattr(cfg, f.name)
-    kw.pop("engine", None)
-    if "siesta_mesh_cutoff_ry" in kw and kw["siesta_mesh_cutoff_ry"] is not None:
-        kw["siesta_mesh_cutoff_ry"] = int(round(float(kw["siesta_mesh_cutoff_ry"])))
-    # THE BIAS this rung runs at.  `bias_voltage_v` is the template's single
-    # value; the emitter takes a list because it predates the axis rule.
-    kw["bias_voltages_v"] = [float(getattr(cfg, "bias_voltage_v", 0.0) or 0.0)]
-    return TransportConfig(engine="transiesta", **kw)
+    lo = _sc.parameter("transmission_emin_ev", "siesta", config=cfg)
+    hi = _sc.parameter("transmission_emax_ev", "siesta", config=cfg)
+    n = _sc.parameter("transmission_n_points", "siesta", config=cfg)
+    return "\n".join([
+        *_notes(cfg, [*lo.note(), *hi.note(), *n.note()]),
+        "",
+        "# A CONTOUR BLOCK, NOT SCALARS.  tbtrans reads its energy grid only",
+        "# as `TBT.Contours` naming one or more line contours; `part line` is",
+        "# not a choice -- tbtrans refuses anything else with \"Unrecognized",
+        "# contour type for tbtrans, MUST be a line part\".",
+        "%block TBT.Contours",
+        "  window",
+        "%endblock TBT.Contours",
+        "",
+        "%block TBT.Contour.window",
+        "  part line",
+        f"   from {float(lo.value):.5f} eV to {float(hi.value):.5f} eV",
+        f"    points {int(n.value)}",
+        "     method mid-rule",
+        "%endblock TBT.Contour.window",
+        "",
+    ])
 
 
 def _electrode_layout(derived, frame, state_block):
@@ -600,7 +741,7 @@ def transport_spec(struct: Structure, cfg, *,
 
     # NO SECOND REFUSAL HERE.  One stood between these two lines, for a shape
     # "not on the seam yet" -- and `SHAPE_OF_RUNG`'s value set is exactly the
-    # three keys below, so it could not fire.  It was the last text describing
+    # four keys below, so it could not fire.  It was the last text describing
     # a migration this module has finished.
     # THE ONE STATE of the calculation (`science/chemistry-correctness.md`
     # § 2a): `prep` resolves it ONCE, on the whole junction, and hands it to
@@ -616,7 +757,8 @@ def transport_spec(struct: Structure, cfg, *,
     frame = engine_frame_for(struct)
     layout = {"seed": _seed_layout,
               "electrode": _electrode_layout,
-              "negf": _negf_layout}[shape](
+              "device": _device_layout,
+              "transmission": _transmission_layout}[shape](
                   derived, frame, _state_block(state, on_junction=handed))
     return _sc.DeckSpec(
         engine="siesta",

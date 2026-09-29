@@ -248,15 +248,18 @@ they have no catalogue row (`TransportConfig`'s own spellings, `num_threads`,
 `log_level`); `help_for` returns `""` for those and the caller falls back.
 
 **The rest of that duplication is the debt, and it is measured rather than
-guarded.** **487 facts live in two places** (measured 2026-08-20 at 307, 618
+guarded.** **491 facts live in two places** (measured 2026-08-20 at 307, 618
 on 2026-09-15 when the transport rows landed, 485 once `help` moved out, 490 with the SIESTA vibration item, 486 once the one-choice `engine` item retired, and 489 with `already_relaxed` on SIESTA, all 2026-09-24, and 486 once
 `wrap_into_cell` retired on 2026-09-25, 482 on 2026-09-28 once PySCF's
 `es_top_n` and `es_threshold` were removed and `temperature_K` joined SIESTA,
 and 487 the same day when the electronic state's `spin_treatment` and
-`unpaired_electrons` became items both engines declare — every fall in the
-series came from deleting a home rather than from adding a check, and that
-rise is two merged items gaining a second engine, whose declarations
-`config/state.py` writes once).
+`unpaired_electrons` became items both engines declare, and 491 on
+2026-09-29 with `tbt_verbosity` -- `TBT.Verbosity`, which both NEGF decks
+wrote from outside the catalogue until then (`transport.md` § 6.1b) —
+every fall in the series came from deleting a home rather than from adding a
+check, and the rises are items gaining a home: two merged items gaining a
+second engine, whose declarations `config/state.py` writes once, and one
+keyword the catalogue had not declared).
 **The six mirrored facts are compared on every run** — `MIRRORED` plus
 `workflow_group`, by `test_every_mirrored_fact_agrees`, which goes red naming
 the item and the key and printing both values. What it does **not** do is
@@ -275,7 +278,7 @@ mutation-tested: widening `mesh_cutoff`'s range on the class alone turns it red.
 **And there is a SECOND duplication this section has never named: 20 field
 names are declared in both `SiestaConfig` and `TransportConfig`** — `basis_size`,
 `xc_functional`, `xc_authors`, `max_memory_mb`, `negf_eq_pole_ev`,
-`negf_neq_eta_ev`, `elecs_bulk`, the six `tbt_*` flags, `tbt_k_grid`,
+`negf_neq_eta_ev`, `electrodes_bulk` (`elecs_bulk` until 2026-09-29), the six `tbt_*` flags, `tbt_k_grid`,
 `tbt_spin`, `tbt_elecs_eta_ev`, `tbt_contours_eta_ev`, `tbt_t_eig`, and the
 three `transmission_*` items (measured 2026-09-17). This is class-against-class,
 not catalogue-against-class, so `MIRRORED` does not reach it and neither does
@@ -722,7 +725,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `refs` | citation keys into `docs/science/references.bib` — the paper(s) behind a scientific knob's guidance. Resolved server-side (title + DOI) and rendered in the form's help; `tests/test_catalogue_refs.py` pins that every key resolves |
 | `allocation` | **the scheduler answers this one** — ranks, threads, memory (§ 6.4). One boolean; it replaced a `resolver` NAME plus a list of which names counted, neither of which anything dispatched on |
 | `citation` | **a cited run answers this one, for these kinds** — `citation = ["transport"]` on `basis_size`, `mesh_cutoff`, `kgrid`, `pao_energy_shift`, `electronic_temperature`, `xc_functional`, `xc_authors`. It is a LIST and not a boolean because those are the **same rows** an optimization uses, where the person answers them. It replaced two hand-maintained frozensets plus a predicate spelled twice in two files (`engines/transport.md` § 3.3.3) |
-| `shared` | **binds every rung of these kinds** — `shared = ["transport"]` on the seven `citation` rows and on `species_order`, `kgrid_displacement`, `psml_lib` and `system_label` (Class A, `engines/transport.md` § 2a.3); and on the electronic state's four items for **every** kind that has them — `net_charge` and `method` for optimization and vibration, `spin_treatment` and `unpaired_electrons` for those and transport — because the state belongs to the calculation, never to a stage (`science/chemistry-correctness.md` § 2a, ES1; M6). Three readers ask it: the transport tab's shared panel shows these and nothing else, the per-rung form never offers one, and `prep` refuses a stage override naming one — for every kind, at the one resolve door (§ 3.8.2). Filtering on `citation` for this question offered the species order as a per-rung override (2026-09-23) |
+| `shared` | **binds every rung of these kinds** — `shared = ["transport"]` on the seven `citation` rows and on `species_order`, `kgrid_displacement`, `psml_lib`, `system_label` and `electrodes_bulk` (Class A, `engines/transport.md` § 2a.3; `electrodes_bulk` since 2026-09-29, one value for the two rungs that read it, § 6.1b); and on the electronic state's four items for **every** kind that has them — `net_charge` and `method` for optimization and vibration, `spin_treatment` and `unpaired_electrons` for those and transport — because the state belongs to the calculation, never to a stage (`science/chemistry-correctness.md` § 2a, ES1; M6). Three readers ask it: the transport tab's shared panel shows these and nothing else, the per-rung form never offers one, and `prep` refuses a stage override naming one — for every kind, at the one resolve door (§ 3.8.2). Filtering on `citation` for this question offered the species order as a per-rung override (2026-09-23) |
 | `label` | the **human name** — *"MPI ranks (np)"*. Not the field name; a surface shows this |
 | ~~`section`~~ | **RETIRED at `@2` — use `category` (§ 6.2).** It held a free-text fieldset name per engine (*"SCF"*, *"Compute & budget"*), so two engines expressing one idea disagreed on the label and no surface could group across them. A section-less item was still an item, and that stays true of `category`: membership is TOTAL (§ 7) |
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |

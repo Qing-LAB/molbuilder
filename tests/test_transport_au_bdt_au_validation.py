@@ -207,8 +207,11 @@ def _struct_with_sidecar():
     return struct
 
 
-def _live_device_deck(label="au_bdt_au_test"):
-    """The device deck through the LIVE path -- the same call `prep` makes.
+def _live_device_deck(label="au_bdt_au_test", rung="device"):
+    """A NEGF rung's deck through the LIVE path -- the same call `prep` makes:
+    the device's by default, the transmission's when a check is about what
+    tbtrans reads (the two are separate texts since 2026-09-29,
+    `transport.md` § 6.1b).
 
     These three checks rendered through `TransiestaEngine.render_script` until
     2026-09-17.  That was a SECOND writer of this deck and is deleted; the
@@ -219,7 +222,7 @@ def _live_device_deck(label="au_bdt_au_test"):
     from molbuilder.siesta.input import spec_for
     struct = _struct_with_sidecar()
     cfg = SiestaConfig(system_label=label)
-    spec = spec_for(struct, cfg, stage_token="device", calculation="transport")
+    spec = spec_for(struct, cfg, stage_token=rung, calculation="transport")
     return _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
 
 
@@ -333,9 +336,10 @@ def test_the_transmission_window_carries_the_configured_point_count():
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.parse.fdf import _parse_fdf
     cfg = SiestaConfig(system_label="au_bdt_au_test")
-    _scalars, blocks = _parse_fdf(_live_device_deck(cfg.system_label))
+    _scalars, blocks = _parse_fdf(_live_device_deck(cfg.system_label,
+                                                    rung="transmission"))
     window = blocks.get("tbtcontourwindow")
-    assert window, "no %block TBT.Contour.window in the device deck"
+    assert window, "no %block TBT.Contour.window in the transmission deck"
     rows = dict((r[0].lower(), r[1:]) for r in window)
     assert rows.get("points") == [str(cfg.transmission_n_points)]
     assert rows.get("part") == ["line"], (
@@ -346,7 +350,8 @@ def test_the_transmission_window_carries_the_configured_point_count():
     # `transport/stages.py`, `record.py`), so this says what the deck
     # carries, nothing about what it means.
     from _deck import fdf_energy_window
-    lo, hi = fdf_energy_window(_live_device_deck(cfg.system_label),
+    lo, hi = fdf_energy_window(_live_device_deck(cfg.system_label,
+                                                 rung="transmission"),
                                "TBT.Contour.window")
     assert lo == pytest.approx(cfg.transmission_emin_ev)
     assert hi == pytest.approx(cfg.transmission_emax_ev)

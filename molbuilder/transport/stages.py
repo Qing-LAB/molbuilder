@@ -7,7 +7,7 @@ This module owns TWO facts and the renders that follow from them:
   dependency order.  Fixed by design, not configurable — skipping is
   the per-stage ``enabled`` flag in ``task.json`` (the seed's Q4 skip),
   never a different ladder.
-* **Which rung owns an override** (:func:`route_overrides`,
+* **Which rung owns an override** (:func:`foreign_overrides`,
   :func:`stages_for_transport`): the catalogue's ``stages`` declaration,
   read.  This is what puts a person's T(E) window into the deck
   ``tbtrans`` runs rather than the one ``siesta`` runs.
@@ -15,7 +15,7 @@ This module owns TWO facts and the renders that follow from them:
 **NOTHING IN THIS MODULE RENDERS A DECK ANY MORE.**  All five rungs go
 through the framework's own pipeline — ``siesta.input.spec_for`` with
 ``calculation="transport"`` -> :mod:`molbuilder.transport.deck`, whose
-``SHAPE_OF_RUNG`` tables the three deck shapes — which is what lets the
+``SHAPE_OF_RUNG`` tables the four deck shapes — which is what lets the
 template's items reach them.  :func:`config_for` below is what is LEFT of
 the pre-seam path: it has no production caller
 (`engines/transport.md` § 6.1a), and the electronic contract is resolved

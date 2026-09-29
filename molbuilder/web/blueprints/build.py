@@ -2384,7 +2384,7 @@ def api_task_setup_presets():
     `engines/transport.md` § 2a.7: a rung carries its role's profile), so a
     transport description gets an empty menu and its rows draw none.  Until
     2026-09-24 every transport rung offered `coarse / medium / tight`
-    (plan W31).
+    (plan W31, archived 2026-09-29).
     """
     engine = str(request.args.get("engine") or "siesta").lower()
     kind = str(request.args.get("calculation") or "optimization")
