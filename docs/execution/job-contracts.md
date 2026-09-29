@@ -1871,6 +1871,22 @@ The moment a rules file grows conditionals it becomes a worse programming
 language; anything this vocabulary cannot say belongs in the ONE interpreter
 (`jobset/model.py::warm_carry`), which stays code on purpose.
 
+**And one fact about a whole section, `resumes`** *(2026-09-29, plan § 5w
+K6)*: whether a re-run of this kind of run continues from what the last one
+left — default true, and a section states it only to say false. It is a fact,
+not a conditional, and no row can say it. SIESTA's force-constant run does not
+resume: SIESTA restarts it at its first step (`siesta_init.F`, idyn 6 starts at
+step 0) and reloads the density it saved at that step before every
+displacement (`m_new_dm.F90`), so `[vibration]` states `resumes = false`.
+`prep` asks it (`warmfiles.resumes_for`) of the section the rung's OWN kind
+reads — a vibration's `relax` rung is an optimisation and reads
+`[optimization]`, `.CG` among it; its force-constant rungs read `[vibration]` —
+and bakes the answer into the rung's job (`Job.resumes`), so the wrapper says
+what a retry of that rung will do — repeat the run, not resume it — while the
+budget stays the person's ([`running-a-job.md`](?doc=execution/running-a-job.md)
+§ 3.5). *(The carry was read from the calculation's kind until 2026-09-29, so a
+vibration's `relax` rung lost its `.CG` — the M11 review, SS-C14.)*
+
 ```mermaid
 flowchart TB
     RF["<b>warm-files.toml</b><br/>one per engine · [base] + one section per<br/>calculation type · schema-stamped<br/><i>suffix · carry · requires_same · honoured_by</i>"]

@@ -1203,8 +1203,11 @@ is written, not left out (`start_state_lines`, from the restart group's own
 declaration). `siesta/warm-files.toml` carries the `[vibration]` section under
 the growth rule of [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
 § 4.2a (a new calculation type is a new section, never a branch) — `.FC` and `.FCC`, inventory-only, since a rerun restarts
-at `FC.First` — and says why the base `.XV` row means something else under
-this kind.
+at `FC.First`, which the section states as its one section-level fact,
+`resumes = false`, so the stage's wrapper says a retry repeats the run rather
+than calling it a resume — and says why the base `.XV` row means something else
+under this kind. A vibration's `relax` rung reads `[optimization]`, its own
+kind's section, and carries its `.CG` (§ 4.2a).
 
 ### 5.4 The run, and what it leaves
 

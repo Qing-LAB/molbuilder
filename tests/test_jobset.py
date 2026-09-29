@@ -141,13 +141,15 @@ def test_validate_catches_duplicate_names():
     assert any("duplicate" in e for e in js.validate())
 
 
-def test_a_job_declares_exactly_these_seven_things():
+def test_a_job_declares_exactly_these_eight_things():
     """A `Job` is a name, a script, resources, what it would warm-start from,
     the traits a warm-start condition is compared against -- and, for a
     TRIAL, its sweep coordinate as data (``point``, 2026-08-21,
     `generator.md` § 4.3a); for a job whose engine leaves no result, the
     bundle that finishes it (``finish``, 2026-09-28, `engines/vibration.md`
-    § 5.5: a SIESTA force-constant run's modes).
+    § 5.5: a SIESTA force-constant run's modes); and whether a re-run of it
+    continues from what the last one left (``resumes``, 2026-09-29,
+    `job-contracts.md` § 4.2a: false for a force-constant run).
 
     Asserted as an EQUALITY on the field set, in both the dataclass and the
     wire form.  An equality is the whole rule in one line: any field added
@@ -160,7 +162,8 @@ def test_a_job_declares_exactly_these_seven_things():
     """
     import dataclasses
     assert {f.name for f in dataclasses.fields(Job)} == {
-        "name", "script", "resources", "warm", "traits", "point", "finish"}
+        "name", "script", "resources", "warm", "traits", "point", "finish",
+        "resumes"}
     assert set(_ladder().to_dict()["jobs"][1]) == {
         "name", "script", "resources", "warm", "traits"}
     trial = Job("G1K4C6", "t.fdf", point={"G": 1, "K": 4, "C": 6})
@@ -169,6 +172,11 @@ def test_a_job_declares_exactly_these_seven_things():
     finished = Job("freq", "x.fdf", finish="mb_vibration.pyz")
     assert finished.to_dict()["finish"] == "mb_vibration.pyz"
     assert Job.from_dict(finished.to_dict()).finish == "mb_vibration.pyz"
+    # a job that resumes says nothing; one that does not says false
+    restarts = Job("freq", "x.fdf", resumes=False)
+    assert restarts.to_dict()["resumes"] is False
+    assert Job.from_dict(restarts.to_dict()).resumes is False
+    assert "resumes" not in finished.to_dict()
 
 
 

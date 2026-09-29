@@ -31,6 +31,10 @@ on), ``honoured_by`` (the deck keyword that reads the file).  Anything
 this cannot express belongs in the ONE interpreter
 (``jobset/model.py::warm_carry``), and reaching for a fourth key is the
 signal to design, not to patch.
+
+AND ONE FACT ABOUT A WHOLE SECTION, ``resumes`` (2026-09-29, the design that
+signal asked for): whether a re-run of that kind of run continues from what
+the last one left -- a fact no row can say.  :func:`resumes_for` answers it.
 """
 from __future__ import annotations
 
@@ -71,6 +75,10 @@ class WarmFilesDoc:
     engine: str
     sections: Tuple[Tuple[str, Tuple[WarmRule, ...]], ...]
     path: str = ""
+    #: The one section-level fact (`job-contracts.md` § 4.2a): the sections
+    #: that STATE whether a re-run of their kind resumes.  A section that
+    #: states nothing is absent, and :func:`resumes_for` answers true.
+    resumes: Tuple[Tuple[str, bool], ...] = ()
 
     def section_names(self) -> List[str]:
         return [name for name, _ in self.sections if name != "base"]
@@ -140,12 +148,21 @@ def load_warm_files(engine: str, base_dir=None) -> WarmFilesDoc:
             f"{path}: engine = {file_engine!r} but the file sits in "
             f"{engine!r}'s package -- the two must agree.")
     sections: List[Tuple[str, Tuple[WarmRule, ...]]] = []
+    resumes: List[Tuple[str, bool]] = []
     seen_suffixes: Dict[str, str] = {}
     for name, body in raw.items():
-        if not isinstance(body, dict) or set(body) - {"file"}:
+        if not isinstance(body, dict) or set(body) - {"file", "resumes"}:
             raise WarmFilesError(
                 f"{path}: section [{name}] must hold only [[{name}.file]] "
-                f"rows.")
+                f"rows and the one section-level fact, `resumes` "
+                f"(job-contracts.md 4.2a).")
+        if "resumes" in body:
+            if not isinstance(body["resumes"], bool):
+                raise WarmFilesError(
+                    f"{path}: [{name}] resumes = {body['resumes']!r} -- a "
+                    f"true or a false, whether a re-run of this kind of run "
+                    f"continues from what the last one left.")
+            resumes.append((name, body["resumes"]))
         rows = []
         for i, row in enumerate(body.get("file", ())):
             rule = _parse_row(row, where=f"{path} [{name}] row {i}")
@@ -163,7 +180,7 @@ def load_warm_files(engine: str, base_dir=None) -> WarmFilesDoc:
             f"{path}: no [base] section.  Every engine has one -- it may "
             f"be empty, but its absence reads as a truncated file.")
     return WarmFilesDoc(engine=engine, sections=tuple(sections),
-                        path=str(path))
+                        path=str(path), resumes=tuple(resumes))
 
 
 def rules_for(engine: str, calculation: str,
@@ -186,6 +203,20 @@ def rules_for(engine: str, calculation: str,
             f"(job-contracts.md 4.2a: a new calculation type is a new "
             f"section in {engine}/{FILENAME}, never a branch).")
     return list(table.get("base", ())) + list(table[calculation])
+
+
+def resumes_for(engine: str, calculation: str, base_dir=None) -> bool:
+    """Whether a re-run of this kind of run continues from what the last one
+    left — the one section-level fact (`job-contracts.md` § 4.2a): the
+    calculation's own section's statement, else ``[base]``'s, else true.
+
+    Asked by `prep` of the section a rung's OWN kind reads, and baked into
+    the rung's job (``Job.resumes``), so the wrapper says what a retry of it
+    will do (`running-a-job.md` § 3.5).  An unknown type is refused by
+    :func:`rules_for`, the same door, before this answers."""
+    rules_for(engine, calculation, base_dir)
+    stated = dict(load_warm_files(engine, base_dir).resumes)
+    return stated.get(calculation, stated.get("base", True))
 
 
 def carry_inventory(engine: str) -> Tuple[str, ...]:

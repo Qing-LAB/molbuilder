@@ -119,6 +119,18 @@ carry  = "when-continuing"
 # says (siesta/vibration_deck.py::start_state_lines), and a carried `.XV`
 # is a copied file the engine is told not to read.
 
+[vibration]
+resumes = false                 # A RE-RUN DOES NOT CONTINUE: SIESTA starts
+                                # an FC run at its first step (siesta_init.F,
+                                # idyn 6) and reloads the density it saved
+                                # there before every displacement
+                                # (m_new_dm.F90), so a retry after an SCF
+                                # that stopped it is the same run again,
+                                # and the wrapper says so rather than
+                                # calling it a resume (running-a-job.md
+                                # 3.5; job-contracts.md 4.2a's one
+                                # section-level fact)
+
 [[vibration.file]]
 suffix = ".FC"                  # the force constants, eV/A^2: the PRODUCT
                                 # of the run, read beside it by the job's

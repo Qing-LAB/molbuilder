@@ -2148,7 +2148,8 @@ def render_run_wrapper(script_path: Path, *,
                         n_atoms: Optional[int] = None,
                         project_dir: Optional[Path] = None,
                         machine_record=None,
-                        finish: Optional[str] = None) -> str:
+                        finish: Optional[str] = None,
+                        resumes: bool = True) -> str:
     """Return the bash text for a wrapper running ``script_path``.
 
     **The allocation arrives whole** — `architecture.md` § 3.1, rule A8.  This
@@ -2378,6 +2379,16 @@ def render_run_wrapper(script_path: Path, *,
     # wrapper's own help cannot contradict the file it ships beside.
     _restart_honoured = (_fdf_honours_restart(script_path)
                          if suffix == ".fdf" else None)
+    # WHAT A RETRY OF THIS RUN DOES -- one description, read by the banner's
+    # retry line and by the retry's own message: a run whose kind cannot
+    # resume (`Job.resumes`, the kind's warm-files fact) repeats from its
+    # first step; a deck that declines prior state re-runs cold; otherwise
+    # the retry resumes warm (`running-a-job.md` § 3.5).
+    _retry_does = ("re-running from its first step -- this kind of run does "
+                   "not resume" if not resumes else
+                   "re-running cold -- this deck declines prior state"
+                   if _restart_honoured is False else
+                   "warm-restarting")
     _py_reads_prior = (_py_deck_reads_prior(script_path)
                        if suffix == ".py" else None)
 
@@ -3332,6 +3343,14 @@ def render_run_wrapper(script_path: Path, *,
             # cold.  The budget is the user's (it travels; see the note in
             # `render_run_wrapper`); the description is the deck's.
             + (f'echo "  Retry policy  : up to {continue_retries} '
+               f'retry(s) on non-convergence -- each REPEATS the run from '
+               f'its first step: a force-constant run does not resume '
+               f'(warm-files: resumes = false), so an SCF that stopped it '
+               f'stops the retry the same way; continue_retries = 0 spends '
+               f'nothing on it"\n'
+               if continue_retries and continue_retries > 0
+               and not resumes else
+               f'echo "  Retry policy  : up to {continue_retries} '
                f'retry(s) on non-convergence (--continue warm-resume)"\n'
                if continue_retries and continue_retries > 0
                and _restart_honoured is not False else
@@ -3914,7 +3933,7 @@ def render_run_wrapper(script_path: Path, *,
                f'_mb_warm_retry() {{\n'
                f'    _mb_next=$((_siesta_retry + 1))\n'
                f'    echo "" >&2\n'
-               f'    echo "=== $1; warm-restarting '
+               f'    echo "=== $1; {_retry_does} '
                f'(retry $_mb_next/$_siesta_retry_max) with --continue ===" >&2\n'
                f'    echo "" >&2\n'
                f'    _mb_stop_monitor USR1 || true\n'
@@ -3997,9 +4016,11 @@ def render_run_wrapper(script_path: Path, *,
                f'    # NON-zero after banking the density matrix, and SIESTA\n'
                f'    # says so -- "(required)" on its SCF_NOT_CONV line, then\n'
                f'    # ABNORMAL_TERMINATION (Src/siesta_forces.F90) -- so the\n'
-               f'    # retry asks whether THAT stopped it.  A warm\n'
-               f'    # --continue restart resumes SCF from that .DM with a\n'
-               f'    # fresh iteration budget.  Crash classes above (propor\n'
+               f'    # retry asks whether THAT stopped it.  A --continue\n'
+               f'    # restart resumes the SCF from that .DM with a fresh\n'
+               f'    # iteration budget -- unless the run cannot resume: a\n'
+               f'    # force-constant run restarts at its first step, and the\n'
+               f'    # banner and the retry message say so.  Crash classes (propor\n'
                f'    # IMAX, generic aborts) are NOT retried -- rerunning\n'
                f'    # cannot fix a defective pseudo or a bad rank count.\n'
                f'    if [ "$_siesta_retry" -lt "$_siesta_retry_max" ] \\\n'
@@ -4009,7 +4030,7 @@ def render_run_wrapper(script_path: Path, *,
                f'    elif [ "$_siesta_retry" -gt 0 ] \\\n'
                f'       && _mb_ending stopped-by "{_G.SCF_NOT_CONV_MARKER}"; then\n'
                f'        echo "SCF still unconverged after '
-               f'$_siesta_retry_max warm retry(s); re-run with --continue '
+               f'$_siesta_retry_max retry(s); re-run with --continue '
                f'to extend, or revisit mixing/smearing." >&2\n'
                f'    fi\n'
                if continue_retries and continue_retries > 0 else "")
@@ -4038,10 +4059,10 @@ def render_run_wrapper(script_path: Path, *,
                f'unconverged"\n'
                f'elif _mb_ending relaxation-capped; then\n'
                f'    echo "WARNING: geometry still unconverged after '
-               f'$_siesta_retry_max warm retry(s); re-run with --continue '
+               f'$_siesta_retry_max retry(s); re-run with --continue '
                f'to extend the relaxation." >&2\n'
                f'elif [ "$_siesta_retry" -gt 0 ]; then\n'
-               f'    echo "SIESTA converged after $_siesta_retry warm '
+               f'    echo "SIESTA converged after $_siesta_retry '
                f'retry(s)."\n'
                f'fi\n'
                f'\n'
@@ -4576,7 +4597,8 @@ def render_wrappers(script_path: Path, *,
                     emit_sbatch: bool = True,
                     project_dir: Optional[Path] = None,
                     machine_record=None,
-                    finish: Optional[str] = None) -> RenderedWrapper:
+                    finish: Optional[str] = None,
+                    resumes: bool = True) -> RenderedWrapper:
     """Render everything step 4 produces for *script_path*, and write nothing.
 
     **W7 — floor 3 returns text.**  The deck writers hand back a string and the
@@ -4633,7 +4655,7 @@ def render_wrappers(script_path: Path, *,
     text = render_run_wrapper(
         script_path, label=label, resources=r, env=env, n_atoms=n_atoms,
         project_dir=project_dir, machine_record=machine_record,
-        finish=finish)
+        finish=finish, resumes=resumes)
     _validate_rendered_wrapper(text, script_path)
     # ``stem + ".run.sh"`` rather than ``with_suffix(".run.sh")``: the latter
     # replaces only the LAST suffix, so ``job.spectra.py`` would become
@@ -4684,7 +4706,8 @@ def write_run_wrapper(script_path: Path, *,
                       emit_sbatch: bool = True,
                       project_dir: Optional[Path] = None,
                       machine_record=None,
-                      finish: Optional[str] = None) -> Path:
+                      finish: Optional[str] = None,
+                      resumes: bool = True) -> Path:
     """Write what :func:`render_wrappers` produced, and return the wrapper's path.
 
     **This function renders nothing.**  It is the writing half of step 4, kept
@@ -4707,7 +4730,8 @@ def write_run_wrapper(script_path: Path, *,
                                resources=resources,
                                machine_record=machine_record,
                                env=env, emit_sbatch=emit_sbatch,
-                               project_dir=project_dir, finish=finish)
+                               project_dir=project_dir, finish=finish,
+                               resumes=resumes)
     parent = Path(script_path).resolve().parent
     for name, text in rendered.files:
         written = _sc_write.write_script(parent / name, text)

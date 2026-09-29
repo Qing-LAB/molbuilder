@@ -298,6 +298,12 @@ class Job:
     #: § 5.5).  The deck's own statement, copied by `prep` from its spec
     #: (`DeckSpec.finish`); ``None`` for a job whose engine writes its result.
     finish:     Optional[str]   = None
+    #: WHETHER A RE-RUN OF THIS JOB CONTINUES from what the last one left --
+    #: the rung's kind's one section-level fact in its warm-files
+    #: (`job-contracts.md` § 4.2a), read by `prep` and baked into the
+    #: wrapper, which says a retry of a run that cannot resume repeats it
+    #: (`running-a-job.md` § 3.5).  False for a SIESTA force-constant rung.
+    resumes:    bool            = True
 
     def to_dict(self) -> Dict[str, Any]:
         d = {
@@ -314,6 +320,10 @@ class Job:
         # ABSENT when the engine finishes its own job -- the same reading.
         if self.finish:
             d["finish"] = self.finish
+        # ABSENT when it resumes, the ordinary answer -- written only to say
+        # false.
+        if not self.resumes:
+            d["resumes"] = False
         return d
 
     @classmethod
@@ -332,6 +342,7 @@ class Job:
             traits=dict(d.get("traits") or {}),
             point=dict(d.get("point") or {}),
             finish=(str(d["finish"]) if d.get("finish") else None),
+            resumes=bool(d.get("resumes", True)),
         )
 
 

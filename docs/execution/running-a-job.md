@@ -505,7 +505,19 @@ retried**, because running again cannot fix it: a crash — `propor`'s
 `IMAX = 0` (§ 3.1a), any abort, or a tolerated non-convergence followed by
 one; a **diverged** SCF, whose retry resumes from the diverged density and is
 the same run again — the monitor warns instead (`model/parse.md` § 5d.6); and
-anything, when no python is beside the job (the log says so). *The divergence
+anything, when no python is beside the job (the log says so).
+
+**A run that cannot resume is retried as the budget says, and said to
+repeat.** SIESTA restarts a force-constant run at its first displacement from
+the density it saved there, so its retry is the same run again. The budget
+still travels — it is the person's call (`job-contracts.md` § 6.2), as it is
+for a stage described `clean` — and what changes is what the wrapper SAYS: the
+kind declares the fact (`warm-files.toml`, `resumes = false`,
+[`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a), `prep` bakes it
+into the rung's job (`Job.resumes`), and the banner's retry line and the retry's
+own message say that a retry repeats the run from its first step rather than
+resuming it — with `continue_retries = 0` named as the way to spend nothing on
+it. *(It said "warm-resume" until 2026-09-29 — the M11 review, SS-C3.)* *The divergence
 verdict that tells a diverged SCF from a slow one is built by plan § 5t.3's P4;
 until it lands every `SCF_NOT_CONV … (required)` stop is retried.*
 

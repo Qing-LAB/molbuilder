@@ -331,6 +331,10 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 # (`Job.finish`, `engines/vibration.md` § 5.5): the wrapper
                 # runs it, and its bundle is written beside the deck.
                 finish=job.finish,
+                # WHETHER A RE-RUN CONTINUES (`Job.resumes`): the wrapper
+                # says a retry of a run that cannot resume repeats it
+                # (`running-a-job.md` § 3.5).
+                resumes=job.resumes,
             )
         rendered[job.script] = _jd
         if log is not None:
@@ -2421,9 +2425,16 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
     else:
         name = task.label
 
+    # THE RUNG'S OWN KIND answers what it carries and whether a re-run of it
+    # resumes (`job-contracts.md` § 4.2a): a vibration's `relax` rung is an
+    # optimisation, its force-constant rungs the vibration.  The
+    # calculation's kind stood here until 2026-09-29, and a vibration's
+    # `relax` rung lost its `.CG` (the M11 review, SS-C14).
+    kind = _rung_kind(task, stage_name)
     with _calling("warm_for", engine=task.engine, where=name, log=log):
-        warm = seam.warm_for(element.label, element.values,
-                             task.calculation, base_dir)
+        warm = seam.warm_for(element.label, element.values, kind, base_dir)
+    from ..warmfiles import resumes_for
+    resumes = resumes_for(str(task.engine), kind, base_dir)
     with _calling("traits_for", engine=task.engine, where=name, log=log):
         traits = seam.traits_for(element.values)
     # ``finish`` is the deck's own statement (`DeckSpec.finish`): the bundle
@@ -2431,7 +2442,18 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
     # (`engines/vibration.md` § 5.5).
     return Job(name=name, script=script, resources=element.resources,
                warm=warm, traits=traits, point=dict(element.point),
-               finish=finish)
+               finish=finish, resumes=resumes)
+
+
+def _rung_kind(task, stage_name: Optional[str]) -> str:
+    """The kind of run a rung is -- the warm-files section it reads
+    (`job-contracts.md` § 4.2a): the calculation's own, except a vibration's
+    rungs, which are what their decks render (`vibration_render_kind`): the
+    `relax` rung an optimisation, every other rung the vibration."""
+    if task.calculation == "vibration" and stage_name:
+        from ..pyscf.stages import vibration_render_kind
+        return vibration_render_kind(stage_name)
+    return str(task.calculation)
 
 
 def _siesta_shared_package(base: Path) -> List[str]:

@@ -446,6 +446,50 @@ def test_the_freq_stage_leaves_the_inputs_relaxation_record_behind(
         net_charge)
 
 
+def test_each_rung_of_a_vibration_carries_and_retries_as_its_own_kind(
+        isolated_projects_root):
+    """Each rung reads the warm-state section of the run it IS
+    (`execution/job-contracts.md` § 4.2a): the `relax` rung is an
+    optimisation, so its `.CG` carries; the `freq` rung is a force-constant
+    run, which does not resume, so its wrapper says a retry repeats the run
+    from its first step rather than calling it a resume
+    (`execution/running-a-job.md` § 3.5).
+
+    MUTATION THIS MUST FAIL AGAINST: the section read from the calculation's
+    kind (the code before 2026-09-29: `.CG` withheld from `relax`, `freq`'s
+    retry announced as a warm resume), and a job that loses ``resumes`` on
+    its way to the wrapper.
+    """
+    import shutil
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.jobset.model import FILENAME, JobSet
+    from molbuilder.pyscf.stages import vibration_stages
+
+    def the_relax_ran(dest):
+        # prepped as a person would, then its measured attempt in place
+        r = CliRunner().invoke(jobset_group, ["prep", "run", "relax",
+                                              "--bundle", str(dest),
+                                              "--no-sbatch"])
+        assert r.exit_code == 0, r.output
+        # the run's own files land in the attempt prep opened
+        shutil.copytree(_RELAX_RUN, dest / "01_relax" / "run-0",
+                        dirs_exist_ok=True)
+
+    dest, _stage, _text = _prep(
+        isolated_projects_root, _h2(), SiestaConfig(system_label="H2"),
+        vibration_stages("siesta", already_relaxed=False), "siesta",
+        stage="freq", calculation="vibration", name="H2",
+        before_prep=the_relax_ran)
+    jobs = {j.name: j for j in JobSet.load(dest / FILENAME).jobs}
+    assert any(w.name.endswith(".CG") for w in jobs["relax"].warm), (
+        [w.name for w in jobs["relax"].warm])
+    assert (jobs["relax"].resumes, jobs["freq"].resumes) == (True, False)
+    wrapper = next((dest / "02_freq").rglob("*.run.sh")).read_text()
+    assert "each REPEATS the run from its first step" in wrapper
+    assert "re-running from its first step" in wrapper
+    assert "warm-resume" not in wrapper and "warm-restarting" not in wrapper
+
+
 @pytest.mark.parametrize("ticked, tol, frozen, says, never", [
     # The box unticked, the relax within tolerance: the outcome, as a fact.
     (False, 0.01, (0,), "within this calculation's tolerance",

@@ -4707,9 +4707,21 @@ reviewers' probes (the archive's § E lists) among its runs.
   the stage its relaxation record is of (`relaxation_stage`), so the finish
   names it without the ladder's vocabulary. The measured-fixture finish test
   asserts both routes, red under the old text.
-  *Left*: SS-C3 (retry resumability from the kind's warm-state declaration),
-  PO-C2 (a capability the engine lacks, declared), PS-C10 with V1.31 (the
-  run's own relaxation record on its pair), then the full review.
+  *Step 3 done 2026-09-29* (SS-C3, and SS-C14 with it): whether a re-run of
+  a kind of run resumes is that kind's warm-state fact — one section-level key,
+  `resumes`, in `warm-files.toml` (`[vibration] resumes = false`: SIESTA
+  restarts a force-constant run at its first step), read by
+  `warmfiles.resumes_for` of the section the rung's OWN kind reads
+  (`prep._rung_kind`: a vibration's `relax` rung is an optimisation — its
+  `.CG` now carries — its force-constant rungs the vibration) and baked into
+  the job (`Job.resumes`) and its wrapper, whose banner and retry message say
+  a retry repeats the run from its first step. The budget still travels — the
+  wrapper's standing rule, *say it, do not decide it*, as for a `clean` stage.
+  Contract: `job-contracts.md` § 4.2a, `running-a-job.md` § 3.5,
+  `vibration.md` § 5.3. Test: one road test (the ladder prepped through the
+  CLI on the measured relax), red under both mutations.
+  *Left*: PO-C2 (a capability the engine lacks, declared), PS-C10 with V1.31
+  (the run's own relaxation record on its pair), then the full review.
 
 ---
 
