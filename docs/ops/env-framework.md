@@ -433,7 +433,6 @@ step the one door can run.
 | a conda package the env is usable without | `optional=True` | **a degraded attempt on the packages step** — see below | `RECOVERED` |
 | a package not on PyPI | `source="git+https://…"` | PEP 508 `name @ url` | `FAILED` |
 | …whose source may be unreachable | `fallback_to_index=True` | the indexed build as a declared alternative, **flagless** | `RECOVERED` |
-| a tool that reports through its output and exits non-zero | `ignore_exit_code=True` | the substring becomes the verdict | `FAILED` if absent |
 | a tool that exits 0 while the thing we asked for is missing | `expect_contains="…"` | checked in addition to the exit code | `FAILED`, naming the substring |
 | the env already exists | — (`EnvState`) | create is not dispatched | `SKIPPED`, and no exit code |
 | the env is wreckage | — (`EnvState`) | nothing is dispatched | `FAILED`, naming `--clean` |
@@ -548,16 +547,16 @@ be reported under the attempt that failed.
 
 An exit code alone is not enough. **Every** recipe adds a substring its verify
 output must contain (`expect_contains`) — a tool can exit `0` while the thing we
-asked about is missing — and one also ignores the exit code entirely
-(`ignore_exit_code`, for `tleap`, which exits non-zero from a perfectly healthy
-start, so its banner IS the verification). Both ride on the **step** and are
-checked by `InstallStep.accepts`.
+asked about is missing. **The exit code is never waived.** A tool that exits
+non-zero from a healthy start is given input that makes it stop cleanly —
+`tleap` gets a `quit` — rather than having its exit code ignored; ignoring it
+was how `*** Error` came to print under `verify: OK`. The rule rides on the
+**step** and is checked by `InstallStep.accepts`.
 
 They used to be read off the *recipe* inside the verify loop, which is precisely
 why verify needed a loop of its own. On the step, verify is an ordinary step and
 the runner needs no knowledge of which phase it is serving. A process that never
-launched is never accepted — ignoring an exit code is not ignoring a missing
-process.
+launched is never accepted.
 
 ### 5.3 The install's verdict is derived
 

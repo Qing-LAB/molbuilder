@@ -136,10 +136,6 @@ class InstallStep:
         CONTINUES.  Optional packages install this way -- one failing
         wheel must not take the env down, which is what
         ``PipPackage.optional`` promises.
-    ignore_exit_code
-        The exit code is not the verdict.  Some tools report through
-        their output and exit non-zero anyway (``tleap`` does), so for
-        them the substring check IS the verification.
     expect_contains
         Success also requires this substring in the output.  A tool can
         exit 0 while the thing we asked about is missing, and for a
@@ -150,7 +146,6 @@ class InstallStep:
     role: StepRole = StepRole.PACKAGES
     fallbacks: Tuple[Tuple[str, ...], ...] = ()
     fatal: bool = True
-    ignore_exit_code: bool = False
     expect_contains: Optional[str] = None
     returncode: Optional[int] = None
     output: str = ""
@@ -163,19 +158,16 @@ class InstallStep:
     def accepts(self, returncode: Optional[int], output: str) -> bool:
         """Did this attempt satisfy the step?
 
-        The exit code is the usual verdict; two recipes need more, and
-        both rules ride on the STEP rather than being read off the
-        recipe at execution time.  That is what let verify stop being a
-        phase with its own loop: the runner needs no knowledge of which
-        phase it is serving.
+        Exit code 0 is always required, and ``expect_contains`` adds a
+        substring on top.  The rule rides on the STEP rather than being
+        read off the recipe at execution time.  That is what let verify
+        stop being a phase with its own loop: the runner needs no
+        knowledge of which phase it is serving.
 
         A process that never launched (``returncode is None``) is never
-        accepted -- ignoring an exit code is not ignoring a missing
-        process.
+        accepted.
         """
-        if returncode is None:
-            return False
-        if not self.ignore_exit_code and returncode != 0:
+        if returncode is None or returncode != 0:
             return False
         if self.expect_contains and self.expect_contains not in output:
             return False
@@ -522,8 +514,7 @@ def verify_step_for(recipe: Recipe, conda: str,
     `doctor` and the installer had already drifted to different output
     limits, and a fourth copy would have been next.
 
-    `verify_ignore_exit_code` / `verify_expect_contains` move onto the
-    STEP here.  That is the whole trick: after this, verify is an
+    `verify_expect_contains` moves onto the STEP here.  That is the whole trick: after this, verify is an
     ordinary step and the runner needs no special case for it.
     """
     if not recipe.verify_argv:
@@ -532,7 +523,6 @@ def verify_step_for(recipe: Recipe, conda: str,
         label="verify",
         role=StepRole.VERIFY,
         argv=conda_run_argv(conda, env_name, *recipe.verify_argv),
-        ignore_exit_code=recipe.verify_ignore_exit_code,
         expect_contains=recipe.verify_expect_contains,
     )
 
