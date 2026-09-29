@@ -107,7 +107,7 @@ each programme after it, with nothing changing under it.
 | **M3** | the run record, the rest | W35: P2's remainder, P3–P6 | W35's own done-conditions | | open |
 | **M4** | the engine offset, finished | W33 P4, P5 | § 5q.6; the fake-junction ladder resumes at rung 4 | | open |
 | **M5** | transport | W27 floor 3 → W30 ③ → W25 → W24 → W10; W32 ②–⑤ once the single-frame ladder has run end to end | each row's own | | open |
-| **M6** | charge and spin | W34, P1 on, as amended on 2026-09-28 (§ 5s.2, decisions 8–9) | § 5s | | **P1–P4 built 2026-09-28/29, then reviewed by four agents (backend, browser, tests, documents) and every verified finding fixed or named in § 5s.4; P5 (the read-back) open** — taken ahead of M2's remainder at the user's word (*"go ahead with the contract, add free, make sure api and users are unified"*) |
+| **M6** | charge and spin | W34, P1 on, as amended on 2026-09-28 (§ 5s.2, decisions 8–9) | § 5s | | **P1–P4 built 2026-09-28/29, then reviewed by four agents (backend, browser, tests, documents) and every verified finding fixed or named in § 5s.4 (c71ba618); P5 (the read-back) open** — taken ahead of M2's remainder at the user's word (*"go ahead with the contract, add free, make sure api and users are unified"*) |
 | **M7** | the spectrum view's API | W21 step 4 | W21's own | | open |
 | **M8** | MolView sealing, the CSS | W15; W1–W6, W13 | each row's own | | open |
 | **M9** | two science features | V1.26, V1.27 | each needs its decision first | | open |
