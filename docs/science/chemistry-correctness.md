@@ -109,10 +109,13 @@ the [`overview.md` glossary](?doc=science/overview.md).)*
   | 6-coordinate | two strong-field | low, **S = 0** | 0 | oxy- / CO-heme |
 
   There is no general formula — it depends on the experimental data. So a blank
-  spin on an open-d metal is decided at the metal's usual count, said with its
-  reason on the chemistry card and in the deck, and warned about until the count
-  is stated (§ 2a, ES8) — never decided silently. (As `unpaired_electrons`, 2S,
-  these are 2, 4 and 0.)
+  spin on an open-d metal is decided at the metal's usual count, said as **the
+  starting guess** with its reason on the chemistry card and in the deck, and
+  warned about until the count is stated (§ 2a, ES8) — never decided silently.
+  (As `unpaired_electrons`, 2S, these are 2, 4 and 0.) Iron's guess is 2, the
+  first row: the four-coordinate porphyrin this project's heme work meets, and
+  the hint says where else it holds (porphyrins and phthalocyanines) rather than
+  calling it rare *(user, 2026-09-29: keep 2, say it as a starting guess)*.
 
 ### 2.2 The chemistry primitives molbuilder provides (backend surface)
 
@@ -147,11 +150,13 @@ one state every science-aware surface then reads:
 >>> from molbuilder.electronic_state import electronic_state
 >>> st = electronic_state(hemeC_dithiol, cfg, kind="optimization")   # spin fields blank
 >>> st.spin_treatment.value, st.unpaired_electrons.value
-('unrestricted', 2)          # Fe is open-d → open-shell; its usual 2S = 2
+('unrestricted', 2)          # Fe is open-d → open-shell; 2S = 2 to start
 >>> st.unpaired_electrons.source, st.unpaired_electrons.why
-('detected', 'Fe is an open-d metal: 2S = 2 is its usual guess (Fe(II),
- intermediate spin) — the right count depends on the coordination; verify it
- against experiment and state it to confirm')                        # illustrative
+('detected', 'Fe is an open-d metal: 2S = 2 is the starting guess -- Fe(II),
+ intermediate-spin (S=1, 2 unpaired) -- e.g. four-coordinate porphyrins and
+ phthalocyanines (FeTPP, FePc); uncommon elsewhere.  The right count depends on
+ the coordination, not on the element: verify it against experiment and state
+ it to confirm')
 >>> st.net_charge.value, st.net_charge.source
 (0, 'detected')              # no phosphate groups
 ```
@@ -243,9 +248,11 @@ structure, or no answer, the card is hidden: an answer for another structure is
 never left on screen. A user with hemeC-dithiol and the spin fields left blank sees, *before*
 preparing anything:
 
-> "Spin: unrestricted, 2S = 2 — Fe is an open-d metal; 2S = 2 is its usual
-> guess. The right count depends on the coordination, not on the element:
-> verify it against experiment and state it to confirm."
+> "Spin: unrestricted, 2S = 2 — Fe is an open-d metal: 2S = 2 is the starting
+> guess -- Fe(II), intermediate-spin (S=1, 2 unpaired) -- e.g. four-coordinate
+> porphyrins and phthalocyanines (FeTPP, FePc); uncommon elsewhere. The right
+> count depends on the coordination, not on the element: verify it against
+> experiment and state it to confirm."
 
 Each link of the 2026-05-22 chain is now broken: the silent default → a blank
 that the class decides, with its reason on the card, in the deck comment and in
@@ -340,7 +347,7 @@ class Resolved:
     value:  Any          # the item's value, never blank
     source: str          # "stated" · "implied" · "recorded" · "detected" · "rule"
     why:    str          # the reason in words — "three deprotonated phosphates",
-                         # "Fe is an open-d metal: 2S = 2 is its usual guess; verify"
+                         # "Fe is an open-d metal: 2S = 2 is the starting guess; verify"
     said:   str          # (derived) where it came from, in words — "stated", or
                          # "detected: three deprotonated phosphates": the ONE
                          # phrasing the deck comment, the prep report and the
@@ -425,7 +432,7 @@ The spin, **at that charge**, and knowing whether the structure repeats:
 
 | the structure holds | finite (every axis isolated, or PySCF — below) | repeating (a periodic or transport axis, on SIESTA) |
 |---|---|---|
-| an **open-d metal** (Fe, Co, Ni, Mn, Cr, …, `validation.md` § 2.1) | `unrestricted`, 2S = the metal's usual count, matched to the electron count's parity — *verify against experiment* | `unrestricted`, `free` — a magnetic lattice finds its own moment |
+| an **open-d metal** (Fe, Co, Ni, Mn, Cr, …, `validation.md` § 2.1) | `unrestricted`, 2S = the metal's starting count (`USUAL_COUNT`), matched to the electron count's parity — *verify against experiment* | `unrestricted`, `free` — a magnetic lattice finds its own moment |
 | **noble metals are the only metals** (Cu, Ag, Au), ≥ 4 of them, even count | `restricted` — the s-band delocalizes, no moment forms | `restricted` |
 | **one noble-metal atom**, odd count | `unrestricted`, 1 — one unpaired electron (a bare atom's doublet and a Cu(II) complex's d⁹ alike) | *(a repeating cell of one atom is a metal: `restricted`)* |
 | **anything else** | even count → `restricted`; odd → `unrestricted`, 1 | `restricted` — the count per cell is not a spin (ES3) |
@@ -639,7 +646,7 @@ molbuilder does not yet expose.
 ### Open-d transition-metal complexes — Fe, Co, Ni, Mn, …
 
 Open-shell, and **which** spin is a matter of coordination, not element
-(§ 2.1). Left blank, the class decides the element's usual count (Fe → 2) and
+(§ 2.1). Left blank, the class decides the element's starting count (Fe → 2) and
 the report warns until the person states it (ES8); the SIESTA deck carries a
 commented sweep over the plausible counts. A polarized SIESTA run with a `free`
 moment starts every atom at its maximum moment (§ 2a.4) — a reasonable start for

@@ -594,7 +594,7 @@ def check_spin_charge_parity(struct: Structure, charge: int,
 _METAL_SPIN_HINTS: dict = {
     # Fe: d⁶ for Fe(II), d⁵ for Fe(III)
     ("Fe", 0): "Fe(II), low-spin (S=0, 0 unpaired) -- e.g. CO- or CN⁻-bound heme",
-    ("Fe", 2): "Fe(II), intermediate-spin (S=1, 2 unpaired) -- rare",
+    ("Fe", 2): "Fe(II), intermediate-spin (S=1, 2 unpaired) -- e.g. four-coordinate porphyrins and phthalocyanines (FeTPP, FePc); uncommon elsewhere",
     ("Fe", 4): "Fe(II), high-spin (S=2, 4 unpaired) -- e.g. deoxy-heme, bis-thiolate",
     ("Fe", 1): "Fe(III), low-spin (S=1/2, 1 unpaired) -- e.g. bis-imidazole heme",
     ("Fe", 3): "Fe(III), intermediate-spin (S=3/2, 3 unpaired) -- e.g. quantum-admixed S=3/2 5-coord Fe(III) porphyrins (oxoferryl is Fe(IV), not this)",

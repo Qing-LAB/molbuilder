@@ -410,10 +410,13 @@ def _spin(cfg: Any, rec: Recommended, finite: bool,
     return treatment, count
 
 
-#: The detected count for an open-d metal: its most common oxidation state's
-#: spin -- what a coordination chemist expects for "Fe in a porphyrin" or
-#: "Mn(II) in solution".  A guess about coordination, which is why a decision
-#: made from it warns until the count is stated (ES8).  Second- and third-row
+#: The detected count for an open-d metal: a starting guess per element --
+#: for most, its most common oxidation state's spin ("Mn(II) in
+#: solution"); for Fe, the four-coordinate porphyrin case the row names,
+#: where high-spin Fe(II) is the commoner state elsewhere.  A guess about
+#: coordination, said as THE STARTING GUESS (user, 2026-09-29, keeping Fe's
+#: 2), which is why a decision made from it warns until the count is
+#: stated (ES8).  Second- and third-row
 #: and f-block metals fall through to 2.  (Cu is a noble s1 metal here, not
 #: an open-d one -- Cu(II)'s d9 doublet is the odd count's own answer.)
 USUAL_COUNT: Dict[str, int] = {
@@ -463,7 +466,7 @@ def recommend(struct: Structure, facts: ChemistryAnalysis, *,
         label = explain_metal_spin(metal, count)
         return Recommended(
             "unrestricted", count,
-            f"{metal} is an open-d metal: 2S = {count} is its usual count"
+            f"{metal} is an open-d metal: 2S = {count} is the starting guess"
             f"{matched}{' -- ' + label if label else ''}.  The right count "
             f"depends on the coordination, not on the element: verify it "
             f"against experiment and state it to confirm",
