@@ -112,7 +112,7 @@ each programme after it, with nothing changing under it.
 | **M8** | MolView sealing, the CSS | W15; W1–W6, W13 | each row's own | | open |
 | **M9** | two science features | V1.26, V1.27 | each needs its decision first | | **folded into M10 2026-09-29** — W42 folds both in; V1.27's decision is W42's D8, V1.26's is still owed |
 | **M10** | from a mode to the current | W42 (it folds V1.24–V1.27 in, M9's two among them) | V1.26's decision; then W42's order P1–P6 | | **decided 2026-09-28** (W42: D1–D5, D7, D8; D6 as recommended) — V1.26's decision still owed; after the current work order |
-| **M11** | every parameter, end to end — Structure optimization (SIESTA, PySCF), Spectrum (PySCF, SIESTA) and Transport | W50 | W50's own: a static full-text review per track, each finding verified and fixed at its owner, then the road in the browser | | **Started 2026-09-29, ahead of M5 step 3** *(user: "i need full review of webui code, interface to backend, template, and backend and final generated script to validate each parameter in their corresponding context such that we have confirmed this workflow is correct. we did this for structure optimization and we should do this for the others too"; then: "make sure structure optimization is included in the review too")* — the five static reviews running |
+| **M11** | every parameter, end to end — Structure optimization (SIESTA, PySCF), Spectrum (PySCF, SIESTA) and Transport | W50 | W50's own: a static full-text review per track, each finding verified and fixed at its owner, then the road in the browser | | **Started 2026-09-29, ahead of M5 step 3** *(user: "i need full review of webui code, interface to backend, template, and backend and final generated script to validate each parameter in their corresponding context such that we have confirmed this workflow is correct. we did this for structure optimization and we should do this for the others too"; then: "make sure structure optimization is included in the review too")* — the five static reviews reported the same day, every defect re-read in the code and the engine's source ([`archive/2026-09-29-m11-static-review.md`](?doc=archive/2026-09-29-m11-static-review.md)); the fixes are § 5w's seventeen mechanism classes (K1–K17), **proposed, awaiting the user's word** |
 
 
 ### Unscheduled — open work no milestone carries *(listed 2026-09-29)*
@@ -272,7 +272,7 @@ V1.27's decision is W42's D8, V1.26's is still owed.
 | **W46** | execution | **`--force` is retired in the contract and alive in the wrapper.** `project-layout.md` (*"`--force` is retired"*, invariant 4b) and `job-contracts.md` say so; `runwrap.py` still parses `--force|-f` and resets `_run_n=0`, so a redo can overwrite an attempt the contract calls immutable | `project-layout.md` · `runwrap.py` | open — a defect against a written rule; natural home M2l |
 | **W47** | engines / execution | **A person's own deck text: § 5e's engine additions and the USER-CUSTOM zone's carrier.** No `user_custom` item exists, so in the staged path the zone is emitted empty and a person's text does not survive (`template.md`, `job-contracts.md`, `worked-example.md`'s gap 12); § 5e (*a person's own engine text, as an input*) is a design with no row and says the zone's defects are *"listed where they belong"* — they were listed nowhere | § 5e · `template.md` § 12.1 row 1 | open — § 5e not started |
 | **W48** | engines | **Facts stated twice — the catalogue and the config dataclasses.** `template.md` § 2.1a: 491 facts live in two places, and `kind`, `default` and `expands` are unguarded (a live divergence in `use_gpu`'s `expands`) — *`default` guarded since 2026-09-29 (`test_catalogue_agreement.py::test_the_DEFAULT_agrees`, M5 step 2), zero disagreements measured that day*; `form-schema.md` reads `workflow_group` from the class — the same class of drift | `template.md` § 2.1a · `form-schema.md` | open — its deletion is argued in `template.md` |
-| **W50** | front end / engines / execution | **EVERY PARAMETER OF THE STRUCTURE OPTIMIZATION, SPECTRUM AND TRANSPORT WORKFLOWS, CONFIRMED END TO END** *(user, 2026-09-29: the quote in M11; "this is not a poking test, a static review followed with e2e validation")*. Found the day it was asked: the PySCF vibration refused a periodic structure where the engine's own rule notes it (fixed, `762ca298`), and gold on def2-SVP received no core potential while the hint stayed silent on a false belief about PySCF (fixed, `5a8133cc`) — each a parameter whose chain nobody had read end to end since the Spectrum tab gained its second engine (2026-09-24). **The method**, as the structure optimization's full-text review (`archive/2026-08-14-template-execution-review.md`): (1) a static review per track — Structure optimization on SIESTA and on PySCF, Spectrum on PySCF and on SIESTA, Transport's five rungs — every file of the chain read in full (the tab's HTML and JS, the routes, the catalogue rows and `template.py`, config / resolve / prep / validation, the deck writer) and each parameter traced from its control to its line in the generated script and to where the engine's own source reads it, nothing changed and nothing run; (2) every finding re-read against the code and fixed at its owner, the contract first; (3) the road in the browser per track — the tab, the hand-over, Task setup, the printed `prep` / `launch`, a small run, the Results tab | `web/spectra.md` · `engines/vibration.md` · `engines/pyscf.md` · `engines/siesta.md` · `engines/transport.md` · `web/task-setup.md` | **started 2026-09-29** — the five static reviews running |
+| **W50** | front end / engines / execution | **EVERY PARAMETER OF THE STRUCTURE OPTIMIZATION, SPECTRUM AND TRANSPORT WORKFLOWS, CONFIRMED END TO END** *(user, 2026-09-29: the quote in M11; "this is not a poking test, a static review followed with e2e validation")*. Found the day it was asked: the PySCF vibration refused a periodic structure where the engine's own rule notes it (fixed, `762ca298`), and gold on def2-SVP received no core potential while the hint stayed silent on a false belief about PySCF (fixed, `5a8133cc`) — each a parameter whose chain nobody had read end to end since the Spectrum tab gained its second engine (2026-09-24). **The method**, as the structure optimization's full-text review (`archive/2026-08-14-template-execution-review.md`): (1) a static review per track — Structure optimization on SIESTA and on PySCF, Spectrum on PySCF and on SIESTA, Transport's five rungs — every file of the chain read in full (the tab's HTML and JS, the routes, the catalogue rows and `template.py`, config / resolve / prep / validation, the deck writer) and each parameter traced from its control to its line in the generated script and to where the engine's own source reads it, nothing changed and nothing run; (2) every finding re-read against the code and fixed at its owner, the contract first; (3) the road in the browser per track — the tab, the hand-over, Task setup, the printed `prep` / `launch`, a small run, the Results tab | `web/spectra.md` · `engines/vibration.md` · `engines/pyscf.md` · `engines/siesta.md` · `engines/transport.md` · `web/task-setup.md` | **started 2026-09-29** — step (1) done the same day: five reports, every defect verified; step (2) is § 5w — the findings grouped by the mechanism that produced them, each class one declaration in the template and one door (K1–K17), proposed and awaiting the user's word |
 | **W32** | engines / structure | **THE FRAME AXIS — a frame set is one multi-frame pair** *(user, 2026-09-24: "allow multi-frame … which shares the same .json file so meta data and labels are shared, checking of atom number and others can still be gated")*. The contract is `engines/transport.md` § 2a.9 (the set, the per-frame checks, `f000` the base) and `model/structure-molstruct.md` § 6.1 (one sidecar, many frames; a reader that does not ask for frames gets frame 0). **Nothing new is invented**: the codec already writes and reads the pair, and every existing door keeps working because it sees frame 0. **Order of work:** ① the contract — **done 2026-09-24**; ② the citation door classifies a multi-frame pair and checks the four per-frame promises, naming the frame; ③ `prep`: the device and the transmission carry the frame level (`f###`), the seed and the leads do not, the gather runs per frame, one bias for the group (§ 2a.9's ruling); ~~④ the generator from a spectra file (V1.25) — the vibration side's half~~ — **left this row 2026-09-29 (TD10)**: transport is handed a multi-frame structure and reads each frame's details from its `customized` section (W39); the generator is V1.25's own procedure; ⑤ Results: the family of curves and what is derived across it (§ 2a.9's deliverable, § 2a.12). **Gate:** ② and ③ land after the single-frame ladder has run end to end once (the run W30's status calls for) — a frame axis on a ladder that has never produced a curve would be measured against nothing | `engines/transport.md` § 2a.9, § 2a.11 · `model/structure-molstruct.md` § 6.1 | **① done 2026-09-24**; ② – ⑤ → **§ 5u step 11**, after steps 4 and 5 *(consolidated 2026-09-29)* |
 | ↳ | **V1.15** | **Recorded, not in scope**: the transport connection (displace along a mode, then transport; the electron–vibration coupling from `FC.Save.dHS`) and Born-charge infrared on SIESTA — each a feature to design as one | `vibration.md` § 5.6 | not started |
 | **E11** | engine / science | **A fresh live walk of the PySCF / spectra decks.** The 2026-08-28 review exercised them only through the guard suites and says so | audit 08-28 § 5 | open |
@@ -4590,6 +4590,88 @@ four others corrected 2026-09-29) · *owed* tables inside contracts
 *"open items: row V1 … and nowhere else"*, `checkpointing.md` § 13.4,
 `engines/overview.md` § 3a) — each item goes to a row here, and the table
 points at it.
+
+---
+
+## 5w. The M11 review — its findings, by the mechanism that produced them *(W50, 2026-09-29)*
+
+*The five static reviews W50 asked for reported on 2026-09-29, read at `03c52cfa`
+with nothing changed and nothing run. Every defect was then re-read in the code
+and, where it is about the engine, in the engine's own source (SIESTA 5.4.2,
+PySCF 2.14, geomeTRIC 1.1.1, gpu4pyscf 1.8.1). The record, finding by finding
+with each verification, is
+[`archive/2026-09-29-m11-static-review.md`](?doc=archive/2026-09-29-m11-static-review.md);
+IDs are the reviewers', prefixed by track — **SO**/**PO** Structure optimization
+on SIESTA / PySCF, **SS**/**PS** Spectrum on SIESTA / PySCF, **T** Transport.*
+
+**The fix is the framework's, never the call site's** *(user, 2026-09-29: "the
+solution to the issues identified through the review should be a systematic
+holistic and framework level with good api unification"; "the core idea of the
+whole system is a template/data-driven unified api framework that provides
+flexibility and consistency systematically")*. Almost every finding is a fact
+that escaped the template — a per-kind meaning no marker states, a second home
+for an execution value, an engine outcome the deck assumes instead of reads, an
+engine default restated in prose. So each class below is closed by **one
+declaration in the catalogue and one door every surface asks** (`template.md`
+§ 6.5, § 6.6), and the per-site code and its tests go with it; a class closes
+as a milestone does (§ 0a). **Proposed, not started — every class waits for
+the user's yes** (§ 5w.3).
+
+### 5w.1 The classes
+
+| | what escaped the template | the declaration, and the door every reader asks | closes |
+|---|---|---|---|
+| **K1** | **who answers, per kind** — the markers exist and are missing | `role` for the vibration kind on `write_forces` / `write_coor_step` (the finish reads step 0's forces and coordinates, § 5.5 — a choice with one right answer); `shared` for **every** kind on the identity items (`system_label`, `psml_lib`, `species_order`: one calculation, one name, one species table); `resolve` refuses a stage override of a `role` item as it refuses a `shared` one — one door beside `why_shared` | SS-C1, SO-C2, T-F5 |
+| **K2** | **which values a kind may take** | a per-kind choice set on the item, the sibling of `recommended` (§ 6.3a), read by the form, the stage table's cells, the preflight and `prep` — so a value the kind cannot run is never offered and is refused by name if written | SS-C4 (Verlet / Nose / none on a vibration's relaxation), PO-C3 (berny), SO-C13 (transiesta on an optimization), T-F20 (spin treatments per engine and kind — `electronic_state.CAPABILITY` is the same fact in a second home), PS-C2's refusal half |
+| **K3** | **hard bounds against a recommended range** | `range` stays advisory, one warning on every surface; a declared hard domain is refused on every surface with one message — never an error in one door and a warning in another | SS-C5 (`fc_displacement` > 0 — SIESTA divides by it; `relax_steps` ≥ 1), PS-C22 (temperature and pressure > 0), T-F15 (bias points distinct and inside the item's bounds), SO-N4 (one range, two severities) |
+| **K4** | **where an item binds, per rung ROLE** | `stages` names a rung's role, and the kind says which role a stage plays — transport: its name; vibration: a relaxation or a force-constant rung, whatever the stage is called (`vibration_render_kind`); optimization: no roles. The stage table offers each rung only what its deck reads and echoes the rest (§ 6.6 obligation 3); a preset fills only the rungs that read it; each item's tightening direction is declared, so R3 reads it for every engine and skips a kind whose rungs are different programs | SS-C6, PO-C14, T-F14 |
+| **K5** | **execution values with several homes** | one home per rung — the run card, `stages[i].execution` — and one resolved answer every reader asks (`resolve`'s, with its provenance): the deck, the wrapper, the scheduler's GPU ask, the bench, Task setup's cards and hints; the stage table stops offering execution items as columns; a transport rung takes its run card like any other rung | SO-C1 (a rung's `use_gpu` never reaches `--gres`), T-F3, SO-N12, the `--from` hint |
+| **K6** | **the engine's own outcome, assumed instead of read** | one relaxation outcome record and one policy for both engines: the PySCF decks read geomeTRIC's convergence flag (`geometric_solver.kernel`) — `halt` raises before anything is written, `continue` re-enters from the geometry it stopped at (`pyscf.md` § 3 already says *extend this rung*), `proceed` records *not converged*; one remedy text for a non-stationary reference, read by `prep` and the finish; whether a retry resumes is the kind's warm-state declaration (`warm-files.toml`: an FC run restarts at `FC.First`), read by the wrapper; a capability the engine lacks (gpu4pyscf's `stability`) is declared and asked, never called and caught | PS-C1 = PO-C1, SS-C2, SS-C3, PO-C2, PO-C15 |
+| **K7** | **the form's value model** | one field state on every surface: the template's value, the kind's default and the value's source (§ 6.6 obligation 2's four states); blank is *not chosen* for every field and never the first choice; the rung surface shows the template the rung will run; a set optional field is sent; a value that will not coerce is refused naming its field | T-F25, T-F1, T-F24, SS-C16, SO-N5, PS-C12 |
+| **K8** | **what the engine sees** | one door for the engine's frame facts: the axis kinds PySCF computes with (a cluster: isolated on all three), read by the deck, the Methods count and the R7 note alike; the box checks run for an engine that uses a cell | PS-C4, PO-C13 |
+| **K9** | **engine facts restated in prose** | each item's engine default declared once with its source (file:line), and the help's deviation sentence (§ 5.2), the template comment and the deck's *not set* line (§ 6.6 obligation 4) written from it; one measured fixture — the engine's own account of a minimal run, SIESTA's fdf log — checks every declared default; a comment restating engine behaviour is cut to the one home | SO-C6, SO-C7, SO-C14, SS-C7, SS-C8, SS-C9, T-F31, PO-C18, PO-C19, and the § 5.2 half of every help text |
+| **K10** | **where things are on disk** | one reader of a rung's attempts, a bias scan's per-point folders included; carry names from the rung's own naming door; a kind's warm set carries what its rungs read | T-F27/F13, PO-C16, SS-C14 |
+| **K11** | **comparing against a stale render** | the gather check renders each upstream rung now, in memory, through the one render door, and compares that | T-F30 |
+| **K12** | **stage names** | one resolver and one printer: a deck header prints the name `launch` accepts; names fold case everywhere (`stages.md`) | SS-C11, SS-C15 |
+| **K13** | **file writers** | every file molbuilder writes goes through `persist`'s atomic writer, and the PySCF deck's own is spliced from it | SS-C17, V1.37 |
+| **K14** | **allocations** | one name map between the catalogue's items and `Resources` (`omp_threads` ↔ `cpus_per_task`, `gpu_count` ↔ `gres`), read by `render_config` and `prep_inputs` alike; one meaning of a blank budget on every engine; the engine's parallel model (MPI or OpenMP) declared and read by the scheduler header | SO-C8, SO-C5, PS-C6 = PO-C7, PO-C8 |
+| **K15** | **deck values rendered per item** | one formatter in the layout's line door — the value exact, never a per-item format string | PS-C9 = PO-C5 |
+| **K16** | **the run record's parameter rows** | `declarations(engine, calculation, stage)` — the rung's own items | SS-C10 |
+| **K17** | **physics each needing a build or a refusal** (not a framework gap) | PS-C3 (PCM's solvent terms on the held-atom, IR-only and Raman routes — build and measure, or refuse); PS-C2 (two spin channels in the spectrum record — build, or K2 refuses); SO-C3 (the GPU-ELPA `BlockSize` realignment `tuning.md` promises — build it); SO-C10/C11 (`ParallelOverK` — SIESTA's default unless set; ELPA forces it off); SO-C12 (pseudopotentials by exact name); PO-C4 (the geomeTRIC log — write it or drop the promise); PO-C10 (the ECP read back from the molecule); PO-C12 (a `-V` functional with D3); T-F35 (the T(E) window covers the bias window); T-F26 (only the L and R electrode labels); T-F4/F34 (a fixed ladder's controls); T-F2 (`kgrid_displacement` written through the door, § 6.6 obligation 4); T-F28 (the device's E_F, iterations and poles in the record); PS-C13 (mode numbers bounded at `prep`) | as listed |
+
+### 5w.2 What is text alone
+
+The doc-drift and nit findings (SO-C4, SO-C15, SO-N1–N14; PO-C17, PO-C20,
+PO-C21 a–r; SS-C12, SS-C13, SS-C18; PS-C5, PS-C7, PS-C8, PS-C11, PS-C14–C21,
+PS-C23; T-F6–F9, T-F16–F18, T-F21, T-F29, T-F32, T-F36) are one sweep, done
+**after** K9 — several of those texts become data there, and a text corrected
+first would be rewritten twice.
+
+### 5w.3 What needs the user's word
+
+* **The approach** — the classes above, each a declaration plus one door, in
+  the order of § 5w.4.
+* **K5's home** — execution values live on the rung's run card
+  (`stages[i].execution`), and the stage table stops offering them.
+* **K7's source key** — `template.md` § 6.6's open choice 1: `source`, one of
+  `cited` · `record` · `person` · `default`.
+* **K14's blank budget** — resolved at `prep` from what the machine granted, or
+  the engine's own default stated where it applies.
+* **K17's forks** — PCM on the three routes: build and measure, or refuse;
+  unrestricted PySCF vibration: build the two-channel record, or refuse; berny:
+  refuse, or retire the choice; the geomeTRIC log: write it, or drop the
+  promise; `kgrid_displacement` on transport: carry the cited offset, or take
+  it off the shared panel.
+* **K9's scope** — whether the engine-default check runs on a measured fixture
+  now, or the declaration comes first and the fixture with the e2e step.
+
+### 5w.4 Order
+
+K6 first — a relaxation that ran out of steps is recorded as converged on both
+PySCF decks, which is a wrong answer given silently. Then the declarations
+K1–K4, which the surfaces read; K5; K11; K7; K8; K10; K12–K16; K17; K9 and the
+text sweep last. Then W50's step 3, the road in the browser per track, with the
+reviewers' probes (the archive's § E lists) among its runs.
 
 ---
 
