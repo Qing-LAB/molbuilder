@@ -503,7 +503,10 @@ disk.
 > derived value into a stored one (§ 2.2's raw-vs-resolved line).
 >
 > `from_pdb` is still ours: PDB carries residue, chain and atom-name columns
-> this model owns, and no comparable second reader exists.
+> this model owns. **A second PDB reader does exist**, in the builders —
+> `builders/backends/_common.py::parse_pdb_to_structure`, which reads a blank
+> element column as the name's first letter (`Mg → M`, `Cl → C`); it is plan
+> A1.14's. *(This said no comparable second reader existed until 2026-09-29.)*
 
 ### 2.4 The paired-file door — `StructureCodec` (L2)
 

@@ -157,8 +157,9 @@ executed, and the whole `execution/` domain is shaped by it:
 
 So the honest one-line status of the whole domain: **describe in the browser,
 act on the terminal, observe on either — shipped and proven for structure
-optimization on a workstation; the cluster proof and a web plan/status view
-remain (`plans/plan.md` **E7**, **W14**); spectra (2026-08-21) and transport
+optimization on a workstation; the cluster proof remains (`plans/plan.md`
+**E7**) — the web plan/status view was dropped (W14, killed 2026-09-10: no
+stated use); spectra (2026-08-21) and transport
 (2026-08-29, the composite) both migrated onto the framework.**
 
 ```mermaid
@@ -190,10 +191,10 @@ flowchart TB
 | Launch a stage | ✅ | — *(by design: it spends a queue slot, by hand)* | `job-system.md § 3` |
 | Parameter / resource sweep | ✅ | — | `job-system.md § 4.2` |
 | Benchmark → recommended resources | ✅ | — | `job-system.md § 7` |
-| SLURM deployment (routing domains; **one job per submission**) | ✅ | ⏳ | `job-system.md § 6` |
+| SLURM deployment (routing domains; **one job per submission**) | ✅ | — *(launching stays on the terminal; the web plan view, W14, was dropped 2026-09-10)* | `job-system.md § 6` |
 | Fork a what-if tail (save from a restored state — there is no `branch` verb) | ✅ | ⏳ | `checkpointing.md § 7.1` |
 
-`✅` shipped · `⏳` planned (see [`plans/plan.md`](?doc=plans/plan.md) **E7**, **W14**) ·
+`✅` shipped · `⏳` planned (see [`plans/plan.md`](?doc=plans/plan.md)) ·
 `—` not applicable / not planned for that surface.
 
 Two facts keep the picture honest:
@@ -204,8 +205,9 @@ Two facts keep the picture honest:
   setup, which writes the description and preps it from the chosen machine's
   record through the one prep entry (`job-system.md` § 5.3); `launch` runs
   where the machine is. What the
-  web still lacks is the observe half beyond the Results tab: a plan view
-  and a per-stage status roll-up (`plans/plan.md` **W14**).
+  web does not have is a plan view and a per-stage status roll-up beyond the
+  Results tab — proposed as W14 and dropped on 2026-09-10 (no stated use);
+  `jobset status` and the Results tab are the observe half.
 - **Both engines' ladders are N decks, N jobs.** A PySCF ladder is declared
   in `task.json` and executes one rung per job, exactly as SIESTA's does
   ([`stages.md § 1.1a`](?doc=engines/stages.md), decided 2026-08-18 — the

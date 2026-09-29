@@ -93,12 +93,11 @@ and the folder is saved under rules nobody applied."*
 the operator meeting it is mid-mistake about that specific thing: a
 project-scope copy is a file somebody can edit *between a save and a restore*.
 
-> **Scope-name drift, recorded rather than hidden.** Scope 2 is called
-> `"project"` in the section registry, `"bundle"` in `config_provenance`'s
-> output, and *"a project or calculation folder"* in the refusal message —
-> three names for one scope. Naming is § 6.3's territory, so the fix belongs
-> there; it is noted here because this is the page a reader arrives at with the
-> question.
+> **One name for scope 2: `project`** — the section registry, the provenance
+> output and the refusals, since 2026-08-23 (`runtime_config._SECTIONS`,
+> `config_provenance`). It answered to `"bundle"` in the provenance output until
+> then, and `bundle` was the one that had to go: it names a different artifact,
+> the portable prepped directory `--bundle` points at.
 
 ### 2.1 Where each file is looked for, in order
 
@@ -388,9 +387,9 @@ and frequent diagnosis. Two rules make it a readable one:
 
 ```text
 config:
-  machine     /home/you/.config/molbuilder/molbuilder.json   (found, via xdg)
-  bundle      /work/calc/.molbuilder.json                    (absent)
-  environment /work/calc/environment.json                    (found, via calculation)
+  machine     /home/you/.config/molbuilder/molbuilder.json  (found, via config-dir)
+  project     /work/calc/.molbuilder.json  (absent)
+  environment /work/calc/environment.json  (found, via calculation)
   environment /home/you/.config/molbuilder/environment.json  (found, via machine)
   execution.mode = 'submit'   <- machine
   environment.domains: general
@@ -1155,6 +1154,6 @@ document that owns each.
 
 | what | owner | status |
 |---|---|---|
-| One scope, three names — `"project"` · `"bundle"` · *"a project or calculation folder"* | `job-contracts.md` § 6.3 (identifier conventions) | open |
+| One scope, three names — `"project"` · `"bundle"` · *"a project or calculation folder"* | `job-contracts.md` § 6.3 (identifier conventions) | **closed 2026-08-23** — `project` everywhere (`runtime_config._SECTIONS`, `config_provenance`); marked here 2026-09-29 |
 | ~~`verbose_comments` and `write_molwatch_log` are items in the catalogue for neither engine~~ — **withdrawn 2026-08-17: this was my misreading.** All three (`max_memory_mb` too) *are* catalogue items; they declare **no `engines` list**, so a per-engine query misses them while a plain lookup finds them. That is correct for what they are — a machine fact and two emitter switches, none of them engine-specific | — | **closed.** The rule they follow is *an item with no `engines` applies to every engine*, and [`engines/template.md`](?doc=engines/template.md) states it twice — in § 5's key table and in § 6.3's writer rule. This row claimed no document said it, which was the second half of the same misreading |
 | `resolve_environment(overrides=…)` — **`jobset probe` is the caller** (`jobset/_cli.py`) and passes no `overrides`, so a machine fact cannot be declared through the verb yet. The missing sliver is the flag surface (`--set key=value`, a scheduler override), not the door or its caller — misread once (2026-08-19) as "the function has no caller" | this document, § 5 M-5 | **CLOSED — re-measured 2026-09-20.** Both flags exist: `jobset probe --help` lists `--set KEY=VALUE` (*"declare a topology fact the probe cannot see"*) and `--scheduler [slurm\|workstation]`. The row said *"the flags are not built"* long after they were |

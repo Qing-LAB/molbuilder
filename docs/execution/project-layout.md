@@ -2356,17 +2356,16 @@ closed**: the emitted script keeps its own `.out` regexes for `E_KS` and the
 cell, and tries `<label>.out` — a name no wrapper writes — before that glob
 (`plans/plan.md` § 5t.4).
 
-**Two composers are known and NOT closed**, because closing them is a decision
-rather than a migration:
+**The two composers once listed here are closed** *(plan N6, 2026-09-18;
+marked here 2026-09-29)*:
 
 - `submit.py`'s group launcher — `<container>/launch/<name>.run.sh` and
-  `.sbatch`, ~8 hand-spelled sites across the bench-group and bias-chain paths.
-  A coherent sub-grammar with no door, on the submission route.
-- `web/blueprints/files.py` keeps its own `_SIDECAR_SUFFIX` and its own
-  `sidecar_path_for`, with a comment giving the reason ("keep its dependency
-  graph narrow"). Layering permits the import — `sidecars` is L2, `web` L3 — so
-  the stated reason does not rest on a rule; but it is a written decision, and
-  reversing one is not a migration step.
+  `.sbatch` — is **not a defect**: `launch/` holds the group's own machinery
+  beside the trial directories so it is not mixed among them, a decision
+  recorded at `submit.py` (roadmap 7.10, user 2026-08-24).
+- `web/blueprints/files.py`'s own `_SIDECAR_SUFFIX` and `sidecar_path_for` are
+  deleted; it asks `sidecars.molstruct.sidecar_path_for`, the module that owns
+  the pairing.
 
 #### Where the survey does not look
 

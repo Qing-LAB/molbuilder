@@ -1499,7 +1499,7 @@ grammar; § 4's note has the story.)*
 ### Where the web stands, and what other engines wait on
 
 This is the migration the project is undertaking, planned in
-[`plans/plan.md`](?doc=plans/plan.md) (**E7** the cluster half, **W14** the web plan view) — and its first phase shipped:
+[`plans/plan.md`](?doc=plans/plan.md) (**E7** the cluster half; the web plan view, W14, was dropped on 2026-09-10) — and its first phase shipped:
 
 - **✅ Phase 1 — the browser writes the description** *(shipped; proven end
   to end 2026-08-19)*. The parameter tabs hand over to the shared **Task

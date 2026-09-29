@@ -464,7 +464,10 @@ verify:
 > no list.
 
 - **Basis ↔ pseudo consistency** — that the **PAO** (pseudo-atomic-orbital, SIESTA's
-  numerical basis set) l-channels match the pseudo's. Deferred.
+  numerical basis set) l-channels match the pseudo's. **Not checked, and not
+  planned**: the "science-validation tail" it belonged to was killed by the
+  user on 2026-09-10 (*"not open, not deferred: gone"* — plan N4, archived);
+  it said *Deferred* until 2026-09-29.
 
 The guard catches **missing, mis-functionaled, mis-relativistic, version-strange,
 structurally-broken, or unparseable** pseudos. It does **not** certify that a

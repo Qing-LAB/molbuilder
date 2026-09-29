@@ -585,10 +585,12 @@ and **there is one convention for it**:
   ```
 
   > **The deck, the stdout and the monitor log all carry the same token.**
-  > `molwatch_log_basename` takes it, and the decoder reads it back through
-  > `identity.parse_stage_token` rather than keeping a second regex — so a
-  > stage's files can always be matched to each other by name
-  > (`identity.stage_token`; § 6.3's Files table).
+  > `molwatch_log_basename` takes it, and the decoders read it back through
+  > `identity.parse_stage_token` — so a stage's files can always be matched to
+  > each other by name (`identity.stage_token`; § 6.3's Files table). **One
+  > reader still keeps a second regex**: the PySCF log parser's
+  > `_STAGE_TOKEN_RE` (`parse/engines/pyscf.py`), open as plan N5 ② (M2i).
+  > *(This said none did until 2026-09-29.)*
   >
   > **The underscore is load-bearing.** A hyphen announces *a counter follows*
   > on this document's own terms, and a stage is not a counter — it is a name

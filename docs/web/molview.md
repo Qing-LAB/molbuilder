@@ -1296,14 +1296,15 @@ land, and it says nothing about the draft, which is not a point on the sequence
 (§ 11.3). It is not a general "something went wrong" light, and reading it as one
 is how a failed draft write comes to look handled.
 
-> **The reason is destroyed twice today, before anything could catch it.**
-> `postJson` raises `new Error(route + ": " + status)` **without reading the
-> response body**, so the envelope's `error` — the gate's own sentence, *"swap two
-> lattice vectors or negate one"* — never exists in the browser at all. What
-> little is left, the status code, is then swallowed by a bare `catch (_)` that
-> returns `null`, which is how a refusal came to be indistinguishable from having
-> nothing to do. The server was made to answer 400 with that sentence on
-> 2026-08-02; nothing on this side has ever been able to read it.
+> **The reason used to be destroyed twice before anything could catch it** —
+> `postJson` raised `new Error(route + ": " + status)` without reading the
+> response body, and the periodicity door swallowed even that in a bare
+> `catch (_)` returning `null`, so a refusal read as having nothing to do.
+> **Both are fixed** *(re-read 2026-09-29)*: `postJson` reads the body and throws
+> the server's own sentence — *"swap two lattice vectors or negate one"* — and
+> the periodicity door catches nothing (`model-jobs.js`). One read still
+> answers `null` on failure, the selection filter (`/api/selection/eval`), a
+> gap the code names as its own.
 
 
 ## 7. The layers
@@ -4406,7 +4407,10 @@ the atoms and their facts, the cell block, the coordinate document it would
 write, and per-atom identity columns a coordinate file cannot hold — atom names,
 residue ids, chain ids — plus the extensible annotation channels.
 
-> **Open.** MolView keeps the first three and drops the rest. That is invisible
+> **Done 2026-08-20** *(marked here 2026-09-29)*: MolView carries the identity
+> columns and the annotation channels, verbatim (`model-jobs.js`). What the
+> passage below describes is the defect that was: MolView kept the first three
+> and dropped the rest. That is invisible
 > until an edit: a structure that goes to the server and comes back has been
 > rebuilt from what was sent, so anything the viewer did not carry is **gone from
 > the file afterwards** — atom names flattened to elements, chains dropped,
@@ -4758,9 +4762,8 @@ neither does this document (§ 4).
 > length. It does not ask the renderEngine anything, which is what lets § 6.4's
 > ordering rule stand on something.
 >
-> **Where the code has not caught up** is now a short list, and every item is a
-> control that was never drawn rather than a rule that is broken: the Export
-> menu's *Image* row and Data's frame range (§ 11.3), the frame bar's speed box
-> (§ 1.1), the notice a reserved name earns (§ 6.6), and the by-label list read
-> from the structure (§ 9.5). The machinery each of them calls is built and
-> tested; only the control is missing.
+> **Where the code has not caught up** is one control that was never drawn: the
+> notice a reserved name earns (§ 6.6), open in `plans/plan.md` § 0a's
+> *Unscheduled* list. *(This listed five until 2026-09-29; the Export menu's
+> Image row and Data's frame range (§ 11.3), the frame bar's speed box (§ 1.1)
+> and the by-label list (§ 9.5) are drawn — `ui.js`, `model-jobs.js`.)*

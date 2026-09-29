@@ -4568,16 +4568,11 @@ mechanism choices *open* (ruled TD5), `render_script`'s open question, *"ONE ARM
 IS STILL MISSING"* · `chemistry-correctness.md`'s two channels, in the present
 tense.
 
-**Elsewhere** (M2n's sweeps): `configuration.md`'s scope-name
-drift (fixed 2026-08-23) · `junction-cell.md` against X3 · `pseudopotentials.md`'s
-*deferred* basis check (killed) · `normal-modes.md`'s *"no comparison tool"* ·
+**Elsewhere** (M2n's sweeps): `junction-cell.md` against X3 · `normal-modes.md`'s *"no comparison tool"* ·
 `vibration.md`'s V1.25 / V1.27 / compose lines · `on_nonconvergence` called open
 in `siesta.md`, `tuning.md`, `stages.md` (settled in `pyscf.md` § 3) ·
-`stages.md`'s folder conversion (answered no) · `project-layout.md`'s two
-composers (N6 closed) · `job-contracts.md`'s `parse_stage_token` (the second
-reader, N5 ②) · `structure.md`'s *"no comparable second reader"* ·
-`molview.md`'s four built *not caught up* items, an *Open* done 2026-08-20,
-`postJson` · `execution/overview.md`'s ⏳ rows · `engines/transport.md` § 3.7's *`dataclass_to_form_schema` LIVE*
+`stages.md`'s folder conversion (answered no) · `execution/overview.md`'s
+remaining ⏳ row (the fork of a what-if tail) · `engines/transport.md` § 3.7's *`dataclass_to_form_schema` LIVE*
 (no production caller since the transport form reads the catalogue; its retirement
 goes with § 5u step 3).
 
@@ -4587,8 +4582,7 @@ were rewritten to their homes on 2026-09-29 (#102, #103, #106, #107 and #105's
 module half → W15; #105's feature half → § 0a's *smaller open items*; #108 →
 § 0a's *Unscheduled*; #73 and #104 done) · archived plans named as *the plan* (`run-identity.md`,
 `worked-example.md`, `execution/overview.md`, `generator.md`, `stages.md`,
-`siesta.md`) · killed rows cited as homes (W14 in `execution/overview.md` and
-`job-system.md`; W12 in `README.md`) · *owed* tables inside contracts
+`siesta.md`) · *owed* tables inside contracts
 (`template.md` § 12.1, `worked-example.md`'s gaps, `vibration.md` § 10 and its
 *"open items: row V1 … and nowhere else"*, `checkpointing.md` § 13.4,
 `engines/overview.md` § 3a) — each item goes to a row here, and the table
