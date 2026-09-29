@@ -828,7 +828,7 @@ over different parameters (`project-layout.md § 2.3.1a`).
 > |---|:--:|:--:|:--:|
 > | `prep` | ✅ `prep run <stage>` — the stage is **required** ([`engines/stages.md`](?doc=engines/stages.md) § 6.5); with no stage it lists the ladder and refuses | ✅ **LANDED 2026-08-12** (step 6) — `prep bench <stage>`: probe the machine, enumerate the grid, render the trials into the stage's `bench/` | — the kind is required |
 > | `launch` | ✅ | ✅ **LANDED 2026-08-12** (step 6) — `submit bench <stage> [<trial>]`: the whole sweep as one grouped job per resource shelf (2026-08-21, `generator.md § 4.3a`); a named trial submits alone | — |
-> | `summarize` | — refuses: a run's outputs *are* the results, read by `status` and the Results tab | ✅ **LANDED 2026-08-12** (step 6 u4) — discovery keyed by `job-set.json`, results through the ordinary artifacts, async | — |
+> | `summarize` | ✅ a transport calculation's bias points into `<label>.transport.json` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), and a SIESTA vibration's force-constant stages compared into `<label>.fc-sweep.json` ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.9); any other calculation is refused, naming those two — its outputs *are* the results, read by `status` and the Results tab *(this cell said only "refuses" until 2026-09-29)* | ✅ **LANDED 2026-08-12** (step 6 u4) — discovery keyed by `job-set.json`, results through the ordinary artifacts, async | — |
 > | `describe` | — | — | ✅ **LANDED 2026-08-11** (plan step 2). Its predecessor `molbuilder fdf … --jobset` is **deleted** (§ 5.1) — it wrote a finished flat bundle and emitted *both* directory shapes at once |
 > | `status` | — | — | ✅ whole calculation · ✅ per-stage (`status <stage>`) |
 > | `plan` | — | — | ✅ |

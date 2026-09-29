@@ -94,8 +94,10 @@ with lazy imports). The structure-authority consolidation — one codec
 [`execution/job-contracts.md`](?doc=execution/job-contracts.md) (the data
 vocabulary).
 
-One residual data-consolidation gap: the CLI load/save path is not yet routed
-through `StructureCodec` (**task #73**).
+The CLI's load/save path goes through `StructureCodec` too — the residual gap
+this named (task #73) closed 2026-09-22, when `xv2xyz`, the last converter
+writing a lone geometry, moved onto it and the writers stopped taking a path
+(`plans/plan.md` W15).
 
 *This also called `web/blueprints/_shared.py::structure_to_dict` a "vestigial
 wrapper … not yet deleted" until 2026-09-06. It is not vestigial and is not

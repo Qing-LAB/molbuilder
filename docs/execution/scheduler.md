@@ -626,8 +626,9 @@ flowchart TD
 
 **A named queue is checked like any other.** The `--domain` branch reaches the
 same admission test — your choice is honoured as a *choice*, not as permission
-to skip the check. Today it is not checked at all; closing that is part of the
-phase that moves placement (§ 8).
+to skip the check: `place(..., named=)` asks `admits` of the named domain and
+refuses it by name like any other (`scheduler/place.py`; it landed with § 8's
+placement phase, 2026-08-23 — this said "not checked at all" until 2026-09-29).
 
 **Refusals are the graph's real output.** Three of the eight leaves refuse, and
 each refuses differently, because the reason is the useful part (R4, R10).
@@ -716,7 +717,7 @@ Smallest risk first; each step separately testable and separately revertable.
 The schedule is `plans/plan.md` § 5f, **S6**, not here (R3).
 
 1. **Move the record and the probe.** Pure relocation. *(Done 2026-08-23.)*
-2. **Move admission.** `domain_admits` already exists and has one caller.
+2. **Move admission.** *(Done 2026-08-23.)* `scheduler/admit.py` — `admits(domain, request)` returning the refusals — split out of `record.py` so the check cannot drift from the record it checks. *(This step named `domain_admits`, which it replaced; marked done 2026-09-29.)*
 3. **Typed rows instead of dictionaries.** *(Done 2026-08-23.)* The record is
    a dataclass, but the queue menu was handed out as `List[Dict[str, Any]]` —
    `get_routing` built `Domain`s and then threw the type away on its last line

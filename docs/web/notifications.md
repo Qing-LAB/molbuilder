@@ -69,7 +69,9 @@ so far; everything else in the API is there for the callers to come.
 
 Today `notify` is a **classic `window.molbuilder.*` script**. Converting it to an
 **ES module** — and, in the same pass, building it out as the framework it's meant
-to be — is tracked as **task #105**:
+to be — is part of the ES-module pass, [`plans/plan.md`](?doc=plans/plan.md) **W15**
+(its feature half — auto-dismiss, a `ttl`, a `detail`, a `success` level — is among
+§ 0a's *smaller open items*):
 
 - `export` the API; keep a transitional global door + the `persist-error` wiring
   for classic callers until they `import`.

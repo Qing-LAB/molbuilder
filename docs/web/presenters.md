@@ -27,8 +27,7 @@ mount nowhere today — § 3.)
 > engine `lib/trajectory/core.js` already `import` as modules, but both still
 > register through the global, so they are **hybrids**, not clean ES modules yet.
 > The module is being **renamed to `presenters`** and fully converted in one pass
-> (task #102,
-> [`plans/plan.md`](?doc=plans/plan.md) **W15**) — the old term "inspector" collided with
+> ([`plans/plan.md`](?doc=plans/plan.md) **W15**) — the old term "inspector" collided with
 > `mountInspector` inside the engines and with the viewers' own inspect panels.
 > This doc uses the target name **presenter**; where it points at code it uses
 > today's `inspectors` names.
@@ -248,9 +247,9 @@ sets `isResult: true` and gives a `resultCategory`.
 ## 7. What is ES-module-converted, and what isn't
 
 This module is the file-viewer registry that is being renamed and modernized
-(task #102). Its current state:
+(W15's presenters pass). Its current state:
 
-| File | Today | After the task-#102 pass |
+| File | Today | After the W15 pass |
 |---|---|---|
 | `structure.js` | hybrid — imports, but registers via the global | clean ES module, renamed to `presenters` |
 | `lib/trajectory/core.js` (engine) | hybrid — imports MolView, publishes a global | clean ES module, renamed |

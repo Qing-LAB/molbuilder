@@ -922,8 +922,12 @@ axis.
 ### 5.4 `execution` and `envs`
 
 - **`execution`** — `{mode, submit_via, domain}`. `mode` is `direct` (run in
-  place) or `launch` (through the scheduler); this, not the detected scheduler,
-  is what gates `.sbatch` submission. `domain` names a `routing` entry.
+  place) or `submit` (through the scheduler); any other value is refused by
+  name (`runtime_config.get_execution`). This, not the detected scheduler, is
+  what gates `.sbatch` submission. `domain` names one of the machine record's
+  domains (`environment.json`, written by `jobset probe`). *(This said
+  `launch` for the second mode, which the reader refuses — corrected
+  2026-09-29.)*
 - **`envs`** — overrides the conda env name per category
   (`{"siesta": "my-siesta-env", …}`); unset categories use the four defaults
   (§ 2.3).

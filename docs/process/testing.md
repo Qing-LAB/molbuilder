@@ -478,14 +478,15 @@ to react to is *"the real check is elsewhere"*, never *"proves nothing"*.
 > here reads `9,414 collected` and runs about 7,800.
 
 
-Most front-end logic is tested **in Node, no browser** — 48 `*_js.py` tests,
+Most front-end logic is tested **in Node, no browser** — the `*_js.py` tests,
 plus a handful of others. `tests/_node_esm.py` is **the harness to use**, and
 its `run_node(files, snippet)` loads an ordered list of module files via
 dynamic `import()` and then runs a JS snippet against them.
 
-> **It is the harness to use, not the harness in use.** Of the 48 `*_js.py`
-> files, **7** drive `_node_esm`; 21 files across the whole suite do. The rest
-> hand-roll their own `subprocess.run(["node", ...])` — the duplication
+> **It is the harness to use, not the harness in use.** Measured 2026-09-29:
+> of the **41** `*_js.py` files, **8** drive `_node_esm` (23 files across the
+> whole suite do), and **27** of the rest hand-roll their own
+> `subprocess.run(["node", ...])` — the duplication
 > recorded as **B4** in [`plans/plan.md`](?doc=plans/plan.md). This paragraph
 > claimed all of them did, which is the shape of drift worth naming: a
 > document describing the intended state in the present tense, so nobody

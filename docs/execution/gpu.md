@@ -227,6 +227,14 @@ Four places where the tree disagrees with itself. Each is stated as *what it
 says now* → *what is true*, because a correction that only asserts the truth
 leaves the reader unable to recognise the wrong version.
 
+> **All four are corrected** *(re-read against the tree 2026-09-29)*: C1 —
+> `engines/tuning.md` quotes the old sentence only inside its correction; C2 —
+> `config/siesta.py`'s card comment says it had `use_gpu` on the Budget card and
+> why that was wrong; C3 — the wrapper defaults an absent `gpu_count` to one
+> device (`runwrap._render_sbatch_for`, and `header_ntasks` answers one rank per
+> device); C4 — `test_sbatch_emit.py` no longer pins one rank per GPU. The
+> table below is the record of what they said.
+
 | # | where | says | true |
 |---|---|---|---|
 | **C1** | `engines/tuning.md` § 2.11 | *"`use_gpu` and `mpi_np` … are **machine facts** and bench axes"* | `use_gpu` is the person's (G2). The `allocation` set is `mpi_np`, `gpu_count`, `omp_threads`, `max_memory_mb`, `threads` |
@@ -269,6 +277,14 @@ Smallest risk first; each phase separately testable and revertable.
 Phase 3 is the one that must not be split: while two names exist, every
 caller asking the question must name an engine, and a half-done rename adds
 a third state.
+
+> **Where the phases stand** *(re-read 2026-09-29)*: **1 done** (§ 5's note);
+> **3 done** — one name, `use_gpu`, which is why its own row now reads as a
+> rename to itself; **2** not re-derived; **4 open to question** —
+> `runwrap._fdf_requests_gpu` still has call sites while the plan records G7 as
+> reached on 2026-08-23 by carrying the answer on `Resources`
+> (`plans/plan.md` § 5p.3p.1): which reads win is the M11 review's to say
+> (plan W50).
 
 ---
 

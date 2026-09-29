@@ -15,10 +15,10 @@ of these images changes.
 
 > **⚠ Known stale capture (2026-07-28, still stale 2026-09-01).**
 > `tab-bar.png` — and the nav strip inside `hero-molbuilder.png` — show
-> **five** tabs.  The shipped app has **eight**: **Documents** landed after
-> these were taken, then **Task setup**, then **This machine**
+> **five** tabs.  The shipped app has more: **Documents** landed after
+> these were taken, then **Task setup**, **This machine** and **JupyterNB**
 > ([`web/tabs.md § 1`](?doc=web/tabs.md) is the roster and the only place
-> the count is decided).  Both need a re-capture (the re-capture rule below
+> the count is decided, so this note names none).  Both need a re-capture (the re-capture rule below
 > already mandates it: a new tab is exactly the trigger); the README's hero
 > alt text deliberately avoids naming a tab count until then.
 >
@@ -76,7 +76,7 @@ of these images changes.
 | # | Filename | Used in README § | URL | What to load / set | Zoom region | Communicates |
 |---|---|---|---|---|---|---|
 | 1 | `hero-molbuilder.png` | top of README | `/molbuilder` | Load `projects/BDT/structure/BDT-AuJunction_siestaStage1_optimized.xyz`; Junction panel open; default camera | Full content area (sidebar + main + the right-side commands stack) — exclude browser chrome | "This is molbuilder" — sidebar + tabs + viewer + commands in one frame |
-| 2 | `tab-bar.png` | § Feature tour intro | `/molbuilder` | — | Zoom: just the top tab strip (**eight** tabs — the order comes from the one `TABS` list in `tabs.py`).  ~1200 × 60 px | Names + order of every tab |
+| 2 | `tab-bar.png` | § Feature tour intro | `/molbuilder` | — | Zoom: just the top tab strip (every tab — the roster and its order come from the one `TABS` list in `tabs.py`, `web/tabs.md` § 1).  ~1200 × 60 px | Names + order of every tab |
 | 3 | `sidebar-projects.png` | § Workflow + § Documentation | `/molbuilder` | Expand `BDT/` → `structure/`; cursor on `BDT-AuJunction_siestaStage1_optimized.xyz` so the paired `.molstruct.json` shows as a sidecar | Zoom: just the projects sidebar column.  ~360 × 700 px | Tree shape + the structure↔sidecar pairing |
 | 4 | `molbuilder-workspace.png` | § 1 Molbuilder tab | `/molbuilder` | Load the BDT junction; one atom selected in the viewer to show the amber **shape glow** (the only selection highlight — halos were removed, see [`web/molview.md`](?doc=web/molview.md)) + sync to the atom list on the left | Zoom: the `/molbuilder` content area (no sidebar, no top tab strip).  ~1080 × 760 px | The 3-panel layout: atom list + viewer + commands stack |
 | 5 | `structure-optimization-form.png` | § 2 Structure optimization | `/structure-optimization` | Pick `BDT-AuJunction_siestaStage1_optimized.xyz` from the sidebar; engine = SIESTA; default profile.  Issues panel will show INFO notices about Au-thiol detection | Zoom: the `/structure-optimization` content area (form on left, viewer on right, issues panel docked below).  ~1100 × 760 px | Schema-driven form + workflow-group cards + inline detection chip + issues |

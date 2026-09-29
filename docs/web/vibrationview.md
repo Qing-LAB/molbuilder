@@ -1125,6 +1125,7 @@ neither does this document (§ 4).
 > its manifest, and the caption (§ 12.3), which no previous version had in any
 > form.
 >
-> The work is tracked in task #19 (#104), and the tab-side wiring it depends on —
+> The work was task #19 (#104), and it is done: `lib/viewer/` is gone and this
+> module carries its own seal, `_seal.js` (re-read 2026-09-29). The tab-side wiring it depended on —
 > handing `mount` to the code that owns the mode-viewer element on `/results` — in
 > [`archive/2026-09-21-audit-2026-08-05-tab-ui.md`](?doc=archive/2026-09-21-audit-2026-08-05-tab-ui.md) § A1.

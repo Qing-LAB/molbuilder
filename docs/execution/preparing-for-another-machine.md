@@ -200,8 +200,10 @@ exactly right. Re-probe when the machine changed.
 
 ## 4. Choosing the machine is the user's, always
 
-Four ways the wrong machine gets chosen **silently** today. Each is the same
-defect: a question with several answers, answered by default.
+Four ways the wrong machine was chosen **silently** when this section was
+written. Each is the same defect: a question with several answers, answered by
+default. **All four refuse now** *(re-read against `scheduler/record.py::machine_for`,
+2026-09-29)* — the "today" column is the record of what was measured.
 
 Each row below was **exercised through the `prep` command itself**, not
 reasoned about — two of the four turned out to behave correctly already,
@@ -209,9 +211,9 @@ and one of those I had first written up as broken.
 
 | # | situation | today | required |
 |---|---|---|---|
-| **C1** | several records reachable, no `--target` | ❌ silently uses **this** machine — two cluster records present, a workstation chosen, exit 0 | refuse, and name the choices |
+| **C1** | several records reachable, no `--target` | ❌ silently uses **this** machine — two cluster records present, a workstation chosen, exit 0 | refuse, and name the choices — **done**: `AmbiguousTarget`, naming every record and *(this machine)* |
 | **C2** | `--target` given, but the bundle already carries a different machine's record | ✅ **already refuses** — `UnknownTarget.conflict`, naming both ways out ("delete the snapshot and re-prep" / "drop `--target`") | *(correct today)* |
-| **C3** | `--target sol` where `sol.json` exists but is malformed or a future schema | ❌ falls through to **this** machine, exit 0 | refuse: the user named it, so an unreadable record is an error, not a miss |
+| **C3** | `--target sol` where `sol.json` exists but is malformed or a future schema | ❌ falls through to **this** machine, exit 0 | refuse: the user named it, so an unreadable record is an error, not a miss — **done**: `UnknownTarget.unreadable`, the named target validated whole before any scope is walked |
 | **C4** | `--target` names a record that does not exist | ✅ raises `UnknownTarget`, listing the known ones and how to write the missing one | *(correct today)* |
 
 > **C2 is why this section is written from measurements.** Reading

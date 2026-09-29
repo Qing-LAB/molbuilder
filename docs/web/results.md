@@ -837,11 +837,11 @@ shows a placeholder and stays put — Reload remains one click away.
 The Results shell is still **classic**: `results/viewer.js` plus
 `lib/results/file-picker.js` are global-registered scripts
 (`window.molbuilder.*`), not ES modules — they lean on the runtime registry to
-load in order. Converting them is task #103 (the "remaining classic modules" pass,
-alongside the runtime registry and the shared primitives —
-[`plans/plan.md`](?doc=plans/plan.md) **W15**). The heavy viewers this shell *mounts* are on
-a different track — the trajectory and spectra engines convert in the #102
-file-viewer pass (see [`presenters.md`](?doc=web/presenters.md)).
+load in order. Converting them is the "remaining classic modules" pass,
+alongside the runtime registry and the shared primitives
+([`plans/plan.md`](?doc=plans/plan.md) **W15**). The heavy viewers this shell *mounts* are on
+a different track — the trajectory and spectra engines convert in W15's
+presenters pass (see [`presenters.md`](?doc=web/presenters.md)).
 
 ## 10. Test map
 

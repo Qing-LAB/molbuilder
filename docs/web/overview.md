@@ -123,12 +123,12 @@ global (trajectory) or self-mounts on page load (transport), rather than being a
 clean `export`.
 ² **classic** = a plain global-registered script, not yet an ES module.
 ³ **MolView and VibrationView are sibling modules, not one** — each a full ES
-module. They are not yet *fully* independent, though: both currently draw through
-one **shared 3Dmol embed surface** (`lib/viewer/`, borrowed by VibrationView via a
-transitional `window.molbuilder.viewer` global). Making them fully separate — the
-embed becomes MolView-private, VibrationView grows its own concealed seal — is
-**task #104** (see [`vibrationview.md § 5`](?doc=web/vibrationview.md)). `lib/viewer/`
-is that shared engine, not a module tabs mount, so it takes no registry row of its own.
+module, and fully independent: they drew through one **shared 3Dmol embed
+surface** (`lib/viewer/`, borrowed by VibrationView via a transitional
+`window.molbuilder.viewer` global) until the separation (task #104) was done —
+`lib/viewer/` is gone and VibrationView carries its own concealed seal
+(`lib/vibrationview/_seal.js`; see [`vibrationview.md § 5`](?doc=web/vibrationview.md);
+re-read 2026-09-29).
 
 Two cross-cutting contracts round out the domain (not mountable modules, but the
 rules every tab obeys): [`web-api.md`](?doc=web/web-api.md) (the server routes) and

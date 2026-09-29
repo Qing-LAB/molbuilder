@@ -137,7 +137,8 @@ they share the `lib/` folder, but their substance lives with their real subject:
   (atom-count × metal thresholds → relax/SCF advice) in the frontend. That's
   chemistry + science, not a primitive — its home is the chemistry card's
   domain (`science/chemistry-correctness.md` § 2.5), and a clean-up / re-validate
-  review of the budget line is **task #108**.
+  review of the budget line is open in [`plans/plan.md`](?doc=plans/plan.md) § 0a's
+  *Unscheduled* list (M6 / § 5s.4).
 - **`system-load-monitor.js`** — a self-mounting CPU/RAM/GPU sparkline strip on
   the **Results tab only**, not a shared block; documented with the Results tab.
 - **`region-label-definitions.js`** (+ its popover) — the transport **device-role
@@ -158,14 +159,14 @@ Converting the registry and these primitives to ES modules is a planned pass
 ([`plans/plan.md`](?doc=plans/plan.md) **W15**) — grouped **by kind**, not lumped into one
 "runtime" bag (a `path.basename` caller shouldn't drag in a notification bar):
 
-- **`notify`** → its own ESM framework + auto-dismiss — **task #105**
-  ([`notifications.md`](?doc=web/notifications.md)).
-- **`markdownRender`** → ESM — **task #106**.
+- **`notify`** → its own ESM framework ([`notifications.md`](?doc=web/notifications.md));
+  its feature half — auto-dismiss, a `ttl`, a `detail`, a `success` level — is
+  among § 0a's *smaller open items*.
+- **`markdownRender`** → ESM.
 - the **CodeMirror code-viewer/editor** (today set up twice — in the sidebar
-  preview and the markdown presenter) → one concealed ESM module + de-dup —
-  **task #107**.
+  preview and the markdown presenter) → one concealed ESM module + de-dup.
 - the **registry itself**, the `results` module, and the pure helpers
-  (`path`/`constants`) → **task #103**. The pure helpers stay small standalone
+  (`path`/`constants`). The pure helpers stay small standalone
   ESM (not folded into the registry). In particular `constants` becomes the **one
   ESM source** — `projects/state.js` imports `SS_FILE`/`SS_DIR` from it instead of
   re-declaring them, and the lock-step consistency test is then dropped. The

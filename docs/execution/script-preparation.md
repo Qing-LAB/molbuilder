@@ -761,14 +761,14 @@ flowchart TB
 
 ### Where the four writers actually stand
 
-**There are four script writers in this tree, and three are on the sequence
-above.** Stating it rather than leaving it to be discovered:
+**There are four script writers in this tree, and all four are on the sequence
+above** *(three until transport crossed over on 2026-09-17)*. Stating it rather than leaving it to be discovered:
 
 | | catalogue rows | seam entry | on `prepare_deck` | the artifact gate | reader's block | values carry their reason (W2) |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|
 | **SIESTA** | 49 | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **PySCF** | 45 (+ the 14 vibration rows = 59 through `select`) | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **TranSIESTA** (`transport/`) | **0** | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **TranSIESTA** (`transport/`, the five rungs) | the SIESTA set, and the transport kind's own rows | ✅ SIESTA's, `calculation="transport"` | ✅ since 2026-09-17 | ✅ | ✅ | ✅ since 2026-09-29 — every `TS.*` / `TBT.*` value walked with its note (`engines/transport.md` § 6.1b); the electrode declarations stay a Block, derived from the region labels |
 | **Spectra** (the `vibration` kind, `pyscf/vibration_deck.py`) | 14 (+ shared PySCF set) | ✅ | ✅ | ✅ | ⚠ one Block | ⚠ one Block |
 
 *The two ⚠ cells state a real limit rather than rounding up: the vibration
@@ -1051,7 +1051,9 @@ tree is the same tree.
 
 ## 7. What the code does not yet do
 
-**Status lives in [`plans/plan.md`](?doc=plans/plan.md) § 5f, **S7** (P1, P3, P5), never in a contract**
+**Status lives in [`plans/plan.md`](?doc=plans/plan.md), never in a contract**
 (`process/conventions.md`'s R3 — not `stages.md` § 4's, which is a different
-rule with the same shorthand). The preparation-layer deltas are one named debt there — P1 to P6 — so
-scheduling them is a roadmap edit rather than a hunt through this page.
+rule with the same shorthand). The preparation-layer debt it named, **S7**
+(P1–P6), is closed and archived *(2026-09-29: P1's enforced floor map was
+retired with its test, P3 closed, P5 built — PySCF answers the seam)*; what is
+open of this page's subject is the plan's own rows.

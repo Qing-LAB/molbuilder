@@ -247,8 +247,8 @@ header. The header's source-path line has the username redacted.
   `lib/trajectory/core.js` already `import`s MolView as an ES module, but its own
   body is still a classic script that publishes `window.molbuilder.trajectoryInspector`
   — a **hybrid**, not yet a clean module. It converts to a full ES module in the
-  file-viewer registry + `inspectors` → `presenters` pass (task #102,
-  [`plans/plan.md`](?doc=plans/plan.md) **W15**), the same pass that converts the sibling
+  file-viewer registry + `inspectors` → `presenters` pass
+  ([`plans/plan.md`](?doc=plans/plan.md) **W15**), the same pass that converts the sibling
   spectra engine. See [`presenters.md`](?doc=web/presenters.md).
 
 ## 8. Test map

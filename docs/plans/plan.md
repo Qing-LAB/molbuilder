@@ -4560,7 +4560,7 @@ the code"* (built 2026-09-24) · § 3.6a's `config_for` validating against
 `TransportConfig` names · I14's kind-gate row · the invariant table's missing
 holder for `species_order` · `execution/job-contracts.md`'s TranSIESTA rows
 (*"TRANSPORT DOES NOT"*, a bare `write_text`, *"one writer and one reader"* of
-the permutation) · `script-preparation.md`'s all-❌ TranSIESTA row · `web/tabs.md`'s
+the permutation) · `web/tabs.md`'s
 *"no presenter matches it"* · `web/form-schema.md`'s *"still calls
 `dataclass_to_form_schema`"* · `model/parse.md`'s transport record *composing
 the rungs' records* (planned, written as built) · `engines/template.md`'s three
@@ -4568,8 +4568,7 @@ mechanism choices *open* (ruled TD5), `render_script`'s open question, *"ONE ARM
 IS STILL MISSING"* · `chemistry-correctness.md`'s two channels, in the present
 tense.
 
-**Elsewhere** (M2n's sweeps): `backend-architecture.md`'s task #73 (done) ·
-`job-system.md`'s *"`summarize` — refuses"* · `configuration.md`'s scope-name
+**Elsewhere** (M2n's sweeps): `configuration.md`'s scope-name
 drift (fixed 2026-08-23) · `junction-cell.md` against X3 · `pseudopotentials.md`'s
 *deferred* basis check (killed) · `normal-modes.md`'s *"no comparison tool"* ·
 `vibration.md`'s V1.25 / V1.27 / compose lines · `on_nonconvergence` called open
@@ -4578,23 +4577,15 @@ in `siesta.md`, `tuning.md`, `stages.md` (settled in `pyscf.md` § 3) ·
 composers (N6 closed) · `job-contracts.md`'s `parse_stage_token` (the second
 reader, N5 ②) · `structure.md`'s *"no comparable second reader"* ·
 `molview.md`'s four built *not caught up* items, an *Open* done 2026-08-20,
-`postJson` · `web/overview.md` and `vibrationview.md`'s #104 (done) ·
-`execution/overview.md`'s ⏳ rows · `preparing-for-another-machine.md`'s C1 and
-C3 · `gpu.md`'s C1–C4 · `scheduler.md`'s `--domain` admission · the counts in
-`testing.md` (7/48 against B4's 24/47) and `screenshots.md` (eight tabs against
-`tabs.md`'s nine) · `script-preparation.md` § 7's pointer to S7 (closed and
-archived 2026-09-29) · `scheduler.md` § 8, whose step 2 (admission, `scheduler/admit.py`)
-is not marked done · `engines/transport.md` § 3.7's *`dataclass_to_form_schema` LIVE*
+`postJson` · `execution/overview.md`'s ⏳ rows · `engines/transport.md` § 3.7's *`dataclass_to_form_schema` LIVE*
 (no production caller since the transport form reads the catalogue; its retirement
 goes with § 5u step 3).
 
 **Second open-lists outside this plan**, which R3 forbids: *task #N*
-references (`runtime.md` #103, #105–#108; `notifications.md` #105;
-`web/overview.md` #104; `presenters.md`,
-`spectra.md`, `trajectory.md` #102; `results.md` #103; `vibrationview.md` #19 /
-#104; `backend-architecture.md` #73) — #102 and #103 are W15's, #104 and #73 are
-done, #108 is in § 0a's *Unscheduled*, and #105's feature half, #106 and #107
-need rows or deletion · archived plans named as *the plan* (`run-identity.md`,
+references — only `spectra.md`'s #102 is left (W15's presenters pass); the rest
+were rewritten to their homes on 2026-09-29 (#102, #103, #106, #107 and #105's
+module half → W15; #105's feature half → § 0a's *smaller open items*; #108 →
+§ 0a's *Unscheduled*; #73 and #104 done) · archived plans named as *the plan* (`run-identity.md`,
 `worked-example.md`, `execution/overview.md`, `generator.md`, `stages.md`,
 `siesta.md`) · killed rows cited as homes (W14 in `execution/overview.md` and
 `job-system.md`; W12 in `README.md`) · *owed* tables inside contracts
