@@ -1922,6 +1922,16 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     from ..electronic_state import electronic_state
     _junction_state = electronic_state(composed.sorted.structure, config,
                                        kind="transport")
+    # A STATE TRANSIESTA CANNOT RUN is refused HERE, on the junction, where
+    # each value still says where it came from (`template.md` § 6.3a, ES4):
+    # once folded into the rungs' configs, every rung's gate would call a
+    # recorded or detected value *stated*.
+    from ..validation.chemistry import check_electronic_state
+    _refused = [i for i in check_electronic_state(
+        composed.sorted.structure, config, calculation="transport")
+        if i.severity == "error"]
+    if _refused:
+        raise PrepError(_refused[0].message)
     config = dataclasses.replace(
         config,
         spin_treatment=_junction_state.spin_treatment.value,

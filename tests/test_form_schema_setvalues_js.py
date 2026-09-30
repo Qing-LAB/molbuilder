@@ -339,3 +339,23 @@ def test_setvalues_dispatches_input_event_on_changed_fields(page, flask_server):
     n = page.evaluate("() => window.__input_count")
     # Five fields changed → at least 5 input events.
     assert n >= 5, f"expected ≥ 5 input events, got {n}"
+
+
+def test_a_value_the_kind_does_not_offer_is_shown_as_itself(page,
+                                                            flask_server):
+    """`engines/template.md` § 6.3a: a menu narrowed to what the kind
+    offers still shows a value outside it as itself, marked -- a select
+    with no option for it shows its first choice, and the form would say a
+    value nobody holds (the K2 review).
+
+    MUTATION THIS MUST FAIL AGAINST: `makeSelect` without the branch (the
+    menu reads "A")."""
+    schema = {"sections": [{"id": "main", "title": "Main", "fields": [
+        {"name": "method", "id": "f-method", "kind": "select",
+         "label": "Method", "default": "Z", "choices": ["A", "B"]}]}]}
+    _mount(page, flask_server, schema)
+    got = page.evaluate(
+        "() => { const s = document.getElementById('f-method');"
+        "  return {value: s.value,"
+        "          text: s.options[s.selectedIndex].text}; }")
+    assert got == {"value": "Z", "text": "Z (not offered here)"}, got

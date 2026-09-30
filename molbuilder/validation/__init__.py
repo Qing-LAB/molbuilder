@@ -75,7 +75,8 @@ from .chemistry import (_check_metal_basis_adequacy,
 from .geometry import (_check_polymer_orientation,
                        _min_image_distance,
                        validate_geometry)
-from .metadata import _check_fixed_on_every_rung, _validate_config_metadata
+from .metadata import (_check_fixed_on_every_rung, _check_offered,
+                       _validate_config_metadata)
 from .pyscf import _validate_pyscf
 from .sidecar import _check_frozen_atoms_consumed
 from .siesta import (_check_siesta_charged_makov_payne_notice,
@@ -260,6 +261,9 @@ def validate(struct: Structure, cfg, *,
     # WHAT EVERY RUNG FIXES ALIKE (`engines/template.md` § 6.4): a config
     # that skipped `resolve` holds whatever its caller put there.
     issues += _check_fixed_on_every_rung(cfg, calculation)
+    # ...AND WHAT THE KIND OFFERS (`engines/template.md` § 6.3a): a relaxer
+    # a vibration cannot relax with, a solver an optimization cannot run.
+    issues += _check_offered(cfg, calculation)
     # THE ELECTRONIC STATE, once, for every engine and every kind
     # (`science/chemistry-correctness.md` § 2a): the state the deck will be
     # written from, judged by one family of findings.  It was asked by each

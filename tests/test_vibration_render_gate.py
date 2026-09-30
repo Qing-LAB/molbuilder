@@ -33,18 +33,29 @@ def _water() -> Structure:
                             [0.0, -0.757, -0.477]]))
 
 
-def _render(cfg: PySCFConfig) -> str:
-    s = _water()
+def _methyl() -> Structure:
+    """Nine electrons: odd, so a closed shell stated on it cannot hold."""
+    return Structure(
+        elements=["C", "H", "H", "H"],
+        positions=np.array([[0.0, 0.0, 0.0], [1.08, 0.0, 0.0],
+                            [-0.54, 0.935, 0.0], [-0.54, -0.935, 0.0]]))
+
+
+def _render(cfg: PySCFConfig, struct: Structure = None) -> str:
+    s = struct if struct is not None else _water()
     return render_deck(spec_for(s, cfg, calculation="vibration"),
                        s, cfg, verbose=False)
 
 
 def test_parity_error_refuses_the_deck():
-    """2S = 1 on water's 10 electrons is impossible; the gate's parity
-    check must refuse at RENDER, not at PySCF runtime."""
+    """2S = 0 on the methyl radical's 9 electrons is impossible; the gate's
+    parity check must refuse at RENDER, not at PySCF runtime.  (It was
+    2S = 1 on water until 2026-09-30, when a PySCF vibration came to offer
+    `restricted` alone -- that deck is refused before parity is asked,
+    `engines/template.md` § 6.3a.)"""
     with pytest.raises(Exception) as exc:
-        _render(PySCFConfig(spin_treatment="unrestricted",
-                            unpaired_electrons=1))
+        _render(PySCFConfig(spin_treatment="restricted",
+                            unpaired_electrons=0), _methyl())
     msg = str(exc.value).lower()
     assert "the electron count and the spin disagree" in msg, msg
 
@@ -239,9 +250,16 @@ def test_one_fact_one_finding_on_a_vibration_deck():
     deck ignores -- and the grid verdict is the kind's, the engine copy
     DEFERRING on a vibration deck."""
     from molbuilder.validation import validate
-    cfg = PySCFConfig(spin_treatment="unrestricted", unpaired_electrons=1)
-    for kind in ("vibration", "optimization"):
-        parity = [i for i in validate(_water(), cfg, calculation=kind)
+    # A parity mismatch each kind can reach: a PySCF vibration offers
+    # `restricted` alone (`engines/template.md` § 6.3a), so its mismatch is
+    # a closed shell on an odd count; an optimization's is 2S = 1 on water.
+    for kind, struct, cfg in (
+            ("vibration", _methyl(),
+             PySCFConfig(spin_treatment="restricted", unpaired_electrons=0)),
+            ("optimization", _water(),
+             PySCFConfig(spin_treatment="unrestricted",
+                         unpaired_electrons=1))):
+        parity = [i for i in validate(struct, cfg, calculation=kind)
                   if "the electron count and the spin disagree"
                   in i.message.lower()]
         assert len(parity) == 1, (

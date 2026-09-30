@@ -252,10 +252,12 @@ def check_electronic_state(struct: Structure, cfg, *,
 
     At most one finding per fact (ES9), and the first that holds wins:
 
-    * **ES4 / ES6 / ES5 -- what cannot run** (errors): a treatment the
-      engine cannot run for this kind, a floating moment on PySCF, a fixed
-      count under non-collinear or spin-orbit, unpaired electrons beside
-      restricted;
+    * **ES4 / ES5 / ES6 -- what cannot run** (errors): a treatment or a
+      count the kind does not offer on this engine (the catalogue's
+      `offered` -- a floating moment on PySCF, unrestricted on a PySCF
+      vibration, non-collinear on transport), unpaired electrons beside
+      restricted, a fixed count where SIESTA cannot hold one (non-collinear,
+      spin-orbit, unrestricted on transport);
     * **ES3 -- parity**, for a finite system and a pinned count: an error
       where the engine refuses it or a fixed count contradicts it, a warning
       where SIESTA runs a restricted radical half-filled;
@@ -272,14 +274,14 @@ def check_electronic_state(struct: Structure, cfg, *,
     is an electron count, and ``check_species_labels`` owns that finding.
     """
     from ..chemistry import every_label_resolves
-    from ..electronic_state import CAPABILITY, KINDS, electronic_state
+    from ..electronic_state import KINDS, electronic_state, engines_for
     from ..template import engine_name
 
     # Whose schema this config is -- the one answer (`template.engine_name`),
-    # never an isinstance ladder here.  A config the capability table does
-    # not know has no electronic state to judge.
+    # never an isinstance ladder here.  An engine that does not run the kind
+    # has no electronic state to judge.
     engine = engine_name(type(cfg))
-    if engine not in CAPABILITY or calculation not in KINDS:
+    if calculation not in KINDS or engine not in engines_for(calculation):
         return []
     out = _transport_charge(cfg) if calculation == "transport" else []
     if not every_label_resolves(struct):
@@ -338,52 +340,70 @@ def _spin_findings(struct: Structure, st, engine: str,
     """The spin's findings, first that holds wins (see
     :func:`check_electronic_state`)."""
     from ..chemistry import check_spin_charge_parity
-    from ..electronic_state import (ALWAYS_FREE, CAPABILITY, FLOATS, FREE,
-                                    cannot_run)
+    from ..electronic_state import FREE, count_must_float
+    from ..template import (a_kind, catalogue, is_member, offered, one,
+                            why_not_offered)
 
     t, c, q = st.spin_treatment, st.unpaired_electrons, st.net_charge
+    _cat = catalogue()
+    treatments = offered(one(_cat, "spin_treatment", engine=engine), engine,
+                         calculation)
 
-    # ES4 -- declared, not discovered.  Only a STATED treatment can land
-    # here: detection answers restricted or unrestricted, which every
-    # engine runs for every kind.
-    why = cannot_run(engine, calculation, t.value)
-    if why:
+    def _not_offered(item, r, can):
         return [Issue(
             "error",
-            f"spin_treatment = {t.value} cannot run here: {why}.  Choose "
-            f"one of the treatments the form offers for this engine.",
-            "config.spin_treatment")]
-    # ES6 -- only SIESTA floats a moment.
-    if c.value == FREE and engine not in FLOATS:
-        return [Issue(
-            "error",
-            f"unpaired_electrons = free asks the moment to float, and "
-            f"PySCF fixes it: it occupies exactly N-up and N-down from "
-            f"mol.spin (pyscf/scf/uhf.py).  State the count -- 0 for a "
-            f"closed shell, 1 for a doublet, 2 for a triplet.",
-            "config.unpaired_electrons")]
-    if t.value in ALWAYS_FREE and c.value != FREE:
-        return [Issue(
-            "error",
-            f"{t.value} cannot hold a fixed count: SIESTA stops on Spin.Fix "
-            f"unless the spin is collinear and polarized (read_options.F90). "
-            f"Leave unpaired_electrons blank, or state free.",
-            "config.unpaired_electrons")]
-    # ES5 -- restricted means closed-shell.
+            f"{item} = {r.value} ({r.said}) cannot run here: "
+            f"{a_kind(calculation)} on {engine} does not offer it -- "
+            f"{why_not_offered(item, r.value, engine, calculation)}.  "
+            f"It offers {', '.join(map(str, can))}.",
+            f"config.{item}")]
+
+    # ES4 -- declared, not discovered: what the engine runs for the kind is
+    # the catalogue's (`offered`, `engines/template.md` § 6.3a), held to the
+    # RESOLVED values -- a treatment detected from the structure can be one
+    # the kind cannot run (a radical's `unrestricted` on a PySCF vibration),
+    # and the state's own words say where it came from.
+    if not is_member(t.value, treatments):
+        return _not_offered("spin_treatment", t, treatments)
+    # ES5 -- restricted means closed-shell, and says so before the count's
+    # own set does: a stated `restricted` with a count is a contradiction
+    # first, and its way out is what the kind offers.
     if t.value == "restricted" and c.value != 0:
-        # What this engine can run for this kind -- the capability table's,
-        # never a second copy of it here (ES4).
-        ways = ("restricted-open (spin-pure, one set of spatial orbitals) "
-                "or unrestricted (the two channels relax separately)"
-                if "restricted-open" in CAPABILITY[engine].get(calculation, ())
-                else "unrestricted (the two channels relax separately)")
+        ways = []
+        if "restricted-open" in treatments:
+            ways.append("restricted-open (spin-pure, one set of spatial "
+                        "orbitals)")
+        if "unrestricted" in treatments:
+            floats = count_must_float(engine, calculation, "unrestricted")
+            ways.append("unrestricted (the two channels relax separately"
+                        + (f"; its count floats here -- {floats}" if floats
+                           else "") + ")")
+        way = (f"State {' or '.join(ways)}." if ways else
+               f"{a_kind(calculation)[:1].upper()}{a_kind(calculation)[1:]} "
+               f"on {engine} offers restricted alone -- "
+               f"{why_not_offered('spin_treatment', 'unrestricted', engine, calculation)}"
+               f" -- so the count is 0.")
         return [Issue(
             "error",
             f"restricted means every electron paired, and "
             f"unpaired_electrons = {c.value} asks for "
             f"{'a floating moment' if c.value == FREE else f'{c.value} unpaired'}. "
-            f"State {ways}.",
+            f"{way}",
             "config.spin_treatment")]
+    counts = offered(one(_cat, "unpaired_electrons", engine=engine), engine,
+                     calculation)
+    if not is_member(c.value, counts):
+        return _not_offered("unpaired_electrons", c, counts)
+    # ES6 -- where the count can only float, a fixed one is refused: the
+    # non-collinear and spin-orbit treatments on SIESTA, and unrestricted on a
+    # transport rung (TranSIESTA).  A count nobody stated already floats.
+    why = count_must_float(engine, calculation, t.value)
+    if why and c.value != FREE:
+        return [Issue(
+            "error",
+            f"unpaired_electrons = {c.value} cannot be held here: {why}.  "
+            f"Leave unpaired_electrons blank, or state free.",
+            "config.unpaired_electrons")]
 
     # ES3 -- parity binds a finite system with a pinned count.
     if st.finite and c.value != FREE:

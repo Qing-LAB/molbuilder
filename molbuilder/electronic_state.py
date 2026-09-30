@@ -23,9 +23,10 @@ its cell (the contract's § 2a lists the five failures).
 How a blank is answered (§ 2a.1a) -- a stated value always wins, and a blank
 takes the first of:
 
-1. **implied** by a stated item (``restricted`` ⇒ 0; ``non-collinear`` or
-   ``spin-orbit`` ⇒ ``free``; a count above 0 or ``free`` ⇒ ``unrestricted``;
-   a count of 0 ⇒ ``restricted``);
+1. **implied** by a stated item (``restricted`` ⇒ 0; where SIESTA cannot hold
+   a fixed total spin -- ``non-collinear``, ``spin-orbit``, and
+   ``unrestricted`` on a transport rung -- ⇒ ``free``; a count above 0 or
+   ``free`` ⇒ ``unrestricted``; a count of 0 ⇒ ``restricted``);
 2. **recorded** by the run the structure came out of -- the record a
    structure exported from a finished run carries (ES7);
 3. **detected** from the structure: the charge by the phosphate rule, then the
@@ -78,26 +79,16 @@ KINDS = ("optimization", "vibration", "transport")
 #: float (``read_options.F90``: ``if (nspin .ne. 2) call die(...)``).
 ALWAYS_FREE = frozenset({"non-collinear", "spin-orbit"})
 
-#: § 2a.3 -- what each engine can run, per kind.  **Declared, not discovered**
-#: (ES4): the settings gate refuses anything else by name, and the form does
-#: not offer it.  Every entry was read from the engine's source.
-CAPABILITY: Dict[str, Dict[str, FrozenSet[str]]] = {
-    "siesta": {kind: frozenset({"restricted", "unrestricted",
-                                "non-collinear", "spin-orbit"})
-               for kind in KINDS},
-    "pyscf": {
-        # ROHF/ROKS gradients exist (`pyscf/grad/rohf.py`, `roks.py`).
-        "optimization": frozenset({"restricted", "restricted-open",
-                                   "unrestricted"}),
-        # `pyscf/hessian/` holds rhf, rks, uhf, uks only, and the vibration
-        # deck takes the analytic Hessian.
-        "vibration": frozenset({"restricted", "unrestricted"}),
-    },
+#: WHICH ENGINES RUN WHICH KIND -- SIESTA all three, PySCF optimization and
+#: vibration.  The rows of the capability table this module held until
+#: 2026-09-30; the choices each pair offers are the catalogue's now, on the
+#: state's own items (`offered`, `engines/template.md` § 6.3a;
+#: `science/chemistry-correctness.md` § 2a.3), with the reasons
+#: `template.why_not_offered` gives.
+_RUNS: Dict[str, FrozenSet[str]] = {
+    "siesta": frozenset(KINDS),
+    "pyscf": frozenset({"optimization", "vibration"}),
 }
-
-#: The engines that can float a moment (ES6).  PySCF pins N-up and N-down
-#: from ``mol.spin`` (``pyscf/scf/uhf.py``, ``get_occ``).
-FLOATS = frozenset({"siesta"})
 
 #: The engines that build the atoms as ONE MOLECULE whatever the structure's
 #: cell: PySCF's ``gto.M`` is gas phase (``validation/pyscf.py`` says so of
@@ -108,45 +99,32 @@ FLOATS = frozenset({"siesta"})
 #: float, and an odd count skipped the parity PySCF enforces (the M6 review).
 MOLECULAR = frozenset({"pyscf"})
 
-#: Why an engine cannot run a treatment -- the refusal's own words (ES4),
-#: keyed ``(engine, treatment, kind)``; a ``None`` kind answers every kind.
-_CANNOT = {
-    ("siesta", "restricted-open", None):
-        "SIESTA has no restricted open-shell formalism",
-    ("pyscf", "non-collinear", None):
-        "PySCF's molecular SCF here is collinear",
-    ("pyscf", "spin-orbit", None):
-        "PySCF's molecular SCF here has no spin-orbit coupling",
-    ("pyscf", "restricted-open", "vibration"):
-        "PySCF has no analytic ROHF/ROKS Hessian, and the vibration deck "
-        "takes the analytic Hessian",
-}
-
-
 def engines_for(kind: str) -> tuple:
-    """The engines that run ``kind`` -- ``CAPABILITY``'s own rows, so a form
-    for an engine that does not run the kind has no state to ask for."""
-    return tuple(e for e, kinds in CAPABILITY.items() if kind in kinds)
+    """The engines that run ``kind``, so a form for an engine that does not
+    run the kind has no state to ask for."""
+    return tuple(e for e, kinds in _RUNS.items() if kind in kinds)
 
 
-def cannot_run(engine: str, kind: str, treatment: str) -> Optional[str]:
-    """Why ``engine`` cannot run ``treatment`` for ``kind``, or ``None``."""
-    if treatment in CAPABILITY.get(engine, {}).get(kind, frozenset(TREATMENTS)):
+def count_must_float(engine: str, kind: str, treatment: str) -> Optional[str]:
+    """Why the unpaired-electron count can only float here, or ``None``.
+
+    SIESTA stops on a fixed total spin (``Spin.Fix``) under a non-collinear
+    or spin-orbit treatment (``read_options.F90``), and TranSIESTA under any
+    (``m_ts_options.F90``: *"Fixing spin is not possible in TranSiesta"*) --
+    so there a count nobody stated floats (the resolution below) and a
+    stated one is refused by name (the settings gate).
+    """
+    if engine != "siesta":
         return None
-    return (_CANNOT.get((engine, treatment, kind))
-            or _CANNOT.get((engine, treatment, None))
-            or f"{engine} does not run {treatment} for {kind}")
-
-
-def offered(engine: str, kind: str) -> Dict[str, tuple]:
-    """The choices a form offers for ``engine`` and ``kind`` -- exactly what
-    the engine can run (ES4), in the catalogue's order."""
-    can = CAPABILITY.get(engine, {}).get(kind, frozenset(TREATMENTS))
-    return {
-        "spin_treatment": tuple(t for t in TREATMENTS if t in can),
-        "unpaired_electrons": tuple(c for c in COUNTS
-                                    if c != FREE or engine in FLOATS),
-    }
+    if treatment in ALWAYS_FREE:
+        return (f"{treatment}: SIESTA stops on a fixed total spin (Spin.Fix) "
+                f"unless the spin is collinear and polarized "
+                f"(read_options.F90)")
+    if kind == "transport" and treatment == "unrestricted":
+        return ("a transport rung: TranSIESTA cannot hold a fixed total spin "
+                "('Fixing spin is not possible in TranSiesta', "
+                "m_ts_options.F90)")
+    return None
 
 
 @dataclass(frozen=True)
@@ -156,7 +134,8 @@ class Resolved:
     ``source`` is ``stated`` (in the template -- typed, or written there from
     the run a transport calculation cites), ``implied`` (by a stated item),
     ``recorded`` (by the run the structure came out of), ``detected`` (from
-    the structure) or ``rule`` (transport's charge; SIESTA's DFT).
+    the structure) or ``rule`` (transport's charge; SIESTA's DFT; a count
+    that can only float, :func:`count_must_float`).
     """
     value: Any
     source: str
@@ -274,7 +253,7 @@ def electronic_state(struct: Structure, cfg: Any, *,
     finite = engine in MOLECULAR or all(
         k == "isolated" for k in (struct.axis_kind or ("isolated",) * 3))
     rec = recommend(struct, facts, n_electrons=n_electrons, finite=finite)
-    treatment, count = _spin(cfg, rec, finite, recorded)
+    treatment, count = _spin(cfg, rec, finite, recorded, engine, kind)
     return ElectronicState(
         net_charge=charge,
         spin_treatment=treatment,
@@ -348,8 +327,10 @@ def _method(cfg: Any, engine: str) -> Resolved:
 
 
 def _spin(cfg: Any, rec: Recommended, finite: bool,
-          recorded: Optional[Dict[str, Resolved]]):
-    """The treatment and the count, in the one order (§ 2a.1a)."""
+          recorded: Optional[Dict[str, Resolved]], engine: str, kind: str):
+    """The treatment and the count, in the one order (§ 2a.1a) -- and a
+    count nobody stated floats where the engine cannot hold a fixed one
+    (:func:`count_must_float`)."""
     t_stated = getattr(cfg, "spin_treatment", None)
     c_stated = getattr(cfg, "unpaired_electrons", None)
     treatment = (Resolved(t_stated, "stated", "stated")
@@ -361,10 +342,10 @@ def _spin(cfg: Any, rec: Recommended, finite: bool,
     if count is None and treatment is not None:
         if t_stated == "restricted":
             count = Resolved(0, "implied", "restricted: every electron paired")
-        elif t_stated in ALWAYS_FREE:
+        elif count_must_float(engine, kind, t_stated):
             count = Resolved(FREE, "implied",
-                             f"{t_stated}: the moment floats -- SIESTA stops on "
-                             f"a fixed total spin here")
+                             f"the moment floats -- "
+                             f"{count_must_float(engine, kind, t_stated)}")
     if treatment is None and count is not None:
         if c_stated == 0:
             treatment = Resolved("restricted", "implied",
@@ -407,6 +388,12 @@ def _spin(cfg: Any, rec: Recommended, finite: bool,
             count = Resolved(FREE, "detected",
                              "a repeating cell: the moment floats to its own "
                              "value")
+    # ...AND A COUNT NOBODY STATED FLOATS where the engine cannot hold a fixed
+    # one: a recorded or detected number (an open-d metal's usual count) on a
+    # transport rung would write `Spin.Fix`, and TranSIESTA stops on it.
+    _why = count_must_float(engine, kind, treatment.value)
+    if _why and c_stated is None and count.value != FREE:
+        count = Resolved(FREE, "rule", f"the moment floats -- {_why}")
     return treatment, count
 
 

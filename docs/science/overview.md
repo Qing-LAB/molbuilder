@@ -160,9 +160,8 @@ first that holds wins.
 
 | Check | Severity | Why |
 |---|---|---|
-| a treatment the engine cannot run for this kind — SIESTA's restricted-open, PySCF's non-collinear / spin-orbit, PySCF's restricted-open vibration (ES4) | **error** | declared, not discovered: the form does not offer it, and the gate refuses it by name before a deck is written |
-| `unpaired_electrons = free` on PySCF (ES6) | **error** | PySCF occupies exactly N↑ and N↓ from `mol.spin`; only SIESTA floats a moment |
-| a fixed count under non-collinear or spin-orbit (ES6) | **error** | SIESTA stops on `Spin.Fix` unless the spin is collinear and polarized (`read_options.F90`) — a warning would let the job reach the queue and abort there |
+| a treatment or a count the kind does not offer on this engine — SIESTA's restricted-open, PySCF's non-collinear / spin-orbit, a PySCF vibration's restricted-open or unrestricted, TranSIESTA's non-collinear / spin-orbit, `free` on PySCF (ES4, ES6) | **error** | declared, not discovered (the catalogue's `offered`, [`engines/template.md`](?doc=engines/template.md) § 6.3a): the form does not offer it, and the gate refuses the RESOLVED value by name, saying where it came from, before a deck is written |
+| a fixed count where SIESTA cannot hold one — under non-collinear or spin-orbit, and under unrestricted on a transport rung (ES6) | **error** | SIESTA stops on `Spin.Fix` unless the spin is collinear and polarized (`read_options.F90`), and TranSIESTA on any (`m_ts_options.F90`) — a warning would let the job reach the queue and abort there; a count nobody stated floats there instead |
 | `restricted` with a count above 0 (ES5) | **error** | restricted means every electron paired |
 | the count's parity against the electron count, for a finite system (ES3) | **error**; **warn** for SIESTA restricted with an odd count, which runs half-filled | PySCF refuses the pair at run time; a repeating cell's count per cell is not a spin |
 | `restricted` stated where the structure implies an open shell (ES9) | warn | a closed-shell SCF on an open-shell system converges to a fictitious state (the hemeC guard) |

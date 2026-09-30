@@ -162,6 +162,8 @@ SIESTA's own default is PZ, the LDA parameterisation that goes with its LDA defa
 # role: a transport rung's SOLVER is its identity -- a closed periodic warm-up, a bulk lead, an NEGF device.
 role = ["transport"]
 role_values = { device = "transiesta" }
+# transiesta is a transport device's, fixed by its rung (SO-C13)
+offered = { optimization = ["diagon", "OMM"], vibration = ["diagon", "OMM"] }
 kind = "engine"
 category = ["method", "convergence"]
 engines = ["siesta"]
@@ -419,6 +421,8 @@ choices = ["CG", "Broyden", "FIRE", "Verlet", "Nose", "none"]
 value = "CG"
 default = "CG"
 recommended = { vibration = "Broyden" }
+# a vibration's `relax` stage relaxes: dynamics or no relaxation is not one (SS-C4)
+offered = { vibration = ["CG", "Broyden", "FIRE"] }
 group = "stage"
 label = "Relaxation / MD algorithm"
 help = """
@@ -1065,8 +1069,8 @@ Get it wrong and the run solves for the wrong number of electrons, which is a di
 # `polarized` / `non-colinear` / `spin-orbit`, PySCF the R / RO / U of its SCF
 # class.  Blank is AUTO: the electronic-state class works it out from the
 # structure at the resolved charge, exactly as a blank charge always was.
-# A form offers only what the engine can run for the kind (ES4:
-# `electronic_state.CAPABILITY`).
+# A form offers only what the engine can run for the kind (ES4: the
+# `offered` table below).
 kind = "deck"
 category = ["system"]
 engines = ["siesta", "pyscf"]
@@ -1087,11 +1091,23 @@ help = """
 How the two spin channels are solved.
   restricted       every electron paired: one set of orbitals for both spins.  Closed-shell molecules, and metals that carry no moment (Cu, Ag, Au).
   restricted-open  one set of spatial orbitals, the unpaired electrons in their own -- spin-pure.  PySCF only, and not for a vibration: PySCF has no analytic ROHF/ROKS Hessian.
-  unrestricted     the two spin channels solved separately.  Radicals, open-d transition metals (Fe, Co, Ni, Mn, ...), triplets.
-  non-collinear    moments may point in any direction.  SIESTA only.
-  spin-orbit       couples spin to orbital motion -- heavy elements (Au, Bi, Pt).  SIESTA only, and it needs fully-relativistic pseudopotentials.
+  unrestricted     the two spin channels solved separately.  Radicals, open-d transition metals (Fe, Co, Ni, Mn, ...), triplets.  Not for a PySCF vibration yet: its spectrum record carries one spin channel.
+  non-collinear    moments may point in any direction.  SIESTA only, and not for transport: TranSIESTA runs two spin components at most.
+  spin-orbit       couples spin to orbital motion -- heavy elements (Au, Bi, Pt).  SIESTA only, not for transport, and it needs fully-relativistic pseudopotentials.
 Left blank it is worked out from the structure: unrestricted for an open-d metal or an odd electron count in a molecule, restricted otherwise -- and a repeating cell is never made open-shell by its electron count.  The chemistry card says what it came to and why.
 """
+
+# WHAT EACH ENGINE RUNS, PER KIND (`engines/template.md` § 6.3a; read from
+# each engine's source, `science/chemistry-correctness.md` § 2a.3) -- the
+# form offers only these, and `resolve` and the settings gate refuse the rest
+# by name (`template.why_not_offered`).  `electronic_state.CAPABILITY` held
+# this in code until 2026-09-30.
+[item.spin_treatment.offered]
+siesta.optimization = ["restricted", "unrestricted", "non-collinear", "spin-orbit"]
+siesta.vibration    = ["restricted", "unrestricted", "non-collinear", "spin-orbit"]
+siesta.transport    = ["restricted", "unrestricted"]
+pyscf.optimization  = ["restricted", "restricted-open", "unrestricted"]
+pyscf.vibration     = ["restricted"]
 
 [item.unpaired_electrons]
 # 2S = N-up - N-down, and NOT the multiplicity 2S+1 -- or `free`, a moment that
@@ -1117,10 +1133,19 @@ null_label = "(auto)"
 optional = true
 help = """
 The number of unpaired electrons, 2S -- NOT the multiplicity 2S+1.  So 0 = closed shell, 1 = doublet, 2 = triplet, and so on.  Enter a multiplicity here by mistake and you ask for a different electronic state.
-free lets the moment float to whatever the SCF finds -- SIESTA only, and the only value under non-collinear and spin-orbit.  PySCF always fixes the count.
-Left blank it is worked out from the structure at the resolved charge: 0 for a closed shell, 1 for an odd count in a molecule, an open-d metal's usual count (Fe 2, Mn 5, Co 3, ...) -- which the prep report warns about until you state it, because the right count depends on the coordination, not on the element -- and free for a magnetic metal in a repeating cell.
+free lets the moment float to whatever the SCF finds -- SIESTA only, and the only value under non-collinear and spin-orbit, and under unrestricted on a transport calculation: TranSIESTA cannot hold a fixed total spin.  PySCF always fixes the count.
+Left blank it is worked out from the structure at the resolved charge: 0 for a closed shell, 1 for an odd count in a molecule, an open-d metal's usual count (Fe 2, Mn 5, Co 3, ...) -- which the prep report warns about until you state it, because the right count depends on the coordination, not on the element -- and free for a magnetic metal in a repeating cell, or under unrestricted on a transport calculation.
 SIESTA writes a count as Spin.Fix + Spin.Total beside Spin polarized, and nothing at all for free.
 """
+
+# WHAT EACH ENGINE RUNS, PER KIND (`engines/template.md` § 6.3a) -- PySCF
+# pins the count, so it is never offered `free`; a PySCF vibration is
+# restricted; a transport rung holds no fixed count beside `unrestricted`
+# (the 0 is `restricted`'s).
+[item.unpaired_electrons.offered]
+siesta.transport   = [0, "free"]
+pyscf.optimization = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+pyscf.vibration    = [0]
 
 [item.job_name]
 kind = "produce"

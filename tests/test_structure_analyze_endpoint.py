@@ -40,10 +40,10 @@ _FORMATE = {"structure": {
 
 
 def test_a_form_for_an_engine_the_kind_does_not_run_is_refused(web):
-    """Transport runs on SIESTA alone (`CAPABILITY`, § 2a.3): unasked, only
+    """Transport runs on SIESTA alone (`engines_for`, § 2a.3): unasked, only
     SIESTA is answered, and a PySCF form for a transport calculation is
-    refused naming who runs it -- the route's engine list is the capability
-    table's, not a second copy of it."""
+    refused naming who runs it -- the route's engine list is `engines_for`'s,
+    not a second copy of it."""
     r, body = _post_analyze(web, {**_FORMATE, "kind": "transport"})
     assert r.status_code == 200, body
     assert set(body["state"]) == {"siesta"}

@@ -71,8 +71,11 @@ _COMPANIONS = {
     # counts as honored).
     "symmetry": {"already_relaxed": True},
     # a method methods nothing without a solvent (the validator warns
-    # standalone); its deck effect is probed beside one.
-    "solvent_method": {"solvent": "water"},
+    # standalone); its deck effect is probed beside one -- with Raman
+    # off, on the one route PCM reaches (`engines/vibration.md` § 4.6):
+    # a refused render would count as honored and measure nothing.
+    "solvent_method": {"solvent": "water", "compute_raman": False},
+    "solvent": {"compute_raman": False},
     # An ECP only speaks when both halves are named AND the structure
     # holds the element -- probe them together, on gold (below).
     "ecp":       {"ecp_atoms": ["Au"]},

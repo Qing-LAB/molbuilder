@@ -232,14 +232,17 @@ def test_ir_alone_runs_decoupled_and_lands_in_waters_windows(
 
 def test_water_in_water_runs_the_solvated_chain_end_to_end(
         tmp_path, monkeypatch):
-    """Category 2's live bar (integration plan, 2026-08-21): PCM water,
-    the WHOLE chain under one solvated Hamiltonian -- relaxation,
-    Hessian, IR and Raman -- because pyscf 2.13's PCM carries every
-    analytic derivative (probed; the polarizability response includes
-    the solvent).  The physics pins are deliberately loose: PCM shifts
-    water's bands by tens of cm^-1, so the gas windows widen; what is
-    being proven is the CONSISTENT solvated run completing with real
-    numbers, plus the solvated deck actually differing from gas
+    """Category 2's live bar (integration plan, 2026-08-21), on the route
+    PCM reaches (`engines/vibration.md` § 4.6): PCM water, the relaxation
+    and the Hessian under one solvated Hamiltonian -- PySCF's analytic
+    Hessian adds the solvent's own response (`with_solvent.hess`).  IR and
+    Raman are OFF: their routes are built without that term, and the
+    settings gate refuses them with a solvent until they carry it and are
+    measured (ruled 2026-09-29; the whole chain ran here until 2026-09-30,
+    under an info saying it all carried the solvent).  The physics pins are
+    deliberately loose: PCM shifts water's bands by tens of cm^-1, so the
+    gas windows widen; what is being proven is the solvated run completing
+    with real numbers, plus the solvated deck actually differing from gas
     (the eps line is in the deck; the energy is the solvated one)."""
     bundle = _describe(tmp_path, monkeypatch)
     tpl = bundle / "W.template.toml"
@@ -251,12 +254,10 @@ def test_water_in_water_runs_the_solvated_chain_end_to_end(
     assert t.count(anchor) == 1
     t = t.replace(anchor, anchor + 'value = "water"\n', 1)
     assert 'value = "water"' in t
-    # BOTH lanes on: the solvated proof covers IR and Raman under one
-    # Hamiltonian (compute_ir defaults false; the first landing of
-    # this test asserted IR without enabling it).
-    i = t.index("[item.compute_ir]"); j = t.index("[item.", i + 1)
-    t = t[:i] + t[i:j].replace("value = false", "value = true", 1) + t[j:]
-    assert t[t.index("[item.compute_ir]"):t.index("[item.", t.index("[item.compute_ir]") + 1)].count("value = true") == 1
+    # Raman OFF (it defaults on); IR stays off, its default.
+    i = t.index("[item.compute_raman]"); j = t.index("[item.", i + 1)
+    t = t[:i] + t[i:j].replace("value = true", "value = false", 1) + t[j:]
+    assert t[t.index("[item.compute_raman]"):t.index("[item.", t.index("[item.compute_raman]") + 1)].count("value = false") == 1
     tpl.write_text(t)
 
     d = _prep_and_run(bundle)
@@ -274,15 +275,10 @@ def test_water_in_water_runs_the_solvated_chain_end_to_end(
     freqs = [m["frequency_cm1"] for m in modes]
     assert 1500.0 < freqs[0] < 1800.0, f"solvated bend {freqs[0]}"
     assert 3400.0 < freqs[1] < 4100.0 and 3400.0 < freqs[2] < 4100.0, freqs
-    assert all(m["raman_activity_a4_amu"] is not None for m in modes)
-    assert all(m["ir_intensity_km_mol"] is not None for m in modes)
+    assert all(m["raman_activity_a4_amu"] is None for m in modes)
+    assert all(m["ir_intensity_km_mol"] is None for m in modes)
     assert d["thermo"]["grid"]["temperatures_K"], "thermo grid missing"
-    # The Raman route and its step are recorded (design § 15.7), and the
-    # Methods prose states the method ONE way.
-    assert d["raman_route"] == "finite-difference"
-    assert d["raman_fd_step_ang"] == 0.005
-    assert "analytic polarizability derivatives" not in d["methods_text"]
-    assert "central finite differences" in d["methods_text"]
+    assert d["raman_route"] == "none"
 
 
 def test_asking_for_ir_does_not_move_the_frequencies(tmp_path):

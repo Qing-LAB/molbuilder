@@ -1222,6 +1222,7 @@ In order, and all of it before anything is written:
 | no `overrides` key names a stage field (§ 2) | refuse, naming the field |
 | no `overrides` key names an item bound to the whole calculation (`shared` for the kind — the electronic state for every kind, ES1; the calculation's label, species order and pseudopotentials for every SIESTA kind) | refuse at resolve, naming the item and why it is the calculation's |
 | no `overrides` key names an item the rung fixes (`role` for the kind — SIESTA's per-step forces and coordinates on every kind; a transport rung's solver and bias) | refuse at resolve, naming the item and why it is not a choice |
+| every override is a choice the calculation's kind offers (`offered`, [`template.md`](?doc=engines/template.md) § 6.3a — a vibration's relaxation a relaxer) | refuse, naming the stage, the value, why the kind does not take it and what it does |
 | every stage `name` matches `[A-Za-z0-9_]+` | refuse, naming the stage and the rule |
 | **stage names are unique**, compared case-insensitively | refuse, naming the repeat |
 | every value is one its field's declared type can hold | refuse, naming the field, the value and what the field declares |

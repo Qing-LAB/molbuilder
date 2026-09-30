@@ -223,7 +223,7 @@ fineness (Ry); `PAO` = the pseudo-atomic-orbital basis.
 | 5 | **Frozen atoms** | `%block Geometry.Constraints` (1-based indices) | only if `struct.frozen_atoms`; the 3-stage boundary carrier (see [`model/structure-annotations.md`](?doc=model/structure-annotations.md)) |
 | 6 | Basis & grid | `MeshCutoff`, `PAO.BasisSize`, `PAO.EnergyShift` | |
 | 7 | XC (+ dispersion template) | `XC.functional`, `XC.authors` | commented DFT-D template for non-vdW XC |
-| 8 | SCF | `SolutionMethod`, `SCF.Mixer.Weight`, `SCF.Mixer.History`, `DM.Tolerance`, … | Pulay = the DM-mixing scheme using past iterations |
+| 8 | SCF | `SolutionMethod`, `SCF.Mixer.Weight`, `SCF.Mixer.History`, `DM.Tolerance`, … | Pulay = the DM-mixing scheme using past iterations. An optimization and a vibration offer `diagon` and `OMM` (`offered`, [`template.md`](?doc=engines/template.md) § 6.3a): `transiesta` is a transport device's, fixed by its rung |
 | 9 | Spin | `Spin <option>` (v5 single-line) + `Spin.Fix`/`Spin.Total` for a pinned count | `Spin` always, `non-polarized` included — § 5 |
 | 10 | NetCharge | `NetCharge ±N` | always, at 0 too, beside where it came from; never on a transport rung (its junction is neutral by rule) — § 4 |
 | 11 | k-grid | `%block kgrid_Monkhorst_Pack` from `cfg.kgrid` | § 6 |
@@ -353,8 +353,10 @@ two template items shared with PySCF, where a blank means *work it out*.
 
   `free` writes no pin: the moment floats, and SIESTA starts every atom at its
   largest moment, aligned (`m_new_dm.F90`). Under `non-collinear` or `spin-orbit`
-  the count can only float — SIESTA stops on `Spin.Fix` there — so a fixed count
-  is refused (ES6), and `restricted` with a count above 0 is refused too (ES5).
+  the count can only float — SIESTA stops on `Spin.Fix` there — and so under
+  `unrestricted` on a transport rung, which TranSIESTA cannot hold (`m_ts_options.F90`):
+  a count nobody stated floats, a stated one is refused (ES6), and `restricted`
+  with a count above 0 is refused too (ES5).
 
 The checks are the state's one family, asked for every engine and kind: parity
 at the resolved charge for a finite system (ES3), the open-shell guard (ES9), a

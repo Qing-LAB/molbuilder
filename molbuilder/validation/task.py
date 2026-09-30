@@ -484,6 +484,28 @@ def _scalar_complaint(declared, value) -> Optional[str]:
         return None if isinstance(value, str) else "which is not text"
     return None
 
+def _not_offered(task, key: str, value) -> str:
+    """The clause refusing ``value`` for ``key`` on this description's kind
+    (`engines/template.md` § 6.3a) -- ``"which a vibration does not offer:
+    ..."`` -- or ``""`` when the kind offers it."""
+    from ..template import (a_kind, catalogue, is_member, offered, one,
+                            why_not_offered)
+    engine = str(task.engine)
+    kind = str(getattr(task, "calculation", None) or "optimization")
+    try:
+        item = one(catalogue(), key, engine=engine)
+    except KeyError:
+        return ""
+    if item is None or not item.offered:
+        return ""
+    can = offered(item, engine, kind)
+    if is_member(value, can):
+        return ""
+    return (f"which {a_kind(kind)} does not offer: "
+            f"{why_not_offered(key, value, engine, kind)}.  It offers "
+            f"{', '.join(map(str, can))}")
+
+
 def _values_in_bounds(task, fields) -> List[Issue]:
     """Every override's value is inside the bound the schema declares.
 
@@ -510,6 +532,15 @@ def _values_in_bounds(task, fields) -> List[Issue]:
                     f"stage {st.name!r} sets {key} = {value!r}, which is not "
                     f"one of {', '.join(repr(c) for c in choices)}",
                     where=f"config.{key}", stage=st.name))
+            elif choices:
+                # ...AND ONE THIS KIND TAKES (`engines/template.md` § 6.3a):
+                # refused where the description is written, never first at
+                # prep on the machine that runs it.
+                narrow = _not_offered(task, key, value)
+                if narrow:
+                    out.append(Issue("error", f"stage {st.name!r} sets "
+                                              f"{key} = {value!r}, {narrow}",
+                                     where=f"config.{key}", stage=st.name))
             # `not isinstance(value, bool)`: bool subclasses int, so a naive
             # numeric check reads True as 1 and range-checks it.  UNREACHABLE
             # FROM ANY DECLARED FIELD -- measured 2026-09-05: all 29 bool

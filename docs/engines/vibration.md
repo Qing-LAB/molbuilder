@@ -348,7 +348,7 @@ that")*:
 | `es_n_homo_below` · `es_n_lumo_above` | pyscf | the orbital window recorded per displaced geometry | 5 · 5 | record size, not cost |
 | `net_charge` | both | `NetCharge` / `gto.M(charge=)` | auto | shared with every kind; resolved once by the electronic state (a stated value wins, 0 included; else the charge of the run the structure came out of; else the phosphate rule — one negative charge per nucleic-acid backbone phosphate, [`model/chemistry.md`](?doc=model/chemistry.md); [`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a) |
 | `fc_displacement` | siesta | `FC.Displacement` — the nudge of the force-constant run (§ 5.3) | 0.04 Bohr | range 0.005–0.2 Bohr; smaller pushes the force difference toward the SCF noise floor, larger picks up anharmonic terms |
-| `relax_type` · `relax_steps` · `relax_force_tol` · `relax_max_displ` | siesta | the `relax` stage's driver, step cap, force tolerance and largest step (§ 5.2a) — the same items the optimization kind shows | the kind's **recommended** values are the tight tier: Broyden, 100 steps, **0.01 eV/Å**, 0.02 Å (`recommended = { vibration = … }` in the catalogue, [`engines/template.md`](?doc=engines/template.md) § 6.3a) | editable like every other item; the tolerance is also the yardstick the finish judges the reference geometry by (§ 5.5) |
+| `relax_type` · `relax_steps` · `relax_force_tol` · `relax_max_displ` | siesta | the `relax` stage's driver, step cap, force tolerance and largest step (§ 5.2a) — the same items the optimization kind shows; the driver offers the three relaxers only, CG · Broyden · FIRE (`offered`, [`template.md`](?doc=engines/template.md) § 6.3a): `Verlet` and `Nose` are dynamics and `none` relaxes nothing | the kind's **recommended** values are the tight tier: Broyden, 100 steps, **0.01 eV/Å**, 0.02 Å (`recommended = { vibration = … }` in the catalogue, [`engines/template.md`](?doc=engines/template.md) § 6.3a) | editable like every other item; the tolerance is also the yardstick the finish judges the reference geometry by (§ 5.5) |
 | `geom_gmax` · `geom_grms` · `geom_dmax` · `geom_drms` · `geom_etol` · `geom_max_steps` | pyscf | Phase 0's geomeTRIC criteria (§ 4.2) — the optimization kind's own items | the kind's **recommended** values are the tight tier: `geom_gmax` **2·10⁻⁴ Eh/Bohr** (0.010 eV/Å), `geom_grms` 1·10⁻⁴, `geom_dmax` 1·10⁻³ Å, `geom_drms` 5·10⁻⁴ Å, `geom_etol` 1·10⁻⁶ Eh, 100 steps | the general default stays the medium tier for an optimization; the vibration kind recommends tight because a frequency deserves a real stationary point |
 
 **Where each item sits on the form** — the card is the item's `group`, the legend
@@ -371,15 +371,19 @@ the hand-over, refused by `init` for anything but the two engines. A
 one-choice `engine` form item stood in for the strip until 2026-09-24 and
 retired with it: a parameter of the deck it never was.
 
-> **The electronic state is inherited, and one choice is refused** *(W34,
-> decided 2026-09-25)*: a vibration built from a relaxed structure defaults to
-> that relaxation's charge and spin, and a difference is warned; restricted-open
-> is refused for a PySCF vibration, which has no analytic ROHF/ROKS Hessian to
-> take ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) §§ 2a.2 ES7,
+> **The electronic state is inherited, and a PySCF vibration is restricted**
+> *(W34, decided 2026-09-25; unrestricted 2026-09-29, plan § 5w K17)*: a
+> vibration built from a relaxed structure defaults to that relaxation's charge
+> and spin, and a difference is warned; a PySCF vibration offers `restricted`
+> alone — restricted-open has no analytic ROHF/ROKS Hessian to take, and
+> unrestricted waits for the spectrum record's two spin channels (PS-C2: the
+> orbital block is written one channel wide)
+> ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) §§ 2a.2 ES7,
 > 2a.3).
 
 **The shared items** — method, functional, basis, the spin treatment and count, dispersion, density
-fitting, the implicit solvent (`solvent`, PCM), the SCF machinery, the
+fitting, the implicit solvent (`solvent`, PCM — on the frequencies-only
+route, § 4.6), the SCF machinery, the
 geometry-convergence criteria (`geom_gmax` family, whose values for this
 kind are the tight tier through the catalogue's `recommended` key — the row
 above; V1.20 closed 2026-09-24), the relaxation's workflow knobs
@@ -710,6 +714,16 @@ sets compared by frequency only) — before the old two-branch analysis was
 deleted (2026-09-23).
 
 ### 4.6 Phase 3 — infrared and Raman strengths
+
+> **PCM reaches one route** *(ruled 2026-09-29, plan § 5w K17; refused since
+> 2026-09-30, K2)*. PySCF's PCM Hessian solves under equilibrium solvation and
+> adds the solvent's own second derivative (`with_solvent.hess`); the deck's
+> other routes are built without it — the held-atom Hessian
+> (`hess_elec(atmlst=)` + `hess_nuc`), the analytic IR block, and Raman's
+> polarizability loop. So with a solvent set, a PySCF vibration runs the
+> frequencies of a structure with no atoms held, with IR and Raman off; any
+> of the three is refused by name at `prep`, until those routes carry the
+> solvent and are measured.
 
 **What an intensity is.** An infrared band is strong when the vibration moves
 charge: the quantity is the dipole's rate of change along the mode,

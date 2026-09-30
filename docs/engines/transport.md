@@ -1120,7 +1120,7 @@ Edited in one panel. Changing any of these rebuilds all five stages.
 | `pao_energy_shift` | `PAO.EnergyShift` | Orbital confinement radius. Aggressive confinement truncates exactly the tails that conduct — transport is more sensitive to this than a total-energy run | 3 |
 | `mesh_cutoff` | `MeshCutoff` | Real-space grid: accuracy against cost, with egg-box error if too coarse | 3 |
 | `electronic_temperature` | `ElectronicTemperature` | Fermi broadening — sets the leads' distribution functions; affects metallic SCF convergence and T(E) near E_F | 3 |
-| `spin_treatment` · `unpaired_electrons` | `Spin` · `Spin.Fix` + `Spin.Total` | Whether the physics is spin-resolved at all, and its count | 3 |
+| `spin_treatment` · `unpaired_electrons` | `Spin` | Whether the physics is spin-resolved at all — restricted or unrestricted, TranSIESTA's two; the count floats, since TranSIESTA holds no fixed total spin (`Spin.Fix` is never written here, § 3.1's spin note) | 3 |
 | *the pseudopotentials* | — | Must be the same set everywhere, and must match the functional: SIESTA silently uses the pseudo's XC even when the deck disagrees | 2 |
 | `species_order` | — | **Structural, and easy to overlook.** It fixes the orbital ordering inside `.DM` and `.TSHS`. Two stages that order species differently write files the next stage cannot read correctly | 2 |
 | `kgrid` *(transverse part)* | `%block kgrid_Monkhorst_Pack` | The transverse Brillouin-zone sampling. Leads and device share one transverse cell, and the self-energy is folded in per transverse k-point, so two grids cannot be combined. *(Advisory as to whether the density suffices; checkable that they agree)* | 2 + 3 |
@@ -1480,6 +1480,17 @@ leads and the device.
 > ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
 > § 2a, ES1, ES7). Reading a spin-polarized junction's transmission in both
 > TBtrans channels (§ 2a.4) is still open (plan § 5s, P5).
+>
+> **Two treatments, and the count floats** *(T-F20, 2026-09-30)*: TranSIESTA
+> runs `restricted` and `unrestricted` only — it stops on more than two spin
+> components (`m_transiesta.F90`) — and never a fixed total spin: the device
+> dies on `Spin.Fix` (*"Fixing spin is not possible in TranSiesta"*,
+> `m_ts_options.F90`), and a lead's fixed spin aligns its Fermi levels to
+> spin-up. So a transport calculation offers the two treatments (`offered`,
+> [`template.md`](?doc=engines/template.md) § 6.3a); under `unrestricted` a
+> blank count floats by that rule, a cited run's fixed count is not defaulted
+> into the template (it is left blank, and floats), and a stated count is
+> refused by name.
 
 **How the third one comes to remember.** You finish a relaxation, open it in
 the Results tab, and save the structure. The tab writes that run's own settings

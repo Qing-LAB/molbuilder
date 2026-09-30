@@ -262,7 +262,7 @@ neither may be answered by looking at the value instead:
 
 | | asked by | answered by |
 |---|---|---|
-| which control edits this cell | `legalValues` | `bool` / `enum` → a dropdown; everything else a text box |
+| which control edits this cell | `legalValues` | `bool` / `enum` → a dropdown of the choices **this folder's kind offers** (the columns payload's `choices`, narrowed by `template.offered` — [`engines/template.md`](?doc=engines/template.md) § 6.3a, 2026-09-30: a vibration's relaxation cell offers three relaxers); everything else a text box |
 | what the typed text **means** | `CELL_READERS` (`task-setup/cell-readers.js`) | one reader per member of `template.TYPES` |
 
 Guessing either from the value's look is a bug this tab has had twice. A

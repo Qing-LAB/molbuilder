@@ -274,10 +274,11 @@ class TestRenderMethodsMdFragment:
         class, Raman prose riding only when compute_raman is on."""
         from molbuilder.spectra import render_methods_md
         from molbuilder.pyscf.vibration_emitters import pyscf_methods_fragment
-        cfg = _spectra_cfg(spin_treatment="unrestricted",
-                           unpaired_electrons=2, compute_raman=True)
+        # Closed-shell: a PySCF vibration offers `restricted` alone
+        # (`engines/template.md` § 6.3a), so the reachable class is RKS.
+        cfg = _spectra_cfg(compute_raman=True)
         md = render_methods_md(cfg, fragment_md=pyscf_methods_fragment(cfg))
-        assert "pyscf.hessian.uks" in md
+        assert "pyscf.hessian.rks" in md
         assert "[Sun2020, Sun2018]" in md
         assert "Komornicki1979" in md
         bib = md.split("**Bibliography**", 1)[1]

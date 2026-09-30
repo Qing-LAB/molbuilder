@@ -425,10 +425,13 @@ the labels drive the whole device/electrode split, so the
 
 ## 6. Adding a new engine
 
-1. Declare what it can run: a row per kind in `electronic_state.CAPABILITY`
-   (and in `FLOATS` / `MOLECULAR` if it floats a moment or builds the atoms as one
-   molecule), with a reason in `_CANNOT` for what it cannot. The form then offers
-   exactly that, and the gate refuses the rest by name (ES4).
+1. Declare what it can run: the kinds in `electronic_state.engines_for`'s
+   table (and in `MOLECULAR` if it builds the atoms as one molecule), and on
+   the state's two items the choices each of its kinds offers (`offered` with
+   the engine's key, [`engines/template.md`](?doc=engines/template.md) § 6.3a —
+   no `free` among its counts if it cannot float a moment), with a reason in
+   `template.why_not_offered` for what it cannot. The form then offers exactly
+   that, and `resolve` and the gate refuse the rest by name (ES4).
 2. Give its config the four state items from `config/state.py` (the factories
    every engine's config uses), and `method` if it has one.
 3. Spell the state in its deck writer — read `electronic_state(...)`, never the
@@ -436,8 +439,8 @@ the labels drive the whole device/electrode split, so the
 4. Register its validator in `_ENGINE_VALIDATORS`; the state's findings come to it
    through `validate()` without a line of its own. Pin its decks through prep.
 
-No endpoint change: `/api/structure/analyze` answers every engine `CAPABILITY`
-names for the kind.
+No endpoint change: `/api/structure/analyze` answers every engine
+`engines_for` names for the kind.
 
 ---
 

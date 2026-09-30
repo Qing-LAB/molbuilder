@@ -269,3 +269,55 @@ def test_a_bool_column_is_a_chooser_not_a_box(page, flask_server,
         f"the chooser offers {cell['options']} -- a bool's two answers are "
         f"not both there, so `legalValues()` returned something other than "
         f"the pair, or the option list was built from the wrong source.")
+
+
+@pytest.fixture
+def out_of_set_dir(isolated_projects_root_module):
+    """A vibration whose relax rung holds a relaxer the kind no longer
+    offers -- a description written before 2026-09-30, when `Verlet` was
+    offered to every kind (`engines/template.md` § 6.3a)."""
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.task import (Stage, StructureRef, Task, derive_run,
+                                 write_task)
+    from molbuilder.template import template_with_values
+
+    d = isolated_projects_root_module / "cell_offered/vibration/probe"
+    d.mkdir(parents=True)
+    (d / "probe.source.xyz").write_text(
+        "2\nprobe\nH 0 0 0\nH 0 0 0.74\n", encoding="utf-8")
+    (d / "probe.template.toml").write_text(
+        template_with_values(SiestaConfig(system_label="probe"),
+                             engine="siesta", calculation="vibration"),
+        encoding="utf-8")
+    write_task(d / "task.json", Task(
+        engine="siesta", shape="hierarchical",
+        run=derive_run("probe", stage_names=("relax", "freq")),
+        structure=StructureRef(source="probe.source.xyz"),
+        calculation="vibration", varies=("relax_type",),
+        stages=(Stage(name="relax", overrides={"relax_type": "Verlet"}),
+                Stage(name="freq", overrides={}))))
+    yield d
+
+
+def test_a_stored_value_the_kind_does_not_offer_is_shown_as_itself(
+        page, flask_server, out_of_set_dir):
+    """The cell's menu offers what a vibration's relaxation may take --
+    CG, Broyden, FIRE -- and still shows the override the description
+    holds, marked, rather than a blank cell over it; prep refuses it by
+    name (`engines/template.md` § 6.3a).
+
+    MUTATION THIS MUST FAIL AGAINST: the viewer without the branch (the
+    cell shows nothing selected)."""
+    _open(page, flask_server, out_of_set_dir,
+          ready='[aria-label="relax relax_type"]')
+    cell = page.evaluate(
+        "() => { const n = document.querySelector("
+        "  '[aria-label=\"relax relax_type\"]');"
+        "  if (!n) return null;"
+        "  return {value: n.value, text: n.selectedIndex < 0 ? null"
+        "          : n.options[n.selectedIndex].text,"
+        "          options: [...n.options].map(o => o.value)}; }")
+    assert cell and cell["value"] == "Verlet", cell
+    assert cell["text"] == "Verlet (not offered here)", cell
+    assert {"CG", "Broyden", "FIRE"} <= set(cell["options"]), cell
+    assert "Nose" not in cell["options"], cell

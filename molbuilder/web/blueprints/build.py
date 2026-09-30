@@ -217,8 +217,9 @@ def _analyze_response(struct, body):
         return jsonify({"ok": False, "error": str(exc).strip("'")}), 400
     states = {}
     for engine, items in forms.items():
-        # WHO RUNS WHICH KIND is the capability table's (§ 2a.3): a form for
-        # an engine that does not run this kind has no state to ask for.
+        # WHO RUNS WHICH KIND is `electronic_state.engines_for`'s (§ 2a.3):
+        # a form for an engine that does not run this kind has no state to
+        # ask for.
         if engine not in runs:
             return jsonify({"ok": False,
                             "error": f"no {engine!r} form for a {kind} "
@@ -1786,6 +1787,7 @@ def api_task_setup_columns():
     if engine not in ("siesta", "pyscf"):
         return jsonify({"ok": False, "error": f"unknown engine {engine!r}"}), 400
 
+    from molbuilder import template as _T
     _calc_kind = str(request.args.get("calculation") or "optimization")
     out = []
     for it in _column_items(engine, _calc_kind):
@@ -1801,7 +1803,11 @@ def api_task_setup_columns():
             # only ask the catalogue -- inventing a widget from the value's
             # look is how `use_gpu` became a number box.
             "type":    it.type or "",
-            "choices": list(it.choices) if it.choices else None,
+            # ...OF THE CHOICES THIS KIND MAY TAKE on this engine (the
+            # catalogue's `offered`, template.md § 6.3a): a vibration's
+            # relaxation cell offers three relaxers, never dynamics.
+            "choices": (list(_T.offered(it, engine, _calc_kind))
+                        if it.choices else None),
             # THE SAME WRITER THE FORM USES.  This read `it.anchor`
             # until 2026-08-19, and an anchor is derived by taking the
             # leading token of `engine_key` -- so an item whose spelling

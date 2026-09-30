@@ -64,7 +64,8 @@ is where the *data* comes from.
 | the schema needs | from the item |
 |---|---|
 | `name` | the item's own name |
-| `label` · `help` · `default` · `unit` · `choices` | the keys of the same name |
+| `label` · `help` · `default` · `unit` | the keys of the same name |
+| `choices` | the item's `choices`, **narrowed to what the kind offers** on this engine (`offered`, `template.offered` — [`engines/template.md`](?doc=engines/template.md) § 6.3a, 2026-09-30): a vibration's relaxation shows three relaxers, a PySCF vibration's spin `restricted` alone |
 | `min` / `max` | `range` |
 | `engine_key` | the item's **`engine_key`** — the full spelling. `expands` is the fallback for a `deck` item whose several keywords are the honest answer, and `anchor` the last resort. *(This said `anchor` first until 2026-08-15, and an anchor is deliberately the bare leading keyword — so the badge read `gto.M` on four different PySCF controls, `mf` on three more, and nothing at all on the eleven whose key is a molbuilder note.)* |
 | `workflow_group` | `group` |

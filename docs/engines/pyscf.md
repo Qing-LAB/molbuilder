@@ -338,8 +338,10 @@ re-rule a mismatch without a word: `dft.RKS` / `scf.RHF` with `mol.spin != 0` re
 ROKS / ROHF (`pyscf/dft/__init__.py`, `pyscf/scf/__init__.py`). So the settings gate
 refuses what cannot run, by name, before any text: `restricted` with a count above 0
 (ES5, at `config.spin_treatment`, naming restricted-open and unrestricted), `free` —
-PySCF occupies exactly N↑ and N↓, so no moment floats (ES6) — and restricted-open for
-a vibration, which takes the analytic Hessian ROHF/ROKS lack (ES4). Parity at the
+PySCF occupies exactly N↑ and N↓, so no moment floats (ES6) — and for a vibration
+anything but `restricted` (ES4): restricted-open takes the analytic Hessian ROHF/ROKS
+lack, and unrestricted waits for the spectrum record's second spin channel
+([`vibration.md`](?doc=engines/vibration.md) § 3.1). Parity at the
 resolved charge (ES3) and the open-shell guard (ES9) are the state's one family,
 asked from `validate`.
 

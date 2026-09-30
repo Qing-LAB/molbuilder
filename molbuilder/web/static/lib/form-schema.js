@@ -178,6 +178,16 @@
             if (c === f.default) opt.selected = true;
             sel.appendChild(opt);
         }
+        // A VALUE THIS KIND DOES NOT OFFER is shown as itself, marked: a
+        // select with no option for it shows the first one instead, and the
+        // form would say a value nobody holds (`engines/template.md` § 6.3a).
+        if (f.default !== null && f.default !== undefined
+                && !f.choices.some(c => c === f.default)) {
+            const opt = el("option", { value: String(f.default) },
+                           String(f.default) + " (not offered here)");
+            opt.selected = true;
+            sel.appendChild(opt);
+        }
         return sel;
     }
 

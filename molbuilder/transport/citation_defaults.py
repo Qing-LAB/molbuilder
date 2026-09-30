@@ -178,6 +178,27 @@ def citation_answers(cite_dir) -> CitationAnswers:
             _apply_kgrid(kw, p.kgrid)      # the one rule, both sources
         source, source_name = "deck", cited.deck.name
         charge = int(p.net_charge)
+    # A FIXED COUNT A TRANSPORT RUNG CANNOT HOLD is not defaulted
+    # (`engines/transport.md` § 3.1's spin note, T-F20): TranSIESTA stops on
+    # a fixed total spin, so under `unrestricted` the cited run's number is
+    # not a value this calculation can take -- the count is left blank and
+    # floats by the kind's own rule (`electronic_state.count_must_float`),
+    # which each rung's deck says.
+    from ..electronic_state import FREE, count_must_float
+    from ..template import catalogue, is_member, offered, one
+    # ...NOR A TREATMENT IT CANNOT RUN (non-collinear, spin-orbit: TranSIESTA
+    # stops on more than two spin components) -- the treatment and its count
+    # are left blank and worked out on the junction, which each rung's deck
+    # says (`template.md` § 6.3a).
+    _can = offered(one(catalogue(), "spin_treatment", engine="siesta"),
+                   "siesta", "transport")
+    if (kw.get("spin_treatment") is not None
+            and not is_member(kw["spin_treatment"], _can)):
+        kw.pop("spin_treatment")
+        kw.pop("unpaired_electrons", None)
+    if (count_must_float("siesta", "transport", kw.get("spin_treatment"))
+            and kw.get("unpaired_electrons") not in (None, FREE)):
+        kw.pop("unpaired_electrons")
     if "mesh_cutoff" in kw:
         kw["mesh_cutoff"] = float(kw["mesh_cutoff"])
     return CitationAnswers(values=kw, source=source, source_name=source_name,

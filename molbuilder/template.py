@@ -279,6 +279,15 @@ class Item:
     #: default -- a frequency's relaxation is tighter than an optimization's.
     #: Pairs rather than a mapping so the frozen item stays hashable.
     recommended: Tuple[Tuple[str, Any], ...] = ()
+    #: THE CHOICES A KIND MAY TAKE (§ 6.3a, 2026-09-30), as ``(key, members)``
+    #: pairs -- ``recommended``'s sibling: that says where a kind's value
+    #: starts, this which values the kind can take at all.  A key is a kind
+    #: (``"vibration"``, every engine) or ``"<engine>.<kind>"`` (one engine,
+    #: for an item two engines share whose choices differ -- the TOML dotted
+    #: key ``siesta.transport``).  No entry for the kind means every choice.
+    #: Ask :func:`offered`; why a choice is not offered is
+    #: :func:`why_not_offered`'s.
+    offered: Tuple[Tuple[str, Tuple[Any, ...]], ...] = ()
 
     #: Citation keys into ``docs/science/references.bib`` -- the one
     #: bibliography the whole validation design argues from (user,
@@ -883,7 +892,7 @@ def _toml_key(k: Any) -> str:
 #: what it is, then what it is worth, then what bounds it, then the prose.
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "anchor", "engine_key",
                    "manual", "expands", "type",
-                   "choices", "value", "default", "recommended", "optional", "allocation",
+                   "choices", "value", "default", "recommended", "offered", "optional", "allocation",
                    "citation", "shared", "role", "role_values", "stages",
                    "unit", "range", "tier", "pattern",
                    "group", "label", "null_label", "read_by", "help")
@@ -929,6 +938,15 @@ def _item_payload(it: Item) -> Dict[str, Any]:
     if it.recommended:
         out["recommended"] = {k: (list(v) if isinstance(v, tuple) else v)
                               for k, v in it.recommended}
+    if it.offered:
+        # One table per engine for an engine's own entries (the TOML dotted
+        # key `siesta.transport` is exactly that table), a list per kind.
+        offered_table: Dict[str, Any] = {}
+        for key, members in it.offered:
+            engine, _, kind = key.rpartition(".")
+            (offered_table.setdefault(engine, {}) if engine
+             else offered_table)[kind] = list(members)
+        out["offered"] = offered_table
     if it.refs:
         out["refs"] = list(it.refs)
     if it.allocation:
@@ -1040,7 +1058,21 @@ def catalogue() -> "Template":
     fixture, a calculation's own template -- calls :func:`read_template` on it
     directly; that is a different file and not this one.
     """
-    return read_template(load_catalogue())
+    parsed = read_template(load_catalogue())
+    # A KIND IS NEVER STARTED ON A CHOICE IT REFUSES (§ 6.3a): the value a
+    # kind's template starts at -- its recommendation, else the default --
+    # is among what that kind is offered.  Asked of the MASTER FILE, once:
+    # an item derived for one kind's form (`with_recommended`) carries that
+    # kind's start as its default, which other kinds' sets need not hold.
+    for it in parsed.items:
+        rec = dict(it.recommended)
+        for key, members in it.offered:
+            kind = key.rpartition(".")[2]
+            start = rec.get(kind, it.default)
+            if start is not None and not is_member(start, members):
+                _refuse(f"a {kind} starts at {start!r}, which offered.{key} "
+                        f"does not let it take", where=it.name)
+    return parsed
 
 
 def template_with_values(config, *, engine: str = "", catalogue: str = "",
@@ -1112,6 +1144,11 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
             # ...nor the rungs' own role answers: `resolve` reads them from
             # the catalogue, and the template holds no value for a role item.
             role_values=(),
+            # ...nor the kinds' choice sets: `resolve` and the gate hold a
+            # value to the catalogue's (§ 6.3a), naming why a choice is not
+            # this kind's -- a narrowed `choices` here would refuse it at
+            # read time with the reader's bare words instead.
+            offered=(),
         )
         for it in select(parsed, engine=eng, calculation=calculation)
     ]
@@ -1313,21 +1350,82 @@ _TYPE_CHECKS = {
 }
 
 
+def _calculation_kinds() -> Tuple[str, ...]:
+    """The calculation kinds a table may be keyed by -- the electronic
+    state's `KINDS`, asked lazily (that module reaches this one)."""
+    from .electronic_state import KINDS
+    return tuple(KINDS)
+
+
 def _table_from(name: str, key: str, raw, type_: str, choices, *,
-                keyed_by: str, example: str) -> Tuple[Tuple[str, Any], ...]:
+                keyed_by: str, example: str,
+                keys: Optional[Tuple[str, ...]] = None
+                ) -> Tuple[Tuple[str, Any], ...]:
     """A per-name table of an item -- ``recommended``, keyed by calculation
     kind (§ 6.3a), or ``role_values``, keyed by rung (§ 6.4) -- checked value
     by value against the item's own declaration: each obeys the same type and
-    enum membership as the general default."""
+    enum membership as the general default.  ``keys``, when given, is the
+    vocabulary a key must come from: a misspelled kind would otherwise be a
+    table nothing ever asks."""
     if raw is None:
         return ()
     if not isinstance(raw, Mapping) or not all(isinstance(k, str) for k in raw):
         _refuse(f"`{key}` must be a table keyed by {keyed_by}, "
                 f"e.g. {example}", where=name)
+    if keys is not None:
+        unknown = sorted(set(raw) - set(keys))
+        if unknown:
+            _refuse(f"`{key}` names {', '.join(map(repr, unknown))}, which "
+                    f"is not a {keyed_by} ({', '.join(keys)})", where=name)
     out = []
     for k, v in raw.items():
         _check_raw_value(name, f"{key}.{k}", v, type_, choices)
         out.append((str(k), _shape(v, type_)))
+    return tuple(out)
+
+
+def _offered_from(name: str, raw, type_: str, choices,
+                  engines) -> Tuple[Tuple[str, Tuple[Any, ...]], ...]:
+    """The ``offered`` table of an item (§ 6.3a) -- a kind's list of the
+    choices it may take, or an engine's table of such lists -- each member
+    checked against the item's own type and choices, so a kind can only be
+    offered what the item declares."""
+    if raw is None:
+        return ()
+    if not choices:
+        _refuse("`offered` narrows an item's choices, and this item "
+                "declares none", where=name)
+    if not isinstance(raw, Mapping) or not raw:
+        _refuse('`offered` must be a table keyed by calculation kind, or by '
+                'engine and then kind -- e.g. offered = { vibration = '
+                '["CG", "FIRE"] } or offered = { siesta.transport = '
+                '["restricted"] }', where=name)
+    kinds = _calculation_kinds()
+    out = []
+    for key, val in raw.items():
+        if isinstance(val, Mapping):                    # an engine's table
+            if engines and key not in engines:
+                _refuse(f"`offered.{key}` names an engine this item does not "
+                        f"serve ({', '.join(engines)})", where=name)
+            if not val:
+                _refuse(f"`offered.{key}` names no calculation kind",
+                        where=name)
+            pairs = [(f"{key}.{kind}", v) for kind, v in val.items()]
+        else:
+            pairs = [(str(key), val)]
+        for k, members in pairs:
+            # A MISSPELLED KIND is a table nothing asks, so every refusal
+            # for the kind meant would silently go (the K2 review).
+            if k.rpartition(".")[2] not in kinds:
+                _refuse(f"`offered.{k}` names {k.rpartition('.')[2]!r}, which "
+                        f"is not a calculation kind ({', '.join(kinds)})",
+                        where=name)
+            if not isinstance(members, list) or not members:
+                _refuse(f"`offered.{k}` must be a non-empty list of the "
+                        f"item's choices", where=name)
+            for m in members:
+                _check_raw_value(name, f"offered.{k}", m, type_, choices)
+            out.append((k, tuple(_shape(m, type_) for m in members)))
     return tuple(out)
 
 
@@ -1503,7 +1601,10 @@ def _item_from(name: str, body: Any) -> Item:
         calculations=tuple(body.get("calculations", ()) or ()),
         recommended=_table_from(name, "recommended", body.get("recommended"),
                                 type_, choices, keyed_by="calculation kind",
-                                example="recommended = { vibration = 0.01 }"),
+                                example="recommended = { vibration = 0.01 }",
+                                keys=_calculation_kinds()),
+        offered=_offered_from(name, body.get("offered"), type_, choices,
+                              tuple(body.get("engines", ()) or ())),
         refs=tuple(body.get("refs", ()) or ()),
         allocation=bool(body.get("allocation", False)),
         citation=tuple(body.get("citation", ()) or ()),
@@ -1685,6 +1786,78 @@ def fixed_on_every_rung(engine: str, kind: str) -> Dict[str, Any]:
     return {it.name: it.value
             for it in select(catalogue(), engine=engine)
             if kind in it.role and not it.stages and not it.role_values}
+
+
+def a_kind(kind: str) -> str:
+    """``kind`` with its article, as a refusal says it: *an optimization*,
+    *a vibration*."""
+    return f"{'an' if kind[:1] in 'aeiou' else 'a'} {kind}"
+
+
+def offered(item: "Item", engine: str, kind: str) -> Tuple[Any, ...]:
+    """The choices ``item`` offers a ``kind`` calculation on ``engine``
+    (§ 6.3a): the engine's own entry, else the kind's, else every choice
+    the item declares.  What the form and the stage table's cells offer,
+    and what `resolve` and the settings gate hold a value to."""
+    table = dict(item.offered)
+    for key in (f"{engine}.{kind}", kind):
+        if key in table:
+            return table[key]
+    return tuple(item.choices or ())
+
+
+def why_not_offered(name: str, value: Any, engine: str, kind: str) -> str:
+    """Why a ``kind`` calculation on ``engine`` is not offered ``value`` for
+    ``name`` -- the clause a refusal puts after *"which a <kind> does not
+    offer"*.  Each reason read from the engine's source (§ 6.3a;
+    `science/chemistry-correctness.md` § 2a.3), where `_CANNOT` beside the
+    retired `electronic_state.CAPABILITY` held the spin's until 2026-09-30."""
+    if name == "spin_treatment":
+        if value == "restricted-open" and engine == "siesta":
+            return "SIESTA has no restricted open-shell formalism"
+        if value in ("non-collinear", "spin-orbit"):
+            if engine == "pyscf":
+                return ("PySCF's molecular SCF here is collinear"
+                        if value == "non-collinear" else
+                        "PySCF's molecular SCF here has no spin-orbit "
+                        "coupling")
+            if kind == "transport":
+                return ("TranSIESTA stops on more than two spin components "
+                        "(m_transiesta.F90: 'transiesta does not work for "
+                        "non-collinear or spin-orbit')")
+        if engine == "pyscf" and kind == "vibration":
+            if value == "restricted-open":
+                return ("PySCF has no analytic ROHF/ROKS Hessian, and the "
+                        "vibration deck takes the analytic Hessian")
+            if value == "unrestricted":
+                return ("the spectrum record carries one spin channel: a "
+                        "PySCF vibration's orbital block is written one "
+                        "channel wide and its reader refuses a second "
+                        "(engines/vibration.md § 3.1; plan § 5w K17)")
+    if name == "unpaired_electrons":
+        if engine == "pyscf" and value == "free":
+            return ("PySCF fixes the moment: it occupies exactly N-up and "
+                    "N-down from mol.spin (pyscf/scf/uhf.py) -- state the "
+                    "count, 0 for a closed shell, 1 for a doublet, 2 for a "
+                    "triplet")
+        if engine == "pyscf" and kind == "vibration":
+            return "a PySCF vibration is restricted: every electron paired"
+        if kind == "transport":
+            return ("TranSIESTA cannot hold a fixed total spin ('Fixing spin "
+                    "is not possible in TranSiesta', m_ts_options.F90): under "
+                    "unrestricted the count floats")
+    if name == "relax_type" and kind == "vibration":
+        if value in ("Verlet", "Nose"):
+            return ("Verlet and Nose integrate molecular dynamics, and the "
+                    "relax stage exists to reach a stationary point")
+        if value == "none":
+            return ("none relaxes nothing: relax_type names the relaxer a "
+                    "vibration's relax stage uses, and whether that stage "
+                    "runs at all is already_relaxed's to say")
+    if name == "solution_method" and value == "transiesta":
+        return ("transiesta is a transport device's solver: an open-boundary "
+                "run needs the electrodes only a transport calculation builds")
+    return f"{a_kind(kind)} on {engine} does not run it"
 
 
 def why_role(name: str) -> str:
@@ -1995,4 +2168,5 @@ __all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES",
            "template_fields", "engine_name", "is_member",
            "STATE_ITEMS", "shared_by_every_stage", "why_shared",
            "IDENTITY_ITEMS", "fixed_by_role", "role_answers",
-           "fixed_on_every_rung", "why_role"]
+           "fixed_on_every_rung", "why_role", "offered", "why_not_offered",
+           "a_kind"]

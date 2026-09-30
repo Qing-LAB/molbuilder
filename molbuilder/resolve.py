@@ -334,6 +334,36 @@ def _refuse_a_stated_answer(template_text: str, engine: str,
             f"the template.")
 
 
+#: Where a resolved value came from, in words -- `provenance`'s own sources.
+_SOURCE_WORDS = {"template": "the template", "stage": "this stage's override",
+                 "sweep": "a sweep point", "pin": "a pin", "role": "the rung"}
+
+
+def _refuse_what_the_kind_does_not_offer(values, provenance: Mapping[str, str],
+                                         engine: str, kind: str) -> None:
+    """A resolved value the kind does not offer (`engines/template.md`
+    § 6.3a) is refused, naming where it came from, why the kind does not
+    offer it and what it does -- a vibration's relaxation set to `Verlet`,
+    an optimization's solver to `transiesta`.  The electronic state's items
+    are that family's: their values are resolved from the structure at
+    render, and the settings gate holds those to the same sets."""
+    from .template import (STATE_ITEMS, a_kind, catalogue, is_member, offered,
+                           select, why_not_offered)
+    for it in select(catalogue(), engine=engine, calculation=kind):
+        if not it.offered or it.name in STATE_ITEMS:
+            continue
+        have = getattr(values, it.name, None)
+        can = offered(it, engine, kind)
+        if have is None or is_member(have, can):
+            continue
+        src = provenance.get(it.name, "template")
+        raise ResolveError(
+            f"{_SOURCE_WORDS.get(src, src)} sets {it.name!r} to {have!r}, "
+            f"which {a_kind(kind)} does not offer: "
+            f"{why_not_offered(it.name, have, engine, kind)}.  It offers "
+            f"{', '.join(map(str, can))}.")
+
+
 def resolve(template_text: str, task, config_cls, *,
             allocation: Resources,
             stage: Optional[str] = None,
@@ -556,6 +586,8 @@ def resolve(template_text: str, task, config_cls, *,
         if answers:
             values = effective_config(values, answers)
             prov.update({k: "role" for k in answers})
+        # ...AND NOTHING THE KIND DOES NOT OFFER (`template.md` § 6.3a).
+        _refuse_what_the_kind_does_not_offer(values, prov, _engine, _kind)
 
         resources = dataclasses.replace(allocation, **machine)
         # § 6.2's translation boundary (job-contracts.md): floor 3 maps

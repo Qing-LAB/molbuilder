@@ -1001,9 +1001,6 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
         # never another rung's (those are on that rung's tab) and never a
         # shared one (the panel above).
         items = [it for it in items if not it.stages or rung in it.stages]
-    from molbuilder.electronic_state import KINDS, offered
-    _state_choices = (offered(engine, calculation)
-                      if calculation in KINDS else {})
     by_category: Dict[str, List[Dict[str, Any]]] = {}
     for it in items:
         panel = it.category[0] if it.category else "procedure"
@@ -1012,13 +1009,13 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
         # the fact a rung's tab folds its cards by, and the stage table
         # disables cells by.
         field["stages"] = list(it.stages)
-        # WHAT THIS ENGINE CAN RUN FOR THIS KIND, and nothing else (ES4,
-        # `science/chemistry-correctness.md` § 2a.3): the electronic state's
-        # choices narrowed by the capability table the settings gate refuses
-        # by, so the form never offers what prep would refuse -- no
+        # WHAT THIS KIND CAN TAKE ON THIS ENGINE, and nothing else (the
+        # catalogue's `offered`, `template.md` § 6.3a): the one set `resolve`
+        # and the settings gate refuse by, so the form never offers what prep
+        # would refuse -- no dynamics for a vibration's relaxation, no
         # restricted-open on SIESTA, no floating moment on PySCF.
-        if it.name in _state_choices:
-            field["choices"] = list(_state_choices[it.name])
+        if it.choices:
+            field["choices"] = list(_T.offered(it, engine, calculation))
         by_category.setdefault(panel, []).append(field)
 
     sections = [{"name": cat, "title": cat.capitalize(),

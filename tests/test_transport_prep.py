@@ -2755,3 +2755,131 @@ class TestTheRungFixesItsOwn(_LadderThroughTheCli):
             assert any("Fixed by this rung" in ln
                        for ln in lines[max(0, at[0] - 3):at[0]]), (
                 lines[max(0, at[0] - 3):at[0] + 1])
+
+
+class TestTheSpinTranSIESTARuns(_LadderThroughTheCli):
+    """T-F20, through `molbuilder jobset prep`: TranSIESTA runs two spin
+    treatments and never a fixed total spin (`engines/transport.md` § 3.1's
+    spin note; `science/chemistry-correctness.md` § 2a.3, ES6).  Until
+    2026-09-30 a transport calculation was offered all four treatments and
+    any count, and the device died on the node."""
+
+    def _template_says(self, calc, **values):
+        import dataclasses
+        from molbuilder.template import _emit, find_template, read_template
+        tmpl = find_template(calc)
+        parsed = read_template(tmpl.read_text())
+        tmpl.write_text(_emit(
+            [dataclasses.replace(i, value=values[i.name])
+             if i.name in values else i for i in parsed.items],
+            engines=parsed.engines))
+
+    def _seed(self, root, monkeypatch):
+        return self._cli(["prep", "run", "seed", "--bundle", "J/transport/T"],
+                         root, monkeypatch)
+
+    @pytest.mark.parametrize("values, words", [
+        ({"spin_treatment": "non-collinear"},
+         "more than two spin components"),
+        ({"spin_treatment": "unrestricted", "unpaired_electrons": 2},
+         "cannot hold a fixed total spin"),
+        ({"spin_treatment": "unrestricted", "unpaired_electrons": 0},
+         "cannot be held here"),
+        # ES5 first, and its way out the one TranSIESTA can take
+        ({"spin_treatment": "restricted", "unpaired_electrons": 2},
+         "its count floats here"),
+    ], ids=["non-collinear", "a-count", "a-zero-under-unrestricted",
+            "restricted-with-a-count"])
+    def test_what_transiesta_cannot_run_is_refused(self, tmp_path,
+                                                   monkeypatch, values,
+                                                   words):
+        """MUTATIONS THIS MUST FAIL AGAINST: the transport kind's treatment
+        set undeclared (non-collinear preps); the transport clause of the
+        float-only rule removed (the zero preps, writing `Spin.Fix`).  (The
+        count's set is held by the float-only rule as well, so the form
+        test in `test_what_a_kind_offers_e2e.py` is its catch.)"""
+        root = tmp_path / "projects"
+        _write_junction(root, _junction_struct())
+        calc = _describe_transport(root, bias=(0.0,))
+        self._template_says(calc, **values)
+        r = self._seed(root, monkeypatch)
+        assert r.exit_code != 0, r.output
+        assert words in r.output and "TranSIESTA" in r.output, r.output
+
+    def test_a_cited_fixed_count_floats(self, tmp_path, monkeypatch):
+        """The relaxation a transport cites ran polarized at a fixed 2S = 2.
+        Its number is not a value TranSIESTA can take, so the template
+        leaves the count blank and it floats by the rule, which the deck
+        says.  MUTATION THIS MUST FAIL AGAINST: the citation carrying the
+        number (every prep refused until the person edits the template)."""
+        root = tmp_path / "projects"
+        calc_relax = _write_junction(root, _junction_struct())
+        deck = calc_relax / "01_coarse" / "run-0" / "Relax_01_coarse.fdf"
+        deck.write_text(deck.read_text().replace(
+            "ElectronicTemperature 200.0 K\n",
+            "ElectronicTemperature 200.0 K\nSpin polarized\n"
+            "Spin.Fix .true.\nSpin.Total 2.0\n"))
+        calc = _describe_transport(root, bias=(0.0,))
+        from molbuilder.template import find_template, one, read_template
+        tmpl = read_template(find_template(calc).read_text())
+        assert one(tmpl, "spin_treatment").value == "unrestricted"
+        assert one(tmpl, "unpaired_electrons").value is None
+        r = self._seed(root, monkeypatch)
+        assert r.exit_code == 0, r.output
+        seed = (calc / "01_seed" / "T_01_seed.fdf").read_text()
+        settings = self._settings(seed)
+        assert "Spin polarized" in [" ".join(ln.split()) for ln in settings]
+        assert not [ln for ln in settings
+                    if ln.split()[0] in ("Spin.Fix", "Spin.Total")], settings
+        assert "TranSIESTA cannot hold a fixed total spin" in seed
+
+    def test_a_cited_treatment_transiesta_cannot_run_is_worked_out(
+            self, tmp_path, monkeypatch):
+        """The relaxation a transport cites ran non-collinear, which
+        TranSIESTA cannot: the template leaves the treatment and its count
+        blank, and the junction's own is worked out and said in the deck.
+        MUTATION THIS MUST FAIL AGAINST: the citation carrying the
+        treatment (every prep refused until the person edits the template,
+        while the shared panel shows no such choice)."""
+        root = tmp_path / "projects"
+        calc_relax = _write_junction(root, _junction_struct())
+        deck = calc_relax / "01_coarse" / "run-0" / "Relax_01_coarse.fdf"
+        deck.write_text(deck.read_text().replace(
+            "ElectronicTemperature 200.0 K\n",
+            "ElectronicTemperature 200.0 K\nSpin non-colinear\n"))
+        calc = _describe_transport(root, bias=(0.0,))
+        from molbuilder.template import find_template, one, read_template
+        tmpl = read_template(find_template(calc).read_text())
+        assert one(tmpl, "spin_treatment").value is None
+        assert one(tmpl, "unpaired_electrons").value is None
+        r = self._seed(root, monkeypatch)
+        assert r.exit_code == 0, r.output
+        seed = (calc / "01_seed" / "T_01_seed.fdf").read_text()
+        assert "Spin non-polarized" in [" ".join(ln.split())
+                                        for ln in self._settings(seed)]
+
+    def test_a_recorded_treatment_is_refused_saying_it_was_recorded(
+            self, tmp_path, monkeypatch):
+        """A pair whose record says it ran non-collinear, cited with the
+        spin left blank: the junction takes the recorded treatment (ES7),
+        which TranSIESTA cannot run -- refused on the junction, saying the
+        value was RECORDED, where every rung's gate would have called the
+        folded value *stated*.  MUTATION THIS MUST FAIL AGAINST: the
+        junction's own check removed (the refusal says "stated")."""
+        from molbuilder.workingcopy_structure import StructureCodec
+        root = tmp_path / "projects"
+        pair = root / "J" / "structure" / "junc"
+        pair.mkdir(parents=True)
+        s = _junction_struct()
+        s.info = dict(s.info or {}, calculation={
+            "engine": "siesta", "source": "Relax.fdf",
+            "contract": {"net_charge": 0, "spin_treatment": "non-collinear",
+                         "unpaired_electrons": "free"}})
+        StructureCodec().write(s, pair / "junction.xyz")
+        write_pseudos(pair, ["Au", "S", "C"])
+        calc = _describe_transport(root, cite="J/structure/junc",
+                                   bias=(0.0,))
+        r = self._seed(root, monkeypatch)
+        assert r.exit_code != 0, r.output
+        assert "spin_treatment = non-collinear (recorded" in r.output, (
+            r.output)

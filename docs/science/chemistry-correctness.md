@@ -386,7 +386,9 @@ answers it:
 
 1. **implied** by a stated item — the only four implications:
    * `restricted` ⇒ `unpaired_electrons = 0` (ES5);
-   * `non-collinear` or `spin-orbit` ⇒ `unpaired_electrons = free` (ES6);
+   * where SIESTA cannot hold a fixed total spin — `non-collinear` or
+     `spin-orbit`, and `unrestricted` on a transport rung — ⇒
+     `unpaired_electrons = free` (ES6, `electronic_state.count_must_float`);
    * a stated count above 0, or `free` ⇒ `spin_treatment = unrestricted`
      (`restricted-open` is chosen by stating it);
    * a stated count of 0 ⇒ `spin_treatment = restricted` (a broken-symmetry
@@ -406,6 +408,11 @@ answers it:
 
 `method` is never blank: the catalogue's `DFT` is written into a template like
 any other value, and SIESTA is DFT by rule.
+
+**And one rule after them all**: a count nobody stated floats where the engine
+cannot hold a fixed one (ES6) — a recorded or detected number on a transport
+rung becomes `free`, said as a *rule*, since TranSIESTA stops on the `Spin.Fix`
+it would write.
 
 **Two rules, not steps, both for transport.** Its charge is 0 — its boundaries
 are open and the leads set the electron number (`engines/transport.md` § 2a.7),
@@ -475,18 +482,25 @@ transport axis, and a `free` moment has no parity to match.
 
 **ES4 · What an engine can run is declared, not discovered** (§ 2a.3). A choice an
 engine cannot run for this kind is refused by name at the settings gate, never
-left to fail on the node — and the form does not offer it.
+left to fail on the node — and the form does not offer it. The gate holds the
+RESOLVED treatment and count to the catalogue's sets, so a value worked out
+from the structure is judged as a stated one is: a radical's detected
+`unrestricted` on a PySCF vibration is refused, saying where it came from.
 
 **ES5 · Restricted means closed-shell.** `restricted` with `unpaired_electrons >
 0` or `free` is refused, naming both ways out: `restricted-open` (spin-pure, one
 set of spatial orbitals) and `unrestricted` (the channels relax separately).
 
 **ES6 · `free` is a floating moment, and only SIESTA can float it.** `Spin
-polarized` without `Spin.Fix` — and always under `non-collinear` and
-`spin-orbit`, where `Spin.Fix` stops the run. PySCF pins N↑ and N↓ from
-`mol.spin` (`pyscf/scf/uhf.py`, `get_occ`), so a PySCF calculation refuses
-`free` by name; UKS at `unpaired_electrons = 0` is a *constrained* singlet, not
-a free moment.
+polarized` without `Spin.Fix` — and always where `Spin.Fix` stops the run:
+under `non-collinear` and `spin-orbit` (`read_options.F90`), and under
+`unrestricted` on a transport rung, which TranSIESTA cannot hold
+(`m_ts_options.F90`, *"Fixing spin is not possible in TranSiesta"*). There a
+count nobody stated floats, and a stated one is refused by name — one rule,
+`electronic_state.count_must_float`. PySCF pins N↑ and N↓ from `mol.spin`
+(`pyscf/scf/uhf.py`, `get_occ`), so a PySCF calculation refuses `free` by
+name; UKS at `unpaired_electrons = 0` is a *constrained* singlet, not a free
+moment.
 
 **ES7 · The state travels with the run it starts from.** A structure exported
 from a finished run carries that run's record, and a blank item takes the
@@ -529,22 +543,31 @@ and used is a finding, not a footnote.
 
 ### 2a.3 What each engine can run — the capability table
 
-Declared once (`electronic_state.CAPABILITY`), read by the settings gate (ES4)
-and by the form, which offers only what the engine can run for the kind. Every
-entry is read from the engine's source, not from a manual's prose.
+Declared once, on the two items (`offered` — [`engines/template.md`](?doc=engines/template.md)
+§ 6.3a, 2026-09-30; `electronic_state.CAPABILITY` held it in code until then),
+read by the form and the stage table, which offer only what the engine can
+run for the kind, by the description's own check, which refuses a stage's
+value outside it when the description is written, and by the settings gate,
+which holds the RESOLVED treatment and count to it and refuses anything else
+by name, saying where the value came from (ES4) — on a transport calculation
+on the junction, before the state is handed to the rungs; each refusal's
+reason is `template.why_not_offered`'s. Every entry is read from the engine's source,
+not from a manual's prose. *Which engines run which kind* is a different fact
+and stays `electronic_state.engines_for`'s: SIESTA runs all three, PySCF
+optimization and vibration.
 
-| `spin_treatment` | SIESTA optimization · vibration · transport | PySCF optimization · single point | PySCF vibration |
+| `spin_treatment` | SIESTA optimization · vibration | SIESTA transport | PySCF optimization · single point | PySCF vibration |
+|---|---|---|---|---|
+| `restricted` | ✅ | ✅ | ✅ | ✅ |
+| `restricted-open` | ❌ SIESTA has no restricted open-shell formalism | ❌ | ✅ ROHF/ROKS gradients exist (`pyscf/grad/rohf.py`, `roks.py`) | ❌ **no analytic ROHF/ROKS Hessian** — `pyscf/hessian/` holds `rhf`, `rks`, `uhf`, `uks` only, and the vibration deck uses the analytic Hessian |
+| `unrestricted` | ✅ (`Spin polarized`) | ✅ — the count floats (below) | ✅ | ❌ *until the spectrum record carries two spin channels* — its orbital block is written one channel wide and the reader refuses a second (PS-C2, ruled 2026-09-29) |
+| `non-collinear` | ✅ — a pinned count refused: SIESTA `die()`s on `Spin.Fix` here (`read_options.F90`) | ❌ TranSIESTA stops on more than two spin components (`m_transiesta.F90`: *"transiesta does not work for non-collinear or spin-orbit"*) | ❌ not offered | ❌ |
+| `spin-orbit` | ✅ — needs fully-relativistic pseudopotentials; a pinned count refused as above | ❌ as `non-collinear` | ❌ | ❌ |
+
+| `unpaired_electrons` | SIESTA | SIESTA transport | PySCF |
 |---|---|---|---|
-| `restricted` | ✅ | ✅ | ✅ |
-| `restricted-open` | ❌ SIESTA has no restricted open-shell formalism | ✅ ROHF/ROKS gradients exist (`pyscf/grad/rohf.py`, `roks.py`) | ❌ **no analytic ROHF/ROKS Hessian** — `pyscf/hessian/` holds `rhf`, `rks`, `uhf`, `uks` only, and the vibration deck uses the analytic Hessian |
-| `unrestricted` | ✅ (`Spin polarized`) | ✅ | ✅ |
-| `non-collinear` | ✅ — a pinned count refused: SIESTA `die()`s on `Spin.Fix` here (`read_options.F90`) | ❌ not offered | ❌ |
-| `spin-orbit` | ✅ — needs fully-relativistic pseudopotentials; a pinned count refused as above | ❌ | ❌ |
-
-| `unpaired_electrons` | SIESTA | PySCF |
-|---|---|---|
-| a count | beside `unrestricted` (and 0 beside `restricted`) | always — PySCF pins it |
-| `free` | beside `unrestricted`; the only value under `non-collinear` and `spin-orbit` | ❌ refused by name (ES6) |
+| a count | beside `unrestricted` (and 0 beside `restricted`) | 0 beside `restricted` only | always — PySCF pins it; a vibration, restricted, 0 alone |
+| `free` | beside `unrestricted`; the only value under `non-collinear` and `spin-orbit` | the only value beside `unrestricted`: TranSIESTA stops on a fixed total spin (`m_ts_options.F90`: *"Fixing spin is not possible in TranSiesta"*), so a blank count floats there and a stated one is refused | ❌ refused by name (ES6) |
 
 ### 2a.4 How each engine reads what molbuilder writes
 

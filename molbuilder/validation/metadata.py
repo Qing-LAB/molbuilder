@@ -205,3 +205,36 @@ def _check_fixed_on_every_rung(cfg, calculation: str) -> List[Issue]:
                 f"(engines/template.md § 6.4).",
                 f"config.{name}"))
     return issues
+
+
+def _check_offered(cfg, calculation: str) -> List[Issue]:
+    """A value a kind does not offer (`engines/template.md` § 6.3a) is
+    refused by name, listing what the kind offers and why the value is not
+    among it -- for every item but the electronic state's, whose RESOLVED
+    values that family holds to the same sets (`check_electronic_state`).
+
+    `resolve` refuses first, naming where the value came from; this holds a
+    render that skipped `resolve` -- a library call or a test.
+    """
+    from ..template import (STATE_ITEMS, a_kind, catalogue, engine_name,
+                            is_member, offered, select, why_not_offered)
+    engine = engine_name(type(cfg))
+    cat = catalogue()
+    if engine not in cat.engines:
+        return []
+    issues: List[Issue] = []
+    for it in select(cat, engine=engine, calculation=calculation):
+        if not it.offered or it.name in STATE_ITEMS:
+            continue
+        have = getattr(cfg, it.name, None)
+        can = offered(it, engine, calculation)
+        if have is None or is_member(have, can):
+            continue
+        issues.append(Issue(
+            "error",
+            f"``{it.name}`` is {have!r}, which {a_kind(calculation)} on "
+            f"{engine} does not offer: "
+            f"{why_not_offered(it.name, have, engine, calculation)}.  It "
+            f"offers {', '.join(map(str, can))}.",
+            f"config.{it.name}"))
+    return issues

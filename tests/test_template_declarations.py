@@ -224,6 +224,27 @@ def test_an_unnameable_type_is_refused_by_name():
         declarations_for(odd)
 
 
+@pytest.mark.parametrize("table", [
+    'offered = { vibraton = ["CG"] }',
+    'offered = { siesta = { vibraton = ["CG"] } }',
+    "offered = { siesta = {} }",
+    'recommended = { vibraton = "CG" }',
+])
+def test_a_misspelled_kind_is_refused_by_name(table):
+    """`engines/template.md` § 6.3a: a per-kind table keyed by a name that
+    is no calculation kind is a table nothing asks -- for `offered`, every
+    refusal the kind was meant to carry silently gone (the K2 review).
+    API-level because the road cannot reach it: the catalogue is authored,
+    not described."""
+    from molbuilder import template as T
+    text = ('schema = "molbuilder/template@2"\nengines = ["siesta"]\n'
+            '[item.relax_type]\nkind = "engine"\ncategory = ["procedure"]\n'
+            'engines = ["siesta"]\nanchor = "MD.TypeOfRun"\ntype = "enum"\n'
+            'choices = ["CG", "FIRE"]\nhelp = "x"\n' + table + "\n")
+    with pytest.raises(ValueError, match="calculation kind"):
+        T.read_template(text)
+
+
 def test_pyscf_has_no_vocabulary_gaps_left():
     """§ 7's total rule, now SATISFIED for PySCF (T5, 2026-08-13).
 

@@ -723,6 +723,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `engines` | which engines this item applies to, as a list. **Absent means all of them** — § 6.3 |
 | `calculations` | which calculation KINDS select this item, as a list — `engines`' exact sibling on the other axis (spectra-migration P0, 2026-08-20). **Absent means every kind**, which is why the 80-plus pre-existing items needed no edit and the vibration items — thirteen since two retired selectors went, 2026-09-28 — stay out of an optimization template by declaration |
 | `recommended` | a **per-kind recommended value**, `recommended = { vibration = 0.01 }` (§ 6.3a, 2026-09-24): what a form built for that kind shows and what `init` writes into that kind's template, in place of `value`/`default`, when the kind asks a different question of the same parameter than the general default answers — a frequency's relaxation is tighter than an optimization's. Absent means the general default. Each value passes the item's own `type` at parse time (`range` stays advisory, as § 3.3 rules for every value) |
+| `offered` | **the choices a kind may take**, a subset of `choices` — `offered = { vibration = ["CG", "Broyden", "FIRE"] }` (§ 6.3a, 2026-09-30); on an item that serves two engines whose choices differ, the key names the engine too — `offered = { siesta.transport = ["restricted", "unrestricted"], pyscf.vibration = ["restricted"] }` (a TOML dotted key: one table per engine). Absent — for the kind, or on the item — means every choice. Read by the form, the stage table's cells, the description's own check, `resolve` and the settings gate (`template.offered`); a value outside it is refused by name, listing what the kind offers, with the reason `template.why_not_offered` gives. Each member passes the item's own `type` and `choices` at parse time, and each key names a calculation kind — a misspelled one is refused, since it would be a set nothing asks |
 | `refs` | citation keys into `docs/science/references.bib` — the paper(s) behind a scientific knob's guidance. Resolved server-side (title + DOI) and rendered in the form's help; `tests/test_catalogue_refs.py` pins that every key resolves |
 | `allocation` | **the scheduler answers this one** — ranks, threads, memory (§ 6.4). One boolean; it replaced a `resolver` NAME plus a list of which names counted, neither of which anything dispatched on |
 | `citation` | **a cited run answers this one, for these kinds** — `citation = ["transport"]` on `basis_size`, `mesh_cutoff`, `kgrid`, `pao_energy_shift`, `electronic_temperature`, `xc_functional`, `xc_authors`. It is a LIST and not a boolean because those are the **same rows** an optimization uses, where the person answers them. It replaced two hand-maintained frozensets plus a predicate spelled twice in two files (`engines/transport.md` § 3.3.3) |
@@ -1462,6 +1463,61 @@ the person changes it like any other value — the recommendation is where the
 number starts, never a lock. A test compares every `recommended` value of a
 tier field against the engine's tier table, so the two homes of that number
 cannot drift.
+
+#### `offered` — the choices a kind may take *(2026-09-30, plan § 5w K2)*
+
+`recommended` says where a kind's value **starts**; `offered` says which
+values the kind **can take at all** — the sibling on the other side of the
+same question. Every choice an item declares used to be offered to every
+kind, so a SIESTA vibration's relaxation offered `Verlet`, `Nose` and `none`
+(dynamics, or no relaxation at all), an optimization offered `transiesta`
+(which dies after the queue wait), and the spin's narrowing lived in code
+(`electronic_state.CAPABILITY`, retired with this), granting TranSIESTA four
+treatments where it runs two.
+
+```toml
+[item.relax_type]
+kind = "engine"
+category = ["procedure"]
+type = "enum"
+choices = ["CG", "Broyden", "FIRE", "Verlet", "Nose", "none"]
+offered = { vibration = ["CG", "Broyden", "FIRE"] }   # a relaxation relaxes
+help = "How the atoms are moved between steps."
+```
+
+**Per engine where the item serves two.** `spin_treatment` is one item for
+both engines, and what each can run differs, so its keys name the engine:
+`offered = { siesta.transport = […], pyscf.vibration = […] }` — TOML reads a
+dotted key as one table per engine. A kind's key without an engine answers
+every engine; an engine's table answers only the kinds it names.
+
+**One door, five readers.** `template.offered(item, engine, kind)` is the
+set: the form offers only it (`catalogue_to_form_schema`), the stage table's
+cells only it (`/api/task-setup/columns`), and the description's own check
+refuses a stage override outside it when the description is written
+(`validation/task.py`, gate ③), before anything reaches a machine. `resolve`
+refuses a resolved value outside it for the calculation's kind, naming the
+item, where the value came from and what the kind offers — for every item
+but the electronic state's, whose values are resolved from the structure at
+render: the settings gate holds those RESOLVED values to the sets, saying
+where each came from (`science/chemistry-correctness.md` § 2a.3, ES4). The
+gate also holds a rendered deck's other values to the set of the kind the
+deck renders as — its backstop for a render that skipped `resolve`. *(Wrong
+when a SIESTA vibration's `relax` rung is rendered without `resolve`: it
+renders as an optimization, whose set is every relaxer, so there `resolve`
+alone holds `relax_type` to the vibration's — a rung's own role is K4's,
+`plan.md` § 5w.)* **Why** a choice is not offered is prose in one function,
+`template.why_not_offered`, beside `why_role` and `why_shared` — each reason
+read from the engine's source (`science/chemistry-correctness.md` § 2a.3).
+
+**A kind is never started on a choice it refuses**: the value its template
+starts at — its recommendation, else the item's default — is among its
+offered set, checked when the catalogue loads.
+
+**A rule about two items together is not a choice set** and stays a check of
+the kind's, by name: PCM with held atoms, IR-only or Raman on a PySCF
+vibration ([`vibration.md`](?doc=engines/vibration.md) § 4.6); a fixed spin
+count on a transport rung, which TranSIESTA cannot hold.
 
 ### 6.4 An item may be declared without a value
 
@@ -2317,6 +2373,12 @@ times:
 | ⊕ sweep | the sweep point | **yes** | **yes** |
 | ⊕ pin | `--pin`, this prep only | **yes** | **yes** |
 | ⊕ the rung's answers | `template.role_answers`, provenance `role` — last, so it replaces nothing a person said | — | — |
+
+And then one question of the result, whatever layer set each value: **is it
+one the calculation's kind offers** (§ 6.3a)? A value outside the kind's set is
+refused, naming the layer it came from — for every item but the electronic
+state's, which the settings gate holds to the sets once resolved from the
+structure.
 
 **One operator, five callers, one rule.** That is what makes *"the one place
 this happens"* checkable rather than aspirational: a second implementation would

@@ -139,9 +139,12 @@ def test_a_cited_run_brings_its_spin_and_a_charged_one_is_refused_on_both_roads(
     """The electronic state a citation carries (`science/chemistry-correctness.md`
     § 2a, ES7), on the two roads that write a description.
 
-    The SPIN the junction was relaxed at is every rung's: it arrives in the
-    template, written, on both roads.  Until 2026-09-28 a transport template
-    started at the class default whatever the cited run was.  A CHARGE is
+    The SPIN the junction was relaxed at is every rung's: its treatment
+    arrives in the template, written, on both roads -- and a fixed count
+    does not, since TranSIESTA cannot hold one (`engines/transport.md`
+    § 3.1's spin note, 2026-09-30): it is left blank and floats.  Until
+    2026-09-28 a transport template started at the class default whatever
+    the cited run was.  A CHARGE is
     refused by name, and no half-described folder is left: a transport
     calculation's boundaries are open, the leads set the electron number, so
     a junction relaxed charged is not this one.
@@ -187,7 +190,7 @@ def test_a_cited_run_brings_its_spin_and_a_charged_one_is_refused_on_both_roads(
                                .read_text()),
                  read_template(b.get_json()["files"][1]["text"])):
         assert one(tmpl, "spin_treatment").value == "unrestricted"
-        assert one(tmpl, "unpaired_electrons").value == 2
+        assert one(tmpl, "unpaired_electrons").value is None
 
     # A BLANK on the shared panel is the person's answer "work it out" --
     # written valueless, never the citation's value (what the chemistry card

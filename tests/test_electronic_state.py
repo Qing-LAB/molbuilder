@@ -179,8 +179,21 @@ def test_the_charge_step_on_every_deck(isolated_projects_root,
                      (vibration_stages("pyscf", already_relaxed=True) if vib
                       else default_pyscf_stages("publishable")),
                      "pyscf", calculation=kind)[2]
-    blank, zero = deck(None), deck(0)
+    blank = deck(None)
     why = "detected: 1 deprotonated phosphate group"
+    if kind == "vibration":
+        # A stated 0 still wins -- and makes the diester a radical, which a
+        # PySCF vibration does not offer (`engines/template.md` § 6.3a):
+        # refused, saying the treatment was detected from the structure.
+        _d, _s, said = _prep(isolated_projects_root, deprotonated_diester,
+                             PySCFConfig(job_name="JOB", net_charge=0,
+                                         already_relaxed=True),
+                             vibration_stages("pyscf", already_relaxed=True),
+                             "pyscf", calculation="vibration", refused=True)
+        assert "spin_treatment = unrestricted (detected" in said, said
+        assert "charge     = -1," in blank and why in blank
+        return
+    zero = deck(0)
     if engine == "siesta":
         assert re.search(r"^NetCharge\s+-1$", blank, re.M), blank
         assert f"# NetCharge: -1 ({why})." in blank
@@ -290,7 +303,7 @@ def test_a_stated_triplet_is_not_second_guessed(isolated_projects_root):
 # ------------------------------------------------ the findings (ES3 - ES9)
 
 @pytest.mark.parametrize("cfg, words", [
-    ({"unpaired_electrons": "free"}, "fixes it"),                     # ES6
+    ({"unpaired_electrons": "free"}, "fixes the moment"),             # ES6
     ({"spin_treatment": "restricted", "unpaired_electrons": 2},
      "restricted-open"),                                              # ES5
     ({"spin_treatment": "non-collinear"}, "cannot run here"),         # ES4
@@ -364,7 +377,7 @@ def test_what_siesta_cannot_run_is_refused_and_non_collinear_floats(
     assert _spin_lines(fdf) == ("non-colinear", None), fdf
     for cfg, words in (
             (SiestaConfig(system_label="JOB", spin_treatment="non-collinear",
-                          unpaired_electrons=2), "cannot hold a fixed count"),
+                          unpaired_electrons=2), "cannot be held here"),
             (SiestaConfig(system_label="JOB",
                           spin_treatment="restricted-open"),
              "no restricted open-shell formalism")):

@@ -314,6 +314,14 @@ function renderStages(task) {
                     cell.appendChild(el("option", { value: String(v) },
                                         String(v)));
                 }
+                // A STORED VALUE THIS KIND DOES NOT OFFER is shown as itself,
+                // marked -- a select with no option for it would show a blank
+                // cell over an override the description still holds, which
+                // prep refuses by name (`engines/template.md` § 6.3a).
+                if (has && !legal.map(String).includes(String(ov[col]))) {
+                    cell.appendChild(el("option", { value: String(ov[col]) },
+                        String(ov[col]) + " (not offered here)"));
+                }
                 cell.value = has ? String(ov[col]) : "";
             } else {
                 cell = el("input", {

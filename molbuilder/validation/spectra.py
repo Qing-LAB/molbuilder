@@ -13,6 +13,12 @@ from ..issues import Issue
 from ..structure import Structure
 
 
+def _sentence(text: str) -> str:
+    """``text`` opening a sentence: its first letter capital, the rest as
+    written (``str.capitalize`` lowercases the rest -- *Raman* included)."""
+    return text[:1].upper() + text[1:]
+
+
 def spectra_render_checks(struct: Structure,
                           cfg) -> List[Issue]:
     """PySCF SCIENTIFIC advisories — THE render gate for a vibration
@@ -371,12 +377,16 @@ def spectra_render_checks(struct: Structure,
 
 
     # --- The solvation matrix (category 2; PROBED live against pyscf
-    # 2.13 on 2026-08-21 -- every verdict below is a measured fact,
-    # not a recalled one).  PCM carries the FULL derivative chain a
-    # vibration needs: analytic gradient, analytic Hessian (RKS and
-    # UKS, with and without density fitting), and the CPHF
-    # polarizability WITH the solvent in the response.  SMD is
-    # compiled out of this build; ddCOSMO has no analytic Hessian.
+    # 2.13 on 2026-08-21).  PySCF's PCM carries the analytic gradient and
+    # the analytic Hessian (RKS and UKS, with and without density
+    # fitting), which solves under equilibrium solvation and adds the
+    # solvent's own term (`with_solvent.hess`).  The deck's OTHER routes
+    # are built without it -- the held-atom Hessian (`hess_elec(atmlst=)`
+    # + `hess_nuc`), the analytic IR block and Raman's polarizability loop
+    # (the M11 review, PS-C3) -- so PCM reaches one route, and the others
+    # are refused until built and measured (`engines/vibration.md` § 4.6;
+    # plan § 5w K17).  SMD is compiled out of this build; ddCOSMO has no
+    # analytic Hessian.
     _solv = str(getattr(cfg, "solvent", "") or "").lower()
     _smethod = str(getattr(cfg, "solvent_method", "") or "").upper()
     if _solv:
@@ -408,17 +418,50 @@ def spectra_render_checks(struct: Structure,
             # validator refused unknown names, and a regime note about a
             # run that will not happen would be double-speak.
             from ..pyscf.scf_setup import SOLVENTS as _SOLV_TABLE
-            if _solv in _SOLV_TABLE:
+            _held = list(getattr(cfg, "frozen_indices", []) or [])
+            # (route asked for, what turns it off) -- in the deck's order.
+            _asked = (([(f"{len(_held)} held atom(s) -- the held-atom "
+                         f"Hessian", "release the held atoms")]
+                       if _held else [])
+                      + ([("Raman -- its polarizability loop",
+                           "turn Raman off")]
+                         if bool(getattr(cfg, "compute_raman", False))
+                         else [])
+                      + ([("IR -- its dipole-derivative route",
+                           "turn IR off")]
+                         if bool(getattr(cfg, "compute_ir", False))
+                         else []))
+            _routes = [r for r, _off in _asked]
+            if _routes and _solv in _SOLV_TABLE:
+                # PCM REACHES ONE ROUTE (ruled 2026-09-29, refused since
+                # 2026-09-30 -- `engines/vibration.md` § 4.6).  For a name the
+                # dielectric table knows: an unknown one is the engine
+                # validator's refusal already.
+                issues.append(Issue(
+                    severity="error",
+                    message=(
+                        f"PCM solvation ({_solv}) reaches one route: the "
+                        f"frequencies of a structure with no atoms held, "
+                        f"with IR and Raman off -- PySCF's full analytic "
+                        f"Hessian carries the solvent's response "
+                        f"(with_solvent.hess), and the routes this "
+                        f"calculation asks for are built without it: "
+                        f"{'; '.join(_routes)}.  "
+                        f"{_sentence(', '.join(off for _r, off in _asked))}"
+                        f" -- or remove the solvent "
+                        f"(engines/vibration.md § 4.6)."),
+                    where="config.solvent",
+                ))
+            elif _solv in _SOLV_TABLE:
                 issues.append(Issue(
                     severity="info",
                     message=(
-                        f"PCM solvation ({_solv}): relaxation, Hessian, IR "
-                        f"and Raman all run under the SAME solvated "
-                        f"Hamiltonian -- consistent by construction (the "
-                        f"polarizability response includes the solvent; "
-                        f"measured).  The numbers use the EQUILIBRIUM-"
-                        f"solvation approximation: the continuum relaxes "
-                        f"fully at every displaced geometry, so fast "
+                        f"PCM solvation ({_solv}): the relaxation and the "
+                        f"Hessian run under one solvated Hamiltonian -- the "
+                        f"Hessian adds the solvent's own response "
+                        f"(with_solvent.hess).  The numbers use the "
+                        f"EQUILIBRIUM-solvation approximation: the continuum "
+                        f"relaxes fully at every displaced geometry, so fast "
                         f"non-equilibrium solvent response is not in the "
                         f"line shapes.  Tomasi, Mennucci & Cammi, Chem. Rev. "
                         f"105, 2999 (2005) [Tomasi2005]; Cances, Mennucci & "
