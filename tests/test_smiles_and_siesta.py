@@ -1070,17 +1070,25 @@ def test_k_equal_one_is_never_validated():
         assert _kgrid_findings(_kgrid_struct(kinds), (1, 1, 1)) == [], kinds
 
 
-def test_k_above_one_on_isolated_or_transport_warns_by_axis():
-    """Sampling a direction the user said does not repeat (isolated) or
-    must not carry fake Bloch periodicity (transport) is a contradiction
-    between two of their own statements — said per axis."""
+def test_k_above_one_on_an_isolated_axis_warns_by_axis():
+    """Sampling a direction the user said does not repeat is a
+    contradiction between two of their own statements — said per axis
+    (`engines/siesta.md` § 6.1).  A `transport` axis in a calculation that
+    is not a transport one is periodic in the deck and sampled like one
+    (user, 2026-09-30): here its images sit far apart, so it earns the gap's
+    hint, not the open boundary's rule, which is a transport rung's alone.
+
+    MUTATION THIS MUST FAIL AGAINST: the plain run's transport axis given
+    the open role (a "fake periodicity" finding, or none)."""
     found = _kgrid_findings(
         _kgrid_struct(["isolated", "isolated", "isolated"]), (2, 2, 1))
     assert len(found) == 2, [i.message for i in found]
-    assert all("not Brillouin-zone sampled" in i.message for i in found)
+    assert all("on an isolated axis" in i.message for i in found)
     found = _kgrid_findings(
         _kgrid_struct(["periodic", "periodic", "transport"]), (2, 2, 4))
-    assert len(found) == 1 and "fake periodicity" in found[0].message
+    assert len(found) == 1, [i.message for i in found]
+    assert "kgrid[2] = 4" in found[0].message
+    assert "images sit ~" in found[0].message, found[0].message
 
 
 def test_k_above_one_across_a_wide_gap_is_a_hint_not_silence():

@@ -70,7 +70,7 @@ def test_a_vibration_relaxes_with_a_relaxer(isolated_projects_root, door):
     assert "a vibration does not offer" in said, said
     assert "molecular dynamics" in said, said
     assert "CG, Broyden, FIRE" in said, said
-    assert ("the template sets 'relax_type' to 'Verlet'" if door == "template"
+    assert ("the template sets relax_type = 'Verlet'" if door == "template"
             else "stage 'relax' sets relax_type = 'Verlet'") in said, said
 
 
@@ -83,7 +83,8 @@ def test_an_optimization_offers_no_transport_solver(isolated_projects_root):
         before_prep=lambda dest: _template_says(dest, "solution_method",
                                                 "transiesta"),
         refused=True)
-    assert "'solution_method'" in said and "does not offer" in said, said
+    assert "solution_method = 'transiesta'" in said, said
+    assert "does not offer" in said, said
     assert "transport device's solver" in said, said
 
 

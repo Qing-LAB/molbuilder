@@ -276,11 +276,17 @@ def test_an_override_the_schema_does_not_know_is_refused_by_name(struct, cfg):
                   (Stage(name="tight", overrides={"mesh_cutof": 300.0}),))
 
 
-def test_a_value_outside_its_bounds_is_refused(struct, cfg):
+def test_a_value_past_its_hard_limit_is_refused(struct, cfg):
+    """A stage's value past its item's hard limit (`above`,
+    `engines/template.md` § 5.3) is refused where the description is
+    written, with the reason; a value merely outside the recommended range
+    is warned, and describes."""
     from molbuilder.task import Stage
-    with pytest.raises(D.DescribeError):
+    with pytest.raises(D.DescribeError, match=r"k-point count"):
         _describe(struct, cfg,
-                  (Stage(name="tight", overrides={"mesh_cutoff": 1e9}),))
+                  (Stage(name="tight", overrides={"kgrid": [0, 4, 4]}),))
+    _describe(struct, cfg,
+              (Stage(name="tight", overrides={"mesh_cutoff": 1e9}),))
 
 
 def test_a_failure_while_writing_publishes_nothing(struct, cfg, tmp_path,

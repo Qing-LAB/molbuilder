@@ -24,9 +24,10 @@ THE LIFT, and its boundary.  :mod:`molbuilder.pyscf.vibration_deck` set the
 direction — *"a move, not a rewrite"* — and that holds for the one piece where
 it can: ``_emit_geometry`` is imported and composed unchanged.  **The other two
 blocks are honest rewrites**, and saying otherwise would be this module lying
-about itself: ``_emit_seed_header`` restates the old header's text and
-``_emit_kgrid_block`` restates ``_emit_k_mesh``, both because their originals
-read a ``TransportConfig`` and these read the engine's own config.  The old
+about itself: ``_emit_seed_header`` restates the old header's text, because
+its original read a ``TransportConfig`` and this reads the engine's own
+config.  *(The k-point block was a third rewrite until 2026-09-30; every
+rung's mesh is the k-point mesh's now, `kmesh.py`.)*  The old
 seed emitter is DELETED rather than left beside them, so the reflowed text
 exists in one place.
 The boundary is drawn by a single question, and it is the question
@@ -166,7 +167,7 @@ _TRANSMISSION_SCF_SECTION = _sc.Section(
 #: `TBT.*` keyword, which is why the device deck carries none.
 TBT_SECTION = _sc.Section(
     "TBtrans -- how T(E) is computed from the device's Hamiltonian",
-    ("tbt_k_grid", "tbt_elecs_eta_ev", "tbt_contours_eta_ev", "tbt_spin",
+    ("tbt_elecs_eta_ev", "tbt_contours_eta_ev", "tbt_spin",
      "tbt_dos_gf", "tbt_dos_a", "tbt_dos_elecs", "tbt_t_eig", "tbt_t_bulk",
      "tbt_t_all", "tbt_verbosity"),
     note=(
@@ -193,8 +194,8 @@ def _device_layout(derived, frame, state_block):
                   _geometry_block(frame)),
         _sl.BASIS_SECTION,
         _sl.XC_SECTION,
-        _sc.Block("the transverse k-mesh (the transport axis is not sampled)",
-                  _emit_kgrid_block),
+        _sc.Block("the k-point mesh -- one point along transport",
+                  _k_mesh_block(derived["k_mesh"], advice=_TRANSVERSE_ADVICE)),
         _sl.SCF_SECTION,
         _sl.FREE_ENERGY_SECTION,
         _sl.SCF_TAIL_SECTION,
@@ -237,8 +238,8 @@ def _transmission_layout(derived, frame, state_block):
                   _geometry_block(frame)),
         _sl.BASIS_SECTION,
         _sl.XC_SECTION,
-        _sc.Block("the transverse k-mesh (the transport axis is not sampled)",
-                  _emit_kgrid_block),
+        _sc.Block("the ladder's k-point mesh (tbtrans reads TBT.k below)",
+                  _k_mesh_block(derived["k_mesh"])),
         _TRANSMISSION_SCF_SECTION,
         _sl.FREE_ENERGY_SECTION,
         _sl.SCF_TAIL_SECTION,
@@ -251,6 +252,8 @@ def _transmission_layout(derived, frame, state_block):
                   _emit_electrode_block),
         TS_READ_BY_TBTRANS_SECTION,
         _sc.Block("the energy window T(E) is computed on", _emit_tbt_window),
+        _sc.Block("the transmission's own k-point mesh",
+                  _k_mesh_block(derived["tbt_k_mesh"])),
         TBT_SECTION,
     )
 
@@ -357,7 +360,7 @@ def _emit_tbt_window(struct, cfg) -> str:
 
     A ``%block`` is structural, so it is a block; its three VALUES are three
     catalogue rows, each asked through the framework's door so each arrives
-    with its note -- the k-grid block's precedent (`_emit_kgrid_block`).
+    with its note, as the k-point mesh's items do (`siesta.layout.k_mesh_lines`).
     """
     lo = _sc.parameter("transmission_emin_ev", "siesta", config=cfg)
     hi = _sc.parameter("transmission_emax_ev", "siesta", config=cfg)
@@ -406,8 +409,8 @@ def _electrode_layout(derived, frame, state_block):
         _sc.Block("cell and coordinates", _geometry_block(frame)),
         _sl.BASIS_SECTION,
         _sl.XC_SECTION,
-        _sc.Block("the k-mesh — transverse shared, transport axis DENSE",
-                  _emit_electrode_kgrid_block),
+        _sc.Block("the k-point mesh -- transverse shared, transport DENSE",
+                  _k_mesh_block(derived["k_mesh"])),
         _sl.SCF_SECTION,
         _sl.FREE_ENERGY_SECTION,
         _sl.SCF_TAIL_SECTION,
@@ -439,42 +442,6 @@ def _emit_electrode_header(struct, cfg) -> str:
     ])
 
 
-def _emit_electrode_kgrid_block(struct, cfg) -> str:
-    """``%block kgrid_Monkhorst_Pack`` — transverse shared, transport DENSE.
-
-    The one place a lead and the device deliberately differ. The device is an
-    open boundary and is not sampled along transport at all; the lead is a
-    genuinely periodic bulk crystal, and **its Fermi level is the reference
-    energy the whole calculation is measured against**, so that axis must be
-    converged. Under-sample it and every transmission feature sits at the
-    wrong energy.
-
-    The transverse pair is the same one the device uses, and must be: the
-    self-energy is built per transverse k-point and folded into the device at
-    that same point.
-    """
-    kx, ky, _ = tuple(cfg.kgrid or (1, 1, 1))
-    # ONE READ, and it is the framework's.  `parameter(..., config=cfg)`
-    # resolves the row by `getattr(config, name)` and the value it resolved is
-    # what the note states -- so reading the field a second time here could
-    # print one number and write another.  It also spelled a literal `40` that
-    # already had three homes (the catalogue row, the `SiestaConfig` default
-    # and `wizard.DEFAULT_ELECTRODE_KZ`), behind a `getattr` default for a
-    # field that certainly exists, with an `or` that silently rewrote a
-    # deliberate 0.
-    p = _sc.parameter("electrode_kz", "siesta", config=cfg)
-    kz = int(p.value)
-    out = list(p.note())
-    out += [
-        "%block kgrid_Monkhorst_Pack",
-        f"  {int(kx):>3}    0    0      0.0",
-        f"    0  {int(ky):>3}    0      0.0",
-        f"    0    0  {kz:>3}      0.0",
-        "%endblock kgrid_Monkhorst_Pack",
-    ]
-    return "\n".join(out)
-
-
 def _seed_layout(derived, frame, state_block):
     """The seed rung: an ordinary periodic SIESTA pass (§ 4.2 stage 1).
 
@@ -491,7 +458,8 @@ def _seed_layout(derived, frame, state_block):
         _sc.Block("cell, coordinates and region metadata", _geometry_block(frame)),
         _sl.BASIS_SECTION,
         _sl.XC_SECTION,
-        _sc.Block("the transverse k-mesh (kz forced to 1)", _emit_kgrid_block),
+        _sc.Block("the k-point mesh -- one point along transport",
+                  _k_mesh_block(derived["k_mesh"], advice=_TRANSVERSE_ADVICE)),
         _sc.Block("what the seed's solver must be, and must not",
                   _emit_solver_note),
         _sc.Block("the restart group", _emit_restart_group),
@@ -629,41 +597,30 @@ def _emit_solver_note(struct, cfg) -> str:
     ])
 
 
-def _emit_kgrid_block(struct, cfg) -> str:
-    """``%block kgrid_Monkhorst_Pack`` with the transport axis forced to 1.
+#: What an SCF rung's mesh says beside its values -- ADVICE, not the rule: the
+#: rule is the k-point mesh's (`engines/siesta.md` § 6.1), which writes one
+#: point along transport on the seed and the device whatever the template's
+#: third component says, because no rung reads it.
+_TRANSVERSE_ADVICE = (
+    "# THE TRANSVERSE COUNTS ARE YOURS, AND 1 x 1 IS RARELY RIGHT.",
+    "# For a finite molecule between leads, (1, 1) is correct, and so is",
+    "# a wire or chain lead, isolated across.  For a laterally PERIODIC",
+    "# electrode -- an Au(111) surface cell -- set Nx, Ny to that lead's",
+    "# periodicities: a metallic lead sampled 1 x 1 is badly",
+    "# under-converged, and the error lands in the interface charge the",
+    "# device SCF then has to reproduce.  The pair is the cited junction's",
+    "# own until you change it in the template, and one pair serves every",
+    "# rung.",
+)
 
-    A ``%block`` is structural, so it is a block — but the VALUE is the
-    template's ``kgrid`` row, and the forced third component is a DERIVED
-    value, which has its own framework door
-    (:func:`~molbuilder.script_emit.parameter` with ``value=``) rather than
-    falling to free-form text where the note-with-the-value rule cannot reach
-    it.
-    """
-    kx, ky, _kz = tuple(cfg.kgrid or (1, 1, 1))
-    p = _sc.parameter("kgrid", "siesta", value=(int(kx), int(ky), 1))
-    out = list(p.note())
-    out += [
-        "# The transport direction is NOT BZ-summed -- NEGF handles it, and",
-        "# the engine preflight refuses kz != 1 -- so the third component is",
-        "# 1 whatever the citation's own k-grid said.  (`config_for` already",
-        "# forced it when it read the citation; this writes what it was",
-        "# given and is not a second enforcer.)",
-        "#",
-        "# THE TRANSVERSE COUNTS ARE YOURS, AND 1 x 1 IS RARELY RIGHT.",
-        "# For a finite molecule between leads, (1, 1) is correct.  For a",
-        "# laterally PERIODIC electrode -- an Au(111) surface cell, a",
-        "# nanowire -- set Nx, Ny to that lead's periodicities: a metallic",
-        "# lead sampled 1 x 1 is badly under-converged, and the error lands",
-        "# in the interface charge the device SCF then has to reproduce.",
-        "# Nz stays 1 regardless.  (This deck's transverse pair comes from",
-        "# the cited junction's own k-grid -- see the note above the value.)",
-        "%block kgrid_Monkhorst_Pack",
-        f"  {int(kx):>3}    0    0      0.0",
-        f"    0  {int(ky):>3}    0      0.0",
-        "    0    0    1      0.0",
-        "%endblock kgrid_Monkhorst_Pack",
-    ]
-    return "\n".join(out)
+
+def _k_mesh_block(mesh, *, advice=()):
+    """A block writing ``mesh`` -- the rung's k-point mesh, worked out once
+    by :func:`transport_spec` (`kmesh.mesh_for`) -- with each deciding
+    item's note, through the one writer (`siesta.layout.k_mesh_lines`)."""
+    def render(struct, cfg) -> str:
+        return "\n".join([*advice, *_sl.k_mesh_lines(mesh)])
+    return render
 
 
 # ===================================================================== #
@@ -706,7 +663,17 @@ def transport_spec(struct: Structure, cfg, *,
     if state is None:
         from ..electronic_state import electronic_state
         state = electronic_state(struct, cfg, kind="transport")
-    derived = _derived_for(state, cfg)
+    # THE RUNG'S K-POINT MESH(ES), worked out once (`kmesh.mesh_for`,
+    # `engines/siesta.md` § 6.1): read by the block that writes each, the
+    # parallel split and the settings gate.  The transmission carries two --
+    # the ladder's SCF mesh and its own `TBT.k`.
+    from .. import kmesh as _kmesh
+    k_mesh = _kmesh.mesh_for(cfg, struct.axis_kind, kind="transport",
+                             rung=shape)
+    tbt_mesh = (_kmesh.mesh_for(cfg, struct.axis_kind, kind="transport",
+                                rung=shape, program="tbtrans")
+                if shape == "transmission" else None)
+    derived = _derived_for(state, cfg, k_mesh, tbt_mesh)
     from .transiesta import engine_frame_for
     frame = engine_frame_for(struct)
     layout = {"seed": _seed_layout,
@@ -723,11 +690,17 @@ def transport_spec(struct: Structure, cfg, *,
         derived=derived,
         note_lead=_sl.note_lead,
         check_rules=_sl.check_rules,
+        # WHAT THE SETTINGS GATE JUDGES besides the structure as it arrived:
+        # the meshes this rung writes -- which the configuration alone cannot
+        # say, since the rung decides its transport axis.
+        validate_subject=lambda s, c: (s, {"k_meshes": tuple(
+            m for m in (derived["k_mesh"], derived["tbt_k_mesh"])
+            if m is not None)}),
         created_by="molbuilder transport prep",
     )
 
 
-def _derived_for(state, cfg) -> dict:
+def _derived_for(state, cfg, k_mesh, tbt_mesh=None) -> dict:
     """What this deck worked out — W10's one per-render context.
 
     DECLARED on the form rather than only closed over, so a reader outside
@@ -737,13 +710,14 @@ def _derived_for(state, cfg) -> dict:
     the two kinds cannot answer them differently.  The spin's are the
     calculation's one state -- for the transport kind the charge is 0 by rule
     (the leads set the electron number) and the spin is the rungs' shared
-    answer.
+    answer.  The k-point meshes are the rung's (`kmesh.mesh_for`), and the
+    parallel split counts its points on the SCF one.
     """
     from ..siesta.input import _parallel_facts, _spin_facts
 
-    derived = {}
+    derived = {"k_mesh": k_mesh, "tbt_k_mesh": tbt_mesh}
     derived.update(_spin_facts(state))
-    derived.update(_parallel_facts(cfg))
+    derived.update(_parallel_facts(cfg, k_mesh))
     derived.update(_contour_facts(cfg))
     return derived
 

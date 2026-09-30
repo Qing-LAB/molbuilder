@@ -29,6 +29,7 @@ RECORDED = {
     "xc_functional":            "GGA",
     "xc_authors":               "PBE",
     "k_mesh_transverse":        [4, 4, 1],
+    "kgrid_displacement":       [0.5, 0.25, 0.75],
     "electronic_temperature_k": 350.0,
 }
 
@@ -125,13 +126,19 @@ def test_a_saved_structure_with_no_run_behind_it_leaves_the_rows_unanswered_on_b
     for tmpl in (cli("J/structure/bare", "J/transport/Tbare"),
                  browser("J/structure/bare")):
         for name in ("mesh_cutoff", "basis_size", "xc_functional",
-                     "electronic_temperature", "kgrid"):
+                     "electronic_temperature", "kgrid",
+                     "kgrid_displacement"):
             assert one(tmpl, name).value is None, (
                 f"{name} carries a value nobody said")
     for tmpl in (cli("J/structure/remembered", "J/transport/Tmem"),
                  browser("J/structure/remembered")):
         assert one(tmpl, "mesh_cutoff").value == pytest.approx(400.0)
         assert one(tmpl, "basis_size").value == "TZP"
+        # THE OFFSET RIDES WITH THE GRID (2026-09-30, `engines/siesta.md`
+        # § 6.1): the recorded run's, the transport axis laid to 0 by the
+        # k-point mesh's rule -- on both roads.
+        assert one(tmpl, "kgrid").value == (4, 4, 1)
+        assert one(tmpl, "kgrid_displacement").value == (0.5, 0.25, 0.0)
 
 
 def test_a_cited_run_brings_its_spin_and_a_charged_one_is_refused_on_both_roads(

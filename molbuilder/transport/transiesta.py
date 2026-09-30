@@ -515,10 +515,9 @@ def _emit_geometry(struct: Structure,
 # Four statements, one dead function.
 
 # `_emit_k_mesh` DELETED 2026-09-17 with `render_script`, its only caller.
-# The live deck writes the transverse grid through `deck.py`'s own
-# `_emit_kgrid_block`, which resolves it from the catalogue row rather than
-# off `TransportConfig.k_mesh_transverse` -- `deck.py`'s header already
-# recorded that the two restated each other.
+# Every rung's k-point mesh is written by the one writer now (`kmesh.write`,
+# through `siesta.layout.k_mesh_lines`; `engines/siesta.md` § 6.1) -- the
+# `deck.py` block that replaced this one went the same way on 2026-09-30.
 
 
 def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
@@ -772,8 +771,10 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
 # EVERY CHECK IT CARRIED HAS A NAMED LIVE HOLDER, verified one by one before
 # this deletion (`engines/transport.md` 5 names them, and none named this):
 #
-#   device kz = 1 ................. `_validate_transport_kind`, error on
-#                                   `config.kgrid` (I8)
+#   device kz = 1 ................. the k-point mesh: a component a
+#                                   transport calculation fixes, refused on
+#                                   every door (I8; `_validate_transport_kind`
+#                                   until 2026-09-30)
 #   unknown region labels ......... `validation/sidecar.py::
 #                                   check_unconsumed_region_labels`, run by
 #                                   `_validate_siesta` -- which every rung

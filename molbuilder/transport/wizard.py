@@ -31,8 +31,9 @@ Guaranteed-by-construction invariants
   OPPOSITE wrong conclusions -- one that the fallback was the sanctioned path,
   one that it was harmless dead code.  § 5 is the statement of record: I6 is
   held by taking ``lat_a``/``lat_b`` verbatim.
-* **I7 (transverse k):** the electrode ``(kx, ky)`` are the device's
-  ``k_mesh_transverse``.
+* **I7 (transverse k):** the electrode's ``(kx, ky)`` and offset are the
+  device's -- one shared ``kgrid`` and ``kgrid_displacement``, which every
+  rung's k-point mesh reads (``kmesh.mesh_for``, `engines/siesta.md` § 6.1).
 * **I1/I3/I4/I5 (XC/MeshCutoff/EnergyShift/basis):** the lead and the
   device render them from the **same catalogue sections**
   (``BASIS_SECTION`` / ``XC_SECTION`` + ``electronic_temperature``), so the
@@ -186,15 +187,15 @@ class ElectrodeModel:
         # device of `isolated, isolated, transport` yields a lead of
         # `isolated, isolated, periodic` (user, 2026-09-23).
         #
-        # WHAT IT ACTUALLY CHANGES, measured -- an earlier draft of this note
-        # claimed the transverse k-mesh would sample vacuum, and it would
-        # not: NOTHING derives a k-mesh from `axis_kind`.  Both
-        # `deck.py::_emit_kgrid_block` and `_emit_electrode_kgrid_block`
-        # read `cfg.kgrid` unconditionally.  What it changes is that the
-        # deck stops printing "transverse axis a declared periodic but
-        # leaves N A empty" about a lead that is correctly vacuum-
-        # surrounded, and that the lead's metadata stops asserting a
-        # periodicity the device never claimed.
+        # WHAT IT CHANGES: the deck stops printing "transverse axis a
+        # declared periodic but leaves N A empty" about a lead that is
+        # correctly vacuum-surrounded, the lead's metadata stops asserting a
+        # periodicity the device never claimed -- and, since 2026-09-30, the
+        # lead's k-point mesh reads these kinds (`kmesh.mesh_for`,
+        # `engines/siesta.md` § 6.1): a transverse count above 1 on an
+        # isolated axis is warned, and the transport axis is the lead's own,
+        # `electrode_kz`.  *(Until then nothing derived a mesh from
+        # `axis_kind`, so the kinds changed no sampling.)*
         #
         # It said `("periodic",) * 3` with the note "A LEAD IS PERIODIC IN
         # ALL THREE" -- true of the transport axis, and an assertion about

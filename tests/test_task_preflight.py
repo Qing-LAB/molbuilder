@@ -166,15 +166,20 @@ def test_a_field_level_finding_carries_the_stage_it_came_from():
 #  Row 4 — every value is inside the schema's bounds                    #
 # --------------------------------------------------------------------- #
 
-def test_a_value_outside_a_numeric_range_is_refused_naming_both_bounds():
-    [issue] = preflight(_staged({"mesh_cutoff": 99999.0}))
-    assert issue.severity == "error" and issue.where == "config.mesh_cutoff"
-    assert "99999" in issue.message
-    assert "100" in issue.message and "1000" in issue.message
+def test_a_value_outside_the_recommended_range_is_warned_never_refused():
+    """A `range` is a recommendation (`engines/template.md` § 5.3): a value
+    past either end is WARNED, naming both bounds -- the severity the
+    settings gate gives the same value in the template.  This refused until
+    2026-09-30 (one range, two severities; SO-N4).
 
-
-def test_a_value_below_the_range_is_refused_too():
-    assert _errors(preflight(_staged({"mesh_cutoff": 1.0})))
+    MUTATION THIS MUST FAIL AGAINST: the stage branch back at "error"."""
+    for value in (99999.0, 1.0):
+        [issue] = preflight(_staged({"mesh_cutoff": value}))
+        assert issue.severity == "warn", issue
+        assert issue.where == "config.mesh_cutoff", issue
+        assert repr(value) in issue.message, issue.message
+        assert "100" in issue.message and "1000" in issue.message
+        assert "recommendation, not a limit" in issue.message, issue.message
 
 
 def test_a_value_at_either_bound_is_accepted():
@@ -212,7 +217,7 @@ def test_a_bad_value_is_not_reported_twice_for_a_bad_name():
 
 def test_refuse_on_error_raises_for_an_error():
     with pytest.raises(ValidationError):
-        refuse_on_error(preflight(_staged({"mesh_cutoff": 99999.0})))
+        refuse_on_error(preflight(_staged({"kgrid": [0, 4, 4]})))
 
 
 def test_refuse_on_error_passes_warnings_through():
@@ -226,7 +231,7 @@ def test_refuse_on_error_carries_every_error_not_just_the_first():
     """§ 6.6 lists the checks *in order* and runs all of them: a person fixing
     a description by hand should see the whole list, not one round trip per
     mistake."""
-    issues = preflight(_staged({"mesh_cutoff": 99999.0, "basis_size": "NOPE"}))
+    issues = preflight(_staged({"kgrid": [0, 4, 4], "basis_size": "NOPE"}))
     with pytest.raises(ValidationError) as e:
         refuse_on_error(issues)
     assert len(e.value.issues) == 2
@@ -292,6 +297,7 @@ def test_a_number_is_refused_for_a_boolean_field():
 
 def test_a_legal_boolean_is_accepted():
     assert preflight(_staged({"copy_psml": True})) == []
+
 
 
 # --------------------------------------------------------------------- #

@@ -32,8 +32,9 @@ because ONE value shared by five rungs cannot disagree with itself.
 P5 added the launch half, whose facts also live here: the § 4.2 DAG
 (:func:`stage_inputs`, read by prep's gather), the continuation rows
 (:func:`warm_declaration` — the seed's ``.DM``, the device's
-``.TSDE``), and the bias scan's spellings (:func:`bias_token`,
-:func:`bias_points` — plain v-dirs, ruled 2026-08-29).  The chain
+``.TSDE``), and the bias scan's points (:func:`bias_points`; their folder
+names are the codec's one spelling, ``task.bias_token`` — plain v-dirs,
+ruled 2026-08-29).  The chain
 walker itself is `jobset/submit.submit_transport_chain`.
 """
 from __future__ import annotations
@@ -113,12 +114,13 @@ SEALED_ALWAYS = frozenset({"engine", "job_name", "bias_voltages_v"})
 #: the description's own fields).  transport-design.md § 4.1b.
 #:
 #: THE RECORD'S OWN KEYS -- `parse/contract.py`'s one table (the record's
-#: names against ``SiestaConfig``'s), plus the transverse grid it carries
-#: apart -- so the recorded vocabulary and this set cannot drift.  They did:
-#: this was a hand-written seven, and when the record began carrying the
+#: names against ``SiestaConfig``'s), plus the k-point mesh it carries apart
+#: -- so the recorded vocabulary and this set cannot drift.  They did: this
+#: was a hand-written seven, and when the record began carrying the
 #: electronic state (ES7, 2026-09-28) only the table learned it.
+from ..parse.contract import K_MESH_RECORD_KEYS as _K_MESH_KEYS
 from ..parse.contract import RECORD_TO_SIESTA_FIELD as _RECORD_FIELDS
-CONTRACT_FIELDS = frozenset(_RECORD_FIELDS) | {"k_mesh_transverse"}
+CONTRACT_FIELDS = frozenset(_RECORD_FIELDS) | frozenset(_K_MESH_KEYS)
 
 #: Both sets together — what a form-A citation refuses.
 SEALED_TRANSPORT_FIELDS = SEALED_ALWAYS | CONTRACT_FIELDS
@@ -157,14 +159,6 @@ def resolvable_override_names() -> frozenset:
                                       allocation=True)}
     return frozenset(f.name for f in dataclasses.fields(SiestaConfig)
                      if f.name not in machine)
-
-
-def bias_token(v: float) -> str:
-    """The ONE spelling of a bias point's directory name — ``v0``,
-    ``v0.2``, ``v-0.5`` (user ruling 2026-08-29: plain v-dirs, production
-    names — never the bench spelling).  Deck naming, the per-point
-    attempt layout, the gather and the chain walker all read this."""
-    return f"v{v:g}"
 
 
 def bias_points(task) -> Tuple[float, ...]:
@@ -339,13 +333,14 @@ def config_for(task, composed: ComposedJunction, *,
 
     Identity from the task (label, bias); the electronic contract from
     the cited attempt's own deck (`compose.fdf_params` — fdf-is-truth);
-    the transverse k from the relaxation's k-grid with the transport
-    axis forced to 1 (the NEGF open boundary is never BZ-sampled — the
-    engine preflight refuses kz != 1, so forcing it here is the same
-    rule applied where the value is born).  Transport-only knobs
+    the transverse k from the relaxation's k-grid, its transport axis laid
+    on by the k-point mesh's rule where the value is born
+    (``kmesh.with_fixed``, `engines/siesta.md` § 6.1 -- the NEGF open
+    boundary is never BZ-sampled).  Transport-only knobs
     (transmission window / grid, contour) keep their defaults until the
     Transport tab describes them (P7).
     """
+    from ..kmesh import with_fixed
     fdf = composed.fdf_params
     kw = {}
     recorded = getattr(composed, "recorded_contract", None)
@@ -366,17 +361,19 @@ def config_for(task, composed: ComposedJunction, *,
                 continue
             if name == "k_mesh_transverse":
                 try:
-                    kx, ky = int(value[0]), int(value[1])
-                except (TypeError, ValueError, IndexError):
+                    counts = tuple(int(v) for v in value[:3])
+                except (TypeError, ValueError):
                     continue
-                kw[name] = (kx, ky, 1)
+                if len(counts) != 3:
+                    continue
+                kw[name] = with_fixed("kgrid", counts, "transport")
             elif name == "siesta_mesh_cutoff_ry":
                 kw[name] = int(round(float(value)))
             else:
                 kw[name] = value
     if getattr(fdf, "kgrid", None):
-        kx, ky, _kz = fdf.kgrid
-        kw["k_mesh_transverse"] = (int(kx), int(ky), 1)
+        kw["k_mesh_transverse"] = with_fixed(
+            "kgrid", tuple(int(v) for v in fdf.kgrid), "transport")
     if getattr(fdf, "mesh_cutoff_ry", None):
         kw["siesta_mesh_cutoff_ry"] = int(round(fdf.mesh_cutoff_ry))
     if getattr(fdf, "energy_shift_ry", None):

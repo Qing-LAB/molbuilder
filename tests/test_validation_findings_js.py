@@ -313,9 +313,9 @@ class TestOneRendererOnly:
                 f"has re-grown its own findings vocabulary")
 
     def test_every_page_that_renders_findings_loads_the_module(self):
-        # transport_calculation.html left this list 2026-08-29 with its
-        # issues panel: the composite has no findings surface (validation
-        # answers at the describe door and at prep).
+        # The Transport tab's load is its browser test's to prove
+        # (`test_transport_tab_e2e.py`); Task setup imports the module
+        # itself (an ES module needs no namespace).
         tpl = REPO / "molbuilder/web/templates"
         for name in ("index.html", "spectra.html", "results.html"):
             html = (tpl / name).read_text(encoding="utf-8")
@@ -326,11 +326,6 @@ class TestOneRendererOnly:
                 f"for its classic scripts loads "
                 f"`lib/validation-findings-global.js`, and a module imports "
                 f"`lib/validation-findings.js` directly.")
-        transport = (tpl / "transport_calculation.html").read_text(
-            encoding="utf-8")
-        assert "validation-findings" not in transport, (
-            "the transport tab re-grew a findings include; its panel "
-            "died with the Generate lane")
 
 
 class TestNoSecondRendererAnywhere:

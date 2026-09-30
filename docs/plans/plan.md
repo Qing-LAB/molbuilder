@@ -3240,8 +3240,10 @@ the edit: "make sure this is not conflicting with other tasks — these
 suggestion is correct in those context.")*
 
 What survives is smaller and real: **nothing requires a transport structure to
-declare a transport axis.** `_validate_transport_kind` gates bias, net charge,
-the pole energy, `tbt_k_grid` and `kgrid`, and not this. A junction with no
+declare a transport axis.** `_validate_transport_kind` gated bias, net charge,
+the pole energy, `tbt_k_grid` and `kgrid` when this was written (the two grids
+are the k-point mesh's since 2026-09-30, `engines/siesta.md` § 6.1), and not
+this. A junction with no
 declared axes still renders — `_lattice_block` fabricates a vacuum box and says
 so loudly IN THE DECK, but no validation Issue is raised, so nothing reaches the
 form. That is a candidate gate, not a defect, and it is I12-adjacent rather than
@@ -4621,8 +4623,8 @@ as a milestone does (§ 0a). **Approved 2026-09-29** (§ 5w.3); K6 is first.
 |---|---|---|---|
 | **K1** | **who answers, per kind** — the markers exist and are missing | `write_forces` / `write_coor_step` fixed on for **every SIESTA kind** *(user, 2026-09-29: "siesta always write forces and always write cordinates - that's needed for later use of data")* — answered by the framework, never a control, echoed read-only: SIESTA ships both off (`LongOutput`), and what reads them later is the per-step trajectory, the relaxation record's held-atom-aware force, and the vibration finish's step 0 (§ 5.5), which fails after the whole force-constant run without them; `shared` for **every** kind on the identity items (`system_label`, `psml_lib`, `species_order`: one calculation, one name, one species table); `resolve` refuses a stage override of a `role` item as it refuses a `shared` one — one door beside `why_shared` | SS-C1, SO-C2, T-F5 |
 | **K2** | **which values a kind may take** | a per-kind choice set on the item, the sibling of `recommended` (§ 6.3a), read by the form, the stage table's cells, the preflight and `prep` — so a value the kind cannot run is never offered and is refused by name if written | SS-C4 (Verlet / Nose / none on a vibration's relaxation), PO-C3 (berny), SO-C13 (transiesta on an optimization), T-F20 (spin treatments per engine and kind — `electronic_state.CAPABILITY` is the same fact in a second home), PS-C2's refusal half |
-| **K3** | **hard bounds against a recommended range** | `range` stays advisory, one warning on every surface; a declared hard domain is refused on every surface with one message — never an error in one door and a warning in another | SS-C5 (`fc_displacement` > 0 — SIESTA divides by it; `relax_steps` ≥ 1), PS-C22 (temperature and pressure > 0), T-F15 (bias points distinct and inside the item's bounds), SO-N4 (one range, two severities) |
-| **K4** | **where an item binds, per rung ROLE** | `stages` names a rung's role, and the kind says which role a stage plays — transport: its name; vibration: a relaxation or a force-constant rung, whatever the stage is called (`vibration_render_kind`); optimization: no roles. The stage table offers each rung only what its deck reads and echoes the rest (§ 6.6 obligation 3); a preset fills only the rungs that read it; each item's tightening direction is declared, so R3 reads it for every engine and skips a kind whose rungs are different programs | SS-C6, PO-C14, T-F14 |
+| **K3** | **hard bounds against a recommended range** — and the k-point mesh *(user, 2026-09-30)* | `range` stays advisory, one warning on every surface; a declared hard domain is refused on every surface with one message — never an error in one door and a warning in another; every rung's k-point sampling decided in one place (`kmesh.py`) | SS-C5 (`fc_displacement` > 0 — SIESTA divides by it; the `relax_steps` half moved to K4), PS-C22 (temperature and pressure > 0), T-F15 (bias points distinct, and warned outside the item's range), SO-N4 (one range, two severities), T-F2 (from K17) |
+| **K4** | **where an item binds, per rung ROLE** | `stages` names a rung's role, and the kind says which role a stage plays — transport: its name; vibration: a relaxation or a force-constant rung, whatever the stage is called (`vibration_render_kind`); optimization: no roles. The stage table offers each rung only what its deck reads and echoes the rest (§ 6.6 obligation 3); a preset fills only the rungs that read it; each item's tightening direction is declared, so R3 reads it for every engine and skips a kind whose rungs are different programs; a relaxation rung relaxes — `relax_steps = 0` there relaxes nothing, while `prep bench`'s single-point pin of it is legitimate | SS-C6, PO-C14, T-F14, SS-C5's `relax_steps` half *(from K3, 2026-09-30)* |
 | **K5** | **execution values with several homes** | one home per rung — the run card, `stages[i].execution` — and one resolved answer every reader asks (`resolve`'s, with its provenance): the deck, the wrapper, the scheduler's GPU ask, the bench, Task setup's cards and hints; the stage table stops offering execution items as columns; a transport rung takes its run card like any other rung | SO-C1 (a rung's `use_gpu` never reaches `--gres`), T-F3, SO-N12, the `--from` hint |
 | **K6** | **the engine's own outcome, assumed instead of read** | one relaxation outcome record and one policy for both engines: the PySCF decks read geomeTRIC's convergence flag (`geometric_solver.kernel`) — `halt` raises before anything is written, `continue` re-enters from the geometry it stopped at (`pyscf.md` § 3 already says *extend this rung*), `proceed` records *not converged*; one remedy text for a non-stationary reference, read by `prep` and the finish; whether a retry resumes is the kind's warm-state declaration (`warm-files.toml`: an FC run restarts at `FC.First`), read by the wrapper; a capability the engine lacks (gpu4pyscf's `stability`) is declared and asked, never called and caught | PS-C1 = PO-C1, SS-C2, SS-C3, PO-C2, PO-C15 |
 | **K7** | **the form's value model** | one field state on every surface: the template's value, the kind's default and the value's source (§ 6.6 obligation 2's four states); blank is *not chosen* for every field and never the first choice; the rung surface shows the template the rung will run; a set optional field is sent; a value that will not coerce is refused naming its field | T-F25, T-F1, T-F24, SS-C16, SO-N5, PS-C12 |
@@ -4635,7 +4637,7 @@ as a milestone does (§ 0a). **Approved 2026-09-29** (§ 5w.3); K6 is first.
 | **K14** | **allocations** | one name map between the catalogue's items and `Resources` (`omp_threads` ↔ `cpus_per_task`, `gpu_count` ↔ `gres`), read by `render_config` and `prep_inputs` alike; one meaning of a blank budget on every engine; the engine's parallel model (MPI or OpenMP) declared and read by the scheduler header | SO-C8, SO-C5, PS-C6 = PO-C7, PO-C8 |
 | **K15** | **deck values rendered per item** | one formatter in the layout's line door — the value exact, never a per-item format string | PS-C9 = PO-C5 |
 | **K16** | **the run record's parameter rows** | `declarations(engine, calculation, stage)` — the rung's own items | SS-C10 |
-| **K17** | **physics each needing a build or a refusal** (not a framework gap) | PS-C3 (PCM's solvent terms on the held-atom, IR-only and Raman routes — build and measure, or refuse); PS-C2 (two spin channels in the spectrum record — build, or K2 refuses); SO-C3 (the GPU-ELPA `BlockSize` realignment `tuning.md` promises — build it); SO-C10/C11 (`ParallelOverK` — SIESTA's default unless set; ELPA forces it off); SO-C12 (pseudopotentials by exact name); PO-C4 (the geomeTRIC log — write it or drop the promise); PO-C10 (the ECP read back from the molecule); PO-C12 (a `-V` functional with D3); T-F35 (the T(E) window covers the bias window); T-F26 (only the L and R electrode labels); T-F4/F34 (a fixed ladder's controls); T-F2 (`kgrid_displacement` written through the door, § 6.6 obligation 4); T-F28 (the device's E_F, iterations and poles in the record); PS-C13 (mode numbers bounded at `prep`) | as listed |
+| **K17** | **physics each needing a build or a refusal** (not a framework gap) | PS-C3 (PCM's solvent terms on the held-atom, IR-only and Raman routes — build and measure, or refuse); PS-C2 (two spin channels in the spectrum record — build, or K2 refuses); SO-C3 (the GPU-ELPA `BlockSize` realignment `tuning.md` promises — build it); SO-C10/C11 (`ParallelOverK` — SIESTA's default unless set; ELPA forces it off); SO-C12 (pseudopotentials by exact name); PO-C4 (the geomeTRIC log — write it or drop the promise); PO-C10 (the ECP read back from the molecule); PO-C12 (a `-V` functional with D3); T-F35 (the T(E) window covers the bias window); T-F26 (only the L and R electrode labels); T-F4/F34 (a fixed ladder's controls); T-F2 *(moved to K3, done 2026-09-30)*; T-F28 (the device's E_F, iterations and poles in the record); PS-C13 (mode numbers bounded at `prep`) | as listed |
 | **K18** | **a PySCF run's level of theory, recorded by no reader** *(R6, ruled 2026-09-29)* | the PySCF half of the one reader: `parse.contract.contract_of` reads a PySCF deck's stated basis, method, functional, charge and spin, and `contract_fields_of` answers for a PySCF config — so the Results tab's export carries `info.calculation` for a PySCF run as for a SIESTA one, a blank charge or spin is read from it (ES7), and a vibration's level-of-theory check works on both engines; the deck's own pair carries none, by V1.31's one-source rule | R6 (K6 review) |
 | **K19** | **a deck's spin in SIESTA's older words** *(found by the K2 review; user 2026-09-30: "do the reader fix after K3")* | `parse/fdf._read_state` reads `FixSpin` / `TotalSpin` as SIESTA does -- `FixSpin` then `Spin.Fix`, `TotalSpin` then `Spin.Total` (`read_options.F90`), the new word winning -- so a cited or recorded deck written with the old words carries its fixed count, not a floating one; molbuilder's own decks write only the new words | the K2 review's outside finding |
 | **K20** | **the pseudopotential directory, settled before the Build tab is left** *(user, 2026-09-30: "it seems user easily misses this in the first setup and only finds out after the script is generated")* | on a SIESTA form the field is marked required in the setup card, red while empty; a live check beside it runs `prep`'s own coverage check as the folder is typed or picked (each element found, and its XC family against the functional); a suggestion, never a guess -- *use `projects/pseudopotential`, covers all N elements* -- when that folder covers the structure; and Send refuses until covered, the hand-over asking the same check of the folder it writes into (pseudopotentials already beside the calculation count, as at `prep`), the page scrolling to the field. Not PySCF's (none) nor transport's (they come with the citation) | the Build preflight's warn-only case; the hand-over checking none |
@@ -4666,7 +4668,7 @@ first would be rewritten twice.
   retired (not installed, and the deck could not pass it the rung's criteria,
   held atoms, trajectory or live log); the geomeTRIC log's promise is dropped
   (its text is in the run's log); `kgrid_displacement` on transport carries the
-  cited run's offset — a `citation` item, written through the one door on every
+  cited run's offset *(built with K3, 2026-09-30)* — a `citation` item, written through the one door on every
   rung, the transport axis 0 as both engines use it, and the transmission's
   `TBT.k` in its block form when displaced (the list form carries no offset); one value on every rung is what TranSIESTA itself demands — it compares each lead's grid and offset with the device's and stops on *"found incompatible k-grids"* (`ts_electrode.F90`). The item's help gains the caveat for a hexagonal cell (Au(111)): an offset of 0.5 does not respect the six-fold symmetry, so Γ-centred is the usual choice there — SIESTA folds only k with −k, so nothing is computed wrong, the sampling is lopsided and converges more slowly.
 * **K9's scope** — **ruled: the declaration first; the check against a measured
@@ -4866,6 +4868,116 @@ reviewers' probes (the archive's § E lists) among its runs.
   read SIESTA's older `FixSpin` / `TotalSpin` spellings, which SIESTA still
   honours (`read_options.F90`), so such a deck's fixed count reads as free —
   the fdf log's check (K9) is its natural catch.
+* **K3 — done 2026-09-30** (SS-C5, PS-C22, T-F15, SO-N4; K17's offset fork,
+  T-F2; ruled: *"go ahead with K3 after K2 is committed"*). **The k-point
+  mesh joined it the same day** (user: *"check kgrid in different setting
+  such that you have a unified system/logic. if we need a layer/api to
+  handle this consistently and systematiclly, we should consider it"*;
+  *"i want a holistic system solution, not a patching here and there. api
+  level and data structure level unification is essential"*; ruled *"agree
+  with your recommendations, go ahead with the k layer in K3"*). **One
+  severity per bound**: a `range` is warned on every surface — the
+  description's own check refused it until now (SO-N4); a hard limit is
+  declared on the item, `above = { value, why }` — `fc_displacement`,
+  `temperature_K`, `pressure_atm`, `block_size`, `kgrid`, `tbt_k_grid`
+  above 0, `electrode_kz` above 1 (its range a recommendation from 20) —
+  and refused on every door with one message. **One per-value door**,
+  `template.why_not`: a component the kind fixes, a choice the kind does not
+  offer, a value at or below its limit — the first that holds, so one value
+  draws one refusal; `resolve`, the description's check and the settings
+  gate each ask it once (five passes became three calls of one door), and a
+  refused value's range warning stands aside, as does the range of an item
+  the kind does not carry. **The k-point mesh** (`kmesh.py`, `siesta.md`
+  § 6.1): one `KMesh` per deck — each axis's kind, its role (sampled, Γ,
+  open, a lead's), the count, the offset and the item that answered —
+  derived once (`mesh_for`), written by one writer (SIESTA's block and
+  `tbtrans`'s `TBT.k`, always the block, which carries the offset), checked
+  once (`check`: an isolated axis sampled more than once is warned — on the
+  transmission's grid too — a far-apart periodic axis hinted, an offset on a
+  single point warned), its fixed components answered without a structure
+  (`fixed`: a transport calculation's third component of `kgrid`,
+  `tbt_k_grid`, `kgrid_displacement`), and read by `Diag.ParallelOverK`,
+  counted on the mesh written — a lead's forty points — and the dipole
+  advisory. Retired: four hand-built block writers, the transport kind
+  validator's three k blocks, the SIESTA validator's k block, the
+  displacement callable's single-point rule — "the transport axis is 1" in
+  six places. The cited offset is carried (K17's ruling): the parser reads
+  the offset column, the recorded contract gains `kgrid_displacement`
+  (`K_MESH_RECORD_KEYS`, beside the counts' older name), and the citation
+  lays the fixed axis on through `kmesh.with_fixed`; the form draws a fixed
+  component locked with its reason; the composition reads
+  `kmesh.TRANSPORT_AXIS`. **Rulings along the way** *(user, 2026-09-30)*:
+  `k > 1` on an isolated axis stays a warning (the periodicity doc's
+  "clamp" was never built, and is corrected); a `transport` axis outside a
+  transport calculation is sampled like a periodic one; `relax_steps = 0` is
+  not a limit — `prep bench` pins exactly that single point — so SS-C5's
+  `relax_steps` half, a vibration's relax rung that relaxes nothing, is
+  K4's, where the rung's role is. **Also**: the Transport tab's Send and
+  `jobset init`'s transport arm run the description's own check (they ran
+  only the codec; its warnings ride the Send's notices, `workflow.md` § 9);
+  a repeated bias point is refused in the codec, one outside the item's
+  range warned (T-F15); the template reader holds only an item's default to
+  its limit, a person's value being the door's. Contract: `siesta.md` § 6.1
+  (owner); `template.md` § 5, § 5.3; `stages.md` § 6.6; `form-schema.md`;
+  `transport.md` § 0.2–0.4, § 2a.13, § 3.2, § 3.6, § 3.8, § 5, § 7;
+  `structure-periodicity.md` § 2; `science/overview.md` § 4;
+  `validation.md` § 4.1; `workflow.md` § 9; `job-contracts.md`;
+  `spectra.md`; `molview.md`; `vibration.md`. Tests: thirteen new, each
+  driving the road — `jobset init`, `jobset prep`, the Task-setup save, the
+  Transport tab's Send — and each red under the mutations its docstring
+  names: five k-mesh tests (`test_k_point_mesh_e2e.py`), five limit, range
+  and bias tests (`test_hard_limits_e2e.py`), two browser tests on the
+  Transport tab itself (`test_transport_tab_e2e.py`: the locked component
+  and its reason; a refused and a warned Send, their findings in the
+  panel), and the catalogue's starting values. Two are API-level, each
+  saying why: the settings gate's one-refusal rule, which `resolve`
+  refusing first keeps the road from reaching, and the catalogue, authored
+  rather than described. The record path's offset rides its citation test.
+  Retired with their rules' move: the transport kind's three k test classes
+  (fourteen cases), a duplicate of the prep door's refusal, the description
+  check's API-level one-refusal test (the save's road test says it); two
+  range tests and two save tests each merged into one.
+  *The full review* — twenty-two findings, each verified in the code, all
+  fixed: `kgrid`'s recommended range was warned nowhere (the metadata pass
+  stood aside for any field with a `validate` callable, and `kgrid`'s now
+  held only its shape) — every triple is range-checked per component
+  through one helper, `outside_range`, which the description's check asks
+  too (it checked scalars alone); a wrongly typed value drew the type's
+  refusal and the limit's — the door leaves it to the type check
+  (`_TYPE_CHECKS`) and asks about the value as `resolve` will see it, one
+  lossless canonical form (`template.as_declared`: a whole float is the
+  count it names — the preflight accepted `8.0` for a count and the
+  settings gate refused it); a refused value's range warning and its
+  mesh's findings stand aside at the settings gate too; the description's
+  check judged items the kind does not carry (`not_carried_by`); execution
+  values and bench points were first refused at prep; a repeated bias point
+  was compared by value while its folder is `bias_token`'s — the one
+  spelling moved to the codec, and two points in one folder are refused;
+  `jobset init`'s transport arm dropped its warnings; the Send lost its
+  next-step line when warned; the shared offset was warned once per mesh; a
+  kind's recommended value was not held to the limit; the triple's labels
+  had a second home (`kmesh.AXES` now); the stale text (the old key's name,
+  deleted writers and holders, a false history, two table placements, the
+  offset's help and the hexagonal caveat the ruling asked for, a module's
+  stated dependencies, the codec's check list, the bias rows of the
+  check table, a door's docstring). **The findings reach the page through
+  the one renderer** *(user, 2026-09-30: "we have facility/framework designed
+  for that. don't handcraft another set")*: the hand-over
+  (`lib/task-handover.js`) listed every notice as a bullet in its status
+  line, and K3 had routed the Transport describe's warnings into it — a
+  second renderer, which `science/validation.md` § 4.1 R2 forbids and R2a
+  names. It hands them to the tab's findings panel now (`showFindings`),
+  through `lib/validation-findings.js`: the Build and Spectrum tabs' own
+  panels, the Transport tab's new one under Send; and Task setup's two
+  renderers — the prep answer's finding lines and the save's notes — draw
+  through it too. The Transport tab's browser tests drive it. *Owed,
+  beside it*: an override of an item the kind does not carry is inert and
+  said nowhere — which rung and kind an item binds to is K4's; a transport
+  finding lands in card 5's panel, not beside its rung's field, since the
+  renderer does not yet route by rung; and the junction picker opens
+  nothing, and says nothing, when pressed before the sidebar has resolved
+  the projects root (`tree-picker.js` answers `null`) — found writing the
+  tab's browser test.
 
 ---
 

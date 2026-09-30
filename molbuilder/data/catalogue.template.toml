@@ -374,6 +374,7 @@ type = "int3"
 value = [1, 1, 1]
 default = [1, 1, 1]
 range = [1, 64]
+above = { value = 0, why = "each is a k-point count along its axis, and 0 samples nothing (SIESTA's kgrid.F counts the points as the grid's determinant)" }
 group = "stage"
 label = "k-point mesh"
 tier = "basic"
@@ -391,6 +392,7 @@ kind = "engine"
 category = ["accuracy"]
 engines = ["siesta"]
 shared = ["transport"]
+citation = ["transport"]
 anchor = "%block kgrid_Monkhorst_Pack"
 engine_key = "%block kgrid_Monkhorst_Pack  (displ column)"
 manual = "SIESTA 5.4.2 §6.5 'k-point sampling'"
@@ -405,7 +407,8 @@ Shifts the k-point mesh off Gamma, one value per axis, in units of the mesh spac
   0.0    Gamma-centred. Required for a 1x1x1 mesh (an isolated molecule), and the safe choice for odd meshes, which already contain Gamma.
   0.5    The classic Monkhorst-Pack shift. Use on even meshes -- it samples better than a Gamma-centred grid of the same size, and matters most for metals.
 Axes are independent: [0.5, 0.5, 0.0] shifts two and leaves the third on Gamma, which is what a slab wants when the third axis is vacuum.
-In a transport run, SIESTA forces this to 0 along the transport direction whatever you set, because that direction is sampled at one k-point.
+On a hexagonal cell -- an Au(111) surface -- keep it Gamma-centred: 0.5 does not respect the six-fold symmetry.  SIESTA folds only k with -k, so nothing is computed wrong; the sampling is lopsided and converges more slowly.
+In a transport calculation the transport direction takes one k-point with no offset on every rung -- both engines force it -- so that component is fixed at 0 and shown locked.  Across it the offset is one value for every rung, cited from the relaxation: TranSIESTA refuses a lead whose offset differs from the device's (engines/siesta.md 6.1).
 """
 
 [item.relax_type]
@@ -521,6 +524,7 @@ value = 0.04
 default = 0.04
 unit = "Bohr"
 range = [0.005, 0.2]
+above = { value = 0, why = "SIESTA divides each force difference by it (ofc.f90)" }
 group = "stage"
 label = "Force-constant displacement"
 tier = "advanced"
@@ -828,6 +832,7 @@ anchor = "BlockSize"
 engine_key = "BlockSize"
 manual = "SIESTA 5.4.2 §6.27 'Parallel options'"
 type = "int"
+above = { value = 0, why = "it is a count of orbitals per rank; leave it unset for SIESTA's own automatic (tuning.md 2.11)" }
 group = "budget"
 label = "ScaLAPACK block size"
 null_label = "(auto)"
@@ -1725,6 +1730,7 @@ value = 298.15
 default = 298.15
 unit = "K"
 range = [1.0, 5000.0]
+above = { value = 0, why = "PySCF's ideal-gas thermochemistry divides by kT and takes logarithms of kT/P (pyscf/hessian/thermo.py), so 0 writes inf and nan; what 0 K would leave, the zero-point energy, every record carries at any temperature" }
 group = "profile"
 label = "Thermochemistry temperature"
 tier = "advanced"
@@ -1748,6 +1754,7 @@ value = 1.0
 default = 1.0
 unit = "atm"
 range = [1e-06, 1000.0]
+above = { value = 0, why = "PySCF's ideal-gas entropy takes a logarithm of kT/P (pyscf/hessian/thermo.py), so 0 writes inf" }
 group = "profile"
 label = "Thermochemistry pressure"
 tier = "advanced"
@@ -2217,6 +2224,7 @@ type = "int3"
 value = [1, 1, 1]
 default = [1, 1, 1]
 range = [1, 64]
+above = { value = 0, why = "each is a k-point count along its axis, and 0 samples nothing" }
 group = "stage"
 label = "Transverse k-grid for T(E)"
 tier = "basic"
@@ -2569,7 +2577,8 @@ manual = "SIESTA 5.4.2 TranSIESTA §'Electrode calculations'"
 type = "int"
 value = 40
 default = 40
-range = [1, 200]
+range = [20, 200]
+above = { value = 1, why = "a lead is periodic bulk along transport: one k-point there gives a wrong lead Hamiltonian, and the device attaches the self-energy built from it -- a wrong transmission with no runtime error (engines/siesta.md 6.1)" }
 group = "stage"
 label = "Electrode k-points along transport"
 tier = "basic"

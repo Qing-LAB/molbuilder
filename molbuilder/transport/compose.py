@@ -507,13 +507,23 @@ def _junction_axis_kind(deck_text: str) -> Tuple[str, str, str]:
     junction was until 2026-09-29: periodic across.
     """
     from ..deck_record import extract_engine_offset
+    from ..kmesh import TRANSPORT_AXIS
+
+    def _with_transport(across):
+        # THE TRANSPORT AXIS IS THE ONE `kmesh` STATES (the cell's third):
+        # the composition and every rung's k-point mesh read one statement.
+        kinds = list(across)
+        kinds.insert(TRANSPORT_AXIS, "transport")
+        return tuple(kinds)
+
     recorded = (extract_engine_offset(deck_text) or {}).get("axis_kind")
     if not recorded:
-        return ("periodic", "periodic", "transport")
-    across = tuple(str(k) for k in recorded)[:2]
+        return _with_transport(("periodic", "periodic"))
+    across = tuple(str(k) for i, k in enumerate(recorded)
+                   if i != TRANSPORT_AXIS)
     if len(recorded) == 3 and all(k in ("periodic", "isolated")
                                   for k in across):
-        return (across[0], across[1], "transport")
+        return _with_transport(across)
     # A RECORD THAT SAYS SOMETHING ELSE IS NOT SILENCE.  Read as "periodic
     # across" it would replace the person's declaration with the old default
     # without a word -- so it is refused, naming what it says.

@@ -26,6 +26,12 @@
  *   send({
  *     projects,     // window.molbuilder.projects (the file layer)
  *     say,          // (kind, message) -> void; kinds: ok|muted|warn|error
+ *     showFindings, // (issues[]) -> void -- the tab's findings panel,
+ *                   //   through lib/validation-findings.js (science/
+ *                   //   validation.md § 4.1 R2, R2a: a notice IS a finding,
+ *                   //   and one module draws them).  Handed every notice
+ *                   //   and every finding a refusal carries, and [] after
+ *                   //   a clean send; the tab decides what empty means.
  *     structure,    // the envelope from the tab's own MolView exportFile()
  *     engine,       // "siesta" | "pyscf"
  *     params,       // collectForm() output, keyed by catalogue names
@@ -43,6 +49,14 @@
         const o = opts || {};
         const projects = o.projects;
         const say = (typeof o.say === "function") ? o.say : function () {};
+        /* THE FINDINGS GO TO THE ONE RENDERER, never into the status line:
+         * this module listed each notice as a bullet in `say` until
+         * 2026-09-30 -- a second renderer, which R2 forbids and R2a names
+         * (a notice is a finding).  A consumer that hands no renderer is
+         * told so, rather than having its findings dropped in silence
+         * (R3). */
+        const showFindings = (typeof o.showFindings === "function")
+            ? o.showFindings : null;
         if (!projects || typeof projects.getCurrentDir !== "function") {
             say("error", "The projects sidebar is not available on this page.");
             return;
@@ -193,6 +207,11 @@
             });
             out = await r.json();
             if (!r.ok || !out || out.ok === false) {
+                /* A refusal's findings, row by row, where the page shows its
+                 * findings -- the door's own sentence in the status line. */
+                if (showFindings && out && Array.isArray(out.findings)) {
+                    showFindings(out.findings);
+                }
                 say("error",
                     (out && out.error) || ("render failed (" + r.status + ")"));
                 return;
@@ -245,6 +264,16 @@
          * NAVIGATION, because a page that jumps away is a page whose warning
          * was never read (`tabs.md` — a tab does not decide for its user). */
         const notices = Array.isArray(out.notices) ? out.notices : [];
+        if (showFindings) showFindings(notices);
+        // THE ROAD FROM A DESCRIBED TRANSPORT CALCULATION, said whether or
+        // not something came back: a notice is read, not a stop.  The
+        // notices branch below returned before it until the K3 review.
+        const transportNext = "Next: prep run seed "
+            + "(the CLI, or Task setup's prep buttons on this "
+            + "folder), then launch stage by stage; summarize run "
+            + "writes the I–V record.";
+        const described = "Described — wrote " + written.join(" and ")
+            + " into " + (rel || "the selected folder") + ".";
         if (notices.length) {
             // TWO TONES ON PURPOSE, and it is not R4's vocabulary.
             //
@@ -259,25 +288,29 @@
             // rule for -- same word, different layer.)
             const worst = notices.some((n) => n && n.severity === "error")
                 ? "error" : "warn";
+            // WHO SPOKE is the door's: the cell gate on a hand-over, the
+            // description's own check on the transport describe, which has
+            // no Task setup to open next (`workflow.md` § 9, gates ② and ③).
+            // The findings themselves are the findings panel's, above.
+            const count = (notices.length === 1 ? "one finding"
+                           : notices.length + " findings");
             say(worst,
-                "Wrote " + written.join(", ") + ". The cell was checked and "
-                + (notices.length === 1 ? "one thing" : notices.length + " things")
-                + " came back — read them, then open Task setup:\n"
-                + notices.map((n) => "• "
-                    + ((n && n.where) ? "[" + n.where + "] " : "")
-                    + ((n && n.message) || String(n))).join("\n"));
+                (isTransport ? described + " The description was checked: "
+                             : "Wrote " + written.join(", ")
+                               + ". The cell was checked: ")
+                + count + " came back"
+                + (showFindings ? " — read them"
+                                : ", and this page has no findings panel "
+                                  + "to show them in")
+                + (isTransport ? ".  " + transportNext
+                               : ", then open Task setup."));
             return;
         }
 
         if (isTransport) {
             /* The tab decided; the description is DONE.  The road is
              * stated, and going anywhere is the person's move (below). */
-            say("ok", "Described — wrote " + written.join(" and ")
-                + " into " + (rel || "the selected folder")
-                + ".  Next: prep run seed "
-                + "(the CLI, or Task setup's prep buttons on this "
-                + "folder), then launch stage by stage; summarize run "
-                + "writes the I–V record.");
+            say("ok", described + "  " + transportNext);
             return;
         }
         /* NO NAVIGATION -- the same rule the transport arm has kept since

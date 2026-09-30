@@ -654,3 +654,33 @@ def test_a_recommended_value_on_a_tier_field_is_the_engines_tight_tier():
         "geom_gmax", "geom_grms", "geom_dmax", "geom_drms", "geom_etol",
         "geom_max_steps"}
 
+
+
+@pytest.mark.parametrize("start, what", [
+    ("default = 0.0", "its default 0.0"),
+    ("default = 0.04\nrecommended = { vibration = 0.0 }",
+     "its recommended value for vibration 0.0"),
+])
+def test_the_catalogue_starts_no_calculation_past_a_limit(start, what):
+    """`engines/template.md` § 5.3 and § 6.3a: an item's default and each
+    kind's recommended value obey its own hard limit -- a kind is never
+    started on a value every door would refuse.  A person's VALUE is not
+    held here: in a calculation's template it is judged by the one
+    per-value door, with its one message.  API-level because the road
+    cannot reach it: the catalogue is authored, not described.
+
+    MUTATION THIS MUST FAIL AGAINST: the recommended values left unchecked
+    (the second case loads)."""
+    from molbuilder import template as T
+    text = ('schema = "molbuilder/template@2"\nengines = ["siesta"]\n'
+            '[item.fc_displacement]\nkind = "engine"\ncategory = ["accuracy"]\n'
+            'engines = ["siesta"]\nanchor = "FC.Displacement"\n'
+            'type = "float"\nhelp = "x"\n'
+            'above = { value = 0, why = "SIESTA divides by it" }\n'
+            + start + "\n")
+    with pytest.raises(ValueError, match="breaks its own limit") as refused:
+        T.read_template(text)
+    assert what in str(refused.value), str(refused.value)
+    loads = T.read_template(text.replace(start, "default = 0.04\nvalue = 0.0"))
+    assert T.one(loads, "fc_displacement").value == 0.0, (
+        "a VALUE past the limit is the per-value door's, not the parser's")

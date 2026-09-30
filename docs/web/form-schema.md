@@ -72,9 +72,14 @@ is where the *data* comes from.
 | `id` | derived: the container's prefix + the name |
 | `kind` (which control) | derived from `type` — `enum`→select, `bool`→checkbox, `int3`/`float3`→a triple, … |
 | `step` | derived from `type`: `int` steps by 1, `float` by any |
-| `labels` (a triple's x/y/z) | derived from `type` |
+| `labels` (a triple's x/y/z) | derived from `type` — the k-point mesh's axis names (`kmesh.AXES`) |
+| `fixed` (a triple's locked components) | derived from the kind: the components it fixes, `{z: {value: 1, why: "…"}}` (`kmesh.fixed`, [`engines/siesta.md`](?doc=engines/siesta.md) § 6.1) — a transport calculation's third k component, which no rung reads. The triple draws each locked at its value with the reason beside it, and the value still travels, so the template states it *(2026-09-30)* |
 | `null_option` | derived: the item is optional |
 | `tier` · `pattern` · `optional` | **item keys added for this** — § 1.2 |
+
+An item's hard limit (`above`) is **not** sent: the form computes no verdict of
+its own. The settings gate's refusal is its live check, and lands beside the
+field it names ([`engines/template.md`](?doc=engines/template.md) § 5.3).
 
 ### 1.2 Three keys the catalogue gained for the form
 
@@ -176,7 +181,7 @@ person to need it finds the entry rather than inventing a second spelling.)*
 | **`engine_key`** | the deck keyword it becomes (`MeshCutoff`) — **or a parenthesised note when the field is not a deck line at all**, e.g. `mpi_np`'s *"(molbuilder: .run.sh `mpirun -np N` only; not in .fdf)"* | the emitters; BENCH-MARKS; anything tracing a value to the file it lands in |
 | **`tier`** | CLI exposure level — a `--tier` filter shows only matching fields | `cli.py`'s option generator |
 | **`skip_cli`** | this field has no command-line option | `cli.py` |
-| **`range`** | `(min, max)`, inclusive | the form builder → the control's bounds; validators |
+| **`range`** | `(min, max)`, inclusive — a recommendation, warned and never refused ([`engines/template.md`](?doc=engines/template.md) § 5.3) | the form builder → the control's bounds; validators |
 | **`choices`** | the legal values of an enum → a dropdown | the form builder |
 | **`unit`** | the unit shown beside the control (`Ry`, `eV/Å`) | the form builder. **Display only** — it never converts anything |
 | **`step`** | the numeric input's step; `"any"` for free floats | the form builder |

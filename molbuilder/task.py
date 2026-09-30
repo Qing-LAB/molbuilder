@@ -36,12 +36,17 @@ which already has the schema in hand:
           key naming a stage field · ``overrides`` a SUBSET of ``varies`` ·
           unknown keys refused by name · ``run.id`` is what ``run.name`` and
           ``structure.formula`` derive (§ 6.1's first rule -- the check needs
-          only ``identity``, which is L1 beside this one)
+          only ``identity``, which is L1 beside this one) · a transport bias
+          list of numbers, starting at 0, no two points in one folder
+          (``bias_token``)
   P2      the engine has a generator · every
           named field exists in the schema · every value is one that field's
           DECLARED TYPE can hold (added 2026-08-25 — the row that let
           ``"kgrid": "4,4,1"`` through, a string where the config declares
-          ``Tuple[int, int, int]``) · every value is inside its bounds ·
+          ``Tuple[int, int, int]``) · every value -- a stage's, an execution
+          block's, a bench point -- may stand for its item on the kind (the
+          one per-value door, ``template.why_not``: refused) and is inside
+          its recommended range (warned), a bias point too ·
           ``shape: "hierarchical"`` on an engine whose ladder runs in ONE
           process (§ 6.7 — PySCF; refused naming the engine) · and § 6.6a's
           warning for two stages that RESOLVE identically, since resolving is
@@ -60,7 +65,7 @@ import difflib
 import dataclasses as _dc
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, Mapping, NoReturn, Optional, Tuple
+from typing import Any, Dict, List, Mapping, NoReturn, Optional, Tuple
 
 from . import report_fields as _report_fields
 from .config_dir import is_channel_name
@@ -132,6 +137,17 @@ _NOTIFY_KEYS = ("on_scf_converged", "every_hours", "channels", "report")
 #: a job holds does not, so a second home for it would be a second place to
 #: look and no new answer.
 LANE_ASKS = ("time", "domain")
+
+
+def bias_token(v: float) -> str:
+    """The ONE spelling of a bias point's directory name — ``v0``,
+    ``v0.2``, ``v-0.5`` (user ruling 2026-08-29: plain v-dirs, production
+    names — never the bench spelling).  Deck naming, the per-point
+    attempt layout, the gather, the chain walker -- and this codec's
+    refusal of two points that would share one folder -- all read this.
+    Here, beside the list it spells, since 2026-09-30: the codec is the
+    lowest reader, and it lived in `transport/stages.py` until then."""
+    return f"v{v:g}"
 
 #: A channel NAME, as a description may carry one.
 #:
@@ -499,6 +515,26 @@ class Task:
                     f"{self.bias[0]!r}) -- each point warm-starts from the "
                     "previous one's .TSDE, and the chain starts from "
                     "equilibrium (archive/2026-09-01-transport-design.md 4.3)")
+            # TWO POINTS IN ONE FOLDER -- a repeated voltage, or two whose
+            # folder names are one (`bias_token`: 0.1 and 0.1000001 are both
+            # `v0.1/`) -- refused here, the one door every road reads a
+            # description through (`engines/template.md` § 5.3): each point
+            # is one device run in its own folder.  A point outside the
+            # item's range is a recommendation's business: the description's
+            # own check warns.
+            folders: Dict[str, List[float]] = {}
+            for v in self.bias:
+                folders.setdefault(bias_token(float(v)), []).append(float(v))
+            shared = [(tok, vs) for tok, vs in folders.items() if len(vs) > 1]
+            if shared:
+                tok, vs = shared[0]
+                said = (f"repeats {vs[0]:g} V" if len(set(vs)) == 1 else
+                        f"puts {' and '.join(repr(v) + ' V' for v in vs)} "
+                        f"in one folder ({tok}/)")
+                raise ValueError(
+                    f"task: the bias list {said} -- each point is one device "
+                    f"run in its own folder, so they would share it "
+                    f"(engines/transport.md 2a.10)")
         if self.stages is not None and not self.stages:
             raise ValueError(
                 "task: 'stages' is present but empty. A job has at least one "

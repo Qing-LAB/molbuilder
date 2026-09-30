@@ -339,20 +339,28 @@ either nagging or dangerous:
   written on `pbc` alone could not tell a lead from a crystal axis, which
   `config.kgrid` depends on.
 
-* **Does the k-grid contradict the axes?** — `config.kgrid`, **warnings**,
-  under one rule *(user, 2026-08-20)*: **`k > 1` is the user's explicit
-  statement — "sample a supercell along this axis" — so that is the only
-  place a consistency question exists. `k = 1` states nothing** (correct for
-  an isolated axis, a legitimate Γ-only choice for a periodic one) **and is
-  validated not at all.**
+* **Does the k-point mesh contradict the axes?** — `kmesh.check`, on every
+  mesh a deck writes (`config.kgrid`, a transmission's `config.tbt_k_grid`),
+  **warnings**, under one rule *(user, 2026-08-20)*: **`k > 1` is the user's
+  explicit statement — "sample a supercell along this axis" — so that is the
+  only place a consistency question exists. `k = 1` states nothing** (correct
+  for an isolated axis, a legitimate Γ-only choice for a periodic one) **and is
+  validated not at all.** The mesh and its roles are
+  [`engines/siesta.md`](?doc=engines/siesta.md) § 6.1's.
 
   Where `k > 1`, two of the user's own statements can contradict it:
 
   | the sampled axis says | finding |
   |---|---|
-  | `isolated` / `transport` | **warn** — sampling a direction declared not to repeat (isolated: wasted cost) or one that must not carry fake Bloch periodicity (transport) |
-  | `periodic`, but the **geometric gap** (cell extent − atom span) on that axis is ≥ 5 Å | **hint** — the gap is the real vacuum whether or not the `vacuum` field was set; images that far apart are usually meant to interact weakly or not at all, so the finding names the gap and says *"if deliberate, carry on"* — a minor-image-interaction setup is a legitimate choice only the user can judge. *(The arithmetic is exact for orthogonal cells with unwrapped coordinates — the common case here; a skewed cell's axis norm overstates the perpendicular image distance, and wrapped coordinates can suppress the hint. Both err on the quiet side of a hint-only check.)* |
+  | `isolated` | **warn** — sampling a direction declared not to repeat: wasted cost |
+  | `periodic` — or `transport` in a calculation that is not a transport one, where the deck is periodic along it *(user, 2026-09-30)* — but the **geometric gap** (cell extent − atom span) on that axis is ≥ 5 Å | **hint** — the gap is the real vacuum whether or not the `vacuum` field was set; images that far apart are usually meant to interact weakly or not at all, so the finding names the gap and says *"if deliberate, carry on"* — a minor-image-interaction setup is a legitimate choice only the user can judge. *(The arithmetic is exact for orthogonal cells with unwrapped coordinates — the common case here; a skewed cell's axis norm overstates the perpendicular image distance, and wrapped coordinates can suppress the hint. Both err on the quiet side of a hint-only check.)* |
   | `periodic`, tightly packed | silent — everything checks out |
+
+  A transport calculation's own transport axis is not in this table: it is 1
+  on the open rungs and a lead's own count on a lead, fixed by the mesh and
+  refused otherwise on every door. *(Until 2026-09-30 a `transport` axis was
+  warned here in every calculation, while the transport kind's validator
+  refused the same value — two severities for one fact.)*
 
   *(This retired two earlier rules on 2026-08-20: a span-ratio heuristic
   that judged intent geometrically even at `k = 1`, and an

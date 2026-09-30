@@ -128,7 +128,8 @@ def _point_dirs(base: Path, task) -> List[Tuple[float, Path]]:
     """``(voltage, transmission point container)`` per § 4.2/4.3: the
     stage dir itself for a single point, one v-dir each for a scan."""
     from ..identity import StageRef
-    from .stages import bias_points, bias_token
+    from ..task import bias_token
+    from .stages import bias_points
     token = next(r.token for r in
                  StageRef.ladder([s.name for s in task.stages])
                  if r.name == "transmission")

@@ -217,6 +217,12 @@
       <span id="transport-send-status" class="status"
             role="status" aria-live="polite"></span>
     </div>
+    {#- WHAT THE DESCRIPTION'S OWN CHECK SAID on Send -- its refusals row by
+        row, and the warnings a description is written with (a bias point
+        outside its recommended range).  lib/validation-findings.js owns
+        the contents (science/validation.md § 4.1 R2): one renderer. -#}
+    <ul id="transport-send-findings" class="issues-panel" hidden
+        aria-live="polite"></ul>
     {#- The road after describing — the composite's own quickstart. -#}
     <details class="hint">
       <summary>What happens after this — the five stages, in order</summary>
@@ -261,6 +267,8 @@
    write; the transport branch posts to /api/transport/describe and does
    NOT navigate (user ruling 2026-08-29) #}
 <script src="{{ url_for('static', filename='lib/task-handover.js') }}"></script>
+{#- the ONE findings renderer, which card 5's panel is drawn by -#}
+<script type="module" src="{{ url_for('static', filename='lib/validation-findings-global.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/detection-chip.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects/projects-sidebar.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/transport/core.js') }}"></script>

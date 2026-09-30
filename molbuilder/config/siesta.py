@@ -52,17 +52,15 @@ _BASENAME_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 
 
 def _validate_kgrid(value):
-    """Per-component range check for SiestaConfig.kgrid (a
-    Tuple[int,int,int]).  Used as the ``validate`` callable on the
-    kgrid field metadata so the scalar ``range`` check in
-    ``_validate_config_metadata`` doesn't fire (and silently
-    swallow a TypeError) on this tuple-typed field.
-
-    Returns a list of Issue (empty = OK).  Range (1, 64) per the
-    accepted SIESTA sampling density: 1 is the gamma-only floor;
-    anything > 32 in any direction is wasteful for real-space
-    integration and very rarely justified.  64 leaves some headroom
-    for the periodic-1D / 2D cases without un-bounding the field.
+    """``kgrid``'s SHAPE: three whole counts -- the one thing its bounds
+    cannot say.  The bounds are declared, not checked here: the recommended
+    (1, 64) is the metadata range, warned per component
+    (`validation/metadata.py`, ``outside_range``) -- 1 is the Gamma-only
+    floor, more than 32 along any axis is rarely justified, 64 leaves
+    headroom for 1-D and 2-D periodic cells -- and 0 or below is the
+    catalogue's hard limit (``above``, `engines/template.md` § 5.3), refused
+    on every door.  What a rung writes along each axis is the k-point
+    mesh's (`kmesh.py`, `engines/siesta.md` § 6.1).
     """
     from ..issues import Issue
     if not isinstance(value, (tuple, list)) or len(value) != 3:
@@ -76,29 +74,23 @@ def _validate_kgrid(value):
         if not isinstance(v, int) or isinstance(v, bool):
             out.append(Issue(
                 "error",
-                f"kgrid[{i}] = {v!r} must be an int (1..64)",
+                f"kgrid[{i}] = {v!r} must be a whole count of k-points",
                 "config.kgrid",
             ))
-        elif v < 1 or v > 64:
-            out.append(Issue(
-                "warn",
-                f"kgrid[{i}] = {v} is outside the recommended "
-                f"range [1, 64]",
-                "config.kgrid",
-            ))
+    # This warned a second time for the range, and only warned for 0, until
+    # 2026-09-30 (the docstring says where both live now).
     return out
 
 
 def _validate_block_size(value):
-    """``BlockSize`` is a COUNT of orbitals, so it starts at 1.
+    """``BlockSize`` is a whole COUNT of orbitals.
 
     Two states (tuning.md § 2.11): unset is *auto* -- the keyword is not
     emitted and SIESTA uses its own automatic -- or a positive integer,
     honoured verbatim.  ``0`` used to be a third state meaning *"omit the
-    keyword"*, which auto now covers; left unrefused it would be written
-    into the deck as ``BlockSize 0``, a distribution block holding no
-    orbitals.  Refused rather than quietly re-read as auto, because the two
-    asks are different and only the user knows which was meant.
+    keyword"*, which auto now covers; it is the catalogue's hard limit that
+    refuses it now (``above``), so this checks only that the value is an
+    integer.
     """
     from ..issues import Issue
     if value is None:
@@ -108,33 +100,26 @@ def _validate_block_size(value):
                       f"block_size = {value!r} must be an integer "
                       f"number of orbitals, or unset for (auto)",
                       "config.block_size")]
-    if value < 1:
-        return [Issue(
-            "error",
-            f"block_size = {value} is not a block size -- it is a "
-            f"count of orbitals per rank, so the smallest meaningful value "
-            f"is 1.  Leave it unset for (auto), which omits the keyword and "
-            f"lets SIESTA choose; 0 used to mean that and no longer does "
-            f"(tuning.md 2.11)",
-            "config.block_size")]
+    # 0 or below is the catalogue's hard limit (``above``,
+    # `engines/template.md` § 5.3), refused on every door with one
+    # message -- this refused it here alone until 2026-09-30.
     return []
 
 
-def _validate_kgrid_displacement(value, cfg=None):
-    """Per-component check for SiestaConfig.kgrid_displacement (SIESTA's
-    ``displ(3)``, the k-grid origin in grid-vector coordinates).
+def _validate_kgrid_displacement(value):
+    """``kgrid_displacement``'s SHAPE: three numbers, the block's fourth
+    column (SIESTA's ``displ(3)``, the k-grid origin in grid-vector
+    coordinates) -- a two-tuple or a string cannot become it.
 
-    Two things are worth saying and one is not.  The shape is an error: a
-    two-tuple or a string cannot become the block's fourth column.  A
-    component outside [0, 1) is a *warn* -- the displacement is periodic in
-    one mesh spacing, so 1.5 names the same point as 0.5 and the user
-    probably meant something else.
-
-    The one that matters scientifically: **a shift on an axis sampled at a
-    single k-point moves that point off Gamma**, to the zone boundary.  For
-    the 1x1x1 default -- a molecule in a box, which is what molbuilder ships
-    -- that is simply the wrong point, and nothing downstream would say so.
-    See `docs/archive/2026-08-14-template-execution-review.md` § 54.2.
+    Its BOUNDS are declared, not checked here: the metadata range [0, 1],
+    warned per component (`validation/metadata.py`, ``outside_range``) --
+    the offset is periodic in one mesh spacing, so 1.5 names the point 0.5
+    does.  This warned that itself until 2026-09-30, half-open, and the
+    metadata pass stood aside for it, which is how `kgrid`'s range, whose
+    callable held only its shape, came to be warned nowhere (the K3 review).
+    **A shift on an axis sampled at a single k-point** -- which moves that
+    point off Gamma to the zone boundary -- is the k-point mesh's check
+    (`kmesh.check`, `engines/siesta.md` § 6.1), on the mesh the deck writes.
 
     Not warned: 0.5 on an ODD mesh.  It is a legitimate (if unusual)
     sampling choice, not a mistake, and the ``help`` text already says which
@@ -147,37 +132,11 @@ def _validate_kgrid_displacement(value, cfg=None):
             f"kgrid_displacement must be a 3-tuple of floats; got {value!r}",
             "config.kgrid_displacement",
         )]
-    out = []
-    # ``cfg`` is None only when a caller checks a value on its own; the
-    # cross-field warning below needs the mesh and is skipped without it.
-    kgrid = cfg.kgrid if cfg is not None else None
-    for i, v in enumerate(value):
-        if isinstance(v, bool) or not isinstance(v, (int, float)):
-            out.append(Issue(
-                "error",
-                f"kgrid_displacement[{i}] = {v!r} must be a number",
-                "config.kgrid_displacement",
-            ))
-            continue
-        if v < 0.0 or v >= 1.0:
-            out.append(Issue(
-                "warn",
-                f"kgrid_displacement[{i}] = {v} is outside [0, 1); the "
-                f"displacement is in units of one mesh spacing and wraps, so "
-                f"this names the same k-point as {v % 1.0}",
-                "config.kgrid_displacement",
-            ))
-        if (v != 0.0 and isinstance(kgrid, (tuple, list))
-                and len(kgrid) == 3 and kgrid[i] == 1):
-            out.append(Issue(
-                "warn",
-                f"kgrid_displacement[{i}] = {v} shifts an axis sampled at a "
-                f"SINGLE k-point (kgrid[{i}] = 1), which moves that point "
-                f"off Gamma to the zone boundary.  For an isolated molecule "
-                f"only Gamma is meaningful -- set this component to 0.",
-                "config.kgrid_displacement",
-            ))
-    return out
+    return [Issue("error",
+                  f"kgrid_displacement[{i}] = {v!r} must be a number",
+                  "config.kgrid_displacement")
+            for i, v in enumerate(value)
+            if isinstance(v, bool) or not isinstance(v, (int, float))]
 
 
 def _validate_basename(label: str):
@@ -559,17 +518,11 @@ class SiestaConfig:
         "triple_labels": ("x", "y", "z"),
         "tier":  "basic",
         "skip_cli": True,
-        # Bounds PER COMPONENT (validation/metadata.py); the form puts
-        # them on each of the three inputs so 0 or -4 cannot be typed.
+        # Bounds PER COMPONENT, a recommendation (validation/metadata.py's
+        # `outside_range`); the form puts them on each of the three inputs.
+        # 0 or below is the catalogue's hard limit, refused on every door.
         "range": (1, 64),
-        # 2026-06-14 G5: per-component validator so the metadata
-        # range check actually runs on a Tuple-typed field.  Without
-        # this, ``_validate_config_metadata`` would TypeError on the
-        # scalar comparison and silently skip — a future ``kgrid =
-        # (0, 0, 0)`` (illegal: SIESTA requires ≥ 1) would slip
-        # through.  Range (1, 64) per the engine's accepted sampling
-        # density (anything > 32 in any direction is wasteful for
-        # a real-space integration).
+        # The SHAPE -- three whole counts -- which bounds cannot say.
         "validate": (lambda value, cfg: _validate_kgrid(value)),
     })
 
@@ -595,18 +548,13 @@ class SiestaConfig:
             # FROM the template; a new field does not join the form that is
             # being replaced (user, 2026-08-14).  ``category`` is what a surface
             # groups by, and it is here.
-            # No scalar ``range``: ``_validate_config_metadata`` refuses one on
-            # a tuple-valued field (it cannot compare a 3-tuple against two
-            # numbers) and says so as a programmer bug.  ``kgrid`` has the same
-            # shape and the same omission.  The [0, 1) bound is per component,
-            # so it lives in the validator below.
             "skip_cli": True,
-            # Per component.  ADVISORY and inclusive, so the browser box is
-            # [0, 1]; the exact half-open rule ([0, 1) and the 1-point-axis
-            # case) stays in the callable, which is where refusals live.
+            # Per component, a recommendation, inclusive: the browser box is
+            # [0, 1], and the metadata pass warns outside it
+            # (`outside_range`).  The offset wraps, so 1.0 names Gamma again.
             "range": (0.0, 1.0),
             "validate": (lambda value, cfg:
-                         _validate_kgrid_displacement(value, cfg)),
+                         _validate_kgrid_displacement(value)),
         })
 
     # Relaxation; relax_type="none" disables the MD block entirely.
@@ -1429,7 +1377,9 @@ class SiestaConfig:
         "workflow_group": "stage",
         "label":       "Electrode k-points along transport",
         "engine_key":  "%block kgrid_Monkhorst_Pack",
-        "range":       (1, 200),
+        # A RECOMMENDATION from 20 (warned below); 1 and under is the item's
+        # hard limit, refused on every door (`above`, engines/siesta.md 6.1).
+        "range":       (20, 200),
         "tier":        "basic",
     })
 

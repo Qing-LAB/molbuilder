@@ -20,10 +20,12 @@ edited**. The MolView viewer, the SIESTA emitter, and the transport flow all
 > grid** is a DFT *sampling* knob on `SiestaConfig` (`config/siesta.py`), not a
 > structure property. `Structure` has no `kgrid` field (`structure.py`:
 > "a sampling knob on the config, not geometry"), and the sidecar **schema v5
-> dropped** the `kgrid` key (a pre-v5 file's `kgrid` is ignored on load). Its
-> documentation lives in `engines/siesta.md`. What periodicity *does* own is
-> **which axes are eligible** for k-sampling — an axis must be `periodic`
-> (below) — but the sampling *count* is a calculation parameter.
+> dropped** the `kgrid` key (a pre-v5 file is refused on load,
+> `structure-molstruct.md`'s version history). Its documentation lives in
+> `engines/siesta.md` § 6.1. What periodicity *does* own is **each axis's
+> kind**, which decides that axis's role in a rung's k-point mesh — sampled,
+> Γ, open or a lead's own — but the sampling *count* is a calculation
+> parameter.
 
 **The rule of the whole doc:** periodicity is computed/captured **once, at the
 source that knows it** (construction or import), stored in the dataset, and
@@ -100,19 +102,21 @@ Every consumer branches on this one field.
 | kind | cell vector on axis *i* | `vacuum[i]` | k-sampleable? | tileable (display) | `pbc()[i]` (ASE/extxyz only) | fdf |
 |---|---|---|---|---|---|---|
 | **periodic** | commensurate lattice (construction / import) | 0 | **yes** (a `SiestaConfig` knob) | yes | `True` | k-sampled |
-| **isolated** | `bbox[i] + 2·vacuum[i]` (§ 3) | **the only kind it applies to** — unset ⇒ 3 Å default, else exactly what you set | no (Γ) | no | `False` | Γ box |
-| **transport** (semi-infinite) | **the captured device extent**; the person sets `c` = span + one interlayer spacing on the Cell page (`science/junction-cell.md` § 6) | **0** | no (Γ) | no | `True` | Γ + electrode self-energy |
+| **isolated** | `bbox[i] + 2·vacuum[i]` (§ 3) | **the only kind it applies to** — unset ⇒ 3 Å default, else exactly what you set | Γ — above 1 is warned, never refused | no | `False` | Γ box |
+| **transport** (semi-infinite) | **the captured device extent**; the person sets `c` = span + one interlayer spacing on the Cell page (`science/junction-cell.md` § 6) | **0** | on a transport calculation, one point on the seed, the device and the transmission and a lead's own count on a lead; in any other calculation sampled like `periodic` | no | `True` | Γ + electrode self-energy |
 
 > **Two physics points the enum encodes** (that a boolean `pbc` could not):
-> - **A `transport` axis is a periodic box that is Γ-sampled.** SIESTA emits a
->   `LatticeVectors` row for it (so its ASE `pbc` is `True`), yet it is never
+> - **A `transport` axis is a periodic box that is Γ-sampled where the leads
+>   stand in for it.** SIESTA emits a `LatticeVectors` row for it (so its ASE
+>   `pbc` is `True`), yet on a transport calculation's open rungs it is never
 >   tiled or k-sampled — the semi-infinite leads replace its periodic images.
 >   A boolean cannot hold "periodic box **but** Γ-only, electrode-matched";
->   `axis_kind = transport` says it exactly.
-> - **Only a `periodic` axis is tileable / k-sampleable.** `isolated` derives
->   `pbc = False`; `transport` is Γ-only. So `axis_kind` is what *gates*
->   whether a k-grid dimension may exceed 1 — but the dimension value itself is
->   a `SiestaConfig` parameter (see the k-grid note at the top).
+>   `axis_kind = transport` says it exactly. *(Relaxing a junction is an
+>   ordinary periodic run, and samples it like a periodic axis.)*
+> - **Only a `periodic` axis is tileable.** `isolated` derives `pbc = False`.
+>   Each axis's kind decides its role in a rung's k-point mesh
+>   ([`engines/siesta.md`](?doc=engines/siesta.md) § 6.1, `kmesh.py`) — the
+>   count itself is a calculation parameter (see the k-grid note at the top).
 
 **Which axis an image belongs to decides whether it is a defect.** The kind
 answers one question that recurs all over the stack: *is what sits in the
@@ -1267,10 +1271,12 @@ MolView Cell-page display + the Modify Cell editor; sidecar persistence
 of `cell`/`engine_offset`/`axis_kind`/`vacuum` (schema v10; v5 dropped `kgrid`);
 transport reading the cited structure's cell.
 
-**Not a periodicity concern (relocated):** the **k-grid** DFT sampling
-parameter and its `axis_kind`-gated clamp (dims = 1 unless the axis is
-`periodic`) live with `SiestaConfig` — see
-[`engines/siesta.md`](?doc=engines/siesta.md) § 6, which owns the full k-grid
-story (the Monkhorst-Pack mesh and its emission from `cfg.kgrid`). The
+**Not a periodicity concern (relocated):** the **k-point mesh** — the
+sampling parameters and how each axis's kind decides its role on a rung —
+lives in [`engines/siesta.md`](?doc=engines/siesta.md) § 6.1 (`kmesh.py`), which
+owns the full k story: the roles, the one writer, the checks and their
+severities. *(This said an `axis_kind`-gated clamp held every non-periodic axis
+at 1; no clamp was ever built, and the ruling of 2026-08-20 made `k > 1` on an
+isolated axis a warning.)* The
 legacy deep-dive (reciprocal MP grid, the Born–von Kármán supercell view) is
 archived verbatim at `archive/old_docs/protocols/structure-periodicity.md`.

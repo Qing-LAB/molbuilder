@@ -40,9 +40,11 @@ if TYPE_CHECKING:                                    # pragma: no cover
 #:
 #: The left side is :class:`~molbuilder.parse.fdf.FdfParams`, which
 #: reads an `.fdf`; the right is :class:`SiestaConfig`, which is the
-#: catalogue's vocabulary. SIX pairs here and the k-grid below them, which
-#: is the seventh row tagged ``citation = ["transport"]`` and is separate
-#: because it is the one value not copied verbatim (:func:`_apply_kgrid`).
+#: catalogue's vocabulary. The pairs here, and the k-point mesh below them
+#: -- ``kgrid`` and its offset ``kgrid_displacement``, rows tagged
+#: ``citation = ["transport"]`` too -- which is separate because it is the
+#: one value not copied verbatim: the transport axis is laid on by the rule
+#: (:func:`_apply_kgrid`).
 #: Keeping the mapping beside the reader is what stops it drifting from the
 #: declaration.
 _FROM_DECK = {
@@ -72,21 +74,24 @@ _FROM_DECK = {
 #: charge is read apart (a cited charge is refused, not defaulted).  A
 #: second, hand-written copy of this table stood below the import until
 #: 2026-09-28 and silently replaced it.
+from molbuilder.parse.contract import K_MESH_RECORD_KEYS
 from molbuilder.parse.contract import RECORD_TO_SIESTA_FIELD as _RECORD
 from molbuilder.parse.contract import STATE_RECORD_KEYS
 
 _FROM_RECORD = {k: v for k, v in _RECORD.items() if k != "net_charge"}
 
 
-def _apply_kgrid(kw: dict, kgrid) -> None:
-    """The transverse pair carries over; the transport axis is 1.
+def _apply_kgrid(kw: dict, kgrid, shifts=None) -> None:
+    """The cited run's k-point mesh, as the transport calculation takes it:
+    the transverse pair and its offset carry over, and the transport axis is
+    laid on by the rule -- one point, no offset -- through the k-point mesh's
+    own door (``kmesh.with_fixed``; `engines/siesta.md` § 6.1).
 
-    ONE rule, both sources.  The cited run was a closed periodic calculation
-    and sampled all three axes; a transport calculation does not sample the
-    transport axis at all, because that axis is the open boundary.  Forced
-    here, where the value is born, rather than corrected downstream by each
-    consumer -- and shared between the deck and the record paths so they
-    cannot come to force it differently.
+    ONE rule, both sources (a cited deck, a recorded contract).  The cited
+    run was a closed periodic calculation and sampled all three axes; a
+    transport calculation does not sample the transport axis at all.  Laid on
+    here, where the value is born, so the template states what every rung
+    writes rather than a component the form would show refused.
 
     The transmission grid starts at the same transverse pair: tbtrans would
     inherit the SCF's grid on its own if the deck said nothing
@@ -95,13 +100,28 @@ def _apply_kgrid(kw: dict, kgrid) -> None:
     scientific fact.  The grid is KNOWN at this moment, so it is written
     down.  A starting point, not an answer: a grid converged for a total
     energy is routinely too coarse for a transmission.
+
+    The OFFSET is carried since 2026-09-30 (plan § 5w K17's ruling): every
+    rung writes it, and TranSIESTA stops on a lead whose offset differs from
+    the device's.  A record written before then states none, and the item
+    stays unanswered -- the documented default fills it at prep.
     """
+    from ..kmesh import with_fixed
     try:
-        kx, ky = int(kgrid[0]), int(kgrid[1])
-    except (TypeError, ValueError, IndexError):
+        counts = tuple(int(v) for v in kgrid)
+    except (TypeError, ValueError):
         return
-    kw["kgrid"] = (kx, ky, 1)
-    kw["tbt_k_grid"] = (kx, ky, 1)
+    if len(counts) != 3:
+        return
+    kw["kgrid"] = with_fixed("kgrid", counts, "transport")
+    kw["tbt_k_grid"] = with_fixed("tbt_k_grid", counts, "transport")
+    try:
+        offset = tuple(float(v) for v in shifts) if shifts else None
+    except (TypeError, ValueError):
+        offset = None
+    if offset is not None and len(offset) == 3:
+        kw["kgrid_displacement"] = with_fixed("kgrid_displacement", offset,
+                                              "transport")
 
 
 @dataclass(frozen=True)
@@ -165,7 +185,7 @@ def citation_answers(cite_dir) -> CitationAnswers:
             v = block.get(src)
             if v is not None:
                 kw[dst] = v
-        _apply_kgrid(kw, block.get("k_mesh_transverse"))
+        _apply_kgrid(kw, *(block.get(k) for k in K_MESH_RECORD_KEYS))
         source = "record" if recorded else "none"
         source_name = str((recorded or {}).get("source") or "")
         charge = int(block.get("net_charge") or 0)
@@ -175,7 +195,8 @@ def citation_answers(cite_dir) -> CitationAnswers:
             if v is not None:
                 kw[dst] = v
         if getattr(p, "kgrid", None):
-            _apply_kgrid(kw, p.kgrid)      # the one rule, both sources
+            _apply_kgrid(kw, p.kgrid,      # the one rule, both sources
+                         getattr(p, "kgrid_displacement", None))
         source, source_name = "deck", cited.deck.name
         charge = int(p.net_charge)
     # A FIXED COUNT A TRANSPORT RUNG CANNOT HOLD is not defaulted

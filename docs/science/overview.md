@@ -143,13 +143,26 @@ states the *why* so the thresholds don't drift silently.
 | cell volume / atom-bounding-volume < 3, on a box that is vacuum on all three axes | warn | cell suspiciously tight. Not asked of a crystal, a lead or a junction, which fill their cells by construction; a slab's or a wire's vacuum is measured per axis by the image-distance row below ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2) |
 | atom-to-nearest-image distance < 6 Å | warn | atoms interact with their own periodic images; suggest a larger vacuum box (`geometry.py`) |
 | charged supercell (Makov-Payne) | warn | image-charge bias padding alone doesn't remove |
-| net dipole > 1 D (debye, the dipole-moment unit), Γ-only vacuum (all `kgrid == 1`) | warn | image–image dipole (~1/L³); the fix is a **larger vacuum box** — *not* a dipole correction (SIESTA's `SlabDipoleCorrection` is for a 2-D slab, not a 3-D molecule). Estimate from `chemistry.estimate_dipole_moment_debye` (`chemistry.py:1614`), ±50 % |
+| net dipole > 1 D (debye, the dipole-moment unit), Γ-only vacuum (every count of the deck's k-point mesh 1) | warn | image–image dipole (~1/L³); the fix is a **larger vacuum box** — *not* a dipole correction (SIESTA's `SlabDipoleCorrection` is for a 2-D slab, not a 3-D molecule). Estimate from `chemistry.estimate_dipole_moment_debye` (`chemistry.py:1614`), ±50 % |
 
-### k-point sampling (`siesta.py`, `cfg.kgrid`)
+### k-point sampling (`kmesh.check`, on every mesh a deck writes)
+The rules and their severities are [`engines/siesta.md`](?doc=engines/siesta.md)
+§ 6.1's, on the mesh each rung writes — `kgrid`, a transmission's `tbt_k_grid`,
+a lead's `electrode_kz`:
+
 | Check | Severity | Why |
 |---|---|---|
-| `kgrid > 1` on a vacuum axis | warn | k-points along a vacuum direction is wasted |
-| `kgrid == 1` on a periodic/spanning axis while another axis uses k > 1 | warn | likely under-converged sampling |
+| an isolated axis sampled more than once | warn | the structure does not repeat there, so the points sample images of vacuum — cost for nothing *(user, 2026-08-20: `k > 1` is the person's statement, never refused)* |
+| a sampled axis above 1 whose images sit ≥ 5 Å apart | warn (hint) | the gap is the real vacuum; images that far apart are usually meant not to interact |
+| an offset on an axis sampled once | warn | it moves that point off Γ to the zone boundary |
+| a transport calculation's third k component other than 1 (`kgrid`, `tbt_k_grid`), or its offset other than 0 | **error** | that axis is the OPEN boundary on the seed, the device and the transmission, and a lead samples it by `electrode_kz` — no rung reads the component (`kmesh.fixed`, every door) |
+| a count at or below 0; `electrode_kz` at or below 1 | **error** | the items' own limits (`above`, `engines/template.md` § 5.3) — a lead is periodic bulk along transport, and one point there gives a wrong lead Hamiltonian |
+| `electrode_kz` below 20 | warn | its recommended range — a floor, not a convergence proof: only a kz sweep shows the lead's Fermi level has settled |
+
+*(`k = 1` on a periodic axis is checked not at all — the "under-converged"
+warning was retired 2026-08-20. The transport axis's three rows below
+(`kgrid[2]`, `electrode_kz`, `tbt_k_grid`) stood in the transport kind's
+validator until 2026-09-30, beside a warning about the same axis here.)*
 
 ### Spin & charge — the electronic state's one family (`validation/chemistry.py::check_electronic_state`, every engine and kind)
 
@@ -185,30 +198,31 @@ science; this is where they sit in the pass.)*
 
 Keyed on `task.calculation`, not on a config class — every rung resolves a
 `SiestaConfig`, so a rule keyed on `TransportConfig` would fire for none of
-them. **The transport axis is the recurring subject**, and it is three
-different questions in three places (`transport.md` § 2a.13).
+them. **The transport axis's k-point sampling is not here**: it is the
+k-point mesh's, above, where the open axis, a lead's own count and the
+transmission's grid are one rule each.
 
 | Check | Severity | Why |
 |---|---|---|
-| `kgrid[2] != 1` | **error** | the device's transport axis is the OPEN boundary, handled by the Green's function, not Brillouin-zone sampled; kz > 1 imposes a fake Bloch periodicity along the wire and the renderer writes 1 anyway — a control that appears to act and does not |
-| `electrode_kz == 1` | **error** | the LEAD is the same axis inverted: a genuinely periodic bulk crystal with a large BZ along z. kz = 1 gives a wrong lead Hamiltonian and the device attaches a self-energy built from it |
-| `electrode_kz < 20` | warn | a floor, not a convergence proof — only a kz sweep shows the lead's Fermi level has settled (§ 4.2) |
 | `cell.transport_vacuum`: the room at the transport boundary above 1.5 of the lead's layer spacings | **error** | a junction's leads continue into the periodic image, so the room there is one layer spacing; more is a SEVERED lead, not padding — measured from the lead since M5 step 2 (it was a warning above a fixed 3 Å, `engines/transport.md` § 6.1c). **The reverse of what `cell.vacuum_thin` tells an isolated molecule**, which is why it is keyed on the kind: the two must never both fire |
 | `cell.transverse_vacuum`: a lead that does not reach across a transverse axis declared periodic — its nearest atom there above 1.5 of its own bond, each lead on its own | **error** | periodic says the crystal continues across the boundary; a wire or chain lead is declared isolated there instead, and its vacuum is then allowed (§ 6.1c) |
 | `net_charge != 0` | **error** | deferred by ruling (§ 2a.7) — an open boundary exchanges charge with the reservoirs, so a fixed excess is not the same quantity a closed calculation means by it |
 | `negf_eq_pole_ev` giving < 20 poles, 0 among them | **error** | TranSIESTA derives the pole COUNT from the energy, `int(E / (π·kT))`, and `die`s below 20 — so the refusal is a RELATION with the run's own temperature, not a fixed bound; an energy at or below 0 leaves TranSIESTA its 8-pole default, refused the same way |
 | `electronic_temperature < 10 K` on a transport calculation | **error** | TranSIESTA stops below 10 K before it counts a pole (`m_ts_options.F90`) |
-| `tbt_k_grid` transverse < 1, or transport component ≠ 1 | **error** / warn | the transmission integrates over the transverse zone; the transport component is the open axis again |
 
 **I9 and I12 (`electrode_kz`, `transport_vacuum`) were re-homed here on
 2026-09-17** from a standalone CLI verb that compared two finished decks. Under
 the composite both decks derive from one citation, so they belong in the pass
-every prep runs rather than in a command somebody remembers.
+every prep runs rather than in a command somebody remembers. *(I9 moved again on
+2026-09-30, to the lead item's own limit and range, where every door reads it.)*
 
 ### Config field ranges (`validation/metadata.py`)
 Every dataclass `Config` field carries `range` / `validate=` metadata; the generic
 metadata pass validates each field against it (e.g. `mesh_cutoff` below the
-150 Ry production floor → warn, `siesta.py:133`). **Adding a field with metadata
+150 Ry production floor → warn, `siesta.py:133`). A range is a recommendation,
+warned and never refused; a hard limit is the catalogue's `above`, refused on
+every door through `template.why_not` — and a value refused there draws that
+refusal alone, its range warning standing aside (`engines/template.md` § 5.3). **Adding a field with metadata
 auto-adds its check** — no separate validator code:
 
 ```python

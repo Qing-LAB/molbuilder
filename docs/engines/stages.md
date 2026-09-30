@@ -1222,11 +1222,14 @@ In order, and all of it before anything is written:
 | no `overrides` key names a stage field (§ 2) | refuse, naming the field |
 | no `overrides` key names an item bound to the whole calculation (`shared` for the kind — the electronic state for every kind, ES1; the calculation's label, species order and pseudopotentials for every SIESTA kind) | refuse at resolve, naming the item and why it is the calculation's |
 | no `overrides` key names an item the rung fixes (`role` for the kind — SIESTA's per-step forces and coordinates on every kind; a transport rung's solver and bias) | refuse at resolve, naming the item and why it is not a choice |
-| every override is a choice the calculation's kind offers (`offered`, [`template.md`](?doc=engines/template.md) § 6.3a — a vibration's relaxation a relaxer) | refuse, naming the stage, the value, why the kind does not take it and what it does |
 | every stage `name` matches `[A-Za-z0-9_]+` | refuse, naming the stage and the rule |
 | **stage names are unique**, compared case-insensitively | refuse, naming the repeat |
 | every value is one its field's declared type can hold | refuse, naming the field, the value and what the field declares |
-| every value is inside the schema's bounds | refuse, naming the field and both bounds |
+| every value may stand for its item on this kind — not a component the kind fixes, a choice the kind offers (`offered`, § 6.3a — a vibration's relaxation a relaxer), above its hard limit — one door, `template.why_not` ([`template.md`](?doc=engines/template.md) § 5.3) | refuse, naming the stage, the value and the one reason, the first that holds |
+| every value is inside its item's recommended `range` | **warn**, naming the field and both bounds — a recommendation, the same severity on every surface, and silent for a value refused above ([`template.md`](?doc=engines/template.md) § 5.3) |
+| an `execution` block's values and a bench's points may stand for their items too | refuse, as a stage's value — they become pins and sweep points, and prep would otherwise refuse them first, on the machine that runs it |
+| a transport description's bias list: numbers, starting at 0, no two points in one folder (`bias_token`) | refuse (the codec) — each point is one device run in its own `v<V>/` folder ([`transport.md`](?doc=engines/transport.md) § 2a.10) |
+| each bias point inside `bias_voltage_v`'s recommended range | **warn**, as any value |
 
 **Two things are deliberately not checked here.**
 

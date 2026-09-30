@@ -1166,8 +1166,7 @@ generation time:
 #   form-config-hash     sha256:7c4d…            # optional
 #   resolved-defaults:
 #     mpi_np            auto -> 4 (gpu+mps policy)
-#     BlockSize         auto -> 256 (n_orbitals_est 2120 / mpi_np, capped pow2)
-#     kgrid             1x1x1 (auto-from-cell-vacuum)
+#     BlockSize         auto
 # === molbuilder provenance END ===
 ```
 

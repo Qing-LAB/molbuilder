@@ -75,8 +75,8 @@ from .chemistry import (_check_metal_basis_adequacy,
 from .geometry import (_check_polymer_orientation,
                        _min_image_distance,
                        validate_geometry)
-from .metadata import (_check_fixed_on_every_rung, _check_offered,
-                       _validate_config_metadata)
+from .metadata import (_check_fixed_on_every_rung, _check_values,
+                       _validate_config_metadata, not_carried)
 from .pyscf import _validate_pyscf
 from .sidecar import _check_frozen_atoms_consumed
 from .siesta import (_check_siesta_charged_makov_payne_notice,
@@ -149,7 +149,8 @@ def validate(struct: Structure, cfg, *,
              dest_dir: "Optional[object]" = None,
              prior: "Optional[object]" = None,
              calculation: str = "optimization",
-             design: "Optional[Structure]" = None) -> List[Issue]:
+             design: "Optional[Structure]" = None,
+             k_meshes=None) -> List[Issue]:
     """Run every applicable validation check and return the findings.
 
     Parameters
@@ -205,6 +206,12 @@ def validate(struct: Structure, cfg, *,
         placement is a rigid shift the record never saw (found by review,
         2026-09-25: on the road every SIESTA vibration pair's record stopped
         vouching).  None means ``struct`` is the file.
+    k_meshes
+        The k-point meshes the deck writes (`kmesh.mesh_for`,
+        `engines/siesta.md` § 6.1), when its spec built them: a transport
+        rung's depend on the rung, which the configuration alone cannot say.
+        None derives the one this configuration writes, through the same
+        door.
 
     The returned list is in deterministic order: generic geometry
     checks first, generic config-field checks next, then engine-
@@ -257,13 +264,20 @@ def validate(struct: Structure, cfg, *,
         issues += _check_cell(_resolve_cell(struct, box=cell))
 
     issues += validate_geometry(struct, cell)
-    issues += _validate_config_metadata(cfg)
+    # WHAT MAY STAND FOR EACH ITEM ON THIS KIND, asked first so a refused
+    # value's range warning can stand aside (`engines/template.md` § 5.3):
+    # a component the kind fixes, a choice it does not offer -- a relaxer a
+    # vibration cannot relax with -- a value past a hard limit -- a
+    # displacement SIESTA divides by.  Reported after the metadata's own, in
+    # the order this function has always emitted.
+    refusals = _check_values(cfg, calculation)
+    issues += _validate_config_metadata(
+        cfg, refused={i.where.split(".", 1)[1] for i in refusals},
+        foreign=not_carried(cfg, calculation))
     # WHAT EVERY RUNG FIXES ALIKE (`engines/template.md` § 6.4): a config
     # that skipped `resolve` holds whatever its caller put there.
     issues += _check_fixed_on_every_rung(cfg, calculation)
-    # ...AND WHAT THE KIND OFFERS (`engines/template.md` § 6.3a): a relaxer
-    # a vibration cannot relax with, a solver an optimization cannot run.
-    issues += _check_offered(cfg, calculation)
+    issues += refusals
     # THE ELECTRONIC STATE, once, for every engine and every kind
     # (`science/chemistry-correctness.md` § 2a): the state the deck will be
     # written from, judged by one family of findings.  It was asked by each
@@ -285,6 +299,17 @@ def validate(struct: Structure, cfg, *,
         engine_kw["prior"] = prior
     if design is not None:
         engine_kw["design"] = design
+    # THE K-POINT MESH(ES) THE DECK WRITES (`engines/siesta.md` § 6.1), when
+    # the spec built them -- a transport rung's are its rung's, which the
+    # configuration alone cannot say.  Absent, the SIESTA validator derives
+    # the one this configuration writes, through the same door.
+    if k_meshes is not None:
+        engine_kw["k_meshes"] = tuple(k_meshes)
+    # ...AND WHAT THE ONE PER-VALUE DOOR REFUSED, so a check on a value
+    # built from a refused one stands aside: a value refused draws that
+    # refusal alone (`engines/template.md` § 5.3).
+    engine_kw["refused"] = frozenset(i.where.split(".", 1)[1]
+                                     for i in refusals)
     # The KIND rides along so an engine validator can defer a family the
     # kind's own science owns (the double-fire dedup, ruled 2026-08-21:
     # one fact, one finding -- on a vibration deck the grid and frozen-atom
@@ -392,12 +417,6 @@ def _validate_vibration_kind(struct: Structure, cfg, cell, *,
         f"(science/validation.md F4)")
 
 
-#: Below this the lead's transport sampling is called thin (I9).  It is the
-#: floor `transport/preflight.py` used before that verb was retired, kept so
-#: re-homing changed no verdict -- and it is a FLOOR, never a convergence
-#: proof: `engines/transport.md` § 4.2 asks for a kz sweep.
-_ELECTRODE_KZ_THIN = 20
-
 def _validate_transport_kind(struct: Structure, cfg, cell, *,
                              prior=None, **_) -> List[Issue]:
     """The transport KIND's science — keyed on ``task.calculation``, so it
@@ -408,18 +427,12 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
     onto the framework's seam (the seed, 2026-09-15). A rule that only runs
     for one of two config classes is not a gate; this one runs for the kind.
 
-    **The transport axis is not a choice, and until now it was not a check
-    either.** `engines/transport.md` § 2a.13 classifies the k-grid's three
-    components into three different classes: the transverse pair is shared by
-    the leads and the device, the lead's transport axis is each electrode's
-    own (``electrode_kz``), and the device's transport axis is **fixed at 1**
-    because that axis is the open boundary and is not Brillouin-zone sampled
-    at all.
-
-    A person could set the third component in the template and the renderer
-    would quietly write 1 anyway — a control that appears to do something and
-    does not, which is the defect this whole programme keeps finding. Refused
-    here, naming the reason, rather than silently corrected downstream.
+    Its science: the bias advisory, the pole energy against the temperature,
+    the vacuum where the crystal continues (I12).  **The k-point sampling is
+    not here** -- the transport axis's one point, a lead's own count, the
+    transmission's grid are the k-point mesh's (`kmesh.py`,
+    `engines/siesta.md` § 6.1), refused on every door through
+    ``template.why_not`` rather than on this one alone.
     """
     out: List[Issue] = []
     # THE BIAS ADVISORY.  It had two homes from 2026-09-16 to 2026-09-17:
@@ -500,96 +513,14 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
                     f"{need:.2f} eV.  The default is 10 eV "
                     f"(engines/transport.md 6.1c).",
                     where="config.negf_eq_pole_ev"))
-    # THE TRANSMISSION GRID IS A GRID, not a mode.  It carried `0 0 0` as a
-    # sentinel for "inherit the SCF's" until 2026-09-16 -- a triple of zeros
-    # sitting in a field labelled k-grid, where every value is a scientific
-    # fact and that is not one of them.  Worse, the range admitted a zero per
-    # AXIS, and the emitter gated on `any(...)`, so `0 4 1` and `4 4 0` were
-    # written into the deck verbatim, asking tbtrans for zero k-points along
-    # an axis.
-    #
-    # `jobset init` now fills it from the cited run's own transverse pair and
-    # the deck always states it, so the only thing left to refuse is the
-    # transport component: that axis is the open boundary, handled by the
-    # Green's function rather than by a Brillouin-zone sum, which is the same
-    # rule the SCF grid's kz obeys below.
-    tbtk = getattr(cfg, "tbt_k_grid", None)
-    if tbtk is not None and len(tuple(tbtk)) == 3:
-        kx, ky, kz = (int(v) for v in tbtk)
-        if kx < 1 or ky < 1:
-            out.append(Issue(
-                "error",
-                f"the tbtrans k-grid is {(kx, ky, kz)}, which asks for zero "
-                f"or fewer k-points along a transverse axis.  Both "
-                f"transverse counts are at least 1; 1 1 1 samples the zone "
-                f"at Gamma only, which is right for a finite molecule "
-                f"between leads and too coarse for a periodic electrode.",
-                where="config.tbt_k_grid"))
-        elif kz != 1:
-            out.append(Issue(
-                "error",
-                f"the tbtrans k-grid is {(kx, ky, kz)}, but the third "
-                f"component is the TRANSPORT direction and must be 1: that "
-                f"axis is the open boundary, handled by the Green's function "
-                f"rather than by a Brillouin-zone sum.  The transverse pair "
-                f"({kx}, {ky}) is yours to converge.",
-                where="config.tbt_k_grid"))
-    kgrid = getattr(cfg, "kgrid", None)
-    if kgrid is not None and len(tuple(kgrid)) == 3 and int(kgrid[2]) != 1:
-        out.append(Issue(
-            "error",
-            f"kgrid is {tuple(kgrid)}, but a transport calculation does not "
-            f"sample the transport axis at all: that axis is the OPEN "
-            f"BOUNDARY, handled by the Green's function rather than by a "
-            f"Brillouin-zone sum, so its k-point count must be 1.  The "
-            f"transverse pair ({int(kgrid[0])}, {int(kgrid[1])}) is yours "
-            f"and is shared by the leads and the device.  The LEAD's "
-            f"transport-axis sampling is a separate parameter, "
-            f"`electrode_kz` -- it is a genuinely periodic bulk calculation "
-            f"there, and that density is what resolves its Fermi level "
-            f"(engines/transport.md 2a.13).",
-            where="config.kgrid"))
-
-    # ---- I9: the LEAD's transport sampling (`engines/transport.md` § 5) ----
-    #
-    # RE-HOMED 2026-09-17 from `transport/preflight.py`, which compared two
-    # finished decks.  Under the composite both decks resolve from one
-    # template, so eleven of § 5's thirteen invariants hold by construction
-    # and this is one of the two that did not -- it was held ONLY by a verb
-    # that is going (`plan.md` § 5p.3p.7).
-    #
-    # The three k components are three different classes (§ 2a.13): the
-    # transverse pair is shared, the DEVICE's transport axis is fixed at 1
-    # above because it is the open boundary, and the LEAD's is its own field.
-    # A lead is a genuinely periodic bulk crystal, and a thin lead cell has a
-    # large Brillouin zone along transport -- so it needs DENSE sampling, the
-    # opposite of the device.
-    ekz = getattr(cfg, "electrode_kz", None)
-    if ekz is not None:
-        try:
-            ekz = int(ekz)
-        except (TypeError, ValueError):
-            ekz = None
-    if ekz is not None and ekz <= 1:
-        out.append(Issue(
-            "error",
-            f"electrode_kz is {ekz}, but an electrode rung is a PERIODIC BULK "
-            f"calculation: its transport axis IS Brillouin-zone sampled, and "
-            f"densely.  kz = 1 gives a wrong lead Hamiltonian, and the device "
-            f"then attaches a self-energy built from it -- a wrong "
-            f"transmission with no runtime error.  This is the device's rule "
-            f"inverted, not repeated (engines/transport.md 2a.13): the device "
-            f"axis is open and fixed at 1; the lead axis is periodic and "
-            f"wants many.",
-            where="config.electrode_kz"))
-    elif ekz is not None and ekz < _ELECTRODE_KZ_THIN:
-        out.append(Issue(
-            "warn",
-            f"electrode_kz is {ekz}, which is low for a bulk lead -- the "
-            f"shipped default is 40 and a thin lead cell wants more.  This is "
-            f"a FLOOR, not a convergence proof: only a kz sweep shows the "
-            f"lead's Fermi level has settled (engines/transport.md 4.2).",
-            where="config.electrode_kz"))
+    # THE K-POINT SAMPLING IS NOT HERE (2026-09-30).  Three blocks stood
+    # here -- the transmission grid's axes, the transport axis of `kgrid`,
+    # the lead's `electrode_kz` -- beside a warning about the same transport
+    # axis in the SIESTA validator: one fact, two severities.  They are the
+    # k-point mesh's now (`kmesh.py`, `engines/siesta.md` § 6.1): the third
+    # component of `kgrid` and `tbt_k_grid` is one a transport calculation
+    # fixes, and a lead's count is refused at 1 by its own limit and warned
+    # below 20 by its range -- every door, through `template.why_not`.
 
     # ---- I12: no vacuum where the crystal continues (§ 5, § 6.1c) ----
     #

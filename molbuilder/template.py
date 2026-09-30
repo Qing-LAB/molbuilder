@@ -279,6 +279,13 @@ class Item:
     #: default -- a frequency's relaxation is tighter than an optimization's.
     #: Pairs rather than a mapping so the frozen item stays hashable.
     recommended: Tuple[Tuple[str, Any], ...] = ()
+    #: A HARD LIMIT, ``(bound, why)``: the value must be greater than
+    #: ``bound``, and ``why`` is the reason every refusal gives (§ 5.3,
+    #: 2026-09-30) -- ``(0, "SIESTA divides each force difference by it
+    #: (ofc.f90)")``.  Empty means no limit; ``range`` is a recommendation and
+    #: never one.  Every door asks :func:`why_not`, so the refusal is one
+    #: message wherever it is met; a triple is held per component.
+    above: Tuple[Any, ...] = ()
     #: THE CHOICES A KIND MAY TAKE (§ 6.3a, 2026-09-30), as ``(key, members)``
     #: pairs -- ``recommended``'s sibling: that says where a kind's value
     #: starts, this which values the kind can take at all.  A key is a kind
@@ -894,7 +901,7 @@ _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "ancho
                    "manual", "expands", "type",
                    "choices", "value", "default", "recommended", "offered", "optional", "allocation",
                    "citation", "shared", "role", "role_values", "stages",
-                   "unit", "range", "tier", "pattern",
+                   "unit", "range", "above", "tier", "pattern",
                    "group", "label", "null_label", "read_by", "help")
 
 
@@ -927,6 +934,8 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["unit"] = it.unit
     if it.range:
         out["range"] = list(it.range)
+    if it.above:
+        out["above"] = {"value": it.above[0], "why": it.above[1]}
     if it.group:
         out["group"] = it.group
     if it.category:
@@ -1429,6 +1438,46 @@ def _offered_from(name: str, raw, type_: str, choices,
     return tuple(out)
 
 
+def _above_from(name: str, body: Mapping, type_: str) -> Tuple[Any, ...]:
+    """An item's hard limit (§ 5.3), ``(bound, why)``: a number the value
+    must exceed and the sentence every refusal gives, on a numeric item --
+    and the item's own DEFAULT and each kind's RECOMMENDED value obey it,
+    since a limit its declaration breaks is a catalogue that contradicts
+    itself.  Its VALUE is not held here: in a
+    calculation's template that is a person's answer, and a value past the
+    limit is refused where every value is, by the one per-value door
+    (:func:`why_not`) with its one message -- the parser refusing it too
+    gave one fact two messages."""
+    raw = body.get("above")
+    if raw is None:
+        return ()
+    bound = raw.get("value") if isinstance(raw, Mapping) else None
+    why = raw.get("why") if isinstance(raw, Mapping) else None
+    if (not isinstance(raw, Mapping) or set(raw) != {"value", "why"}
+            or isinstance(bound, bool) or not isinstance(bound, (int, float))
+            or not isinstance(why, str) or not why.strip()):
+        _refuse("`above` is a hard limit: a number the value must exceed and "
+                "the reason, e.g. above = { value = 0, why = \"SIESTA divides "
+                "by it\" }", where=name)
+    if type_ not in ("int", "float", "int3", "float3", "pow2"):
+        _refuse(f"`above` bounds a number, and this item is {type_!r}",
+                where=name)
+    # ...AND EVERY VALUE THE CATALOGUE STARTS A CALCULATION ON: the default,
+    # and each kind's `recommended` -- a kind is never started on a value it
+    # refuses (§ 6.3a).
+    recommended = body.get("recommended")
+    starts = [("default", body.get("default"))] + [
+        (f"recommended value for {k}", v)
+        for k, v in (recommended.items() if isinstance(recommended, Mapping)
+                     else ())]
+    for what, v in starts:
+        parts = v if isinstance(v, (list, tuple)) else (v,)
+        if v is not None and any(float(x) <= bound for x in parts):
+            _refuse(f"its {what} {v!r} breaks its own limit -- it must be "
+                    f"greater than {bound}: {why}", where=name)
+    return (bound, why.strip())
+
+
 def recommended_for(item: "Item", calculation: str) -> Any:
     """The value ``item`` recommends for ``calculation``, or ``None``."""
     for kind, v in item.recommended:
@@ -1491,6 +1540,35 @@ def is_member(value, choices) -> bool:
     would pass nowhere it should.  So the type is part of the question.
     """
     return any(type(value) is type(c) and value == c for c in choices)
+
+
+def as_declared(type_: str, v: Any) -> Any:
+    """``v`` in its declared type's canonical form, LOSSLESSLY -- the one
+    place a described value meets its type (§ 5).  JSON has one number and
+    one sequence: an int where a float is declared widens (``150`` ->
+    ``150.0``), a WHOLE float where a count is declared narrows (``8.0`` ->
+    ``8``, never ``8.5``), and a list where a triple is declared becomes a
+    tuple, each component the same way.  Nothing lossy is done: ``100.7``
+    for a count stays ``100.7``, and a string stays a string, for the type
+    check to refuse by name (`validation/task.py`).  `resolve` lays a
+    description's values on through this, and the description's own check
+    asks the per-value door (:func:`why_not`) about the value as `resolve`
+    will see it -- so ``0.0`` for a count is the count 0 at every door."""
+    def one(x, want):
+        if isinstance(x, bool):
+            return x
+        if want == "float" and isinstance(x, int):
+            return float(x)
+        if want == "int" and isinstance(x, float) and x.is_integer():
+            return int(x)
+        return x
+    if type_ == "float":
+        return one(v, "float")
+    if type_ in ("int", "pow2"):
+        return one(v, "int")
+    if type_ in ("int3", "float3") and isinstance(v, (list, tuple)):
+        return tuple(one(x, "int" if type_ == "int3" else "float") for x in v)
+    return v
 
 
 def _shape(v: Any, type_: str) -> Any:
@@ -1605,6 +1683,7 @@ def _item_from(name: str, body: Any) -> Item:
                                 keys=_calculation_kinds()),
         offered=_offered_from(name, body.get("offered"), type_, choices,
                               tuple(body.get("engines", ()) or ())),
+        above=_above_from(name, body, type_),
         refs=tuple(body.get("refs", ()) or ()),
         allocation=bool(body.get("allocation", False)),
         citation=tuple(body.get("citation", ()) or ()),
@@ -1788,10 +1867,64 @@ def fixed_on_every_rung(engine: str, kind: str) -> Dict[str, Any]:
             if kind in it.role and not it.stages and not it.role_values}
 
 
+def why_not(item: "Item", value: Any, *, engine: str,
+            kind: str) -> Optional[str]:
+    """Why ``value`` cannot stand for ``item`` on a ``kind`` calculation --
+    the ONE clause every door a value passes gives (§ 5.3), or ``None``.
+
+    Asked by the description's own check, ``resolve`` and the settings gate,
+    so one value draws one refusal: the first that holds of
+
+    1. a component the kind fixes, holding another value
+       (``kmesh.fixed`` -- a transport calculation's third k component,
+       which no rung reads; `engines/siesta.md` § 6.1);
+    2. a choice the kind does not offer (§ 6.3a) -- for a member of the
+       item's ``choices``: a value that is not one is the declared type's
+       refusal, and the electronic state's items are that family's, which
+       judges their RESOLVED values;
+    3. a value at or below its limit (``above``), each component of a
+       triple -- the fixed components left to (1).
+
+    The clause reads after *"<who> sets <name> = <value>"*: each door names
+    who.  A value that does not hold the item's declared type -- ``"0"``
+    for a number, ``0.0`` for a count -- is the type check's business, here
+    as everywhere (``_TYPE_CHECKS``, § 5): it draws that refusal alone.
+    """
+    if value is None:
+        return None
+    holds = _TYPE_CHECKS.get(item.type)
+    if holds is not None and not holds(value):
+        return None
+    triple = isinstance(value, (list, tuple))
+    from .kmesh import AXES, fixed
+    held = fixed(item.name, kind) if triple and len(value) == 3 else {}
+    for i, (want, why) in held.items():
+        if value[i] != want:
+            return (f", whose {AXES[i]} component {a_kind(kind)} fixes at "
+                    f"{want!r}: {why}")
+    if (item.offered and item.name not in STATE_ITEMS and item.choices
+            and is_member(value, item.choices)):
+        can = offered(item, engine, kind)
+        if not is_member(value, can):
+            return (f", which {a_kind(kind)} does not offer: "
+                    f"{why_not_offered(item.name, value, engine, kind)}.  It "
+                    f"offers {', '.join(map(str, can))}")
+    if item.above:
+        bound, why = item.above
+        parts = [v for i, v in enumerate(value if triple else (value,))
+                 if i not in held]
+        if any(v <= bound for v in parts):
+            return (f": {'each component' if triple else 'it'} must be "
+                    f"greater than {bound} -- {why}")
+    return None
+
+
 def a_kind(kind: str) -> str:
     """``kind`` with its article, as a refusal says it: *an optimization*,
-    *a vibration*."""
-    return f"{'an' if kind[:1] in 'aeiou' else 'a'} {kind}"
+    *a vibration*, *a transport calculation* -- the one kind whose name is
+    not a noun for the calculation."""
+    noun = "transport calculation" if kind == "transport" else kind
+    return f"{'an' if noun[:1] in 'aeiou' else 'a'} {noun}"
 
 
 def offered(item: "Item", engine: str, kind: str) -> Tuple[Any, ...]:
@@ -2169,4 +2302,4 @@ __all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES",
            "STATE_ITEMS", "shared_by_every_stage", "why_shared",
            "IDENTITY_ITEMS", "fixed_by_role", "role_answers",
            "fixed_on_every_rung", "why_role", "offered", "why_not_offered",
-           "a_kind"]
+           "a_kind", "as_declared", "why_not"]

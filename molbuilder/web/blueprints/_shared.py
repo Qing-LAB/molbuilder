@@ -816,7 +816,8 @@ def _field_to_schema(f: dataclasses.Field,
         # f"{id}-{labels[i]}".  We pass the labels through so the
         # k-grid UI's "kx / ky / kz" stays declaration-driven.
         out["kind"] = "int-triple"
-        out["labels"] = list(md.get("triple_labels", ("x", "y", "z")))
+        from molbuilder.kmesh import AXES
+        out["labels"] = list(md.get("triple_labels", AXES))
     elif origin in (list, tuple) and args and args[0] is float:
         # Variable-length List[float] -- Transport's bias_voltages_v.
         # No fixed-arity widget makes sense; render as text and let
@@ -1004,7 +1005,7 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
     by_category: Dict[str, List[Dict[str, Any]]] = {}
     for it in items:
         panel = it.category[0] if it.category else "procedure"
-        field = _item_to_field(it, id_prefix)
+        field = _item_to_field(it, id_prefix, calculation)
         # WHICH RUNGS OWN IT (template.md § 6.4's `stages`; empty = any):
         # the fact a rung's tab folds its cards by, and the stage table
         # disables cells by.
@@ -1052,8 +1053,11 @@ def engine_key_for(item) -> str:
     return getattr(item, "anchor", "") or ""
 
 
-def _item_to_field(item, id_prefix: str) -> Dict[str, Any]:
-    """One catalogue item as one form field (`form-schema.md` § 1.1)."""
+def _item_to_field(item, id_prefix: str,
+                   calculation: str = "optimization") -> Dict[str, Any]:
+    """One catalogue item as one form field (`form-schema.md` § 1.1), for a
+    ``calculation`` of that kind -- which components of a triple the kind
+    fixes is a fact about the kind (`engines/siesta.md` § 6.1)."""
     out: Dict[str, Any] = {
         "name":     item.name,
         "id":       f"{id_prefix}-{item.name.replace('_', '-')}",
@@ -1097,7 +1101,10 @@ def _item_to_field(item, id_prefix: str) -> Dict[str, Any]:
     if out["kind"] in ("int", "number"):
         out["step"] = "1" if item.type in ("int", "pow2") else "any"
     if out["kind"] in ("int-triple", "float-triple"):
-        out["labels"] = ["x", "y", "z"]
+        # THE K-POINT MESH'S AXIS NAMES -- the ones `fixed` below is keyed
+        # by, so a lock cannot miss its cell (`kmesh.AXES`).
+        from molbuilder.kmesh import AXES
+        out["labels"] = list(AXES)
         # A triple gets a step too (2026-08-15).  It was emitted only for the
         # SCALAR kinds, so the renderer had to pick one itself -- and a bound
         # or a step chosen in the renderer is a second place for the rule to
@@ -1105,6 +1112,16 @@ def _item_to_field(item, id_prefix: str) -> Dict[str, Any]:
         # apply PER COMPONENT for a triple: `kgrid` bounds each axis count,
         # not their product.
         out["step"] = "1" if item.type == "int3" else "any"
+        # THE COMPONENTS THIS KIND FIXES, drawn locked with their reason
+        # (`kmesh.fixed`, `engines/siesta.md` § 6.1): a transport
+        # calculation's third k component, which no rung reads.  The value
+        # still travels, so the template states it; every door refuses
+        # another one (`template.why_not`).
+        from molbuilder.kmesh import fixed
+        held = fixed(item.name, calculation)
+        if held:
+            out["fixed"] = {AXES[i]: {"value": v, "why": why}
+                            for i, (v, why) in held.items()}
     if item.optional:
         out["null_option"] = True
         out["null_label"] = item.null_label or "(auto)"

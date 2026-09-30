@@ -476,7 +476,8 @@ On `/spectrum-calculation` the page is a short vertical workflow:
    parameter of the deck (the one-choice `engine` form item retired
    2026-09-24). **The structure decides the default**: a structure that
    repeats or continues along an axis switches the strip to SIESTA and says
-   why, because PySCF's gate refuses a periodic structure; a click on the
+   why, because PySCF computes a repeating structure as an isolated cluster
+   — a note, not a refusal (`engines/vibration.md` § 3.3); a click on the
    strip beats the default. The chemistry card answers for both forms.
 4. **Send to Task setup.** The Send button runs the general hand-over
    ([`handover-procedure.md`](?doc=web/handover-procedure.md), via

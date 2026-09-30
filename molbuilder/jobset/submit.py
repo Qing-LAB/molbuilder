@@ -1478,7 +1478,8 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
     at start — they are all launched by this one command.
     """
     from ..identity import StageRef
-    from ..transport.stages import bias_points, bias_token
+    from ..task import bias_token
+    from ..transport.stages import bias_points
     from .materialize import latest_attempt, was_launched
 
     if mode == "ask":

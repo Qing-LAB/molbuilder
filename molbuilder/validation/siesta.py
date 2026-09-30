@@ -480,6 +480,7 @@ def _check_siesta_vacuum_adequacy(struct: Structure,
 def _validate_siesta(struct: Structure, cfg,
                      cell: Optional[np.ndarray],
                      *, dest_dir=None, calculation: str = "",
+                     k_meshes=None, refused=frozenset(),
                      **_) -> List[Issue]:
     """SIESTA-specific checks.
 
@@ -491,6 +492,11 @@ def _validate_siesta(struct: Structure, cfg,
     ``dest_dir`` (keyword-only) is passed through to the pseudo-
     coverage check so dest-relative ``cfg.psml_lib`` paths resolve
     correctly post-Save (see pseudos.resolve_psml_lib).
+
+    ``k_meshes`` are the k-point meshes the deck writes, when its spec built
+    them (`kmesh.mesh_for`); without them the one this configuration writes
+    is derived through the same door.  ``refused`` names the items the one
+    per-value door refused: a mesh built from one is not judged.
     """
     issues: List[Issue] = []
     # ONE FACT, ONE FINDING (science/validation.md § 7): the vibration kind
@@ -632,62 +638,23 @@ def _validate_siesta(struct: Structure, cfg,
             "config.dm_energy_tolerance",
         ))
 
+    # THE K-POINT MESH, judged as the deck writes it (`engines/siesta.md`
+    # § 6.1): the spec hands the gate the mesh(es) it built -- a transport
+    # rung's open or lead axis, a transmission's own grid -- and a caller
+    # that hands none gets the one this configuration writes on its own.
+    # ONE derivation, `kmesh.mesh_for`: this block re-derived the axes from
+    # `cfg.kgrid` until 2026-09-30 -- so on a transport rung it warned about
+    # the transport axis the kind's validator refused (one fact, two
+    # severities), and on a lead it judged the template's grid, not the
+    # forty points the lead writes.
+    from .. import kmesh as _kmesh
+    meshes = tuple(m for m in (k_meshes if k_meshes is not None else (
+        _kmesh.mesh_for(cfg, getattr(struct, "axis_kind", None),
+                        kind=calculation or "optimization"),)) if m is not None)
+    issues += _kmesh.check(meshes, struct, cell=cell, refused=refused)
+
     if cell is None:
         return issues
-
-    # k-grid vs the axes (user rule, 2026-08-20): ``k > 1`` is the USER'S
-    # EXPLICIT statement -- "sample a supercell along this axis" -- so that is
-    # the only place a consistency question exists.  ``k == 1`` states
-    # nothing (correct for an isolated axis, and a legitimate Gamma-only
-    # choice for a periodic one) and is validated NOT AT ALL.
-    #
-    # Where k > 1, two facts can contradict the statement:
-    #   * the axis is declared ``isolated`` / ``transport`` -- sampling a
-    #     direction the user said does not repeat (isolated) or must not be
-    #     given fake Bloch periodicity (transport);
-    #   * the axis is periodic on paper but its periodic images sit far
-    #     apart -- the GEOMETRIC gap (cell extent minus atom span) is the
-    #     real vacuum, whether or not the vacuum field was ever set.  A gap
-    #     >= 5 A usually means the images are meant to interact weakly or
-    #     not at all, so k > 1 earns a HINT, not a refusal: minor-image
-    #     interaction can be a deliberate setup, and the user knows which.
-    #
-    # (This replaces two earlier rules the 2026-08-20 decision retired: a
-    # span-ratio heuristic that judged intent geometrically even at k == 1,
-    # and an "under-converged" warning on k == 1 periodic axes -- both were
-    # validating an axis about which the user had stated nothing.)
-    VACUUM_HINT_A = 5.0
-    diag_lengths = [float(np.linalg.norm(cell[i])) for i in range(3)]
-    if struct.n_atoms > 0:
-        atom_extent = struct.positions.max(axis=0) - struct.positions.min(axis=0)
-    else:
-        atom_extent = np.zeros(3)
-    axis_kind = getattr(struct, "axis_kind", None)
-    for axis, (k, length) in enumerate(zip(cfg.kgrid, diag_lengths)):
-        if k == 1:
-            continue                       # nothing stated, nothing checked
-        kind = axis_kind[axis] if (axis_kind and axis < len(axis_kind)) else None
-        if kind in ("isolated", "transport"):
-            issues.append(Issue(
-                "warn",
-                f"kgrid[{axis}] = {k} on a {kind} axis; a {kind} axis is "
-                f"not Brillouin-zone sampled (k must be 1) -- k>1 adds "
-                f"cost" + ("" if kind == "isolated"
-                          else " and imposes a fake periodicity"),
-                "config.kgrid",
-            ))
-            continue
-        gap = max(0.0, length - float(atom_extent[axis]))
-        if gap >= VACUUM_HINT_A:
-            issues.append(Issue(
-                "warn",
-                f"kgrid[{axis}] = {k} samples a supercell along an axis "
-                f"whose periodic images sit ~{gap:.1f} A apart; if the "
-                f"images are meant not to interact, k = 1 is the usual "
-                f"choice -- if a weak image interaction is deliberate, "
-                f"carry on",
-                "config.kgrid",
-            ))
 
     # Net dipole > 1 D in vacuum (no dipole correction).  Image-image
     # dipole interactions in PBC shift molecular energies by an amount
@@ -700,10 +667,10 @@ def _validate_siesta(struct: Structure, cfg,
     # dipole correction.
     #
     # Triggered only when the cell looks like the auto-vacuum case:
-    # all kgrid axes == 1 (Gamma-only sampling, no PBC physics
-    # intended).  A genuine periodic crystal with k>1 is meant to
+    # every count of the mesh the deck writes 1 (one k-point, no PBC
+    # physics intended).  A genuine periodic crystal with k>1 is meant to
     # carry image-image interactions and shouldn't trip this warning.
-    if state is not None and all(k == 1 for k in cfg.kgrid) \
+    if state is not None and meshes and meshes[0].single_point \
             and len(struct.positions) > 0:
         try:
             from ..chemistry import estimate_dipole_moment_debye

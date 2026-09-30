@@ -722,19 +722,20 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `category` | which **question about the calculation** this answers — § 6.2's closed vocabulary. Engine-independent, so the same six panels serve every engine |
 | `engines` | which engines this item applies to, as a list. **Absent means all of them** — § 6.3 |
 | `calculations` | which calculation KINDS select this item, as a list — `engines`' exact sibling on the other axis (spectra-migration P0, 2026-08-20). **Absent means every kind**, which is why the 80-plus pre-existing items needed no edit and the vibration items — thirteen since two retired selectors went, 2026-09-28 — stay out of an optimization template by declaration |
-| `recommended` | a **per-kind recommended value**, `recommended = { vibration = 0.01 }` (§ 6.3a, 2026-09-24): what a form built for that kind shows and what `init` writes into that kind's template, in place of `value`/`default`, when the kind asks a different question of the same parameter than the general default answers — a frequency's relaxation is tighter than an optimization's. Absent means the general default. Each value passes the item's own `type` at parse time (`range` stays advisory, as § 3.3 rules for every value) |
+| `recommended` | a **per-kind recommended value**, `recommended = { vibration = 0.01 }` (§ 6.3a, 2026-09-24): what a form built for that kind shows and what `init` writes into that kind's template, in place of `value`/`default`, when the kind asks a different question of the same parameter than the general default answers — a frequency's relaxation is tighter than an optimization's. Absent means the general default. Each value passes the item's own `type` at parse time (`range` stays advisory, § 5.3) |
 | `offered` | **the choices a kind may take**, a subset of `choices` — `offered = { vibration = ["CG", "Broyden", "FIRE"] }` (§ 6.3a, 2026-09-30); on an item that serves two engines whose choices differ, the key names the engine too — `offered = { siesta.transport = ["restricted", "unrestricted"], pyscf.vibration = ["restricted"] }` (a TOML dotted key: one table per engine). Absent — for the kind, or on the item — means every choice. Read by the form, the stage table's cells, the description's own check, `resolve` and the settings gate (`template.offered`); a value outside it is refused by name, listing what the kind offers, with the reason `template.why_not_offered` gives. Each member passes the item's own `type` and `choices` at parse time, and each key names a calculation kind — a misspelled one is refused, since it would be a set nothing asks |
 | `refs` | citation keys into `docs/science/references.bib` — the paper(s) behind a scientific knob's guidance. Resolved server-side (title + DOI) and rendered in the form's help; `tests/test_catalogue_refs.py` pins that every key resolves |
 | `allocation` | **the scheduler answers this one** — ranks, threads, memory (§ 6.4). One boolean; it replaced a `resolver` NAME plus a list of which names counted, neither of which anything dispatched on |
-| `citation` | **a cited run answers this one, for these kinds** — `citation = ["transport"]` on `basis_size`, `mesh_cutoff`, `kgrid`, `pao_energy_shift`, `electronic_temperature`, `xc_functional`, `xc_authors`. It is a LIST and not a boolean because those are the **same rows** an optimization uses, where the person answers them. It replaced two hand-maintained frozensets plus a predicate spelled twice in two files (`engines/transport.md` § 3.3.3) |
-| `shared` | **binds every rung of these kinds** — `shared = ["transport"]` on the seven `citation` rows and on `kgrid_displacement` and `electrodes_bulk` (Class A, `engines/transport.md` § 2a.3; `electrodes_bulk` since 2026-09-29, one value for the two rungs that read it, § 6.1b); on the electronic state's four items for **every** kind that has them — `net_charge` and `method` for optimization and vibration, `spin_treatment` and `unpaired_electrons` for those and transport — because the state belongs to the calculation, never to a stage (`science/chemistry-correctness.md` § 2a, ES1; M6); and on the calculation's identity for every SIESTA kind — `system_label`, `species_order`, `psml_lib` (2026-09-29, K1): each rung reads what the one before it wrote under that label, numbered by that species table (the `.XV` holds each atom's species index, `ioxv.F`) and built on that pseudopotential set. Three readers ask it: the transport tab's shared panel shows these and nothing else, the per-rung form never offers one, and `prep` refuses a stage override naming one — for every kind, at the one resolve door (§ 3.8.2), saying why (`template.why_shared`). Filtering on `citation` for this question offered the species order as a per-rung override (2026-09-23) |
+| `citation` | **a cited run answers this one, for these kinds** — `citation = ["transport"]` on `basis_size`, `mesh_cutoff`, `kgrid`, `pao_energy_shift`, `electronic_temperature`, `xc_functional`, `xc_authors`, the spin's `spin_treatment` and `unpaired_electrons` (2026-09-28) and the grid's offset `kgrid_displacement` (2026-09-30, `engines/siesta.md` § 6.1). It is a LIST and not a boolean because those are the **same rows** an optimization uses, where the person answers them. It replaced two hand-maintained frozensets plus a predicate spelled twice in two files (`engines/transport.md` § 3.3.3) |
+| `shared` | **binds every rung of these kinds** — `shared = ["transport"]` on the `citation` rows and on `electrodes_bulk` (Class A, `engines/transport.md` § 2a.3; `electrodes_bulk` since 2026-09-29, one value for the two rungs that read it, § 6.1b); on the electronic state's four items for **every** kind that has them — `net_charge` and `method` for optimization and vibration, `spin_treatment` and `unpaired_electrons` for those and transport — because the state belongs to the calculation, never to a stage (`science/chemistry-correctness.md` § 2a, ES1; M6); and on the calculation's identity for every SIESTA kind — `system_label`, `species_order`, `psml_lib` (2026-09-29, K1): each rung reads what the one before it wrote under that label, numbered by that species table (the `.XV` holds each atom's species index, `ioxv.F`) and built on that pseudopotential set. Three readers ask it: the transport tab's shared panel shows these and nothing else, the per-rung form never offers one, and `prep` refuses a stage override naming one — for every kind, at the one resolve door (§ 3.8.2), saying why (`template.why_shared`). Filtering on `citation` for this question offered the species order as a per-rung override (2026-09-23) |
 | `role` | **nobody is asked: the rung fixes it, for these kinds** — `role = ["transport"]` on `solution_method`, `ts_hs_save` and `bias_voltage_v`; every SIESTA kind on `write_forces` and `write_coor_step` (2026-09-29, K1). A list of kinds, for `citation`'s reason. The answer is the catalogue's `value` unless `role_values` names the rung's own; `resolve` puts it into the rung's config, and every door that could set it refuses (§ 6.4, the third answerer) |
 | `role_values` | **a rung whose role gives another answer than `value`**, by the rung's name — `role_values = { device = "transiesta" }` on `solution_method`. Only on a `role` item; each value passes the item's own `type` at parse time, as `recommended`'s do. Like `recommended`, a catalogue key: it does not travel into a calculation's template, whose role items hold no value — `resolve` asks the catalogue (`template.role_answers`) |
 | `stages` | **which rungs of the kind may carry their own value** — `stages = ["electrode_L", "electrode_R"]`; on a `role` item, which nobody sets, the rungs that write it. Absent means any rung may (§ 6.4) |
 | `label` | the **human name** — *"MPI ranks (np)"*. Not the field name; a surface shows this |
 | ~~`section`~~ | **RETIRED at `@2` — use `category` (§ 6.2).** It held a free-text fieldset name per engine (*"SCF"*, *"Compute & budget"*), so two engines expressing one idea disagreed on the label and no surface could group across them. A section-less item was still an item, and that stays true of `category`: membership is TOTAL (§ 7) |
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
-| `range` · `unit` · `choices` | bounds, unit label, enum members |
+| `range` · `unit` · `choices` | bounds, unit label, enum members. `range` is a **recommendation**: a value outside it is warned on every surface and refused on none (§ 5.3) |
+| `above` | **a hard limit: the value must be greater than `value`**, and `why` is the reason — `above = { value = 0, why = "SIESTA divides each force difference by it (ofc.f90)" }`. Refused on every surface with one message, through `template.why_not` (§ 5.3, 2026-09-30); for a triple, each component |
 | `group` | **which card**, from the closed vocabulary `template.GROUPS`, in render order: `setup` (what the run is called and where its pseudopotentials come from — nothing can be built without these, so they come first) · `profile` (what you're computing) · `stage` (what counts as converged — the set a staged sequence tightens, and what makes *vary per stage* start ticked) · `budget` (how much compute) · `output` (what the run writes) · `staging` (answered by the staging surface, not by a parameter form). Optional on a template item — it is presentation, and `prep` reading one headlessly never asks — but **required on every item of the catalogue**, which is what a form is built from: an item with none renders loose below the cards and its findings fall to the residual panel |
 | `optional` | whether **unset** is a state this item has. A surface must offer it — *(auto)*, *(no cap)* — and it is **not** inferable from `null_label`: of 17 optional items only 14 carry one, so three would silently lose the option *(`dispersion` stopped being optional on 2026-09-28: its "none" is a value, [`engines/pyscf.md`](?doc=engines/pyscf.md) § 7a)* (§ 1.2 of [`web/form-schema.md`](?doc=web/form-schema.md)) |
 | `tier` | `basic` or `advanced`. A judgement about the **parameter**, not about the widget: a surface dims the advanced ones so a first-time reader is not asked to weigh every knob at once |
@@ -911,6 +912,81 @@ three help texts that were not merely silent but **wrong**, described in
 § 10b's finding 8.
 
 ---
+
+### 5.3 A recommended range and a hard limit — one severity each *(2026-09-30, plan § 5w K3)*
+
+**`range` is a recommendation, and every surface says so the same way: a
+warning.** A value outside it is a choice a person may make — a coarse test
+run, an unusual system — so the settings gate, the description's own check and
+the form all warn, and none refuses. Until 2026-09-30 the description's check
+refused a stage's value outside the range while the gate only warned about the
+same value in the template: one range, two severities (the M11 review, SO-N4).
+
+**A hard limit is declared, and refused everywhere with one message.**
+`above = { value = N, why = "<why>" }` says the value must be greater than
+`N`, and `why` is the reason every refusal gives — each read from the engine's
+source:
+
+| item | above | why |
+|---|---|---|
+| `fc_displacement` | 0 | SIESTA divides each force difference by it (`ofc.f90`) |
+| `temperature_K` · `pressure_atm` | 0 | PySCF's ideal-gas thermochemistry divides by kT and takes logarithms of kT/P (`pyscf/hessian/thermo.py`), so 0 writes inf and nan. The harmonic sums SIESTA's finish uses take 0 K as their limit, the zero-point energy alone — which every record carries at any temperature, so the one rule costs no answer |
+| `block_size` | 0 | a count of orbitals per rank; unset is SIESTA's own automatic (`tuning.md` § 2.11) |
+| `kgrid` · `tbt_k_grid` | 0 | a k-point count per axis: 0 samples nothing (SIESTA's `kgrid.F` counts the points as the grid's determinant) |
+| `electrode_kz` | **1** | a lead is periodic bulk along transport: one point there gives a wrong lead Hamiltonian, and the device attaches the self-energy built from it — a wrong transmission with no runtime error ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
+
+A value the engine takes is not a limit, however odd: `relax_steps = 0` is a
+single point (`MD.Steps`, `read_options.F90`), and `prep bench` pins exactly
+that to measure one SCF on the rung's own deck — so the item keeps its range,
+and a person who sets 0 is warned.
+
+**One door for whether a value may stand: `template.why_not(item, value,
+engine=, kind=)`.** It is asked by the description's own check (a stage's
+value, before anything reaches a machine), by `resolve` (whatever layer set the
+value, named) and by the settings gate (a render that skipped `resolve`), and
+it answers with the one clause every refusal gives, or nothing. **One value
+draws one refusal** — the first that holds of:
+
+1. **a component the kind fixes, holding another value** — a transport
+   calculation's third k component, which no rung reads
+   (`kmesh.fixed`, [`siesta.md`](?doc=engines/siesta.md) § 6.1);
+2. **a choice the kind does not offer** (§ 6.3a) — the electronic state's items
+   excepted, whose resolved values that family judges, and a value that is not
+   one of the item's `choices` at all, which is the declared type's refusal;
+3. **a value at or below its limit** — each component of a triple, the fixed
+   components left to (1).
+
+**A value refused draws that refusal alone**: its range warning stands aside,
+and so does any check on what is built from it — the k-point mesh made from a
+refused grid is not judged — on every surface. **And an item the calculation
+does not carry is no door's to judge**: the kind narrows the catalogue (§ 6.3),
+so a lead's `electrode_kz` on an optimization is neither refused nor warned — it
+reaches no deck of that kind.
+
+**The values a description holds outside its stages are held too**: an
+`execution` block's values and a bench's points become pins and sweep points,
+so the description's own check asks the same door of them, and a value past its
+limit is refused where the description is written, not first at prep. *(Until 2026-09-30 three passes asked the offered set, the
+limit and the fixed k axis separately, and one value could draw two refusals
+and a warning; the transport axis's own checks sat in the kind's validator.)*
+
+For a triple the limit holds for each component. The form computes no verdict
+of its own: the settings gate's refusal is its live check (`workflow.md` § 9,
+gate ①), and lands beside the field it names; a component the kind fixes is
+drawn locked, with its reason. A tab with no live check hears a refusal at
+Send — the Transport tab's describe runs the description's own check — or, for
+a value its shared panel writes into the template, from `resolve` at prep.
+*(`block_size` and `kgrid` held their limits in code — a `validate` callable on
+the config class, one an error and one a warning — until 2026-09-30, and the
+limit key was `positive`, greater than 0 only, until the lead's count needed
+greater than 1 the same day.)*
+
+**A list the description holds is held to its item.** The bias list
+(`task.bias`, [`transport.md`](?doc=engines/transport.md) § 2a.10) is the points
+`bias_voltage_v` takes: a point outside the item's range is warned like any
+value — by the description's own check, which the Transport tab's Send shows
+among its notices — and a repeated point is refused where the description is
+read, two runs of one voltage sharing one folder (`v<V>/`).
 
 ## 6. `kind` — which layer owns the item
 

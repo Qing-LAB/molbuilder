@@ -88,6 +88,13 @@ def _says(text: str, keyword: str, value: str) -> bool:
     return False
 
 
+def _has_row(text: str, row: str) -> bool:
+    """Does *text* hold the block row *row*?  **Whitespace-insensitive**, as
+    `_says` is for a keyword line: a k block's columns are its writer's
+    (`kmesh.write`), and the counts and the offset are what a test means."""
+    return any(" ".join(ln.split()) == row for ln in text.splitlines())
+
+
 def _same_token(got: str, want: str) -> bool:
     """One token of a deck line, compared by VALUE where it is a number.
 
@@ -359,7 +366,7 @@ class TestAnOverrideReachesTheRungThatOwnsIt:
                           ("electrode_R", "03_electrode_R")):
             prep_calculation(dest, rung)
             deck = (dest / tok / f"T_{tok}.fdf").read_text()
-            assert "    0    0   80      0.0" in deck, (
+            assert _has_row(deck, "0 0 80 0.0"), (
                 f"{rung} must carry the person's lead k-density")
 
     def test_the_device_does_not_get_what_it_does_not_own(self, tmp_path):
@@ -443,10 +450,10 @@ class TestTheElectrodeRungIsOnTheSeam:
         prep_calculation(calc, "electrode_L")
         seed = (calc / "01_seed" / "T_01_seed.fdf").read_text()
         lead = (calc / "02_electrode_L" / "T_02_electrode_L.fdf").read_text()
-        assert "    0    0   40      0.0" in lead, (
+        assert _has_row(lead, "0 0 40 0.0"), (
             "the lead's transport axis must be DENSE -- that density is what "
             "resolves its Fermi level")
-        assert "    0    0    1      0.0" in seed, (
+        assert _has_row(seed, "0 0 1 0.0"), (
             "...and the seed's must be 1: no transport-axis sampling")
 
     def test_the_lead_is_labelled_as_the_TSHS_the_device_will_name(self, calc):
@@ -544,23 +551,11 @@ class TestTheTransportAxisIsNotSettable:
     Brillouin-zone sampled at all.
 
     Before this the third component could be set and the renderer wrote 1
-    anyway -- a control that appears to do something and does not.
+    anyway -- a control that appears to do something and does not.  Its
+    refusal, on every door, is `test_k_point_mesh_e2e.py`'s (the k-point
+    mesh, `engines/siesta.md` § 6.1); a copy of its prep half stood here
+    until the K3 review.
     """
-
-    def test_a_sampled_transport_axis_is_refused_by_name(self, calc):
-        from molbuilder.template import _emit, find_template, read_template
-        import dataclasses
-        tmpl = find_template(calc)
-        parsed = read_template(tmpl.read_text())
-        tmpl.write_text(_emit(
-            [dataclasses.replace(i, value=(4, 4, 4)) if i.name == "kgrid"
-             else i for i in parsed.items], engines=("siesta",)))
-        with pytest.raises(PrepError) as e:
-            prep_calculation(calc, "seed")
-        msg = str(e.value)
-        assert "open" in msg.lower() and "electrode_kz" in msg, (
-            f"refused, but without saying WHY or naming the parameter that "
-            f"does own a transport-axis density: {msg}")
 
     def test_the_transverse_pair_is_still_the_persons(self, calc):
         """The half that keeps the refusal from being a ban on the row.
@@ -577,7 +572,7 @@ class TestTheTransportAxisIsNotSettable:
              else i for i in parsed.items], engines=("siesta",)))
         prep_calculation(calc, "seed")          # must not raise
         deck = (calc / "01_seed" / "T_01_seed.fdf").read_text()
-        assert "  6    0    0" in deck, (
+        assert _has_row(deck, "6 0 0 0.0"), (
             "the person's transverse grid must reach the deck")
 
 
@@ -973,9 +968,9 @@ class TestTheLadderPreps:
             assert _says(text, "PAO.EnergyShift", "0.02 Ry"), who
             assert _says(text, "ElectronicTemperature", "200.0 K"), who
         # transverse k = the relaxation's (4, 4), transport axis 1
-        assert "    0    0    1      0.0" in dev, (
+        assert _has_row(dev, "0 0 1 0.0"), (
             "the device kz is forced to 1 (open boundary)")
-        assert "  4    0    0" in dev and "  4    0    0" in seed
+        assert _has_row(dev, "4 0 0 0.0") and _has_row(seed, "4 0 0 0.0")
 
     def test_a_scrambled_source_preps_clean_because_prep_sorted(self, tmp_path):
         """THE P4 gate: a source whose atom order TranSIESTA would
@@ -2350,15 +2345,18 @@ class TestEachDeckCarriesWhatItsProgramReads(_LadderThroughTheCli):
         assert not [ln for ln in tr if ln.split()[0] in (
             "WriteForces", "WriteCoorStep", "WriteCoorXmol",
             "WriteMDhistory", "WriteMDXmol", "SaveHS")], tr
-        # TBT.k is the bracketed list tbtrans reads -- the cited run's
-        # transverse grid, which `jobset init` put in the template
+        # TBT.k is the block tbtrans reads, which carries the offset -- the
+        # cited run's transverse grid, which `jobset init` put in the
+        # template, and one point along transport (`engines/siesta.md` § 6.1)
         from molbuilder.template import read_template, find_template
         k = next(i.value for i in read_template(
             find_template(tmp_path / "projects" / "J" / "transport" / "T")
             .read_text()).items if i.name == "tbt_k_grid")
-        want = "[" + " ".join(str(v) for v in k) + "]"
-        assert f"TBT.k                  {want}" in tr, (want, [
-            ln for ln in tr if ln.startswith("TBT.k")])
+        block = transmission[transmission.index("%block TBT.k"):
+                             transmission.index("%endblock TBT.k")]
+        rows = [" ".join(ln.split()) for ln in block.splitlines()[1:4]]
+        assert rows == [f"{k[0]} 0 0 0.0", f"0 {k[1]} 0 0.0",
+                        "0 0 1 0.0"], rows
         assert "TBT.Verbosity          5" in tr
         # every TBT.* value is written with its note above it: the note is
         # headed by the keyword it explains

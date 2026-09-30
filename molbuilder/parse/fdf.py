@@ -133,6 +133,8 @@ def _ry(toks: List[str], *, what: str = "an energy",
 @dataclass
 class FdfParams:
     kgrid: Optional[Tuple[int, int, int]] = None
+    #: The k-grid's offset -- each row's `displ`, as the deck states it.
+    kgrid_displacement: Optional[Tuple[float, float, float]] = None
     mesh_cutoff_ry: Optional[float] = None
     energy_shift_ry: Optional[float] = None
     xc: Optional[str] = None
@@ -221,6 +223,13 @@ def parse_fdf_params(text: str, *, source: str = "the deck") -> FdfParams:
         try:
             rows = bl["kgridmonkhorstpack"][:3]
             p.kgrid = tuple(int(float(rows[i][i])) for i in range(3))
+            # ...AND ITS OFFSET: each row's fourth value, SIESTA's `displ`,
+            # optional and 0 when absent (`kpoint_t.F90`).  Read since
+            # 2026-09-30, so a cited run's offset reaches the template beside
+            # its grid (`engines/siesta.md` § 6.1).
+            p.kgrid_displacement = tuple(
+                float(rows[i][3]) if len(rows[i]) > 3 else 0.0
+                for i in range(3))
         except (ValueError, IndexError):
             pass
 

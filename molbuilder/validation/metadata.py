@@ -47,7 +47,31 @@ def _keyword_suffix(meta) -> str:
     return f" ({kw})" if kw else ""
 
 
-def _validate_config_metadata(cfg) -> List[Issue]:
+def outside_range(value, rng) -> list:
+    """The components of ``value`` outside ``rng``, inclusive -- ``[(None,
+    v)]`` for a number, ``[(i, v), ...]`` for a triple, whose range bounds
+    each component (`engines/template.md` § 5).  ONE answer for the two
+    places a range is warned: the settings gate's metadata pass and the
+    description's own check (`validation/task.py`).  A component that is not
+    a number -- a bool included -- is the type check's business, and is
+    skipped here."""
+    lo, hi = rng
+    parts = (list(enumerate(value)) if isinstance(value, (list, tuple))
+             else [(None, value)])
+    return [(i, v) for i, v in parts
+            if not isinstance(v, bool) and isinstance(v, (int, float))
+            and (v < lo or v > hi)]
+
+
+def _validate_config_metadata(cfg, refused=frozenset(),
+                              foreign=frozenset()) -> List[Issue]:
+    """The field metadata's own findings.  Two sets of fields have no range
+    warning: ``refused``, the values the one per-value door refused
+    (``template.why_not``) -- a value refused draws that refusal alone
+    (`engines/template.md` § 5.3) -- and ``foreign``, the catalogue items
+    this calculation does not carry: the kind narrows the catalogue (§ 6.3),
+    so their values are not this calculation's to warn about
+    (:func:`not_carried`)."""
     issues: List[Issue] = []
     if not is_dataclass(cfg):
         return issues
@@ -56,7 +80,8 @@ def _validate_config_metadata(cfg) -> List[Issue]:
         value = getattr(cfg, f.name)
         # range = (lo, hi) inclusive
         rng = meta.get("range")
-        if rng is not None and value is not None:
+        if (rng is not None and value is not None
+                and f.name not in refused and f.name not in foreign):
             lo, hi = rng
             # A TRIPLE'S RANGE BOUNDS EACH COMPONENT (engines/template.md
             # § 5).  That is the only reading that means anything for
@@ -77,25 +102,20 @@ def _validate_config_metadata(cfg) -> List[Issue]:
             label = meta.get("label", f.name)
             unit = f" {meta['unit']}" if meta.get("unit") else ""
             if isinstance(value, (tuple, list)):
-                # A `validate` callable owns the exact rule when the field
-                # has one -- kgrid_displacement's is half-open [0, 1) and
-                # also knows about a 1-point axis, neither of which a pair
-                # of bounds can express.  Standing aside keeps one value
-                # from drawing two warnings that say almost the same thing.
-                if not callable(meta.get("validate")):
-                    for i, v in enumerate(value):
-                        try:
-                            outside = v < lo or v > hi
-                        except TypeError:
-                            continue          # a non-numeric component is
-                        if outside:           # the type check's business
-                            issues.append(Issue(
-                                "warn",
-                                f"{label}{_keyword_suffix(meta)}[{i}] = "
-                                f"{v}{unit} is outside the recommended "
-                                f"range [{lo}, {hi}]{unit}",
-                                f"config.{f.name}",
-                            ))
+                # EVERY TRIPLE, per component, through the one helper the
+                # description's own check asks too (:func:`outside_range`).
+                # A field with a `validate` callable stood aside here until
+                # 2026-09-30, on the reading that the callable owned the
+                # bounds -- and once `kgrid`'s callable held only its shape,
+                # its range was warned nowhere (the K3 review).
+                for i, v in outside_range(value, rng):
+                    issues.append(Issue(
+                        "warn",
+                        f"{label}{_keyword_suffix(meta)}[{i}] = "
+                        f"{v}{unit} is outside the recommended "
+                        f"range [{lo}, {hi}]{unit}",
+                        f"config.{f.name}",
+                    ))
             else:
                 try:
                     if value < lo or value > hi:
@@ -176,6 +196,30 @@ def _validate_config_metadata(cfg) -> List[Issue]:
     return issues
 
 
+def not_carried(cfg, calculation: str) -> frozenset:
+    """The catalogue items of ``cfg``'s engine that a ``calculation`` does
+    not carry -- a lead's ``electrode_kz`` on an optimization -- whose field
+    a config class holds all the same.  Empty for a config the catalogue
+    does not describe."""
+    from ..template import engine_name
+    return not_carried_by(engine_name(type(cfg)), calculation)
+
+
+def not_carried_by(engine: str, calculation: str) -> frozenset:
+    """:func:`not_carried` by the engine's NAME -- what the description's
+    own check has, before any config exists.  The kind narrows the
+    catalogue (`engines/template.md` § 6.3), so neither door judges a value
+    of an item the calculation does not carry."""
+    from ..template import catalogue, select
+    cat = catalogue()
+    if engine not in cat.engines:
+        return frozenset()
+    carried = {it.name for it in select(cat, engine=engine,
+                                        calculation=calculation)}
+    return frozenset(it.name for it in select(cat, engine=engine)
+                     if it.name not in carried)
+
+
 def _check_fixed_on_every_rung(cfg, calculation: str) -> List[Issue]:
     """A config holding another value for what every rung fixes alike
     (`engines/template.md` § 6.4) -- SIESTA's per-step forces and
@@ -207,34 +251,30 @@ def _check_fixed_on_every_rung(cfg, calculation: str) -> List[Issue]:
     return issues
 
 
-def _check_offered(cfg, calculation: str) -> List[Issue]:
-    """A value a kind does not offer (`engines/template.md` § 6.3a) is
-    refused by name, listing what the kind offers and why the value is not
-    among it -- for every item but the electronic state's, whose RESOLVED
-    values that family holds to the same sets (`check_electronic_state`).
+def _check_values(cfg, calculation: str) -> List[Issue]:
+    """A value that cannot stand for its item on this kind is refused, with
+    the ONE clause the per-value door gives (`engines/template.md` § 5.3,
+    ``template.why_not``): a component the kind fixes, a choice it does not
+    offer -- the electronic state's items excepted, whose RESOLVED values
+    that family holds to the same sets (`check_electronic_state`) -- or a
+    value at or below its hard limit.
 
     `resolve` refuses first, naming where the value came from; this holds a
-    render that skipped `resolve` -- a library call or a test.
+    render that skipped `resolve` -- a library call or a test.  One pass, so
+    one value draws one refusal: the offered set and the limit were two
+    checks here until 2026-09-30, and a value could draw both.
     """
-    from ..template import (STATE_ITEMS, a_kind, catalogue, engine_name,
-                            is_member, offered, select, why_not_offered)
+    from ..template import catalogue, engine_name, select, why_not
     engine = engine_name(type(cfg))
     cat = catalogue()
     if engine not in cat.engines:
         return []
     issues: List[Issue] = []
     for it in select(cat, engine=engine, calculation=calculation):
-        if not it.offered or it.name in STATE_ITEMS:
-            continue
         have = getattr(cfg, it.name, None)
-        can = offered(it, engine, calculation)
-        if have is None or is_member(have, can):
-            continue
-        issues.append(Issue(
-            "error",
-            f"``{it.name}`` is {have!r}, which {a_kind(calculation)} on "
-            f"{engine} does not offer: "
-            f"{why_not_offered(it.name, have, engine, calculation)}.  It "
-            f"offers {', '.join(map(str, can))}.",
-            f"config.{it.name}"))
+        clause = why_not(it, have, engine=engine, kind=calculation)
+        if clause:
+            shown = list(have) if isinstance(have, tuple) else have
+            issues.append(Issue("error", f"{it.name} = {shown!r}{clause}.",
+                                f"config.{it.name}"))
     return issues

@@ -234,7 +234,7 @@ _PAD = {
     # The NEGF and transmission settings read as one column, as the block that
     # wrote them by hand did.
     "bias_voltage_v": 23, "electrodes_bulk": 23, "negf_eq_pole_ev": 23,
-    "negf_neq_eta_ev": 23, "tbt_k_grid": 23, "tbt_elecs_eta_ev": 23,
+    "negf_neq_eta_ev": 23, "tbt_elecs_eta_ev": 23,
     "tbt_contours_eta_ev": 23, "tbt_spin": 23, "tbt_dos_gf": 23,
     "tbt_dos_a": 23, "tbt_dos_elecs": 23, "tbt_t_eig": 23, "tbt_t_bulk": 23,
     "tbt_t_all": 23, "tbt_verbosity": 23,
@@ -262,6 +262,28 @@ _FMT = {"dm_tolerance": ".0e", "dm_energy_tolerance": ".0e",
 #: always written, and the settings gate refuses one under 20 poles.
 _ZERO_LEAVES_IT_TO_THE_ENGINE = frozenset({
     "negf_neq_eta_ev", "tbt_contours_eta_ev"})
+
+
+def k_mesh_lines(mesh, *, notes: bool = True) -> list:
+    """A k-point mesh as a SIESTA-family deck writes it
+    (`engines/siesta.md` § 6.1): each item that answered an axis gives its
+    declaration's note -- why it is what it is -- and the block is the one
+    writer's (`kmesh.write`).  The SIESTA deck, the transport rungs and the
+    transmission's ``TBT.k`` all write their mesh through here, so the notes
+    a deck carries are the items that decided it, never a fixed pair."""
+    from .. import kmesh
+    from ..script_emit import parameter
+    out: list = []
+    if notes:
+        names = []
+        for axis in mesh.axes:
+            if axis.source in kmesh.ITEMS and axis.source not in names:
+                names.append(axis.source)
+        names.append("kgrid_displacement")
+        for name in names:
+            out += parameter(name, "siesta").note()
+    out += kmesh.write(mesh)
+    return out
 
 
 def note_lead(param: Parameter) -> Tuple[str, ...]:

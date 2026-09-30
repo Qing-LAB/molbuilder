@@ -268,6 +268,18 @@
             // controls cannot drift on what a bound means.
             if (f.min !== undefined) cellInput.min = f.min;
             if (f.max !== undefined) cellInput.max = f.max;
+            // A COMPONENT THIS KIND FIXES (`kmesh.fixed`, engines/siesta.md
+            // § 6.1) is drawn locked at its value, its reason as the title:
+            // a transport calculation's third k component, which no rung
+            // reads.  The value still travels -- collectForm reads it like
+            // any other -- so the template states it; renderField writes
+            // the reason beside the control.
+            const held = f.fixed && f.fixed[lab];
+            if (held) {
+                cellInput.value = String(held.value);
+                cellInput.disabled = true;
+                cellInput.title = held.why;
+            }
             cell.appendChild(cellInput);
             wrap.appendChild(cell);
         });
@@ -402,6 +414,15 @@
         }
         const badge = engineKeyBadge(f);
         if (badge) labelEl.appendChild(badge);
+        // WHY A COMPONENT IS LOCKED, beside the control -- the same
+        // `.lock-reason` hint a locked field carries (form-schema.css).
+        if (f.fixed) {
+            for (const lab of Object.keys(f.fixed)) {
+                labelEl.appendChild(el("span", { class: "lock-reason" },
+                    "\u21b3 " + lab + " is fixed at " + f.fixed[lab].value
+                    + ": " + f.fixed[lab].why));
+            }
+        }
         // Long help: append the click-to-expand <details> AFTER the
         // input + badge so it doesn't push them out of the layout grid.
         // f.refs rides along (U5, 2026-08-21): this is the path most
@@ -863,6 +884,10 @@
                         const sub = container.querySelector(
                             "#" + cssEsc(f.id + "-" + labs[i]));
                         if (!sub) continue;
+                        // A fixed component keeps the kind's value: the
+                        // form collects what will be written, and another
+                        // value is refused on every door.
+                        if (f.fixed && f.fixed[labs[i]]) continue;
                         sub.value = String(v[i]);
                         try {
                             sub.dispatchEvent(new Event("input",

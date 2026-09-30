@@ -264,12 +264,19 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     // click Generate.  No-op until the first successful build, so a
     // user who just landed on the page and is fiddling with form
     // defaults doesn't see warnings that haven't been earned yet.
+    /* ONE PLACE this tab shows an engine's findings -- the live preflight's
+     * and the hand-over's (the cell gate's notices) -- through the one
+     * renderer, in that engine's panel beside its form. */
+    function _showFindings(engine, issues) {
+        return renderIssues(
+            (engine === "siesta") ? "fdf-issues" : "pyscf-issues", issues,
+            (engine === "siesta") ? "siesta-form-container"
+                                  : "pyscf-form-container");
+    }
+
     async function refreshPreflight(engine) {
         if (!_structureForRequest()) return;
         const params = collectParams(engine);
-        const panelId = (engine === "siesta") ? "fdf-issues" : "pyscf-issues";
-        const formContainerId = (engine === "siesta")
-            ? "siesta-form-container" : "pyscf-form-container";
         try {
             const r = await fetch("/api/build/preflight", {
                 method: "POST",
@@ -285,7 +292,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
              * error as an issue precisely so this panel can show it (the
              * 2026-06-14 change) — gating on ok dropped exactly those.
              * Same rule as the Spectrum tab (lib/spectra/core.js). */
-            if (Array.isArray(r.issues)) renderIssues(panelId, r.issues, formContainerId);
+            if (Array.isArray(r.issues)) _showFindings(engine, r.issues);
         } catch (e) {
             // Network error during preflight is not surfaced -- the
             // panel stays in its previous state.  The Generate path
@@ -1396,6 +1403,11 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         await mb.taskHandover.send({
             projects:  mb.projects,
             say:       _handoverSay,
+            // The hand-over's findings in the engine's panel; an empty list
+            // leaves the live preflight's standing (they are still true).
+            showFindings: (issues) => {
+                if (issues.length) _showFindings(engine, issues);
+            },
             structure: _structureForRequest(),
             engine:    engine,
             params:    collectParams(engine),

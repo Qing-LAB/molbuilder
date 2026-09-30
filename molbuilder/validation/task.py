@@ -100,6 +100,7 @@ def preflight(task, config_cls=None, *,
     out.extend(_bench_names_a_speed_knob(task, cls))
     out.extend(_execution_names_a_speed_knob(task))
     out.extend(_bench_points_fit_their_items(task))
+    out.extend(_described_values_may_stand(task))
 
     # (step 2 -- the schema fingerprint -- retired 2026-08-14 with the
     # fingerprint itself; stages.md § 6.6 records the deletion)
@@ -114,6 +115,7 @@ def preflight(task, config_cls=None, *,
     #  is not an integer, and reached the deck as `MD.NumCGsteps 100.7`.
     out.extend(_values_are_the_declared_type(task, cls, fields))
     out.extend(_values_in_bounds(task, fields))
+    out.extend(_bias_points_in_range(task))
 
     # -- 5. the sequence's own findings (§ 6.4 / § 6.6a) -- warnings -------
     if template_text is not None and task.stages:
@@ -197,6 +199,37 @@ def _execution_names_a_speed_knob(task) -> List[Issue]:
                 f"stage's `overrides` (engines/stages.md 6.2).  Execution "
                 f"settings here: {', '.join(sorted(known)) or '(none)'}",
                 where=f"task.{where}.{name}"))
+    return out
+
+
+def _described_values_may_stand(task) -> List[Issue]:
+    """The values a description holds OUTSIDE its stages' overrides -- an
+    ``execution`` block's, the calculation's or a stage's, and a bench's
+    points -- asked of the one per-value door as a stage's value is
+    (`engines/template.md` § 5.3): they become pins and sweep points, and
+    `resolve` refused them first at prep, on the machine that runs it,
+    until 2026-09-30 (the K3 review).  A name the other checks refuse
+    (not an execution item, not a speed knob) is theirs; this asks only
+    whether the value may stand."""
+    out: List[Issue] = []
+    blocks = [("execution", getattr(task, "execution", None) or {})]
+    for st in (getattr(task, "stages", None) or ()):
+        if getattr(st, "execution", None):
+            blocks.append((f"stage {st.name!r} execution", dict(st.execution)))
+    for where, block in blocks:
+        for name in sorted(block):
+            clause = _why_not(task, name, block[name])
+            if clause:
+                out.append(Issue(
+                    "error", f"{where} sets {name} = {block[name]!r}{clause}.",
+                    where=f"task.{where}.{name}"))
+    for name in sorted(getattr(task, "bench", None) or {}):
+        for v in task.bench[name]:
+            clause = _why_not(task, name, v)
+            if clause:
+                out.append(Issue(
+                    "error", f"bench declares {name} = {v!r}{clause}.",
+                    where=f"task.bench.{name}"))
     return out
 
 
@@ -484,40 +517,72 @@ def _scalar_complaint(declared, value) -> Optional[str]:
         return None if isinstance(value, str) else "which is not text"
     return None
 
-def _not_offered(task, key: str, value) -> str:
-    """The clause refusing ``value`` for ``key`` on this description's kind
-    (`engines/template.md` § 6.3a) -- ``"which a vibration does not offer:
-    ..."`` -- or ``""`` when the kind offers it."""
-    from ..template import (a_kind, catalogue, is_member, offered, one,
-                            why_not_offered)
-    engine = str(task.engine)
-    kind = str(getattr(task, "calculation", None) or "optimization")
-    try:
-        item = one(catalogue(), key, engine=engine)
-    except KeyError:
+def _bias_points_in_range(task) -> List[Issue]:
+    """The bias list's points are values of `bias_voltage_v`, and a value
+    outside its item's recommended range is WARNED, as any value is
+    (`engines/template.md` § 5.3).  A repeated point is the codec's refusal
+    (`task.py`), with the list's other shape rules."""
+    bias = tuple(getattr(task, "bias", ()) or ())
+    if not bias:
+        return []
+    from ..template import catalogue, one
+    item = one(catalogue(), "bias_voltage_v", engine=str(task.engine))
+    if item is None or not item.range:
+        return []
+    lo, hi = item.range
+    out = [float(v) for v in bias if not lo <= float(v) <= hi]
+    return [Issue(
+        "warn",
+        f"the bias list holds {', '.join(f'{v:g}' for v in out)} V, outside "
+        f"the recommended range [{lo:g}, {hi:g}] V -- a recommendation, not "
+        f"a limit (engines/template.md 5.3)",
+        where="task.bias")] if out else []
+
+
+def _kind_of(task) -> str:
+    return str(getattr(task, "calculation", None) or "optimization")
+
+
+def _why_not(task, key: str, value) -> str:
+    """The one clause refusing ``value`` for ``key`` on this description's
+    kind (`engines/template.md` § 5.3, ``template.why_not``) -- a component
+    the kind fixes, a choice it does not offer, a value past a hard limit --
+    or ``""`` when the value may stand.  Asked of the items the kind CARRIES,
+    as `resolve` and the settings gate ask it: an item the kind does not
+    carry reaches no deck of it, and is no door's to judge."""
+    from ..template import as_declared, catalogue, select, why_not
+    engine, kind = str(task.engine), _kind_of(task)
+    item = next((it for it in select(catalogue(), engine=engine,
+                                     calculation=kind) if it.name == key),
+                None)
+    if item is None:
         return ""
-    if item is None or not item.offered:
-        return ""
-    can = offered(item, engine, kind)
-    if is_member(value, can):
-        return ""
-    return (f"which {a_kind(kind)} does not offer: "
-            f"{why_not_offered(key, value, engine, kind)}.  It offers "
-            f"{', '.join(map(str, can))}")
+    # ...ABOUT THE VALUE AS `resolve` WILL SEE IT: ``0.0`` for a count is the
+    # count 0 (``template.as_declared``, lossless), so the door judges what
+    # prep would -- and a value the type check refuses stays unconverted,
+    # for that refusal alone.
+    return why_not(item, as_declared(item.type, value), engine=engine,
+                   kind=kind) or ""
 
 
 def _values_in_bounds(task, fields) -> List[Issue]:
-    """Every override's value is inside the bound the schema declares.
+    """Every override's value is inside the bounds the schema declares.
 
-    Numeric ``range`` and enum ``choices`` are both "bounds" in § 6.6's sense:
-    each is the schema saying *these are the values this field may take*, and
-    a description carrying anything else renders a deck the engine will reject
-    or, worse, quietly reinterpret.
+    Enum ``choices`` and what the one per-value door refuses -- a component
+    the kind fixes, a choice it does not offer, a value past a hard limit
+    (``template.why_not``) -- are refusals in § 6.6's sense: a description
+    carrying anything else renders a deck the engine will reject or, worse,
+    quietly reinterpret.  A numeric ``range`` is a RECOMMENDATION, warned
+    here as on every surface (`engines/template.md` § 5.3) -- it refused here
+    while the settings gate warned about the same value in the template until
+    2026-09-30 (one range, two severities).
 
     A field with neither is unbounded on purpose and is not checked — the
     schema is the authority on what a bound is, and inventing one here would
     refuse a description for breaking a rule nobody wrote.
     """
+    from .metadata import not_carried_by, outside_range
+    foreign = not_carried_by(str(task.engine), _kind_of(task))
     out: List[Issue] = []
     for st in (task.stages or ()):
         for key, value in st.overrides.items():
@@ -532,33 +597,37 @@ def _values_in_bounds(task, fields) -> List[Issue]:
                     f"stage {st.name!r} sets {key} = {value!r}, which is not "
                     f"one of {', '.join(repr(c) for c in choices)}",
                     where=f"config.{key}", stage=st.name))
-            elif choices:
-                # ...AND ONE THIS KIND TAKES (`engines/template.md` § 6.3a):
-                # refused where the description is written, never first at
-                # prep on the machine that runs it.
-                narrow = _not_offered(task, key, value)
-                if narrow:
-                    out.append(Issue("error", f"stage {st.name!r} sets "
-                                              f"{key} = {value!r}, {narrow}",
-                                     where=f"config.{key}", stage=st.name))
-            # `not isinstance(value, bool)`: bool subclasses int, so a naive
-            # numeric check reads True as 1 and range-checks it.  UNREACHABLE
-            # FROM ANY DECLARED FIELD -- measured 2026-09-05: all 29 bool
-            # fields across both config classes carry no `range`, so `rng` is
-            # falsy and this clause never evaluates.  Kept as the guard for
-            # the first bool that does get one; deliberately NOT test-covered,
-            # because a test would have to invent a field to reach it.  One
-            # that claimed to cover it stood in `test_task_preflight.py` until
-            # 2026-09-05 and could not fail -- its body was a duplicate of
-            # `test_a_legal_boolean_is_accepted`.
-            elif rng and isinstance(value, (int, float)) \
-                    and not isinstance(value, bool):
+                continue
+            # ...AND ONE THAT MAY STAND FOR ITS ITEM ON THIS KIND -- the one
+            # per-value door every surface asks (`engines/template.md`
+            # § 5.3): refused where the description is written, never first
+            # at prep on the machine that runs it.  A value refused here
+            # draws that refusal alone, its range warning standing aside.
+            clause = "" if key in foreign else _why_not(task, key, value)
+            if clause:
+                shown = list(value) if isinstance(value, tuple) else value
+                out.append(Issue("error",
+                                 f"stage {st.name!r} sets {key} = "
+                                 f"{shown!r}{clause}.",
+                                 where=f"config.{key}", stage=st.name))
+                continue
+            # THE RECOMMENDED RANGE, per component for a triple, through the
+            # helper the settings gate asks too (`metadata.outside_range`,
+            # which leaves a bool and any other non-number to the type
+            # check) -- a scalar alone was checked here until 2026-09-30, so
+            # a triple's range was warned at prep and silent at save.  An
+            # item this kind does not carry is not this calculation's to warn
+            # about, as it is not the gate's.
+            if rng and key not in foreign:
                 lo, hi = rng
-                if not (lo <= value <= hi):
+                for i, v in outside_range(value, rng):
+                    shown = key if i is None else f"{key}[{i}]"
                     out.append(Issue(
-                        "error",
-                        f"stage {st.name!r} sets {key} = {value!r}, outside "
-                        f"the allowed range [{lo}, {hi}]",
+                        "warn",
+                        f"stage {st.name!r} sets {shown} = {v!r}, outside "
+                        f"the recommended range [{lo}, {hi}] -- a "
+                        f"recommendation, not a limit (engines/template.md "
+                        f"5.3)",
                         where=f"config.{key}", stage=st.name))
     return out
 

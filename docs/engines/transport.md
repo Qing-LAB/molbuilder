@@ -122,19 +122,14 @@ Now the two rules that sounded like they fought each other:
 
 | | **A1, A2 — transverse** | **A3 — transport** |
 |---|---|---|
-| **device** (stage 4) | periodic → needs k-points, e.g. `4 4` | **`kz = 1`**, always. An **error** otherwise |
+| **device** (stage 4) | periodic → needs k-points, e.g. `4 4` | **`kz = 1`**, always — fixed, never a choice ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
 | **electrode** (stages 2–3) | periodic → **the same `4 4`** | **dense** — molbuilder's default is `40`. It really is infinite bulk |
 
 They are opposite values **on different axes**, not conflicting values on the
-same one. And molbuilder does exactly this: `wizard.py` reads `kx, ky` from
-the shared config and *discards* its `kz`, substituting a dense
-`electrode_kz`:
-
-```python
-kx, ky, _kz = cfg.k_mesh_transverse      # transverse: taken
-...
-f"    0    0  {int(electrode_kz):>3}"    # transport: replaced, dense
-```
+same one. And molbuilder does exactly this, in one place: each rung's mesh is
+worked out by `kmesh.mesh_for` ([`siesta.md`](?doc=engines/siesta.md) § 6.1) —
+the transverse pair is the one shared `kgrid`, the device's transport axis is
+1, and a lead's is its own `electrode_kz`.
 
 **Why `kz = 1` on the device.** `kz = 3` would tell SIESTA the junction tiles
 along the wire — molecule, gold, molecule, gold, forever. You would be
@@ -147,7 +142,7 @@ of it.
 **integral** — it is summed over to build Σ. A thin lead cell has a large
 1-D Brillouin zone, so too few points means the "bulk gold" you computed is
 not converged bulk gold, and Σ describes subtly the wrong metal.  molbuilder
-defaults it to **40** and warns below 20.
+defaults it to **40**, warns below 20 and refuses 1.
 
 ### 0.3 "Once Σ is computed, why does k still matter?"
 
@@ -158,7 +153,7 @@ k is *not* integrated away — it survives as a label:
 
 ```mermaid
 flowchart LR
-    E["electrode run<br/>k⊥ = (4,4), kz = 20"] -->|"kz integrated OUT"| SE["Σ(k⊥, E)<br/>one per transverse k-point"]
+    E["electrode run<br/>k⊥ = (4,4), kz = 40"] -->|"kz integrated OUT"| SE["Σ(k⊥, E)<br/>one per transverse k-point"]
     SE --> G["G(k⊥,E) = [E·S(k⊥) − H(k⊥) − Σ_L(k⊥,E) − Σ_R(k⊥,E)]⁻¹"]
     DEV["device run<br/>k⊥ = (4,4), kz = 1"] -->|"H(k⊥), S(k⊥)"| G
     G --> TK["T(E) = average over k⊥ of Tr[Γ_L G Γ_R G†]"]
@@ -240,17 +235,16 @@ count along its semi-infinite axis. `tbtrans` takes `TBT.k` as a list —
 `TBT.k [3 3 1]`, counts only, no offset — or as a block, which carries one
 (`m_tbt_kpoint.F90`, `read_kgrid`).
 
-**What molbuilder does — and the gap** *(plan § 5w K17, ruled 2026-09-29)*.
-The item is on the shared panel (`shared = ["transport"]`), yet **no transport
-deck honours it**: every rung's `%block kgrid_Monkhorst_Pack` writes `0.0` in
-the offset column, the transmission writes `TBT.k` in its list form, and the
-cited relaxation's offset is not carried into the template, which takes
-`[0, 0, 0]` whatever the relaxation ran. The acceptance ladder relaxed at `0`,
-so it matched by coincidence. **The rule, to be built:** the offset is a
-`citation` item — `jobset init` carries the cited run's offset into the
-template beside its grid — and every rung writes it through the one door,
-the transport axis `0` as both engines use it, with the transmission's `TBT.k`
-in its block form when the offset is not zero.
+**What molbuilder does** *(ruled 2026-09-29, plan § 5w K17; built 2026-09-30
+with the k-point mesh, K3)*. The offset is a `citation` item: `jobset init`
+carries the cited run's offset into the template beside its grid — from the
+cited deck's own block, or the recorded contract's `kgrid_displacement` — and
+every rung writes it through the one writer
+([`siesta.md`](?doc=engines/siesta.md) § 6.1), the transport axis `0` as both
+engines use it, with the transmission's `TBT.k` always in its block form,
+which carries it. *(Until then no transport deck honoured it: every rung wrote
+`0.0` and the template took `[0, 0, 0]` whatever the relaxation ran. The
+acceptance ladder relaxed at `0`, so it matched by coincidence.)*
 
 ### 0.4 The four things that must agree, and where each is enforced
 
@@ -259,9 +253,9 @@ rather than a crash — which is why they are guards in code and not advice.
 
 | # | must be true | enforced where | on the composite path? |
 |---|---|---|---|
-| 1 | device `kz = 1` | **error**, `validation._validate_transport_kind` — keyed on `task.calculation`, so it fires for whatever config class the deck renders from | ✅ on every prep. *(Named `TransiestaEngine.preflight` here until 2026-09-16; that one is keyed on `TransportConfig` in `_ENGINE_VALIDATORS` and every rung now resolves a `SiestaConfig`, so it dispatches for nothing. Its OTHER checks — region contiguity, the region partition — went silent with it: see § 3.6a. The open-shell question is the electronic state's, asked on every rung since 2026-09-28.)* |
-| 2 | electrode `kz` dense | default **40**, a catalogue row (`electrode_kz`) the electrode layout reads | ✅ **held** — the value reaches the deck (measured: the lead renders `0 0 40`), it is editable in the template, and since 2026-09-17 the gate is in the pass every prep runs: `_validate_transport_kind` refuses `electrode_kz = 1` and warns below 20 (`science/overview.md` § 4). *This row said the warn "still lives only in the standalone `molbuilder transport preflight` verb, so a composite run never sees it" — true when written, and left standing for several hours after the re-homing that fixed it.*
-| 3 | transverse k identical in lead and device | the electrode deck *reads* the device's | ✅ by construction |
+| 1 | device `kz = 1` | **fixed**: the rung's mesh writes 1 (`kmesh.mesh_for`), the form draws the component locked, and every door refuses another value (`kmesh.fixed` through `template.why_not`, [`siesta.md`](?doc=engines/siesta.md) § 6.1) *(an error in `validation._validate_transport_kind`, the kind's validator, from 2026-09-16 until 2026-09-30, beside a warning about the same axis in the SIESTA validator)* | ✅ on every door. *(Named `TransiestaEngine.preflight` here until 2026-09-16; that one is keyed on `TransportConfig` in `_ENGINE_VALIDATORS` and every rung now resolves a `SiestaConfig`, so it dispatches for nothing. Its OTHER checks — region contiguity, the region partition — went silent with it: see § 3.6a. The open-shell question is the electronic state's, asked on every rung since 2026-09-28.)* |
+| 2 | electrode `kz` dense | default **40**, a catalogue row (`electrode_kz`) a lead's mesh reads | ✅ **held** — the value reaches the deck (measured: the lead renders `0 0 40`), it is editable in the template, and it is refused at 1 by its own limit (`above`) and warned below 20 by its range, on every door ([`siesta.md`](?doc=engines/siesta.md) § 6.1; `_validate_transport_kind` held both from 2026-09-17 until 2026-09-30). *This row said the warn "still lives only in the standalone `molbuilder transport preflight` verb, so a composite run never sees it" — true when written, and left standing for several hours after the re-homing that fixed it.*
+| 3 | transverse k identical in lead and device | one shared `kgrid`, and every rung's mesh reads it (`kmesh.mesh_for`) — TranSIESTA itself stops on *"found incompatible k-grids"* | ✅ by construction |
 | 3a | the junction is neutral | **error**, the electronic state's family (`validation/chemistry.py`, ES7) — and a cited run that carried a charge is refused at `init` — the boundaries are open, so the electron count is the electrodes' to set, and a lead must stay neutral or the Fermi level every stage is measured against moves | ✅ on every prep, since 2026-09-16 (§ 2a.7's deferral, declared on the row and enforced at the gate) |
 | 4 | basis, XC and mesh identical | ONE value shared by every stage, so they cannot disagree. *(Until 2026-09-16 this read **sealed** — taken from the cited run and uneditable. Superseded by § 2a.7: the cited run DEFAULTS them and the person may change them, everywhere at once. The invariant is unchanged; only its enforcement moves from inherited to single.)* | ✅ |
 
@@ -956,7 +950,9 @@ The treatment is not really a third mechanism: **single bias is the degenerate
 case of the bias axis — one point, at zero, where every list starts.** It earns a
 name of its own because what changes is not the machinery but the standing of
 the result. **The list is the bias's only home** *(ruled 2026-09-29, `plan.md`
-§ 5w K1)*: each rung writes the point it runs — the device converges at it and
+§ 5w K1)* — its points distinct (two runs of one voltage would share one
+folder, so a repeat is refused) and each warned when outside the bias item's
+range, like any value (`template.md` § 5.3, 2026-09-30): each rung writes the point it runs — the device converges at it and
 the transmission reads that same point — and `bias_voltage_v` is that point,
 fixed by the rung (`role`), never a value the template or a stage override
 states. A template value until then answered a single-bias calculation, a
@@ -1124,7 +1120,7 @@ Edited in one panel. Changing any of these rebuilds all five stages.
 | *the pseudopotentials* | — | Must be the same set everywhere, and must match the functional: SIESTA silently uses the pseudo's XC even when the deck disagrees | 2 |
 | `species_order` | — | **Structural, and easy to overlook.** It fixes the orbital ordering inside `.DM` and `.TSHS`. Two stages that order species differently write files the next stage cannot read correctly | 2 |
 | `kgrid` *(transverse part)* | `%block kgrid_Monkhorst_Pack` | The transverse Brillouin-zone sampling. Leads and device share one transverse cell, and the self-energy is folded in per transverse k-point, so two grids cannot be combined. *(Advisory as to whether the density suffices; checkable that they agree)* | 2 + 3 |
-| `kgrid_displacement` | same block | The grid's offset — same argument. An offset that differs is a different sampling, and TranSIESTA itself refuses a lead whose offset differs from the device's. Acts across the transport axis only; Γ-centred on a hexagonal cell. **Not honoured on any rung yet** — to be cited and written through the door (§ 0.3a; plan § 5w K17) | 2 |
+| `kgrid_displacement` | same block | The grid's offset — same argument. An offset that differs is a different sampling, and TranSIESTA itself refuses a lead whose offset differs from the device's. Acts across the transport axis only; Γ-centred on a hexagonal cell. **Cited and written on every rung since 2026-09-30** (§ 0.3a; [`siesta.md`](?doc=engines/siesta.md) § 6.1) | 2 |
 | `electrodes_bulk` | `TS.Elecs.Bulk` | Whether the lead region inside the device takes the lead's own bulk Hamiltonian. True is right whenever the region really is bulk — which is what the region labels assert. **Shared since 2026-09-29, and the device's alone before** (`elecs_bulk`, `stages = ["device"]`): TranSIESTA reads it for the device and `tbtrans` takes it as the default of its own setting, so the transmission must read the same value (§ 6.1b) | 3 |
 | *the lead layer count inside the device* | — | Not a transport parameter at all: **geometry**, settled when the junction was built and relaxed. Screening must be complete before the lead boundary, or the self-energy attaches to a region that is not bulk-like. Transport **inherits and verifies** it | 2 |
 
@@ -1190,7 +1186,7 @@ Exposing these as controls would offer a choice with one correct answer.
 | parameter | keyword | what the role fixes | tier |
 |---|---|---|---|
 | `solution_method` | `SolutionMethod` | The stage's identity: a closed periodic warm-up, a bulk lead, an NEGF device | 1 |
-| *the device's transport-axis k* | `%block kgrid_Monkhorst_Pack` | Fixed at 1 — that axis is the open boundary and is not sampled. A violation is refused | 2 |
+| *the transport axis's k* | `%block kgrid_Monkhorst_Pack` · `TBT.k` | Fixed at 1 on the seed, the device and the transmission, offset 0 — that axis is the open boundary and is not sampled. It is the third component of `kgrid`, `tbt_k_grid` and `kgrid_displacement`, which no rung reads: drawn locked on the form, and another value refused on every door (`kmesh.fixed`, [`siesta.md`](?doc=engines/siesta.md) § 6.1) | 2 |
 | *the leads write their Hamiltonian* | `TS.HS.Save` | A lead that omits it concludes having produced nothing the device can attach to | 1 |
 | *each lead's label* | `SystemLabel` | Derived by `prep` from the calculation's one label (`system_label`, shared — Class A): the stem the device's `TS.Elec` reference is built from | 1 |
 | `bias_voltage_v` | `TS.Voltage` | The bias point this rung's deck is for: the description's axis (`task.bias`) names it, and each point's device and transmission decks carry its own (§ 2a.10) | 1 |
@@ -1601,7 +1597,7 @@ dissolves at the same place:
 | the seed ran 1000 SCF iterations and died `SCF_NOT_CONV` | `MaxSCFIterations` is not in the hardcoded list, so the citation's `30` cannot travel |
 | the device deck aborts: *"the continued fraction method requires at least 20 poles"* | **Diagnosed wrongly here until 2026-09-16, and the wrong fix shipped for a day.** `TS.Contours.Eq.Pole.N` *is* a real keyword (`Src/m_ts_chem_pot.F90:113`) — but on the deck shape this project emits it can never take effect. A deck declaring `%block TS.ChemPot.<name>` with no `contour.eq` inside it takes the continued-fraction branch (`:299`), where the count is set from the ENERGY at `:319`, `N = int(E / (pi * kT))`, and the branch's own default (`:316`, `E = pi*60*kT*0.7`) is non-zero, so the override always fires. Only the block-interior `contour.eq.pole.n` (`:263`) short-circuits it, and this emitter writes no such line. The abort was caused by this project's own shipped default, `negf_eq_pole_ev = 1.5` eV, which is **18 poles at 300 K**. 1.7 gives 20, 2.0 gives 24, 4.0 gives 49, and writing nothing gets the engine's 42. The row defaulted to 0 — *let the engine choose* — from 2026-09-17 to 2026-09-29, when a real device lost the charge on the engine's 42 and held it on 10 eV's 123: it now defaults to **10 eV, always written** (§ 6.1c), and `_validate_transport_kind` refuses any stated energy too small for the run's own temperature, with the arithmetic. The refusal's rule is `:319` + `:324` verbatim, not a curve fitted to observations |
 | `TBT.k` is emitted as a bare scalar the parser cannot read | the list hand-formats values, so no emitter owns "how a list-valued keyword is written" |
-| `tbt_k_grid`'s transport axis is unguarded | there is no declaration to carry a bound |
+| `tbt_k_grid`'s transport axis was unguarded *(guarded 2026-09-16 by the kind's validator; since 2026-09-30 a fixed component, [`siesta.md`](?doc=engines/siesta.md) § 6.1)* | there was no declaration to carry a bound |
 | the electronic contract is two frozensets and a predicate spelled twice | floor 2's job done in code, because floor 2 held nothing |
 
 **The lesson for the order of work.** This document's first draft put "render
@@ -1720,7 +1716,7 @@ So transport supplies **four layout tables**, selected by the `stage_token` that
 |---|---|---|
 | `seed` | an ordinary SCF | the electronic contract; no TS/TBT rows |
 | `electrode_L`, `electrode_R` | a bulk lead | contract + `electrode_kz` + semi-infinite direction |
-| `device` | the NEGF SCF | contract + `TS.*` contour rows + the chemical potentials; transport axis forced to `kz = 1` |
+| `device` | the NEGF SCF | contract + `TS.*` contour rows + the chemical potentials; one k-point along transport, the rung's mesh ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
 | `transmission` | **its own text since 2026-09-29** (the same text as `device` until then) | the `TS.*` junction description `tbtrans` reads plus the `TBT.*` rows; the binary is `Resources.program = tbtrans` (§ 6.1b) |
 
 An item absent from a stage's layout is simply not written into that stage's
@@ -1898,13 +1894,14 @@ cannot be done first.** Each line is falsifiable.
 10. `electrode_kz` is reachable from a description — invariant I9, previously a
     Python function default nothing passed. **✅ done — 4b/4c.**
 11. Every parameter with a physical constraint has its guard where it is
-    declared, in particular the transport axis of any k-grid: an error for the
-    device, unchecked for `TBT.k` today. **Partly done 2026-09-16**: a
-    transport KIND validator refuses a sampled transport axis by name and says
-    which parameter *does* own a lead's axis. Keyed on the kind rather than on
-    a config class — the older `_validate_transport` is keyed on
+    declared, in particular the transport axis of any k-grid. **✅ done
+    2026-09-30**: the k-point mesh decides every rung's sampling in one place,
+    and the transport axis of `kgrid` and `tbt_k_grid` is a component the kind
+    fixes, refused on every door ([`siesta.md`](?doc=engines/siesta.md) § 6.1).
+    *(Partly done 2026-09-16 by a transport KIND validator, keyed on the kind
+    rather than a config class — the older `_validate_transport` was keyed on
     `TransportConfig` and stopped firing the moment a rung moved onto the
-    seam, and a rule that runs for one of two config classes is not a gate.
+    seam.)*
 
 **Floor 2 names no machine.**
 
@@ -2087,8 +2084,9 @@ markers the catalogue carries, never by a list a blueprint keeps:
 **`citation` is not the same as `shared`, and treating it as one was the
 defect of 2026-09-23.** `citation` says *who supplies the default*; `shared`
 says *who it binds*. Every `citation` row is shared, and Class A contains
-more: `species_order`, the transverse grid's offset and the pseudopotentials
-are shared and answered by nobody's run. *(The spin was too, until the citation
+more: `species_order` and the pseudopotentials are shared and answered by
+nobody's run. *(The transverse grid's offset was too, until the citation began
+answering it on 2026-09-30.)* *(The spin was too, until the citation
 began answering it on 2026-09-28: `spin_treatment` and `unpaired_electrons` are
 `citation` rows now.)*
 Both surfaces are served by `/api/transport/schema?surface=rung|shared`
@@ -2455,8 +2453,10 @@ Three kinds of holder appear there. **construction** means the rung cannot be
 built any other way: one template resolves every rung, and the lead's atoms ARE
 the device's, extracted by region label. **A live gate** means a check runs on
 every prep — `_validate_transport_kind` (keyed on the calculation KIND, so it
-fires whether or not anyone remembers to ask) or `compose`. Nothing here is held
-by a command a person must run.
+fires whether or not anyone remembers to ask), `compose`, or an item's own
+declaration that every door reads (a limit, a component the kind fixes —
+`engines/template.md` § 5.3). Nothing here is held by a command a person must
+run.
 
 > *This paragraph said the gates were encoded in `transport/preflight.py`, with
 > a `Gate` column of check-ids and a ✓ meaning "guaranteed by the electrode
@@ -2473,9 +2473,9 @@ by a command a person must run.
 | I4 | PAO.EnergyShift | all three | sets orbital range = basis radius | **construction** — one template |
 | I5 | Basis tier, per species | frozen-electrode-Au = device-Au | a basis step = spurious back-scattering (§ 7) | **construction** — one template |
 | I6 | Lateral cell (a, b) | electrode = device | the lead tiles the device cross-section | **construction** — the extraction takes the device's `lat_a`/`lat_b` verbatim |
-| I7 | Transverse k (kx, ky) | electrode **commensurate** device | TBtrans projects lead k onto device k (commensurate = the two grids share a common factor) | **construction** — `citation_defaults` carries one transverse pair to both |
-| I8 | Device kz = 1 | device | open boundary (no periodicity along transport) | `config.kgrid` — `_validate_transport_kind`, **error** |
-| I9 | Electrode kz dense (converged) | electrode | it's a *periodic bulk* run; thin cell → large Brillouin zone (BZ) | **`config.electrode_kz`** — `_validate_transport_kind`, error at 1 / warn below 20 *(re-homed 2026-09-17)* |
+| I7 | Transverse k (kx, ky) and offset | electrode **identical to** device | the lead's self-energy is paired with the device's Hamiltonian at the same k⊥ (§ 0.3); TranSIESTA stops on *"found incompatible k-grids"* (`ts_electrode.F90`) | **construction** — one shared `kgrid` and `kgrid_displacement`, which every rung's mesh reads (`kmesh.mesh_for`) *("commensurate — the two grids share a common factor" stood here until 2026-09-30; the engine requires them equal)* |
+| I8 | Device kz = 1 | seed, device, transmission | open boundary (no periodicity along transport) | **fixed** — the rung's mesh writes 1; `kmesh.fixed` through `template.why_not` refuses another value on every door |
+| I9 | Electrode kz dense (converged) | electrode | it's a *periodic bulk* run; thin cell → large Brillouin zone (BZ) | **`electrode_kz`'s own limit and range** — refused at 1 (`above`), warned below 20 (`range`), on every door *(the kind's validator held both from 2026-09-17 until 2026-09-30)* |
 | I10 | Electrode geom = device frozen layers | electrode ⇆ device | Σ must map atom-for-atom onto the device | **construction** — the extraction clones them |
 | I11 | Electrode thickness ≥ principal layer | electrode | Σ assumes only nearest layers couple (§ 7) | `compose.py::_extract_and_gate_electrodes` — **refuses**, from orbital ranges READ out of the citation's `.ion` files |
 | I12 | no vacuum where the crystal continues — the room at the transport boundary is one layer spacing of the lead; a transverse axis declared periodic is reached across by the lead | every rung | a gap along transport = a severed lead, not a junction; vacuum on a periodic axis contradicts the declaration | **`cell.transport_vacuum`**, **`cell.transverse_vacuum`** — `_validate_transport_kind`, **error**, measured from the lead (§ 6.1c; re-homed 2026-09-17, measured from the lead since M5 step 2) |
@@ -2486,8 +2486,9 @@ by a command a person must run.
 2026-09-17, `plan.md` § 5p.3p.7)*. Seven hold by construction — every rung
 resolves from ONE template, so I1/I3/I4/I5 cannot differ; the lead's atoms ARE
 the device's, extracted by `compose`, so I2/I10 hold; and the lead takes the
-device's lateral vectors verbatim (I6). I7 rides `citation_defaults`. I13 is a
-`role` item on the electrode rung. I8 is an error in `_validate_transport_kind`,
+device's lateral vectors verbatim (I6). I7 is one shared `kgrid` every rung's
+mesh reads. I13 is a `role` item on the electrode rung. I8 is the mesh's fixed
+component, refused on every door ([`siesta.md`](?doc=engines/siesta.md) § 6.1),
 and **I11 is held BETTER** by `compose.py`, which reads real orbital ranges from
 the citation's `.ion` files and refuses with the numbers — retiring the ~12 Å
 floor `preflight.py` used, which passes a 4.8 Å three-layer Au block.
@@ -2495,7 +2496,8 @@ floor `preflight.py` used, which passes a 4.8 Å three-layer Au block.
 I9 and I12 were the two held only by the verb, and were re-homed to
 `_validate_transport_kind` on 2026-09-17 — the one validator keyed on the
 calculation KIND, which is what makes them fire on every prep rather than on a
-command somebody remembers to run.
+command somebody remembers to run. *(I9 moved again on 2026-09-30, to
+`electrode_kz`'s own limit and range, which every door reads.)*
 
 *The verb `transport preflight` is DELETED (2026-09-17).* It reported these as
 an error/warn/ok checklist over two finished `.fdf` files, and this paragraph
@@ -2512,9 +2514,9 @@ checklist, went with the verb — a KIND gate raises `Issue`s and the form and t
 to format.)
 
 **Each gate traces to a physical requirement and a reference** (so the design is
-auditable, not asserted): the open-boundary `kgrid.device_kz` (I8) and the
-basis-continuity `contract.basis` (I5) to Brandbyge 2002; the bulk-lead
-`kgrid.electrode_kz` (I9), the lateral `cell.transverse`/`kgrid.transverse` (I6/I7),
+auditable, not asserted): the open boundary (I8) and the basis continuity
+(I5) to Brandbyge 2002; the bulk lead's sampling (I9), the lateral cell and the
+shared transverse grid (I6/I7),
 and `electrode.thickness` (I11, principal-layer screening) to Papior 2017; the
 numerical contract `contract.{xc,meshcutoff,energyshift}` (I1/I3/I4) to Soler 2002;
 and the Au semicore `MeshCutoff` to van Setten 2018 (§ 9).
@@ -2535,7 +2537,8 @@ be.
 | Electrode extraction | `transport/wizard.py` (`ElectrodeModel`, `extract_electrode_model`) | **derives** a bulk lead from the labeled device — it ASKS `transiesta._find_electrode_regions` for the partition and `cell.detect_layers` / `cell.bulk_z_period` for the z-period (§ 7.1) rather than re-deriving either. `as_structure()` hands `prep` a `Structure`, so the lead renders through the same seam as every other rung |
 | Stages | `transport/stages.py` | the five-rung ladder, its DAG (`stage_inputs` — which stage consumes which concluded stage before it, § 1), the one config from the citation's deck (`config_for`), the per-stage renders |
 | Deck | `transport/deck.py` | the NEGF arm of `spec_for` — **the one writer of all five rung texts**, reached as `siesta.input.spec_for(struct, cfg, calculation="transport")` → `DeckSpec` → `prepare_deck`. It reuses `transiesta._emit_geometry` and `emit_electrode_declarations` as its emission library (`_emit_basis_and_xc` was deleted 2026-09-18; `_emit_transiesta_block` became `emit_electrode_declarations` on 2026-09-29, its values moving to the catalogue) |
-| Kind gate | `validation/__init__.py` (`_validate_transport_kind`) | the invariants that must fire on **every** transport prep, keyed on `task.calculation`: I8 (device `kz` = 1), I9 (lead `kz` dense), I12 (no vacuum where the crystal continues, measured from the lead — § 6.1c), and the pole energy's 20-pole floor (§ 6.1c). § 5 names which holder holds which |
+| Kind gate | `validation/__init__.py` (`_validate_transport_kind`) | the invariants that must fire on **every** transport prep, keyed on `task.calculation`: I12 (no vacuum where the crystal continues, measured from the lead — § 6.1c) and the pole energy's 20-pole floor (§ 6.1c). § 5 names which holder holds which; the k-point sampling (I7–I9) is the mesh's, [`siesta.md`](?doc=engines/siesta.md) § 6.1 |
+| k-point mesh | `kmesh.py` | every rung's sampling — the shared transverse pair, the open axis's one point, a lead's `electrode_kz`, the transmission's `tbt_k_grid`, the offset on every rung — decided once and read by the writer, the settings gate and the record ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
 | Record | `transport/record.py` | TBtrans output → `<label>.transport.json` (`summarize run`); a point whose transmission has not run reads as **pending**, never as a failure |
 
 **Retired 2026-09-17, and not replaced** — the June 2026 hand-assembly era
@@ -2853,7 +2856,8 @@ mechanism would have delivered one of them.
 *(**Stale — corrected 2026-09-23.** This said `electrode_kz` "remains a separate
 open defect ... a control that does nothing", citing `render_stage_deck`, which
 was deleted 2026-09-17. § 2a.14 measured the lead deck rendering `0 0 40` and
-§ 5 I9 names `_validate_transport_kind` as its holder. The row reaches the deck.
+§ 5 I9 named `_validate_transport_kind` as its holder — `electrode_kz`'s own
+limit and range since 2026-09-30. The row reaches the deck.
 What does still exist is the unread module constant `wizard.DEFAULT_ELECTRODE_KZ`
 — § 3.7's last row, and X1 ②.)*
 
@@ -3219,9 +3223,9 @@ A defensible starting point (**all values to be convergence-tested**, per § 5's
 | Basis | **DZP everywhere** | DZP = double-ζ + polarization (SIESTA PAO tier); drop to the smaller SZP for bulk-Au only after a `T(E)` check |
 | `MeshCutoff` | 400 Ry (converge 300→500) | Au is **semicore** (5s5p5d valence — a shallow d shell) → needs a fine grid. The config default is **300** (`config/transport.py::siesta_mesh_cutoff_ry`); the § 3 example overrides to 400 |
 | `PAO.EnergyShift` | 0.01 Ry | sets orbital range → electrode thickness |
-| Transverse k | converge 2×2 → 4×4 → 6×6 | commensurate device ⇄ electrode (I7) |
+| Transverse k | converge 2×2 → 4×4 → 6×6 | identical in device and electrode (I7) |
 | Device `kz` | **1** | open boundary (I8) |
-| Electrode `kz` | converge (default **40**; the preflight suggests starting ~80) | dense bulk z-sampling (I9) |
+| Electrode `kz` | converge (default **40**; warned below 20, refused at 1) | dense bulk z-sampling (I9) |
 | Electrode thickness | **~6 Au(111) layers** | the *electronic* principal layer, not the 3-layer geometric repeat |
 | z-vacuum | **0** | slab-junction model; nonzero ⇒ cluster model |
 
@@ -3266,10 +3270,13 @@ Three corrections that catch real mistakes:
   2026-09-23.)* Forces are
   k-robust while the sharp `T(E_F)` Fermi-surface integral is not, so it is sound to
   **relax at a coarser transverse k (e.g. 2×2×1) and run transport dense (e.g.
-  4×4×1)** [Soler 2002; Papior 2017]. **But note:** the composite reads the transverse k FROM the cited relaxation's
-  own deck (fdf-is-truth) and forces device `kz = 1` — it never auto-coarsens
-  anything — so to relax coarser you run the upstream relaxation at the coarser
-  mesh and cite that attempt. Γ-only (1×1×1) is wrong for periodic
+  4×4×1)** [Soler 2002; Papior 2017]. The composite DEFAULTS the transverse k
+  from the cited relaxation's own grid (§ 2a.7) and the device's transport axis
+  is 1 by rule ([`siesta.md`](?doc=engines/siesta.md) § 6.1) — so relax at the
+  coarse mesh, cite that attempt, and raise the transport's `kgrid` in its
+  template; the change applies to every rung at once. *(This said the cited
+  grid could not be changed, "fdf-is-truth"; § 2a.7 has made it a default the
+  person may change since 2026-09-16.)* Γ-only (1×1×1) is wrong for periodic
   metallic leads: even with the lead atoms frozen it gives a poorly defined `E_F`.
 
 ### 7.1 The metal crystal — stacking, layer counts, and the two boundaries

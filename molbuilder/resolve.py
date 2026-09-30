@@ -339,29 +339,26 @@ _SOURCE_WORDS = {"template": "the template", "stage": "this stage's override",
                  "sweep": "a sweep point", "pin": "a pin", "role": "the rung"}
 
 
-def _refuse_what_the_kind_does_not_offer(values, provenance: Mapping[str, str],
-                                         engine: str, kind: str) -> None:
-    """A resolved value the kind does not offer (`engines/template.md`
-    § 6.3a) is refused, naming where it came from, why the kind does not
-    offer it and what it does -- a vibration's relaxation set to `Verlet`,
-    an optimization's solver to `transiesta`.  The electronic state's items
-    are that family's: their values are resolved from the structure at
-    render, and the settings gate holds those to the same sets."""
-    from .template import (STATE_ITEMS, a_kind, catalogue, is_member, offered,
-                           select, why_not_offered)
+def _refuse_what_cannot_stand(values, provenance: Mapping[str, str],
+                              engine: str, kind: str) -> None:
+    """A resolved value that cannot stand for its item on this kind is
+    refused, naming where it came from and the ONE reason the per-value door
+    gives (`engines/template.md` § 5.3, ``template.why_not``): a component
+    the kind fixes -- a transport calculation's third k component -- a
+    choice the kind does not offer -- a vibration's relaxation set to
+    ``Verlet`` -- or a value at or below its hard limit -- ``fc_displacement
+    = 0``.  One pass and one door, so one value draws one refusal: the
+    offered set and the limit were two passes here until 2026-09-30."""
+    from .template import catalogue, select, why_not
     for it in select(catalogue(), engine=engine, calculation=kind):
-        if not it.offered or it.name in STATE_ITEMS:
-            continue
         have = getattr(values, it.name, None)
-        can = offered(it, engine, kind)
-        if have is None or is_member(have, can):
-            continue
-        src = provenance.get(it.name, "template")
-        raise ResolveError(
-            f"{_SOURCE_WORDS.get(src, src)} sets {it.name!r} to {have!r}, "
-            f"which {a_kind(kind)} does not offer: "
-            f"{why_not_offered(it.name, have, engine, kind)}.  It offers "
-            f"{', '.join(map(str, can))}.")
+        clause = why_not(it, have, engine=engine, kind=kind)
+        if clause:
+            src = provenance.get(it.name, "template")
+            shown = list(have) if isinstance(have, tuple) else have
+            raise ResolveError(
+                f"{_SOURCE_WORDS.get(src, src)} sets {it.name} = "
+                f"{shown!r}{clause}.")
 
 
 def resolve(template_text: str, task, config_cls, *,
@@ -586,8 +583,10 @@ def resolve(template_text: str, task, config_cls, *,
         if answers:
             values = effective_config(values, answers)
             prov.update({k: "role" for k in answers})
-        # ...AND NOTHING THE KIND DOES NOT OFFER (`template.md` § 6.3a).
-        _refuse_what_the_kind_does_not_offer(values, prov, _engine, _kind)
+        # ...AND NOTHING THAT CANNOT STAND FOR ITS ITEM ON THIS KIND -- a
+        # component the kind fixes, a choice it does not offer, a value past
+        # a hard limit (`template.md` § 5.3) -- whatever layer set it.
+        _refuse_what_cannot_stand(values, prov, _engine, _kind)
 
         resources = dataclasses.replace(allocation, **machine)
         # § 6.2's translation boundary (job-contracts.md): floor 3 maps
@@ -853,11 +852,15 @@ def effective_config(template, overrides: Mapping[str, Any], *,
     # deck.  Widening int -> float is lossless, so it is done here and the deck
     # reads the same however the description spelled it.
     #
-    # NOTHING ELSE is coerced.  ``float -> int`` would silently truncate
-    # ``relax_steps: 100.7`` to 100, and a string would quietly parse; both are
-    # the caller's mistake and are refused BY NAME in the preflight
+    # NOTHING LOSSY is done.  A WHOLE float where a count is declared narrows
+    # (``8.0`` -> ``8``, lossless since 2026-09-30: it reached the settings
+    # gate as a float and was refused there as "not an integer", while the
+    # preflight had accepted it -- one value, two verdicts); ``100.7`` would
+    # have to be truncated, and a string would quietly parse; both are the
+    # caller's mistake and are refused BY NAME in the preflight
     # (``validation/task.py``), which is where a wrong value belongs.  Found by
-    # the M2 seam walk, 2026-08-07.
+    # the M2 seam walk, 2026-08-07.  The rule is ``template.as_declared``'s,
+    # the one place a described value meets its declared type.
     # **The DECLARED TYPE decides, not the annotation** (audit § 25.3, fixed
     # 2026-08-14).  This read ``f.type`` from the dataclass and compared it
     # against the string ``"float"`` -- and under ``from __future__ import
@@ -881,7 +884,13 @@ def effective_config(template, overrides: Mapping[str, Any], *,
     # comparing; that defensive call IS the symptom.  ``list -> tuple`` is
     # lossless, so it is done here, exactly as ``template._shape`` already
     # does it for the template's own side of the ⊕.
+    from .template import as_declared
+
     def _as_declared(k, v):
+        declared = _catalogue_types().get(k)
+        if declared is not None:
+            return as_declared(declared, v)
+        # A field the catalogue does not describe: its annotation decides.
         if (_declares_float(template, k)
                 and isinstance(v, int) and not isinstance(v, bool)):
             return float(v)

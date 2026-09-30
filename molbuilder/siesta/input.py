@@ -476,7 +476,7 @@ def _spin_facts(state) -> dict:
     }
 
 
-def _parallel_facts(cfg) -> dict:
+def _parallel_facts(cfg, mesh) -> dict:
     """How the work is split across ranks, and which solver reads which knob.
 
     **Derivation, not emission** -- and at SPEC time, for the same reason
@@ -485,9 +485,11 @@ def _parallel_facts(cfg) -> dict:
     ``Diag.*`` when the solver is ScaLAPACK), so the layout cannot be read
     until they exist (`script-preparation.md` § 4.1).
 
-    ``over_k`` read the k-grid out of the writer's locals until 2026-08-19;
-    it is ``cfg.kgrid`` either way, and reading the config is what let this
-    move ahead of the deck.
+    ``over_k``'s automatic answer is *more than one point* on ``mesh``,
+    the k-point mesh THIS deck writes (`kmesh.mesh_for`, `engines/siesta.md`
+    § 6.1): an electrode's ``kx ky 40``, never the template's ``kx ky 1``.
+    It read ``cfg.kgrid`` until 2026-09-30, so a wire junction's lead ran
+    forty points with the diagonaliser split over orbitals.
     """
     # ---- Parallel execution (MPI) -------------------------------
     # BlockSize is a THROUGHPUT knob, not a crash guard: the empirical
@@ -532,7 +534,7 @@ def _parallel_facts(cfg) -> dict:
         block_size = int(cfg.block_size)
 
     if cfg.parallel_over_k is None:
-        over_k = tuple(cfg.kgrid) != (1, 1, 1)
+        over_k = mesh is not None and mesh.n_points > 1
     else:
         over_k = bool(cfg.parallel_over_k)
 
@@ -949,14 +951,21 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
     # The blocks fill in the rest as they render -- the block size, the
     # k-parallel default -- and the syntax door and the record blocks read
     # the same dict.  ONE channel, not one argument list per reader.
+    # THE K-POINT MESH THIS DECK WRITES -- worked out ONCE, here, and read by
+    # the block that writes it, the parallel split and the settings gate
+    # (`kmesh.mesh_for`, `engines/siesta.md` § 6.1).
+    from .. import kmesh as _kmesh
+    _mesh = _kmesh.mesh_for(cfg, struct.axis_kind, kind=calculation)
     if _vibration:
         from . import vibration_deck as _vib_deck
         _derived: dict = {**_spin_facts(state),
-                          **_parallel_facts(cfg),
+                          **_parallel_facts(cfg, _mesh),
+                          "k_mesh": _mesh,
                           "fc": _vib_deck.fc_facts(struct, cfg)}
     else:
         _derived = {**_spin_facts(state),
-                    **_parallel_facts(cfg),
+                    **_parallel_facts(cfg, _mesh),
+                    "k_mesh": _mesh,
                     **(_relaxation_facts(cfg) or {})}
 
     def _deck_line(param):
@@ -1032,9 +1041,10 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             # here saying "omitted (SIESTA's own)" for the retired
             # sentinel -- and it would have LIED: with 0 the emitter
             # writes `BlockSize 0` into the deck (0 is not None), so
-            # PROVENANCE claimed an omission the deck contradicts.  The
-            # validator refuses 0 outright now (`_validate_block_size`),
-            # so the state has no way in and no arm here.
+            # PROVENANCE claimed an omission the deck contradicts.  0 is
+            # refused on every door now -- the item's hard limit (`above`,
+            # engines/template.md 5.3) -- so the state has no way in and no
+            # arm here.
             # ...and the SAME LIE survived in the other arm until 2026-09-05,
             # one line below the paragraph warning about it.  Unset renders
             # `auto -> None`: a record claiming the auto-policy chose the
@@ -1065,6 +1075,10 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # expresses it, not as it arrived.
         validate_subject=lambda s, c: (validation_struct, {
             "cell": cell, "design": struct,
+            # ...ON THE K-POINT MESH THIS DECK WRITES, the one the block
+            # below writes (`engines/siesta.md` § 6.1).
+            "k_meshes": tuple(m for m in (_derived["k_mesh"],)
+                              if m is not None),
             # AND WHAT THE LADDER'S `relax` STAGE LEFT, at a force-constant
             # stage that measures at its geometry: the checks judge that
             # outcome, not the input's (`validate`'s ``prior``; V1.36).
@@ -1539,15 +1553,15 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         out.append(f"NetCharge       {q:+d}")
         out.append("")
 
-        # k-grid.  The block's fourth column is SIESTA's ``displ(3)`` -- the grid
-        # ORIGIN, in units of one mesh spacing.  It was hard-coded 0.0 here until
-        # 2026-08-14; it is now a config item, so the classic Monkhorst-Pack shift
-        # (0.5 on an even mesh) is expressible.
-        kx, ky, kz = cfg.kgrid
-        dx, dy, dz = cfg.kgrid_displacement
-        shifted = any(float(d) != 0.0 for d in (dx, dy, dz))
-        _shift_note = f", displaced {dx} {dy} {dz}" if shifted else ""
-        out.append(f"# --- k-points ({kx}x{ky}x{kz}{_shift_note}) ---")
+        # k-points: THE MESH THIS DECK WRITES, worked out once with the spec
+        # (`kmesh.mesh_for`, `engines/siesta.md` § 6.1) and written by the one
+        # writer -- the counts and the offset column, SIESTA's ``displ(3)``,
+        # the grid's origin in units of one mesh spacing.
+        mesh = _derived["k_mesh"]
+        _shift_note = (f", displaced {' '.join(map(str, mesh.shifts))}"
+                       if any(mesh.shifts) else "")
+        out.append(f"# --- k-points ({'x'.join(map(str, mesh.counts))}"
+                   f"{_shift_note}) ---")
         # THE REASONS COME FROM THE DECLARATIONS.  Both items write one
         # `%block kgrid_Monkhorst_Pack` -- the counts and the shift -- so the block
         # itself is emitted below rather than through the per-parameter door; a
@@ -1556,14 +1570,7 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # stood here were a thinner copy of exactly that: they lost the equivalent
         # cutoff (the number that makes two different cells comparable), the
         # per-axis independence, and SIESTA's transport-direction override.
-        if v:
-            out += _sc.parameter("kgrid", "siesta").note()
-            out += _sc.parameter("kgrid_displacement", "siesta").note()
-        out.append("%block kgrid_Monkhorst_Pack")
-        out.append(f"{kx} 0 0 {float(dx)}")
-        out.append(f"0 {ky} 0 {float(dy)}")
-        out.append(f"0 0 {kz} {float(dz)}")
-        out.append("%endblock kgrid_Monkhorst_Pack")
+        out += _layout.k_mesh_lines(mesh, notes=v)
         # No blank line here: the section that follows opens with one, because
         # the framework separates every section from what precedes it.
 

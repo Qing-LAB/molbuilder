@@ -459,6 +459,19 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
         _tmpl_text = transport_template_text(_P(resolved), label=task.label)
     except ValueError as exc:
         raise click.ClickException(str(exc))
+    # THE DESCRIPTION'S OWN CHECK (gate ③), which every describe runs
+    # (`workflow.md` § 9) and this door skipped until 2026-09-30 (plan
+    # § 5w K3) -- refusing before the folder exists, and saying its warnings
+    # (a bias point outside its recommended range) the way `prep` says its
+    # notes.
+    from ..issues import ValidationError
+    from ..validation.task import preflight, refuse_on_error
+    try:
+        for issue in refuse_on_error(preflight(task,
+                                               template_text=_tmpl_text)):
+            click.echo(f"note: {issue.message}", err=True)
+    except ValidationError as exc:
+        raise click.ClickException(str(exc))
     dest = out_dir if out_dir.is_absolute() else         _P(_resolve_bundle(None, None, str(out_dir), must_exist=False))
     dest.mkdir(parents=True, exist_ok=True)
     write_task(dest / TASK_FILENAME, task)
@@ -1198,7 +1211,7 @@ def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
         say_next(next_line)
         return
     if ans.points:
-        from ..transport.stages import bias_token as _bias_token
+        from ..task import bias_token as _bias_token
         for att, v, got in ans.points:
             at = f" @ {_bias_token(v)}" if v is not None else ""
             click.echo(f"prepared {stage}{at}: {Path(att).relative_to(base)}")

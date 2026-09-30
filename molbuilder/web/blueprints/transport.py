@@ -184,7 +184,10 @@ def api_transport_describe_attempt() -> Any:
         if p.xc:
             bits.append(str(p.xc))
         if p.kgrid:
-            bits.append("k " + "x".join(str(k) for k in p.kgrid))
+            bits.append("k " + "x".join(str(k) for k in p.kgrid)
+                        + (" shifted " + " ".join(
+                               f"{s:g}" for s in p.kgrid_displacement)
+                           if any(p.kgrid_displacement or ()) else ""))
         if p.n_atoms:
             bits.append(f"{p.n_atoms} atoms")
         if cited.concluded is not None:
@@ -339,9 +342,12 @@ def api_transport_describe() -> Any:
     chose through the content-blind file layer (`web/projects.md` § 1 —
     the same division of labour as every other tab's writes).
 
-    Validation is the shipped codec's: the ``Task`` construction below
-    is the same gate `read_task` and the CLI's ``jobset init`` run, and
-    the citation resolves through the same door prep composes through.
+    Validation is the codec's and the description's own check: the
+    ``Task`` construction below is the gate `read_task` runs, and the
+    task preflight (gate ③, `workflow.md` § 9) is the one `jobset init`
+    and the Task-setup save run -- its errors refuse, its warnings ride
+    ``notices``.  The citation resolves through the same door prep
+    composes through.
     """
     from molbuilder.persist import json_text
     from molbuilder.projects import projects_root
@@ -517,6 +523,25 @@ def api_transport_describe() -> Any:
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
+    # THE DESCRIPTION'S OWN CHECK (gate ③), which `workflow.md` § 9 fires at
+    # every describe -- this door skipped it until 2026-09-30, so a rung's
+    # value past its hard limit was first refused at prep and a bias point
+    # outside its recommended range was said nowhere (plan § 5w K3).  The
+    # same function the Task-setup save and `jobset init` run: its errors
+    # refuse in the save's own words, its warnings ride `notices`.
+    from molbuilder.validation.task import (preflight as _task_preflight,
+                                            config_class_for as _cfg_cls_for)
+    _pf = _task_preflight(task, template_text=_tmpl_text)
+    _pf_errs = [i for i in _pf if i.severity == "error"]
+    if _pf_errs:
+        return jsonify({
+            "ok": False,
+            "error": "the description fails its own preflight "
+                     "(engines/stages.md § 6.6):\n  - "
+                     + "\n  - ".join(i.message for i in _pf_errs),
+            "findings": _issues_to_json(_pf, cfg=_cfg_cls_for(task)),
+        }), 400
+
     return jsonify({
         "ok": True,
         "label": task.label,
@@ -539,7 +564,7 @@ def api_transport_describe() -> Any:
                    "text": json_text(task.to_dict())},
                   {"name": _T.template_filename(task.label),
                    "text": _tmpl_text}],
-        "notices": [],
+        "notices": _issues_to_json(_pf, cfg=_cfg_cls_for(task)),
     })
 
 

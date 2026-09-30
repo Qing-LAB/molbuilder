@@ -58,6 +58,13 @@
             <span class="ts-state-title" id="ts-state-title">Nothing selected</span>
             <p class="ts-state-body" id="ts-state-body">Pick a calculation folder
               in the sidebar to read its description.</p>
+            {#- WHAT A SAVE'S CHECK SAID (gate ③, workflow.md § 9): the
+                description's warnings, row by row -- drawn by
+                lib/validation-findings.js, the one renderer
+                (science/validation.md § 4.1 R2); cleared on every state
+                change, so it never speaks for another folder. -#}
+            <ul class="issues-panel" id="ts-state-findings" hidden
+                aria-live="polite"></ul>
           </div>
         </div>
       </section>

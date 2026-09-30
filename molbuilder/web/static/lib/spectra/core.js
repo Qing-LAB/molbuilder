@@ -994,40 +994,45 @@
                     params:      collectParams(engine),
                 }),
             }).then(x => x.json());
-            const vf = (window.molbuilder || {}).validationFindings;
-            if (vf && Array.isArray(r.issues)) {
-                /* fieldIds lands each finding beside its own control --
-                 * the same map the optimization tab passes; omitting it
-                 * degraded every Spectrum finding to card-then-residual
-                 * (validation-findings.js says so).  emptyText keeps
-                 * the panel's no-findings copy alive: the template's
-                 * static row is destroyed by the first render. */
-                const ids = {};
-                const schema = state.schemas[engine];
-                const sects = (schema && schema.sections) || [];
-                for (const s of sects) {
-                    for (const f of (s.fields || [])) ids[f.name] = f.id;
-                }
-                // Both forms stay mounted (one is shown), so the OTHER form's
-                // field rows are cleared before this engine's are drawn --
-                // a scope of one form left the hidden form's stale.
-                for (const e of ["pyscf", "siesta"]) {
-                    if (e !== engine && els.form[e] && typeof vf.clear === "function") {
-                        vf.clear({ formScope: els.form[e] });
-                    }
-                }
-                vf.render(r.issues, { panel: els.preflightPanel,
-                                      formScope: els.form[engine],
-                                      fieldIds: ids,
-                                      emptyText: "No findings yet — checks "
-                                          + "run live as you edit." });
-            }
+            if (Array.isArray(r.issues)) showFindings(engine, r.issues);
         } catch (e) {
             // Network hiccup: the panel keeps its previous state; the
             // settings gate at prep is the canonical refusal anyway.
         }
     }
     const refreshPreflightDebounced = _debouncePreflight(refreshPreflight, 250);
+
+    /* ONE PLACE this tab shows an engine's findings -- the live
+     * preflight's and the hand-over's (the cell gate's notices) --
+     * through the one renderer (lib/validation-findings.js). */
+    function showFindings(engine, issues) {
+        const vf = (window.molbuilder || {}).validationFindings;
+        if (!vf) return;
+        /* fieldIds lands each finding beside its own control -- the same
+         * map the optimization tab passes; omitting it degraded every
+         * Spectrum finding to card-then-residual (validation-findings.js
+         * says so).  emptyText keeps the panel's no-findings copy alive:
+         * the template's static row is destroyed by the first render. */
+        const ids = {};
+        const schema = state.schemas[engine];
+        const sects = (schema && schema.sections) || [];
+        for (const s of sects) {
+            for (const f of (s.fields || [])) ids[f.name] = f.id;
+        }
+        // Both forms stay mounted (one is shown), so the OTHER form's
+        // field rows are cleared before this engine's are drawn -- a scope
+        // of one form left the hidden form's stale.
+        for (const e of ["pyscf", "siesta"]) {
+            if (e !== engine && els.form[e] && typeof vf.clear === "function") {
+                vf.clear({ formScope: els.form[e] });
+            }
+        }
+        vf.render(issues, { panel: els.preflightPanel,
+                            formScope: els.form[engine],
+                            fieldIds: ids,
+                            emptyText: "No findings yet — checks "
+                                + "run live as you edit." });
+    }
 
     // ----- Send to Task setup (the hand-over) -------------------
     //
@@ -1058,6 +1063,11 @@
         await mb.taskHandover.send({
             projects:    mb.projects,
             say:         say,
+            // The hand-over's findings in this engine's panel; an empty
+            // list leaves the live preflight's standing (still true).
+            showFindings: (issues) => {
+                if (issues.length) showFindings(engine, issues);
+            },
             structure:   _structure,
             engine:      engine,
             params:      collectParams(engine),

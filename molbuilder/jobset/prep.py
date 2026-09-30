@@ -1736,8 +1736,9 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                                      write_compose_record)
     from ..atom_permutation import PermutationError
     from ..transport.sort import SortError
+    from ..task import bias_token
     from ..transport.stages import (TRANSPORT_STAGES, bias_points,
-                                    bias_token, warm_declaration)
+                                    warm_declaration)
     from ..transport.transiesta import electrode_hs_stem
     from ..siesta.input import spec_for as _siesta_spec_for
     from ..runwrap import write_run_wrapper
@@ -2097,7 +2098,8 @@ def gather_transport_inputs(base_dir, task, stage: str,
     ``.gathered-from`` beside the copies, so a result can always say
     which electrode run fed it.  Returns ``[(source_rel, filename)]``.
     """
-    from ..transport.stages import bias_token, stage_inputs
+    from ..task import bias_token
+    from ..transport.stages import stage_inputs
     from .materialize import attempt_concluded
     from ..paths import Shape
 
@@ -2220,7 +2222,8 @@ def gather_for_stage(base_dir, task, stage: str) -> List[Tuple[Path, Optional[fl
     from ..paths import Shape
     from ..paths import attempt_dir as _adir
     from ..paths import attempts_in as _ain
-    from ..transport.stages import bias_points, bias_token
+    from ..task import bias_token
+    from ..transport.stages import bias_points
 
     base = Path(base_dir)
     stage_dir = base / Shape.named(task.shape).stage_dir(token_for(task, stage))

@@ -89,13 +89,18 @@ verdicts split two ways.** A box the calculation cannot use — a degenerate
 cell, left-handed axes — is a **refusal**: the door answers 400 and nothing is
 written. A box the gate accepted but wants read — an axis it could not tell
 was periodic, vacuum thinner than it expects — comes back as **notices**
-(the gate's four-key dicts: `level`, `message`, `where`, `about` —
+(the gate's four-key dicts: `severity`, `message`, `where`, `about` —
 `periodicity_gate.py`), and a notice holds back the **navigation, never the
 write**: the files are the person's own parameters and refusing to save them
 helps nobody, but a page that jumps away is a page whose warning was never
-read. The sender (`lib/task-handover.js`) shows every notice, keyed on the
-gate's own `level`, and stays on the page. *(A tab does not decide for its
-user — `tabs.md`.)*
+read. The sender (`lib/task-handover.js`) hands every notice to the tab's
+findings panel — the one renderer, `lib/validation-findings.js`
+([`science/validation.md`](?doc=science/validation.md) § 4.1 R2, R2a: a notice
+is a finding) — says in the status line how many came back, and stays on the
+page. The Transport tab's describe hands back its description check's findings
+the same way. *(A tab does not decide for its user — `tabs.md`. The sender
+listed each notice as a bullet in the status line until 2026-09-30 — a
+second renderer.)*
 
 ---
 

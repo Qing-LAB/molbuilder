@@ -633,7 +633,8 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
         assert rows == cell, f"deck lattice {rows} != source {cell}"
 
         kg = re.search(r"%block kgrid_Monkhorst_Pack(.*?)%endblock", deck, re.S)
-        assert kg and "8 0 0 0.5" in kg.group(1), kg and kg.group(1)
+        assert kg and "8 0 0 0.5" in " ".join(kg.group(1).split()), (
+            kg and kg.group(1))
         assert "MeshCutoff 350.0 Ry" in deck
 
         # the ATOMS, row by row, against the pair the hand-over wrote: the same
@@ -932,22 +933,24 @@ def test_save_runs_gate_three_and_refuses_a_failing_preflight(web_client, isolat
             "run": {"name": "x", "id": run_id("x", "H2"),
                     "created": "2026-08-16T00:00:00-07:00"},
             "structure": {"source": "s.xyz", "formula": "H2", "atoms": 2},
-            "varies": ["mesh_cutoff"],
-            # mesh_cutoff's schema range floors at 50 Ry; the codec has no
-            # opinion about values, so only the preflight can catch this.
+            "varies": ["kgrid"],
+            # A k-point count of 0 is past kgrid's hard limit
+            # (`engines/template.md` § 5.3); the codec has no opinion about
+            # values, so only the preflight can catch this.  (A value merely
+            # outside a recommended range is warned, and saves.)
             "stages": [{"name": "coarse", "enabled": True,
-                        "overrides": {"mesh_cutoff": 1.0}}]}
+                        "overrides": {"kgrid": [0, 4, 4]}}]}
         r = web_client.post("/api/task-setup/save", json={
             "dest": str(d), "text": _json.dumps(bad_bounds)})
         assert r.status_code == 400, r.get_json()
         body = r.get_json()
         assert "preflight" in body["error"], body
-        assert "mesh_cutoff" in body["error"], (
+        assert "kgrid" in body["error"], (
             "the refusal must name the failing field")
         assert not (d / "task.json").exists(), (
             "a description that fails its own preflight was written anyway")
         # The findings ride as data too, for the tab to render.
-        assert any("mesh_cutoff" in f.get("message", "")
+        assert any("kgrid" in f.get("message", "")
                    for f in body.get("findings", []))
     finally:
         pass    # tmp_path removes the tree

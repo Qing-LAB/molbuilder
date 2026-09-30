@@ -28,6 +28,10 @@
  */
 
 import { loadCodeMirror, modeFor } from "../lib/codemirror-load.js";
+// THE ONE FINDINGS RENDERER (science/validation.md § 4.1 R2): a save's and a
+// prep's findings are drawn by it, never listed by this page itself.
+import { clear as clearFindings,
+         render as renderFindings } from "../lib/validation-findings.js";
 // § 5.2: the declared type decides what a cell's text means.
 import { CELL_READERS } from "./cell-readers.js";
 
@@ -144,6 +148,10 @@ function setState(kind, title, body) {
     $("ts-state").setAttribute("data-state", kind);
     $("ts-state-title").textContent = title;
     $("ts-state-body").textContent  = body;
+    // A new state is about another moment -- or another folder -- so what
+    // the last save's check said goes with it.
+    const said = $("ts-state-findings");
+    if (said) clearFindings({ panel: said });
 }
 
 function showPath(dir) {
@@ -2605,11 +2613,15 @@ function _showPrepAnswer(wrap, say, r, onConfirm) {
         box.appendChild(d);
         return d;
     };
+    /* THE FINDINGS, through the one renderer (science/validation.md § 4.1
+     * R2) -- the preflight's, and the settings gate's on each deck.  This
+     * listed them as lines of its own, severity as a word, until
+     * 2026-09-30: a second renderer. */
     const findingLines = (list) => {
-        for (const f of (list || [])) {
-            line(f.severity + ": " + f.message,
-                 f.severity === "info" ? null : "warn");
-        }
+        if (!(list || []).length) return;
+        const ul = el("ul", { class: "issues-panel" });
+        renderFindings(list, { panel: ul });
+        box.appendChild(ul);
     };
     findingLines(r.findings);
     if ((r.notes || []).length) {
@@ -3890,9 +3902,9 @@ async function _save() {
         setState("loaded",
                  "Saved — the preflight has "
                  + (warns.length === 1 ? "a note" : warns.length + " notes"),
-                 warns.map((f) => "• "
-                     + (f.where ? "[" + f.where + "] " : "")
-                     + (f.message || "")).join("\n"));
+                 "Read " + (warns.length === 1 ? "it" : "them")
+                 + " below — the description was written as it stands.");
+        renderFindings(warns, { panel: $("ts-state-findings") });
     }
 }
 

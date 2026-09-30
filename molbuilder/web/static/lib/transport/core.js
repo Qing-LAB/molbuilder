@@ -694,6 +694,14 @@ const WORKSPACE_TAG = "transport";
                         st.set("transport-send-status", msg, kind);
                     } else { _setSendStatus(msg); }
                 },
+                // THE DESCRIPTION CHECK'S FINDINGS, through the one
+                // renderer, in card 5's panel -- every send redraws it, so
+                // a clean one clears what the last one said.
+                showFindings: function (issues) {
+                    var vf = (root.molbuilder || {}).validationFindings;
+                    var panel = _$("transport-send-findings");
+                    if (vf && panel) vf.render(issues, { panel: panel });
+                },
                 engine: "siesta",
                 calculation: "transport",
                 junction: _junction,

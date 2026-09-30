@@ -73,6 +73,14 @@ RECORD_TO_SIESTA_FIELD: Dict[str, str] = {
 #: (:func:`contract_fields_of`).
 STATE_RECORD_KEYS = ("net_charge", "spin_treatment", "unpaired_electrons")
 
+#: The k-point mesh's recorded keys -- the run's counts and offset, carried
+#: APART from the table above: a citation takes them through the mesh's own
+#: rule (`transport/citation_defaults._apply_kgrid`, the transport axis laid
+#: on), never verbatim, and nothing compares them field by field.  The
+#: counts keep the name their first reader gave them, "transverse", because
+#: records on disk carry it; the offset (2026-09-30) is the item's own.
+K_MESH_RECORD_KEYS = ("k_mesh_transverse", "kgrid_displacement")
+
 
 def contract_fields_of(cfg, *, state=None) -> Dict[str, Any]:
     """The level of theory a config is ABOUT TO RUN, in the recorded
@@ -257,7 +265,11 @@ def _siesta_contract(deck: Path) -> Optional[Dict[str, Any]]:
         "xc_functional":            p.xc_functional,
         "xc_authors":               p.xc_authors,
         "siesta_mesh_cutoff_ry":    p.mesh_cutoff_ry,
+        # THE K-POINT MESH (`K_MESH_RECORD_KEYS`): the run's counts, all
+        # three, and since 2026-09-30 its offset (`engines/siesta.md` § 6.1).
         "k_mesh_transverse":        (list(p.kgrid) if p.kgrid else None),
+        "kgrid_displacement":       (list(p.kgrid_displacement)
+                                     if p.kgrid_displacement else None),
         "electronic_temperature_k": p.electronic_temperature_k,
         # What the run carried -- SIESTA's defaults answer what the deck
         # leaves out, so these are always known (ES7's hand-over reads them).

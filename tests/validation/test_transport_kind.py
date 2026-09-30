@@ -1,4 +1,4 @@
-"""The transport KIND's science — three rules, each about an open boundary.
+"""The transport KIND's science — each rule about an open boundary.
 
 `_validate_transport_kind` is registered in ``_KIND_VALIDATORS`` and keyed on
 ``task.calculation``, so it fires for whatever config class the deck renders
@@ -17,6 +17,11 @@ Every test asserts through ``validate()`` — the door every render goes through
 makes it discriminating: the same value must be *accepted* where it is
 legitimate, or the rule would be satisfied by a validator that refuses
 everything.
+
+**The k-point sampling left this file on 2026-09-30**: the transport axis's
+one point, a lead's own count and the transmission's grid are the k-point
+mesh's (`engines/siesta.md` § 6.1), refused on every door and tested through
+the road in `tests/test_k_point_mesh_e2e.py`.
 """
 from __future__ import annotations
 
@@ -40,46 +45,10 @@ def junction():
 
 
 def _find(issues, where, severity=None):
-    """Issues at *where*, optionally of one severity.
-
-    The severity filter is load-bearing for the k-grid rule: the shared SIESTA
-    validator also speaks at ``config.kgrid`` -- it WARNS that a 6x6 mesh over
-    an 8.7 A supercell is probably denser than the images justify -- and that
-    advisory is correct and unrelated. The kind's rule is an ERROR. Matching on
-    the address alone made this file's own negative half fail, which is the
-    check working: two rules, one address.
-    """
+    """Issues at *where*, optionally of one severity -- a rule's own verdict
+    beside the advisories other checks may give at the same address."""
     return [i for i in issues if i.where == where
             and (severity is None or i.severity == severity)]
-
-
-class TestTheTransportAxisIsNotSampled:
-    """kz must be 1: that axis is the open boundary, not a Brillouin zone."""
-
-    def test_a_sampled_transport_axis_is_refused(self, junction):
-        cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 4))
-        found = _find(validate(junction, cfg, calculation="transport"),
-                      "config.kgrid", "error")
-        assert found, (
-            "kz > 1 imposes a fake Bloch periodicity along the wire and "
-            "gives physically wrong transmission -- and the renderer writes "
-            "1 regardless, so without this the control silently does nothing")
-
-    def test_the_transverse_pair_is_still_the_persons(self, junction):
-        """Without this half, a validator that refused every k-grid would pass.
-
-        The transverse counts are the person's and are shared by the leads and
-        the device; only the third component is fixed.
-        """
-        cfg = SiestaConfig(system_label="j", kgrid=(6, 6, 1))
-        assert not _find(validate(junction, cfg, calculation="transport"),
-                         "config.kgrid", "error")
-
-    def test_an_optimization_may_sample_all_three(self, junction):
-        """The rule belongs to the KIND, not to the structure or the engine."""
-        cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 4))
-        assert not _find(validate(junction, cfg, calculation="optimization"),
-                         "config.kgrid", "error")
 
 
 class TestANetChargeIsRefusedRatherThanDropped:
@@ -114,49 +83,6 @@ class TestANetChargeIsRefusedRatherThanDropped:
         cfg = SiestaConfig(system_label="j", net_charge=-2)
         assert not _find(validate(junction, cfg, calculation="optimization"),
                          "config.net_charge")
-
-
-class TestTheTransmissionGridIsAGrid:
-    """Every value in this field is a real k-grid -- there is no sentinel.
-
-    It shipped `0 0 0` meaning "inherit the SCF's grid" until 2026-09-16: a
-    triple of zeros in a field labelled k-grid, where every value is a
-    scientific fact and that is not one of them. The range admitted a zero per
-    AXIS and the emitter gated on `any(...)`, so `0 4 1` and `4 4 0` were
-    written into the deck verbatim -- asking tbtrans for zero k-points along
-    an axis.
-
-    `jobset init` fills it from the cited run's transverse pair and the deck
-    always states it, so what is left to refuse is a grid that is not one.
-    """
-
-    @pytest.mark.parametrize("grid", [(0, 4, 1), (4, 0, 1)])
-    def test_fewer_than_one_k_point_on_a_transverse_axis_is_refused(
-            self, junction, grid):
-        cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 1), tbt_k_grid=grid)
-        found = _find(validate(junction, cfg, calculation="transport"),
-                      "config.tbt_k_grid", "error")
-        assert found and "zero" in found[0].message
-
-    @pytest.mark.parametrize("grid", [(4, 4, 0), (4, 4, 2)])
-    def test_the_transport_component_must_be_one(self, junction, grid):
-        """Same physics as the SCF grid's kz: that axis is not sampled."""
-        cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 1), tbt_k_grid=grid)
-        found = _find(validate(junction, cfg, calculation="transport"),
-                      "config.tbt_k_grid", "error")
-        assert found and "TRANSPORT" in found[0].message
-
-    @pytest.mark.parametrize("grid", [(1, 1, 1), (4, 4, 1), (12, 12, 1)])
-    def test_a_real_grid_passes(self, junction, grid):
-        """Without this a rule refusing every grid would satisfy the two above.
-
-        `1 1 1` is the shipped default -- Gamma-only transverse, right for a
-        finite molecule between leads -- so refusing it would refuse every
-        untouched description.
-        """
-        cfg = SiestaConfig(system_label="j", kgrid=(2, 2, 1), tbt_k_grid=grid)
-        assert not _find(validate(junction, cfg, calculation="transport"),
-                         "config.tbt_k_grid", "error")
 
 
 class TestThePoleEnergyIsTiedToTheTemperature:
@@ -232,48 +158,6 @@ class TestTheLinearResponseAdvisory:
                                bias_voltage_v=v)
             assert not _find(validate(junction, cfg, calculation="transport"),
                              "config.bias_voltage_v"), f"V={v}"
-
-
-class TestTheLeadIsSampledDenselyAlongTransport:
-    """I9, re-homed 2026-09-17 from `transport preflight`.
-
-    **The device's rule, INVERTED** — and that is why it needs its own test.
-    The device's transport axis is fixed at 1 because it is the open boundary;
-    the lead's is a genuinely periodic bulk crystal with a large Brillouin zone
-    along z, so it wants many. A validator that simply refused every non-1
-    transport sampling would satisfy `TestTheTransportAxisIsNotSampled` above
-    and be exactly wrong here.
-    """
-
-    def test_a_lead_sampled_once_is_refused(self, junction):
-        cfg = SiestaConfig(system_label="j", electrode_kz=1)
-        assert _find(validate(junction, cfg, calculation="transport"),
-                     "config.electrode_kz", "error"), (
-            "electrode_kz = 1 gives a wrong lead Hamiltonian, and the device "
-            "then attaches a self-energy built from it -- a plausible "
-            "transmission with no runtime error")
-
-    def test_a_thin_lead_sampling_is_advised_not_refused(self, junction):
-        """A floor, not a convergence proof: only a sweep shows the lead's
-        Fermi level has settled, so this says so and does not block."""
-        got = validate(junction, SiestaConfig(system_label="j",
-                                              electrode_kz=5),
-                       calculation="transport")
-        assert _find(got, "config.electrode_kz", "warn")
-        assert not _find(got, "config.electrode_kz", "error")
-
-    def test_the_shipped_default_says_nothing(self, junction):
-        """The discriminating half: without it a rule that flagged EVERY
-        electrode_kz would pass both tests above."""
-        cfg = SiestaConfig(system_label="j")          # electrode_kz default 40
-        assert not _find(validate(junction, cfg, calculation="transport"),
-                         "config.electrode_kz")
-
-    def test_it_is_the_KIND_s_rule_and_not_every_calculation_s(self, junction):
-        """An optimization has no lead to sample; the rule must not reach it."""
-        cfg = SiestaConfig(system_label="j", electrode_kz=1)
-        assert not _find(validate(junction, cfg, calculation="optimization"),
-                         "config.electrode_kz")
 
 
 class TestTheCellWrapsAlongTransport:
