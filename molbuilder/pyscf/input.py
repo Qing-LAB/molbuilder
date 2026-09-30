@@ -1503,8 +1503,17 @@ def _sidecar_for(struct: Structure) -> dict:
     """
     import numpy as np
     from ..workingcopy_structure import StructureCodec
+    # AND THE INPUT'S RUN RECORDS STAY BEHIND: `info.relaxation` and
+    # `info.calculation` describe the run the INPUT came out of -- its
+    # tolerance, its force, its level of theory -- and this pair is another
+    # run's geometry.  This run's record is read from its own output by the
+    # one reader when it is exported (`model/parse.md` § 5b); a copy here
+    # handed a SIESTA run's record to a PySCF-relaxed geometry (the M11
+    # review, PS-C10; `engines/pyscf.md` § 2).
+    info = {k: v for k, v in (struct.info or {}).items()
+            if k not in ("relaxation", "calculation")}
     return StructureCodec().pair(
-        struct.replace(engine_offset=np.zeros(3))).sidecar
+        struct.replace(engine_offset=np.zeros(3), info=info)).sidecar
 
 
 def emit_outfile_helper() -> List[str]:

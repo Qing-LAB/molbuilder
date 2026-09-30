@@ -251,7 +251,7 @@ V1.27's decision is W42's D8, V1.26's is still owed.
 | ↳ | **V1.25** | **The mode-displaced frame set** *(decided 2026-09-24, user)*: a generator that writes ONE multi-frame pair — the base as frame 0, then `R_A(Q) = R_A⁰ + Q·L_canonical` with `R_F` unmoved at the zero-point amplitude and its thermal growth — from a spectra file, for a named mode; the rule (run, mode, amplitudes) recorded in the pair's `info`. It is the interface to transport's frame axis (W32); a person's own script writes the same pair. Level one of `vibration.md` § 5.6. *W42 (draft 2026-09-28) proposes one set for many modes, at the Gauss–Hermite nodes of the thermal distribution (D6, D7)* | `engines/transport.md` § 2a.9 · `model/structure-molstruct.md` § 6.1 · `science/normal-modes.md` § 4b.6 G | **contract written 2026-09-24; re-ruled 2026-09-29 (TD10)**: the generator is a separate backend procedure, designed on its own — the equilibrium relaxed structure and a normal mode in, one multi-frame structure out — and **each frame's parameter set goes in the structure's `customized` section (W39), not `info`**; transport is its consumer, never its builder. Open, after W39 |
 | ↳ | **V1.26** | **`Δρ_ν(r)` maps** (needs a decision): SIESTA's density grid at `±Q_ν`, differenced — the discussion's intermediate quantity before any oscillator strength on a metal | `science/normal-modes.md` § 4b.7 | open — M10; its decision is owed |
 | ↳ | **V1.27** | **The PySCF probe** (decided — W42's D8): five points per mode instead of two; the coupling per zero-point amplitude `g_ν = ∂ε/∂Q · √(ħ/2ω)` in meV written beside `ΔE/(2A)`; a molecule-projected frontier quantity for a cluster whose HOMO and LUMO are metal states. *Decided with W42 (D8, 2026-09-28): the probe runs on the thermal nodes* | `vibration.md` § 4.8; `science/normal-modes.md` § 4b.5 F–G | open — M10 |
-| ↳ | **V1.31** | **The PySCF deck's own `_optimized.xyz` pair records `info.relaxation`**: the deck knows its criteria, its convergence and its held set when it writes the pair; the spliced pair writer would compute the fingerprint the same way (`Structure.geometry_fingerprint`, spliced like `structure_hash_text`). Until then a PySCF-relaxed structure carries the record only when exported from the Results tab | `vibration.md` § 2.2, § 10 | open |
+| ↳ | **V1.31** | *(Proposed 2026-09-29 for closing by the one-source rule, § 5w.5 K6 step 5: the record is one reader's, and the Results tab's export writes it; a PySCF run's own pair now carries no record of the input's — awaiting the user's word.)* **The PySCF deck's own `_optimized.xyz` pair records `info.relaxation`**: the deck knows its criteria, its convergence and its held set when it writes the pair; the spliced pair writer would compute the fingerprint the same way (`Structure.geometry_fingerprint`, spliced like `structure_hash_text`). Until then a PySCF-relaxed structure carries the record only when exported from the Results tab | `vibration.md` § 2.2, § 10 | open |
 | ↳ | **V1.33** | **The Task setup tab re-derives the vibration ladder in JavaScript** (`proposedFromHandover`, `_afterRunLines` spell `relax`/`freq` and the box rule by hand) while Python owns it (`pyscf/stages.py::vibration_stages`). A second copy of one rule; the hand-over or the folder answer should carry the proposed ladder computed server-side, and the after-run line should ask the description which rung is the force-constant one. Found by the 2026-09-24 review | `vibration.md` § 2.2, § 5.2a | open |
 | ↳ | **V1.34** | **The response screen — which mode to take to transport** (decided with W42, 2026-09-28): the vibration kind's half of W42 — each mode's character at load, the charge each mode moves from the force-constant run, the frame set at thermal nodes (V1.25), the PySCF probe on them (V1.27) | `vibration.md` § 5.10 · `science/normal-modes.md` § 4c | open — M10 (W42 decided) |
 | ↳ | **V1.37** | **A vibration's result is written readable by its owner alone.** Found 2026-09-29 on the Au–BDT–Au spectrum: `aubdtauvib.spectra.json` is `0600` while every other file of the run is `0664`. `sidecars/spectra.dump_spectra_json` writes through its own `tempfile.mkstemp` + `os.replace` and never widens the mode; `persist.write_bytes` -- the one writer -- does, and says why (*"mkstemp creates 0600, which is not what a shared artifact should end"* up as). The finish runs it job-side from the bundled copy (`spectra_sidecar`), which may be why it keeps a writer of its own: whether `persist` can travel in the bundle decides the fix -- one writer, or the same widening in the bundled one | `persist.py` · `sidecars/spectra.py` | open |
@@ -4728,8 +4728,18 @@ reviewers' probes (the archive's § E lists) among its runs.
   real O2 UHF run on this machine's GPU through the road, red when the deck
   calls without asking; the stability text tests re-anchored, the duplicate
   gap test retired.
-  *Left*: PS-C10 with V1.31 (the run's own relaxation record on its pair),
-  then the full review.
+  *Step 5 done 2026-09-29* (PS-C10): a PySCF run's own `_optimized.xyz`
+  pair leaves the input's run records behind — `info.relaxation` and
+  `info.calculation` describe the run the input came out of, and were copied
+  onto every pair, so a PySCF-relaxed geometry carried a SIESTA run's
+  tolerance, force and level of theory (`pyscf.md` § 2). Test: an input
+  carrying a SIESTA run's records through a PySCF relaxation, red when the
+  records are copied. **V1.31, proposed for the user's word**: close it by the
+  one-source rule rather than build it — the relaxation record is one reader's
+  (`parse.contract.relaxation_of`, over the run's own output), which the
+  Results tab's export already writes onto the pair; a deck computing its own
+  copy in the pySCF env would be a second source of the same record.
+  *Left*: the full review.
 
 ---
 

@@ -124,8 +124,8 @@ by the config flag in column 2):
 | `<job>_<NN>_<stage>.log` | `log_file` (default on) | the verbose PySCF log, one per rung (the token keeps two rungs in one folder from overwriting each other's) |
 | `<job>.chk` | `chkfile` (default on) | PySCF checkpoint (density matrix, mol, energies) |
 | `<job>_initial.xyz` | `save_initial_xyz` | the input geometry, snapshotted right after `gto.M(...)`, before any optimization |
-| `<job>_optimized.xyz` | `save_optimized_xyz` AND `optimize` | the final relaxed geometry |
-| `<job>_<stage>_geom_optim.xyz` | `optimize` + `write_trajectory` + `optimizer=="geometric"` | streaming per-stage trajectory (multi-frame XYZ, one frame per accepted step) |
+| `<job>_optimized.xyz` | `save_optimized_xyz` AND `optimize` | the final relaxed geometry, as a pair — its `.molstruct.json` carries the structure's own facts (cell, kinds, regions, the engine's origin 0) and **no run record of the input's**: `info.relaxation` and `info.calculation` describe the run the input came out of, not this one, so they stay behind; this run's record is read from its own output by the one reader when the run is exported from the Results tab ([`model/parse.md`](?doc=model/parse.md) § 5b). *(They were copied onto every pair until 2026-09-29, so a PySCF-relaxed geometry carried a SIESTA run's tolerance, force and level of theory — the M11 review, PS-C10.)* |
+| `<job>_<stage>_geom_optim.xyz` | `optimize` + `write_trajectory` | streaming per-stage trajectory (multi-frame XYZ, one frame per accepted step) |
 | `<job>_<stage>_geom.log` | same | geomeTRIC's own per-stage log |
 | `<job>_<NN>_<stage>.molwatch.log` | `write_molwatch_log` + `optimize` + geometric | the per-step trajectory log (§ 4), one per rung; the Results-tab inspector's single-file input |
 
