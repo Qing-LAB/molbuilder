@@ -174,3 +174,34 @@ def _validate_config_metadata(cfg) -> List[Issue]:
             elif isinstance(result, list):
                 issues.extend(i for i in result if isinstance(i, Issue))
     return issues
+
+
+def _check_fixed_on_every_rung(cfg, calculation: str) -> List[Issue]:
+    """A config holding another value for what every rung fixes alike
+    (`engines/template.md` § 6.4) -- SIESTA's per-step forces and
+    coordinates -- is refused, naming the item and why.
+
+    `resolve` lays these on every config it answers, so a config holding
+    anything else was rendered without it -- a library call or a test --
+    and its deck would print the note that says the value is fixed above
+    a value nobody fixed.  The items answered rung by rung (a transport
+    rung's solver, the leads' ``TS.HS.Save``, the bias point) have no one
+    answer this check could hold a config to; `resolve` is their door.
+    """
+    from ..template import (catalogue, engine_name, fixed_on_every_rung,
+                            why_role)
+    engine = engine_name(type(cfg))
+    if engine not in catalogue().engines:
+        return []
+    issues: List[Issue] = []
+    for name, answer in fixed_on_every_rung(engine, calculation).items():
+        have = getattr(cfg, name, answer)
+        if have != answer:
+            issues.append(Issue(
+                "error",
+                f"``{name}`` is {have!r}, and the rung fixes it at "
+                f"{answer!r}: {why_role(name)}.  A deck is rendered from "
+                f"the config `resolve` answered, which lays it on "
+                f"(engines/template.md § 6.4).",
+                f"config.{name}"))
+    return issues

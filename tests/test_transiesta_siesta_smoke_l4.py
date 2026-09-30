@@ -117,7 +117,15 @@ def test_emitted_fdf_parses_cleanly_in_siesta_5_4_2(tmp_path):
     #    actually gets, and pointing it at the dead one is how a run-killing
     #    pole value survived in that writer for two days while the live path
     #    was correct.
-    cfg = SiestaConfig(system_label="au_bdt_au_smoke")
+    #    ...with the rung's own answers laid on, as `resolve` lays them for
+    #    every prep (`engines/template.md` § 6.4): the device's `transiesta`
+    #    is the rung's answer, not a default the spec supplies -- a bare
+    #    config renders `diagon`, TranSIESTA never starts, and SIESTA runs
+    #    a plain SCF on the whole junction instead.
+    import dataclasses
+    from molbuilder.template import role_answers
+    cfg = dataclasses.replace(SiestaConfig(system_label="au_bdt_au_smoke"),
+                              **role_answers("siesta", "transport", "device"))
     spec = spec_for(struct, cfg, stage_token="device", calculation="transport")
     _sc.prepare_deck(spec, struct, cfg, tmp_path / "device.fdf")
 

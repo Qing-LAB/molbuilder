@@ -273,11 +273,18 @@ def foreign_overrides(bags) -> list:
     hand edit) meets the same refusal.  *bags* maps a rung name to its
     override mapping, the shape ``task.stages`` carries.  An item declaring
     no rungs is any rung's and is never foreign.
+
+    **An item the rung FIXES is no rung's to own** (`role`,
+    `engines/template.md` § 6.4): its ``stages`` names the rungs that write
+    it, and an override naming it is refused on every rung by `resolve`,
+    saying why -- so it is left out here, where it would be told to move to
+    a rung that refuses it too.
     """
     from ..template import catalogue, select
 
     owner = {it.name: tuple(it.stages)
-             for it in select(catalogue(), engine="siesta") if it.stages}
+             for it in select(catalogue(), engine="siesta")
+             if it.stages and "transport" not in it.role}
     out: list = []
     for rung, bag in dict(bags or {}).items():
         for name in sorted(dict(bag or {})):

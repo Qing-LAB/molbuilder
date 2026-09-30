@@ -68,7 +68,7 @@ used and never expanded is a term that only helps the person who coined it.
 |---|---|
 | **floor 1 / 2 / 3** | which layer a thing belongs to. **Floor 1** is the machine you are on. **Floor 2** is the *description* — what the calculation is, portable, naming no machine. **Floor 3** is the *plan* — what gets rendered for one run on one machine. The full set is [`architecture.md`](?doc=execution/architecture.md) § 2 |
 | **the deck** | the engine's own input file — a `.fdf` for SIESTA, a `.py` for PySCF. The thing the engine actually reads |
-| **⊕** | *"with these values replaced"*. `template ⊕ overrides` is the template's settings with a stage's changes applied on top. One function does it, four times over (§ 10a.2) |
+| **⊕** | *"with these values replaced"*. `template ⊕ overrides` is the template's settings with a stage's changes applied on top. One function does it, five times over (§ 10a.2) |
 | **G1…G6** | the six goals in § 1.2. When a rule below looks arbitrary it is holding one of them up |
 | **D1…D5** | the five design decisions in § 1.3, each with the alternative it rejected |
 | **an item** | one setting in the file — its value and everything known about it |
@@ -726,7 +726,10 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `refs` | citation keys into `docs/science/references.bib` — the paper(s) behind a scientific knob's guidance. Resolved server-side (title + DOI) and rendered in the form's help; `tests/test_catalogue_refs.py` pins that every key resolves |
 | `allocation` | **the scheduler answers this one** — ranks, threads, memory (§ 6.4). One boolean; it replaced a `resolver` NAME plus a list of which names counted, neither of which anything dispatched on |
 | `citation` | **a cited run answers this one, for these kinds** — `citation = ["transport"]` on `basis_size`, `mesh_cutoff`, `kgrid`, `pao_energy_shift`, `electronic_temperature`, `xc_functional`, `xc_authors`. It is a LIST and not a boolean because those are the **same rows** an optimization uses, where the person answers them. It replaced two hand-maintained frozensets plus a predicate spelled twice in two files (`engines/transport.md` § 3.3.3) |
-| `shared` | **binds every rung of these kinds** — `shared = ["transport"]` on the seven `citation` rows and on `species_order`, `kgrid_displacement`, `psml_lib`, `system_label` and `electrodes_bulk` (Class A, `engines/transport.md` § 2a.3; `electrodes_bulk` since 2026-09-29, one value for the two rungs that read it, § 6.1b); and on the electronic state's four items for **every** kind that has them — `net_charge` and `method` for optimization and vibration, `spin_treatment` and `unpaired_electrons` for those and transport — because the state belongs to the calculation, never to a stage (`science/chemistry-correctness.md` § 2a, ES1; M6). Three readers ask it: the transport tab's shared panel shows these and nothing else, the per-rung form never offers one, and `prep` refuses a stage override naming one — for every kind, at the one resolve door (§ 3.8.2). Filtering on `citation` for this question offered the species order as a per-rung override (2026-09-23) |
+| `shared` | **binds every rung of these kinds** — `shared = ["transport"]` on the seven `citation` rows and on `kgrid_displacement` and `electrodes_bulk` (Class A, `engines/transport.md` § 2a.3; `electrodes_bulk` since 2026-09-29, one value for the two rungs that read it, § 6.1b); on the electronic state's four items for **every** kind that has them — `net_charge` and `method` for optimization and vibration, `spin_treatment` and `unpaired_electrons` for those and transport — because the state belongs to the calculation, never to a stage (`science/chemistry-correctness.md` § 2a, ES1; M6); and on the calculation's identity for every SIESTA kind — `system_label`, `species_order`, `psml_lib` (2026-09-29, K1): each rung reads what the one before it wrote under that label, numbered by that species table (the `.XV` holds each atom's species index, `ioxv.F`) and built on that pseudopotential set. Three readers ask it: the transport tab's shared panel shows these and nothing else, the per-rung form never offers one, and `prep` refuses a stage override naming one — for every kind, at the one resolve door (§ 3.8.2), saying why (`template.why_shared`). Filtering on `citation` for this question offered the species order as a per-rung override (2026-09-23) |
+| `role` | **nobody is asked: the rung fixes it, for these kinds** — `role = ["transport"]` on `solution_method`, `ts_hs_save` and `bias_voltage_v`; every SIESTA kind on `write_forces` and `write_coor_step` (2026-09-29, K1). A list of kinds, for `citation`'s reason. The answer is the catalogue's `value` unless `role_values` names the rung's own; `resolve` puts it into the rung's config, and every door that could set it refuses (§ 6.4, the third answerer) |
+| `role_values` | **a rung whose role gives another answer than `value`**, by the rung's name — `role_values = { device = "transiesta" }` on `solution_method`. Only on a `role` item; each value passes the item's own `type` at parse time, as `recommended`'s do. Like `recommended`, a catalogue key: it does not travel into a calculation's template, whose role items hold no value — `resolve` asks the catalogue (`template.role_answers`) |
+| `stages` | **which rungs of the kind may carry their own value** — `stages = ["electrode_L", "electrode_R"]`; on a `role` item, which nobody sets, the rungs that write it. Absent means any rung may (§ 6.4) |
 | `label` | the **human name** — *"MPI ranks (np)"*. Not the field name; a surface shows this |
 | ~~`section`~~ | **RETIRED at `@2` — use `category` (§ 6.2).** It held a free-text fieldset name per engine (*"SCF"*, *"Compute & budget"*), so two engines expressing one idea disagreed on the label and no surface could group across them. A section-less item was still an item, and that stays true of `category`: membership is TOTAL (§ 7) |
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
@@ -1473,7 +1476,8 @@ generalised.
 | `value` set | chosen | honoured verbatim, everywhere |
 | absent from the file | not a parameter of this calculation | nobody; the engine's own default applies |
 
-**There are two answerers outside floor 2, not one** *(ruled 2026-09-15)*.
+**There are answerers outside floor 2, not one** *(two ruled 2026-09-15; the
+rung's `role`, the third, 2026-09-16 — below)*.
 `allocation` marks an item the **scheduler** answers; `citation` marks one a
 **cited run** answers. `select(t, allocation=True)` / `select(t, citation=True)`
 are how a layer asks which is which instead of carrying its own list of names.
@@ -1484,6 +1488,7 @@ are how a layer asks which is which instead of carrying its own list of names.
 |---|---|---|---|
 | `allocation` | the scheduler | at `prep`, on the machine that runs it | nothing — declared, valueless |
 | `citation` | the cited run | at **`jobset init`**, once | **a value**, which the person may then change |
+| `role` | the rung — the catalogue's `value`, or the rung's own `role_values` answer, or the bias point it renders | at `resolve`, for each rung | nothing — declared, valueless; no door may set it (the third answerer, below) |
 | `shared` | *(not an answerer — a scope)* | — | whatever answered it; the value binds every rung and no stage overrides it |
 
 The `citation` row said *"declared, valueless, filled at `prep`"* until
@@ -1530,25 +1535,88 @@ A valueless item still carries `choices`, `range`, `unit` and `help`, so a
 surface can offer the *right* options before any value exists — `diag_algorithm`
 has a handful of legal eigensolvers whether or not one has been picked.
 
-#### The third answerer — `role`, and its sibling `stages` *(2026-09-16)*
+#### The third answerer — `role`, and its sibling `stages` *(2026-09-16; its answer's road, 2026-09-29)*
 
 `allocation` says the **scheduler** answers; `citation` says a **cited run**
-does. **`role` says the STAGE'S OWN ROLE does** — and the state is the same
-once more: declared, and valueless for the kinds it names.
+does. **`role` says nobody is asked: the rung that runs it fixes the value** —
+and the state is the same once more: declared, and valueless for the kinds it
+names.
 
 Some values are not a choice. A transport device solves with the NEGF method
-and a bulk lead does not; a lead writes the Hamiltonian the device will read;
-the device's transport axis is not Brillouin-zone sampled because that axis is
-the open boundary. Offering any of these presents a choice with exactly one
-correct answer, and a person who changed it would not be tuning the run — they
-would be stopping it being the run it is.
+and a bulk lead does not; a lead writes the Hamiltonian the device will read.
+And every SIESTA run writes each step's forces and coordinates into its output,
+because molbuilder reads them back: the relaxation record's force, the per-step
+trajectory, and a vibration's finish, which reads the reference step's forces
+and would otherwise fail after the whole force-constant run
+([`vibration.md`](?doc=engines/vibration.md) § 5.5; *user, 2026-09-29: "siesta
+always write forces and always write cordinates - that's needed for later use
+of data"*). SIESTA prints neither unless asked (`Write.Forces` and
+`WriteCoorStep` default to `LongOutput`, `read_options.F90`). Offering any of
+these presents a choice with exactly one correct answer, and a person who
+changed it would not be tuning the run — they would be stopping it being the
+run it is.
 
 **A list of kinds, for `citation`'s reason.** `solution_method` is the rung's
 business for *transport* and an ordinary person-answered choice for an
 *optimization*, where nothing else decides it. So the item says for which kinds,
-and absence means never. A `role` item is not offered as a form field, is not
-offered as a stage-table column, and carries no value in a template of that
-kind — so no description can claim to have set it.
+and absence means never; `write_forces` and `write_coor_step` name every SIESTA
+kind.
+
+**The answer is the catalogue's `value`, unless the rung's own is declared.**
+Most role items have one answer on every rung that carries them — `true` for
+the two output switches, `true` for `ts_hs_save` on the leads its `stages`
+names. A rung whose role answers otherwise is named on the item:
+
+```toml
+[item.solution_method]
+kind        = "engine"
+category    = ["method", "convergence"]
+engines     = ["siesta"]
+anchor      = "SolutionMethod"
+type        = "enum"
+choices     = ["diagon", "OMM", "transiesta"]
+value       = "diagon"                      # every other rung's answer
+role        = ["transport"]
+role_values = { device = "transiesta" }     # the rung that answers otherwise
+help        = "Which solver produces the density matrix each SCF step."
+```
+
+One answer lives outside the catalogue, because it is the description's: a
+rung renders one point of the bias list, and that point is its
+`bias_voltage_v` — the list is the bias's only home
+([`transport.md`](?doc=engines/transport.md) § 2a.10).
+
+**It reaches the deck the way every other value does** *(2026-09-29, K1)*.
+`resolve` puts the rung's answers into the rung's config as its last layer,
+with provenance `role` (`template.role_answers`), so the settings gate, the
+record and the deck read one answer, and the section walk writes a role item
+like any other, through the line door, where the check gate sees the line —
+beside a note that says it is fixed: not a setting, and no template, stage or
+pin changes it.
+Until then the walk skipped every role item and each rung's block typed its own
+line — so the device's config said `diagon` to the gate and the record while
+its deck said `transiesta`.
+
+**No other door sets it.** `resolve` refuses a stage override, a pin or a sweep
+axis naming a role item of the kind, as it refuses a `shared` one, saying why
+(`template.why_role`); and a template value, unless the item's answer is the
+same on every rung — no `stages`, no `role_values` — and the value is that
+answer (`template.fixed_on_every_rung`). A template written before 2026-09-29
+carries `write_forces = true` and `write_coor_step = true`, which state that one
+answer and are read as it; an item answered rung by rung (the device's solver,
+the leads' `TS.HS.Save`, the bias point each rung runs) has no one answer a
+calculation-wide file could state. **Wrong when a deck is rendered without
+`resolve`** — a library call or a test hands the walk a bare config — so the
+settings gate refuses a config holding another value for an item every rung
+fixes alike, and a caller of `spec_for` lays the rung's answers on first
+(`template.role_answers`). A role item is not offered as a form field or a
+stage-table column; the read-only echo § 6.6 obligation 3 asks for comes with
+the form's value model ([`plan.md`](?doc=plans/plan.md) § 5w K7).
+
+**The name is the one the templates on disk already carry** — every per-kind
+template copies each item's declaration, `role` with it — so the two output
+switches joined under it, although what fixes them is what molbuilder reads
+back rather than a rung's part in a ladder.
 
 **`stages` is `calculations` one level down.** `calculations` says which KINDS
 have this parameter at all; `stages` says which RUNGS of such a kind may answer
@@ -1557,7 +1625,7 @@ it differently from each other.
 | state | means |
 |---|---|
 | no `stages` | **any rung may own it** — the ordinary case, and the optimization ladder's behaviour, where any promoted field may vary per rung |
-| `stages = [...]` | only these rungs may; it is not that rung's business anywhere else |
+| `stages = [...]` | only these rungs may; it is not that rung's business anywhere else. On a `role` item, which nobody sets, it names the rungs that write it — a lead's `TS.HS.Save` |
 
 It exists because a composite kind's rungs are **different programs on different
 cells** rather than one calculation tuned N ways
@@ -1570,9 +1638,11 @@ and silently never took effect.
 
 Stage names are a kind's own vocabulary, so `stages` is only meaningful on an
 item that belongs to one kind — which `calculations` already says. Ask with
-`select(t, role=True)` and `select(t, stages="device")`; an item declaring no
-stages matches every rung asked about, which is what keeps the ordinary case
-ordinary.
+`select(t, stages="device")`; an item declaring no stages matches every rung
+asked about, which is what keeps the ordinary case ordinary. A kind's role
+items are `fixed_by_role(engine, kind)`, and one rung's answers
+`role_answers(engine, kind, stage)` — the rung's `stages` respected, so a lead's
+`ts_hs_save` is no other rung's.
 
 **Where a machine fact comes from — the whole chain, and it is four steps.**
 
@@ -1719,7 +1789,7 @@ Five obligations, each naming the reader it binds.
 | **2 — recorded with its source** | The description on disk — this calculation's template, and the stage bags in `task.json` — carries each item's value **and where it came from**. The four states a shared panel shows (*from the run you cited · from the record saved with your structure · you set this · not chosen*) are states of the FILE, not of a screen. A file that holds `400` and cannot say whose `400` it is holds a number nobody can check. | § 4.3's writer; `transport/citation_defaults.py` at `init` |
 | **3 — shown everywhere, edited in one place** | Every surface that presents the calculation presents **every** parameter of it, at every rung: as a control where this surface owns it, otherwise as a **read-only echo naming the source and the reason** — *shared by all five rungs, change it in the shared block* · *fixed by this rung's role* · *the scheduler answers this at prep*. Leaving a parameter off a screen because it is not editable there is a defect: it makes the parameter look absent, which is the failure every rebuilt transport form has had. | [`form-schema.md`](?doc=web/form-schema.md); [`transport.md`](?doc=engines/transport.md) § 2a.6, *one editing surface, many read-only echoes* |
 | **4 — explicit in the deck** | Every item of a rung's layout is written into that rung's deck with the value that will apply. A value nobody chose is written as the documented default **and marked as such**. An item deliberately unset (`optional`, at `None`) states so in the deck, naming the engine default that therefore applies. **No value reaches the engine by omission.** § 6.4's third state — *absent from the file: not a parameter of this calculation* — still says which items a KIND has; it no longer licenses silence for an item the kind has. | § 8.1 `prep`; the deck writers |
-| **5 — traceable** | From any deck line a reader reaches the item, its value, its source at prep (pin · sweep · stage · allocation · template — `resolve.provenance`) **and the template value's own origin from obligation 2**, and the decision that set it (`pipeline.log`, `jobset-decisions.log`) — **on every road, browser and CLI alike**. | `resolve.py`, `pipeline_log.py`, `jobset/ledger.py` |
+| **5 — traceable** | From any deck line a reader reaches the item, its value, its source at prep (pin · sweep · stage · role · allocation · template — `resolve.provenance`) **and the template value's own origin from obligation 2**, and the decision that set it (`pipeline.log`, `jobset-decisions.log`) — **on every road, browser and CLI alike**. | `resolve.py`, `pipeline_log.py`, `jobset/ledger.py` |
 
 **Measured against the tree, 2026-09-23 — where it does not yet hold:**
 
@@ -2213,7 +2283,7 @@ flowchart TD
     TWV -.->|"describe.describe()"| TPL
     TPL --> CFT --> RES
     ENV --> RES
-    RES -->|"⊕ stage ⊕ sweep ⊕ pin"| EFF
+    RES -->|"⊕ stage ⊕ sweep ⊕ pin ⊕ the rung's answers"| EFF
     EFF --> RES
     RES --> RC --> SPEC --> DECK --> WRAP --> RUN["the run directory"]
 ```
@@ -2236,17 +2306,19 @@ flowchart TD
 
 ### 10a.2 Precedence, in the order `resolve` applies it
 
-**template ⊕ stage overrides ⊕ sweep point ⊕ pin** — and every one of those ⊕
-is the same function, `effective_config`, called four times:
+**template ⊕ stage overrides ⊕ sweep point ⊕ pin ⊕ the rung's answers** — and
+every one of those ⊕ is the same function, `effective_config`, called five
+times:
 
-| step | where the cells come from | refused if they name a machine fact |
-|---|---|---|
-| base | `config_from_template` | — |
-| ⊕ stage | `task.json`'s stage `overrides` | **yes** — § 7 |
-| ⊕ sweep | the sweep point | **yes** |
-| ⊕ pin | `--pin`, this prep only | **yes** |
+| step | where the cells come from | refused if they name a machine fact | refused if they name what the rung fixes (§ 6.4) |
+|---|---|---|---|
+| base | `config_from_template` | — | **yes**, unless the value is the answer every rung gives |
+| ⊕ stage | `task.json`'s stage `overrides` | **yes** — § 7 | **yes** |
+| ⊕ sweep | the sweep point | **yes** | **yes** |
+| ⊕ pin | `--pin`, this prep only | **yes** | **yes** |
+| ⊕ the rung's answers | `template.role_answers`, provenance `role` — last, so it replaces nothing a person said | — | — |
 
-**One operator, four callers, one rule.** That is what makes *"the one place
+**One operator, five callers, one rule.** That is what makes *"the one place
 this happens"* checkable rather than aspirational: a second implementation would
 have to be found, and there is nowhere for one to hide.
 

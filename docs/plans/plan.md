@@ -251,7 +251,7 @@ V1.27's decision is W42's D8, V1.26's is still owed.
 | ↳ | **V1.25** | **The mode-displaced frame set** *(decided 2026-09-24, user)*: a generator that writes ONE multi-frame pair — the base as frame 0, then `R_A(Q) = R_A⁰ + Q·L_canonical` with `R_F` unmoved at the zero-point amplitude and its thermal growth — from a spectra file, for a named mode; the rule (run, mode, amplitudes) recorded in the pair's `info`. It is the interface to transport's frame axis (W32); a person's own script writes the same pair. Level one of `vibration.md` § 5.6. *W42 (draft 2026-09-28) proposes one set for many modes, at the Gauss–Hermite nodes of the thermal distribution (D6, D7)* | `engines/transport.md` § 2a.9 · `model/structure-molstruct.md` § 6.1 · `science/normal-modes.md` § 4b.6 G | **contract written 2026-09-24; re-ruled 2026-09-29 (TD10)**: the generator is a separate backend procedure, designed on its own — the equilibrium relaxed structure and a normal mode in, one multi-frame structure out — and **each frame's parameter set goes in the structure's `customized` section (W39), not `info`**; transport is its consumer, never its builder. Open, after W39 |
 | ↳ | **V1.26** | **`Δρ_ν(r)` maps** (needs a decision): SIESTA's density grid at `±Q_ν`, differenced — the discussion's intermediate quantity before any oscillator strength on a metal | `science/normal-modes.md` § 4b.7 | open — M10; its decision is owed |
 | ↳ | **V1.27** | **The PySCF probe** (decided — W42's D8): five points per mode instead of two; the coupling per zero-point amplitude `g_ν = ∂ε/∂Q · √(ħ/2ω)` in meV written beside `ΔE/(2A)`; a molecule-projected frontier quantity for a cluster whose HOMO and LUMO are metal states. *Decided with W42 (D8, 2026-09-28): the probe runs on the thermal nodes* | `vibration.md` § 4.8; `science/normal-modes.md` § 4b.5 F–G | open — M10 |
-| ↳ | **V1.31** | *(Proposed 2026-09-29 for closing by the one-source rule, § 5w.5 K6 step 5: the record is one reader's, and the Results tab's export writes it; a PySCF run's own pair now carries no record of the input's — awaiting the user's word.)* **The PySCF deck's own `_optimized.xyz` pair records `info.relaxation`**: the deck knows its criteria, its convergence and its held set when it writes the pair; the spliced pair writer would compute the fingerprint the same way (`Structure.geometry_fingerprint`, spliced like `structure_hash_text`). Until then a PySCF-relaxed structure carries the record only when exported from the Results tab | `vibration.md` § 2.2, § 10 | open |
+| ↳ | **V1.31** | *(**Closed 2026-09-29 by the one-source rule** — user: "agree with your recommendation on V1.31 and R6". The relaxation record is one reader's, `parse.contract.relaxation_of` over the run's own output, and the Results tab's export writes it; the deck writes no copy. The level-of-theory half the review found beside it, R6, is § 5w K18.)* ~~The PySCF deck's own `_optimized.xyz` pair records `info.relaxation`~~ | `vibration.md` § 2.2, § 10 | closed |
 | ↳ | **V1.33** | **The Task setup tab re-derives the vibration ladder in JavaScript** (`proposedFromHandover`, `_afterRunLines` spell `relax`/`freq` and the box rule by hand) while Python owns it (`pyscf/stages.py::vibration_stages`). A second copy of one rule; the hand-over or the folder answer should carry the proposed ladder computed server-side, and the after-run line should ask the description which rung is the force-constant one. Found by the 2026-09-24 review | `vibration.md` § 2.2, § 5.2a | open |
 | ↳ | **V1.34** | **The response screen — which mode to take to transport** (decided with W42, 2026-09-28): the vibration kind's half of W42 — each mode's character at load, the charge each mode moves from the force-constant run, the frame set at thermal nodes (V1.25), the PySCF probe on them (V1.27) | `vibration.md` § 5.10 · `science/normal-modes.md` § 4c | open — M10 (W42 decided) |
 | ↳ | **V1.37** | **A vibration's result is written readable by its owner alone.** Found 2026-09-29 on the Au–BDT–Au spectrum: `aubdtauvib.spectra.json` is `0600` while every other file of the run is `0664`. `sidecars/spectra.dump_spectra_json` writes through its own `tempfile.mkstemp` + `os.replace` and never widens the mode; `persist.write_bytes` -- the one writer -- does, and says why (*"mkstemp creates 0600, which is not what a shared artifact should end"* up as). The finish runs it job-side from the bundled copy (`spectra_sidecar`), which may be why it keeps a writer of its own: whether `persist` can travel in the bundle decides the fix -- one writer, or the same widening in the bundled one | `persist.py` · `sidecars/spectra.py` | open |
@@ -4636,6 +4636,7 @@ as a milestone does (§ 0a). **Approved 2026-09-29** (§ 5w.3); K6 is first.
 | **K15** | **deck values rendered per item** | one formatter in the layout's line door — the value exact, never a per-item format string | PS-C9 = PO-C5 |
 | **K16** | **the run record's parameter rows** | `declarations(engine, calculation, stage)` — the rung's own items | SS-C10 |
 | **K17** | **physics each needing a build or a refusal** (not a framework gap) | PS-C3 (PCM's solvent terms on the held-atom, IR-only and Raman routes — build and measure, or refuse); PS-C2 (two spin channels in the spectrum record — build, or K2 refuses); SO-C3 (the GPU-ELPA `BlockSize` realignment `tuning.md` promises — build it); SO-C10/C11 (`ParallelOverK` — SIESTA's default unless set; ELPA forces it off); SO-C12 (pseudopotentials by exact name); PO-C4 (the geomeTRIC log — write it or drop the promise); PO-C10 (the ECP read back from the molecule); PO-C12 (a `-V` functional with D3); T-F35 (the T(E) window covers the bias window); T-F26 (only the L and R electrode labels); T-F4/F34 (a fixed ladder's controls); T-F2 (`kgrid_displacement` written through the door, § 6.6 obligation 4); T-F28 (the device's E_F, iterations and poles in the record); PS-C13 (mode numbers bounded at `prep`) | as listed |
+| **K18** | **a PySCF run's level of theory, recorded by no reader** *(R6, ruled 2026-09-29)* | the PySCF half of the one reader: `parse.contract.contract_of` reads a PySCF deck's stated basis, method, functional, charge and spin, and `contract_fields_of` answers for a PySCF config — so the Results tab's export carries `info.calculation` for a PySCF run as for a SIESTA one, a blank charge or spin is read from it (ES7), and a vibration's level-of-theory check works on both engines; the deck's own pair carries none, by V1.31's one-source rule | R6 (K6 review) |
 
 ### 5w.2 What is text alone
 
@@ -4671,13 +4672,13 @@ first would be rewritten twice.
 
 K6 first — a relaxation that ran out of steps is recorded as converged on both
 PySCF decks, which is a wrong answer given silently. Then the declarations
-K1–K4, which the surfaces read; K5; K11; K7; K8; K10; K12–K16; K17; K9 and the
-text sweep last. Then W50's step 3, the road in the browser per track, with the
+K1–K4, which the surfaces read; K5; K11; K7; K8; K10; K12–K16; K18; K17; K9
+and the text sweep last. Then W50's step 3, the road in the browser per track, with the
 reviewers' probes (the archive's § E lists) among its runs.
 
 ### 5w.5 Progress
 
-* **K6 — done 2026-09-29, R6 and V1.31 awaiting the user's word.** *Step 1 done 2026-09-29*: both PySCF decks relax
+* **K6 — done 2026-09-29; R6 and V1.31 ruled the same day** (user: "agree with your recommendation on V1.31 and R6"). *Step 1 done 2026-09-29*: both PySCF decks relax
   through one spliced function, `relax_policy.relax`, which calls
   `geometric_solver.kernel` and applies the policy to geomeTRIC's own flag —
   `halt` stops before the relaxed geometry is written, `continue` re-enters
@@ -4734,8 +4735,8 @@ reviewers' probes (the archive's § E lists) among its runs.
   onto every pair, so a PySCF-relaxed geometry carried a SIESTA run's
   tolerance, force and level of theory (`pyscf.md` § 2). Test: an input
   carrying a SIESTA run's records through a PySCF relaxation, red when the
-  records are copied. **V1.31, proposed for the user's word**: close it by the
-  one-source rule rather than build it — the relaxation record is one reader's
+  records are copied. **V1.31, closed by the one-source rule (ruled
+  2026-09-29)** rather than built — the relaxation record is one reader's
   (`parse.contract.relaxation_of`, over the run's own output), which the
   Results tab's export already writes onto the pair; a deck computing its own
   copy in the pySCF env would be a second source of the same record.
@@ -4765,11 +4766,53 @@ reviewers' probes (the archive's § E lists) among its runs.
   this machine's GPU (gpu4pyscf 1.8.1) ran under `proceed` and `continue`, the
   second-order solver converging at every geometry and on re-entry — nothing
   to refuse. Full suite green (9 488 passed).
-  **R6, awaiting the user's word with V1.31**: a PySCF run's own pair carries
-  no calculation record now, so a later calculation with a blank charge or
-  spin works them out from the structure rather than reading this run's —
-  state that, or have the PySCF deck write its own contract record through
-  the one door (`contract_fields_of`).
+  **R6, ruled 2026-09-29 — build the reader, K18**: checked for the ruling,
+  NO structure out of a PySCF run records its level of theory — neither its
+  own pair nor the Results tab's export, since `contract_of` reads SIESTA
+  decks only — so a later calculation with a blank charge or spin works them
+  out from the structure (a relaxed formate anion, −1, becomes a neutral
+  radical in a blank-charge vibration, said in the deck and warned nowhere).
+  Ruled: the PySCF half of the one reader, § 5w K18, with the gap stated in
+  `pyscf.md` § 2 until it lands.
+* **K1 — done 2026-09-29** (SS-C1, SO-C2, T-F5; mechanism ruled the same day,
+  the bias as (b): *"agree with (b), go ahead with K1"*). **What the rung fixes
+  reaches the deck one way**: a `role` item's answer is the catalogue's `value`
+  unless the item names a rung's own (`role_values = { device = "transiesta" }`,
+  the new key); `resolve` lays the rung's answers on its config last, with
+  provenance `role` (`template.role_answers`), so the gate, the record and the
+  deck read one value, and the section walk writes a role item like any other,
+  beside a note that it is fixed — transport's hand-typed `SolutionMethod`,
+  `TS.HS.Save` and the block-written `TS.Voltage` went into sections; the
+  transmission writes no `SolutionMethod` and, by the audit of its source, no
+  output group. **Every door refuses it**: a stage override, a pin, a sweep
+  axis (`fixed_by_role`, `why_role`), and a template value unless the item's
+  answer is the same on every rung and the value is it
+  (`fixed_on_every_rung`) — the 33 SIESTA templates carrying
+  `write_forces = true` still prep; `foreign_overrides` leaves fixed items to
+  that one refusal; the settings gate refuses a render that skipped `resolve`
+  with a switch off. `write_forces` / `write_coor_step` are fixed on every
+  SIESTA kind; the bias's one home is the description's list — a template
+  value or a stage override naming it is refused (T-F5). **The calculation's
+  identity** — `system_label`, `species_order`, `psml_lib` — is `shared` on
+  every SIESTA kind, refused per stage with its own reason
+  (`IDENTITY_ITEMS`). Contract: `template.md` § 5, § 6.4, § 10a.2;
+  `stages.md` § 1.2, § 3, § 4, § 6.2, § 6.6; `transport.md` § 2a.3, § 2a.10,
+  § 2a.13, § 2a.14, § 3.6, § 3.8, § 6.1a, § 6.1b; `generator.md`; `siesta.md`;
+  `vibration.md` § 5.5. Tests: eleven road tests through `jobset prep`
+  (`test_fixed_and_shared_items_e2e.py`, `test_transport_prep.py`
+  `TestTheRungFixesItsOwn`), one API-level gate test (the road cannot skip
+  `resolve`), the writer's table round trip; each red under its mutation
+  (sixteen). The template-bias tests retired with the second home.
+  *The full review* — seventeen findings, each verified in the code and
+  SIESTA's source, all fixed: a live-SIESTA smoke test and the identity test
+  rendered the device from a bare config (now laid through `role_answers`, as
+  `transport.md` § 6.1a says a `spec_for` caller must); a browser test's
+  example column was `write_forces`; the refusal order on a fixed item on the
+  wrong rung; a false `.ANI` sentence; a template 0 V accepted beside a scan;
+  the writer's missing inline tables (`recommended` too); `role_answers` with
+  no rung; the transmission's unread output group; the restatements
+  (the bias as Class C in five places, the precedence order in five). The
+  read-only echo of a fixed item on the form is K7's.
 
 ---
 

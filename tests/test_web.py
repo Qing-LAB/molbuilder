@@ -1507,7 +1507,10 @@ def test_siesta_form_schema_matches_documented_layout():
         # 16 -> 15 on 2026-09-25: `wrap_into_cell` retired.  Where the atoms
         # sit is one rule, the engine offset (`model/structure-periodicity.md`
         # § 6.0), and a per-atom wrap can cut a device at its widest gap.
-        ("procedure",  15),
+        # 15 -> 13 on 2026-09-29: `write_forces` and `write_coor_step` are
+        # fixed by the rung on every SIESTA kind -- not a choice, so not a
+        # control (`engines/template.md` § 6.4).
+        ("procedure",  13),
         # 7 -> 3 on 2026-08-15: mpi_np, omp_threads, max_memory_mb and
         # use_gpu moved to the staging surface.  They are bench axes
         # measured on the machine, not parameters typed beside the physics.

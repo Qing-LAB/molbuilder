@@ -256,17 +256,34 @@ def test_every_exposed_field_becomes_an_item_and_declares_its_kind():
 # ---- U16 (2026-08-12): total membership, exercised end to end -------- #
 
 def test_the_five_ungated_fields_round_trip_through_a_template():
-    """species_order (identity-sensitive, run-identity § 6a) and the four
+    """species_order (identity-sensitive, run-identity § 6a) and the
     toggles the section gate silently dropped: set them, write the
     template, read it back -- the value survives, which is what 'the
-    template describes the deck' means."""
+    template describes the deck' means.  (`write_forces` and
+    `write_coor_step` were two of them; since 2026-09-29 the rung fixes
+    both and a template holds no value for them, `template.md` § 6.4.)"""
     cfg = SiestaConfig(system_label="JOB",
                        species_order=["C", "H", "S", "Au"],
-                       write_forces=False, copy_psml=False)
+                       copy_psml=False)
     back = T.config_from_template(T.template_with_values(cfg), SiestaConfig)
     assert list(back.species_order) == ["C", "H", "S", "Au"]
-    assert back.write_forces is False
     assert back.copy_psml is False
+
+
+def test_a_per_name_table_survives_the_writer():
+    """The writer writes every key the reader reads: a kind's own
+    recommendation (`recommended`, § 6.3a) and a rung's own answer
+    (`role_values`, § 6.4) are tables, and `_toml_value` wrote none until
+    2026-09-29 -- a catalogue item handed to it crashed.  A calculation's
+    template carries neither (`template_with_values` strips both), so this
+    is the writer's totality, asked of the catalogue's own rows."""
+    cat = T.catalogue()
+    for name in ("solution_method", "relax_force_tol"):
+        item = T.one(cat, name, engine="siesta")
+        back = T.one(T.read_template(T._emit([item], engines=("siesta",))),
+                     name)
+        assert (back.role_values, back.recommended) == (
+            item.role_values, item.recommended), name
 
 
 def test_an_unknown_item_name_is_refused_not_dropped():

@@ -119,29 +119,48 @@ def rung_of(stage_token: Optional[str]) -> str:
 # ===================================================================== #
 
 #: TranSIESTA's own settings for the device's self-consistent run -- read by
-#: `siesta` in NEGF mode.  The voltage is not here: it is a `role` item, the
-#: bias point this rung is for, so the rung's own block writes it
-#: (`_emit_device_run`).
+#: `siesta` in NEGF mode.  The voltage leads it: a `role` item, the bias point
+#: this rung runs at, which `resolve` and the point `prep` renders put into
+#: the rung's config (`engines/template.md` § 6.4).
 TS_DEVICE_SECTION = _sc.Section(
     "TranSIESTA -- how the device's open-boundary run is solved",
-    ("electrodes_bulk", "negf_eq_pole_ev", "negf_neq_eta_ev"),
+    ("bias_voltage_v", "electrodes_bulk", "negf_eq_pole_ev",
+     "negf_neq_eta_ev"),
     note=(
         "# Read by siesta in its NEGF mode (TranSIESTA) -- this rung.  An item",
         "# absent below was left at 0, which leaves it to TranSIESTA: its own",
         "# default there is a rule, not a number (engines/transport.md 6.1b).",
     ))
 
-#: What tbtrans reads of TranSIESTA's settings: `TBT.Elecs.Bulk` defaults to
-#: `TS.Elecs.Bulk` (SIESTA 5.4.2, `m_tbt_options.F90`), so the one shared
-#: value is written here too.  The contour settings are not: they say how the
+#: What tbtrans reads of TranSIESTA's settings: `TBT.Voltage` defaults to
+#: `TS.Voltage` (`m_tbt_hs.F90`, `m_tbt_contour.F90`) and `TBT.Elecs.Bulk` to
+#: `TS.Elecs.Bulk` (`m_tbt_options.F90`, SIESTA 5.4.2), so the device's values
+#: are written here too.  The contour settings are not: they say how the
 #: device's density is integrated, and tbtrans integrates none.
 TS_READ_BY_TBTRANS_SECTION = _sc.Section(
     "TranSIESTA settings tbtrans reads",
-    ("electrodes_bulk",),
+    ("bias_voltage_v", "electrodes_bulk"),
     note=(
-        "# tbtrans takes this as the default of its own TBT.Elecs.Bulk, so",
-        "# the transmission treats the leads as the device run did.",
+        "# tbtrans takes these as the defaults of its own TBT.Voltage and",
+        "# TBT.Elecs.Bulk: the bias is the point the device was converged",
+        "# at, and the leads are treated as the device run treated them.",
     ))
+
+#: What a lead exists to write -- ``TS.HS.Save``, a `role` item whose value is
+#: the two leads' answer (`engines/template.md` § 6.4); its note says why it is
+#: this keyword and not ``SaveHS`` or ``TS.DE.Save``.
+TS_ELECTRODE_SECTION = _sc.Section(
+    "The Hamiltonian this lead exists to write",
+    ("ts_hs_save",))
+
+#: The transmission's SCF settings: the engine's own section without
+#: ``SolutionMethod`` -- tbtrans runs no SCF, and the solver it reads is its
+#: own ``TBT.SolutionMethod`` (``m_tbt_options.F90``).  The rest stay until an
+#: audit of which SIESTA settings tbtrans reads says otherwise (§ 6.1b).
+_TRANSMISSION_SCF_SECTION = _sc.Section(
+    _sl.SCF_SECTION.title,
+    tuple(n for n in _sl.SCF_SECTION.items if n != "solution_method"),
+    note=_sl.SCF_SECTION.note)
 
 #: TBtrans's own settings -- read by `tbtrans` alone; `siesta` holds no
 #: `TBT.*` keyword, which is why the device deck carries none.
@@ -187,8 +206,7 @@ def _device_layout(derived, frame, state_block):
         state_block,
         _sl.mpi_section(block_size=derived.get("block_size"),
                         algorithm=derived.get("algorithm")),
-        _sc.Block("what this rung runs, and at which bias",
-                  _device_run_block(derived)),
+        _sc.Block("what this rung runs", _emit_device_run),
         _sc.Block("the junction: its electrodes and reservoirs",
                   _emit_electrode_block),
         TS_DEVICE_SECTION,
@@ -206,7 +224,11 @@ def _transmission_layout(derived, frame, state_block):
     the rungs share**: `tbtrans` reads at least one of them -- its
     temperature starts from `ElectronicTemperature` (`m_tbt_options.F90`) --
     and which others it reads is an audit of its source not yet made, so
-    none is dropped until that says it may be (§ 6.1b).
+    none is dropped until that says it may be (§ 6.1b).  Two groups are
+    audited and dropped (2026-09-29): ``SolutionMethod`` and the output
+    group (``WriteForces`` ... ``SaveHS``) -- tbtrans compiles none of the
+    files that read them (``read_options.F90``, ``write_subs.F``,
+    ``outcoor.f``), and its own options read none (``m_tbt_options.F90``).
     """
     return (
         _sc.Block("identity and what this rung computes",
@@ -217,21 +239,19 @@ def _transmission_layout(derived, frame, state_block):
         _sl.XC_SECTION,
         _sc.Block("the transverse k-mesh (the transport axis is not sampled)",
                   _emit_kgrid_block),
-        _sl.SCF_SECTION,
+        _TRANSMISSION_SCF_SECTION,
         _sl.FREE_ENERGY_SECTION,
         _sl.SCF_TAIL_SECTION,
         _sl.spin_section(fixed=derived["spin_fixed"]),
         state_block,
         _sl.mpi_section(block_size=derived.get("block_size"),
                         algorithm=derived.get("algorithm")),
-        _sc.Block("what this rung reads, and at which bias",
-                  _transmission_run_block(derived)),
+        _sc.Block("what this rung reads", _emit_transmission_run),
         _sc.Block("the junction: its electrodes and reservoirs",
                   _emit_electrode_block),
         TS_READ_BY_TBTRANS_SECTION,
         _sc.Block("the energy window T(E) is computed on", _emit_tbt_window),
         TBT_SECTION,
-        _sl.OUTPUT_SECTION,
     )
 
 
@@ -284,34 +304,17 @@ def _notes(cfg, lines):
     return list(lines) if getattr(cfg, "verbose_comments", True) else []
 
 
-def _voltage_lines(cfg, derived):
-    """``TS.Voltage`` with its note -- a `role` item (the bias point this rung
-    is for), so the rung writes it, through the catalogue's door and the
-    engine's one syntax door, handed THIS deck's context (W10)."""
-    p = _sc.parameter("bias_voltage_v", "siesta", config=cfg)
-    return [*_notes(cfg, p.note(*_sl.note_lead(p))), _sl.line(derived)(p)]
-
-
-def _device_run_block(derived):
-    return lambda struct, cfg: _emit_device_run(struct, cfg, derived)
-
-
-def _transmission_run_block(derived):
-    return lambda struct, cfg: _emit_transmission_run(struct, cfg, derived)
-
-
-def _emit_device_run(struct, cfg, derived) -> str:
+def _emit_device_run(struct, cfg) -> str:
     """What makes this deck the device's: TranSIESTA, started from the seed's
-    density, at this rung's bias point."""
+    density.  Its bias point is `TS.Voltage` in the TranSIESTA section."""
     return "\n".join([
         "# --- TranSIESTA, at this rung's bias point ---",
         "#",
-        "# `SolutionMethod transiesta` switches the SCF cycle to NEGF -- the",
-        "# rung's identity, not a setting (`role`).  (`TS.SolutionMethod` is a",
-        "# different keyword -- the NEGF inversion algorithm -- and naming the",
-        "# engine there stops SIESTA 5.4.2 with 'Unrecognized TranSiesta",
-        "# solution method'; measured 2026-06-18.)",
-        "SolutionMethod         transiesta",
+        "# `SolutionMethod transiesta` -- in the SCF section above, fixed by",
+        "# this rung -- switches the SCF cycle to NEGF.  (`TS.SolutionMethod`",
+        "# is a different keyword -- the NEGF inversion algorithm -- and",
+        "# naming the engine there stops SIESTA 5.4.2 with 'Unrecognized",
+        "# TranSiesta solution method'; measured 2026-06-18.)",
         "",
         "# Start the NEGF SCF from a saved density when one is present: the",
         "# seed rung leaves <SystemLabel>.DM beside this deck, and SIESTA's",
@@ -319,23 +322,19 @@ def _emit_device_run(struct, cfg, derived) -> str:
         "# unread.  With no file, SIESTA starts from atomic densities; a .TSDE",
         "# needs no keyword -- TranSIESTA reads it by presence.",
         "DM.UseSaveDM           true",
-        *_voltage_lines(cfg, derived),
         "",
     ])
 
 
-def _emit_transmission_run(struct, cfg, derived) -> str:
+def _emit_transmission_run(struct, cfg) -> str:
     """What makes this deck the transmission's: the device Hamiltonian it
-    reads, named, and the bias point it reads it at."""
+    reads, named.  The bias point it reads it at is `TS.Voltage` in the
+    section of TranSIESTA settings tbtrans reads."""
     label = cfg.system_label
     return "\n".join([
         "# --- tbtrans, on the device rung's converged Hamiltonian ---",
         "#",
-        "# No SolutionMethod: tbtrans runs no SCF.  The bias below is the",
-        "# device rung's own point -- tbtrans reads TS.Voltage as the default",
-        "# of TBT.Voltage (m_tbt_hs.F90), and it must be the voltage the",
-        "# device was converged at.",
-        *_voltage_lines(cfg, derived),
+        "# No SolutionMethod: tbtrans runs no SCF.",
         "",
         "# WHERE the device Hamiltonian is.  tbtrans would pick the first of",
         f"# {label}.TS.HSX, .TSHS and .HSX that exists (m_tbt_hs.F90); naming it",
@@ -416,7 +415,7 @@ def _electrode_layout(derived, frame, state_block):
         state_block,
         _sl.mpi_section(block_size=derived.get("block_size"),
                         algorithm=derived.get("algorithm")),
-        _sc.Block("what this rung must write", _emit_electrode_outputs),
+        TS_ELECTRODE_SECTION,
         _sl.OUTPUT_SECTION,
     )
 
@@ -474,43 +473,6 @@ def _emit_electrode_kgrid_block(struct, cfg) -> str:
         "%endblock kgrid_Monkhorst_Pack",
     ]
     return "\n".join(out)
-
-
-def _emit_electrode_outputs(struct, cfg) -> str:
-    """``TS.HS.Save`` — the rung's reason for existing.
-
-    A `role` item (`engines/template.md` § 6.4): the stage decides it, nobody
-    is offered a switch, and the template of this kind carries no value for
-    it. Written here rather than as a section item for that reason — a
-    section resolves an item's value from the config, and this one has none
-    to resolve.
-    """
-    return "\n".join([
-        "# --- The Hamiltonian this lead exists to write ---",
-        "#",
-        "# A lead run that omits this converges happily and produces nothing",
-        "# the device can attach to, so it is the STAGE'S OWN answer rather",
-        "# than a setting: `TS.HS.Save` writes <SystemLabel>.TSHS, which the",
-        "# device deck names in its TS.Elec block.",
-        "#",
-        "# NOT the same keyword as `SaveHS` further down, which writes the",
-        "# .HSX a post-processor reads.  That one is the engine's own output",
-        "# group and is on by default for every SIESTA run; this ladder does",
-        "# not consume it, and it costs disk, not correctness.",
-        "#",
-        "# Nor `TS.DE.Save`, which would write this lead's DENSITY MATRIX.",
-        "# TranSIESTA asks for that file only when TS.Elecs.DM.Init is",
-        "# `bulk` or `force-bulk` AND the device runs at zero bias; the",
-        "# default chain lands on `diagon`, and a finite bias forces it off",
-        "# regardless, so nothing in this ladder reads it.  Set that option",
-        "# by hand at V = 0 and you would need TS.DE.Save true here.",
-        "TS.HS.Save             true",
-        "",
-        "# An ordinary diagonalisation: a lead is a periodic bulk crystal,",
-        "# not an open boundary.  `role`-declared like TS.HS.Save above, so",
-        "# the rung writes it and no section does.",
-        "SolutionMethod         diagon",
-    ])
 
 
 def _seed_layout(derived, frame, state_block):
@@ -644,11 +606,11 @@ def _emit_solver_note(struct, cfg) -> str:
     return "\n".join([
         "# --- The seed's solver: ordinary diagonalisation, NOT transiesta ---",
         "#",
-        "# This rung is a periodic WARM-UP, not the NEGF calculation.  Leave",
-        "# `SolutionMethod` at `diagon` below: setting it to `transiesta`",
-        "# here would make the seed attempt an open-boundary solve with no",
-        "# electrode self-energies defined, which is not what this deck is",
-        "# and not what the ladder needs from it.",
+        "# This rung is a periodic WARM-UP, not the NEGF calculation, so its",
+        "# `SolutionMethod` below is `diagon`, fixed by the rung: `transiesta`",
+        "# here would attempt an open-boundary solve with no electrode",
+        "# self-energies defined, which is not what this deck is and not",
+        "# what the ladder needs from it.",
         "#",
         "# SIESTA writes <SystemLabel>.DM as this SCF converges, and that",
         "# file -- nothing else from this rung -- is what the device stage",
@@ -656,14 +618,6 @@ def _emit_solver_note(struct, cfg) -> str:
         "# this deck, and that absence is what makes it a single point: the",
         "# geometry was relaxed upstream and moving it here would invalidate",
         "# the electrode partition the whole ladder is built on.",
-        "#",
-        "# WRITTEN HERE, not by a section: `solution_method` is `role`-",
-        "# declared for transport, so the rung answers it and the template",
-        "# carries no value for it.  A section rendering it would resolve",
-        "# the config DEFAULT instead, which is how the device deck came to",
-        "# say `diagon` from a section and `transiesta` from its own block",
-        "# -- in that order, with libfdf taking the first.",
-        "SolutionMethod         diagon",
         "#",
         "# PSEUDOPOTENTIALS: this rung does not name a `psml_lib`.  Its",
         "# .psml files travel with the CITED junction -- `prep` copies them",

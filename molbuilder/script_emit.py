@@ -1279,6 +1279,13 @@ class RenderedDeck(str):
         return str(self)
 
 
+#: What a deck says beside an item the rung fixes (`role`) -- the reader of
+#: the deck learns it is not a setting before trying to change it.
+#: Two lines, at the deck's note width (`deck_note` copies ``extra`` as is).
+_FIXED_NOTE = ("Fixed by this rung -- not a setting: no template, stage or",
+               "pin changes it (engines/template.md 6.4).")
+
+
 def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
                      log=None) -> Tuple[List[str], List[str]]:
     """The **parameters** sub-step: walk the layout, one Parameter at a time.
@@ -1337,17 +1344,16 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
             if _kinds and spec.calculation not in _kinds:
                 other_kind.append(name)
                 continue
-            # ...and a ROLE item is not a section's to write for this kind.
-            # The stage's own role answers it, so the rung's block writes it
-            # and the template carries no value for it (`engines/template.md`
-            # § 6.4).  A section rendering it anyway would resolve the
-            # CONFIG DEFAULT -- which is how a device deck came to say
-            # `SolutionMethod diagon` from the section and `transiesta` from
-            # the NEGF block, in that order, with libfdf taking the first.
-            # Caught by the check gate the day it was written, 2026-09-16.
-            if spec.calculation in tuple(getattr(_decl, "role", ()) or ()):
-                other_kind.append(name)
-                continue
+            # ...and a ROLE item is written like any other: its value in the
+            # config IS the rung's own answer, laid on last by `resolve`
+            # (`engines/template.md` § 6.4), so the note says it is fixed
+            # and nothing else differs.  The walk skipped it until
+            # 2026-09-29 and each rung's block typed its line -- a section
+            # then resolved the CONFIG DEFAULT, which is how a device deck
+            # came to say `SolutionMethod diagon` from the section and
+            # `transiesta` from the NEGF block (2026-09-16), and the gate and
+            # the record kept reading `diagon` after the skip.
+            fixed = spec.calculation in tuple(getattr(_decl, "role", ()) or ())
             # EVERY ENGINE HOOK IS CALLED THROUGH THE BOUNDARY (§ 4.6).  This
             # walk is a walk over the engine's functions, so an exception with
             # no owner on it is the ordinary failure here, not an exotic one.
@@ -1362,7 +1368,8 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
                 with _calling("note_lead", engine=spec.engine,
                               where=f"item {name!r}", log=log):
                     lead = spec.note_lead(param)
-                body.extend(param.note(*lead))
+                body.extend(param.note(*lead,
+                                       extra=_FIXED_NOTE if fixed else ()))
             body.append(text)
             # WHAT THIS PARAMETER PUT IN THE DECK -- the LINE, verbatim.
             #

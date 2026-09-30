@@ -381,43 +381,16 @@ class TestAnOverrideReachesTheRungThatOwnsIt:
 
 class TestTheBiasAxisIsTheParametersValues:
     """`engines/transport.md` § 2a.10: *single bias is the degenerate case of
-    the bias axis — one point, normally at zero.*
+    the bias axis — one point, at zero, where every list starts* — and the
+    list is the bias's only home (plan § 5w K1, 2026-09-29).
 
-    ONE mechanism, not two.  The template declares `bias_voltage_v` — its
-    range, its unit, its help — and answers the one-point case; a scan is that
-    same parameter taking several values, which is the framework's own
-    precedence (the template's value ⊕ this point's).
+    ONE mechanism, not two.  `bias_voltage_v` declares the parameter — its
+    range, its unit, its help — and the rung fixes its value: each point of
+    the description's list is one device run, written at that point.  The
+    template's value answered a calculation with no list until 2026-09-29,
+    a second home beside the list; that refusal is
+    `TestTheRungFixesItsOwn`'s, through the CLI.
     """
-
-    def _set_template_bias(self, calc, v):
-        import dataclasses
-        from molbuilder.template import _emit, find_template, read_template
-        tmpl = find_template(calc)
-        parsed = read_template(tmpl.read_text())
-        tmpl.write_text(_emit(
-            [dataclasses.replace(i, value=v) if i.name == "bias_voltage_v"
-             else i for i in parsed.items], engines=("siesta",)))
-
-    def test_the_stage_deck_is_the_first_points_not_the_templates(self, calc):
-        """THE DEFECT, as a test.
-
-        The stage-directory deck exists so the job row's script sits where
-        every generic reader looks, and § 2a.11 describes it as *the same
-        deck `v0/` holds*.  Rendering it from the template's own value made
-        it disagree: measured 2026-09-16, the stage deck said 0.5 V while
-        `v0/` said 0.0, and whichever a reader opened they would believe.
-        """
-        self._set_template_bias(calc, 0.5)
-        prep_calculation(calc, "device")
-        stage = (calc / "04_device" / "T_04_device.fdf").read_text()
-        v0 = (calc / "04_device" / "v0" / "T_04_device.fdf").read_text()
-        assert _says(stage, "TS.Voltage", "0.0000 eV"), (
-            "the stage deck must be the first point's, which is what it is "
-            "documented to be")
-        assert _says(v0, "TS.Voltage", "0.0000 eV")
-        assert not _says(stage, "TS.Voltage", "0.5000 eV"), (
-            "the template's single value must not survive beside an axis -- "
-            "that is the two-homes state § 2a.10 rules out")
 
     def test_each_point_gets_its_own_value(self, calc):
         prep_calculation(calc, "device")
@@ -427,22 +400,6 @@ class TestTheBiasAxisIsTheParametersValues:
             m = _re.search(r"^TS\.Voltage\s+(\S+)", d.read_text(), _re.M)
             got[d.parent.name] = float(m.group(1))
         assert got["v0"] == 0.0 and got["v0.2"] == 0.2
-
-    def test_with_no_axis_the_template_answers(self, tmp_path):
-        """The degenerate case, and the half that keeps the test above from
-        being satisfied by ignoring the template entirely."""
-        root = tmp_path / "projects"
-        _write_junction(root, _junction_struct())
-        dest = _describe_transport(root, bias=())
-        self._set_template_bias(dest, 0.3)
-        prep_calculation(dest, "device")
-        deck = (dest / "04_device" / "T_04_device.fdf").read_text()
-        assert _says(deck, "TS.Voltage", "0.3000 eV"), (
-            "with one point the template IS the answer -- otherwise the "
-            "parameter would be undeclarable and unsettable")
-        assert not (dest / "04_device" / "v0").exists(), (
-            "and a single-bias calculation has no v* level at all (§ 2a.11's "
-            "axis rule: no sub-level for an axis it does not vary over)")
 
 
 class TestTheElectrodeRungIsOnTheSeam:
@@ -859,7 +816,7 @@ class TestTheLadderPreps:
         assert "T_L-electrode.TSHS" in dev, (
             "the device references exactly the file the electrode "
             "stage will write -- one spelling, both writers")
-        assert "TS.HS.Save             true" in elec
+        assert _says(elec, "TS.HS.Save", ".true.")
 
     def test_the_device_deck_is_transiesta_on_the_sorted_junction(self, calc):
         """SCIENCE. The device deck is `SolutionMethod transiesta` with a `TS.Elecs`
@@ -880,7 +837,7 @@ class TestTheLadderPreps:
         """
         prep_calculation(calc, "device")
         text = (calc / "04_device" / "T_04_device.fdf").read_text()
-        assert "SolutionMethod         transiesta" in text
+        assert _says(text, "SolutionMethod", "transiesta")
         assert "%block TS.Elecs" in text
         # Sorted: the first six coordinate rows are the lower Au electrode,
         # the next four the bridge (S C C S).
@@ -1052,7 +1009,7 @@ class TestTheLadderPreps:
 
         prep_calculation(dest, "device")     # must not raise
         text = (dest / "04_device" / "T_04_device.fdf").read_text()
-        assert "SolutionMethod         transiesta" in text
+        assert _says(text, "SolutionMethod", "transiesta")
 
     def test_buffer_atoms_emit_ts_atoms_buffer(self, tmp_path):
         """SCIENCE. A junction carrying `buffer` atoms emits `TS.Atoms.Buffer` with the
@@ -2376,7 +2333,7 @@ class TestEachDeckCarriesWhatItsProgramReads(_LadderThroughTheCli):
         assert not [ln for ln in dev if ln.upper().startswith(("TBT.",
                                                             "%BLOCK TBT"))], (
             "siesta reads no TBT.* keyword, so the device deck carries none")
-        assert "SolutionMethod         transiesta" in dev
+        assert _says(device, "SolutionMethod", "transiesta")
         assert any(ln.startswith("TS.Elecs.Bulk") for ln in dev)
 
         tr = self._settings(transmission)
@@ -2388,6 +2345,11 @@ class TestEachDeckCarriesWhatItsProgramReads(_LadderThroughTheCli):
         assert any(ln.startswith("TS.Elecs.Bulk") for ln in tr)
         assert not any(ln.startswith("SolutionMethod") for ln in tr), (
             "tbtrans runs no SCF")
+        # ...nor any of the output group, which tbtrans compiles no reader
+        # of: each line would be a setting nothing reads (§ 6.1b's audit).
+        assert not [ln for ln in tr if ln.split()[0] in (
+            "WriteForces", "WriteCoorStep", "WriteCoorXmol",
+            "WriteMDhistory", "WriteMDXmol", "SaveHS")], tr
         # TBT.k is the bracketed list tbtrans reads -- the cited run's
         # transverse grid, which `jobset init` put in the template
         from molbuilder.template import read_template, find_template
@@ -2699,3 +2661,97 @@ class TestBeforeAnyDeviceRuns(_LadderThroughTheCli):
             assert extract_engine_offset(deck)["axis_kind"] == [
                 "isolated", "isolated", along], along
 
+
+
+class TestTheRungFixesItsOwn(_LadderThroughTheCli):
+    """What a transport rung fixes (`role`, `engines/template.md` § 6.4) is
+    set by no door but the rung, through `molbuilder jobset prep`: the bias is
+    the description's list, the device's solver NEGF.  Until 2026-09-29 a
+    device override of the bias ran the device at one voltage while the
+    transmission, which reads the device's Hamiltonian, ran at another
+    (T-F5), and a template value was a single-bias calculation's voltage."""
+
+    def _prep(self, stage, root, monkeypatch):
+        return self._cli(["prep", "run", stage, "--bundle", "J/transport/T"],
+                         root, monkeypatch)
+
+    def _described(self, root, bias=()):
+        _write_junction(root, _junction_struct())
+        return _describe_transport(root, bias=bias)
+
+    @pytest.mark.parametrize("rung", ["device", "seed"])
+    def test_a_rung_cannot_carry_its_own_bias(self, tmp_path, monkeypatch,
+                                              rung):
+        """T-F5 -- on the rung that writes the bias and on one that does
+        not: both meet the one refusal, never *"move it to the device"*,
+        which the device would refuse in turn.  MUTATIONS THIS MUST FAIL
+        AGAINST: the stage-override door left open for a fixed item (the
+        override is laid over by the answer and the prep says nothing); a
+        fixed item counted as a rung's to own (the seed is sent to the
+        device)."""
+        root = tmp_path / "projects"
+        calc = self._described(root)
+        t = json.loads((calc / "task.json").read_text())
+        for st in t["stages"]:
+            if st["name"] == rung:
+                st["overrides"] = {"bias_voltage_v": 0.5}
+        t["varies"] = ["bias_voltage_v"]
+        (calc / "task.json").write_text(json.dumps(t, indent=2) + "\n")
+        r = self._prep(rung, root, monkeypatch)
+        assert r.exit_code != 0, r.output
+        assert "'bias_voltage_v'" in r.output, r.output
+        assert "the rung fixes" in r.output and "bias list" in r.output, (
+            r.output)
+        assert "belongs to" not in r.output, r.output
+
+    @pytest.mark.parametrize("bias, stated", [((), 0.3), ((0.0, 0.2), 0.3),
+                                              ((0.0, 0.2), 0.0)])
+    def test_a_template_bias_is_refused_naming_the_list(self, tmp_path,
+                                                       monkeypatch, bias,
+                                                       stated):
+        """THE SECOND HOME, closed -- with a list and without one, and at
+        0 V too: a rung answers the bias point by point, so no one value in
+        a calculation-wide file states it.  MUTATIONS THIS MUST FAIL
+        AGAINST: the template door left open (the rung lays 0 V over the
+        template's 0.3 without a word); a template value accepted when it
+        equals the catalogue's 0 V (the v0.2 deck then runs at 0.2 beside
+        a template that says 0)."""
+        import dataclasses
+        from molbuilder.template import _emit, find_template, read_template
+        root = tmp_path / "projects"
+        calc = self._described(root, bias=bias)
+        tmpl = find_template(calc)
+        parsed = read_template(tmpl.read_text())
+        tmpl.write_text(_emit(
+            [dataclasses.replace(i, value=stated)
+             if i.name == "bias_voltage_v" else i for i in parsed.items],
+            engines=parsed.engines))
+        r = self._prep("device", root, monkeypatch)
+        assert r.exit_code != 0, r.output
+        assert "'bias_voltage_v'" in r.output and "bias list" in r.output, (
+            r.output)
+
+    def test_each_rung_writes_what_it_fixes_from_its_config(
+            self, tmp_path, monkeypatch):
+        """ONE ROAD: a rung's answer -- the device's own (`role_values`),
+        the leads' the item's value -- is laid on its config by `resolve`,
+        and the section walk writes it, noting it is fixed.  A block typed
+        both lines until 2026-09-29, while the device's config said
+        `diagon` to the gate and the record.  MUTATIONS THIS MUST FAIL
+        AGAINST: the answer not laid on (the device's section says
+        `diagon`); the walk skipping a fixed item (no line at all)."""
+        import re as _re
+        device, _transmission = self._ladder(tmp_path, monkeypatch)
+        calc = tmp_path / "projects" / "J" / "transport" / "T"
+        lead = (calc / "02_electrode_L" / "T_02_electrode_L.fdf").read_text()
+        for deck, keyword, value in ((device, "SolutionMethod", "transiesta"),
+                                     (lead, "TS.HS.Save", ".true."),
+                                     (lead, "SolutionMethod", "diagon")):
+            lines = deck.splitlines()
+            at = [k for k, ln in enumerate(lines)
+                  if _re.match(rf"{_re.escape(keyword)}\s", ln)]
+            assert len(at) == 1, (keyword, [lines[k] for k in at])
+            assert lines[at[0]].split()[1:] == [value], lines[at[0]]
+            assert any("Fixed by this rung" in ln
+                       for ln in lines[max(0, at[0] - 3):at[0]]), (
+                lines[max(0, at[0] - 3):at[0] + 1])

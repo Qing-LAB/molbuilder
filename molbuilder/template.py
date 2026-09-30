@@ -335,18 +335,17 @@ class Item:
     #: Ask it directly, or filter for it: ``select(t, citation=True)``.
     citation: Tuple[str, ...] = ()
 
-    #: **The STAGE'S ROLE answers this one** — the third answerer on
+    #: **NOBODY IS ASKED: THE RUNG FIXES IT** — the third answerer on
     #: `allocation`'s axis (§ 6.4), added 2026-09-16 for the transport kind.
     #:
     #: Same three states again, and again a different answerer. Some values
-    #: are not a choice at all: they are what makes a stage *be* that stage.
-    #: A transport device solves with the NEGF method and a bulk lead does
-    #: not; a lead writes the Hamiltonian the device will read; the device's
-    #: transport axis is not Brillouin-zone sampled, because that axis is the
-    #: open boundary. Offering any of these as a control would present a
-    #: choice with exactly one correct answer, and a person who changed it
-    #: would not be tuning the run — they would be stopping it being the run
-    #: it is.
+    #: are not a choice at all: a transport device solves with the NEGF
+    #: method and a bulk lead does not; a lead writes the Hamiltonian the
+    #: device will read; and every SIESTA run writes each step's forces and
+    #: coordinates, because molbuilder reads them back (2026-09-29). Offering
+    #: any of these as a control would present a choice with exactly one
+    #: correct answer, and a person who changed it would not be tuning the
+    #: run — they would be stopping it being the run it is.
     #:
     #: **A list of CALCULATION KINDS**, like `citation` and for the same
     #: reason: `solution_method` is role-fixed for *transport*, where the rung
@@ -355,11 +354,17 @@ class Item:
     #: kinds*, and absence means *never*.
     #:
     #: What it buys: a `role` item is not offered — not as a form field, not
-    #: as a stage-table column — and it carries no value in a template of
-    #: that kind, so no description can claim to have set it.
+    #: as a stage-table column — it carries no value in a template of that
+    #: kind, and no door may set it; each rung's answer
+    #: (:func:`role_answers`) is put into the rung's config by `resolve`.
     #:
     #: Ask it directly, or filter for it: ``select(t, role=True)``.
     role: Tuple[str, ...] = ()
+    #: **A RUNG WHOSE ROLE ANSWERS OTHERWISE**, as ``(rung, value)`` pairs:
+    #: every other rung of a `role` kind answers ``value``.  The device's
+    #: ``transiesta`` is the case (§ 6.4).  Pairs, as ``recommended``'s, so
+    #: the frozen item stays hashable.
+    role_values: Tuple[Tuple[str, Any], ...] = ()
     #: **BINDS EVERY RUNG of these kinds** -- a scope, not an answerer
     #: (`engines/transport.md` § 3.8.6, decided 2026-09-24: a sibling marker
     #: beside `citation`, which keeps meaning *who supplies the default*).
@@ -491,6 +496,11 @@ class Item:
         if self.group is not None and self.group not in GROUPS:
             _refuse(f"group {self.group!r} is not one of "
                     f"{', '.join(GROUPS)}", where=self.name)
+        # A rung's own answer answers a `role` -- without one the table is a
+        # value nothing asks for (§ 6.4).
+        if self.role_values and not self.role:
+            _refuse("'role_values' names a rung's own answer to a `role` item, "
+                    "and this item declares no `role`", where=self.name)
 
     @property
     def is_set(self) -> bool:
@@ -854,7 +864,18 @@ def _toml_value(v: Any) -> str:
         return (_toml_multiline(v) if "\n" in v else _toml_basic(v))
     if isinstance(v, (list, tuple)):
         return "[" + ", ".join(_toml_value(x) for x in v) + "]"
+    if isinstance(v, Mapping):
+        # An INLINE TABLE -- ``recommended`` (per kind) and ``role_values``
+        # (per rung) are the item keys that hold one, keyed by a name.
+        return ("{ " + ", ".join(f"{_toml_key(k)} = {_toml_value(x)}"
+                                 for k, x in v.items()) + " }")
     raise TypeError(f"template: cannot write {type(v).__name__} to TOML")
+
+
+def _toml_key(k: Any) -> str:
+    """A table key -- bare when TOML allows it, quoted otherwise."""
+    k = str(k)
+    return k if re.fullmatch(r"[A-Za-z0-9_-]+", k) else _toml_basic(k)
 
 
 #: The order keys appear inside an item.  Fixed so two templates of the same
@@ -863,7 +884,7 @@ def _toml_value(v: Any) -> str:
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "anchor", "engine_key",
                    "manual", "expands", "type",
                    "choices", "value", "default", "recommended", "optional", "allocation",
-                   "citation", "shared", "role", "stages",
+                   "citation", "shared", "role", "role_values", "stages",
                    "unit", "range", "tier", "pattern",
                    "group", "label", "null_label", "read_by", "help")
 
@@ -916,6 +937,9 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["citation"] = list(it.citation)
     if it.role:
         out["role"] = list(it.role)
+    if it.role_values:
+        out["role_values"] = {k: (list(v) if isinstance(v, tuple) else v)
+                              for k, v in it.role_values}
     if it.shared:
         out["shared"] = list(it.shared)
     if it.stages:
@@ -1085,6 +1109,9 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
                      if recommended_for(it, calculation) is not None
                      else it.default),
             recommended=(),
+            # ...nor the rungs' own role answers: `resolve` reads them from
+            # the catalogue, and the template holds no value for a role item.
+            role_values=(),
         )
         for it in select(parsed, engine=eng, calculation=calculation)
     ]
@@ -1286,19 +1313,21 @@ _TYPE_CHECKS = {
 }
 
 
-def _recommended_from(name: str, raw, type_: str, choices) -> Tuple[Tuple[str, Any], ...]:
-    """The ``recommended`` table of an item, checked value by value against
-    the item's own declaration (§ 6.3a): a kind's recommendation obeys the
-    same type and enum membership as the general default."""
+def _table_from(name: str, key: str, raw, type_: str, choices, *,
+                keyed_by: str, example: str) -> Tuple[Tuple[str, Any], ...]:
+    """A per-name table of an item -- ``recommended``, keyed by calculation
+    kind (§ 6.3a), or ``role_values``, keyed by rung (§ 6.4) -- checked value
+    by value against the item's own declaration: each obeys the same type and
+    enum membership as the general default."""
     if raw is None:
         return ()
     if not isinstance(raw, Mapping) or not all(isinstance(k, str) for k in raw):
-        _refuse("`recommended` must be a table keyed by calculation kind, "
-                "e.g. recommended = { vibration = 0.01 }", where=name)
+        _refuse(f"`{key}` must be a table keyed by {keyed_by}, "
+                f"e.g. {example}", where=name)
     out = []
-    for kind, v in raw.items():
-        _check_raw_value(name, f"recommended.{kind}", v, type_, choices)
-        out.append((str(kind), _shape(v, type_)))
+    for k, v in raw.items():
+        _check_raw_value(name, f"{key}.{k}", v, type_, choices)
+        out.append((str(k), _shape(v, type_)))
     return tuple(out)
 
 
@@ -1472,12 +1501,16 @@ def _item_from(name: str, body: Any) -> Item:
         category=tuple(body.get("category", ()) or ()),
         engines=tuple(body.get("engines", ()) or ()),
         calculations=tuple(body.get("calculations", ()) or ()),
-        recommended=_recommended_from(name, body.get("recommended"), type_,
-                                      choices),
+        recommended=_table_from(name, "recommended", body.get("recommended"),
+                                type_, choices, keyed_by="calculation kind",
+                                example="recommended = { vibration = 0.01 }"),
         refs=tuple(body.get("refs", ()) or ()),
         allocation=bool(body.get("allocation", False)),
         citation=tuple(body.get("citation", ()) or ()),
         role=tuple(body.get("role", ()) or ()),
+        role_values=_table_from(name, "role_values", body.get("role_values"),
+                                type_, choices, keyed_by="rung",
+                                example='role_values = { device = "transiesta" }'),
         shared=tuple(body.get("shared", ()) or ()),
         stages=tuple(body.get("stages", ()) or ()),
         null_label=str(body.get("null_label", "") or ""),
@@ -1575,6 +1608,11 @@ def shared_by_every_stage(engine: str, kind: str) -> frozenset:
                      if kind in it.shared)
 
 
+#: The calculation's identity -- `shared` for every SIESTA kind (2026-09-29,
+#: K1): one name, one species table, one pseudopotential set.
+IDENTITY_ITEMS = ("system_label", "species_order", "psml_lib")
+
+
 def why_shared(name: str) -> str:
     """Why a `shared` item cannot be one stage's -- the clause a refusal
     puts after *"is shared by every stage of this calculation"*."""
@@ -1582,8 +1620,87 @@ def why_shared(name: str) -> str:
         return ("the electronic state belongs to the calculation, never to "
                 "a stage -- every stage's warm files are a density for one "
                 "state (science/chemistry-correctness.md § 2a, ES1)")
+    if name in IDENTITY_ITEMS:
+        return ("a calculation has one name, one species table and one set "
+                "of pseudopotentials -- each stage reads what the one before "
+                "it wrote under that name, numbered by that table (the `.XV` "
+                "holds each atom's species index) and built on that set "
+                "(engines/template.md § 5, `shared`)")
     return ("the electrode and the device must not be able to disagree "
             "about it (engines/transport.md § 2a.7)")
+
+
+def fixed_by_role(engine: str, kind: str) -> frozenset:
+    """The items the rungs of a ``kind`` calculation fix -- the catalogue's
+    `role` (§ 6.4), asked rather than listed.  No stage override, pin, sweep
+    axis or template value may set one (:func:`why_role` says why);
+    :func:`role_answers` is what each rung's config holds instead."""
+    return frozenset(it.name for it in select(catalogue(), engine=engine)
+                     if kind in it.role)
+
+
+def role_answers(engine: str, kind: str,
+                 stage: Optional[str] = None) -> Dict[str, Any]:
+    """``{item: value}`` -- what the rung ``stage`` of a ``kind``
+    calculation answers for its `role` items (§ 6.4): the item's own
+    ``role_values`` entry for that rung, else the catalogue's ``value``.
+
+    An item whose ``stages`` does not name the rung is not this rung's and
+    is absent -- a lead's ``ts_hs_save`` is no other rung's.  ``resolve``
+    lays these on the rung's config as its last layer; the bias point, the
+    one answer the catalogue does not hold, is laid on by the point `prep`
+    renders (`engines/transport.md` § 2a.10).
+    """
+    out: Dict[str, Any] = {}
+    for it in select(catalogue(), engine=engine, stages=stage):
+        if kind not in it.role:
+            continue
+        if stage is None and it.stages:
+            continue                  # some rungs' only -- no rung was named
+        answer = dict(it.role_values).get(stage, it.value)
+        if answer is None:
+            raise ValueError(
+                f"catalogue item {it.name!r} is fixed by the rung for "
+                f"{kind!r} (`role`) and answers nothing for rung "
+                f"{stage!r}: give it a `value`, or the rung's own in "
+                f"`role_values` (engines/template.md § 6.4).")
+        out[it.name] = answer
+    return out
+
+
+def fixed_on_every_rung(engine: str, kind: str) -> Dict[str, Any]:
+    """``{item: value}`` -- the `role` items of a ``kind`` calculation whose
+    answer is the same on every rung: no ``stages`` and no ``role_values``,
+    so the catalogue's ``value`` is every rung's (§ 6.4).  SIESTA's
+    per-step forces and coordinates are the two.
+
+    The one answer a calculation-wide statement CAN give, which is why two
+    readers ask it: `resolve` reads a template value for one of these as
+    the answer when it equals it (the templates written before 2026-09-29
+    carry ``write_forces = true``), and refuses any template value for a
+    fixed item answered rung by rung; the settings gate refuses a config
+    rendered with anything else, since only a render that skipped
+    `resolve` can hold another value.
+    """
+    return {it.name: it.value
+            for it in select(catalogue(), engine=engine)
+            if kind in it.role and not it.stages and not it.role_values}
+
+
+def why_role(name: str) -> str:
+    """Why nobody may set a `role` item -- the clause a refusal puts after
+    *"which the rung fixes"*."""
+    if name == "bias_voltage_v":
+        return ("the bias is the description's bias list -- each rung writes "
+                "the point it runs, the device and the transmission alike "
+                "(engines/transport.md § 2a.10); change the list instead")
+    if name in ("write_forces", "write_coor_step"):
+        return ("every SIESTA run writes each step's forces and coordinates, "
+                "because molbuilder reads them back -- the relaxation "
+                "record, the trajectory and a vibration's finish "
+                "(engines/template.md § 6.4)")
+    return ("it is what makes the rung that rung -- a choice with one "
+            "correct answer (engines/template.md § 6.4)")
 
 
 def select(t: "Template", *, category=None, engine=None,
@@ -1876,4 +1993,6 @@ __all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES",
            "template_with_values",
            "read_template", "config_from_template",
            "template_fields", "engine_name", "is_member",
-           "STATE_ITEMS", "shared_by_every_stage", "why_shared"]
+           "STATE_ITEMS", "shared_by_every_stage", "why_shared",
+           "IDENTITY_ITEMS", "fixed_by_role", "role_answers",
+           "fixed_on_every_rung", "why_role"]

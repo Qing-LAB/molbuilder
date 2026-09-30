@@ -730,7 +730,7 @@ does the same job in a different order cannot be compared at all, only read.
 flowchart TB
     subgraph FIXED["the sequence — the framework's, identical for every engine"]
       direction TB
-      S1["<b>resolve</b><br/>template ⊕ overrides ⊕ sweep ⊕ pins"]
+      S1["<b>resolve</b><br/>template ⊕ overrides ⊕ sweep ⊕ pins ⊕ the rung's answers"]
       S2["<b>spec_for</b><br/><i>ask the engine for its FORM</i>"]
       S3["<b>validate</b><br/>the settings gate"]
       S4["<b>render</b><br/><i>walk spec.layout in order</i>"]

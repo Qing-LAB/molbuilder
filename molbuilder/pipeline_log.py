@@ -239,7 +239,8 @@ def config_rows(values: Any, provenance: Mapping[str, str],
     baseline follows: the first block is normally three to ten lines and is
     the answer to *"why is it 300 here and 350 there"*.
     """
-    rank = {"pin": 0, "sweep": 1, "stage": 2, "allocation": 3, "template": 4}
+    rank = {"pin": 0, "sweep": 1, "stage": 2, "role": 3, "allocation": 4,
+            "template": 5}
     rows = []
     for f in dataclasses.fields(values):
         src = provenance.get(f.name, "template")

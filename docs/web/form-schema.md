@@ -196,7 +196,10 @@ person to need it finds the entry rather than inventing a second spelling.)*
 > parameters never got one — `write_forces`, `species_order`, `copy_psml`,
 > PySCF's `ecp` / `auxbasis` / `diis_space` / `damp` and the rest. They were
 > invisible on the form while being perfectly ordinary settings that reach the
-> generated file. Building from the catalogue is what surfaced them.
+> generated file. Building from the catalogue is what surfaced them. *(Two of
+> them, `write_forces` and `write_coor_step`, left the form again on
+> 2026-09-29 — by declaration, not by omission: the rung fixes both on every
+> SIESTA kind, [`template.md`](?doc=engines/template.md) § 6.4.)*
 >
 > `section` is still live for **`TransportConfig` only**, whose tab still
 > calls `dataclass_to_form_schema` (the spectra schema route retired at P3

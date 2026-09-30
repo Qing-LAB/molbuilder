@@ -1631,10 +1631,12 @@ def _resolve_transport(base, task, stage: str, allocation,
     from ..resolve import ResolveError, resolve
     from ..template import find_template
 
-    # A SHARED VALUE IS NOT A PER-STAGE OVERRIDE -- refused by `resolve`, the
-    # one door every kind's prep goes through (`template.shared_by_every_stage`
-    # + `why_shared`).  This step refused transport's own copy until
-    # 2026-09-28, and no other kind refused at all.
+    # A SHARED VALUE IS NOT A PER-STAGE OVERRIDE, NOR ONE THE RUNG FIXES --
+    # refused by `resolve`, the one door every kind's prep goes through
+    # (`template.shared_by_every_stage` + `why_shared`; `fixed_by_role` +
+    # `why_role`), which also lays each rung's own answers on its config.
+    # This step refused transport's own copy until 2026-09-28, and no other
+    # kind refused at all.
     # AND THE RUNG THAT OWNS A VALUE (`stages`, the same § 6.4): "only these
     # rungs may; it is not that rung's business anywhere else".  Asked of
     # THE ONE DOOR the describe door asks too
@@ -1939,9 +1941,10 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # script and § 2a.11 documents it as "the same deck v0/ holds".
     #
     # § 2a.10: *single bias is the degenerate case of the bias axis -- one
-    # point, normally at zero.*  One mechanism, so one loop: the template
-    # declares the parameter and answers the one-point case, and a scan is
-    # that same parameter taking several values.
+    # point, at zero, where every list starts.*  One mechanism, so one loop:
+    # the description's list is the bias's only home, and each point's deck
+    # is written at that point (the rung fixes it, `engines/template.md`
+    # § 6.4); a single-bias rung renders the 0 V `resolve` laid on.
     points = bias_points(task) if stage in ("device", "transmission") else ()
     # ONE SPELLING of where a bias point lives.  Three steps below need it --
     # the deck, the wrapper and the attempt ladder -- and each composed it
@@ -1952,6 +1955,10 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     for out_dir, volts in ([(stage_dir, points[0] if points else None)]
                            + point_dirs):
         out_dir.mkdir(parents=True, exist_ok=True)
+        # THE POINT IS THE RUNG'S ANSWER -- the one `role` answer the
+        # catalogue does not hold (`engines/template.md` § 6.4): the list is
+        # the bias's only home (`engines/transport.md` § 2a.10), and a
+        # single-bias rung keeps the answer `resolve` laid on, 0 V.
         cfg = (config if volts is None else
                dataclasses.replace(config, bias_voltage_v=float(volts)))
         with _user_error_as_prep():

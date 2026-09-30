@@ -407,14 +407,13 @@ def api_transport_describe() -> Any:
     # value or a role-fixed one names itself while changing it is still
     # free.  Three questions, three markers, one catalogue
     # (`engines/transport.md` § 3.8.2; `engines/template.md` § 6.4).
-    _cat = _T.catalogue()
     # The one rule for "binds every stage" (`template.shared_by_every_stage`),
     # which `resolve` refuses at prep for every kind -- asked here too, so
     # the tab refuses while changing it is still free.
     _shared_names = _T.shared_by_every_stage("siesta", "transport")
-    _role_names = {it.name for it in _T.select(_cat, engine="siesta",
-                                                role=True)
-                   if "transport" in it.role}
+    # ...and the one rule for "the rung fixes it", which `resolve` refuses
+    # at prep for every kind, with the same reason.
+    _role_names = _T.fixed_by_role("siesta", "transport")
     # THE VOCABULARY IS WHAT PREP CAN RESOLVE, and it is asked rather than
     # listed (`stages.resolvable_override_names`).
     for _rung, _name in [(r, n) for r, b in bags.items() for n in b]:
@@ -430,10 +429,9 @@ def api_transport_describe() -> Any:
                                      f"7)."}), 400
         if _name in _role_names:
             return jsonify({"ok": False,
-                            "error": f"{_name!r} is the rung's own -- a "
-                                     f"choice with one correct answer, "
-                                     f"which the stage decides and no "
-                                     f"form offers"}), 400
+                            "error": f"{_name!r} is fixed by the rung, so "
+                                     f"it cannot be a per-stage override: "
+                                     f"{_T.why_role(_name)}."}), 400
         if _name in _shared_names:
             # SHARED, therefore not a per-stage override -- and that is the
             # reason, not "the citation owns it" (`engines/transport.md`

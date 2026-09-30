@@ -214,7 +214,7 @@ note records the deletion.)*
 |---|---|---|---|---|---|---|
 | **1** | **names & plain facts** | what a thing is called; what this machine is | `identity` · `paths` · `ref` · `scheduler/record` · `scheduler/probe` · `persist` · `jobset/ledger` | `resolve_stage_ref` · `stage_token` · `parse_stage_token` · `Shape.named` · `Shape.stage_dir` · `Shape.stage_glob` · `Ref` · `compose` · `find` · `parse` · `run_id` · `normalise_id` · `resolve_environment` · `detect_scheduler` · `read_json` / `write_json` · `ledger.record` / `ledger.prepped` (a verb's decisions, one append each) | `environment.json` · `jobset-decisions.log` | know what a folder is |
 | **2** | **description** | what the person asked for | `task` | `read_task` · `write_task` · `derive_run` · `varies_for` | `task.json` | **name a machine** |
-| **3** | **plan & render** | asked-for **+ machine** → a list of jobs, **and the text of every file** | `siesta/stages` · `resolve` · `bench/grid` · `jobset/model` · `siesta/input` · `pyscf/input` · `runwrap` | `default_siesta_stages` · `resolve` (template ⊕ overrides ⊕ sweep point ⊕ pins → `ParameterSet`) · `JobSet.write` / `load` / `validate` · `render_fdf` / `render_script` · `write_run_wrapper` · `render_sbatch` | `job-set.json` · the scripts · `.run.sh` · `.sbatch` | **re-decide a value it was handed** *(the pre-resolve producers — `stages_to_jobset` · `build_siesta_stage_bundle` · `sweep_to_jobset` · `bench/to_jobset` — were deleted 2026-08-12, plan steps 4–6)* |
+| **3** | **plan & render** | asked-for **+ machine** → a list of jobs, **and the text of every file** | `siesta/stages` · `resolve` · `bench/grid` · `jobset/model` · `siesta/input` · `pyscf/input` · `runwrap` | `default_siesta_stages` · `resolve` (template ⊕ overrides ⊕ sweep point ⊕ pins ⊕ the rung's answers → `ParameterSet`) · `JobSet.write` / `load` / `validate` · `render_fdf` / `render_script` · `write_run_wrapper` · `render_sbatch` | `job-set.json` · the scripts · `.run.sh` · `.sbatch` | **re-decide a value it was handed** *(the pre-resolve producers — `stages_to_jobset` · `build_siesta_stage_bundle` · `sweep_to_jobset` · `bench/to_jobset` — were deleted 2026-08-12, plan steps 4–6)* |
 | **4** | **layout** | where every file sits | `jobset/materialize` | `materialize` · `job_dir_names` · `stage_refs` · `shape_of` · `Shape.named` · `prepare_attempt` · `attempts` · `latest_attempt` · `relink` | the folder tree; `run-<n>/` | know about a queue |
 | **5** | **launch** | start one program | `jobset/agreement` · `jobset/submit` | `launch_agreement` · `check_launch_matches_deck` · `submit_jobset` | `run.json` | decide physics |
 | **6** | **observe** | what happened | `jobset/runstatus` · `jobset/summarize` · `parse/dirs` | `jobset_status` · `render_status` · `render_stage_status` · `run_status` | — | write anything |
@@ -594,7 +594,7 @@ flowchart TB
         B1 --> B2 --> B3 --> B4
     end
 
-    RES["<b>4 · resolve()</b> — floor 3<br/>template ⊕ overrides ⊕ pins ⊕ allocation → <b>ParameterSet</b>"]
+    RES["<b>4 · resolve()</b> — floor 3<br/>template ⊕ overrides ⊕ pins ⊕ the rung's answers ⊕ allocation → <b>ParameterSet</b>"]
     DECK["<b>5 · the deck</b><br/>records the rank count it assumed"]
     SB["<b>5 · the .sbatch</b><br/><code>#SBATCH -n</code> ← <code>header_ntasks</code>"]
     WRAP["<b>5 · the wrapper</b><br/><code>_mpi_np_default=</code> ← the same two producers"]

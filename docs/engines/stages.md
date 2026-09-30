@@ -191,7 +191,7 @@ place; each names the file that holds it, so the claim is checkable.**
 
 A `Stage` (`task.py`) carries `name`, `enabled` and `overrides`, and § 2 says
 `overrides` may name **any field of the shared schema** except the few bound to
-the whole calculation (below). So a PySCF rung is
+the whole calculation or fixed by the rung (below). So a PySCF rung is
 declared exactly as a SIESTA one is:
 
 ```
@@ -300,7 +300,9 @@ is what limited a stage to four values.**
 Today's four relaxation values are a **default selection** over that catalogue —
 and not a privileged class of parameter. Any field of the shared schema can be
 selected, except the items bound to the whole calculation — the items the catalogue marks `shared` for the kind, the
-electronic state first among them (§ 1.3's note; ES1).
+electronic state first among them (§ 1.3's note; ES1) — and the items the rung
+itself fixes (`role`: SIESTA's per-step forces and coordinates, a transport
+rung's solver and bias; `template.md` § 6.4).
 
 ### 1.3 The default selection is a group each engine declares, not a list in code
 
@@ -566,12 +568,18 @@ written twice: every tab already has a schema, so every tab gets this.
 
 `overrides` may name **any field of the shared schema** and **never** `name` or
 `enabled`, nor an item bound to the whole calculation — the items the catalogue marks `shared` for the kind (the
-electronic state's four for every kind; transport's electronic description). A
+electronic state's four for every kind; the calculation's identity — its
+`system_label`, `species_order` and `psml_lib` — for every SIESTA kind;
+transport's electronic description) — nor an item the rung itself fixes (`role`:
+SIESTA's per-step forces and coordinates on every kind, a transport rung's
+solver and bias). A
 description carrying a stage-field name inside `overrides` is refused: two homes
 for one fact is how the previous model produced fields that lived in both places
 and silently disagreed. A bound item there is refused by name at resolve, saying
 why it is the calculation's (`template.why_shared`; ES1 for the state: every rung's
-`.DM` or `.chk` is a density for one electronic state).
+`.DM` or `.chk` is a density for one electronic state); a fixed one, saying why
+it is not a choice (`template.why_role`) — and the same refusal meets a pin or a
+sweep axis naming it (`template.md` § 6.4).
 
 **`overrides` and `execution` are not two names for one thing**, and the
 difference is what reads them. `overrides` changes what the calculation *is* —
@@ -665,7 +673,9 @@ schema; what the generator does with it is
 
 ## 4. The effective config
 
-> **effective config = the template's values ⊕ that stage's `overrides`.**
+> **effective config = the template's values ⊕ that stage's `overrides`**
+> — and, laid on last, what the rung itself fixes (`role`,
+> [`template.md`](?doc=engines/template.md) § 6.4), which no override may name.
 
 The template (`<label>.template.toml`) is the science backbone the generating tab
 wrote — **everything a script owns, with values**: what the user set, or the
@@ -1041,9 +1051,10 @@ that omits a varied key renders with the template's value for it (§ 4).
 There is no separate list of promotable settings, and there must not be one: § 1.2
 already says a stage may name any field of the shared schema but the ones bound to
 the whole calculation (the catalogue's `shared` marker, which the columns read
-too), and the description
+too) and the ones the rung fixes (its `role` marker, read the same way), and the
+description
 is already forbidden to hold the settings the machine answers *as a column* —
-how many ranks, how many cores per rank, how much memory. Those two rules
+how many ranks, how many cores per rank, how much memory. Those rules
 together give the column set with nothing left to decide.
 
 *(A machine-answered setting is not column material because it is not a
@@ -1209,7 +1220,8 @@ In order, and all of it before anything is written:
 | the engine is one this backend has a generator for | refuse, naming what it has |
 | every named field exists in the shared schema | refuse, naming the field |
 | no `overrides` key names a stage field (§ 2) | refuse, naming the field |
-| no `overrides` key names an item bound to the whole calculation (`shared` for the kind — the electronic state for every kind, ES1) | refuse at resolve, naming the item and why it is the calculation's |
+| no `overrides` key names an item bound to the whole calculation (`shared` for the kind — the electronic state for every kind, ES1; the calculation's label, species order and pseudopotentials for every SIESTA kind) | refuse at resolve, naming the item and why it is the calculation's |
+| no `overrides` key names an item the rung fixes (`role` for the kind — SIESTA's per-step forces and coordinates on every kind; a transport rung's solver and bias) | refuse at resolve, naming the item and why it is not a choice |
 | every stage `name` matches `[A-Za-z0-9_]+` | refuse, naming the stage and the rule |
 | **stage names are unique**, compared case-insensitively | refuse, naming the repeat |
 | every value is one its field's declared type can hold | refuse, naming the field, the value and what the field declares |

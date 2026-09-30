@@ -51,13 +51,15 @@ class TestRole:
     def test_the_declared_role_items_are_the_ones_the_map_names(self, cat):
         """Both directions, so neither drift is silent.
 
-        `engines/transport.md` § 2a.13 lists what the stage's role fixes.  A
-        row that quietly gains `role` disappears from every surface with no
-        other symptom; one that loses it starts offering a choice with one
-        correct answer.
+        `engines/transport.md` § 2a.13 lists what the stage's role fixes,
+        and `engines/template.md` § 6.4 the two output switches every SIESTA
+        kind fixes.  A row that quietly gains `role` disappears from every
+        surface with no other symptom; one that loses it starts offering a
+        choice with one correct answer.
         """
         assert {i.name for i in T.select(cat, engine="siesta", role=True)} == {
-            "solution_method", "ts_hs_save", "bias_voltage_v"}
+            "solution_method", "ts_hs_save", "bias_voltage_v",
+            "write_forces", "write_coor_step"}
 
     def test_a_role_item_is_not_offered_as_a_column(self, cat):
         """The reader that makes the declaration bite.

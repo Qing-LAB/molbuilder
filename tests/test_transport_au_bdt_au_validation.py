@@ -217,11 +217,17 @@ def _live_device_deck(label="au_bdt_au_test", rung="device"):
     2026-09-17.  That was a SECOND writer of this deck and is deleted; the
     checks are about the deck a person gets, so they follow the framework.
     """
+    import dataclasses
     from molbuilder import script_emit as _sc
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.siesta.input import spec_for
+    from molbuilder.template import role_answers
     struct = _struct_with_sidecar()
-    cfg = SiestaConfig(system_label=label)
+    # ...with the rung's own answers laid on, as `resolve` lays them for
+    # every prep (`engines/template.md` § 6.4): the device's `transiesta`
+    # is the rung's answer, not a default the spec supplies.
+    cfg = dataclasses.replace(SiestaConfig(system_label=label),
+                              **role_answers("siesta", "transport", rung))
     spec = spec_for(struct, cfg, stage_token=rung, calculation="transport")
     return _sc.render_deck(spec, struct, cfg, verbose=cfg.verbose_comments)
 

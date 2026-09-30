@@ -772,8 +772,10 @@ can weigh it.
 | **shape** | an ordered `list[ResolvedConfig]`, plus the axes that produced it |
 
 **Each element is a complete, validated configuration** — the template's values,
-this stage's `overrides` on top, this sweep point's values on top of that, and any
-**pin** (§ 4.2) last. Precedence is that order and it is total: every element is
+this stage's `overrides` on top, this sweep point's values on top of that, any
+**pin** (§ 4.2), and last the rung's own answers to the items it fixes
+(`role`, [`template.md`](?doc=engines/template.md) § 6.4 — no layer above may
+set one, so this replaces nothing a person said). Precedence is that order and it is total: every element is
 renderable on its own, and no downstream reader ever re-derives a value or asks
 *"was this a benchmark?"*
 
@@ -790,7 +792,7 @@ renderable on its own, and no downstream reader ever re-derives a value or asks
 | **`resources`** | **this element's own allocation** — ranks, cores per rank, GPUs, time, domain. **Per element, because a sweep over `mpi_np` gives each trial a different rank count**, and because this is the field that structurally ends § 5h's finding B: `Job.resources` is copied from here, so it can no longer be read out of an engine config |
 | `point` | which sweep coordinate this is (`{}` for a run) — what names the trial directory |
 | `label` | the `SystemLabel` in force. **A trial's is relabelled**, which is what structurally prevents a benchmark from reading the real run's warm files (`project-layout.md` § 2.3.2) |
-| `provenance` | which source set each value — template · stage override · sweep point. This is what makes `M3`'s *"the numbers were wrong"* answerable |
+| `provenance` | which source set each value — template · stage override · sweep point · pin · the rung's role. This is what makes `M3`'s *"the numbers were wrong"* answerable |
 
 > **`point` is why a trial directory needs no naming rule of its own.**
 > `bench-G<g>K<k>C<c>` (`job-contracts.md` § 6.3) is `point` rendered — one

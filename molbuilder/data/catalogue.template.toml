@@ -8,7 +8,7 @@ engines     = ["siesta", "pyscf"]
 kind = "engine"
 category = ["system", "procedure"]
 engines = ["siesta"]
-shared = ["transport"]
+shared = ["optimization", "vibration", "transport"]
 anchor = "SystemLabel"
 engine_key = "SystemLabel"
 manual = "SIESTA 5.4.2 §6.1 'General system descriptors'"
@@ -161,6 +161,7 @@ SIESTA's own default is PZ, the LDA parameterisation that goes with its LDA defa
 [item.solution_method]
 # role: a transport rung's SOLVER is its identity -- a closed periodic warm-up, a bulk lead, an NEGF device.
 role = ["transport"]
+role_values = { device = "transiesta" }
 kind = "engine"
 category = ["method", "convergence"]
 engines = ["siesta"]
@@ -654,6 +655,8 @@ help = """
 Emit inline tuning hints and a Troubleshooting block in the generated script, in whatever comment syntax that engine uses.  Turn it off for a bare deck -- only the comments go, nothing the engine reads.
 """
 [item.write_forces]
+# role: every SIESTA run writes each step's forces -- molbuilder reads them back (template.md 6.4).
+role = ["optimization", "vibration", "transport"]
 kind = "engine"
 category = ["procedure"]
 engines = ["siesta"]
@@ -666,12 +669,14 @@ default = true
 group = "output"
 label = "Write forces each step"
 help = """
-Write the atomic forces into the main .out at every relaxation or MD step, so the force history can be read back from the log.
-SIESTA ships this off; we ship it on. A relaxation whose force history was not recorded cannot be diagnosed afterwards -- "did it descend or oscillate?" is the first question about any run that did not converge, and the answer costs a few lines of text per step.
-It does NOT control the .FA file. The last step's forces reach the .FA file whatever this is set to, and a relaxation runs without either.
+The atomic forces in the main .out at every step -- on for every SIESTA run, and not a setting: molbuilder reads them back.  The relaxation record takes its judged force from them, the per-step trajectory carries them, and a vibration's finish reads the reference step's -- without them the finish fails after the whole force-constant run.
+SIESTA prints them only under LongOutput (`Write.Forces` defaults to it, read_options.F90), so every deck writes this line.  They also answer "did it descend or oscillate?", the first question about any relaxation that did not converge.
+It does NOT control the .FA file.  The last step's forces reach the .FA file whatever this is set to.
 """
 
 [item.write_coor_step]
+# role: every SIESTA run writes each step's coordinates -- molbuilder reads them back (template.md 6.4).
+role = ["optimization", "vibration", "transport"]
 kind = "engine"
 category = ["procedure"]
 engines = ["siesta"]
@@ -684,9 +689,9 @@ default = true
 group = "output"
 label = "Write coordinates each step"
 help = """
-Write the atomic coordinates into the main .out at every relaxation or MD step.
-CAUTION -- IT HAS A SIDE EFFECT ON ANOTHER KEYWORD: WriteMDXmol (the .ANI animation file) defaults to `.not. WriteCoorStep` (read_options.F90), so turning this ON turns .ANI OFF unless WriteMDXmol is set explicitly.
-SIESTA defaults this to LongOutput -- off unless you asked for verbose output.  We ship it on, for the same reason as the force history: the .out is the one file that always survives, so the trajectory should be recoverable from it alone.
+The atomic coordinates in the main .out at every step -- on for every SIESTA run, and not a setting: molbuilder reads the trajectory back from the .out, the one file every run leaves, and a vibration's finish reads the reference step's geometry there.
+SIESTA prints them only under LongOutput (`WriteCoorStep` defaults to it, read_options.F90), so every deck writes this line.
+ITS SIDE EFFECT ON ANOTHER KEYWORD: WriteMDXmol (the .ANI animation file) defaults to `.not. WriteCoorStep` (read_options.F90), so with this on, the .ANI is written only when WriteMDXmol says so.  An optimization deck states it, in both states; the other kinds' decks do not, so they write no .ANI.
 """
 
 [item.write_coor_xmol]
@@ -950,7 +955,7 @@ The two ELPA entries are strategies, not versions -- one library ships both, and
 kind = "produce"
 category = ["method"]
 engines = ["siesta"]
-shared = ["transport"]
+shared = ["optimization", "vibration", "transport"]
 engine_key = "(molbuilder: stages .psml files next to .fdf; SIESTA reads them by element basename)"
 type = "str"
 group = "setup"
@@ -988,7 +993,7 @@ Copy the psml pseudopotential files into the output directory, alongside the gen
 kind = "produce"
 category = ["system"]
 engines = ["siesta"]
-shared = ["transport"]
+shared = ["optimization", "vibration", "transport"]
 engine_key = "(molbuilder: ChemicalSpeciesLabel block ordering)"
 type = "strlist"
 group = "profile"
@@ -2429,7 +2434,7 @@ TranSIESTA stops a run with fewer than 20 poles (:324), after the queue wait, so
 """
 
 [item.bias_voltage_v]
-stages = ["device"]
+stages = ["device", "transmission"]
 kind = "engine"
 category = ["system"]
 engines = ["siesta"]
@@ -2447,7 +2452,8 @@ group = "stage"
 label = "Bias voltage"
 tier = "basic"
 help = """
-The voltage held across the junction for this device run -- the difference between the two leads' chemical potentials.
+The voltage held across the junction at this rung's point -- the difference between the two leads' chemical potentials.  The device converges at it and the transmission reads the same point.
+It is the description's BIAS LIST, not a value a template or a stage states: each point of the list is one device run and one transmission, written at that point, and the list starts at 0 V (engines/transport.md 2a.10).  Change the list to change the bias.
 
 You give it in volts, because that is what a person means and measures.  The deck spells it `TS.Voltage <v> eV`, which is not a mismatch: fdf treats this as an energy, and the energy an electron gains across V volts is exactly V electron-volts, so the number is the same and only the unit word differs.  Do not "fix" either side to match the other.
 
@@ -2469,14 +2475,14 @@ anchor = "TS.HS.Save"
 engine_key = "TS.HS.Save"
 manual = "SIESTA 5.4.2 TranSIESTA §'Electrode calculations'"
 type = "bool"
-value = false
-default = false
+value = true
+default = true
 group = "output"
 label = "Write the TranSIESTA .TSHS"
 tier = "advanced"
 help = """
 Write `<SystemLabel>.TSHS` -- the Hamiltonian and overlap a device run's `TS.Elec.<name>` reference reads.
-This is the ELECTRODE rungs' essential output, and it is the stage's ROLE rather than a preference: a lead run that omits it converges happily and produces nothing the device can attach to.  So the ladder turns it on for the two electrode rungs and nobody is offered a switch.
+This is the ELECTRODE rungs' essential output, and it is the stage's ROLE rather than a preference: a lead run that omits it converges happily and produces nothing the device can attach to.  So its value, true, is the answer of the two rungs its `stages` names, and nobody is offered a switch.
 Three similar names, and only this one is the lead's job:
 
   TS.HS.Save   this row -- writes `.TSHS`, the Hamiltonian the device attaches to.

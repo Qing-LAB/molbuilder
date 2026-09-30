@@ -217,7 +217,7 @@ def bool_column_dir(isolated_projects_root_module):
         write_task(d / "task.json", Task(
             engine="siesta", shape="flat", run=derive_run("probe"),
             structure=StructureRef(source="probe.source.xyz"),
-            varies=("write_forces",),
+            varies=("write_coor_xmol",),
             stages=(Stage(name="tight", overrides={}),)))
         yield d
     finally:
@@ -234,9 +234,11 @@ def test_a_bool_column_is_a_chooser_not_a_box(page, flask_server,
     The tests above are the READING half of that rule — text typed into a
     cell is parsed by the column's declared type, driven under node in
     ``test_task_setup_cell_readers_js.py``.  This is the OFFERING half:
-    `write_forces` is declared `bool`, so the catalogue already knows its
+    `write_coor_xmol` is declared `bool`, so the catalogue already knows its
     only two answers and the cell must present them rather than invite a
-    person to spell one.
+    person to spell one.  (It was `write_forces` until 2026-09-29, when the
+    rung came to fix that one and it stopped being a column,
+    `engines/template.md` § 6.4.)
 
     *Replaces the `legalValues` third of
     ``test_task_setup_tab.py::test_the_viewer_dispatches_widgets_on_the_
@@ -247,15 +249,15 @@ def test_a_bool_column_is_a_chooser_not_a_box(page, flask_server,
     reaches, and three of anything is not a behaviour.
     """
     _open(page, flask_server, bool_column_dir,
-          ready='[aria-label="tight write_forces"]')
+          ready='[aria-label="tight write_coor_xmol"]')
     cell = page.evaluate(
         "() => { const n = document.querySelector("
-        "  '[aria-label=\"tight write_forces\"]');"
+        "  '[aria-label=\"tight write_coor_xmol\"]');"
         "  if (!n) return null;"
         "  return {tag: n.tagName,"
         "          options: [...(n.options || [])].map(o => o.value)}; }")
     assert cell and cell["tag"] == "SELECT", (
-        f"`write_forces` is declared bool, and its cell came up as a "
+        f"`write_coor_xmol` is declared bool, and its cell came up as a "
         f"<{(cell or {}).get('tag')}>.  The catalogue knows the only two "
         f"answers, so the cell must offer them: a text box invites 'True', "
         f"'yes', '1' and each is a different kind of wrong, discovered at "

@@ -1394,7 +1394,7 @@ class SiestaConfig:
         "tier":        "basic",
     })
 
-    ts_hs_save: bool = field(default=False, metadata={
+    ts_hs_save: bool = field(default=True, metadata={
         "category": ("procedure", ),
         "item_kind":  "engine",
         "workflow_group": "output",

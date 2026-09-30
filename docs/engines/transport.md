@@ -449,16 +449,20 @@ driven — its SCF schedule, its convergence criteria, its own integration
 contours, its outputs. Two stages may legitimately differ, because a bulk lead's
 SCF and an open-boundary NEGF SCF do not converge alike.
 
-*Most Class C parameters bind nothing.* One does: **the bias point** is the
-device's, and it binds that point's transmission, which must read that point's
-own converged Hamiltonian and no other's. Binding scope is a property of a
-parameter, not of its class.
+*Class C parameters bind nothing.* **The bias point**, which binds a
+transmission to its own point's converged Hamiltonian and no other's, is
+Class D since 2026-09-29 (§ 2a.10): the description's list fixes it, and each
+rung writes the point it runs. Binding scope is a property of a parameter, not
+of its class.
 
 **Class D — Role-fixed.** *Nobody decides.* The facts that constitute the
 stage: which solver it runs, that a lead samples its transport axis and a device
-does not, that a lead writes the Hamiltonian the device will read. These are the
-identity of the stage, not settings on it, and exposing them as controls would
-offer a choice that only has one correct answer.
+does not, that a lead writes the Hamiltonian the device will read, the bias
+point each rung runs — one point of the description's list (§ 2a.10). These are
+the identity of the stage, not settings on it, and exposing them as controls
+would offer a choice that only has one correct answer. *(So are, on every SIESTA
+run of every kind, the per-step forces and coordinates molbuilder reads back —
+fixed by what reads them rather than by the rung's part, `template.md` § 6.4.)*
 
 **Class E — Machine.** *Per stage.* Cores, memory, wall time, queue. These
 *should* differ across stages — the leads are small cells, the device is the
@@ -543,8 +547,9 @@ one rule rather than from a table to memorise:
 **Two distinctions this rule needs, and both are already in § 2a.9.**
 
 *Parametric binding is not the same as result propagation.* The bias point is
-the one Class C parameter that must be **obeyed** downstream — a transmission
-point must read its own point's Hamiltonian. The lead's transport-axis k binds
+the one parameter that must be **obeyed** downstream — a transmission point must
+read its own point's Hamiltonian, and the rung fixes both to that point (Class
+D since 2026-09-29). The lead's transport-axis k binds
 nothing in that sense; it simply changes a **result** the device consumes. Both
 force a re-run; only one is a rule about values.
 
@@ -882,7 +887,7 @@ here is how many slices you pay for.
 
 | | what runs | what you get |
 |---|---|---|
-| **Single bias** (normally V = 0) | the device SCF converges **once** | **T(E)** — one slice, a full energy curve. An I–V *can* be derived from it by integrating against the leads' Fermi functions; that is the **linear-response approximation** |
+| **Single bias** (V = 0) | the device SCF converges **once** | **T(E)** — one slice, a full energy curve. An I–V *can* be derived from it by integrating against the leads' Fermi functions; that is the **linear-response approximation** |
 | **Finite bias** | the device SCF is **re-converged at every voltage** | **T(E, V)** — one slice per point. The I–V follows from integrating each slice over its own window, with no approximation beyond the method itself |
 
 The mechanism is the same in both cases; the difference is how many device SCFs
@@ -945,11 +950,17 @@ The Results surface shows that label beside the curve, not buried in metadata.
 | parameter | class | decided at | binds | tier |
 |---|---|---|---|---|
 | **bias treatment** (single / finite) | shape | calculation | the device's axis, and what the result may be called | 3 |
-| **the bias point(s)** | C | device | transmission — each transmission point reads *its own* point's converged Hamiltonian, never another's | 3 |
+| **the bias point(s)** | D | the description's list | the device and the transmission — each point's pair is written at that point, and each transmission point reads *its own* point's converged Hamiltonian, never another's | 3 |
 
 The treatment is not really a third mechanism: **single bias is the degenerate
-case of the bias axis — one point, normally at zero.** It earns a name of its
-own because what changes is not the machinery but the standing of the result.
+case of the bias axis — one point, at zero, where every list starts.** It earns a
+name of its own because what changes is not the machinery but the standing of
+the result. **The list is the bias's only home** *(ruled 2026-09-29, `plan.md`
+§ 5w K1)*: each rung writes the point it runs — the device converges at it and
+the transmission reads that same point — and `bias_voltage_v` is that point,
+fixed by the rung (`role`), never a value the template or a stage override
+states. A template value until then answered a single-bias calculation, a
+second home beside the list (§ 2a.14).
 
 ### 2a.11 The directory structure — one place per run, and the axes visible in it
 
@@ -1117,7 +1128,7 @@ Edited in one panel. Changing any of these rebuilds all five stages.
 | `electrodes_bulk` | `TS.Elecs.Bulk` | Whether the lead region inside the device takes the lead's own bulk Hamiltonian. True is right whenever the region really is bulk — which is what the region labels assert. **Shared since 2026-09-29, and the device's alone before** (`elecs_bulk`, `stages = ["device"]`): TranSIESTA reads it for the device and `tbtrans` takes it as the default of its own setting, so the transmission must read the same value (§ 6.1b) | 3 |
 | *the lead layer count inside the device* | — | Not a transport parameter at all: **geometry**, settled when the junction was built and relaxed. Screening must be complete before the lead boundary, or the self-energy attaches to a region that is not bulk-like. Transport **inherits and verifies** it | 2 |
 
-#### Class C — Stage-local · binds nothing, except the bias point
+#### Class C — Stage-local · binds nothing
 
 **Every SCF stage carries its own** (seed, both leads, device — four independent
 answers). A bulk lead and an open-boundary NEGF cycle do not converge alike, so
@@ -1143,7 +1154,6 @@ one set for all of them is a compromise none of them asked for.
 
 | parameter | keyword | the decision it is | tier |
 |---|---|---|---|
-| *the bias point(s)* | `TS.Voltage` | Which voltage this device is converged at — and, via § 2a.10, what the result may be called. Binds the transmission: each transmission point reads **its own** point's Hamiltonian | 3 |
 | `negf_eq_pole_ev` | `TS.Contours.Eq.Pole` | Where the equilibrium contour's poles sit on the imaginary axis | 3 |
 | *the equilibrium contour* | `contour.eq` in each `%block TS.ChemPot.<name>` | **Stated, not left to the engine**: a circle and a tail whose lower bound sits below the seed's lowest eigenvalue — the manual's own rule. Without `contour.eq` TranSIESTA falls back to a continued fraction of 42 poles (`Src/m_ts_chem_pot.F90`), under the 50 the manual asks for; on a real device that lost 29 electrons on the first NEGF step, before any mixing, where 123 poles conserved the charge. The settings gate refuses a contour that cannot cover the spectrum | 2 |
 | `negf_neq_eta_ev` | `TS.Contours.nEq.Eta` | The non-equilibrium contour's broadening. **Inert at zero bias** — there is no non-equilibrium window to integrate | 3 |
@@ -1169,8 +1179,7 @@ answers for itself:
 
 | parameter | keyword | note |
 |---|---|---|
-| `write_forces` | `WriteForces` | — |
-| `write_coor_step` · `write_coor_xmol` | `WriteCoorStep` · `WriteCoorXmol` | Single points, so one record each |
+| `write_coor_xmol` | `WriteCoorXmol` | Single points, so one record each. *(`write_forces` and `write_coor_step` stood here until 2026-09-29; the rung fixes both now — § 2a.13's table)* |
 | `write_hs` | `SaveHS` | Writes `.HSX`, a post-processing file. **Not** what the ladder consumes — the device reads the leads' `.TSHS`, written by a different keyword |
 | `write_molwatch_log` · `verbose_comments` · `copy_psml` | — | Monitoring, deck commentary, staging |
 
@@ -1183,8 +1192,9 @@ Exposing these as controls would offer a choice with one correct answer.
 | `solution_method` | `SolutionMethod` | The stage's identity: a closed periodic warm-up, a bulk lead, an NEGF device | 1 |
 | *the device's transport-axis k* | `%block kgrid_Monkhorst_Pack` | Fixed at 1 — that axis is the open boundary and is not sampled. A violation is refused | 2 |
 | *the leads write their Hamiltonian* | `TS.HS.Save` | A lead that omits it concludes having produced nothing the device can attach to | 1 |
-| `system_label` | `SystemLabel` | The stage's identity, and the stem the next stage's reference is built from | 1 |
-| `bias_voltage_v` | `TS.Voltage` | The bias point this rung's deck is for: the description's axis (`task.bias`) names it, and each point's deck carries its own (§ 2a.10) | 1 |
+| *each lead's label* | `SystemLabel` | Derived by `prep` from the calculation's one label (`system_label`, shared — Class A): the stem the device's `TS.Elec` reference is built from | 1 |
+| `bias_voltage_v` | `TS.Voltage` | The bias point this rung's deck is for: the description's axis (`task.bias`) names it, and each point's device and transmission decks carry its own (§ 2a.10) | 1 |
+| `write_forces` · `write_coor_step` | `WriteForces` · `WriteCoorStep` | Every step's forces and coordinates in the output, which molbuilder reads back — fixed on every SIESTA kind, not only here (`template.md` § 6.4) | 1 |
 
 *(`wrap_into_cell` left this table on 2026-09-25, with the knob: no atom is
 wrapped any more. Every rung's atoms are placed by the engine offset
@@ -1201,7 +1211,7 @@ nearly free — so these *should* differ across stages.
 | `mpi_np` · `omp_threads` · `max_memory_mb` · `gpu_count` | the allocation |
 | `block_size` · `parallel_over_k` · `diag_algorithm` · `use_gpu` | how the diagonaliser is decomposed across ranks |
 | `continue_retries` | how many times the wrapper retries |
-| `psml_lib` | *where* the pseudopotentials are found on this machine. The pseudopotentials themselves are Class A; the path to them is not |
+| ~~`psml_lib`~~ | *(Class A since the catalogue marked it `shared`: one set of pseudopotentials per calculation, every rung built on it — for transport the set travels with the citation, `template.md` § 5)* |
 
 #### Deferred
 
@@ -1219,8 +1229,8 @@ failure it exists to prevent:
 |---|---|
 | **`TS.HS.Save`** | Class D for the leads — their essential output, and the one the device actually reads |
 | ~~**the equilibrium pole COUNT**~~ | ~~`TS.Contours.Eq.Pole` gives the pole *energy*; the *number* of poles is a separate keyword~~ — **withdrawn**: on our deck shape TranSIESTA derives the count from the energy and overwrites the count keyword (§ 6.1c, `plan.md` § 5p.3o); the deck states the count beside the energy since M5 step 2 |
-| **the bias point** | `TS.Voltage` — Class C at the device, and the axis § 2a.10 is built on |
-| **`TBT.Verbosity`** | *(added 2026-09-23; its row lands with M5 step 1, § 6.1b.)* Class C at the transmission, an output preference like `write_forces`. **Closed 2026-09-29** — the row `tbt_verbosity` (the transmission's table above). Until then both NEGF decks wrote it from `TransportConfig.log_level`, which no catalogue row declared and no description could set: not a wrong answer, since the value, 5, IS tbtrans's own default, but a keyword entering a deck from outside the catalogue — the last of them, of the 19 fields the lifted NEGF block read |
+| **the bias point** | `TS.Voltage` — Class D at the device and the transmission since 2026-09-29: the point of the description's list each rung runs (§ 2a.10) |
+| **`TBT.Verbosity`** | *(added 2026-09-23; its row lands with M5 step 1, § 6.1b.)* Class C at the transmission, an output preference like `write_coor_xmol`. **Closed 2026-09-29** — the row `tbt_verbosity` (the transmission's table above). Until then both NEGF decks wrote it from `TransportConfig.log_level`, which no catalogue row declared and no description could set: not a wrong answer, since the value, 5, IS tbtrans's own default, but a keyword entering a deck from outside the catalogue — the last of them, of the 19 fields the lifted NEGF block read |
 
 
 ### 2a.14 What landed — the map, as built *(2026-09-16)*
@@ -1233,7 +1243,7 @@ failure it exists to prevent:
 |---|---|
 | **Class A · Shared** | the **template**, `<label>.template.toml`, written by `jobset init` with its values **defaulted from the cited relaxation** and editable thereafter. A transport folder carried no template at all before this |
 | **Class C · Stage-local** | `Stage.overrides`, with **`stages = [...]`** on the catalogue row saying which rungs may own each item |
-| **Class D · Role-fixed** | **`role = [...]`** on the row — the third answerer after `allocation` (the scheduler) and `citation` (a cited run). A `role` item is not a form field, not a stage-table column, carries no value in a template of that kind, and **is not written by a section**: the rung's own block writes it |
+| **Class D · Role-fixed** | **`role = [...]`** on the row — the third answerer after `allocation` (the scheduler) and `citation` (a cited run). A `role` item is not a form field, not a stage-table column, carries no value in a template of that kind, and no stage override, pin or sweep may set it. **Its answer is put into the rung's config by `resolve`** — the catalogue's `value`, or the rung's own in `role_values` (the device's `transiesta`), or the bias point it renders — so the section writes it like any other item *(since 2026-09-29, K1; until then the walk skipped it and the rung's block typed the line)* |
 | **Class E · Machine** | `allocation` items, unchanged |
 | the results that propagate | unchanged — the DAG in `stage_inputs`, copied at prep by `gather_transport_inputs` |
 
@@ -1291,7 +1301,7 @@ of an open boundary**, and the reason the two are computed separately at all.
 
 | | |
 |---|---|
-| **the bias has two homes** | `task.bias` (the description's axis, giving the `v*` directories) and `bias_voltage_v` (a template row with a range and help). The axis wins today: each point's deck is the resolved config with that voltage replaced. It works, and it is two representations of one concept — **open** |
+| ~~**the bias has two homes**~~ | `task.bias` (the description's axis, giving the `v*` directories) and `bias_voltage_v` (a template row with a range and help). The axis won: each point's deck was the resolved config with that voltage replaced, and with no axis the template's value answered. **Closed 2026-09-29 (K1)**: the axis is the one home — `bias_voltage_v` is the point a rung renders, fixed by the rung, and a template value or a stage override naming it is refused (§ 2a.10) |
 | **the NEGF electrode block is lifted, not tabled** | `%block TS.Elecs` and the per-electrode blocks are still the pre-seam emitter's, wrapped in one `Block` *(with one small projection at the boundary until 2026-09-29, when the block's VALUES moved to the catalogue and the projection went — § 6.1b)*. Deliberate: TranSIESTA identifies each electrode by a **contiguous atom range**, so an off-by-one computes transmission through a region that is not the molecule *and converges while doing it*. That emitter has been measured against a live 5.4.2 binary; a rewrite would have to earn that again for no gain |
 | **`TransportConfig` survives** | only to feed that lifted emitter. TR4 already deleted the general projection when the template made it unnecessary; this is the last one, and it goes when the block is tabled. *(It went 2026-09-29, § 6.1b; the class retires with M5 step 3)* |
 | **net charge and gating** | deferred by ruling (§ 2a.7) |
@@ -1304,11 +1314,11 @@ say something about where mistakes live:
 **The check gate caught a duplicate keyword the day it was written.** The device
 deck said `SolutionMethod diagon` from a section and `transiesta` from the NEGF
 block — in that order, with libfdf silently taking the first. The cause is
-general, not a slip: **a `role` item must not be written by a section**, because
-a section resolves a value from the config, and a role item rightly has none
-there. `_render_sections` now skips them and each rung's block writes its own.
-The same lift-boundary rule that kept `_emit_basis_and_xc` out of the seed
-layout, applied one level deeper.
+general, not a slip: **a section resolves a value from the config**, and a role
+item's answer was not there. `_render_sections` skipped them and each rung's
+block wrote its own — until 2026-09-29, when the rung's answer moved INTO its
+config (`resolve`, the role layer), so the section writes the right value and no
+block types the line (`template.md` § 6.4).
 
 **A test fixture was geometrically invalid and nothing had ever looked.** Its
 buffer variant put 44.5 Å of atoms in a 40 Å cell, so atoms overlapped their own
@@ -1824,10 +1834,10 @@ cannot be done first.** Each line is falsifiable.
    **✅ DONE 2026-09-29 — M5 step 1** (§ 6.1b). The eighteen `TS.*` /
    `TBT.*` values the lifted NEGF block wrote as f-strings are catalogue
    items with their notes: fourteen through the section walk, where the
-   check gate sees each line; `TS.Voltage` (a `role` item) and the T(E)
-   window's three values through the rung's own blocks, each asked of the
-   framework's door and written with its note — the k-grid block's
-   precedent. `TBT.k` is written as the bracketed list it has to be.
+   check gate sees each line — and `TS.Voltage` (a `role` item) there too
+   since 2026-09-29 (K1) — and the T(E) window's three values through the
+   rung's own block, each asked of the framework's door and written with its
+   note, the k-grid block's precedent. `TBT.k` is written as the bracketed list it has to be.
    `TBT.HS` stays a rung line derived from the label, with no row.
 3. **Every stage deck has a `.validation.txt` and a USER-CUSTOM zone**, and a
    deck that fails its own read-back check refuses instead of running.
@@ -2288,11 +2298,11 @@ door's question.
 | the shared panel (`surface="shared"`) | ✅ is the panel, minus the `setup` group | — | — | ✅ the citation's answers, source named | ✅ kept off |
 | the describe door (`/api/transport/describe`) | ✅ refuses a per-rung override | ✅ refuses a bag naming an item the rung does not own (`foreign_overrides`, the door `prep` asks too) | ✅ refuses | ✅ fills the template through `transport_template_text` | — |
 | `jobset init` | — | — | ✅ valueless in the template | ✅ fills, through the same door | ✅ valueless |
-| `prep` (`_resolve_transport`) | ✅ refuses | ✅ refuses a foreign rung's override *(2026-09-24)* | — (the rung's `spec_for` decides) | — (reads the template, never the citation) | ✅ fills from the machine |
+| `prep` (`_resolve_transport`) | ✅ refuses | ✅ refuses a foreign rung's override *(2026-09-24)* | ✅ refuses a stage override, pin, sweep axis or template value naming one, and puts the rung's answer into its config (`template.role_answers`, *2026-09-29*) | — (reads the template, never the citation) | ✅ fills from the machine |
 | Task setup — the column picker (`/api/task-setup/columns`) | ✅ not a column *(2026-09-24)* | ✅ the payload names the owners | ✅ not a column | — | ✅ not a column |
 | Task setup — the stage table's cells | — | ✅ a foreign rung's cell is disabled, naming the owners *(2026-09-24)* | — | — | — |
 | Task setup — a read-only echo of every shared value, with its source (§ 6.6 obligation 3) | ❌ not built | — | — | ❌ the file records no source (obligation 2) | — |
-| the deck (`prep` → `prepare_deck`) | ✅ one value, every rung | ✅ each rung its own | ✅ the rung's spec | ❌ a value nobody chose is written as the documented default but not MARKED (obligation 4) | ✅ |
+| the deck (`prep` → `prepare_deck`) | ✅ one value, every rung | ✅ each rung its own | ✅ the rung's answer, laid on its config by `resolve` | ❌ a value nobody chose is written as the documented default but not MARKED (obligation 4) | ✅ |
 
 ---
 
@@ -2749,9 +2759,10 @@ device — so it reads like a parameter whose unit of resolution should be the
 [`SIESTA_STAGE_PRESETS`](?doc=engines/stages.md), stated once per rung and
 sealed against the person.  That was built, and it was wrong.
 
-**These values are not parameters.  They are the identity of the rung emitters.**
-The dispatch is *total and exclusive* over the five rungs — `SHAPE_OF_RUNG` is
-the table, and every rung renders through `transport/deck.py`:
+**These values are not parameters anyone answers.  They are the identity of
+the rungs.**  The dispatch is *total and exclusive* over the five rungs —
+`SHAPE_OF_RUNG` is the table, and every rung renders through
+`transport/deck.py`:
 
 | rung | shape | the layout that renders it | and therefore |
 |---|---|---|---|
@@ -2769,15 +2780,24 @@ the table, and every rung renders through `transport/deck.py`:
 > with those doors**, 2026-09-17.
 >
 > The identity is now enforced by the `role` marker rather than by which function
-> runs: `solution_method` carries `role = ["transport"]`, so no transport template
-> answers it and the rung's own emitter writes it. Measured — seed and lead render
+> runs: `solution_method` carries `role = ["transport"]` and
+> `role_values = { device = "transiesta" }`, so no transport template answers it,
+> `resolve` puts each rung's answer into that rung's config, and the SCF section
+> writes it *(since 2026-09-29; the rung's own emitter typed it until then)*.
+> Measured — seed and lead render
 > `diagon`, device renders `transiesta`.
 
 There is no valid device deck that says `diagon` — that would be an ordinary
 closed-boundary single-point which converges and means nothing (§ 2).  So the
-stage → value mapping is **already structurally guaranteed by the dispatch**.
-Turning it into a config field converted a fact that *cannot be wrong* into a
-default that *is* wrong for every caller which does not set it.
+rung → value mapping is **declared once, on the item** (`role_values`), and
+laid on each rung's config by `resolve`, the one door every prep goes through;
+no template, stage override, pin or sweep may set it
+([`template.md`](?doc=engines/template.md) § 6.4).  Wrong when a deck is
+rendered without `resolve`: a bare config holds the class default, `diagon`,
+so such a caller lays the rung's answers through `template.role_answers`
+first, as the live-path test does.  *(Until 2026-09-29 the value was a literal
+in each rung's block, and the settings gate and the record read the config's
+`diagon` for a deck that said `transiesta`.)*
 
 > **The two callers that proved it are both gone, and the rule outlived them.**
 > The measured symptom in 2026-08 was a rendered device script that solved with
@@ -2786,22 +2806,27 @@ default that *is* wrong for every caller which does not set it.
 > `POST /api/transport/render` and `transport/engine_base.py` were **deleted
 > 2026-09-17**, so neither can reproduce it — *and that is exactly why the rule
 > is stated here rather than left to the callers.* A fact about the RUNG is not
-> a default a caller may forget; it is `role = ["transport"]`, and the rung's
-> own emitter writes it.
+> a default a caller may forget; it is `role = ["transport"]` with the device's
+> own answer declared on the item, and `resolve` hands every rung its answer.
 
-**The test that holds it.**
+**The tests that hold it.**
+`test_transport_prep.py::TestTheRungFixesItsOwn::test_each_rung_writes_what_it_fixes_from_its_config`
+preps the ladder through `molbuilder jobset prep` and reads each rung's line
+and its *fixed* note — the device's `transiesta`, the leads' `diagon` and
+`TS.HS.Save` — and the class's other tests refuse a rung's own bias and a
+template's.
 `test_transport_au_bdt_au_validation.py::test_the_device_deck_states_its_identity_and_method`
-asserts `SolutionMethod transiesta` on the device deck the live path renders.
-That assertion is not incidental: it pins that the deck's *identity* does not
-depend on a caller.  *(It was named `…::test_render_script_emits_correct_atom_counts`
-and drove the deleted renderer until 2026-09-17.)*
+reads the device deck the live path renders for the NEGF solver, and for the
+absence of `TS.SolutionMethod`.  *(It was named
+`…::test_render_script_emits_correct_atom_counts` and drove the deleted
+renderer until 2026-09-17.)*
 
-**The general rule this is an instance of.**  Before giving a keyword a
-parameter, ask which emitters can write it.  If exactly one emitter writes it
-and that emitter exists to produce this kind of deck, the value is the
-emitter's identity and belongs as a literal in it.  A parameter is for a
-question the *person* can answer differently without the deck stopping being
-the deck it is.  Under that test the three candidates fail and the genuinely
+**The general rule this is an instance of.**  Before offering a keyword as a
+parameter, ask who can answer it.  If only the rung can — the value is what
+makes the deck the deck it is — it is not the person's to answer: it is `role`,
+its answer declared on the item, and no door but the rung's sets it.  A
+parameter the person answers is for a question the *person* can answer
+differently without the deck stopping being the deck it is.  Under that test the three candidates fail and the genuinely
 per-stage-looking fourth — the k-axis — fails differently: the device is
 sampled 1 along transport and the lead densely (`electrode_kz`), but those are
 two different **cells**, so it is the renderers' composition of one
@@ -2899,7 +2924,11 @@ none of it: it was text `siesta` never read.
   voltage, the leads' bulk treatment. It also keeps the SIESTA settings the two
   rungs share: `tbtrans` reads at least one of them (`ElectronicTemperature`),
   and which others it reads is an audit of its source not yet made — so none is
-  removed until that audit says it may be.
+  removed until that audit says it may be. *Two groups are audited and removed
+  (2026-09-29, K1)*: `SolutionMethod` and the output group (`WriteForces` …
+  `SaveHS`) — `tbtrans` compiles none of the files that read them
+  (`read_options.F90`, `write_subs.F`, `outcoor.f`) and its own options read
+  none (`m_tbt_options.F90`; its solver is `TBT.SolutionMethod`).
 * **The leads' bulk treatment is ONE value for the device and the
   transmission** — `electrodes_bulk`, a shared value. TranSIESTA reads it for
   the device's self-consistent run, and `tbtrans` takes `TS.Elecs.Bulk` as the
@@ -2914,10 +2943,10 @@ none of it: it was text `siesta` never read.
   through the catalogue** (§ 3.6 item 2), with its note above it saying what
   it decides and which program reads it; each section's heading says whose
   run it belongs to, since the deck is that rung's. Most are written by the
-  section walk, where the check gate sees each line; `TS.Voltage` (a `role`
-  item — the rung's bias point) and the T(E) window's three values are
-  written by the rung's own blocks, each asked of the framework's door and
-  written with its note. `TBT.HS` is a rung line derived from the label, not
+  section walk, where the check gate sees each line — `TS.Voltage` (a `role`
+  item, the rung's bias point) among them since 2026-09-29 — and the T(E)
+  window's three values are written by the rung's own block, each asked of
+  the framework's door and written with its note. `TBT.HS` is a rung line derived from the label, not
   a setting, and has no row. An item left at a zero that means *the
   program's own rule* writes nothing, and its note says so. The electrode
   declarations stay a block: they are derived from the region labels, and no

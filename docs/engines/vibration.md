@@ -269,8 +269,10 @@ made; the Metadata pane shows the raw store.
 | unticked | anything else | the same facts as information; the ladder relaxes regardless |
 
 Never a refusal: the record informs the person's explicit choice; it does not
-make it. What the PySCF deck's own `_optimized.xyz` pair should record is
-V1.31 (§ 10).
+make it. The PySCF deck's own `_optimized.xyz` pair records neither: the
+relaxation record is the one reader's, written by the Results tab's export
+(V1.31, closed 2026-09-29), and a PySCF run's level of theory has no reader yet
+([`pyscf.md`](?doc=engines/pyscf.md) § 2; plan § 5w K18).
 
 ### 2.3 Held atoms travel with the structure, never as a form field
 
@@ -1358,7 +1360,10 @@ since 2026-09-28.
 **What the finish judges (built 2026-09-24; in the job since 2026-09-28).** Stationarity: SIESTA
 evaluates the undisplaced geometry as its FC step 0 before the first nudge,
 and its forces are the first `siesta: Atomic forces` block of the run's
-output. The finish reads them (SIESTA's one reading pass, `siesta_reader`, one pass over the run's output for the version, the geometry and the forces)
+output — printed because every SIESTA deck writes `WriteForces` and
+`WriteCoorStep` true, which no form or stage may turn off (`role`,
+[`template.md`](?doc=engines/template.md) § 6.4; SIESTA prints neither by
+default, and a finish without them failed after the whole force-constant run). The finish reads them (SIESTA's one reading pass, `siesta_reader`, one pass over the run's output for the version, the geometry and the forces)
 and writes `relaxation.max_force_eh_bohr` — the largest over the **free**
 atoms (R5) — beside `max_force_all_atoms_eh_bohr`, and `converged` judged
 against **this description's own `relax_force_tol`** — the item is on the
@@ -2232,7 +2237,7 @@ nothing is in that state as of 2026-09-28.
 | the mass-calibrated displacement per mode — `zero_point_amplitude_amu12_ang`, `zero_point_displacement_ang`, derived at serialisation | **built 2026-09-24** — V1.29 | § 6.3, § 6.6 |
 | one stationarity rule for both routes: the largest absolute force component over the free atoms against the template's own force tolerance, a plain warning above it, on PySCF and SIESTA alike | **built 2026-09-24** — V1.30, by the ruling of § 2.2 | § 2.2, § 4.3, § 5.5 |
 | the structure carries its relaxation record — `info.relaxation` (engine, the run's tolerance, the largest remaining force, the held set, the geometry's fingerprint) beside `info.calculation` (the level of theory) — recorded by the Results tab's structure inspector from the run directory, read by both kinds' gates on the box's card: absent and ticked accepted with a hint, present checked against this calculation's tolerance, level and held set | **built 2026-09-24** — V1.28 | § 2.2; `model/parse.md` § 5b.1 |
-| the PySCF deck's own `_optimized.xyz` pair records `info.relaxation` (the deck knows its criteria, its convergence and its held set at the moment it writes; the spliced pair writer would carry the fingerprint) | **owed** — V1.31 | § 2.2 |
+| ~~the PySCF deck's own `_optimized.xyz` pair records `info.relaxation`~~ | **closed 2026-09-29** by the one-source rule (V1.31): the record is the one reader's (`parse.contract.relaxation_of`, over the run's own output), which the Results tab's export writes; a copy computed in the deck would be a second writer of it | § 2.2 |
 | a δ-convergence report: two stages at δ and δ/2 and a printed comparison of `ω_ν` and `e_ν` | **built 2026-09-28** — V1.23: `summarize run` writes `<label>.fc-sweep.json` (modes matched by shape, the force constants compared from the raw `.FC`), the Results tab presents it, and every force-constant stage measures at the relaxed geometry | § 5.9 |
 | mode matching across runs by eigenvector overlap in the shared free subspace (Models A/B/C; PySCF against SIESTA) | **owed, needs a design** — V1.24 | `science/normal-modes.md` § 4b.6 F |
 | mode-displaced structure pairs on SIESTA at the zero-point and thermal amplitudes; the density-difference maps `Δρ_ν(r)`; the projected density of states along a mode | **not built, needs a decision** — V1.25, V1.26 | § 5.6 |

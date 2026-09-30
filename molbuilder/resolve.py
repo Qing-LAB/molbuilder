@@ -28,6 +28,8 @@ PRECEDENCE, AND IT IS TOTAL (§ 5)::
       ⊕ this stage's overrides
       ⊕ this sweep point's values
       ⊕ any pin
+      ⊕ the rung's own answers   (`role` -- no door above may set one,
+                                  `engines/template.md` § 6.4)
 
 Every element is renderable on its own, and no downstream reader re-derives a
 value.  ``provenance`` records which source set each one, which is what makes
@@ -144,7 +146,8 @@ class ResolvedConfig:
     #: The ``SystemLabel`` in force. A trial's is **relabelled**, which is what
     #: structurally stops a benchmark reading the real run's warm files.
     label: str = ""
-    #: ``{field: source}`` — ``template`` · ``stage`` · ``sweep`` · ``pin``.
+    #: ``{field: source}`` — ``template`` · ``stage`` · ``sweep`` · ``pin``
+    #: · ``role`` (the rung's own answer, laid on last).
     provenance: Mapping[str, str] = field(default_factory=dict)
 
     @property
@@ -299,6 +302,38 @@ def _check_fits(asks: Mapping[str, Any], allocation: Resources) -> None:
 #  The resolver                                                         #
 # --------------------------------------------------------------------- #
 
+def _refuse_a_stated_answer(template_text: str, engine: str,
+                            kind: str) -> None:
+    """A template value on an item the rung fixes is refused unless it IS
+    the answer every rung gives (`engines/template.md` § 6.4).
+
+    The template writer leaves such an item valueless, so a value is a hand
+    edit or a template written before the item became fixed: the SIESTA
+    templates written before 2026-09-29 carry ``write_forces = true`` and
+    ``write_coor_step = true``, which state the one answer and are read as
+    it.  An item answered rung by rung -- the device's solver, the leads'
+    ``TS.HS.Save``, the bias point each rung runs -- has no one answer a
+    calculation-wide file could state, so any value there is refused; so is
+    any other value, which the answer would be laid over without a word.
+    """
+    from .template import (fixed_by_role, fixed_on_every_rung, read_template,
+                           select, why_role)
+    fixed = fixed_by_role(engine, kind)
+    alike = fixed_on_every_rung(engine, kind)
+    parsed = read_template(template_text)
+    mine = select(parsed, engine=engine) if parsed.engines else parsed.items
+    for it in mine:
+        if not it.is_set or it.name not in fixed:
+            continue
+        if it.name in alike and it.value == alike[it.name]:
+            continue
+        at = f" at {alike[it.name]!r}" if it.name in alike else ""
+        raise ResolveError(
+            f"the template sets {it.name!r} to {it.value!r}, which the "
+            f"rung fixes{at}: {why_role(it.name)}.  Remove the value from "
+            f"the template.")
+
+
 def resolve(template_text: str, task, config_cls, *,
             allocation: Resources,
             stage: Optional[str] = None,
@@ -362,6 +397,23 @@ def resolve(template_text: str, task, config_cls, *,
                      - known)
 
     stage_obj = _stage_of(task, stage)
+
+    # THE RUNG'S OWN ANSWERS -- the catalogue's `role` (`template.md` § 6.4):
+    # values nobody chooses, because the rung that runs them fixes them (a
+    # transport rung's solver, SIESTA's per-step forces and coordinates).
+    # Asked ONCE: every door below that could set one refuses, and the
+    # answers are laid on each element last, so the gate, the record and
+    # the deck read one value.  Until 2026-09-29 nothing here knew them: the
+    # walk skipped a role item and each rung's block typed its line, while
+    # the config it was validated and recorded from held the class default.
+    from .template import (engine_name, fixed_by_role, role_answers,
+                           shared_by_every_stage, why_role, why_shared)
+    _engine = engine_name(config_cls)
+    _kind = getattr(task, "calculation", None) or "optimization"
+    fixed = fixed_by_role(_engine, _kind)
+    answers = role_answers(_engine, _kind, stage_obj.name)
+    _refuse_a_stated_answer(template_text, _engine, _kind)
+
     if stage_obj is not None and stage_obj.overrides:
         bad = sorted(set(stage_obj.overrides) & machine_facts)
         if bad:
@@ -378,10 +430,8 @@ def resolve(template_text: str, task, config_cls, *,
         # goes through; transport refused its own at its own prep step until
         # 2026-09-28, and no other kind refused at all -- a ladder could
         # change the spin between rungs and carry the `.DM` across.
-        from .template import engine_name, shared_by_every_stage, why_shared
-        bound = sorted(set(stage_obj.overrides) & shared_by_every_stage(
-            engine_name(config_cls),
-            getattr(task, "calculation", None) or "optimization"))
+        bound = sorted(set(stage_obj.overrides)
+                       & shared_by_every_stage(_engine, _kind))
         if bound:
             raise ResolveError(
                 f"stage {stage_obj.name!r} overrides "
@@ -390,6 +440,15 @@ def resolve(template_text: str, task, config_cls, *,
                 f"stage of this calculation: {why_shared(bound[0])}.  "
                 f"Change {'it' if len(bound) == 1 else 'them'} in the "
                 f"template, where the value applies to every stage at once.")
+        # ...nor one the RUNG fixes (T-F5: a device override of the bias in
+        # a single-bias calculation ran the device at one voltage and the
+        # transmission, which reads the device's Hamiltonian, at another).
+        held = sorted(set(stage_obj.overrides) & fixed)
+        if held:
+            raise ResolveError(
+                f"stage {stage_obj.name!r} overrides "
+                f"{', '.join(map(repr, held))}, which the rung fixes: "
+                f"{why_role(held[0])}.  Remove the override.")
         try:
             base = effective_config(base, stage_obj.overrides)
         except ValueError as exc:
@@ -412,9 +471,19 @@ def resolve(template_text: str, task, config_cls, *,
             f"pin(s) {', '.join(repr(k) for k in unknown)} name nothing in the "
             f"{config_cls.__name__} schema. A pin overrides a template item for "
             f"this prep only; it cannot invent one.")
+    held = sorted(set(pins) & fixed)
+    if held:
+        raise ResolveError(
+            f"pin(s) {', '.join(map(repr, held))} name what the rung fixes: "
+            f"{why_role(held[0])}.")
 
     elements: List[ResolvedConfig] = []
     points = _points(sweep)
+    held = sorted({k for p in points for k in p} & fixed)
+    if held:
+        raise ResolveError(
+            f"sweep axis(es) {', '.join(map(repr, held))} name what the rung "
+            f"fixes: {why_role(held[0])}.")
     for point in points:
         prov = dict(provenance)
 
@@ -482,6 +551,11 @@ def resolve(template_text: str, task, config_cls, *,
         if pins:
             values = effective_config(values, pins)
             prov.update({k: "pin" for k in pins})
+        # THE RUNG'S ANSWERS, LAST -- every door above that could set one
+        # has refused, so this layer replaces nothing a person said.
+        if answers:
+            values = effective_config(values, answers)
+            prov.update({k: "role" for k in answers})
 
         resources = dataclasses.replace(allocation, **machine)
         # § 6.2's translation boundary (job-contracts.md): floor 3 maps
@@ -559,14 +633,19 @@ def resolved_ladder(template_text: str, task, config_cls) -> List[Tuple[str, Any
     habit `job-system.md` § 9 diagnoses (added with A-8, 2026-08-13, which
     found the § 6.6a warning had no production caller at all).
     """
-    from .template import config_from_template
+    from .template import config_from_template, engine_name, role_answers
     base = config_from_template(template_text, config_cls)
+    engine = engine_name(config_cls)
+    kind = getattr(task, "calculation", None) or "optimization"
     out: List[Tuple[str, Any]] = []
     for s in (task.stages or ()):
         if not getattr(s, "enabled", True):
             continue
+        values = effective_config(base, s.overrides) if s.overrides else base
+        # ...and the rung's own answers, last, as `resolve` lays them.
+        answers = role_answers(engine, kind, s.name)
         out.append((s.name,
-                    effective_config(base, s.overrides) if s.overrides else base))
+                    effective_config(values, answers) if answers else values))
     return out
 
 
