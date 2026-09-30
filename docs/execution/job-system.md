@@ -231,6 +231,7 @@ classDiagram
       dict traits
       dict point
       str finish
+      bool resumes
     }
     class Resources {
       int mpi_np
@@ -275,6 +276,11 @@ Walk through it with the *why* for each piece:
   `mb_vibration.pyz` (`engines/vibration.md` § 5.5) — copied from the deck's
   spec and born beside the job's deck; absent for every other job and for a
   benchmark trial.
+- **`Job.resumes`** says whether a re-run of the job continues from what the
+  last one left — the rung's own kind's warm-files fact
+  ([`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a), false for a
+  SIESTA force-constant stage — and the wrapper reads it for every text that
+  speaks of a retry; absent from `job-set.json` when true.
 - **`Job.name`** does double duty: it keys the job's folder *and*
   its scheduler job name (`-J`), so a `squeue` listing reads the way the layout
   does. **`Job.script`** is the input file inside that folder.

@@ -508,16 +508,21 @@ the same run again — the monitor warns instead (`model/parse.md` § 5d.6); and
 anything, when no python is beside the job (the log says so).
 
 **A run that cannot resume is retried as the budget says, and said to
-repeat.** SIESTA restarts a force-constant run at its first displacement from
-the density it saved there, so its retry is the same run again. The budget
-still travels — it is the person's call (`job-contracts.md` § 6.2), as it is
-for a stage described `clean` — and what changes is what the wrapper SAYS: the
-kind declares the fact (`warm-files.toml`, `resumes = false`,
+re-run.** SIESTA re-runs a force-constant run from its reference (undisplaced)
+step, reading back only the density it saved at that step
+(`save_density_matrix.F90`: every iteration of the reference step, no other;
+`m_new_dm.F90` reloads it before every displacement): an SCF that stopped the
+reference step continues from it with a fresh budget, and one that stopped at a
+displacement meets the same SCF again. The budget still travels — it is the
+person's call (`job-contracts.md` § 6.2), as it is for a stage described
+`clean` — and what changes is what the wrapper SAYS: the kind declares the fact
+(`warm-files.toml`, `resumes = false`,
 [`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a), `prep` bakes it
-into the rung's job (`Job.resumes`), and the banner's retry line and the retry's
-own message say that a retry repeats the run from its first step rather than
-resuming it — with `continue_retries = 0` named as the way to spend nothing on
-it. *(It said "warm-resume" until 2026-09-29 — the M11 review, SS-C3.)* *The divergence
+into the rung's job (`Job.resumes`), and every wrapper text that speaks of a
+retry — the banner's retry line, the retry's message, a retried run's Mode
+line, the `--continue` help, the line after the budget — says it from one
+description (`runwrap._retry_texts`). *(They called it a resume until
+2026-09-29 — the M11 review, SS-C3; the K6 review, R4/R5.)* *The divergence
 verdict that tells a diverged SCF from a slow one is built by plan § 5t.3's P4;
 until it lands every `SCF_NOT_CONV … (required)` stop is retried.*
 

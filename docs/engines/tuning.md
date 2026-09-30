@@ -194,7 +194,8 @@ code that disagrees with this table is a bug in the code.
 The publishable column is geomeTRIC's `GAU` preset; the very-tight column is
 `GAU_TIGHT` — ≈ 30× tighter on every gradient and displacement criterion (the energy
 step is unchanged). All five values flow end-to-end: a rung's deck hands them to
-`optimize(...)`, **and** writes them into that rung's `.molwatch.log` as a
+geomeTRIC through its one relaxation call (`pyscf.md` § 3), **and** writes them
+into that rung's `.molwatch.log` as a
 `_CONVERGENCE_TARGETS` map (unit-converted to eV / eV·Å⁻¹), which the Results-tab
 trajectory inspector reads to draw the threshold lines — nothing the user sets is
 dropped before the plots.
@@ -859,7 +860,7 @@ For users who know one engine and want the other's equivalent.
 
 | Concept | SIESTA | PySCF / geomeTRIC | Units |
 |---|---|---|---|
-| Geometry algorithm | `MD.TypeOfRun` | `cfg.optimizer` (`"geometric"` ≈ BFGS) | enum |
+| Geometry algorithm | `MD.TypeOfRun` | geomeTRIC, the one optimizer (≈ BFGS in internal coordinates; no item) | enum / — |
 | Force convergence | `MD.MaxForceTol` | `convergence_gmax` (`geom_gmax`) | SIESTA eV/Å; PySCF Ha/Bohr |
 | RMS-grad convergence | *(not checked)* | `convergence_grms` (`geom_grms`) | Ha/Bohr |
 | Displacement convergence | *(implicit via `MD.MaxDispl`)* | `convergence_dmax`/`_drms` (`geom_dmax`/`geom_drms`) | Å |
@@ -999,7 +1000,7 @@ on. *(`MaxSCFIterations` read 500 here until 2026-08-16.)*
 
 | Scenario | SIESTA | PySCF |
 |---|---|---|
-| Resume from the last accepted step | `MD.UseSaveCG .true.` + `MD.UseSaveXV .true.` (keep CG history + geometry; `MD.UseSaveCG` is CG-only) | re-run — the emitted `<JOB>.chk` chkfile-init shim reloads |
+| Resume from the last accepted step | `MD.UseSaveCG .true.` + `MD.UseSaveXV .true.` (keep CG history + geometry; `MD.UseSaveCG` is CG-only) | no mid-rung resume: a rung that concluded left `_optimized.xyz` and `<JOB>.chk`, which a continuing rung reads (geometry and density); a rung stopped short — halted, or killed — wrote no `_optimized.xyz`, so its re-run starts from its input geometry with the `.chk` as the SCF's first guess (`pyscf.md` § 3) |
 | Restart with the geometry but reset optimizer history | `MD.UseSaveXV .true.` + `MD.UseSaveCG .false.` | drop the chkfile, or pass `runwrap`'s `--cold` / `--from-scratch` (resets the engine state too) |
 | Switch optimizer at a stage boundary | use the new algorithm's `MD.Use*Save*`; the old history file is now stale | not applicable — geomeTRIC is the one optimizer |
 

@@ -75,7 +75,8 @@ _GEOM_KWARG = {
 
 
 def geom_kwargs() -> "tuple":
-    """The ``optimize(...)`` keyword lines, in the section's own order."""
+    """The relaxation's geomeTRIC keyword lines (handed to ``relax(...)``,
+    `relax_policy`), in the section's own order."""
     return tuple(
         f"        {_GEOM_KWARG[n]:<21} = _GEOM_{n[5:].upper()},"
         for n in GEOMETRY_SECTION.items)
@@ -196,7 +197,7 @@ def line(cfg, *, is_dft: bool):
         return None
 
     def _geom(name, value):
-        """One target, as a named constant the single ``optimize(...)`` call
+        """One target, as a named constant the single ``relax(...)`` call
         reads -- so the value a reader wants to change sits beside the
         catalogue's explanation of what it does.  Nothing when this run does
         not relax: a deck that named convergence targets and never optimised

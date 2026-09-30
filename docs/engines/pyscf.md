@@ -123,11 +123,11 @@ by the config flag in column 2):
 |---|---|---|
 | `<job>_<NN>_<stage>.log` | `log_file` (default on) | the verbose PySCF log, one per rung (the token keeps two rungs in one folder from overwriting each other's) |
 | `<job>.chk` | `chkfile` (default on) | PySCF checkpoint (density matrix, mol, energies) |
-| `<job>_initial.xyz` | `save_initial_xyz` | the input geometry, snapshotted right after `gto.M(...)`, before any optimization |
+| `<job>_initial.xyz` | `save_initial_xyz` | the input geometry, snapshotted right after `gto.M(...)`, before any optimization — in the engine's frame, as a pair carrying no run record of the input's either: its coordinates are the engine's, so the input's record's fingerprint does not describe them |
 | `<job>_optimized.xyz` | `save_optimized_xyz` AND `optimize` | the final relaxed geometry, as a pair — its `.molstruct.json` carries the structure's own facts (cell, kinds, regions, the engine's origin 0) and **no run record of the input's**: `info.relaxation` and `info.calculation` describe the run the input came out of, not this one, so they stay behind; this run's record is read from its own output by the one reader when the run is exported from the Results tab ([`model/parse.md`](?doc=model/parse.md) § 5b). *(They were copied onto every pair until 2026-09-29, so a PySCF-relaxed geometry carried a SIESTA run's tolerance, force and level of theory — the M11 review, PS-C10.)* |
 | `<job>_<stage>_geom_optim.xyz` | `optimize` + `write_trajectory` | streaming per-stage trajectory (multi-frame XYZ, one frame per accepted step) |
 | `<job>_<stage>_geom.log` | same | geomeTRIC's own per-stage log |
-| `<job>_<NN>_<stage>.molwatch.log` | `write_molwatch_log` + `optimize` + geometric | the per-step trajectory log (§ 4), one per rung; the Results-tab inspector's single-file input |
+| `<job>_<NN>_<stage>.molwatch.log` | `write_molwatch_log` + `optimize` | the per-step trajectory log (§ 4), one per rung; the Results-tab inspector's single-file input |
 
 > **The stage token sits immediately after the label, never inside the role**
 > ([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.2a).
@@ -246,7 +246,7 @@ that handle. A ladder is N jobs (§ 1.1a), so appending across rungs is not a
 thing a script has to arrange — each writes its own file, exactly as SIESTA's
 rungs do. **Forbidden in any generated script:**
 (1) a *second* `gto.M(...)` after the initial build (it truncates the log; the
-re-convergence at the relaxed geometry warm-starts via `mf.reset(mol_eq)`);
+re-convergence at the relaxed geometry resets `mf` to it, `mf.reset(mol_eq)`);
 (2) `mol.build()` without
 `dump_input=False`; (3) any reassignment of `mol.stdout`.
 
@@ -256,8 +256,9 @@ that raises `SystemExit` with an actionable message, not a traceback. `optimize=
 *`berny` was a second choice until 2026-09-29 and was retired (plan § 5w K17): the
 `pyberny` package is not in `molbuilder-pySCF`, and PySCF's berny driver takes
 neither this rung's criteria (its own are `gradientmax` / `gradientrms` / `stepmax`
-/ `steprms`), nor a constraints file, nor a step callback — so it could not honour
-the rung, the held atoms, the trajectory or the live log. With one choice left the
+/ `steprms`, with no energy criterion), nor a constraints file, nor a trajectory
+prefix — so it could not honour the rung, the held atoms or the trajectory. (It
+does take a step callback, `berny_solver.kernel(…, callback=…)`.) With one choice left the
 `optimizer` item retired with it: a template that still names it is refused with
 the reason, and the line is deleted (`template.RETIRED_ITEMS`).*
 
@@ -272,16 +273,26 @@ driver catches it, and `geometric_solver.kernel` returns the flag with the geome
 `relax_policy.relax`, spliced verbatim into each (the way the HOMO rule is), which
 calls `kernel` and applies the policy to what it reports:
 
-- **`halt`** → the run stops, naming the step budget and the policy (exit
-  status 1), **before the relaxed geometry is written** — no `_optimized.xyz`,
-  so no later rung can start from a geometry nobody accepted.
+- **`halt`** → the run stops with a `RuntimeError` naming the step budget and
+  the policy (exit status 1), **before the relaxed geometry is written** — no
+  `_optimized.xyz`, so no later rung can start from a geometry nobody accepted.
+  An error, as PySCF's own failures are, and not a `SystemExit`: Python hands a
+  `SystemExit` to no `excepthook`, so the live log (§ 4) would have closed with
+  `# concluded:` — a clean end — where it now writes `# error:`.
 - **`continue`** → the relaxation **re-enters from the geometry it reached**, for
   up to `geom_continue_retries` more batches of `geom_max_steps` (total budget
-  `geom_max_steps × (1 + geom_continue_retries)`), each re-entry said in the log;
-  geomeTRIC starts its own step history afresh at each. Still short at the end of
-  the budget, it stops as `halt` does.
-- **`proceed`** → the run takes the geometry it reached, says so, and records the
-  relaxation as **not converged**.
+  `geom_max_steps × (1 + geom_continue_retries)`), each re-entry said in the log.
+  geomeTRIC starts its own step history afresh at each and evaluates the geometry
+  it starts from again, so the live log shows that step twice and counts it (the
+  vibration result's `n_steps`, the viewer's chip), and the trajectory under the
+  rung's prefix holds the last batch — the live log holds every step. Still
+  short at the end of the budget, it stops as `halt` does.
+- **`proceed`** → the run takes the geometry it reached and says so. What its
+  record says about that geometry is the judged force — the free atoms' largest
+  force component against the rung's criterion (the reader's record for an
+  optimisation, `model/parse.md` § 5b.1; the vibration result's
+  `relaxation.converged`) — which can pass while geomeTRIC's other criteria,
+  displacement and energy, did not; the warning names what did not.
 
 **Every step's SCF must converge, whatever the policy** (`assert_convergence=True`
 on every call): a gradient from an unconverged SCF is not a force, so an SCF that
@@ -291,6 +302,7 @@ not a step budget the policy can extend. *(Until 2026-09-29 both decks called
 step SCF: a rung that ran out of steps was recorded converged and handed on under
 every policy, `continue` retried only an SCF failure and from the input geometry,
 and `proceed` turned the step guard off — found by the M11 review, plan § 5w K6.)*
+Both decks read the policy and its budget the one way (`relax_policy.policy_of`).
 
 **There is no last-rung override.** A deck is one rung and cannot see the others,
 so nothing can force the final one to `halt` from inside a script. SIESTA has
@@ -435,8 +447,9 @@ says `gnorm(eV/Ang)` scaled it as a force, and the reader converts it back.
 - **Live-tail safe:** a `begin` with no matching `end` is the in-flight step and is
   dropped on parse; the emitter `flush()`es after each `end` marker so the last
   complete byte is always a step boundary.
-- **Hook-wired, not monkey-patched:** `mf.callback` (per SCF cycle) + `optimize(…,
-  callback=…)` (per accepted opt step) — both documented PySCF/geomeTRIC extension
+- **Hook-wired, not monkey-patched:** `mf.callback` (per SCF cycle) + the
+  relaxation's `callback=` (per geometry geomeTRIC evaluates — a rejected step and
+  a re-entry's start included, § 3) — both documented PySCF/geomeTRIC extension
   points.
 - **The convergence-header key grammar**: flat `convergence.<leaf>` for an
   unstaged run, nested `convergence.<token>.<leaf>` for a staged one — and the
@@ -694,7 +707,8 @@ prints exactly one verdict line — quoted here verbatim from the emitter:
 | `stability: CHECKED, reached a stable solution after N restart(s).` | checked; was broken, repaired — use this result |
 | `stability: WARNING -- still internally unstable after 3 restarts.` | checked; **not** repaired — everything below it is suspect |
 | `stability: NOT CHECKED. The energy below has not been tested for a broken-symmetry solution.` | no claim either way |
-| `stability: NOT CHECKED -- this method does not implement it (<error>)` | the method has no `stability()`; printed alongside the line above |
+| `stability: NOT CHECKED -- this mean field declares no stability analysis (on the GPU, gpu4pyscf does not implement it)` | the mean field has none to call — gpu4pyscf's GPU classes declare `stability = NotImplemented` (§ 7.3); printed alongside the line above |
+| `stability: NOT CHECKED -- this method does not implement it (<error>)` | the method has one and refused at run time (`NotImplementedError`); printed alongside the line above |
 
 A restricted or restricted-open run emits no stability block at all — see § 7.3 for why.
 
@@ -772,7 +786,7 @@ filled the D3BJ default — a person who switched dispersion off ran D3BJ.
 | optimization `mf` | chkfile + continuation read; GPU promotion; `newton()` wrap; `on_nonconvergence` per config | as today (§ 7) |
 | vibration equilibrium | chkfile WRITE; GPU promotion; `newton()` wrap; halts UNCONDITIONALLY on non-convergence — `on_nonconvergence` is the RELAXATION phase's policy (proceed / continue / halt on geomeTRIC, per its own help text), not an SCF one; a mis-wiring that read it at this site lived for part of 2026-08-21 and this row is its correction | the equilibrium density feeds the Hessian, every intensity and the thermochemistry — no policy makes it optional |
 | vibration displaced point | `scf_init_guess` applies in full (measured 2026-08-21: the lifted code does NOT seed from the equilibrium density — `kernel()` is called bare; `dm0` seeding is a recorded future improvement, not a present fact); **no** chkfile (one file per point is churn); a failed point always halts | a silently-unconverged point poisons one Hessian column; frequencies from it are not frequencies |
-| vibration relaxation | GPU promotion; `newton()` wrap; frozen atoms ride a geomeTRIC `$freeze` constraints file exactly as on the optimization deck (frozen means frozen through every phase — user ruling 2026-08-21); the `on_nonconvergence` policy applies HERE, through the one relaxation function of § 3 (halt stops before the Hessian; continue re-enters from the geometry reached; proceed takes it and records `converged: false` with a warning in the artifact) | the policy's own help text names geomeTRIC's criteria — this is the phase it governs |
+| vibration relaxation | GPU promotion; `newton()` wrap; frozen atoms ride a geomeTRIC `$freeze` constraints file exactly as on the optimization deck (frozen means frozen through every phase — user ruling 2026-08-21); the `on_nonconvergence` policy applies HERE, through the one relaxation function of § 3 (halt stops before the Hessian; continue re-enters from the geometry reached; proceed takes it, with a warning in the artifact beside `converged`, the judged force's verdict) | the policy's own help text names geomeTRIC's criteria — this is the phase it governs |
 
 **The gate that keeps this true**: the honesty test (every parameter the
 vibration form shows is read by the vibration render, or refused by name
@@ -801,7 +815,7 @@ renaming a promised output file is a **major** bump. Purely additive changes (a 
 optional field or output) are minor.
 
 **Tests:** `tests/test_pyscf.py` — behavioural assertions over the generated script
-(output-file set, the one-`optimize()`-call shape, molwatch blocks; the
+(output-file set, the one relaxation call, molwatch blocks; the
 in-script stage loop retired with § 1.1a).  The method is an enum, so a value
 outside `DFT` / `HF` is refused by the settings gate; the class composed from the
 state, and the spin refusals, are pinned through prep in

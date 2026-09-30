@@ -215,12 +215,12 @@ def test_the_finish_judges_the_reference_forces_by_the_decks_criterion(tmp_path)
     # MUTATION THIS MUST FAIL AGAINST: the finish telling a laddered run to
     # untick `already_relaxed` -- the text before 2026-09-29.
     from molbuilder.spectra.vibrational_analysis import nonstationary_remedy
-    assert nonstationary_remedy(None) in d2["relaxation"]["warning"]
+    assert nonstationary_remedy(None, "siesta") in d2["relaxation"]["warning"]
     d3 = json.loads(finish(*_fc_attempt(
         tmp_path / "c", criterion=1e-5,
         relaxation={"engine": "siesta", "n_steps": 7})).read_text())
     assert d3["relaxation"]["converged"] is False
-    assert nonstationary_remedy("relax") in d3["relaxation"]["warning"], (
+    assert nonstationary_remedy("relax", "siesta") in d3["relaxation"]["warning"], (
         d3["relaxation"]["warning"])
 
 

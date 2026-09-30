@@ -485,9 +485,16 @@ def test_each_rung_of_a_vibration_carries_and_retries_as_its_own_kind(
         [w.name for w in jobs["relax"].warm])
     assert (jobs["relax"].resumes, jobs["freq"].resumes) == (True, False)
     wrapper = next((dest / "02_freq").rglob("*.run.sh")).read_text()
-    assert "each REPEATS the run from its first step" in wrapper
+    # every text that speaks of a retry: the banner, the retry's message,
+    # a retried run's Mode line (the K6 review, R4)
+    assert "each re-runs the run from its first step" in wrapper
     assert "re-running from its first step" in wrapper
-    assert "warm-resume" not in wrapper and "warm-restarting" not in wrapper
+    assert "RE-RUN FROM THE FIRST STEP" in wrapper
+    # what the wrapper SAYS -- its executable lines; a comment may tell the
+    # history of the word
+    said = "\n".join(ln for ln in wrapper.lower().splitlines()
+                     if not ln.lstrip().startswith("#"))
+    assert "warm-resume" not in said and "warm-restarting" not in said
 
 
 @pytest.mark.parametrize("ticked, tol, frozen, says, never", [

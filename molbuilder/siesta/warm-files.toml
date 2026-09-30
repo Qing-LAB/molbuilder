@@ -121,15 +121,17 @@ carry  = "when-continuing"
 
 [vibration]
 resumes = false                 # A RE-RUN DOES NOT CONTINUE: SIESTA starts
-                                # an FC run at its first step (siesta_init.F,
-                                # idyn 6) and reloads the density it saved
-                                # there before every displacement
-                                # (m_new_dm.F90), so a retry after an SCF
-                                # that stopped it is the same run again,
-                                # and the wrapper says so rather than
-                                # calling it a resume (running-a-job.md
-                                # 3.5; job-contracts.md 4.2a's one
-                                # section-level fact)
+                                # an FC run at its reference step
+                                # (siesta_init.F, idyn 6) and reloads the
+                                # density it saved there before every
+                                # displacement (m_new_dm.F90) -- so a retry
+                                # continues an SCF that stopped the
+                                # reference step, and meets the same SCF
+                                # again after one that stopped at a
+                                # displacement; the wrapper says so rather
+                                # than calling it a resume
+                                # (running-a-job.md 3.5; job-contracts.md
+                                # 4.2a's one section-level fact)
 
 [[vibration.file]]
 suffix = ".FC"                  # the force constants, eV/A^2: the PRODUCT

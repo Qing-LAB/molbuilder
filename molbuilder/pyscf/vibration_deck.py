@@ -170,6 +170,7 @@ def science_view(cfg, struct: Structure) -> "VibrationConfigView":
 
 def _vib_constants(cfg) -> List[str]:
     """The vibration deck's own constants, beside the lifted ones."""
+    from .relax_policy import policy_of
     out = ["",
            "# ---- vibration-kind constants (framework deck) ----",
            f"ALREADY_RELAXED = {bool(cfg.already_relaxed)}",
@@ -185,8 +186,8 @@ def _vib_constants(cfg) -> List[str]:
            "# What the relaxation does when geomeTRIC reports its criteria",
            "# unmet at GEOM_MAX_STEPS (engines/pyscf.md 3): halt, continue",
            "# from the geometry reached, or proceed with it.",
-           f"ON_NONCONVERGENCE     = {str(cfg.on_nonconvergence)!r}",
-           f"GEOM_CONTINUE_RETRIES = {int(cfg.geom_continue_retries)}",
+           f"ON_NONCONVERGENCE     = {policy_of(cfg)[0]!r}",
+           f"GEOM_CONTINUE_RETRIES = {policy_of(cfg)[1]}",
            f"THERMO_T_K     = {float(cfg.temperature_K)!r}",
            f"THERMO_P_ATM   = {float(cfg.pressure_atm)!r}",
            f"THERMO_T_GRID  = {_THERMO_GRID_K}",
@@ -232,7 +233,7 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
     ``write_trajectory`` hands geomeTRIC its streaming-XYZ prefix,
     ``write_molwatch_log`` composes the molwatch hooks beside the artifact
     callback, and the two ``save_*_xyz`` flags write their standalone
-    files.  geomeTRIC is the one optimizer (`optimizer`'s only choice).
+    files.  geomeTRIC is the one optimizer (`engines/pyscf.md` § 3).
 
     ``relaxation.converged`` is the judged force at the geometry reached
     against ``geom_gmax`` — the meaning the key has on every route
@@ -398,7 +399,7 @@ def _vib_gradient_check() -> List[str]:
     (`vibrational_analysis.nonstationary_remedy`, `engines/vibration.md`
     § 5.5), written into the deck as a literal at render time."""
     from ..spectra.vibrational_analysis import nonstationary_remedy
-    _remedy = nonstationary_remedy(None)
+    _remedy = nonstationary_remedy(None, "pyscf")
     return [
         "",
         "if ALREADY_RELAXED:",

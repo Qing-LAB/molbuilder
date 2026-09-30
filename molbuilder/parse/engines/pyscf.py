@@ -5,7 +5,7 @@ package was deleted 2026-06-21 and this is the only PySCF trajectory
 parser (provenance: `docs/archive/old_docs/protocols/parse-module.md` §
 8).
 
-When molbuilder generates a PySCF script it hands optimize() a prefix
+When molbuilder generates a PySCF script it hands geomeTRIC a prefix
 of ``JOB`` plus the stage token plus ``_geom`` (`job-contracts.md`
 § 2.2a: the token sits after the label, never inside the role), so
 geomeTRIC streams a multi-frame XYZ to ``<JOB>_<NN>_<stage>_geom_optim.xyz``

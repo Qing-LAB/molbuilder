@@ -550,12 +550,12 @@ def spec_for(struct: Structure,
         out.append("")
 
         # ---------------- Unified molwatch log emitter (early, additive) ------
-        # Defined and instantiated NOW -- before ``optimize()`` -- so the log
+        # Defined and instantiated NOW -- before the relaxation -- so the log
         # file (header + initial-preview block) exists the moment the script
-        # starts running.  A rung's optimize() can take hours on a real molecule;
+        # starts running.  A rung's relaxation can take hours on a real molecule;
         # we don't want the Watch tab staring at "no file to load" the whole
         # time.  SCF cycle hook is wired on the production mf below; the opt-step
-        # hook is wired on the ``optimize(...)`` call.
+        # hook is wired on the ``relax(...)`` call.
         # NOTE: the molwatch emitter is NOT constructed here.  It writes its
         # whole header -- including every ``# runtime.<key>`` line -- inside
         # __init__, so it must be built only once _RUNTIME_INFO is complete;
@@ -725,7 +725,7 @@ def spec_for(struct: Structure,
         # the _RUNTIME_INFO writes above -- and then wire the callback.
         #
         # It used to be built before the SCF setup so the Watch tab had a
-        # file to load early (a stage's optimize() can run for hours, and
+        # file to load early (a stage's relaxation can run for hours, and
         # "no file to load" is a bad thing to stare at).  That intent is
         # preserved: everything between there and here is attribute
         # assignment on ``mf``, and the first expensive call -- the SCF in
@@ -1273,13 +1273,14 @@ def _emit_optimization(cfg: PySCFConfig,
     from .relax_policy import emit_relax
     out += emit_relax()
     out.append("")
-    policy = (cfg.on_nonconvergence or "halt").strip().lower()
+    from .relax_policy import policy_of
+    policy, retries = policy_of(cfg)
     if v:
         out += _sc.parameter("on_nonconvergence", "pyscf").note()
         if policy == "continue":
             out += _sc.parameter("geom_continue_retries", "pyscf").note()
     out.append(f"_ON_NONCONVERGENCE = {policy!r}")
-    out.append(f"_GEOM_CONTINUE_RETRIES = {int(cfg.geom_continue_retries or 0)}")
+    out.append(f"_GEOM_CONTINUE_RETRIES = {retries}")
     out.append("mol_eq, _GEOM_CONVERGED = relax(")
     out.append("        mf, _ON_NONCONVERGENCE, _GEOM_CONTINUE_RETRIES,")
     out.extend(_layout.geom_kwargs())
@@ -1334,7 +1335,7 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     processes in one folder and an unsuffixed log would have the second
     overwrite the first.
 
-    The emitter is instantiated **early** -- before ``optimize()`` -- so the
+    The emitter is instantiated **early** -- before the relaxation -- so the
     log file (header + initial-preview block) exists from the moment the
     script starts running.  A rung can take hours on a real molecule; without
     this ordering the Watch tab would have no file to load until it finished,
@@ -1343,7 +1344,7 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     Hooks are wired once on the production mf:
 
       * ``mf.callback = _molwatch.scf_cycle_hook``   (every SCF cycle)
-      * ``optimize(mf, ..., callback=_molwatch.opt_step_hook)`` (every
+      * ``relax(mf, ..., callback=_molwatch.opt_step_hook)`` (every
         accepted opt step)
 
     Block layout, parser tolerance, and other contract details are
@@ -1389,7 +1390,7 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     # which the methods reference at call time.
     out.append(inspect.getsource(MolwatchEmitter).rstrip())
     out.append("")
-    # Instantiate as early as possible (BEFORE ``optimize()``) so
+    # Instantiate as early as possible (BEFORE the relaxation) so
     # the log file -- with header + initial-preview block -- exists
     # the moment the script starts running.  Otherwise a long rung
     # (which can take hours on a real molecule) would mean the
@@ -1505,11 +1506,13 @@ def _sidecar_for(struct: Structure) -> dict:
     from ..workingcopy_structure import StructureCodec
     # AND THE INPUT'S RUN RECORDS STAY BEHIND: `info.relaxation` and
     # `info.calculation` describe the run the INPUT came out of -- its
-    # tolerance, its force, its level of theory -- and this pair is another
-    # run's geometry.  This run's record is read from its own output by the
-    # one reader when it is exported (`model/parse.md` § 5b); a copy here
-    # handed a SIESTA run's record to a PySCF-relaxed geometry (the M11
-    # review, PS-C10; `engines/pyscf.md` § 2).
+    # tolerance, its force, its level of theory.  This run's pairs are the
+    # relaxed geometry, another run's, and the input snapshot in the engine's
+    # frame, whose coordinates the input record's fingerprint does not
+    # describe.  This run's record is read from its own output by the one
+    # reader when it is exported (`model/parse.md` § 5b); a copy here handed
+    # a SIESTA run's record to a PySCF-relaxed geometry (the M11 review,
+    # PS-C10; `engines/pyscf.md` § 2).
     info = {k: v for k, v in (struct.info or {}).items()
             if k not in ("relaxation", "calculation")}
     return StructureCodec().pair(
@@ -1524,7 +1527,7 @@ def emit_outfile_helper() -> List[str]:
     deck run by hand from another folder wrote there.
 
     Why beside the script: PySCF and geomeTRIC may change directory during an
-    optimisation (geomeTRIC's optimize() builds scratch in a temp dir; PySCF's
+    optimisation (geomeTRIC builds scratch in a temp dir; PySCF's
     ``mol.build()`` writes the ``.log`` relative to the cwd at ``gto.M()``
     time), and a person may run ``python myjob.py`` from another folder.  The
     wrapper runs a deck from its attempt directory, but the deck must be

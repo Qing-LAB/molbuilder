@@ -157,7 +157,10 @@ PYSCF_END_MARKERS: Tuple[str, ...] = (PYSCF_END_MARKER,
 #:
 #: A `SystemExit` deliberately has none: the four the decks raise
 #: (`pyscf/input.py`'s missing-optimizer guard, and three in
-#: `vibration_emitters.py`) print their message with NO traceback, and they
+#: `vibration_emitters.py`) print their message with NO traceback.  (The
+#: relaxation's own stop is NOT one of them: `relax_policy.relax` raises a
+#: `RuntimeError`, as PySCF's own failures do, so its traceback is here and
+#: the live log records the error -- 2026-09-29.)  They
 #: share no prefix worth pinning.  That run is answered where it should be --
 #: the wrapper's `.concluded` carries `rc=1`, and `parse/dirs/job.py`
 #: `_build_status` reads the process where content is silent (§ 2b: nothing

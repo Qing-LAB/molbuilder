@@ -110,18 +110,21 @@ def start_state_lines(cfg) -> List[str]:
     that item to optimizations only, and a force-constant run has no
     optimizer history to resume).
 
-    THE DENSITY IS READ WHEN PRESENT.  The first displacement's SCF starts
-    from it; every later one starts from the previous displacement's, in
-    memory.  A stale density costs iterations, never the answer.
+    THE DENSITY IS READ WHEN PRESENT.  The reference step's SCF starts
+    from it, and SIESTA saves that step's converged density and reloads it
+    before EVERY displacement (SIESTA 5.4.2 `save_density_matrix.F90`,
+    `m_new_dm.F90`), so each displacement starts from the undisplaced
+    density.  A stale density costs iterations, never the answer.
 
     THE GEOMETRY IS NEVER READ.  A force-constant run writes its LAST
     DISPLACEMENT to ``<SystemLabel>.XV`` -- measured on the two-atom run
     (``tests/fixtures/siesta_fc``): the last free atom sits
     FC.Displacement off the input along z after the run.  A deck that
     honoured that file would take a nudged geometry as the stationary
-    point and converge without complaint.  SIESTA reads the files it
-    finds unless a deck says ``.false.``, so the answer is written, not
-    left out.
+    point and converge without complaint.  SIESTA reads a density it
+    finds unless told ``.false.`` (``DM.UseSaveDM`` defaults true) and a
+    geometry only when told ``.true.`` (``MD.UseSaveXV`` defaults false),
+    so both answers are written, not left out.
 
     The keys are the restart group's own declaration (the catalogue's
     ``[item.restart].expands``), so a member the engine gains is written

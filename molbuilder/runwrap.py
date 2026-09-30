@@ -848,6 +848,7 @@ def _runtime_status_block(
     *,
     engine: str,
     script_name: str,
+    resumes: bool = True,
 ) -> str:
     """Bash snippet that detects and emits the execution status banner.
 
@@ -1063,10 +1064,14 @@ def _runtime_status_block(
         f'    _mode="COLD (--cold --force; prior state overwritten)"\n'
         f'elif [ "$_continue" = "1" ]; then\n'
         f'    if [ "$_warmstart_present" = "1" ]; then\n'
-        f'        _mode="WARM-RESUME (--continue; engine will load {warm_files_label})"\n'
-        f"    else\n"
-        f'        _mode="WARM-RESUME REQUESTED but no prior state found -- starting cold by necessity"\n'
-        f"    fi\n"
+        + (f'        _mode="{_retry_texts(False, None)["mode"]}"\n'
+           if not resumes else
+           f'        _mode="WARM-RESUME (--continue; engine will load {warm_files_label})"\n')
+        + f"    else\n"
+        + (f'        _mode="RE-RUN REQUESTED but no prior state found -- starting from the first step with nothing to read back"\n'
+           if not resumes else
+           f'        _mode="WARM-RESUME REQUESTED but no prior state found -- starting cold by necessity"\n')
+        + f"    fi\n"
         f'elif [ "$_warmstart_present" = "1" ]; then\n'
         f'    _mode="WARM-RESTART (silent; engine will load existing {warm_files_label}.  '
         f'Pass --cold to discard them.)"\n'
@@ -1965,6 +1970,52 @@ def _fdf_requests_gpu(fdf_path: Path) -> bool:
 # deck keyword like any other, and it no longer decides an environment.
 
 
+def _retry_texts(resumes: bool,
+                 restart_honoured: Optional[bool]) -> Dict[str, Optional[str]]:
+    """What a retry of this run does, in the words every retry text uses --
+    ONE description (`running-a-job.md` § 3.5): a run whose kind cannot
+    resume (`Job.resumes`, the kind's warm-files fact) re-runs from its first
+    step and reads back only what that step saved; a deck that declines
+    prior state re-runs cold; otherwise the retry resumes warm.
+
+    ``does`` is the retry's own message, ``policy`` the banner's retry line;
+    ``mode``, ``usage`` and ``after`` are the non-resuming run's Mode line,
+    ``--continue`` help and after-budget advice (``None``: the warm and cold
+    texts are the deck-restart ones, which already say what happens).
+    Until 2026-09-29 a force-constant rung's banner, Mode line and help all
+    called its retry a resume (the K6 review, R4)."""
+    if not resumes:
+        return {
+            "does": ("re-running from its first step -- this kind of run "
+                     "does not resume"),
+            "policy": ("each re-runs the run from its first step, reading "
+                       "back only what that step saved: this kind of run "
+                       "does not resume (warm-files: resumes = false), so an "
+                       "SCF that stopped the first step continues and one "
+                       "that stopped later meets the same SCF again"),
+            "mode": ("RE-RUN FROM THE FIRST STEP (--continue; this kind of "
+                     "run does not resume -- only what its first step saved "
+                     "is read back)"),
+            "usage": ("This kind of run does not resume (warm-files:\n"
+                      "                   resumes = false): --continue "
+                      "re-runs it from\n"
+                      "                   its first step, reading back only "
+                      "what\n"
+                      "                   that step saved.\n"),
+            "after": ("revisit mixing/smearing -- a re-run of this run "
+                      "starts again from its first step"),
+        }
+    if restart_honoured is False:
+        return {"does": "re-running cold -- this deck declines prior state",
+                "policy": ("COLD, because this deck sets DM.UseSaveDM "
+                           ".false.: a retry re-runs from the deck's "
+                           "coordinates, it does not resume"),
+                "mode": None, "usage": None, "after": None}
+    return {"does": "warm-restarting",
+            "policy": "each resumes warm from what the run banked (--continue)",
+            "mode": None, "usage": None, "after": None}
+
+
 def _fdf_honours_restart(fdf_path: Path) -> Optional[bool]:
     """Whether this deck lets SIESTA read the state a previous run left.
 
@@ -2379,16 +2430,11 @@ def render_run_wrapper(script_path: Path, *,
     # wrapper's own help cannot contradict the file it ships beside.
     _restart_honoured = (_fdf_honours_restart(script_path)
                          if suffix == ".fdf" else None)
-    # WHAT A RETRY OF THIS RUN DOES -- one description, read by the banner's
-    # retry line and by the retry's own message: a run whose kind cannot
-    # resume (`Job.resumes`, the kind's warm-files fact) repeats from its
-    # first step; a deck that declines prior state re-runs cold; otherwise
-    # the retry resumes warm (`running-a-job.md` § 3.5).
-    _retry_does = ("re-running from its first step -- this kind of run does "
-                   "not resume" if not resumes else
-                   "re-running cold -- this deck declines prior state"
-                   if _restart_honoured is False else
-                   "warm-restarting")
+    # WHAT A RETRY OF THIS RUN DOES -- one description (`_retry_texts`), read
+    # by every text that speaks of a retry: the banner's retry line, the
+    # retry's own message, a retried run's Mode line, the --continue usage
+    # and the line after the budget is spent (`running-a-job.md` § 3.5).
+    _retry = _retry_texts(resumes, _restart_honoured)
     _py_reads_prior = (_py_deck_reads_prior(script_path)
                        if suffix == ".py" else None)
 
@@ -2841,6 +2887,8 @@ def render_run_wrapper(script_path: Path, *,
             f"  --continue, -c   resume from prior run.  Scans existing\n"
             f"                   -runN.out files and writes -run(N+1).\n"
             + (
+                f"                   {_retry['usage']}"
+                if not resumes else
                 f"                   This deck says 'start from: continue'\n"
                 f"                   (DM.UseSaveDM / MD.UseSaveXV /\n"
                 f"                   MD.UseSaveCG .true.), so SIESTA also\n"
@@ -2969,6 +3017,7 @@ def render_run_wrapper(script_path: Path, *,
             + _run_index_resolver(basename, ext=_stdout_role_for(".fdf"))
             + _cold_restart_block(basename, engine="siesta", label=label)
             + _runtime_status_block(basename, engine="siesta",
+                                    resumes=resumes,
                                      script_name=script_name)
         )
 
@@ -3343,21 +3392,7 @@ def render_run_wrapper(script_path: Path, *,
             # cold.  The budget is the user's (it travels; see the note in
             # `render_run_wrapper`); the description is the deck's.
             + (f'echo "  Retry policy  : up to {continue_retries} '
-               f'retry(s) on non-convergence -- each REPEATS the run from '
-               f'its first step: a force-constant run does not resume '
-               f'(warm-files: resumes = false), so an SCF that stopped it '
-               f'stops the retry the same way; continue_retries = 0 spends '
-               f'nothing on it"\n'
-               if continue_retries and continue_retries > 0
-               and not resumes else
-               f'echo "  Retry policy  : up to {continue_retries} '
-               f'retry(s) on non-convergence (--continue warm-resume)"\n'
-               if continue_retries and continue_retries > 0
-               and _restart_honoured is not False else
-               f'echo "  Retry policy  : up to {continue_retries} '
-               f'retry(s) on non-convergence -- COLD, because this deck '
-               f'sets DM.UseSaveDM .false.: a retry re-runs from the '
-               f'deck\'s coordinates, it does not resume"\n'
+               f'retry(s) on non-convergence -- {_retry["policy"]}"\n'
                if continue_retries and continue_retries > 0 else
                f'echo "  Retry policy  : none (halt on non-convergence)"\n')
             + f'echo "  Threading     : OMP_NUM_THREADS=$_omp_threads, '
@@ -3921,9 +3956,10 @@ def render_run_wrapper(script_path: Path, *,
             + _finish_check_block(finish, basename)
             + (f'_siesta_retry=${{MB_RETRY_N:-0}}\n'
                f'_siesta_retry_max={continue_retries}\n'
-               f'# Warm-retry: re-exec this wrapper with --continue (advance\n'
-               f'# the run-index; SIESTA warm-starts from the banked\n'
-               f'# .DM/.CG/.XV).  Original args are preserved MINUS the\n'
+               f'# Retry: re-exec this wrapper with --continue (advance the\n'
+               f'# run-index; what the engine reads back is the banner\'s\n'
+               f'# retry line -- warm, cold, or from the first step of a run\n'
+               f'# that does not resume).  Original args are preserved MINUS the\n'
                f'# continuation flags: --force would reset the run-index\n'
                f'# sequence and --cold would move aside the very warm-start\n'
                f'# files the retry needs.  MB_RETRY_N is exported so it\n'
@@ -3933,7 +3969,7 @@ def render_run_wrapper(script_path: Path, *,
                f'_mb_warm_retry() {{\n'
                f'    _mb_next=$((_siesta_retry + 1))\n'
                f'    echo "" >&2\n'
-               f'    echo "=== $1; {_retry_does} '
+               f'    echo "=== $1; {_retry["does"]} '
                f'(retry $_mb_next/$_siesta_retry_max) with --continue ===" >&2\n'
                f'    echo "" >&2\n'
                f'    _mb_stop_monitor USR1 || true\n'
@@ -4030,8 +4066,11 @@ def render_run_wrapper(script_path: Path, *,
                f'    elif [ "$_siesta_retry" -gt 0 ] \\\n'
                f'       && _mb_ending stopped-by "{_G.SCF_NOT_CONV_MARKER}"; then\n'
                f'        echo "SCF still unconverged after '
-               f'$_siesta_retry_max retry(s); re-run with --continue '
-               f'to extend, or revisit mixing/smearing." >&2\n'
+               f'$_siesta_retry_max retry(s); '
+               + (f'{_retry["after"]}.' if not resumes else
+                  're-run with --continue to extend, or revisit '
+                  'mixing/smearing.')
+               + '" >&2\n'
                f'    fi\n'
                if continue_retries and continue_retries > 0 else "")
             + f'    # CONCLUDED -- an error is a conclusion (project-\n'

@@ -256,7 +256,7 @@ class MolwatchEmitter:
             'wall_time': wt,
         })
 
-    # ----- opt step hook (wired to optimize(callback=...)) -----
+    # ----- opt step hook (wired to the relaxation's callback=) -----
     def opt_step_hook(self, envs):
         mol      = envs.get('mol')
         energy   = envs.get('energy')

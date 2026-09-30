@@ -1590,7 +1590,9 @@ def test_pyscf_form_schema_matches_documented_layout():
         # trio left the OPTIMIZATION form -- the item retired outright,
         # and temperature_K / pressure_atm re-homed to the vibration
         # kind (calculations = ["vibration"]).
-        ("procedure",  13),
+        # 13 -> 12 on 2026-09-29: the one-choice `optimizer` retired with
+        # berny (`engines/pyscf.md` § 3).
+        ("procedure",  12),
     ], got
 
     # The stage table is NOT here.  PySCFConfig still has a `stages`

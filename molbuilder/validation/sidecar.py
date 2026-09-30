@@ -252,6 +252,12 @@ def check_relaxation_record(struct: Structure, *, engine: str,
     (`engines/vibration.md` § 5.2a, V1.36) -- judged by
     :func:`_ladder_relaxation_findings`, never by the box's advice.
     """
+    # THE one remedy for a structure stated relaxed that is not stationary
+    # here -- the text the finish and the PySCF deck write too
+    # (`vibrational_analysis.nonstationary_remedy`); four wordings of it stood
+    # in this function until 2026-09-29 (the K6 review, R11).
+    from ..spectra.vibrational_analysis import nonstationary_remedy
+    _remedy = nonstationary_remedy(None, engine)
     if relaxed_by is not None:
         return _ladder_relaxation_findings(struct, relaxed_by,
                                            force_tolerance_ev_ang,
@@ -305,9 +311,7 @@ def check_relaxation_record(struct: Structure, *, engine: str,
                 f"This structure was relaxed on {rec_engine}; this is a "
                 f"{engine} calculation -- a different level of theory, so "
                 f"the geometry is not a stationary point here."
-                + ("  Untick the box so the ladder relaxes it, or keep the "
-                   "statement knowing the frequencies will be off."
-                   if already_relaxed else
+                + ("  " + _remedy if already_relaxed else
                    "  The ladder relaxes it at this level first.")),
             where=where))
     else:
@@ -332,9 +336,7 @@ def check_relaxation_record(struct: Structure, *, engine: str,
                     "This structure was relaxed at a different level of "
                     "theory than this calculation runs (" + "; ".join(differing)
                     + "), so its geometry is not a stationary point here."
-                    + ("  Untick the box so the ladder relaxes it at this "
-                       "level, or keep the statement knowing the frequencies "
-                       "will be off." if already_relaxed else
+                    + ("  " + _remedy if already_relaxed else
                        "  The ladder relaxes it at this level first.")),
                 where=where))
     # -- the held set ------------------------------------------------------
@@ -348,9 +350,7 @@ def check_relaxation_record(struct: Structure, *, engine: str,
                      f"the same atoms.  The free atoms are not the same "
                      f"set, so the geometry is not stationary for this "
                      f"calculation's free atoms."
-                     + ("  Untick the box so the ladder relaxes this set, "
-                        "or keep the statement knowing that."
-                        if already_relaxed
+                     + ("  " + _remedy if already_relaxed
                         else "  The ladder relaxes this set first."))))
     # -- the largest remaining force against THIS calculation's tolerance --
     judged = _judged_force(rec)
@@ -387,9 +387,7 @@ def check_relaxation_record(struct: Structure, *, engine: str,
                      f"above this calculation's tolerance of "
                      f"{float(force_tolerance_ev_ang):g} eV/Å."
                      + ("  The frequencies will be off unless it is relaxed "
-                        "further: untick the box so the ladder relaxes it, "
-                        "or relax at this tolerance and hand the result over."
-                        if already_relaxed else
+                        "further.  " + _remedy if already_relaxed else
                         "  The ladder's relaxation tightens it."))))
     return issues
 
@@ -416,7 +414,7 @@ def _ladder_relaxation_findings(struct: Structure, rec: Mapping[str, Any],
     # THE one remedy text, the finish's and the PySCF deck's too
     # (`engines/vibration.md` § 5.5).
     from ..spectra.vibrational_analysis import nonstationary_remedy
-    remedy = "  " + nonstationary_remedy(stage)
+    remedy = "  " + nonstationary_remedy(stage, "siesta")
     held = _held_sets_differ(struct, rec)
     if held is not None:
         issues.append(Issue(

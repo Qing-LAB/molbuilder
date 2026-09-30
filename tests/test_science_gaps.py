@@ -104,8 +104,10 @@ def test_gap_3_dispersion_template_suppressed_for_vdw_xc(h2):
 # --------------------------------------------------------------------- #
 
 
-# Gap 4 (UKS / UHF stability) is pinned by `test_pyscf_stability.py`,
-# on the executed form of the check -- this text test duplicated it.
+# Gap 4 (UKS / UHF stability) is pinned by `test_pyscf_stability.py`'s
+# emitted-check tests, and on the GPU by a real O2 run
+# (`test_pyscf_relaxation_outcome_e2e.py`) -- this text test duplicated the
+# first.
 
 
 # --------------------------------------------------------------------- #

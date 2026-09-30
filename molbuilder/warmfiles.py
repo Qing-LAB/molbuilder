@@ -77,7 +77,8 @@ class WarmFilesDoc:
     path: str = ""
     #: The one section-level fact (`job-contracts.md` § 4.2a): the sections
     #: that STATE whether a re-run of their kind resumes.  A section that
-    #: states nothing is absent, and :func:`resumes_for` answers true.
+    #: states nothing is absent here, and :func:`resumes_for` answers with
+    #: ``[base]``'s statement, else true.
     resumes: Tuple[Tuple[str, bool], ...] = ()
 
     def section_names(self) -> List[str]:

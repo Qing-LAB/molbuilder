@@ -523,8 +523,8 @@ What the phase honours from the description: the convergence criteria
 the optimisation deck relaxes with — [`pyscf.md` § 3](?doc=engines/pyscf.md),
 which asks geomeTRIC whether it converged rather than assuming it: `halt` stops
 the run before the Hessian; `continue` re-enters from the geometry reached, up to
-the retry budget; `proceed` takes that geometry and records `converged: false`
-with a warning),
+the retry budget; `proceed` takes that geometry, with a warning that geomeTRIC's
+criteria were not met beside `converged`, the judged force's verdict above),
 `write_trajectory` (geomeTRIC's streaming XYZ), `write_molwatch_log` (the same
 live-watch hooks the optimisation deck emits), `save_initial_xyz` /
 `save_optimized_xyz` (`<job>_initial.xyz`, `<job>_optimized.xyz`, written as
@@ -1192,14 +1192,18 @@ which `prep` copies onto the stage's job (`Job.finish`).
 
 **The start state is the kind's, not the description's.** The catalogue offers
 `restart` to optimisations only, and a force-constant run has no optimiser
-history to resume. The density is read when present (the first displacement's
-SCF starts from it; every later one from the previous displacement's, in
-memory). The geometry is **never** read back: an FC run leaves its *last
-displacement* in `<label>.XV` — measured on the two-atom run, the last free
-atom sits `FC.Displacement` off the input along z afterwards — so a deck that
-honoured that file would take a nudged geometry as the stationary point and
-converge. SIESTA reads the files it finds unless told `.false.`, so the answer
-is written, not left out (`start_state_lines`, from the restart group's own
+history to resume. The density is read when present — the reference step's
+SCF starts from it — and SIESTA saves the reference step's converged density and
+reloads it before **every** displacement, so each displacement's SCF starts from
+the undisplaced density, not the previous displacement's (SIESTA 5.4.2
+`save_density_matrix.F90`, `m_new_dm.F90`; the K6 review). The geometry is
+**never** read back: an FC run leaves its *last displacement* in `<label>.XV` —
+measured on the two-atom run, the last free atom sits `FC.Displacement` off the
+input along z afterwards — so a deck that honoured that file would take a nudged
+geometry as the stationary point and converge. SIESTA reads a density it finds
+unless told `.false.` (`DM.UseSaveDM` defaults true) and a geometry only when
+told `.true.` (`MD.UseSaveXV` defaults false), so both answers are written, not
+left out (`start_state_lines`, from the restart group's own
 declaration). `siesta/warm-files.toml` carries the `[vibration]` section under
 the growth rule of [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
 § 4.2a (a new calculation type is a new section, never a branch) — `.FC` and `.FCC`, inventory-only, since a rerun restarts
@@ -1217,7 +1221,7 @@ for a in FC.First .. FC.Last:
     for α in (x, y, z):
         for s in (−, +):
             R = R₀;  R[a, α] += s · δ
-            SCF at R, started from the previous density  →  forces F_b on EVERY atom b
+            SCF at R, started from the reference density  →  forces F_b on EVERY atom b
             one row per atom b  →  <SystemLabel>.FC
 ```
 
@@ -1444,7 +1448,7 @@ combine into a ranking of modes for the transport step is proposed in § 5.10
 ### 5.7 What it costs, by construction
 
 `1 + 6·n_free` force evaluations, each a whole-system SCF started from the
-previous one's density, and the memory of one SIESTA SCF whatever `n_free` is.
+reference step's density, and the memory of one SIESTA SCF whatever `n_free` is.
 For 300 atoms with 50 free: 301 evaluations instead of 1 801. There is no
 all-atom matrix anywhere in the route, which is why it is the one that scales
 to a junction (compare § 4.4's last row). Holding atoms buys exactly the

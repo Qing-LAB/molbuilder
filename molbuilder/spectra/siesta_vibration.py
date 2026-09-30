@@ -111,6 +111,13 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
     :func:`result_of` -- and, before the deck is written, its
     ``relaxation`` by the stage's own checks (`validate`'s ``prior``,
     handed in by the SIESTA spec)."""
+    if relaxation is not None and not relaxation_stage:
+        # THE RECORD NAMES THE STAGE IT IS OF: the finish's remedy for a
+        # reference geometry that is not stationary is chosen by it
+        # (`vibrational_analysis.nonstationary_remedy`), and a record with no
+        # stage would fall to the person's-statement remedy.
+        raise ValueError("a relaxation record in the vibration block needs "
+                         "the stage it is of (relaxation_stage)")
     return {"stage": str(stage),
             "force_criterion_ev_ang": (None if force_criterion_ev_ang is None
                                        else float(force_criterion_ev_ang)),
@@ -118,8 +125,7 @@ def vibration_record(*, stage: str, force_criterion_ev_ang: Optional[float],
             "relaxation": (dict(relaxation) if relaxation is not None
                            else None),
             "relaxation_stage": (str(relaxation_stage)
-                                 if relaxation is not None
-                                 and relaxation_stage else None),
+                                 if relaxation is not None else None),
             "temperature_K": float(temperature_K),
             "molbuilder_version": str(molbuilder_version)}
 
@@ -267,6 +273,11 @@ def result_of(run: ForceConstantRun) -> SpectraResults:
     H = hessian_from_fc(run.fc, run.displaced)
     rec = run.record
     criterion = rec.get("force_criterion_ev_ang")
+    if rec.get("relaxation") is not None and not rec.get("relaxation_stage"):
+        raise FinishError(
+            f"{run.deck.name}'s vibration block carries a relaxation record "
+            f"but not the stage it is of -- a deck prepared before its "
+            f"remedy named the stage (2026-09-29): prepare the stage again")
     if rec.get("temperature_K") is None:
         raise FinishError(
             f"{run.deck.name}'s vibration block states no temperature_K -- "

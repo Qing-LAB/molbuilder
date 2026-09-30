@@ -15,11 +15,6 @@ from typing import Dict, List
 
 from ..jobset.model import WarmFile
 
-#: The optimizer a stage runs, as an opaque string the `jobset` layer compares
-#: and never interprets -- imported from the one place it is spelled, because
-#: the comparison is engine-agnostic and two spellings of one idea is the drift
-#: the warm-file pair rule exists to survive.
-from ..jobset.model import OPTIMIZER_TRAIT
 
 
 def _traits(eff) -> Dict[str, str]:

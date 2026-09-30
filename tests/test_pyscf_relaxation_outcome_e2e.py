@@ -108,11 +108,20 @@ def test_halt_stops_the_rung_before_its_geometry_is_written(tmp_path,
     the budget and the policy, and no ``_optimized.xyz`` is written — so no
     later rung can start from a geometry nobody accepted.
 
+    And the run's live log says it stopped, not that it ended: the product's
+    own reader of that log reads ``stopped``.
+
     MUTATION THIS MUST FAIL AGAINST: ``relax`` taking the geometry without
     asking geomeTRIC (``optimize``, or ``return mol, True`` after the first
     call) — the decks before 2026-09-29, which exited 0 and wrote the
-    unconverged geometry for the next rung.
+    unconverged geometry for the next rung; and a stop raised as a
+    ``SystemExit``, which no ``excepthook`` sees, so the log closed as a
+    clean end (the K6 review, R1).
     """
+    from pathlib import Path
+
+    from molbuilder.parse.registry import parse
+
     bundle, state, said = _run(
         tmp_path, monkeypatch, calculation="optimization",
         overrides={"geom_max_steps": 1, "on_nonconvergence": "halt"})
@@ -121,18 +130,22 @@ def test_halt_stops_the_rung_before_its_geometry_is_written(tmp_path,
             "(on_nonconvergence = halt)") in said, said[-3000:]
     assert not list(bundle.glob("*_optimized.xyz")), (
         "a halted rung left a relaxed geometry for the next rung to read")
+    log = parse(Path(next(bundle.glob("*.molwatch.log"))))
+    assert log.run_state == "stopped", log.run_state
 
 
 def test_continue_reenters_from_the_geometry_reached(tmp_path, monkeypatch):
-    """Two steps a batch and two batches more: not enough to relax H2 from
-    0.95 Å — measured: each re-entry starts geomeTRIC's step history afresh,
-    so a two-step batch makes about one good step.  So the run says each
-    re-entry, each batch starts where the last one stopped and never at the
-    input geometry, and at the end of the budget it stops as ``halt`` does,
-    naming the whole budget and writing no relaxed geometry.
+    """One step a batch and two batches more, from 1.6 Å: CERTAIN not to relax
+    H2, by geomeTRIC's own rule -- its trust radius starts at 0.1 Å
+    (``params.py``) and every re-entry starts it afresh, so no step moves the
+    bond more than 0.2 Å, and three steps cannot cover the 0.86 Å to its
+    minimum.  So the run says each re-entry, each batch starts where the last
+    one stopped and never at the input geometry, and at the end of the
+    budget it stops as ``halt`` does, naming the whole budget and writing no
+    relaxed geometry.
 
     MUTATION THIS MUST FAIL AGAINST: a re-entry from the input geometry (no
-    ``reset`` to the geometry reached) — the live log returns to 0.95 Å; a
+    ``reset`` to the geometry reached) -- the live log returns to 1.6 Å; a
     ``continue`` that never re-enters (the old loop retried only a failed
     SCF); and a rung that takes the geometry without asking.
     """
@@ -142,12 +155,13 @@ def test_continue_reenters_from_the_geometry_reached(tmp_path, monkeypatch):
 
     bundle, state, said = _run(
         tmp_path, monkeypatch, calculation="optimization",
-        overrides={"geom_max_steps": 2, "on_nonconvergence": "continue",
+        molecule=(["H", "H"], [[5.0, 5.0, 5.0], [5.0, 5.0, 6.6]]),
+        overrides={"geom_max_steps": 1, "on_nonconvergence": "continue",
                    "geom_continue_retries": 2})
     assert state == "failed", said[-3000:]
     assert said.count("continuing from the geometry it reached") == 2, (
         said[-3000:])
-    assert ("did not meet geomeTRIC's criteria in 6 steps "
+    assert ("did not meet geomeTRIC's criteria in 3 steps "
             "(on_nonconvergence = continue)") in said, said[-3000:]
     assert not list(bundle.glob("*_optimized.xyz"))
     # The live log keeps every step of every batch.  A re-entry evaluates
@@ -158,10 +172,10 @@ def test_continue_reenters_from_the_geometry_reached(tmp_path, monkeypatch):
     bonds = [round(float(np.linalg.norm(
         np.asarray(fr.structure.positions)[0]
         - np.asarray(fr.structure.positions)[1])), 4) for fr in frames]
-    assert bonds[0] == 0.95, bonds
+    assert bonds[0] == 1.6, bonds
     reentries = [i for i in range(1, len(bonds)) if bonds[i] == bonds[i - 1]]
     assert len(reentries) == 2, bonds
-    assert 0.95 not in bonds[1:], (
+    assert 1.6 not in bonds[1:], (
         f"a batch started again at the input geometry: {bonds}")
 
 
@@ -258,3 +272,32 @@ def test_the_runs_own_pair_carries_no_record_of_the_inputs_run(tmp_path,
     written = StructureCodec().read(next(bundle.glob("*_optimized.xyz")))
     assert not {"relaxation", "calculation"} & set(written.info or {}), (
         written.info)
+
+
+def test_a_structure_stated_relaxed_is_measured_not_relaxed(tmp_path,
+                                                           monkeypatch):
+    """A PySCF vibration whose structure is stated relaxed runs no relaxation
+    -- the phase is complete by assertion, no step is taken -- and the gradient
+    check measures the statement: H2 at 0.95 Å is not stationary, so the
+    result's verdict is false and its warning carries the one remedy for a
+    structure stated relaxed on this engine (`engines/vibration.md` § 4.3,
+    § 5.5).
+
+    MUTATION THIS MUST FAIL AGAINST: the relaxation escaping its
+    ``if not ALREADY_RELAXED`` guard (the rule the retired text test pinned),
+    a gradient check that records no verdict (before 2026-09-29), and a
+    remedy worded apart from the one text.
+    """
+    from molbuilder.parse.registry import parse
+    from molbuilder.spectra.vibrational_analysis import nonstationary_remedy
+
+    bundle, state, said = _run(
+        tmp_path, monkeypatch, calculation="vibration",
+        template={"already_relaxed": True}, overrides={})
+    assert state == "finished", said[-3000:]
+    doc = parse(next(bundle.glob("*.spectra.json"))).payload
+    rx = doc["relaxation"]
+    assert (rx["enabled"], rx["n_steps"]) == (False, 0), rx
+    assert doc["phase_relaxation"] == "complete", doc["phase_relaxation"]
+    assert rx["converged"] is False, rx
+    assert nonstationary_remedy(None, "pyscf") in (rx.get("warning") or ""), rx

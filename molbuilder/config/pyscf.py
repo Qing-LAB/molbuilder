@@ -719,7 +719,7 @@ class PySCFConfig:
         "label": 'Structure is already relaxed',
         "tier": "basic",
         "item_kind": "deck",
-        "expands": ('geomeTRIC optimize()', 'gradient check'),
+        "expands": ('geomeTRIC relaxation (relax_policy.relax)', 'gradient check'),
         "engine_key": "(molbuilder: no engine keyword -- the ladder or the deck decides)",
     })
     compute_raman: bool = field(default=True, metadata={

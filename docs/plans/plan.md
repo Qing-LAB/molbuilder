@@ -4677,7 +4677,7 @@ reviewers' probes (the archive's § E lists) among its runs.
 
 ### 5w.5 Progress
 
-* **K6 — in progress.** *Step 1 done 2026-09-29*: both PySCF decks relax
+* **K6 — done 2026-09-29, R6 and V1.31 awaiting the user's word.** *Step 1 done 2026-09-29*: both PySCF decks relax
   through one spliced function, `relax_policy.relax`, which calls
   `geometric_solver.kernel` and applies the policy to geomeTRIC's own flag —
   `halt` stops before the relaxed geometry is written, `continue` re-enters
@@ -4739,7 +4739,37 @@ reviewers' probes (the archive's § E lists) among its runs.
   (`parse.contract.relaxation_of`, over the run's own output), which the
   Results tab's export already writes onto the pair; a deck computing its own
   copy in the pySCF env would be a second source of the same record.
-  *Left*: the full review.
+  *The full review, 2026-09-29* — nineteen findings (R1–R19), each re-read in
+  the code and the engine's source, and every one but R6 fixed: a halted
+  relaxation stops with a `RuntimeError`, so the live log records `# error:`
+  rather than a clean end (R1); what `proceed` records is stated truly — the
+  judged force at the geometry reached, which can pass while geomeTRIC's other
+  criteria did not (R2); every wrapper text that speaks of a retry reads one
+  description (`runwrap._retry_texts`), and the force-constant retry is stated
+  exactly — it re-runs from the reference step, continuing an SCF that stopped
+  there and meeting the same SCF again after one that stopped at a displacement
+  (R4, R5); berny's reasons without the false one (R7); the restatements the
+  step missed (R8); one `prep._rung_kind`, SIESTA-scoped, for the deck and the
+  warm files (R9); a vibration block's relaxation record names its stage and
+  the finish refuses one that does not (R10); one engine-aware remedy, prep's
+  four other wordings gone, "relax first" on SIESTA meaning the ladder's
+  `relax` stage (R11); the relaxation's wording and one reading of the policy
+  (`relax_policy.policy_of`, R12, R13); the status text, the per-bias-point
+  wrappers and transport jobs carry `resumes` (R14); the `continue` test made
+  certain by geomeTRIC's own trust radius, and a road test for a structure
+  stated relaxed on PySCF (R15); the `_initial.xyz` pair stated (R16); the
+  comments, and SS-C7 / SS-C8 — the FC density and restart-file claims — in
+  all their homes (R17); a re-entry's effects stated (R18); the vocabulary
+  sentence (R19; `stages.md` § 1.3's counts go with PO-C21d's sweep). **R3
+  measured and refuted**: an H2 relaxation with `use_gpu` and `scf_soscf` on
+  this machine's GPU (gpu4pyscf 1.8.1) ran under `proceed` and `continue`, the
+  second-order solver converging at every geometry and on re-entry — nothing
+  to refuse. Full suite green (9 488 passed).
+  **R6, awaiting the user's word with V1.31**: a PySCF run's own pair carries
+  no calculation record now, so a later calculation with a blank charge or
+  spin works them out from the structure rather than reading this run's —
+  state that, or have the PySCF deck write its own contract record through
+  the one door (`contract_fields_of`).
 
 ---
 

@@ -25,7 +25,17 @@ it needs arrives as an argument, so it never learns which deck called it.
 from __future__ import annotations
 
 import inspect
-from typing import List
+from typing import List, Tuple
+
+
+def policy_of(cfg) -> Tuple[str, int]:
+    """``(on_nonconvergence, geom_continue_retries)`` read ONCE, the same way
+    for both decks: the policy lower-cased with ``halt`` for a blank, the
+    retry budget an integer with 0 for a blank.  Each deck spelled its own
+    reading until 2026-09-29 (the K6 review, R13)."""
+    policy = str(getattr(cfg, "on_nonconvergence", "") or "halt").strip().lower()
+    retries = int(getattr(cfg, "geom_continue_retries", 0) or 0)
+    return policy, retries
 
 
 def relax(mf, policy, retries, **geometric_kw):
@@ -39,40 +49,48 @@ def relax(mf, policy, retries, **geometric_kw):
                 to ``retries`` more batches, then stops as ``halt`` does;
                 ``proceed`` returns the geometry reached with ``False``.
     ``retries`` further batches of the step budget, under ``continue`` only.
-    ``geometric_kw`` what geomeTRIC is handed — ``maxsteps``, the five
-                ``convergence_*`` criteria, ``constraints``, ``prefix``,
-                ``callback`` — the same at every batch.
+    ``geometric_kw`` what geomeTRIC is handed — ``maxsteps`` (required: the
+                step budget the messages name), the five ``convergence_*``
+                criteria, ``constraints``, ``prefix``, ``callback`` — the same
+                at every batch.
+
+    **The stop is a ``RuntimeError``**, as PySCF's own failures are, not a
+    ``SystemExit``: Python hands a ``SystemExit`` to no ``excepthook``, so the
+    deck's live log would have closed as a clean end (the K6 review, R1).
 
     Every step's SCF must converge under every policy
     (``assert_convergence=True``): a gradient from an unconverged SCF is not a
     force, so PySCF's own error for one is let through, never retried.  A
-    re-entry starts geomeTRIC's step history afresh from the geometry reached,
-    and the trajectory under ``prefix`` then holds that batch's steps; the
-    molwatch log, fed by ``callback``, keeps every step of every batch.
+    re-entry starts geomeTRIC's step history afresh from the geometry reached
+    and evaluates that geometry again, so the live log, fed by ``callback``,
+    shows it twice and counts it; the trajectory under ``prefix`` holds the
+    last batch's steps.
     """
     from pyscf.geomopt.geometric_solver import kernel
-    steps = int(geometric_kw.get("maxsteps", 100))
+    steps = int(geometric_kw["maxsteps"])
     batches = 1 + (int(retries) if policy == "continue" else 0)
     for batch in range(1, batches + 1):
         converged, mol = kernel(mf, assert_convergence=True, **geometric_kw)
         if converged:
             return mol, True
         if batch < batches:
-            print(f"WARN: the relaxation did not meet geomeTRIC's criteria "
+            print(f"WARNING: the relaxation did not meet geomeTRIC's criteria "
                   f"in {steps} steps; continuing from the geometry it "
                   f"reached ({batches - batch} more batch(es) of {steps})")
             mf = mf.reset(mol)
     if policy == "proceed":
         print(f"WARNING: the relaxation did not meet geomeTRIC's criteria in "
               f"{steps} steps; on_nonconvergence = proceed keeps the "
-              f"geometry it reached, recorded as not converged")
+              f"geometry it reached")
         return mol, False
-    raise SystemExit(
+    raise RuntimeError(
         f"the relaxation did not meet geomeTRIC's criteria in "
         f"{steps * batches} steps (on_nonconvergence = {policy}), so the "
         f"relaxed geometry is not written and nothing can start from it.  "
-        f"Raise geom_max_steps or choose on_nonconvergence = continue, and "
-        f"prep this stage again.")
+        + ("Raise geom_max_steps or geom_continue_retries"
+           if policy == "continue" else
+           "Raise geom_max_steps or choose on_nonconvergence = continue")
+        + ", and prep this stage again.")
 
 
 def emit_relax() -> List[str]:
@@ -80,4 +98,4 @@ def emit_relax() -> List[str]:
     return [ln.rstrip() for ln in inspect.getsource(relax).splitlines()]
 
 
-__all__ = ["relax", "emit_relax"]
+__all__ = ["policy_of", "relax", "emit_relax"]

@@ -1730,7 +1730,7 @@ Nothing else takes it: with atoms held the thermochemistry is the vibrational pa
 [item.already_relaxed]
 kind = "deck"
 calculations = ["vibration"]
-expands = ["geomeTRIC optimize()", "gradient check"]
+expands = ["geomeTRIC relaxation (relax_policy.relax)", "gradient check"]
 category = ["procedure"]
 engines = ["pyscf", "siesta"]
 engine_key = "(molbuilder: no engine keyword -- the ladder or the deck decides)"
@@ -2071,7 +2071,7 @@ label = "If max_steps runs out"
 tier = "advanced"
 help = """
 What this deck does when geomeTRIC reports its 5 criteria unmet at max_steps -- the deck asks geomeTRIC, it never assumes convergence:
-  proceed  -- keep the geometry reached, record the relaxation as not converged, and let the next rung start from it.
+  proceed  -- keep the geometry reached, say so, and let the next rung start from it; the record's verdict is the force left at that geometry, which can pass while geomeTRIC's other criteria did not.
   continue -- re-enter from the geometry reached, up to continue_retries more batches of max_steps; still short, stop as halt does.
   halt     -- stop the run before the relaxed geometry is written, rather than hand on a geometry nobody accepted.
 Every step's SCF must converge under all three: a gradient from an unconverged SCF is not a force, so an SCF that fails at a step stops the run whatever this says.

@@ -307,7 +307,8 @@ two halves were symmetric and has not been since 2026-08-07.
   next stage exists only because you looked at the result and prepped it — the
   same judgement the policy tried to encode, made where the evidence is.
   **`on_nonconvergence` survives as a PySCF field with a narrower meaning** —
-  whether THIS rung's `optimize()` raises or exits with the partial geometry —
+  what THIS rung does when geomeTRIC reports its criteria unmet at the step
+  budget — stop, re-enter from the geometry reached, or take it —
   and its semantics live with the engine that has it,
   [`pyscf.md`](?doc=engines/pyscf.md) § 3.
 

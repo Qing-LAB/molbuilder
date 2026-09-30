@@ -92,6 +92,10 @@ class StageStatus:
     #: the record without a SECOND reader of the same file -- the schema is
     #: versioned (``molbuilder/run-launch@1``) and may grow fields.
     launch: Optional[Dict[str, Any]] = None
+    #: Whether a re-run of this stage continues from what the last one left
+    #: -- the job's own fact (`Job.resumes`, `job-contracts.md` § 4.2a), so
+    #: the status says what re-submitting it will do.
+    resumes: bool = True
 
     @property
     def name(self) -> str:
@@ -288,6 +292,7 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
             attempt=(attempt.name if attempt else None),
             attempts=attempts(d),
             launch=launch,
+            resumes=job.resumes,
             # THE SAME LABEL THE STATE WAS READ WITH.  This asked for
             # `jobset.name` while everything else in the loop had moved to
             # `job_label` -- so the fix `_label_of` exists for was applied to
@@ -339,11 +344,16 @@ def render_status(status: JobSetStatus) -> str:
     if status.complete:
         lines.append("All stages finished. Nothing to resume.")
     else:
+        first = next((s for s in status.stages
+                      if s.name == status.first_incomplete), None)
+        what = ("the engine warm-starts from its own restart files"
+                if first is None or first.resumes else
+                "it runs again from its first step -- this kind of run does "
+                "not resume")
         lines.append(
             f"First incomplete stage: {status.first_incomplete}.  "
-            "molbuilder does NOT auto-resume -- you decide: re-submit that "
-            "stage (the engine warm-starts from its own restart files) or "
-            "switch parameters (`engines/stages.md`).")
+            f"molbuilder does NOT auto-resume -- you decide: re-submit that "
+            f"stage ({what}) or switch parameters (`engines/stages.md`).")
     return "\n".join(lines)
 
 

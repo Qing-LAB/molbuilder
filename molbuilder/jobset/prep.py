@@ -1154,8 +1154,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             log.step("the atom order the engine needs")
             log.produced("atom-permutation.json",
                          f"key held-first, {struct.n_atoms} atoms -> {_perm_path.name}")
-        from ..pyscf.stages import vibration_render_kind
-        _render_kind = vibration_render_kind(pset.stage)
+        _render_kind = _rung_kind(task, pset.stage)
         struct, _render_cell, _relaxed_by = _vibration_stage_geometry(
             base, task, pset, struct, log=log)
         _finishes = _render_kind == "vibration"
@@ -1978,8 +1977,11 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
         # read off the deck -- it rides the allocation road
         # (`model.Resources.program`) into the wrapper.
         res = dataclasses.replace(res, program="tbtrans")
+    from ..warmfiles import resumes_for
     job = Job(name=stage, script=script, resources=res,
-              warm=warm_declaration(stage, task.label, base))
+              warm=warm_declaration(stage, task.label, base),
+              resumes=resumes_for(str(task.engine), _rung_kind(task, stage),
+                                  base))
 
     # BEFORE ANYTHING IS WRITTEN, and that is the whole point of the check.
     # It stood after the per-point wrapper loop below until 2026-09-16, so
@@ -2001,7 +2003,10 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                               n_atoms=len(struct.elements),
                               resources=res, env=env,
                               emit_sbatch=emit_sbatch, project_dir=base,
-                              machine_record=environment)
+                              machine_record=environment,
+                              # the job's own facts, as the ladder's
+                              # wrapper is given them (`prep_jobset`)
+                              finish=job.finish, resumes=job.resumes)
     js = JobSet(name=task.label, engine=task.engine, kind="ladder",
                 shared=_siesta_shared_package(base), jobs=[job])
     js = _merge_run_jobset(base / JOBSET_FILENAME, js,
@@ -2446,11 +2451,15 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
 
 
 def _rung_kind(task, stage_name: Optional[str]) -> str:
-    """The kind of run a rung is -- the warm-files section it reads
-    (`job-contracts.md` § 4.2a): the calculation's own, except a vibration's
-    rungs, which are what their decks render (`vibration_render_kind`): the
-    `relax` rung an optimisation, every other rung the vibration."""
-    if task.calculation == "vibration" and stage_name:
+    """The kind of run a rung IS -- ONE answer, read by the deck it renders
+    and by the warm-files section it reads (`job-contracts.md` § 4.2a): the
+    calculation's own, except a SIESTA vibration's rungs, which are two
+    programs (`vibration_render_kind`): the `relax` rung an optimisation,
+    every other rung the vibration.  A PySCF vibration relaxes inside its
+    one deck, so its rungs are all the vibration.  Two answers stood until
+    2026-09-29, one engine-scoped and one not (the K6 review, R9)."""
+    if (task.calculation == "vibration" and str(task.engine) == "siesta"
+            and stage_name):
         from ..pyscf.stages import vibration_render_kind
         return vibration_render_kind(stage_name)
     return str(task.calculation)
