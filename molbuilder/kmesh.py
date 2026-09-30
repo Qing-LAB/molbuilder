@@ -30,8 +30,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 #: The transport axis of a transport calculation: the cell's third vector,
 #: ``c`` (A3).  The composition states it (`transport/compose.py` builds every
 #: junction's kinds as ``(across, across, "transport")``), and TranSIESTA's
-#: electrodes are semi-infinite along it.  ONE statement of it, read by the
-#: composition and by the mesh.
+#: electrodes are semi-infinite along it.  The composition and the mesh read
+#: it here; `transport/sort.py` keeps a copy of its own and the transport
+#: writers index ``c`` directly (owed, plan § 5w K3).
 TRANSPORT_AXIS = 2
 
 #: The components' names -- the form's triple labels, and how a refusal names
@@ -205,10 +206,12 @@ def with_fixed(item: str, value, kind: str):
 
 def write(mesh: KMesh) -> List[str]:
     """The mesh's text -- the ONLY one.  SIESTA's ``%block
-    kgrid_Monkhorst_Pack`` and ``tbtrans``'s ``%block TBT.k`` share one
-    grammar: three rows of counts and the offset column (``tbtrans``:
-    ``m_tbt_kpoint.F90``, ``read_kgrid``).  ``TBT.k``'s list form carries no
-    offset, so the block is written always."""
+    kgrid_Monkhorst_Pack`` and ``tbtrans``'s ``%block TBT.k``: three rows of
+    counts, each with its offset column.  SIESTA reads a row of one to four
+    values (``kpoint_t.F90``); ``tbtrans`` reads a block row only when it
+    carries the offset (``m_tbt_kpoint.F90``, ``read_kgrid``), so the column
+    is written always -- and ``TBT.k``'s list form carries no offset, so the
+    block is written always too."""
     name = "TBT.k" if mesh.program == "tbtrans" else "kgrid_Monkhorst_Pack"
     rows = []
     for i, axis in enumerate(mesh.axes):
@@ -218,13 +221,30 @@ def write(mesh: KMesh) -> List[str]:
     return [f"%block {name}", *rows, f"%endblock {name}"]
 
 
+def _a_stripe(mesh: KMesh, i: int) -> bool:
+    """Is ``mesh`` a transport calculation's SCF mesh whose isolated axis
+    ``i`` sits beside a periodic transverse axis -- the junction TranSIESTA
+    refuses to attach a lead to when ``i`` is sampled more than once?  Its
+    check skips a lead isolated on both transverse axes (``is_Gamma``,
+    ``ts_electrode.F90``), and ``tbtrans`` does not make it."""
+    transport = mesh.axes[TRANSPORT_AXIS].role in ("open", "lead")
+    return (transport and mesh.program == "siesta"
+            and any(a.role == "sampled" for j, a in enumerate(mesh.axes)
+                    if j not in (i, TRANSPORT_AXIS)))
+
+
 def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
           refused=frozenset()) -> List[Any]:
     """The findings on the meshes ONE deck writes -- one rule each
     (`engines/siesta.md` § 6.1; `science/validation.md` § 4.1).
 
-    Only warnings: ``k > 1`` is the person's explicit statement (user,
-    2026-08-20), and ``k = 1`` states nothing and is checked not at all.  A
+    Warnings: ``k > 1`` is the person's explicit statement (user,
+    2026-08-20), and ``k = 1`` states nothing and is checked not at all --
+    save one refusal, where the engine itself stops: a transport
+    calculation's SCF mesh sampling an isolated axis more than once while the
+    other transverse axis is periodic (a stripe), which TranSIESTA refuses at
+    the device after the seed and both leads have run (``ts_electrode.F90``,
+    ``check_in_cell``; refused for now, user 2026-09-30).  A
     count at or below its limit and a fixed component are refused by the
     one per-value door (``template.why_not``) on every surface; they are not
     judged here again -- and a mesh built from a value that cannot stand
@@ -253,7 +273,19 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
         for i, axis in enumerate(mesh.axes):
             where = f"config.{axis.source}"
             name = f"{axis.source}[{i}]"
-            if axis.role == "gamma" and axis.count > 1:
+            if axis.role == "gamma" and axis.count > 1 and _a_stripe(mesh, i):
+                out.append(Issue(
+                    "error",
+                    f"{name} = {axis.count} on an isolated axis of a junction "
+                    f"that is periodic across the other: TranSIESTA stops the "
+                    f"device on it -- a lead that repeats along one "
+                    f"transverse axis must sample the other, where it has no "
+                    f"neighbours, at one point (ts_electrode.F90, \"found "
+                    f"incompatible k-grids\"), and the seed and both leads "
+                    f"would have run first.  Set it to 1; such a junction is "
+                    f"refused for now (engines/siesta.md 6.1)",
+                    where))
+            elif axis.role == "gamma" and axis.count > 1:
                 out.append(Issue(
                     "warn",
                     f"{name} = {axis.count} on an isolated axis: the "
@@ -274,8 +306,10 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                         f"interaction is deliberate, carry on",
                         where))
     for i in range(3):
+        # ...read modulo 1, as both engines read it (`kpoint_t.F90`,
+        # `m_tbt_kpoint.F90`): an offset of 1.0 is Gamma again.
         single = [m.axes[i] for m in judged
-                  if m.axes[i].count == 1 and m.axes[i].shift != 0.0]
+                  if m.axes[i].count == 1 and m.axes[i].shift % 1.0 != 0.0]
         if single:
             counts = ", ".join(dict.fromkeys(
                 f"{a.source}[{i}] = 1" for a in single))
@@ -283,7 +317,7 @@ def check(meshes: Sequence[Optional[KMesh]], struct, *, cell=None,
                 "warn",
                 f"kgrid_displacement[{i}] = {single[0].shift} shifts an "
                 f"axis sampled at a SINGLE k-point ({counts}), which moves "
-                f"that point off Gamma to the zone boundary.  For an "
+                f"that point off Gamma.  For an "
                 f"isolated molecule only Gamma is meaningful -- set this "
                 f"component to 0.",
                 "config.kgrid_displacement"))

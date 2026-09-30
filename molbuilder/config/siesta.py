@@ -515,7 +515,6 @@ class SiestaConfig:
         "label": "k-point mesh",
         "engine_key":  '%block kgrid_Monkhorst_Pack',
         "id_suffix": "k",
-        "triple_labels": ("x", "y", "z"),
         "tier":  "basic",
         "skip_cli": True,
         # Bounds PER COMPONENT, a recommendation (validation/metadata.py's
@@ -541,8 +540,8 @@ class SiestaConfig:
             # Same block as kgrid; the note says which column, and
             # ``_bare_anchor`` keeps only the keyword.
             "engine_key": '%block kgrid_Monkhorst_Pack  (displ column)',
-            # NO ``section`` / ``id_suffix`` / ``triple_labels`` / ``tier``.
-            # Those four are the OLD Build form's keys, and ``section`` is the
+            # NO ``section`` / ``id_suffix`` / ``tier``.
+            # Those three are the OLD Build form's keys, and ``section`` is the
             # opt-in that puts a field on it -- retired at `@2` in favour of
             # ``category`` (`engines/template.md` § 5).  The UI is to be rebuilt
             # FROM the template; a new field does not join the form that is

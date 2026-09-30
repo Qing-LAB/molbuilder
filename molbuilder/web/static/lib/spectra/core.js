@@ -994,13 +994,20 @@
                     params:      collectParams(engine),
                 }),
             }).then(x => x.json());
-            if (Array.isArray(r.issues)) showFindings(engine, r.issues);
+            if (Array.isArray(r.issues)) {
+                live[engine] = r.issues;
+                showFindings(engine, r.issues);
+            }
         } catch (e) {
             // Network hiccup: the panel keeps its previous state; the
             // settings gate at prep is the canonical refusal anyway.
         }
     }
     const refreshPreflightDebounced = _debouncePreflight(refreshPreflight, 250);
+
+    // What the live preflight said last, per engine -- the findings a Send
+    // adds its own to (`handover-procedure.md` § 2.1).
+    const live = { siesta: [], pyscf: [] };
 
     /* ONE PLACE this tab shows an engine's findings -- the live
      * preflight's and the hand-over's (the cell gate's notices) --
@@ -1063,11 +1070,10 @@
         await mb.taskHandover.send({
             projects:    mb.projects,
             say:         say,
-            // The hand-over's findings in this engine's panel; an empty
-            // list leaves the live preflight's standing (still true).
-            showFindings: (issues) => {
-                if (issues.length) showFindings(engine, issues);
-            },
+            // The hand-over's findings in this engine's panel, beside the
+            // live preflight's, which are still true of the form it sends.
+            standing:     live[engine],
+            showFindings: (issues) => showFindings(engine, issues),
             structure:   _structure,
             engine:      engine,
             params:      collectParams(engine),

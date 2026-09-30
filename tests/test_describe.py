@@ -280,7 +280,9 @@ def test_a_value_past_its_hard_limit_is_refused(struct, cfg):
     """A stage's value past its item's hard limit (`above`,
     `engines/template.md` § 5.3) is refused where the description is
     written, with the reason; a value merely outside the recommended range
-    is warned, and describes."""
+    describes.  API-LEVEL, because the road cannot reach it: `jobset init`
+    describes a non-transport calculation from its ladder presets alone, so
+    no person's value reaches this door but through the library."""
     from molbuilder.task import Stage
     with pytest.raises(D.DescribeError, match=r"k-point count"):
         _describe(struct, cfg,

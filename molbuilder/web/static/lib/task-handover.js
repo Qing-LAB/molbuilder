@@ -30,8 +30,12 @@
  *                   //   through lib/validation-findings.js (science/
  *                   //   validation.md § 4.1 R2, R2a: a notice IS a finding,
  *                   //   and one module draws them).  Handed every notice
- *                   //   and every finding a refusal carries, and [] after
- *                   //   a clean send; the tab decides what empty means.
+ *                   //   and every finding a refusal carries, beside the
+ *                   //   `standing` ones, after every send.
+ *     standing,     // issues[] -- what the tab's live check shows now, still
+ *                   //   true of the form it sends: a send adds its findings
+ *                   //   to these and clears none (handover-procedure.md
+ *                   //   § 2.1).  A tab with no live check sends none.
  *     structure,    // the envelope from the tab's own MolView exportFile()
  *     engine,       // "siesta" | "pyscf"
  *     params,       // collectForm() output, keyed by catalogue names
@@ -57,6 +61,19 @@
          * (R3). */
         const showFindings = (typeof o.showFindings === "function")
             ? o.showFindings : null;
+        /* BESIDE WHAT THE LIVE CHECK ALREADY SAYS: its findings are still
+         * true of the form just sent, so a send adds its own and clears none
+         * -- the K3 review found a send replacing them, so a refusal the
+         * live check was showing left the page at the send.  One the live check
+         * and the send both carry (the cell gate runs in each for a stated
+         * box) is shown once. */
+        const standing = Array.isArray(o.standing) ? o.standing : [];
+        const beside = (found) => {
+            const key = (i) => [i && i.severity, i && i.where,
+                                i && i.message].join("\u0000");
+            const seen = new Set(standing.map(key));
+            return standing.concat((found || []).filter((i) => !seen.has(key(i))));
+        };
         if (!projects || typeof projects.getCurrentDir !== "function") {
             say("error", "The projects sidebar is not available on this page.");
             return;
@@ -210,7 +227,7 @@
                 /* A refusal's findings, row by row, where the page shows its
                  * findings -- the door's own sentence in the status line. */
                 if (showFindings && out && Array.isArray(out.findings)) {
-                    showFindings(out.findings);
+                    showFindings(beside(out.findings));
                 }
                 say("error",
                     (out && out.error) || ("render failed (" + r.status + ")"));
@@ -264,7 +281,7 @@
          * NAVIGATION, because a page that jumps away is a page whose warning
          * was never read (`tabs.md` — a tab does not decide for its user). */
         const notices = Array.isArray(out.notices) ? out.notices : [];
-        if (showFindings) showFindings(notices);
+        if (showFindings) showFindings(beside(notices));
         // THE ROAD FROM A DESCRIBED TRANSPORT CALCULATION, said whether or
         // not something came back: a notice is read, not a stop.  The
         // notices branch below returned before it until the K3 review.

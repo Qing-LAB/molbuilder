@@ -815,7 +815,7 @@ class TestSendToTaskSetup:
         )
         return calc, xyz
 
-    def _load_and_send(self, page, base_url, calc, xyz):
+    def _load_and_send(self, page, base_url, calc, xyz, before_send=None):
         _open_build(page, base_url)
         page.wait_for_function(
             "() => window.molbuilder && window.molbuilder.projects"
@@ -833,6 +833,8 @@ class TestSendToTaskSetup:
         # The form must be rendered before collectParams reads it.
         page.wait_for_selector("#siesta-form-container input",
                                timeout=_BOOT_TIMEOUT_MS)
+        if before_send is not None:
+            before_send(page)
         page.locator("#send-to-task-setup").click()
 
     def test_send_writes_the_handover_into_the_selected_folder(
@@ -910,6 +912,44 @@ class TestSendToTaskSetup:
         assert "Task setup" in status, (
             "nothing opens Task setup for you, so the status has to say to; "
             "got: " + status)
+
+    def test_send_keeps_what_the_live_check_says(
+            self, page, flask_server, tmp_path, monkeypatch):
+        """A Send adds its findings to the live check's and clears none
+        (`handover-procedure.md` § 2.1): the live check's are still true of
+        the form it sent.  Until the K3 review a Send replaced them with its
+        own notices, so what the live check was saying left the page at the
+        moment it was sent.
+
+        MUTATION THIS MUST FAIL AGAINST: the send handing the panel its own
+        notices alone (the live warning is gone)."""
+        calc, xyz = self._calc_dir(tmp_path, monkeypatch)
+        beside = ("() => { const w = document.querySelector('#p-mesh-cutoff')"
+                  "  .closest('.schema-field');"
+                  "  return !!w.querySelector('.field-issues .issue-item'); }")
+
+        def a_live_warning(page):
+            # 5 Ry is far below the recommended floor: one warning, beside
+            # the control.
+            page.fill("#p-mesh-cutoff", "5")
+            page.dispatch_event("#p-mesh-cutoff", "change")
+            page.wait_for_function(beside, timeout=10_000)
+
+        self._load_and_send(page, flask_server, calc, xyz,
+                            before_send=a_live_warning)
+        page.wait_for_function(
+            "() => (document.querySelector('#handover-status') || {})"
+            "      .textContent.includes('Wrote')",
+            timeout=10_000)
+        # The send's own notice -- the default vacuum this box was given --
+        # came back into the panel...
+        page.wait_for_function(
+            "() => [...document.querySelectorAll('#fdf-issues .issue-item')]"
+            "      .some(r => r.textContent.includes('No vacuum set'))",
+            timeout=10_000)
+        # ...beside the live warning, which is still there.
+        assert page.evaluate(beside), (
+            "the send cleared the live check's warning from the form")
 
     def test_send_refuses_a_folder_that_is_already_described(
             self, page, flask_server, tmp_path, monkeypatch):

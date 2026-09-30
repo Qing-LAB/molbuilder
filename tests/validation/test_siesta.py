@@ -77,10 +77,11 @@ def test_every_range_warning_names_the_engine_keyword(water_struct):
         # `kgrid_displacement` gained a per-component ``range`` on
         # 2026-08-15 and became the first ranged tuples in the schema.
         #
-        # They are genuinely out of scope for THIS rule: their warnings come
-        # from their own ``validate`` callables and name a component
-        # (``kgrid[0] = 641 ...``), which is a different sentence shape from
-        # the ``label (KEYWORD) = value`` this test governs.
+        # They are genuinely out of scope for THIS rule: their range warning
+        # names a component (``k-point mesh (%block kgrid_Monkhorst_Pack)[0]
+        # = 641 ...``, per component since 2026-09-30), which is a different
+        # sentence shape from the ``label (KEYWORD) = value`` this test
+        # governs.
         if isinstance(getattr(SiestaConfig(), f.name), (tuple, list)):
             continue
         cfg = dataclasses.replace(

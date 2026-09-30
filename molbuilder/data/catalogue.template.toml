@@ -408,7 +408,7 @@ Shifts the k-point mesh off Gamma, one value per axis, in units of the mesh spac
   0.5    The classic Monkhorst-Pack shift. Use on even meshes -- it samples better than a Gamma-centred grid of the same size, and matters most for metals.
 Axes are independent: [0.5, 0.5, 0.0] shifts two and leaves the third on Gamma, which is what a slab wants when the third axis is vacuum.
 On a hexagonal cell -- an Au(111) surface -- keep it Gamma-centred: 0.5 does not respect the six-fold symmetry.  SIESTA folds only k with -k, so nothing is computed wrong; the sampling is lopsided and converges more slowly.
-In a transport calculation the transport direction takes one k-point with no offset on every rung -- both engines force it -- so that component is fixed at 0 and shown locked.  Across it the offset is one value for every rung, cited from the relaxation: TranSIESTA refuses a lead whose offset differs from the device's (engines/siesta.md 6.1).
+In a transport calculation the transport direction is sampled with no offset on every rung -- one point on the seed, the device and the transmission, electrode_kz points on the leads -- so that component is fixed at 0 and shown locked.  Across it the offset is one value for every rung, cited from the relaxation: TranSIESTA refuses a lead whose offset differs from the device's (engines/siesta.md 6.1).
 """
 
 [item.relax_type]
@@ -2233,7 +2233,7 @@ How densely the transverse Brillouin zone is sampled when tbtrans evaluates T(E)
 
 The third number is the transport direction.  It is 1 because that axis is the open boundary, handled by the Green's function rather than by a Brillouin-zone sum -- the same reason the SCF grid's third component is 1.
 
-`jobset init` sets the two transverse counts to whatever the cited run used, so this starts out matching the SCF and the deck states it explicitly.  That is a starting point, not an answer: T(E) is an integral over the transverse zone and its features sharpen with k-density, so a grid converged for a total energy is routinely too coarse for a transmission.
+`jobset init` sets the two transverse counts to whatever the cited run used, so this starts out matching the SCF and the deck states it explicitly -- and it stays this item's own: raising the SCF's kgrid later does not raise it.  That is a starting point, not an answer: T(E) is an integral over the transverse zone and its features sharpen with k-density, so a grid converged for a total energy is routinely too coarse for a transmission.
 
 Converge it before you trust the shape of the curve -- raise both counts together, roughly doubling the density each time, until T(E_F) stops moving.  It normally settles denser than the SCF's.
 """

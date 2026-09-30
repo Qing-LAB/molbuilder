@@ -19,7 +19,9 @@ PREVENTS, each read in the code before 2026-09-30:
 * one fact, two severities -- a warning in the SIESTA validator and an error
   in the transport kind's -- and the transmission's grid never held to the
   isolated-axis rule the SCF grid was; the shared offset warned once per mesh;
-* ``electrode_kz = 1`` refused only at prep, its range admitting the value.
+* ``electrode_kz = 1`` refused only at prep, its range admitting the value;
+* a stripe junction sampled across its vacuum stopped by TranSIESTA alone,
+  at the device, after the seed and both leads had run (the K3 review).
 
 Nothing here launches an engine: prep writes the decks and stops.  The form's
 locked component is the browser's to show (`test_transport_tab_e2e.py`).
@@ -180,8 +182,10 @@ def test_the_transport_axis_is_fixed_on_every_door(web_client,
     prep refuses one the template states -- with the one clause every door
     gives.  (The form draws it locked: the browser's test.)
 
-    MUTATION THIS MUST FAIL AGAINST: `kmesh.fixed` answering nothing (the
-    Send describes, and prep writes 1 over the refused 2 in silence)."""
+    MUTATIONS THIS MUST FAIL AGAINST: `kmesh.fixed` answering nothing (the
+    Send describes, and prep writes 1 over the refused 2 in silence); the
+    offset left out of what the kind fixes (prep writes 0 over the refused
+    0.5 in silence)."""
     root = isolated_projects_root
     _write_junction(root, _junction_struct())
 
@@ -200,6 +204,12 @@ def test_the_transport_axis_is_fixed_on_every_door(web_client,
     refused = _prep(dest, "seed", refused=True)
     assert ("the template sets kgrid = [4, 4, 2], whose z component a "
             "transport calculation fixes at 1") in refused, refused
+    _template_says(dest, "kgrid", (4, 4, 1))
+    _template_says(dest, "kgrid_displacement", (0.5, 0.5, 0.5))
+    refused = _prep(dest, "seed", refused=True)
+    assert ("the template sets kgrid_displacement = [0.5, 0.5, 0.5], whose z "
+            "component a transport calculation fixes at 0.0") in refused, \
+        refused
 
 
 def test_a_lead_sampled_once_is_refused_and_a_thin_one_warned(
@@ -228,39 +238,123 @@ def test_a_lead_sampled_once_is_refused_and_a_thin_one_warned(
                in m for m in notices), notices
 
 
-def test_one_value_draws_one_refusal():
-    """API-LEVEL, because the road cannot reach it: `resolve` refuses first,
-    so a value reaches the settings gate unrefused only in a render that
-    skipped it (a library call or a test).  There, one value still draws one
-    finding: a transport calculation's ``kgrid = (4, 4, 0)`` breaks both the
-    fixed transport axis and the count floor, and says the first -- and the
-    fixture's chain is isolated across, so the mesh built from it would earn
-    two isolated-axis warnings, which stand aside for the refusal; a count of
-    0 on an optimization is past the floor and outside the range, and says
-    the limit alone; and a lead's ``electrode_kz = 1`` is past its limit and
-    outside its recommended range, and draws the refusal alone.
+def test_one_value_draws_one_refusal(web_client, isolated_projects_root):
+    """One value draws one refusal (`engines/template.md` § 5.3), on the
+    doors a person meets:
+
+    * the Build tab's live check (`workflow.md` § 9, gate ①): a molecule's
+      ``kgrid = (0, 4, 4)`` is past the count's limit and outside its
+      recommended range, and the mesh built from it would sample two isolated
+      axes -- the refusal comes back alone;
+    * the Transport tab's Send: a transmission's ``tbt_k_grid = [4, 4, 0]``
+      breaks the fixed transport axis and the count's limit, and says the
+      first; a lead's ``electrode_kz = 1`` is past its limit and below its
+      recommended range, and draws the refusal alone.
 
     MUTATIONS THIS MUST FAIL AGAINST: the range warning not standing aside
     for a refused value (a second finding); the mesh check judging a mesh
-    built from a refused value (two more); the floor asked before the fixed
-    component (the wrong reason)."""
+    built from a refused value (two more); the limit judging the fixed
+    component, asked first (the wrong reason)."""
+    from test_electronic_state import WATER
+    live = web_client.post("/api/build/preflight", json={
+        "structure": WATER().to_dict(), "engine": "siesta",
+        "params": {"kgrid": [0, 4, 4]}})
+    assert live.status_code == 200, live.get_json()
+    [found] = [i for i in live.get_json()["issues"]
+               if i["where"] == "config.kgrid"]
+    assert found["severity"] == "error", found
+    assert "each component must be greater than 0" in found["message"], found
+
+    _write_junction(isolated_projects_root, _junction_struct())
+
+    def send(rung, name, value):
+        r = web_client.post("/api/transport/describe", json=dict(
+            engine="siesta", name="T", junction=_CITE, bias=[0.0],
+            stages={rung: {name: value}}))
+        assert r.status_code == 400, r.get_json()
+        return [f for f in r.get_json()["findings"]
+                if f["where"] == f"config.{name}"]
+
+    [found] = send("transmission", "tbt_k_grid", [4, 4, 0])
+    assert found["severity"] == "error", found
+    assert ("whose z component a transport calculation fixes at 1"
+            in found["message"]), found
+    [found] = send("electrode_L", "electrode_kz", 1)
+    assert found["severity"] == "error", found
+    assert "it must be greater than 1" in found["message"], found
+
+
+def test_a_stripe_sampled_across_its_vacuum_is_refused(isolated_projects_root):
+    """A junction periodic along one transverse axis and isolated along the
+    other -- a stripe -- cited from a run that sampled the vacuum axis four
+    times: TranSIESTA would stop the device on it (*"found incompatible
+    k-grids"*, `ts_electrode.F90`) after the seed and both leads had run, so
+    prep refuses the seed, before anything runs (`engines/siesta.md` § 6.1:
+    refused for now, user 2026-09-30).  A wire, isolated on both, is only
+    warned (the first test of this file).
+
+    MUTATION THIS MUST FAIL AGAINST: the stripe's finding at a warning's
+    severity (the seed is prepped)."""
+    import numpy as np
+    from molbuilder.structure import Structure
+    from test_transport_prep import _SPACING
+    wire = _junction_struct(across=("periodic", "isolated"))
+    stripe = Structure(elements=wire.elements, positions=wire.positions,
+                       regions=wire.regions, frozen_atoms=wire.frozen_atoms,
+                       cell=np.diag([_SPACING, 8.0, wire.cell[2][2]]),
+                       axis_kind=wire.axis_kind)
+    _write_junction(isolated_projects_root, stripe)
+    dest = _init(isolated_projects_root)
+    refused = _prep(dest, "seed", refused=True)
+    assert ("kgrid[1] = 4 on an isolated axis of a junction that is periodic "
+            "across the other") in refused, refused
+    assert "found incompatible k-grids" in refused, refused
+
+
+def test_a_quiet_deck_writes_its_mesh_without_notes(isolated_projects_root):
+    """``verbose_comments = false`` drops every block's explanation, the
+    k-point mesh's among them: on a transport rung its items' notes and the
+    transverse advice went on being written until the K3 review, while the
+    SIESTA deck's followed the setting.
+
+    MUTATION THIS MUST FAIL AGAINST: the transport mesh block writing its
+    notes whatever the setting."""
+    from test_fixed_and_shared_items_e2e import _template_says
+    _write_junction(isolated_projects_root, _junction_struct())
+    dest = _init(isolated_projects_root)
+    _template_says(dest, "verbose_comments", False)
+    _prep(dest, "seed")
+    seed = _deck(dest, "seed")
+    assert _mesh(seed) == ((4, 4, 1), (0.0, 0.0, 0.0))
+    for note in ("THE TRANSVERSE COUNTS ARE YOURS",
+                 "Monkhorst-Pack sampling of the Brillouin zone"):
+        assert note not in seed, note
+
+
+def test_a_relaxation_samples_every_axis_by_its_kind(isolated_projects_root):
+    """Outside a transport calculation each axis is sampled by its kind: a
+    periodic axis, and one declared ``transport`` -- relaxing a junction,
+    whose deck is periodic along it (user, 2026-09-30) -- write the
+    template's counts and offsets; an isolated axis sampled more than once is
+    written as stated and warned in the deck's validation report.  And an
+    offset of 1.0 on an axis sampled once is Gamma again -- both engines read
+    the offset modulo 1 -- so it is not warned.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the relaxation's mesh derived as a
+    transport rung's (prep refuses the relaxation as a stripe junction's);
+    the deck's meshes not handed to the settings gate (the report says
+    nothing); the offset compared with 0 rather than read modulo 1 (1.0 is
+    warned)."""
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.validation import validate
-
-    def at(name, cfg, kind):
-        return [i for i in validate(_junction_struct(), cfg, calculation=kind)
-                if i.where == f"config.{name}"]
-
-    [found] = at("kgrid", SiestaConfig(system_label="j", kgrid=(4, 4, 0)),
-                 "transport")
-    assert found.severity == "error", found
-    assert "whose z component a transport calculation fixes at 1" in \
-        found.message, found.message
-    [found] = at("kgrid", SiestaConfig(system_label="j", kgrid=(0, 1, 1)),
-                 "optimization")
-    assert found.severity == "error", found
-    assert "each component must be greater than 0" in found.message
-    [found] = at("electrode_kz", SiestaConfig(system_label="j",
-                                              electrode_kz=1), "transport")
-    assert found.severity == "error", found
-    assert "it must be greater than 1" in found.message, found.message
+    from molbuilder.task import Stage
+    from test_engine_offset_reaches_every_deck import _prep as _describe_prep
+    dest, _stage, deck = _describe_prep(
+        isolated_projects_root, _junction_struct(across=("periodic",
+                                                         "isolated")),
+        SiestaConfig(system_label="JOB", kgrid=(2, 3, 1),
+                     kgrid_displacement=(0.0, 0.0, 1.0)),
+        (Stage(name="relax", enabled=True, overrides={}),), "siesta")
+    assert _mesh(deck) == ((2, 3, 1), (0.0, 0.0, 1.0))
+    report = next(dest.rglob("*.validation.txt")).read_text()
+    assert "kgrid[1] = 3 on an isolated axis" in report, report
+    assert "kgrid_displacement[2]" not in report, report

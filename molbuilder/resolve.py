@@ -880,8 +880,9 @@ def effective_config(template, overrides: Mapping[str, Any], *,
     # it left the config holding a LIST while every stage that did not held
     # the template's tuple -- one object, two shapes for one field,
     # depending on a cell nobody thinks of as a type decision.  Nothing
-    # broke, because ``siesta/input.py`` writes ``tuple(cfg.kgrid)`` before
-    # comparing; that defensive call IS the symptom.  ``list -> tuple`` is
+    # broke then, because the SIESTA deck wrote ``tuple(cfg.kgrid)`` before
+    # comparing -- that defensive call was the symptom (the k-point mesh
+    # reads the value now, `kmesh.mesh_for`).  ``list -> tuple`` is
     # lossless, so it is done here, exactly as ``template._shape`` already
     # does it for the template's own side of the ⊕.
     from .template import as_declared

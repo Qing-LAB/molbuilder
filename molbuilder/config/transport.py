@@ -284,7 +284,6 @@ class TransportConfig:
         "workflow_group": "stage",
         "label":   "Transverse k-mesh",
         "id_suffix": "k",
-        "triple_labels": ("x", "y", "z"),
         "engine_key": '%block kgrid_Monkhorst_Pack  (transiesta)',
         "help":    "Monkhorst-Pack grid (Nx, Ny, Nz) summed over the "
                    "directions perpendicular to transport.  For a "

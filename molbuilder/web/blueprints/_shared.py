@@ -813,11 +813,11 @@ def _field_to_schema(f: dataclasses.Field,
     elif origin is tuple and args:
         # Tuple[int, int, int] -- kgrid + Transport's k_mesh_transverse.
         # Renderer emits three side-by-side number inputs with sub-ids
-        # f"{id}-{labels[i]}".  We pass the labels through so the
-        # k-grid UI's "kx / ky / kz" stays declaration-driven.
+        # f"{id}-{labels[i]}", labelled with the k-point mesh's axis names
+        # (`kmesh.AXES`), as the catalogue builder labels them.
         out["kind"] = "int-triple"
         from molbuilder.kmesh import AXES
-        out["labels"] = list(md.get("triple_labels", AXES))
+        out["labels"] = list(AXES)
     elif origin in (list, tuple) and args and args[0] is float:
         # Variable-length List[float] -- Transport's bias_voltages_v.
         # No fixed-arity widget makes sense; render as text and let

@@ -4627,8 +4627,8 @@ as a milestone does (§ 0a). **Approved 2026-09-29** (§ 5w.3); K6 is first.
 | **K4** | **where an item binds, per rung ROLE** | `stages` names a rung's role, and the kind says which role a stage plays — transport: its name; vibration: a relaxation or a force-constant rung, whatever the stage is called (`vibration_render_kind`); optimization: no roles. The stage table offers each rung only what its deck reads and echoes the rest (§ 6.6 obligation 3); a preset fills only the rungs that read it; each item's tightening direction is declared, so R3 reads it for every engine and skips a kind whose rungs are different programs; a relaxation rung relaxes — `relax_steps = 0` there relaxes nothing, while `prep bench`'s single-point pin of it is legitimate | SS-C6, PO-C14, T-F14, SS-C5's `relax_steps` half *(from K3, 2026-09-30)* |
 | **K5** | **execution values with several homes** | one home per rung — the run card, `stages[i].execution` — and one resolved answer every reader asks (`resolve`'s, with its provenance): the deck, the wrapper, the scheduler's GPU ask, the bench, Task setup's cards and hints; the stage table stops offering execution items as columns; a transport rung takes its run card like any other rung | SO-C1 (a rung's `use_gpu` never reaches `--gres`), T-F3, SO-N12, the `--from` hint |
 | **K6** | **the engine's own outcome, assumed instead of read** | one relaxation outcome record and one policy for both engines: the PySCF decks read geomeTRIC's convergence flag (`geometric_solver.kernel`) — `halt` raises before anything is written, `continue` re-enters from the geometry it stopped at (`pyscf.md` § 3 already says *extend this rung*), `proceed` records *not converged*; one remedy text for a non-stationary reference, read by `prep` and the finish; whether a retry resumes is the kind's warm-state declaration (`warm-files.toml`: an FC run restarts at `FC.First`), read by the wrapper; a capability the engine lacks (gpu4pyscf's `stability`) is declared and asked, never called and caught | PS-C1 = PO-C1, SS-C2, SS-C3, PO-C2, PO-C15 |
-| **K7** | **the form's value model** | one field state on every surface: the template's value, the kind's default and the value's source (§ 6.6 obligation 2's four states); blank is *not chosen* for every field and never the first choice; the rung surface shows the template the rung will run; a set optional field is sent; a value that will not coerce is refused naming its field | T-F25, T-F1, T-F24, SS-C16, SO-N5, PS-C12 |
-| **K8** | **what the engine sees** | one door for the engine's frame facts: the axis kinds PySCF computes with (a cluster: isolated on all three), read by the deck, the Methods count and the R7 note alike; the box checks run for an engine that uses a cell | PS-C4, PO-C13 |
+| **K7** | **the form's value model** | one field state on every surface: the template's value, the kind's default and the value's source (§ 6.6 obligation 2's four states); blank is *not chosen* for every field and never the first choice; the rung surface shows the template the rung will run; a set optional field is sent; a value that will not coerce is refused naming its field | T-F25, T-F1, T-F24, SS-C16, SO-N5, PS-C12; the K3 review's fractional k count and a triple's findings beside it |
+| **K8** | **what the engine sees** | one door for the engine's frame facts: the axis kinds PySCF computes with (a cluster: isolated on all three), read by the deck, the Methods count and the R7 note alike; the box checks run for an engine that uses a cell | PS-C4, PO-C13; the K3 review's dipole advisory, keyed on the k count |
 | **K9** | **engine facts restated in prose** | each item's engine default declared once with its source (file:line), and the help's deviation sentence (§ 5.2), the template comment and the deck's *not set* line (§ 6.6 obligation 4) written from it; one measured fixture — the engine's own account of a minimal run, SIESTA's fdf log — checks every declared default; a comment restating engine behaviour is cut to the one home | SO-C6, SO-C7, SO-C14, SS-C7, SS-C8, SS-C9, T-F31, PO-C18, PO-C19, and the § 5.2 half of every help text |
 | **K10** | **where things are on disk** | one reader of a rung's attempts, a bias scan's per-point folders included; carry names from the rung's own naming door; a kind's warm set carries what its rungs read | T-F27/F13, PO-C16, SS-C14 |
 | **K11** | **comparing against a stale render** | the gather check renders each upstream rung now, in memory, through the one render door, and compares that | T-F30 |
@@ -4637,9 +4637,9 @@ as a milestone does (§ 0a). **Approved 2026-09-29** (§ 5w.3); K6 is first.
 | **K14** | **allocations** | one name map between the catalogue's items and `Resources` (`omp_threads` ↔ `cpus_per_task`, `gpu_count` ↔ `gres`), read by `render_config` and `prep_inputs` alike; one meaning of a blank budget on every engine; the engine's parallel model (MPI or OpenMP) declared and read by the scheduler header | SO-C8, SO-C5, PS-C6 = PO-C7, PO-C8 |
 | **K15** | **deck values rendered per item** | one formatter in the layout's line door — the value exact, never a per-item format string | PS-C9 = PO-C5 |
 | **K16** | **the run record's parameter rows** | `declarations(engine, calculation, stage)` — the rung's own items | SS-C10 |
-| **K17** | **physics each needing a build or a refusal** (not a framework gap) | PS-C3 (PCM's solvent terms on the held-atom, IR-only and Raman routes — build and measure, or refuse); PS-C2 (two spin channels in the spectrum record — build, or K2 refuses); SO-C3 (the GPU-ELPA `BlockSize` realignment `tuning.md` promises — build it); SO-C10/C11 (`ParallelOverK` — SIESTA's default unless set; ELPA forces it off); SO-C12 (pseudopotentials by exact name); PO-C4 (the geomeTRIC log — write it or drop the promise); PO-C10 (the ECP read back from the molecule); PO-C12 (a `-V` functional with D3); T-F35 (the T(E) window covers the bias window); T-F26 (only the L and R electrode labels); T-F4/F34 (a fixed ladder's controls); T-F2 *(moved to K3, done 2026-09-30)*; T-F28 (the device's E_F, iterations and poles in the record); PS-C13 (mode numbers bounded at `prep`) | as listed |
+| **K17** | **physics each needing a build or a refusal** (not a framework gap) | PS-C3 (PCM's solvent terms on the held-atom, IR-only and Raman routes — build and measure, or refuse); PS-C2 (two spin channels in the spectrum record — build, or K2 refuses); SO-C3 (the GPU-ELPA `BlockSize` realignment `tuning.md` promises — build it); SO-C10/C11 (`ParallelOverK` — SIESTA's default unless set; ELPA forces it off); SO-C12 (pseudopotentials by exact name); PO-C4 (the geomeTRIC log — write it or drop the promise); PO-C10 (the ECP read back from the molecule); PO-C12 (a `-V` functional with D3); T-F35 (the T(E) window covers the bias window); T-F26 (only the L and R electrode labels); T-F4/F34 (a fixed ladder's controls); T-F2 *(moved to K3, done 2026-09-30)*; T-F28 (the device's E_F, iterations and poles in the record); PS-C13 (mode numbers bounded at `prep`); the K3 review's `ParallelOverK` counted before time reversal, and the vibration's level-of-theory check blind to the recorded k-mesh | as listed |
 | **K18** | **a PySCF run's level of theory, recorded by no reader** *(R6, ruled 2026-09-29)* | the PySCF half of the one reader: `parse.contract.contract_of` reads a PySCF deck's stated basis, method, functional, charge and spin, and `contract_fields_of` answers for a PySCF config — so the Results tab's export carries `info.calculation` for a PySCF run as for a SIESTA one, a blank charge or spin is read from it (ES7), and a vibration's level-of-theory check works on both engines; the deck's own pair carries none, by V1.31's one-source rule | R6 (K6 review) |
-| **K19** | **a deck's spin in SIESTA's older words** *(found by the K2 review; user 2026-09-30: "do the reader fix after K3")* | `parse/fdf._read_state` reads `FixSpin` / `TotalSpin` as SIESTA does -- `FixSpin` then `Spin.Fix`, `TotalSpin` then `Spin.Total` (`read_options.F90`), the new word winning -- so a cited or recorded deck written with the old words carries its fixed count, not a floating one; molbuilder's own decks write only the new words | the K2 review's outside finding |
+| **K19** | **a deck's spin in SIESTA's older words — warned, not read** *(found by the K2 review; user 2026-09-30: "a warning is all needed")* | molbuilder writes only `Spin.Fix` / `Spin.Total`; a deck it did not write that uses the older `FixSpin` / `TotalSpin` (SIESTA still honours them, `read_options.F90`) is read without them, so its fixed moment would read as floating — a warning says so where the deck is read, naming the words to write | the K2 review's outside finding |
 | **K20** | **the pseudopotential directory, settled before the Build tab is left** *(user, 2026-09-30: "it seems user easily misses this in the first setup and only finds out after the script is generated")* | on a SIESTA form the field is marked required in the setup card, red while empty; a live check beside it runs `prep`'s own coverage check as the folder is typed or picked (each element found, and its XC family against the functional); a suggestion, never a guess -- *use `projects/pseudopotential`, covers all N elements* -- when that folder covers the structure; and Send refuses until covered, the hand-over asking the same check of the folder it writes into (pseudopotentials already beside the calculation count, as at `prep`), the page scrolling to the field. Not PySCF's (none) nor transport's (they come with the citation) | the Build preflight's warn-only case; the hand-over checking none |
 | **K21** | **a spin-polarized junction's transmission, both channels** *(user, 2026-09-30)* | the transmission record reads TBtrans's two spin channels and carries both, G = (e²/h)(T↑ + T↓) -- `engines/transport.md` § 2a.4, § 5s P5 -- so a polarized junction's result is finished, not only its device run | § 5s P5 |
 | **K22** | **per-atom starting spins** *(user, 2026-09-30)* | design first, for the user's word: where the starting moments live (the structure's own per-atom data, or a template item) and how SIESTA is told them (`DM.InitSpin`) -- a floating moment starts every atom at its largest moment, aligned (`m_new_dm.F90`), which serves one radical or one magnetic centre and not several coupled antiferromagnetically | -- |
@@ -4978,6 +4978,47 @@ reviewers' probes (the archive's § E lists) among its runs.
   nothing, and says nothing, when pressed before the sidebar has resolved
   the projects root (`tree-picker.js` answers `null`) — found writing the
   tab's browser test.
+  *The post-commit review* *(user, 2026-09-30: "use agent to do full code and
+  document review … focus on the k-grid scope, from end to end", tests
+  included)* — two reviewers, the shared layer with the optimization,
+  vibration and bench roads, and the transport road; each finding re-read in
+  the code and the engine's source, then triaged by the user's rule: *does it
+  break molbuilder's own workflow?* **Fixed:** the Build and Spectrum tabs'
+  Send replaced the live check's findings with its own notices — a Send now
+  adds beside them (`standing`, `handover-procedure.md` § 2.1); the transport
+  mesh blocks ignored `verbose_comments`; the single-point offset warning
+  fired for 1.0, which both engines read as Γ (modulo 1); `triple_labels`,
+  the triple's labels' second home, deleted; the K3 text that was wrong — a
+  raised `kgrid` said to reach the transmission's `TBT.k` (§ 7, the deck's
+  advice), "both engines force the transport axis" (only TranSIESTA's NEGF
+  step and `tbtrans` do), "the same grammar" (`tbtrans` reads a block row
+  only with its offset column), the offset's help, `TBT.k` as a list in
+  `transport.md`, two rules `template.md` § 5.3 did not state, stale
+  comments; the tests — the one-refusal test off the library onto the Build
+  tab's live check and the Transport tab's Send, the offset's fixed
+  component refused at prep, a relaxation's mesh by axis kind through
+  `prep`, two duplicates retired. **Refused, for now** *(user: "refuse the
+  stripe case for now. this is a special case that will take a lot of
+  effort to get right")*: a junction periodic along one transverse axis and
+  isolated along the other, sampled more than once across its vacuum —
+  TranSIESTA stops the device on it (`ts_electrode.F90`, *"found
+  incompatible k-grids"*) after the seed and both leads have run; refused at
+  the seed's `prep` (`siesta.md` § 6.1). **Dropped** — inputs molbuilder
+  does not produce: a hand-edited description's mistyped value (refused,
+  with a range warning beside it), a wrong name in an `execution` block
+  (refused twice), a cited deck's other k-block spellings, a bias of −0.
+  **Parked, one line each:** the dipole advisory keyed on the k count, not
+  the axis kinds (K8); a fractional k count rounded by the form, and a
+  triple's findings on its card rather than beside it (K7); `ParallelOverK`
+  counted before time reversal folds k with −k (K17, beside SO-C10/C11); the
+  vibration's level-of-theory check ignoring the recorded k-mesh (K17); the
+  transport axis stated again in `transport/sort.py` and indexed as `c` by
+  the transport writers; `stages.config_for` and `dataclass_to_form_schema`
+  without a production caller; the Build and Spectrum Send writing a
+  template the live check refuses (prep refuses it); the non-transport
+  `jobset init` discarding gate ③'s warnings (latent: its ladder presets
+  hold none); duplicate k tests in `validation/test_geometry.py`; stale
+  names from before K3 (§ 5w.2's sweep).
 
 ---
 

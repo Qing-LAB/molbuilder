@@ -1341,7 +1341,6 @@ class _FakeCfgForSchema:
     })
     grid: _Tuple[int, int, int] = _schema_field(default=(1, 1, 1), metadata={
         "section": "Geometry", "label": "Grid",
-        "triple_labels": ("x", "y", "z"),
     })
     # No section -> omitted from schema.
     internal: int = _schema_field(default=0, metadata={

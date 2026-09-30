@@ -409,18 +409,23 @@ axis was forced to 1 in six places, and one fact carried two severities.)*
 A transport calculation's transport axis is the cell's third, `c` (A3): the
 composition states it (`transport/compose.py`, `kmesh.TRANSPORT_AXIS`). **The
 seed is open too**: its density matrix is the device's starting point, and the
-device samples one point along transport. Both engines force that axis to one
-point with zero offset whatever a deck says — TranSIESTA in `ts_kpoint_scf.F90`,
-`tbtrans` in `m_tbt_kpoint.F90` (`read_kgrid`: *"We MUST kill all k-points in
-this direction"*) — so the rule writes what the engines run.
+device samples one point along transport. The engines agree where they force
+it: TranSIESTA's NEGF step and `tbtrans` put that axis at one point with zero
+offset whatever a deck says (`ts_kpoint_scf.F90`, `process_k_cell_displ`, in TS
+mode; `m_tbt_kpoint.F90`, `read_kgrid`: *"We MUST kill all k-points in this
+direction"*). The seed, a plain SIESTA run, and the device's own periodic start
+read the grid as written, so the rule writes the one point on every open rung
+itself.
 
 **One writer.** `kmesh.write(mesh)` is the only text a mesh has: SIESTA's
-`%block kgrid_Monkhorst_Pack` and `tbtrans`'s `%block TBT.k`, the same three
-rows of counts with the offset column. `tbtrans` reads its block by the same
-grammar (`m_tbt_kpoint.F90`, `read_kgrid`); its list form, `TBT.k [3 3 1]`,
-carries no offset, so the block is written always — one form whether or not
-the grid is displaced (plan § 5w.3's ruling asked for the block when
-displaced; one form serves both). The transmission deck
+`%block kgrid_Monkhorst_Pack` and `tbtrans`'s `%block TBT.k`, three rows of
+counts, each with its offset column. SIESTA reads a row of one to four values
+(`kpoint_t.F90`); `tbtrans` reads its block only when a row carries the offset
+column — a row of three counts is not read, and T(E) falls back to another grid
+(`m_tbt_kpoint.F90`, `read_kgrid`) — so the column is written always. The list
+form, `TBT.k [3 3 1]`, carries no offset, so the block is written always too —
+one form whether or not the grid is displaced (plan § 5w.3's ruling asked for
+the block when displaced; one form serves both). The transmission deck
 carries two meshes: `TBT.k`, the transmission's own, and the ladder's shared
 SCF block, which `tbtrans` reads only when `TBT.k` is absent — kept as the deck
 keeps the other shared settings (plan TD12).
@@ -448,8 +453,9 @@ not judged — that refusal stands alone).
 | finding | severity | where it is decided |
 |---|---|---|
 | an isolated axis sampled more than once | warn — `k > 1` is the person's explicit statement *(user, 2026-08-20)*; the points sample images of vacuum, cost for nothing | `kmesh.check`, the settings gate |
+| on a transport calculation's SCF rungs, an isolated axis sampled more than once **while the other transverse axis is periodic** — a stripe | **refused** — TranSIESTA stops the device: a lead that repeats along one transverse axis must sample the other, where it has no neighbours, at one point (`ts_electrode.F90`, `check_in_cell`: *"found incompatible k-grids"*), and the seed and both leads would have run first. A wire, isolated on both, passes that check and is warned as above. Refused for now *(user, 2026-09-30: "a special case that will take a lot of effort to get right")* | `kmesh.check`, the settings gate — at the seed's `prep`, before anything runs |
 | a sampled axis above 1 whose images sit ≥ 5 Å apart | warn, a hint — the geometric gap is the real vacuum; *"if deliberate, carry on"* | `kmesh.check` |
-| an offset on an axis sampled once | warn — it moves that point off Γ to the zone boundary | `kmesh.check` |
+| an offset on an axis sampled once | warn — it moves that point off Γ (SIESTA and `tbtrans` read the offset modulo 1, so 1.0 is Γ again) | `kmesh.check` |
 | a component a kind fixes, holding another value | refused | `kmesh.fixed` through `template.why_not` — every door |
 | a count at or below 0; `electrode_kz` at or below 1 | refused | the items' own limits, `above` (`template.md` § 5.3) — every door |
 | `electrode_kz` below 20 | warn — a floor, not a convergence proof: only a sweep shows the lead's Fermi level has settled | its recommended `range` |
@@ -753,8 +759,9 @@ variant tested must render end-to-end without raising.
 alias), `test_siesta_stages.py` + `test_siesta_stages_emit.py` (the ladder and
 what each stage emits), `test_siesta_stage_strategy_presets_drift.py` (the
 presets against their three consumers), `test_siesta_use_gpu.py` (§ 7's
-two orthogonal decisions, including the rejected GPU + ScaLAPACK pair), and
-`test_molwatch_preview.py` (the sibling log). *(This list named
+two orthogonal decisions, including the rejected GPU + ScaLAPACK pair),
+`test_k_point_mesh_e2e.py` (§ 6.1's mesh on every rung, through `jobset init`
+and `prep`), and `test_molwatch_preview.py` (the sibling log). *(This list named
 `test_cli_siesta_stages.py` and `test_siesta_form_schema_stage_table.py` until
 2026-08-16; neither file exists — they went with the `fdf` verb and the stage
 form widget § 8 records as deliberately absent.)*

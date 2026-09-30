@@ -610,16 +610,20 @@ _TRANSVERSE_ADVICE = (
     "# under-converged, and the error lands in the interface charge the",
     "# device SCF then has to reproduce.  The pair is the cited junction's",
     "# own until you change it in the template, and one pair serves every",
-    "# rung.",
+    "# SCF rung; the transmission's TBT.k is its own item, tbt_k_grid.",
 )
 
 
 def _k_mesh_block(mesh, *, advice=()):
     """A block writing ``mesh`` -- the rung's k-point mesh, worked out once
     by :func:`transport_spec` (`kmesh.mesh_for`) -- with each deciding
-    item's note, through the one writer (`siesta.layout.k_mesh_lines`)."""
+    item's note, through the one writer (`siesta.layout.k_mesh_lines`) --
+    the notes and the advice dropped when the deck is asked to be quiet, as
+    every other block's are (:func:`_notes`)."""
     def render(struct, cfg) -> str:
-        return "\n".join([*advice, *_sl.k_mesh_lines(mesh)])
+        quiet = not getattr(cfg, "verbose_comments", True)
+        return "\n".join([*_notes(cfg, advice),
+                          *_sl.k_mesh_lines(mesh, notes=not quiet)])
     return render
 
 

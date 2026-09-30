@@ -963,6 +963,17 @@ does not carry is no door's to judge**: the kind narrows the catalogue (§ 6.3),
 so a lead's `electrode_kz` on an optimization is neither refused nor warned — it
 reaches no deck of that kind.
 
+**A value is judged as `resolve` will read it.** A description's JSON has one
+number type, so a whole float for a count is the count it names — `0.0` for a
+`kgrid` component is the count 0, refused by the limit, not by the type
+(`template.as_declared`, lossless); a value the declared type cannot hold
+without loss, `2.5` for a count, is the type check's refusal. **And the
+catalogue starts no calculation past a limit**: an item's default and each
+kind's `recommended` value are held to its `above` when the catalogue is read
+(`template._above_from`), so no kind starts on a value every door refuses; a
+value in a calculation's template is the per-value door's, like any value a
+person sets.
+
 **The values a description holds outside its stages are held too**: an
 `execution` block's values and a bench's points become pins and sweep points,
 so the description's own check asks the same door of them, and a value past its

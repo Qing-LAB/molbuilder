@@ -435,26 +435,8 @@ class TestTheElectrodeRungIsOnTheSeam:
         assert (calc / "02_electrode_L"
                 / "T_02_electrode_L.validation.txt").is_file()
 
-    def test_the_transport_axis_is_DENSE_here_and_1_on_the_seed(self, calc):
-        """THE CONTRAST, and it is the physics rather than a formatting
-        difference.
-
-        This replaces the deleted `test_the_un_migrated_rungs_still_lack_them`:
-        instead of *the lead lacks what the seed has*, it asserts the one
-        thing the lead must have that the seed must not.  A lead is a
-        genuinely periodic bulk crystal along transport and its Fermi level
-        is the reference energy everything downstream is measured against; a
-        device is an open boundary there and is not sampled at all.
-        """
-        prep_calculation(calc, "seed")
-        prep_calculation(calc, "electrode_L")
-        seed = (calc / "01_seed" / "T_01_seed.fdf").read_text()
-        lead = (calc / "02_electrode_L" / "T_02_electrode_L.fdf").read_text()
-        assert _has_row(lead, "0 0 40 0.0"), (
-            "the lead's transport axis must be DENSE -- that density is what "
-            "resolves its Fermi level")
-        assert _has_row(seed, "0 0 1 0.0"), (
-            "...and the seed's must be 1: no transport-axis sampling")
+    # The lead DENSE along transport and the seed at one point: each rung's
+    # mesh is `test_k_point_mesh_e2e.py`'s (the first test there).
 
     def test_the_lead_is_labelled_as_the_TSHS_the_device_will_name(self, calc):
         """One spelling, `electrode_hs_stem`, read by both writers.
@@ -561,7 +543,7 @@ class TestTheTransportAxisIsNotSettable:
         """The half that keeps the refusal from being a ban on the row.
 
         Without it, deleting the k-grid control entirely would pass the
-        test above.
+        refusal's own test (`test_k_point_mesh_e2e.py`).
         """
         from molbuilder.template import _emit, find_template, read_template
         import dataclasses

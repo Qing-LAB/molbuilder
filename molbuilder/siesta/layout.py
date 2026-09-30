@@ -120,9 +120,10 @@ def mpi_section(*, block_size, algorithm) -> Section:
     Which items appear depends on answers this deck has already worked out, so
     the table cannot be a constant:
 
-    * ``BlockSize`` has a third state.  ``block_size = 0`` means *do not emit
-      the keyword at all* and let SIESTA choose (`tuning.md` § 2.11), which is
-      not the same as emitting a zero.
+    * ``BlockSize`` has a third state.  ``block_size`` unset (``None``) means
+      *do not emit the keyword at all* and let SIESTA choose (`tuning.md`
+      § 2.11), which is not the same as emitting a number; 0 is past the
+      item's limit and refused on every door (`engines/template.md` § 5.3).
     * ``Diag.Algorithm`` and its GPU switch are only meaningful for an ELPA
       solver; ScaLAPACK has no such knobs, and writing them would be the deck
       claiming a setting the solver never reads.

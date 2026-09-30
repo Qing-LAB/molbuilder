@@ -1596,7 +1596,7 @@ dissolves at the same place:
 |---|---|
 | the seed ran 1000 SCF iterations and died `SCF_NOT_CONV` | `MaxSCFIterations` is not in the hardcoded list, so the citation's `30` cannot travel |
 | the device deck aborts: *"the continued fraction method requires at least 20 poles"* | **Diagnosed wrongly here until 2026-09-16, and the wrong fix shipped for a day.** `TS.Contours.Eq.Pole.N` *is* a real keyword (`Src/m_ts_chem_pot.F90:113`) — but on the deck shape this project emits it can never take effect. A deck declaring `%block TS.ChemPot.<name>` with no `contour.eq` inside it takes the continued-fraction branch (`:299`), where the count is set from the ENERGY at `:319`, `N = int(E / (pi * kT))`, and the branch's own default (`:316`, `E = pi*60*kT*0.7`) is non-zero, so the override always fires. Only the block-interior `contour.eq.pole.n` (`:263`) short-circuits it, and this emitter writes no such line. The abort was caused by this project's own shipped default, `negf_eq_pole_ev = 1.5` eV, which is **18 poles at 300 K**. 1.7 gives 20, 2.0 gives 24, 4.0 gives 49, and writing nothing gets the engine's 42. The row defaulted to 0 — *let the engine choose* — from 2026-09-17 to 2026-09-29, when a real device lost the charge on the engine's 42 and held it on 10 eV's 123: it now defaults to **10 eV, always written** (§ 6.1c), and `_validate_transport_kind` refuses any stated energy too small for the run's own temperature, with the arithmetic. The refusal's rule is `:319` + `:324` verbatim, not a curve fitted to observations |
-| `TBT.k` is emitted as a bare scalar the parser cannot read | the list hand-formats values, so no emitter owns "how a list-valued keyword is written" |
+| `TBT.k` is emitted as a bare scalar the parser cannot read *(closed 2026-09-29 by the list form; always the block since 2026-09-30, which carries the offset — [`siesta.md`](?doc=engines/siesta.md) § 6.1)* | the list hand-formats values, so no emitter owns "how a list-valued keyword is written" |
 | `tbt_k_grid`'s transport axis was unguarded *(guarded 2026-09-16 by the kind's validator; since 2026-09-30 a fixed component, [`siesta.md`](?doc=engines/siesta.md) § 6.1)* | there was no declaration to carry a bound |
 | the electronic contract is two frozensets and a predicate spelled twice | floor 2's job done in code, because floor 2 held nothing |
 
@@ -1844,7 +1844,9 @@ cannot be done first.** Each line is falsifiable.
    check gate sees each line — and `TS.Voltage` (a `role` item) there too
    since 2026-09-29 (K1) — and the T(E) window's three values through the
    rung's own block, each asked of the framework's door and written with its
-   note, the k-grid block's precedent. `TBT.k` is written as the bracketed list it has to be.
+   note, the k-grid block's precedent. `TBT.k` was written as the bracketed list it has to be
+   *(since 2026-09-30 always the block, which carries the offset — `kmesh.write`,
+   [`siesta.md`](?doc=engines/siesta.md) § 6.1)*.
    `TBT.HS` stays a rung line derived from the label, with no row.
 3. **Every stage deck has a `.validation.txt` and a USER-CUSTOM zone**, and a
    deck that fails its own read-back check refuses instead of running.
@@ -1968,7 +1970,7 @@ fixed.**
 | ~~four rungs are still off the seam~~ | **Closed 2026-09-16.** The seam question — *what does a composite kind hand its renderer?* — is answered, and the answer is *a structure*, like every other kind: `prep` picks WHICH structure the rung describes (`composed.sorted.structure`, or `model.as_structure()` for a lead taken out by its region label) and `spec_for` is unchanged. Nothing reaches for the `ComposedJunction` from inside the renderer |
 | ~~`--pipeline-log` is still a no-op here~~ | **Closed.** `_prep_transport` opens a `PipelineLog` and carries it through resolve, the deck render and — since 2026-09-16 — `prep_jobset`, so STEP 4 (wrappers) and STEP 5 (run directories) reach the file too; it had lost those two by not passing `log=` |
 | ~~two settings-gate warnings are now visible and both are **wrong for transport**~~ | (a) `psml_lib`: `jobset init` refuses `--psml-lib` here because the pseudopotentials travel with the citation, yet the deck warned SIESTA "will refuse to start" — **FIXED 2026-09-25**: `prep` hands the gate the calculation folder, and the gate reads the files the run will open, the folder first, by the one rule `prep` fetches by (`pseudos.psml_sources`, `job-contracts.md` § 2.5a). The deck still states the pseudopotential provenance itself. (b) `structure.regions`: **FIXED 2026-09-23.** It said the region labels *"do NOT consume / do not shape this calculation"* on every transport deck, about the partition the whole ladder is built from. The claim that the checks "cannot see the kind" was wrong: `validation/__init__` has set `engine_kw["calculation"]` for every validator all along, and `check_unconsumed_region_labels` simply never asked. It asks now, and for transport the consumed set is `sort.PARTITION_LABELS` plus any `*-electrode` name — so a label transport genuinely cannot read is still named, which is § 4's rule |
-| ~~`calculation="transport"` composes no kind science~~ | **Closed, and one check had to be re-homed.** `_KIND_VALIDATORS["transport"]` is registered and fires on every rung. `TransiestaEngine.preflight` is keyed on `TransportConfig` in `_ENGINE_VALIDATORS`, so it dispatches for no rung any more — of what it carried, the region partition and the atom order are `sort`'s own refusals and structural on the ladder path, and the open-shell question is the electronic state's one family, asked by `validate()` for every rung against the junction's resolved spin instead of preflight's hardcoded closed shell. The remainder was the **high-bias advisory**, which is now in the kind validator beside the kz≠1 refusal |
+| ~~`calculation="transport"` composes no kind science~~ | **Closed, and one check had to be re-homed.** `_KIND_VALIDATORS["transport"]` is registered and fires on every rung. `TransiestaEngine.preflight` is keyed on `TransportConfig` in `_ENGINE_VALIDATORS`, so it dispatches for no rung any more — of what it carried, the region partition and the atom order are `sort`'s own refusals and structural on the ladder path, and the open-shell question is the electronic state's one family, asked by `validate()` for every rung against the junction's resolved spin instead of preflight's hardcoded closed shell. The remainder was the **high-bias advisory**, which is now in the kind validator *(the kz≠1 refusal it stood beside left it 2026-09-30: a component the kind fixes, `kmesh.fixed` — [`siesta.md`](?doc=engines/siesta.md) § 6.1)* |
 | `validate_subject` is unanswered, so the gate judges a frame the deck does not express | Narrowed 2026-09-25: `_emit_geometry` writes the frame `cell.to_engine` places, and the gate's `cell.resolve` places the box at the same `−engine_offset` of the design, so containment is judged in the deck's frame. Still open for a lead that states no cell, whose deck box is transport's own vacuum box and not the one the gate resolves. The optimization spec sets that slot precisely because *"judging the input would judge something nobody runs"* |
 | the transport arm of `spec_for` silently drops `cell=` | The dispatch sits above every use of `cell` and forwards only `(struct, config, stage_token)`. No live caller passes it, so there is no failure today — it is a silent-drop hazard at a public signature |
 | the projection narrows one range | `TransportConfig.energy_shift_ry` allows `(0.0001, 0.1)`; `pao_energy_shift` allows `(0.001, 0.05)`. A citation whose deck says `PAO.EnergyShift 0.0005 Ry` is legal upstream and now draws a warn. Warn-only, so it cannot refuse a prep |
@@ -2843,8 +2845,9 @@ parameter the person answers is for a question the *person* can answer
 differently without the deck stopping being the deck it is.  Under that test the three candidates fail and the genuinely
 per-stage-looking fourth — the k-axis — fails differently: the device is
 sampled 1 along transport and the lead densely (`electrode_kz`), but those are
-two different **cells**, so it is the renderers' composition of one
-person-answered transverse grid, not one parameter with two values.
+two different **cells**, so it is the k-point mesh's composition of one
+person-answered transverse grid (`kmesh.mesh_for`,
+[`siesta.md`](?doc=engines/siesta.md) § 6.1), not one parameter with two values.
 
 **What transport actually lacks is nothing to do with stages.**  The 21 SIESTA
 keywords in § 3.2 that cannot reach any transport deck — `MaxSCFIterations` and
@@ -2898,7 +2901,8 @@ has not changed an answer yet: `jobset init` sets `tbt_k_grid` to the cited
 run's transverse grid, which is the SCF's. But a person who raises it for the
 convergence study § 0.3 describes would be ignored in silence. Written
 `TBT.k [2 2 1]`, it is read. *(Nothing ever caught it: no transmission rung has
-run since `TBT.k` joined the deck on 2026-09-15.)*
+run since `TBT.k` joined the deck on 2026-09-15. Since 2026-09-30 it is written
+as the block, which carries the offset.)*
 
 **And a reason this document gave that the source does not support:** the
 device-deck comment says `tbtrans` "looks for `<SystemLabel>.HSX` unless told",
@@ -2968,7 +2972,9 @@ none of it: it was text `siesta` never read.
   parameter models them.
 * **`TBT.k` is written as a list, `TBT.k [2 2 1]`** — the only line form
   `tbtrans` reads (§ 3.6 item 2's list emitter); the bare triple it carried
-  until 2026-09-29 was skipped.
+  until 2026-09-29 was skipped. *(Superseded 2026-09-30: always the block,
+  which carries the cited offset — `kmesh.write`,
+  [`siesta.md`](?doc=engines/siesta.md) § 6.1.)*
 * **`TBT.Verbosity` gets its catalogue row** (§ 2a.13, *what this map says is
   missing*), at `tbtrans`'s own default, 5 (`tbt_reinit_m.F90` 206).
 
@@ -3274,7 +3280,9 @@ Three corrections that catch real mistakes:
   from the cited relaxation's own grid (§ 2a.7) and the device's transport axis
   is 1 by rule ([`siesta.md`](?doc=engines/siesta.md) § 6.1) — so relax at the
   coarse mesh, cite that attempt, and raise the transport's `kgrid` in its
-  template; the change applies to every rung at once. *(This said the cited
+  template: the change applies to every SCF rung at once. The transmission's
+  `TBT.k` is its own item, `tbt_k_grid`, which starts at the cited grid and is
+  raised on the transmission rung. *(This said the cited
   grid could not be changed, "fdf-is-truth"; § 2a.7 has made it a default the
   person may change since 2026-09-16.)* Γ-only (1×1×1) is wrong for periodic
   metallic leads: even with the lead atoms frozen it gives a poorly defined `E_F`.

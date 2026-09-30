@@ -188,7 +188,6 @@ person to need it finds the entry rather than inventing a second spelling.)*
 | **`pattern`** | a regex the value must match | the form builder → the control's `pattern` |
 | **`null_label`** | what the *unset* option is called on an optional field — `"(default)"`, `"(auto)"` | the form builder's tri-select |
 | **`id_suffix`** | overrides the DOM id derived from the field name, where the derived one would collide or read badly | `_shared.py`'s schema emitter |
-| **`triple_labels`** | the three labels of an `int-triple` (`kx`/`ky`/`kz`) | the form builder |
 
 > ### ⚠ `section` no longer decides visibility on the two engine forms
 >

@@ -274,6 +274,10 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
                                   : "pyscf-form-container");
     }
 
+    // What the live preflight said last, per engine -- the findings a Send
+    // adds its own to (`handover-procedure.md` § 2.1).
+    const _live = { siesta: [], pyscf: [] };
+
     async function refreshPreflight(engine) {
         if (!_structureForRequest()) return;
         const params = collectParams(engine);
@@ -292,7 +296,10 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
              * error as an issue precisely so this panel can show it (the
              * 2026-06-14 change) — gating on ok dropped exactly those.
              * Same rule as the Spectrum tab (lib/spectra/core.js). */
-            if (Array.isArray(r.issues)) _showFindings(engine, r.issues);
+            if (Array.isArray(r.issues)) {
+                _live[engine] = r.issues;
+                _showFindings(engine, r.issues);
+            }
         } catch (e) {
             // Network error during preflight is not surfaced -- the
             // panel stays in its previous state.  The Generate path
@@ -1403,11 +1410,10 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         await mb.taskHandover.send({
             projects:  mb.projects,
             say:       _handoverSay,
-            // The hand-over's findings in the engine's panel; an empty list
-            // leaves the live preflight's standing (they are still true).
-            showFindings: (issues) => {
-                if (issues.length) _showFindings(engine, issues);
-            },
+            // The hand-over's findings in the engine's panel, beside the
+            // live preflight's, which are still true of the form it sends.
+            standing:     _live[engine],
+            showFindings: (issues) => _showFindings(engine, issues),
             structure: _structureForRequest(),
             engine:    engine,
             params:    collectParams(engine),

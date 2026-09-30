@@ -166,21 +166,8 @@ def test_a_field_level_finding_carries_the_stage_it_came_from():
 #  Row 4 — every value is inside the schema's bounds                    #
 # --------------------------------------------------------------------- #
 
-def test_a_value_outside_the_recommended_range_is_warned_never_refused():
-    """A `range` is a recommendation (`engines/template.md` § 5.3): a value
-    past either end is WARNED, naming both bounds -- the severity the
-    settings gate gives the same value in the template.  This refused until
-    2026-09-30 (one range, two severities; SO-N4).
-
-    MUTATION THIS MUST FAIL AGAINST: the stage branch back at "error"."""
-    for value in (99999.0, 1.0):
-        [issue] = preflight(_staged({"mesh_cutoff": value}))
-        assert issue.severity == "warn", issue
-        assert issue.where == "config.mesh_cutoff", issue
-        assert repr(value) in issue.message, issue.message
-        assert "100" in issue.message and "1000" in issue.message
-        assert "recommendation, not a limit" in issue.message, issue.message
-
+# A value outside the recommended range is warned where the description is
+# saved: `test_hard_limits_e2e.py`, on the Task-setup save.
 
 def test_a_value_at_either_bound_is_accepted():
     """Inclusive, as § 3.3's ``range=[a,b]`` says.  An off-by-one here would
