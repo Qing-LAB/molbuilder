@@ -642,21 +642,25 @@ tests are collected:
 1. **A file runs whole, in order, in one worker.** Its module fixtures are built
    once and its tests meet each other exactly as in one process, so spreading a
    run changes *when* a file runs, never *how*.
-2. **A test that runs a real engine runs alone among those that do.** It carries
-   `@pytest.mark.engine` (§ 1) — on the module when every test in the file
-   starts SIESTA, TranSIESTA or PySCF, on the test when only some do — and every
-   engine test in the run shares one worker. Two computations never overlap
-   (the same one-at-a-time rule as job submission), and an engine's threads
-   never compete with another engine's.
+2. **A file that runs a real engine runs alone among those that do.** A test
+   that starts SIESTA, TranSIESTA or PySCF — itself or through a fixture —
+   carries `@pytest.mark.engine` (§ 1), on itself or on its module, and every
+   file holding one shares one worker. Two computations never overlap (the
+   same one-at-a-time rule as job submission), and an engine's threads never
+   compete with another engine's.
 
 `run lf` stays in one process: it re-runs a handful of tests, picked by their
-ids as they are collected.
+ids as they are collected. It runs only when pytest's last-failed list names a
+test file here; a list naming none — empty after a green run, or holding only
+xdist's own report of workers that disagreed — is nothing to rerun, where
+pytest's `--last-failed` would run every test.
 
-**A test's id may not depend on when it is collected.** Every worker collects
-the whole run, and xdist refuses a run whose workers disagree, so a clock value
-belongs inside the test, never in its parameters: the first spread run
-(2026-09-30) stopped at collection on a timestamp in
-`test_notify_listener.py`'s parametrize ids.
+**A test's id and its place in the collection may not depend on the process.**
+Every worker collects the whole run, and xdist refuses a run whose workers
+disagree on the list, order included — so a clock value, an unsorted set, a
+random draw, a pid or a temporary path belongs inside the test, never in its
+parameters. The first spread run (2026-09-30) stopped at collection on a
+timestamp in `test_notify_listener.py`'s parametrize ids.
 
 What a spread run keeps from a one-process run:
 
@@ -665,14 +669,20 @@ What a spread run keeps from a one-process run:
   so they load the plugin too, and it stays silent in them. Every result is
   relayed to the writer, so the file reads exactly as a one-process run's
   does.
-- **A crash ends the run.** A worker that dies ends it, as a crash ends a
-  one-process run: the test it was running is recorded as failed with the
-  crash as the reason, so `status --fails` names it, and a test not yet
-  started does not run, so `status` calls such a run PARTIAL. `testrun`
-  passes `--max-worker-restart 0` because a replacement worker is wrong when
-  the dead one had finished groups: xdist 3.8.0 hands those back as work, the
+- **A crash ends the run.** A worker that dies ends it: the groups the live
+  workers hold finish, and no group is handed out again. The test it was
+  running is recorded as failed with the crash as the reason, so
+  `status --fails` names it, and a test is counted once however many records
+  name it — so the tests no worker reached leave `ran` short of `collected`,
+  and `status` calls the run PARTIAL. `testrun` passes
+  `--max-worker-restart 0` because a replacement worker is wrong when the
+  dead one had finished groups: xdist 3.8.0 hands those back as work, the
   replacement is given one with nothing left in it, and the run waits for
   ever (measured 2026-09-30).
+- **A file that fails to collect is a failure of its own.** One process stops
+  at it; a spread run goes on with the other files. Either way the file is
+  recorded, named by `status --fails` with its error, counted in FAIL and
+  never in `ran`.
 - **Plain test ids.** xdist appends the group to every id
   (`…::test_x@tests/test_y.py`); `tests/conftest.py` takes it off each result
   before anything reads it, so `status --fails`, `failed`, the terminal's

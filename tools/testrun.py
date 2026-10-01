@@ -32,10 +32,10 @@ Design notes
   the failures -- the fix-the-whole-batch-then-verify loop, no full reruns.
 * A run is spread over ``--workers`` pytest-xdist processes
   (``docs/process/testing.md`` § 6.1a): each test file runs whole in one
-  worker, and every ``engine`` test shares one worker, so no two computations
-  overlap.  ``tests/conftest.py`` names the groups; this passes
-  ``--dist loadgroup`` so the scheduler honours them.  ``lf`` runs in one
-  process.
+  worker, and every file holding an ``engine`` test shares one worker, so no
+  two computations overlap.  ``tests/conftest.py`` names the groups; this
+  passes ``--dist loadgroup`` so the scheduler honours them.  ``lf`` runs in
+  one process, and only when the last-failed list names a test file.
 """
 import argparse
 import importlib.util
@@ -213,15 +213,21 @@ def _summarise(batch, path):
     collected = next((e["n"] for e in gen if e["event"] == "collected"), None)
     done = next((e for e in gen if e["event"] == "done"), None)
     tests = [e for e in gen if e["event"] == "test"]
+    # A test record, or a file that failed to collect: each a result, and a
+    # collection failure is a failure -- it explains the exit code.
+    results = [e for e in gen if e["event"] in ("test", "collect")]
     last_t = max((e["time"] for e in gen), default=start_t)
     counts = {"passed": 0, "failed": 0, "skipped": 0}
-    for e in tests:
+    for e in results:
         counts[e["outcome"]] = counts.get(e["outcome"], 0) + 1
-    # A teardown failure is an extra record against a test that already has a
-    # CALL record, so it must not count toward `ran` -- otherwise `ran`
-    # overshoots `collected` and the ran/collected comparison stops meaning
-    # anything.  It still counts as a failure, because it is one.
-    ran = sum(1 for e in tests if not e["nodeid"].endswith(" [teardown]"))
+    # `ran` COUNTS TESTS, NOT RECORDS.  A teardown failure is an extra record
+    # against a test that already has a CALL record; so is a worker that died
+    # in a test's teardown, after its call was recorded -- xdist reports that
+    # test again, as crashed.  Counting records let `ran` reach `collected`
+    # while the dead worker's next test never ran, and the run read `done`.
+    # Each still counts as a failure, because it is one.
+    ran = len({e["nodeid"] for e in tests
+               if not e["nodeid"].endswith(" [teardown]")})
 
     if strays:
         state = "interleaved"
@@ -275,10 +281,28 @@ def _summarise(batch, path):
         "failed": counts["failed"],
         "skipped": counts["skipped"],
         "elapsed": round((last_t - start_t), 1),
-        "failed_ids": [(e["nodeid"], e.get("reason", "")) for e in tests
+        "failed_ids": [(e["nodeid"], e.get("reason", "")) for e in results
                        if e["outcome"] == "failed"],
         "path": path,
     }
+
+
+def _last_failed_names_a_file():
+    """Does pytest's last-failed list name a test file in this tree?
+
+    When it names none -- empty after a green run, or holding only what no
+    test is (``gw1``: xdist's own report of workers that disagreed, the id of
+    a file since deleted) -- pytest's ``--last-failed`` selects nothing it
+    knows and runs EVERY test instead.  ``run lf`` asks first.
+    """
+    path = os.path.join(REPO, ".pytest_cache", "v", "cache", "lastfailed")
+    try:
+        with open(path) as fh:
+            ids = json.load(fh)
+    except (OSError, ValueError):
+        return False
+    return any(os.path.isfile(os.path.join(REPO, nid.split("::", 1)[0]))
+               for nid in ids)
 
 
 def cmd_run(args):
@@ -286,6 +310,10 @@ def cmd_run(args):
     extra = args.targets
     workers = args.workers
     if args.batch == "lf":
+        if not _last_failed_names_a_file():
+            print("[testrun] lf: the last-failed list names no test file "
+                  "here -- nothing to rerun.", flush=True)
+            return 0
         sel = ["tests/", "--last-failed", "--last-failed-no-failures", "none"]
         batch_file = "lf"
         # One process: the failures are picked by id as the tests are
@@ -335,11 +363,11 @@ def cmd_run(args):
            "-p", "tools.progress_plugin", f"--progress-file={prog}",
            "-q", "-rf", "--tb=line"]
     if workers > 1:
-        # A WORKER THAT DIES ENDS THE RUN, as a crash ends a one-process run.
-        # A replacement is wrong when the dead worker had finished groups:
-        # xdist 3.8.0 hands those back as work, the replacement is given one
-        # with nothing left in it, and the run waits for ever (measured
-        # 2026-09-30, `testing.md` § 6.1a).
+        # A WORKER THAT DIES ENDS THE RUN: the groups the live workers hold
+        # finish, and none is handed out again.  A replacement is wrong when
+        # the dead worker had finished groups: xdist 3.8.0 hands those back
+        # as work, the replacement is given one with nothing left in it, and
+        # the run waits for ever (measured 2026-09-30, `testing.md` § 6.1a).
         cmd += ["-n", str(workers), "--dist", "loadgroup",
                 "--max-worker-restart", "0"]
     print(f"[testrun] batch={batch_file}  workers={workers}  progress={prog}",

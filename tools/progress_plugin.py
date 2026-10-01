@@ -20,6 +20,9 @@ reporting a number from whatever survived):
     {"event":"test",  "run":<id>, "nodeid":<str>, "outcome":"passed|failed|skipped",
                       # nodeid gains a " [teardown]" suffix for a teardown failure
                       "duration":<sec>, "reason":<short str>, "time":<epoch>}
+    {"event":"collect", "run":<id>, "nodeid":<str>, "outcome":"failed",
+                      # a file (or xdist's own check) that failed to collect
+                      "reason":<short str>, "time":<epoch>}
     {"event":"done",  "run":<id>, "exitstatus":<int>, "time":<epoch>}
 
 **A file is truncated only when the previous run FINISHED.**  Truncating at
@@ -137,6 +140,24 @@ def pytest_xdist_node_collection_finished(node, ids):
     _collected(len(ids))
 
 
+def _reason(report):
+    """The last line of a failure's text -- where the error names itself."""
+    lines = [ln for ln in (report.longreprtext or "").splitlines() if ln.strip()]
+    return lines[-1][:300] if lines else ""
+
+
+def pytest_collectreport(report):
+    # A FILE THAT FAILS TO COLLECT -- an import that broke -- is a failure of
+    # its own, and no test record can carry it: its tests never exist.  One
+    # process stops at it; a spread run goes on with the other files
+    # (xdist's own loop replaces the one that stops), and before this record
+    # `status` then called the run UNEXPLAINED and blamed the canaries.
+    if report.failed:
+        _write({"event": "collect", "nodeid": report.nodeid,
+                "outcome": "failed", "reason": _reason(report),
+                "time": time.time()})
+
+
 def pytest_runtest_logreport(report):
     # Record the CALL phase for every test, PLUS setup-phase failures/skips
     # (a test that errors or is skipped in setup never reaches "call") PLUS
@@ -161,11 +182,7 @@ def pytest_runtest_logreport(report):
     is_crash = report.when not in ("setup", "call", "teardown")
     if not (is_call or is_setup_terminal or is_teardown_failure or is_crash):
         return
-    reason = ""
-    if report.outcome == "failed":
-        txt = report.longreprtext or ""
-        lines = [ln for ln in txt.splitlines() if ln.strip()]
-        reason = lines[-1][:300] if lines else ""
+    reason = _reason(report) if report.outcome == "failed" else ""
     _write({
         "event": "test",
         # The phase is part of the identity: a teardown failure shares its

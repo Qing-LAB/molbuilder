@@ -329,8 +329,9 @@ def test_a_run_spread_over_workers_reads_as_one_run(tmp_path, monkeypatch):
     CONTRACT: one progress file from one writer, ``done`` with every
     collected test counted; the failed ids are the plain ones pytest accepts
     back, in the progress file and in the last-failed cache that ``run lf``
-    reads; a file runs in one worker; every engine test, marked on its module
-    or on itself, shares one worker.
+    reads; a file that fails to collect is a failure of its own, named by its
+    path; a file runs whole in one worker; every file holding an engine test,
+    marked on its module or on a test, shares one worker.
     """
     monkeypatch.setattr(testrun, "PROGRESS_DIR", str(tmp_path / "progress"))
     s, suite, ran_on = _spread_run(tmp_path, {
@@ -340,8 +341,10 @@ def test_a_run_spread_over_workers_reads_as_one_run(tmp_path, monkeypatch):
         "test_beta.py": ("def test_b1(): note('b1')\n"
                          "def test_b2(): note('b2'); assert False\n"
                          "def test_b3(): note('b3')\n"),
-        # The two largest files, so that by file alone xdist's first
-        # assignment -- largest group first, one per worker -- would part them.
+        # The engine files are the largest groups and the mixed file's
+        # unmarked tests outnumber the rest, so that grouped any other way
+        # xdist's first assignment -- largest group first, one per worker --
+        # would part them.
         "test_engine_one.py": ("pytestmark = pytest.mark.engine\n"
                                "def test_e1(): note('e1')\n"
                                "def test_e2(): note('e2')\n"
@@ -349,34 +352,65 @@ def test_a_run_spread_over_workers_reads_as_one_run(tmp_path, monkeypatch):
                                "def test_e4(): note('e4')\n"),
         "test_engine_two.py": ("@pytest.mark.engine\n"
                                "def test_e5(): note('e5')\n"
-                               "def test_f1(): note('f1')\n"
-                               "def test_f2(): note('f2')\n"
-                               "def test_f3(): note('f3')\n"),
+                               + "".join(f"def test_f{i}(): note('f{i}')\n"
+                                         for i in range(1, 7))),
+        "test_broken.py": "import no_such_module\n",
     })
-    assert (s["state"], s["collected"], s["ran"]) == ("done", 14, 14), s
+    assert (s["state"], s["collected"], s["ran"]) == ("done", 17, 17), s
     events = [e["event"] for e in testrun._read_events(s["path"])]
-    assert [e for e in events if e != "test"] == ["start", "collected", "done"]
-    assert [nid for nid, _ in s["failed_ids"]] == ["test_beta.py::test_b2"], s
+    assert [e for e in events if e != "test"] == [
+        "start", "collect", "collected", "done"]
+    failed = {"test_beta.py::test_b2", "test_broken.py"}
+    assert {nid for nid, _ in s["failed_ids"]} == failed, s
+    assert "no_such_module" in dict(s["failed_ids"])["test_broken.py"], s
     lastfailed = suite / ".pytest_cache" / "v" / "cache" / "lastfailed"
-    assert list(json.loads(lastfailed.read_text())) == ["test_beta.py::test_b2"]
+    assert set(json.loads(lastfailed.read_text())) == failed
     assert len({ran_on[t] for t in ("a1", "a2", "a3")}) == 1, ran_on
-    assert len({ran_on[f"e{i}"] for i in range(1, 6)}) == 1, ran_on
+    engine = [f"e{i}" for i in range(1, 6)] + [f"f{i}" for i in range(1, 7)]
+    assert len({ran_on[t] for t in engine}) == 1, ran_on
 
 
 @pytest.mark.slow
 def test_a_worker_that_dies_ends_the_run_and_names_its_test(
         tmp_path, monkeypatch):
     """GOAL: a crash in a spread run is reported as what it is, and the run
-    ends -- as a crash ends a one-process run.
+    ends -- the tests its worker had not reached are not run, and not counted.
 
-    CONTRACT: the test whose worker died is recorded once, as failed, with
-    the crash as its reason, so ``status --fails`` names it; no replacement
-    worker re-runs it (`testing.md` § 6.1a: a replacement could be handed a
-    finished group and wait for ever).
+    CONTRACT (`testing.md` § 6.1a): the test whose worker died -- here in its
+    teardown, after its call passed -- is recorded as failed with the crash
+    as its reason, so ``status --fails`` names it, and is counted once; the
+    next test of its file never runs, so ``ran`` stays short of
+    ``collected`` and the run reads PARTIAL; no replacement worker re-runs
+    it (a replacement could be handed a finished group and wait for ever).
     """
     monkeypatch.setattr(testrun, "PROGRESS_DIR", str(tmp_path / "progress"))
-    s, _suite, _ran_on = _spread_run(tmp_path, {
-        "test_crash.py": "def test_c1(): note('c1'); os._exit(3)\n"})
-    assert (s["state"], s["collected"], s["ran"]) == ("done", 1, 1), s
+    s, _suite, ran_on = _spread_run(tmp_path, {
+        "test_crash.py": ("@pytest.fixture\n"
+                          "def dies_after():\n"
+                          "    yield\n"
+                          "    os._exit(3)\n"
+                          "def test_x(dies_after): note('x')\n"
+                          "def test_y(): note('y')\n")})
+    assert (s["state"], s["collected"], s["ran"]) == ("partial", 2, 1), s
     [(nid, reason)] = s["failed_ids"]
-    assert nid == "test_crash.py::test_c1" and "crashed" in reason, s
+    assert nid == "test_crash.py::test_x" and "crashed" in reason, s
+    assert "y" not in ran_on, ran_on
+
+
+def test_run_lf_with_nothing_to_rerun_runs_nothing(tmp_path, monkeypatch):
+    """GOAL: ``run lf`` reruns the last failures, never the whole suite.
+
+    CONTRACT (`testing.md` § 6.1a): a last-failed list naming no test file
+    here -- xdist's own report of workers that disagreed (``gw1``), the id of
+    a file since deleted -- is nothing to rerun, where pytest's
+    ``--last-failed`` would run every test.  Driven through ``run lf``; no
+    pytest starts, so no ``lf`` progress is written.
+    """
+    cache = tmp_path / ".pytest_cache" / "v" / "cache"
+    cache.mkdir(parents=True)
+    (cache / "lastfailed").write_text(json.dumps(
+        {"gw1": True, "tests/test_deleted.py::test_x": True}))
+    monkeypatch.setattr(testrun, "REPO", str(tmp_path))
+    monkeypatch.setattr(testrun, "PROGRESS_DIR", str(tmp_path / "progress"))
+    assert testrun.main(["run", "lf"]) == 0
+    assert not (tmp_path / "progress" / "lf.jsonl").exists()

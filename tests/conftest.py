@@ -821,16 +821,18 @@ def _capture_on_fail(request):
     print(f"[capture_on_fail] diagnostic written -> {out}")
 
 
-def _worker_group(item) -> str:
+def _worker_group(item, engine_files) -> str:
     """Which tests share a worker in a spread run (`testing.md` § 6.1a).
 
-    Every engine test shares one, so no two computations overlap; any other
-    test goes with its own file, which then runs whole, in order, in one
-    worker -- its module fixtures built once, as in one process.
+    A file runs whole, in order, in one worker -- its module fixtures built
+    once, as in one process -- and every file holding an engine test, marked
+    on the module or on the test, shares the one engine worker, so no two
+    computations overlap.  By FILE, because a test-level mark grouped alone
+    split its file: the engine test ran on one worker and its siblings on
+    another, each building the module's fixtures.
     """
-    if item.get_closest_marker("engine") is not None:
-        return "engine"
-    return item.nodeid.split("::", 1)[0]
+    file = item.nodeid.split("::", 1)[0]
+    return "engine" if file in engine_files else file
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -880,6 +882,8 @@ def pytest_collection_modifyitems(config, items):
                "--with-dev-tools --yes`")
 
     in_worker = hasattr(config, "workerinput")
+    engine_files = {item.nodeid.split("::", 1)[0] for item in items
+                    if item.get_closest_marker("engine") is not None}
     for item in items:
         fn = item.fspath.basename
         if fn.endswith("_e2e.py") or "_e2e_" in fn:
@@ -890,7 +894,8 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(_pt.mark.integration)
             item.add_marker(_pt.mark.smoke)
         if in_worker:
-            item.add_marker(_pt.mark.xdist_group(_worker_group(item)))
+            item.add_marker(
+                _pt.mark.xdist_group(_worker_group(item, engine_files)))
 
 
 @pytest.hookimpl(tryfirst=True)
