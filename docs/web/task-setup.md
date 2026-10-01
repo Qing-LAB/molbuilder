@@ -1020,6 +1020,22 @@ There is exactly one such card per rung and none anywhere else — it stood in
 the main column for part of 2026-09-02, two cards away from the button it
 decides for, which reads as part of the bench setup.
 
+**What the rung continues from is chosen in its tab too** *(plan W37,
+2026-10-01)*. A rung that continues from the stage before it — a continuing
+stage of an independent ladder ([`job-system.md`](?doc=execution/job-system.md)
+§ 5.4) — shows a **Continue from** choice above its `prep run` line: *the stage
+before it, its newest run* (the default), each run of that stage with what it
+was, or the calculation's structure (`--cold`, where the layout has one). Under
+it, what the choice means: the default's own line — *continues from
+01_coarse/run-1 (the stage before it; concluded rc=0 …)* — or, while prep would
+refuse it, why, whole, with the commands it names. It is the folder's answer
+(`continue_from`), the one prep acts on, given each time the folder is opened
+and so without the run's relaxation verdict, which Preview reads; the command
+line follows the choice (`--from <run>`, `--cold`), and Preview and Prep send
+it to the same prep. A linked rung — a vibration's
+`freq`, a transport rung — and a rung that starts clean show no choice: prep
+takes their input itself, or none.
+
 **So a tab is about doing, not deciding**: what this rung will produce, and the
 two commands that produce it. The decision is above, made once, and visible in
 the description the commands read.
@@ -1064,7 +1080,9 @@ the target's, and *which* machine is § 6's question, answered once above.
 
 **Preview** asks what a prep would do — from the same assembly the prep uses
 (`jobset/prep_inputs.py`, [`architecture.md`](?doc=execution/architecture.md)
-A12) — and writes nothing. **Prep run here** / **Prep bench here** reach the
+A12) — and writes nothing; for a continuing rung it says what the rung will
+continue from, with the run's verdict — or, when the choice is the default and
+prep would refuse it, why, and Prep is not offered. **Prep run here** / **Prep bench here** reach the
 one prep entry the command line calls
 ([`job-system.md`](?doc=execution/job-system.md) § 5.3), so the tab shows what
 the terminal prints, from the same answer:

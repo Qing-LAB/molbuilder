@@ -511,8 +511,12 @@ def _launch_record(f: RunFiles) -> Dict[str, Any]:
     from ...jobset.materialize import read_run_launch
     rec = read_run_launch(f.directory,
                           basename=f.deck.stem if f.deck else None) or {}
+    # `continued_from`: the run this attempt continued from, as prep took it
+    # (`job-system.md` § 5.4, plan W37) -- written by the launch from the
+    # attempt's `.continued-from`.
     launch = {k: rec[k] for k in ("mode", "command", "job_id", "launched_at",
-                                  "placed_on") if rec.get(k) is not None}
+                                  "placed_on", "continued_from")
+              if rec.get(k) is not None}
     return {"computation": {"launch": launch}} if launch else {}
 
 
@@ -609,7 +613,8 @@ CONTRIBUTORS: Tuple[Contributor, ...] = (
     Contributor("run-json",
                 ("computation.launch.mode", "computation.launch.command",
                  "computation.launch.job_id", "computation.launch.launched_at",
-                 "computation.launch.placed_on"),
+                 "computation.launch.placed_on",
+                 "computation.launch.continued_from"),
                 (), _launch_record),
     Contributor("concluded", ("computation.exit",), (), _concluded),
     Contributor("deck", ("deck",), (), _deck),

@@ -181,3 +181,42 @@ def test_moving_to_a_folder_with_LESS_to_show_clears_what_the_last_one_had(
         "description -- a card with nothing new to paint kept what it had")
     assert "alphastage" not in text, (
         "the described folder's stage survived a move to one that has none")
+
+
+def test_the_folder_re_listed_is_not_read_again(page, flask_server, two_calcs):
+    """The SELECTION MOVING replaces the folder (`task-setup.md` § 2.1) -- the
+    sidebar re-listing the folder already shown does not.  Every write the
+    sidebar hears of re-lists the folder and re-publishes the same
+    selection, and the page read the folder again on that publish: a read
+    that landed after a person began typing replaced their unsaved edit with
+    the disk's (found 2026-10-01 -- the page read its folder twice at start,
+    and the second read raced a test's first edit).
+
+    MUTATION THIS MUST FAIL AGAINST: the page reading the folder on every
+    selection publish."""
+    a, _b = two_calcs
+    _open(page, flask_server, a)
+    # THE LOAD HAS FINISHED when the editor holds the description -- it is
+    # filled last (the test above).
+    page.wait_for_function(
+        "() => document.querySelector('.CodeMirror').CodeMirror"
+        "        .getValue().includes('alphastage')", timeout=20000)
+    said = page.evaluate("""async () => {
+        const cm = document.querySelector('.CodeMirror').CodeMirror;
+        cm.setValue(cm.getValue().replace('alphastage', 'gammastage'));
+        // EVERY FOLDER READ THE RE-LIST STARTS: started inside the
+        // selection publish, so before `refresh` resolves.
+        const real = window.fetch, reads = [];
+        window.fetch = (...args) => {
+            if (String(args[0]).includes('/api/task-setup/folder'))
+                reads.push(String(args[0]));
+            return real(...args);
+        };
+        try { await window.molbuilder.projects.refresh(); }
+        finally { window.fetch = real; }
+        return { reads, text: cm.getValue() };
+    }""")
+    assert said["reads"] == [], (
+        "re-listing the folder read it again -- a read that replaces the "
+        "unsaved edit with the disk's when it lands: " + repr(said["reads"]))
+    assert "gammastage" in said["text"], said["text"]

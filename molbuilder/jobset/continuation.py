@@ -1,4 +1,4 @@
-"""The hand-over -- which run a stage continues from
+"""What a stage continues from -- which run, and what that run was
 (`execution/job-system.md` § 5.4, plan W37).
 
 **Module:** L3 (jobset).  ONE answer, asked by `prep` before it writes a stage
@@ -6,7 +6,7 @@
 stage it names next, so the two never say different things about the same run.
 `status` answered by a rule of its own until the W37 review found it telling a
 person a stage set to start clean would continue, and naming nothing on the
-flat layout, where prep hands over all the same.  Reads the folder; writes
+flat layout, where the next stage continues all the same.  Reads the folder; writes
 nothing; raises nothing -- a refusal is an answer, which `prep` turns into its
 own error and `status` prints.
 """
@@ -18,7 +18,7 @@ from typing import Optional, Tuple
 
 
 @dataclasses.dataclass(frozen=True)
-class Handover:
+class Continuation:
     """WHICH RUN A STAGE CONTINUES FROM, and what that run was -- printed by
     both prep doors and recorded in the decision ledger."""
     #: The stage the run belongs to.
@@ -77,8 +77,8 @@ def _what_it_is(concluded: Optional[str], state: Optional[str]) -> str:
 
 
 def read_run(base: Path, task, stage: str, attempt: Path,
-             container: Path) -> Tuple[Optional[str], Optional[str],
-                                       Optional[bool]]:
+             container: Path, *, verdict: bool = True
+             ) -> Tuple[Optional[str], Optional[str], Optional[bool]]:
     """``(concluded, state, converged)`` of one run of ``stage`` -- its
     conclusion marker (`materialize.attempt_concluded`; an empty marker is a
     conclusion, so ``""``), its state through the one door
@@ -86,7 +86,8 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     an attempt's own run on the hierarchy; on the flat layout THIS stage's
     files among the folder's -- its progress log, the one both engines write
     and the only one a PySCF run's stdout cannot stand in for, then its
-    engine output."""
+    engine output.  ``verdict=False`` skips the relaxation's parse -- a list
+    of runs needs each one's conclusion, not a parse of each output."""
     from ..parse import detect
     from ..parse.contract import relaxation_of, relaxation_of_output
     from ..parse.dirs import run_status
@@ -108,7 +109,9 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     except Exception:                                    # noqa: BLE001
         state = None
     rec = None
-    if sh.keeps_attempts_as_directories:
+    if not verdict:
+        pass
+    elif sh.keeps_attempts_as_directories:
         try:
             rec = relaxation_of(attempt)
         except Exception:                                # noqa: BLE001
@@ -128,37 +131,27 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     return concluded, state, (None if rec is None else bool(rec["converged"]))
 
 
-def handover_answer(base, task, stage: str, *, from_attempt=None,
-                    cold: bool = False
-                    ) -> Tuple[Optional[Handover], Optional[str]]:
-    """``(handover, refusal)`` for ``stage`` (`job-system.md` § 5.4).
+def continuation_answer(base, task, stage: str, *, from_attempt=None,
+                        cold: bool = False, verdict: bool = True
+                        ) -> Tuple[Optional[Continuation], Optional[str]]:
+    """``(continuation, refusal)`` for ``stage`` (`job-system.md` § 5.4).
 
     **Named** (``--from``): taken as said -- what the run was is read and
     reported, never refused here; `prepare_attempt` refuses only what cannot
     be done (no such attempt, no restart files in it).  **By default**, for a
-    continuing stage of an INDEPENDENT ladder -- a kind without rung roles
-    (`template.KIND_ROLES`; a linked stage's input is prep's own,
-    `prep._vibration_stage_geometry` and `prep.gather_transport_inputs`): the
-    NEWEST attempt of the enabled stage before it, which must have concluded
-    and not failed -- an older one never stands in, because a stage
-    re-launched to tighten is the run the person means.  Otherwise the
-    refusal, worded by what the run's state says and naming the commands that
-    work on this layout.  ``(None, None)`` for ``--cold``, a linked kind, the
-    first stage, a stage that starts clean, and one the description disables
-    (prepped by name, it has no stage before it)."""
-    from ..identity import command_stage, continues
-    from ..paths import Shape
-    from ..paths import attempt_dir as _adir
-    from ..resolve import resolved_ladder
-    from ..runfiles import compose as rf_compose
-    from ..template import KIND_ROLES, template_path
-    from .materialize import attempts as _attempts, latest_attempt
-    from .prep import _engine_seam, token_for
+    continuing stage of an independent ladder (`_independent`): the NEWEST
+    attempt of the enabled stage before it, which must have concluded and not
+    failed -- an older one never stands in, because a stage re-launched to
+    tighten is the run the person means.  Otherwise the refusal, worded by
+    what the run's state says and naming the commands that work on this
+    layout.  ``(None, None)`` for ``--cold``, a linked kind, the first stage,
+    a stage that starts clean, and one the description disables (prepped by
+    name, it has no stage before it).  ``verdict=False`` leaves the
+    relaxation unread -- for a reader that never prints it."""
+    from ..identity import command_stage
     base = Path(base)
-    if cold or (getattr(task, "calculation", None)
-                or "optimization") in KIND_ROLES:
+    if cold or not _independent(task):
         return None, None
-    sh = Shape.named(task.shape)
     if from_attempt:
         attempt = base / from_attempt
         if not attempt.is_dir():
@@ -171,24 +164,27 @@ def handover_answer(base, task, stage: str, *, from_attempt=None,
         if named not in {s.name for s in task.stages}:
             return None, None
         concluded, state, converged = read_run(base, task, named, attempt,
-                                               attempt.parent)
-        return Handover(stage=named, source=str(Path(from_attempt)),
-                        by_default=False, concluded=concluded, state=state,
-                        converged=converged), None
+                                               attempt.parent, verdict=verdict)
+        return Continuation(stage=named, source=str(Path(from_attempt)),
+                            by_default=False, concluded=concluded, state=state,
+                            converged=converged), None
+    prev = _stage_before(base, task, stage)
+    if prev is None:
+        return None, None
+    return _by_default(base, task, stage, prev, verdict=verdict)
 
-    tpl = template_path(base, task.label)
-    if not tpl.is_file():
-        return None, None
+
+def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool
+                ) -> Tuple[Optional[Continuation], Optional[str]]:
+    """The default for ``stage``, whose stage before it is ``prev`` -- the
+    newest attempt, or the refusal (`continuation_answer`)."""
+    from ..paths import Shape
+    from ..paths import attempt_dir as _adir
+    from ..runfiles import compose as rf_compose
+    from .materialize import attempts as _attempts, latest_attempt
+    from .prep import _engine_seam, token_for
+    sh = Shape.named(task.shape)
     seam = _engine_seam(str(task.engine))
-    ladder = resolved_ladder(tpl.read_text(encoding="utf-8"), task,
-                             seam.config_cls)
-    names = [n for n, _c in ladder]
-    if stage not in names:
-        return None, None
-    i = names.index(stage)
-    if i == 0 or not continues(ladder[i][1]):
-        return None, None
-    prev = names[i - 1]
     token = token_for(task, prev)
     sd = sh.stage_dir(token)
     container = base if sd == "." else base / sd
@@ -220,11 +216,11 @@ def handover_answer(base, task, stage: str, *, from_attempt=None,
                           f"first --\n{run_prev}\n{clean}\n{rule}")
         attempt, source = latest, str(latest.relative_to(base))
     concluded, state, converged = read_run(base, task, prev, attempt,
-                                           container)
+                                           container, verdict=verdict)
     if concluded is not None and state != "failed":
-        return Handover(stage=prev, source=source, by_default=True,
-                        concluded=concluded, state=state,
-                        converged=converged), None
+        return Continuation(stage=prev, source=source, by_default=True,
+                            concluded=concluded, state=state,
+                            converged=converged), None
 
     # REFUSED -- worded by what the run's state says, with a command for
     # each way on (§ 5.3: what molbuilder prints, you can type).
@@ -244,12 +240,13 @@ def handover_answer(base, task, stage: str, *, from_attempt=None,
     other = None
     if not flat:
         # AN EARLIER RUN THAT CAN STAND IN WHEN ASKED FOR: the newest that
-        # concluded and did not fail, typed out -- never a placeholder.
+        # concluded and did not fail, typed out -- never a placeholder.  Its
+        # conclusion is the question, not its relaxation.
         for n in reversed(_attempts(container)):
             a = _adir(container, n)
             if a == attempt:
                 continue
-            c, s, _v = read_run(base, task, prev, a, container)
+            c, s, _v = read_run(base, task, prev, a, container, verdict=False)
             if c is not None and s != "failed":
                 other = str(a.relative_to(base))
                 break
@@ -258,3 +255,76 @@ def handover_answer(base, task, stage: str, *, from_attempt=None,
            if other else "")
     return None, (f"`{stage}` continues from {what} {why}.  {first}\n"
                   f"{alt}{clean}\n{rule}")
+
+
+def _independent(task) -> bool:
+    """An INDEPENDENT ladder, whose stages continue one from another: a kind
+    without rung roles (`template.KIND_ROLES`).  A linked stage's input is
+    prep's own (`prep._vibration_stage_geometry`,
+    `prep.gather_transport_inputs`)."""
+    from ..template import KIND_ROLES
+    return (getattr(task, "calculation", None)
+            or "optimization") not in KIND_ROLES
+
+
+def _stage_before(base, task, stage: str) -> Optional[str]:
+    """The enabled stage ``stage`` continues from by default -- the one
+    before it in the ladder, resolved as `prep` resolves it (template ⊕
+    stage overrides ⊕ the run card, so a card's ``restart: clean`` is read)
+    -- or ``None``: a linked kind, the first stage, one that starts clean,
+    one the description disables."""
+    from ..identity import continues
+    from ..resolve import resolved_ladder
+    from ..template import template_path
+    from .prep import _engine_seam
+    if not _independent(task):
+        return None
+    tpl = template_path(Path(base), task.label)
+    if not tpl.is_file():
+        return None
+    ladder = resolved_ladder(tpl.read_text(encoding="utf-8"), task,
+                             _engine_seam(str(task.engine)).config_cls)
+    names = [n for n, _c in ladder]
+    if stage not in names:
+        return None
+    i = names.index(stage)
+    if i == 0 or not continues(ladder[i][1]):
+        return None
+    return names[i - 1]
+
+
+def continue_from_choices(base, task, stage: str) -> Optional[dict]:
+    """What Task setup's **Continue from** offers ``stage`` -- the default
+    and, when prep would refuse it, why; every run of the stage before it
+    with what it was; whether the structure (``--cold``) is a choice here --
+    or ``None`` when the stage continues from nothing by default
+    (`job-system.md` § 5.4, `web/task-setup.md` § 11).  The answer prep acts
+    on, served before it does -- without the relaxation's verdict, which the
+    preview reads (`continuation_answer`): a folder is answered every time it
+    is opened, and parsing each stage's output there is the cost of a
+    preview nobody asked for."""
+    from ..paths import Shape
+    from ..paths import attempt_dir as _adir
+    from .materialize import attempts as _attempts
+    from .prep import token_for
+    base = Path(base)
+    prev = _stage_before(base, task, stage)
+    if prev is None:
+        return None
+    got, refused = _by_default(base, task, stage, prev, verdict=False)
+    sh = Shape.named(task.shape)
+    runs = []
+    if sh.keeps_attempts_as_directories:
+        container = base / sh.stage_dir(token_for(task, prev))
+        for n in (reversed(_attempts(container)) if container.is_dir()
+                  else ()):
+            a = _adir(container, n)
+            c, s, _v = read_run(base, task, prev, a, container,
+                                verdict=False)
+            runs.append({"source": str(a.relative_to(base)),
+                         "what": _what_it_is(c, s)})
+    return {"from_stage": prev,
+            "default": (dict(got.as_dict(), line=got.line())
+                        if got is not None else None),
+            "refused": refused, "runs": runs,
+            "cold": sh.keeps_attempts_as_directories}

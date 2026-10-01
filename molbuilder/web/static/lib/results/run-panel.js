@@ -163,6 +163,7 @@ const FIELDS = {
     threads_engine: { label: "Threads the engine used" },
     command:        { label: "Command", fmt: (v) => (Array.isArray(v) ? v.join(" ") : String(v)), style: MONO },
     launched_at:    { label: "Launched at", fmt: utc },
+    continued_from: { label: "Continued from", style: MONO },
     // time
     run_start_local:  { label: "Started (the node's clock)", fmt: local },
     run_end_local:    { label: "Ended (the node's clock)", fmt: local },

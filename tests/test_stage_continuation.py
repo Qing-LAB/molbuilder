@@ -1,8 +1,8 @@
-"""The hand-over of an independent stage -- through the road: `jobset init`,
+"""What an independent stage continues from -- through the road: `jobset init`,
 `prep`, `status`, the decision ledger.
 
-PINS: ``docs/execution/job-system.md`` § 5.4 (*The hand-over of an
-independent stage*: by default the newest attempt of the enabled stage before
+PINS: ``docs/execution/job-system.md`` § 5.4 (*What an independent stage
+continues from*: by default the newest attempt of the enabled stage before
 it, which must have concluded and not failed -- refused before anything is
 written, naming the commands; one that did not converge taken with a warning;
 `--from` taken as said, with what the run was; `--cold` none; the flat layout
@@ -176,7 +176,7 @@ def test_a_choice_is_taken_as_said_and_a_failed_run_is_refused(ladder):
     assert "continues from" not in r.output, r.output
 
 
-def test_the_flat_layout_hands_over_by_the_same_rule(ladder):
+def test_the_flat_layout_continues_by_the_same_rule(ladder):
     """Every stage shares one folder, so nothing is copied -- and the next
     stage still waits for the one before it to conclude, and says which run
     it continues from.
@@ -231,12 +231,12 @@ def test_a_newer_run_is_never_passed_over_and_a_verdict_is_said(ladder):
             "stands)") in r.output, r.output
 
 
-def test_the_browser_prep_hands_over_as_the_terminal_does(ladder):
+def test_the_browser_prep_continues_as_the_terminal_does(ladder):
     """Task setup's Prep is the same prep: refused, by name, while coarse
-    has not been launched; once it has concluded, the answer carries the
-    hand-over and the line the terminal prints.
+    has not been launched; once it has concluded, the answer carries what
+    it continues from and the line the terminal prints.
 
-    MUTATION THIS MUST FAIL AGAINST: the answer without its hand-over."""
+    MUTATION THIS MUST FAIL AGAINST: the answer without its continuation."""
     from molbuilder.web.app import create_app
     bundle = ladder()
     client = create_app(config={}).test_client()
@@ -253,7 +253,7 @@ def test_the_browser_prep_hands_over_as_the_terminal_does(ladder):
     _ran(bundle / "01_coarse" / "run-0")
     r = prep("medium")
     assert r.status_code == 200, r.get_json()
-    got = r.get_json()["handover"]
+    got = r.get_json()["continuation"]
     assert (got["stage"], got["source"], got["by_default"]) == (
         "coarse", "01_coarse/run-0", True), got
     assert got["line"].startswith(
@@ -285,3 +285,74 @@ def test_a_stage_set_to_start_clean_is_never_told_it_continues(ladder):
     assert r.exit_code == 0, r.output
     assert "continues from" not in r.output, r.output
     assert "nothing carried in" in r.output, r.output
+
+
+def test_the_browser_doors_offer_the_choice_and_take_it(ladder):
+    """Task setup's doors: the folder answer offers medium's Continue from
+    -- coarse's runs with what each was, `--cold`, and the default or why it
+    is refused; the preview says what prep would take; the prep takes a run
+    named by `from`, or none by `cold`, and refuses a path out of the
+    calculation.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the route dropping `from` / `cold`;
+    the folder answer without the choices."""
+    from molbuilder.web.app import create_app
+    bundle = ladder()
+    client = create_app(config={}).test_client()
+
+    def post(**body):
+        return client.post("/api/task-setup/prep", json=dict(
+            {"dest": str(bundle), "kind": "run", "target": "this"}, **body))
+
+    assert post(stage="coarse").status_code == 200
+    _ran(bundle / "01_coarse" / "run-0")
+    cf = client.get("/api/task-setup/folder?dir=" + str(bundle)).get_json()[
+        "continue_from"]
+    assert set(cf) == {"medium"}, cf
+    m = cf["medium"]
+    assert (m["from_stage"], m["cold"], m["refused"]) == ("coarse", True,
+                                                          None), m
+    assert m["default"]["source"] == "01_coarse/run-0", m
+    assert [r["source"] for r in m["runs"]] == ["01_coarse/run-0"], m
+    assert m["runs"][0]["what"].startswith("concluded rc=0"), m
+
+    r = post(stage="medium", plan=True).get_json()
+    assert r["continuation"]["line"].startswith(
+        "continues from 01_coarse/run-0 (the stage before it;"), r
+    r = post(stage="medium", cold=True)
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["continuation"] is None, r.get_json()
+    assert r.get_json()["attempt"]["cold"] is True, r.get_json()
+    r = post(stage="medium", **{"from": "01_coarse/run-0"})
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["continuation"]["by_default"] is False, r.get_json()
+    # A PATH OUT OF THE CALCULATION, refused by its own rule -- `..` leads
+    # to a folder that exists, so nothing else can be what refused it.
+    (bundle.parent / "elsewhere").mkdir()
+    r = post(stage="medium", **{"from": "../elsewhere"})
+    assert r.status_code == 400, r.get_json()
+    assert "`from` names a run of this calculation" in r.get_json()["error"]
+
+
+def test_the_run_panel_says_what_a_run_continued_from(ladder):
+    """A stage that continued from another, launched: its run record -- the
+    Results tab's Run panel -- names the run, from its `run.json`.
+
+    MUTATION THIS MUST FAIL AGAINST: the record without `continued_from`."""
+    from molbuilder.jobset.materialize import write_run_launch
+    from molbuilder.web.app import create_app
+    bundle = ladder()
+    assert _prep(bundle, "coarse").exit_code == 0
+    _ran(bundle / "01_coarse" / "run-0")
+    assert _prep(bundle, "medium").exit_code == 0
+    attempt = bundle / "02_medium" / "run-0"
+    # the launch's own record (submit writes it from `.continued-from`)
+    write_run_launch(attempt, mode="direct", command=["bash", "x"],
+                     continued_from=(attempt / ".continued-from")
+                     .read_text().strip())
+    shutil.copy2(_RELAX / "H2_01_relax-run0.out",
+                 attempt / "H2_02_medium-run0.out")
+    body = create_app(config={}).test_client().get(
+        "/api/results/dir?path=" + str(attempt)).get_json()
+    launch = body["record"]["computation"]["launch"]
+    assert launch["continued_from"] == "01_coarse/run-0", launch

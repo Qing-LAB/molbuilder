@@ -1241,8 +1241,8 @@ def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
         click.echo(f"prepped {len(ans.dirs)} job dir(s) under {base}  "
                    "(flat: no attempt to open; runs are told apart by "
                    "the wrapper's output index)")
-        if ans.handover is not None:
-            click.echo("  " + ans.handover.line())
+        if ans.continuation is not None:
+            click.echo("  " + ans.continuation.line())
         _echo_pipeline_log(ans, base)
         say_next(next_line)
         return
@@ -1266,10 +1266,10 @@ def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
     click.echo(f"prepared {rep.stage}: {rep.dir.relative_to(base)}"
                f"{'' if rep.fresh else '  (reused -- not launched yet)'}")
     click.echo(f"  brought in: {', '.join(rep.brought)}")
-    if ans.handover is not None:
-        # THE HAND-OVER, said (`job-system.md` § 5.4): which run, by default
+    if ans.continuation is not None:
+        # WHAT IT CONTINUES FROM, said (`job-system.md` § 5.4): which run, by default
         # or named, what it was, and what came across.
-        click.echo("  " + ans.handover.line(rep.copied))
+        click.echo("  " + ans.continuation.line(rep.copied))
     elif rep.copied:
         click.echo(f"  copied from {rep.continued_from}: "
                    f"{', '.join(rep.copied)}")

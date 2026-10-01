@@ -1174,15 +1174,16 @@ def test_a_bench_grid_answer_that_arrives_late_is_dropped(
         f"nobody asked for, and says how many combinations fit it")
 
 
-def test_no_rung_is_taught_a_from_the_hand_over_is_preps(
+def test_no_rung_is_taught_a_from_by_default(
         page, flask_server, two_stage_dir):
-    """The page composes no `--from`, even for a rung whose run card says it
-    continues: which run a stage continues from is prep's answer -- the
-    newest attempt of the stage before it, which must have concluded
-    (`job-system.md` § 5.4, plan W37) -- and a `--from` the page composed
-    skipped that check, being taken as said.  (It taught one from the card
-    until W37: the newest attempt by count, concluded or not; and before the
-    K5 review's A1, to every transport rung, which prep refused.)
+    """By default the page composes no `--from`, even for a rung whose run
+    card says it continues: which run a stage continues from is then prep's
+    answer -- the newest attempt of the stage before it, which must have
+    concluded (`job-system.md` § 5.4, plan W37) -- and a `--from` is taken
+    as said, unchecked, so it appears only when a person chooses a run
+    (the next test).  (It taught one from the card until W37: the newest
+    attempt by count, concluded or not; and before the K5 review's A1, to
+    every transport rung, which prep refused.)
 
     MUTATION THIS MUST FAIL AGAINST: the page composing a `--from` again.
     """
@@ -1206,6 +1207,79 @@ def test_no_rung_is_taught_a_from_the_hand_over_is_preps(
     assert not any("--from" in c for c in cmds), (
         "a rung whose card states nothing was taught a --from: "
         + repr([c for c in cmds if "--from" in c]))
+
+
+def test_a_rung_chooses_what_it_continues_from_and_prep_takes_it(
+        page, flask_server, two_stage_dir):
+    """The tight tab's **Continue from** (plan W37, `task-setup.md` § 11):
+    coarse's newest run was never launched, so the default is refused and
+    the tab says why, with the commands it names; choosing coarse's earlier
+    run that concluded puts it on the command line, the preview says what it
+    will continue from, and Prep writes an attempt that continues from it --
+    and its answer, and the tab, outlive the folder's re-read the write
+    announces.
+
+    The coarse runs are the records runs leave -- a conclusion marker and a
+    geometry; nothing here launches an engine.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the command not following the choice;
+    the page not sending it to prep; the note cut to its first line; the
+    re-read the page's own Prep triggers resetting the tab and the answer
+    (the W37 review)."""
+    for n in (0, 1):
+        (two_stage_dir / "01_coarse" / f"run-{n}").mkdir(parents=True)
+    run0 = two_stage_dir / "01_coarse" / "run-0"
+    (run0 / "ladder_01_coarse-run0.concluded").write_text(
+        "rc=0 at Thu Sep 24 02:38:51 PM MST 2026\n")
+    (run0 / "ladder.XV").write_text("the geometry coarse left\n")
+
+    _open(page, flask_server, two_stage_dir)
+    page.wait_for_selector("#ts-target-card button", timeout=20000)
+    page.evaluate(
+        "() => { for (const b of document.querySelectorAll('button'))"
+        "  if ((b.textContent||'').trim().startsWith('(this machine)'))"
+        "    { b.click(); return; } }")
+    page.locator("button.ts-steptab:has-text('tight')").first.click()
+    panel = "#ts-steppanel-1"
+    choice = f"{panel} .ts-continue-from select"
+    page.wait_for_selector(choice, timeout=20000)
+    note = page.locator(f"{panel} .ts-continue-from p").first.inner_text()
+    assert "which has not been launched" in note, note
+    assert "molbuilder jobset launch run coarse" in note, note
+
+    page.select_option(choice, "01_coarse/run-0")
+    page.wait_for_function(
+        "(sel) => Array.from(document.querySelectorAll(sel)).some("
+        "  e => e.textContent.includes("
+        "    'prep run tight --from 01_coarse/run-0'))",
+        arg=f"{panel} pre.ts-cmd", timeout=10000)
+
+    page.locator(f"{panel} .ts-prep button:has-text('Preview run')") \
+        .first.click()
+    page.wait_for_function(
+        "(sel) => Array.from(document.querySelectorAll(sel)).some("
+        "  n => n.textContent.includes('continues from 01_coarse/run-0 "
+        "(named;'))", arg=f"{panel} .ts-prep-say", timeout=30000)
+    page.wait_for_function(
+        "(sel) => Array.from(document.querySelectorAll(sel)).some("
+        "b => /Prep run here/.test(b.textContent) && !b.disabled)",
+        arg=f"{panel} .ts-prep button", timeout=30000)
+    page.locator(f"{panel} .ts-prep button:has-text('Prep run here')") \
+        .first.click()
+    # THE RE-READ HAS HAPPENED when the tab counts the attempt prep wrote --
+    # the count is the folder's answer, read again after the write.
+    page.wait_for_selector("button.ts-steptab:has-text('tight') .ts-ran",
+                           timeout=60000)
+    attempt = two_stage_dir / "02_tight" / "run-0"
+    assert (attempt / ".continued-from").read_text().strip() == \
+        "01_coarse/run-0"
+    assert (attempt / "ladder.XV").read_text() == "the geometry coarse left\n"
+    tab = page.locator("button.ts-steptab:has-text('tight')").first
+    assert tab.get_attribute("aria-selected") == "true", (
+        "the page's own Prep re-read the folder and moved off the tab")
+    answer = page.locator(f"{panel} .ts-prep-answer")
+    assert answer.count() == 1, "the re-read wiped the prep's answer"
+    assert "continues from 01_coarse/run-0" in answer.first.inner_text()
 
 
 def test_a_FLAT_bundle_is_taught_no_from_at_all(

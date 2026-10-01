@@ -19,6 +19,7 @@ it inspects the tree, changes nothing.
 from __future__ import annotations
 
 import dataclasses
+import textwrap
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -147,11 +148,13 @@ class JobSetStatus:
     first_incomplete: Optional[str]   # name of the first non-finished stage (resume here)
     complete:        bool             # every enabled stage finished
     #: The run the first incomplete stage's prep will continue from, when
-    #: nothing has prepped it -- `handover.handover_answer`'s, the answer
+    #: nothing has prepped it -- `continuation.continuation_answer`'s, the answer
     #: prep itself asks (`job-system.md` § 5.4) -- or ``None``: a linked
     #: stage, the first, one that starts clean.
     resume_from: Optional[str] = None
-    #: Why that prep would refuse instead -- the refusal's first sentence.
+    #: Why that prep would refuse instead -- the refusal whole, with the
+    #: commands it names (`job-system.md` § 5.3: what molbuilder prints, you
+    #: can type).
     resume_refused: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -420,24 +423,26 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
         stages=stages,
         first_incomplete=(first.name if first is not None else None),
         complete=(first is None),
-        **_next_handover(base, task, first),
+        **_next_continuation(base, task, first),
     )
 
 
-def _next_handover(base: Path, task, first: Optional[StageStatus]) -> dict:
+def _next_continuation(base: Path, task, first: Optional[StageStatus]) -> dict:
     """What the next prep of the first incomplete stage will continue from,
-    or why it would refuse -- asked of `handover.handover_answer`, the one
+    or why it would refuse -- asked of `continuation.continuation_answer`, the one
     door `prep` asks too, so the two never disagree about the same run (the
     W37 review: a rule of status's own told a stage set to start clean that
     it would continue, and named nothing on the flat layout)."""
     if task is None or first is None or first.prepped:
         return {}
-    from .handover import handover_answer
-    got, refused = handover_answer(base, task, first.name)
+    from .continuation import continuation_answer
+    # NO VERDICT: status names the run, not its relaxation -- and the table
+    # (the Results tab's ladder too) is read far more often than prepped.
+    got, refused = continuation_answer(base, task, first.name, verdict=False)
     if got is not None:
         return {"resume_from": got.where()}
     if refused:
-        return {"resume_refused": refused.split("\n")[0]}
+        return {"resume_refused": refused}
     return {}
 
 
@@ -486,7 +491,7 @@ def render_status(status: JobSetStatus) -> str:
                 lines.append(
                     f"First incomplete stage: {first.name}, not prepped yet "
                     f"-- and its prep refuses for now:\n"
-                    f"    {status.resume_refused}")
+                    + textwrap.indent(status.resume_refused, "    "))
                 return "\n".join(lines)
             lines.append(
                 f"First incomplete stage: {first.name}, not prepped yet:\n"
@@ -527,7 +532,8 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
         nxt = s.name == status.first_incomplete
         how = ("Enable it in Task setup (or task.json) to run it."
                if not s.enabled else
-               f"Its prep refuses for now: {status.resume_refused}"
+               "Its prep refuses for now:\n"
+               + textwrap.indent(status.resume_refused, "    ")
                if nxt and status.resume_refused else
                f"Prep it:  molbuilder jobset prep run {s.name}"
                + (f"   # continues from {status.resume_from}"

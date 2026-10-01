@@ -1410,7 +1410,7 @@ record
 │   ├── host             hostname · user · cwd · conda_env · python · node_phys_cores ·
 │   │                    node_sockets · node_cores_per_socket · machine{node, cores, mem_gb, gpu}
 │   ├── launch           mode · command · job_id · launched_at · placed_on ·
-│   │                    ranks_asked · threads · ranks · threads_engine
+│   │                    continued_from · ranks_asked · threads · ranks · threads_engine
 │   ├── time             run_start_local · run_end_local · engine_elapsed_s · s_per_iter ·
 │   │                    iters_measured · s_per_iter_<phase> · iters_measured_<phase> · rows_<phase>
 │   ├── memory           mem_peak_gb · mem_peak_from · util_basis · cpu_mean_pct ·
@@ -1447,7 +1447,7 @@ is rows, not a code path.
 | `wrapper-log` | `<base>.runwrap-<stamp>.log`, run N's section | `wrapper_log.read_wrapper_log` | any | `computation.host` · `launch.ranks_asked` · `launch.threads` · `engine.binary` · `time.engine_elapsed_s` |
 | `instruments` | `.scf-timing.log` (a PySCF run: its `.molwatch.log`'s stamped rows) · `.monitor.log` · `.util.csv` | the instruments and `utilisation` (§ 5c) | any | `computation.time.s_per_iter` · `iters_measured`, and per phase `s_per_iter_<phase>` · `iters_measured_<phase>` · `rows_<phase>` (`periodic`, `negf`) · `memory` · `host.machine` |
 | `pyscf-log` | `<base>.log`, PySCF's own logger | `parse/engines/pyscf.read_pyscf_sys_info` | PySCF | `computation.engine` (program, version, python) · `launch.threads_engine` |
-| `run-json` | `run.json` — a flat stage's `<basename>.run.json` | `jobset.materialize.read_run_launch` | any | `computation.launch` (mode, command, job_id, launched_at, placed_on) |
+| `run-json` | `run.json` — a flat stage's `<basename>.run.json` | `jobset.materialize.read_run_launch` | any | `computation.launch` (mode, command, job_id, launched_at, placed_on, continued_from — the run it continued from, `execution/job-system.md` § 5.4) |
 | `concluded` | `<base>-runN.concluded` | `jobset.materialize.attempt_concluded` | any | `computation.exit` |
 | `deck` | the deck · `.gathered-from` | `script_emit.same_calculation` · `jobset.materialize.read_gathered_from` | any | `deck` |
 | `setup` | the parameters fence (§ 5d.3a) · the deck · `fdf.<stamp>.log` | `script_emit.read_parameters_fence` · `script_emit.parameter` · the `siesta-fdf-log` parser | any that writes the fence | `setup.rows` · `setup.engine_only` · `verdict.findings` |

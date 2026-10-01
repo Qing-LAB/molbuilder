@@ -702,7 +702,13 @@
     gap: var(--space-sm);
     margin-top: var(--space-xs);
 }
-.ts-prep-say { color: var(--text-secondary); font-size: var(--text-sm); }
+/* pre-wrap: a refusal keeps its lines -- the commands it names are each
+   one to type (`job-system.md` § 5.3). */
+.ts-prep-say {
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    white-space: pre-wrap;
+}
 .ts-prep-say[data-state="bad"]  { color: var(--ts-refuse-fg); }
 .ts-prep-say[data-state="warn"] { color: var(--warn-soft); }
 
@@ -727,6 +733,12 @@
     white-space: pre-wrap;
 }
 .ts-prep-answer .btn { margin-top: var(--space-xs); }
+
+/* Continue from (plan W37, `task-setup.md` § 11): what a stage starts from,
+   and under it what that means -- prep's own line, or why prep refuses it,
+   whole, its commands on their own lines. */
+.ts-continue-note { white-space: pre-wrap; }
+.ts-continue-note[data-state="warn"] { color: var(--warn-soft); }
 
 /* ---- "Tell me how it is going" ------------------------------------- */
 /* A sibling of the queue card: this calculation's own asks, not the

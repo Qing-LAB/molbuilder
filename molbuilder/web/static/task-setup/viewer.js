@@ -410,10 +410,18 @@ function freshFolderState() {
         stepTab:      "",         // which rung's tab was open
         queue:        "",         // the chosen domain -> `allocation`
         benchRefusal: null,       // why `prep bench` refuses here, or null
+        continueFrom: {},         // stage -> what it can continue from (W37)
+        continueChoice: {},       // stage -> the person's choice: "", a run, "--cold"
+        answers:      {},         // "<kind>:<stage>" -> the last prep answer shown
     };
 }
 
 let _fs = freshFolderState();
+
+//: Set while this page announces its OWN write (`publishFolderChanged` runs
+//: its subscribers synchronously), so the re-read it triggers is told from
+//: another writer's -- a restore -- which retires the prep answers.
+let _ownPublish = false;
 
 
 function scheduleFitRefresh(bench) {
@@ -1083,11 +1091,25 @@ async function setEditorText(text, opts) {
  * The two ask boxes are DOM, not state: they are inputs the person typed
  * into, and nothing owns their value but the element.
  */
-function _resetPerFolderState() {
+function _resetPerFolderState(keep) {
     for (const f of _fs.runFits.values()) {
         if (f && f.timer) clearTimeout(f.timer);
     }
+    const was = _fs;
     _fs = freshFolderState();
+    /* THE SAME FOLDER, READ AGAIN keeps what the person was looking at:
+     * the open tab, the Continue-from choices and the prep answers.  It is
+     * read again often -- this page's own Prep announces its write, and the
+     * sidebar answers that announcement by re-publishing the same selection,
+     * so one Prep is two re-reads, which wiped the answer just given (the W37
+     * review).  A Save and another writer's restore RETIRE the answers: they
+     * describe a description, or files, the person has since changed.  A
+     * DIFFERENT folder keeps nothing. */
+    if (keep) {
+        _fs.stepTab = was.stepTab;
+        _fs.continueChoice = was.continueChoice;
+        if (keep === "all") _fs.answers = was.answers;
+    }
     for (const id of ["ts-ask-time", "ts-ask-mem"]) {
         const box = $(id);
         if (box) box.value = "";
@@ -1103,7 +1125,9 @@ function _resetPerFolderState() {
 }
 
 
-async function loadFolder(projects, dir) {
+async function loadFolder(projects, dir, opts) {
+    const keep = (dir && dir === _dir)
+        ? ((opts && opts.retire) ? "view" : "all") : null;
     _dir = dir;
     /* EVERY per-folder fact resets before the branch (U6 close): the
      * hand-over and empty branches never wrote _task/_shape, so a
@@ -1114,7 +1138,7 @@ async function loadFolder(projects, dir) {
     _task = null;
     _shape = "";
     _handover = null;
-    _resetPerFolderState();
+    _resetPerFolderState(keep);
     showPath(dir);
     if (!dir) {
         _mode = "empty"; refreshSave();
@@ -1311,6 +1335,10 @@ async function loadFolder(projects, dir) {
         _fs.tokens[name] = st.token;
     }
     _fs.benchRefusal = said.bench_refusal || null;
+    /* WHAT EACH STAGE CAN CONTINUE FROM, the folder's answer (plan W37):
+     * its default, the runs of the stage before it, `--cold` where it is a
+     * choice.  The same answer prep acts on, served before it does. */
+    _fs.continueFrom = said.continue_from || {};
     _shape = String(task.shape || "");
     $("ts-shape-card").hidden = false;
     setShape(_shape);                            // shows which one it carries
@@ -2255,11 +2283,6 @@ function renderNext(task) {
 
     enabled.forEach((e, i) => {
         const name = e.st.name || "";
-        /* NO `--from` COMPOSED HERE (plan W37): which run a stage continues
-         * from is prep's answer -- the newest attempt of the stage before it,
-         * which must have concluded, by default -- and a `--from` this page
-         * composed skipped that check, being taken as said.  The bare
-         * command below is the default; the prep answer says what it took. */
         const runs = _fs.runs[name];
         const active = name === _fs.stepTab;
         const tab = el("button", {
@@ -2324,23 +2347,80 @@ function renderNext(task) {
             "Run it \u2014 at what the card above says. What no row states "
             + "is sized from the target's own width, or refused if that "
             + "target has no record. Add --np / --cpus-per-task / --time to override."));
+        /* CONTINUE FROM (plan W37, `job-system.md` § 5.4): what this stage
+         * starts from -- by default the stage before it's newest run, which
+         * must have concluded; a run of it, named; or the calculation's
+         * structure.  The folder's answer, the one prep acts on, so the
+         * choice shows what prep would take; the command and the buttons
+         * follow it. */
+        const cf = _fs.continueFrom[name];
+        if (cf && !cf.error) block.appendChild(continueFromChoice(task, name, cf));
         block.appendChild(el("pre", { class: "ts-cmd" },
             // The bundle is NAMED, from the projects root, so the line
             // works from wherever the user is standing
             // (job-contracts.md 2.5b).
-            "molbuilder jobset prep run " + name + _bundleArg() + _targetArg() + "\n"
+            "molbuilder jobset prep run " + name + continueFlags(name)
+            + _bundleArg() + _targetArg() + "\n"
             // The launch is the LAST line for every kind: a run writes its
             // own result -- a SIESTA vibration's job derives its modes after
             // the force-constant run (engines/vibration.md 5.5).
             + "molbuilder jobset launch run " + name + _bundleArg()));
-        /* THE BUTTON WRITES WHAT THE COMMAND DOES (plan W37): the same
-         * prep, which hands over by default and refuses, naming the
-         * commands, when the stage before has not concluded. */
+        /* THE BUTTON WRITES WHAT THE COMMAND DOES: the same prep, with the
+         * same choice. */
         block.appendChild(prepButton("run", name));
         panels.appendChild(block);
     });
 
     card.hidden = false;
+}
+
+/** The Continue-from choice for one stage (plan W37): a select over the
+ *  default, every run of the stage before it with what it was, and the
+ *  structure where `--cold` is a choice -- and under it what the choice
+ *  means: the default's own line, or why prep refuses it for now. */
+function continueFromChoice(task, name, cf) {
+    const wrap = el("div", { class: "ts-continue-from" });
+    const sel = el("select", { "aria-label": "continue " + name + " from" });
+    const add = (value, text) => sel.appendChild(el("option", { value }, text));
+    add("", "the stage before it, " + cf.from_stage + " — its newest run");
+    for (const r of (cf.runs || [])) add(r.source, r.source + " — " + r.what);
+    if (cf.cold) add("--cold", "the calculation's structure (--cold)");
+    const choice = _fs.continueChoice[name] || "";
+    sel.value = choice;
+    if (sel.value !== choice) { _fs.continueChoice[name] = ""; sel.value = ""; }
+    sel.addEventListener("change", () => {
+        _fs.continueChoice[name] = sel.value;
+        renderNext(_task || task);
+    });
+    const note = el("p", { class: "hint ts-continue-note" });
+    if (sel.value === "") {
+        if (cf.default) {
+            note.textContent = cf.default.line;
+        } else {
+            // WHOLE, with the commands it names: they are the ways on.
+            note.textContent = String(cf.refused || "");
+            note.setAttribute("data-state", "warn");
+        }
+    } else if (sel.value === "--cold") {
+        note.textContent = "starts from the calculation's structure — nothing "
+            + "is carried in";
+    } else {
+        note.textContent = "named: taken as it is — prep says what it was";
+    }
+    wrap.append(el("label", {}, "Continue from ", sel), note);
+    return wrap;
+}
+
+/** The choice as the command's flags: none for the default. */
+function continueFlags(name) {
+    const c = _fs.continueChoice[name] || "";
+    return c === "--cold" ? " --cold" : c ? " --from " + c : "";
+}
+
+/** The choice as the prep door's fields -- the CLI's two flags. */
+function continueBody(name) {
+    const c = _fs.continueChoice[name] || "";
+    return c === "--cold" ? { cold: true } : c ? { from: c } : {};
 }
 
 //: Every prep widget on the page, so the machine choice can reach them.
@@ -2418,10 +2498,14 @@ function prepButton(kind, stage) {
     btnPreview.addEventListener("click", async () => {
         const no = blocked();
         if (no) return refuse(no);
-        /* A NEW PREVIEW RETIRES THE LAST ANSWER, and its Confirm with it:
-         * that answer was to a plan this preview replaces. */
-        const stale = wrap.querySelector(".ts-prep-answer");
-        if (stale) stale.remove();
+        /* A NEW PREVIEW RETIRES THE LAST ANSWER, and its Confirm with it,
+         * and the last preview's end point (A13): both were to a plan this
+         * preview replaces. */
+        for (const sel of [".ts-prep-answer", ".ts-emitted"]) {
+            const stale = wrap.querySelector(sel);
+            if (stale) stale.remove();
+        }
+        delete _fs.answers[kind + ":" + stage];
         btnPreview.disabled = true;
         try {
             const r = await _prepCall(kind, stage, true);
@@ -2462,10 +2546,19 @@ function prepButton(kind, stage) {
             bits.push(a.time ? "time " + a.time : "no time stated");
             say.textContent = bits.join(" · ") + ".";
             say.setAttribute("data-state", (a.mem && a.domain) ? "ok" : "warn");
+            /* WHAT IT WILL CONTINUE FROM, before anything is written (plan
+             * W37) -- or why prep will refuse it, whole, with the commands
+             * it names; Write is not offered for a plan prep refuses. */
+            if (r.continuation) {
+                say.textContent += "  " + r.continuation.line + ".";
+            } else if (r.continuation_refused) {
+                say.textContent = String(r.continuation_refused);
+                say.setAttribute("data-state", "warn");
+                btnWrite.disabled = true;
+                return;
+            }
 
             /* A13 -- THE END POINT, spelled out before anything is written. */
-            const old = wrap.querySelector(".ts-emitted");
-            if (old) old.remove();
             if ((r.emitted || []).length) {
                 const box = el("div", { class: "ts-emitted" });
                 box.appendChild(el("div", { class: "ts-emitted-head" },
@@ -2512,12 +2605,17 @@ function prepButton(kind, stage) {
                 write(shown);
             });
             if (r.ok && !r.question) {
+                // KEPT, for the re-read the announcement below triggers: it
+                // rebuilds this panel, and the new one shows it again.
+                _fs.answers[kind + ":" + stage] = r;
                 // The folder now holds decks and wrappers it did not before --
                 // the same announcement a restore makes, so every open view
                 // re-reads rather than showing the folder as it was.
                 const p = window.molbuilder && window.molbuilder.projects;
                 if (p && typeof p.publishFolderChanged === "function") {
-                    p.publishFolderChanged(_dir);
+                    _ownPublish = true;
+                    try { p.publishFolderChanged(_dir); }
+                    finally { _ownPublish = false; }
                 }
             }
         } finally {
@@ -2536,6 +2634,12 @@ function prepButton(kind, stage) {
     });
 
     wrap.append(btnPreview, btnWrite, say);
+    /* THE ANSWER THIS PANEL LAST GAVE, again: a write's own announcement
+     * re-reads the folder and rebuilds the panel, and so does every repaint
+     * -- the answer stays until a new preview, a Save or a restore retires
+     * it, or another folder is opened (`_resetPerFolderState`). */
+    const kept = _fs.answers[kind + ":" + stage];
+    if (kept) _showPrepAnswer(wrap, say, kept, () => {});
     /* ONLY THE PREVIEW IS REGISTERED.  `_syncPrepButtons` sets
      * `disabled = !machine` on everything it holds -- so registering the
      * write button would hand its enabled-ness a SECOND owner, and picking a
@@ -2580,6 +2684,8 @@ function _syncPrepButtons() {
 
 async function _prepCall(kind, stage, plan, evidence) {
     const body = { dest: _dir, kind, stage, plan };
+    // WHAT IT CONTINUES FROM, as chosen (plan W37) -- a run's only.
+    if (kind === "run") Object.assign(body, continueBody(stage));
     // THE PERSON'S ANSWER to "already under way here" -- sent only when
     // they pressed Confirm, WITH the evidence they were shown: the answer
     // counts for that evidence and no other.  Its absence is not a yes.
@@ -2670,17 +2776,18 @@ function _showPrepAnswer(wrap, say, r, onConfirm) {
         + ": " + dirs.slice(0, 3).join(", ") + (dirs.length > 3 ? ", …" : "");
     say.setAttribute("data-state", "ok");
     const a = r.attempt;
-    /* THE HAND-OVER, AS THE TERMINAL SAYS IT (`job-system.md` § 5.4; the
-     * W37 review): which run, by default or named, what it was -- its
-     * verdict among it -- and what came across.  The line is the server's
-     * (`Handover.line`); a flat folder has no attempt and still hands over. */
-    if (r.handover) line(r.handover.line);
+    /* WHAT IT CONTINUES FROM, AS THE TERMINAL SAYS IT (`job-system.md`
+     * § 5.4; the W37 review): which run, by default or named, what it was --
+     * its verdict among it -- and what came across.  The line is the
+     * server's (`Continuation.line`); a flat folder has no attempt and still
+     * continues. */
+    if (r.continuation) line(r.continuation.line);
     if (a) {
         line("Attempt " + a.dir + (a.fresh ? "" : " (reused — not launched yet)"));
         line("brought in: " + (a.brought || []).join(", "));
-        if (!r.handover && (a.copied || []).length) {
+        if (!r.continuation && (a.copied || []).length) {
             line("copied from " + a.continued_from + ": " + a.copied.join(", "));
-        } else if (!r.handover) {
+        } else if (!r.continuation) {
             line(a.cold ? "cold start — nothing copied in"
                         : "nothing carried in (the first stage, or one that starts clean)");
         }
@@ -3889,7 +3996,7 @@ async function _save() {
 
     // Re-open the folder: it is now a description.
     try {
-        if (projects) await loadFolder(projects, _dir);
+        if (projects) await loadFolder(projects, _dir, { retire: true });
     } catch (e) {
         saidSave("Saved " + wrote.join(" + ") + " \u2014 but the page could "
                  + "not re-read the folder: " + ((e && e.message) || e)
@@ -3944,15 +4051,23 @@ function start(projects) {
         projects.onFolderChanged((ev) => {
             const changed = (ev && ev.dir) || "";
             if (changed && _dir && changed !== _dir) return;   // not ours
-            loadFolder(projects, _dir);
+            loadFolder(projects, _dir, { retire: !_ownPublish });
         });
     }
-    if (typeof projects.onChange === "function") {
-        projects.onChange((sel) => loadFolder(projects, (sel && sel.dir) || ""));
-    }
-    if (typeof projects.onCommit === "function") {
-        projects.onCommit((sel) => loadFolder(projects, (sel && sel.dir) || ""));
-    }
+    /* THE SELECTION MOVING replaces the folder (`task-setup.md` § 2.1) --
+     * not a publish naming the folder already shown: `onChange` fires once
+     * on subscribe, the sidebar re-publishes the selection after every
+     * re-list, and a file clicked in the folder publishes it too.  Each was
+     * a second read, and one landing after the person began typing replaced
+     * the unsaved edit with the disk's (found 2026-10-01, the startup pair
+     * racing a test's first edit).  The folder's FILES changing arrives on
+     * the folder-changed channel above. */
+    const moved = (sel) => {
+        const dir = (sel && sel.dir) || "";
+        if (dir !== _dir) loadFolder(projects, dir);
+    };
+    if (typeof projects.onChange === "function") projects.onChange(moved);
+    if (typeof projects.onCommit === "function") projects.onCommit(moved);
 
     for (const b of document.querySelectorAll("#ts-shape-card .opt")) {
         b.addEventListener("click",

@@ -1021,7 +1021,7 @@ route — is this, for the whole verb.
 | `deck_findings` | what each deck's checks said, one of each (a sweep's trials repeat them) |
 | `flat` | a flat run: its wrappers are rendered and there is no attempt to open |
 | `attempt` | the attempt it opened or reused, what it brought in, what it copied and from where (`--from`, `--cold`) |
-| `handover` | which run the stage continues from — by default or named — what it was (its conclusion, state and convergence) and the line both doors print (§ 5.4) |
+| `continuation` | which run the stage continues from — by default or named — what it was (its conclusion, state and convergence) and the line both doors print (§ 5.4) |
 | `points` | a transport bias scan's attempts instead — one per point, each with what it gathered |
 | `gathered` | a transport rung's inputs, copied into its one attempt from the concluded upstream attempts ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) |
 | `resources` · `deck` · `agreement` | what the stage will launch with, its deck, and whether that deck agrees (`launch` refuses a deck rendered for another width); no agreement when the deck makes no claim |
@@ -1184,9 +1184,9 @@ starts from**:
 | the stages | named by you, as many as you like ([`engines/stages.md`](?doc=engines/stages.md) § 2) | the kind's own, each by its role ([`engines/template.md`](?doc=engines/template.md) § 6.4) |
 | what a stage starts from | **the stage before it, by default**: `prep run medium` takes the newest attempt of the enabled stage before it and copies that run's geometry, its density and — for the same optimiser — its history ([`project-layout.md`](?doc=execution/project-layout.md) § 2.3.4). A stage whose `restart` is `clean`, and the first stage, start from the calculation's structure | the stages before it, **taken by `prep` itself**: `freq` the relaxed coordinates of `relax`'s newest attempt, which must have concluded ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a); the device the seed's density and the leads' Hamiltonians, the transmission the device's, each from the newest concluded attempt that ran the deck that stage renders now ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) |
 | when the stage before has not concluded | `prep` refuses before writing anything, and names what to do: launch it, let it finish, or run it again — or choose: `--from` an earlier run of it that concluded, `--cold` the structure (on the flat layout, the stage's run card's `restart: clean`). One that concluded without converging is taken, with a warning; one that failed is refused | `prep` refuses and names the stage to run first; a transport stage's deck is still written, so it can be read |
-| another source | yours to choose — any attempt by `--from`, none by `--cold` | none: the hand-over is fixed, and no other run can be named for it — to change it, run the stage before again. `--from` and `--cold` still name or skip an earlier attempt of the same stage (a bias scan refuses both) |
+| another source | yours to choose — any attempt by `--from`, none by `--cold` | none: what it takes is fixed, and no other run can be named for it — to change it, run the stage before again. `--from` and `--cold` still name or skip an earlier attempt of the same stage (a bias scan refuses both) |
 
-**The hand-over of an independent stage** *(W37, agreed 2026-09-27; built
+**What an independent stage continues from** *(W37, agreed 2026-09-27; built
 2026-10-01)*. **By default** a continuing stage — `restart` is `continue`
 unless its run card says `clean` — continues from **the newest attempt** of the
 enabled stage before it, and that attempt **must have concluded**: an older one
@@ -1199,7 +1199,7 @@ the commands; one that concluded without converging is taken, with a warning.
 `prep` says what it sees there (still running, stopped, failed, not converged)
 and refuses only what cannot be done (no such attempt, no restart files in it)
 — and `--cold` starts from the calculation's structure. Either way `prep` prints
-the hand-over and the decision ledger records it:
+which run the stage continues from, and the decision ledger records it:
 
 ```text
   continues from 01_coarse/run-0 (the stage before it; concluded rc=0 at Thu Sep 24 02:38:51 PM MST 2026; converged): copied H2.XV, H2.DM, H2.MD.nc, H2.MD, H2.MDE, H2.ANI
@@ -1209,7 +1209,11 @@ the hand-over and the decision ledger records it:
 algorithm — the shipped ladder's coarse is CG and its medium Broyden.)
 
 `.continued-from` in the attempt and `continued_from` in its `run.json` keep it
-beside the run. **In the `flat` layout** every stage shares one folder, so the
+beside the run, and the Results tab's Run panel shows it (*Continued from*).
+**Both doors offer the same choice**: the terminal's flags, and Task setup's
+**Continue from** in the rung's tab, which shows the default — or why prep
+refuses it — before anything is written
+([`web/task-setup.md`](?doc=web/task-setup.md) § 11). **In the `flat` layout** every stage shares one folder, so the
 files the stage before it left are where this one reads them and nothing is
 copied — the same rule holds all the same: its latest run must have concluded,
 and `prep` says which run that was. There is no attempt there for `--from` to

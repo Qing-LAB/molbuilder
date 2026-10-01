@@ -1295,11 +1295,24 @@ def api_task_setup_prep():
     kind = str(body.get("kind") or "").strip()
     stage = (body.get("stage") or "").strip() or None
     target = (body.get("target") or "").strip() or None
-    # THE HAND-OVER IS THE ENTRY'S (plan W37, `job-system.md` § 5.4): a
-    # continuing stage takes the newest attempt of the stage before it, which
-    # must have concluded -- the default the CLI takes too -- and the answer
-    # says which (`handover`).  Naming another run, or none, is the page's
-    # Continue-from choice (W37's second part).
+    # WHAT IT CONTINUES FROM is the entry's (plan W37, `job-system.md`
+    # § 5.4): by default the newest attempt of the stage before it, which
+    # must have concluded -- the default the CLI takes too.  The page's
+    # **Continue from** choice is the CLI's two flags: `from`, a run of this
+    # calculation named by its folder (`01_coarse/run-0`), and `cold`.
+    from_raw = body.get("from")
+    from_attempt = (str(from_raw).strip() or None) if from_raw else None
+    cold = bool(body.get("cold"))
+    if from_attempt is not None and (
+            pathlib.PurePosixPath(from_attempt).is_absolute()
+            or ".." in pathlib.PurePosixPath(from_attempt).parts):
+        return jsonify({"ok": False, "error":
+                        f"`from` names a run of this calculation, by its "
+                        f"folder (01_coarse/run-0): {from_attempt!r}"}), 400
+    if from_attempt is not None and cold:
+        return jsonify({"ok": False, "error":
+                        "`from` and `cold` are two answers to one question "
+                        "-- name a run, or start cold"}), 400
     plan_only = bool(body.get("plan"))
 
     if kind not in ("run", "bench"):
@@ -1522,6 +1535,11 @@ def api_task_setup_prep():
             "allocation": {"domain": alloc.domain, "time": alloc.time,
                            "mem": alloc.mem},
             "writes_into": str(dest),
+            # WHAT IT WILL CONTINUE FROM, before anything is written (plan
+            # W37): the one answer prep acts on -- the run, or why prep
+            # would refuse -- for the choice as it stands.
+            **(_plan_continuation(dest, task, stage, from_attempt, cold)
+               if kind == "run" and stage else {}),
         })
 
     # ---- the real thing: THE ONE ENTRY (`job-system.md` § 5.3) --------- #
@@ -1546,7 +1564,8 @@ def api_task_setup_prep():
               if body.get("confirm") else None)
     try:
         ans = prep_stage(dest, kind, stage, target=target,
-                         allocation=Resources(), answer=answer)
+                         allocation=Resources(), answer=answer,
+                         from_attempt=from_attempt, cold=cold)
     except PrepError as exc:
         # Refused, not repaired -- the reader's own words, as the terminal
         # gives them -- WITH what the entry had found by then: the preflight's
@@ -2262,6 +2281,42 @@ def api_task_setup_attempts():
     return (jsonify(out), 200) if out["ok"] else (jsonify(out), 400)
 
 
+def _plan_continuation(dest, task, stage, from_attempt, cold) -> dict:
+    """The preview's ``continuation`` -- the run a prep with this choice
+    would continue from, with the line both doors print -- or
+    ``continuation_refused``: why prep would refuse it
+    (`continuation.continuation_answer`, the answer prep acts on)."""
+    from molbuilder.jobset.continuation import continuation_answer
+    got, refused = continuation_answer(dest, task, stage,
+                                       from_attempt=from_attempt, cold=cold)
+    if got is not None:
+        return {"continuation": dict(got.as_dict(), line=got.line())}
+    return {"continuation_refused": refused} if refused else {}
+
+
+def _folder_continue_from(dest) -> dict:
+    """``{stage: choices}`` for every stage that continues from another by
+    default -- what Task setup's **Continue from** offers
+    (`continuation.continue_from_choices`); a stage that continues from
+    nothing is absent.  Fail-soft per stage, like the folder's other parts."""
+    from molbuilder.jobset.continuation import continue_from_choices
+    from molbuilder.task import FILENAME as TASK_FILENAME
+    from molbuilder.task import read_task
+    try:
+        task = read_task(dest / TASK_FILENAME)
+    except Exception as exc:                      # noqa: BLE001
+        return {"error": str(exc)}
+    out = {}
+    for st in task.stages:
+        try:
+            got = continue_from_choices(dest, task, st.name)
+        except Exception as exc:                  # noqa: BLE001
+            got = {"error": str(exc)}
+        if got is not None:
+            out[st.name] = got
+    return out
+
+
 def _folder_attempts(dest) -> dict:
     """How many attempts each stage has on disk -- the payload."""
     from molbuilder.jobset.prep import token_for
@@ -2391,6 +2446,12 @@ def api_task_setup_folder():
         # door deciding for it.
         "attempts": (_folder_attempts(folder) if described is not None
                      else {"ok": True, "shape": None, "stages": {}}),
+        # WHAT EACH STAGE CAN CONTINUE FROM -- its default, the runs of the
+        # stage before it with what each was, and `--cold` where it is a
+        # choice (`job-system.md` § 5.4, plan W37): the Continue-from choice
+        # reads the folder's answer, so it shows what prep would take.
+        "continue_from": (_folder_continue_from(folder)
+                          if described is not None else {}),
         # WHY THIS DESCRIPTION HAS NO BENCH, or null -- the prep entry's own
         # answer (`prep_inputs.bench_refusal`), so the page offers the
         # Measure step exactly where `prep bench` would take it.

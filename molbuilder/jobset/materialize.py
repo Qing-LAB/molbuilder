@@ -748,7 +748,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     """Set ONE stage up to run, and report what was done.
 
     ``named`` says who chose ``continue_from``: the person, by ``--from``, or
-    `prep`'s hand-over by default (`job-system.md` § 5.4) -- so a refusal
+    `prep`, by default (`job-system.md` § 5.4) -- so a refusal
     quotes what was typed, never a ``--from`` nobody typed.
 
     The five steps § 1.6 names: **resolve** the next ``run-<n>``, **create**
@@ -760,9 +760,10 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     ``continue_from`` is a bundle-relative attempt directory —
     ``"01_coarse/run-0"``. **Which run is never a guess** (§ 1.6):
     continuing from ``run-0`` and from ``run-2`` are different scientific
-    choices, so the callers pass one they can name -- `prep`'s hand-over the
-    stage before it's newest attempt, which must have concluded, or the one
-    a person named (`handover.handover_answer`, `job-system.md` § 5.4); the
+    choices, so the callers pass one they can name -- `prep`, by default,
+    the stage before it's newest attempt, which must have concluded, or the
+    one a person named (`continuation.continuation_answer`,
+    `job-system.md` § 5.4); the
     submission door, re-submitting a launched stage, the SAME stage's latest
     (user, 2026-08-21).  ``cold=True`` means start
     clean, and with a directory per attempt that is simply *skip the copy* —
