@@ -2782,6 +2782,9 @@ class PrepAnswer:
     #: `agreement.LaunchAgreement`, unless the deck makes no claim.
     agreement: Optional[object] = None
     pipeline_log: Optional[Path] = None
+    #: Which run this stage continues from, and what it was
+    #: (`handover.Handover`).
+    handover: Optional[object] = None
 
     def as_dict(self, base) -> dict:
         """The answer as JSON, paths relative to the calculation folder --
@@ -2827,6 +2830,10 @@ class PrepAnswer:
                                     if g.verdict == "differs" else None)}
                           if g is not None else None),
             "pipeline_log": rel(self.pipeline_log) if self.pipeline_log else None,
+            "handover": (dict(self.handover.as_dict(),
+                              line=self.handover.line(
+                                  a.copied if a is not None else ()))
+                         if self.handover is not None else None),
         }
 
 
@@ -3030,6 +3037,20 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         else:
             allocation, pins, chosen = prep_run_inputs(
                 base, target, task, stage, allocation, notes=notes)
+
+        # 4a · THE HAND-OVER (`job-system.md` § 5.4, plan W37): which run an
+        #      independent stage continues from -- the stage before it,
+        #      newest, by default -- read BEFORE anything is written, so a
+        #      refusal leaves nothing behind.  A named run is taken as said.
+        handover = None
+        if kind == "run" and stage is not None:
+            from .handover import handover_answer
+            handover, refused = handover_answer(
+                base, task, stage, from_attempt=from_attempt, cold=cold)
+            if refused:
+                raise PrepError(refused)
+        if handover is not None and handover.by_default:
+            from_attempt = handover.source        # None on the flat layout
         if on_found is not None:
             on_found(findings, notes)
 
@@ -3093,6 +3114,10 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         if (sh is not None and not sh.keeps_attempts_as_directories
                 and not from_attempt and not cold):
             out.flat = True
+            out.handover = handover
+            if handover is not None:
+                ledger(base, "prep", "continues", stage=stage,
+                       **handover.ledger_facts(), copied=[])
             return out
         # A TRANSPORT BIAS SCAN keeps one attempt per point (04_device/v0.2/
         # run-<n>, layout ruled 2026-08-29), which the five steps opened;
@@ -3110,8 +3135,9 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             return out
         from .materialize import prepare_attempt
         try:
-            rep = prepare_attempt(js, base, stage, continue_from=from_attempt,
-                                  cold=cold)
+            rep = prepare_attempt(
+                js, base, stage, continue_from=from_attempt, cold=cold,
+                named=not (handover is not None and handover.by_default))
         except ValueError as e:
             raise PrepError(str(e))
         # FRESH IS THE FIRST OPEN'S ANSWER: the five steps opened this
@@ -3120,6 +3146,14 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         out.attempt = dataclasses.replace(
             rep, fresh=next((a.fresh for a in opened if a.dir == rep.dir),
                             rep.fresh))
+        out.handover = handover
+        if handover is not None:
+            # THE DECISION, LOGGED (`job-system.md` § 5.4): which run, by
+            # default or named, what it was, and what came across.
+            ledger(base, "prep", "continues", stage=stage,
+                   **handover.ledger_facts(), copied=list(rep.copied))
+        elif cold:
+            ledger(base, "prep", "starts-cold", stage=stage)
         if is_transport:
             out.gathered = [pair for _att, _v, got
                             in gather_for_stage(base, task, rep.stage)

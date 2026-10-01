@@ -138,9 +138,11 @@ which copies coarse's relaxed coordinates in — and submit that. You check
 > Nothing starts a stage but a person — there is no flag and no field that
 > makes one follow another (§ 2, decision 6).
 >
-> What a stage continues from is a **real file, copied in at `prep`**, from a
-> run **you name**. By then it has finished and you have read it, so there is
-> nothing to resolve later and nothing pointing at a file that does not exist.
+> What a stage continues from is a **real file, copied in at `prep`** — by
+> default from the newest attempt of the stage before it, which must have
+> concluded, or from a run **you name** (§ 5.4). By then it has finished and
+> you have read it, so there is nothing to resolve later and nothing pointing
+> at a file that does not exist.
 > That is a ladder of **independent** stages; in a **linked** one — a
 > vibration's `freq`, transport's device and transmission — `prep` takes a
 > stage's input from the stages before it, because the calculation fixes it
@@ -149,7 +151,7 @@ which copies coarse's relaxed coordinates in — and submit that. You check
 > | | |
 > |---|---|
 > | Who starts stage 2 | **you**, after looking |
-> | How stage 1's geometry arrives | a **file copy**, made at prep from the attempt you name |
+> | How stage 1's geometry arrives | a **file copy**, made at prep from stage 1's newest attempt, or the one you name |
 > | If stage 1 converged to something wrong | you never started stage 2 |
 >
 > The earlier scheduler-chained design is recorded in
@@ -310,9 +312,10 @@ Walk through it with the *why* for each piece:
   file to mean anything, looked up in `Job.traits`.
 
   > **It says WHAT, never FROM WHOM**, and that is the whole design. Which
-  > run this job is continued from is named by a person at `prep`, with
-  > `--from`, after they have looked at it — so the producer, which runs long
-  > before anyone has looked at anything, is not asked to know.
+  > run this job is continued from is decided at `prep` — the stage before it,
+  > newest, by default, or a run a person names with `--from` (§ 5.4) — so the
+  > producer, which runs long before anyone has looked at anything, is not
+  > asked to know.
   >
   > `.CG` is why `requires_same` exists: a conjugate-gradient history is
   > meaningless to a Broyden stage, so carrying it blindly corrupts the restart.
@@ -485,7 +488,7 @@ sequenceDiagram
 ```
 
 **The copy is the thing a person can check** — it is a real file, present
-before the stage starts, from a run named on the command line.
+before the stage starts, from the run `prep` said it took (§ 5.4).
 
 A complete 2-stage ladder `job-set.json`:
 
@@ -929,15 +932,18 @@ meaning.
 > resource shelf and hands each group over as one job; a named trial still
 > submits alone.)*
 
-**2. What a stage continues from is something you say.** `--from
-01_coarse/run-0` names the attempt whose results this run starts from. Those
-files are **copied** into the new attempt, not linked — the engine writes to
-those very filenames, and writing through a link would destroy the result you
-started from. `--cold` means *start clean*, which with a directory per attempt is
-simply **skip the copy**; there is nothing to move aside.
+**2. What a stage continues from is the stage before it, or what you say.**
+By default `prep` takes the newest attempt of the stage before it, which must
+have concluded (§ 5.4); `--from 01_coarse/run-0` names another attempt whose
+results this run starts from. Those files are **copied** into the new attempt,
+not linked — the engine writes to those very filenames, and writing through a
+link would destroy the result you started from. `--cold` means *start clean*,
+which with a directory per attempt is simply **skip the copy**; there is
+nothing to move aside.
 
 Continuing from `run-0` and from `run-2` are different scientific choices, so
-molbuilder does not guess between them.
+molbuilder takes the newest — the run you just looked at — and says which, and
+an older one only when you name it.
 
 **3. `--mode` is the channel, and it is not the layout.** This is the one people
 conflate, so it is worth saying flatly:
@@ -1015,6 +1021,7 @@ route — is this, for the whole verb.
 | `deck_findings` | what each deck's checks said, one of each (a sweep's trials repeat them) |
 | `flat` | a flat run: its wrappers are rendered and there is no attempt to open |
 | `attempt` | the attempt it opened or reused, what it brought in, what it copied and from where (`--from`, `--cold`) |
+| `handover` | which run the stage continues from — by default or named — what it was (its conclusion, state and convergence) and the line both doors print (§ 5.4) |
 | `points` | a transport bias scan's attempts instead — one per point, each with what it gathered |
 | `gathered` | a transport rung's inputs, copied into its one attempt from the concluded upstream attempts ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) |
 | `resources` · `deck` · `agreement` | what the stage will launch with, its deck, and whether that deck agrees (`launch` refuses a deck rendered for another width); no agreement when the deck makes no claim |
@@ -1064,10 +1071,9 @@ molbuilder jobset prep   run coarse                  # 01_coarse/run-0, nothing 
 molbuilder jobset launch run coarse --mode direct    # runs here, locally
 molbuilder jobset status                             # look before deciding
 
-molbuilder jobset prep   run tight --from 01_coarse/run-0
-#   reading from 01_coarse/run-0  (finished, converged)
-#   02_tight/<label>_02_tight.fdf   rendered   BlockSize 32   (500 orbitals / 8 ranks)
-#   02_tight/run-0/                 ready      copied in: <label>.XV  <label>.DM
+molbuilder jobset prep   run tight                   # the stage before it, newest
+#   prepared tight: 02_tight/run-0
+#   continues from 01_coarse/run-0 (the stage before it; concluded rc=0 at …; converged): copied <label>.XV, <label>.DM
 molbuilder jobset launch run tight --mode direct
 ```
 
@@ -1109,9 +1115,8 @@ yet as `not-started — no directory yet (not prepped)`. A stage the description
 disables (`enabled: false`) is listed as disabled — whether or not it was
 prepped — and is never the stage to resume from; enable it to run it. The table
 ends with the stage to resume from, and one nothing has prepped yet is named
-with the command that prepares it: an independent stage `--from` the latest
-attempt of the enabled stage before it, which a bare `prep` would not take
-(§ 5.4). The Results tab's ladder is this same answer
+with the command that prepares it — for an independent stage, beside the run
+that command will continue from (§ 5.4). The Results tab's ladder is this same answer
 ([`web/results.md`](?doc=web/results.md) § 2.4). A job set with no description
 beside it — a hand-built one, a benchmark's sweep — lists its own jobs.
 
@@ -1177,16 +1182,39 @@ starts from**:
 |---|---|---|
 | what they are | one calculation tuned several ways — an optimization's `coarse → medium → tight` | different jobs, each using another's output — a SIESTA vibration's `relax → freq`; transport's seed and leads → device → transmission |
 | the stages | named by you, as many as you like ([`engines/stages.md`](?doc=engines/stages.md) § 2) | the kind's own, each by its role ([`engines/template.md`](?doc=engines/template.md) § 6.4) |
-| what a stage starts from | the run **you name**: `prep run tight --from 01_coarse/run-0` copies that run's geometry, its density and — for the same optimiser — its history ([`project-layout.md`](?doc=execution/project-layout.md) § 2.3.4). Without `--from` it starts from the calculation's structure | the stages before it, **taken by `prep` itself**: `freq` the relaxed coordinates of `relax`'s newest attempt, which must have concluded ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a); the device the seed's density and the leads' Hamiltonians, the transmission the device's, each from the newest concluded attempt that ran the deck that stage renders now ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) |
-| when the stage before has not concluded | `prep` goes ahead, and the stage starts from the structure; a run named by `--from` is copied as it is | `prep` refuses and names the stage to run first; a transport stage's deck is still written, so it can be read |
+| what a stage starts from | **the stage before it, by default**: `prep run medium` takes the newest attempt of the enabled stage before it and copies that run's geometry, its density and — for the same optimiser — its history ([`project-layout.md`](?doc=execution/project-layout.md) § 2.3.4). A stage whose `restart` is `clean`, and the first stage, start from the calculation's structure | the stages before it, **taken by `prep` itself**: `freq` the relaxed coordinates of `relax`'s newest attempt, which must have concluded ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a); the device the seed's density and the leads' Hamiltonians, the transmission the device's, each from the newest concluded attempt that ran the deck that stage renders now ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) |
+| when the stage before has not concluded | `prep` refuses before writing anything, and names what to do: launch it, let it finish, or run it again — or choose: `--from` an earlier run of it that concluded, `--cold` the structure (on the flat layout, the stage's run card's `restart: clean`). One that concluded without converging is taken, with a warning; one that failed is refused | `prep` refuses and names the stage to run first; a transport stage's deck is still written, so it can be read |
 | another source | yours to choose — any attempt by `--from`, none by `--cold` | none: the hand-over is fixed, and no other run can be named for it — to change it, run the stage before again. `--from` and `--cold` still name or skip an earlier attempt of the same stage (a bias scan refuses both) |
 
-*(W37, agreed 2026-09-27 and not built yet: a continuing independent stage will
-start, by default, from the previous stage's newest attempt, which must have
-concluded — an older one never stands in, and an unconverged one is taken with
-a warning — and `--from` and `--cold` stay as the explicit choice.)* In the `flat` layout every stage
-shares one folder, so a stage finds the files the previous one left where they
-lie, and there is no attempt for `--from` to name.
+**The hand-over of an independent stage** *(W37, agreed 2026-09-27; built
+2026-10-01)*. **By default** a continuing stage — `restart` is `continue`
+unless its run card says `clean` — continues from **the newest attempt** of the
+enabled stage before it, and that attempt **must have concluded**: an older one
+never stands in, because a stage re-launched to tighten is the run you mean
+(the vibration's rule, [`engines/vibration.md`](?doc=engines/vibration.md)
+§ 5.2a). `prep` reads it before writing anything, and refuses an attempt still
+running or stopped without its conclusion marker, and one that failed, naming
+the commands; one that concluded without converging is taken, with a warning.
+**An explicit choice is taken as said**: `--from <attempt>` names any run —
+`prep` says what it sees there (still running, stopped, failed, not converged)
+and refuses only what cannot be done (no such attempt, no restart files in it)
+— and `--cold` starts from the calculation's structure. Either way `prep` prints
+the hand-over and the decision ledger records it:
+
+```text
+  continues from 01_coarse/run-0 (the stage before it; concluded rc=0 at Thu Sep 24 02:38:51 PM MST 2026; converged): copied H2.XV, H2.DM, H2.MD.nc, H2.MD, H2.MDE, H2.ANI
+```
+
+(The optimiser's `H2.CG` is carried only between stages that use the same
+algorithm — the shipped ladder's coarse is CG and its medium Broyden.)
+
+`.continued-from` in the attempt and `continued_from` in its `run.json` keep it
+beside the run. **In the `flat` layout** every stage shares one folder, so the
+files the stage before it left are where this one reads them and nothing is
+copied — the same rule holds all the same: its latest run must have concluded,
+and `prep` says which run that was. There is no attempt there for `--from` to
+name, nor an attempt-less start for `--cold` to make: a flat stage starts clean
+by its run card's `restart: clean`.
 
 An independent ladder, advancing:
 
@@ -1199,8 +1227,8 @@ sequenceDiagram
     M->>S: sbatch … 01_coarse
     S-->>U: Submitted job 4021
     Note over U: coarse runs. YOU LOOK AT IT.<br/>Did it converge? Is the geometry sane?
-    U->>M: jobset prep run tight --from 01_coarse/run-0
-    Note over M: copies coarse's .XV / .DM into 02_tight/run-0
+    U->>M: jobset prep run tight
+    Note over M: takes coarse's newest attempt, concluded,<br/>and copies its .XV / .DM into 02_tight/run-0
     U->>M: jobset launch run tight --mode submit
     M->>S: sbatch … 02_tight
     S-->>U: Submitted job 4022

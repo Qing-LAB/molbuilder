@@ -1198,12 +1198,22 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                 # decide whether the ladder is chaining, and it answered yes for
                 # every rung including the ones that start fresh.
                 if continues(cfg):
+                    # WHERE THOSE FILES COME FROM (plan W37): `prep` copies the
+                    # run it continues from into the folder this deck runs in
+                    # -- the stage before it, newest, by default -- and the
+                    # flat layout's are where that stage left them.  This said
+                    # "the previous run left ... in this directory", which no
+                    # run does on the hierarchy, and named a panel that no
+                    # longer exists.
                     out.append(
-                        "# This stage CONTINUES: SIESTA reads the .XV / .DM the "
-                        "previous run left under the same")
+                        "# This stage CONTINUES: SIESTA reads any .XV / .DM "
+                        "under the same SystemLabel in the")
                     out.append(
-                        "# SystemLabel, in this directory.  See the Watch tab's "
-                        "'Staged relaxation workflow' panel.")
+                        "# folder it runs in -- prep copies in those of the "
+                        "run it continues from (job-system.md")
+                    out.append(
+                        "# 5.4), none for a first stage; on the flat layout "
+                        "they lie where the stage before left them.")
                 else:
                     out.append(
                         "# This stage starts CLEAN: the restart group below is "

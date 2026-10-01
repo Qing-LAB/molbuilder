@@ -1174,63 +1174,24 @@ def test_a_bench_grid_answer_that_arrives_late_is_dropped(
         f"nobody asked for, and says how many combinations fit it")
 
 
-def test_a_continuing_rung_copies_a_command_naming_the_LAST_attempt(
+def test_no_rung_is_taught_a_from_the_hand_over_is_preps(
         page, flask_server, two_stage_dir):
-    """The `--from` in the command a person copies names the newest attempt.
+    """The page composes no `--from`, even for a rung whose run card says it
+    continues: which run a stage continues from is prep's answer -- the
+    newest attempt of the stage before it, which must have concluded
+    (`job-system.md` § 5.4, plan W37) -- and a `--from` the page composed
+    skipped that check, being taken as said.  (It taught one from the card
+    until W37: the newest attempt by count, concluded or not; and before the
+    K5 review's A1, to every transport rung, which prep refused.)
 
-    WHAT THIS REPLACES, AND WHY THE OLD ONE HAD TO GO.  `test_task_setup_tab
-    .py::test_a_HIERARCHICAL_continue_names_the_LAST_attempt_not_the_first`
-    lifted the `--from` block out of `viewer.js` by TEXT -- `src.index('
-    let from = "";')` -- handed it three inputs and ran it under node.  It ran
-    the real code, which is why it looked sound; but the SLICE was pinned to
-    an exact line, so editing the block to stop composing the stage token
-    broke the test with `[eval]:17` and said nothing about whether the page
-    still worked.  An anchor is a pin whatever you do with the slice.
-
-    This asks the page.  It also covers what the old one could not: the
-    count and the token arrive with the FOLDER'S OWN ANSWER
-    (`/api/task-setup/folder`, `task-setup.md` § 2.1 -- they came from a
-    separate `/api/task-setup/attempts` call until 2026-09-19), so a broken
-    door, an answer discarded for naming another folder, or a page that
-    never asked all show up here as a command with no `--from` at all.
+    MUTATION THIS MUST FAIL AGAINST: the page composing a `--from` again.
     """
     import json as _json
     tj = two_stage_dir / "task.json"
     doc = _json.loads(tj.read_text())
-    # THE RUNG'S RUN CARD says it continues -- the one place a rung's
-    # `restart` lives (`stages.md` § 6.8d, plan § 5w K5).
     doc["stages"][1]["execution"] = dict(doc["stages"][1].get("execution")
                                          or {}, restart="continue")
     tj.write_text(_json.dumps(doc, indent=2))
-    # three attempts on the rung being continued FROM
-    for n in (0, 1, 2):
-        (two_stage_dir / "01_coarse" / f"run-{n}").mkdir(parents=True)
-
-    _open(page, flask_server, two_stage_dir)
-    page.wait_for_selector("pre.ts-cmd", state="attached", timeout=20000)
-    page.wait_for_function(
-        "() => Array.from(document.querySelectorAll('pre.ts-cmd'))"
-        "        .some(e => e.textContent.includes('--from'))", timeout=20000)
-    cmds = page.eval_on_selector_all(
-        "pre.ts-cmd", "els => els.map(e => e.textContent)")
-    tails = [c for c in cmds if "--from" in c]
-    assert tails, f"no continuing rung taught a --from: {cmds}"
-    assert any("--from 01_coarse/run-2" in c for c in tails), (
-        "the command must continue from the LAST attempt, not the first: "
-        f"{tails}")
-    assert not any("run-0" in c for c in tails), tails
-
-
-def test_a_rung_whose_card_says_nothing_is_taught_no_from(
-        page, flask_server, two_stage_dir):
-    """The hint teaches what a rung's RUN CARD states, and nothing else.
-
-    A rung whose card states no `restart` runs with the template's value,
-    and how such a rung is handed its predecessor is the stage hand-over's
-    (plan W37, M2h).  A default read into the hint taught every transport
-    rung after the first a `--from` its prep refuses, and turned their Prep
-    buttons into previews (the K5 review's A1, 2026-09-30).
-    """
     for n in (0, 1):
         (two_stage_dir / "01_coarse" / f"run-{n}").mkdir(parents=True)
     _open(page, flask_server, two_stage_dir)

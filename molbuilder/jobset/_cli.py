@@ -1051,9 +1051,10 @@ def _resolve_stage(js, stage, verb: str):
 @_bundle_option()
 @click.option("--from", "from_attempt", default=None, metavar="STAGE/run-N",
               help="the attempt this run continues from, e.g. "
-                   "'01_coarse/run-0'.  Its warm files are COPIED in.  Which "
-                   "run you continue from is something you say, never "
-                   "something molbuilder guesses.")
+                   "'01_coarse/run-0'.  Its warm files are COPIED in.  "
+                   "Without it, a continuing stage takes the newest attempt "
+                   "of the stage before it, which must have concluded "
+                   "(job-system.md 5.4).")
 @click.option("--cold", is_flag=True,
               help="start this run clean -- skip the copy.  With a directory "
                    "per attempt there is nothing to move aside.")
@@ -1240,6 +1241,8 @@ def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
         click.echo(f"prepped {len(ans.dirs)} job dir(s) under {base}  "
                    "(flat: no attempt to open; runs are told apart by "
                    "the wrapper's output index)")
+        if ans.handover is not None:
+            click.echo("  " + ans.handover.line())
         _echo_pipeline_log(ans, base)
         say_next(next_line)
         return
@@ -1263,13 +1266,18 @@ def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
     click.echo(f"prepared {rep.stage}: {rep.dir.relative_to(base)}"
                f"{'' if rep.fresh else '  (reused -- not launched yet)'}")
     click.echo(f"  brought in: {', '.join(rep.brought)}")
-    if rep.copied:
+    if ans.handover is not None:
+        # THE HAND-OVER, said (`job-system.md` § 5.4): which run, by default
+        # or named, what it was, and what came across.
+        click.echo("  " + ans.handover.line(rep.copied))
+    elif rep.copied:
         click.echo(f"  copied from {rep.continued_from}: "
                    f"{', '.join(rep.copied)}")
     elif rep.cold:
         click.echo("  cold start -- nothing copied in")
     else:
-        click.echo("  nothing carried in (first stage, or none named)")
+        click.echo("  nothing carried in (the first stage, or one that "
+                   "starts clean)")
     for src, fn in ans.gathered:
         click.echo(f"  gathered: {fn} <- {src}")
     if ans.resources is not None:

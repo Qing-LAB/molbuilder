@@ -1295,11 +1295,11 @@ def api_task_setup_prep():
     kind = str(body.get("kind") or "").strip()
     stage = (body.get("stage") or "").strip() or None
     target = (body.get("target") or "").strip() or None
-    # NO `--from` HERE.  Continuing from a named attempt is `prep run
-    # --from <stage>/run-N` -- the entry's ``from_attempt`` -- and WHICH run
-    # you continue from is a scientific choice the CLI makes you say out loud
-    # (`project-layout.md` § 1.6).  A button that offered it would have to
-    # pick a default, and there is no honest one.
+    # THE HAND-OVER IS THE ENTRY'S (plan W37, `job-system.md` § 5.4): a
+    # continuing stage takes the newest attempt of the stage before it, which
+    # must have concluded -- the default the CLI takes too -- and the answer
+    # says which (`handover`).  Naming another run, or none, is the page's
+    # Continue-from choice (W37's second part).
     plan_only = bool(body.get("plan"))
 
     if kind not in ("run", "bench"):

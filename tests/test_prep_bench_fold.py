@@ -662,9 +662,12 @@ def test_prep_run_of_a_second_stage_merges_the_root_plan(calc):
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     r = CliRunner()
-    for stage in ("coarse", "medium"):
+    # `medium` before `coarse` has run: it starts from the structure, said
+    # out loud (`job-system.md` § 5.4) -- what this is about is the plan
+    for stage, more in (("coarse", ()), ("medium", ("--cold",))):
         res = r.invoke(jobset_group, ["prep", "run", stage,
-                                      "--bundle", str(calc), "--no-sbatch"])
+                                      "--bundle", str(calc), "--no-sbatch",
+                                      *more])
         assert res.exit_code == 0, res.output
     js = json.loads((calc / "job-set.json").read_text())
     assert js["kind"] == "ladder"
@@ -961,7 +964,9 @@ class TestTheRunsOwnCondition:
                     stages=stages)
         first = self._run(calc, stages[0]["name"])["resources"]
         assert (first["mpi_np"], first["cpus_per_task"]) == (2, 2)
-        second = self._run(calc, stages[1]["name"])["resources"]
+        # the second before the first has run: from the structure, said out
+        # loud (`job-system.md` § 5.4)
+        second = self._run(calc, stages[1]["name"], "--cold")["resources"]
         assert (second["mpi_np"], second["cpus_per_task"]) == (1, 2)
 
     def test_the_whole_condition_reaches_the_launch_and_the_deck(self, calc):
@@ -1346,8 +1351,11 @@ def test_a_fine_tuned_vocabulary_copy_wins_and_is_named(calc):
         'suffix      = ".DM"             # fine-tuned: NOT carried here')
     (calc / "warm-files.toml").write_text(text)
     r = CliRunner()
+    # `medium` with nothing run before it: from the structure, said out loud
+    # (`job-system.md` § 5.4) -- the declaration is what this is about
     res = r.invoke(jobset_group, ["prep", "run", "medium",
-                                  "--bundle", str(calc), "--no-sbatch"])
+                                  "--bundle", str(calc), "--no-sbatch",
+                                  "--cold"])
     assert res.exit_code == 0, res.output
     js = json.loads((calc / "job-set.json").read_text())
     warm = {w["name"] for j in js["jobs"] if j["name"] == "medium"

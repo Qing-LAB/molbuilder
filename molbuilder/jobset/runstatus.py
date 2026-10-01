@@ -146,12 +146,13 @@ class JobSetStatus:
     stages:          List[StageStatus]
     first_incomplete: Optional[str]   # name of the first non-finished stage (resume here)
     complete:        bool             # every enabled stage finished
-    #: The attempt the first incomplete stage continues from when nothing has
-    #: prepped it and it is an INDEPENDENT stage -- the stage before it's
-    #: latest, ``01_coarse/run-0`` (`job-system.md` § 5.4) -- so the command
-    #: the status prints names it.  ``None`` for a linked stage, whose input
-    #: prep takes itself, and where there is no attempt to name.
+    #: The run the first incomplete stage's prep will continue from, when
+    #: nothing has prepped it -- `handover.handover_answer`'s, the answer
+    #: prep itself asks (`job-system.md` § 5.4) -- or ``None``: a linked
+    #: stage, the first, one that starts clean.
     resume_from: Optional[str] = None
+    #: Why that prep would refuse instead -- the refusal's first sentence.
+    resume_refused: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -419,26 +420,25 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
         stages=stages,
         first_incomplete=(first.name if first is not None else None),
         complete=(first is None),
-        resume_from=_resume_from(task, stages, first),
+        **_next_handover(base, task, first),
     )
 
 
-def _resume_from(task, stages: List[StageStatus],
-                 first: Optional[StageStatus]) -> Optional[str]:
-    """The attempt an INDEPENDENT stage nothing has prepped continues from:
-    the latest of the enabled stage before it (`job-system.md` § 5.4, *a
-    run you name* -- and the name is this one).  A linked stage's input is
-    prep's own -- the kind names its rungs' roles (`template.KIND_ROLES`,
-    § 5.4's linked column) -- and a flat stage has no attempt to name."""
-    from ..template import KIND_ROLES
-    if (task is None or first is None or first.prepped
-            or task.calculation in KIND_ROLES):
-        return None
-    before = [s for s in stages[:stages.index(first)] if s.enabled]
-    prev = before[-1] if before else None
-    if prev is None or not prev.prepped or prev.attempt is None:
-        return None
-    return f"{prev.dir}/{prev.attempt}"
+def _next_handover(base: Path, task, first: Optional[StageStatus]) -> dict:
+    """What the next prep of the first incomplete stage will continue from,
+    or why it would refuse -- asked of `handover.handover_answer`, the one
+    door `prep` asks too, so the two never disagree about the same run (the
+    W37 review: a rule of status's own told a stage set to start clean that
+    it would continue, and named nothing on the flat layout)."""
+    if task is None or first is None or first.prepped:
+        return {}
+    from .handover import handover_answer
+    got, refused = handover_answer(base, task, first.name)
+    if got is not None:
+        return {"resume_from": got.where()}
+    if refused:
+        return {"resume_refused": refused.split("\n")[0]}
+    return {}
 
 
 def render_status(status: JobSetStatus) -> str:
@@ -480,12 +480,18 @@ def render_status(status: JobSetStatus) -> str:
                       if s.name == status.first_incomplete), None)
         if first is not None and not first.prepped:
             # NOTHING TO RE-SUBMIT: the stage has no folder yet, so the next
-            # step is to prepare it -- an independent stage FROM the run
-            # before it, which a bare prep would not take (§ 5.4).
+            # step is to prepare it -- and an independent stage's prep takes
+            # the run before it, which the line names (§ 5.4).
+            if status.resume_refused:
+                lines.append(
+                    f"First incomplete stage: {first.name}, not prepped yet "
+                    f"-- and its prep refuses for now:\n"
+                    f"    {status.resume_refused}")
+                return "\n".join(lines)
             lines.append(
                 f"First incomplete stage: {first.name}, not prepped yet:\n"
                 f"    molbuilder jobset prep run {first.name}"
-                + (f" --from {status.resume_from}"
+                + (f"   # continues from {status.resume_from}"
                    if status.resume_from else ""))
             return "\n".join(lines)
         what = ("the engine warm-starts from its own restart files"
@@ -518,12 +524,14 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
     if not s.prepped:
         # WHAT YOU CAN TYPE (`job-system.md` § 5.3): a disabled stage's prep
         # is refused on a transport ladder, so it is told how to enable it.
-        how = (f"Prep it:  molbuilder jobset prep run {s.name}"
-               + (f" --from {status.resume_from}"
-                  if s.name == status.first_incomplete
-                  and status.resume_from else "")
-               if s.enabled else
-               "Enable it in Task setup (or task.json) to run it.")
+        nxt = s.name == status.first_incomplete
+        how = ("Enable it in Task setup (or task.json) to run it."
+               if not s.enabled else
+               f"Its prep refuses for now: {status.resume_refused}"
+               if nxt and status.resume_refused else
+               f"Prep it:  molbuilder jobset prep run {s.name}"
+               + (f"   # continues from {status.resume_from}"
+                  if nxt and status.resume_from else ""))
         return "\n".join([f"STAGE {s.ref.label} -- {s.state}", "",
                           f"  {s.detail}", "", how])
     rows: List[tuple] = [

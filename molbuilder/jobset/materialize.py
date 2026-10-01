@@ -743,8 +743,13 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                     continue_from: Optional[str] = None,
                     cold: bool = False,
                     carry: Optional[List[str]] = None,
-                    container: Optional[Path] = None) -> "Attempt":
+                    container: Optional[Path] = None,
+                    named: bool = True) -> "Attempt":
     """Set ONE stage up to run, and report what was done.
+
+    ``named`` says who chose ``continue_from``: the person, by ``--from``, or
+    `prep`'s hand-over by default (`job-system.md` § 5.4) -- so a refusal
+    quotes what was typed, never a ``--from`` nobody typed.
 
     The five steps § 1.6 names: **resolve** the next ``run-<n>``, **create**
     it, **copy** the deck / monitor / shared package in, **copy** whatever this
@@ -753,13 +758,13 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     somewhere to look before committing cluster time.
 
     ``continue_from`` is a bundle-relative attempt directory —
-    ``"01_coarse/run-0"``. **Which run you continue from is something you say,
-    not something molbuilder guesses** (§ 1.6): continuing from ``run-0`` and
-    from ``run-2`` are different scientific choices.  *(One amendment,
-    user 2026-08-21: the submission door calls this with the SAME stage's
-    LATEST attempt by default when re-submitting a launched stage — the
-    one source that is never a guess; every other source stays yours to
-    name.)* ``cold=True`` means start
+    ``"01_coarse/run-0"``. **Which run is never a guess** (§ 1.6):
+    continuing from ``run-0`` and from ``run-2`` are different scientific
+    choices, so the callers pass one they can name -- `prep`'s hand-over the
+    stage before it's newest attempt, which must have concluded, or the one
+    a person named (`handover.handover_answer`, `job-system.md` § 5.4); the
+    submission door, re-submitting a launched stage, the SAME stage's latest
+    (user, 2026-08-21).  ``cold=True`` means start
     clean, and with a directory per attempt that is simply *skip the copy* —
     there is nothing to move aside, because a fresh attempt is empty unless
     something is put in it.
@@ -892,11 +897,13 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
         marker.unlink()
 
     copied: List[str] = []
+    said = (f"--from {continue_from!r}" if named else
+            f"the run it continues from ({continue_from})")
     if continue_from and not cold:
         src = base / continue_from
         if not src.is_dir():
             raise ValueError(
-                f"--from {continue_from!r}: no such attempt under "
+                f"{said}: no such attempt under "
                 f"{base}. Name an attempt directory that has already run, "
                 f"e.g. '01_coarse/run-0'.")
         # The pair, resolved here and nowhere else -- `--from` is what names
@@ -906,7 +913,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                                                   continue_from)))
         if not names:
             raise ValueError(
-                f"--from {continue_from!r}: {stage_name!r} declares no "
+                f"{said}: {stage_name!r} declares no "
                 f"warm-restart files, so there is nothing to continue.\n"
                 f"  A stage whose description says `restart: clean` carries "
                 f"none of the group -- its deck omits MD.UseSaveXV / "
@@ -921,7 +928,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                 copied.append(name)
         if not copied:
             raise ValueError(
-                f"--from {continue_from!r}: that attempt holds none "
+                f"{said}: that attempt holds none "
                 f"of the files this stage would continue from "
                 f"({', '.join(names)}). Did it run?")
 

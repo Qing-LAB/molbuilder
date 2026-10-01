@@ -1982,9 +1982,10 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                     f"launched, so "
                     f"re-submission continues by default -- but "
                     f"continuing is impossible here:\n  {_e}\n"
-                    f"  Look at that run's logs; a FRESH attempt "
-                    f"is:  molbuilder jobset prep run {_j.name}  "
-                    f"(then submit).") from _e
+                    f"  Look at that run's logs; a NEW attempt is:  "
+                    f"molbuilder jobset prep run {_j.name}  (from the stage "
+                    f"before it, job-system.md 5.4; `--cold` from the "
+                    f"structure), then submit.") from _e
             _how = (f"concluded ({_mark.splitlines()[0]})"
                     if _mark is not None else
                     "NOT concluded -- continued on your judgement")
@@ -1995,7 +1996,8 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                 f"{attempt_name(_ns[-1])} -> "
                 f"{_rep.dir.name} (copied: "
                 f"{', '.join(_rep.copied) or 'nothing to carry'}).  "
-                f"Fresh instead: prep run {_j.name} first."))
+                f"A new attempt instead: prep run {_j.name} first (from "
+                f"the stage before it; --cold from the structure)."))
         if _skip:
             import dataclasses as _dc2
             jobset = _dc2.replace(jobset, jobs=[

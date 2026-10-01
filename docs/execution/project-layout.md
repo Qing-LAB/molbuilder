@@ -899,10 +899,12 @@ you prep the next stage, so they are **copied**, as real files, then and there.
 Copied and not linked for the same reason as always: the engine writes to that
 filename, and writing through a link would destroy the result you started from.
 
-**Which run you continue from is something you say, not something molbuilder
-guesses.** Continuing from `01_coarse/run-0` and continuing from `01_coarse/run-2`
-are different scientific choices, and the folder names make the choice visible
-afterwards.
+**Which run you continue from is never a guess.** Continuing from
+`01_coarse/run-0` and continuing from `01_coarse/run-2` are different scientific
+choices, so `prep` takes the newest attempt of the stage before it — the run you
+just looked at, which must have concluded — says which, and takes another only
+when you name it ([`job-system.md`](?doc=execution/job-system.md) § 5.4). The
+folder names make the choice visible afterwards.
 
 This is the same shape one level down: a redo of a stage — `run-1` after
 `run-0` — copies from the attempt you name, for the same reason.
@@ -912,9 +914,9 @@ This is the same shape one level down: a redo of a stage — `run-1` after
 > attempt has been launched opens the next `run-<n>` warm from that attempt,
 > says so, and launches it — after the marker check of § 1.6.4. The same
 > stage's *latest* attempt is the one source that is never a guess: a
-> wall-killed run's newest state *is* the state. Everything else stays
-> something you say — an older attempt or another stage is `--from`, a fresh
-> start is `prep run <stage>` first — and a launched run that left no state to
+> wall-killed run's newest state *is* the state. Everything else is `prep`'s
+> — the stage before it by default, an older attempt or another stage by
+> `--from`, a fresh start by `prep run <stage> --cold` — and a launched run that left no state to
 > continue (it likely died at startup) is refused with that story, never
 > silently started fresh. Benchmark trials keep § 1.5's immutability refusal.
 
@@ -1527,18 +1529,21 @@ week.
 This is the one worth reading slowly, because it is where the design differs
 most from what people expect.
 
-**A stage does not "connect" to the one before it. You hand it a file.** That
-is a ladder of independent stages; a linked stage — a vibration's `freq`,
+**A stage does not "connect" to the one before it. It is handed a file.** By
+default `prep` hands it the newest attempt of the stage before it, which must
+have concluded; `--from` names another run, and `--cold` none — which run, and
+when `prep` refuses, is [`job-system.md`](?doc=execution/job-system.md) § 5.4's.
+That is a ladder of independent stages; a linked stage — a vibration's `freq`,
 transport's device and transmission — has its input fixed by the calculation,
-and `prep` takes it from the stage before
-([`job-system.md`](?doc=execution/job-system.md) § 5.4).
+and `prep` takes it from the stage before (§ 5.4 too).
 
 ```
-molbuilder jobset prep run tight --from 01_coarse/run-0
+molbuilder jobset prep run tight                          # the stage before it, newest
+molbuilder jobset prep run tight --from 01_coarse/run-0   # a run you name
 ```
 
-`--from` names **a run that has already finished** — you just looked at it, which
-is why you are willing to build on it. So step 5 copies its warm files into the
+The run is **one that has already finished** — you just looked at it, which is
+why you are willing to build on it. So step 5 copies its warm files into the
 new attempt, for real, right then:
 
 | File | What it carries | Copied when |
@@ -1618,13 +1623,13 @@ right name.
 | **which stage** | you, on the command line | which overrides apply |
 | **the machine** | detected, here, now | ranks, GPUs, scheduler, activation → `environment.json` |
 | a benchmark verdict *(optional)* | `jobset summarize bench <stage>` | **nothing, on its own** — it is a REPORT you read, and `prep run` never opens it (§ 2.3.3). What it tells you about rank count, eigensolver, GPU and memory reaches the deck only once YOU write it into `execution`. *This row sent the verdict straight to the deck until 2026-09-05, contradicting §§ 2.3.3 and 1.1 and this file's own opening.* |
-| a finished run *(optional)* | you name it | which coordinates and density matrix the run starts from |
+| a finished run *(optional)* | `prep` takes the stage before it's newest, or the one you name (`job-system.md` § 5.4) | which coordinates and density matrix the run starts from |
 
 | Output | What it is |
 |---|---|
 | `<NN>_<stage>/<label>_<NN>_<stage>.fdf` | the deck, finally real — every value resolved |
 | `<NN>_<stage>/<label>_<NN>_<stage>.run.sh` (+ `.sbatch`), `mb_monitor.pyz` | the wrapper, activation baked in, and the monitor beside it |
-| `<NN>_<stage>/run-<n>/` | a fresh attempt: its `calcdir.json`, its inputs copied in, warm files copied from the run you named |
+| `<NN>_<stage>/run-<n>/` | a fresh attempt: its `calcdir.json`, its inputs copied in, warm files copied from the run it continues from |
 | the printed report | what was resolved, measured and copied — the thing you check before submitting |
 
 **Re-running `prep` is safe until the run is launched.** It rebuilds the attempt

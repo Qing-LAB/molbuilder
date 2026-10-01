@@ -45,14 +45,14 @@ def test_status_lists_every_stage_from_the_description(tmp_path, monkeypatch):
     -- coarse and medium enabled, tight disabled.  `status` lists all three
     before the first prep and after it, numbered as `#N` names them; tight is
     listed as disabled, told how to run, and never the stage to resume from;
-    once coarse has concluded, the command for medium names the run it
-    continues from -- an independent stage's bare prep takes nothing
-    (`job-system.md` § 5.4); `status <stage>` shows what the stage is; the
+    once coarse has concluded, the command for medium is shown beside the run
+    it continues from (`job-system.md` § 5.4); `status <stage>` shows what
+    the stage is; the
     Results tab answers the same ladder.
 
     MUTATIONS THIS MUST FAIL AGAINST: rows from the job set alone; a disabled
     stage counted as the stage to resume from; `status <stage>` without the
-    plan's columns; the next command without `--from`."""
+    plan's columns; the next command without the run it continues from."""
     from conftest import write_pseudos
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.structure import Structure
@@ -107,8 +107,8 @@ def test_status_lists_every_stage_from_the_description(tmp_path, monkeypatch):
     assert r.exit_code == 0, r.output
     assert _row(r.output, first)[3] == "finished", r.output
     assert _row(r.output, second)[3] == "not-started", r.output
-    assert (f"molbuilder jobset prep run {second} --from 01_{first}/run-0"
-            in r.output), r.output
+    assert (f"molbuilder jobset prep run {second}   # continues from "
+            f"01_{first}/run-0" in r.output), r.output
 
     # ONE STAGE IN FULL: what it is, then what happened to it
     r = _jobset("status", first, "--bundle", bundle)
@@ -120,8 +120,8 @@ def test_status_lists_every_stage_from_the_description(tmp_path, monkeypatch):
     assert lines["resources"] != "-", r.output
     r = _jobset("status", "#2", "--bundle", bundle)
     assert r.exit_code == 0, r.output
-    assert (f"molbuilder jobset prep run {second} --from 01_{first}/run-0"
-            in r.output), r.output
+    assert (f"molbuilder jobset prep run {second}   # continues from "
+            f"01_{first}/run-0" in r.output), r.output
     r = _jobset("status", off, "--bundle", bundle)
     assert r.exit_code == 0, r.output
     assert "Enable it in Task setup" in r.output, r.output
@@ -137,8 +137,9 @@ def test_status_lists_every_stage_from_the_description(tmp_path, monkeypatch):
 
     # EVERY ENABLED STAGE CONCLUDED: the disabled one is not what is left
     # (the conclusion markers stand in for runs, which left no restart files
-    # for a `--from` to copy)
-    r = _jobset("prep", "run", second, "--bundle", bundle, "--target", "this")
+    # to hand over -- so this stage starts from the structure, `--cold`)
+    r = _jobset("prep", "run", second, "--bundle", bundle, "--target", "this",
+                "--cold")
     assert r.exit_code == 0, r.output
     concluded(2, second)
     r = _jobset("status", "--bundle", bundle)

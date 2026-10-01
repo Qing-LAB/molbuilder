@@ -1986,9 +1986,10 @@ function removeColumn(name) {
  *
  * `task-setup.md` § 1: this page "turns that into a description on disk and
  * **hands you the command to run it somewhere else**".  Half the tab's purpose,
- * and it has to be EXACT rather than a generic snippet — a stage that continues
- * names what it continues from, because `prep` refuses to guess (`stages.md`
- * § 6.5: every verb is given the stage's name).
+ * and it has to be EXACT rather than a generic snippet — every verb is given
+ * the stage's name (`stages.md` § 6.5).  What a stage continues from is the
+ * prep's own answer, the stage before it by default (`job-system.md` § 5.4,
+ * plan W37), shown once prep has run.
  */
 /* ---------- what a prep will write, per stage (§ 7.1) ---------- */
 /*
@@ -2254,41 +2255,11 @@ function renderNext(task) {
 
     enabled.forEach((e, i) => {
         const name = e.st.name || "";
-        // `continue` carries from the stage before it — and `prep` is TOLD
-        // which attempt, never left to guess (`project-layout.md` § 1.6).
-        /* FLAT HAS NO ATTEMPT DIRECTORIES, so it has no `--from`: the
-         * shared warm set lies in the bundle root and continuing is free
-         * (`project-layout.md` § 1).  `prepare_attempt` REFUSES an explicit
-         * `--from` there, by name -- so teaching one taught a command that
-         * cannot run, naming a directory (`01_coarse/run-0`) that a flat
-         * bundle does not have either.  Both wrong at once, until
-         * 2026-09-02.
-         *
-         * And the attempt is the LAST one, not `run-0`.  A stage with three
-         * attempts was taught to continue from the first -- the page knows
-         * the count (`_fs.runs`, from the folder's answer) and uses it. */
-        let from = "";
-        const hierarchical = _shape === "hierarchical";
-        /* WHAT THE RUNG'S RUN CARD SAYS -- the one place a rung's
-         * `restart` is stated (`stages.md` § 6.8d, plan § 5w K5); this read
-         * the stage's COLUMN.  Only what the card STATES: a rung that
-         * states nothing keeps the template's value, and how such a rung
-         * is handed its predecessor is the stage hand-over's (plan W37,
-         * M2h) -- a default read in here taught transport's rungs a
-         * `--from` their prep refuses (the K5 review's A1). */
-        const restart = runConditionOf(_task || task, name).restart;
-        if (i > 0 && String(restart || "") === "continue" && hierarchical) {
-            const prev = enabled[i - 1];
-            /* THE TOKEN COMES FROM THE SERVER (`_fs.tokens`), not spelled
-             * here: `<NN>_<name>` is `identity.stage_token`'s and `run-<n>`
-             * is `paths.attempt_name`'s, and this page cannot import
-             * either. */
-            const token = _fs.tokens[prev.st.name || ""];
-            const had = Number(_fs.runs[prev.st.name || ""]) || 0;
-            from = token
-                ? " --from " + token + "/run-" + (had > 0 ? had - 1 : 0)
-                : "";
-        }
+        /* NO `--from` COMPOSED HERE (plan W37): which run a stage continues
+         * from is prep's answer -- the newest attempt of the stage before it,
+         * which must have concluded, by default -- and a `--from` this page
+         * composed skipped that check, being taken as said.  The bare
+         * command below is the default; the prep answer says what it took. */
         const runs = _fs.runs[name];
         const active = name === _fs.stepTab;
         const tab = el("button", {
@@ -2357,23 +2328,15 @@ function renderNext(task) {
             // The bundle is NAMED, from the projects root, so the line
             // works from wherever the user is standing
             // (job-contracts.md 2.5b).
-            "molbuilder jobset prep run " + name + from + _bundleArg() + _targetArg() + "\n"
+            "molbuilder jobset prep run " + name + _bundleArg() + _targetArg() + "\n"
             // The launch is the LAST line for every kind: a run writes its
             // own result -- a SIESTA vibration's job derives its modes after
             // the force-constant run (engines/vibration.md 5.5).
             + "molbuilder jobset launch run " + name + _bundleArg()));
-        // `--from` is deliberately NOT offered by the button: which run you
-        // continue from is a scientific choice the CLI makes you say out
-        // loud (`project-layout.md` § 1.6), and a button would have to pick
-        // a default.  The command above still shows it when it applies.
-        /* THE PREVIEW IS NEVER WITHHELD.  This read `if (!from)` until
-         * 2026-09-02, which took the A13 emitted block away from every
-         * continuing rung -- from exactly the long runs A13 exists for.
-         * What a continuing rung cannot do is WRITE: the prep door carries
-         * no `--from` on purpose (which attempt you continue from is a
-         * scientific choice, `project-layout.md` § 1.6), so the button
-         * previews and then names the command that does the writing. */
-        block.appendChild(prepButton("run", name, from));
+        /* THE BUTTON WRITES WHAT THE COMMAND DOES (plan W37): the same
+         * prep, which hands over by default and refuses, naming the
+         * commands, when the stage before has not concluded. */
+        block.appendChild(prepButton("run", name));
         panels.appendChild(block);
     });
 
@@ -2397,7 +2360,7 @@ const _PREP_WIDGETS = [];
  * scheduler for -- and shows it; the second click runs it.  The same rule
  * the launch door keeps (`submission.md` S4), for the same reason.
  */
-function prepButton(kind, stage, continues) {
+function prepButton(kind, stage) {
     /* TWO BUTTONS, AND ONE ENABLES THE OTHER.
      *
      * This was ONE button that changed what it did between clicks: the first
@@ -2523,18 +2486,6 @@ function prepButton(kind, stage, continues) {
                 wrap.appendChild(box);
             }
 
-            if (continues) {
-                /* A CONTINUING RUNG CANNOT BE WRITTEN FROM A BUTTON: which
-                 * attempt you continue from is a scientific choice and the
-                 * prep door carries no `--from` on purpose
-                 * (`project-layout.md` § 1.6).  The preview still resolves,
-                 * which is the half A13 needs. */
-                say.textContent += "  This rung continues from a named "
-                    + "attempt, so the command below writes it — a "
-                    + "button cannot choose which attempt for you.";
-                btnWrite.disabled = true;
-                return;
-            }
             btnWrite.disabled = false;
         } finally {
             btnPreview.disabled = false;
@@ -2719,14 +2670,19 @@ function _showPrepAnswer(wrap, say, r, onConfirm) {
         + ": " + dirs.slice(0, 3).join(", ") + (dirs.length > 3 ? ", …" : "");
     say.setAttribute("data-state", "ok");
     const a = r.attempt;
+    /* THE HAND-OVER, AS THE TERMINAL SAYS IT (`job-system.md` § 5.4; the
+     * W37 review): which run, by default or named, what it was -- its
+     * verdict among it -- and what came across.  The line is the server's
+     * (`Handover.line`); a flat folder has no attempt and still hands over. */
+    if (r.handover) line(r.handover.line);
     if (a) {
         line("Attempt " + a.dir + (a.fresh ? "" : " (reused — not launched yet)"));
         line("brought in: " + (a.brought || []).join(", "));
-        if ((a.copied || []).length) {
+        if (!r.handover && (a.copied || []).length) {
             line("copied from " + a.continued_from + ": " + a.copied.join(", "));
-        } else {
+        } else if (!r.handover) {
             line(a.cold ? "cold start — nothing copied in"
-                        : "nothing carried in (first stage, or none named)");
+                        : "nothing carried in (the first stage, or one that starts clean)");
         }
     }
     for (const p of (r.points || [])) {
