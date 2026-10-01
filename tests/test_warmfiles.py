@@ -37,8 +37,7 @@ _SIESTA_INVENTORY = (".XV", ".DM",
                      ".FC", ".FCC")
 
 #: pyscf/warm-files.toml, same rule.
-_PYSCF_INVENTORY = (".chk", "_optimized.xyz", "_geom_optim.xyz",
-                    "_geom_optim.tmp", "_geom.tmp")
+_PYSCF_INVENTORY = (".chk", "_optimized.xyz")
 
 
 def test_siesta_inventory_is_the_declared_vocabulary():

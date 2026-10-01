@@ -1224,8 +1224,15 @@ marks' — and read by `deck_record.extract_vibration_record`, beside the
 which `prep` copies onto the stage's job (`Job.finish`).
 
 **The start state is the kind's, not the description's.** The catalogue offers
-`restart` to optimisations only, and a force-constant run has no optimiser
-history to resume. The density is read when present — the reference step's
+`restart` to optimisations only. **A vibration's relaxation rung** is the
+ordinary relaxation deck (§ 5.2a), so it starts as a relaxation does by
+default — it continues from what its folder holds (`restart`'s default,
+`continue`, which this kind does not offer to change), and a relaxation
+re-prepared from its own earlier attempt (`prep --from`) picks up where that
+one stopped; its deck names the field, and no longer says the description
+holds it *(plan § 5w K10, the M11 review's SS-C14)*. **A force-constant run**
+has no optimiser history to
+resume. The density is read when present — the reference step's
 SCF starts from it — and SIESTA saves the reference step's converged density and
 reloads it before **every** displacement, so each displacement's SCF starts from
 the undisplaced density, not the previous displacement's (SIESTA 5.4.2

@@ -125,20 +125,13 @@ def conductance_g0(energies: List[float], trans: List[float]
 
 
 def _point_dirs(base: Path, task) -> List[Tuple[float, Path]]:
-    """``(voltage, transmission point container)`` per § 4.2/4.3: the
-    stage dir itself for a single point, one v-dir each for a scan."""
-    from ..identity import StageRef
-    from ..task import bias_token
-    from .stages import bias_points
-    token = next(r.token for r in
-                 StageRef.ladder([s.name for s in task.stages])
-                 if r.name == "transmission")
-    stage_dir = base / token
-    points = bias_points(task)
-    if not points:
-        v0 = (task.bias[0] if getattr(task, "bias", ()) else 0.0)
-        return [(float(v0), stage_dir)]
-    return [(float(v), stage_dir / bias_token(v)) for v in points]
+    """``(voltage, transmission point container)`` per § 4.2/4.3: the one
+    door's folders (`stages.rung_containers`), each with the bias it ran
+    at -- a single-bias calculation's one folder at its one point."""
+    from .stages import rung_containers
+    v0 = float(task.bias[0]) if getattr(task, "bias", ()) else 0.0
+    return [(v0 if v is None else v, d)
+            for d, v in rung_containers(base, task, "transmission")]
 
 
 def _stage_facts(base: Path, task, label: str) -> List[Dict]:
@@ -185,14 +178,14 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
             fact["state"] = "not_described"
             out.append(fact)
             continue
-        # WHERE THIS RUNG RAN.  A bias SCAN puts the transmission rung under
-        # one v-dir per point (`<token>/v<V>/run-<n>`, § 4.2/4.3) -- which
-        # `_point_dirs` above already knows and this did not: it asked
-        # `latest_attempt(base / token)`, found no `run-<n>` directly there,
-        # and reported a FINISHED scan as `not_run` -- on the same panel that
-        # was showing its finished bias points.
-        containers = ([d for _v, d in _point_dirs(base, task)]
-                      if name == "transmission" else [base / token])
+        # WHERE THIS RUNG RAN -- the one door's answer (`rung_containers`,
+        # plan § 5w K10).  A bias SCAN puts the device and the transmission
+        # under one v-dir per point (`<token>/v<V>/run-<n>`, § 4.2/4.3); a
+        # look at `base / token` found no `run-<n>` there and reported a
+        # FINISHED scan as `not_run` -- the transmission's until 2026-09-24,
+        # the device's until K10 (the M11 review's T-F27).
+        from .stages import rung_containers
+        containers = [d for d, _v in rung_containers(base, task, name)]
         cand = [(c, latest_attempt(c)) for c in containers]
         cand = [(c, a) for c, a in cand if a is not None]
         if not cand:

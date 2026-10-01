@@ -616,7 +616,7 @@ run_status(run_dir, match="*", *, launch=<not asked>) -> RunStatus   # parse/dir
 
 | caller | `launch` | `match` |
 |---|---|---|
-| `jobset/runstatus.py` — `jobset status`, the bench summary, the Results ladder | the attempt's or a trial's; none for a flat stage | the rung's glob |
+| `jobset/runstatus.py` — `jobset status`, the bench summary, the Results ladder | the attempt's — each point's, for a bias scan's rung ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) — or a trial's; none for a flat stage | the rung's glob |
 | `JobDirParser` — `/api/results/dir`, the run record | the directory's | `*` |
 | the monitor's closing line | not asked | its run's stem |
 

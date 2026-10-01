@@ -80,8 +80,9 @@ class StageStatus:
     state:      str
     detail:     str
     warm_files: List[str] = field(default_factory=list)  # restart files present
-    #: Which attempt this status was read from (``run-0``), or ``None`` for a
-    #: flat run, which happens in the container itself (§ 1.5).
+    #: Which attempt this status was read from (``run-0``; a bias scan's
+    #: point's, ``v0.2/run-0``), or ``None`` for a flat run, which happens in
+    #: the container itself (§ 1.5).
     attempt: Optional[str] = None
     #: Every attempt present, ascending -- the stage's history.  A re-run makes
     #: a new directory and leaves the old one exactly as it was (§ 1.5), so
@@ -240,11 +241,25 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
     return (st.state, st.detail)
 
 
+def _rung_homes(base: Path, task, job_name: str, d: Path) -> list:
+    """WHERE THIS JOB'S ATTEMPTS ARE -- ``[(folder, volts)]``.  For a stage of
+    the description, the one door's answer (`transport.stages.rung_containers`,
+    plan § 5w K10): a bias scan's point folders for a rung the scan runs at
+    each point, the stage folder otherwise.  For anything else -- a bench
+    trial, a job set no description stands beside -- the job's own
+    directory ``d``."""
+    if task is None or job_name not in {s.name for s in task.stages}:
+        return [(d, None)]
+    from ..transport.stages import rung_containers
+    return rung_containers(base, task, job_name)
+
+
 def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
     """Read the on-disk status of every stage of ``jobset`` under
     ``base_dir`` (read-only).  ``first_incomplete`` is the first stage that
     is not ``finished`` — the stage to resume from; ``None`` (and
     ``complete=True``) when every stage finished."""
+    from ..task import FILENAME as TASK_FILENAME, read_task
     base = Path(base_dir)
     label = jobset.name
     stages: List[StageStatus] = []
@@ -252,26 +267,11 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
     sh = shape_of(jobset, base_dir)
     dirs = job_dir_names(jobset, sh)
     refs = stage_refs(jobset)
+    task = (read_task(base / TASK_FILENAME)
+            if jobset.kind != "sweep" and (base / TASK_FILENAME).is_file()
+            else None)
     for job in jobset.jobs:
         d = base / dirs[job.name]
-        # WHERE the run happened, asked of the layer that decides layout --
-        # the latest attempt where there is one, the container for a flat run
-        # (project-layout.md § 1.5).  Globbing `d` regardless was blind to the
-        # whole attempt layer: a finished hierarchical stage read as "prepped,
-        # not launched" because its .out is one level down.
-        attempt = latest_attempt(d)     # None is the ANSWER here: prepared?
-        observed = run_dir(d)           # ...and this is where to look
-        # WHERE the launch record lives mirrors where submit WRITES it
-        # (submit.py `_where_recorded`): the attempt when one exists; a
-        # sweep trial's at the trial's top -- until 2026-08-20 this read the
-        # attempt only, so a grouped-submitted trial answered § 1.6's exact
-        # forbidden line ("prepped, not launched") while its record sat one
-        # level up; and a flat stage's own record, named by its deck, in
-        # the directory every stage shares (2026-09-27).
-        launch = read_run_launch(
-            attempt if attempt is not None else d,
-            basename=(None if attempt is not None or jobset.kind == "sweep"
-                      else Path(job.script).stem))
         # WHICH FILES are this stage's, asked of the layout (§ 9's `Shape`).
         # In the hierarchy the directory already answered; in flat every stage
         # shares one, and the deck's token in each filename is the answer.
@@ -286,11 +286,46 @@ def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
         job_label = _label_of(job, label)
         out_glob = (sh.stage_glob(token, job_label)
                     if (sh is not None and token) else "*")
-        state, detail = _stage_state(observed, launch, out_glob)
+        read = []
+        for home, volts in _rung_homes(base, task, job.name, d):
+            # WHERE the run happened, asked of the layer that decides layout
+            # -- the latest attempt where there is one, the container for a
+            # flat run (project-layout.md § 1.5).  Globbing the folder
+            # regardless was blind to the whole attempt layer: a finished
+            # hierarchical stage read as "prepped, not launched" because its
+            # .out is one level down.
+            attempt = latest_attempt(home)  # None is the ANSWER: prepared?
+            observed = run_dir(home)        # ...and this is where to look
+            # WHERE the launch record lives mirrors where submit WRITES it
+            # (submit.py `_where_recorded`): the attempt when one exists; a
+            # sweep trial's at the trial's top -- until 2026-08-20 this read
+            # the attempt only, so a grouped-submitted trial answered § 1.6's
+            # exact forbidden line ("prepped, not launched") while its record
+            # sat one level up; and a flat stage's own record, named by its
+            # deck, in the directory every stage shares (2026-09-27).
+            launch = read_run_launch(
+                attempt if attempt is not None else home,
+                basename=(None if attempt is not None
+                          or jobset.kind == "sweep"
+                          else Path(job.script).stem))
+            read.append((home, volts, attempt, observed, launch)
+                        + _stage_state(observed, launch, out_glob))
+        # A SCAN'S RUNG SPEAKS FROM ITS FIRST POINT NOT FINISHED, in the
+        # scan's order -- the order its chain walks -- and from its last once
+        # every point has: a rung with a point outstanding is the stage to
+        # resume from, and the row names the point (`web/results.md` § 2.4;
+        # `engines/transport.md` § 2a.12, *which of five runs is the one
+        # still outstanding*).  Any other rung has one folder, which speaks.
+        home, volts, attempt, observed, launch, state, detail = next(
+            (r for r in read if r[5] != _DONE), read[-1])
+        where = attempt.name if attempt else None
+        if volts is not None:
+            detail = f"{volts:g} V: {detail}"
+            where = f"{home.name}/{where}" if where else None
         stages.append(StageStatus(
             ref=refs[job.name], dir=d.name, state=state, detail=detail,
-            attempt=(attempt.name if attempt else None),
-            attempts=attempts(d),
+            attempt=where,
+            attempts=attempts(home),
             launch=launch,
             resumes=job.resumes,
             # THE SAME LABEL THE STATE WAS READ WITH.  This asked for

@@ -2284,7 +2284,12 @@ def _folder_attempts(dest) -> dict:
         sd = shape.stage_dir(token)
         where = dest if sd == "." else dest / sd
         if shape.keeps_attempts_as_directories:
-            n = len(attempts_in(where))
+            # Across WHERE THIS RUNG'S ATTEMPTS ARE -- a bias scan's point
+            # folders too, which the stage folder alone never showed (the
+            # one door, plan § 5w K10; the M11 review's T-F13).
+            from molbuilder.transport.stages import rung_containers
+            n = sum(len(attempts_in(d))
+                    for d, _v in rung_containers(dest, task, st.name))
         else:
             # FLAT TELLS ATTEMPTS APART BY THE FILENAME'S COUNTER, not by a
             # directory (§ 1.5a), so the count is how many run indices this

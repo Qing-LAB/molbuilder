@@ -1,6 +1,6 @@
 # PySCF's warm-state vocabulary -- job-contracts.md § 4.2a.
-# Suffixes, not extensions: ``.chk`` is a real extension, the geomeTRIC
-# rows are label suffixes (``<JOB>_optimized.xyz``).  No honoured_by
+# Suffixes, not extensions: ``.chk`` is a real extension, the optimized
+# geometry's row a label suffix (``<JOB>_optimized.xyz``).  No honoured_by
 # keys: the generated PySCF SCRIPT carries the warm-restart logic
 # itself (§ 4.2), so there is no deck keyword to agree with -- the
 # parity guard for its hooks is the read-side/--cold inventory test.
@@ -26,14 +26,16 @@ carry  = "when-continuing"      # WHAT A RUNG HANDS THE NEXT ONE.  Under one
                                 # .chk is the density half -- the same pair
                                 # SIESTA carries as .XV and .DM
                                 # (stages.md 1.1a, consequence 4).
-[[optimization.file]]
-suffix = "_geom_optim.xyz"      # geomeTRIC trajectory
-carry  = "when-continuing"      # the record carries for the reason SIESTA's
-                                # does: the shape must not change the data
-[[optimization.file]]
-suffix = "_geom_optim.tmp"
-[[optimization.file]]
-suffix = "_geom.tmp"
+#
+# geomeTRIC's trajectory and its scratch have NO row: they are not warm state
+# (stages.md 1.1a, consequence 4).  geomeTRIC 1.1.1 rewrites the trajectory
+# from the first step of every run (optimize.py: `progress.write(xyzout)` each
+# step, `Molecule.write(append=False)`), so a carried copy is overwritten
+# before anything reads it; and a staged rung's carries the rung's token,
+# which never crosses rungs (job-contracts.md 2.2a).  The scratch folder,
+# `<prefix>.tmp`, is made empty and never read back: PySCF's engine computes
+# in memory and has no `read_result`, and the decks ask for no Hessian
+# (engine.py `calc`, normal_modes.py `calc_cartesian_hessian`).
 
 # ---- vibration: shares the checkpoint story -------------------------
 # (an empty section IS a statement: base only, nothing type-specific --

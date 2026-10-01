@@ -1002,6 +1002,24 @@ itself shows which results are computed once and reused.
 A **single-bias** calculation (§ 2a.10) has no `v*` level at all — the degenerate
 case of the axis rule, not a special case of the layout.
 
+**One door says where a rung's attempts are** *(plan § 5w K10, 2026-10-01)*:
+`transport.stages.rung_containers(base, task, stage)` — one folder per bias
+point for a rung a scan runs at each point, the stage folder otherwise — and
+which rungs those are is the bias item's own `stages` (the device and the
+transmission; `scan_points`), never a list of names. Every reader of a rung's
+attempts asks it: prep's decks, wrappers and attempts, the gather (a
+transmission point reads its own point's device), the chain launch, prep's
+*already under way*, Task setup's count, the calculation's record, and
+`jobset status` with the Results tab's ladder (`web/results.md` § 2.4). **A
+scan's rung has one row there, and it speaks from the first point not
+finished**, in the scan's order — the order the chain walks — or from the last
+once every point has; its detail names the point (*0.2 V: queued …*) and its
+attempt is the point's (`v0.2/run-0`). A rung with a point outstanding is the
+rung to resume from (§ 2a.12). The record looked in the point folders for the
+transmission alone, so a finished device scan read *not run*; Task setup's
+count, prep's question and the status looked in the stage folder alone (the
+M11 review's T-F27, T-F13; the K10 review).
+
 #### Later: the frame axis (§ 2a.9), and why sharing needs no explaining
 
 ```

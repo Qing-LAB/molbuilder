@@ -1773,10 +1773,9 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                 _chain_task = None
             _chain_scan = ()
             if (_chain_task is not None
-                    and _chain_task.calculation == "transport"
-                    and only in ("device", "transmission")):
-                from ..transport.stages import bias_points as _bp
-                _chain_scan = _bp(_chain_task)
+                    and _chain_task.calculation == "transport"):
+                from ..transport.stages import scan_points as _scan
+                _chain_scan = _scan(_chain_task, only)
             if _chain_scan:
                 from .submit import submit_transport_chain
                 _plan = submit_transport_chain(

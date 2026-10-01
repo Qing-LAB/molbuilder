@@ -50,7 +50,7 @@ ROLE_CHK         = ".chk"
 ROLE_INITIAL     = "_initial.xyz"
 ROLE_OPTIMIZED   = "_optimized.xyz"
 ROLE_CONSTRAINTS = ".constraints.txt"
-ROLE_GEOM_TRAJ   = "_geom_optim.xyz"     # what warm-files.toml declares
+ROLE_GEOM_TRAJ   = "_geom_optim.xyz"     # geomeTRIC's trajectory, a rung's own
 
 #: THE LINE THIS DECK PRINTS WHEN IT REACHES ITS OWN END -- declared in
 #: `end_lines`, which the reader imports and which travels beside the job

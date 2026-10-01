@@ -56,10 +56,15 @@ from typing import Optional
 #: re-deriving instead of consulting: a transport ladder's rungs are
 #: `02_electrode_L` and `03_device`, so `compose` refused to name any of the
 #: transport decks.  The narrow pattern also made `parse` easy, and the real
-#: one does not -- see :data:`_CARRIED_ROLES`.
+#: one does not -- see :data:`_ENGINE_ROLES`.
 _STAGE = re.compile(r"[0-9]{2,}_[A-Za-z0-9_]+")
 
-#: The underscore-introduced roles an engine's WARM vocabulary contributes.
+#: The underscore-introduced roles of the files an ENGINE itself writes: what
+#: it warm-starts from (``_optimized.xyz``, `pyscf/warm-files.toml`) and what
+#: geomeTRIC writes under the prefix the deck hands it -- its trajectory and
+#: its scratch, which are not warm state (`engines/stages.md` § 1.1a,
+#: consequence 4) and are named here all the same, because a reader still
+#: has to tell them apart from a stage.
 #:
 #: **Why `parse` needs a vocabulary at all.** A stage name may contain ``_``
 #: (`02_electrode_L`) and so may a role (`_geom_optim.xyz`), so the separator
@@ -67,12 +72,11 @@ _STAGE = re.compile(r"[0-9]{2,}_[A-Za-z0-9_]+")
 #: ``job_01_coarse_geom_optim.xyz`` is *either* stage `01_coarse` + role
 #: `_geom_optim.xyz` *or* stage `01_coarse_geom_optim` + role `.xyz`, and only
 #: knowing the roles decides it.  What molbuilder writes comes from
-#: :data:`WRITTEN` below; these are the engines' own, named here because
-#: `warm-files.toml` is read by `warmfiles`, which this module may not import
-#: -- L1 grammar reaching an L1 TOML reader would put a file read behind every
+#: :data:`WRITTEN` below; these are the engines' own, named here because the
+#: engines' vocabularies are read by modules this one may not import -- L1
+#: grammar reaching an L1 TOML reader would put a file read behind every
 #: filename.  A caller holding the real vocabulary passes it as ``roles``.
-_CARRIED_ROLES = ("_optimized.xyz", "_geom_optim.xyz",
-                  "_geom_optim.tmp", "_geom.tmp")
+_ENGINE_ROLES = ("_optimized.xyz", "_geom_optim.xyz", "_geom.tmp")
 
 #: The basename rule, restated from `config/siesta.py::_validate_basename`
 #: (job-contracts.md § 2.1: "a single token matching [A-Za-z0-9_-]+").  It is
@@ -420,7 +424,7 @@ def parse(filename: str, label: str,
     stage of ``01`` at one site and ``01_coarse_geom`` at another.
 
     ``roles`` is the caller's own vocabulary, added to the one this module
-    knows (:data:`WRITTEN` plus :data:`_CARRIED_ROLES`).  It only matters for
+    knows (:data:`WRITTEN` plus :data:`_ENGINE_ROLES`).  It only matters for
     roles that begin with ``_``: a stage NAME may contain ``_`` too, so those
     two are the case the separator cannot decide, and the vocabulary is what
     decides it.  A dotted role never needs it.
@@ -452,7 +456,7 @@ def parse(filename: str, label: str,
     # Longest first: `_geom_optim.xyz` must beat nothing, but a vocabulary that
     # grows a shorter suffix of a longer one would otherwise split too late.
     known = sorted({a.role for a in WRITTEN if a.role.startswith("_")}
-                   | set(_CARRIED_ROLES)
+                   | set(_ENGINE_ROLES)
                    | {r for r in roles if r.startswith("_")},
                    key=len, reverse=True)
     for role in known:
@@ -980,11 +984,11 @@ def is_stage_token(name: str) -> bool:
     return bool(_STAGE.fullmatch(name))
 
 
-def roles(*, carried: bool = True) -> "tuple[str, ...]":
+def roles(*, engines: bool = True) -> "tuple[str, ...]":
     """Every role this module knows -- the catalogue, read as a vocabulary.
 
-    :data:`WRITTEN`'s roles, plus the engines' CARRIED ones unless
-    ``carried=False``.  The address layer (`ref`) validates against this, which
+    :data:`WRITTEN`'s roles, plus the engines' own (:data:`_ENGINE_ROLES`)
+    unless ``engines=False``.  The address layer (`ref`) validates against this, which
     is what makes an undeclared role a catalogue question rather than something
     a caller can slip past by spelling it (`plans/plan.md` § 5l.2: extensibility
     is a catalogue row, never a new function).
@@ -992,8 +996,8 @@ def roles(*, carried: bool = True) -> "tuple[str, ...]":
     Ordered and de-duplicated, so it is stable to compare against.
     """
     out = [a.role for a in WRITTEN]
-    if carried:
-        out += [r for r in _CARRIED_ROLES if r not in out]
+    if engines:
+        out += [r for r in _ENGINE_ROLES if r not in out]
     seen, uniq = set(), []
     for r in out:
         if r not in seen:

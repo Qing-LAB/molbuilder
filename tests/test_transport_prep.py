@@ -1467,8 +1467,13 @@ class TestTheGather:
 
         Contract: `engines/transport.md` § 2 (T(E) is built from the device G and
         the leads' Gamma) + § 6.
+
+        One bias point, so the device runs in its stage folder; a scan's runs
+        in its point folders only, and a point's gather is
+        `test_transmission_gathers_the_matching_point`'s.
         """
         from molbuilder.jobset.prep import gather_transport_inputs
+        _describe_transport(tmp_path / "projects", bias=(0.0,))
         for st in ("electrode_L", "electrode_R", "device"):
             prep_calculation(calc, st)
         _conclude(calc, "electrode_L", ["T_L-electrode.TSHS"])
@@ -1973,6 +1978,67 @@ class TestTheBiasScan:
         assert "T.TS.HSX <- 04_device/v0.2/run-0" in rec
         assert (calc / "05_transmission" / "v0.2" / "run-0" / "T.TS.HSX"
                 ).is_file()
+
+    def test_a_launched_point_is_seen_by_the_readers_of_the_rungs_attempts(
+            self, calc, tmp_path, monkeypatch):
+        """A scan's device attempts live in its point folders, and every
+        reader of a rung's attempts asks one door where they are
+        (`transport.stages.rung_containers`, `engines/transport.md` § 2a.11,
+        plan § 5w K10).  Four looked in the stage folder alone (the M11
+        review's T-F13, and the K10 review): prep's *already under way*
+        question, so a re-prep re-rendered over a launched point without
+        asking; Task setup's attempt count, which showed the scan's device
+        as never attempted; and `jobset status` with the Results tab's
+        ladder, which read a running scan as *prepped, not launched*.
+
+        The launch is `write_run_launch` and a run's end its conclusion
+        marker (`_conclude`) -- the records a launch and a finished run
+        leave, which is what the readers look for; the run itself is not
+        under test."""
+        from click.testing import CliRunner
+        from molbuilder.jobset._cli import jobset_group
+        from molbuilder.jobset.materialize import write_run_launch
+        from molbuilder.web.app import create_app
+        self._ready(calc, tmp_path, monkeypatch)
+        client = create_app(config={}).test_client()
+
+        def device_row():
+            r = CliRunner().invoke(jobset_group,
+                                   ["status", "--bundle", "J/transport/T"])
+            assert r.exit_code == 0, r.output
+            assert "First incomplete stage: device" in r.output, r.output
+            return next(ln.split()[2:4] for ln in r.output.splitlines()
+                        if ln.split()[1:2] == ["device"])
+
+        # the chain has launched 0 V, which has written nothing yet
+        write_run_launch(calc / "04_device" / "v0" / "run-0",
+                         mode="direct", command=["bash", "x"])
+        r = CliRunner().invoke(jobset_group,
+                               ["prep", "run", "device", "--bundle",
+                                "J/transport/T"], input="n\n")
+        assert r.exit_code != 0, r.output
+        assert "already under way" in r.output, r.output
+        assert "04_device/v0/run-0/ was launched" in r.output, r.output
+        att = client.post(
+            "/api/task-setup/attempts", json={"dest": str(calc)}).get_json()
+        assert att["stages"]["device"]["attempts"] == 2, (
+            f"each point's open attempt is the device's: {att}")
+        assert device_row() == ["v0/run-0", "queued"], (
+            "the scan's first point not finished speaks, not its last")
+
+        # 0 V ran to its end and the chain launched 0.2 V: the device is
+        # outstanding at 0.2 V now, on both status surfaces
+        _conclude(calc, "device", ["T.TS.HSX"], point="v0")
+        write_run_launch(calc / "04_device" / "v0.2" / "run-0",
+                         mode="direct", command=["bash", "x"])
+        assert device_row() == ["v0.2/run-0", "queued"], (
+            "a finished point does not speak for the rung")
+        ladder = client.get(
+            "/api/results/dir?path=" + str(calc)).get_json()["ladder"]
+        dev = next(s for s in ladder["stages"] if s["name"] == "device")
+        assert dev["state"] == "queued", dev
+        assert dev["detail"].startswith("0.2 V: "), dev
+        assert ladder["first_incomplete"] == "device", ladder
 
 
 class TestTheOverrideLane:

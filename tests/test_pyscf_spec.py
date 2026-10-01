@@ -22,6 +22,7 @@ import pytest
 from molbuilder.runfiles import parse
 
 from molbuilder.pyscf import PySCFConfig, render_script
+from molbuilder.pyscf.input import ROLE_GEOM_TRAJ
 from molbuilder.structure import Structure
 
 
@@ -192,10 +193,10 @@ def test_optimize_call_carries_this_rung_s_trajectory_prefix(small_struct):
     assert got.stage == "02_tight", (
         f"relax() prefix must carry this rung's token so two rungs get "
         f"separate trajectory files; parsed stage was {got.stage!r}")
-    assert got.role == "_geom_optim.xyz", (
+    assert got.role == ROLE_GEOM_TRAJ, (
         f"the name geomeTRIC will write ({produced}) has role {got.role!r}, "
-        f"which is not the role pyscf/warm-files.toml declares "
-        f"(`_geom_optim.xyz`) -- so it will not be carried between rungs")
+        f"not the trajectory's ({ROLE_GEOM_TRAJ}) -- so the readers that find "
+        f"the trajectory by its role will not find it")
 
 
 def test_no_prefix_when_trajectory_off(small_struct):

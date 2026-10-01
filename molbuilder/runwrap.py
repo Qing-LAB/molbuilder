@@ -979,8 +979,8 @@ def _runtime_status_block(
         # read ONE list, so a run whose only warm file is
         # ``<JOB>_optimized.xyz`` can no longer announce a clean start and
         # then have that very file named by --cold as warm state.
-        # BRACED, not bare: four of the five suffixes start with "_", so
-        # an unbraced "$_warm_label_optimized.xyz" parses as one variable
+        # BRACED, not bare: a suffix may start with "_" (`_optimized.xyz`),
+        # so an unbraced "$_warm_label_optimized.xyz" parses as one variable
         # name -- unbound under set -u, killing EVERY fresh-directory run
         # before launch (a .chk on disk short-circuits the || chain and
         # hides it).  SIESTA's branch survives bare only because its "."
@@ -1046,17 +1046,11 @@ def _runtime_status_block(
         f"# the user can see what's about to happen BEFORE the\n"
         f"# engine starts.  See _runtime_status_block docstring.\n"
         + label_extract_unconditional
-        + f'# WARM STATE IS CONTENT, not mere existence.  This tested\n'
-        + f'# `[ -e ]` until 2026-09-18, and geomeTRIC leaves\n'
-        + f'# `<job>_geom.tmp` behind as an EMPTY DIRECTORY -- which `-e`\n'
-        + f'# reports as present.  So a FINISHED optimization announced\n'
-        + f'# "WARM-RESUME ... engine will load ..." on its next launch,\n'
-        + f'# with nothing to resume from (measured in three real run\n'
-        + f'# directories).  A zero-byte restart file was the same lie.\n'
-        + f'_mb_has_state() {{\n'
-        + f'    if [ -d "$1" ]; then [ -n "$(ls -A "$1" 2>/dev/null)" ]\n'
-        + f'    else [ -s "$1" ]; fi\n'
-        + f'}}\n'
+        + f'# WARM STATE IS CONTENT, not mere existence: a zero-byte\n'
+        + f'# restart file is nothing to resume from, and a launch that\n'
+        + f'# announced "WARM-RESUME ... engine will load ..." over one\n'
+        + f'# would be telling the person something false.\n'
+        + f'_mb_has_state() {{ [ -s "$1" ]; }}\n'
         + f'_warmstart_present=0\n'
         + f"if {warmstart_test}; then _warmstart_present=1; fi\n"
         f'_mode="initial-run (clean state)"\n'

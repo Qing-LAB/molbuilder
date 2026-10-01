@@ -570,7 +570,7 @@ def _geom_output_patterns() -> Tuple[str, ...]:
     """The picker's patterns, with the two PySCF roles taken from their home.
 
     ``_optimized.xyz`` and ``_geom_optim.xyz`` are declared once, in
-    `pyscf/input.py`, from `pyscf/warm-files.toml` -- and that module's own
+    `pyscf/input.py` -- and that module's own
     comment names the cost of a second copy: *"that is exactly how
     `_geom_optim.xyz` came to have six spellings."*  This was the fourth.
 

@@ -52,12 +52,12 @@
     }
 
     /* THE RUN'S WORKING PARTS -- the roles a `.molwatch.log` master
-     * subsumes (`results.md` § 2.3).  These are `runfiles` rows: two
-     * declared in `WRITTEN` (`_initial.xyz`) and in `pyscf/warm-files.toml`
-     * (`_optimized.xyz`, `_geom_optim.xyz`).
+     * subsumes (`results.md` § 2.3).  These are `runfiles` roles: one
+     * declared in `WRITTEN` (`_initial.xyz`) and two an engine writes
+     * (`_optimized.xyz`, `_geom_optim.xyz`, `runfiles._ENGINE_ROLES`).
      *
      * KNOWN GAP, and it is not this change's to close: the same vocabulary
-     * is spelled in `runfiles._CARRIED_ROLES` and in `pyscf/input.py`'s
+     * is spelled in `runfiles._ENGINE_ROLES` and in `pyscf/input.py`'s
      * `ROLE_*` constants as well, so the browser's copy is the fourth of
      * four rather than a lone offender.  `/api/results/dir` is the place a
      * single answer would arrive -- the route already sends each file's

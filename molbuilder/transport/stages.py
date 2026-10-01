@@ -42,7 +42,8 @@ walker itself is `jobset/submit.submit_transport_chain`.
 """
 from __future__ import annotations
 
-from typing import Tuple
+from pathlib import Path
+from typing import List, Optional, Tuple
 
 from ..config.transport import TransportConfig
 from ..template import KIND_ROLES
@@ -178,6 +179,65 @@ def bias_points(task) -> Tuple[float, ...]:
     (architecture § 0: a list with more than one element)."""
     bias = tuple(getattr(task, "bias", ()) or ())
     return bias if len(bias) > 1 else ()
+
+
+# --------------------------------------------------------------------- #
+#  Where a rung's attempts are (`engines/transport.md` § 2a.11; plan    #
+#  § 5w K10)                                                            #
+# --------------------------------------------------------------------- #
+
+def per_point_rungs() -> frozenset:
+    """The rungs a bias scan runs once per point: the bias item's own
+    `stages` (`template.PER_POINT`, the role item no rung answers with one
+    value) -- the device and the transmission, declared once, in the
+    catalogue."""
+    from ..template import PER_POINT, catalogue, one
+    return frozenset(rung for name in PER_POINT
+                     for rung in one(catalogue(), name, engine="siesta").stages)
+
+
+def scan_points(task, stage: str) -> Tuple[float, ...]:
+    """The bias points ``stage`` runs at -- the scan's (:func:`bias_points`)
+    for a rung that runs once per point (:func:`per_point_rungs`), ``()``
+    for every other rung and every calculation that is not a scan."""
+    return bias_points(task) if stage in per_point_rungs() else ()
+
+
+def rung_containers(base, task, stage: str) -> List[Tuple[Path, Optional[float]]]:
+    """WHERE A RUNG'S ATTEMPTS ARE -- ``[(folder, volts)]``: one folder per
+    bias point for a rung a scan runs at each point (``<token>/v<V>``,
+    § 2a.11), the stage folder (``volts`` ``None``) otherwise.
+
+    The one door every reader of a rung's attempts asks (plan § 5w K10):
+    the record looked in the point folders for the transmission alone, so
+    a finished device scan read *not run*, and Task setup's count and
+    prep's *already under way* looked in the stage folder alone (the M11
+    review's T-F27, T-F13)."""
+    from ..identity import StageRef
+    from ..paths import Shape
+    from ..task import bias_token
+    token = next(r.token for r in StageRef.ladder([s.name for s in task.stages])
+                 if r.name == stage)
+    sd = Shape.named(task.shape).stage_dir(token)
+    stage_dir = Path(base) if sd == "." else Path(base) / sd
+    points = scan_points(task, stage)
+    if not points:
+        return [(stage_dir, None)]
+    return [(stage_dir / bias_token(v), float(v)) for v in points]
+
+
+def rung_container(base, task, stage: str, volts: Optional[float]) -> Path:
+    """The folder holding ``stage``'s attempts at ``volts`` -- its point's
+    for a rung that runs once per point, the stage folder for one that does
+    not (a lead, read by every point alike).  A point the scan does not
+    hold is refused by name: a mismatch is a mistake, never a fallback."""
+    containers = rung_containers(base, task, stage)
+    for folder, v in containers:
+        if v is None or (volts is not None and v == float(volts)):
+            return folder
+    raise ValueError(
+        f"the {stage} stage has no folder at {volts!r} V: this scan runs it "
+        f"at {', '.join(f'{v:g} V' for _f, v in containers)}")
 
 
 def stage_inputs(stage: str, task_label: str, *,

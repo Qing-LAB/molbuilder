@@ -1220,16 +1220,15 @@ def test_siesta_wrapper_passes_bash_n(tmp_path):
 # --------------------------------------------------------------------- #
 
 
-# Authoritative inventory: docs/execution/job-contracts.md § PySCF
-# warm-restart file table.  Update BOTH the doc + this tuple in the
-# same commit when a new warm-restart hook lands -- the parity is the
-# whole point of pinning it here.
+# What a PySCF optimization leaves under its id that a re-run overwrites: the
+# warm state `pyscf/warm-files.toml` declares, and geomeTRIC's trajectory and
+# scratch, which are not warm state (`engines/stages.md` § 1.1a, consequence
+# 4) and are overwritten all the same.
 _PYSCF_WARM_RESTART_INVENTORY = (
     ".chk",                # SCF DM init guess
     "_optimized.xyz",      # geometry warm-restart hook (#539 generator)
-    "_geom_optim.xyz",     # geomeTRIC trajectory (append-mode hazard)
-    "_geom_optim.tmp",     # geomeTRIC checkpoint
-    "_geom.tmp",           # geomeTRIC checkpoint
+    "_geom_optim.xyz",     # geomeTRIC trajectory
+    "_geom.tmp",           # geomeTRIC scratch
 )
 
 
@@ -1278,15 +1277,16 @@ def test_pyscf_wrapper_with_full_inventory_passes_bash_n(tmp_path):
 
 def test_pyscf_cold_names_every_warm_file_it_would_overwrite(tmp_path):
     """End-to-end behavior: extract the cold-restart bash block from the
-    runwrap emitter, plant ALL five warm-restart files (each with a distinct
-    sentinel), run the block with ``_cold=1`` under bash, and assert every one
-    of them is NAMED in the refusal -- and that none of them is touched.
+    runwrap emitter, plant every file a re-run would overwrite (each with a
+    distinct sentinel), run the block with ``_cold=1`` under bash, and assert
+    every one of them is NAMED in the refusal -- and that none of them is
+    touched.
 
     **``--cold`` reports and refuses; ``--force`` proceeds** *(user,
     2026-08-18)*.  It moved the files into a dated aside directory until then;
     keeping a state is ``molbuilder checkpoint save`` and it is never
     automatic.  What this test protects is unchanged: that the sweep reaches
-    every one of the five, run against the real bash rather than a model of it
+    every one of them, run against the real bash rather than a model of it
     -- the "branch present but never fires" class from design.md's Required
     tests table.
 

@@ -176,11 +176,23 @@ place; each names the file that holds it, so the claim is checkable.**
    it — a rung's position says nothing about whether there is anything to
    continue from.
 4. **PySCF's warm-file declaration carries the geometry.** `<JOB>_optimized.xyz`
-   and the trajectory join `.chk` as `carry = "when-continuing"`
-   (`pyscf/warm-files.toml`). The geometry is what a rung hands the next one and
-   the density is the other half — the same pair SIESTA carries as `.XV` and
-   `.DM`; the trajectory carries for the reason SIESTA's does, *the shape must
-   not change the data*.
+   joins `.chk` as `carry = "when-continuing"` (`pyscf/warm-files.toml`). The
+   geometry is what a rung hands the next one and the density is the other
+   half — the same pair SIESTA carries as `.XV` and `.DM`. **geomeTRIC's
+   trajectory is not warm state, and is not carried** *(plan § 5w K10,
+   2026-10-01; the M11 review's PO-C16)*: geomeTRIC rewrites it from the first
+   step of every run (geomeTRIC 1.1.1 `optimize.py`, `progress.write(xyzout)`
+   at each step; `Molecule.write(append=False)`), so a copied one is overwritten
+   before anything reads it — in either shape, so the shape changes nothing —
+   and each rung's carries the rung's token, which by `job-contracts.md`
+   § 2.2a's rule never crosses rungs. **Nor is its scratch folder**, `<prefix>.tmp`: geomeTRIC
+   makes it and PySCF's engine never writes into it — it computes in memory
+   and has no `read_result` — and nothing reads it back, because the decks
+   ask for no Hessian (geomeTRIC 1.1.1 `engine.py` `calc`, `normal_modes.py`
+   `calc_cartesian_hessian`). Their rows left the rules file, with a third,
+   `_geom_optim.tmp`, that named a file nothing writes; the trajectory's ROLE
+   stays declared where it is written (`pyscf/input.ROLE_GEOM_TRAJ`), which
+   is how its readers find it.
 5. **`PySCFConfig.stages` and the in-script loop are gone.** The field outlived
    `SiestaConfig.stages` on the strength of one reader — the `for STAGE in
    STAGES:` loop that made the list engine BEHAVIOUR rather than a rival

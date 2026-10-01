@@ -4630,7 +4630,7 @@ as a milestone does (§ 0a). **Approved 2026-09-29** (§ 5w.3); K6 is first.
 | **K7** | **the form's value model** — **done 2026-10-01** (§ 5w.5) | one field state on every surface: the template's value, the kind's default and the value's source (§ 6.6 obligation 2's four states); blank is *not chosen* for every field and never the first choice; the rung surface shows the template the rung will run; a set optional field is sent; a value that will not coerce is refused naming its field | T-F25, T-F1, T-F24, SS-C16, SO-N5, PS-C12; the K3 review's fractional k count and a triple's findings beside it |
 | **K8** | **what the engine sees** — **done 2026-10-01** (§ 5w.5) | one door for the engine's frame facts: the axis kinds PySCF computes with (a cluster: isolated on all three), read by the deck, the Methods count and the R7 note alike; the box checks run for an engine that uses a cell | PS-C4, PO-C13; the K3 review's dipole advisory, keyed on the k count |
 | **K9** | **engine facts restated in prose** | each item's engine default declared once with its source (file:line), and the help's deviation sentence (§ 5.2), the template comment and the deck's *not set* line (§ 6.6 obligation 4) written from it; one measured fixture — the engine's own account of a minimal run, SIESTA's fdf log — checks every declared default; a comment restating engine behaviour is cut to the one home | SO-C6, SO-C7, SO-C14, SS-C7, SS-C8, SS-C9, T-F31, PO-C18, PO-C19, and the § 5.2 half of every help text |
-| **K10** | **where things are on disk** | one reader of a rung's attempts, a bias scan's per-point folders included; carry names from the rung's own naming door; a kind's warm set carries what its rungs read | T-F27/F13, PO-C16, SS-C14 |
+| **K10** | **where things are on disk** — **done 2026-10-01** (§ 5w.5) | one reader of a rung's attempts, a bias scan's per-point folders included; carry names from the rung's own naming door; a kind's warm set carries what its rungs read | T-F27/F13, PO-C16, SS-C14 |
 | **K11** | **comparing against a stale render** — **done 2026-09-30** (§ 5w.5) | the gather check renders each upstream rung now, in memory, through the one render door, and compares that | T-F30 |
 | **K12** | **stage names** | one resolver and one printer: a deck header prints the name `launch` accepts; names fold case everywhere (`stages.md`) | SS-C11, SS-C15 |
 | **K13** | **file writers** | every file molbuilder writes goes through `persist`'s atomic writer, and the PySCF deck's own is spliced from it | SS-C17, V1.37 |
@@ -5263,6 +5263,56 @@ reviewers' probes (the archive's § E lists) among its runs.
   with its class name (it states `ENGINE = "pyscf"`); `cell.py`'s header
   gained the engine block; § 2.1 claims what the code does; the dipole test
   moved onto the prep road. Two more mutations, each red.
+* **K10 — done 2026-10-01** (T-F27, T-F13, PO-C16, SS-C14). **Where a rung's
+  attempts are has one door** — `transport.stages.rung_containers(base, task,
+  stage)` (`transport.md` § 2a.11): one folder per bias point for a rung a scan
+  runs at each point, the stage folder otherwise. Which rungs those are is the
+  bias item's own `stages` (`per_point_rungs`, through `template.PER_POINT`),
+  and `rung_container` refuses by name a point the scan does not hold. Every
+  reader asks it: prep's decks, wrappers and attempts, the gather, the chain
+  launch, prep's *already under way*, Task setup's count, the record, and
+  `jobset status` with the Results tab's ladder. The record looked in the
+  point folders for the transmission alone, so a finished device scan read
+  *not run* (T-F27); Task setup's count and prep's question looked in the
+  stage folder alone, so a re-prep re-rendered over a launched point without
+  asking (T-F13). **What PySCF carries is what its rungs read back** (PO-C16):
+  geomeTRIC's trajectory and scratch left `pyscf/warm-files.toml` — geomeTRIC
+  1.1.1 rewrites the trajectory from the first step of every run, and on
+  PySCF never reads the scratch back (no `read_result`, no Hessian asked) —
+  so a rung launched again over what its finished run left no longer
+  announces a warm restart from its own trajectory, and the banner names only
+  what the engine loads. The wrapper's probe is `[ -s ]` alone, since no warm
+  file is a folder; `runfiles._CARRIED_ROLES` is `_ENGINE_ROLES`, without
+  `_geom_optim.tmp`, which nothing writes. **SS-C14's deck half**: the
+  start-state comment said *one field in the description* decides, and a
+  vibration's relaxation has no such field; it names the field, `restart`,
+  as `run-identity.md` § 4 does. Contract: `transport.md` § 2a.11;
+  `stages.md` § 1.1a, consequence 4; `job-contracts.md` § 4.2;
+  `vibration.md` § 5.3. Tests through the road: a finished device scan
+  through `summarize run`, a launched point seen by prep's question and Task
+  setup's count, the wrapper's probe over a finished rung's leftovers — six
+  mutations, each red. A products test faked a device run in a scan's stage
+  folder, which the road never makes; it describes one point now. *The
+  review* (an independent read of the change, each claim verified in the
+  code): `jobset status` and the Results tab's ladder still read a rung's
+  attempts from the stage folder, so a running scan read *prepped, not
+  launched*; they ask the door now, and a scan's rung speaks from its first
+  point not finished, naming the point (`results.md` § 2.4,
+  `running-a-job.md` § 4.2). The deck comment's first rewrite listed whose
+  value `restart` is and missed a benchmark trial's pin; the catalogue said no
+  vibration deck reads `restart`, though the relaxation rung reads its
+  default; the gather chose which upstream renders at a point by its name
+  (`per_point_rungs` now). Stale since the rows went: `pyscf/stages.py`'s
+  docstring, `runwrap`'s suffix note, the rules file's header,
+  `job-contracts.md`'s `--cold` lesson (a name sweep since U17), two
+  citations. The record's device test asserts `ran` over a measured SIESTA
+  output; the probe test's scenario is a finished rung's trajectory — four
+  more mutations, each red. *Parked*: on the flat shape a vibration's
+  relaxation re-run after its force constants starts from the FC run's last
+  `.XV`, a displaced geometry — the same minimum, a few steps more (read from
+  the M11 review, not measured); the record's per-rung `state` words (`ran`,
+  `no_output`, `not_run`, `unreadable`) are stated in no document (before
+  K10).
 
 ---
 

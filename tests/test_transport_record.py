@@ -266,32 +266,52 @@ class TestTheRecordNamesWhatItIsEntitledToBeCalled:
 
 
 class TestTheLadderPanelSeesAFinishedScan:
-    """`_stage_facts` and `_point_dirs` must agree about where a bias scan
-    lives — `engines/transport.md` § 4.2/4.3: a SCAN puts the transmission
-    rung under one v-dir per point (`<token>/v<V>/run-<n>`), a single point
-    under the stage dir itself.
+    """The record asks where a rung ran through the one door every reader
+    asks (`transport.stages.rung_containers`, `engines/transport.md` § 2a.11,
+    plan § 5w K10): a SCAN puts the device and the transmission under one
+    v-dir per point (`<token>/v<V>/run-<n>`), a single point under the stage
+    dir itself.
 
-    **The defect this guards shipped and was user-visible.** `_stage_facts`
-    asked `latest_attempt(base / token)`, found no `run-<n>` directly under
-    the stage dir, and reported a FINISHED scan's transmission rung as
-    ``not_run`` — rendered on the Results panel as *"05_transmission · not
-    run yet"* directly above the same record's table of finished bias
-    points. `_point_dirs` sixty lines above it already knew the layout.
+    **The defect this guards shipped twice and was user-visible.** The
+    record asked `latest_attempt(base / token)`, found no `run-<n>` directly
+    under the stage dir, and reported a FINISHED scan's rung as ``not_run``
+    — rendered on the Results panel as *"05_transmission · not run yet"*
+    directly above the same record's table of finished bias points.  The
+    transmission's was fixed by a look in its own point folders, which left
+    the device's (the M11 review's T-F27).
     """
 
-    def test_a_finished_scan_does_not_read_as_not_run(self, calc):
-        from molbuilder.task import read_task
-        from molbuilder.transport.record import _stage_facts
-        _ran_transmission(calc, "v0")
-        _ran_transmission(calc, "v0.2")
-        task = read_task(calc / "task.json")
-        facts = {f["stage"]: f for f in _stage_facts(calc, task, task.label)}
-        tx = facts["transmission"]
-        assert tx["state"] != "not_run", (
-            "a finished scan's transmission rung read as never run -- the "
-            f"v-dir layer was invisible: {tx}")
-        assert tx.get("points") == 2, (
-            f"both bias points should be seen: {tx}")
+    def test_a_finished_scan_does_not_read_as_not_run(self, calc, tmp_path,
+                                                      monkeypatch):
+        """Through `summarize run`, the door the record is written by.  Each
+        point's device run is the concluded-run fixture (`_conclude`) with a
+        measured SIESTA output beside it -- the H2 relaxation's
+        (`tests/fixtures/siesta_relax`), which the record parses as it would
+        a device's SCF; the deck is never read here, so it is a stand-in."""
+        import shutil
+        from click.testing import CliRunner
+        from molbuilder.jobset._cli import jobset_group
+        from molbuilder.projects import PROJECTS_ROOT_ENV
+        scf_out = (Path(__file__).parent / "fixtures" / "siesta_relax"
+                   / "01_relax" / "run-0" / "H2_01_relax-run0.out")
+        for point in ("v0", "v0.2"):
+            att = _conclude(calc, "device", ["T.TS.HSX"], point=point,
+                            deck_text="# the device deck\n")
+            shutil.copy2(scf_out, att / "T_04_device-run0.out")
+            _ran_transmission(calc, point)
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path / "projects"))
+        r = CliRunner().invoke(jobset_group,
+                               ["summarize", "run", "--bundle",
+                                "J/transport/T"])
+        assert r.exit_code == 0, r.output
+        facts = {f["stage"]: f for f in json.loads(
+            (calc / "T.transport.json").read_text())["stages"]}
+        for rung in ("device", "transmission"):
+            assert facts[rung]["state"] == "ran", (
+                f"a finished scan's {rung} rung did not read as run -- the "
+                f"v-dir layer was invisible: {facts[rung]}")
+            assert facts[rung].get("points") == 2, (
+                f"both bias points should be seen: {facts[rung]}")
 
     def test_an_unrun_rung_is_still_told_apart_from_a_finished_one(self, calc):
         """Anti-vacuity: the assertion above must not pass by making every

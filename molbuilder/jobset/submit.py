@@ -1479,7 +1479,7 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
     """
     from ..identity import StageRef
     from ..task import bias_token
-    from ..transport.stages import bias_points
+    from ..transport.stages import rung_containers, scan_points
     from .materialize import latest_attempt, was_launched
 
     if mode == "ask":
@@ -1487,7 +1487,7 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
             "--mode ask is not wired for a bias chain yet -- ask about "
             "a single stage, or dry-run the chain (--dry-run shows the "
             "exact command).")
-    points = bias_points(task)
+    points = scan_points(task, stage)
     if len(points) < 2:
         raise SubmitError("not a bias scan -- the plain launch owns "
                           "a single-point device.")
@@ -1517,8 +1517,9 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
     label = task.label
 
     attempts: List[Tuple[float, Path]] = []
-    for v in points:
-        vdir = stage_dir / bias_token(v)
+    # Each point's folder, from the one door (`rung_containers`, plan § 5w
+    # K10) -- the folders prep wrote the point's deck and attempt into.
+    for vdir, v in rung_containers(base, task, stage):
         att = latest_attempt(vdir)
         if att is None:
             raise SubmitError(

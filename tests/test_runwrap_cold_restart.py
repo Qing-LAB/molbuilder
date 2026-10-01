@@ -965,25 +965,25 @@ def test_both_engines_get_that_entry_from_one_writer():
 # ---- warm state means CONTENT, not mere existence --------------------- #
 
 
-def test_an_empty_geomeTRIC_scratch_dir_is_not_a_warm_restart(tmp_path):
-    """A FINISHED PySCF optimization made its next launch claim a warm restart.
+def test_warm_state_is_a_restart_file_the_engine_reads_with_content(
+        tmp_path):
+    """What a launch calls warm state -- *WARM-RESUME (--continue; engine
+    will load ...)* -- is a restart file the engine reads back, with
+    something in it.
 
-    geomeTRIC leaves ``<job>_geom.tmp`` behind as an EMPTY DIRECTORY -- 0
-    entries, measured in three real run directories (`co2-flat`,
-    `PDT-moleculeonly`, `BDT-only-pySCF`).  The wrapper's warm probe tested
-    ``[ -e ... ]``, which is true of an empty directory, so a completed run
-    announced
-
-        WARM-RESUME (--continue; engine will load chk/_optimized.xyz/
-                     _geom_optim.xyz/_geom_optim.tmp/_geom.tmp)
-
-    with nothing to resume from.  Warm state is CONTENT: a non-empty file, or
-    a directory with something in it.
+    It was not, twice.  The probe tested ``[ -e ... ]`` until 2026-09-18,
+    true of a zero-byte file and of geomeTRIC's empty scratch folder.  And
+    until K10 the rules file declared geomeTRIC's trajectory and scratch
+    warm state, though geomeTRIC reads neither back (`engines/stages.md`
+    § 1.1a, consequence 4) -- so a rung launched again over what its
+    finished run left announced a warm restart from its own trajectory.
 
     Run as SHELL, against the real rendered wrapper -- the emitted test is
     the thing that was wrong, so asserting on the Python would prove nothing.
 
-    MUTATION THIS MUST FAIL AGAINST: put `[ -e "$1" ]` back in `_mb_has_state`.
+    MUTATIONS THIS MUST FAIL AGAINST: put `[ -e "$1" ]` back in
+    `_mb_has_state`; put the `_geom_optim.xyz` or the `_geom.tmp` row back in
+    `pyscf/warm-files.toml`.
     """
     import re
     import subprocess
@@ -1007,7 +1007,7 @@ def test_an_empty_geomeTRIC_scratch_dir_is_not_a_warm_restart(tmp_path):
     text = write_run_wrapper(deck, resources=Resources()).read_text(encoding="utf-8")
 
     # The helper + the probe, lifted out of the rendered wrapper and run.
-    fn = re.search(r"_mb_has_state\(\)\s*\{.*?\n\}", text, re.S)
+    fn = re.search(r"^_mb_has_state\(\) \{.*?\}$", text, re.M)
     assert fn, "the wrapper no longer defines _mb_has_state"
     probe = re.search(r"^if (_mb_has_state .*?); then _warmstart_present=1; fi$",
                       text, re.M)
@@ -1022,11 +1022,10 @@ def test_an_empty_geomeTRIC_scratch_dir_is_not_a_warm_restart(tmp_path):
         assert out.returncode == 0, out.stderr
         return out.stdout.strip() == "1"
 
-    assert not _warm("mkdir -p job_geom.tmp"), (
-        "an EMPTY geomeTRIC scratch directory was read as warm state")
+    assert not _warm("echo frame > job_geom_optim.xyz && mkdir -p job_geom.tmp"), (
+        "what a finished optimization leaves -- geomeTRIC's trajectory and its "
+        "empty scratch folder -- was read as warm state; geomeTRIC reads "
+        "neither back")
     assert not _warm(": > job.chk"), "a zero-byte .chk was read as warm state"
-    assert _warm("mkdir -p job_geom.tmp && : > job_geom.tmp/x && "
-                 "echo data > job_geom.tmp/x"), (
-        "a scratch directory WITH content is warm state and must still count")
     assert _warm("echo data > job.chk"), (
         "a real .chk is warm state and must still count")

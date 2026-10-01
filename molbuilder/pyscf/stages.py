@@ -36,8 +36,8 @@ def _warm_declaration(label: str, eff,
 
     **The rows come from the rules file**, ``pyscf/warm-files.toml``
     (`job-contracts.md` § 4.2a) -- the checkpoint for every calculation, plus
-    geomeTRIC's geometry and trajectory files for an optimization.  Nothing is
-    listed here that the file does not say.
+    the optimized geometry for an optimization.  Nothing is listed here that
+    the file does not say.
 
     **Gated on the stage actually continuing**, exactly as SIESTA's twin is:
     `run-identity.md` § 4 rule 2 makes ``restart`` the one field that says so,

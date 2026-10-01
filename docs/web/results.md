@@ -391,7 +391,9 @@ state, detail, dir, attempt}]}`, read from `jobset_status`, the ladder door the
 CLI's `status` verb reads — consumed, never copied — and `null` for anything
 else (a rung's directory, a folder nothing prepped). A **flat** calculation
 root is itself the run: it answers a state and a record like any run directory
-(§ 3a), and no ladder.
+(§ 3a), and no ladder. A bias scan's rung reads from its first point not
+finished, and its detail names the point
+([`engines/transport.md`](?doc=engines/transport.md) § 2a.11).
 
 The page's empty-state card draws it: one row per rung in ladder order, the
 state in the bench summary's own chip (`inspectors.stateChip`), in `jobset

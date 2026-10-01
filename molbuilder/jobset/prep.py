@@ -1830,9 +1830,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                                      write_compose_record)
     from ..atom_permutation import PermutationError
     from ..transport.sort import SortError
-    from ..task import bias_token
-    from ..transport.stages import (TRANSPORT_STAGES, bias_points,
-                                    warm_declaration)
+    from ..transport.stages import TRANSPORT_STAGES, warm_declaration
     from ..runwrap import write_run_wrapper
     from ..paths import Shape
 
@@ -2002,12 +2000,14 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # the description's list is the bias's only home, and each point's deck
     # is written at that point (the rung fixes it, `engines/template.md`
     # § 6.4); a single-bias rung renders the 0 V `resolve` laid on.
-    points = bias_points(task) if stage in ("device", "transmission") else ()
-    # ONE SPELLING of where a bias point lives.  Three steps below need it --
-    # the deck, the wrapper and the attempt ladder -- and each composed it
-    # itself until 2026-09-16, which is three chances to disagree about a
-    # directory name.
-    point_dirs = [(stage_dir / bias_token(v), v) for v in points]
+    # ONE SPELLING of where a bias point lives, and of which rungs have one:
+    # the door every reader of a rung's attempts asks (`rung_containers`,
+    # `engines/transport.md` § 2a.11; plan § 5w K10).  Three steps below
+    # need it -- the deck, the wrapper and the attempt ladder.
+    from ..transport.stages import rung_containers
+    point_dirs = [(d, v) for d, v in rung_containers(base, task, stage)
+                  if v is not None]
+    points = tuple(v for _d, v in point_dirs)
 
     for out_dir, volts in ([(stage_dir, points[0] if points else None)]
                            + point_dirs):
@@ -2133,27 +2133,24 @@ def gather_transport_inputs(base_dir, task, stage: str,
     ``.gathered-from`` beside the copies, so a result can always say
     which electrode run fed it.  Returns ``[(source_rel, filename)]``.
     """
-    from ..task import bias_token
-    from ..transport.stages import stage_inputs
+    from ..transport.stages import (per_point_rungs, rung_container,
+                                     stage_inputs)
     from .materialize import attempt_concluded
-    from ..paths import Shape
 
     base = Path(base_dir)
     attempt_dir = Path(attempt_dir)
     enabled = {s.name for s in task.stages if s.enabled}
     inputs = stage_inputs(stage, task.label,
                           seed_enabled=("seed" in enabled))
-    shape = Shape.named(task.shape)
     gathered: List[tuple] = []
     composed = None              # the junction, read once, when first needed
     for upstream, filename in inputs:
         token = token_for(task, upstream)
-        up_dir = base / shape.stage_dir(token)
-        if upstream == "device" and bias is not None:
-            # A bias scan keeps the device's products PER POINT -- the
-            # transmission at v reads the device at v, never another
-            # point's converged state (transport-design.md 4.3).
-            up_dir = up_dir / bias_token(bias)
+        # A bias scan keeps a per-point rung's products PER POINT -- the
+        # transmission at v reads the device at v, never another point's
+        # converged state (transport-design.md 4.3); a lead is every
+        # point's.  The one door says which folder (`rung_container`).
+        up_dir = rung_container(base, task, upstream, bias)
         stem = _rf_stem(task.label, token)
         current_deck = up_dir / _rf(task.label, ".fdf", token)
         run_first = (f"run it first --\n"
@@ -2200,7 +2197,8 @@ def gather_transport_inputs(base_dir, task, stage: str,
         if composed is None:
             composed = _composed_junction(base, task)
         now = _rung_deck_now(base, task, upstream, composed,
-                             volts=(bias if upstream == "device" else None))
+                             volts=(bias if upstream in per_point_rungs()
+                                    else None))
         matching = [d for d in concluded
                     if (d / current_deck.name).is_file()
                     and _sc.same_calculation(
@@ -2302,20 +2300,15 @@ def gather_for_stage(base_dir, task, stage: str) -> List[Tuple[Path, Optional[fl
     attempt removed the symptom and left the gap, so a device job could reach
     the node and die for want of an electrode `.TSHS` — after the queue wait.
     """
-    from ..paths import Shape
     from ..paths import attempt_dir as _adir
     from ..paths import attempts_in as _ain
-    from ..task import bias_token
-    from ..transport.stages import bias_points
+    from ..transport.stages import rung_containers
 
     base = Path(base_dir)
-    stage_dir = base / Shape.named(task.shape).stage_dir(token_for(task, stage))
-    points = bias_points(task) if stage in ("device", "transmission") else ()
     # A point's ladder lives under its own v-dir; a single-bias rung's lives
-    # under the stage directory.  Same two containers the deck and the wrapper
-    # were written into.
-    containers = ([(stage_dir / bias_token(v), v) for v in points] if points
-                  else [(stage_dir, None)])
+    # under the stage directory -- the same folders the deck and the wrapper
+    # were written into, from the one door.
+    containers = rung_containers(base, task, stage)
     out: List[Tuple[Path, Optional[float], List[tuple]]] = []
     for container, volts in containers:
         ns = _ain(container)
@@ -2841,17 +2834,19 @@ def underway_evidence(base, task, stage, *, bench_container=None) -> List[str]:
     2026-09-29; the asking is each door's.)
     """
     from ..paths import Shape, attempt_dir
+    from ..transport.stages import rung_containers
     from .materialize import attempts, launched_trials, was_launched
     base = Path(base)
     evidence: List[str] = []
     if bench_container is None and stage is not None:
         try:
-            token = token_for(task, stage)
-        except Exception:                                     # noqa: BLE001
-            token = None
-        if token:
-            sd = Shape.named(task.shape).stage_dir(token)
-            d = base / sd if sd != "." else base
+            # WHERE THIS RUNG'S ATTEMPTS ARE -- a bias scan's in its point
+            # folders, which a look in the stage folder alone never saw
+            # (the one door, plan § 5w K10; the M11 review's T-F13).
+            homes = [d for d, _v in rung_containers(base, task, stage)]
+        except StopIteration:                 # not a stage of this ladder
+            homes = []
+        for d in homes:
             for n in attempts(d):
                 a = attempt_dir(d, n)
                 if was_launched(a):
@@ -3089,10 +3084,8 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         # A TRANSPORT BIAS SCAN keeps one attempt per point (04_device/v0.2/
         # run-<n>, layout ruled 2026-08-29), which the five steps opened;
         # each is gathered against its own voltage.
-        from ..transport.stages import bias_points
-        scan = (bias_points(task)
-                if is_transport and stage in ("device", "transmission")
-                else ())
+        from ..transport.stages import scan_points
+        scan = scan_points(task, stage) if is_transport else ()
         if scan:
             if from_attempt or cold:
                 raise PrepError(

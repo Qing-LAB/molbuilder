@@ -1773,8 +1773,11 @@ same idea, generated control flow instead of declared keys — as
 `config/pyscf.py::PYSCF_RESTART_GROUP`.
 
 **PySCF:** the authoritative rows are `pyscf/warm-files.toml` (§ 4.2a) —
-the checkpoint in `[base]`, the geomeTRIC files under `[optimization]`,
-`[vibration]` deliberately empty (base only).  Unlike SIESTA, the
+the checkpoint in `[base]`, the optimized geometry under `[optimization]`,
+`[vibration]` deliberately empty (base only). geomeTRIC's trajectory and its
+scratch are not warm state — the trajectory is rewritten every run, the
+scratch is never read back — and have no row
+([`engines/stages.md`](?doc=engines/stages.md) § 1.1a, consequence 4).  Unlike SIESTA, the
 *generated PySCF script* contains the warm-restart logic explicitly (which
 is why those rows carry no `honoured_by` — there is no deck keyword to
 agree with; the parity guard for its hooks stands instead):
@@ -1797,10 +1800,11 @@ the working directory, through the one definition every PySCF deck carries
 (`pyscf/input.emit_outfile_helper`; the vibration deck resolved against the
 working directory until 2026-09-28, plan W36 ⑩).
 
-> **Lesson pinned in code:** any new warm-restart hook must land its `--cold`
-> glob entry **in the same commit** as its read-side. A parity test
-> (`_PYSCF_WARM_RESTART_INVENTORY` in `tests/test_runwrap.py`) fails if a hook
-> gains a read-side but forgets the glob.
+> **Pinned in code:** `--cold` names every file a re-run would overwrite —
+> a sweep by NAME since U17 (§ 4.1), so a new warm-restart hook needs no glob
+> of its own. `tests/test_runwrap.py` plants what a PySCF optimization leaves
+> (`_PYSCF_WARM_RESTART_INVENTORY`: its warm state, and geomeTRIC's trajectory
+> and scratch) and fails if `--cold` leaves one unnamed.
 
 ### 4.2a The warm-file rules file — the inventory as data *(contract 2026-08-13; user decision — **built**: `molbuilder/warmfiles.py` is the one reader and both engines ship `warm-files.toml`)*
 
