@@ -126,6 +126,40 @@ class TestAChargedMoleculesDipoleIsItsOwn:
         assert said is None or float(said.group(1)) < 5.0, report
 
 
+class TestTheDipoleAdvisoryAsksTheAxes:
+    """PINS: `model/structure-periodicity.md` § 2.1 (plan § 5w K8): the
+    dipole advisory is for a box of vacuum on every axis -- the axes SIESTA
+    computes on, never the k-point count (the K3 review)."""
+
+    def test_a_molecule_at_four_k_points_is_told_and_a_crystal_at_gamma_is_not(
+            self, isolated_projects_root):
+        """Through the road: prep writes each deck beside its
+        `.validation.txt`.  A polar molecule sampled 4x4x4 still sits among
+        its images; the same pair as a crystal, periodic on every axis and
+        sampled at Gamma alone, carries its images by design -- the trigger
+        that asked whether the mesh had one point told it "a 3-D vacuum
+        cell".
+
+        MUTATION THIS MUST FAIL AGAINST: the advisory keyed on a mesh of one
+        point."""
+        from molbuilder.siesta.stages import default_siesta_stages
+        from test_engine_offset_reaches_every_deck import _prep
+        hf = dict(elements=["F", "H"],
+                  positions=np.array([[0.0, 0.0, 0.0], [0.92, 0.0, 0.0]]))
+        cases = ((Structure(**hf, vacuum=(10.0,) * 3), (4, 4, 4), True),
+                 (Structure(**hf, cell=np.eye(3) * 5.0,
+                            axis_kind=("periodic",) * 3), (1, 1, 1), False))
+        for i, (struct, kgrid, told) in enumerate(cases):
+            root = isolated_projects_root / f"case{i}"
+            root.mkdir()
+            dest, stage, _text = _prep(
+                root, struct, SiestaConfig(system_label="JOB", kgrid=kgrid),
+                default_siesta_stages("publishable"), "siesta")
+            report = next(next(dest.glob(f"*_{stage}"))
+                          .glob("*.validation.txt")).read_text()
+            assert ("estimated net dipole" in report) is told, report
+
+
 class TestF4GateDerivesWhatChecksNeed:
     """PINS: docs/science/validation.md § 4.1 clause F4 — derived facts are
     derived server-side, from the facts.

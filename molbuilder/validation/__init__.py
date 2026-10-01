@@ -228,12 +228,11 @@ def validate(struct: Structure, cfg, *,
     # § 2.1, plan § 5w K8): PySCF builds a molecule in free space, so the
     # box's advice about a calculation in it -- vacuum, images, faces -- is
     # not its; it told a gas-phase molecule its vacuum was thin (PO-C13).
-    # The box's REFUSALS are every engine's: an impossible box is a broken
-    # structure, which every road refuses alike (the request seam,
-    # `checked_periodicity`, says the same whatever the engine).
-    from ..cell import computes_in_cell
+    # What binds every engine it still hears (`cell.box_findings_for`).
+    from ..cell import box_findings_for, computes_in_cell
     from ..template import engine_name
-    in_cell = computes_in_cell(engine_name(type(cfg)))
+    engine = engine_name(type(cfg))
+    in_cell = computes_in_cell(engine)
     # F4: resolve the structure's own box when the caller passed none, so the
     # cell-dependent checks cannot go silent on an omitted argument.  A
     # structure that cannot resolve a cell (a periodic axis with no explicit
@@ -271,9 +270,8 @@ def validate(struct: Structure, cfg, *,
     # here without passing it on left an overridden degenerate box unreported.
     if cell is not None or _structure_declares_a_box(struct):
         from ..cell import check as _check_cell, resolve as _resolve_cell
-        box = _check_cell(_resolve_cell(struct, box=cell))
-        issues += (box if in_cell
-                   else [i for i in box if i.severity == "error"])
+        issues += box_findings_for(
+            engine, _check_cell(_resolve_cell(struct, box=cell)))
 
     # ...and the geometry's own measurements of the box (images, volume) are
     # a calculation in a cell's too.

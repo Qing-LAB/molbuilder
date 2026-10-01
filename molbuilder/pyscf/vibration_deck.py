@@ -102,6 +102,11 @@ class VibrationConfigView:
     ``config`` should say what the described PySCFConfig held, not the
     adapter's four bridged spellings."""
 
+    #: WHOSE VIEW THIS IS -- `template.engine_name` reads it, so a reader
+    #: holding the view gets PySCF's answers, never the class name's (the K8
+    #: review: the frame door answered `vibrationconfigview` as in-cell).
+    ENGINE = "pyscf"
+
     def __init__(self, cfg, struct: Structure):
         from ..config.pyscf import PySCFConfig
         # asdict() asks type(self) for __dataclass_fields__ and getattrs

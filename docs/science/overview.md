@@ -143,7 +143,7 @@ states the *why* so the thresholds don't drift silently.
 | cell volume / atom-bounding-volume < 3, on a box that is vacuum on all three axes | warn | cell suspiciously tight. Not asked of a crystal, a lead or a junction, which fill their cells by construction; a slab's or a wire's vacuum is measured per axis by the image-distance row below ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2) |
 | atom-to-nearest-image distance < 6 Å | warn | atoms interact with their own periodic images; suggest a larger vacuum box (`geometry.py`) |
 | charged supercell (Makov-Payne) | warn | image-charge bias padding alone doesn't remove |
-| net dipole > 1 D (debye, the dipole-moment unit), Γ-only vacuum (every count of the deck's k-point mesh 1) | warn | image–image dipole (~1/L³); the fix is a **larger vacuum box** — *not* a dipole correction (SIESTA's `SlabDipoleCorrection` is for a 2-D slab, not a 3-D molecule). Estimate from `chemistry.estimate_dipole_moment_debye` (`chemistry.py:1614`), ±50 % |
+| net dipole > 1 D (debye, the dipole-moment unit), in a box of vacuum on every axis (each axis SIESTA computes on isolated — never the k count: a crystal or a junction sampled at Γ alone carries its images by design; [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2.1) | warn | image–image dipole (~1/L³); the fix is a **larger vacuum box** — *not* a dipole correction (SIESTA's `SlabDipoleCorrection` is for a 2-D slab, not a 3-D molecule). Estimate from `chemistry.estimate_dipole_moment_debye` (`chemistry.py:1614`), ±50 % |
 
 ### k-point sampling (`kmesh.check`, on every mesh a deck writes)
 The rules and their severities are [`engines/siesta.md`](?doc=engines/siesta.md)

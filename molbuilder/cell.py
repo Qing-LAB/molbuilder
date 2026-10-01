@@ -1,14 +1,19 @@
 """The one process line for the unit cell — resolve once, check once.
 
 MODULE  cell (L1; imports ``structure`` + ``issues`` and nothing else)
-ROLE    the ONE place a box is worked out, and the ONE place it is judged
+ROLE    the ONE place a box is worked out, and the ONE place it is judged;
+        and what each engine computes with -- the box, or free space
+        (``engine_axis_kinds``, § 2.1)
 USED-BY periodicity_gate (the hand-over gate + the edit door), validation/
-        (the engine validators fold these in), every emitter through
+        (the engine validators fold these in; ``validate`` asks which of
+        the box's findings an engine hears), every emitter through
         ``to_engine`` (siesta/input.py, pyscf/input.py,
         pyscf/vibration_deck.py, transport/transiesta.py) and script_emit
         (the deck's ENGINE-OFFSET record), transport/compose.py + wizard.py,
         modify.py, trajectory_log/format.py, Structure.to_wire, and
-        web/blueprints (_shared, modify)
+        web/blueprints (_shared, modify); the engine's axes:
+        electronic_state, validation/ (siesta, spectra), and
+        pyscf/vibration_deck.py's view
 
 Contract: docs/model/structure-periodicity.md § 6.0 (where the atoms sit) and
 § 6.1 / § 6.1a (what is true of the box), and the finding contract in
@@ -45,7 +50,9 @@ WHAT IS NOT HERE, DELIBERATELY.
   geometry measurement.  They already are Issues with a ``where`` and they
   already reach both surfaces; they stay in ``validation/`` where the engine
   knowledge is.  This module owns the facts that are true of a box regardless
-  of what will be run on it.
+  of what will be run on it -- and the one engine fact the box needs beside
+  them: whether the engine computes IN it at all (a molecule in free space
+  does not), so which of those facts reach it (``box_findings_for``).
 * **Receipts.**  "explicit cell cleared", "vacuum cleared" -- what an edit just
   DID.  A receipt is true for a moment and then meaningless, which is not what a
   finding is.  They stay on the gate, and the door returns them beside these.
@@ -453,7 +460,7 @@ def check(rc: ResolvedCell) -> List[Issue]:
             f"assigned, or the engine's own -- and nothing moves it for you. "
             f"Move the origin, or set it back to Automatic, or make the cell "
             f"bigger. An input file is refused until every atom is inside.",
-            "cell.atoms_outside"))
+            ATOMS_OUTSIDE))
 
     # PAST A PERIODIC FACE: legal -- an image the engine wraps -- and said,
     # now that every engine is handed placed coordinates (user, 2026-09-25:
@@ -669,6 +676,11 @@ def to_engine(struct: Structure, *,
 #  Contract: docs/model/structure-periodicity.md § 2.1 (plan § 5w K8).  #
 # --------------------------------------------------------------------- #
 
+#: The forecast of the hand-off's own refusal (:func:`require_placed`, § 6.0
+#: check 3): an atom the stated origin leaves outside the box.  Every engine's
+#: atoms are placed in the box, so every engine hears it (§ 2.1).
+ATOMS_OUTSIDE = "cell.atoms_outside"
+
 #: The engines that build the atoms as ONE MOLECULE in free space, whatever
 #: the structure's cell: PySCF's ``gto.M`` is gas phase.  Such an engine
 #: computes a cluster -- isolated on all three axes, no cell -- so its
@@ -691,10 +703,25 @@ def engine_axis_kinds(engine: str, struct: Structure) -> Tuple[str, str, str]:
 
 
 def computes_in_cell(engine: str) -> bool:
-    """Whether ``engine`` computes in the structure's cell -- so its settings
-    gate judges the box (§ 6.1a, table B).  An engine in :data:`MOLECULAR`
-    computes in free space; its box only places the atoms (§ 6.0)."""
+    """Whether ``engine`` computes in the structure's cell.  An engine in
+    :data:`MOLECULAR` computes in free space; its box only places the atoms
+    (§ 6.0)."""
     return engine not in MOLECULAR
+
+
+def box_findings_for(engine: str, findings: Sequence[Issue]) -> List[Issue]:
+    """Which of the box's findings (:func:`check`) ``engine`` hears (§ 2.1,
+    § 6.1a table B).  An engine that computes in the cell hears all of them.
+    One in free space hears what binds every engine: the box's refusals -- an
+    impossible box is a broken structure, refused on every road -- and the
+    forecast of the hand-off's refusal (:data:`ATOMS_OUTSIDE`), since its
+    atoms are placed in the box too; the rest is advice about a calculation
+    in the box (the K8 review: the forecast was dropped with the advice, and
+    PySCF's prep refused what its live check no longer said)."""
+    if computes_in_cell(engine):
+        return list(findings)
+    return [i for i in findings
+            if i.severity == "error" or i.where == ATOMS_OUTSIDE]
 
 
 # --------------------------------------------------------------------- #

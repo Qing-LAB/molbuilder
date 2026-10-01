@@ -158,14 +158,17 @@ takes the structure's kinds. An engine that builds the atoms as one molecule in
 free space — PySCF's `gto.M`, named in `cell.MOLECULAR` — computes a cluster:
 isolated on all three axes whatever the structure's, and no cell. **One door
 answers it, `cell.engine_axis_kinds(engine, struct)`, and every question about
-the calculation asks it** rather than the structure's own field:
+the calculation that two engines would answer differently asks it** rather than
+the structure's own field (an engine's own readers — SIESTA's k-point mesh and
+its vacuum advice — read the structure's kinds, which are the axes SIESTA
+computes on):
 
 | the question | asked by |
 |---|---|
 | is the system finite — does the electron count's parity bind, may a moment float ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md) § 2a) | the electronic state |
 | which whole-body motions a vibration removes, so how many modes it reports ([`engines/vibration.md`](?doc=engines/vibration.md) R7) | the deck, the Methods count and the settings check's note — one count: on PySCF, the vibration deck's view (`axis_kind`) |
 | does a polar molecule sit in a box of vacuum whose images shift its energy | SIESTA's dipole advisory — asked of the axes, never of the k-point count: a crystal or a junction sampled at Γ alone carries its images by design |
-| does the box's advice apply — its vacuum, its images, its faces (§ 6.1a, table B) | the settings gate: for an engine that computes in a cell (`cell.computes_in_cell`) |
+| does the box's advice apply — its vacuum, its images, its faces (§ 6.1a, table B) | the settings gate, for an engine that computes in a cell (`cell.box_findings_for`) |
 
 **The structure keeps its own kinds and its own box.** A periodic structure
 handed to PySCF is computed as a cluster and noted so
@@ -176,7 +179,8 @@ alike, so the browser and the CLI cannot disagree; what a free-space engine does
 not hear is the box's advice about a calculation in it. **And the placement rule
 still places every engine's atoms in the structure's box** (§ 6.0) — the same
 coordinates on every engine — so a box nothing can be placed in is refused at
-the hand-off too (`to_engine`, `require_placed`).
+the hand-off too (`to_engine`, `require_placed`), and every engine hears its
+forecast: an atom a stated origin leaves outside (`cell.atoms_outside`).
 
 *(Until 2026-10-01 the Methods count and the settings check's note counted the
 motions on the structure's kinds while the deck removed a cluster's: water in a
@@ -850,11 +854,12 @@ live with the engine that knows them.
 | A repeating axis into a **gas-phase** PySCF script | `cell.periodic_in_gas_phase` | `warn` | `warn` |
 
 **The advice rows are asked of an engine that computes in a cell** (§ 2.1,
-`cell.computes_in_cell`) *(plan § 5w K8, 2026-10-01)*. PySCF computes a cluster
+`cell.box_findings_for`) *(plan § 5w K8, 2026-10-01)*. PySCF computes a cluster
 in free space and its box only places the atoms (§ 6.0), so of the `warn` and
-`info` rows it hears `cell.periodic_in_gas_phase` alone. The **error rows are
-every engine's**: an impossible box is a broken structure, refused on every road
-(§ 8.2).
+`info` rows it hears two: `cell.atoms_outside`, the forecast of the hand-off's
+refusal, which places every engine's atoms (§ 6.0, check 3), and
+`cell.periodic_in_gas_phase`. The **error rows are every engine's**: an
+impossible box is a broken structure, refused on every road (§ 8.2).
 
 **One severity, two verdicts.** The rows above carry *one* severity, and the
 door decides what it costs: `report()` raises on `error`, so a generating door

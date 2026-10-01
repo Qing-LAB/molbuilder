@@ -115,11 +115,6 @@ class KMesh:
         determinant of the diagonal grid (SIESTA's ``kgrid.F``)."""
         return prod(self.counts)
 
-    @property
-    def single_point(self) -> bool:
-        """Every count 1: one k-point, whatever its offset."""
-        return all(c == 1 for c in self.counts)
-
 
 def _triple(value, cast) -> Optional[Tuple[Any, Any, Any]]:
     """``value`` as three ``cast`` numbers, or ``None`` when it is not one --

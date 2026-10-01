@@ -432,8 +432,10 @@ keeps the other shared settings (plan TD12).
 
 **What reads the mesh.** `Diag.ParallelOverK`'s automatic answer — *more than
 one point* — is counted on the mesh the deck writes: an electrode's `kx ky 40`,
-not the template's `kx ky 1`. The dipole advisory's *Γ-only vacuum cell* is
-every count 1. A finished SIESTA run's recorded contract (`parse/contract.py`)
+not the template's `kx ky 1`. The dipole advisory reads no mesh: it asks the
+axes SIESTA computes on, a box of vacuum on every one
+([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2.1;
+it read *every count 1* until 2026-10-01). A finished SIESTA run's recorded contract (`parse/contract.py`)
 records its counts (`k_mesh_transverse`, the older name, holding all three) and
 since 2026-09-30 its offset (`kgrid_displacement`); a transport citation carries
 both into the template, the transport axis laid on by the rule above.

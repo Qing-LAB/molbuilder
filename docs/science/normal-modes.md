@@ -252,8 +252,11 @@ crystal — and the table of § 3 gains these rows:
 | periodic along two or three axes | none | **3** |
 | periodic, any number of axes | **any at all** | **0** — translation would move a held atom |
 
-Which axes are `periodic` is the structure's own `axis_kind`, per axis — never
-the boolean `pbc()`, which cannot say *which* axis repeats. An axis that
+Which axes are `periodic` is the per-axis kind the calculation is computed on —
+the structure's own `axis_kind` on an engine that computes in its box, and none
+on one that builds the molecule in free space (`cell.engine_axis_kinds`,
+[`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2.1);
+never the boolean `pbc()`, which cannot say *which* axis repeats. An axis that
 continues (`transport`) binds a turn exactly as a repeating one does.
 
 **What "moves nothing" means, since a rank needs a tolerance.** A surviving
@@ -273,11 +276,17 @@ this document exists for does not arise there. It is a **molecular** problem.
 That is not a reason to skip the rule for periodic systems — it is the rule
 telling you, from the geometry, that there is nothing to do.
 
-**Where the answer comes from:** the structure's own per-axis periodicity, which
-molbuilder already records. It is not an engine property and must not be
-inferred from which engine was picked — a molecule computed in a periodic box
-and a molecule computed in free space are different models of the same molecule,
-and the box is the thing that decides.
+**Where the answer comes from:** what the calculation is computed in — a
+molecule computed in a periodic box and a molecule computed in free space are
+different models of the same molecule, and the box is the thing that decides.
+On an engine that computes in the structure's box (SIESTA) that is the
+structure's own per-axis periodicity, which molbuilder already records; an
+engine that builds the molecule in free space (PySCF's `gto.M`) uses no box at
+all, so its answer is a free molecule's whatever the structure states. One door
+answers both, `cell.engine_axis_kinds`
+([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md)
+§ 2.1), and the deck, its Methods paragraph and the settings check all ask it —
+they counted the structure's own on PySCF until 2026-10-01 (plan § 5w K8).
 
 > **Do not "restore" the rotations for a molecule in a large periodic box.**
 > They are near-symmetries there, broken by the box, so the corresponding

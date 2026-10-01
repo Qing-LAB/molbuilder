@@ -187,11 +187,16 @@ def test_a_gas_phase_script_hears_no_advice_about_a_box_it_does_not_use():
     -- its vacuum, its images -- is for an engine that computes in a cell.
     Water in a tight box draws SIESTA's finding about its images; the PySCF
     script, a molecule in free space, hears none of it, the same structure
-    through the same live check (the M11 review's PO-C13).  An impossible
-    box is refused on every engine still (§ 8.2; `test_periodicity_gate.py`).
+    through the same live check (the M11 review's PO-C13).  What binds every
+    engine it still hears: an impossible box is refused on every engine (§ 8.2;
+    `test_periodicity_gate.py`), and an atom an assigned origin leaves outside
+    is forecast as it is to SIESTA -- the hand-off places PySCF's atoms in the
+    box too, and refuses that one at prep
+    (`test_engine_offset_reaches_every_deck.py`; the K8 review found the
+    forecast dropped with the advice).
 
-    MUTATION THIS MUST FAIL AGAINST: the gate giving every engine the box's
-    advice."""
+    MUTATIONS THIS MUST FAIL AGAINST: the gate giving every engine the box's
+    advice; a free-space engine hearing only the box's errors."""
     pytest.importorskip("flask")
     from molbuilder.web.app import create_app
 
@@ -199,14 +204,19 @@ def test_a_gas_phase_script_hears_no_advice_about_a_box_it_does_not_use():
     atoms = dict(elements=["O", "H", "H"],
                  positions=np.array([[0.0, 0.0, 0.119], [0.0, 0.757, -0.477],
                                      [0.0, -0.757, -0.477]]))
-    # A tight box (the geometry's measure of the images), and a typed box
-    # beside a vacuum it makes inert (the one checker's note).
-    for water, advice in ((Structure(**atoms, vacuum=(1.0, 1.0, 1.0)),
-                           "cell.image_distance"),
-                          (Structure(**atoms, cell=np.eye(3) * 10.0,
-                                     axis_kind=("isolated",) * 3,
-                                     vacuum=(3.0, 3.0, 3.0)),
-                           "cell.vacuum_ignored")):
+    from test_engine_offset_reaches_every_deck import _assigned
+    _typed, outside = _assigned([-0.5, -1.0, -1.0])
+    # A tight box (the geometry's measure of the images), a typed box beside
+    # a vacuum it makes inert (the one checker's note) -- advice, SIESTA's
+    # alone -- and an assigned origin that leaves an atom outside, the
+    # forecast every engine hears.
+    for water, advice, heard in (
+            (Structure(**atoms, vacuum=(1.0, 1.0, 1.0)),
+             "cell.image_distance", set()),
+            (Structure(**atoms, cell=np.eye(3) * 10.0,
+                       axis_kind=("isolated",) * 3, vacuum=(3.0, 3.0, 3.0)),
+             "cell.vacuum_ignored", set()),
+            (outside, "cell.atoms_outside", {"cell.atoms_outside"})):
         said = {}
         for engine in ("siesta", "pyscf"):
             r = client.post("/api/build/preflight",
@@ -216,4 +226,4 @@ def test_a_gas_phase_script_hears_no_advice_about_a_box_it_does_not_use():
             said[engine] = {i["where"] for i in r.get_json()["issues"]
                             if i["where"].startswith("cell.")}
         assert advice in said["siesta"], said
-        assert said["pyscf"] == set(), said
+        assert said["pyscf"] == heard, said

@@ -5235,7 +5235,18 @@ reviewers' probes (the archive's § E lists) among its runs.
   its Methods count, the note), the box's advice on both engines through the
   live check, the hydrogen chain on PySCF's detection table (a molecule's
   doublet — the M6 fix had no test), the dipole advisory on a molecule at
-  4×4×4 and a crystal at Γ — 8 mutations, each red.
+  4×4×4 and a crystal at Γ — 8 mutations, each red. *The review* (an
+  independent read of the commit, each claim verified in the code): the
+  forecast of the hand-off's own refusal — an atom a stated origin leaves
+  outside — was dropped with the advice, so PySCF's live check went silent on
+  what its prep still refuses; it is every engine's now
+  (`cell.box_findings_for`, the finding named once, `cell.ATOMS_OUTSIDE`).
+  `normal-modes.md` § 3 still said the axes are *not an engine property*, and
+  `overview.md` and `siesta.md` the dipole's k-count rule; `KMesh.single_point`
+  lost its last reader (deleted); the vibration view answered `engine_name`
+  with its class name (it states `ENGINE = "pyscf"`); `cell.py`'s header
+  gained the engine block; § 2.1 claims what the code does; the dipole test
+  moved onto the prep road. Two more mutations, each red.
 
 ---
 
