@@ -325,6 +325,66 @@ def _finished_trial_and_verdict(calc):
     return name
 
 
+def test_the_bench_verbs_take_a_stage_the_way_every_verb_does(calc):
+    """`launch bench` and `summarize bench` take a stage through the one
+    resolver -- its name in any case, or `#N` (`job-system.md` § 5.3; plan
+    § 5w K12) -- and print it back by its name.  They matched the exact name
+    in a lookup of their own until K12, so `launch bench '#1'` refused the
+    stage `prep bench '#1'` had prepared; and a `#1` printed back would be a
+    comment in bash.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the bench lookup matching the exact
+    name; `summarize bench` printing the spelling it was given."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    _finished_trial_and_verdict(calc)
+    runner = CliRunner()
+    for spelling in ("#1", "COARSE"):
+        r = runner.invoke(jobset_group, ["launch", "bench", spelling,
+                                         "--bundle", str(calc),
+                                         "--mode", "submit", "--dry-run",
+                                         "--yes", "--domain", "htc"])
+        assert r.exit_code == 0, (spelling, r.output)
+        assert "WOULD run" in r.output, (spelling, r.output)
+    r = runner.invoke(jobset_group, ["summarize", "bench", "#1",
+                                     "--bundle", str(calc)])
+    assert r.exit_code == 0, r.output
+    assert "molbuilder jobset prep run coarse " in r.output, r.output
+
+
+def test_a_trials_deck_prints_the_launch_of_that_trial(calc):
+    """A trial's deck tells a person how to run it, as a run's does -- and
+    what it names is the trial's own launch, `launch bench <stage> <trial>`
+    (`job-system.md` § 5.3; plan § 5w K12).  It printed the run's line,
+    which launches the stage's run, not this trial.  Typed back, the line
+    plans exactly this trial.
+
+    MUTATION THIS MUST FAIL AGAINST: prep not telling the deck it is a trial
+    (the header prints `launch run coarse`)."""
+    import re
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    r = CliRunner().invoke(jobset_group,
+                           ["prep", "bench", "coarse", "--bundle", str(calc),
+                            "--np", "8", "--cpus-per-task", "8",
+                            "--no-sbatch"])
+    assert r.exit_code == 0, r.output
+    js = json.loads((calc / "01_coarse" / "bench" / "job-set.json")
+                    .read_text())
+    trial = js["jobs"][0]["name"]
+    deck = (_artifacts(calc, trial) / f"JOB-{trial}_01_coarse.fdf").read_text()
+    line = re.search(r"molbuilder jobset launch (\S+ \S+(?: \S+)?) --mode",
+                     deck).group(1).split()
+    assert line == ["bench", "coarse", trial], line
+    r = CliRunner().invoke(jobset_group, ["launch", *line,
+                                          "--bundle", str(calc),
+                                          "--mode", "submit", "--dry-run",
+                                          "--yes", "--domain", "htc"])
+    assert r.exit_code == 0, r.output
+    plans = [ln for ln in r.output.splitlines() if "WOULD run" in ln]
+    assert len(plans) == 1 and trial in plans[0], plans
+
+
 def _describe_cpu(calc):
     """Turn this calculation's description back to CPU.
 

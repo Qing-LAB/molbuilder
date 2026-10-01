@@ -1215,8 +1215,10 @@ in `relaxation_of`'s shape) of the `relax` stage's output the coordinates
 were read from — the one read `prep` makes of
 that run (§ 5.2a), so the finish never re-picks an attempt — and `null` when
 the ladder holds no `relax` stage; `relaxation_stage` names the stage that
-record is of, the one `prep` read it from, so the finish can name it in the
-remedy (§ 5.5) without knowing the ladder's vocabulary. The block is written by `script_emit.emit_vibration_record`, assembled by
+record is of, the one `prep` read it from — by the kind's name for it,
+`relax`, which every verb resolves in any case ([`stages.md`](?doc=engines/stages.md)
+§ 2) — so the finish can name it in the remedy (§ 5.5) without knowing the
+ladder's vocabulary. The block is written by `script_emit.emit_vibration_record`, assembled by
 the framework from `DeckSpec.vibration` — the engine places the values `prep`
 built (`spectra.siesta_vibration.vibration_record`), as it does the bench
 marks' — and read by `deck_record.extract_vibration_record`, beside the

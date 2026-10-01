@@ -1578,10 +1578,13 @@ async function loadColumnChoices(engine) {
 }
 
 /** The role the stage `name` plays, by the rule the columns came with
- *  (`template.stage_role_rule`) -- `null` on a kind without roles. */
+ *  (`template.stage_role_rule`) -- `null` on a kind without roles.  The
+ *  rule's names are keyed in any case, as every stage name compares
+ *  (`identity.stage_key`, `stages.md` § 2): a stage renamed `Relax` is
+ *  still the relaxation. */
 function roleOf(name) {
     if (!_roleRule) return null;
-    return (_roleRule.named && _roleRule.named[name])
+    return (_roleRule.named && _roleRule.named[String(name).toLowerCase()])
         || _roleRule.otherwise || name;
 }
 

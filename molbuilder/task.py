@@ -69,7 +69,7 @@ from typing import Any, Dict, List, Mapping, NoReturn, Optional, Tuple
 
 from . import report_fields as _report_fields
 from .config_dir import is_channel_name
-from .identity import normalise_id, run_id
+from .identity import normalise_id, run_id, stage_key
 from .persist import check_schema, read_json, write_json
 # The record's spelling for the two asks.  A TOP-LEVEL import because it is
 # now legal to have one: `scheduler.quantities` is a stdlib-only codec at
@@ -556,7 +556,7 @@ class Task:
             # deck there.  The constructor compared exact strings while
             # the parsers folded case, so the seam disagreed with its own
             # doors.
-            names = [s.name.lower() for s in self.stages]
+            names = [stage_key(s.name) for s in self.stages]
             dups = sorted({n for n in names if names.count(n) > 1})
             if dups:
                 raise ValueError(
@@ -1151,7 +1151,7 @@ def _refuse_duplicate_stage_names(stages) -> None:
     Case folds because names key filenames (engines/stages.md § 2)."""
     seen: dict[str, str] = {}
     for st in stages:
-        low = st.name.lower()
+        low = stage_key(st.name)
         if low in seen:
             _refuse(f"two stages named {st.name!r}"
                     + (f" and {seen[low]!r}" if seen[low] != st.name else "")

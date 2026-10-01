@@ -1784,7 +1784,7 @@ what it does in the kind:
 | kind | its rungs' roles (`template.KIND_ROLES`) | a stage's role (`template.stage_role`) |
 |---|---|---|
 | transport | `seed`, `electrode_L`, `electrode_R`, `device`, `transmission` | its name — the five rungs are fixed |
-| vibration | `relaxation`, `force_constants` | on SIESTA the stage named `relax` relaxes and every other stage measures force constants, whatever it is called; a PySCF vibration relaxes inside its one deck, so each of its rungs is the force-constant run ([`vibration.md`](?doc=engines/vibration.md) § 5.2a) |
+| vibration | `relaxation`, `force_constants` | on SIESTA the stage named `relax` — in any case, as every name compares ([`stages.md`](?doc=engines/stages.md) § 2) — relaxes and every other stage measures force constants, whatever it is called; a PySCF vibration relaxes inside its one deck, so each of its rungs is the force-constant run ([`vibration.md`](?doc=engines/vibration.md) § 5.2a) |
 | optimization | none | — every rung reads every item the kind carries: one calculation tuned N ways |
 
 | state | means |

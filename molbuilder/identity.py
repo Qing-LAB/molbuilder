@@ -243,6 +243,34 @@ def stage_token(seq: int, name: str) -> str:
     return f"{int(seq):02d}_{name}"
 
 
+def stage_key(name: str) -> str:
+    """THE ONE KEY a stage name is compared by -- its case folded
+    (`engines/stages.md` § 2: names key filenames, and the filesystems these
+    run on include case-insensitive ones, so ``Tight`` and ``tight`` are one
+    stage).  A name the description holds is compared with one from outside
+    it through this: the description's duplicate check, the verbs' resolver,
+    the role rule (plan § 5w K12); a verb resolves once, at its entry, and
+    uses the description's spelling after that.  A name is ``[A-Za-z0-9_]+``,
+    so this is ASCII's fold -- the browser's ``toLowerCase``."""
+    return str(name).lower()
+
+
+def command_stage(token: str) -> str:
+    """How a line that holds only a stage's TOKEN -- a deck's header -- names
+    the stage in the command it prints: the spelling
+    :func:`resolve_stage_ref` accepts, its NAME (``02_freq`` -> ``freq``;
+    `job-system.md` § 5.3).  Every other printed line already holds a name.
+
+    Never the token: ``02_freq`` is itself a legal stage name, of another
+    stage, and the relaxation decks' headers printed it until K12 (plan § 5w
+    K12; the M11 review's SS-C11).  Never ``#N``: an unquoted ``#`` begins a
+    comment in bash, so a pasted ``launch run #2`` names no stage."""
+    m = re.fullmatch(r"\d{2,}_([A-Za-z0-9_]+)", str(token))
+    if m is None:
+        raise ValueError(f"not a stage token: {token!r}")
+    return m.group(1)
+
+
 def parse_stage_token(filename: str,
                       label: str = "") -> Optional[Tuple[int, str]]:
     """The ``(seq, name)`` a filename's stage token carries, or ``None``.
@@ -350,7 +378,8 @@ def resolve_stage_ref(refs: Sequence["StageRef"], text: str) -> "StageRef":
 
     TWO spellings, each unambiguous (user-settled 2026-08-21)::
 
-        tight        the name           — an EXACT match, nothing else
+        tight        the name           — in any case (:func:`stage_key`),
+                                          nothing else
         #3           the stage's number — '#' then its assigned ``seq``
 
     Until then a bare number and the whole token (``03_tight``) resolved
@@ -388,7 +417,7 @@ def resolve_stage_ref(refs: Sequence["StageRef"], text: str) -> "StageRef":
             f"no stage numbered {text!r} in this job-set; it has: "
             f"{render_stage_choices(refs)}.")
     for r in refs:
-        if want == r.name:
+        if stage_key(want) == stage_key(r.name):
             return r
     if not refs:
         raise ValueError(f"no stage named {text!r}: this job-set has no jobs")
@@ -569,6 +598,7 @@ def run_id(label: str, formula: str = "", *,
 
 
 __all__ = ["MAX_LABEL_BYTES", "OUR_FILE_PATTERNS", "RestartGroup", "StageRef",
-           "continues", "is_ours", "normalise_id", "parse_stage_token",
-           "render_stage_choices", "render_stage_refs", "resolve_stage_ref", "run_id", "seq_text",
+           "command_stage", "continues", "is_ours", "normalise_id",
+           "parse_stage_token", "render_stage_choices", "render_stage_refs",
+           "resolve_stage_ref", "run_id", "seq_text", "stage_key",
            "stage_token"]

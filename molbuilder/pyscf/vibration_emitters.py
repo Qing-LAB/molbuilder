@@ -65,12 +65,13 @@ grows a branch, it moves.  That rule is stated once in
 """
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:            # annotation only -- importing
     # vibration_deck at run time would cycle (it imports this).
     from .vibration_deck import VibrationConfigView
+from ..identity import command_stage
 from ..runfiles import tail as _rf_tail
 from ..structure import Structure
 
@@ -131,7 +132,8 @@ _RAMAN_FD_STEP_ANG = 0.005
 def _emit_header_docstring(struct: Structure,
                            cfg: "VibrationConfigView",
                            *,
-                           methods_md: str) -> List[str]:
+                           methods_md: str,
+                           stage_token: Optional[str] = None) -> List[str]:
     """Triple-quoted Methods + Outputs + Dependencies block.
 
     The Methods paragraph is the same prose the Results panel
@@ -162,7 +164,9 @@ def _emit_header_docstring(struct: Structure,
     out.append(f"Job name  : {cfg.job_name}")
     out.append("")
     out.append("Run it the way it was prepared (the described route):")
-    out.append("    molbuilder jobset launch run <stage> --bundle <path from")
+    # The stage by its NAME, through the one printer (`job-system.md` § 5.3).
+    _typed = command_stage(stage_token) if stage_token else "<stage>"
+    out.append(f"    molbuilder jobset launch run {_typed} --bundle <path from")
     out.append("        the projects root>          # from anywhere;")
     out.append("                                   # the wrapper beside this deck")
     out.append("                                   # activates the env and logs the run")

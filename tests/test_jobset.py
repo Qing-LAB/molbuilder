@@ -1855,7 +1855,9 @@ def test_a_ladder_refuses_to_act_on_all_of_itself(tmp_path):
                             "--mode", "direct", "--dry-run", "--yes"])
     assert r.exit_code != 0
     assert "acts on ONE stage" in r.output
-    assert "01_coarse, 03_tight" in r.output   # ordinals, at the moment you choose
+    # what you can TYPE, ordinals beside -- the token is refused when typed
+    # back (`job-system.md` § 5.3, plan § 5w K12)
+    assert "coarse (#1), tight (#3)" in r.output
     # Every piece of advice it prints must be a command that works -- the
     # option set is pinned by test_submit_accepts_exactly_these_options.
     # Scanned over the whole output, not per line: option tokens are single

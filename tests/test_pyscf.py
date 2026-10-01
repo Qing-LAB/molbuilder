@@ -58,8 +58,10 @@ def test_the_run_with_block_names_the_wrapper_and_the_real_filename(h2o):
     """
     text = render_script(h2o, PySCFConfig(job_name="my-job"),
                          stage_token="02_medium")
-    assert "molbuilder jobset launch run 02_medium" in text, (
-        "the header does not offer the managed path at all")
+    # The stage by its NAME, as `launch` takes it (`job-system.md` § 5.3):
+    # the token printed here until K12 is a legal name of another stage.
+    assert "molbuilder jobset launch run medium " in text, (
+        "the header does not offer the managed path, by the stage's name")
     assert "bash my-job_02_medium.run.sh" in text, (
         "the header does not name the wrapper that runs this deck")
     # The direct line is still here, and names the file that EXISTS.

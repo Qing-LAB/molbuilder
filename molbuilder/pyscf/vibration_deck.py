@@ -676,7 +676,8 @@ def vibration_spec(struct: Structure, cfg, *,
             GPU4PYSCF_MIN_COMPUTE_CAPABILITY,
         )
         out: List[str] = []
-        out += _emit_header_docstring(struct, view, methods_md=methods_md)
+        out += _emit_header_docstring(struct, view, methods_md=methods_md,
+                                      stage_token=stage_token)
         out += emit_threading_setup_lines(view.threads)
         out += emit_runtime_info_capture_lines(
             use_gpu=bool(view.use_gpu),

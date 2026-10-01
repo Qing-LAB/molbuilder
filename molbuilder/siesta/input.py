@@ -34,7 +34,7 @@ from ..config.siesta import SiestaConfig
 from ..electronic_state import FREE, electronic_state
 # § 4 rule 2's reading of `restart`, shared with PySCF -- one field, one
 # rule, one place that reads it.
-from ..identity import continues
+from ..identity import command_stage, continues
 # Module level: `deck_note` is called from the body emitter, and script_emit
 # imports no engine (its own `template` import is lazy), so there is no cycle.
 from .. import script_emit as _sc
@@ -674,8 +674,15 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
                calculation: str = "optimization",
                vibration: Optional[dict] = None,
                relaxed_by: Optional[dict] = None,
-               state=None) -> "_sc.RenderedDeck":
+               state=None,
+               trial: Optional[str] = None) -> "_sc.RenderedDeck":
     """Format a Structure as SIESTA .fdf text.
+
+    ``trial`` is the benchmark trial this deck is, by its point's name
+    (``G1K4C6``), or ``None`` for the run -- a render argument from `prep`,
+    which alone knows, so the header names the command that launches THIS
+    deck: a trial's is ``launch bench <stage> <trial>``, and the run's
+    ``launch run <stage>`` would launch a different job (plan § 5w K12).
 
     ``vibration`` is a force-constant deck's `vibration` block, built by
     `prep` (`spectra.siesta_vibration.vibration_record`): placed in the
@@ -1128,10 +1135,21 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         _mw_name   = molwatch_log_basename(cfg.system_label, stage_token)
         if cfg.verbose_comments:
             out.append("# === Run with (job-layout v1) ===")
-            out.append("# The managed way, and the usual one:")
-            out.append("#     molbuilder jobset launch run "
-                       + (stage_token or "<stage>")
-                       + " --mode direct|submit")
+            # The stage by its NAME, through `command_stage`: the token
+            # (`02_freq`) is a legal name of another stage, and `launch`
+            # refused it on every staged deck until K12 (`job-system.md`
+            # § 5.3; the M11 review's SS-C11).  A trial's deck names its own
+            # launch -- `launch run` would launch the stage's run.
+            _typed = command_stage(stage_token) if stage_token else "<stage>"
+            if trial:
+                out.append("# The managed way -- this trial alone "
+                           f"(`launch bench {_typed}` sends the whole sweep):")
+                out.append(f"#     molbuilder jobset launch bench {_typed} "
+                           f"{trial} --mode direct|submit")
+            else:
+                out.append("# The managed way, and the usual one:")
+                out.append(f"#     molbuilder jobset launch run {_typed} "
+                           "--mode direct|submit")
             out.append(f"#     bash "
                        f"{_rf(cfg.system_label, '.run.sh', stage_token or None)}"
                        "          # the same wrapper, by hand")

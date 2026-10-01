@@ -1,6 +1,6 @@
 """The template — a calculation's parameter catalogue, as one TOML file.
 
-**Module:** L2 (model). Imports ``persist`` and the standard library; imported by
+**Module:** L2 (model). Imports ``identity``, ``persist`` and the standard library; imported by
 ``siesta/*`` producers, by ``validation/task``, and by
 ``resolve/``. Nothing here touches the filesystem or a scheduler.
 
@@ -70,6 +70,7 @@ from pathlib import Path as _Path
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, NoReturn, Optional, Tuple, Union
 
+from .identity import stage_key
 from .persist import check_schema
 
 
@@ -1964,7 +1965,8 @@ def stage_role_rule(engine: str, kind: str) -> Optional[Dict[str, Any]]:
     """How a ``kind`` calculation on ``engine`` names its rungs' roles, as
     DATA -- ``{"named": {stage: role}, "otherwise": role}``, where an
     ``"otherwise"`` of ``None`` means *a rung's role is its name* -- or
-    ``None`` for a kind without roles.  The one statement of the rule:
+    ``None`` for a kind without roles.  ``named`` is keyed by
+    `identity.stage_key`, so a reader matches a stage's name in any case.  The one statement of the rule:
     :func:`stage_role` reads it, and so does a surface that maps its own
     rows (the stage table, which is handed it with its columns).
 
@@ -1978,7 +1980,7 @@ def stage_role_rule(engine: str, kind: str) -> Optional[Dict[str, Any]]:
     if kind == "transport":
         return {"named": {}, "otherwise": None}
     from .pyscf.stages import VIBRATION_RELAX_STAGE
-    return {"named": ({VIBRATION_RELAX_STAGE: "relaxation"}
+    return {"named": ({stage_key(VIBRATION_RELAX_STAGE): "relaxation"}
                       if str(engine) == "siesta" else {}),
             "otherwise": "force_constants"}
 
@@ -1991,7 +1993,7 @@ def stage_role(engine: str, kind: str, stage: Optional[str]) -> Optional[str]:
     rule = stage_role_rule(engine, kind)
     if rule is None or stage is None:
         return None
-    return rule["named"].get(stage) or rule["otherwise"] or stage
+    return rule["named"].get(stage_key(stage)) or rule["otherwise"] or stage
 
 
 def reads(item: "Item", engine: str, kind: str, stage: Optional[str]) -> bool:

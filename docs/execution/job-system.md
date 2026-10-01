@@ -810,6 +810,20 @@ molbuilder jobset <verb> <kind> [<stage>] [<trial>]  [options]
                                        · status · plan
 ```
 
+**A name is matched in any case** — `TIGHT` is `tight`, as every stage name
+compares ([`engines/stages.md`](?doc=engines/stages.md) § 2). **Quote `#N` in
+bash**: an unquoted `#` begins a comment there, so `prep run #3` reaches
+molbuilder as `prep run` and is refused for naming no stage — type `'#3'`.
+
+**What molbuilder prints, you can type** *(plan § 5w K12)*: a command it prints
+— a deck's header, a *next:* line, a remedy, a refusal's list — names the stage
+by its NAME. Never the token: `03_tight` is itself a legal name, of another
+stage, and the SIESTA and PySCF relaxation decks' headers printed it until K12
+(the M11 review's SS-C11); never `#N`, which a pasted line would lose to bash. A
+deck's header holds only the token, so it prints the name through
+`identity.command_stage`; every other line already holds a name. A benchmark
+trial's deck names its own launch, `launch bench <stage> <trial>`.
+
 **`#N` is the stage's `seq`, never its row.** With stage 2 disabled the
 ladder is `01_coarse` and `03_tight`, so `#3` means *tight* and there is no `#2`
 to type — the same number you see in the directory, in the deck's filename, and
@@ -1082,7 +1096,7 @@ molbuilder jobset status --bundle ./bundle   # per-stage state + which stage is 
 molbuilder jobset status                     # the same, from inside the folder
 
 molbuilder jobset status tight               # ...and what happened to ONE stage
-molbuilder jobset status 3                   # the same stage, by its ordinal
+molbuilder jobset status '#3'                # the same stage, by its number
 ```
 
 The per-stage form answers a different question from the table. The table says

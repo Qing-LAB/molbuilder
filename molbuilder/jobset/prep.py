@@ -750,9 +750,11 @@ def _vibration_block(stage: str, cfg, relaxed_by, *, criterion) -> dict:
     from .. import __version__ as _mb_version
     from ..pyscf.stages import VIBRATION_RELAX_STAGE
     from ..spectra.siesta_vibration import vibration_record
-    # The record is of the `relax` stage: `_vibration_stage_geometry` read it
-    # from that stage's output, found by this name -- so the block names it,
-    # and the finish's remedy can (`engines/vibration.md` § 5.3, § 5.5).
+    # The record is of the ladder's relaxation rung: `_vibration_stage_geometry`
+    # read it from that stage's output, found by its role (plan § 5w K12) --
+    # and the block names it by the kind's name for it, `relax`, which every
+    # verb resolves in any case, so the finish's remedy can
+    # (`engines/vibration.md` § 5.3, § 5.5).
     return vibration_record(
         stage=stage,
         force_criterion_ev_ang=criterion,
@@ -795,8 +797,11 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
     from ..pyscf.stages import VIBRATION_RELAX_STAGE, vibration_render_kind
     if vibration_render_kind(pset.stage) != "vibration":
         return struct, None, None
+    # THE LADDER'S RELAXATION, by the one role rule -- the name in any case
+    # (`engines/stages.md` § 2), never an exact string (plan § 5w K12).
     relax = next((s for s in task.stages
-                  if s.name == VIBRATION_RELAX_STAGE and s.enabled), None)
+                  if s.enabled and vibration_render_kind(s.name) != "vibration"),
+                 None)
     if relax is None:
         if not bool(getattr(pset[0].render_config(), "already_relaxed", False)):
             raise PrepError(
@@ -1246,9 +1251,11 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                 # wrote decks into `bench-JOB-G1K1C1/` while every reader
                 # asked `job_dir_names` and looked in `bench-G1K1C1/`.
                 from ..resolve import point_token as _pt
+                _trial = _pt(element.point)
                 _jdir = trial_work_dir(
-                    base / trial_dir(_shape, token, _pt(element.point)), _shape)
+                    base / trial_dir(_shape, token, _trial), _shape)
             else:
+                _trial = None
                 _sd = _shape.stage_dir(token) if token else "."
                 _jdir = base if _sd == "." else base / _sd
             _jdir.mkdir(parents=True, exist_ok=True)
@@ -1314,7 +1321,12 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                                          # finish (V1.36).
                                          **({"relaxed_by": _relaxed_by}
                                             if _relaxed_by is not None
-                                            else {}))
+                                            else {}),
+                                         # A TRIAL'S DECK NAMES ITS OWN
+                                         # LAUNCH (plan § 5w K12) -- the
+                                         # bench lane is SIESTA's alone.
+                                         **({"trial": _trial}
+                                            if _trial else {}))
                 _sc.prepare_deck(spec, struct, cfg, _jdir / script, log=log,
                                  dest_dir=base, findings=findings)
             if seam.sibling_artifacts is not None:

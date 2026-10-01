@@ -802,13 +802,35 @@ def _check_kind(kind: str, js=None) -> None:
             f"(job-system.md § 5.3).")
 
 
+def _bench_stage(base, stage):
+    """The stage a bench verb was given, as the description spells it,
+    through the ONE resolver -- its name in any case, or ``#N``
+    (`identity.resolve_stage_ref`, `job-system.md` § 5.3) -- and what the
+    verb then finds, records and PRINTS (a pasted ``#2`` would be a comment
+    in bash).  The bench verbs matched the exact name in a lookup of their
+    own until K12, so `launch bench '#2'` refused the stage `prep bench '#2'`
+    had just prepared (plan § 5w K12).  ``None`` stays ``None``, and a sweep
+    with no description has no ladder to resolve against: its name stands."""
+    from ..identity import StageRef, resolve_stage_ref
+    from ..task import FILENAME, read_task
+    desc = Path(base) / FILENAME
+    if stage is None or not desc.is_file():
+        return stage
+    try:
+        return resolve_stage_ref(StageRef.ladder(
+            [s.name for s in read_task(desc).stages]), stage).name
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
+
 def _stage_bench_dir(base, stage):
     """The stage's bench container (job-contracts.md § 6.3), resolved
     through the description — where its trials, its job-set and its verdict
-    all live.  Returns ``(container_path, token)``; refuses an unknown
-    stage with the ladder listed, and a bare invocation the same way —
-    § 6.5 gives every description a ladder, so there is always a stage to
-    name and never a bare form to fall back to."""
+    all live.  Returns ``(container_path, token)``.  ``stage`` is the
+    description's own spelling -- the verb resolved it first
+    (:func:`_bench_stage`); a bare invocation is refused with the ladder
+    listed — § 6.5 gives every description a ladder, so there is always a
+    stage to name and never a bare form to fall back to."""
     from ..task import FILENAME, read_task
     from .materialize import bench_container
     from .prep import token_for
@@ -822,13 +844,8 @@ def _stage_bench_dir(base, stage):
         raise click.ClickException(
             "which stage's benchmark? name it: "
             f"{', '.join(s.name for s in task.stages)}.")
-    for s in task.stages:
-        if s.name == stage:
-            token = token_for(task, s.name)
-            return Path(base) / bench_container(sh, token), token
-    raise click.ClickException(
-        f"no stage named {stage!r} in this description. Available: "
-        f"{', '.join(s.name for s in task.stages)}.")
+    token = token_for(task, stage)
+    return Path(base) / bench_container(sh, token), token
 
 
 # ``_bench_positionals`` lived here until 2026-08-16.  It re-bound a lone
@@ -1002,7 +1019,7 @@ def _resolve_stage(js, stage, verb: str):
     own lookup, its own refusal wording and its own listing format, so a user
     could be shown two vocabularies for one question.
     """
-    from ..identity import render_stage_refs
+    from ..identity import render_stage_choices
     from .materialize import stage_refs
     if stage is not None:
         return _resolve_stage_name(js, stage)
@@ -1010,8 +1027,10 @@ def _resolve_stage(js, stage, verb: str):
     ordered = [refs[j.name] for j in js.jobs]
     if js.kind == "ladder":
         raise click.ClickException(
+            # WHAT YOU CAN TYPE, never the token (`job-system.md` § 5.3):
+            # `01_coarse` listed here was refused when typed back, until K12.
             f"this is a ladder, so `{verb}` acts on ONE stage: "
-            f"{render_stage_refs(ordered)}.\n"
+            f"{render_stage_choices(ordered)}.\n"
             f"  molbuilder jobset {verb} run <stage>\n"
             "Stages do not chain, and there is no flag that makes them: a "
             "run that continues on its own can spend a week refining a "
@@ -1393,6 +1412,7 @@ def summarize_cmd(kind: str, stage, bundle: str,
             "--tolerance-cm1 is a displacement sweep's -- a SIESTA "
             "vibration's force-constant stages compared "
             "(engines/vibration.md 5.9)")
+    stage = _bench_stage(bundle, stage)
     js, base = _load_bench_set(bundle, stage)
     _check_kind(kind, js)
     from .summarize import (run_summarize_jobset,
@@ -1526,6 +1546,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             "meaning for `launch run``, --mode direct, or a named trial.")
     if kind == "bench":
         # the stage's own sweep record, from its bench container (§ 6.3)
+        stage = _bench_stage(bundle, stage)
         js, base = _load_bench_set(bundle, stage)
     else:
         if trial is not None:
@@ -1759,7 +1780,9 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             if kind == "bench" and js.kind == "sweep":
                 only = _pick_trial(js, base, trial)
             else:
-                only = _resolve_stage(js, stage, "launch")
+                # The description's spelling from here on -- what the ledger
+                # records and every line prints (plan § 5w K12).
+                only = stage = _resolve_stage(js, stage, "launch")
             # A TRANSPORT BIAS SCAN launches as ONE job walking the
             # points (transport-design.md 4.3) -- the chain's own door,
             # with the same nothing-submitted-unseen confirm the grouped

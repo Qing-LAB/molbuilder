@@ -231,7 +231,8 @@ a disabled cell naming the rungs that read it**, never as an editor — a
 transmission window on the seed's row, a relaxation tolerance on a vibration's
 `freq`. The payload carries each item's roles and, beside the columns, how the
 kind names its rungs' roles (`roles`, `template.stage_role_rule`), so the table
-maps each row to its role and keeps no rule of its own; the description's own
+maps each row to its role — the name matched in any case, as `stage_role`
+matches it (`stages.md` § 2) — and keeps no rule of its own; the description's own
 check and `resolve` refuse such an override on every road *(by role for every
 kind since 2026-09-30, plan § 5w K4; for transport's rungs, by name, since
 2026-09-24)*.

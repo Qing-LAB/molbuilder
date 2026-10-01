@@ -205,10 +205,14 @@ def test_the_stage_table_offers_each_rung_what_it_reads(
     each rung's deck does not read them -- and a relaxation preset applied
     to `freq` fills nothing there, while on `relax` it fills its tier.
 
+    A person renames the `relax` row `Relax`: in any case it is one name
+    (`stages.md` § 2), so the row is still the relaxation (plan § 5w K12).
+
     MUTATIONS THIS MUST FAIL AGAINST: the cell asked by the stage's name
     rather than its role (the `relax` row's own tolerance is disabled); the
     columns sent without the kind's role rule (no cell is); a preset filling
-    every row (`freq` gains the relaxation's columns)."""
+    every row (`freq` gains the relaxation's columns); the role matched by
+    the exact name (the renamed row reads as a force-constant rung)."""
     pytest.importorskip("playwright.sync_api")
     from molbuilder import describe as D
     from molbuilder.config.siesta import SiestaConfig
@@ -261,6 +265,21 @@ def test_the_stage_table_offers_each_rung_what_it_reads(
     unread = {("relax", "fc_displacement"), ("freq", "relax_force_tol")}
     assert foreign() == [[(row, col) in unread for col in varies]
                          for row in ("relax", "freq")], (varies, foreign())
+    box = f"{rows}:nth-child(1) input.ts-cell-name"
+    # the box typed into is marked, so only the REDRAWN row -- the one the
+    # rename's role is read for -- satisfies the wait
+    page.evaluate("(sel) => { document.querySelector(sel).dataset.typed = '1'; }",
+                  box)
+    name_box = page.locator(box)
+    name_box.fill("Relax")
+    name_box.dispatch_event("change")
+    page.wait_for_function(
+        "(sel) => { const b = document.querySelector(sel);"
+        "           return b && !b.dataset.typed && b.value === 'Relax'; }",
+        arg=box, timeout=10000)
+    assert foreign() == [[(row, col) in unread for col in varies]
+                         for row in ("relax", "freq")], (
+        "the row renamed `Relax` lost its role", varies, foreign())
     before = columns()
     page.locator(f"{rows}:nth-child(2) select.ts-preset").select_option(
         index=1)
