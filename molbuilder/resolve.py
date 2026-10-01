@@ -442,14 +442,17 @@ def resolve(template_text: str, task, config_cls, *,
     _refuse_a_stated_answer(template_text, _engine, _kind)
 
     if stage_obj is not None and stage_obj.overrides:
-        bad = sorted(set(stage_obj.overrides) & machine_facts)
+        # A RUN SETTING is the rung's run card's (`engines/stages.md`
+        # § 6.8d, plan § 5w K5) -- the machine's answers and a person's
+        # alike.  It arrives here as a pin, from `execution`; an override
+        # was a second home, and a rung's `use_gpu` set there reached the
+        # deck and not the scheduler's device ask (SO-C1).
+        from .template import run_settings, why_run_setting
+        bad = sorted(set(stage_obj.overrides) & run_settings(_engine))
         if bad:
             raise ResolveError(
-                f"stage {stage_obj.name!r} overrides "
-                f"{', '.join(map(repr, bad))} -- machine fact(s) the "
-                f"description must never carry (engines/template.md § 7): "
-                f"they arrive as the ALLOCATION at prep, on the machine "
-                f"that runs the job.")
+                f"stage {stage_obj.name!r} overrides {bad[0]!r}, "
+                f"{why_run_setting(bad[0])}.")
         # A VALUE THAT BINDS EVERY STAGE is not one stage's (the
         # catalogue's `shared`, `template.md` § 6.4) -- for every kind: the
         # electronic state's four items everywhere (ES1), transport's shared
@@ -667,25 +670,34 @@ def resolve(template_text: str, task, config_cls, *,
 def resolved_ladder(template_text: str, task, config_cls) -> List[Tuple[str, Any]]:
     """``[(stage name, resolved config)]`` for every ENABLED stage, in
     ladder order — the sequence checks' input (`engines/stages.md` § 6.4 /
-    § 6.6a), resolved by the SAME primitives as `prep` step 2 (template ⊕
-    stage overrides), so what the checks compare is what the decks would
-    say.  No machine fact is involved: a sequence question never needs the
-    allocation.
+    § 6.6a), resolved by the SAME primitives as `prep run` step 2 (template
+    ⊕ stage overrides ⊕ the rung's run card), so what the checks compare is
+    what the decks would say -- a rung's ``restart`` included, which § 6.6a
+    reads and which lives on the run card alone (§ 6.8d).  No machine fact
+    is involved: a sequence question never needs the allocation.
 
     Exists so the surface that surfaces those findings does not re-derive
     the resolution with primitives of its own — the caller-re-derivation
     habit `job-system.md` § 9 diagnoses (added with A-8, 2026-08-13, which
     found the § 6.6a warning had no production caller at all).
     """
-    from .template import config_from_template, engine_name, role_answers
+    from .template import (config_from_template, engine_name, role_answers,
+                           template_fields)
     base = config_from_template(template_text, config_cls)
     engine = engine_name(config_cls)
     kind = getattr(task, "calculation", None) or "optimization"
+    known = template_fields(config_cls)
     out: List[Tuple[str, Any]] = []
     for s in (task.stages or ()):
         if not getattr(s, "enabled", True):
             continue
         values = effective_config(base, s.overrides) if s.overrides else base
+        # The rung's run card, as `prep run` pins it: its template items --
+        # the machine's answers are the launch, never a value of the deck.
+        card = {k: v for k, v in task.run_condition(s.name).items()
+                if k in known}
+        if card:
+            values = effective_config(values, card)
         # ...and the rung's own answers, last, as `resolve` lays them.
         answers = role_answers(engine, kind, s.name)
         out.append((s.name,

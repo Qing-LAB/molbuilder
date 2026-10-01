@@ -1462,9 +1462,9 @@ launch is what a person wrote, or a refusal telling them what to write.**
 A benchmark lives inside the stage it measured, so prep can always *find*
 one — and it never reads it. Permission is `task.json`'s `execution`, which
 you write: the full ladder is
-[`architecture.md § 5.2`](?doc=execution/architecture.md) — template < a
-one-point `bench` pin < `execution` < flags, with **no rung between the bench
-and the run**.
+[`architecture.md § 5.2`](?doc=execution/architecture.md) — template <
+`execution` (the calculation's, then the rung's) < flags, with **no rung
+between the bench and the run**.
 
 *(Three designs stood here. Until 2026-08-19 prep asked interactively —
 `use it? [y/N]`, silence-is-no. Until 2026-09-02 the answer lived in an

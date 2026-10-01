@@ -362,20 +362,20 @@ because both halves are real and they are different acts:
 | | | |
 |---|---|---|
 | **what to measure** | `task.json`'s `bench` — *"try 4, 8, 16 ranks"* | **declared**, floor 2, portable |
-| **what is chosen outright** | a `bench` entry with **one** point — *"use_gpu: [true]"* | **declared**, and applied at prep as a **pin** over the template, for the bench's trials and the run alike *(user rule, 2026-08-20)*. A machine axis is never "in force" this way — what the RUN uses is `execution`, its own block (below) |
+| **what the trials run with** | a `bench` entry with **one** point — *"use_gpu: [true]"* | **declared**, and applied at prep as a **pin** over the template for the bench's trials *(user rule, 2026-08-20)* — and only for them since 2026-09-30: what the RUN uses is `execution`, its own block (below) |
 | **what those points mean on this machine** | `prep bench <stage>` | **resolved**, floor 3, on the target |
 | **what was fastest** | `<stage>/bench/bench-result.json` | **measured**, and offered back to that stage's next `prep run` |
 
 > **Precedence when several sources name one knob** — the full ladder is
-> [`architecture.md § 5.2`](?doc=execution/architecture.md), and for a deck
-> knob it reads: the template → a one-point `bench` declaration →
-> **`execution`** → explicit CLI flags.  **A benchmark is not on this
-> ladder** *(2026-09-02)*: it writes a report a person reads, and what the
-> run uses is what that person then wrote.  Flags beat everything, exactly as
-> they do today.  A **multi-point** non-machine entry is a **value axis** —
-> the rule below *(built 2026-08-21; it was refused by name until then)*.  At
-> `prep run` a multi-point entry pins nothing and the template's value
-> stands, unless `execution` names one.
+> [`architecture.md § 5.2`](?doc=execution/architecture.md), and for a run's
+> deck knob it reads: the template → the calculation's **`execution`** → the
+> rung's → explicit CLI flags.  **A `bench` declaration is not on this
+> ladder** *(2026-09-30)*: it is what the trials run with.  **Nor is a
+> benchmark's verdict** *(2026-09-02)*: it writes a report a person reads,
+> and what the run uses is what that person then wrote.  Flags beat
+> everything, exactly as they do today.  A **multi-point** non-machine entry
+> is a **value axis** — the rule below *(built 2026-08-21; it was refused by
+> name until then)*.
 
 #### The run's condition is its OWN declaration — `execution`
 
@@ -405,10 +405,10 @@ work, and it is a property of the data model rather than of any surface.
 > have a bench or a run decision, never both — which is exactly what a person
 > doing this work needs at the same time.
 >
-> The 2026-08-20 rule it over-read is untouched: a one-point **non-machine**
-> `bench` entry is still a pin in force for the trials and the run alike. What
-> was wrong was extending that to the machine axes and then reading the
-> bench's grid as the run's shape.
+> The 2026-08-20 rule it over-read sets the trials only since 2026-09-30: a
+> one-point **non-machine** `bench` entry pins the bench's trials, and the
+> run reads `execution`. What was wrong on 2026-09-01 was extending that rule
+> to the machine axes and reading the bench's grid as the run's shape.
 
 **Same framework, different arity — and the framework is the pipeline BELOW
 `resolve()`.** Both lanes end in `prep_calculation → resolve() → ParameterSet
@@ -430,7 +430,10 @@ itself, field by field over the calculation's.
 
 **Precedence gains one rung, and it goes where the person's own words go:**
 
-> template < a one-point `bench` pin < **`execution`** < a `prep` flag
+> template < the calculation's **`execution`** < the rung's **`execution`** < a `prep` flag
+
+*(A one-point `bench` pin stood below `execution` until 2026-09-30; it sets
+only the trials now — `stages.md` § 6.8d's "and nowhere else".)*
 
 `execution` is what a person **asked for**, in the file that records asks, and
 only a flag — a person speaking about right now — wins over it.
@@ -469,7 +472,13 @@ be decided* overwrites both.
 The one fact the map cannot hold is **which card** a device ask names — a
 description may not name a machine (`template.md` § 7) — so the count is the
 person's and the type is the target's, read from its own record by the same
-producer the sweep uses.
+producers the sweep uses, in its order: the stated type or the target's
+probe, else the queue menu's GPU inventory. **Every run that uses a device
+gets its ask here**, a count stated or not (`gpu.md` G5: an absent
+`gpu_count` is one device) and on every engine — PySCF carries no
+`gpu_count`, so before 2026-09-30, when the header asked a SIESTA deck
+alone, a PySCF run whose card said `use_gpu` reached the queue with no
+device.
 
 > **It went through the grid enumerator for one afternoon** (2026-09-02) on
 > the argument that a run is a sweep of length one. It is — *below*

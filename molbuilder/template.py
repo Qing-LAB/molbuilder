@@ -1850,6 +1850,27 @@ def shared_by_every_stage(engine: str, kind: str) -> frozenset:
                      if kind in it.shared)
 
 
+def run_settings(engine: str) -> frozenset:
+    """The settings a rung states on its RUN CARD -- the catalogue's
+    `execution` items (§ 6.2), the machine's answers among them -- asked
+    rather than listed.  Each has one home, the calculation's ``execution``
+    with the rung's over it (`engines/stages.md` § 6.8d, plan § 5w K5): never
+    a stage column or override (:func:`why_run_setting`), which the
+    description's own check and ``resolve`` refuse and the Task setup table
+    does not offer."""
+    return frozenset(it.name for it in select(catalogue(), engine=engine)
+                     if "execution" in (it.category or ()))
+
+
+def why_run_setting(name: str) -> str:
+    """Why a run setting cannot be a column -- the clause a refusal puts
+    after *"stage <s> overrides <name>"* or *"'varies' names <name>"*."""
+    return (f"a run setting: the rung states it on its run card -- "
+            f"\"execution\": {{\"{name}\": ...}} on the stage, or on the "
+            f"calculation for every rung (engines/stages.md 6.8d) -- never "
+            f"as a stage column")
+
+
 #: The calculation's identity -- `shared` for every SIESTA kind (2026-09-29,
 #: K1): one name, one species table, one pseudopotential set.
 IDENTITY_ITEMS = ("system_label", "species_order", "psml_lib")
@@ -2452,6 +2473,7 @@ __all__ = ["SCHEMA", "SUFFIX", "KINDS", "TYPES", "CATEGORIES",
            "read_template", "config_from_template",
            "template_fields", "engine_name", "is_member",
            "STATE_ITEMS", "shared_by_every_stage", "why_shared",
+           "run_settings", "why_run_setting",
            "IDENTITY_ITEMS", "fixed_by_role", "role_answers",
            "fixed_on_every_rung", "why_role", "offered", "why_not_offered",
            "a_kind", "as_declared", "why_not"]

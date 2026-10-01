@@ -326,8 +326,11 @@ def test_the_sequence_warnings_reach_the_prep_surface(tmp_path):
             # § 6.6a warns about, and since 2026-08-18 the only way to reach
             # it: `continue` is the default, and two identical rungs where the
             # second continues are simply *more steps at these settings*.
-            _ladder(("a", {"mesh_cutoff": 200.0}),
-                    ("b", {"mesh_cutoff": 200.0, "restart": "clean"})),
+            # ...on its RUN CARD, the one place a rung's `restart` lives
+            # (`stages.md` § 6.8d) -- which the sequence checks read.
+            [Stage(name="a", overrides={"mesh_cutoff": 200.0}),
+             Stage(name="b", overrides={"mesh_cutoff": 200.0},
+                   execution={"restart": "clean"})],
             engine="siesta", shape="hierarchical",
             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest)

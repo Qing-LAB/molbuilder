@@ -1365,14 +1365,13 @@ def api_task_setup_prep():
         condition AS WRITTEN, so the card says a number instead of going
         blank."""
         from molbuilder.jobset.model import Resources
-        from molbuilder.jobset.prep_inputs import (prep_run_inputs,
-                                                   run_condition)
+        from molbuilder.jobset.prep_inputs import prep_run_inputs
         try:
             _alloc, _pins, chosen = prep_run_inputs(dest, target, task, stage,
                                                     Resources())
             return chosen
         except Exception:                                     # noqa: BLE001
-            return run_condition(task, stage)
+            return task.run_condition(stage)
 
     def _emitted_launch(dest, target, task, stage):
         """What the launch will actually carry, per parameter, with sources.
@@ -1759,9 +1758,15 @@ def _column_items(engine: str, kind: str):
     hold may become a column. The ones it is not allowed to hold may not."*
     """
     from molbuilder import template as _T
+    run_settings = _T.run_settings(engine)
     for it in _T.select(_T.catalogue(), engine=engine):
         # THE membership rule, asked of the item rather than restated here.
-        if it.allocation:
+        # A RUN SETTING is the rung's run card's, never a column (plan § 5w
+        # K5; `engines/stages.md` § 6.2): the machine's answers, and the ones
+        # a person gives -- `use_gpu`, `restart`, the solver.  A column was
+        # a second home, and a rung's `use_gpu` set there reached its deck
+        # and not the scheduler's device ask (SO-C1).
+        if it.name in run_settings:
             continue
         # A column belongs to this folder's KIND (template.md § 6.3's
         # sibling rule); the tab passes its description's kind (P2).
@@ -2083,7 +2088,6 @@ def api_task_setup_prep_plan():
         return jsonify({"ok": False,
                         "error": "task: must be the description object"}), 400
     from molbuilder.jobset.prep import token_for
-    from molbuilder.jobset.prep_inputs import run_condition
     from molbuilder.paths import Shape
     from molbuilder.runfiles import manifest
     from molbuilder.task import Task
@@ -2116,7 +2120,7 @@ def api_task_setup_prep_plan():
                      "allocation": alloc,
                      # PER STAGE, because the condition is (§ 6.8d): the
                      # calculation's block with this rung's laid over it.
-                     "chosen": run_condition(task, st.name),
+                     "chosen": task.run_condition(st.name),
                      # AND WHAT THIS RUNG WILL BE NAMED (user, 2026-09-07).
                      # Every name comes out of the grammar (`runfiles`
                      # § 2.2a) with THIS rung's token, so the card cannot

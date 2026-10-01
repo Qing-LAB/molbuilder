@@ -291,10 +291,10 @@ def _a_ladder_the_preflight_warns_about(calc):
     from molbuilder.task import FILENAME as TASK_FILENAME
     desc = Path(calc) / TASK_FILENAME
     d = json.loads(desc.read_text())
-    d["varies"] = ["restart"]
+    d["varies"] = []
     d["stages"] = [{"name": "coarse", "enabled": True, "overrides": {}},
-                   {"name": "tight", "enabled": True,
-                    "overrides": {"restart": "clean"}}]
+                   {"name": "tight", "enabled": True, "overrides": {},
+                    "execution": {"restart": "clean"}}]
     desc.write_text(json.dumps(d))
 
 

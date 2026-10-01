@@ -354,40 +354,34 @@ def test_comma_text_is_refused_for_a_list_field():
 
 
 def test_an_optional_field_still_checks_the_type_inside_it():
-    """The other half of the source-text bug.  ``Optional[int]`` is not the
-    string ``"int"``, so ``block_size`` -- and every other optional field --
-    accepted anything at all."""
-    assert _errors(preflight(_staged({"block_size": "8"})))
+    """The other half of the source-text bug.  ``Optional[float]`` is not
+    the string ``"float"``, so an optional field accepted anything at all."""
+    assert _errors(preflight(_staged({"md_target_temperature": "300"})))
 
 
 def test_none_is_a_legal_value_for_an_optional_field():
-    """``block_size`` unset means *(auto)*, a real state the config declares
-    (`tuning.md` § 2.11).  Checking the inner type must not cost it."""
-    assert preflight(_staged({"block_size": None})) == []
+    """An optional field unset is a real state the config declares.
+    Checking the inner type must not cost it."""
+    assert preflight(_staged({"md_target_temperature": None})) == []
 
 
 # --------------------------------------------------------------------- #
 #  A-9 — a machine fact refuses with § 7's story, not the typo story     #
 # --------------------------------------------------------------------- #
 
-def test_an_override_naming_a_machine_fact_is_refused_with_the_story():
-    """A-9 (final review, 2026-08-13): ``mpi_np`` IS a schema field --
-    tagged ``allocation: True``, `engines/template.md` § 7's forbidden
-    machine fact -- so the existence check admitted it and a description
-    varying it rendered a deck for a rank count the allocation never
-    granted.  The refusal names the § 7 road, because the person typing
-    it is mid-mistake about exactly that."""
-    issues = _errors(preflight(_staged({"mpi_np": 8})))
-    assert issues, "a machine-fact override passed the preflight"
-    assert any("machine fact" in i.message and "ALLOCATION" in i.message
-               for i in issues)
-
-
-def test_varies_naming_a_machine_fact_is_refused_too():
-    # varies and stages travel together (§ 6.5), so the realistic bad
-    # input carries the name in both -- and both rows must say so.
-    issues = _errors(preflight(_staged({"omp_threads": 4})))
-    assert any(i.where == "task.varies"
-               and "machine fact" in i.message for i in issues)
-    assert any(i.where == "task.stages.overrides"
-               and "machine fact" in i.message for i in issues)
+@pytest.mark.parametrize("name, value", [("mpi_np", 8), ("use_gpu", True)])
+def test_a_run_setting_as_a_column_is_refused_naming_the_run_card(name,
+                                                                 value):
+    """A run setting lives on the rung's run card (`stages.md` § 6.8d, plan
+    § 5w K5) -- the machine's answer (A-9, 2026-08-13: a description varying
+    ``mpi_np`` rendered a deck for a rank count the allocation never
+    granted) and a person's alike (SO-C1, 2026-09-30: a rung's ``use_gpu``
+    reached its deck and not the scheduler's device ask).  ``varies`` and
+    the stages travel together (§ 6.5), so both rows are refused, each
+    naming the card -- the person typing it is mid-mistake about where it
+    goes."""
+    issues = _errors(preflight(_staged({name: value})))
+    for where in ("task.varies", "task.stages.overrides"):
+        assert any(i.where == where and "run card" in i.message
+                   and repr(name) in i.message for i in issues), (where,
+                                                                  issues)

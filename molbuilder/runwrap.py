@@ -4998,9 +4998,15 @@ def _render_sbatch_for(script_path: Path, *,
     # declares one -- a different partition from the same domain's ordinary
     # row.  Recomputed below for the header's own `--gres`; this is the same
     # question asked earlier, not a second answer to it.
-    _prefer_gpu = bool(script_path.suffix.lower() == ".fdf"
-                       and env is None
-                       and _wants_gpu(script_path, resources))
+    #
+    # ANY ENGINE'S RUN (`execution/gpu.md` G1, G7): the answer is the one
+    # door's.  This asked a SIESTA deck alone, so a PySCF GPU run was placed
+    # on the domain's ordinary row.  An explicit ``env`` speaks for SIESTA
+    # only -- its GPU build is a separate env, so naming the CPU one points
+    # the deck away from the device; PySCF's GPU path lives in its one env.
+    _prefer_gpu = bool(
+        (env is None or script_path.suffix.lower() != ".fdf")
+        and _wants_gpu(script_path, resources))
 
     scheduler = _rc.get_scheduler(project_dir=project_dir)
     if scheduler is None:
@@ -5063,10 +5069,15 @@ def _render_sbatch_for(script_path: Path, *,
     suffix = script_path.suffix.lower()
     is_siesta = suffix == ".fdf"
 
-    # Is this a GPU job?  Only SIESTA .fdf can be; honour an explicit
-    # --env override that points away from GPU (mirrors the run-wrapper's
-    # env_lookup_category logic).
-    gpu = bool(is_siesta and env is None and _wants_gpu(script_path, resources))
+    # Is this a GPU job?  The one door's answer for ANY engine (`gpu.md` G1,
+    # G7).  It read "only SIESTA .fdf can be" until 2026-09-30, so a PySCF
+    # run whose run card says `use_gpu` was submitted with no `--gres` --
+    # no device, and the deck stops (G6: no CPU fallback).  An explicit
+    # --env override still points a SIESTA deck away from its GPU build
+    # (mirrors the run-wrapper's env_lookup_category logic); PySCF's GPU
+    # path lives in its one env.
+    gpu = bool((env is None or not is_siesta)
+               and _wants_gpu(script_path, resources))
     gpu_type: Optional[str] = None
     gpu_count: Optional[int] = None
     if gres is not None:
@@ -5151,14 +5162,19 @@ def _parse_gres_flag(gres: str) -> Tuple[Optional[str], int]:
     called `_parse_gres`, in two modules, returning the same pair in
     opposite order -- ``(type, count)`` here, ``(count, type)`` there.
 
-    Accepts ``gpu:a100:2``, ``a100:2``, or a bare count ``2`` (=> type
-    unspecified, caller falls back to ``scheduler.gpu.default_type``).
+    Accepts ``gpu:a100:2``, ``a100:2``, or a count with no type -- bare
+    ``2`` or SLURM's ``gpu:2`` (=> type unspecified, caller falls back to
+    ``scheduler.gpu.default_type``).
     Raises :exc:`WrapperError` on anything else so a typo'd CLI value
     fails at generate time, not after a job queues.
     """
     g = gres.strip()
     if g.isdigit():
         return None, int(g)
+    # ``gpu:<count>`` is SLURM's UNTYPED form -- the GRES name and a count.
+    # Read as ``<type>:<count>`` it rendered ``--gres=gpu:gpu:2``.
+    if g.startswith("gpu:") and g[4:].isdigit():
+        return None, int(g[4:])
     m = _GRES_RE.fullmatch(g)
     if not m:
         raise WrapperError(

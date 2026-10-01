@@ -2381,17 +2381,12 @@ def test_the_group_refuses_a_trial_without_an_explicit_shape(calc):
         submit_bench_group(js, base, dry_run=True)
 
 
-def test_a_declared_pin_reaches_the_run_deck(calc):
-    """The run half of the override lane (user rule, 2026-08-20): a
-    one-point NON-machine `bench` declaration is that stage's value, and
-    `prep run` renders it into the deck (`generator.md` § 4.3a).
-
-    *(This asserted a second half until 2026-09-02 -- that a
-    `run-config.toml` verdict's `[pins]` then outranked the declaration.
-    That rung is gone: a benchmark writes a report and a person writes
-    `execution`, which is the rung above (`architecture.md` § 5.2).  What
-    outranks a declaration is tested by
-    `TestTheRunsOwnCondition::test_a_flag_still_wins_field_by_field`.)*
+def test_a_bench_row_never_reaches_the_run_deck(calc):
+    """A one-point NON-machine `bench` declaration is what the TRIALS run
+    with, and only them (user, 2026-09-30, narrowing the 2026-08-20 rule;
+    `generator.md` § 4.3a, `stages.md` § 6.8d): the run's values are its own
+    run card's.  Until 2026-09-30 `prep run` rendered the row into the run's
+    deck -- a second home for a value the card states.
     """
     import re as _re
     from click.testing import CliRunner
@@ -2404,10 +2399,10 @@ def test_a_declared_pin_reaches_the_run_deck(calc):
                                           "--bundle", str(calc)])
     assert r.exit_code == 0, r.output
     deck = next((calc / "01_coarse").glob("run-*/JOB*.fdf"))
-    assert _re.search(r"^Diag\.Algorithm\s+ELPA-2STAGE",
-                      deck.read_text(), _re.M), (
-        "the declared pin did not reach the run deck (the value "
-        "line, not the help comments)")
+    assert not _re.search(r"^Diag\.Algorithm\s+ELPA-2STAGE",
+                          deck.read_text(), _re.M), (
+        "the bench row reached the run deck (the value line, not the "
+        "help comments)")
 
 
 

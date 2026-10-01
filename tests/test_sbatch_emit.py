@@ -276,6 +276,9 @@ def test_bad_gres_rejected(tmp_path):
     ("gpu:a100:2", ("a100", 2)),
     ("a100:4", ("a100", 4)),
     ("2", (None, 2)),
+    # SLURM's untyped form: the GRES name and a count, no type -- it was
+    # read as type "gpu" and rendered `--gres=gpu:gpu:2` (2026-09-30).
+    ("gpu:2", (None, 2)),
 ])
 def test_parse_gres_forms(spec, expect):
     assert runwrap._parse_gres_flag(spec) == expect

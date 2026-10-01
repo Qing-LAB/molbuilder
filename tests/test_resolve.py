@@ -410,14 +410,17 @@ def test_a_pin_naming_a_machine_fact_is_refused_with_its_story(template):
                 pins={"mpi_np": 8}, stage=STAGE)
 
 
-def test_a_stage_override_naming_a_machine_fact_is_refused(template):
-    ladder = (Stage(name="a", overrides={"omp_threads": 4}),)
+def test_a_stage_override_naming_a_run_setting_is_refused(template):
+    """`resolve`'s door to the same rule as the description's check: a run
+    setting reaches the deck as the run card's pin, never as an override
+    (`stages.md` § 6.8d, plan § 5w K5, SO-C1)."""
+    ladder = (Stage(name="a", overrides={"use_gpu": True}),)
     t = Task(engine="siesta", shape="hierarchical",
              run=derive_run("relax", "C3H2S", stage_names=("a",)),
              structure=StructureRef(source="bdt.xyz", formula="C3H2S",
                                     atoms=6),
-             varies=("omp_threads",), stages=ladder)
-    with pytest.raises(ResolveError, match=r"machine fact"):
+             varies=("use_gpu",), stages=ladder)
+    with pytest.raises(ResolveError, match=r"run card"):
         resolve(template, t, SiestaConfig, allocation=ALLOC, stage="a")
 
 

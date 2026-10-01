@@ -359,19 +359,18 @@ def test_the_runtime_loads_before_every_other_script(web_client):
 
 
 
-def test_the_column_picker_offers_restart(web_client):
-    """The regression that motivated the endpoint, pinned end to end.
-
-    `restart` sits in the `staging` group because it is not a physics
-    parameter, and it is per-stage because it decides whether each rung starts
-    from what the one before it produced.  One `group` cannot say both, so the
-    table's columns are drawn from what the description may HOLD instead."""
+def test_the_column_picker_offers_no_run_setting(web_client):
+    """A run setting is the rung's run card's, never a column (`stages.md`
+    § 6.2, § 6.8d; plan § 5w K5): the machine's answers, and a person's --
+    `restart`, `use_gpu`, the solver.  `restart` and `use_gpu` were columns
+    until 2026-09-30, and a rung's `use_gpu` set as one reached its deck and
+    not the scheduler's device ask (SO-C1)."""
+    from molbuilder.template import run_settings
     j = web_client.get("/api/task-setup/columns?engine=siesta").get_json()
     names = [i["name"] for i in j["items"]]
-    assert "restart" in names
-    # ...and the machine's settings are still not the description's to hold
-    assert not ({"mpi_np", "omp_threads", "max_memory_mb", "gpu_count"}
-                & set(names))
+    assert names, "the picker offered nothing at all"
+    assert not (run_settings("siesta") & set(names)), sorted(
+        run_settings("siesta") & set(names))
     # ...and a value that binds EVERY rung of the folder's kind is not a
     # column either (template.md § 6.4 `shared`: "no stage overrides it").
     # Measured 2026-09-24: a transport folder's picker offered thirteen of
@@ -867,11 +866,12 @@ def test_both_pickers_payloads_carry_the_value_shape(web_client):
         "ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"]
     assert items["diag_algorithm"]["default"] == "ScaLAPACK"
 
+    from molbuilder.template import catalogue, one
     cols = web_client.get("/api/task-setup/columns?engine=siesta").get_json()
     citems = {i["name"]: i for i in cols["items"]}
-    assert citems["diag_algorithm"]["type"] == "enum"
-    assert citems["diag_algorithm"]["choices"] == [
-        "ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"]
+    assert citems["relax_type"]["type"] == "enum"
+    assert citems["relax_type"]["choices"] == list(
+        one(catalogue(), "relax_type", engine="siesta").choices)
 
 
 # RETIRED 2026-09-03 — test_the_viewer_dispatches_widgets_on_the_shape_not

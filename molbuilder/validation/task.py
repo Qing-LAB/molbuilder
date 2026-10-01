@@ -349,38 +349,38 @@ def _names_exist(task, cls, fields) -> List[Issue]:
     in both passes the codec cleanly — the subset holds, and both are wrong the
     same way. This is the only place that can catch it.
 
-    A name that IS a field but is tagged as the allocation's (``mpi_np``,
-    ``omp_threads``, ``max_memory_mb``) refuses too, with the machine-fact
-    story rather than the typo story: floor 2 must never carry it
-    (engines/template.md § 7), and until 2026-08-13 the existence check
-    admitted it — a description varying ``mpi_np`` rendered a deck for a
-    rank count the allocation never granted (final review A-9).
+    A name that IS a field but is a RUN SETTING -- the catalogue's
+    ``execution`` items, the machine's answers (``mpi_np``) and a person's
+    (``use_gpu``, ``restart``) alike -- refuses too, with the run card's
+    story rather than the typo story: a rung states it in its ``execution``
+    and nowhere else (`engines/stages.md` § 6.8d, plan § 5w K5).  The
+    machine's answers were refused here since 2026-08-13 (a description
+    varying ``mpi_np`` rendered a deck for a rank count the allocation never
+    granted, final review A-9); the rest were columns until 2026-09-30, a
+    second home through which a rung's ``use_gpu`` reached its deck and not
+    the scheduler's device ask (SO-C1).
     """
-    def _machine(name) -> bool:
-        return bool(fields[name].metadata.get("allocation"))
-
-    def _machine_msg(lead) -> str:
-        return (f"{lead} a machine fact the description must never carry "
-                f"(engines/template.md § 7): it arrives as the ALLOCATION "
-                f"at prep, on the machine that runs the job")
+    from ..template import run_settings, why_run_setting
+    on_the_card = run_settings(str(task.engine))
 
     out: List[Issue] = []
     for name in (task.varies or ()):
         if name not in fields:
             out.append(Issue("error", _no_such_field(
                 name, fields, cls, "'varies' names"), where="task.varies"))
-        elif _machine(name):
-            out.append(Issue("error", _machine_msg(
-                f"'varies' names {name!r},"), where="task.varies"))
+        elif name in on_the_card:
+            out.append(Issue("error", f"'varies' names {name!r}, "
+                             f"{why_run_setting(name)}", where="task.varies"))
     for st in (task.stages or ()):
         for key in st.overrides:
             if key not in fields:
                 out.append(Issue("error", _no_such_field(
                     key, fields, cls, f"stage {st.name!r} overrides"),
                     where="task.stages.overrides", stage=st.name))
-            elif _machine(key):
-                out.append(Issue("error", _machine_msg(
-                    f"stage {st.name!r} overrides {key!r},"),
+            elif key in on_the_card:
+                out.append(Issue(
+                    "error", f"stage {st.name!r} overrides {key!r}, "
+                    f"{why_run_setting(key)}",
                     where="task.stages.overrides", stage=st.name))
     return out
 

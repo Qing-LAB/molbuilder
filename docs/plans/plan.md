@@ -5089,6 +5089,37 @@ reviewers' probes (the archive's § E lists) among its runs.
   finish's criterion through `prep`, the stage table in the browser) — red
   under each of their twelve mutations; one transport test's wording
   updated.
+* **K5 — done 2026-09-30** (SO-C1, T-F3, SO-N12, the `--from` hint; the
+  home ruled 2026-09-29, and the bench row's half by the user on
+  2026-09-30: *"trials only"*). **A run setting has one home per rung, its
+  run card** — the catalogue's `execution` items (`template.run_settings`),
+  the machine's answers and a person's alike, stated in `execution`, the
+  calculation's with the rung's over it (`stages.md` § 6.8d's "and nowhere
+  else"). **Not a column**: the stage table offers none (`_column_items`),
+  and the description's own check and `resolve` refuse one in `varies` or
+  an override by name (`why_run_setting`, the machine-fact story folded in).
+  **Not a bench row**: a one-point non-machine row pins the bench's trials
+  alone — `prep_run_inputs` takes the run's pins from the card only, which
+  also makes the bench card's *"the two are independent"* true (SO-N12).
+  **One answer, one door**: `Task.run_condition` (moved from
+  `prep_inputs.run_condition`) is what every reader takes — the deck's pins
+  and the launch shape at `prep`, `run_uses_device`, the sequence checks
+  (`resolved_ladder` lays each rung's card, so § 6.6a's *starts clean*
+  reads the card's `restart`), the Task setup tab (`runSettingOf`, which
+  the `--from` hint now asks — it read a stage column, so a rung continuing
+  by the template's default was taught no `--from`). **Transport takes its
+  run card** (T-F3): `_prep_transport` refused every pin, so a run card's
+  `use_gpu` on a transport rung stopped the prep; its rung now resolves
+  with the card's pins. **The GPU ask, asked while checking the user's
+  *"make sure bench and run are correctly honoring the options"***: a run
+  that uses a device gets its `--gres` decided at prep for every engine —
+  count from `gpu_count`, else one (G5), type by the bench's own producers
+  (stated or probed, else the queue menu's inventory) — and the header and
+  the placement ask the one door for any engine; they asked a SIESTA deck
+  alone, so a PySCF run whose card said `use_gpu` reached the queue with no
+  device. SLURM's untyped `gpu:N` read as a type (`--gres=gpu:gpu:N`) is
+  fixed in `_parse_gres_flag`. None of the 51 descriptions under
+  `projects/` used a run setting as a column or a one-point bench row.
 
 ---
 

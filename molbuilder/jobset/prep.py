@@ -1617,8 +1617,9 @@ def _transport_provide_pseudos(struct, cfg, base: Path,
 
 
 def _resolve_transport(base, task, stage: str, allocation,
-                       *, log=None):
-    """Floor 3's step 2 for a transport rung — the template ⊕ its overrides.
+                       *, pins=None, log=None):
+    """Floor 3's step 2 for a transport rung — the template ⊕ its overrides
+    ⊕ its run card's settings (``pins``, `stages.md` § 6.8d).
 
     **The same `resolve` every other kind uses.** It was unreachable for
     transport until TR1, for a plain reason: `resolve` reads a template and a
@@ -1675,7 +1676,7 @@ def _resolve_transport(base, task, stage: str, allocation,
         log.received("stage", stage)
     try:
         ps = resolve(tmpl.read_text(encoding="utf-8"), task, SiestaConfig,
-                     allocation=allocation, stage=stage)
+                     allocation=allocation, stage=stage, pins=pins)
     except ResolveError as exc:
         # `resolve` translates the template's and the overrides' refusals
         # (ValueError) into its own since 2026-09-28 -- this caller caught
@@ -1749,13 +1750,19 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
         raise PrepError(
             f"no {TASK_FILENAME} in {base}. `prep` turns a DESCRIPTION into a "
             f"runnable directory; write one first with `jobset init`.")
-    if sweep is not None or pins or translation is not None:
+    # A TRANSPORT RUNG TAKES ITS RUN CARD as every rung does (`stages.md`
+    # § 6.8d, plan § 5w K5, T-F3): the card's settings arrive as ``pins``
+    # and its machine items as ``chosen``.  Every pin was refused here until
+    # 2026-09-30, so a `use_gpu` the run card offered on a transport rung
+    # stopped the prep.  What it does not take is a sweep.
+    if sweep is not None or translation is not None:
         raise PrepError(
-            "a transport calculation takes no parameter sweep, pins or "
-            "translation.  Its parameters come from its own template, and "
-            "its one axis is the bias -- a list in task.json, rendered as "
-            "one deck per point (engines/transport.md 2a.10: single bias "
-            "is the degenerate case of that axis, one point at zero).")
+            "a transport calculation takes no parameter sweep or "
+            "translation.  Its parameters come from its own template and "
+            "each rung's run card, and its one axis is the bias -- a list "
+            "in task.json, rendered as one deck per point "
+            "(engines/transport.md 2a.10: single bias is the degenerate "
+            "case of that axis, one point at zero).")
 
     # ---- 1. resolve the machine ---------------------------------------- #
     environment = _environment_for(base, target)
@@ -1895,7 +1902,8 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # (iii) THE CONFIG: the template ⊕ this rung's overrides, with
     # provenance recording which source set each value.
     element = _resolve_transport(base, task, stage,
-                                 allocation or Resources(), log=_tlog)
+                                 allocation or Resources(), pins=pins,
+                                 log=_tlog)
     # WHAT THE DECK WRITER IS HANDED is values ⊕ the allocation-marked fields
     # (`ResolvedConfig.render_config`), the same object every other kind's
     # emitter gets.  Rendering from bare `.values` left the emitter blind to

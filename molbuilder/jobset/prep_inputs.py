@@ -5,8 +5,8 @@ Two tuples, one per kind:
     prep_run_inputs  ->  (allocation, pins, chosen)       a run
     bench_inputs     ->  (points, pins, translation)      a benchmark sweep
 
-and the pieces they are made of: the run's condition (`run_condition`,
-`run_uses_device`, `declared_run_shape`, `run_inputs`), the description's
+and the pieces they are made of: the run's condition (`Task.run_condition`,
+read by `run_uses_device`, `declared_run_shape`, `run_inputs`), the bench's
 declared pins and axes (`_declared_execution_pins`), and the bench grid --
 enumerated, checked cell by cell against the target's queues, and reported
 (`_cells_this_machine_holds`, `_rank_reasons`, `_local_refusals`, `_cell_*`).
@@ -33,9 +33,12 @@ def _declared_execution_pins(base, engine, bench_override=None):
     """`task.json` ``bench``, read as the OVERRIDE LANE it is (user rule,
     2026-08-20; `generator.md` § 4.3a): every non-machine entry overrides
     the template -- several points = an axis to try, ONE point = the value
-    in force, applied at prep as a pin for the bench's trials and the run
-    alike.  Nothing migrates between files: the description stays exactly
-    as edited, and prep is where a declaration is resolved.
+    the bench's trials run with, applied at prep as a pin for them alone
+    (trials only since 2026-09-30: the run's values are its own card's,
+    `stages.md` § 6.8d).  Nothing migrates between files: the description
+    stays exactly as edited, and prep is where a declaration is resolved.
+    The run's condition is handed through here too (:func:`run_inputs`), so
+    the two lanes split a name by one rule.
 
     Returns ``(pins, axes, value_axes)``: the one-point non-machine values
     as a pins dict, the machine-answered entries untouched (the grid's
@@ -388,22 +391,6 @@ def _cell_shape(g, k, c, gtype) -> str:
     return bit + (f" + {g} x {gtype or 'gpu'}" if g else "")
 
 
-def run_condition(task, stage=None):
-    """What this run uses — the calculation's block with the rung's over it,
-    FIELD BY FIELD (`stages.md` § 6.8d).
-
-    A stage naming only ``mpi_np`` keeps the calculation's solver and its
-    thread count; whole-object precedence would drop the two nobody
-    mentioned, which is the class of silent loss this file's every other
-    merge avoids.
-    """
-    out = dict(getattr(task, "execution", None) or {})
-    for st in (getattr(task, "stages", None) or ()):
-        if stage is not None and st.name == stage:
-            out.update(dict(getattr(st, "execution", None) or {}))
-    return out
-
-
 #: The catalogue's words for a launch field, and `Resources`' own.  Most
 #: agree; these never did.  It is a NAME MAP and nothing else -- no default,
 #: no enumeration, no arithmetic.  PySCF's ``threads`` is SIESTA's
@@ -435,7 +422,7 @@ def run_uses_device(base, task, stage=None):
     end.  `bench_inputs` had it right all along (it reads the template), and
     this is that read, named once.
     """
-    cond = run_condition(task, stage)
+    cond = task.run_condition(stage)
     if "use_gpu" in cond:
         return bool(cond["use_gpu"])
     try:
@@ -479,11 +466,15 @@ def declared_run_shape(base, target, task, stage=None):
     The device ask is the one field needing a fact this block may not hold:
     WHICH card. That comes from the target's own record through
     `_gpu_type_for_bench`, the same producer the sweep uses — a description
-    may not name a machine (`template.md` § 7).
+    may not name a machine (`template.md` § 7).  And it is decided HERE for
+    every run that uses a device, stated count or not (`execution/gpu.md`
+    G5: an absent ``gpu_count`` is one device, in one place): until
+    2026-09-30 a run whose card said ``use_gpu`` without a count reached the
+    header with no ask, which then looked for the type in a config key alone
+    and refused a target whose own record names its card -- and a PySCF run,
+    which carries no ``gpu_count`` at all, could take no other road.
     """
-    cond = run_condition(task, stage)
-    if not cond:
-        return {}
+    cond = task.run_condition(stage)
     from ..template import catalogue, select
     from .model import Resources
     items = {i.name: i for i in select(catalogue(),
@@ -511,22 +502,24 @@ def declared_run_shape(base, target, task, stage=None):
             out["gres"] = int(val)      # resolved below, once the type is known
         elif field in known:
             out[field] = val
-    if "gres" in out:
-        # WHETHER there is a device is the description's answer (the template's
-        # `use_gpu`, overridden by this condition's); HOW MANY is this block's;
-        # WHICH KIND is the machine's.  A count without a device run is not an
-        # ask -- it is a contradiction, and validation names it.
-        if want_devices is None:
-            want_devices = run_uses_device(base, task, stage)
-        if not want_devices:
-            del out["gres"]
-        else:
-            from ..scheduler import machine_for
-            topo = getattr(machine_for(Path(base), target=target,
-                                       probe=(target is None)), "topology", None)
-            gtype = _gpu_type_for_bench(base, topo)
-            n = out["gres"]
-            out["gres"] = f"gpu:{gtype}:{n}" if gtype else f"gpu:{n}"
+    # WHETHER there is a device is the run's answer (the card's `use_gpu`
+    # over the template's); HOW MANY is this block's `gpu_count`, else one
+    # (G5); WHICH KIND is the machine's.  A count without a device run is not
+    # an ask -- it is a contradiction, and validation names it.
+    if want_devices is None:
+        want_devices = run_uses_device(base, task, stage)
+    if not want_devices:
+        out.pop("gres", None)
+        return out
+    from ..scheduler import machine_for
+    topo = getattr(machine_for(Path(base), target=target,
+                               probe=(target is None)), "topology", None)
+    # WHICH CARD, by the bench's own two producers in its order: the stated
+    # choice or the target's probe, else the queue menu's GPU inventory --
+    # a login node's probe sees no card, and the cluster behind it does.
+    gtype = _gpu_type_for_bench(base, topo) or _gpu_inventory(base)[1]
+    n = out.get("gres", 1)
+    out["gres"] = f"gpu:{gtype}:{n}" if gtype else f"gpu:{n}"
     return out
 
 
@@ -539,7 +532,7 @@ def run_inputs(base, target, task, stage=None):
     same door the bench's one-point declarations go through, so the two lanes
     cannot disagree about what a name means.
     """
-    cond = run_condition(task, stage)
+    cond = task.run_condition(stage)
     if not cond:
         return {}, {}
     pins, _axes, _value_axes = _declared_execution_pins(
@@ -564,18 +557,16 @@ def prep_run_inputs(base, target, task, stage, allocation=None, *,
     framework.  It just helps the user to visualize and to decide.")*
 
     So the browser's prep button and ``molbuilder jobset prep run`` call
-    THIS, and neither assembles anything of its own.  Three sources compose
-    here, weakest first (`generator.md` § 4.3a):
+    THIS, and neither assembles anything of its own.  ONE source states the
+    run (`stages.md` § 6.8d, plan § 5w K5): ``execution``, the calculation's
+    block with the rung's over it -- what the person ASKED for.  Its machine
+    items are the launch shape, the rest are pins over the template.  The
+    two sources that stood beside it are gone: the benchmark's verdict
+    (2026-09-02), and the bench's one-point non-machine declarations, which
+    pin the trials alone since 2026-09-30 -- each was a second home for a
+    value the run card states.
 
-      1. the bench's one-point NON-machine declarations -- pins in force for
-         the trials and the run alike (user rule, 2026-08-20);
-      2. *(removed 2026-09-02)* -- the benchmark's verdict filled the
-         allocation fields no flag stated, and its own pins;
-      3. ``execution`` -- what the person ASKED for, the most specific thing
-         the file says: its machine items are the launch shape, the rest are
-         pins over both of the above.
-
-    A flag beats all three and is already in ``allocation`` when it arrives.
+    A flag beats it and is already in ``allocation`` when it arrives.
 
     **It was three branches for an hour on 2026-09-02** and each divergence
     was a different run: the browser had no verdict, no bench pins, and at
@@ -629,11 +620,10 @@ def prep_run_inputs(base, target, task, stage, allocation=None, *,
     #     launch on its own is a second arrival route, and every silent-value
     #     defect this lane has had was a second arrival route.
 
-    # 3 · THE PINS, weakest first: the bench's one-point declarations, then
-    #     the condition's -- 5.2's deck/speed ladder, now two rungs not three.
-    declared_pins, _axes, _value_axes = _declared_execution_pins(
-        base, task.engine)
-    pins = {**declared_pins, **cond_pins} or None
+    # 3 · THE PINS -- the condition's alone (5.2's deck/speed ladder).  The
+    #     bench's one-point declarations pin its trials, never the run
+    #     (`stages.md` § 6.8d's "and nowhere else", 2026-09-30).
+    pins = dict(cond_pins) or None
 
     # 4 · SAY WHAT WILL HAPPEN WHEN NOTHING WAS STATED.  Not a decision --
     #     the decision is `auto_ranks`, made in the emitter -- but prep must

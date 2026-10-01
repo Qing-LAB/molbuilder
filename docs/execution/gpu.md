@@ -187,8 +187,9 @@ coordinate, so a trial's deck and its family agree by construction.
 Submission then groups trials by their exact resource ask, so **a CPU trial
 never holds a device**.
 
-With **one point** it is a chosen value, applied at prep as a pin over the
-template — for the bench's trials and the run alike.
+With **one point** it is the trials' value, applied at prep as a pin over the
+template for the bench's trials; the run's GPU choice is its run card's
+(`execution`, [`stages.md`](?doc=engines/stages.md) § 6.8d).
 
 *(This is § 4.3a of [`generator.md`](?doc=execution/generator.md); it is
 drawn here only because the graph is the same walk.)*

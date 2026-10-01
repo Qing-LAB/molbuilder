@@ -204,11 +204,11 @@ Rows are stages, columns are parameters. **Add a parameter to make it a column,
 then give it a value per stage. Anything you do not add stays as you set it, for
 every stage.**
 
-| Stage | mesh_cutoff | relax_force_tol | relax_type | restart |
-|---|---|---|---|---|
-| coarse | 150 | 0.04 | CG | clean |
-| medium | 200 | 0.04 | Broyden | continue |
-| tight | 300 | 0.01 | Broyden | continue |
+| Stage | mesh_cutoff | relax_force_tol | relax_type |
+|---|---|---|---|
+| coarse | 150 | 0.04 | CG |
+| medium | 200 | 0.04 | Broyden |
+| tight | 300 | 0.01 | Broyden |
 
 **The column set is `varies`; the cells are each stage's `overrides`**
 ([`stages.md § 6.2`](?doc=engines/stages.md)). A cell left empty means *this
@@ -218,8 +218,10 @@ of `varies` rather than equal to it.
 **Which parameters may be a column of THIS folder** is answered by the
 catalogue's markers for the folder's kind, and by nothing the page keeps
 ([`template.md § 6.4`](?doc=engines/template.md); `/api/task-setup/columns?engine=&calculation=`):
-the kind narrows them (`calculations`); the machine's are excluded
-(`allocation`); a rung's role is not a column (`role`); and **a value shared by
+the kind narrows them (`calculations`); **a run setting is not a column** —
+the catalogue's `execution` items, the machine's answers among them, are each
+rung's run card (§ 6.2b; `stages.md` § 6.8d, plan § 5w K5); a rung's role is
+not a column (`role`); and **a value shared by
 every rung is not a column (`shared`)** — it is edited in the template, on the
 tab that owns it, and a column here would be a per-rung override `prep`
 refuses by name. *(Measured 2026-09-24: a transport folder's picker offered
@@ -344,10 +346,10 @@ other's block.
 | run | `mpi_np` = `8` | what the run asks for |
 | run | *(blank)* | the target's own width (`auto_ranks`), else a refusal |
 
-**A one-point row in the MEASURE card is still one trial, not a decision** —
-except for the non-machine items, where the 2026-08-20 override rule stands:
-`use_gpu: [true]` pins the template for the trials and the run alike
-(`generator.md` § 4.3a).
+**A one-point row in the MEASURE card is the trials' value, never the
+run's.** On a non-machine item it pins the template for the trials
+(`use_gpu: [true]`, the 2026-08-20 override rule) and for them alone since
+2026-09-30; the run reads its own card (`generator.md` § 4.3a).
 
 ### 6.1 Two kinds of setting live here, and the difference is not cosmetic
 
@@ -614,7 +616,7 @@ its point count:
 |---|---|---|
 | a parameter's value | `<label>.template.toml` | the template holds every parameter with the value in force |
 | a column, its cells, the shape, the id | `task.json` | what *changes* |
-| a **measure**-card setting | `task.json`'s `bench` | the points to try. A one-point NON-machine entry is also a pin in force over the template, for the trials and the run alike *(user rule, 2026-08-20)*; a machine axis is only ever a point to measure |
+| a **measure**-card setting | `task.json`'s `bench` | the points to try. A one-point NON-machine entry is the trials' value, a pin over the template for them alone *(user rule, 2026-08-20; trials only since 2026-09-30)*; a machine axis is only ever a point to measure |
 | a **run**-card setting | `task.json`'s `execution` | **one value each** — what the run uses (`stages.md` § 6.8d). Independent of `bench`: a run needs no benchmark, and declaring a grid states nothing about the run. **Three destinations, chosen by the catalogue and never by a second key:** a machine item becomes the launch shape; `time` and `domain` are this run's own scheduler ask (§ 6.8e, and the row below); every other catalogue item is a pin over the template |
 | the notify card | `task.json`'s `notify` | the reporting policy — when, to which channels **by name**, with which fields ([`stages.md`](?doc=engines/stages.md) § 6.9; the card is § 9b). Never an address or a key: those stay on the machine that runs the job ([`run-reports.md`](?doc=execution/run-reports.md) § 1) |
 | a queue, a wall, a memory ask | `task.json`'s `allocation` | **what this calculation asks the scheduler for** (`stages.md` § 6.8a) — three fields, each optional. Not the launch shape: that is a machine-card row, one row above. **And not the last word on two of them:** a run may state its OWN `time` and `domain` on the run card, because a benchmark and a run want different wall clocks and different queues (§ 6.8e). `mem` has no such second home, deliberately — a trial and a run hold about the same memory |
@@ -628,8 +630,9 @@ its point count:
   // `source` is FOLDER-RELATIVE — the .xyz beside this file, not a path from
   // anywhere else.  Its sidecar is found by the pairing rule, never named here.
   "structure": { "source": "bdt_au.xyz", "formula": "Au38C6H4S2", "atoms": 50 },
-  "varies": ["mesh_cutoff", "relax_force_tol", "relax_type", "restart"],
-  "stages": [ { "name": "coarse", "enabled": true, "overrides": { … } }, … ],
+  "varies": ["mesh_cutoff", "relax_force_tol", "relax_type"],
+  "stages": [ { "name": "coarse", "enabled": true, "overrides": { … },
+                "execution": { "restart": "clean" } }, … ],
   "bench":  { "mpi_np": [4, 8, 16], "omp_threads": [1, 2] } }
 ```
 

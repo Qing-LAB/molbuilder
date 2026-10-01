@@ -690,7 +690,7 @@ changed.)*
 | kind | example | weakest → strongest |
 |---|---|---|
 | **physics** | `mesh_cutoff` · basis · k-grid | catalogue default → **template value** → that stage's `overrides` |
-| **deck / speed** | `diag_algorithm` · `block_size` · `use_gpu` | template value → a one-point `bench` pin → **`execution`** |
+| **deck / speed** | `diag_algorithm` · `block_size` · `use_gpu` | template value → **`execution`**, the calculation's then the rung's *(a one-point `bench` pin sets only the bench's trials since 2026-09-30)* |
 | **launch shape** | `mpi_np` · `omp_threads` · `gpu_count` | `auto_ranks` (the target's width, else a refusal) → **`execution`** → a `prep` **flag** |
 | **scheduler ask** | `mem` | unstated (the queue's own ceiling) → `allocation` → a `prep` **flag** |
 | **scheduler ask, per lane** | `time` · `domain` | unstated → `allocation` *(the calculation's, and the BENCH's)* → **`execution`** *(this run's)* → a `prep` **flag** |

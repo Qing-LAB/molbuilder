@@ -201,7 +201,8 @@ Stage(name="coarse", enabled=True,
 ```
 
 *(No `restart`: the shipped ladders set none. Every rung takes the default,
-`continue`, and a rung that should start over says `"restart": "clean"` —
+`continue`, and a rung that should start over says so on its run card,
+`"execution": {"restart": "clean"}` (§ 6.8d) —
 [`run-identity.md § 4`](?doc=execution/run-identity.md) rule 3.)*
 
 **What that required was vocabulary, not a new shape** — a knob is only a legal
@@ -300,9 +301,11 @@ is what limited a stage to four values.**
 Today's four relaxation values are a **default selection** over that catalogue —
 and not a privileged class of parameter. Any field of the shared schema can be
 selected, except the items bound to the whole calculation — the items the catalogue marks `shared` for the kind, the
-electronic state first among them (§ 1.3's note; ES1) — and the items the rung
+electronic state first among them (§ 1.3's note; ES1) — the items the rung
 itself fixes (`role`: SIESTA's per-step forces and coordinates, a transport
-rung's solver and bias; `template.md` § 6.4).
+rung's solver and bias; `template.md` § 6.4) — and the run settings, the
+catalogue's `execution` items, which each rung states on its run card
+(§ 6.8d).
 
 ### 1.3 The default selection is a group each engine declares, not a list in code
 
@@ -957,22 +960,24 @@ rather than inventing a second mechanism.
   // WHICH fields the user chose to tune. Intent — it cannot be inferred (§ 6.2).
   // There is no `base` key: everything that does NOT vary is in the template,
   // once (§ 4).
-  "varies": ["mesh_cutoff", "relax_force_tol", "relax_type", "restart"],
+  "varies": ["mesh_cutoff", "relax_force_tol", "relax_type"],
 
   "stages": [
     { "name": "coarse", "enabled": true,
       "overrides": { "mesh_cutoff": 150, "relax_force_tol": 0.04,
-                     "relax_type": "CG",      "restart": "clean" } },
+                     "relax_type": "CG" },
+      // HOW THIS RUNG IS RUN -- its run card (§ 6.8d), never a column.
+      "execution": { "restart": "clean" } },
 
     { "name": "tight",  "enabled": true,
       "overrides": { "mesh_cutoff": 300, "relax_force_tol": 0.01,
-                     "relax_type": "Broyden", "restart": "continue" } }
+                     "relax_type": "Broyden" } }
   ],
 
-  // WHAT TO MEASURE before committing, and what is CHOSEN outright
-  // (§ 6.8).  Optional.  A machine-answered entry is points to TRY,
-  // never an answer; a non-machine execution entry with ONE point is a
-  // chosen override, applied at prep as a pin (user rule, 2026-08-20).
+  // WHAT TO MEASURE (§ 6.8).  Optional.  A machine-answered entry is
+  // points to TRY, never an answer; a non-machine execution entry with
+  // ONE point is what the trials run with, a pin for them alone (user
+  // rule, 2026-08-20; trials only since 2026-09-30).
   "bench": { "mpi_np": [4, 8, 16], "omp_threads": [1, 2],
              "use_gpu": [true] }
 }
@@ -1061,25 +1066,29 @@ that omits a varied key renders with the template's value for it (§ 4).
 There is no separate list of promotable settings, and there must not be one: § 1.2
 already says a stage may name any field of the shared schema but the ones bound to
 the whole calculation (the catalogue's `shared` marker, which the columns read
-too) and the ones the rung fixes (its `role` marker, read the same way), and the
-description
-is already forbidden to hold the settings the machine answers *as a column* —
-how many ranks, how many cores per rank, how much memory. Those rules
-together give the column set with nothing left to decide.
+too), the ones the rung fixes (its `role` marker, read the same way), and the
+run settings — the catalogue's `execution` items, the machine's answers
+(ranks, cores per rank, memory) among them. Those rules together give the
+column set with nothing left to decide.
 
-*(A machine-answered setting is not column material because it is not a
-per-stage **parameter**; it is what the job is launched AS, and it has its own
-block — `execution`, § 6.8d. `template.md` § 7's refusal is the **template's**
-and stays absolute; the description's own channel is a different file with a
+*(A run setting is not column material because it is not a per-stage
+**parameter** of the calculation: it is how the rung is run, and it has its
+own block — `execution`, § 6.8d, the rung's run card. A column would be a
+second home for one value, and a second home is how a rung's `use_gpu`
+reached its deck and not the scheduler's device ask (plan § 5w K5, SO-C1;
+2026-09-30). `template.md` § 7's refusal is the **template's** and stays
+absolute; the description's own channel is a different file with a
 different job, which § 7 now says in as many words.)*
 It is the same membership `prep` already applies when it accepts or refuses an
 override, a pin, or a benchmark axis, so a column the table offers is a column
 `prep` will accept, by construction rather than by agreement.
 
-Concretely, for SIESTA that means the physics settings **plus** `restart`,
-`continue_retries` and `use_gpu` — the three staging settings a person answers
-— and **not** `mpi_np`, `omp_threads` or `max_memory_mb`, which the machine
-answers at `prep`. A surface that instead borrows the parameter form's list gets
+Concretely, for SIESTA that means the physics settings, and **not** the run
+settings: `restart`, `continue_retries`, `use_gpu`, `diag_algorithm`,
+`block_size` and `parallel_over_k`, which a person answers on the run card,
+nor `mpi_np`, `omp_threads`, `gpu_count` or `max_memory_mb`, which the machine
+answers. *(`restart`, `continue_retries` and `use_gpu` were columns until
+2026-09-30.)* A surface that instead borrows the parameter form's list gets
 a different and smaller answer, because that form filters out the whole staging
 panel on purpose: it does not ask a person how many ranks the scheduler granted.
 Filtering a panel and limiting a table are different jobs (§ 1.3).
@@ -1293,7 +1302,8 @@ that result away — always a mistake, and an expensive one.
 
 > **What separates them is `start from`, not the overrides.** So the comparison
 > is over the **resolved pair**: two stages whose effective configs are equal
-> *and* whose second says `clean`. Comparing overrides alone would flag the
+> *and* whose second says `clean` — on its run card, the one place a rung's
+> `restart` lives (§ 6.8d). Comparing overrides alone would flag the
 > legitimate case and miss nothing, which is how a warning becomes noise people
 > learn to click through.
 >
@@ -1476,6 +1486,15 @@ calculation's solver and its thread count:
 "stages": [{ "name": "tight", "execution": { "mpi_np": 16 } }]
 ```
 
+**And nowhere else** *(plan § 5w K5, 2026-09-30)*. A run setting is stated
+in this block — the calculation's or the rung's own — and in no other part of
+the description: not as a stage column (§ 6.2), and not by a `bench` row,
+which sets only the trials it declares (§ 6.8). So every reader takes one
+answer, the template's value with the calculation's block over it and the
+rung's over that — the deck, the scheduler's device ask, the wrapper and the
+Task setup tab's cards and hints alike — and a transport rung takes its run
+card as every other rung does.
+
 **Absent is a state, as everywhere here.** No block means the run is sized
 from the selected target's own width (`auto_ranks`) — or refused when that
 target has no record — which `prep` names out loud rather than implying
@@ -1559,10 +1578,12 @@ it belongs in the description, and nothing else in `task.json` could hold it:
 > `task.json` records what the person **asked** — points to try, or a value
 > they chose. It never records what a machine **found**.
 
-**And ONE point on a NON-MACHINE entry is a chosen value** *(user rule,
-2026-08-20 — the override lane)*: `use_gpu: [true]` is the person's answer,
-applied at prep as a pin over the template for the bench's trials **and the
-run alike**.
+**And ONE point on a NON-MACHINE entry is the value the trials run with**
+*(user rule, 2026-08-20 — the override lane; trials only since 2026-09-30)*:
+`use_gpu: [true]` is applied at prep as a pin over the template for the
+bench's trials, **and only for them**. It pinned the run as well until
+2026-09-30 — a second home for the run's value beside `execution` — and the
+run now reads its own card (§ 6.8d; user: *"trials only"*).
 
 **A machine-answered entry is never an answer here, at any length.**
 `mpi_np: [8]` is *measure eight* — one trial, not a decision. What the RUN

@@ -112,8 +112,9 @@ def test_the_contracts_own_example_is_a_valid_description(example):
     # another is only half the pattern.
     assert task.run.id == run_id(task.run.name, task.structure.formula)
     assert [s.name for s in task.stages] == ["coarse", "tight"]
-    assert task.varies == ("mesh_cutoff", "relax_force_tol",
-                           "relax_type", "restart")
+    assert task.varies == ("mesh_cutoff", "relax_force_tol", "relax_type")
+    # ...and how a rung is run is on its run card, never a column (§ 6.8d).
+    assert task.stages[0].execution == {"restart": "clean"}
 
 
 def test_round_trip_is_byte_identical(example, tmp_path):

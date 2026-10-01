@@ -574,6 +574,25 @@ class Task:
                     "'stages' for a single parameter set")
         self._check_id()
 
+    # ----- the run card (stages.md 6.8d) ------------------------------- #
+
+    def run_condition(self, stage: Optional[str] = None) -> Dict[str, Any]:
+        """What a rung's run uses -- the calculation's ``execution`` with the
+        rung's own over it, FIELD BY FIELD (`stages.md` § 6.8d).
+
+        The one place a run setting lives (plan § 5w K5), so this is the one
+        answer every reader takes: the deck's pins and the launch shape at
+        ``prep``, the scheduler's device ask, the sequence checks, the Task
+        setup tab.  A stage naming only ``mpi_np`` keeps the calculation's
+        solver and its thread count; whole-object precedence would drop the
+        two nobody mentioned.
+        """
+        out = dict(self.execution or {})
+        for st in (self.stages or ()):
+            if stage is not None and st.name == stage:
+                out.update(dict(st.execution or {}))
+        return out
+
     # ----- identity (run-identity.md 2, 2.0a, 3) ---------------------- #
 
     def _stage_names(self) -> Tuple[str, ...]:

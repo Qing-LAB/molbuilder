@@ -45,9 +45,10 @@ _H2 = (["H", "H"], [[5.0, 5.0, 5.0], [5.0, 5.0, 5.95]])
 
 
 def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
-         molecule=_H2, info=None):
-    """``molecule``, its one stage carrying ``overrides`` and its template
-    ``template``'s values -- written by the hand-over's own writer
+         molecule=_H2, info=None, execution=None):
+    """``molecule``, its one stage carrying ``overrides``, its run card
+    ``execution`` (`stages.md` § 6.8d: a run setting lives there alone) and
+    its template ``template``'s values -- written by the hand-over's own writer
     (`template_with_values`), since the electronic state binds every rung
     and is the template's -- prepped and launched directly: the bundle, the
     stage's state as the ladder reads it, and what the run itself printed."""
@@ -85,7 +86,8 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
         path.write_text(template_with_values(cfg, engine="pyscf",
                                              calculation=calculation))
     task = read_task(bundle / "task.json")
-    stage = dataclasses.replace(task.stages[0], overrides=dict(overrides))
+    stage = dataclasses.replace(task.stages[0], overrides=dict(overrides),
+                                execution=dict(execution or {}))
     write_task(bundle / "task.json", dataclasses.replace(
         task, stages=(stage,),
         varies=tuple(dict.fromkeys((*task.varies, *overrides)))))
@@ -234,8 +236,8 @@ def test_an_open_shell_run_on_the_gpu_says_its_stability_was_not_checked(
         molecule=(["O", "O"], [[5.0, 5.0, 5.0], [5.0, 5.0, 6.21]]),
         template={"method": "HF", "basis": "sto-3g",
                   "spin_treatment": "unrestricted", "unpaired_electrons": 2},
-        overrides={"use_gpu": True, "geom_max_steps": 1,
-                   "on_nonconvergence": "proceed"})
+        overrides={"geom_max_steps": 1, "on_nonconvergence": "proceed"},
+        execution={"use_gpu": True})
     assert "GPU acceleration ON" in said, said[-3000:]
     assert ("stability: NOT CHECKED -- this mean field declares no stability "
             "analysis") in said, said[-3000:]

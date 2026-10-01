@@ -556,13 +556,26 @@ function extraRunRows(stage) {
 }
 
 /** This rung's condition: the calculation's block with the stage's over it,
- *  field by field -- `run_condition` on the server, same rule. */
+ *  field by field -- `Task.run_condition` on the server, same rule. */
 function runConditionOf(task, stage) {
     const out = Object.assign({}, (task && task.execution) || {});
     for (const st of ((task && task.stages) || [])) {
         if (st && st.name === stage) Object.assign(out, st.execution || {});
     }
     return out;
+}
+
+/** What one run setting of this rung RESOLVES to -- its run card, the
+ *  template under it, the catalogue's default under both: what `prep run`
+ *  pins, read the way `prep` reads it.  The run card is the one place a
+ *  rung's run setting lives (`stages.md` § 6.8d, plan § 5w K5), so a hint
+ *  about the rung asks this, never a stage column. */
+function runSettingOf(task, stage, name) {
+    const card = runConditionOf(task, stage);
+    if (name in card) return card[name];
+    if (name in _tmpl.values) return _tmpl.values[name];
+    const m = _meta[name];
+    return m ? m.default : undefined;
 }
 
 /** The parameters this card offers: every setting a bench MAY vary, plus
@@ -2236,7 +2249,6 @@ function renderNext(task) {
 
     enabled.forEach((e, i) => {
         const name = e.st.name || "";
-        const ov = e.st.overrides || {};
         // `continue` carries from the stage before it — and `prep` is TOLD
         // which attempt, never left to guess (`project-layout.md` § 1.6).
         /* FLAT HAS NO ATTEMPT DIRECTORIES, so it has no `--from`: the
@@ -2252,7 +2264,12 @@ function renderNext(task) {
          * the count (`_fs.runs`, from the folder's answer) and uses it. */
         let from = "";
         const hierarchical = _shape === "hierarchical";
-        if (i > 0 && String(ov.restart || "") === "continue" && hierarchical) {
+        /* THE RUNG'S `restart` AS IT WILL RUN -- its run card over the
+         * template (`runSettingOf`).  This read the stage's COLUMN, so a
+         * rung continuing by the template's default (`continue`) was taught
+         * no `--from` at all (the K5 review's `--from` hint). */
+        const restart = runSettingOf(_task || task, name, "restart");
+        if (i > 0 && String(restart || "") === "continue" && hierarchical) {
             const prev = enabled[i - 1];
             /* THE TOKEN COMES FROM THE SERVER (`_fs.tokens`), not spelled
              * here: `<NN>_<name>` is `identity.stage_token`'s and `run-<n>`
