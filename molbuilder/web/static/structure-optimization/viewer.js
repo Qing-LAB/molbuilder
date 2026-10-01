@@ -281,7 +281,9 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
 
     async function refreshPreflight(engine) {
         if (!_structureForRequest()) return;
-        const params = collectParams(engine);
+        let params;
+        try { params = collectParams(engine); }
+        catch (_) { return; }   // the field's own caption says why
         try {
             const r = await fetch("/api/build/preflight", {
                 method: "POST",
@@ -651,8 +653,12 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             let diffs = [];
             try { diffs = fs.diffFromDefaults(container, schema); }
             catch (_) { return; }
+            // BACK TO NOT CHOSEN, not to a copy of the recommendation: a
+            // blank field runs the kind's recommended value and the
+            // template records it as nobody's choice (form-schema.md § 1.1);
+            // typing the recommended value in would record it as yours.
             const values = {};
-            for (const d of diffs) if (want.has(d.name)) values[d.name] = d.recommended;
+            for (const d of diffs) if (want.has(d.name)) values[d.name] = null;
             fs.setValues(container, schema, values);
             refresh();
         });
@@ -705,11 +711,9 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         wireCompatibilityListeners();
         wirePreflightListeners();
         applyCompatibility();
-        // AFTER the restore, and this ordering is the whole of whether the
-        // panel works: restoreFormState assigns `el.value` directly and
-        // dispatches nothing, so a panel mounted before it measures a form
-        // that is still at its defaults and then never hears the values
-        // arrive.  Mounted here, its first reading is the real one.
+        // AFTER the restore: mounted here, the panel's first reading is the
+        // form as restored.  (The restore writes through `setValues`, which
+        // fires `input`, so each field's caption follows it.)
         for (const [engine, hostId] of [["siesta", "siesta-form-container"],
                                        ["pyscf",  "pyscf-form-container"]]) {
             const host = $(hostId);
@@ -770,6 +774,8 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     // during the programmatic .value assignments and would set
     // _formDirty=true spuriously); we reset _formDirty AFTER each
     // rebuild via the same mechanism as a successful sidebar commit.
+    // The session restore writes through `setValues`, which fires both
+    // events, and holds `_ignoreFormChanges` while it does.
     let _formDirty = false;
     let _ignoreFormChanges = false;
     function _wireFormDirtyTracking() {
@@ -1233,26 +1239,20 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
      * Comments describing removed behaviour are worse than none: they are
      * read as the reason the function exists.
      *
-     * One normalisation stays and is PySCF's alone: null-valued keys are
-     * dropped so a dataclass falls back to its own default instead of
-     * receiving None where it declares an int/float.  (A blank charge or
-     * spin item is None either way -- dropped here or sent as null to the
-     * SIESTA door -- which is what "work it out" is: the electronic
-     * state's own blank, `science/chemistry-correctness.md` § 2a.)
-     * `dispersion = "none"` is sent as itself: it is the value for no
-     * correction, and turning it into null here DROPPED it, so the server
-     * built the default D3BJ (fixed 2026-09-28).
+     * A blank is sent as `null`, for both engines: not chosen, which the
+     * server's one door reads as "what lies under it" for every field
+     * (`_shared.config_from_params`, form-schema.md § 1.1) -- a blank charge
+     * or spin among them, whose blank is "work it out"
+     * (`science/chemistry-correctness.md` § 2a).  PySCF's own null-dropping
+     * stood here for the same rule until 2026-09-30.  `dispersion = "none"`
+     * is sent as itself: it is the value for no correction.  Throws, naming
+     * the field, on a value that will not read as its type.
      */
     function collectParams(engine) {
         const schema = formSchemas[engine];
         if (!schema) return {};
         const fs = (window.molbuilder || {}).formSchema;
-        const params = fs.collectForm($(engine + "-form-container"), schema);
-        if (engine !== "pyscf") return params;
-        Object.keys(params).forEach(k => {
-            if (params[k] === null) delete params[k];
-        });
-        return params;
+        return fs.collectForm($(engine + "-form-container"), schema);
     }
 
     // ----- Session state: persist Generate-input form values across tab navigation -----
@@ -1287,27 +1287,47 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         return ids;
     }
 
+    /* What each engine's form HOLDS, through the form's own reader and
+     * writer (`collectForm` / `setValues`): a blank stays blank -- a box
+     * nobody answered stays unanswered, where reading `.checked` by id
+     * turned it into "off" on the way back.  A form holding a value that
+     * will not read is not saved; its field says why. */
     function saveFormState() {
+        const fs = (window.molbuilder || {}).formSchema;
+        if (!fs) return;
         const saved = {};
-        getFormIds().forEach(id => {
-            const el = $(id);
-            if (!el) return;
-            saved[id] = el.type === "checkbox" ? el.checked : el.value;
-        });
+        for (const engine of ["siesta", "pyscf"]) {
+            const sch = formSchemas[engine];
+            const host = $(engine + "-form-container");
+            if (!sch || !host) continue;
+            try { saved[engine] = fs.collectForm(host, sch); }
+            catch (_) { /* not saved: the field's caption says why */ }
+        }
         sessionStorage.setItem("builder-form", JSON.stringify(saved));
     }
 
     function restoreFormState() {
+        const fs = (window.molbuilder || {}).formSchema;
         let saved;
         try { saved = JSON.parse(sessionStorage.getItem("builder-form") || "null"); }
         catch (_) { return; }
-        if (!saved) return;
-        getFormIds().forEach(id => {
-            const el = $(id);
-            if (!el || !(id in saved)) return;
-            if (el.type === "checkbox") el.checked = saved[id];
-            else el.value = saved[id];
-        });
+        if (!saved || !fs) return;
+        // A RESTORE IS NOT AN EDIT: `setValues` fires `input` and `change`
+        // (so each field's caption follows), and the form-dirty gate would
+        // read them as the person's -- the next structure load then stopped
+        // at "discard unsaved changes?" over values nobody had touched.
+        _ignoreFormChanges = true;
+        try {
+            for (const engine of ["siesta", "pyscf"]) {
+                const sch = formSchemas[engine];
+                const host = $(engine + "-form-container");
+                if (!sch || !host || !saved[engine]
+                        || typeof saved[engine] !== "object") continue;
+                fs.setValues(host, sch, saved[engine]);
+            }
+        } finally {
+            _ignoreFormChanges = false;
+        }
     }
 
     // No synchronous first restore: every persistent id is
@@ -1408,6 +1428,14 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             return;
         }
         const engine = _activeEngine();
+        // A VALUE THAT WILL NOT READ AS ITS TYPE is refused here, naming its
+        // field -- beside which its caption already says why.
+        let params;
+        try { params = collectParams(engine); }
+        catch (e) {
+            _handoverSay("error", e.message);
+            return;
+        }
         await mb.taskHandover.send({
             projects:  mb.projects,
             say:       _handoverSay,
@@ -1418,7 +1446,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             showFindings: (issues) => _showFindings(engine, issues, true),
             structure: _structureForRequest(),
             engine:    engine,
-            params:    collectParams(engine),
+            params:    params,
         });
     }
 

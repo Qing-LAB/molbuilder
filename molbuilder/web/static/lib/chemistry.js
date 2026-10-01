@@ -81,21 +81,21 @@
         if (el) el.textContent = text || "";
     }
 
-    /** A form's four state items, as the form would send them -- through
+    /** A form's four state items, as the form holds them -- through
      *  form-schema's one collector, so a blank is null here exactly as it
-     *  is on the hand-over. */
+     *  is on the hand-over.  `null` when one will not read as its type:
+     *  the field's own caption says why, and the card is not asked about a
+     *  value nobody can send. */
     function _stateItems(host, schema) {
         var fs = root.molbuilder && root.molbuilder.formSchema;
         if (!host || !schema || !fs || typeof fs.collectForm !== "function") {
             return {};
         }
-        var all = fs.collectForm(host, schema);
-        var out = {};
-        for (var i = 0; i < STATE_ITEMS.length; i++) {
-            var k = STATE_ITEMS[i];
-            if (Object.prototype.hasOwnProperty.call(all, k)) out[k] = all[k];
+        try {
+            return fs.collectForm(host, schema, STATE_ITEMS);
+        } catch (_) {
+            return null;
         }
-        return out;
     }
 
     // ------------------------------------------------------------ render
@@ -247,14 +247,19 @@
         }
 
         function refresh() {
-            var fs = forms(), items = {}, hosts = {};
+            var fs = forms(), items = {}, hosts = {}, unreadable = false;
             Object.keys(fs).forEach(function (engine) {
                 var f = fs[engine];
                 if (!f || !f.host || !f.schema) return;
-                items[engine] = _stateItems(f.host, f.schema);
+                var held = _stateItems(f.host, f.schema);
+                if (held === null) unreadable = true;
+                else items[engine] = held;
                 hosts[engine] = f.host;
                 _watch(f.host);
             });
+            // A STATE FIELD THAT WILL NOT READ is said beside it, by its own
+            // caption; the card keeps what it showed until it reads.
+            if (unreadable) return Promise.resolve({ ok: false });
             var structure = (typeof opts.structure === "function")
                 ? opts.structure() : null;
             if (!structure) {

@@ -187,6 +187,12 @@ class Item:
 
     value:   Any = None
     default: Any = None
+    #: WHERE THE VALUE CAME FROM -- one of :data:`SOURCES` (§ 6.6 obligation
+    #: 2, plan § 5w K7): a cited run, the structure's saved record, the
+    #: person, or nobody (``default``, *not chosen*).  ``None`` is a template
+    #: written before K7, which never recorded it: *not recorded*, never
+    #: guessed.
+    source:  Optional[str] = None
 
     # --- reaching the deck (§ 6) ---
     anchor:  str = ""                       # required when kind == "engine"
@@ -941,7 +947,7 @@ def _toml_key(k: Any) -> str:
 #: what it is, then what it is worth, then what bounds it, then the prose.
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "anchor", "engine_key",
                    "manual", "expands", "type",
-                   "choices", "value", "default", "recommended", "offered", "optional", "required",
+                   "choices", "value", "source", "default", "recommended", "offered", "optional", "required",
                    "allocation",
                    "citation", "shared", "role", "role_values", "stages",
                    "unit", "range", "above", "tightens", "tier", "pattern",
@@ -964,6 +970,8 @@ def _item_payload(it: Item) -> Dict[str, Any]:
     # An absent ``value`` is the encoding of *explicitly unset* (§ 3).
     if it.value is not None:
         out["value"] = list(it.value) if isinstance(it.value, tuple) else it.value
+    if it.source is not None:
+        out["source"] = it.source
     if it.default is not None:
         out["default"] = (list(it.default) if isinstance(it.default, tuple)
                           else it.default)
@@ -1134,7 +1142,8 @@ def catalogue() -> "Template":
 def template_with_values(config, *, engine: str = "", catalogue: str = "",
                          calculation: str = "optimization",
                          title: str = "",
-                         valueless: Sequence[str] = ()) -> str:
+                         valueless: Sequence[str] = (),
+                         sources: Optional[Mapping[str, str]] = None) -> str:
     """**This calculation's** template: the catalogue, narrowed to one engine,
     carrying the values *config* holds (§ 4.3).
 
@@ -1149,10 +1158,21 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
     was resolved somewhere — but writing it here would make the description
     assert a machine fact and stop being portable.
 
+    **Each value says where it came from** (`source`, § 6.6 obligation 2,
+    plan § 5w K7): ``sources`` is what the CALLER knows -- a cited run's
+    answers, the structure's record, what the person's form sent -- and every
+    other item is ``default``, *not chosen*.  An item the template holds no
+    value of by rule (the scheduler's, the rung's) carries no source.
+
     Raises ``ValueError`` if the emitted text does not parse back to what it
     meant to write — § 4.1 asks for exactly this.
     """
     parsed = read_template(catalogue or load_catalogue())
+    told = dict(sources or {})
+    bad = sorted(set(told.values()) - set(SOURCES))
+    if bad:
+        raise ValueError(f"source(s) {', '.join(map(repr, bad))} are not "
+                         f"one of {', '.join(SOURCES)} (§ 6.6)")
     eng = engine or engine_name(type(config))
     items = [
         dataclasses.replace(
@@ -1190,6 +1210,8 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
                    if (it.allocation or calculation in it.role
                        or it.name in set(valueless))
                    else getattr(config, it.name, it.value)),
+            source=(None if (it.allocation or calculation in it.role)
+                    else told.get(it.name, "default")),
             # THE KIND'S RECOMMENDATION IS THE TEMPLATE'S DEFAULT (§ 6.3a);
             # the table itself does not travel -- a per-kind template has
             # already answered which kind it serves.
@@ -1288,6 +1310,33 @@ def _first_difference(want: Any, got: Any, path: str = "") -> str:
 # --------------------------------------------------------------------- #
 
 _REQUIRED_ITEM_KEYS = ("kind", "category", "type", "help")
+
+#: Where a template value came from (§ 6.6 obligation 2's four states, plan
+#: § 5w K7): *from the run you cited* · *from the record saved with your
+#: structure* · *you set this* · *not chosen*.
+SOURCES = ("cited", "record", "person", "default")
+
+#: ...in the words every surface says them -- the one vocabulary, served
+#: with the form schema and the Task setup hover (`form-schema.md` § 1.1).
+#: ``unrecorded`` is a template written before the key existed.
+SOURCE_WORDS = {
+    "cited":      "from the run you cited",
+    "record":     "from the record saved with your structure",
+    "person":     "you set this",
+    "default":    "not chosen",
+    "unrecorded": "not recorded",
+}
+
+
+def _source_from(name: str, raw) -> Optional[str]:
+    """An item's ``source``, refused by name outside :data:`SOURCES`."""
+    if raw is None:
+        return None
+    if raw not in SOURCES:
+        raise ValueError(
+            f"item {name!r}: source = {raw!r} is not one of "
+            f"{', '.join(SOURCES)} (engines/template.md 6.6)")
+    return str(raw)
 
 _KNOWN_ITEM_KEYS = frozenset(_ITEM_KEY_ORDER)
 
@@ -1720,6 +1769,7 @@ def _item_from(name: str, body: Any) -> Item:
         type=type_,
         help=str(body["help"]),
         value=_shape(body.get("value"), type_),
+        source=_source_from(name, body.get("source")),
         default=_shape(body.get("default"), type_),
         anchor=str(body.get("anchor", "") or ""),
         engine_key=str(body.get("engine_key", "") or ""),
@@ -2166,10 +2216,18 @@ def why_not_offered(name: str, value: Any, engine: str, kind: str) -> str:
     return f"{a_kind(kind)} on {engine} does not run it"
 
 
+#: The role item no rung answers with ONE value: each point of the
+#: description's bias list is one device run and one transmission, written at
+#: that point (`engines/transport.md` § 2a.10) -- the catalogue's ``value`` is
+#: the list's first point, not a rung's answer.  A surface echoing the rung's
+#: answers shows this one's reason and no number (`form-schema.md` § 1.1).
+PER_POINT = frozenset({"bias_voltage_v"})
+
+
 def why_role(name: str) -> str:
     """Why nobody may set a `role` item -- the clause a refusal puts after
     *"which the rung fixes"*."""
-    if name == "bias_voltage_v":
+    if name in PER_POINT:
         return ("the bias is the description's bias list -- each rung writes "
                 "the point it runs, the device and the transmission alike "
                 "(engines/transport.md § 2a.10); change the list instead")

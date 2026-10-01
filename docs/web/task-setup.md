@@ -260,7 +260,10 @@ server. It parses with `read_template` — the same reader `prep` opens the file
 with — so the browser cannot become a second reader that disagrees.
 
 **A hover shows both numbers when they differ**: *"This job (probe.template.toml):
-450.0 Ry"* above *"Recommended: 300.0 Ry"*. Somebody checking a description
+450.0 Ry — you set this"* above *"Recommended: 300.0 Ry"* — the value's source
+from the template (`template.md` § 6.6 obligation 2), and the default **this
+kind** recommends (`template.recommended_for`; a vibration's relaxation is
+held tighter than an optimization's), never the general one. Somebody checking a description
 before a week of compute should be able to see that the two are not the same.
 
 ### 5.2 The declared type decides the cell — both the widget and the value

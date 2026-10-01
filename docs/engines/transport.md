@@ -2078,7 +2078,7 @@ markers the catalogue carries, never by a list a blueprint keeps:
 |---|---|---|---|
 | `calculations` | not a parameter of this kind | — | — |
 | `allocation` | the scheduler answers at prep | no | no |
-| `role` | the rung's own identity; a choice with one correct answer | no | no |
+| `role` | the rung's own identity; a choice with one correct answer | no | never a control: **echoed read-only** at the rung's answer, with why (`locked`, `form-schema.md` § 1.1; K7, 2026-09-30) |
 | `shared` *(§ 3.8.6, decided 2026-09-24)* | binds every rung | **yes** — except the `setup` group, whose two members the description (the identity) and the citation (the pseudopotentials) answer themselves; the same group rule that keeps `staging` off every form (`form-schema.md` § 1.3) | **no** |
 | `citation` | a cited run DEFAULTS it at `init` | yes, showing its provenance | no |
 | `stages` | only these rungs may own it | — | routed to those rungs |
@@ -2092,11 +2092,21 @@ answering it on 2026-09-30.)* *(The spin was too, until the citation
 began answering it on 2026-09-28: `spin_treatment` and `unpaired_electrons` are
 `citation` rows now.)*
 Both surfaces are served by `/api/transport/schema?surface=rung|shared`
-from `catalogue_to_form_schema(surface=)`; the shared one, given the
-citation, carries the citation's answers as its values and names their
-source (`transport/citation_defaults.py::citation_answers`). The two panels
-sit one above the other on the tab (cards 2 and 4), so the per-rung form
-carries no second echo of the shared values on this page.
+from `catalogue_to_form_schema(surface=)`, and given the citation **both are
+drawn from the template this tab's describe will write** — the one text the
+describe door writes (`blueprints/transport.py::_panel_template`, through
+`citation_defaults.transport_template_text`), so the tab cannot show one
+calculation and describe another *(plan § 5w K7, 2026-09-30)*. Each field
+carries the template's value and its source (`form-schema.md` § 1.1): the
+shared panel **holds** them, the citation's answers named as such; a rung's
+tab holds the rung's own values, and shows the template's as what a blank
+field runs — the transmission grid the cited run's transverse pair, *from the
+run you cited*. A rung's tab is drawn from what the shared panel holds too,
+and again whenever it changes: a rung's value can follow a shared one, the
+transmission grid starting at the SCF's (`_apply_kgrid`'s one rule, applied to
+a mesh the person sets as to the cited one). The two panels sit one above the
+other on the tab (cards 2 and 4), so the per-rung form carries no second echo
+of the shared values on this page.
 
 The organisation of each panel is `web/form-schema.md` § 1.3's two axes and
 is not chosen here: `group` is the outer card, `category` the legend inside.
@@ -2139,6 +2149,15 @@ tell the person's 300 Ry from nobody's.
 400 Ry   you set this
 (empty)  not chosen — the documented default is written into every deck and marked as nobody's choice
 ```
+
+**The four states are the file's** *(K7, 2026-09-30)*: each template item
+records its `source` — `cited` · `record` · `person` · `default`
+(`engines/template.md` § 6.6) — written by the one door both roads write the
+template through, and the panel draws them from it. A value the panel holds
+as the citation answered it stays the citation's; a field the person empties
+is not chosen, so a `citation` row goes valueless. **On a rung's tab** a
+blank field is the rung setting nothing: it runs the template's value, shown
+as its hint with whose it is.
 
 **What the fourth state writes into the deck is not SIESTA's silence.**
 `template.md` § 6.6 obligation 4 *(user, 2026-09-23)*: a value nobody chose is
@@ -2200,14 +2219,14 @@ six scattered versions could not do.
 | the citation's three cases fill the template at `init` | ✅ **done** — including the middle case, restored 2026-09-23 |
 | the per-rung form is generated from the catalogue | ✅ **done 2026-09-24** — `?surface=rung`, the `shared`, `role`, `allocation` and staging items kept off it by their markers |
 | the shared panel exists | ✅ **done 2026-09-24** — card 2 of the tab, `?surface=shared`, its values the citation's answers, its source named; the describe door lays the panel's values over the citation's into the template and refuses a per-rung override of any shared item, as `prep` does |
-| a value nobody chose is shown as not chosen | **the template side is built, on both roads (2026-09-24)** — the panel shows an unanswered `citation` row blank, and `jobset init` and the describe door both write it VALUELESS into the template through one door, `citation_defaults.transport_template_text`. `prep` then fills it with the documented default, which is what `template.md` § 6.6 obligation 4 asks — but **marks nothing**, so the deck cannot say the value was nobody's choice, and the file records no source (obligation 2). The marking mechanism is the open choice under `template.md` § 6.6, where the three proposals are |
+| a value nobody chose is shown as not chosen | ✅ **done** — the panel shows an unanswered `citation` row blank, and `jobset init` and the describe door both write it VALUELESS into the template through one door, `citation_defaults.transport_template_text` (2026-09-24); **the file records each value's source** and both surfaces draw it (K7, 2026-09-30). `prep` fills a valueless row with the documented default, which is what `template.md` § 6.6 obligation 4 asks — but the deck does not yet MARK it (the row below) |
 | the deck viewer | ❌ not built |
 | `role` items kept off every form | ✅ **done** 2026-09-23, in `catalogue_to_form_schema`, per kind |
 | the Task setup stage table offers no shared value as a column | ✅ **done 2026-09-24** — `/api/task-setup/columns` reads `shared` per kind (measured that morning: thirteen offered, `mesh_cutoff` and `basis_size` among them) |
 | an override on a rung the `stages` marker excludes is refused at `prep` | ✅ **done 2026-09-24** — beside the shared refusal in `_resolve_transport`; the describe door routed by the declaration since TR8, the other roads reached `resolve`, which knows no ownership |
 | a foreign rung's cell on the stage table is disabled, naming the owners | ✅ **done 2026-09-24** — the column payload carries `stages`; the cell is shown and not editable |
-| the shared values echoed read-only, with their source, on Task setup | ❌ **not built** — the template file is shown whole, and the form schema has no read-only state (`template.md` § 6.6 obligation 3; `form-schema.md` § 1.1) |
-| a value nobody chose is MARKED as such in the deck, and the file records each value's source | ❌ **not built** — `template.md` § 6.6 obligations 4 and 2; the mechanism is the open choice under § 6.6 |
+| the shared values echoed read-only, with their source, on Task setup | ❌ **not built** — the template file is shown whole (`template.md` § 6.6 obligation 3). The form schema has the source and a read-only state since K7 (`form-schema.md` § 1.1), and the Task setup hover names a value's source |
+| a value nobody chose is MARKED as such in the deck | ❌ **not built** — `template.md` § 6.6 obligation 4. *(The file's half — each value's source, obligation 2 — is built, K7.)* |
 | the device deck carries only what `siesta` reads | ❌ **measured 2026-09-29, not built** — `siesta` reads no `TBT.*` keyword (its binary holds none) and the last device run's report shows none of them, so the `TBT.*` set the device deck carries today is dead text; the transmission deck, for its part, must keep the `TS.*` declarations `tbtrans` reads (§ 6.1b). M5 step 1 |
 | one panel per engine (§ 3.8.8) | ❌ **not built** |
 | the per-rung form is a tab per rung, its group cards foldable, each tab opening with the rung's note (§ 3.8.2a) | ✅ **done 2026-09-24** |
@@ -2262,8 +2281,8 @@ SIESTA default it did not write; every surface that presents the calculation
 presenting every shared value — the shared panel's controls on the transport
 tab, read-only echoes naming the source on every other surface (§ 6.6
 obligation 3); and § 3.8.3's four
-provenance lines being states of the template file, which today records a
-value and not its origin. The § 3.8.2 row above means *never as a control*.
+provenance lines being states of the template file, which records each
+value's origin since K7. The § 3.8.2 row above means *never as a control*.
 
 ---
 
@@ -2305,14 +2324,14 @@ door's question.
 
 | door | `shared` — binds every rung | `stages` — which rungs own it | `role` — the rung decides | `citation` — who defaults it | `allocation` — the scheduler |
 |---|---|---|---|---|---|
-| the per-rung form (`catalogue_to_form_schema(surface="rung", rung=…)`) | ✅ kept off | ✅ a rung's tab is that rung's bag (§ 3.8.2a) | ✅ kept off | — | ✅ kept off |
-| the shared panel (`surface="shared"`) | ✅ is the panel, minus the `setup` group | — | — | ✅ the citation's answers, source named | ✅ kept off |
+| the per-rung form (`catalogue_to_form_schema(surface="rung", rung=…)`) | ✅ kept off | ✅ a rung's tab is that rung's bag (§ 3.8.2a) | ✅ echoed read-only at the rung's answer, never a control *(K7)* | ✅ the template's value, from the citation, as a blank field's hint *(K7)* | ✅ kept off |
+| the shared panel (`surface="shared"`) | ✅ is the panel, minus the `setup` group | — | — | ✅ the citation's answers, each field's source named *(K7)* | ✅ kept off |
 | the describe door (`/api/transport/describe`) | ✅ refuses a per-rung override | ✅ refuses a bag naming an item the rung does not own (`foreign_overrides`, the door `prep` asks too) | ✅ refuses | ✅ fills the template through `transport_template_text` | — |
 | `jobset init` | — | — | ✅ valueless in the template | ✅ fills, through the same door | ✅ valueless |
 | `prep` (`_resolve_transport`) | ✅ refuses | ✅ refuses a foreign rung's override *(2026-09-24)* | ✅ refuses a stage override, pin, sweep axis or template value naming one, and puts the rung's answer into its config (`template.role_answers`, *2026-09-29*) | — (reads the template, never the citation) | ✅ fills from the machine |
 | Task setup — the column picker (`/api/task-setup/columns`) | ✅ not a column *(2026-09-24)* | ✅ the payload names the owners | ✅ not a column | — | ✅ not a column |
 | Task setup — the stage table's cells | — | ✅ a foreign rung's cell is disabled, naming the owners *(2026-09-24)* | — | — | — |
-| Task setup — a read-only echo of every shared value, with its source (§ 6.6 obligation 3) | ❌ not built | — | — | ❌ the file records no source (obligation 2) | — |
+| Task setup — a read-only echo of every shared value, with its source (§ 6.6 obligation 3) | ❌ not built | — | — | ✅ the file records the source, and the hover names it *(K7)* | — |
 | the deck (`prep` → `prepare_deck`) | ✅ one value, every rung | ✅ each rung its own | ✅ the rung's answer, laid on its config by `resolve` | ❌ a value nobody chose is written as the documented default but not MARKED (obligation 4) | ✅ |
 
 ---

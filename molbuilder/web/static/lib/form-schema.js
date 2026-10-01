@@ -16,15 +16,19 @@
  *     compatibility engine + sessionStorage persistence keep
  *     working unchanged.
  *
- *   * collectForm(container, schema) -- walks the schema and
- *     reads the current DOM values back, returning a dict like
- *     ``{system_label: "siesta", kgrid: [1,1,1], net_charge: null, ...}``
- *     that the existing build endpoints accept verbatim.
+ *   * collectForm(container, schema) -- what the form HOLDS, one entry
+ *     per field: ``{kgrid: [4,4,1], mesh_cutoff: null, ...}``.  A blank is
+ *     ``null`` -- not chosen (form-schema.md § 1.1).  A value that will not
+ *     read as its type is refused: it throws an Error naming the field
+ *     (``err.field``), a fractional count included.  A field the rung
+ *     fixes (``locked``, echoed read-only) is never collected.  An
+ *     optional third argument names the fields to read, and only those.
  *
- *   * diffFromDefaults(container, schema) -- which fields are not
- *     at the schema's recommended value, as
- *     ``[{name, label, current, recommended, unit, help}]``.  Fields
- *     with no default are skipped; there is nothing to reset them to.
+ *   * diffFromDefaults(container, schema) -- which fields hold a value
+ *     that is not the kind's recommended one, as
+ *     ``[{name, label, current, recommended, unit, help}]``.  A blank
+ *     field is skipped (the recommendation already applies), and so is a
+ *     field with no default; there is nothing to reset either to.
  *
  *   * fetchSchema(engine) -- thin wrapper around
  *     GET /api/build/schema/<engine> that throws on error and
@@ -147,7 +151,69 @@
         return code;
     }
 
-    function makeNumber(f, isInt) {
+    /* ---------- one field state (form-schema.md § 1.1, plan § 5w K7) ----
+     *
+     * A field HOLDS a value only where the surface is drawn from the
+     * calculation's template and edits it -- the transport tab's shared
+     * panel: the template's value, named by its source.  Everywhere else --
+     * a new calculation's form, a rung's tab of overrides -- it holds what
+     * the person gives it, and nothing until they do.
+     *
+     * A BLANK FIELD IS NOT CHOSEN, and its hint is what then applies: on a
+     * surface of overrides the template's value, with whose it is; an
+     * optional item's own blank (its `null_label`, "(auto)"); else the
+     * kind's default.  Never the first choice of a list, never a zero in a
+     * triple, never an unticked box -- a value the person did not choose is
+     * never presented as if they had.  (A select showed its first choice
+     * and a triple 0 0 0 until 2026-09-30, and both were sent: the M11
+     * review's T-F25.  The Build form drew every default as a value, so a
+     * template could not tell the person's 300 Ry from nobody's.) */
+    function fieldState(f, ctx) {
+        const has = (v) => v !== undefined && v !== null;
+        // A field the rung fixes shows the rung's answer and no hint: the
+        // bias, answered point by point, shows none rather than a number.
+        if (f.locked) return { drawn: f.locked.value, hint: null, hintKind: "" };
+        const drawn = !ctx.overrides && has(f.value) ? f.value : null;
+        if (ctx.overrides && has(f.value)) {
+            return { drawn: drawn, hint: f.value, hintKind: "template" };
+        }
+        if (f.optional) return { drawn: drawn, hint: null, hintKind: "optional" };
+        if (has(f.default)) {
+            return { drawn: drawn, hint: f.default, hintKind: "default" };
+        }
+        return { drawn: drawn, hint: null, hintKind: "" };
+    }
+
+    /** A value as a person reads it -- a mesh as "4, 4, 1", a box as on/off. */
+    function show(v, f) {
+        const unit = f.unit ? " " + f.unit : "";
+        if (Array.isArray(v)) return v.join(", ") + unit;
+        if (v === true) return "on";
+        if (v === false) return "off";
+        return String(v) + unit;
+    }
+
+    /** The words a source is said in -- the schema's, never a copy. */
+    function said(ctx, source) { return ctx.words[source || "unrecorded"] || ""; }
+
+    /** What a blank field says: not chosen, and what then applies. */
+    function blankWords(f, st, ctx) {
+        const then = st.hintKind === "template"
+                ? show(st.hint, f) + " " + said(ctx, f.source)
+            : st.hintKind === "optional" ? (f.null_label || "")
+            : st.hintKind === "default" ? "recommended " + show(st.hint, f)
+            : "";
+        return [said(ctx, "default"), then].filter(Boolean).join(" \u00b7 ");
+    }
+
+    /** The hint inside a box: what applies when it stays blank. */
+    function placeholderOf(f, st) {
+        if (Array.isArray(st.hint)) return st.hint.join(", ");
+        if (st.hint !== null) return String(st.hint);
+        return f.optional ? (f.null_label || "") : "";
+    }
+
+    function makeNumber(f, isInt, st) {
         // type=number with step=any handles both ints and floats.
         // step=1 for ints so browser spinners go in integer steps.
         const inp = el("input", {
@@ -157,69 +223,78 @@
         });
         if (f.min !== undefined) inp.min = f.min;
         if (f.max !== undefined) inp.max = f.max;
-        if (f.default !== null && f.default !== undefined) {
-            inp.value = f.default;
-        } else if (f.optional) {
-            // Empty input means null for Optional[int]/Optional[float].
-            inp.value = "";
-            inp.placeholder = f.null_label || "(default)";
-        }
+        inp.value = st.drawn !== null ? String(st.drawn) : "";
+        inp.placeholder = placeholderOf(f, st);
         return inp;
     }
 
-    function makeSelect(f) {
+    function makeSelect(f, st, ctx) {
         const sel = el("select", { id: f.id });
-        if (f.optional || f.null_option) {
-            // First option is the "null" sentinel; value="" → null on collect.
-            sel.appendChild(el("option", { value: "" }, f.null_label || "(default)"));
-        }
+        // THE BLANK OPTION, first and always: not chosen.  An optional
+        // item's blank is its own answer and says so (`null_label`); any
+        // other says what then applies.  Without it a select nobody touched
+        // showed -- and sent -- its first choice (T-F25).
+        sel.appendChild(el("option", { value: "" },
+            (f.optional || f.null_option) ? (f.null_label || "(default)")
+                                           : "(" + blankWords(f, st, ctx) + ")"));
+        let picked = false;
         for (const c of f.choices) {
             const opt = el("option", { value: String(c) }, String(c));
-            if (c === f.default) opt.selected = true;
+            if (st.drawn !== null && c === st.drawn) {
+                opt.selected = true;
+                picked = true;
+            }
             sel.appendChild(opt);
         }
         // A VALUE THIS KIND DOES NOT OFFER is shown as itself, marked: a
-        // select with no option for it shows the first one instead, and the
+        // select with no option for it shows another one instead, and the
         // form would say a value nobody holds (`engines/template.md` § 6.3a).
-        if (f.default !== null && f.default !== undefined
-                && !f.choices.some(c => c === f.default)) {
-            const opt = el("option", { value: String(f.default) },
-                           String(f.default) + " (not offered here)");
+        if (st.drawn !== null && !picked) {
+            const opt = el("option", { value: String(st.drawn) },
+                           String(st.drawn) + " (not offered here)");
             opt.selected = true;
             sel.appendChild(opt);
         }
+        if (st.drawn === null) sel.value = "";
         return sel;
     }
 
-    function makeTriSelect(f) {
-        // Optional[bool] tri-state: auto/true/false; default
-        // mirrors the dataclass default (None → "auto").
+    function makeTriSelect(f, st) {
+        // Optional[bool] tri-state: auto/true/false, where "auto" is the
+        // item's own blank (None).
         const sel = el("select", { id: f.id });
-        const defStr = f.default === null || f.default === undefined
-            ? "auto"
-            : (f.default ? "true" : "false");
+        const now = st.drawn === true ? "true"
+                  : st.drawn === false ? "false" : "auto";
         for (const c of f.choices) {       // ["auto", "true", "false"]
             const opt = el("option", { value: c }, c);
-            if (c === defStr) opt.selected = true;
+            if (c === now) opt.selected = true;
             sel.appendChild(opt);
         }
         return sel;
     }
 
-    function makeCheckbox(f) {
-        return el("input", {
-            id: f.id, type: "checkbox", checked: Boolean(f.default),
-        });
+    function makeCheckbox(f, st) {
+        // An unticked box SAYS "off", so a box nobody answered is drawn
+        // INDETERMINATE -- the checkbox's own blank -- and the first click
+        // answers it.
+        const box = el("input", { id: f.id, type: "checkbox" });
+        if (st.drawn === null) box.indeterminate = true;
+        else box.checked = Boolean(st.drawn);
+        return box;
     }
 
-    function makeText(f) {
+    function makeText(f, st) {
         const attrs = {
             id: f.id, type: "text",
-            value: f.default == null ? "" : String(f.default),
+            value: st.drawn === null ? ""
+                 : Array.isArray(st.drawn) ? st.drawn.join(", ")
+                 : String(st.drawn),
             autocomplete: "off",
         };
         if (f.pattern) attrs.pattern = f.pattern;
-        return el("input", attrs);
+        const inp = el("input", attrs);
+        inp.placeholder = placeholderOf(f, st);
+        return inp;
     }
 
     /* (The stage-table field kind -- makeStageTable, its presets, the
@@ -237,7 +312,7 @@
     const TRIPLE_KINDS = ["int-triple", "float-triple"];
     function isTriple(kind) { return TRIPLE_KINDS.indexOf(kind) !== -1; }
 
-    function makeTriple(f, isInt) {
+    function makeTriple(f, isInt, st) {
         // Three labelled number inputs sharing one id prefix.  Each
         // cell carries its own sub-label so kgrid (Tuple[int,int,int])
         // reads as "kx 1  ky 1  kz 1" instead of three anonymous boxes.
@@ -247,8 +322,16 @@
         // scalars.  A float triple stepping by 1 makes the browser call 0.5
         // invalid before any JS runs, and parseInt then reads it back as 0 --
         // which is the Gamma-centred grid the user was moving off.
-        const wrap = el("span", { class: "schema-int-triple" });
-        const defaults = Array.isArray(f.default) ? f.default : [0, 0, 0];
+        //
+        // THE FIELD'S OWN ID is on the wrapper -- one id per field, as every
+        // other kind has -- so a finding about the mesh lands beside it;
+        // with only the cells' ids it fell back to the card (the K3 review).
+        // A blank cell is blank, its hint the component that then applies:
+        // `[0, 0, 0]` stood in for a mesh nobody gave until 2026-09-30, and
+        // was sent (T-F25).
+        const wrap = el("span", { class: "schema-int-triple", id: f.id });
+        const drawn = Array.isArray(st.drawn) ? st.drawn : null;
+        const hint = Array.isArray(st.hint) ? st.hint : null;
         f.labels.forEach((lab, i) => {
             const cell = el("span", { class: "schema-int-triple-cell" });
             cell.appendChild(el("span", {
@@ -257,8 +340,9 @@
             const cellInput = el("input", {
                 id: `${f.id}-${lab}`, type: "number",
                 step: isInt ? "1" : "any",
-                value: defaults[i] != null ? defaults[i] : "",
+                value: drawn && drawn[i] != null ? drawn[i] : "",
             });
+            if (hint && hint[i] != null) cellInput.placeholder = String(hint[i]);
             // Bounds apply PER COMPONENT -- a triple's ``range`` bounds each
             // axis, not their sum.  Missing until 2026-08-15: makeNumber
             // honoured f.min/f.max and this did not, so kgrid accepted 0 and
@@ -347,7 +431,32 @@
         return det;
     }
 
-    function renderField(f) {
+    /* The caption of one field, from what it holds now: the template's
+     * source while it holds the value it was drawn with, *you set this*
+     * once it holds another, *not chosen* and what then applies when it is
+     * blank -- and the refusal itself, beside the field, when what it holds
+     * will not read as its type. */
+    function sayState(f, labelEl, st, ctx) {
+        const cap = labelEl.querySelector(":scope > .schema-source");
+        if (!cap) return;
+        let now;
+        try {
+            now = collectField(f, labelEl);
+        } catch (e) {
+            labelEl.classList.add("is-invalid");
+            cap.classList.remove("is-blank");
+            cap.textContent = e.reason || e.message;
+            return;
+        }
+        labelEl.classList.remove("is-invalid");
+        cap.classList.toggle("is-blank", now === null);
+        cap.textContent = now === null ? blankWords(f, st, ctx)
+            : (st.drawn !== null && same(now, st.drawn))
+                ? said(ctx, f.source) : said(ctx, "person");
+    }
+
+    function renderField(f, ctx) {
+        const st = fieldState(f, ctx);
         // Build a single <label> wrapping the input.  Checkbox lays
         // out as "[x] Label" -- the checkbox comes BEFORE the label
         // text; everything else lays out as "Label: <input>".
@@ -367,14 +476,14 @@
         }
         let input;
         switch (f.kind) {
-            case "checkbox":   input = makeCheckbox(f);  break;
-            case "int":        input = makeNumber(f, true);  break;
-            case "number":     input = makeNumber(f, false); break;
-            case "text":       input = makeText(f);      break;
-            case "select":     input = makeSelect(f);    break;
-            case "tri-select": input = makeTriSelect(f); break;
-            case "int-triple":   input = makeTriple(f, true);  break;
-            case "float-triple": input = makeTriple(f, false); break;
+            case "checkbox":   input = makeCheckbox(f, st);  break;
+            case "int":        input = makeNumber(f, true, st);  break;
+            case "number":     input = makeNumber(f, false, st); break;
+            case "text":       input = makeText(f, st);      break;
+            case "select":     input = makeSelect(f, st, ctx);   break;
+            case "tri-select": input = makeTriSelect(f, st); break;
+            case "int-triple":   input = makeTriple(f, true, st);  break;
+            case "float-triple": input = makeTriple(f, false, st); break;
             case "comma-floats":
                 // Variable-length List[float] field (Transport's
                 // bias_voltages_v).  Render as a plain text input with
@@ -382,8 +491,10 @@
                 // the server-side coercer (``coerce_to_field_type``'s
                 // ``Sequence[float]`` branch in _shared.py) parses the
                 // string back into a list before the dataclass sees it.
-                input = makeText(f);
-                input.setAttribute("placeholder", "0.0, 0.5, 1.0");
+                input = makeText(f, st);
+                if (!input.placeholder) {
+                    input.setAttribute("placeholder", "0.0, 0.5, 1.0");
+                }
                 input.classList.add("schema-input-comma-floats");
                 break;
             default:
@@ -395,7 +506,7 @@
                         f.kind, "for field", f.name
                     );
                 }
-                input = makeText(f);
+                input = makeText(f, st);
         }
         // The caption is a SPAN, not a bare text node (2026-09-15).  A
         // text node inside a flex/grid <label> becomes an ANONYMOUS item
@@ -417,6 +528,26 @@
             labelEl.appendChild(caption);
             labelEl.appendChild(input);
         }
+        if (f.locked) {
+            // A FIELD THE RUNG FIXES (`locked`, the catalogue's `role`) is
+            // SHOWN and never a control: drawn at the rung's answer, with
+            // why (`engines/template.md` § 6.6 obligation 3).  Never
+            // collected -- the answer is the rung's, and every door refuses
+            // another.
+            labelEl.classList.add("is-locked");
+            for (const c of labelEl.querySelectorAll("input, select")) {
+                c.disabled = true;
+            }
+        } else {
+            // WHOSE THE VALUE IS, beside the field and kept current as it
+            // is edited (form-schema.md § 1.1): the template's source, *you
+            // set this*, or *not chosen* with what then applies.
+            labelEl.appendChild(el("span", { class: "schema-source" }));
+            const say = () => sayState(f, labelEl, st, ctx);
+            labelEl.addEventListener("input", say);
+            labelEl.addEventListener("change", say);
+            say();
+        }
         const badge = engineKeyBadge(f);
         if (badge) labelEl.appendChild(badge);
         // ...AND RED WHILE IT IS EMPTY -- a typed value, a pick or a restore
@@ -426,6 +557,10 @@
                 "is-empty", !String(input.value || "").trim());
             input.addEventListener("input", mark);
             mark();
+        }
+        if (f.locked) {
+            labelEl.appendChild(el("span", { class: "lock-reason" },
+                                   "fixed: " + f.locked.why));
         }
         // WHY A COMPONENT IS LOCKED, beside the control -- the same
         // `.lock-reason` hint a locked field carries (form-schema.css).
@@ -534,6 +669,15 @@
         // per rung (transport.md § 3.8.2a).
         opts = opts || {};
         const foldable = !!opts.foldable;
+        // WHAT THIS SURFACE'S FIELDS HOLD (form-schema.md § 1.1): the
+        // template's values, which it edits -- the default -- or
+        // `opts.holds = "overrides"`, a rung's own over the template, whose
+        // value is then what a blank field runs.  The words a source is said
+        // in are the schema's, the template's one vocabulary.
+        const ctx = {
+            overrides: opts.holds === "overrides",
+            words: schema.source_words || {},
+        };
         // Fresh render -> schema and DOM are presumed to match, so
         // clear the stale-warning cache.  Any actual mismatch on
         // the next collectForm will re-warn.
@@ -665,7 +809,7 @@
                     ));
                 }
                 for (const f of fields) {
-                    fs.appendChild(renderField(f));
+                    fs.appendChild(renderField(f, ctx));
                 }
                 body.appendChild(fs);
             }
@@ -699,7 +843,7 @@
                 ));
             }
             for (const f of sect.fields) {
-                fs.appendChild(renderField(f));
+                fs.appendChild(renderField(f, ctx));
             }
             container.appendChild(fs);
         }
@@ -722,45 +866,37 @@
         }
     }
 
+    /* What ONE field holds, read as its type -- `null` when it is blank, not
+     * chosen (form-schema.md § 1.1).  A value that will not read is refused,
+     * naming the field: a count with a fraction is never rounded (`parseInt`
+     * read 4.5 as 4, the K3 review), and a box holding text the browser
+     * cannot read is not "blank" (it reports an empty value, and
+     * `validity.badInput` is the only witness). */
     function collectField(f, container) {
+        const refuse = (why) => {
+            const e = new Error((f.label || f.name) + ": " + why);
+            e.field = f.name;
+            e.reason = why;
+            return e;
+        };
+        if (isTriple(f.kind)) return readTriple(f, container, refuse);
         const elx = container.querySelector("#" + cssEsc(f.id));
-        const optional = !!f.optional;
-        // Schema/DOM mismatch: schema lists a field whose id has no
-        // matching element.  Warn once, fall back to the schema's
-        // declared default so the rest of the form still submits
-        // sensibly.  int-triple handles this per-sub-input below.
-        if (!elx && !isTriple(f.kind)) {
+        // Schema/DOM mismatch: the schema lists a field whose id has no
+        // element.  Warn once; the field holds nothing.
+        if (!elx) {
             _warnStale(f.name, "has id '" + f.id + "' but no DOM element");
-            return f.default !== undefined ? f.default : null;
+            return null;
         }
         switch (f.kind) {
             case "checkbox":
-                return !!elx.checked;
-            case "int": {
-                const v = elx.value.trim();
-                if (v === "" && optional) return null;
-                if (v === "") return null;
-                const n = parseInt(v, 10);
-                return Number.isFinite(n) ? n : null;
-            }
-            case "number": {
-                const v = elx.value.trim();
-                if (v === "" && optional) return null;
-                if (v === "") return null;
-                const n = parseFloat(v);
-                return Number.isFinite(n) ? n : null;
-            }
-            case "text":
-                return String(elx.value).trim();
-            case "comma-floats":
-                // Send the raw string; the server-side coercer
-                // (_shared.py Sequence[float] branch) parses it into
-                // List[float] before the dataclass sees it.
-                return String(elx.value).trim();
+                // INDETERMINATE is the box's blank: nobody answered it.
+                return elx.indeterminate ? null : !!elx.checked;
+            case "int":
+            case "number":
+                return readNumber(elx, f.kind === "int", refuse);
             case "select": {
                 const v = elx.value;
-                // Empty value on an Optional select -> null.
-                if (v === "" && (optional || f.null_option)) return null;
+                if (v === "") return null;
                 // AN ENUM'S MEMBER KEEPS ITS TYPE (`engines/template.md` § 5):
                 // an <option> carries String(member), so it is read back as
                 // the member itself -- `unpaired_electrons`' 2 is a number
@@ -776,51 +912,86 @@
                 if (v === "auto" || v === "") return null;
                 return v === "true";
             }
-            case "int-triple":
-            case "float-triple": {
-                // Read each component back with the parser its type asks for.
-                // parseInt on a float triple truncates silently.
-                const isInt = f.kind === "int-triple";
-                const parse = isInt ? (s) => parseInt(s, 10) : parseFloat;
-                const labs = f.labels || ["x", "y", "z"];
-                const defaults = Array.isArray(f.default)
-                    ? f.default : [0, 0, 0];
-                const out = [];
-                let anyMissing = false;
-                labs.forEach((lab, i) => {
-                    const subEl = container.querySelector(
-                        "#" + cssEsc(f.id + "-" + lab)
-                    );
-                    if (!subEl) {
-                        anyMissing = true;
-                        out.push(defaults[i] != null ? defaults[i] : 0);
-                        return;
-                    }
-                    const v = subEl.value.trim();
-                    const n = v === "" ? null : parse(v);
-                    out.push(Number.isFinite(n) ? n
-                             : (defaults[i] != null ? defaults[i] : 0));
-                });
-                if (anyMissing) {
-                    _warnStale(f.name, "has missing int-triple sub-input(s)");
-                }
-                return out;
+            default: {
+                // text, and comma-floats -- sent as typed; the server's
+                // coercer (_shared.py) reads the list and names the field
+                // if it cannot.
+                const v = String(elx.value).trim();
+                return v === "" ? null : v;
             }
-            default:
-                return elx.value;
         }
     }
 
-    function collectForm(container, schema) {
+    function readNumber(inp, isInt, refuse) {
+        const v = String(inp.value).trim();
+        if (v === "") {
+            if (inp.validity && inp.validity.badInput) {
+                throw refuse("not a number");
+            }
+            return null;
+        }
+        const n = Number(v);
+        if (!Number.isFinite(n)) throw refuse(v + " is not a number");
+        if (isInt && !Number.isInteger(n)) {
+            throw refuse(v + " is not a whole number \u2014 a count is "
+                         + "never rounded");
+        }
+        return n;
+    }
+
+    /* A triple is ONE value: blank when every component it leaves open is
+     * blank, refused when only some are -- a mesh is all three counts or
+     * none.  A component the kind fixes reads as the kind's value. */
+    function readTriple(f, container, refuse) {
+        const isInt = f.kind === "int-triple";
+        const labs = f.labels || ["x", "y", "z"];
+        const out = [];
+        let open = 0, blank = 0;
+        for (const lab of labs) {
+            const held = f.fixed && f.fixed[lab];
+            if (held) {
+                out.push(held.value);
+                continue;
+            }
+            open++;
+            const sub = container.querySelector("#" + cssEsc(f.id + "-" + lab));
+            if (!sub) {
+                _warnStale(f.name, "has missing triple sub-input(s)");
+                return null;
+            }
+            const n = readNumber(sub, isInt,
+                                 (why) => refuse(lab + " " + why));
+            if (n === null) blank++;
+            out.push(n);
+        }
+        if (blank === open) return null;
+        if (blank) throw refuse("give every component, or none");
+        return out;
+    }
+
+    /* `names` (optional) reads those fields alone -- the chemistry card
+     * asks for the electronic state, and a half-typed mesh elsewhere on the
+     * form is not its refusal to make. */
+    function collectForm(container, schema, names) {
         if (!container || !schema || !Array.isArray(schema.sections)) {
             throw new Error("form-schema.collectForm: bad container/schema");
         }
         const out = {};
+        let refused = null;
         for (const sect of schema.sections) {
             for (const f of sect.fields) {
-                out[f.name] = collectField(f, container);
+                if (f.locked) continue;      // the rung's, never collected
+                if (names && names.indexOf(f.name) === -1) continue;
+                try {
+                    out[f.name] = collectField(f, container);
+                } catch (e) {
+                    if (!refused) refused = e;
+                }
             }
         }
+        // The first refusal, naming its field; each field's own caption
+        // already says why beside it.
+        if (refused) throw refused;
         return out;
     }
 
@@ -879,8 +1050,9 @@
             || Array.isArray(values)) return;
         for (const sect of schema.sections) {
             for (const f of sect.fields) {
-                if (!(f.name in values)) continue;
+                if (!(f.name in values) || f.locked) continue;
                 const v = values[f.name];
+                const blank = v === null || v === undefined;
                 // int-triple uses sub-ids ``<f.id>-<label>`` — there
                 // is no parent element with ``f.id`` (makeIntTriple
                 // wraps the three sub-inputs in an unidentified
@@ -888,7 +1060,10 @@
                 // would return null and silently skip the field.
                 // Handle int-triple via its own sub-id loop.
                 if (isTriple(f.kind)) {
-                    if (!Array.isArray(v) || v.length !== 3) continue;
+                    // `null` blanks it -- not chosen; otherwise three values.
+                    if (!blank && (!Array.isArray(v) || v.length !== 3)) {
+                        continue;
+                    }
                     const labs = (Array.isArray(f.labels)
                         && f.labels.length === 3)
                         ? f.labels
@@ -901,7 +1076,7 @@
                         // form collects what will be written, and another
                         // value is refused on every door.
                         if (f.fixed && f.fixed[labs[i]]) continue;
-                        sub.value = String(v[i]);
+                        sub.value = blank ? "" : String(v[i]);
                         try {
                             sub.dispatchEvent(new Event("input",
                                 { bubbles: true }));
@@ -914,12 +1089,18 @@
                 const elx = container.querySelector("#" + cssEsc(f.id));
                 if (!elx) continue;
                 if (f.kind === "checkbox") {
-                    elx.checked = Boolean(v);
+                    // `null` is the box's blank: indeterminate.
+                    elx.indeterminate = blank;
+                    elx.checked = !blank && Boolean(v);
+                } else if (f.kind === "tri-select") {
+                    elx.value = v === true ? "true"
+                              : v === false ? "false"
+                              : blank ? "auto" : String(v);
                 } else {
-                    // Numbers, selects, tri-selects, text — all
-                    // accept .value as the canonical writer.
-                    elx.value = v === null || v === undefined
-                        ? "" : String(v);
+                    // Numbers, selects, text -- `.value` is the writer, and
+                    // "" the blank every one of them has.
+                    elx.value = blank ? ""
+                              : Array.isArray(v) ? v.join(", ") : String(v);
                 }
                 // Notify dirty-trackers / live-preview consumers.
                 try {
@@ -943,15 +1124,18 @@
      *
      * A field with no `default` is SKIPPED -- there is nothing to
      * recommend, so offering to reset it would mean blanking a value
-     * on the user's behalf.
+     * on the user's behalf.  So is a BLANK field: not chosen, so the
+     * recommendation is already what applies (form-schema.md § 1.1).
      */
     function diffFromDefaults(container, schema) {
         const current = collectForm(container, schema);
         const out = [];
         for (const sec of (schema.sections || [])) {
             for (const f of (sec.fields || [])) {
+                if (f.locked) continue;
                 if (f.default === undefined || f.default === null) continue;
                 const now = current[f.name];
+                if (now === null || now === undefined) continue;
                 if (same(now, f.default)) continue;
                 out.push({
                     name: f.name,

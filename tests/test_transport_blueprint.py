@@ -86,7 +86,9 @@ class TestTransportSchemaEndpoint:
         catalogue's `shared` marker (§ 3.8.6, decided 2026-09-24), nor a
         role-fixed one, nor the machine's.  Offering one is a control the
         describe door refuses by name (the trap of 2026-08-29 and the
-        revert of 2026-09-23)."""
+        revert of 2026-09-23).  A role-fixed one is SHOWN, read-only at the
+        rung's answer (`locked`, K7: § 6.6 obligation 3) -- never a
+        control."""
         from molbuilder.template import catalogue, select
         cat = catalogue()
         shared = {it.name for it in select(cat, engine="siesta", shared=True)
@@ -98,12 +100,15 @@ class TestTransportSchemaEndpoint:
         for lane in ("", "?surface=rung"):
             body = web.get(f"/api/transport/schema{lane}").get_json()
             assert body["ok"] is True and body["surface"] == "rung"
-            offered = {f["name"] for s in body["schema"]["sections"]
-                       for f in s["fields"]}
+            fields = [f for s in body["schema"]["sections"]
+                      for f in s["fields"]]
+            offered = {f["name"] for f in fields if "locked" not in f}
+            echoed = {f["name"] for f in fields if "locked" in f}
             assert offered, "the per-rung form offers nothing"
             assert not (offered & shared), sorted(offered & shared)
             assert not (offered & role), sorted(offered & role)
             assert not (offered & machine), sorted(offered & machine)
+            assert echoed <= role, sorted(echoed - role)
             from molbuilder.transport.stages import resolvable_override_names
             unresolvable = offered - resolvable_override_names()
             assert not unresolvable, (

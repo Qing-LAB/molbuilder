@@ -475,6 +475,39 @@ def test_the_folder_template_is_what_an_empty_cell_names(web_client, isolated_pr
         pass    # tmp_path removes the tree
 
 
+def test_each_template_value_says_whose_it_is(web_client, isolated_projects_root):
+    """`engines/template.md` § 6.6 obligation 2 (plan § 5w K7): the template
+    a form hands over records whose each value is, and the folder door says
+    it in the template's own words (`template.SOURCE_WORDS`).
+
+    The form sends what it holds, a field nobody chose blank
+    (`web/form-schema.md` § 1.1), and the one door reads a blank as not
+    chosen: the field is written at THIS KIND's recommendation and recorded
+    as nobody's.  Until K7 the form drew every default as a value and sent
+    it, so no template could tell the person's 450 Ry from nobody's 300."""
+    from molbuilder.template import one, read_template
+    d = _fresh_calc_dir(isolated_projects_root)
+    rendered = web_client.post("/api/task-setup/handover", json=dict(
+        _envelope(), engine="siesta", name="probe", calculation="vibration",
+        params={"system_label": "probe", "mesh_cutoff": 450.0,
+                "relax_force_tol": None, "basis_size": None})).get_json()
+    assert rendered["ok"], rendered
+    tmpl = read_template(rendered["template_text"])
+    assert one(tmpl, "mesh_cutoff").source == "person"
+    assert one(tmpl, "system_label").source == "person"
+    # Not chosen: the vibration's own recommendation, held tighter than an
+    # optimization's 0.02 (`template.md` § 6.3a), and nobody's.
+    rft = one(tmpl, "relax_force_tol")
+    assert (rft.value, rft.source) == (0.01, "default"), rft
+    assert one(tmpl, "basis_size").source == "default"
+
+    (d / rendered["template_name"]).write_text(rendered["template_text"])
+    said = web_client.get("/api/task-setup/template-values?dir="
+                          + str(d)).get_json()["said"]
+    assert said["mesh_cutoff"] == "you set this", said["mesh_cutoff"]
+    assert said["relax_force_tol"] == "not chosen", said["relax_force_tol"]
+
+
 def test_a_folder_with_no_template_is_not_an_error(web_client, isolated_projects_root):
     """An empty folder is an ordinary state, not a failure — the cells fall
     back to the catalogue, which is exactly right when nothing was sent."""
@@ -885,6 +918,15 @@ def test_both_pickers_payloads_carry_the_value_shape(web_client):
     assert citems["relax_type"]["type"] == "enum"
     assert citems["relax_type"]["choices"] == list(
         one(catalogue(), "relax_type", engine="siesta").choices)
+
+    # THE KIND'S OWN DEFAULT, never the general one -- what the hover calls
+    # *Recommended* (the M11 review's PS-C12: a vibration folder was told
+    # an optimization's 0.02).
+    vib = web_client.get("/api/task-setup/columns?engine=siesta"
+                         "&calculation=vibration").get_json()
+    vitems = {i["name"]: i for i in vib["items"]}
+    assert vitems["relax_force_tol"]["default"] == 0.01
+    assert citems["relax_force_tol"]["default"] == 0.02
 
 
 # RETIRED 2026-09-03 — test_the_viewer_dispatches_widgets_on_the_shape_not

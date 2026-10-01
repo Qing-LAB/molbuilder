@@ -402,6 +402,32 @@ details.workflow-group[open] > summary.workflow-group-header::before {
     box-shadow: 0 0 0 1px var(--error);
 }
 
+/* WHOSE THE VALUE IS (form-schema.md § 1.1, plan § 5w K7): one caption under
+ * every field -- the template's source, "you set this", or "not chosen" and
+ * what then applies, which reads quieter than a value somebody gave. */
+.schema-source {
+    display: block;
+    margin-top: 2px;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    line-height: 1.35;
+}
+.schema-source.is-blank {
+    color: var(--text-muted);
+    font-style: italic;
+}
+/* A value that will not read as its type: the caption says why, in red, and
+ * the control is marked -- the refusal sits beside its field. */
+.schema-field.is-invalid > .schema-source {
+    color: var(--error);
+    font-style: normal;
+}
+.schema-field.is-invalid input,
+.schema-field.is-invalid select {
+    border-color: var(--error);
+    box-shadow: 0 0 0 1px var(--error);
+}
+
 /* ---- Engine-key badge ----
  *
  * Source-of-truth tag rendered next to each form-label that carries

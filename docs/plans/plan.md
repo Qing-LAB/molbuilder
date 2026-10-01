@@ -4627,7 +4627,7 @@ as a milestone does (§ 0a). **Approved 2026-09-29** (§ 5w.3); K6 is first.
 | **K4** | **where an item binds, per rung ROLE** — **done 2026-09-30** (§ 5w.5) | `stages` names a rung's role, and the kind says which role a stage plays — transport: its name; vibration: a relaxation or a force-constant rung, whatever the stage is called (`vibration_render_kind`); optimization: no roles. The stage table offers each rung only what its deck reads and echoes the rest (§ 6.6 obligation 3); a preset fills only the rungs that read it; each item's tightening direction is declared, so R3 reads it for every engine and skips a kind whose rungs are different programs; a relaxation rung relaxes — `relax_steps = 0` there relaxes nothing, while `prep bench`'s single-point pin of it is legitimate | SS-C6, PO-C14, T-F14, SS-C5's `relax_steps` half *(from K3, 2026-09-30)* |
 | **K5** | **execution values with several homes** | one home per rung — the run card, `stages[i].execution` — and one resolved answer every reader asks (`resolve`'s, with its provenance): the deck, the wrapper, the scheduler's GPU ask, the bench, Task setup's cards and hints; the stage table stops offering execution items as columns; a transport rung takes its run card like any other rung | SO-C1 (a rung's `use_gpu` never reaches `--gres`), T-F3, SO-N12, the `--from` hint |
 | **K6** | **the engine's own outcome, assumed instead of read** | one relaxation outcome record and one policy for both engines: the PySCF decks read geomeTRIC's convergence flag (`geometric_solver.kernel`) — `halt` raises before anything is written, `continue` re-enters from the geometry it stopped at (`pyscf.md` § 3 already says *extend this rung*), `proceed` records *not converged*; one remedy text for a non-stationary reference, read by `prep` and the finish; whether a retry resumes is the kind's warm-state declaration (`warm-files.toml`: an FC run restarts at `FC.First`), read by the wrapper; a capability the engine lacks (gpu4pyscf's `stability`) is declared and asked, never called and caught | PS-C1 = PO-C1, SS-C2, SS-C3, PO-C2, PO-C15 |
-| **K7** | **the form's value model** | one field state on every surface: the template's value, the kind's default and the value's source (§ 6.6 obligation 2's four states); blank is *not chosen* for every field and never the first choice; the rung surface shows the template the rung will run; a set optional field is sent; a value that will not coerce is refused naming its field | T-F25, T-F1, T-F24, SS-C16, SO-N5, PS-C12; the K3 review's fractional k count and a triple's findings beside it |
+| **K7** | **the form's value model** — **done 2026-10-01** (§ 5w.5) | one field state on every surface: the template's value, the kind's default and the value's source (§ 6.6 obligation 2's four states); blank is *not chosen* for every field and never the first choice; the rung surface shows the template the rung will run; a set optional field is sent; a value that will not coerce is refused naming its field | T-F25, T-F1, T-F24, SS-C16, SO-N5, PS-C12; the K3 review's fractional k count and a triple's findings beside it |
 | **K8** | **what the engine sees** | one door for the engine's frame facts: the axis kinds PySCF computes with (a cluster: isolated on all three), read by the deck, the Methods count and the R7 note alike; the box checks run for an engine that uses a cell | PS-C4, PO-C13; the K3 review's dipole advisory, keyed on the k count |
 | **K9** | **engine facts restated in prose** | each item's engine default declared once with its source (file:line), and the help's deviation sentence (§ 5.2), the template comment and the deck's *not set* line (§ 6.6 obligation 4) written from it; one measured fixture — the engine's own account of a minimal run, SIESTA's fdf log — checks every declared default; a comment restating engine behaviour is cut to the one home | SO-C6, SO-C7, SO-C14, SS-C7, SS-C8, SS-C9, T-F31, PO-C18, PO-C19, and the § 5.2 half of every help text |
 | **K10** | **where things are on disk** | one reader of a rung's attempts, a bias scan's per-point folders included; carry names from the rung's own naming door; a kind's warm set carries what its rungs read | T-F27/F13, PO-C16, SS-C14 |
@@ -5158,6 +5158,57 @@ reviewers' probes (the archive's § E lists) among its runs.
   gate row says so. Test, through `jobset prep run`: the leads and the seed
   concluded, `mesh_cutoff` changed in the template, the device's prep refused
   — red against the stage-folder comparison.
+* **K7 — done 2026-10-01** (T-F25, T-F1, T-F24, SS-C16, SO-N5, PS-C12; the K3
+  review's fractional k count and a triple's findings; K1's read-only echo;
+  the source key ruled 2026-09-29). **Every template value records whose it
+  is** — `source`: `cited` · `record` · `person` · `default` (`template.md`
+  § 6.6 obligation 2), written by the one writer from what its caller knows
+  (`jobset init` the name and pseudopotential folder given, the form doors
+  what the form sent, the transport door the citation's answers with the
+  person's over them — a value the panel holds as the citation answered it
+  stays the citation's — `migrate` what the file said); a file written before
+  reads *not recorded*. **One field state on every surface** (`form-schema.md`
+  § 1.1): the schema carries the template's `value` and `source` beside the
+  kind's `default`, and the source words once (`template.SOURCE_WORDS`); a
+  field holds a value only where its surface edits the template (transport's
+  shared panel), a rung's tab holds the rung's own and shows the template's
+  as what a blank field runs (T-F1), a new calculation's form holds what the
+  person gives; a caption under every field says whose its value is and
+  follows each edit. **Blank is not chosen, for every field** — never a
+  list's first choice, a triple's zeros or an unticked box (an unanswered
+  checkbox is indeterminate, T-F25); `collectForm` reads a blank as `null`,
+  and the one server door (`config_from_params`) reads it as not chosen, with
+  the kind's recommendation now under every form's values — it raised
+  `float(None)` naming nothing (SS-C16 / SO-N5), and PySCF's sentinel list
+  went. **A value that will not read is refused naming its field**, beside it
+  in the browser and at the door: a fractional count is never rounded
+  (`int(4.5)` and `parseInt` gave 4), a triple holding only some components
+  is refused, and a triple's id is on its wrapper, so its findings land beside
+  it. **Transport's two surfaces are drawn from the template its describe
+  writes** (`_panel_template`, one door for both): a rung's tab, fetched with
+  the junction and what the panel holds, shows what the rung runs, the
+  transmission grid following a mesh set on the panel (the one k-mesh rule
+  applied to the person's mesh, T-F1); a rung's bag is what its tab holds, so
+  an explicit 1 1 1 and `scf_must_converge` are sent (T-F24); a field emptied
+  on the panel is not chosen. **An item the rung fixes is echoed read-only**
+  at the rung's answer, with why (`locked`; `template.PER_POINT` names the
+  bias, which shows no number) — never a control. **The Task setup hover**
+  gives this kind's recommendation (the columns and run-card routes,
+  PS-C12) and the template value's source. The Structure-optimization
+  restore writes through `collectForm` / `setValues` (an unanswered box stays
+  unanswered) while the form-dirty gate holds `_ignoreFormChanges` — the
+  e2e caught a load stopped at *discard unsaved changes?* over values nobody
+  had touched; the Recommended panel's reset blanks a field; a rung's tab
+  saves on every edit, so a redraw cannot lose a keystroke. Contract:
+  `form-schema.md` § 1.1, § 2, § 3, § 3.0a, § 3.1; `template.md` § 5,
+  § 6.3a, § 6.4, § 6.6; `transport.md` § 3.8.2, § 3.8.3, § 3.8.5, § 3.8.7,
+  § 3.8.9; `task-setup.md` § 5.1. Tests through the road: the hand-over's
+  sources over the kind's recommendation, the door's blank and refusal, the
+  transport tab's two surfaces and the written template's sources, the
+  pickers' kind default; in the browser the form's states and refusals, the
+  mesh's finding beside the mesh, a reload, and a rung's tab end to end — 22
+  mutations, each red. `test_form_state_persistence_js.py` retired with the
+  by-id reader it pinned, and the panel-ordering source pin with its premise.
 
 ---
 

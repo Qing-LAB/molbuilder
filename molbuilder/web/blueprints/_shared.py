@@ -25,7 +25,7 @@ import math
 import re
 import typing
 from dataclasses import fields
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from flask import jsonify
 
@@ -920,8 +920,15 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
                              calculation: str = "optimization",
                              surface: Optional[str] = None,
                              rung: Optional[str] = None,
+                             template=None,
                              ) -> Dict[str, Any]:
     """The Build form's schema for *engine*, from the catalogue.
+
+    ``template`` is the calculation's own (a parsed `Template`), when the
+    surface is drawn from one: each field then carries the item's ``value``
+    and its ``source`` (`form-schema.md` § 1.1, `engines/template.md` § 6.6
+    obligation 2).  A value nobody chose is not carried -- the field is blank,
+    its ``default`` the hint.
 
     ``rung`` narrows the ``"rung"`` surface to ONE rung's tab
     (`engines/transport.md` § 3.8.2a): the items whose `stages` declaration
@@ -985,8 +992,20 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
     # for an optimization, where nothing else decides it.  So the test is
     # membership of THIS calculation, never "has a role at all": filtering
     # on the latter would take a legitimate control off the Build form.
+    #
+    # ...BUT IT IS SHOWN (§ 6.6 obligation 3, plan § 5w K7): read-only, at
+    # the answer the rung gives and why.  A form for one rung echoes that
+    # rung's answers; a form for the whole calculation the ones every rung
+    # gives alike -- an item answered rung by rung has no one answer there.
+    # The shared panel carries the shared values alone.
+    if surface == "shared":
+        echoed: Dict[str, Any] = {}
+    elif rung is not None:
+        echoed = _T.role_answers(engine, calculation, rung)
+    else:
+        echoed = _T.fixed_on_every_rung(engine, calculation)
     items = [it for it in items
-             if not getattr(it, "role", None) or calculation not in it.role]
+             if calculation not in it.role or it.name in echoed]
     if surface == "shared":
         items = [it for it in items
                  if calculation in it.shared and it.group != "setup"]
@@ -1002,10 +1021,24 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
         # never another rung's (those are on that rung's tab) and never a
         # shared one (the panel above).
         items = [it for it in items if not it.stages or rung in it.stages]
+    held = ({h.name: h for h in template.items}
+            if template is not None else {})
     by_category: Dict[str, List[Dict[str, Any]]] = {}
     for it in items:
         panel = it.category[0] if it.category else "procedure"
         field = _item_to_field(it, id_prefix, calculation)
+        # THE TEMPLATE'S VALUE, AND WHOSE IT IS (form-schema.md § 1.1): a
+        # value somebody gave -- a cited run, the structure's record, the
+        # person -- or one written before sources were recorded.  A value
+        # nobody chose stays off: the field is blank, *not chosen*.
+        h = held.get(it.name)
+        if h is not None and h.is_set and h.source != "default":
+            field["value"] = _jsonable(h.value)
+            field["source"] = h.source
+        if it.name in echoed:
+            field["locked"] = {"value": (None if it.name in _T.PER_POINT
+                                         else _jsonable(echoed[it.name])),
+                               "why": _T.why_role(it.name)}
         # WHICH RUNGS OWN IT (template.md § 6.4's `stages`; empty = any):
         # the fact a rung's tab folds its cards by, and the stage table
         # disables cells by.
@@ -1027,7 +1060,15 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
     # it the user's decision about what VARIES, and it lives in ``task.json``.
     # The catalogue carries parameters; how a ladder is set up is its own
     # design conversation (user, 2026-08-14).
-    return {"config": engine, "id_prefix": id_prefix, "sections": sections}
+    # The words a field's source is said in -- one vocabulary, the
+    # template's (`template.SOURCE_WORDS`), so no surface coins its own.
+    return {"config": engine, "id_prefix": id_prefix, "sections": sections,
+            "source_words": dict(_T.SOURCE_WORDS)}
+
+
+def _jsonable(v: Any) -> Any:
+    """A template value as JSON carries it -- a tuple as a list."""
+    return list(v) if isinstance(v, tuple) else v
 
 
 def engine_key_for(item) -> str:
@@ -1167,9 +1208,8 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
     Unknown / unhandled types pass through untouched -- the dataclass
     constructor sees what the caller sent.
 
-    Coercion failures (TypeError / ValueError) propagate to the
-    caller so the endpoint can surface them as an error-severity
-    Issue rather than HTTP 400.
+    A value it cannot make is refused with a ``ValueError`` that names the
+    field -- a fractional count among them (:func:`_as_number`).
     """
     ann = resolved_hints.get(field.name, field.type)
     origin = typing.get_origin(ann)
@@ -1204,10 +1244,8 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
         if isinstance(value, str):
             return value.strip().lower() in ("true", "1", "yes", "on")
         return bool(value)
-    if ann is int:
-        return int(value)
-    if ann is float:
-        return float(value)
+    if ann in (int, float):
+        return _as_number(field.name, value, ann)
     if ann is str:
         return str(value)
     # Tuple[int, int, int] (kgrid) and Tuple[float, float, float]
@@ -1232,7 +1270,12 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
         elem_t = args[0]
         if isinstance(value, str):
             value = [s for s in re.split(r"[,\sx]+", value.strip()) if s]
-        return tuple(elem_t(v) for v in value)
+        if not isinstance(value, (list, tuple)):
+            raise ValueError(f"{field.name} = {value!r} is not a list of "
+                             f"values")
+        return tuple(_as_number(field.name, v, elem_t)
+                     if elem_t in (int, float) else elem_t(v)
+                     for v in value)
     # Sequence[str] (species_order in SiestaConfig) -- accept either
     # a comma-string or an already-list value.
     if origin in (list, tuple) and args and args[0] is str:
@@ -1247,10 +1290,10 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
         if isinstance(value, str):
             return _parse_int_list_with_ranges(value)
         if isinstance(value, (list, tuple)):
-            # Already a sequence; coerce each element to int.  Reject
-            # element-wise rather than silently truncating floats so
-            # bad input surfaces.
-            return [int(v) for v in value]
+            # Already a sequence; each element read as a whole number,
+            # refused element-wise -- `int(4.5)` truncated silently, which
+            # the note here said this did not do.
+            return [_as_number(field.name, v, int) for v in value]
         return value
     # Sequence[float] (Transport's bias_voltages_v) -- accept a comma-
     # separated string ("0.0, 0.5, 1.0") or an already-list value.
@@ -1259,12 +1302,33 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
     # then fails downstream when the engine slices ``bias[0]``.
     if origin in (list, tuple) and args and args[0] is float:
         if isinstance(value, str):
-            return [float(s.strip()) for s in value.split(",") if s.strip()]
+            value = [s for s in value.split(",") if s.strip()]
         if isinstance(value, (list, tuple)):
-            return [float(v) for v in value]
+            return [_as_number(field.name, v, float) for v in value]
         return value
     # Anything else: pass through.
     return value
+
+
+def _as_number(name: str, value: Any, typ: type) -> Any:
+    """``value`` read as ``typ`` -- ``int`` or ``float`` -- or refused,
+    naming the field (`web/form-schema.md` § 1.1).  A count with a fraction
+    is not a count, and is never rounded: ``int(4.5)`` gave 4, a k-point
+    count of 4.5 a mesh of four (the K3 review)."""
+    try:
+        if isinstance(value, bool):
+            raise ValueError
+        x = float(value.strip() if isinstance(value, str) else value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} = {value!r} is not a number") from None
+    if not math.isfinite(x):
+        raise ValueError(f"{name} = {value!r} is not a finite number")
+    if typ is int:
+        if not x.is_integer():
+            raise ValueError(f"{name} = {value!r} is not a whole number -- "
+                             f"a count is never rounded")
+        return int(x)
+    return x
 
 
 def _parse_int_list_with_ranges(s: str):
@@ -1314,45 +1378,48 @@ def _parse_int_list_with_ranges(s: str):
 
 def config_from_params(cls, params: Dict[str, Any],
                        hints: Dict[str, Any],
-                       none_sentinels: Tuple[str, ...] = ()):
-    """Build a dataclass instance from a JSON-style params dict.
+                       calculation: str = ""):
+    """The config a form's payload describes (`web/form-schema.md` § 1.1):
+    the kind's own recommendations (`template.apply_recommended`), with the
+    values the payload holds laid over them, each coerced to its field's
+    declared type.
 
-    Walks dataclass fields, picks the matching key from ``params``,
-    coerces to the field's declared type via ``coerce_to_field_type``,
-    and constructs the dataclass.
+    **A blank is not chosen**, for every field: ``None`` or ``""`` leaves the
+    field at what lies under it -- the kind's recommendation, else the class
+    default, which for an optional field is its own blank.  A blank number
+    reached ``float(None)`` and a raw ``TypeError`` naming nothing until
+    2026-09-30 (the M11 review's SS-C16 / SO-N5), and two PySCF fields
+    carried a sentinel list of their own for the same rule.
 
-    ``none_sentinels``: per-field rule for "this string means None"
-    (e.g. ``("solvent", "auxbasis")`` for PySCFConfig
-    where the form sends an empty string for "leave default").
+    **A value that will not read as its type is refused, naming its
+    field** (``coerce_to_field_type``): the caller says it as the refusal.
     """
     by_name = {f.name: f for f in fields(cls)}
     kwargs: Dict[str, Any] = {}
     for k, v in params.items():
         f = by_name.get(k)
-        if f is None:
+        if f is None or v is None or v == "":
             continue
-        # Form-sentinel "empty string -> None / drop" handling for
-        # specific Optional fields the JS deliberately blanks out.
-        if k in none_sentinels and (v == "" or v is None):
-            kwargs[k] = None
-            continue
-        # Coercion failures (TypeError / ValueError) propagate to the
-        # endpoint, which surfaces them as an error-severity Issue
-        # rather than HTTP 400 -- so the UI renders the same panel
-        # for parse-failure as for validator-failure.
         kwargs[k] = coerce_to_field_type(f, v, hints)
-    return cls(**kwargs)
+    base = cls()
+    if calculation:
+        from molbuilder.template import apply_recommended
+        base = apply_recommended(base, calculation)
+    return dataclasses.replace(base, **kwargs)
 
 
-def siesta_config_from_params(params: Dict[str, Any]):
+def siesta_config_from_params(params: Dict[str, Any],
+                              calculation: str = ""):
     """A ``SiestaConfig`` from a form's payload, keyed by catalogue names,
-    each value coerced to its field's declared type (R5).  ONE home for
-    the three doors that take a SIESTA form -- the Build hand-over, the
-    Structure-optimization hand-over and the transport describe door's
-    shared panel -- so a blank, a comma-typed tuple and a number typed as
-    text mean the same thing on every tab."""
+    each value coerced to its field's declared type (R5), over the kind's
+    recommendations (:func:`config_from_params`).  ONE home for the doors
+    that take a SIESTA form -- the hand-over, the preflight, the chemistry
+    card and the transport describe door's shared panel -- so a blank, a
+    comma-typed tuple and a number typed as text mean the same thing on
+    every tab."""
     from molbuilder.config.siesta import SiestaConfig
-    return config_from_params(SiestaConfig, params, _siesta_hints())
+    return config_from_params(SiestaConfig, params, _siesta_hints(),
+                              calculation)
 
 
 @functools.lru_cache(maxsize=1)

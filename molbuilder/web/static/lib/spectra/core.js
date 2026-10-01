@@ -983,6 +983,9 @@
         const _structure = structureForRequest();
         if (!_structure) return;
         const engine = _activeEngine();
+        let params;
+        try { params = collectParams(engine); }
+        catch (_) { return; }   // the field's own caption says why
         try {
             const r = await fetch("/api/build/preflight", {
                 method:  "POST",
@@ -991,7 +994,7 @@
                     structure:   _structure,
                     engine:      engine,
                     calculation: "vibration",
-                    params:      collectParams(engine),
+                    params:      params,
                 }),
             }).then(x => x.json());
             if (Array.isArray(r.issues)) {
@@ -1069,6 +1072,14 @@
          * form field until 2026-09-24, which made a real choice look like a
          * parameter of the deck.) */
         const engine = _activeEngine();
+        // A VALUE THAT WILL NOT READ AS ITS TYPE is refused here, naming its
+        // field -- beside which its caption already says why.
+        let params;
+        try { params = collectParams(engine); }
+        catch (e) {
+            say("error", e.message);
+            return;
+        }
         await mb.taskHandover.send({
             projects:    mb.projects,
             say:         say,
@@ -1079,7 +1090,7 @@
             showFindings: (issues) => showFindings(engine, issues, true),
             structure:   _structure,
             engine:      engine,
-            params:      collectParams(engine),
+            params:      params,
             calculation: "vibration",
         });
     }

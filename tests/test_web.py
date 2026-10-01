@@ -380,6 +380,32 @@ def test_a_comma_string_coerces_for_every_sequence_shape():
     assert coerce("mesh_cutoff", "300") == 300.0
 
 
+def test_a_blank_is_not_chosen_and_a_value_that_will_not_read_is_refused_by_name(
+        web_client, peptide_xyz):
+    """`web/form-schema.md` § 1.1 (plan § 5w K7), at the one door every form
+    goes through (`_shared.config_from_params`).
+
+    A BLANK IS NOT CHOSEN, for every field: the field keeps what lies under
+    it.  An empty number reached ``float(None)`` and answered a raw
+    TypeError naming no field (the M11 review's SS-C16 / SO-N5).  A VALUE
+    THAT WILL NOT READ AS ITS TYPE is refused, naming its field -- a
+    fractional count among them, never rounded: ``int(4.5)`` gave 4, a k-point
+    mesh of four where 4.5 was typed (the K3 review)."""
+    def preflight(params):
+        return web_client.post("/api/build/preflight", json={
+            "structure": _env(peptide_xyz), "engine": "siesta",
+            "params": params})
+
+    r = preflight({"mesh_cutoff": None, "max_scf_iter": "",
+                   "basis_size": None, "kgrid": None})
+    assert r.status_code == 200, r.get_json()
+    for name, value in (("kgrid", [4.5, 4, 1]), ("max_scf_iter", "2.5"),
+                        ("mesh_cutoff", "abc")):
+        r = preflight({name: value})
+        assert r.status_code == 400, (name, r.get_json())
+        assert name in r.get_json()["error"], r.get_json()
+
+
 def test_a_kgrid_that_is_not_three_numbers_is_still_refused(web_client,
                                                             peptide_xyz):
     """Parsing the text must not swallow a value that is not one.  The
@@ -1508,8 +1534,10 @@ def test_siesta_form_schema_matches_documented_layout():
         # § 6.0), and a per-atom wrap can cut a device at its widest gap.
         # 15 -> 13 on 2026-09-29: `write_forces` and `write_coor_step` are
         # fixed by the rung on every SIESTA kind -- not a choice, so not a
-        # control (`engines/template.md` § 6.4).
-        ("procedure",  13),
+        # control (`engines/template.md` § 6.4).  13 -> 15 on 2026-09-30:
+        # shown again, read-only at that answer (`locked`, § 6.6 obligation
+        # 3; plan § 5w K7) -- still never a control.
+        ("procedure",  15),
         # 7 -> 3 on 2026-08-15: mpi_np, omp_threads, max_memory_mb and
         # use_gpu moved to the staging surface.  They are bench axes
         # measured on the machine, not parameters typed beside the physics.

@@ -764,6 +764,40 @@ class TestFindingsSitBesideTheirField:
             timeout=10_000)
 
 
+    def test_a_finding_about_the_mesh_sits_beside_the_mesh(
+            self, page, flask_server, water_xyz_file):
+        """A triple is one field, and its finding sits beside it like any
+        other's (the K3 review, plan § 5w K7): the field's id was on its
+        three cells alone, so the finding about `kgrid` -- placed by that id
+        -- fell back to the card."""
+        _open_build(page, flask_server)
+        page.wait_for_function(
+            "() => window.molbuilder && window.molbuilder.projects"
+            "   && typeof window.molbuilder.projects.publishCommit === 'function'",
+            timeout=_BOOT_TIMEOUT_MS)
+        from pathlib import Path
+        p = str(Path(water_xyz_file).resolve())
+        page.evaluate(
+            "(c) => window.molbuilder.projects.publishCommit(c.dir, c.file)",
+            {"dir": str(Path(p).parent), "file": p})
+        page.wait_for_function(
+            "() => document.querySelector('#info-atoms').textContent.trim() === '3'",
+            timeout=_BOOT_TIMEOUT_MS)
+
+        # A count of 0 is past the count's limit: one finding, on kgrid.
+        for lab, v in zip("xyz", ("0", "4", "4")):
+            page.fill(f"#p-kgrid-{lab}", v)
+        page.wait_for_function(
+            "() => { const w = document.querySelector('#p-kgrid-x')"
+            "          .closest('.schema-field');"
+            "  return !!(w && w.querySelector('.field-issues .issue-item')); }",
+            timeout=10_000)
+        in_card = page.evaluate(
+            "() => document.querySelectorAll("
+            "  '.card-issues[data-workflow-group] .issue-item').length")
+        assert in_card == 0, f"{in_card} finding(s) also sitting in a card list"
+
+
 class TestSendToTaskSetup:
     """The tab's PRIMARY loop, witnessed in a browser for the first time
     (U6 close, 2026-08-22): every layer below this one was green while
@@ -1076,16 +1110,19 @@ def test_a_field_off_its_recommended_value_raises_the_panel(
 
     moved = page.evaluate("""(engine) => {
         const box = document.getElementById(engine + "-form-container");
-        // A field whose box is EMPTY has no recommended value to be off:
+        // A field nobody chose is BLANK, the kind's recommendation its hint
+        // (form-schema.md § 1.1) -- so the field is found by a numeric hint.
+        // One with no recommendation has nothing to be off:
         // diffFromDefaults skips `f.default === null | undefined`, which is
-        // right (nothing to be off) and is how the first pass of this test
-        // picked pyscf's `net_charge` and concluded the panel was broken.
+        // how the first pass of this test picked pyscf's `net_charge` and
+        // concluded the panel was broken.
         const num = [...box.querySelectorAll('input[type="number"]')]
-            .find((n) => n.value !== "");
-        if (!num) return {error: "no number field with a rendered default in "
+            .find((n) => n.value === "" && n.placeholder !== ""
+                         && !isNaN(parseFloat(n.placeholder)));
+        if (!num) return {error: "no number field with a recommended hint in "
                                  + "the " + engine + " form"};
-        const was = num.value;
-        num.value = String((parseFloat(was || "0") || 0) + 137);
+        const was = num.placeholder;
+        num.value = String(parseFloat(was) + 137);
         // `input` ALONE on the way up, `change` alone on the way back down
         // (see the reset below).  Each listener is proved separately because
         // they answer different writers: a person types (input), while the
@@ -1117,9 +1154,47 @@ def test_a_field_off_its_recommended_value_raises_the_panel(
     assert "recommended value" in count, count
 
     # And it goes away again -- a panel that only ever appears is a banner.
+    # Back to BLANK, not chosen: the recommendation is what applies, so
+    # nothing is off it.
     page.evaluate("""(m) => {
         const n = document.getElementById(m.id);
-        n.value = m.was;
+        n.value = "";
         n.dispatchEvent(new Event("change", {bubbles: true}));   // change alone
     }""", moved)
     panel.wait_for(state="hidden", timeout=10_000)
+
+
+def test_the_form_holds_only_what_the_person_gave_and_keeps_it_over_a_reload(
+        page, flask_server):
+    """`web/form-schema.md` § 1.1 (plan § 5w K7), on the real Build page: a
+    new calculation's form holds nothing until the person gives it
+    something -- a field is blank, not chosen, the kind's recommendation its
+    hint, and a box nobody answered is indeterminate.  What the person gave
+    survives a reload, and so does what they did not: the restore writes
+    through the form's own writer.  It read `.checked` by id, which turned a
+    box nobody answered into "off" (`test_form_state_persistence_js.py`
+    pinned that reader, and retired with it)."""
+    _open_build(page, flask_server)
+    page.wait_for_selector("#p-mesh-cutoff", timeout=_BOOT_TIMEOUT_MS)
+
+    def state():
+        return page.evaluate("""() => {
+            const m = document.getElementById("p-mesh-cutoff");
+            const b = document.getElementById("p-write-hs");
+            return {mesh: m.value, hint: m.placeholder, box: b.indeterminate,
+                    said: m.closest(".schema-field")
+                           .querySelector(".schema-source").textContent};
+        }""")
+
+    assert state() == {"mesh": "", "hint": "300", "box": True,
+                       "said": "not chosen \u00b7 recommended 300 Ry"}, state()
+    page.fill("#p-mesh-cutoff", "450")
+    assert state()["said"] == "you set this"
+
+    page.reload()
+    page.wait_for_function(
+        "() => (document.getElementById('p-mesh-cutoff') || {}).value === '450'",
+        timeout=_BOOT_TIMEOUT_MS)
+    after = state()
+    assert after["box"] is True, "the box nobody answered came back answered"
+    assert after["said"] == "you set this", after

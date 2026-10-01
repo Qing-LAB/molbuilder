@@ -64,7 +64,10 @@ is where the *data* comes from.
 | the schema needs | from the item |
 |---|---|
 | `name` | the item's own name |
-| `label` · `help` · `default` · `unit` | the keys of the same name |
+| `label` · `help` · `unit` | the keys of the same name |
+| `default` | the item's default **for this kind** (`template.recommended_for`) — a HINT beside a field with no value, never a value |
+| `value` · `source` | **the calculation's template**, when the surface is drawn from one (`catalogue_to_form_schema(template=)`): the item's value and where it came from (`engines/template.md` § 6.6 obligation 2). A value nobody chose (`default`) is not carried — that field is blank. With no template, no field has a value. The words a source is said in ride once, as the schema's `source_words` (`template.SOURCE_WORDS`: *from the run you cited* · *from the record saved with your structure* · *you set this* · *not chosen* · *not recorded*), and every surface says them from there |
+| `locked` | derived from the kind: an item the RUNG fixes (`role`, `engines/template.md` § 6.4), echoed read-only — `{value, why}`, the rung's answer (`template.role_answers`; on a form for the whole calculation, the answers every rung gives alike, `fixed_on_every_rung`) and the reason (`why_role`). Drawn disabled at its value with the reason beside it, never collected (§ 6.6 obligation 3: shown, never a control). The bias carries no value — each point of the description's list is its own (`template.PER_POINT`) *(2026-09-30, K7)* |
 | `choices` | the item's `choices`, **narrowed to what the kind offers** on this engine (`offered`, `template.offered` — [`engines/template.md`](?doc=engines/template.md) § 6.3a, 2026-09-30): a vibration's relaxation shows three relaxers, a PySCF vibration's spin `restricted` alone |
 | `min` / `max` | `range` |
 | `engine_key` | the item's **`engine_key`** — the full spelling. `expands` is the fallback for a `deck` item whose several keywords are the honest answer, and `anchor` the last resort. *(This said `anchor` first until 2026-08-15, and an anchor is deliberately the bare leading keyword — so the badge read `gto.M` on four different PySCF controls, `mf` on three more, and nothing at all on the eleven whose key is a molbuilder note.)* |
@@ -77,6 +80,33 @@ is where the *data* comes from.
 | `null_option` | derived: the item is optional |
 | `required` | derived from the kind: the item's `required` kinds ([`engines/template.md`](?doc=engines/template.md) § 5) — the control is drawn required, and red while it is empty. The value may still be blank; the refusal is the Send's, beside the field ([`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § 1) *(2026-09-30)* |
 | `tier` · `pattern` · `optional` | **item keys added for this** — § 1.2 |
+
+**One field state, drawn the same way on every surface** *(plan § 5w K7,
+2026-09-30)*. A field **holds** a value only where its surface is drawn from
+the template and edits it — the transport tab's shared panel: the template's
+`value`, named by its source. A surface of **overrides** over the template
+(`renderForm`'s `holds: "overrides"` — a transport rung's tab) holds the
+rung's own values, and a new calculation's form holds what the person gives
+it; both hold nothing until then. Under every field one caption says whose its
+value is, and follows each edit: the source, *you set this*, or —
+
+* **blank is not chosen**, for every field, and the caption and the box's own
+  hint say what then applies: on a surface of overrides the template's value
+  and whose it is; an optional item's own blank (its `null_label`); else the
+  kind's `default`, *recommended*. Never the first choice of a list, never a
+  zero in a triple, never an unticked box — a checkbox nobody answered is
+  drawn **indeterminate**, the box's own blank. A value the person did not
+  choose is never presented as if they had.
+
+`collectForm` reads what the form holds, **a blank as `null`**, and the
+server's one door (`_shared.config_from_params`) reads a `null` as not chosen
+for every field: the field keeps what lies under it — the kind's
+recommendation, the template's value, the citation's — and the template
+records it as nobody's choice. **A value that will not read as its type is
+refused, naming its field** — client-side by `collectForm`, whose caption then
+says why beside the field, and by the server's door for any other caller; a
+fractional count is one, never rounded, and so is a triple holding only some
+of its components.
 
 An item's hard limit (`above`) is **not** sent: the form computes no verdict of
 its own. The settings gate's refusal is its live check, and lands beside the
@@ -295,12 +325,12 @@ flowchart LR
 - **On the server**, `catalogue_to_form_schema()` walks the CATALOGUE
   (narrowed to the engine, and to the calculation kind when asked) and
   turns each item into a small JSON description — its label, its kind, its
-  default, its allowed choices — grouped by category.  (Transport's tab
-  still walks its config class through the older
-  `dataclass_to_form_schema()`, where the `section` tag gates exposure.) This is served at `GET /api/build/schema/<engine>` (SIESTA, PySCF —
+  default, its allowed choices — grouped by category. This is served at `GET /api/build/schema/<engine>` (SIESTA, PySCF —
   `?calculation=vibration` narrows PySCF's to the vibration kind's items;
   the separate `/api/build/schema/spectra` route retired at the spectra
-  migration's P3) and `GET /api/transport/schema`.
+  migration's P3) and `GET /api/transport/schema`, whose two surfaces are
+  drawn from the template the tab's describe will write, each field carrying
+  its value and source (§ 1.1).
 - **In the browser**, this module takes that JSON and draws the matching
   controls, then — when the user submits — reads every control back into a
   plain values object that goes to the generate step.
@@ -316,10 +346,10 @@ register with the runtime):
 | Call | What it does |
 |---|---|
 | `fetchSchema(engine, opts)` | Ask the server for a form's shape (`GET /api/build/schema/<engine>`). |
-| `renderForm(host, schema)` | Draw the form from that shape into a host element. |
-| `collectForm(host, schema)` | Read the filled-in controls back into a plain values object (the schema tells it how to read each kind). |
+| `renderForm(host, schema, opts)` | Draw the form from that shape into a host element. `opts.holds = "overrides"` draws a surface of overrides over the template — its fields blank, the template's value their hint (§ 1.1); `opts.foldable` folds the cards (§ 1.3). |
+| `collectForm(host, schema, names?)` | Read what the form holds back into a plain values object (the schema tells it how to read each kind): **every field, a blank as `null`** — not chosen — each value read as its type. A value that will not read is refused: it throws an `Error` naming the field (`err.field`) (§ 1.1). A `locked` field is never read. `names` reads those fields alone. |
 | `setValues(host, schema, values)` | Push a set of values into an already-drawn form (e.g. to restore a saved config). |
-| `diffFromDefaults(host, schema)` | Which fields are **not** at the catalogue's recommended value, as `[{name, label, current, recommended, unit, help}]`. |
+| `diffFromDefaults(host, schema)` | Which fields hold a value that is **not** the kind's recommended one, as `[{name, label, current, recommended, unit, help}]`. A blank field is not listed: the recommendation already applies, and resetting a listed one blanks it (§ 1.1). |
 
 ### 3.0a What `setValues` guarantees, and the two ways it can fail quietly
 
@@ -332,16 +362,18 @@ that only sets `.value` looks applied on screen while every dirty-tracker,
 live preview and unsaved-marker on the page still believes nothing happened.
 The events are how the rest of the page finds out.
 
-**An `int-triple` is written through its sub-ids, not its own.** The three
-inputs are wrapped in an unidentified `<span>`, so there is no element
-carrying the field's `id` — the ordinary `#id` lookup returns null and the
-field is **skipped in silence**. It is handled by its own loop over
-`<id>-<label>` (the field's `labels`, else `x`/`y`/`z`), and a value that is
-not a 3-element array is skipped rather than half-applied.
+**A triple is written through its sub-ids, not its own.** The field's `id`
+is on the `<span>` wrapping the three inputs — where a finding about the
+field lands (§ 1.1) — and that span has no `.value`. It is handled by its own
+loop over `<id>-<label>` (the field's `labels`, else `x`/`y`/`z`), and a
+value that is neither a 3-element array nor `null` is skipped rather than
+half-applied.
 
 Everything else is written through `.value`, except a checkbox, which is
-written through `.checked`. A field absent from the values object is left
-alone — this is *push these*, not *reset to these*.
+written through `.checked`. **A `null` blanks a field** — not chosen: an empty
+box, a select's blank option, a tri-select's `auto`, an **indeterminate**
+checkbox (§ 1.1). A field absent from the values object is left alone — this
+is *push these*, not *reset to these*. A `locked` field is never written.
 
 ### 3.1 Why the difference is computed here
 
@@ -349,7 +381,10 @@ alone — this is *push these*, not *reset to these*.
 holds and what the schema says — so a page that compared them itself would need
 its own reader for every kind in § 4. It skips a field with **no `default`**:
 there is nothing to recommend, so offering to reset it would mean blanking a
-value on the user's behalf.
+value on the user's behalf. It skips a **blank** field too: not chosen, so the
+recommendation is already what applies — and resetting a listed field blanks
+it, back to not chosen, rather than typing the recommended value in, which the
+template would record as the person's (§ 1.1).
 
 Two comparison rules, each earned by a way the naive version misleads:
 

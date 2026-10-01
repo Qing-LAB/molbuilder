@@ -722,7 +722,7 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `category` | which **question about the calculation** this answers — § 6.2's closed vocabulary. Engine-independent, so the same six panels serve every engine |
 | `engines` | which engines this item applies to, as a list. **Absent means all of them** — § 6.3 |
 | `calculations` | which calculation KINDS select this item, as a list — `engines`' exact sibling on the other axis (spectra-migration P0, 2026-08-20). **Absent means every kind**, which is why the 80-plus pre-existing items needed no edit and the vibration items — thirteen since two retired selectors went, 2026-09-28 — stay out of an optimization template by declaration |
-| `recommended` | a **per-kind recommended value**, `recommended = { vibration = 0.01 }` (§ 6.3a, 2026-09-24): what a form built for that kind shows and what `init` writes into that kind's template, in place of `value`/`default`, when the kind asks a different question of the same parameter than the general default answers — a frequency's relaxation is tighter than an optimization's. Absent means the general default. Each value passes the item's own `type` at parse time (`range` stays advisory, § 5.3) |
+| `recommended` | a **per-kind recommended value**, `recommended = { vibration = 0.01 }` (§ 6.3a, 2026-09-24): what a form built for that kind shows as a blank field's hint and what `init` and the form doors write into that kind's template when nobody chose, in place of `value`/`default`, when the kind asks a different question of the same parameter than the general default answers — a frequency's relaxation is tighter than an optimization's. Absent means the general default. Each value passes the item's own `type` at parse time (`range` stays advisory, § 5.3) |
 | `offered` | **the choices a kind may take**, a subset of `choices` — `offered = { vibration = ["CG", "Broyden", "FIRE"] }` (§ 6.3a, 2026-09-30); on an item that serves two engines whose choices differ, the key names the engine too — `offered = { siesta.transport = ["restricted", "unrestricted"], pyscf.vibration = ["restricted"] }` (a TOML dotted key: one table per engine). Absent — for the kind, or on the item — means every choice. Read by the form, the stage table's cells, the description's own check, `resolve` and the settings gate (`template.offered`); a value outside it is refused by name, listing what the kind offers, with the reason `template.why_not_offered` gives. Each member passes the item's own `type` and `choices` at parse time, and each key names a calculation kind — a misspelled one is refused, since it would be a set nothing asks |
 | `refs` | citation keys into `docs/science/references.bib` — the paper(s) behind a scientific knob's guidance. Resolved server-side (title + DOI) and rendered in the form's help; `tests/test_catalogue_refs.py` pins that every key resolves |
 | `allocation` | **the scheduler answers this one** — ranks, threads, memory (§ 6.4). One boolean; it replaced a `resolver` NAME plus a list of which names counted, neither of which anything dispatched on |
@@ -1551,12 +1551,15 @@ help = "The largest force allowed on any free atom when the relaxation stops."
 
 Three readers, one rule: the form-schema door narrowed to a kind
 (`/api/build/schema/<engine>?calculation=<kind>`) presents the recommended
-value as the field's value and default; `jobset init` writes it into the
-kind's template as the item's `value` and `default`; and
-`template_with_values(..., calculation=)` writes it as the `default` beside
-whatever value the config holds. After that the template is the answer and
-the person changes it like any other value — the recommendation is where the
-number starts, never a lock. A test compares every `recommended` value of a
+value as the field's `default` — the hint beside a blank field, *not chosen*
+(`form-schema.md` § 1.1, K7); every door that writes a template from a form or
+a flag lays it under what the person gave (`jobset init` and the form doors'
+`_shared.config_from_params`, both through `apply_recommended`), so a field
+nobody chose is written as the kind's recommendation and recorded as nobody's
+(`source = "default"`, § 6.6); and `template_with_values(..., calculation=)`
+writes it as the `default` beside whatever value the config holds. After that
+the template is the answer and the person changes it like any other value —
+the recommendation is where the number starts, never a lock. A test compares every `recommended` value of a
 tier field against the engine's tier table, so the two homes of that number
 cannot drift.
 
@@ -1761,9 +1764,11 @@ calculation-wide file could state. **Wrong when a deck is rendered without
 `resolve`** — a library call or a test hands the walk a bare config — so the
 settings gate refuses a config holding another value for an item every rung
 fixes alike, and a caller of `spec_for` lays the rung's answers on first
-(`template.role_answers`). A role item is not offered as a form field or a
-stage-table column; the read-only echo § 6.6 obligation 3 asks for comes with
-the form's value model ([`plan.md`](?doc=plans/plan.md) § 5w K7).
+(`template.role_answers`). A role item is never a form control or a
+stage-table column; a form SHOWS it read-only, at the rung's answer and why —
+§ 6.6 obligation 3's echo (`locked`, [`form-schema.md`](?doc=web/form-schema.md)
+§ 1.1; K7, 2026-09-30): a form for one rung echoes that rung's answers, a form
+for the whole calculation the ones every rung gives alike.
 
 **The name is the one the templates on disk already carry** — every per-kind
 template copies each item's declaration, `role` with it — so the two output
@@ -1972,14 +1977,16 @@ Five obligations, each naming the reader it binds.
   declared on the item (§ 5), and `resolve` refuses a stage override of an item
   shared by every stage of its kind, for every kind, naming why
   (`template.why_shared`; obligation 1);
-* `citation_defaults` fills the template at `init` and marks nothing, and an
-  item has no key for a source, so obligation 2's four states cannot be
-  produced from the file;
-* the form schema has no read-only state and no source (`form-schema.md`
-  § 1.1), so a surface can only offer a control or omit the item —
-  [`transport.md`](?doc=engines/transport.md) § 3.8.2's *"must never show a
-  shared value"* was written inside that limitation and now reads *never as a
-  control, always as an echo*;
+* ~~`citation_defaults` fills the template at `init` and marks nothing, and an
+  item has no key for a source~~ — **closed by K7** (plan § 5w): every item
+  carries `source`, below;
+* ~~the form schema has no read-only state and no source~~ — **closed by
+  K7** (`form-schema.md` § 1.1): every field carries its template value's
+  `source`, and an item the rung fixes is echoed read-only (`locked`, at the
+  rung's answer, with why). [`transport.md`](?doc=engines/transport.md)
+  § 3.8.2's *"must never show a shared value"* reads *never as a control,
+  always as an echo*; the echo of every shared value on Task setup is not
+  built (§ 3.8.9);
 * an `optional` item at `None` writes nothing: `BlockSize`
   (`siesta/input.py:497`); and `TBT.Verbosity` reaches every transport deck
   from a field no catalogue row declares
@@ -2001,7 +2008,7 @@ proposal the 2026-09-22 structure-API audit made:
 
 | the choice | proposed |
 |---|---|
-| the source key on a template item, and its vocabulary | `source`, one of `cited` · `record` · `person` · `default`, written by `init` and the describe door and read by every surface |
+| the source key on a template item, and its vocabulary | `source`, one of `cited` · `record` · `person` · `default` — **ruled 2026-09-29, built (K7)**. The one writer (`template_with_values`) writes it from what its caller knows: a cited run's answers are `cited`, the structure's saved record's `record`, what the person's form sent `person`, and everything else `default` — *not chosen* (its value is what the writer wrote before: the documented default, or none for transport's unanswered `citation` rows, § 3.8.3). The one reader (`read_template`) reads it, and every form field carries it (`form-schema.md` § 1.1). A template written before has no `source`: it reads as *not recorded*, said so and never guessed, until the next describe writes one |
 | where a deck carries its per-parameter table | the PROVENANCE reserved block grows it — the deck is what is opened months later, `.validation.txt` is never read back, and G4's text comparison already tolerates that block's rendering moment — rather than a file beside the deck |
 | the deck's *not set* line for an `optional` item at `None` | a comment naming the engine default that applies |
 

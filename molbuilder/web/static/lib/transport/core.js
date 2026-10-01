@@ -46,16 +46,21 @@ const WORKSPACE_TAG = "transport";
      * catalogue narrowed to the kind, split by the markers on the
      * server.  `surface` is "rung" -- the per-rung form, whose values
      * are override bags -- or "shared" -- the panel that edits the
-     * template, whose values are the citation's answers, so it carries
-     * the junction and is rendered again whenever the junction changes.
+     * template.  BOTH are drawn from the template this describe will write
+     * (plan § 5w K7), so both carry the junction and are rendered again
+     * whenever it changes; a rung's tab also carries what the shared panel
+     * holds, since a rung's value can follow a shared one (the
+     * transmission grid starts at the SCF's).
      * Resolves to the answer body; renders an error paragraph and
      * resolves to null on failure so the page never fails silently.
      */
     function _fetchSurface(surface, host, formSchema, rung, renderOpts) {
         var url = SCHEMA_URL + "?surface=" + surface
-            + (surface === "shared" && _junction
-               ? "&junction=" + encodeURIComponent(_junction) : "")
-            + (rung ? "&rung=" + encodeURIComponent(rung) : "");
+            + (_junction ? "&junction=" + encodeURIComponent(_junction) : "")
+            + (rung ? "&rung=" + encodeURIComponent(rung) : "")
+            + (rung && _junction
+               ? "&shared=" + encodeURIComponent(JSON.stringify(_sharedHeld()))
+               : "");
         return root.fetch(url)
             .then(function (r) {
                 return r.json().then(function (body) {
@@ -108,8 +113,9 @@ const WORKSPACE_TAG = "transport";
      * server answers the rung list -- name, ladder index, one-line note
      * -- and one schema per rung; a tab holds that rung's own items and
      * the ones any rung may set, each written into THAT rung's bag.  Its
-     * values are kept across a reload (session storage, per rung), its
-     * CHANGED fields are the bags the description carries. */
+     * values are kept across a reload (session storage, per rung), and
+     * what it HOLDS is the bag the description carries -- the template's
+     * values are what a blank field runs (form-schema.md § 1.1). */
     function _fetchAndRender(formContainer, formSchema) {
         return root.fetch(SCHEMA_URL + "?surface=rung")
             .then(function (r) { return r.json(); })
@@ -154,9 +160,13 @@ const WORKSPACE_TAG = "transport";
                     if (!api.select(keep)) api.select(rungs[0].name);
                 }
                 return Promise.all(panels.map(function (p) {
+                    // A tab HOLDS THE RUNG'S OWN VALUES: the template's are
+                    // what a blank field runs, shown as its hint
+                    // (form-schema.md § 1.1).
                     return _fetchSurface("rung", p.host, formSchema, p.rung,
                                          { foldable: true,
-                                           folded: _foldedUnlessOwned })
+                                           folded: _foldedUnlessOwned,
+                                           holds: "overrides" })
                         .then(function (b) {
                             if (!b) return 0;
                             _rungSchemas[p.rung] = b.schema;
@@ -214,38 +224,38 @@ const WORKSPACE_TAG = "transport";
         }
     }
 
-    function _wirePersistence(container, schema, formSchema, rung) {
-        var debounceHandle = null;
-        function persist() {
-            try {
-                var values = formSchema.collectForm(container, schema);
-                root.sessionStorage.setItem(
-                    _formKey(rung), JSON.stringify(values));
-            } catch (_) {
-                // Best-effort — quota / collectForm validation
-                // failure shouldn't break the form's interactive
-                // state.  The form still functions; only the
-                // refresh-survives behavior degrades.
-            }
+    /* What one rung's tab holds, into its session slot. */
+    function _saveRung(container, schema, formSchema, rung) {
+        try {
+            var values = formSchema.collectForm(container, schema);
+            root.sessionStorage.setItem(
+                _formKey(rung), JSON.stringify(values));
+        } catch (_) {
+            // Best-effort — quota / collectForm validation
+            // failure shouldn't break the form's interactive
+            // state.  The form still functions; only the
+            // refresh-survives behavior degrades.
         }
-        container.addEventListener("input", function () {
-            if (debounceHandle) clearTimeout(debounceHandle);
-            debounceHandle = setTimeout(persist, 250);
-        });
+    }
+
+    /* Saved on EVERY edit, not after a pause: the tabs are drawn again at
+     * each citation and each change on the shared panel, and the restore
+     * after a redraw is what puts the person's values back -- a save that
+     * waited could miss a value typed just before one. */
+    function _wirePersistence(container, schema, formSchema, rung) {
+        function persist() { _saveRung(container, schema, formSchema, rung); }
+        container.addEventListener("input", persist);
         container.addEventListener("change", persist);
     }
 
     /* THE TAB'S FACTS (4.1b, 2026-08-29): the citation (a directory
      * whose FILES satisfy the condition), the composed labeled
      * structure the server answers with (the viewer + the chemistry
-     * analysis run on it -- no file path is assumed), and which
-     * contract lane the form serves ("cited" = the deck's, contract
-     * fields hidden; "open" = the description's own, offered).  All
-     * three are /api/transport/describe_attempt's answers, adopted
-     * whole -- the tab derives none of them. */
+     * analysis run on it -- no file path is assumed).  Both are
+     * /api/transport/describe_attempt's answers, adopted whole -- the tab
+     * derives neither. */
     var _junction = "";           // the citation path, "" until cited
     var _junctionStructure = null;    // the composed structure envelope
-    var _junctionContract = "cited";  // which schema lane the form shows
 
     /* The composite's send gate: a citation is the ONE thing the
      * describe cannot go without (transport-design.md 4.1). */
@@ -274,8 +284,8 @@ const WORKSPACE_TAG = "transport";
         if (!ws || typeof ws.persist !== "function") return;
         /* v3 (4.1b): the tab's ONE fact is the CITATION.  A reload
          * re-describes it through the same seam a pick uses, so the
-         * structure, the meta line and the contract lane always come
-         * back fresh from the server, never from a stale copy. */
+         * structure, the meta line and both surfaces always come back
+         * fresh from the server, never from a stale copy. */
         ws.persist(PANEL_TAG, { v: 3, junction: _junction || "" },
                    _panelIdentity(ws));
     }
@@ -532,9 +542,12 @@ const WORKSPACE_TAG = "transport";
         }
         _junction = described.citation;
         _junctionStructure = described.structure || null;
-        // The shared panel follows the citation: its values are what the
-        // cited directory answers (3.8.1).
-        _fetchAndRenderShared(root.molbuilder && root.molbuilder.formSchema);
+        // BOTH SURFACES FOLLOW THE CITATION: the shared panel holds what the
+        // cited directory answers (3.8.1), and each rung's tab shows what
+        // that rung runs -- drawn from the template the panel describes, so
+        // after it.
+        _fetchAndRenderShared(root.molbuilder && root.molbuilder.formSchema)
+            .then(_renderRungs);
         var out = _$("transport-junction-readout");
         if (out) out.textContent = _junction;
         var meta = _$("transport-junction-meta");
@@ -545,17 +558,6 @@ const WORKSPACE_TAG = "transport";
         _offerFix(described);
         _writePanelNote();
         _refreshSendButton();
-        /* The contract lane follows the FORM (4.1b): a relaxation's
-         * deck owns the electronic contract (fields hidden); a plain
-         * labeled pair has no deck, so the fields are the
-         * description's own and the form offers them. */
-        var lane = described.contract === "open" ? "open" : "cited";
-        if (lane !== _junctionContract) {
-            _junctionContract = lane;
-            var fc = _$("transport-form-container");
-            var fs = root.molbuilder && root.molbuilder.formSchema;
-            if (fc && fs) _fetchAndRender(fc, fs);
-        }
         /* Honest state, not a gate (strict composition refuses at
          * PREP; describing ahead is legal).  The summary already says
          * CONCLUDED / not / no-record; add the road note only when
@@ -627,32 +629,28 @@ const WORKSPACE_TAG = "transport";
         if (el) el.textContent = msg || "";
     }
 
-    /** The transport-only knobs: fields whose value differs from the
-     *  schema default.  The server refuses a sealed one BY NAME (the
-     *  electronic contract is the citation's to say), so an untouched
-     *  form sends nothing and a touched contract field gets a clear
-     *  answer instead of a silent drop. */
-    /** The transport-only knobs whose value differs from the schema
-     *  default -- through the SHARED differ (formSchema.diffFromDefaults,
-     *  which owns the typed comparison incl. the 300-vs-"300" trap).
-     *  An untouched form sends nothing; an invalid one answers null so
-     *  the caller says so instead of silently dropping fields. */
-    /* {rung: {item: value}} -- each rung's CHANGED fields, its own bag;
-     * a rung with nothing changed sends no bag.  `null` when a panel holds
-     * an invalid value: the caller says so. */
-    function _changedByRung() {
+    /* {rung: {item: value}} -- what each rung's tab HOLDS, its own bag
+     * (form-schema.md § 1.1: a tab holds the rung's values, the template's
+     * shown as what a blank field runs).  A blank is not chosen and not
+     * sent; a rung holding nothing sends no bag.  Every value the person
+     * gave is sent -- one equal to the catalogue's default, or set on an
+     * item that has none: the bags were each tab's DIFFERENCE from the
+     * default until 2026-09-30, so `scf_must_converge` could never be sent
+     * and an explicit 1 1 1 transmission grid neither (T-F24, T-F1).
+     * Throws, naming the field, on a value that will not read. */
+    function _bagsByRung() {
         var fs = root.molbuilder && root.molbuilder.formSchema;
-        if (!fs || typeof fs.diffFromDefaults !== "function") return {};
+        if (!fs) return {};
         var bags = {};
-        try {
-            Object.keys(_rungHosts).forEach(function (rung) {
-                var bag = {};
-                fs.diffFromDefaults(_rungHosts[rung], _rungSchemas[rung])
-                    .forEach(function (d) { bag[d.name] = d.current; });
-                if (Object.keys(bag).length) bags[rung] = bag;
+        Object.keys(_rungHosts).forEach(function (rung) {
+            var held = fs.collectForm(_rungHosts[rung], _rungSchemas[rung]);
+            var bag = {};
+            Object.keys(held).forEach(function (k) {
+                if (held[k] !== null) bag[k] = held[k];
             });
-            return bags;
-        } catch (e) { return null; }      // invalid form: the caller says so
+            if (Object.keys(bag).length) bags[rung] = bag;
+        });
+        return bags;
     }
 
     function _wireSendButton(formContainer) {
@@ -672,16 +670,14 @@ const WORKSPACE_TAG = "transport";
                     + "e.g. 0.0,0.2");
                 return;
             }
-            var bags = _changedByRung();
-            if (bags === null) {
-                _setSendStatus("A rung's form has invalid values — fix them "
-                    + "and retry.");
-                return;
-            }
-            var shared = _sharedValues();
-            if (shared === null) {
-                _setSendStatus("The shared panel has invalid values — fix "
-                    + "them and retry.");
+            // A VALUE THAT WILL NOT READ AS ITS TYPE is refused here, naming
+            // its field -- beside which its caption already says why.
+            var bags, shared;
+            try {
+                bags = _bagsByRung();
+                shared = _sharedValues();
+            } catch (e) {
+                _setSendStatus(e && e.message ? e.message : String(e));
                 return;
             }
             mb.taskHandover.send({
@@ -728,6 +724,18 @@ const WORKSPACE_TAG = "transport";
     function _fetchAndRenderShared(formSchema) {
         var host = _$("transport-shared-container");
         if (!host || !formSchema) return Promise.resolve();
+        // A RUNG'S VALUE CAN FOLLOW A SHARED ONE -- the transmission grid
+        // starts at the SCF's -- so a change here draws the rungs' tabs
+        // again from what the panel now holds.  One listener for the host,
+        // which outlives every render of its contents.
+        if (!host.dataset.rungsFollow) {
+            host.dataset.rungsFollow = "1";
+            var t = null;
+            host.addEventListener("change", function () {
+                if (t) clearTimeout(t);
+                t = setTimeout(_renderRungs, 300);
+            });
+        }
         return _fetchSurface("shared", host, formSchema).then(function (body) {
             if (body) _sharedSchema = body.schema;
             // The panel is rendered for the junction now (or could not be):
@@ -739,8 +747,8 @@ const WORKSPACE_TAG = "transport";
             if (!line) return;
             var src = body.source || {kind: "none", name: ""};
             line.textContent = !_junction
-                ? "No junction cited yet: these are the catalogue's starting "
-                  + "values."
+                ? "No junction cited yet: nothing is chosen, and each blank "
+                  + "field shows the value that would apply."
                 : src.kind === "deck"
                 ? "Values from the run you cited (" + src.name + ").  Change "
                   + "any of them; a change applies to all five rungs at once."
@@ -755,9 +763,12 @@ const WORKSPACE_TAG = "transport";
         });
     }
 
-    /* What the shared panel says now -- every field, not only the changed
-     * ones: the panel edits the template, and the template answers all
-     * five rungs. */
+    /* What the shared panel HOLDS now -- every field, a blank as null: the
+     * panel edits the template, and is drawn holding the citation's
+     * answers, so the server tells the citation's value from the person's
+     * by the citation itself, and a field sent blank was emptied
+     * (`_panel_template`).  Throws, naming the field, on a value that will
+     * not read. */
     function _sharedValues() {
         var fs = root.molbuilder && root.molbuilder.formSchema;
         var host = _$("transport-shared-container");
@@ -765,8 +776,22 @@ const WORKSPACE_TAG = "transport";
                 || typeof fs.collectForm !== "function") {
             return {};
         }
-        try { return fs.collectForm(host, _sharedSchema); }
-        catch (e) { return null; }
+        return fs.collectForm(host, _sharedSchema);
+    }
+
+    /* ...for a rung's tab to be drawn from: {} while it holds a value that
+     * will not read -- its field says why, and the rungs keep the template
+     * the panel last described. */
+    function _sharedHeld() {
+        try { return _sharedValues(); }
+        catch (_) { return {}; }
+    }
+
+    /* Each rung's tab, drawn again from the template the panel describes. */
+    function _renderRungs() {
+        var fc = _$("transport-form-container");
+        var fs = root.molbuilder && root.molbuilder.formSchema;
+        if (fc && fs) return _fetchAndRender(fc, fs);
     }
 
     function _init() {

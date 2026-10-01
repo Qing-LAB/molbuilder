@@ -129,6 +129,7 @@ def build_description(
     calculation: str = "optimization",
     pseudo_species: Sequence[str] = (),
     generators: Optional[Dict[str, Any]] = None,
+    value_sources: Optional[Dict[str, str]] = None,
 ) -> Description:
     """Build and **check** a description. Nothing is written.
 
@@ -176,8 +177,11 @@ def build_description(
     # § 4.3: this calculation's template is the CATALOGUE, narrowed to this
     # engine, carrying the values `cfg` holds.  The questions were asked by the
     # catalogue; `describe` supplies the answers, exactly as a surface does.
+    # ...and where each value came from (§ 6.6 obligation 2): what the
+    # caller says (``value_sources``), every other item nobody's choice.
     text = template_with_values(cfg, engine=engine,
-                                calculation=calculation)
+                                calculation=calculation,
+                                sources=value_sources)
     return Description(task=task, template=text,
                        pseudo_species=tuple(pseudo_species))
 

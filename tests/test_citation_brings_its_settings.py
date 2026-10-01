@@ -279,3 +279,76 @@ def test_a_record_for_a_DIFFERENT_citation_says_which(tmp_path):
 def test_an_incomplete_record_names_the_missing_files(tmp_path):
     msg = _why(tmp_path, {"citation": "new/attempt", "form": "relaxation"})
     assert "incomplete" in msg and "junction.xyz" in msg
+
+
+def test_the_tab_shows_the_template_it_describes_and_whose_each_value_is(
+        isolated_projects_root, web_client):
+    """Plan § 5w K7: both surfaces of the transport tab are drawn from the
+    template the tab's describe writes (`engines/transport.md` § 3.8.2), each
+    field naming whose its value is, and the template records the same
+    (`engines/template.md` § 6.6 obligation 2).
+
+    The rung's tab showed the catalogue's 1 1 1 transmission grid while the
+    rung ran the cited 4 4 1, and a mesh changed on the shared panel left the
+    transmission on the cited one (the M11 review's T-F1).  A row nobody
+    answered showed -- and sent -- a list's first choice (T-F25)."""
+    import json
+
+    from molbuilder.template import one, read_template
+
+    d = isolated_projects_root / "J" / "structure" / "remembered"
+    d.mkdir(parents=True)
+    StructureCodec().write(_junction(engine="siesta",
+                                     source="JunctionRelax.fdf",
+                                     contract=dict(RECORDED)),
+                           d / "junction.xyz")
+    cite = "J/structure/remembered"
+
+    def surface(**q):
+        r = web_client.get("/api/transport/schema",
+                           query_string=dict(junction=cite, **q))
+        assert r.status_code == 200, r.get_json()
+        return {f["name"]: f for s in r.get_json()["schema"]["sections"]
+                for f in s["fields"]}
+
+    # THE SHARED PANEL holds the record's answers, named as the record's;
+    # a row it does not answer is blank -- not chosen.
+    panel = surface(surface="shared")
+    assert (panel["mesh_cutoff"]["value"],
+            panel["mesh_cutoff"]["source"]) == (400.0, "record")
+    assert panel["kgrid"]["value"] == [4, 4, 1]
+    assert "value" not in panel["pao_energy_shift"], panel["pao_energy_shift"]
+
+    # A RUNG'S TAB shows what the rung runs: the transmission grid from the
+    # record, not the catalogue's 1 1 1 ...
+    tr = surface(surface="rung", rung="transmission")
+    assert (tr["tbt_k_grid"]["value"],
+            tr["tbt_k_grid"]["source"]) == ([4, 4, 1], "record")
+    # ... and it follows a mesh set on the panel: the transmission grid
+    # starts at the SCF's, by the one rule.
+    held = {n: f.get("value") for n, f in panel.items()}
+    held["kgrid"] = [6, 6, 1]
+    tr = surface(surface="rung", rung="transmission", shared=json.dumps(held))
+    assert (tr["tbt_k_grid"]["value"],
+            tr["tbt_k_grid"]["source"]) == ([6, 6, 1], "person")
+    # What the rung FIXES is shown, never a control (§ 6.6 obligation 3):
+    # the device's solver at its answer, the bias as the list's.
+    dev = surface(surface="rung", rung="device")
+    assert dev["solution_method"]["locked"]["value"] == "transiesta"
+    assert dev["bias_voltage_v"]["locked"]["value"] is None
+
+    # DESCRIBED WITH THE PANEL AS IT HOLDS, the template says the same: a
+    # value held as the record answered it is the record's, the changed
+    # mesh and the grid that follows it the person's, an unanswered row
+    # nobody's.
+    r = web_client.post("/api/transport/describe", json=dict(
+        engine="siesta", name="T", junction=cite, bias=[0.0], shared=held))
+    assert r.status_code == 200, r.get_json()
+    tmpl = read_template(r.get_json()["files"][1]["text"])
+    assert one(tmpl, "mesh_cutoff").source == "record"
+    assert one(tmpl, "basis_size").source == "record"
+    kg, tg = one(tmpl, "kgrid"), one(tmpl, "tbt_k_grid")
+    assert (kg.value, kg.source) == ((6, 6, 1), "person")
+    assert (tg.value, tg.source) == ((6, 6, 1), "person")
+    pes = one(tmpl, "pao_energy_shift")
+    assert (pes.value, pes.source) == (None, "default")

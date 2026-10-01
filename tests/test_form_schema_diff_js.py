@@ -134,8 +134,9 @@ def _set(page, values):
 # ------------------------------------------------------------------ #
 
 def test_a_freshly_rendered_form_differs_in_nothing(page, flask_server):
-    """renderForm seeds every field from its default, so the panel must
-    start empty.  A form that reports differences before anybody has
+    """A fresh form holds nothing -- every field blank, not chosen, so the
+    recommendation is what applies (form-schema.md § 1.1) -- and the panel
+    must start empty.  A form that reports differences before anybody has
     touched it is the failure that makes the whole feature noise."""
     _mount(page, flask_server)
     assert _diff(page) == []
@@ -191,8 +192,10 @@ def test_resetting_one_leaves_the_others_alone(page, flask_server):
     _set(page, {"kgrid": [4, 4, 1], "mixing_weight": 0.1})
     assert sorted(d["name"] for d in _diff(page)) == ["kgrid", "mixing_weight"]
 
-    # what the panel's Reset does, through the same public verb
-    _set(page, {"mixing_weight": 0.02})
+    # what the panel's Reset does, through the same public verb: back to
+    # blank -- not chosen, so the recommendation applies and the template
+    # records it as nobody's (typing 0.02 in would record it as yours).
+    _set(page, {"mixing_weight": None})
     diffs = _diff(page)
     assert [d["name"] for d in diffs] == ["kgrid"], (
         "resetting one parameter disturbed another")
@@ -244,19 +247,15 @@ def test_the_panel_resets_through_setvalues(page=None):
 # check could not make.
 
 
-def test_the_panel_is_mounted_AFTER_the_session_restore():
-    """The ordering IS the feature.  `restoreFormState` assigns `el.value`
-    directly and dispatches nothing, so a panel mounted before it takes its
-    first reading from a form still at its defaults — reports no
-    differences — and then never hears the saved values arrive.  That is
-    exactly how this shipped broken the first time."""
-    src = VIEWER.read_text()
-    body = src.split("async function initFormsFromSchema", 1)[1]
-    body = body.split("\n    // ----- Sidebar-driven", 1)[0]
-    assert "restoreFormState();" in body and "mountRecommended(" in body
-    assert body.index("restoreFormState();") < body.index("mountRecommended("), (
-        "the panel is mounted before the restore, so its first reading is "
-        "the defaults and the restored values never reach it")
+# `test_the_panel_is_mounted_AFTER_the_session_restore` stood here, RETIRED
+# 2026-09-30 (plan § 5w K7) with the mechanism it guarded: `restoreFormState`
+# assigned `el.value` by id and dispatched nothing, so a panel mounted before
+# it never heard the saved values arrive, and the ORDER was the only defence.
+# The restore writes through `setValues` now, which fires `input` and
+# `change` on everything it writes -- the panel hears a restore like any edit,
+# whichever came first.  The restore's round trip is driven on the real page:
+# tests/test_build_e2e.py::test_the_form_holds_only_what_the_person_gave_and
+# _keeps_it_over_a_reload.
 
 
 # `test_the_panel_follows_the_form_rather_than_only_typing` stood here.  It

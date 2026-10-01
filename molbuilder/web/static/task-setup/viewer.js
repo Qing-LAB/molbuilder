@@ -1767,7 +1767,8 @@ async function refreshPickers() {
  * TEMPLATE's value -- so the k-grid a person chose in the parameter tab is the
  * number an empty cell must name here, and the catalogue default is only the
  * answer when the template is silent. */
-let _tmpl = { name: null, values: Object.create(null) };
+let _tmpl = { name: null, values: Object.create(null),
+              said: Object.create(null) };
 
 /** The folder's ONE answer — `/api/task-setup/folder` (`task-setup.md`
  * § 2.1).  Returns the payload, or null; the caller checks `answer.dir`
@@ -1777,7 +1778,8 @@ let _tmpl = { name: null, values: Object.create(null) };
  * values are a fact about the folder, so they arrive with the rest of
  * them and cannot land separately after a move. */
 async function loadFolderAnswer(dir) {
-    _tmpl = { name: null, values: Object.create(null) };
+    _tmpl = { name: null, values: Object.create(null),
+              said: Object.create(null) };
     if (!dir) return null;
     try {
         const r = await fetch("/api/task-setup/folder?dir="
@@ -1785,7 +1787,8 @@ async function loadFolderAnswer(dir) {
         const j = await r.json();
         if (!j || j.ok !== true) return null;
         const t = j.template || {};
-        if (t.ok) _tmpl = { name: t.name, values: t.values || {} };
+        if (t.ok) _tmpl = { name: t.name, values: t.values || {},
+                            said: t.said || {} };
         return j;
     } catch (_) {
         // The cells fall back to the catalogue, as before.
@@ -1815,12 +1818,15 @@ function helpText(name) {
     if (!m) return "";   // caller falls back to its own note
     const bits = [m.label && m.label !== name ? m.label : "", m.help || ""];
     /* When the template answers, BOTH numbers are worth reading: one is what
-     * this job runs, the other is what the catalogue recommends, and a person
-     * checking a description before a week of compute wants to see that they
-     * differ. */
+     * this job runs -- and whose it is, in the template's own words
+     * (`template.md` § 6.6 obligation 2) -- the other what this KIND
+     * recommends (the routes serve `recommended_for`), and a person checking
+     * a description before a week of compute wants to see that they differ. */
     if (name in _tmpl.values) {
+        const whose = _tmpl.said[name];
         bits.push("This job (" + (_tmpl.name || "template") + "): "
-                  + renderValue(_tmpl.values[name], m.unit));
+                  + renderValue(_tmpl.values[name], m.unit)
+                  + (whose ? " \u2014 " + whose : ""));
     }
     const d = renderValue(m.default, m.unit);
     if (d) bits.push("Recommended: " + d);

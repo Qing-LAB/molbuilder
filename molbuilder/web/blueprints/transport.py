@@ -32,6 +32,7 @@ dispatches all engine-specific logic through the registry.
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict
 
 from flask import Blueprint, jsonify, request
@@ -355,8 +356,6 @@ def api_transport_describe() -> Any:
     from molbuilder.task import Task, derive_run
     from molbuilder.transport.compose import ComposeError, resolve_citation
     from molbuilder import template as _T
-    from molbuilder.transport.citation_defaults import (
-        transport_template_text)
     from molbuilder.transport.stages import (TRANSPORT_STAGES,
                                              resolvable_override_names,
                                              stages_for_transport)
@@ -461,24 +460,6 @@ def api_transport_describe() -> Any:
                                      f"this calculation; the shared panel "
                                      f"carries the items the catalogue "
                                      f"marks `shared` for transport"}), 400
-    # THE PANEL'S VALUES, through the door every SIESTA form goes through
-    # (`_shared.siesta_config_from_params`): coerced to each field's
-    # declared type, so a number typed as text and a comma-typed tuple mean
-    # what they mean everywhere.  A BLANK is not chosen (§ 3.8.3) and is
-    # left out, never written as an empty string -- measured 2026-09-24:
-    # a blank species order reached the template as '' and `prep` refused
-    # the file by name.
-    from ._shared import siesta_config_from_params
-    _typed_shared = {k: v for k, v in shared_chosen.items()
-                     if v is not None and v != ""}
-    try:
-        _panel_cfg = siesta_config_from_params(_typed_shared)
-    except (TypeError, ValueError) as exc:
-        return jsonify({"ok": False,
-                        "error": f"the shared panel carries a value its "
-                                 f"field cannot take: {exc}"}), 400
-    _chosen = {k: getattr(_panel_cfg, k) for k in _typed_shared
-               if getattr(_panel_cfg, k, None) is not None}
     try:
         task = Task(
             engine="siesta", shape="hierarchical",
@@ -499,18 +480,13 @@ def api_transport_describe() -> Any:
             stages=tuple(stages_for_transport(bags)))
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    # The template's text through the one door `jobset init` uses too -- and
-    # a citation it refuses (a cited run that carried a net charge, ES7)
-    # is said here, by name, rather than failing the whole response.
-    # A BLANK STATE ITEM IS AN ANSWER, not an omission: "work it out", on
-    # the whole junction at prep -- what the chemistry card beside the panel
-    # already shows.  Written valueless, the citation's value not applied.
-    from molbuilder.template import STATE_ITEMS
-    _blank = sorted(k for k in STATE_ITEMS
-                    if k in shared_chosen and shared_chosen[k] in (None, ""))
+    # The template's text through the one door the schema route draws both
+    # surfaces from (`_panel_template`) -- a value its field cannot take, or
+    # a citation it refuses (a cited run that carried a net charge, ES7),
+    # said here by name rather than failing the whole response.
     try:
-        _tmpl_text = transport_template_text(cited.path, label=task.label,
-                                             blank=_blank, **_chosen)
+        _tmpl_text = _panel_template(cited.path, shared_chosen,
+                                     label=task.label)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
@@ -575,11 +551,16 @@ def api_transport_schema() -> Any:
     are override bags, routed to the rung that owns each by the `stages`
     marker.  ``?surface=shared`` is the panel that edits the TEMPLATE:
     every item marked `shared` for transport, outside the `setup` group.
-    With ``&junction=<citation>`` the shared panel's values are the cited
-    directory's answers (`citation_answers`: a deck's, a record's, or
-    none), and a `citation` row the citation does not answer is shown as
-    not chosen (§ 3.8.3); the answer names the source so the page can say
-    where the numbers came from.
+    With ``&junction=<citation>`` both are drawn from the template this
+    calculation's describe will write (`_panel_template`, plan § 5w K7):
+    each field carries its value and where it came from (`form-schema.md`
+    § 1.1) -- the shared panel holding the cited directory's answers (a
+    deck's, a record's, or none; a `citation` row it does not answer is
+    not chosen, § 3.8.3), and a rung's tab showing what the rung runs
+    unless it sets its own.  A rung's tab also takes ``&shared=<json>``,
+    what the shared panel holds, since a rung's value can follow a shared
+    one (the transmission grid starts at the SCF's).  The answer names the
+    citation's source so the page can say where the numbers came from.
 
     *(Until 2026-09-24 this route reflected `TransportConfig`'s fields
     through a filter measured dead in seven of its ten branches, and the
@@ -610,51 +591,87 @@ def api_transport_schema() -> Any:
                         "error": f"rung must name one of "
                                  f"{', '.join(TRANSPORT_STAGES)} on the "
                                  f"rung surface, not {rung!r}"}), 400
+    citation = str(request.args.get("junction") or "")
+    source: Dict[str, Any] = {"kind": "none", "name": ""}
+    template = None
+    if citation:
+        try:
+            _, cited = resolve_citation(citation, projects_root())
+        except ComposeError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        try:
+            shared = json.loads(request.args.get("shared") or "{}")
+        except ValueError:
+            shared = None
+        if not isinstance(shared, dict) or surface != "rung" and shared:
+            return jsonify({"ok": False,
+                            "error": "shared must be a JSON object of what "
+                                     "the shared panel holds, asked by a "
+                                     "rung's tab"}), 400
+        try:
+            template = _T.read_template(
+                _panel_template(cited.path, shared, label="transport"))
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        answers = citation_answers(cited.path)
+        source = {"kind": answers.source, "name": answers.source_name}
     schema = catalogue_to_form_schema("siesta", "t", calculation="transport",
-                                      surface=surface, rung=rung)
-    response: Dict[str, Any] = {"ok": True, "surface": surface}
+                                      surface=surface, rung=rung,
+                                      template=template)
+    response: Dict[str, Any] = {"ok": True, "surface": surface,
+                                "source": source}
     if surface == "rung":
         response["rung"] = rung
         response["rungs"] = [{"name": n, "index": i, "note": RUNG_NOTES[n]}
                              for i, n in enumerate(TRANSPORT_STAGES, start=1)]
         # AND EVERY CONTROL PREP CANNOT RESOLVE: a control the describe door
         # is guaranteed to reject is not a control (measured 2026-09-16).
+        # A locked echo is not a control (§ 6.6 obligation 3): it stays.
         _resolvable = resolvable_override_names()
         kept = []
         for sec in schema.get("sections", []):
             fields_left = [f for f in sec.get("fields", [])
-                           if f.get("name") in _resolvable]
+                           if f.get("name") in _resolvable
+                           or "locked" in f]
             if fields_left:
                 sec = dict(sec)
                 sec["fields"] = fields_left
                 kept.append(sec)
         schema = dict(schema)
         schema["sections"] = kept
-    else:
-        citation = str(request.args.get("junction") or "")
-        source: Dict[str, Any] = {"kind": "none", "name": ""}
-        if citation:
-            try:
-                _, cited = resolve_citation(citation, projects_root())
-            except ComposeError as exc:
-                return jsonify({"ok": False, "error": str(exc)}), 400
-            answers = citation_answers(cited.path)
-            source = {"kind": answers.source, "name": answers.source_name}
-            cited_rows = {it.name for it in _T.select(_T.catalogue(),
-                                                       engine="siesta",
-                                                       citation=True)
-                          if "transport" in it.citation}
-            for sec in schema.get("sections", []):
-                for f in sec.get("fields", []):
-                    name = f.get("name")
-                    if name in answers.values:
-                        v = answers.values[name]
-                        f["default"] = list(v) if isinstance(v, tuple) else v
-                    elif name in cited_rows:
-                        f["default"] = None      # not chosen (§ 3.8.3)
-        response["source"] = source
     response["schema"] = schema
     return jsonify(response)
+
+
+def _panel_template(cite_dir, shared: Dict[str, Any], *, label: str) -> str:
+    """The template a transport describe writes, from what the shared panel
+    holds -- the one text the describe door writes and the schema route
+    draws both surfaces from, so the tab cannot show one calculation and
+    describe another (plan § 5w K7).
+
+    The panel's values go through the door every SIESTA form goes through
+    (`_shared.siesta_config_from_params`): coerced to each field's declared
+    type, a value one cannot take refused naming it.  A BLANK IS NOT CHOSEN
+    (`form-schema.md` § 1.1): the panel is drawn holding the citation's
+    answers, so a field it sends blank was emptied and the citation's value
+    is not applied -- a `citation` row is written valueless (§ 3.8.3), and
+    a blank electronic state is "work it out" on the whole junction at
+    prep, which the chemistry card beside the panel shows.  Never written as
+    an empty string: a blank species order reached the template as '' and
+    `prep` refused the file by name (measured 2026-09-24).
+
+    Raises ``ValueError`` -- the value, or a citation the template's door
+    refuses (a cited run that carried a net charge, ES7).
+    """
+    from ._shared import siesta_config_from_params
+    from molbuilder.transport.citation_defaults import transport_template_text
+    typed = {k: v for k, v in shared.items() if v not in (None, "")}
+    cfg = siesta_config_from_params(typed, "transport")
+    chosen = {k: getattr(cfg, k) for k in typed
+              if getattr(cfg, k, None) is not None}
+    blank = sorted(k for k, v in shared.items() if v in (None, ""))
+    return transport_template_text(cite_dir, label=label, blank=blank,
+                                   **chosen)
 
 
 # `POST /api/transport/render` DELETED 2026-09-17, and with it

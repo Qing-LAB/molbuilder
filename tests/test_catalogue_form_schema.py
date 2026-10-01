@@ -69,21 +69,23 @@ def test_every_item_this_engine_has_reaches_the_form(engine):
         expect = {i.name for i in items
                   if (not i.calculations or kind in i.calculations)
                   and kind not in (getattr(i, "role", None) or ())}
-        got = {f["name"]
-               for sec in catalogue_to_form_schema(
-                   engine, calculation=kind)["sections"]
-               for f in sec["fields"]}
+        fields = [f for sec in catalogue_to_form_schema(
+                      engine, calculation=kind)["sections"]
+                  for f in sec["fields"]]
+        got = {f["name"] for f in fields if "locked" not in f}
         assert got == expect, (engine, kind)
+        # ...and a role item the rungs answer alike is SHOWN, read-only at
+        # that answer -- never a control (§ 6.6 obligation 3; K7).
+        echoed = {f["name"]: f["locked"]["value"] for f in fields
+                  if "locked" in f}
+        assert echoed == T.fixed_on_every_rung(engine, kind), (engine, kind)
 
     # And the no-argument call IS the optimization form -- the default
     # spelled out, so the two spellings cannot drift.
-    default_fields = {f["name"]
-                      for sec in catalogue_to_form_schema(engine)["sections"]
-                      for f in sec["fields"]}
-    assert default_fields == {
-        i.name for i in items
-        if (not i.calculations or "optimization" in i.calculations)
-        and "optimization" not in (getattr(i, "role", None) or ())}
+    def names(**kw):
+        return {f["name"] for sec in catalogue_to_form_schema(
+                    engine, **kw)["sections"] for f in sec["fields"]}
+    assert names() == names(calculation="optimization")
 
 
 def test_the_displacement_gets_a_control_that_can_carry_its_value():

@@ -95,11 +95,17 @@ def _cite(page):
         "() => !document.getElementById('transport-send-btn').disabled",
         timeout=_MS)
     # the cited deck's kgrid is 4 4 2: its x count on the panel is the sign
-    # the panel was drawn again for the citation
+    # the panel was drawn again for the citation -- and the transmission
+    # grid's hint on its rung's tab, that the tabs were drawn from it after
+    # (a value typed before then would be drawn over)
     page.wait_for_function(
         "() => { const x = document.querySelector("
         "'#transport-shared-container #t-kgrid-x');"
         " return !!x && x.value === '4'; }", timeout=_MS)
+    page.wait_for_function(
+        "() => { const x = document.querySelector("
+        "'#transport-rung-panel-transmission #t-tbt-k-grid-x');"
+        " return !!x && x.placeholder === '4'; }", timeout=_MS)
 
 
 def _send(page):
@@ -183,3 +189,66 @@ def test_the_send_says_what_the_description_check_found(tab):
     assert not [m for _s, m in rows if m in line], line
     assert json.loads((dest / "task.json").read_text())["bias"] == {
         "voltages_v": [0.0, 6.0]}
+
+
+def test_a_rung_shows_what_it_runs_and_sends_what_the_person_gave(tab):
+    """`web/form-schema.md` § 1.1 on a rung's tab (plan § 5w K7): the tab
+    holds the rung's own values and shows the template's as what a blank
+    field runs -- the transmission grid the cited run's, not the
+    catalogue's 1 1 1, and the panel's once the person sets a mesh there
+    (the M11 review's T-F1).  The tabs are drawn again for that, and what
+    the person typed on them stays.  What the person gives is sent whatever
+    it equals: an explicit 1 1 1, and an optional switch with no default --
+    the bags were each tab's difference from the catalogue's default, so
+    neither could be sent (T-F1, T-F24).
+
+    MUTATIONS THIS MUST FAIL AGAINST: the rungs' tabs fetched without the
+    junction (the hint reads 1), or not drawn again on a change on the panel
+    (it stays 4); a tab not saved as it is typed in (its value lost to the
+    redraw); the bags taken as each tab's difference from the default
+    (neither value written)."""
+    from molbuilder.template import one, read_template
+    page, dest = tab
+    _cite(page)
+    page.locator("#transport-rung-tabs .tab-btn[data-tab='transmission']"
+                 ).click()
+    cell = "#transport-rung-panel-transmission #t-tbt-k-grid-"
+    said = page.locator("#transport-rung-panel-transmission "
+                        "label:has(#t-tbt-k-grid-x) .schema-source")
+    assert said.inner_text() == ("not chosen \u00b7 4, 4, 1 "
+                                 "from the run you cited")
+    for lab in "xy":
+        page.locator(cell + lab).fill("1")
+    assert said.inner_text() == "you set this"
+
+    # A MESH SET ON THE PANEL: the tabs are drawn again, the transmission's
+    # hint follows it, and the rung's own value stays.
+    kx = page.locator("#transport-shared-container #t-kgrid-x")
+    kx.fill("6")
+    kx.dispatch_event("change")
+    page.wait_for_function(
+        "(c) => { const e = document.querySelector(c);"
+        "         return !!e && e.placeholder === '6'; }",
+        arg=cell + "x", timeout=_MS)
+    assert page.locator(cell + "x").input_value() == "1"
+
+    page.locator("#transport-rung-tabs .tab-btn[data-tab='device']").click()
+    # any rung may set it, so its card starts folded (§ 3.8.2a): open it
+    page.locator("#transport-rung-panel-device "
+                 "details:has(#t-scf-must-converge) > summary").click()
+    page.locator("#transport-rung-panel-device #t-scf-must-converge"
+                 ).select_option("true")
+
+    assert _send(page).status == 200
+    # written by the browser once the door answered: the line says so
+    page.locator("#transport-send-status").locator("text=Next:").wait_for(
+        timeout=_MS)
+    bags = {s["name"]: s["overrides"] for s in
+            json.loads((dest / "task.json").read_text())["stages"]}
+    assert bags["transmission"]["tbt_k_grid"] == [1, 1, 1], bags
+    assert bags["device"]["scf_must_converge"] is True, bags
+    [tfile] = dest.glob("*.template.toml")
+    tmpl = read_template(tfile.read_text())
+    for name in ("kgrid", "tbt_k_grid"):
+        it = one(tmpl, name)
+        assert (it.value, it.source) == ((6, 4, 1), "person"), (name, it)

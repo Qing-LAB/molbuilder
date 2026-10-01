@@ -229,9 +229,9 @@ def _analyze_response(struct, body):
         # params door -- the same coercion the preflight and the hand-over
         # use -- so a blank means exactly what it means there.
         try:
-            cfg = (_siesta_config_from_params(items or {})
+            cfg = (_siesta_config_from_params(items or {}, kind)
                    if engine == "siesta"
-                   else _pyscf_config_from_params(items or {}))
+                   else _pyscf_config_from_params(items or {}, kind))
         except (TypeError, ValueError) as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
         states[engine] = electronic_state(struct, cfg, kind=kind).as_dict()
@@ -921,9 +921,9 @@ def api_build_preflight():
 
     try:
         if engine == "siesta":
-            cfg = _siesta_config_from_params(params)
+            cfg = _siesta_config_from_params(params, calculation)
         else:
-            cfg = _pyscf_config_from_params(params)
+            cfg = _pyscf_config_from_params(params, calculation)
     except Exception as exc:
         # L3 R4-A fix 2026-06-14: the "bad params" branch now
         # returns ``ok: False`` to match the wire-api.md envelope
@@ -957,24 +957,24 @@ def api_build_preflight():
 _PYSCF_HINTS  = typing.get_type_hints(PySCFConfig)
 
 
-def _siesta_config_from_params(params: Dict[str, Any]) -> SiestaConfig:
-    """Build a SiestaConfig from a JSON params dict, with per-field
-    type coercion (R5) -- the one door in `_shared`, which the transport
-    describe door's shared panel reads through too."""
+def _siesta_config_from_params(params: Dict[str, Any],
+                               calculation: str) -> SiestaConfig:
+    """A SiestaConfig from a form's payload for a ``calculation`` of that
+    kind -- the one door in `_shared`, which the transport describe door's
+    shared panel reads through too."""
     from ._shared import siesta_config_from_params
-    return siesta_config_from_params(params)
+    return siesta_config_from_params(params, calculation)
 
 
-def _pyscf_config_from_params(params: Dict[str, Any]) -> PySCFConfig:
-    """Build a PySCFConfig from a JSON params dict, with per-field
-    type coercion (R5).  Empty-string sentinels for solvent /
-    auxbasis are normalised to None so the form's "leave default" UI
-    gesture round-trips correctly.  Dispersion has none: ``"none"`` is
-    its value for no correction, kept as itself (the field's note)."""
-    return _config_from_params(
-        PySCFConfig, params, _PYSCF_HINTS,
-        none_sentinels=("solvent", "auxbasis"),
-    )
+def _pyscf_config_from_params(params: Dict[str, Any],
+                              calculation: str) -> PySCFConfig:
+    """A PySCFConfig from a form's payload for a ``calculation`` of that
+    kind, through the same door (`_shared.config_from_params`): a blank
+    is not chosen -- a blank solvent is the gas phase, the field's own
+    default.  Dispersion's ``"none"`` is its value for no correction,
+    kept as itself (the field's note)."""
+    return _config_from_params(PySCFConfig, params, _PYSCF_HINTS,
+                               calculation)
 
 
 # --------------------------------------------------------------------- #
@@ -1066,8 +1066,9 @@ def api_task_setup_handover():
 
     params: Dict[str, Any] = body.get("params") or {}
     try:
-        cfg = (_siesta_config_from_params(params) if engine == "siesta"
-               else _pyscf_config_from_params(params))
+        cfg = (_siesta_config_from_params(params, calculation)
+               if engine == "siesta"
+               else _pyscf_config_from_params(params, calculation))
     except (ValueError, TypeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
@@ -1141,9 +1142,17 @@ def api_task_setup_handover():
     import dataclasses as _dc
     cfg = _dc.replace(cfg, **{_group.field: label})
 
+    # WHAT THE PERSON'S FORM SENT is theirs (`template.md` § 6.6
+    # obligation 2): the form sends the fields that hold a value
+    # (`form-schema.md` § 1.1), and the calculation's own name.  Every other
+    # item is nobody's choice.
+    sources = {k: "person" for k, v in params.items()
+               if v is not None and v != ""}
+    sources[_group.field] = "person"
     try:
         template_text = template_with_values(cfg, engine=engine,
-                                             calculation=calculation)
+                                             calculation=calculation,
+                                             sources=sources)
     except Exception as exc:                      # a bad value, named
         return jsonify({"ok": False, "error": str(exc)}), 400
 
@@ -1743,7 +1752,10 @@ def api_task_setup_sweepable():
             # 1, whatever the parameter was.
             "type":            it.type or "",
             "choices":         list(it.choices) if it.choices else None,
-            "default":         it.default,
+            # THE KIND'S OWN DEFAULT (`template.recommended_for`), never the
+            # general one -- what the hover calls *Recommended*.
+            "default":         (_T.with_recommended(it, kind).default
+                                if kind else it.default),
             # The unit rides too: the machine card's default/help text
             # reads m.unit, and max_memory_mb rendered unitless without
             # it (allocation items never pass through the columns door,
@@ -1834,7 +1846,10 @@ def api_task_setup_columns():
             "label":   it.label or it.name,
             "help":    it.help or "",
             "unit":    it.unit or "",
-            "default": it.default,
+            # THE KIND'S OWN DEFAULT (`template.recommended_for`): the hover
+            # said a vibration folder's *Recommended* was the general one
+            # (the M11 review's PS-C12).
+            "default": _T.with_recommended(it, _calc_kind).default,
             "group":   it.group or "",
             # THE VALUE SHAPE (user, 2026-08-20): the stage table's cell
             # editor renders a dropdown for an enum or a bool, and it can
@@ -1910,7 +1925,8 @@ def _folder_template(folder) -> dict:
     # templates had this tab reading one file and `prep` reading the other,
     # which is precisely the split this endpoint's own docstring argues
     # against one layer down: it shared `prep`'s PARSER and not its PATH.
-    from molbuilder.template import find_template, read_template, select
+    from molbuilder.template import (SOURCE_WORDS, find_template,
+                                     read_template, select)
     try:
         found = find_template(folder)
     except ValueError as exc:
@@ -1930,7 +1946,13 @@ def _folder_template(folder) -> dict:
     # cost HERE: this was a comprehension over `.items`, re-implementing the
     # `Template.values()` deleted 2026-08-17 as one of four second readers.
     values = {it.name: it.value for it in select(tmpl) if it.is_set}
-    return {"ok": True, "name": found.name, "values": values}
+    # ...AND WHOSE EACH ONE IS, in the words every surface says it
+    # (`template.SOURCE_WORDS`, `engines/template.md` § 6.6 obligation 2):
+    # the hover's *"450.0 Ry -- you set this"*.  A file written before the
+    # key existed says *not recorded*, never a guess.
+    said = {it.name: SOURCE_WORDS[it.source or "unrecorded"]
+            for it in select(tmpl) if it.is_set}
+    return {"ok": True, "name": found.name, "values": values, "said": said}
 
 
 @bp.route("/api/task-setup/resolved", methods=["GET"])

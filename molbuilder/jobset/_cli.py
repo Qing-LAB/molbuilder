@@ -697,11 +697,19 @@ def init_cmd(structure, bundle: str, shape: str,
         from ..template import apply_recommended as _apply_recommended
         cfg = _apply_recommended(cfg, calculation, engine=engine)
 
+        # WHAT THE PERSON STATED here is theirs (`template.md` § 6.6
+        # obligation 2): the calculation's name, and the pseudopotential
+        # folder when given; the kind's recommendations are nobody's choice.
+        _said = {("job_name" if engine == "pyscf" else "system_label"):
+                 "person"}
+        if engine != "pyscf" and psml_lib:
+            _said["psml_lib"] = "person"
         desc = build_description(
             struct, cfg, stages,
             engine=engine, shape=shape, name=run_name,
             source=str(structure), calculation=calculation,
             pseudo_species=species_order(struct.elements),
+            value_sources=_said,
         )
         # The struct AS DESCRIBED travels: --vacuum replaced it in memory,
         # and a raw copy of the source dropped that choice on the floor

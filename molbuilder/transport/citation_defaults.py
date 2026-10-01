@@ -234,11 +234,10 @@ def siesta_config_from_citation(cite_dir, *, label: str, blank=(),
     field names) laid over them -- the person may change any of it, for
     all five rungs at once (`engines/transport.md` § 2a.7 ruling 1).
 
-    ``blank`` names the items the person emptied ON PURPOSE where a blank
-    is itself an answer -- the electronic state's, where it means "work it
-    out" (`science/chemistry-correctness.md` § 2a): the citation's value is
-    not applied to them.  (Any other emptied row stays "not chosen", and
-    the citation's value stands, § 3.8.3.)
+    ``blank`` names the items the person emptied on the panel: a blank is
+    not chosen (`web/form-schema.md` § 1.1), so the citation's value is not
+    applied to them -- for the electronic state that blank is the answer
+    "work it out" (`science/chemistry-correctness.md` § 2a).
     """
     from ..config.siesta import SiestaConfig
     answers = citation_answers(cite_dir)
@@ -255,8 +254,20 @@ def siesta_config_from_citation(cite_dir, *, label: str, blank=(),
             f"(engines/transport.md § 2a.7).  Relax the junction neutral and "
             f"cite that run.")
     kw = {k: v for k, v in answers.values.items() if k not in blank}
-    kw.update({k: v for k, v in chosen.items() if v is not None})
+    kw.update(_the_persons(chosen))
     return SiestaConfig(system_label=label, **kw)
+
+
+def _the_persons(chosen) -> Dict[str, Any]:
+    """What the person chose on the shared panel, with what follows from it
+    by the one k-mesh rule (:func:`_apply_kgrid`): a k-point mesh they set
+    starts the transmission grid at its transverse pair, as the cited one
+    does.  Laid over the citation's derivation, a changed SCF mesh left the
+    transmission on the cited one (the M11 review's T-F1)."""
+    mine = {k: v for k, v in chosen.items() if v is not None}
+    if mine.get("kgrid") is not None:
+        _apply_kgrid(mine, mine["kgrid"])
+    return mine
 
 
 def transport_template_text(cite_dir, *, label: str, blank=(),
@@ -281,19 +292,33 @@ def transport_template_text(cite_dir, *, label: str, blank=(),
     files, for one description.
 
     ``blank`` (:func:`siesta_config_from_citation`) is written valueless
-    too: a spin the person left blank on the shared panel is the junction's
-    to work out at prep, as the chemistry card beside it says -- the
-    template wrote the citation's value there until the M6 review.
+    too: a row the person emptied on the shared panel is not chosen -- a
+    spin among them the junction's to work out at prep, as the chemistry
+    card beside it says (the template wrote the citation's value there
+    until the M6 review).
     """
     from .. import template as _T
     cfg = siesta_config_from_citation(cite_dir, label=label, blank=blank,
                                       **chosen)
-    answered = (set(citation_answers(cite_dir).values) - set(blank)) | {
-        k for k, v in chosen.items() if v is not None}
+    cited = citation_answers(cite_dir)
+    mine = _the_persons(chosen)
+    answered = (set(cited.values) - set(blank)) | set(mine)
     unanswered = sorted(
         it.name for it in _T.select(_T.catalogue(), engine="siesta",
                                     citation=True)
         if "transport" in it.citation and it.name not in answered)
+    # WHERE EACH VALUE CAME FROM (`template.md` § 6.6 obligation 2, plan
+    # § 5w K7): the citation's own answers -- from the run's deck, or from
+    # the record saved with the structure -- then what the person chose on
+    # the shared panel over them, and the calculation's own name.  A value
+    # the panel holds as the citation answered it is the citation's: the
+    # panel is drawn holding those answers and sends what it holds.  Every
+    # other item is nobody's choice (`default`).
+    via = {"deck": "cited", "record": "record"}.get(cited.source)
+    sources = {k: via for k in cited.values if via and k not in blank}
+    sources.update({k: "person" for k, v in mine.items()
+                    if not (k in sources and cited.values[k] == v)})
+    sources["system_label"] = "person"
     return _T.template_with_values(cfg, engine="siesta",
                                    calculation="transport",
-                                   valueless=unanswered)
+                                   valueless=unanswered, sources=sources)

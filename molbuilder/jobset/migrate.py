@@ -211,9 +211,12 @@ def migrate_state(base) -> List[str]:
     valueless = [it.name for it in mine
                  if not it.is_set and it.name in known
                  and it.name not in _T.STATE_ITEMS]
+    # Where each value came from carries over (§ 6.6 obligation 2).
     new_text = _T.template_with_values(cfg, engine=engine, calculation=kind,
                                        title=_leading_comment(text),
-                                       valueless=valueless)
+                                       valueless=valueless,
+                                       sources={it.name: it.source
+                                                for it in mine if it.source})
     # The new file must be one prep accepts -- checked before anything is
     # written, so a failure leaves the calculation as it was, and is said
     # as the migration's refusal rather than a traceback.
