@@ -190,10 +190,19 @@ def place(routing, request: Request, *, prefer_gpu: bool,
     Raises :class:`Unplaceable` when there IS a menu and nothing on it can
     take the request.  That distinction is the whole of R6: refusing where we
     hold the record that says the scheduler will refuse, and proceeding where
-    we hold no such record.
+    we hold no such record.  **A queue NAMED on a machine with no menu is
+    refused too**: the name is a request this machine cannot honour, and
+    going ahead under the header's own queue sent the job somewhere nobody
+    named while the ledger recorded the name (W52).
     """
     rows = list(routing or [])
     if not rows:
+        if named:
+            raise Unplaceable(
+                [Refusal("no_domain", named,
+                         note="this machine's record lists no queues to "
+                              "choose from")],
+                gpu_side=prefer_gpu)
         return None
 
     if named:

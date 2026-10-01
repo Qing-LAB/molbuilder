@@ -183,6 +183,30 @@ def resolve_target(base_dir, target: Optional[str] = None) -> Path:
     return write_environment(env, out)
 
 
+def _flat_continued_from(base: Path, task, stage: str, continuation) -> None:
+    """A flat stage's own ``<basename>.continued-from``, for its launch
+    record (`project-layout.md` § 1.6.3) -- the flat layout records what a
+    stage continues from too (user, 2026-10-01).  It names the run by what
+    every file of it carries (`runfiles.run_name`): flat keeps no directory
+    per run.  A re-prep that no longer continues -- the run card now says
+    `clean` -- takes the old one away, or the launch would record a source
+    it did not read."""
+    from ..runfiles import latest_run, run_name, stem as rf_stem
+    from .materialize import continued_from_marker
+    marker = continued_from_marker(base, rf_stem(task.label,
+                                                 token_for(task, stage)))
+    if continuation is None:
+        if marker.is_file():
+            marker.unlink()
+        return
+    token = token_for(task, continuation.stage)
+    n = latest_run(base, task.label, stage=token)
+    if n is None:
+        return                     # concluded with no run file: name none
+    marker.write_text(run_name(task.label, token, n) + "\n",
+                      encoding="utf-8")
+
+
 def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 emit_sbatch: bool = True, record_dir=None,
                 log=None, machine_record=None) -> List[Path]:
@@ -3115,6 +3139,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                 and not from_attempt and not cold):
             out.flat = True
             out.continuation = continuation
+            _flat_continued_from(base, task, stage, continuation)
             if continuation is not None:
                 ledger(base, "prep", "continues", stage=stage,
                        **continuation.ledger_facts(), copied=[])

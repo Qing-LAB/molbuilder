@@ -170,11 +170,16 @@ class Resources:
         browser's ``"4h"`` into this field, `sbatch` was handed ``-t 4h``,
         and SLURM refused the tool's own written value.*
         """
-        from ..scheduler.quantities import canonical_mem, canonical_time
+        from ..scheduler.quantities import (canonical_gres, canonical_mem,
+                                            canonical_time)
         if self.time:
             self.time = canonical_time(self.time)
         if self.mem:
             self.mem = canonical_mem(self.mem)
+        # AND A GPU ASK, which reaches `sbatch --gres` as it stands here:
+        # `--gpus a100:1` went out as `--gres=a100:1` (W52).
+        if self.gres:
+            self.gres = canonical_gres(self.gres)
         # A TUPLE OUT, A TUPLE BACK.  `to_dict` is `asdict`, so a job-set
         # file stores the names as a JSON array and `from_dict` hands them
         # back as a LIST -- and a list never equals the tuple it was written

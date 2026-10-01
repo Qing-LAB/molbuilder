@@ -76,8 +76,13 @@ is theirs to make.
 > difference is whether a human is in the loop at that moment.
 
 **S4 — Nothing is submitted unseen.** The full request, before the
-irreversible step. `--yes` is how a person says *I have decided to trust
-this*; its absence is not permission.
+irreversible step — on every door: a stage, a grouped bench, a bias chain
+*(the stage's door sent straight away until 2026-10-01, on the premise that
+`prep`'s printout had been the look; the queue and the wall are decided at
+launch, so they were never seen — ruled that day)*. `--yes` is how a person
+says *I have decided to trust this*; its absence is not permission. A
+question that carries a judgement only the person can make — following a run
+that was launched and never concluded — takes **no** as Enter's answer.
 
 **S5 — The queue is named, never inferred.** Which queue to spend a day of
 wall-clock in is a judgement about priority, contention and what else is
@@ -134,7 +139,7 @@ of every job, printed by the code that submits it. A `render` summary lived
 here until 2026-08-24 and could disagree with the submission it described.*
 
 ```
-$ molbuilder jobset launch bench --mem 900G
+$ molbuilder jobset launch bench coarse --mem 900G
 this machine offers:
      name         partition/qos           max time  cores    memory  gpu
 !  1  debug        htc/debug                    15m    128    251 GB  -
@@ -147,12 +152,12 @@ this machine offers:
 
   choose one with --domain <name>.  Nothing is submitted until you do.
 
-$ molbuilder jobset launch bench --mem 128G --domain htc
+$ molbuilder jobset launch bench coarse --mem 128G --domain htc
 about to submit:
   bench-group-cpu
-    sbatch -J AuBDTAu_bench-group-cpu -p htc -q public -n 48 -c 1 -t 0-04:00:00 --mem=128G ... launch/bench-group-cpu.sbatch
+    sbatch -J AuBDTAu/bench-group-cpu -p htc -q public -n 48 -c 1 -t 0-04:00:00 --mem=128G ... launch/bench-group-cpu.sbatch
   bench-group-gpu-G1K48C1
-    sbatch -J AuBDTAu_bench-group-gpu-G1K48C1 -p htc -q public -n 48 -c 1 --gres=gpu:a100:1 -t 0-04:00:00 --mem=128G ... launch/bench-group-gpu-G1K48C1.sbatch
+    sbatch -J AuBDTAu/bench-group-gpu-G1K48C1 -p htc -q public -n 48 -c 1 --gres=gpu:a100:1 -t 0-04:00:00 --mem=128G ... launch/bench-group-gpu-G1K48C1.sbatch
   gpu share  48 rank(s) / 1 GPU(s) = 48 rank(s)/GPU
   NOTE 48 ranks/GPU; this stack's tuned point (no NCCL) is ~4 (engines/tuning.md § 2.12).
   per-trial bound: none -- each trial runs until the wall

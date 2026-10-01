@@ -907,8 +907,10 @@ which spelling won.
 `defaults` (or caller); `-p` / `-q` from `directives` (GPU → `gpu.partition`);
 for GPU jobs `--gres=gpu:<type>:<count>` + `--gres-flags=enforce-binding`; and
 memory per § 5.3.1. The body is a single line — `bash <basename>.run.sh "$@"` —
-because the inner wrapper owns activation and launch. Emission is gated on a
-`scheduler` block being present; with none, only the `.run.sh` is written.
+because the inner wrapper owns activation and launch. It is withheld only where
+the machine names no queue to address — a record saying `workstation`, or no
+`(partition, qos)` pair at all ([`job-system.md`](?doc=execution/job-system.md)
+§ 6) — and then only the `.run.sh` is written.
 
 #### 5.3.1 Memory resolution — the user states it, nothing else does
 
@@ -974,8 +976,18 @@ two machines is explained by the bundle itself. Secret sections (`auth`,
 
 **There is ONE launch door.** `molbuilder jobset launch` resolves the mode
 (flag, else `execution.mode`, else a refusal — never the detected scheduler),
-runs the deck/launch agreement check, records the attempt, and launches
-**one job per invocation**.
+decides everything before it writes anything — what the run follows, the
+deck/launch agreement check, the queue (`--domain`, else what `prep` baked for
+this stage, else `execution.domain`, else the queues are listed and nothing is
+sent) and the request admitted on it — then **shows the exact `sbatch` line
+and asks** ([`submission.md`](?doc=execution/submission.md) S4; `--yes` skips
+the question, never the output), records the attempt, and launches **one job
+per invocation** — a grouped bench one per resource shelf
+([`job-system.md`](?doc=execution/job-system.md) § 7). The single-stage door
+asks too *(ruled 2026-10-01)*: the queue and the wall are decided at launch,
+after `prep`'s printout, so they are seen only here. A flag the launch would
+not read is refused by name — `--time`/`--mem`/`--domain` under
+`--mode direct`, a bench's flags on `launch run`.
 
 > **`--mode ask` submits nothing and tells you when it would start.** It walks
 > the identical path `--mode submit` walks and inserts one flag,
@@ -1001,9 +1013,14 @@ runs the deck/launch agreement check, records the attempt, and launches
 > scheduler, not about doing several things"*, which is why `--mode direct` is
 > untouched too. `--test-only` enqueues nothing, so none of that is reachable.
 >
-> A sweep is where it pays: a grid's trials ask for different shapes, `G1`
+> A sweep is where it pays: a grid's shelves ask for different shapes, `G1`
 > schedules sooner than `G4`, and seeing their waits side by side is what tells
-> you which one to submit. The number of queries is capped for politeness, and
+> you which one to submit. It is asked **as `submit` sends it** — one question
+> per resource shelf, with the shelf's own request; the shelf's script is
+> written only when it is sent, so the question rides one of its trials'
+> rendered headers under the same flags, which win over any header. A stage
+> launched before is asked about as the attempt its re-launch would open —
+> nothing is opened by asking. The number of queries is capped for politeness, and
 > anything past the cap is **named as unasked** — a partial answer that does
 > not say it is partial reads as a complete one. When it launches, it stamps the claim
 `MB_LAUNCHED_BY=jobset-submit` — into the child environment for a direct

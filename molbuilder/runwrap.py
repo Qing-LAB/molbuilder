@@ -5078,7 +5078,11 @@ def _render_sbatch_for(script_path: Path, *,
     gpu_type: Optional[str] = None
     gpu_count: Optional[int] = None
     if gres is not None:
-        gpu_type, gpu_count = _parse_gres_flag(gres)
+        from .scheduler.quantities import parse_gres_flag
+        try:
+            gpu_type, gpu_count = parse_gres_flag(gres)
+        except ValueError as e:
+            raise WrapperError(f"invalid --gres: {e}") from None
         gpu = True  # an explicit --gres forces a GPU header
 
     if gpu and gpu_count is None:
@@ -5146,40 +5150,9 @@ def _render_sbatch_for(script_path: Path, *,
 # --------------------------------------------------------------------- #
 
 
-_GRES_RE = re.compile(r"^(?:gpu:)?(?P<type>[A-Za-z0-9_.]+):(?P<count>\d+)$")
-
-
-def _parse_gres_flag(gres: str) -> Tuple[Optional[str], int]:
-    """Parse a typed ``--gres`` FLAG into ``(gpu_type, count)``.
-
-    The HUMAN dialect, and named apart from `quantities.parse_gres` for it:
-    that one reads what SLURM emits and returns every type it finds, while
-    this reads what a person typed and RAISES on a typo, so the mistake
-    surfaces at generate time rather than after a queue wait.  Both were
-    called `_parse_gres`, in two modules, returning the same pair in
-    opposite order -- ``(type, count)`` here, ``(count, type)`` there.
-
-    Accepts ``gpu:a100:2``, ``a100:2``, or a count with no type -- bare
-    ``2`` or SLURM's ``gpu:2`` (=> type unspecified, caller falls back to
-    ``scheduler.gpu.default_type``).
-    Raises :exc:`WrapperError` on anything else so a typo'd CLI value
-    fails at generate time, not after a job queues.
-    """
-    g = gres.strip()
-    if g.isdigit():
-        return None, int(g)
-    # ``gpu:<count>`` is SLURM's UNTYPED form -- the GRES name and a count.
-    # Read as ``<type>:<count>`` it rendered ``--gres=gpu:gpu:2``.
-    if g.startswith("gpu:") and g[4:].isdigit():
-        return None, int(g[4:])
-    m = _GRES_RE.fullmatch(g)
-    if not m:
-        raise WrapperError(
-            f"invalid --gres value {gres!r}; expected "
-            f"``[gpu:]<type>:<count>`` (e.g. ``gpu:a100:2``) or a bare "
-            f"count."
-        )
-    return m.group("type"), int(m.group("count"))
+# The typed GPU ask is read by `scheduler.quantities.parse_gres_flag`, the
+# one reader of the human dialect -- `_parse_gres_flag` stood here until
+# 2026-10-01 while the record kept the ask as typed (W52).
 
 
 # `_mem_to_mb` and its `_MEM_RE` were DELETED 2026-08-24: defined once,

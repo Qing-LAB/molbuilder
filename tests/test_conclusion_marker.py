@@ -30,10 +30,8 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.jobset.materialize import (attempt_concluded,
-                                           write_run_launch)
-from molbuilder.jobset.model import Job, JobSet, Resources, WarmFile
-from molbuilder.jobset.submit import SubmitError, submit_jobset
+from molbuilder.jobset.materialize import attempt_concluded
+from molbuilder.jobset.model import Resources
 from molbuilder.runwrap import render_run_wrapper
 
 
@@ -141,86 +139,6 @@ def test_no_out_at_all_reads_unconcluded(tmp_path):
     assert attempt_concluded(tmp_path, "J") is None
 
 
-# ------------------------------------------------------- the launch gate
-
-def _launched_attempt(tmp_path, *, concluded: bool):
-    js = JobSet(name="J", engine="siesta", kind="ladder", shared=[],
-                jobs=[Job(name="coarse", script="J_01_coarse.fdf",
-                          resources=Resources(mpi_np=1),
-                          warm=[WarmFile(name="J.XV")])])
-    d = tmp_path / "01_coarse" / "run-0"
-    d.mkdir(parents=True)
-    # the deck READS its warm set, so a continue has something to do
-    deck = ("SystemLabel J\nMD.UseSaveXV .true.\nDM.UseSaveDM .true.\n")
-    (tmp_path / "J_01_coarse.fdf").write_text(deck)
-    (d / "J_01_coarse.fdf").write_text(deck)
-    # a stub wrapper, so the judgement path can LAUNCH the continued
-    # attempt for real (direct mode runs it; the gate is the subject,
-    # not the engine)
-    (tmp_path / "J_01_coarse.run.sh").write_text("#!/bin/bash\nexit 0\n")
-    (d / "J_01_coarse-run0.out").write_text("output\n")
-    (d / "J.XV").write_text("warm")
-    write_run_launch(d, mode="direct", command=["bash", "x"])
-    if concluded:
-        (d / "J_01_coarse-run0.concluded").write_text("rc=0 at then\n")
-    return js
-
-
-def test_a_concluded_attempt_continues_and_says_so(tmp_path):
-    js = _launched_attempt(tmp_path, concluded=True)
-    res = submit_jobset(js, tmp_path, mode="direct", only="coarse",
-                        dry_run=True)
-    texts = " | ".join(r.status for r in res)
-    assert "run-0" in texts, texts
-
-
-def test_an_UNCONCLUDED_attempt_is_a_question_not_a_decision(tmp_path):
-    """Still running and force-stopped look the same on disk; the refusal
-    names both and hands the judgement over — never silently continues,
-    never silently refuses forever."""
-    js = _launched_attempt(tmp_path, concluded=False)
-    with pytest.raises(SubmitError) as e:
-        submit_jobset(js, tmp_path, mode="direct", only="coarse")
-    msg = str(e.value)
-    assert "never CONCLUDED" in msg
-    assert "RUNNING" in msg and "force-stopped" in msg, (
-        "the refusal must name BOTH states the files cannot separate")
-    assert "--yes" in msg, "the refusal owes the way to record a judgement"
-
-
-def test_at_a_terminal_the_unconcluded_attempt_is_asked(tmp_path, monkeypatch):
-    """Where a person can answer, the story is ASKED rather than refused
-    (`project-layout.md` § 1.6.4: "Interactive: a confirm that states both
-    possibilities"): no keeps the attempt as it is, yes continues it.
-    API-level: pytest holds no terminal, so the road cannot reach this arm.
-
-    MUTATION THIS MUST FAIL AGAINST: refuse without asking, whatever the
-    terminal -- the yes below then raises.
-    """
-    import click
-    from molbuilder.envs import hints
-    from molbuilder.jobset.materialize import attempts
-    js = _launched_attempt(tmp_path, concluded=False)
-    monkeypatch.setattr(hints, "stdin_can_answer", lambda: True)
-
-    monkeypatch.setattr(click, "confirm", lambda *a, **k: False)
-    with pytest.raises(SubmitError, match="not continued"):
-        submit_jobset(js, tmp_path, mode="direct", only="coarse",
-                      dry_run=False)
-    assert attempts(tmp_path / "01_coarse") == [0]
-
-    monkeypatch.setattr(click, "confirm", lambda *a, **k: True)
-    res = submit_jobset(js, tmp_path, mode="direct", only="coarse",
-                        dry_run=False)
-    assert "NOT concluded" in " | ".join(r.status for r in res)
-    assert attempts(tmp_path / "01_coarse") == [0, 1]
-
-
-def test_the_recorded_judgement_continues_anyway(tmp_path):
-    """`--yes` is the user's judgement, honoured — the framework said its
-    piece and steps aside."""
-    js = _launched_attempt(tmp_path, concluded=False)
-    res = submit_jobset(js, tmp_path, mode="direct", only="coarse",
-                        dry_run=False, continue_unconcluded=True)
-    texts = " | ".join(r.status for r in res)
-    assert "NOT concluded" in texts and "your judgement" in texts, texts
+# The launch gate over these markers -- a launched run that concluded is
+# continued, one that did not only on the person's word -- is driven on
+# the road in `test_launch_door.py`.

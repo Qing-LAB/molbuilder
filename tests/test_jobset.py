@@ -564,55 +564,6 @@ def test_render_plan_surfaces_per_job_ranks_and_cores():
 #  submit engine                                                        #
 # --------------------------------------------------------------------- #
 
-def test_submit_dry_run_emits_J_and_writes_nothing(tmp_path):
-    """One job, SLURM, dry-run: the per-job ``-J`` and no side effects.
-
-    **The name says which CALCULATION, then which stage.** It was the bare
-    stage name until 2026-08-10, so three concurrent ladders all showed
-    `coarse` in `squeue` -- the one place a scheduler shows you your own work,
-    showing you nothing. `JobSet.name` is the id, so it comes first.
-    """
-    res = submit_jobset(_ladder(), tmp_path, mode="submit", dry_run=True,
-                        only="s1")
-    assert [r.status for r in res] == ["planned"]
-    assert res[0].command[0] == "sbatch"
-    assert res[0].command[res[0].command.index("-J") + 1] == "demo/s1"
-    assert list(tmp_path.iterdir()) == []          # wrote nothing
-
-
-def test_submit_mem_reaches_the_single_job_sbatch_command(tmp_path):
-    """The single-job sibling of the grouped-path bug (job 62039305,
-    2026-08-23): `job.resources` is whatever `prep` baked -- never memory
-    -- and this branch never built an `Ask` at all, so `--mem` typed at
-    `launch run`/`launch bench <trial>` was silently dropped exactly like
-    the grouped path was.  Fixed by overriding `resources.mem` in
-    `_submit_slurm` before `_sbatch_resource_flags`, the same
-    `dataclasses.replace` pattern as the grouped path's envelope.
-    """
-    res = submit_jobset(_ladder(), tmp_path, mode="submit", dry_run=True,
-                        only="s1", mem_gb=64.0)
-    assert "--mem=64G" in res[0].command, res[0].command
-
-
-def test_two_calculations_are_told_apart_in_the_queue(tmp_path):
-    """The point of the name, stated as the thing it prevents.
-
-    Two calculations, the same stage name in each -- which is ordinary, since
-    `coarse` is what a first stage is called everywhere. Their queue names must
-    differ, or `squeue` cannot tell you which of your runs is which.
-    """
-    import dataclasses
-    a = _ladder()
-    b = dataclasses.replace(_ladder(), name="other")
-    names = []
-    for js in (a, b):
-        r = submit_jobset(js, tmp_path, mode="submit", dry_run=True, only="s1")
-        names.append(r[0].command[r[0].command.index("-J") + 1])
-    assert names == ["demo/s1", "other/s1"]
-    assert len(set(names)) == 2, (
-        f"two calculations share one queue name: {names}")
-
-
 def test_submit_dry_run_sweep_per_job_flags_vary(tmp_path):
     """The F2 fix: a SHARED-script sweep must still get per-job ``-n`` via the
     CLI flags, so one rendered ``.sbatch`` serves every point.
@@ -648,21 +599,6 @@ def test_submit_slurm_parses_the_id_and_records_the_launch(tmp_path,
                         lambda *a, **k: _CP(stdout="Submitted batch job 111"))
     res = submit_jobset(js, tmp_path, mode="submit", only="s1")
     assert [(r.job_id, r.status) for r in res] == [("111", "submitted")]
-
-
-def test_submit_slurm_errors_when_not_prepped(tmp_path):
-    """Launching before `prep` is a named refusal, not a crash.
-
-    The wrapper is what `sbatch` is pointed at. Without this check the
-    alternatives are a `FileNotFoundError` traceback or -- worse -- an `sbatch`
-    call for a script that does not exist, which queues and then fails on the
-    node. The message names the next step (`prep first`), which is the whole value
-    of catching it here.
-    """
-    # real run (not dry): a missing wrapper is a friendly error, not a crash.
-    (tmp_path / "bench-s1").mkdir()
-    with pytest.raises(SubmitError, match="prep first"):
-        submit_jobset(_ladder(), tmp_path, mode="submit", only="s1")
 
 
 def test_submit_slurm_raises_on_sbatch_failure(tmp_path, monkeypatch):
@@ -767,34 +703,6 @@ def test_a_failure_skips_nothing_because_nothing_depends_on_anything(tmp_path,
     assert all(r.returncode == 2 for r in res)
 
 
-def test_submit_direct_dry_run_passes_np_omp(tmp_path):
-    """`--mode direct` invokes the job's wrapper with `-np` / `-omp` on the command
-    line.
-
-    Direct mode has no scheduler to carry resources, so the rank and thread counts
-    reach the wrapper as arguments or they do not reach it at all -- the job then
-    runs at whatever the wrapper's defaults are, which for a benchmark means
-    measuring a configuration nobody asked for. `job-contracts.md` § 6.2
-    owns the config-to-scheduler parameter vocabulary.
-    """
-    res = submit_jobset(_sweep(), tmp_path, mode="direct", dry_run=True)
-    assert res[0].command[0] == "bash"
-    assert "-np" in res[0].command and "-omp" in res[0].command
-
-
-def test_submit_direct_rejects_domain(tmp_path):
-    """`--domain` under `--mode direct` is refused rather than ignored.
-
-    A domain is a SLURM partition and there is no partition in direct mode.
-    Accepting and dropping it would let someone believe they had launched on `htc`
-    while the work ran on the machine in front of them; the message says the flag
-    has "no meaning in 'direct'" rather than merely rejecting it.
-    """
-    with pytest.raises(SubmitError, match="no meaning in 'direct'"):
-        submit_jobset(_sweep(), tmp_path, mode="direct", domain="htc",
-                      dry_run=True)
-
-
 def test_submit_unknown_mode_and_invalid_jobset(tmp_path):
     """Two door refusals: an unknown `mode`, and a job-set that does not validate.
 
@@ -890,19 +798,6 @@ def test_cli_prep_is_described_only(tmp_path):
     assert not (tmp_path / "bench-G1K1C4").exists()
 
 
-def test_cli_submit_dry_run_lists_commands(tmp_path):
-    """A sweep still RESOLVES to all its points without naming one -- that is
-    the CLI's question, *which jobs did you mean* -- and the scheduler still
-    gets exactly one.  Naming the point is how you say which."""
-    _sweep().write(tmp_path / "job-set.json")
-    runner, grp = _runner()
-    r = runner.invoke(grp, ["launch", "bench", "G1K1C4", "--bundle",
-                            str(tmp_path), "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
-    assert r.exit_code == 0, r.output
-    assert "planned" in r.output and "sbatch" in r.output
-    assert "-J" in r.output and "G1K1C4" in r.output
-
-
 def test_submit_accepts_exactly_these_options(tmp_path):
     """`jobset launch` takes a kind, a stage, a trial and the options below --
     no more.  TRIAL names one benchmark point (§ 2.3.2, decided
@@ -927,28 +822,6 @@ def test_submit_accepts_exactly_these_options(tmp_path):
         "kind", "stage", "trial", "bundle", "mode", "domain", "dry_run",
         "time_text", "mem_text", "gpu_domain", "auto_yes",
         "trial_timeout_min", "only_side"}
-
-
-def test_cli_submit_of_a_whole_sweep_groups_it_by_shelf(tmp_path):
-    """One LAUNCH ACT per resource SHELF (§ 2.3.2 user 2026-08-20 grouped
-    the sweep; 2026-08-21 split the groups by exact ask so nothing idles
-    inside one -- generator.md § 4.3a): this fixture's two points differ
-    in rank count, so they are two shelves, submitted widest first, each
-    named by its shelf token."""
-    _sweep().write(tmp_path / "job-set.json")
-    runner, grp = _runner()
-    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(tmp_path),
-                            "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
-    assert r.exit_code == 0, r.output
-    plans = [l for l in r.output.splitlines() if "WOULD run" in l]
-    assert len(plans) == 2
-    # The shelf token is the SAME spelling its trials carry
-    # (`G<gpus>K<ranks-per-gpu>C<cores>`, 2026-08-24) -- it was
-    # `g<gpus>n<TOTAL-ranks>c<cores>` while the directories that
-    # same job launches were named the other way.
-    assert "bench-group-G1K2C4" in plans[0], "widest shelf first"
-    assert "bench-group-G1K1C4" in plans[1]
-    assert r.output.count("rides the group") == 2
 
 
 def test_cli_submit_refuses_when_no_mode_is_set_anywhere(tmp_path, monkeypatch):
@@ -990,21 +863,6 @@ def test_direct_launch_carries_the_launch_door_claim(tmp_path, monkeypatch):
     monkeypatch.setattr(sub.subprocess, "Popen", fake_popen)
     sub.submit_jobset(js, tmp_path, mode="direct", only=js.jobs[0].name)
     assert seen["env"]["MB_LAUNCHED_BY"] == "jobset-launch"
-
-
-def test_sbatch_command_carries_the_claim_explicitly(tmp_path):
-    """The sbatch path passes the claim ON THE COMMAND LINE
-    (--export=ALL,MB_LAUNCHED_BY=…): env inheritance is fragile against a
-    site's export policy, and the CLI flag wins over it."""
-    from molbuilder.jobset.submit import submit_jobset
-    js = _sweep()
-    _write_config(tmp_path)
-    _write_fdf(tmp_path / "job-gpu.fdf")
-    results = submit_jobset(js, tmp_path, mode="submit", dry_run=True,
-                            only=js.jobs[0].name)
-    cmd = results[0].command
-    assert "--export" in cmd
-    assert cmd[cmd.index("--export") + 1] == "ALL,MB_LAUNCHED_BY=jobset-launch"
 
 
 def test_cli_submit_falls_back_to_the_configs_mode(tmp_path, monkeypatch):
@@ -2186,52 +2044,6 @@ def test_the_grammar_is_unambiguous_even_for_a_stage_named_3(tmp_path):
         resolve_stage_ref(refs, "03_tight")              # tokens retired
 
 
-def test_resubmitting_a_launched_stage_continues_by_default(tmp_path):
-    """The natural workflow (user, 2026-08-21), NARROWED by the conclusion
-    marker (user, 2026-08-28; project-layout 1.6, "the other file"): a
-    launched-but-UNCONCLUDED attempt could as easily still be RUNNING as
-    wall-killed, so continuing it is the user's recorded judgement
-    (--yes -> continue_unconcluded), not a default.  With the judgement
-    given, the door opens the next attempt warm from the stage's own
-    latest, says so out loud, and launches it.  Under --dry-run nothing
-    is created; the WOULD-continue line stands in.  A fresh start stays
-    the explicit lane, and bench trials keep § 1.5's immutability
-    refusal."""
-    from molbuilder.jobset.materialize import (attempts, prepare_attempt,
-                                               write_run_launch)
-    from molbuilder.jobset.submit import SubmitError, submit_jobset
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    rep0 = prepare_attempt(js, tmp_path, "tight")
-    (rep0.dir / "JOB.XV").write_text("state\n")   # the wall-killed run's
-    (rep0.dir / "JOB.DM").write_text("state\n")   # newest warm files
-    write_run_launch(rep0.dir, mode="submit", command=["sbatch", "x"],
-                     job_id="7")
-
-    # dry: preview only, no directory made
-    res = submit_jobset(js, tmp_path, mode="direct", dry_run=True,
-                        only="tight")
-    assert any("WOULD continue 03_tight/run-0 into run-1" in r.status
-               for r in res)
-    assert attempts(tmp_path / "03_tight") == [0]
-
-    # unconcluded and no judgement: the question, not a decision
-    with pytest.raises(SubmitError, match="never CONCLUDED"):
-        submit_jobset(js, tmp_path, mode="direct", dry_run=False,
-                      only="tight")
-    assert attempts(tmp_path / "03_tight") == [0]
-
-    # real, with the judgement recorded: the attempt IS opened,
-    # warm-marked, before the launch itself fails on this fixture's
-    # missing wrapper -- the honest probe that the continuation happens
-    # at the door, not after a launch
-    with pytest.raises(SubmitError, match="run.sh"):
-        submit_jobset(js, tmp_path, mode="direct", dry_run=False,
-                      only="tight", continue_unconcluded=True)
-    assert attempts(tmp_path / "03_tight") == [0, 1]
-    marker = tmp_path / "03_tight" / "run-1" / ".continued-from"
-    assert marker.read_text().strip() == "03_tight/run-0"
-
-
 def test_run_launch_omits_continued_from_rather_than_writing_null(tmp_path):
     """`checkpointing.md` S3 words its check as *"names a directory that exists
     **or is absent**"*, and absent is not `null`: a reader that tests for the
@@ -2272,45 +2084,6 @@ def test_the_provenance_survives_the_prep_to_submit_handover(tmp_path):
     body = json.loads((tight / "run.json").read_text())
     assert body["continued_from"] == "01_coarse/run-0"
     assert body["mode"] == "direct"
-
-
-def test_a_launched_attempt_is_never_touched_and_the_door_continues(tmp_path):
-    """§ 1.5: *"A run directory is written once and never modified"* --
-    PRESERVED by the 2026-08-21 ruling, with the mechanism changed: a
-    second submit no longer refuses, it CONTINUES into a fresh attempt
-    (the natural wall-kill workflow), and the first attempt's results
-    stay untouched either way.  When there is NOTHING to continue (the
-    launched run left no state -- it likely died at startup), the door
-    refuses with that story instead of silently starting fresh."""
-    from molbuilder.jobset.materialize import attempts, prepare_attempt
-    from molbuilder.jobset.submit import submit_jobset, SubmitError
-    js = _token_ladder("JOB_03_tight.fdf")
-    attempt = prepare_attempt(js, tmp_path, "tight").dir
-    (attempt / "JOB_03_tight.run.sh").write_text("#!/bin/bash\nexit 0\n")
-    submit_jobset(js, tmp_path, mode="direct", only="tight")
-    (attempt / "JOB_03_tight.out").write_text("results of the first run\n")
-
-    # the run above CONCLUDED (the stub wrapper exited 0) as far as this
-    # fixture is concerned; write its goodbye so the door's question is
-    # the continuing-is-impossible one, not the unconcluded one
-    (attempt / "JOB_03_tight-run0.out").write_text("out\n")
-    (attempt / "JOB_03_tight-run0.concluded").write_text("rc=0 at then\n")
-
-    # no warm state in run-0 -> continuing is impossible; the refusal says
-    # so and teaches the fresh lane
-    with pytest.raises(SubmitError) as e:
-        submit_jobset(js, tmp_path, mode="direct", only="tight")
-    assert "continuing is impossible" in str(e.value)
-    assert "prep run tight" in str(e.value)
-    assert (attempt / "JOB_03_tight.out").read_text().startswith("results")
-
-    # with state, a CONCLUDED attempt continues by default -- run-0 still
-    # untouched
-    (attempt / "JOB.XV").write_text("state\n")
-    with pytest.raises(SubmitError, match="run.sh"):
-        submit_jobset(js, tmp_path, mode="direct", only="tight")
-    assert attempts(tmp_path / "03_tight") == [0, 1]
-    assert (attempt / "JOB_03_tight.out").read_text().startswith("results")
 
 
 def test_prepare_attempt_refuses_a_from_that_has_not_run(tmp_path):
@@ -3253,39 +3026,6 @@ def test_resources_fields_equal_the_contracts_list_exactly():
     assert {f.name for f in dataclasses.fields(Resources)} == names
 
 
-def test_submit_honours_the_bundles_own_execution_block(tmp_path,
-                                                        monkeypatch):
-    """R3: the bundle's .molbuilder.json execution block gates ITS OWN
-    launches (running-a-job § 5.2, project scope wins).  Until 2026-08-12
-    submit resolved execution with NO project_dir, so a bundle declaring
-    mode=direct was submitted by whatever the machine config said --
-    while the provenance echo claimed the bundle file took effect."""
-    import json as _json
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "home").mkdir()
-    # ...and the box is probed.  Moving HOME moves the machine scope out
-    # from under conftest's own record, and prep refuses without one
-    # (`running-a-job.md` § 3.1).
-    from conftest import write_machine_record
-    write_machine_record()
-    bundle = tmp_path / "b"
-    bundle.mkdir()
-    _sweep().write(bundle / "job-set.json")
-    (bundle / ".molbuilder.json").write_text(_json.dumps(
-        {"execution": {"mode": "direct"}}))
-    runner, grp = _runner()
-    # no --mode: the BUNDLE's direct serves -- direct runs the set, and
-    # with nothing prepped that is a missing-wrapper refusal (proof the
-    # direct path was taken, not the submit path's scheduler error)
-    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
-                            "--dry-run", "--yes"])
-    assert r.exit_code == 0, r.output
-    assert "WOULD run" in r.output and "bash" in r.output
-    assert "sbatch" not in r.output
-
-
 def _write_domains(where, rows):
     """A probed `environment.json` carrying the reachable domains."""
     from molbuilder.scheduler import (FILENAME, Domain, Environment,
@@ -3331,52 +3071,6 @@ def test_submit_defaults_the_domain_from_the_bundles_execution_block(
                             "--dry-run", "--yes"])
     assert r.exit_code == 0, r.output
     assert "-p htc" in r.output and "-q express" in r.output
-
-
-def test_an_explicit_direct_mode_survives_a_configured_domain(
-        tmp_path, monkeypatch):
-    """A3 (redo 2026-08-12): a machine config quite normally records BOTH
-    `execution.mode` and `execution.domain` -- the domain is that
-    machine's default SLURM routing.  Pouring the domain in regardless of
-    mode made `--mode direct` impossible on such a machine: the seam
-    correctly refuses direct+domain, so the CLI must not inject a domain
-    the user never asked for into a mode it cannot apply to.  An EXPLICIT
-    `--domain` with `--mode direct` still reaches the seam's refusal."""
-    import json as _json
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "home").mkdir()
-    # ...and the box is probed.  Moving HOME moves the machine scope out
-    # from under conftest's own record, and prep refuses without one
-    # (`running-a-job.md` § 3.1).
-    from conftest import write_machine_record
-    write_machine_record()
-    bundle = tmp_path / "b"
-    bundle.mkdir()
-    _sweep().write(bundle / "job-set.json")
-    (bundle / ".molbuilder.json").write_text(_json.dumps({
-        "execution": {"mode": "submit", "domain": "fast"},
-        "scheduler": {"kind": "slurm",
-                      "directives": {"partition": "general", "qos": "public"}},
-    }))
-    # The domain MENU is probed, not configured (N4, 2026-08-17): it was
-    # `scheduler.routing` in the file above until the prober stopped writing
-    # into a person's config.  What the bundle still chooses is WHICH domain
-    # (`execution.domain`) -- the preference half of `configuration.md` § 5 M-1.
-    _write_domains(bundle, [("fast", "htc", "express", "0-04:00:00")])
-    runner, grp = _runner()
-    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
-                            "--mode", "direct", "--dry-run", "--yes"])
-    assert r.exit_code == 0, r.output
-    assert "WOULD run" in r.output and "bash" in r.output
-    assert "domain is a SLURM-submit concept" not in r.output
-    # the stated contradiction stays an error
-    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
-                            "--mode", "direct", "--domain", "fast",
-                            "--dry-run", "--yes"])
-    assert r.exit_code != 0
-    assert "SLURM-submit concept" in r.output
 
 
 # --------------------------------------------------------------------- #

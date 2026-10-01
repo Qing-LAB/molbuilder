@@ -993,10 +993,12 @@ flowchart TD
     L -->|"not good — retry differently"| PR
 ```
 
-**`prep` prints what it resolved, which is what makes `launch` a plain yes.** It
+**`prep` prints what it resolved, and `launch` shows what it decides.** `prep`
 is the only place the measured numbers, the chosen starting geometry and the
-rendered deck appear together — exactly where a person should be looking before
-committing cluster time.
+rendered deck appear together; `launch` then shows the exact `sbatch` line — the
+queue and the wall it decides at that moment — and asks before anything is sent
+([`submission.md`](?doc=execution/submission.md) S4, every door; ruled
+2026-10-01).
 
 #### One prep, two doors *(plan W38 F7, agreed 2026-09-27: "yes, one prep entry for both")*
 
@@ -1209,7 +1211,10 @@ which run the stage continues from, and the decision ledger records it:
 algorithm — the shipped ladder's coarse is CG and its medium Broyden.)
 
 `.continued-from` in the attempt and `continued_from` in its `run.json` keep it
-beside the run, and the Results tab's Run panel shows it (*Continued from*).
+beside the run, and the Results tab's Run panel shows it (*Continued from*). The
+flat layout records it too *(ruled 2026-10-01)*: a stage's own
+`<basename>.continued-from` and `<basename>.run.json` name the run by what every
+file of it carries — `H2_01_coarse-run0` — since flat keeps no directory per run.
 **Both doors offer the same choice**: the terminal's flags, and Task setup's
 **Continue from** in the rung's tab, which shows the default — or why prep
 refuses it — before anything is written
@@ -1307,11 +1312,23 @@ system** adds is submission and routing:
   resources as command-line `sbatch` flags (`-J`, `-n`, `-c`, `--gres`, `-t`,
   `--exclusive`), which **override** the rendered header — so a whole sweep can
   share one `.sbatch` file while each point still gets its own ranks and cores.
+- **One request, three doors.** A stage, a grouped bench's shelf and a bias
+  chain build their `sbatch` line the same way (`submit._sbatch_request`): what
+  `prep` baked, under what was said at launch (`--time`, `--mem`; `0` is the
+  whole node); **admitted** against the whole of it — wall, cores, memory, GPUs
+  and their type — on the queue it is sent to, against what this machine's
+  record says now ([`scheduler.md`](?doc=execution/scheduler.md) R9); and the
+  wall, when nothing states one, that queue's own ceiling. *(Until 2026-10-01 the
+  stage's door sent the launch queue's `-p/-q` under the wall `prep`'s header had
+  worked out for its own queue, and admitted nothing.)* The queue itself is
+  named once, for the work being launched: `--domain`, else what `prep` baked
+  for **this** stage, else `execution.domain` — for `--mode ask` as for
+  `submit`.
 - **Routing domains.** Instead of hard-coding a partition, you name a **domain**
   (`--domain public`, or `execution.domain` in config). A domain is a friendly
   name for a `(partition, qos)` pair (with an optional separate GPU partition);
   `launch` resolves it and refuses an unknown name with the list of configured
-  ones. Partition and qos are **required** for a SLURM site — the framework
+  ones — and a named one on a machine whose record lists no queues at all. Partition and qos are **required** for a SLURM site — the framework
   refuses to emit a header it knows will be rejected (design decision #4).
 - **Render every job, then submit them.** A grouped submission (the bench
   sweep, § 7) writes **all** its shelf scripts before it sends the first one,
@@ -1332,13 +1349,13 @@ system** adds is submission and routing:
   > *print the exact command without launching*, and the confirm preview
   > walks that path before the person has said yes.
 - **Job names read well.** A job's `-J` is `<calculation>/<job>` —
-  `bdt_au/coarse`, `bdt_au/G1K2C4` — so a `squeue` listing tells you which of
-  your calculations each row belongs to, not just which stage.
+  `bdt_au/coarse`, `bdt_au/G1K2C4`, `bdt_au/bench-group-cpu` — on every door,
+  so a `squeue` listing tells you which of your calculations each row belongs
+  to, not just which stage.
 
-A workstation with no `scheduler` block configured simply gets `.run.sh` files
+A workstation — a machine whose record says so — simply gets `.run.sh` files
 and is run with `--mode direct` (or `execution.mode: direct` set once — the
-mode is always stated, never derived); the `.sbatch` is emitted only when a
-scheduler is configured.
+mode is always stated, never derived).
 
 ---
 

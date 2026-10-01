@@ -97,10 +97,11 @@ def test_the_launch_line_a_deck_prints_is_one_launch_takes(
         assert r.exit_code == 0, (spelling, r.output)
         assert re.search(rf"WOULD run\s+{stage}\s+bash H2_{token}\.run\.sh",
                          r.output), (spelling, r.output)
-        launched = [json.loads(ln) for ln in
-                    (bundle / LEDGER_FILE).read_text().splitlines()
-                    if '"launched"' in ln][-1]
-        assert launched["stage"] == stage, (spelling, launched)
+        # A dry run is ledgered as planned (W52) -- by the stage's name.
+        planned = [json.loads(ln) for ln in
+                   (bundle / LEDGER_FILE).read_text().splitlines()
+                   if '"planned"' in ln][-1]
+        assert planned["stage"] == stage, (spelling, planned)
 
 
 def test_a_relax_stage_renamed_in_another_case_is_still_the_relaxation(

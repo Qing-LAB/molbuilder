@@ -64,7 +64,7 @@ def submitted(tmp_path, monkeypatch):
                 "--target", "this")
     assert r.exit_code == 0, r.output
     r = _jobset("launch", "run", "coarse", "--bundle", bundle,
-                "--mode", "submit", "--domain", "htc")
+                "--mode", "submit", "--domain", "htc", "--yes")
     assert r.exit_code == 0, r.output
     assert calls.read_text().strip(), "nothing was submitted"
     return bundle

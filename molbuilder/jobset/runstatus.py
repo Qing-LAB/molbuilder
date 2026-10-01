@@ -25,7 +25,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..identity import StageRef
-from .materialize import (attempts, job_dir_names, read_run_launch,
+from .materialize import (attempts, job_dir_names, launch_record_at,
+                          read_run_launch,
                           latest_attempt, run_dir, shape_of,
                           stage_refs)
 from .model import JobSet
@@ -306,18 +307,13 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, sh, dirs,
         # .out is one level down.
         attempt = latest_attempt(home)  # None is the ANSWER: prepared?
         observed = run_dir(home)        # ...and this is where to look
-        # WHERE the launch record lives mirrors where submit WRITES it
-        # (submit.py `_where_recorded`): the attempt when one exists; a
-        # sweep trial's at the trial's top -- until 2026-08-20 this read
-        # the attempt only, so a grouped-submitted trial answered § 1.6's
-        # exact forbidden line ("prepped, not launched") while its record
-        # sat one level up; and a flat stage's own record, named by its
-        # deck, in the directory every stage shares (2026-09-27).
+        # WHERE the launch record lives -- the one answer the writer reads
+        # too (`materialize.launch_record_at`): the attempt when one exists;
+        # a sweep trial's at the trial's top; a flat stage's own record,
+        # named by its deck, in the directory every stage shares.  This
+        # spelled the rule a second time until 2026-10-01 (W52).
         launch = read_run_launch(
-            attempt if attempt is not None else home,
-            basename=(None if attempt is not None
-                      or jobset.kind == "sweep"
-                      else Path(job.script).stem))
+            *launch_record_at(jobset.kind, job, home, attempt))
         read.append((home, volts, attempt, observed, launch)
                     + _stage_state(observed, launch, out_glob))
     # A SCAN'S RUNG SPEAKS FROM ITS FIRST POINT NOT FINISHED, in the

@@ -540,15 +540,50 @@ def attempts(stage_dir: Path) -> List[int]:
     return attempts_in(stage_dir)
 
 
-def was_launched(attempt_dir: Path) -> bool:
-    """Whether ``launch`` has launched this attempt — i.e. ``run.json`` exists.
+def was_launched(where: Path, basename: Optional[str] = None) -> bool:
+    """Whether ``launch`` has launched this run — its launch record exists:
+    an attempt's ``run.json``, or with ``basename`` a flat stage's own
+    (:func:`launch_record_at` says which).
 
     This is the whole reason that file exists. Without it, preparing a stage
     twice could rewrite the setup underneath a job already sitting in a queue,
     because a queued job has written nothing and looks exactly like one that
-    was never started (§ 1.6).
+    was never started (§ 1.6).  *(It read ``run.json`` alone until
+    2026-10-01, so a flat stage -- whose record is ``<basename>.run.json`` --
+    always read as never launched, and was launched again over a run still
+    in the queue; W52.)*
     """
-    return (Path(attempt_dir) / RUN_LAUNCH_FILE).is_file()
+    return launch_record_path(where, basename).is_file()
+
+
+def launch_record_at(kind: str, job, container: Path,
+                     attempt: Optional[Path]) -> Tuple[Path, Optional[str]]:
+    """``(where, basename)`` -- where a job's launch is recorded
+    (`project-layout.md` § 1.6.3), for :func:`launch_record_path`,
+    :func:`was_launched`, :func:`write_run_launch` and every reader: the
+    attempt's ``run.json`` when there is an attempt; a sweep trial's own, at
+    the trial's top; a flat stage's ``<basename>.run.json`` in the
+    calculation's directory, which every stage shares -- ``basename`` its
+    deck's stem.  ONE answer: the writer and three readers each spelled it
+    until 2026-10-01, and the one that did not take the flat case relaunched
+    a flat stage still in the queue (W52)."""
+    if attempt is not None:
+        return Path(attempt), None
+    if kind == "sweep":
+        return Path(container), None
+    return Path(container), Path(job.script).stem
+
+
+def continued_from_marker(where: Path, basename: Optional[str] = None
+                          ) -> Path:
+    """Where `prep` leaves the run a stage continues from, for `launch` to
+    write into the launch record (`project-layout.md` § 1.6.3): the
+    attempt's ``.continued-from``, or a flat stage's own
+    ``<basename>.continued-from`` beside its other files -- the flat layout
+    records it too (user, 2026-10-01)."""
+    from ..runfiles import tail
+    return Path(where) / (".continued-from" if basename is None
+                          else basename + tail(".continued-from"))
 
 
 def latest_attempt(stage_dir: Path) -> Optional[Path]:
@@ -690,6 +725,16 @@ def attempt_concluded(attempt_dir: Path, basename: str) -> Optional[str]:
         return None
 
 
+def conclusion_line(attempt_dir: Path, basename: str) -> Optional[str]:
+    """The conclusion marker's first line -- ``rc=0 at <date>`` -- or
+    ``None`` when the run has not concluded (:func:`attempt_concluded`).
+    An EMPTY marker is a conclusion, so it reads ``""``: two readers took
+    the first line two ways until 2026-10-01, and one of them raised on an
+    empty marker after the new attempt was already open (W52)."""
+    mark = attempt_concluded(attempt_dir, basename)
+    return None if mark is None else (mark.splitlines() or [""])[0].strip()
+
+
 def resolve_attempt(stage_dir: Path) -> Tuple[Path, bool]:
     """The attempt directory to prepare into, and whether it is a fresh one.
 
@@ -788,16 +833,27 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     if sh is not None and not sh.keeps_attempts_as_directories:
         raise ValueError(
             "this calculation's shape is 'flat', which has no attempt "
-            "directories to open: attempts are told apart by the wrapper's "
-            "output index (<label>_<NN>_<name>-run<N>.out), the warm files "
-            "are one shared set, and continuing is free -- the next stage "
-            "finds them lying there (project-layout.md § 1).  Prepare the "
-            "wrappers and submit; there is nothing to name with --from.")
+            "directories to open: runs are told apart by the wrapper's "
+            "output index (<label>_<NN>_<name>-run<N>.out) and every stage "
+            "reads the files the stage before it left in the one folder "
+            "(project-layout.md § 1) -- so there is no run to name with "
+            "--from, and a stage starts clean by its run card's `restart: "
+            "clean`, not by --cold.")
     dir_of = job_dir_names(jobset, sh)
     refs = stage_refs(jobset)
     stage_name = resolve_stage_ref([refs[j.name] for j in jobset.jobs],
                                    stage_name).name
     job = next(j for j in jobset.jobs if j.name == stage_name)
+
+    # WHAT IT CONTINUES FROM, CHECKED BEFORE ANYTHING IS WRITTEN (W52).  The
+    # attempt was opened and filled, and an earlier carry undone, before
+    # these refusals until 2026-10-01 -- so a mistyped --from stripped an
+    # attempt prepared a moment ago, and a re-launch that could not continue
+    # left a fresh attempt behind it.
+    names: List[str] = (
+        continuation_files(jobset, base, stage_name, continue_from,
+                           named=named, carry=carry)
+        if continue_from and not cold else [])
 
     # ``container`` overrides WHERE the run-<n> opens -- the transport
     # composite's bias scan keeps one attempt ladder PER POINT
@@ -885,7 +941,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # wearing its other face, and it is silent.  Only files the marker says we
     # carried in are removed, and never a symlink, so nothing a user put here
     # by hand is touched.
-    marker = attempt / ".continued-from"
+    marker = continued_from_marker(attempt)
     if not is_new and marker.is_file():
         # The WHOLE declared set, not the pair-filtered one: the previous prep
         # may have named a different source and so copied a conditional file
@@ -898,40 +954,13 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
         marker.unlink()
 
     copied: List[str] = []
-    said = (f"--from {continue_from!r}" if named else
-            f"the run it continues from ({continue_from})")
     if continue_from and not cold:
         src = base / continue_from
-        if not src.is_dir():
-            raise ValueError(
-                f"{said}: no such attempt under "
-                f"{base}. Name an attempt directory that has already run, "
-                f"e.g. '01_coarse/run-0'.")
-        # The pair, resolved here and nowhere else -- `--from` is what names
-        # the source, so this is the first moment both stages are known.
-        names = (carry if carry is not None
-                 else warm_carry(job, _source_job(jobset, dir_of,
-                                                  continue_from)))
-        if not names:
-            raise ValueError(
-                f"{said}: {stage_name!r} declares no "
-                f"warm-restart files, so there is nothing to continue.\n"
-                f"  A stage whose description says `restart: clean` carries "
-                f"none of the group -- its deck omits MD.UseSaveXV / "
-                f"DM.UseSaveDM / MD.UseSaveCG, so files copied in would sit "
-                f"there unread (run-identity.md § 4, *present but not "
-                f"honoured*).  Set this stage's `restart` to `continue` in "
-                f"task.json and produce again, or drop --from.")
         for name in names:
             f = src / name
             if f.is_file():
                 shutil.copy2(f, attempt / name)
                 copied.append(name)
-        if not copied:
-            raise ValueError(
-                f"{said}: that attempt holds none "
-                f"of the files this stage would continue from "
-                f"({', '.join(names)}). Did it run?")
 
     # Leave the provenance where ``launch`` can find it: prep is what knows
     # which attempt this one continues from, and submit writes run.json.  A
@@ -950,6 +979,53 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                         else str(continue_from)),
         cold=bool(cold),
     )
+
+
+def continuation_files(jobset: JobSet, base_dir, stage_name: str,
+                       continue_from: str, *, named: bool,
+                       carry: Optional[List[str]] = None) -> List[str]:
+    """The files ``stage_name`` would carry from ``continue_from`` --
+    CHECKED, never copied: that attempt exists, the stage declares warm
+    files for this pair (:func:`warm_carry`), and the attempt holds at least
+    one of them.  Raises ``ValueError`` otherwise, worded for who chose the
+    run: the person, by ``--from`` (``named``), or the door that chose it --
+    `prep`'s default, `launch` re-launching a stage (`job-system.md` § 5.4).
+
+    ONE CHECK, asked by :func:`prepare_attempt` before it writes anything
+    and by `launch` before it shows what it will send -- so a run that
+    cannot be continued is refused before the question, not after the yes.
+    """
+    base = Path(base_dir)
+    said = (f"--from {continue_from!r}" if named else
+            f"the run it continues from ({continue_from})")
+    src = base / continue_from
+    if not src.is_dir():
+        raise ValueError(
+            f"{said}: no such attempt under "
+            f"{base}. Name an attempt directory that has already run, "
+            f"e.g. '01_coarse/run-0'.")
+    job = next(j for j in jobset.jobs if j.name == stage_name)
+    # The pair, resolved here and nowhere else -- `--from` is what names
+    # the source, so this is the first moment both stages are known.
+    dir_of = job_dir_names(jobset, shape_of(jobset, base))
+    names = (carry if carry is not None
+             else warm_carry(job, _source_job(jobset, dir_of, continue_from)))
+    if not names:
+        raise ValueError(
+            f"{said}: {stage_name!r} declares no "
+            f"warm-restart files, so there is nothing to continue.\n"
+            f"  A stage whose description says `restart: clean` carries "
+            f"none of the group -- its deck omits MD.UseSaveXV / "
+            f"DM.UseSaveDM / MD.UseSaveCG, so files copied in would sit "
+            f"there unread (run-identity.md § 4, *present but not "
+            f"honoured*).  Set this stage's `restart` to `continue` in "
+            f"task.json and prep it again, or start it cold.")
+    if not any((src / name).is_file() for name in names):
+        raise ValueError(
+            f"{said}: that attempt holds none "
+            f"of the files this stage would continue from "
+            f"({', '.join(names)}). Did it run?")
+    return list(names)
 
 
 def _source_job(jobset: JobSet, dir_of: Dict[str, str], continue_from):

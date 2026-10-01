@@ -361,6 +361,16 @@ def compose(label: str, role: str, stage: Optional[str] = None,
     return f"{stem(label, stage)}{_counters}{role}"
 
 
+def run_name(label: str, stage: Optional[str], run: int) -> str:
+    """``<label>_<stage>-run<N>`` -- what every file of ONE run carries, and
+    so the flat layout's name for that run: flat tells runs apart by this
+    index, never by a directory (`project-layout.md` § 1.5a).  CUT from a
+    real :func:`compose` result, like :func:`tail`, so the counter is
+    spelled by the grammar and nowhere else."""
+    _role = ".concluded"
+    return compose(label, _role, stage, run=run)[:-len(_role)]
+
+
 #: A stand-in label for :func:`tail`.  Any legal label would do; what matters
 #: is that the tail is CUT from a real `compose` result rather than assembled
 #: beside one, so the two cannot disagree.
@@ -962,6 +972,11 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # record as it names every other file of it.  Written at launch.
     Artifact(".run.json", "a flat stage's launch record: how, where and when "
                           "it was sent"),
+    # AND THE RUN IT CONTINUES FROM, left by `prep` for `launch` to write into
+    # that record -- an attempt's `.continued-from`, for a stage with none of
+    # its own (user, 2026-10-01: the flat layout records it too).
+    Artifact(".continued-from", "the run a flat stage continues from, left "
+                                "by prep for its launch record"),
 )
 
 #: The attempt counter as a GLOB, per :attr:`Artifact.attempt`.  Empty string

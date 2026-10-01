@@ -1213,7 +1213,9 @@ quieter.* It has two halves and they are answerable at different times.
 ### A history you can read back
 
 **S3 — a run records what it started from.** `run.json`'s `continued_from` names
-the run directory its files came from, or is absent when it started from the
+the run directory its files came from — on the flat layout, where every run
+shares the calculation's one folder, the run's own name, `<label>_<NN>_<stage>-run<N>`,
+which each of its files carries — or is absent when it started from the
 structure.
 
 *This survived a design change and its mechanism did not.* When stages chained, an
@@ -1223,7 +1225,8 @@ also better: a symlink says *something was inherited*, not **which run**, and wi
 several attempts per stage that is the question you actually have.
 
 - **Test:** for every run in a finished tree, `continued_from` names a directory
-  that exists or is absent — never something deleted or never there.
+  that exists — on the flat layout a run whose files exist — or is absent;
+  never something deleted or never there.
 
 **S6 — a restored folder is internally consistent.** `task.json` is tracked text,
 so a restore brings back the description *together with* the decks it produced.

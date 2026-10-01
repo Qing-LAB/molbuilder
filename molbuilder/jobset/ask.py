@@ -52,10 +52,12 @@ two ways is how they come to disagree about what was asked.
 """
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence
+
+if TYPE_CHECKING:
+    from ..scheduler.admit import Refusal
 
 # The two quantities a job asks for -- a wall and an amount of memory -- and
 # every dialect each is written in, live in `scheduler/quantities.py`
@@ -328,13 +330,16 @@ def gpu_share_notes(gpu_count: Optional[int], mpi_np: Optional[int], *,
 
 
 def confirm(text: str, *, auto_yes: bool = False, echo=None,
-            prompt=None) -> bool:
+            prompt=None, default: bool = True) -> bool:
     """**The one interface** — show it, then act on the answer.
 
     ``auto_yes`` is how a person says *I have decided to trust this*; its
     absence is not permission.  ``echo``/``prompt`` are injected so the same
     function serves a terminal, a test, and anything else that can show a
-    string and read a yes — the browser included.
+    string and read a yes — the browser included.  ``default`` is the answer
+    Enter gives: "no" where the question carries a judgement only the
+    person can make -- following a run that may still be running
+    (`project-layout.md` § 1.6.4) -- so a bare Enter does not make it.
     """
     import click
     # THROUGH THE GUARDED DOOR.  This was a bare `sys.stdin.isatty()`, which
@@ -358,7 +363,7 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
              "submit what is printed above without confirming.")
         return False
     prompt = prompt or (lambda: click.confirm("  submit this?",
-                                              default=True))
+                                              default=default))
     return bool(prompt())
 
 
@@ -495,6 +500,10 @@ def prediction_table(preds: Sequence[Prediction]) -> str:
     lines.append("")
     lines.append("  a time is an ESTIMATE from the queue as it is right now; "
                  "it moves.")
-    lines.append("  change --domain or --cores and ask again, or launch when "
-                 "you are happy.")
+    # FLAGS THAT EXIST: `launch` takes --domain, --time and --mem; the
+    # ranks and cores are prep's (--np, --cpus-per-task).  This said
+    # "--cores", which no verb takes (W52).
+    lines.append("  change --domain, --time or --mem and ask again (ranks and "
+                 "cores: prep's --np / --cpus-per-task), or launch when you "
+                 "are happy.")
     return "\n".join(lines)

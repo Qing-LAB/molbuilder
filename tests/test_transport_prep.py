@@ -1803,6 +1803,16 @@ class TestTheBiasScan:
         return read_task(calc / "task.json"), JobSet.load(
             calc / "job-set.json")
 
+    @staticmethod
+    def _launch(calc):
+        """`jobset launch run device --mode direct` -- the verb a person
+        types, which hands a bias scan to the chain's door."""
+        from click.testing import CliRunner
+        from molbuilder.jobset._cli import jobset_group
+        return CliRunner().invoke(jobset_group, [
+            "launch", "run", "device", "--bundle", str(calc),
+            "--mode", "direct"])
+
     def _stub(self, calc, point):
         """Replace one point's wrapper with a stub that records the run
         order and the density it STARTED with, then writes its own."""
@@ -1864,12 +1874,11 @@ class TestTheBiasScan:
     def test_the_chain_warm_chains(self, calc, tmp_path, monkeypatch):
         """THE P5 gate: a two-point bias fixture warm-chains -- the
         second point STARTS with the first point's .TSDE."""
-        from molbuilder.jobset.submit import submit_transport_chain
-        task, js = self._ready(calc, tmp_path, monkeypatch)
+        self._ready(calc, tmp_path, monkeypatch)
         self._stub(calc, "v0")
         self._stub(calc, "v0.2")
-        results = submit_transport_chain(js, calc, task, mode="direct")
-        assert results[0].status == "ran", results
+        r = self._launch(calc)
+        assert r.exit_code == 0 and "[ran]" in r.output, r.output
         order = (calc / "04_device" / "chain-order.log"
                  ).read_text().splitlines()
         assert [o.split("/")[-1] for o in order] == ["v0", "v0.2"], (
@@ -1897,20 +1906,17 @@ class TestTheBiasScan:
         Contract: `archive/2026-09-01-transport-design.md` § 4.3 (one submission
         walking the points with the .TSDE handed forward).
         """
-        from molbuilder.jobset.submit import submit_transport_chain
-        from molbuilder.task import read_task
         # a three-point scan: rewrite the description (the id derives
         # from the citation, so the bias edit keeps it)
         _describe_transport(tmp_path / "projects", bias=(0.0, 0.2, 0.4))
-        task, js = self._ready(calc, tmp_path, monkeypatch)
+        self._ready(calc, tmp_path, monkeypatch)
         self._stub(calc, "v0")
         att = calc / "04_device" / "v0.2" / "run-0"
         (att / "T_04_device.run.sh").write_text(
             "#!/bin/bash\nexit 7\n")
         self._stub(calc, "v0.4")
-        results = submit_transport_chain(js, calc, task, mode="direct")
-        assert results[0].status == "failed"
-        assert results[0].returncode == 7
+        r = self._launch(calc)
+        assert "[failed] rc=7" in r.output, r.output
         order = (calc / "04_device" / "chain-order.log"
                  ).read_text().splitlines()
         assert len(order) == 1, (
@@ -1929,13 +1935,11 @@ class TestTheBiasScan:
 
         Contract: `archive/2026-09-01-transport-design.md` § 4.3.
         """
-        from molbuilder.jobset.submit import (SubmitError,
-                                              submit_transport_chain)
-        task, js = self._ready(calc, tmp_path, monkeypatch)
+        self._ready(calc, tmp_path, monkeypatch)
         shutil.rmtree(calc / "04_device" / "v0.2" / "run-0")
-        with pytest.raises(SubmitError) as e:
-            submit_transport_chain(js, calc, task, mode="direct")
-        assert "v0.2" in str(e.value) and "prep run device" in str(e.value)
+        r = self._launch(calc)
+        assert r.exit_code != 0, r.output
+        assert "v0.2" in r.output and "prep run device" in r.output, r.output
 
     def test_a_launched_point_refuses_relaunch(self, calc, tmp_path,
                                                monkeypatch):
@@ -1951,13 +1955,10 @@ class TestTheBiasScan:
         Contract: `execution/running-a-job.md` (the attempt is immutable once
         launched) + `archive/2026-09-01-transport-design.md` § 4.3.
         """
-        from molbuilder.jobset.submit import (SubmitError,
-                                              submit_transport_chain)
-        task, js = self._ready(calc, tmp_path, monkeypatch)
+        self._ready(calc, tmp_path, monkeypatch)
         (calc / "04_device" / "v0" / "run-0" / "run.json").write_text("{}")
-        with pytest.raises(SubmitError) as e:
-            submit_transport_chain(js, calc, task, mode="direct")
-        assert "immutable" in str(e.value)
+        r = self._launch(calc)
+        assert r.exit_code != 0 and "immutable" in r.output, r.output
 
     def test_transmission_gathers_the_matching_point(self, calc,
                                                      tmp_path,

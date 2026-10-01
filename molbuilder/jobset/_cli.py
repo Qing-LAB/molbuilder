@@ -23,10 +23,9 @@ one stage**, so every verb that acts on a stage is given the stage's name.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 import click
-from ..issues import Issue
 
 from .ledger import record as _ledger
 from .model import JobSet
@@ -366,7 +365,6 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     so every option that would supply them here is refused naming that
     rule rather than silently ignored.
     """
-    import re
     from pathlib import Path as _P
 
     from ..task import Stage, Task, derive_run, write_task
@@ -586,7 +584,6 @@ def init_cmd(structure, bundle: str, shape: str,
     schema does not know, or a value outside its bounds is refused with the
     field named -- and refused before anything is written.
     """
-    import dataclasses as _dc
     from pathlib import Path as _P
 
     from ..workingcopy_structure import StructureCodec
@@ -941,8 +938,10 @@ TIME_HELP = ("wall-clock limit -- `4h`, `90m`, `2-00:00:00`, or a bare "
 MEM_METAVAR = "SIZE"
 MEM_HELP = ("how much TOTAL memory this needs -- `128G`, `80GB`, `0.5T`, or "
             "a bare number of GB.  `0` asks for all of the node's.  "
-            "Unstated means the scheduler's own default decides, which is "
-            "how a 64-core job came to ask for 128 GB nobody had chosen.")
+            "Unstated, what molbuilder.json says decides -- "
+            "`scheduler.defaults.mem`, then `scheduler.gpu.mem` for a GPU "
+            "job -- else the scheduler's own default (running-a-job.md "
+            "§ 5.3.1).")
 
 
 def _duration(text):
@@ -955,10 +954,13 @@ def _duration(text):
 
 
 def _memory(text):
-    """`scheduler.quantities.parse_memory`, refusing in click's voice."""
-    from ..scheduler.quantities import parse_memory
+    """A stated memory as the record writes it -- SLURM's spelling, ``0``
+    for all of the node's (`scheduler.quantities.canonical_mem`) -- refusing
+    in click's voice.  ``launch`` read it as a number of gigabytes until
+    2026-10-01 and so refused the ``0`` this help advertises (W52)."""
+    from ..scheduler.quantities import canonical_mem
     try:
-        return parse_memory(text)
+        return canonical_mem(text)
     except ValueError as e:
         raise click.ClickException(f"--mem: {e}")
 
@@ -1452,6 +1454,104 @@ def summarize_cmd(kind: str, stage, bundle: str,
             reported=report is not None)
 
 
+def _refuse_flags_without_effect(*, kind: str, mode: str, trial,
+                                 domain, time_text, mem_text, gpu_domain,
+                                 trial_timeout_min, only_side) -> None:
+    """A launch flag that would not be read is REFUSED by name, never
+    ignored (W52: ``--trial-timeout`` was read by the grouped bench alone,
+    ``--gpu-domain`` likewise, and ``--time``/``--mem`` meant nothing to a
+    direct run -- each silently, while ``--only`` was refused in exactly
+    those places as *a filter silently ignored*)."""
+    flags = {"--domain": domain, "--time": time_text, "--mem": mem_text,
+             "--gpu-domain": gpu_domain,
+             "--trial-timeout": trial_timeout_min, "--only": only_side}
+
+    def said(*names):
+        return [n for n in names if flags[n] is not None]
+
+    if mode == "direct":
+        got = said(*flags)
+        if got:
+            raise click.ClickException(
+                f"{', '.join(got)}: what a scheduler is asked for -- "
+                f"`--mode direct` runs it here, where "
+                f"{'it means' if len(got) == 1 else 'they mean'} nothing.")
+    if kind != "bench":
+        got = said("--gpu-domain", "--trial-timeout", "--only")
+        if got:
+            raise click.ClickException(
+                f"{', '.join(got)}: a benchmark's -- `launch run` sends one "
+                f"stage, to the queue --domain names.")
+    elif trial is not None:
+        got = said("--trial-timeout", "--only")
+        if got:
+            raise click.ClickException(
+                f"{', '.join(got)}: a grouped bench's -- a named trial is "
+                f"sent alone, and is the selection.")
+
+
+def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
+                  footer=()) -> bool:
+    """**Nothing is submitted unseen** (`submission.md` S4): the exact
+    ``sbatch`` line of every job about to be sent -- by the code that sends
+    it -- what each follows, what only the person can judge, and what the
+    request leaves to the scheduler; then the one question.  ``True`` to go.
+
+    Every door asks it, the stage's included (user, 2026-10-01: the queue and
+    the wall are decided at launch, after prep's printout, so they were never
+    seen).  Under ``--dry-run`` the commands are printed by the results that
+    follow, so only what the plan alone carries is said here.  ``--yes``
+    skips the question, never the output."""
+    from .ask import confirm, gpu_share_notes
+    from .submit import _gres_count
+    planned = [r for r in plan if r.status == "planned"]
+    lines = ["about to submit:"]
+    for r in plan:
+        if r.status == "planned":
+            # NAME THE DOMAIN, not only the flags: where several domains
+            # share one partition, `-p htc` reads as *htc* to anyone scanning
+            # (2026-08-30: a debug sweep was believed to have gone wrong).
+            lines.append(f"  {r.name}"
+                         + (f"   -> domain {r.domain}" if r.domain else ""))
+            lines.append(f"    {' '.join(r.command)}")
+        elif r.status.startswith("WOULD"):
+            lines.append(f"  {r.name}: {r.status}")
+    warn = []
+    for r in planned:
+        # GPU SHARING, read off the very command about to be sent (user
+        # 2026-08-23) -- its `-n` and its `--gres`, through the one reader.
+        g = next((a for a in r.command if a.startswith("--gres=")), None)
+        try:
+            ng = _gres_count(g.split("=", 1)[1]) if g else 0
+            nr = int(r.command[r.command.index("-n") + 1])
+        except (ValueError, IndexError):
+            ng = 0
+        for line in (gpu_share_notes(ng, nr) if ng else ()):
+            line = "  " + line.strip()
+            if line not in warn:
+                warn.append(line)
+    for r in planned:
+        # R14 -- the cap this sweep will meet, said while no is still free.
+        if r.detail and "  " + r.detail.strip() not in warn:
+            warn.append("  " + r.detail.strip())
+    if any(not any(a.startswith("--mem") for a in r.command) for r in planned):
+        warn.append("  MEMORY NOT STATED -- the scheduler's own default decides "
+                    "(a per-core or per-GPU rate; on some sites far below the "
+                    "node).  State it at prep (--mem) or here (--mem).")
+    if any("-t" not in r.command for r in planned):
+        warn.append("  time not stated and this queue declares no ceiling -- "
+                    "the scheduler's default stands.")
+    judged = [r.judgement for r in plan if r.judgement]
+    lines += warn + list(footer) + ["  " + j for j in judged]
+    if dry_run:
+        for line in warn + list(footer) + ["  " + j for j in judged]:
+            click.echo(line)
+        return True
+    # A JUDGEMENT ONLY THE PERSON CAN MAKE is not made by Enter.
+    return confirm("\n".join(lines), auto_yes=auto_yes,
+                   default=not judged)
+
+
 @jobset_group.command("launch", short_help="launch a prepped stage")
 @click.argument("kind", type=click.Choice(_KINDS))
 @click.argument("stage", required=False, default=None)
@@ -1463,84 +1563,81 @@ def summarize_cmd(kind: str, stage, bundle: str,
                    "about the layout: 'direct' = run it here with bash; "
                    "'submit' = hand it to the scheduler molbuilder.json "
                    "configures; **'ask' = submit NOTHING and report when it "
-                   "would start** (`sbatch --test-only`), so you can change "
-                   "the domain or the resources and ask again before "
-                   "committing.  'ask' needs a login node -- there is no "
-                   "prediction without the cluster.  Independent of the description's `shape` "
-                   "(engines/stages.md § 6.7) -- a workstation running "
-                   "hierarchical is ordinary.  **Defaults to `execution.mode` "
-                   "in molbuilder.json**, which is what running-a-job.md § 5.4 "
-                   "says gates submission; pass it only to override that.")
-@click.option("--domain", default=None,
-              help="probed domain (environment.json) -> -p/-q (submit mode). "
-                   "OVERRIDES the per-side preference a grouped bench applies "
-                   "(cpu group prefers a cpu-only domain, gpu group a "
-                   "gpu-capable one -- generator.md § 4.3a); combine with "
-                   "--only to place one side at a time.")
+                   "would start** (`sbatch --test-only` on the line submit "
+                   "would send), so you can change the queue or the request "
+                   "and ask again before committing.  'ask' needs a login "
+                   "node -- there is no prediction without the cluster.  "
+                   "**Defaults to `execution.mode` in molbuilder.json** "
+                   "(running-a-job.md § 5.4); pass it only to override that.")
+@click.option("--domain", default=None, metavar="NAME",
+              help="the queue -- a domain of this machine's record, sent as "
+                   "-p/-q (submit and ask).  Unstated: the one prep baked "
+                   "for this stage, else `execution.domain`; with neither, "
+                   "the queues are listed and nothing is sent.  A grouped "
+                   "bench's sides take it too; --only places one side at a "
+                   "time.")
 @click.option("--dry-run", is_flag=True,
               help="print the exact command each job WOULD get; launch "
-                   "nothing.")
+                   "nothing, write nothing.")
 @click.option("--time", "time_text", default=None, metavar=TIME_METAVAR,
               help=TIME_HELP)
 @click.option("--mem", "mem_text", default=None, metavar=MEM_METAVAR,
               help=MEM_HELP)
 @click.option("--gpu-domain", "gpu_domain", default=None, metavar="NAME",
-              help="the queue the GPU side of a SPLIT sweep goes to, when "
-                   "it differs from --domain.  A cpu-only partition cannot "
-                   "take the GPU side, so one queue cannot always answer for "
+              help="the queue a benchmark's GPU side goes to -- a grouped "
+                   "bench's GPU shelves, or a named GPU trial -- when it "
+                   "differs from --domain.  A cpu-only partition cannot take "
+                   "the GPU side, so one queue cannot always answer for "
                    "both.  Omit it and the GPU side takes --domain.")
 @click.option("--yes", "-y", "auto_yes", is_flag=True,
-              help="submit without showing the request first.  Without it "
-                   "you see exactly what will be asked for, and say so.")
+              help="take what is shown without being asked.  The request is "
+                   "still printed -- --yes skips the question, never the "
+                   "output (submission.md S4) -- and it is also your "
+                   "recorded judgement to continue a run that was launched "
+                   "and never concluded (project-layout.md § 1.6.4).")
 @click.option("--trial-timeout", "trial_timeout_min", default=None,
-              metavar="MINUTES",
-              help="bench + submit mode: kill any single trial after this "
-                   "many minutes so the rest of the group still runs; the "
-                   "killed trial reads incomplete.  Unstated, no per-trial "
-                   "bound exists -- each trial runs until the job's wall.")
+              type=click.IntRange(min=1), metavar="MINUTES",
+              help="a grouped bench (`launch bench <stage>`, submit mode): "
+                   "kill any single trial after this many minutes so the "
+                   "rest of the group still runs; the killed trial reads "
+                   "incomplete.  Unstated, no per-trial bound exists -- each "
+                   "trial runs until the job's wall.")
 @click.option("--only", "only_side", default=None,
               type=click.Choice(["cpu", "gpu"]),
-              help="bench + submit mode: submit just this side of a sweep "
-                   "that spans CPU and GPU trials (generator.md § 4.3a).  "
-                   "The other side stays pending; a later `launch bench`` "
+              help="a grouped bench: send just this side of a sweep that "
+                   "spans CPU and GPU trials (generator.md § 4.3a).  The "
+                   "other side stays pending; a later `launch bench` "
                    "collects it -- here or on the cluster that reaches it.")
 def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                dry_run: bool, time_text, mem_text, gpu_domain,
                auto_yes, trial_timeout_min, only_side) -> None:
-    """Launch a prepped stage: local ``bash`` (direct) or the machine's
-    submission system (submit).  Run ``prep`` first.  ``--dry-run`` shows the
-    exact command before anything is irreversible.
+    """Launch a prepped stage: run it here (direct), hand it to the machine's
+    scheduler (submit), or ask the scheduler when it would start (ask).
+    Run ``prep`` first.  Before anything is sent the exact ``sbatch`` line is
+    shown and you are asked; ``--dry-run`` shows it and sends nothing.
 
-    ``--mode`` falls back to ``execution.mode``.  `running-a-job.md` § 5.4 says
-    that setting is what gates submission, and until 2026-08-11 only ``bench``
-    consulted it while this verb demanded the flag on every call -- so the
-    config said one thing and the command required another.
+    ``--mode`` falls back to ``execution.mode`` (`running-a-job.md` § 5.4).
     """
     mode_source = "--mode flag"
     domain_source = "--domain flag" if domain else None
-    # The BUNDLE's scope gates its own launches (R3, 2026-08-12): this
-    # called get_execution() with no project_dir, so a calculation's
-    # .molbuilder.json execution block never reached submission while the
-    # provenance echo below claimed it did (running-a-job § 5.2: the
-    # project scope wins).
+    # The BUNDLE's scope gates its own launches (R3, 2026-08-12): the
+    # calculation's .molbuilder.json execution block wins (running-a-job
+    # § 5.2).
     _execn = {}
     if mode is None or domain is None:
         from ..runtime_config import get_execution
         try:
             _execn = get_execution(project_dir=Path(bundle)) or {}
         except Exception as exc:
-            # A malformed config -- unreadable file, or an execution.mode
-            # that names neither launch mode (get_execution validates; ONE
-            # place defines what a mode is) -- is ITS OWN error.  Swallowing
-            # it here told the user to set a value they may already have set.
+            # A malformed config is ITS OWN error.  Swallowing it here told
+            # the user to set a value they may already have set.
             raise click.ClickException(
                 f"the execution block could not be resolved from config: "
-                f"{exc}\n  Fix the config, or pass --mode/--domain "
-                f"explicitly for this call.") from exc
+                f"{exc}\n  Fix the config (running-a-job.md § 5.4).") from exc
     if mode is None:
         mode = _execn.get("mode")
         if not mode:
-            # Unset is a refusal, never a derivation: deciding `launch` from
+            # Unset is a refusal, never a derivation: deciding `submit` from
             # a DETECTED scheduler would gate submission on detection, which
             # running-a-job.md § 5.4 forbids.
             raise click.ClickException(
@@ -1549,15 +1646,14 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                 "scheduler.  Set execution.mode once for this machine, or pass "
                 "--mode for this call (running-a-job.md § 5.4).")
         mode_source = "execution.mode (config)"
-    if only_side and (kind != "bench" or mode != "submit"
-                      or trial is not None):
-        # Mirrors the domain refusal below: a side filter rides the GROUPED
-        # submission and nothing else (generator.md § 4.3a).  A named
-        # trial IS the selection, so pairing it with --only would be a
-        # filter silently ignored (review 2026-08-21).
-        raise click.ClickException(
-            "--only picks a side of a grouped bench submission; it has no "
-            "meaning for `launch run``, --mode direct, or a named trial.")
+    _refuse_flags_without_effect(
+        kind=kind, mode=mode, trial=trial, domain=domain,
+        time_text=time_text, mem_text=mem_text, gpu_domain=gpu_domain,
+        trial_timeout_min=trial_timeout_min, only_side=only_side)
+
+    # ------------------------------------------------------------------ #
+    #  Which work -- before which queue, which is read off this work      #
+    # ------------------------------------------------------------------ #
     if kind == "bench":
         # the stage's own sweep record, from its bench container (§ 6.3)
         stage = _described_stage(bundle, stage)
@@ -1565,307 +1661,209 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     else:
         if trial is not None:
             raise click.ClickException(
-                "a TRIAL names a benchmark point; `launch run`` takes a "
+                "a TRIAL names a benchmark point; `launch run` takes a "
                 "stage only (job-system.md § 5.3).")
         js, base = _load(bundle)
     _check_kind(kind, js)
+    if kind == "bench":
+        only = _pick_trial(js, base, trial)      # None: every trial
+    else:
+        # The description's spelling from here on -- what the ledger
+        # records and every line prints (plan § 5w K12).
+        only = stage = _resolve_stage(js, stage, "launch")
+    launching = [j for j in js.jobs if only is None or j.name == only]
+    grouped = kind == "bench" and trial is None and mode in ("submit", "ask")
+    mem = _memory(mem_text)
+    time_s = _duration(time_text)
 
     # ------------------------------------------------------------------ #
     #  Which queue -- asked ONCE, of everyone who already answered        #
     # ------------------------------------------------------------------ #
-    # NOBODY GUESSES THE QUEUE (user, 2026-08-23).  Which queue to spend a
-    # day of wall-clock in is a judgement about priority, contention and
-    # what else is running -- none of it on the machine's record, all of it
-    # the person's.  So this never DERIVES a queue; it asks, in order,
-    # everyone the person has already told:
-    #
-    #   1. --domain on this call        -- said about this launch
-    #   2. the bundle's own resources   -- said about THIS WORK at prep,
-    #                                      which is where the Task-setup tab
-    #                                      puts it (task.json `allocation`)
-    #   3. execution.domain in config   -- said once about this machine
-    #
-    # Most specific wins.  (2) was consulted by NOTHING until 2026-08-24: a
-    # person picked `htc` in the browser, `prep` baked it into every job's
-    # `resources.domain`, and `launch` then printed the queue table and
-    # refused for want of a --domain -- asking a question its own artifact
-    # had answered.  R9 says what was admitted when the work was built is
-    # re-admitted when it is sent, and it cannot be re-admitted unread.
-    #
-    # Reading it is not inferring it: the value is there because a person
-    # put it there, so S5 holds.  It is still ADMITTED below like any other
-    # -- a bundle prepped elsewhere and rsync'd here names a queue this
-    # machine may not have, and that refuses with the reason rather than
-    # silently retargeting.
-    if domain is None and mode == "submit":
-        _baked = {j.resources.domain for j in js.jobs if j.resources.domain}
+    # NOBODY GUESSES THE QUEUE (user, 2026-08-23; `submission.md` S5).  In
+    # order, most specific first: --domain on this call; the work's own
+    # resources -- what prep baked for THIS stage (W52: every stage's row
+    # was read, so a queue named at one stage's prep routed another); and
+    # execution.domain, said once for this machine.  For `ask` as for
+    # `submit`, so the line asked about is the line that would be sent (W52:
+    # ask resolved no queue at all).  Reading the baked value is not
+    # inferring it -- a person put it there -- and it is ADMITTED like any
+    # other: a bundle prepped elsewhere may name a queue this machine lacks.
+    slurm = mode in ("submit", "ask")
+    if slurm and domain is None:
+        _baked = {j.resources.domain for j in launching
+                  if j.resources.domain}
         if len(_baked) == 1:
             domain = _baked.pop()
             domain_source = "the bundle (prep baked it)"
         elif len(_baked) > 1:
-            # The cpu/gpu split, which --domain / --gpu-domain already
-            # model.  Two baked answers are not one answer, so name them
-            # rather than pick between them.
             raise click.ClickException(
-                "this bundle's jobs name more than one domain ("
+                "the trials being sent name more than one domain ("
                 + ", ".join(sorted(_baked)) + ").  Name the one to use with "
                 "--domain, and --gpu-domain if the GPU side differs.")
-    if domain is None and mode == "submit" and _execn.get("domain"):
-        # § 5.4's other half: execution.domain is the machine's default
-        # routing -- documented, returned, and never consulted until R3.
-        # ONLY for the submit mode (mode resolves first, above): domain is
-        # a SLURM concept the seam refuses in 'direct', so pouring the
-        # config default in unconditionally made `--mode direct` impossible
-        # on any machine whose config records its routing (2026-08-12 plan A3).
-        # An EXPLICIT --domain with --mode direct still reaches the seam's
-        # refusal -- a stated contradiction is an error, a config default
-        # is not.
+    if slurm and domain is None and _execn.get("domain"):
         domain = _execn["domain"]
         domain_source = "execution.domain (config)"
-    if domain is None and mode == "submit":
-        from .ask import Ask, queue_table
+    if slurm and domain is None:
+        # A queue is needed unless the only side being sent is named by
+        # --gpu-domain.
+        from .submit import sides_of
+        _gpu_only = bool(gpu_domain) and kind == "bench" and (
+            (grouped and (only_side == "gpu"
+                          or not sides_of(js, base)["cpu"]))
+            or (only is not None
+                and any(j.name == only for j in sides_of(js, base)["gpu"])))
         from ..runtime_config import get_routing
-        _rows = get_routing(project_dir=Path(base) if base else None)
+        _rows = [] if _gpu_only else get_routing(
+            project_dir=Path(base) if base else None)
         if _rows:
+            from .ask import Ask, queue_table
+            from ..scheduler import parse_mem_gb
+            # THE SAME REQUEST the door will admit -- the cores and the GPU
+            # side included -- so the table cannot say yes where the
+            # submission says no (`submission.md` § 3).
+            _cores = max(((j.resources.mpi_np or 0)
+                          * max(j.resources.cpus_per_task or 1, 1)
+                          for j in launching), default=0) or None
+            _gpu = only_side == "gpu" or (bool(launching) and all(
+                j.resources.gres or j.resources.use_gpu for j in launching))
             click.echo(queue_table(
-                _rows, Ask(time_s=_duration(time_text),
-                           mem_gb=_memory(mem_text)),
-                cores=None, gpu=(only_side == "gpu")))
+                _rows, Ask(time_s=time_s, mem_gb=parse_mem_gb(mem)),
+                cores=_cores, gpu=_gpu))
             raise click.ClickException(
                 "no --domain, so no queue was chosen.  Pick one from the "
                 "list above with `--domain <name>`, name it in the "
-                "description's `allocation.domain` so the bundle carries it, "
-                "or set `execution.domain` in molbuilder.json to answer this "
-                "once for this machine.")
+                "description's `allocation.domain` and prep again so the "
+                "bundle carries it, or set `execution.domain` in "
+                "molbuilder.json to answer this once for this machine.")
     # The same provenance line prep printed, at the LAST moment before the
     # launch -- the mode above may have come from config, and this names
     # which file said so (user request 2026-08-12).
     from ..runtime_config import config_provenance, format_provenance
     prov = config_provenance(project_dir=base)
     click.echo(format_provenance(prov))
+    from .ask import confirm
+    from .submit import submit_bench_group, submit_transport_chain
     try:
-        if (kind == "bench" and js.kind == "sweep"
-                and mode == "submit" and trial is None):
-            # ONE grouped job per resource shelf (§ 2.3.2 user 2026-08-20;
-            # split per shelf 2026-08-21, generator.md § 4.3a): each
-            # shelf's trials ride one exact-fit allocation in sequence,
-            # each under the per-trial bound.  A named trial still submits
-            # alone below -- how a single point is re-run.
-            from .submit import submit_bench_group
-            # The decision entry records the SWEEP considered -- the group's
-            # actual members are the still-unlaunched subset, which the
-            # "launched" entry below records per job ("rides the group").
-            # The key said `trials` until 2026-08-20 and read as the ride
-            # list, which it was not (milestone review, N1).
-            # ONE QUESTION, ONE ANSWER, ONE OUTPUT (`jobset/ask.py`).
-            # The person states the TOTAL -- how long they are willing to wait
-            # -- and the per-trial bound is arithmetic on top of it.  Stating
-            # the bound directly still works: it is the same answer, said the
-            # other way.
-            from .ask import Ask, confirm
-            _ask = Ask(time_s=_duration(time_text),
-                       mem_gb=_memory(mem_text))
-            # NOTHING IS DERIVED (user dictation, 2026-08-24).  --time is
-            # the wall, said or defaulted to the target queue's ceiling
-            # inside `_prepare_side_group`; --trial-timeout is itself or
-            # absent.  The bench_bound arithmetic that turned a "budget"
-            # into a per-trial bound -- slack factor, startup margin,
-            # one-minute floor, a 15-minute default when nothing was said
-            # -- is DELETED, not bypassed: it manufactured the 38-minute
-            # walls of jobs 62039301-05 from a default nobody chose.
-            _bound_s = (int(trial_timeout_min) * 60
+        if grouped:
+            # ONE grouped job per resource shelf (§ 2.3.2, user 2026-08-20;
+            # split per shelf 2026-08-21, generator.md § 4.3a): each shelf's
+            # trials ride one exact-fit allocation in sequence.  A named
+            # trial still goes alone -- how a single point is re-run.
+            # NOTHING IS DERIVED (user dictation, 2026-08-24): --time is the
+            # wall, said or the target queue's ceiling; --trial-timeout is
+            # itself or absent.
+            _bound_s = (trial_timeout_min * 60
                         if trial_timeout_min is not None else None)
-            # NOTHING IS SUBMITTED UNSEEN (S4) -- and what is seen is the
-            # REAL thing: the exact sbatch command of every shelf-job,
-            # from the same code that will submit it, not a summary
-            # computed a second way.  The summary this replaces said
-            # "10 trial(s) -> 170 min total" while five separate jobs
-            # went out at 38 minutes EACH (62039301-05): a sweep splits
-            # per resource shelf, and a display that ignores the split
-            # describes a submission that never happens.
-            _plan = submit_bench_group(
-                js, base, domain=domain, gpu_domain=gpu_domain,
-                dry_run=True,
-                trial_timeout_s=_bound_s, mem_gb=_ask.mem_gb,
-                time_s=_ask.time_s,
-                only=only_side)
-            _lines = ["about to submit:"]
-            _planned = [r for r in _plan if r.status == "planned"]
-            for _r in _planned:
-                # NAME THE DOMAIN, not only the flags.  On a cluster where
-                # several domains share one partition the flags do not say
-                # which was chosen -- Sol's `debug` is (htc, debug) and its
-                # `htc` is (htc, public), so `-p htc` reads as *htc* to
-                # anyone scanning, and on 2026-08-30 it did: a debug sweep
-                # was believed to have gone to the wrong queue.  The name is
-                # the fact; `-p`/`-q` are its rendering.
-                _lines.append(f"  {_r.name}"
-                              + (f"   -> domain {_r.domain}" if _r.domain
-                                 else ""))
-                _lines.append(f"    {' '.join(_r.command)}")
-            # ONE warning per unstated FACT, not per job.  These describe
-            # the ask -- prep bakes one allocation over a sweep, so every
-            # shelf-job says the same thing -- and a sweep of eight
-            # shelves printed the same two sentences eight times each.
-            _warn = []
-            # GPU SHARING, in the one output a person approves (user
-            # 2026-08-23: "explicitly note ... how many task will be
-            # sharing the gpu ... and warn if that number is exceedingly
-            # high").  Read off the very command about to be sent -- its
-            # `-n` and its `--gres` -- so the number shown is the number
-            # requested.  `runwrap` prints the same arithmetic at RUN
-            # time; this is the half that arrives while changing it is
-            # still free.
-            from .ask import gpu_share_notes as _gsn
-            for _r in _planned:
-                _g = next((a for a in _r.command
-                           if a.startswith("--gres=gpu")), None)
-                if not _g:
-                    continue
-                try:
-                    _ng = int(_g.rsplit(":", 1)[-1])
-                    _nr = int(_r.command[_r.command.index("-n") + 1])
-                except (ValueError, IndexError):
-                    continue
-                for _l in _gsn(_ng, _nr):
-                    # Deduped on the STORED spelling: several shelves can
-                    # share one rank/GPU ratio, and the fact is about the
-                    # ratio, not about which shelf happens to carry it.
-                    _line = "  " + _l.strip()
-                    if _line not in _warn:
-                        _warn.append(_line)
-            # R14 -- the CAP THIS SWEEP WILL MEET, said while saying no is
-            # still free.  Deduped on the sentence, like the ratios above:
-            # the fact is about the domain, not about which shelf carries
-            # it.  A note and not a refusal, because a refused shelf already
-            # costs nothing -- its trials keep no launch record, so the next
-            # `launch bench` picks up exactly them.  What was missing was
-            # being told: a sweep of six went to a queue that takes two, and
-            # the cap was learned from four red refusals AFTER saying yes.
-            for _r in _planned:
-                if not _r.detail:
-                    continue
-                _line = "  " + _r.detail.strip()
-                if _line not in _warn:
-                    _warn.append(_line)
-            if any(not any(a.startswith("--mem") for a in r.command)
-                   for r in _planned):
-                _warn.append(
-                    "  MEMORY NOT STATED -- the scheduler's own default "
-                    "decides (a per-core or per-GPU rate; on some sites "
-                    "far below the node).  State it at prep (--mem) or "
-                    "here (--mem).")
-            if any("-t" not in r.command for r in _planned):
-                _warn.append(
-                    "  time not stated and this queue declares no ceiling "
-                    "-- the scheduler's default stands.")
-            _lines.extend(_warn)
-            _lines.append(
-                f"  per-trial bound: "
-                + (f"{_bound_s // 60} min" if _bound_s else
-                   "none -- each trial runs until the wall"))
-            # Under --dry-run the results echo below prints these very
-            # commands, so showing the plan here too would say everything
-            # twice.  The WARNINGS are the part only this block carries,
-            # so they are kept either way -- an unstated --mem is exactly
-            # what a dry run is for finding.
-            if dry_run:
-                for _l in _warn + [_lines[-1]]:
-                    click.echo(_l)
-            elif not confirm("\n".join(_lines), auto_yes=auto_yes):
-                click.echo("nothing submitted.")
-                return
-            _ledger(base, "launch", "bench-grouped",
-                    trial_timeout_s=_bound_s,
-                    time_s=_ask.time_s,
-                    mem_gb=_ask.mem_gb,
-                    only=only_side,
-                    sweep=[j.name for j in js.jobs])
-            if dry_run:
-                results = _plan
-            else:
-                results = submit_bench_group(
+
+            def _group(**kw):
+                return submit_bench_group(
                     js, base, domain=domain, gpu_domain=gpu_domain,
-                    dry_run=False,
-                    trial_timeout_s=_bound_s, mem_gb=_ask.mem_gb,
-                    time_s=_ask.time_s,
-                    only=only_side)
-        else:
-            if kind == "bench" and js.kind == "sweep":
-                only = _pick_trial(js, base, trial)
+                    trial_timeout_s=_bound_s, mem=mem, time_s=time_s,
+                    only=only_side, **kw)
+
+            if mode == "ask":
+                results = _group(ask=True)
             else:
-                # The description's spelling from here on -- what the ledger
-                # records and every line prints (plan § 5w K12).
-                only = stage = _resolve_stage(js, stage, "launch")
-            # A TRANSPORT BIAS SCAN launches as ONE job walking the
-            # points (transport-design.md 4.3) -- the chain's own door,
-            # with the same nothing-submitted-unseen confirm the grouped
-            # bench gives (S4).
+                plan = _group(dry_run=True)
+                if not _show_and_ask(
+                        plan, dry_run=dry_run, auto_yes=auto_yes,
+                        footer=["  per-trial bound: "
+                                + (f"{_bound_s // 60} min" if _bound_s else
+                                   "none -- each trial runs until the "
+                                   "wall")]):
+                    click.echo("nothing submitted.")
+                    return
+                if dry_run:
+                    results = plan
+                else:
+                    # The decision records the SWEEP considered; the group's
+                    # members are the still-unlaunched subset, which the
+                    # "launched" entry records per job.
+                    _ledger(base, "launch", "bench-grouped",
+                            trial_timeout_s=_bound_s, time_s=time_s,
+                            mem=mem, only=only_side,
+                            sweep=[j.name for j in js.jobs])
+                    results = _group(dry_run=False)
+        else:
+            # A TRANSPORT BIAS SCAN launches as ONE job walking the points
+            # (transport-design.md 4.3) -- the chain's own door.
             _chain_task = None
-            from ..task import FILENAME as _TASKF
-            from ..task import read_task as _rt_chain
-            try:
-                _chain_task = _rt_chain(Path(base) / _TASKF)
-            except Exception:
-                _chain_task = None
+            if kind == "run":
+                from ..task import FILENAME as _TASKF
+                from ..task import read_task as _rt_chain
+                try:
+                    _chain_task = _rt_chain(Path(base) / _TASKF)
+                except Exception:
+                    _chain_task = None        # a hand-built ladder: no scan
             _chain_scan = ()
             if (_chain_task is not None
                     and _chain_task.calculation == "transport"):
                 from ..transport.stages import scan_points as _scan
                 _chain_scan = _scan(_chain_task, only)
-            if _chain_scan:
-                from .submit import submit_transport_chain
-                _plan = submit_transport_chain(
-                    js, base, _chain_task, mode=mode, stage=only,
-                    domain=domain,
-                    dry_run=True, mem_gb=_memory(mem_text),
-                    time_s=_duration(time_text))
-                if not dry_run:
-                    from .ask import confirm
-                    _planned = next(r for r in _plan
-                                    if r.status == "planned")
-                    if not confirm(
-                            "about to launch the bias chain "
-                            f"({len(_plan) - 1} point(s), one job):\n"
-                            f"  {' '.join(_planned.command)}",
-                            auto_yes=auto_yes):
-                        click.echo("nothing submitted.")
-                        return
-                _ledger(base, "launch", "bias-chain",
-                        points=len(_plan) - 1, mode=mode)
-                results = (_plan if dry_run else
-                           submit_transport_chain(
-                               js, base, _chain_task, mode=mode,
-                               stage=only, domain=domain, dry_run=False,
-                               mem_gb=_memory(mem_text),
-                               time_s=_duration(time_text)))
+
+            def _send(**kw):
+                if _chain_scan:
+                    return submit_transport_chain(
+                        js, base, _chain_task, mode=mode, stage=only,
+                        domain=domain, mem=mem, time_s=time_s, **kw)
+                return submit_jobset(
+                    js, base, mode=mode, domain=domain,
+                    gpu_domain=gpu_domain, only=only, mem=mem,
+                    time_s=time_s, **kw)
+
+            plan = _send(dry_run=True)
+            judged = any(r.judgement for r in plan)
+            if mode == "ask" or dry_run:
+                results = plan
+                if dry_run and mode != "ask":
+                    _show_and_ask(plan, dry_run=True, auto_yes=auto_yes)
+            elif mode == "submit":
+                if not _show_and_ask(plan, dry_run=False,
+                                     auto_yes=auto_yes):
+                    click.echo("nothing submitted.")
+                    return
+                if _chain_scan:
+                    _ledger(base, "launch", "bias-chain",
+                            points=len(plan) - 1, mode=mode)
+                    results = _send(dry_run=False)
+                else:
+                    results = _send(dry_run=False,
+                                    continue_unconcluded=judged)
             else:
-                results = submit_jobset(js, base, mode=mode, domain=domain,
-                                        dry_run=dry_run, only=only,
-                                        mem_gb=_memory(mem_text),
-                                        time_s=_duration(time_text),
-                                        continue_unconcluded=auto_yes)
-            # (The single-job door's Ask + --yes doctrine ride the else
-            # arm above since the bias chain landed, 2026-08-29: same
-            # call, one indent deeper.  --mem typed here reaches
-            # submit_jobset -- the 2026-08-23 fix -- and --yes remains
-            # the recorded judgement over a launched-never-CONCLUDED
-            # attempt, which molbuilder never decides over.)
+                # DIRECT runs what was typed, here -- the question S4 puts is
+                # the scheduler's.  What only the person can judge is still
+                # asked: following a run that may still be running.
+                if judged and not confirm(
+                        "\n".join(r.judgement for r in plan if r.judgement),
+                        auto_yes=auto_yes, default=False):
+                    click.echo("nothing launched.")
+                    return
+                if _chain_scan:
+                    _ledger(base, "launch", "bias-chain",
+                            points=len(plan) - 1, mode=mode)
+                    results = _send(dry_run=False)
+                else:
+                    results = _send(dry_run=False,
+                                    continue_unconcluded=judged)
     except SubmitError as e:
         _ledger(base, "launch", "refused", kind=kind, stage=stage,
                 trial=trial, mode=mode, mode_source=mode_source,
                 reason=str(e))
         raise click.ClickException(str(e))
-    _ledger(base, "launch", "launched", kind=kind, stage=stage,
-            mode=mode, mode_source=mode_source,
+    # WHAT HAPPENED, by its own name: a question and a dry run send nothing,
+    # and the ledger said "launched" for both until 2026-10-01 (W52).
+    _ledger(base, "launch",
+            "asked" if mode == "ask" else "planned" if dry_run else "launched",
+            kind=kind, stage=stage, mode=mode, mode_source=mode_source,
             domain=domain, domain_source=domain_source, dry_run=dry_run,
             provenance=prov,
             jobs=[{"job": r.name, "status": r.status, "job_id": r.job_id,
                    "returncode": r.returncode} for r in results])
+    b = _bundle_hint(base)
     if mode == "ask":
         # NOTHING WAS SUBMITTED.  The line the scheduler was asked about is
-        # the line that WOULD be sent -- same flags, plus --test-only --
-        # so what is printed here and what launch would do cannot drift.
+        # the line that WOULD be sent -- same flags, plus --test-only -- so
+        # what is printed here and what launch would do cannot drift.
         from .ask import prediction_table
         import dataclasses as _dcs
         preds = [_dcs.replace(r.prediction, label=r.name)
@@ -1877,49 +1875,38 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             click.echo(prediction_table(preds))
         if ran:
             # Said plainly, not as a refusal: asking about a finished trial
-            # creates nothing, so there is nothing to warn about -- it is
-            # simply a question with no point left in it.
-            click.echo(f"  already run, so not asked: " + ", ".join(ran))
+            # creates nothing, so there is nothing to warn about.
+            click.echo("  already run, so not asked: " + ", ".join(ran))
         if skipped:
             from .submit import ASK_MAX_QUERIES
             click.echo(f"  NOT asked (past {ASK_MAX_QUERIES} queries): "
                        + ", ".join(skipped))
-        would = [r for r in results
-                 if r.status.startswith("WOULD continue")]
-        for r in would:
-            # the stage is launched; a re-submission would continue it.
-            # Said as a WOULD: asking created nothing (the attempt is
-            # opened at launch), and the answer to "when would it start"
-            # is the same envelope either way.
-            click.echo(f"  {r.name}: {r.status}")
+        for r in results:
+            if r.status.startswith("WOULD"):
+                # a stage launched before: asking created nothing (the
+                # attempt opens at launch), and the line asked about is
+                # the one that attempt would send.
+                click.echo(f"  {r.name}: {r.status}")
+                if r.judgement:
+                    click.echo("  " + r.judgement)
         if not preds:
-            # NOTHING WAS ASKED, so do not end on "launch it when the answer
-            # suits you" -- there is no answer, and the line would read as
-            # though there were.
-            if not would:
-                click.echo("\n  nothing left to ask about in this sweep.")
+            click.echo("\n  nothing left to ask about here.")
             if ran:
-                click.echo("  read what they measured: "
-                           "`molbuilder jobset summarize bench <stage>`")
+                click.echo(f"  read what they measured:  molbuilder jobset "
+                           f"summarize bench {stage}{b}")
             return
-        asked_cmd = next((r.command for r in results if r.command), None)
+        asked = next((r for r in results if r.prediction is not None), None)
         click.echo("")
         # "nothing to wait for" followed by an sbatch preview reads as a
         # contradiction (user, 2026-08-28): on a scheduler-less machine
         # nothing WOULD be sent, so nothing is previewed.
-        if asked_cmd and not all(p.no_scheduler for p in preds):
-            click.echo("  would send: " + " ".join(asked_cmd))
-        # DO NOT SAY "--mode submit" WHEN THERE IS NOTHING TO SUBMIT TO.
-        # The table has just said there is no scheduler here; following it
-        # with "launch it with --mode submit when the answer suits you"
-        # contradicts that in the next breath, and points at a mode this
-        # machine cannot run.
-        if all(p.no_scheduler for p in preds):
-            click.echo("  run it here instead: the same command with "
-                       "`--mode direct`.")
-        else:
+        if not all(p.no_scheduler for p in preds):
+            click.echo("  would send: " + " ".join(asked.command))
             click.echo("  launch it with the same command and "
                        "`--mode submit` when the answer suits you.")
+        else:
+            click.echo("  run it here instead: the same command with "
+                       "`--mode direct`.")
         return
 
     verb = "WOULD run" if dry_run else "result"
@@ -1927,17 +1914,17 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
         tail = (f"job {r.job_id}" if r.job_id else
                 (f"rc={r.returncode}" if r.returncode is not None else ""))
         # a skipped trial was not run and WOULD not be -- its verb says so;
-        # a trial riding the group is launched BY the group's one command
+        # a trial or a point riding a shelf or a chain is launched BY that
+        # one command
         v = ("skip     " if r.status.startswith("skipped")
-             else "rides    " if r.status == "rides the group"
+             else "rides    " if r.status.startswith("rides the")
              else verb)
         click.echo(f"  {v}  {r.name:<12} {' '.join(r.command)}  "
                    f"[{r.status}] {tail}".rstrip())
     # A PARTIAL SUBMISSION SAYS SO, LOUDLY.  One shelf refused by the
-    # scheduler no longer cancels the others (submit.py), so the run can
-    # end with some jobs queued and some not -- and the person must not
-    # have to spot that in a status column.  The refused shelves' trials
-    # stay pending, so re-running `launch` picks up exactly them.
+    # scheduler does not cancel the others, so the run can end with some
+    # jobs queued and some not; the refused shelves' trials stay pending,
+    # so re-running `launch` picks up exactly them.
     _refused = [r for r in results if r.status == "sbatch refused"]
     if _refused:
         click.echo("")
@@ -1950,8 +1937,11 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
         click.echo("  Re-run this launch after fixing the ask; the groups "
                    "already queued are skipped.")
     if not dry_run:
-        click.echo("next: molbuilder jobset status   (look before the next "
-                   "stage)")
+        click.echo(f"next: molbuilder jobset summarize bench {stage}{b}   "
+                   f"(read the measurements once they have run)"
+                   if kind == "bench" else
+                   f"next: molbuilder jobset status{b}   (look before the "
+                   f"next stage)")
 
 
 # --------------------------------------------------------------------- #
@@ -2223,9 +2213,8 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
     from datetime import datetime, timezone
     from pathlib import Path
 
-    from ..scheduler import (FILENAME, machine_scope_path,
-                             read_environment, resolve_environment,
-                             write_environment)
+    from ..scheduler import (machine_scope_path, read_environment,
+                             resolve_environment, write_environment)
     # `_run` is PRIVATE to the record module and the package does not
     # re-export it -- a private name comes from the module that defines it,
     # or it is not private.  (The blanket rename of 2026-08-23 pointed this

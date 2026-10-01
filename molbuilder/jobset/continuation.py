@@ -93,14 +93,12 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     from ..parse.dirs import run_status
     from ..paths import Shape
     from ..runfiles import find as rf_find, stem as rf_stem
-    from .materialize import attempt_concluded, read_run_launch, stage_stdout
+    from .materialize import conclusion_line, read_run_launch, stage_stdout
     from .prep import token_for
     token = token_for(task, stage)
     stem = rf_stem(task.label, token)
     sh = Shape.named(task.shape)
-    marker = attempt_concluded(attempt, stem)
-    concluded = (None if marker is None else
-                 (marker.splitlines() or [""])[0].strip())
+    concluded = conclusion_line(attempt, stem)
     try:
         launch = (read_run_launch(attempt) if sh.keeps_attempts_as_directories
                   else read_run_launch(container, basename=stem))

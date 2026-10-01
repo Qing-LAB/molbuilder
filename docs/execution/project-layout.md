@@ -822,7 +822,7 @@ Two small files answer the two questions *(the second decided by the user,
 |---|---|---|---|---|
 | `run.json` (`molbuilder/run-launch@1`) — a flat stage's `<basename>.run.json` | `launch`, into the attempt — or, for a flat stage, beside its deck | when the launch succeeds: `sbatch` accepted it, or the direct process started | *launched* — the mode, the exact command, the scheduler's job id, when, where it was sent, and **what it continued from** | not launched: prep may reuse the attempt |
 | `<basename>-run<N>.concluded` | the wrapper, on its main line | its last act, after the engine returns — and after the job's finish, when it has one (`engines/vibration.md` § 5.5) — and before it stops the monitor | *the process ended on its own* — the exit code and the time; **when the finish failed, its exit code and the words `finish failed (<bundle>)`** (`parse/dirs/job.FINISH_FAILED`) | still running, or force-stopped: the files cannot tell which |
-| `.continued-from` | `prep` | when it copies warm files in | which attempt they came from, for `launch` to write into `run.json` | the run starts from the structure |
+| `.continued-from` — a flat stage's `<basename>.continued-from` | `prep` | when it copies warm files in — on the flat layout, when the stage continues from the run before it, whose files lie in the folder | which attempt they came from, for `launch` to write into `run.json` — on the flat layout the run's own name, `<label>_<NN>_<stage>-run<N>`, which every file of it carries (ruled 2026-10-01) | the run starts from the structure |
 
 - **`run.json` is written at launch, never at completion** — written when the
   job finished, it would leave a running direct attempt reading as never

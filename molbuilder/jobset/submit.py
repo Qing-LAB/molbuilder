@@ -1,42 +1,35 @@
-"""Submit engine — launch a *prepped* :class:`JobSet`
-(docs/execution/job-system.md § 5.3-5.4; the wrapper contract is
-job-contracts § 2).
+"""The launch door's engine -- hand a *prepped* :class:`JobSet` to the
+scheduler, or run it here (`docs/execution/job-system.md` § 5.3, § 6, § 7;
+the wrapper contract is `job-contracts.md` § 2).
 
-``prep`` derives floor 3 from the described calculation and lays out the
-tree (job-contracts § 6.3's naming); THIS engine launches ONE job per
-invocation and renders nothing itself.  *(R8, 2026-08-12: this header
-still introduced itself as "the keystone both producers feed", named a
-bench migration that landed, a ``bench-<name>/`` tree that is now the
-hand-built fallback only, and §§ 7-9 of a renumbered document.)*
+``prep`` derives the work and lays out the tree; THIS module sends it, and
+writes only what sending needs.  Three doors, one per shape of work:
 
-Two execution paths, chosen by ``mode`` (== ``execution.mode``):
+  * **the job door** (:func:`submit_jobset`) -- a ladder's stage, a sweep's
+    named trial, or (direct) a sweep's trials in turn.  A stage launched
+    before is launched again by CONTINUING it (user, 2026-08-21): the next
+    attempt opens from its latest, and a run that never concluded is
+    followed only on the person's judgement;
+  * **the grouped bench** (:func:`submit_bench_group`) -- ONE job per
+    resource shelf of a sweep, its trials in sequence (`generator.md`
+    § 4.3a);
+  * **the bias chain** (:func:`submit_transport_chain`) -- one job walking a
+    transport scan's points.
 
-  * ``"submit"`` — SLURM.  Each job becomes an ``sbatch`` whose **per-job
-    resources are CLI flags** (``-J``/``-n``/``-c``/``--gres``/``--mem``/
-    ``-t``/``--exclusive`` + the domain's ``-p/-q``) over the (possibly
-    shared) rendered ``.sbatch`` — exactly generalizing the benchmark launch
-    line, so one rendered wrapper serves every point of a sweep.  **One job
-    per invocation**, whatever the kind (§ 5.3, user rule 2026-08-10):
-    handing a scheduler several at once is refused, because they would start
-    together and — for a benchmark — measure contention rather than scaling.
-  * ``"direct"`` — local shell, and NOT submission: each job's
-    ``<stem>.run.sh`` is run in turn with its per-job knobs as args
-    (``-np``/``-omp``), waiting for each, so nothing queues and nothing
-    races.  Nothing is skipped on a failure either, because after 2026-08-10
-    nothing here can depend on anything: a ladder arrives as ONE job, and a
-    sweep's points are independent.
+Three modes: ``submit`` (``sbatch``), ``ask`` (``sbatch --test-only`` on
+the same line -- when would it start; nothing is written or recorded) and
+``direct`` (``bash`` here, in order, waiting for each).  Every door builds
+its scheduler line through ONE request (:func:`_sbatch_request`: what prep
+baked, what was said at launch, admitted on the queue, the wall defaulted
+to its ceiling), and decides everything -- what it follows, the
+deck/launch agreement, the queue, the header -- before the first write.
+The scheduler is handed ONE job per invocation, a grouped bench one per
+shelf (:func:`_refuse_batch_submission`).  ``dry_run`` returns the exact
+command each job would get and writes nothing.
 
-REUSE, not reinvention: prep renders via ``runwrap.write_run_wrapper``; this
-engine adds only the cross-job concerns — per-job CLI overrides,
-domain→``-p/-q`` resolution, and ordered local execution.
-
-RESUME IS THE MODELING SOFTWARE'S JOB: this engine only launches.  It never
-inspects prior output to auto-recover — the engine finds its own warm files
-under the label it was given (``run-identity.md``), which `prep` copied into
-the attempt; the decision to continue or switch stays the user's (assistant,
-not nanny).  ``dry_run=True``
-runs nothing: it returns the exact command line each job WOULD get, so the
-plan is reviewable before anything is irreversible.
+*(This header described two paths, one job per invocation, and a module
+that never inspects prior output, until 2026-10-01 -- each untrue of the
+body below it; W52.)*
 """
 
 from __future__ import annotations
@@ -56,11 +49,8 @@ from typing import Dict, List, Optional, Tuple
 from ..scheduler.quantities import slurm_time as _slurm_time
 
 # NOTE: `job_dir_names` is NOT imported here.  It is the naming
-# authority (materialize.py) and very much alive -- six callers -- but
-# the one place THIS module needs it, `_launch_dir`, imports it locally
-# alongside three siblings that are not needed anywhere else.  A second,
-# top-level import shadowed by that one sat here until 2026-08-10 doing
-# nothing.
+# authority (materialize.py), and the places THIS module needs it import
+# it locally beside the siblings they use.
 from .agreement import (DeckLaunchMismatch, check_launch_matches_deck,
                         check_trial_starts_cold)
 from .model import Job, JobSet, Resources
@@ -74,14 +64,23 @@ class SubmitError(Exception):
 
 @dataclass
 class JobResult:
-    """What happened to one job.  ``command`` is always populated (the exact
-    line that ran / would run).  In ``submit`` mode ``job_id`` is the SLURM
-    id; in ``direct`` mode ``returncode`` is the process exit status.
-    ``status`` is one of ``submitted`` / ``ran`` / ``failed`` / ``skipped``
-    / ``planned`` (dry-run) / ``asked`` (``--mode ask``: nothing was
-    submitted and ``prediction`` carries what the scheduler said) /
-    ``sbatch refused`` (this one job was rejected; the rest still went) /
-    ``stays pending`` (its group was refused, so it was never sent)."""
+    """What happened to one job.  ``command`` is the exact line that ran or
+    would run -- empty on a line that only reports.  In ``submit`` mode
+    ``job_id`` is the SLURM id; in ``direct`` mode ``returncode`` is the
+    process exit status.  ``status`` is one of:
+
+    * ``submitted`` / ``ran`` / ``failed`` -- it went;
+    * ``planned`` (dry-run) / ``asked`` (``--mode ask``: nothing was sent,
+      and ``prediction`` carries what the scheduler said; ``command`` is the
+      line that would be SENT) / ``not asked`` (past the query cap);
+    * ``sbatch refused`` (this shelf was rejected; the rest still went) /
+      ``stays pending`` (its shelf was refused, so it was never sent);
+    * ``rides the group`` / ``rides the chain`` -- a trial or a bias point
+      launched by its shelf's or its chain's one job;
+    * ``already run`` (ask) / ``skipped -- already launched`` (direct) -- a
+      trial measured before, passed over by name;
+    * a line saying what a re-launch follows -- ``WOULD continue ...`` when
+      planned or asked, ``concluded (...): continuing ...`` when sent."""
     name:       str
     command:    List[str]
     status:     str
@@ -107,6 +106,11 @@ class JobResult:
     #: It did, and the person who ran it believed a debug sweep had gone to
     #: the wrong queue.  The name is the fact; the flags are its rendering.
     domain:     Optional[str] = None
+    #: What only the person can decide before this goes -- a re-launch over
+    #: a run that never concluded (`project-layout.md` § 1.6.4) -- or
+    #: ``None``.  The CLI shows it in the one question it asks, and asks
+    #: with "no" as the answer Enter gives.
+    judgement:  Optional[str] = None
 
     def to_dict(self) -> Dict[str, object]:
         return dataclasses.asdict(self)
@@ -163,235 +167,321 @@ def _parse_sbatch_id(stdout: str) -> str:
     raise SubmitError(f"could not parse sbatch job id from: {stdout!r}")
 
 
-def _scheduler_job_name(jobset: JobSet, job) -> str:
-    """What `squeue` shows: the calculation, then the stage within it.
+def _scheduler_job_name(jobset: JobSet, name: str) -> str:
+    """What `squeue` shows: the calculation, then the job within it --
+    ``bdt_au/coarse``, ``bdt_au/G1K2C4``, ``bdt_au/bench-group-cpu``
+    (`job-system.md` § 6).
 
-    ``<jobset.name>/<job.name>`` -- the id first, because that is the thing you
-    are trying to tell apart when several calculations are queued at once, and
-    the stage second because within one calculation that is the question.
-
-    A sweep's points and a ladder's stages both go through this, so one reading
-    covers both: `bdt_au/coarse`, `bdt_au/G1K2C4`.
+    The id first, because that is the thing you are trying to tell apart
+    when several calculations are queued at once, and the job second
+    because within one calculation that is the question.  EVERY door names
+    its job here -- the grouped bench and the bias chain spelled
+    ``<calc>_<name>`` beside the stage's ``<calc>/<stage>`` until 2026-10-01
+    (W52).
     """
-    return f"{jobset.name}/{job.name}"
+    return f"{jobset.name}/{name}"
 
 
 #: How many `sbatch --test-only` calls one `--mode ask` will make.
 #:
 #: Politeness, not a rule about queues: asking enqueues nothing, so the
 #: one-at-a-time submission rule does not reach it.  A benchmark grid is
-#: the case that matters and is usually a handful of trials; past this the
+#: the case that matters and is usually a handful of shelves; past this the
 #: rest are named as unasked rather than silently dropped.
 ASK_MAX_QUERIES = 24
 
+#: The one answer to *there is no scheduler header*, whichever door finds
+#: it missing (`job-system.md` § 6): prep withholds the ``.sbatch`` only
+#: where the machine it prepped for names no queue.  Three doors worded it
+#: three ways until 2026-10-01, one telling a person to "add a scheduler
+#: block" -- a premise § 6 retired -- and one to "run prep_jobset" (W52).
+_NO_SBATCH = (
+    "{what}: there is no scheduler header ({name}) -- prep writes one only "
+    "where the machine it prepped for names a queue (job-system.md § 6: a "
+    "record saying `workstation`, or no (partition, qos) pair to name).  Run "
+    "it here with --mode direct, or prep it for the machine with the queue "
+    "(--target <name>).")
 
-def _submit_slurm(jobset: JobSet, base_dir: Path, *, domain: Optional[str],
-                  dry_run: bool,
-                  mem_gb: Optional[float] = None,
-                  time_s: Optional[int] = None,
-                  ask: bool = False) -> List[JobResult]:
-    """SLURM path: ``sbatch`` **one** job, with its resources as CLI flags.
 
-    **One per invocation** — :func:`_refuse_batch_submission` is what makes
-    that true, and this loop keeps its shape only because a caller may narrow
-    to a single job by several routes.  Until 2026-08-10 this docstring said
-    *"a sweep submits with no dependency, so its jobs queue in parallel"*, and
-    the code did exactly that: one command, N ``sbatch`` calls, every one of
-    them racing the others for the same nodes.
+def _sbatch_request(base: Path, *, envelope: Resources, gpu_side: bool,
+                    domain: Optional[str], mem: Optional[str],
+                    time_s: Optional[int], label: str, job_name: str,
+                    script: str) -> Tuple[Resources, object, List[str]]:
+    """THE ONE REQUEST, for every door that hands work to the scheduler --
+    a stage, a grouped bench's shelf, a bias chain (`job-system.md` § 6).
 
-    **No ``--dependency`` flag is ever emitted.** It was threaded here from
-    ``job.depends_on`` until 2026-08-10; the field is deleted, so there is no
-    edge to thread and nothing this loop can queue behind anything else.
+    ``envelope`` is what `prep` baked; ``mem`` and ``time_s`` are what the
+    person said at launch, and win.  The request is ADMITTED against the
+    whole of it -- wall, cores, memory, GPUs and their type -- on the queue
+    it is sent to (`scheduler.md` R9: what was admitted when the work was
+    built is re-admitted when it is sent, against what this machine says
+    now), and a wall nobody stated is that queue's own ceiling, the full
+    amount the cluster allows there (user dictation, 2026-08-24).
+
+    Returns ``(envelope, placement, command)``: the envelope as sent, the
+    `Placement` (``None`` on a machine with no menu -- the rendered header's
+    own directives stand, R6), and the exact ``sbatch`` line, its resources
+    as flags that win over the header.  The stage's door built the queue
+    half of this alone until 2026-10-01: it sent the launch queue's
+    ``-p/-q`` under the wall prep's header had worked out for another queue,
+    and admitted nothing (W52).
     """
-    results: List[JobResult] = []
-    asked = 0                      # bounded by ASK_MAX_QUERIES
-    if ask:
-        from .materialize import job_dir_names, shape_of, was_launched
-        _dirs = job_dir_names(jobset, shape_of(jobset, base_dir))
-    for job in jobset.jobs:
-        # ASKING ABOUT A TRIAL THAT ALREADY RAN IS NOT RE-RUNNING IT, and
-        # this has to come BEFORE `_resolve_launch`, which is what raises.
-        # § 1.5's immutability protects RESULTS -- a trial measures its
-        # point once -- and a question creates nothing to protect them
-        # from.  Refusing here killed the whole command over a trial
-        # nobody proposed to run again.
-        #
-        # The useful case IS the part-run sweep: two of four done, when
-        # would the other two start?  Skipped BY NAME, the way a direct
-        # run already reports them.
-        if ask and jobset.kind == "sweep" and was_launched(
-                _trial_run_dir(base_dir / _dirs[job.name])):
-            results.append(JobResult(job.name, [], "already run"))
-            continue
-        job_dir, attempt, sbatch_name = _resolve_launch(
-            jobset, base_dir, job, ".sbatch")
-        gpu = _job_wants_gpu(job_dir, job)
-        # ONE WALK, both paths (2026-08-23).  A re-measured trial must land
-        # where its group did (review 2026-08-21): without this the group
-        # followed the per-side preference while a named trial fell to the
-        # header's defaults -- a different partition, silently breaking the
-        # compare-by-node-type premise.  A ladder keeps the defaults, so it
-        # asks for no placement at all rather than getting a different one.
-        placement = None
-        if domain or jobset.kind == "sweep":
-            placement = _place(Path(base_dir), gpu_side=gpu, named=domain,
-                               label=job.name)
-
-        # WHICH CALCULATION, then which stage.  `-J` carried the bare stage
-        # name until 2026-08-10, so three concurrent ladders showed
-        # `coarse coarse coarse` in `squeue` and no amount of looking told you
-        # which was which -- the one place a scheduler shows you your own work,
-        # and it showed you nothing.  `JobSet.name` is the id (run-identity.md
-        # § 2), so it goes first and the stage qualifies it.
-        cmd = ["sbatch", "-J", _scheduler_job_name(jobset, job)]
-        resources = job.resources
-        if time_s:
-            import dataclasses as _dc
-            resources = _dc.replace(resources, time=_slurm_time(time_s))
-        if mem_gb:
-            # Same gap as the grouped path (`_prepare_side_group`), same
-            # fix: nothing ever set `Resources.mem` for a single-job
-            # submission either -- `job.resources` is whatever `prep`
-            # baked (mpi_np/omp/gres from the sweep axes; never memory),
-            # so `--mem` typed at `launch` was silently discarded here
-            # too.  Overridden here rather than on `job.resources` itself
-            # so the job's OWN prepped record is untouched -- only what
-            # gets submitted changes.
-            import dataclasses as _dc
-            resources = _dc.replace(resources, mem=f"{mem_gb:g}G")
-        cmd += _sbatch_resource_flags(resources, placement)
-        # The launch-door claim, EXPLICIT on the command line: environment
-        # inheritance alone is fragile (sites override SLURM's --export
-        # policy), and the CLI flag wins over site defaults, so the claim
-        # reaches the job's env wherever it runs (job-contracts.md § 2.6,
-        # the Launch-door gate row).
-        cmd += ["--export", "ALL,MB_LAUNCHED_BY=jobset-launch"]
-        cmd.append(sbatch_name)          # relative; we cd into the job dir
-
-        if ask and asked >= ASK_MAX_QUERIES:
-            # NO SILENT CAP: what was not asked is named, or a partial
-            # answer reads as a complete one.
-            results.append(JobResult(job.name, [], "not asked"))
-            continue
-        if ask:
-            asked += 1
-            # `--test-only` goes FIRST so it cannot be shadowed, and the
-            # rest of the line is untouched: the whole point is that the
-            # question is about the command that would actually be sent.
-            cmd = [cmd[0], "--test-only"] + cmd[1:]
-            # NO SCHEDULER HERE IS AN ANSWER, NOT AN ERROR.  On a
-            # workstation there is nothing to queue behind, so the honest
-            # reply is "nothing to wait for" -- and `subprocess.run` would
-            # otherwise raise FileNotFoundError and traceback, which is a
-            # poor way to learn that your laptop is not a cluster.
-            if shutil.which(cmd[0]) is None:
-                from .ask import Prediction
-                results.append(JobResult(
-                    job.name, cmd, "asked",
-                    prediction=Prediction(no_scheduler=True,
-                                          refused="no scheduler here")))
-                continue
-
-        if dry_run:
-            results.append(JobResult(job.name, cmd, "planned"))
-            continue
-        if not (job_dir / sbatch_name).exists():
-            raise SubmitError(
-                f"job {job.name!r}: {sbatch_name} not in {job_dir}. "
-                "Run prep first (`molbuilder jobset prep`); if you already "
-                "did, no scheduler is configured -- submit mode needs one "
-                "(add a scheduler block to .molbuilder.json, or use "
-                "--mode direct).")
+    from ..scheduler.quantities import parse_walltime
+    if mem:
+        envelope = dataclasses.replace(envelope, mem=mem)
+    # What admission is asked to fit: the wall stated at launch, else the one
+    # prep baked.  Unstated is None -- an unstated limit never bars (R3), and
+    # the wall it is defaulted to below fits that queue by construction.
+    needed_s = time_s
+    if needed_s is None and envelope.time:
         try:
-            cp = subprocess.run(cmd, cwd=str(job_dir),
-                                capture_output=True, text=True,
-                                env={**os.environ,
-                                     "MB_LAUNCHED_BY": "jobset-launch"})
-        except OSError as exc:
-            # `sbatch` vanished between the check above and here, or is not
-            # executable.  A submission must fail loudly; an ASK reports it
-            # as the answer, because "I could not reach the scheduler" is
-            # what the person asked about.
-            if not ask:
-                raise SubmitError(
-                    f"job {job.name!r}: could not run {cmd[0]!r} ({exc})")
-            from .ask import Prediction
-            results.append(JobResult(job.name, cmd, "asked",
-                                     prediction=Prediction(
-                                         refused=f"could not run "
-                                                 f"{cmd[0]!r}: {exc}")))
-            continue
-        if ask:
-            # NOTHING WAS SUBMITTED, so nothing is recorded: a launch record
-            # says a job exists, and after this one does not.  A non-zero
-            # return is not a failure here either -- "this queue cannot take
-            # it" is an answer, and often the one worth reading.
-            from .ask import parse_test_only
-            pred = parse_test_only((cp.stdout or "") + (cp.stderr or ""))
-            results.append(JobResult(job.name, cmd, "asked",
-                                     prediction=pred))
-            continue
-        if cp.returncode != 0:
-            results.append(JobResult(job.name, cmd, "failed",
-                                     returncode=cp.returncode))
+            needed_s = parse_walltime(str(envelope.time))
+        except ValueError:
             raise SubmitError(
-                f"sbatch failed for job {job.name!r} (rc={cp.returncode}):\n"
-                f"{cp.stderr.strip()}")
-        jid = _parse_sbatch_id(cp.stdout)
-        rec, basename = _where_recorded(jobset, job, job_dir, attempt)
-        _record_launch(rec, mode="submit", command=cmd, job_id=jid,
-                       placement=placement, basename=basename)
-        results.append(JobResult(job.name, cmd, "submitted", job_id=jid))
-    return results
+                f"prep baked time={envelope.time!r}, which does not parse "
+                f"as a SLURM walltime.")
+    placement = _place(base, gpu_side=gpu_side, needed_s=needed_s,
+                       cores=(envelope.mpi_np or 0)
+                             * max(envelope.cpus_per_task or 1, 1) or None,
+                       mem=envelope.mem,
+                       gpus=_gres_count(envelope.gres or ""),
+                       gpu_type=_gres_type(envelope.gres or ""),
+                       named=domain, label=label)
+    # THE WALL, in the order the answers rank: what was stated at launch;
+    # else what prep baked; else the target queue's own ceiling.  Never a
+    # number this framework invents.  Where the queue states no ceiling, no
+    # wall is sent and the scheduler's default stands.
+    if time_s is not None:
+        envelope = _dc_replace_time(envelope, _slurm_time(time_s))
+    elif not envelope.time and placement is not None:
+        from ..scheduler import domain_ceiling_s
+        _ceil = domain_ceiling_s(placement.domain)
+        if _ceil:
+            envelope = _dc_replace_time(envelope, _slurm_time(_ceil))
+    cmd = (["sbatch", "-J", job_name]
+           + _sbatch_resource_flags(envelope, placement)
+           # The launch-door claim, EXPLICIT on the command line: environment
+           # inheritance alone is fragile (sites override SLURM's --export
+           # policy), and the flag wins over site defaults, so the claim
+           # reaches the job wherever it runs (job-contracts.md § 2.6).
+           + ["--export", "ALL,MB_LAUNCHED_BY=jobset-launch", script])
+    return envelope, placement, cmd
 
 
-def _resolve_launch(jobset: JobSet, base_dir: Path, job, suffix: str):
-    """The prologue both launch paths share: **where**, **which wrapper**, and
-    **may this deck be launched like that**.
+def _ask(name: str, cmd: List[str], cwd: Path, *,
+         domain: Optional[str] = None,
+         script: Optional[str] = None) -> JobResult:
+    """``sbatch --test-only`` on the line that WOULD be sent -- the scheduler
+    answers instead of enqueueing.  Writes and records nothing.
 
-    *Named ``_staged_for_launch`` for about a minute: it works for a sweep
-    point as much as a ladder stage, so borrowing the project's core noun for
-    "set up" was a collision (`archive/2026-08-11-staged-runs-architecture.md`
-    § 8c question 1).*
-
-    § 9.4 names the defect this removes: *"`submit.py` grew `_launch_dir` and
-    `_record_launch` **twice** — once in each of two near-identical loops"*.
-    Both were called with identical arguments in both paths, so a fix to either
-    had two sites and one of them would eventually be missed.
-
-    Returns ``(job_dir, attempt, wrapper_name)``. ``attempt`` is ``None``
-    when there is no attempt DIRECTORY to name — a **flat** calculation of
-    either kind (§ 1.5a: flat tells re-runs apart by the wrapper's output
-    index, never by a directory), or a hierarchical ladder stage not yet
-    prepped with ``prep run``.  It is the caller's signal that the
-    container is where the job runs.
-
-    *This said "a sweep point" among the attempt-less cases until
-    2026-08-30.  § 1.5a gave trials attempts on 2026-08-27, so a
-    hierarchical trial has one like any stage; what is attempt-less is the
-    SHAPE, not the kind.*
-
-    **The two loops are NOT merged**, and that is a judgement rather than an
-    omission. § 9.6 lists *"one loop in `submit.py`"* as this object's gain;
-    what it is actually against is the duplicated calls, and those are gone.
-    The middles genuinely differ — one parses a scheduler id and raises, the
-    other reads an exit status and propagates failure down the ladder — so
-    folding them into a single loop would put a ``mode`` branch through the
-    body and rebuild the shape the split avoids. *If that reading is wrong,
-    this is the paragraph to argue with.*
+    The result carries the line that would be SENT; ``--test-only`` goes
+    first only in what is run, so it cannot be shadowed and is never shown
+    as the line to send.  ``script`` stands in for the line's own when that
+    one is written only at sending -- a grouped bench's shelf, a bias chain
+    -- and is a header rendered for the same work: the flags, which win
+    over any header, are the request asked about.  No scheduler here is an
+    answer, not an error: on a workstation there is nothing to queue behind.
     """
-    job_dir, attempt = _launch_dir(jobset, base_dir, job)
+    from .ask import Prediction, parse_test_only
+    if shutil.which(cmd[0]) is None:
+        return JobResult(name, cmd, "asked", domain=domain,
+                         prediction=Prediction(no_scheduler=True,
+                                               refused="no scheduler here"))
     try:
-        check_launch_matches_deck(job_dir, job)
-        if jobset.kind == "sweep":
-            # the cold gate rides the named-trial door too (user,
-            # 2026-08-21) -- one rule, every launch path
-            check_trial_starts_cold(job_dir, job)
-    except DeckLaunchMismatch as e:
-        # M5: the refusal is SUBMIT's -- the agreement floor states the
-        # fact, this verb is what declines to act on it.
-        raise SubmitError(str(e)) from e
-    return job_dir, attempt, _wrapper_name(job.script, suffix)
+        cp = subprocess.run([cmd[0], "--test-only"] + cmd[1:-1]
+                            + [script or cmd[-1]], cwd=str(cwd),
+                            capture_output=True, text=True)
+    except OSError as exc:
+        # "I could not reach the scheduler" is what the person asked about.
+        return JobResult(name, cmd, "asked", domain=domain,
+                         prediction=Prediction(
+                             refused=f"could not run {cmd[0]!r}: {exc}"))
+    # A non-zero return is an answer too -- "this queue cannot take it" is
+    # often the one worth reading.
+    return JobResult(name, cmd, "asked", domain=domain,
+                     prediction=parse_test_only((cp.stdout or "")
+                                                + (cp.stderr or "")))
+
+
+def _into_launch(header: str, name: str) -> str:
+    """A grouped bench's or a bias chain's header, pointed into ``launch/``
+    (L3): the delegated script and SLURM's own output.  COUNT-ASSERTED, so a
+    change in the emitter's spelling fails here rather than scattering files
+    among the runs -- one helper for both doors, each of which spelled it,
+    one without the check (W52)."""
+    for old, new in ((f"bash {name}.run.sh", f"bash launch/{name}.run.sh"),
+                     ("#SBATCH -o slurm.%j.out",
+                      "#SBATCH -o launch/slurm.%j.out"),
+                     ("#SBATCH -e slurm.%j.err",
+                      "#SBATCH -e launch/slurm.%j.err")):
+        if header.count(old) != 1:
+            raise SubmitError(
+                f"the sbatch header no longer spells {old!r} exactly "
+                f"once; the launch/ repointing needs updating.")
+        header = header.replace(old, new)
+    return header
+
+
+@dataclass
+class _Plan:
+    """One job of a launch, decided BEFORE anything is written: where it
+    runs, where its deck and wrappers are read from now, what it continues
+    from -- and the exact command, once every gate has passed."""
+    job: Job
+    #: The job's own directory: the stage's or the trial's container.
+    container: Path
+    #: Where it runs: its attempt -- for a continuation, the one it WILL
+    #: open -- or, with no attempt layer, the container.
+    run_dir: Path
+    #: Whether the run has an attempt of its own (else the container is it).
+    has_attempt: bool
+    #: Where its deck and wrappers are read before it is sent: ``run_dir``,
+    #: or for a continuation the attempt it continues -- the new one is
+    #: filled with the same files (`materialize.prepare_attempt`), since a
+    #: prep after a launch would have opened an attempt of its own.
+    read_from: Path
+    #: The launched attempt a ladder stage launched again continues from --
+    #: "the natural workflow" (user, 2026-08-21).
+    continues: Optional[str] = None
+    #: The files that continuation carries, checked at planning.
+    carries: List[str] = dataclasses.field(default_factory=list)
+    #: A flat stage launched again: its files lie where it reads them.
+    again: bool = False
+    #: The conclusion line of what it follows -- ``None`` when that run was
+    #: launched and never concluded, which the person judges, never
+    #: molbuilder (`project-layout.md` § 1.6.4).
+    concluded: Optional[str] = None
+    #: Not launched, and why -- a trial already measured, under direct/ask.
+    skip: Optional[str] = None
+    command: List[str] = dataclasses.field(default_factory=list)
+    placement: object = None
+
+    @property
+    def follows(self) -> bool:
+        """It follows a launched run of its own stage."""
+        return bool(self.continues or self.again)
+
+    def judgement(self) -> Optional[str]:
+        """What only the person can decide before this goes, or ``None``."""
+        if not self.follows or self.concluded is not None:
+            return None
+        what = self.continues or "its last run, in this folder"
+        return (f"{self.job.name}: {what} was launched and never "
+                f"CONCLUDED -- it may still be RUNNING, or it was "
+                f"force-stopped (walltime, kill).\n"
+                f"  Continuing reads its warm files AS THEY ARE: valid after "
+                f"a forced stop, torn if it is still running.  Check "
+                f"`molbuilder jobset status` and the queue first.")
+
+    def note(self) -> Optional[str]:
+        """The line that says what this launch follows, or ``None``."""
+        if not self.follows:
+            return None
+        how = (f"concluded ({self.concluded})" if self.concluded is not None
+               else "NOT concluded -- continued on your judgement")
+        if self.again:
+            return (f"{how}: launching it again in the same folder, where "
+                    f"its files are")
+        return (f"{how}: continuing {self.continues} -> {self.run_dir.name} "
+                f"(carrying {', '.join(self.carries)}).  A new attempt "
+                f"instead: prep run {self.job.name} first (from the stage "
+                f"before it; --cold from the structure).")
+
+
+def _plan_job(jobset: JobSet, base: Path, job, *, mode: str) -> _Plan:
+    """Where ``job`` runs and what it follows -- read, never written.
+
+    THE SHAPE DECIDES, NOT THE KIND.  A hierarchical run -- ladder stage or
+    sweep trial alike -- runs in ``run-<n>/``, because an attempt is
+    immutable once it has run (`project-layout.md` § 1.5); a flat one keeps
+    no attempt directories (§ 1.5a) and runs in its own container.  Whether
+    it was launched is its launch record's answer -- ``run.json``, or a flat
+    stage's ``<basename>.run.json`` (`materialize.launch_record_at`): a
+    queued job has produced nothing yet, so absence of output proves
+    nothing (§ 1.6).
+
+    A LADDER STAGE LAUNCHED BEFORE is launched again by continuing it (user,
+    2026-08-21: *"a run stopped due to the server running out of time, and
+    you can submit again and by default it continues"*): the hierarchy
+    opens the next attempt from the latest -- the one source that is never a
+    guess -- and the flat layout simply runs again where its files are.  A
+    run that never concluded is followed only on the person's judgement.
+    A TRIAL is immutable once launched: under direct and ask the measured
+    ones are passed over by name, and a named one is refused.
+    """
+    from .materialize import (attempts, conclusion_line, continuation_files,
+                              job_dir_names, launch_record_at,
+                              launch_record_path, shape_of, was_launched)
+    sh = shape_of(jobset, base)
+    container = base / job_dir_names(jobset, sh)[job.name]
+    ns = attempts(container)
+    stem = Path(job.script).stem
+    if jobset.kind == "sweep":
+        run = _trial_run_dir(container)
+        where, basename = launch_record_at("sweep", job, container,
+                                           run if ns else None)
+        if not was_launched(where, basename):
+            return _Plan(job, container, run, bool(ns), run)
+        if mode in ("direct", "ask"):
+            return _Plan(job, container, run, bool(ns), run,
+                         skip=("already run" if mode == "ask"
+                               else "skipped -- already launched"))
+        if not ns:
+            raise SubmitError(
+                f"trial {job.name!r}: already launched -- "
+                f"{launch_record_path(where, basename)} records it.  A "
+                f"trial measures its point ONCE (project-layout.md § 1.5: "
+                f"immutable once it has run); read the sweep back with "
+                f"`molbuilder jobset summarize bench <stage>`.  To measure "
+                f"this point again, move the trial's directory aside "
+                f"yourself -- molbuilder never deletes results.")
+        raise SubmitError(
+            f"trial {job.name!r}: {run.name} has already been launched "
+            f"({launch_record_path(where, basename)}).  A measurement is "
+            f"immutable once it has run.\n"
+            f"  read what it measured:  molbuilder jobset summarize "
+            f"bench <stage>\n"
+            f"  measure the point AGAIN: molbuilder jobset prep bench "
+            f"<stage>  (opens {container.name}/{attempt_name(ns[-1] + 1)}, "
+            f"leaving {run.name} untouched)")
+    if not ns:
+        if sh is not None and sh.keeps_attempts_as_directories:
+            # A HIERARCHICAL stage with no attempt open would launch in its
+            # own container, write no run.json, and be silently
+            # relaunchable -- everything § 1.5/1.6 exist to prevent.
+            raise SubmitError(
+                f"job {job.name!r}: no attempt is open under "
+                f"{container.name}/ -- a hierarchical stage runs in run-<n>, "
+                f"never in its own container (project-layout.md § 1.5, "
+                f"1.6).  Open one:\n"
+                f"    molbuilder jobset prep run {job.name}")
+        where, basename = launch_record_at("ladder", job, container, None)
+        if not was_launched(where, basename):
+            return _Plan(job, container, container, False, container)
+        return _Plan(job, container, container, False, container, again=True,
+                     concluded=conclusion_line(container, stem))
+    last = attempt_dir(container, ns[-1])
+    if not was_launched(last):
+        return _Plan(job, container, last, True, last)
+    source = str(last.relative_to(base))
+    try:
+        carries = continuation_files(jobset, base, job.name, source,
+                                     named=False)
+    except ValueError as e:
+        # Continuing is impossible -- no state to carry, or the stage's deck
+        # would not read it.  Both are SIGNALS (a launched run that left
+        # nothing likely died at startup), so the door refuses with the
+        # story rather than silently starting fresh.
+        raise SubmitError(
+            f"{job.name}: {source} was launched, so launching it again "
+            f"continues from it -- but that is impossible here:\n  {e}\n"
+            f"  Look at that run's logs; a NEW attempt is:  molbuilder "
+            f"jobset prep run {job.name}  (from the stage before it, "
+            f"job-system.md § 5.4; --cold from the structure), then launch "
+            f"it.") from e
+    return _Plan(job, container, attempt_dir(container, ns[-1] + 1), True,
+                 last, continues=source, carries=carries,
+                 concluded=conclusion_line(last, stem))
 
 
 def _trial_run_dir(container):
@@ -405,221 +495,87 @@ def _trial_run_dir(container):
     same call answers the container, and neither caller needs to know which
     shape it is looking at.
 
-    Everything `submit` asks of a trial's directory goes through here: is it
-    launched, does its deck want a GPU, where does the sequencer ``cd``, and
-    where is ``run.json`` written.  Named ``_trial_record_dir`` until
-    2026-08-30, when the name had narrowed the function to one of those four
-    and the other three were each computing a container path of their own --
-    which is how the grouped bench came to WRITE its launch record in the
-    container while READING it from the attempt (so every re-launch
-    re-submitted everything), and to ``cd`` a level above the wrapper (so
-    every trial died with rc=127).
-
     The rule itself lives in the layout layer (`materialize.run_dir`);
-    this is `submit`'s name for it, kept because the four questions above
+    this is `submit`'s name for it, kept because the questions asked of it
     read better against a trial-shaped word than a generic one.
     """
     from .materialize import run_dir
     return run_dir(container)
 
 
-def _launch_dir(jobset: JobSet, base_dir: Path, job) -> Tuple[Path, Optional[Path]]:
-    """Where this job runs, and the attempt to record the launch into.
-
-    THE SHAPE DECIDES, NOT THE KIND.  A hierarchical run -- ladder stage or
-    sweep trial alike -- runs in ``run-<n>/``, because an attempt is
-    immutable once it has run (``project-layout.md`` § 1.5) and a re-run
-    must not land on top of one.  A flat one keeps no attempt directories
-    at all (§ 1.5a's table) and runs in its own container.
-
-    *This said "a SWEEP has no attempt layer -- the point runs there, as it
-    always has" until 2026-08-30.  That was true until § 1.5a gave trials
-    attempts on 2026-08-27; the code below was migrated that day and the
-    docstring was not, so it went on teaching the retired design to
-    whoever read it next.*
-
-    Refuses an attempt that has already been launched.  ``run.json`` is the only
-    honest answer to *has this started?* -- a queued job has produced nothing
-    yet, so absence of output proves nothing (§ 1.6).
-    """
-    from .materialize import (RUN_LAUNCH_FILE, attempts, job_dir_names,
-                              shape_of, was_launched)
-    sh = shape_of(jobset, base_dir)
-    d = base_dir / job_dir_names(jobset, sh)[job.name]
-    ns = attempts(d)
-    if not ns:
-        # C5 (2026-08-12, R2's missing half): a HIERARCHICAL ladder stage
-        # with no attempt open used to fall through to (d, None) -- it
-        # launched in its own container, wrote no run.json, and was
-        # silently relaunchable, everything § 1.5/1.6 exist to prevent.
-        # Only that case refuses: flat keeps no attempt directories at
-        # all (§ 1.5a), so its container IS where the run happens.
-        if (jobset.kind == "ladder" and sh is not None
-                and sh.keeps_attempts_as_directories):
-            raise SubmitError(
-                f"job {job.name!r}: no attempt is open under {d.name}/ -- "
-                f"a hierarchical stage runs in run-<n>, never in its own "
-                f"container (project-layout.md § 1.5, 1.6).  Open one:\n"
-                f"    molbuilder jobset prep run {job.name}")
-        # An attempt-less dir -- flat -- IS its own attempt, and
-        # § 1.5's immutability applies to it the same way (R2, 2026-08-12:
-        # until then a named trial -- or any direct re-invocation -- was
-        # silently relaunchable in place, run.json overwritten; the rule
-        # held only through the CLI's bare-form next-unlaunched skip, the
-        # guard-only-a-surface-applies pattern this module names below).
-        if was_launched(d):
-            raise SubmitError(
-                f"job {job.name!r}: already launched -- "
-                f"{(d / RUN_LAUNCH_FILE)} records it.  A trial measures "
-                f"its point ONCE (project-layout.md § 1.5: immutable once "
-                f"it has run); read the sweep back with `molbuilder "
-                f"jobset summarize bench <stage>`.  To measure this point "
-                f"again, move the trial's directory aside yourself -- "
-                f"molbuilder never deletes results.")
-        return d, None
-    last = attempt_dir(d, ns[-1])
-    if was_launched(last):
-        # A TRIAL IS REFUSED FOR THE SAME REASON AND ADVISED DIFFERENTLY.
-        # `--from <attempt>` is a STAGE's remedy: it continues from what
-        # the last attempt produced.  A trial does not continue -- it
-        # measures its point again, from cold, and since 2026-08-27 it can
-        # (`project-layout.md` § 1.5a): preparing opens `run-<n+1>` beside
-        # this one and leaves it exactly as it is.
-        #
-        # Before that, this branch never saw a trial and the advice was
-        # right for everything that reached it.
-        if jobset.kind == "sweep":
-            raise SubmitError(
-                f"trial {job.name!r}: {last.name} has already been launched "
-                f"({last / 'run.json'}).  A measurement is immutable once it "
-                f"has run.\n"
-                f"  read what it measured:  molbuilder jobset summarize "
-                f"bench <stage>\n"
-                f"  measure the point AGAIN: molbuilder jobset prep bench "
-                f"<stage>  (opens {d.name}/{attempt_name(ns[-1] + 1)}, leaving "
-                f"{last.name} untouched)")
-        raise SubmitError(
-            f"job {job.name!r}: {last.name} has already been launched "
-            f"({last / 'run.json'}).  An attempt is immutable once it has run; "
-            f"prepare a fresh one:\n"
-            f"    molbuilder jobset prep run {job.name} --from <attempt>")
-    return last, last
-
-
 def _job_wants_gpu(job_dir: Path, job) -> bool:
-    """Whether this job asks for a GPU.
+    """Whether this job asks for a GPU -- `runwrap._wants_gpu`, the one door
+    (`gpu.md` G7), which reads ``resources.use_gpu`` first and the deck
+    only for a job that states nothing.
 
-    **Asks `runwrap._wants_gpu`, which reads `resources.use_gpu` first**
-    and falls back to the deck.  This opened *"from its deck, not from
-    `gres`"* and argued it over four paragraphs until 2026-09-05, while
-    the body below had already stopped doing that -- reading the deck
-    FIRST was the routing bug, because a job whose `execution` asks for a
-    GPU has said so plainly and the deck is the weaker evidence.
-    The paragraphs on where the two halves live are still true and
-    follow.
-
-    `job-contracts.md § 6.2` derives the GPU request *"from `.fdf` + GPU type"*,
-    and the two halves live in different places on purpose:
-
-    * the **`.fdf`** carries the decision (`engines/stages.md § 5`: a GPU choice
-      lands in the deck **and** the wrapper's env routing **and** a scheduler's
-      `--gres`), and it travels with the bundle;
-    * the **GPU type** is a fact about the cluster, and `job-system.md`
-      decision #3 (*target isolation*) keeps cluster facts out of what you
-      produce on a laptop.
-
-    So the ladder producer leaves ``gres`` unset **and is right to** —
-    ``siesta/stages.py`` says so in as many words: *"scheduler resources
-    (domain/time/exclusive/mem/gres) resolve at submit."*  What was missing is
-    that nothing here asked the deck instead: this read
-    ``bool(job.resources.gres)``, which is always false for a ladder, so **a
-    stage whose deck selects a GPU eigensolver was routed to the CPU
-    partition.**  Its rendered ``.sbatch`` header already carried the right
-    ``--gres`` (``runwrap`` derives it on the target from the same deck), so the
-    job asked for a GPU on a partition that has none.
-
-    A sweep point that states ``gres`` outright is honoured unchanged — the
+    A sweep point that states ``gres`` outright is honoured unchanged -- the
     benchmark knows its own grid, and `bench/to_jobset.py` is where a GPU
-    *count* is a swept parameter rather than a property of one deck.
+    *count* is a swept parameter rather than a property of one deck.  *(This
+    grepped a SIESTA keyword out of the deck until 2026-09-04, answering
+    False for every PySCF GPU run and True for a SIESTA deck whose
+    allocation said `use_gpu: false`.)*
     """
     if job.resources.gres:
         return True
-    # THROUGH `runwrap._wants_gpu`, WHICH IS THE ONE DOOR (`gpu.md` G7):
-    # *"The value travels; the deck is not re-read for it ... The deck scan
-    # remains only for a caller that states nothing, which is not
-    # re-deriving: that path has no allocation to ask."*  This one HAS the
-    # allocation -- `job.resources` -- and until 2026-09-04 it asked the
-    # deck anyway, by grepping a SIESTA keyword.  So it answered False for
-    # every PySCF GPU run and True for a SIESTA deck whose allocation said
-    # `use_gpu: false`, disagreeing with the wrapper about the same job:
-    # submit picked a device-less partition and emitted no `--gres`, then
-    # the wrapper activated the GPU env on it.
-    #
-    # `model.py`'s `use_gpu` says it in as many words -- *"the ANSWER,
-    # carried rather than re-derived"* -- and records the four sites fixed
-    # 2026-08-23.  This was a fifth, missed because it lives a package away.
     from ..runwrap import _wants_gpu                 # heavy; jobset stays light
     deck = Path(job_dir) / os.path.basename(job.script)
     return _wants_gpu(deck, job.resources)
 
 
-def _run_direct(jobset: JobSet, base_dir: Path, *,
-                dry_run: bool) -> List[JobResult]:
-    """Local path: run each ``<stem>.run.sh`` here, in order, waiting for each.
-
-    **Nothing is skipped because something else failed**, and after 2026-08-10
-    nothing can be: a LADDER never reaches this loop with more than one job
-    (`_resolve_stage` refuses to act on a ladder without a named stage), and a
-    SWEEP's points are independent by definition, so one bad point says nothing
-    about the next.  A `_blocked_by_a_failure` helper stood here to reproduce
-    SLURM's ``afterok`` meaning locally; it went with the edges.
-    """
-    results: List[JobResult] = []
-    from .materialize import job_dir_names, shape_of, was_launched
-    dirs = job_dir_names(jobset, shape_of(jobset, base_dir))
-    for job in jobset.jobs:
-        # 2026-08-12 plan A6: a direct SWEEP resumes past what already ran.
-        # A trial is immutable once launched (§ 1.5), and the submit
-        # path's next-unlaunched pick already skips it -- but direct runs
-        # the set in order, so without this the loop DIED at the first
-        # launched trial and an interrupted sweep could never finish.
-        # The skip is said out loud in the results.  Ladder stages keep
-        # the refusal below: their re-run is a NEW attempt the user opens.
-        if jobset.kind == "sweep" and was_launched(
-                _trial_run_dir(base_dir / dirs[job.name])):
-            results.append(JobResult(job.name, [],
-                                     "skipped -- already launched"))
-            continue
-        job_dir, attempt, run_name = _resolve_launch(
-            jobset, base_dir, job, ".run.sh")
-        cmd = ["bash", run_name] + _run_sh_args(job.resources)
-        if dry_run:
-            results.append(JobResult(job.name, cmd, "planned"))
-            continue
-        if not (job_dir / run_name).exists():
-            raise SubmitError(
-                f"job {job.name!r}: {run_name} not in {job_dir} "
-                "(run prep_jobset first).")
+def _send(jobset: JobSet, base: Path, p: _Plan, *, mode: str) -> List[JobResult]:
+    """Send ONE planned job -- the first write of the launch.  A
+    continuation opens its attempt only now, every refusal having already
+    had its turn (W52: it was opened first until 2026-10-01, so a refusal
+    after it left a fresh attempt behind)."""
+    from .materialize import launch_record_at, prepare_attempt
+    if p.skip:
+        return [JobResult(p.job.name, [], p.skip)]
+    out: List[JobResult] = []
+    run = p.run_dir
+    if p.continues:
+        rep = prepare_attempt(jobset, base, p.job.name,
+                              continue_from=p.continues, named=False)
+        run = rep.dir
+    if p.follows:
+        out.append(JobResult(p.job.name, [], p.note()))
+    where, basename = launch_record_at(jobset.kind, p.job, p.container,
+                                       run if p.has_attempt else None)
+    domain = getattr(getattr(p.placement, "domain", None), "name", None)
+    if mode == "direct":
         # The launch-door claim rides the child ENV here: inheritance
         # survives forks and backgrounding, so a detached local run
         # launched through this verb never meets the gate's prompt.
-        proc = subprocess.Popen(cmd, cwd=str(job_dir),
+        proc = subprocess.Popen(p.command, cwd=str(run),
                                 env={**os.environ,
                                      "MB_LAUNCHED_BY": "jobset-launch"})
         # AT START, not after: run.json answers "was this launched?", and a
         # record written on completion left a running attempt reading as
-        # never launched for its whole runtime.  A failed START still
-        # records nothing -- Popen raising means no process exists, and the
-        # attempt is exactly as prepare left it (§ 1.6).
-        rec, basename = _where_recorded(jobset, job, job_dir, attempt)
-        _record_launch(rec, mode="direct", command=cmd, basename=basename)
+        # never launched for its whole runtime.  A failed START records
+        # nothing -- Popen raising means no process exists.
+        _record_launch(where, mode="direct", command=p.command,
+                       basename=basename)
         rc = proc.wait()
-        if rc != 0:
-            results.append(JobResult(job.name, cmd, "failed",
-                                     returncode=rc))
-        else:
-            results.append(JobResult(job.name, cmd, "ran", returncode=0))
-    return results
+        out.append(JobResult(p.job.name, p.command,
+                             "ran" if rc == 0 else "failed", returncode=rc))
+        return out
+    try:
+        cp = subprocess.run(p.command, cwd=str(run), capture_output=True,
+                            text=True,
+                            env={**os.environ,
+                                 "MB_LAUNCHED_BY": "jobset-launch"})
+    except OSError as exc:
+        raise SubmitError(
+            f"job {p.job.name!r}: could not run {p.command[0]!r} ({exc})")
+    if cp.returncode != 0:
+        raise SubmitError(
+            f"sbatch failed for job {p.job.name!r} (rc={cp.returncode}):\n"
+            f"{cp.stderr.strip()}")
+    jid = _parse_sbatch_id(cp.stdout)
+    _record_launch(where, mode="submit", command=p.command, job_id=jid,
+                   placement=p.placement, basename=basename)
+    out.append(JobResult(p.job.name, p.command, "submitted", job_id=jid,
+                         domain=domain))
+    return out
 
 
 
@@ -680,8 +636,9 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
                        gpu_domain: Optional[str] = None,
                        domain: Optional[str] = None,
                        dry_run: bool = False,
+                       ask: bool = False,
                        trial_timeout_s: Optional[int] = None,
-                       mem_gb: Optional[float] = None,
+                       mem: Optional[str] = None,
                        time_s: Optional[int] = None,
                        only: Optional[str] = None) -> List[JobResult]:
     """ONE scheduler job per RESOURCE SHELF of the sweep (grouped
@@ -711,34 +668,33 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
     The per-group pieces:
 
     * **the allocation** -- :func:`_group_envelope`: the shelf's own ask
-      (identical across its trials by construction); wall = pending x
-      ``trial_timeout_s`` x 1.1 plus five minutes of startup margin;
-    * **the sequencer** -- ``bench-group.run.sh``, written into the stage's
-      ``bench/`` container (the parent that sees every trial), regenerated
-      from the trials STILL UNLAUNCHED at this submission.  Each trial runs
-      in its own directory through its own ``.run.sh`` (per-trial relabel,
-      pins, monitor -- one home, untouched) under ``timeout``; a trial that
-      hits the bound is killed and its artifacts read ``incomplete``; the
-      walk continues -- one bad point says nothing about the next.  The
-      script exits nonzero when any trial failed, so the scheduler's job
-      state prompts a look at ``bench-group.log``;
-    * **the launch records** -- every included trial's directory gets its
-      ``run.json`` stamped with the ONE job id, so `status`, the picker and
-      a later single-trial re-run all see the truth.
+      (identical across its trials by construction), sent through the one
+      request (:func:`_sbatch_request`) -- admitted on its queue, the wall
+      ``--time``, else what prep baked, else that queue's own ceiling;
+    * **the sequencer** -- ``launch/<name>.run.sh`` in the stage's bench
+      container (the parent that sees every trial), regenerated from the
+      trials STILL UNLAUNCHED at this submission.  Each trial runs in its own
+      attempt through its own ``.run.sh`` (per-trial relabel, pins, monitor
+      -- one home, untouched), under ``timeout`` when a per-trial bound is
+      given; a trial that hits it is killed and reads ``incomplete``; the
+      walk continues -- one bad point says nothing about the next.  It
+      exits nonzero when any trial failed, so the scheduler's job state
+      prompts a look at ``launch/<name>.log``;
+    * **the launch records** -- every included trial's ``run.json`` is
+      stamped with the ONE job id, so `status` and a later single-trial
+      re-run see the truth.
+
+    ``ask`` asks the scheduler about each shelf -- the jobs ``submit``
+    sends, so a prediction is about the job that would go (W52: a sweep was
+    asked about trial by trial while submit sent shelves).  Under ``ask``
+    and ``dry_run`` nothing is written.
     """
-    from .materialize import (job_dir_names, latest_attempt,
-                              shape_of, was_launched)
+    from .materialize import job_dir_names, shape_of, was_launched
     dirs = job_dir_names(jobset, shape_of(jobset, base_dir))
     base = Path(base_dir)
     if only not in (None, "cpu", "gpu"):
         raise SubmitError(f"--only takes cpu or gpu, not {only!r}")
-    sides = {"cpu": [], "gpu": []}
-    for j in jobset.jobs:
-        # The deck lives where the trial RUNS (§ 1.6).  Reading the
-        # container found no deck, so a trial whose deck asks for a GPU
-        # without stating `gres` answered "cpu" by absence.
-        sides["gpu" if _job_wants_gpu(_trial_run_dir(base / dirs[j.name]), j)
-              else "cpu"].append(j)
+    sides = sides_of(jobset, base)
     if only and not sides[only]:
         raise SubmitError(f"this sweep has no {only} trials to submit")
     mixed = bool(sides["cpu"]) and bool(sides["gpu"])
@@ -787,15 +743,31 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
                 gpu_side=(side == "gpu"),
                 domain=((gpu_domain or domain) if side == "gpu"
                         else domain),
-                dry_run=dry_run,
+                dry_run=(dry_run or ask),
                 trial_timeout_s=trial_timeout_s,
-                mem_gb=mem_gb, time_s=time_s))
+                mem=mem, time_s=time_s))
 
     if not plans:
         raise SubmitError(
             f"all {len(sides[only]) if only else len(jobset.jobs)} "
             f"{only + ' ' if only else ''}trials are launched.  next: "
             f"molbuilder jobset summarize bench <stage>")
+
+    if ask:
+        # EACH SHELF, as submit would send it.  Its own header is written
+        # only when it is sent, so the question rides its first trial's --
+        # rendered for the same work, and overruled by the same flags.
+        out: List[JobResult] = []
+        for n, p in enumerate(plans):
+            if n >= ASK_MAX_QUERIES:
+                out.append(JobResult(p.name, [], "not asked"))
+                continue
+            first = p.pending[0]
+            out.append(_ask(p.name, p.cmd,
+                            _trial_run_dir(base / dirs[first.name]),
+                            domain=_domain_name(p),
+                            script=_wrapper_name(first.script, ".sbatch")))
+        return out
 
     if dry_run:
         # R14's prediction rides the shelves it is about: the note is a fact
@@ -848,7 +820,7 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
 
 
 def _place(base: Path, *, gpu_side: bool, needed_s=None, cores=None,
-           mem_gb=None, gpus=None, gpu_type=None, named=None,
+           mem=None, gpus=None, gpu_type=None, named=None,
            label: str = ""):
     """This side's placement — `scheduler.place`, walked with THIS machine's
     menu (`execution/scheduler.md` § 5).
@@ -877,7 +849,7 @@ def _place(base: Path, *, gpu_side: bool, needed_s=None, cores=None,
     # card did not exist.
     want = Request(ranks=cores, cpus_per_task=1, gpus=gpus or None,
                    gpu_type=gpu_type,
-                   mem_gb=parse_mem_gb(mem_gb), walltime_s=needed_s)
+                   mem_gb=parse_mem_gb(mem), walltime_s=needed_s)
     try:
         # WHICH AXIS DECIDES between queues that all fit is the site's to
         # say (`scheduler.placement_priority`, 2026-08-23).  Absent, `place`
@@ -905,8 +877,8 @@ def _place(base: Path, *, gpu_side: bool, needed_s=None, cores=None,
             # so an unplaceable group lost both the reasons and the remedies.
             + "\n    ".join(r.message for r in exc.reasons)
             + "\n  Nothing was submitted -- the scheduler would refuse it.  "
-              "Either run fewer trials per group, lower --trial-timeout, or "
-              "name a longer domain with --domain <name>.") from None
+              "Change what is asked for (--time, --mem; the ranks and cores "
+              "at prep), or name another queue with --domain <name>.") from None
 
 
 def _reject_if_this_machine_says_no(placed, want, gpu_side: bool,
@@ -1118,11 +1090,28 @@ class _Prepared:
     domain:    Optional[str]
 
 
+def sides_of(jobset: JobSet, base_dir) -> Dict[str, List[Job]]:
+    """A sweep's trials by the side they run on -- ``{"cpu": [...],
+    "gpu": [...]}`` -- each trial's deck's own answer (:func:`_job_wants_gpu`,
+    the one door), read where the trial RUNS (§ 1.6: the container holds no
+    deck, so a trial that asks for a GPU without stating ``gres`` answered
+    "cpu" by absence when the container was read).  The grouped door splits
+    on it, and the launch verb asks it which queue each side needs."""
+    from .materialize import job_dir_names, shape_of
+    base = Path(base_dir)
+    dirs = job_dir_names(jobset, shape_of(jobset, base))
+    sides: Dict[str, List[Job]] = {"cpu": [], "gpu": []}
+    for j in jobset.jobs:
+        sides["gpu" if _job_wants_gpu(_trial_run_dir(base / dirs[j.name]), j)
+              else "cpu"].append(j)
+    return sides
+
+
 def _prepare_side_group(jobset: JobSet, base: Path, dirs, pending,
                         name: str, *, gpu_side: bool,
                         domain: Optional[str], dry_run: bool,
                         trial_timeout_s: Optional[int],
-                        mem_gb: Optional[float] = None,
+                        mem: Optional[str] = None,
                         time_s: Optional[int] = None) -> "_Prepared":
     """One shelf's submission, checked, placed and WRITTEN -- but not sent.
 
@@ -1194,11 +1183,10 @@ def _prepare_side_group(jobset: JobSet, base: Path, dirs, pending,
     container = next(iter(containers))
     # L3 (roadmap 7.10, user 2026-08-24): the group's own machinery -- this
     # sequencer, its .sbatch, its log, and SLURM's stdout/err -- lives in
-    # ``launch/`` beside the trial directories, not among them.  Before
-    # this, five bench-group-* triples and ten slurm.%j files sat mixed
-    # with the trial dirs in one listing.
+    # ``launch/`` beside the trial directories, not among them.  Made only
+    # when the shelf is written (below): a dry run and a declined preview
+    # leave nothing behind, an empty ``launch/`` included (W52).
     launch_dir = container / "launch"
-    launch_dir.mkdir(parents=True, exist_ok=True)
 
     envelope = _group_envelope(pending)
 
@@ -1270,74 +1258,15 @@ def _prepare_side_group(jobset: JobSet, base: Path, dirs, pending,
         "",
     ]
     script = launch_dir / f"{name}.run.sh"
-    if mem_gb:
-        # A launch-time --mem OVERRIDES what prep baked (the envelope
-        # already carries prep's answer).  Found 2026-08-23 when job
-        # 62039305 OOM'd at 24576M -- a per-GPU default nobody chose --
-        # because neither prep's answer nor this flag ever reached the
-        # sbatch command.
-        import dataclasses as _dc
-        envelope = _dc.replace(envelope, mem=f"{mem_gb:g}G")
-
-    # What the admission is asked to fit: the wall the user stated at
-    # launch, else the one prep baked.  Unstated is None -- an unstated
-    # limit never bars (R3), and the wall it gets DEFAULTED to below (the
-    # queue's own ceiling) fits that queue by construction.
-    from ..scheduler.quantities import parse_walltime
-    needed_s = time_s
-    if needed_s is None and envelope.time:
-        try:
-            needed_s = parse_walltime(str(envelope.time))
-        except ValueError:
-            raise SubmitError(
-                f"prep baked time={envelope.time!r}, which does not parse "
-                f"as a SLURM walltime.")
-
-    cmd = ["sbatch", "-J", f"{jobset.name}_{name}"]
-    # The side IS the GPU answer -- partitioned by the deck's own word in
-    # `submit_bench_group`, so nothing is re-derived here.  A named
-    # --domain overrides; otherwise each side takes its capability-fitting
-    # preference from the menu (`scheduler.place`, one walk).
-    # R9 -- WHAT WAS ADMITTED WHEN THE WORK WAS BUILT IS RE-ADMITTED WHEN IT
-    # IS SENT.  The envelope was decided at `prep`, against whatever the
-    # machine record said THEN; this walk uses what it says NOW.  The two can
-    # differ precisely in the case that matters: a bundle prepared on one
-    # machine and rsync'd to another, or prepared before the machine's own
-    # probe learned a limit.  The Au-BDT-Au sweep is the worked example --
-    # its cells were sized against a record whose gpu rows said
-    # `max_cores: None`, and Sol has since measured 48.
-    placement = _place(base, gpu_side=gpu_side, needed_s=needed_s,
-                       cores=(envelope.mpi_np or 0)
-                             * max(envelope.cpus_per_task or 1, 1) or None,
-                       mem_gb=envelope.mem,
-                       gpus=_gres_count(envelope.gres or ""),
-                       gpu_type=_gres_type(envelope.gres or ""),
-                       named=domain, label=name)
-    # THE WALL, in the order the answers rank (user dictation,
-    # 2026-08-24): what the user stated at launch (--time); else what
-    # prep baked; else THE FULL AMOUNT THE TARGET QUEUE ALLOWS -- its own
-    # ceiling, read off the placement.  NEVER a number this framework
-    # invents -- no estimation, no per-trial arithmetic, no defaults
-    # wearing a number's clothes.  Where the queue states no ceiling, no
-    # wall is sent and the scheduler's default stands.  What this
-    # replaces -- 15 invented minutes a trial, times slack, plus startup
-    # -- sent five 38-minute jobs to Sol (62039301-05) for a system
-    # nobody had sized.
-    if time_s is not None:
-        envelope = _dc_replace_time(envelope, _slurm_time(time_s))
-    elif not envelope.time and placement is not None:
-        from ..scheduler import domain_ceiling_s
-        _ceil = domain_ceiling_s(placement.domain)
-        if _ceil:
-            envelope = _dc_replace_time(envelope, _slurm_time(_ceil))
-    # The same shape as a single job: the rendered .sbatch header carries
-    # the SITE directives (partition/qos/account/mail -- runwrap's one
-    # header emitter, so the group cannot drift from what every trial
-    # gets), and the CLI flags carry the envelope as overrides, exactly
-    # the flags-win-over-header rule _sbatch_resource_flags documents.
-    cmd += _sbatch_resource_flags(envelope, placement)
-    cmd += ["--export", "ALL,MB_LAUNCHED_BY=jobset-launch"]
-    cmd.append(f"launch/{name}.sbatch")
+    # THE ONE REQUEST (`_sbatch_request`): prep's envelope, what was said at
+    # launch, admitted on this side's queue (R9), the wall defaulted to
+    # that queue's ceiling.  The side IS the GPU answer -- partitioned by the
+    # deck's own word in `submit_bench_group`, so nothing is re-derived here.
+    envelope, placement, cmd = _sbatch_request(
+        base, envelope=envelope, gpu_side=gpu_side, domain=domain, mem=mem,
+        time_s=time_s, label=name,
+        job_name=_scheduler_job_name(jobset, name),
+        script=f"launch/{name}.sbatch")
 
     prepared = _Prepared(name=name, cmd=cmd, container=container,
                          pending=list(pending), placement=placement,
@@ -1345,50 +1274,28 @@ def _prepare_side_group(jobset: JobSet, base: Path, dirs, pending,
     if dry_run:
         return prepared
 
-    script.write_text("\n".join(lines), encoding="utf-8")
     from ..runwrap import _render_sbatch_for
     # Rendered at the BUNDLE's scope, not the container's (review
     # 2026-08-21): the render derives its config/environment scope from
     # the script path's parent, and the calculation's .molbuilder.json +
-    # environment.json live at the bundle root -- a container-scoped
-    # render missed both and refused ("no scheduler") or fell to the
-    # machine scope.  The stem alone names the delegated run script, so
-    # the header still runs `bash {name}.run.sh` from the container.
-    # The pair this submission is ALREADY routing to, handed to the header
-    # emitter so the .sbatch and the `sbatch -p/-q` on the command line
-    # cannot name different queues.  Without it the header re-derived the
-    # pair (or refused for want of a `scheduler` block) while the command
-    # line used the one resolved above.
+    # environment.json live at the bundle root.  The pair this submission
+    # is ALREADY routing to is handed to the header emitter, so the .sbatch
+    # and the `sbatch -p/-q` on the command line cannot name different
+    # queues.  The stem alone names the delegated run script, so the
+    # header still runs `bash {name}.run.sh` from the container.
     header = _render_sbatch_for(base / f"{name}.sh",
                                 project_dir=base,
                                 resources=envelope, env=None,
                                 domain_pq=((placement.partition,
                                             placement.qos)
                                            if placement else None))
-    if header is not None:
-        # Repoint the delegated script and SLURM's own output into
-        # launch/ (L3).  Count-asserted: if the emitter's spelling of
-        # either line changes, this fails loudly instead of silently
-        # scattering files back among the trial dirs.
-        for _old, _new in ((f"bash {name}.run.sh", f"bash launch/{name}.run.sh"),
-                           ("#SBATCH -o slurm.%j.out",
-                            "#SBATCH -o launch/slurm.%j.out"),
-                           ("#SBATCH -e slurm.%j.err",
-                            "#SBATCH -e launch/slurm.%j.err")):
-            if header.count(_old) != 1:
-                raise SubmitError(
-                    f"the sbatch header no longer spells {_old!r} exactly "
-                    f"once; the launch/ repointing needs updating.")
-            header = header.replace(_old, _new)
     if header is None:
-        raise SubmitError(
-            "submit mode needs a queue, and this machine has neither a "
-            "`scheduler` block in molbuilder.json nor any reachable "
-            "submission domain in its probed environment.json -- run "
-            "`molbuilder jobset probe --write` on this machine, use "
-            "--mode direct, or add a scheduler block "
-            "(running-a-job.md § 5.3).")
-    (launch_dir / f"{name}.sbatch").write_text(header, encoding="utf-8")
+        raise SubmitError(_NO_SBATCH.format(what=name,
+                                            name=f"launch/{name}.sbatch"))
+    launch_dir.mkdir(parents=True, exist_ok=True)
+    script.write_text("\n".join(lines), encoding="utf-8")
+    (launch_dir / f"{name}.sbatch").write_text(_into_launch(header, name),
+                                               encoding="utf-8")
     return prepared
 
 
@@ -1450,10 +1357,10 @@ def _launch_prepared(base: Path, dirs, prep: "_Prepared") -> List[JobResult]:
 
 
 def submit_transport_chain(jobset: JobSet, base_dir, task, *,
-                           mode: str, stage: str = "device",
+                           mode: str, stage: str,
                            domain: Optional[str] = None,
                            dry_run: bool = False,
-                           mem_gb: Optional[float] = None,
+                           mem: Optional[str] = None,
                            time_s: Optional[int] = None
                            ) -> List[JobResult]:
     """ONE submission that walks a transport bias scan's points in
@@ -1475,18 +1382,22 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
     Every point's attempt must be OPEN and unlaunched (``prep run
     device`` opens them all); the deck/launch agreement gate guards this
     door like every other.  ``run.json`` lands in every point's attempt
-    at start — they are all launched by this one command.
+    at start — they are all launched by this one command.  The job's
+    request is the one every door sends (:func:`_sbatch_request`); ``ask``
+    asks the scheduler about it, over the first point's own header, since
+    the chain's is written only when it is sent.
     """
     from ..identity import StageRef
     from ..task import bias_token
     from ..transport.stages import rung_containers, scan_points
     from .materialize import latest_attempt, was_launched
 
-    if mode == "ask":
+    if mode not in ("submit", "ask", "direct"):
+        raise SubmitError(f"unknown mode {mode!r}: submit, ask or direct")
+    if mode == "direct" and (domain or mem or time_s is not None):
         raise SubmitError(
-            "--mode ask is not wired for a bias chain yet -- ask about "
-            "a single stage, or dry-run the chain (--dry-run shows the "
-            "exact command).")
+            "--domain, --mem and --time are what a scheduler is asked for; "
+            "'direct' runs it here, where none of them means anything.")
     points = scan_points(task, stage)
     if len(points) < 2:
         raise SubmitError("not a bias scan -- the plain launch owns "
@@ -1609,55 +1520,33 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
         launch_dir.mkdir(parents=True, exist_ok=True)
         (launch_dir / f"{name}.run.sh").write_text("\n".join(lines),
                                                    encoding="utf-8")
-        for _v, att in attempts:
-            _record_launch(att, mode="direct", command=cmd)
         proc = subprocess.Popen(cmd, cwd=str(stage_dir),
                                 env={**os.environ,
                                      "MB_LAUNCHED_BY": "jobset-launch"})
+        # AT START, after the process exists -- the rule `_send` keeps: a
+        # failed start records nothing (`project-layout.md` § 1.6.3).  Every
+        # point was stamped before `Popen` until 2026-10-01 (W52).
+        for _v, att in attempts:
+            _record_launch(att, mode="direct", command=cmd)
         rc = proc.wait()
         return [JobResult(name, cmd, "ran" if rc == 0 else "failed",
                           returncode=rc)]
 
-    # ---- submit: one scheduler job, the group pattern in miniature --- #
-    envelope = job.resources
-    if mem_gb:
-        import dataclasses as _dc
-        envelope = _dc.replace(envelope, mem=f"{mem_gb:g}G")
-    from ..scheduler.quantities import parse_walltime
-    needed_s = time_s
-    if needed_s is None and envelope.time:
-        try:
-            needed_s = parse_walltime(str(envelope.time))
-        except ValueError:
-            raise SubmitError(
-                f"prep baked time={envelope.time!r}, which does not "
-                f"parse as a SLURM walltime.")
-    placement = _place(base, gpu_side=_job_wants_gpu(attempts[0][1], job),
-                       needed_s=needed_s,
-                       cores=(envelope.mpi_np or 0)
-                             * max(envelope.cpus_per_task or 1, 1) or None,
-                       mem_gb=envelope.mem,
-                       gpus=_gres_count(envelope.gres or ""),
-                       gpu_type=_gres_type(envelope.gres or ""),
-                       named=domain, label=name)
-    if time_s is not None:
-        envelope = _dc_replace_time(envelope, _slurm_time(time_s))
-    elif not envelope.time and placement is not None:
-        from ..scheduler import domain_ceiling_s
-        _ceil = domain_ceiling_s(placement.domain)
-        if _ceil:
-            envelope = _dc_replace_time(envelope, _slurm_time(_ceil))
-    cmd = ["sbatch", "-J", f"{jobset.name}_{name}"]
-    cmd += _sbatch_resource_flags(envelope, placement)
-    cmd += ["--export", "ALL,MB_LAUNCHED_BY=jobset-launch"]
-    cmd.append(f"launch/{name}.sbatch")
+    # ---- submit / ask: one scheduler job, the group pattern in miniature #
+    envelope, placement, cmd = _sbatch_request(
+        base, envelope=job.resources,
+        gpu_side=_job_wants_gpu(attempts[0][1], job), domain=domain,
+        mem=mem, time_s=time_s, label=name,
+        job_name=_scheduler_job_name(jobset, name),
+        script=f"launch/{name}.sbatch")
+    domain_name = getattr(getattr(placement, "domain", None), "name", None)
+    if mode == "ask":
+        return [_ask(name, cmd, attempts[0][1], domain=domain_name,
+                     script=_wrapper_name(job.script, ".sbatch"))]
     if dry_run:
-        return [JobResult(name, cmd, "planned")] + [
+        return [JobResult(name, cmd, "planned", domain=domain_name)] + [
             JobResult(f"{stage}@{bias_token(v)}", [], "rides the chain")
             for v, _a in attempts]
-    launch_dir.mkdir(parents=True, exist_ok=True)
-    (launch_dir / f"{name}.run.sh").write_text("\n".join(lines),
-                                               encoding="utf-8")
     from ..runwrap import _render_sbatch_for
     header = _render_sbatch_for(base / f"{name}.sh", project_dir=base,
                                 resources=envelope, env=None,
@@ -1665,25 +1554,23 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
                                             placement.qos)
                                            if placement else None))
     if header is None:
-        raise SubmitError(
-            "no scheduler is configured here, so there is no .sbatch to "
-            "hand the chain to -- run it with --mode direct, or launch "
-            "on the machine with the queue.")
-    for _old, _new in ((f"bash {name}.run.sh", f"bash launch/{name}.run.sh"),
-                       ("#SBATCH -o slurm.%j.out",
-                        "#SBATCH -o launch/slurm.%j.out"),
-                       ("#SBATCH -e slurm.%j.err",
-                        "#SBATCH -e launch/slurm.%j.err")):
-        header = header.replace(_old, _new)
-    (launch_dir / f"{name}.sbatch").write_text(header, encoding="utf-8")
+        raise SubmitError(_NO_SBATCH.format(what=name,
+                                            name=f"launch/{name}.sbatch"))
+    launch_dir.mkdir(parents=True, exist_ok=True)
+    (launch_dir / f"{name}.run.sh").write_text("\n".join(lines),
+                                               encoding="utf-8")
+    (launch_dir / f"{name}.sbatch").write_text(_into_launch(header, name),
+                                               encoding="utf-8")
     cp = subprocess.run(cmd, cwd=str(stage_dir), capture_output=True,
-                        text=True)
+                        text=True,
+                        env={**os.environ, "MB_LAUNCHED_BY": "jobset-launch"})
     if cp.returncode != 0:
         raise SubmitError(
             f"sbatch failed for {name} (rc={cp.returncode}):\n"
             f"{cp.stderr.strip()}")
     jid = _parse_sbatch_id(cp.stdout)
-    results = [JobResult(name, cmd, "submitted", job_id=jid)]
+    results = [JobResult(name, cmd, "submitted", job_id=jid,
+                         domain=domain_name)]
     for v, att in attempts:
         _record_launch(att, mode="submit", command=cmd, job_id=jid,
                        placement=placement)
@@ -1712,35 +1599,23 @@ def _placed_on(placement) -> Optional[dict]:
             "qos": placement.qos}
 
 
-def _where_recorded(jobset: JobSet, job, job_dir: Path,
-                    attempt: Optional[Path]) -> "tuple":
-    """``(directory, basename)`` a launch is recorded in
-    (`project-layout.md` § 1.6.3): the attempt's ``run.json``; a sweep
-    trial's, at the trial's top; a flat stage's own ``<basename>.run.json``
-    in the calculation's directory, which every stage shares --
-    ``basename`` its deck's stem."""
-    if attempt is not None:
-        return attempt, None
-    if jobset.kind == "sweep":
-        return job_dir, None
-    return job_dir, Path(job.script).stem
-
-
 def _record_launch(attempt: Path, *, mode: str, command: List[str],
                    job_id: Optional[str] = None, placement=None,
                    basename: Optional[str] = None) -> None:
-    """Write the launch record -- the attempt's ``run.json``, or with
-    ``basename`` a flat stage's own -- carrying its provenance.
+    """Write the launch record where `materialize.launch_record_at` says --
+    the attempt's ``run.json``, or with ``basename`` a flat stage's own --
+    carrying its provenance.
 
-    ``continued_from`` is read back from what ``prep`` copied in rather than
-    passed down: prep is what knows, and re-deriving it here would be a second
-    answer to one question.  ``placement`` is passed for the opposite reason:
-    submission is what knows where the job went, and nothing downstream should
-    have to work it out from a command line.
+    ``continued_from`` is read back from what ``prep`` left -- the attempt's
+    ``.continued-from``, or a flat stage's own (`continued_from_marker`) --
+    rather than passed down: prep is what knows, and re-deriving it here
+    would be a second answer to one question.  ``placement`` is passed for
+    the opposite reason: submission is what knows where the job went, and
+    nothing downstream should have to work it out from a command line.
     """
-    from .materialize import write_run_launch
+    from .materialize import continued_from_marker, write_run_launch
     src = None
-    marker = attempt / ".continued-from"
+    marker = continued_from_marker(attempt, basename)
     if marker.is_file():
         src = marker.read_text(encoding="utf-8").strip() or None
     write_run_launch(attempt, mode=mode, command=command, job_id=job_id,
@@ -1815,38 +1690,42 @@ def _refuse_batch_submission(jobset: JobSet, base_dir: Path, *,
 
 def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                   domain: Optional[str] = None,
+                  gpu_domain: Optional[str] = None,
                   dry_run: bool = False,
                   only: Optional[str] = None,
-                  mem_gb: Optional[float] = None,
+                  mem: Optional[str] = None,
                   time_s: Optional[int] = None,
                   continue_unconcluded: bool = False,
                   ) -> List[JobResult]:
-    """Launch a prepped ``jobset`` rooted at ``base_dir``.
+    """Launch a prepped ``jobset`` rooted at ``base_dir`` -- the stage door,
+    and a sweep's named trial or (direct) its trials in turn.
 
-    ``mode`` is ``"submit"`` (SLURM ``sbatch`` + per-job CLI flags) or
-    ``"direct"`` (ordered local ``bash``).  ``domain`` is a
-    probed domain name resolved to ``-p/-q`` (``submit`` mode only).
-    ``dry_run`` returns the planned command for each job without launching.
+    ``mode`` is ``"submit"`` (SLURM ``sbatch``, its resources as flags over
+    the rendered header), ``"ask"`` (``sbatch --test-only`` on the same
+    line: when would it start) or ``"direct"`` (ordered local ``bash``).
+    ``domain`` names the queue (submit and ask), and ``gpu_domain`` the one
+    a sweep's GPU trial goes to when it differs -- where its shelf went, so a
+    re-measured point lands with its group (review 2026-08-21); ``mem`` --
+    SLURM text, ``0`` for the whole node -- and ``time_s`` are what the
+    person said at launch.
+    ``dry_run`` returns the exact command each job would get, writing
+    nothing.  ``only`` names ONE job; for a ladder that is the only case --
+    stages do not chain (`project-layout.md` § 1.6).
 
-    ``only`` names ONE job to launch.  For a ladder that is the ONLY case --
-    stages do not chain, so each is submitted after you have looked at the last
-    (``project-layout.md`` § 1.6), and ``_resolve_stage`` will not act on a
-    ladder without a named stage.  There is nothing to thread: the run this one
-    continues from has already finished and you have read it.
+    **Every refusal before the first write** (W52): what each job follows,
+    the deck/launch agreement, the queue's admission and the header are all
+    decided first (:func:`_plan_job`, :func:`_sbatch_request`); only then is
+    a continuation's attempt opened and the job sent (:func:`_send`).  A run
+    that was launched and never concluded is followed only when
+    ``continue_unconcluded`` records the person's judgement -- the CLI asks
+    for it in the one question it puts before sending (`submission.md` S4).
 
-    **There is no ``chain`` parameter.**  It was deleted 2026-08-10 (user)
-    together with ``depends_on`` / ``dep_kind`` / ``Carry``, in BOTH modes --
-    not narrowed to the shape where it was safe.  An opt-in flag is typed
-    before any stage has run, which is the moment you know least; the judgement
-    belongs between two stages, where the evidence is.
-
-    :func:`_refuse_batch_submission` still owns the standing rule that survives
-    it -- **a scheduler is handed one job at a time** -- and lives here rather
-    than in the CLI because a guard only a surface applies is one the next
-    surface skips.
-
-    Returns one :class:`JobResult` per job (the inform layer reads these).
-    Refuses an invalid JobSet (same gate as prep/materialize).
+    **There is no ``chain`` parameter** (deleted 2026-08-10, user): an
+    opt-in typed before any stage has run is typed at the moment you know
+    least.  :func:`_refuse_batch_submission` owns the standing rule that
+    survives it -- a scheduler is handed one job at a time -- and lives here
+    rather than in the CLI because a guard only a surface applies is one the
+    next surface skips.
     """
     errs = jobset.validate()
     if errs:
@@ -1855,14 +1734,20 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
     base = Path(base_dir).resolve()
     if not base.is_dir():
         raise SubmitError(f"base dir not found (prep first): {base}")
+    if mode not in ("submit", "ask", "direct"):
+        raise SubmitError(
+            f"unknown mode {mode!r}: must be 'submit' (SLURM), 'ask' (submit "
+            f"nothing, report when it would start) or 'direct' (local)")
+    if mode == "direct" and (domain or gpu_domain or mem
+                             or time_s is not None):
+        raise SubmitError(
+            "--domain, --mem and --time are what a scheduler is asked for; "
+            "'direct' runs it here, where none of them means anything.")
 
     if only is not None:
-        # Through the ONE resolver, so a name and a #N number reach the
-        # same job here as they do at every other surface -- and the
-        # refusal carries the typeable spellings (§ 8f).  This spelled its own lookup and
-        # its own listing until 2026-08-10, which is the same defect
-        # `prepare_attempt` had: a library entry point quietly speaking a
-        # second vocabulary for the one question.
+        # Through the ONE resolver, so a name and a #N number reach the same
+        # job here as at every other surface, and the refusal carries the
+        # typeable spellings.
         from ..identity import resolve_stage_ref
         from .materialize import stage_refs
         refs = stage_refs(jobset)
@@ -1871,178 +1756,116 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                                      only).name
         except ValueError as e:
             raise SubmitError(str(e))
-        # One job, on its own: `dataclasses.replace` would share the job
-        # objects, which is what we want -- the SAME Job, just alone, so its
-        # resources and script are untouched.  The dependency is dropped
-        # because there is nothing left to wait for.
-        import dataclasses as _dc
-        lone = next(j for j in jobset.jobs if j.name == only)
-        jobset = _dc.replace(jobset, jobs=[lone])
-
-    # THE NATURAL WORKFLOW at the run door (user, 2026-08-21: "a run
-    # stopped due to the server running out of time, and you can submit
-    # again and by default it continues").  A LADDER stage whose latest
-    # attempt has already been launched is not refused any more: the door
-    # opens the next attempt CONTINUING from it -- the same
-    # prepare_attempt primitive `prep run --from` uses, said out loud --
-    # and then launches that.  § 1.6's "which run you continue from is
-    # something you say" is AMENDED, not broken: the same stage's LATEST
-    # attempt is the one source that is never a guess (a wall-killed
-    # run's newest state is the state); an older attempt or another
-    # stage's stays the explicit `--from` lane, and a fresh start stays
-    # `prep run <stage>` first (an unlaunched attempt is reused, never
-    # continued over).  Bench trials keep § 1.5's immutability refusal.
-    # Under --dry-run nothing is created: the WOULD-continue line stands
-    # in for that job's whole plan.
-    continued: List[JobResult] = []
-    if jobset.kind == "ladder":
-        from .materialize import (attempt_concluded, attempts,
-                                  job_dir_names, prepare_attempt,
-                                  shape_of, was_launched)
-        # Gated on the ATTEMPT LAYER itself, not on the shape flag: the
-        # launched-attempt refusal downstream (`_launch_dir`) fires
-        # whenever attempts exist, shape known or not, so this mirror
-        # must too -- a shape-flag gate here left the hand-built-ladder
-        # lane refusing where it should continue (found writing the pin).
-        _sh = shape_of(jobset, base)
-        _names = job_dir_names(jobset, _sh)
-        _skip = set()
-        for _j in jobset.jobs:
-            _d = base / _names[_j.name]
-            _ns = attempts(_d)
-            if not _ns or not was_launched(attempt_dir(_d, _ns[-1])):
-                continue
-            _mark = attempt_concluded(
-                attempt_dir(_d, _ns[-1]), Path(_j.script).stem)
-            if _mark is None and not (dry_run or mode == "ask"
-                                      or continue_unconcluded):
-                # LAUNCHED BUT NEVER CONCLUDED -- still running, or
-                # force-stopped (walltime, kill, node death); the
-                # files alone cannot tell those apart, and the two
-                # deserve opposite acts: continuing a RUNNING attempt
-                # copies torn warm files under a live engine, while
-                # continuing a WALLTIME-KILLED one is exactly what a
-                # person wants -- the saved state is valid.  So the
-                # user judges (project-layout.md § 1.6.4): asked at a
-                # terminal, refused with the same story where nobody can
-                # answer; --yes is the judgement recorded in advance.
-                _story = (
-                    f"{_j.name}: {_names[_j.name]}/"
-                    f"{attempt_name(_ns[-1])} was "
-                    f"launched and never CONCLUDED -- it may still be "
-                    f"RUNNING, or it was force-stopped (walltime, "
-                    f"kill).\n"
-                    f"  Continuing copies its warm files AS THEY ARE: "
-                    f"valid after a forced stop, torn if it is still "
-                    f"running.  Check `molbuilder jobset status` and "
-                    f"the queue first.")
-                from ..envs.hints import stdin_can_answer
-                if not stdin_can_answer():
-                    raise SubmitError(
-                        _story + "\n  Then: re-run this launch with --yes "
-                        "to record your judgement and continue.")
-                from .ask import confirm
-                if not confirm(_story):
-                    raise SubmitError(f"{_j.name}: not continued -- your "
-                                      f"answer.")
-            if dry_run or mode == "ask":
-                # A QUESTION MUST NOT WRITE.  Until 2026-08-28 only
-                # dry_run took this arm, so `--mode ask` over a
-                # launched stage physically opened run-<n+1> and
-                # copied the warm files -- from an attempt that could
-                # still be RUNNING (a torn .DM/.XV copy), and the
-                # fresh empty attempt then hid the running one from
-                # `status`, which reports the latest.  Asking when a
-                # job would start had changed what the tree says.
-                continued.append(JobResult(
-                    _j.name, [],
-                    f"WOULD continue {_names[_j.name]}/"
-                    f"{attempt_name(_ns[-1])} into "
-                    f"{attempt_name(_ns[-1] + 1)} (warm), then "
-                    f"launch it"))
-                _skip.add(_j.name)
-                continue
-            try:
-                _rep = prepare_attempt(
-                    jobset, base, _j.name,
-                    # THE ATTEMPT'S NAME COMES FROM ITS COMPOSER.  This
-                    # is not a message -- it is the path `prepare_attempt`
-                    # continues FROM, spelled by hand on the live
-                    # continue-a-run path (§ 4.5).
-                    continue_from=(f"{_names[_j.name]}/"
-                                   f"{attempt_name(_ns[-1])}"))
-            except ValueError as _e:
-                # continuing is impossible -- no state to carry, or
-                # the stage's deck would not read it.  Both are
-                # SIGNALS (a launched run that left nothing likely
-                # died at startup), so the door refuses with the
-                # story rather than silently starting fresh.
-                raise SubmitError(
-                    f"{_j.name}: {attempt_name(_ns[-1])} was "
-                    f"launched, so "
-                    f"re-submission continues by default -- but "
-                    f"continuing is impossible here:\n  {_e}\n"
-                    f"  Look at that run's logs; a NEW attempt is:  "
-                    f"molbuilder jobset prep run {_j.name}  (from the stage "
-                    f"before it, job-system.md 5.4; `--cold` from the "
-                    f"structure), then submit.") from _e
-            _how = (f"concluded ({_mark.splitlines()[0]})"
-                    if _mark is not None else
-                    "NOT concluded -- continued on your judgement")
-            continued.append(JobResult(
-                _j.name, [],
-                f"{_how}: "
-                f"continuing {_names[_j.name]}/"
-                f"{attempt_name(_ns[-1])} -> "
-                f"{_rep.dir.name} (copied: "
-                f"{', '.join(_rep.copied) or 'nothing to carry'}).  "
-                f"A new attempt instead: prep run {_j.name} first (from "
-                f"the stage before it; --cold from the structure)."))
-        if _skip:
-            import dataclasses as _dc2
-            jobset = _dc2.replace(jobset, jobs=[
-                j for j in jobset.jobs if j.name not in _skip])
-            if not jobset.jobs:
-                return continued
+        jobset = dataclasses.replace(
+            jobset, jobs=[j for j in jobset.jobs if j.name == only])
 
     # The no-chain rule, AT THE SEAM (U5, 2026-08-12): a ladder is launched
     # one stage at a time, in EVERY mode -- direct running stages in order
-    # would be local chaining, and a run that continues on its own can
-    # spend a week refining a geometry you would have rejected in a minute
-    # (project-layout.md § 1.6).  This was enforced only by the CLI's
-    # `_resolve_stage`, so the loops below merely ASSUMED "a ladder never
-    # reaches this with more than one job"; a library caller could hand
-    # one straight in.  A guard only a surface applies is one the next
-    # surface forgets.
+    # would be local chaining.  A guard only a surface applies is one the
+    # next surface forgets.
     if jobset.kind == "ladder" and len(jobset.jobs) > 1:
         raise SubmitError(
             "a ladder is launched ONE stage at a time; pass `only=<stage>`. "
             "Stages do not chain (project-layout.md § 1.6), in direct mode "
             "as much as submit: each stage is launched after you have "
             "looked at the one before it.")
-
-    # AFTER the narrowing, so `only` is what makes a launch single -- and
-    # BEFORE either path, so a refusal costs nothing and a dry run previews
-    # the real thing rather than a launch that would be refused.
     _refuse_batch_submission(jobset, base, mode=mode)
 
-    if mode in ("submit", "ask"):
-        # ONE PATH, so what is asked about and what would be submitted are
-        # the same flags rather than two renderings that can drift.  The
-        # only difference is `--test-only`, which makes SLURM answer
-        # instead of enqueue.
-        return continued + _submit_slurm(jobset, base, domain=domain,
-                                         dry_run=dry_run, mem_gb=mem_gb,
-                                         time_s=time_s, ask=(mode == "ask"))
-    if mode == "direct":
-        if domain:
-            raise SubmitError(
-                "domain is a SLURM-submit concept; it has no meaning in "
-                "'direct' (local) mode.")
-        return continued + _run_direct(jobset, base, dry_run=dry_run)
-    raise SubmitError(
-        f"unknown mode {mode!r}: must be 'submit' (SLURM), 'ask' (submit "
-        f"nothing, report when it would start) or 'direct' (local)")
+    plans = [_plan_job(jobset, base, j, mode=mode) for j in jobset.jobs]
+    if not (dry_run or mode == "ask" or continue_unconcluded):
+        for p in plans:
+            if p.judgement():
+                raise SubmitError(
+                    p.judgement() + "\n  Then: re-run this launch with "
+                    "--yes to record your judgement and continue.")
+
+    # THE GATES AND THE EXACT COMMAND, for every job, before anything goes.
+    sbatch_here = shutil.which("sbatch") is not None
+    for p in plans:
+        if p.skip:
+            continue
+        try:
+            check_launch_matches_deck(p.read_from, p.job)
+            if jobset.kind == "sweep":
+                # the cold gate rides the named-trial door too (user,
+                # 2026-08-21) -- one rule, every launch path
+                check_trial_starts_cold(p.read_from, p.job)
+        except DeckLaunchMismatch as e:
+            # M5: the refusal is the launch's -- the agreement floor states
+            # the fact, this verb is what declines to act on it.
+            raise SubmitError(str(e)) from e
+        if mode == "direct":
+            run_name = _wrapper_name(p.job.script, ".run.sh")
+            # The wrapper is required where it is RUN; a dry run prints the
+            # command it would get (`job-system.md` § 6), as before.
+            if not dry_run and not (p.read_from / run_name).exists():
+                raise SubmitError(
+                    f"job {p.job.name!r}: {run_name} is not in "
+                    f"{p.read_from} -- "
+                    + ("prep the sweep's stage again (`molbuilder jobset "
+                       "prep bench`)" if jobset.kind == "sweep" else
+                       f"prep it first:  molbuilder jobset prep run "
+                       f"{p.job.name}"))
+            p.command = ["bash", run_name] + _run_sh_args(p.job.resources)
+            continue
+        sbatch_name = _wrapper_name(p.job.script, ".sbatch")
+        # The header is required where it is SENT -- or ASKED about, when a
+        # scheduler is here to ask: a question about a file that does not
+        # exist answers nothing.  A dry run prints the command it would get.
+        if ((mode == "submit" and not dry_run) or (mode == "ask"
+                                                     and sbatch_here)) \
+                and not (p.read_from / sbatch_name).exists():
+            raise SubmitError(_NO_SBATCH.format(
+                what=f"job {p.job.name!r}", name=sbatch_name))
+        gpu = _job_wants_gpu(p.read_from, p.job)
+        _env, p.placement, p.command = _sbatch_request(
+            base, envelope=p.job.resources, gpu_side=gpu,
+            domain=(gpu_domain if gpu and gpu_domain else domain),
+            mem=mem, time_s=time_s, label=p.job.name,
+            job_name=_scheduler_job_name(jobset, p.job.name),
+            script=sbatch_name)
+
+    def _domain(p):
+        return getattr(getattr(p.placement, "domain", None), "name", None)
+
+    if dry_run or mode == "ask":
+        # A QUESTION MUST NOT WRITE (2026-08-28): asking -- or planning -- over
+        # a launched stage opened run-<n+1> and copied its warm files, from a
+        # run that could still be RUNNING, and the empty attempt then hid the
+        # running one from `status`.  The would-be attempt is described, and
+        # the question asked of the files it would be filled from.
+        out: List[JobResult] = []
+        asked = 0
+        for p in plans:
+            if p.skip:
+                out.append(JobResult(p.job.name, [], p.skip))
+                continue
+            if p.follows:
+                out.append(JobResult(
+                    p.job.name, [],
+                    (f"WOULD continue {p.continues} into {p.run_dir.name} "
+                     f"(carrying {', '.join(p.carries)}), then launch it"
+                     if p.continues else
+                     "WOULD launch it again in the same folder, where its "
+                     "files are"),
+                    judgement=p.judgement()))
+            if mode == "ask":
+                if asked >= ASK_MAX_QUERIES:
+                    # NO SILENT CAP: what was not asked is named.
+                    out.append(JobResult(p.job.name, [], "not asked"))
+                    continue
+                asked += 1
+                out.append(_ask(p.job.name, p.command, p.read_from,
+                                domain=_domain(p)))
+            else:
+                out.append(JobResult(p.job.name, p.command, "planned",
+                                     domain=_domain(p)))
+        return out
+
+    results: List[JobResult] = []
+    for p in plans:
+        results += _send(jobset, base, p, mode=mode)
+    return results
 
 
 __all__ = ["submit_jobset", "JobResult", "SubmitError"]

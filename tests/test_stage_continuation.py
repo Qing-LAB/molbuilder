@@ -24,69 +24,26 @@ import json
 import shutil
 from pathlib import Path
 
-import numpy as np
 import pytest
 
-_RELAX = Path(__file__).parent / "fixtures" / "siesta_relax" / "01_relax" / "run-0"
-
-
-def _jobset(*args):
-    from click.testing import CliRunner
-
-    from molbuilder.jobset._cli import jobset_group
-    return CliRunner().invoke(jobset_group, [str(a) for a in args])
+from support.road import RELAX as _RELAX
+from support.road import a_finished_run, describe_h2
+from support.road import jobset as _jobset
 
 
 @pytest.fixture
 def ladder(tmp_path, monkeypatch):
     """`jobset init` of the shipped `publishable` ladder -- coarse, medium
-    (tight disabled) -- on a held H2 in a box; returns ``(bundle, shape)``."""
+    (tight disabled) -- on a held H2 in a box (`support.road`)."""
     def make(shape="hierarchical"):
-        from conftest import write_pseudos
-        from molbuilder.projects import PROJECTS_ROOT_ENV
-        from molbuilder.structure import Structure
-        from molbuilder.workingcopy_structure import StructureCodec
-        tree = tmp_path / "projects"
-        (tree / "P" / "structure").mkdir(parents=True)
-        (tree / "pseudopotential").mkdir()
-        write_pseudos(tree / "pseudopotential", ["H"])
-        StructureCodec().write(
-            Structure(elements=["H", "H"],
-                      positions=np.array([[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]]),
-                      regions={"frozen_atoms": [0]},
-                      cell=np.diag([10.0, 10.0, 10.0]),
-                      axis_kind=("isolated",) * 3),
-            tree / "P" / "structure" / "h2.xyz")
-        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
-        monkeypatch.chdir(tree.parent)
-        r = _jobset("init", "--structure", "P/structure/h2.xyz",
-                    "--bundle", "P/optimization/H2", "--engine", "siesta",
-                    "--shape", shape, "--name", "H2",
-                    "--stage-strategy", "publishable",
-                    "--psml-lib", "pseudopotential")
-        assert r.exit_code == 0, r.output
-        bundle = tree / "P" / "optimization" / "H2"
-        (bundle / ".molbuilder.json").write_text(json.dumps(
-            {"script_generation": {"activation": "conda activate",
-                                   "preamble": "true"}}))
-        return bundle
+        return describe_h2(tmp_path, monkeypatch, shape=shape)
     return make
 
 
 def _ran(where: Path, *, rc: int = 0, tolerance: str = "0.0100"):
-    """The coarse stage's run, ended: the measured relaxation's output and
-    geometry, and its conclusion marker.  A failed one (``rc`` nonzero) died
-    partway, so its output stops before the engine's end -- the output's own
-    ending is the strongest evidence of how a run ended (`running-a-job.md`
-    § 4.2)."""
-    text = (_RELAX / "H2_01_relax-run0.out").read_text().replace(
-        "Force tolerance                             =     0.0100 eV/Ang",
-        f"Force tolerance                             =     {tolerance} eV/Ang")
-    (where / "H2_01_coarse-run0.out").write_text(
-        text if rc == 0 else text[: len(text) // 3])
-    shutil.copy2(_RELAX / "H2.XV", where / "H2.XV")
-    (where / "H2_01_coarse-run0.concluded").write_text(
-        f"rc={rc} at Thu Sep 24 02:38:51 PM MST 2026\n")
+    """The coarse stage's run, ended -- the measured relaxation, put where a
+    run of it would have left it (`support.road.a_finished_run`)."""
+    a_finished_run(where, rc=rc, tolerance=tolerance)
 
 
 def _prep(bundle, stage, *more):
@@ -198,6 +155,36 @@ def test_the_flat_layout_continues_by_the_same_rule(ladder):
     assert ("continues from coarse's latest run, whose files lie in this "
             "folder (the stage before it; concluded rc=0") in r.output, (
         r.output)
+
+
+def test_a_flat_stage_records_the_run_it_continued_from(tmp_path,
+                                                        monkeypatch):
+    """The flat layout records what a stage continued from too (user,
+    2026-10-01): coarse sent and finished in the one folder, medium prepped
+    -- continuing from it -- and sent; medium's own launch record names
+    coarse's run by what every file of it carries, `H2_01_coarse-run0`,
+    which is what the Run panel reads.
+
+    MUTATION THIS MUST FAIL AGAINST: prep leaving no record of the run on
+    the flat layout (the launch record without `continued_from`)."""
+    from molbuilder.jobset.materialize import read_run_launch
+    from molbuilder.scheduler import Domain
+    from support.road import a_queue_that_answers
+    a_queue_that_answers(tmp_path, monkeypatch, [
+        Domain(name="htc", partition="htc", qos="public",
+               max_time="0-04:00:00")])
+    bundle = describe_h2(tmp_path, monkeypatch, shape="flat")
+    assert _prep(bundle, "coarse").exit_code == 0
+    assert _jobset("launch", "run", "coarse", "--bundle", bundle, "--mode",
+                   "submit", "--domain", "htc", "--yes").exit_code == 0
+    a_finished_run(bundle)
+    r = _prep(bundle, "medium")
+    assert r.exit_code == 0, r.output
+    r = _jobset("launch", "run", "medium", "--bundle", bundle, "--mode",
+                "submit", "--domain", "htc", "--yes")
+    assert r.exit_code == 0, r.output
+    record = read_run_launch(bundle, basename="H2_02_medium")
+    assert record["continued_from"] == "H2_01_coarse-run0", record
 
 
 def test_a_newer_run_is_never_passed_over_and_a_verdict_is_said(ladder):

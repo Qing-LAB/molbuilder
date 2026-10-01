@@ -343,7 +343,7 @@ def test_the_bench_verbs_take_a_stage_the_way_every_verb_does(calc):
         r = runner.invoke(jobset_group, ["launch", "bench", spelling,
                                          "--bundle", str(calc),
                                          "--mode", "submit", "--dry-run",
-                                         "--yes", "--domain", "htc"])
+                                         "--yes"])
         assert r.exit_code == 0, (spelling, r.output)
         assert "WOULD run" in r.output, (spelling, r.output)
     r = runner.invoke(jobset_group, ["summarize", "bench", "#1",
@@ -379,7 +379,7 @@ def test_a_trials_deck_prints_the_launch_of_that_trial(calc):
     r = CliRunner().invoke(jobset_group, ["launch", *line,
                                           "--bundle", str(calc),
                                           "--mode", "submit", "--dry-run",
-                                          "--yes", "--domain", "htc"])
+                                          "--yes"])
     assert r.exit_code == 0, r.output
     plans = [ln for ln in r.output.splitlines() if "WOULD run" in ln]
     assert len(plans) == 1 and trial in plans[0], plans
@@ -419,11 +419,11 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     trial = js["jobs"][0]["name"]
     runner = CliRunner()
     r = runner.invoke(jobset_group, ["launch", "bench", "--bundle", str(calc),
-                                     "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
+                                     "--mode", "submit", "--dry-run", "--yes"])
     assert r.exit_code != 0 and "name it" in r.output
     r = runner.invoke(jobset_group, ["launch", "bench", "coarse",
                                      "--bundle", str(calc),
-                                     "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
+                                     "--mode", "submit", "--dry-run", "--yes"])
     assert r.exit_code == 0, r.output
     # one sbatch per SHELF, each an exact fit -- and the shelves submit
     # widest first, so the first planned group asks the widest -n
@@ -444,7 +444,7 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     r2 = runner.invoke(jobset_group, ["launch", "bench", "coarse",
                                       "--bundle", str(calc),
                                       "--mode", "submit", "--dry-run",
-                                      "--yes", "--domain", "htc",
+                                      "--yes",
                                       "--time", "4h"])
     assert r2.exit_code == 0, r2.output
     plans2 = [l for l in r2.output.splitlines() if "WOULD run" in l]
@@ -461,13 +461,13 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     assert "next unlaunched trial" not in r.output
     r = runner.invoke(jobset_group, ["launch", "bench", "coarse", trial,
                                      "--bundle", str(calc),
-                                     "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
+                                     "--mode", "submit", "--dry-run", "--yes"])
     assert r.exit_code == 0, r.output
     assert r.output.count("WOULD run") == 1
     assert "bench-group" not in r.output
     r = runner.invoke(jobset_group, ["launch", "run", "coarse", trial,
                                      "--bundle", str(calc),
-                                     "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
+                                     "--mode", "submit", "--dry-run", "--yes"])
     assert r.exit_code != 0 and "TRIAL names a benchmark point" in r.output
 
 
@@ -491,7 +491,7 @@ def test_launch_bench_mem_reaches_the_grouped_sbatch_command(calc):
     _prep_bench(calc)
     r = CliRunner().invoke(jobset_group, [
         "launch", "bench", "coarse", "--bundle", str(calc),
-        "--mode", "submit", "--dry-run", "--yes", "--domain", "htc",
+        "--mode", "submit", "--dry-run", "--yes",
         "--mem", "128G"])
     assert r.exit_code == 0, r.output
     plans = [l for l in r.output.splitlines() if "WOULD run" in l]
@@ -518,7 +518,7 @@ def test_the_launch_plan_states_gpu_sharing_and_what_is_unstated(calc):
     _prep_bench(calc)
     r = CliRunner().invoke(jobset_group, [
         "launch", "bench", "coarse", "--bundle", str(calc),
-        "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
+        "--mode", "submit", "--dry-run", "--yes"])
     assert r.exit_code == 0, r.output
     # every GPU shelf's ratio, stated -- and stated ONCE per ratio, not
     # once per shelf (several shelves share a ratio).
@@ -532,7 +532,7 @@ def test_the_launch_plan_states_gpu_sharing_and_what_is_unstated(calc):
     # a stated --mem removes its warning entirely
     r2 = CliRunner().invoke(jobset_group, [
         "launch", "bench", "coarse", "--bundle", str(calc),
-        "--mode", "submit", "--dry-run", "--yes", "--domain", "htc",
+        "--mode", "submit", "--dry-run", "--yes",
         "--mem", "128G"])
     assert r2.exit_code == 0, r2.output
     assert "MEMORY NOT STATED" not in r2.output
@@ -716,7 +716,7 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
     assert res.exit_code == 0, res.output
     res = r.invoke(jobset_group, ["launch", "bench", "coarse",
                                   "--bundle", str(calc),
-                                  "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
+                                  "--mode", "submit", "--dry-run", "--yes"])
     assert res.exit_code == 0, res.output
     res = r.invoke(jobset_group, ["summarize", "bench", "coarse",
                                   "--bundle", str(calc)])
@@ -724,21 +724,15 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
     lines = [json.loads(l) for l in
              (calc / LEDGER_FILE).read_text().splitlines()]
     got = [(e["verb"], e["decision"]) for e in lines]
+    # A DRY RUN IS RECORDED AS WHAT IT IS -- planned, nothing sent (W52: it
+    # was ledgered as a grouped launch and a launch until 2026-10-01).
     assert got == [("prep", "prepped"),
-                   ("launch", "bench-grouped"),
-                   ("launch", "launched"),
+                   ("launch", "planned"),
                    ("summarize", "verdict-written")]
     prep = lines[0]
     assert prep["kind"] == "bench" and prep["stage"] == "coarse"
     assert "provenance" in prep            # WHERE each setting came from
-    group = lines[1]
-    # Unstated stays None in the ledger too -- the 15-minute default this
-    # asserted is deleted (user dictation, 2026-08-24).
-    assert group["trial_timeout_s"] is None
-    assert len(group["sweep"]) == len(
-        json.loads((calc / "01_coarse" / "bench"
-                    / "job-set.json").read_text())["jobs"])
-    launch = lines[2]
+    launch = lines[1]
     assert launch["mode"] == "submit"
     assert launch["mode_source"] == "--mode flag"
     assert launch["jobs"][0]["status"] == "planned"
@@ -1951,7 +1945,7 @@ def test_a_direct_sweep_resumes_past_launched_trials(calc):
     r = CliRunner()
     res = r.invoke(jobset_group, ["launch", "bench", "coarse", first,
                                   "--bundle", str(calc),
-                                  "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
+                                  "--mode", "submit", "--dry-run", "--yes"])
     assert res.exit_code != 0
     # THE PROPERTY, not one branch's wording.  A launched trial is refused
     # and the refusal names it.  Which sentence comes back depends on the
@@ -1964,7 +1958,7 @@ def test_a_direct_sweep_resumes_past_launched_trials(calc):
     assert "summarize" in res.output
     res = r.invoke(jobset_group, ["launch", "bench", "coarse",
                                   "--bundle", str(calc),
-                                  "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
+                                  "--mode", "submit", "--dry-run", "--yes"])
     assert res.exit_code == 0, res.output
     # the bare form groups the REMAINDER: the launched trial does not ride
     assert "bench-group" in res.output
