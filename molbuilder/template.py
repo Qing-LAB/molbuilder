@@ -1161,15 +1161,18 @@ def template_with_values(config, *, engine: str = "", catalogue: str = "",
     **Each value says where it came from** (`source`, § 6.6 obligation 2,
     plan § 5w K7): ``sources`` is what the CALLER knows -- a cited run's
     answers, the structure's record, what the person's form sent -- and every
-    other item is ``default``, *not chosen*.  An item the template holds no
-    value of by rule (the scheduler's, the rung's) carries no source.
+    other item is ``default``, *not chosen*.  A source of ``None`` writes
+    none -- *not recorded*: what a migration says of the values it carries
+    from a file that never recorded one, rather than a guess.  An item the
+    template holds no value of by rule (the scheduler's, the rung's) carries
+    no source.
 
     Raises ``ValueError`` if the emitted text does not parse back to what it
     meant to write — § 4.1 asks for exactly this.
     """
     parsed = read_template(catalogue or load_catalogue())
     told = dict(sources or {})
-    bad = sorted(set(told.values()) - set(SOURCES))
+    bad = sorted({v for v in told.values() if v is not None} - set(SOURCES))
     if bad:
         raise ValueError(f"source(s) {', '.join(map(repr, bad))} are not "
                          f"one of {', '.join(SOURCES)} (§ 6.6)")

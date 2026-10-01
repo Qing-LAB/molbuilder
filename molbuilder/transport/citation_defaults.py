@@ -255,7 +255,14 @@ def siesta_config_from_citation(cite_dir, *, label: str, blank=(),
             f"cite that run.")
     kw = {k: v for k, v in answers.values.items() if k not in blank}
     kw.update(_the_persons(chosen))
-    return SiestaConfig(system_label=label, **kw)
+    # UNDER BOTH, the kind's own recommendations (`engines/template.md`
+    # § 6.3a): every door that writes a template lays them under what was
+    # given -- the citation's answers here, then the person's.
+    import dataclasses
+    from ..template import apply_recommended
+    base = apply_recommended(SiestaConfig(system_label=label), "transport",
+                             engine="siesta")
+    return dataclasses.replace(base, **kw)
 
 
 def _the_persons(chosen) -> Dict[str, Any]:

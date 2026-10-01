@@ -2250,7 +2250,7 @@ How densely the transverse Brillouin zone is sampled when tbtrans evaluates T(E)
 
 The third number is the transport direction.  It is 1 because that axis is the open boundary, handled by the Green's function rather than by a Brillouin-zone sum -- the same reason the SCF grid's third component is 1.
 
-`jobset init` sets the two transverse counts to whatever the cited run used, so this starts out matching the SCF and the deck states it explicitly -- and it stays this item's own: raising the SCF's kgrid later does not raise it.  That is a starting point, not an answer: T(E) is an integral over the transverse zone and its features sharpen with k-density, so a grid converged for a total energy is routinely too coarse for a transmission.
+The description starts the two transverse counts at the SCF's -- the cited run's, or the mesh you set on the transport tab's shared panel -- so this starts out matching the SCF and the deck states it explicitly; once written it is this item's own: raising the SCF's kgrid in the template later does not raise it.  That is a starting point, not an answer: T(E) is an integral over the transverse zone and its features sharpen with k-density, so a grid converged for a total energy is routinely too coarse for a transmission.
 
 Converge it before you trust the shape of the curve -- raise both counts together, roughly doubling the density each time, until T(E_F) stops moving.  It normally settles denser than the SCF's.
 """

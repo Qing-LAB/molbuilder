@@ -372,6 +372,11 @@ def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path):
     assert (tree / "P" / "optimization" / "calc" / "H.psml").exists(), (
         "the bare name must resolve against the tree and the pseudo "
         "must travel with the calculation")
+    # ...and the template says whose the folder is (`template.md` § 6.6).
+    from molbuilder.template import find_template, one
+    written = read_template(find_template(
+        tree / "P" / "optimization" / "calc").read_text())
+    assert one(written, "psml_lib").source == "person"
 
 
 @pytest.mark.parametrize("engine, ladder", [("siesta", ["relax", "freq"]),
@@ -410,4 +415,9 @@ def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box
     for name, rec in recommended.items():
         assert written[name].value == rec and written[name].default == rec, (
             name, written[name].value, written[name].default, rec)
+        # ...as nobody's choice, beside the name the person gave
+        # (`template.md` § 6.6 obligation 2, plan § 5w K7).
+        assert written[name].source == "default", (name, written[name].source)
+    ident = "job_name" if engine == "pyscf" else "system_label"
+    assert written[ident].source == "person", written[ident].source
 

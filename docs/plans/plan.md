@@ -5209,6 +5209,22 @@ reviewers' probes (the archive's § E lists) among its runs.
   mesh's finding beside the mesh, a reload, and a rung's tab end to end — 22
   mutations, each red. `test_form_state_persistence_js.py` retired with the
   by-id reader it pinned, and the panel-ordering source pin with its premise.
+  *The review* (an independent read of the commit, each claim verified in the
+  code): `migrate` called every value it carries nobody's — a file written
+  before sources records none, so what it carries is *not recorded* (the
+  writer takes a source of `None`); a rung draw superseded while its answers
+  were in flight pointed the Send at tabs already gone from the page (a
+  sequence now); the rung tabs' saves from before K7, every field pre-filled,
+  would restore as the person's overrides (a new key); a shared value that
+  will not read redrew the rungs from the citation alone (they wait for it to
+  read); one half-typed field wiped a form's save or stopped its later ones
+  (`formSchema.heldValues` saves field by field). Pinned besides: a nobody's
+  value held on the shared panel, the sources `init` and `migrate` write, the
+  Recommended panel's own Reset. The transport door lays the kind's
+  recommendation under the citation's answers, as § 6.3a says every door
+  does; template.md § 5 has its `source` row, transport.md's role rows and
+  form-schema.md's blank sentence say what the code does. Seven mutations,
+  each red.
 * **K8 — done 2026-10-01** (PS-C4, PO-C13; the K3 review's dipole advisory).
   **What the engine computes with has one door** — `cell.engine_axis_kinds(
   engine, struct)` (`structure-periodicity.md` § 2.1): the structure's axis

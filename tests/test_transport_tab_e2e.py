@@ -252,3 +252,87 @@ def test_a_rung_shows_what_it_runs_and_sends_what_the_person_gave(tab):
     for name in ("kgrid", "tbt_k_grid"):
         it = one(tmpl, name)
         assert (it.value, it.source) == ((6, 4, 1), "person"), (name, it)
+
+
+def test_a_late_answer_for_an_earlier_draw_touches_nothing(tab):
+    """The rung tabs are drawn again at each citation and each change on the
+    shared panel (`web/form-schema.md` § 1.1, plan § 5w K7), so two draws
+    can be in flight at once.  One superseded while its answers were on the
+    way touches nothing: an earlier draw's late answers pointed the Send at
+    tabs already gone from the page, and what the person typed on the tab in
+    front of them was not sent (the K7 review).
+
+    MUTATION THIS MUST FAIL AGAINST: `_fetchAndRender` without its sequence."""
+    page, dest = tab
+    _cite(page)
+    held = []
+
+    def hold_the_first_draw(route):
+        if len(held) < 5:
+            held.append(route)          # its five tabs' answers, kept back
+        else:
+            route.continue_()
+
+    page.route(lambda url: "surface=rung" in url and "&rung=" in url,
+               hold_the_first_draw)
+    kx = page.locator("#transport-shared-container #t-kgrid-x")
+    kx.fill("6")
+    kx.dispatch_event("change")         # the first draw, its answers held
+    for _ in range(200):
+        if len(held) == 5:
+            break
+        page.wait_for_timeout(50)
+    assert len(held) == 5, len(held)
+    kx.fill("7")
+    kx.dispatch_event("change")         # the second, answered at once
+    cell = "#transport-rung-panel-transmission #t-tbt-k-grid-"
+    page.wait_for_function(
+        "(c) => { const e = document.querySelector(c);"
+        "         return !!e && e.placeholder === '7'; }",
+        arg=cell + "x", timeout=_MS)
+    for route in held:                  # ...and then the first's, late
+        route.continue_()
+    page.wait_for_load_state("networkidle")
+
+    page.locator("#transport-rung-tabs .tab-btn[data-tab='transmission']"
+                 ).click()
+    for lab in "xy":
+        page.locator(cell + lab).fill("2")
+    assert _send(page).status == 200
+    page.locator("#transport-send-status").locator("text=Next:").wait_for(
+        timeout=_MS)
+    bags = {s["name"]: s["overrides"] for s in
+            json.loads((dest / "task.json").read_text())["stages"]}
+    assert bags["transmission"]["tbt_k_grid"] == [2, 2, 1], bags
+
+
+def test_a_shared_value_that_will_not_read_redraws_no_rung(tab):
+    """While the shared panel holds a value that will not read -- said beside
+    its field -- the rung tabs keep the template the panel last described.
+    Drawn without it, the transmission grid's hint, which had followed the
+    person's mesh, fell back to the cited one while the panel still showed
+    theirs (the K7 review).
+
+    MUTATION THIS MUST FAIL AGAINST: the panel's change drawing the rungs
+    whatever it holds."""
+    page, _dest = tab
+    _cite(page)
+    cell = "#transport-rung-panel-transmission #t-tbt-k-grid-x"
+    kx = page.locator("#transport-shared-container #t-kgrid-x")
+    kx.fill("6")
+    kx.dispatch_event("change")
+    page.wait_for_function(
+        "(c) => { const e = document.querySelector(c);"
+        "         return !!e && e.placeholder === '6'; }",
+        arg=cell, timeout=_MS)
+    page.evaluate("(c) => { document.querySelector(c).dataset.mark = '1'; }",
+                  cell)
+    kx.fill("4.5")                      # a count with a fraction: no mesh
+    kx.dispatch_event("change")
+    # The ABSENCE of a redraw, so a bounded wait: the panel's listener waits
+    # 300 ms and a draw's six answers take well under a second here.
+    page.wait_for_timeout(1500)
+    got = page.evaluate(
+        "(c) => { const e = document.querySelector(c);"
+        "         return [e.dataset.mark || null, e.placeholder]; }", cell)
+    assert got == ["1", "6"], got

@@ -978,8 +978,9 @@ def catalogue_to_form_schema(engine: str, id_prefix: str = "p",
     items = [it for it in items
              if not it.calculations or calculation in it.calculations]
     # THE KIND'S OWN RECOMMENDATION stands in for the general default on a
-    # form built for that kind (template.md § 6.3a): the field shows the
-    # value the kind recommends, and the person changes it like any other.
+    # form built for that kind (template.md § 6.3a): the hint a blank field
+    # shows, and what it is written at when nobody chose (form-schema.md
+    # § 1.1).
     items = [_T.with_recommended(it, calculation) for it in items]
     # A ROLE ITEM IS NOT A FORM FIELD (`template.md` § 6.4, ruled
     # 2026-09-16): "offering any of these presents a choice with exactly one
@@ -1261,11 +1262,11 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
     # field, and the range check downstream could only report it as a
     # programmer bug.
     #
-    # A value that is neither a string nor a sequence RAISES here rather
-    # than passing through: TypeError is what this function's contract
-    # promises the caller for a value it cannot make, and the endpoint
-    # turns it into an error Issue.  The LENGTH is not checked -- that is
-    # `_validate_kgrid`'s sentence to pass, and it says it better.
+    # A value that is neither a string nor a sequence is REFUSED here rather
+    # than passed through, with a ValueError naming the field -- what this
+    # function promises the caller for a value it cannot make.  The LENGTH
+    # is not checked -- that is `_validate_kgrid`'s sentence to pass, and it
+    # says it better.
     if origin is tuple and args:
         elem_t = args[0]
         if isinstance(value, str):

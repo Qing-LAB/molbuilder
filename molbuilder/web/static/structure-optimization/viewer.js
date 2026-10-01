@@ -1288,20 +1288,25 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     }
 
     /* What each engine's form HOLDS, through the form's own reader and
-     * writer (`collectForm` / `setValues`): a blank stays blank -- a box
+     * writer (`heldValues` / `setValues`): a blank stays blank -- a box
      * nobody answered stays unanswered, where reading `.checked` by id
-     * turned it into "off" on the way back.  A form holding a value that
-     * will not read is not saved; its field says why. */
+     * turned it into "off" on the way back.  Field by field: a field that
+     * will not read keeps what it was last saved with, so a half-typed
+     * field at `pagehide` no longer wipes its engine's whole saved form
+     * (the K7 review). */
     function saveFormState() {
         const fs = (window.molbuilder || {}).formSchema;
         if (!fs) return;
+        let before = null;
+        try { before = JSON.parse(sessionStorage.getItem("builder-form") || "null"); }
+        catch (_) { before = null; }
         const saved = {};
         for (const engine of ["siesta", "pyscf"]) {
             const sch = formSchemas[engine];
             const host = $(engine + "-form-container");
             if (!sch || !host) continue;
-            try { saved[engine] = fs.collectForm(host, sch); }
-            catch (_) { /* not saved: the field's caption says why */ }
+            saved[engine] = fs.heldValues(host, sch,
+                                          before && before[engine]);
         }
         sessionStorage.setItem("builder-form", JSON.stringify(saved));
     }

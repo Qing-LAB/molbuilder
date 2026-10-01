@@ -98,11 +98,14 @@ value is, and follows each edit: the source, *you set this*, or —
   drawn **indeterminate**, the box's own blank. A value the person did not
   choose is never presented as if they had.
 
-`collectForm` reads what the form holds, **a blank as `null`**, and the
-server's one door (`_shared.config_from_params`) reads a `null` as not chosen
-for every field: the field keeps what lies under it — the kind's
-recommendation, the template's value, the citation's — and the template
-records it as nobody's choice. **A value that will not read as its type is
+`collectForm` reads what the form holds, **a blank as `null`**, and every
+door that takes a form reads a `null` as not chosen: the template is written
+with what then applies and records it as nobody's choice — the kind's
+recommendation (`_shared.config_from_params`; on a rung's tab, the template's
+own value, since the rung sets nothing), or on transport's shared panel no
+value at all for a cited row the person emptied, which `prep` fills with the
+documented default ([`engines/transport.md`](?doc=engines/transport.md)
+§ 3.8.3). **A value that will not read as its type is
 refused, naming its field** — client-side by `collectForm`, whose caption then
 says why beside the field, and by the server's door for any other caller; a
 fractional count is one, never rounded, and so is a triple holding only some
@@ -338,7 +341,7 @@ flowchart LR
 Because both directions start from the one dataclass, the form a user fills in
 and the config the server rebuilds can't drift apart.
 
-## 3. The five calls
+## 3. The six calls
 
 Everything is on `window.molbuilder.formSchema` (a plain global — it does not
 register with the runtime):
@@ -348,6 +351,7 @@ register with the runtime):
 | `fetchSchema(engine, opts)` | Ask the server for a form's shape (`GET /api/build/schema/<engine>`). |
 | `renderForm(host, schema, opts)` | Draw the form from that shape into a host element. `opts.holds = "overrides"` draws a surface of overrides over the template — its fields blank, the template's value their hint (§ 1.1); `opts.foldable` folds the cards (§ 1.3). |
 | `collectForm(host, schema, names?)` | Read what the form holds back into a plain values object (the schema tells it how to read each kind): **every field, a blank as `null`** — not chosen — each value read as its type. A value that will not read is refused: it throws an `Error` naming the field (`err.field`) (§ 1.1). A `locked` field is never read. `names` reads those fields alone. |
+| `heldValues(host, schema, kept)` | What the form holds, **for saving**: `collectForm` field by field, a field that will not read keeping its value in `kept` (the previous save) — one half-typed field never costs the rest of the form its save. The Send reads through `collectForm`, which refuses. |
 | `setValues(host, schema, values)` | Push a set of values into an already-drawn form (e.g. to restore a saved config). |
 | `diffFromDefaults(host, schema)` | Which fields hold a value that is **not** the kind's recommended one, as `[{name, label, current, recommended, unit, help}]`. A blank field is not listed: the recommendation already applies, and resetting a listed one blanks it (§ 1.1). |
 
@@ -410,7 +414,7 @@ control. The nine kinds:
 | `int` | a whole-number input |
 | `float` | a number input |
 | `str` | a text box |
-| a fixed set of choices | a dropdown — and a choice is read back as **the member itself, with its own type**: `unpaired_electrons`' `2` comes back the number 2 and `free` the word, never the text `"2"` ([`engines/template.md`](?doc=engines/template.md) § 5; an optional one's blank reads back `null`) |
+| a fixed set of choices | a dropdown — and a choice is read back as **the member itself, with its own type**: `unpaired_electrons`' `2` comes back the number 2 and `free` the word, never the text `"2"` ([`engines/template.md`](?doc=engines/template.md) § 5); its blank reads back `null`, not chosen (§ 1.1) |
 | `Optional[bool]` | a three-way select (yes / no / leave default) |
 | three integers (e.g. a k-grid) | three linked integer inputs |
 | a list of numbers | a comma-separated number box |

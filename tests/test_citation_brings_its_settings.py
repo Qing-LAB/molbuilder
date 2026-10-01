@@ -318,6 +318,9 @@ def test_the_tab_shows_the_template_it_describes_and_whose_each_value_is(
             panel["mesh_cutoff"]["source"]) == (400.0, "record")
     assert panel["kgrid"]["value"] == [4, 4, 1]
     assert "value" not in panel["pao_energy_shift"], panel["pao_energy_shift"]
+    # ...and so is a value the template holds that nobody chose -- drawn
+    # held, it would be sent back and recorded as the person's.
+    assert "value" not in panel["electrodes_bulk"], panel["electrodes_bulk"]
 
     # A RUNG'S TAB shows what the rung runs: the transmission grid from the
     # record, not the catalogue's 1 1 1 ...

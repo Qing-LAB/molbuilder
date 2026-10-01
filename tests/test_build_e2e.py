@@ -1153,15 +1153,16 @@ def test_a_field_off_its_recommended_value_raises_the_panel(
     count = page.locator(f"#{engine}-recommend .rec-diff-count").inner_text()
     assert "recommended value" in count, count
 
-    # And it goes away again -- a panel that only ever appears is a banner.
-    # Back to BLANK, not chosen: the recommendation is what applies, so
-    # nothing is off it.
-    page.evaluate("""(m) => {
-        const n = document.getElementById(m.id);
-        n.value = "";
-        n.dispatchEvent(new Event("change", {bubbles: true}));   // change alone
-    }""", moved)
+    # And its Reset puts the field back to BLANK -- not chosen, the
+    # recommendation what applies, never the recommended number typed in,
+    # which the template would record as the person's (form-schema.md
+    # § 3.1) -- and the panel goes: one that only ever appears is a banner.
+    page.click(f"#{engine}-recommend > summary")        # it opens folded
+    page.check(f"#{engine}-recommend .rec-diff-list input[type=checkbox]")
+    page.click(f"#{engine}-recommend .rec-diff-reset")
     panel.wait_for(state="hidden", timeout=10_000)
+    assert page.evaluate(
+        "(id) => document.getElementById(id).value", moved["id"]) == ""
 
 
 def test_the_form_holds_only_what_the_person_gave_and_keeps_it_over_a_reload(
@@ -1190,6 +1191,10 @@ def test_the_form_holds_only_what_the_person_gave_and_keeps_it_over_a_reload(
                        "said": "not chosen \u00b7 recommended 300 Ry"}, state()
     page.fill("#p-mesh-cutoff", "450")
     assert state()["said"] == "you set this"
+    # A half-typed mesh beside it does not cost the form its save: the field
+    # that will not read keeps what it was last saved with (the K7 review --
+    # the whole engine's save was skipped, and the reload lost the 450).
+    page.fill("#p-kgrid-x", "4.5")
 
     page.reload()
     page.wait_for_function(

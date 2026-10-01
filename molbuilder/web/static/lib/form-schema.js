@@ -995,6 +995,32 @@
         return out;
     }
 
+    /* What the form holds, FOR SAVING: field by field, a field that will
+     * not read keeping the value it was last saved with (``kept``, the
+     * previous save, or nothing).  One half-typed field must not cost the
+     * rest of the form its save -- a whole-form read that threw wiped a
+     * tab's saved form, and stopped every later edit being saved (the K7
+     * review).  The Send reads through `collectForm`, which refuses. */
+    function heldValues(container, schema, kept) {
+        if (!container || !schema || !Array.isArray(schema.sections)) {
+            throw new Error("form-schema.heldValues: bad container/schema");
+        }
+        const out = {};
+        for (const sect of schema.sections) {
+            for (const f of sect.fields) {
+                if (f.locked) continue;      // the rung's, never collected
+                try {
+                    out[f.name] = collectField(f, container);
+                } catch (_) {
+                    if (kept && typeof kept === "object" && f.name in kept) {
+                        out[f.name] = kept[f.name];
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
     async function fetchSchema(engine, opts) {
         // ``opts.calculation`` (optional) narrows the form to the
         // parameters that apply to that calculation KIND
@@ -1053,12 +1079,11 @@
                 if (!(f.name in values) || f.locked) continue;
                 const v = values[f.name];
                 const blank = v === null || v === undefined;
-                // int-triple uses sub-ids ``<f.id>-<label>`` — there
-                // is no parent element with ``f.id`` (makeIntTriple
-                // wraps the three sub-inputs in an unidentified
-                // <span>), so the standard ``#f.id`` lookup below
-                // would return null and silently skip the field.
-                // Handle int-triple via its own sub-id loop.
+                // A triple is written through its sub-ids
+                // ``<f.id>-<label>``: the element with ``f.id`` is the
+                // <span> wrapping the three (where a finding about the
+                // field lands), and it has no ``.value`` -- so the standard
+                // ``#f.id`` write below would skip the field.
                 if (isTriple(f.kind)) {
                     // `null` blanks it -- not chosen; otherwise three values.
                     if (!blank && (!Array.isArray(v) || v.length !== 3)) {
@@ -1165,6 +1190,7 @@
     root.molbuilder.formSchema = {
         renderForm:  renderForm,
         collectForm: collectForm,
+        heldValues:  heldValues,
         fetchSchema: fetchSchema,
         setValues:   setValues,
         diffFromDefaults: diffFromDefaults,

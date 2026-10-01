@@ -211,12 +211,18 @@ def migrate_state(base) -> List[str]:
     valueless = [it.name for it in mine
                  if not it.is_set and it.name in known
                  and it.name not in _T.STATE_ITEMS]
-    # Where each value came from carries over (§ 6.6 obligation 2).
+    # WHERE EACH VALUE CAME FROM, as the old file says it (§ 6.6 obligation
+    # 2): a file written before sources were recorded says nothing, so every
+    # value carried out of it -- renamed or mapped into the electronic state
+    # included -- is *not recorded*, never *not chosen* (the K7 review: the
+    # writer's default called the person's own values nobody's).  An item
+    # the old file never had is nobody's choice.
+    recorded = {it.name: it.source for it in mine if it.source}
     new_text = _T.template_with_values(cfg, engine=engine, calculation=kind,
                                        title=_leading_comment(text),
                                        valueless=valueless,
-                                       sources={it.name: it.source
-                                                for it in mine if it.source})
+                                       sources={k: recorded.get(k)
+                                                for k in kept})
     # The new file must be one prep accepts -- checked before anything is
     # written, so a failure leaves the calculation as it was, and is said
     # as the migration's refusal rather than a traceback.

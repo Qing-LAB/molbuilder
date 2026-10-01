@@ -473,10 +473,13 @@ def test_a_structure_carries_the_state_of_the_run_it_came_from(
 
 def test_an_old_template_is_refused_then_migrated(isolated_projects_root):
     """A template written before 2026-09-28 is refused naming the command;
-    the command rewrites it keeping what the run was, and prep accepts it."""
+    the command rewrites it keeping what the run was, and prep accepts it.
+    Such a file recorded no source, so every value the migration carries
+    out of it -- the person's name, the spin it maps -- is *not recorded*,
+    never *not chosen* (`engines/template.md` § 6.6; the K7 review)."""
     def written_before_m6(dest):
         tmpl = next(dest.glob("*.template.toml"))
-        text = tmpl.read_text()
+        text = re.sub(r"^source = .*\n", "", tmpl.read_text(), flags=re.M)
         text = re.sub(r'\[item\.spin_treatment\].*?(?=\n\[item\.)',
                       '[item.spin_treatment]\nkind = "engine"\n'
                       'category = ["system"]\nanchor = "Spin"\n'
@@ -496,6 +499,11 @@ def test_an_old_template_is_refused_then_migrated(isolated_projects_root):
     assert "'free'" in r.output, "a polarized run with no total floated"
     tmpl = next(dest.glob("*.template.toml")).read_text()
     assert 'value = "unrestricted"' in tmpl
+    from molbuilder.template import one, read_template
+    migrated = read_template(tmpl)
+    for name in ("system_label", "spin_treatment"):
+        assert one(migrated, name).source is None, (
+            name, one(migrated, name).source)
     assert next(dest.glob("*.template.toml.pre-m6")).is_file()
     r = CliRunner().invoke(jobset_group, ["prep", "run", stage, "--bundle",
                                           str(dest), "--no-sbatch"])

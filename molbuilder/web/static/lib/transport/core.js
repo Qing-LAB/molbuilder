@@ -27,7 +27,10 @@ const WORKSPACE_TAG = "transport";
     "use strict";
 
     var SCHEMA_URL = "/api/transport/schema";
-    var FORM_KEY   = "molbuilder.transport_form";
+    // WHAT EACH RUNG'S TAB HOLDS, per rung (`_saveRung`).  A new key since
+    // K7: the old one kept every field pre-filled with its default, which
+    // restored now would read as the person's own overrides (the K7 review).
+    var FORM_KEY   = "molbuilder.transport_held";
 
     function _setStatus(msg) {
         var el = document.getElementById("transport-status");
@@ -117,12 +120,19 @@ const WORKSPACE_TAG = "transport";
      * what it HOLDS is the bag the description carries -- the template's
      * values are what a blank field runs (form-schema.md § 1.1). */
     function _fetchAndRender(formContainer, formSchema) {
+        // A SEQUENCE, like the other in-flight guards here: the tabs are
+        // drawn again at each citation and each change on the shared panel,
+        // and a draw superseded while its answers were in flight touches
+        // nothing -- a late one pointed `_rungHosts` at a tab already gone
+        // from the page, and the Send read that (the K7 review).
+        var seq = ++_rungsSeq;
         return root.fetch(SCHEMA_URL + "?surface=rung")
             .then(function (r) { return r.json(); })
             .then(function (body) {
                 if (!body || !body.ok) {
                     throw new Error((body && body.error) || "schema fetch failed");
                 }
+                if (seq !== _rungsSeq) return;
                 var rungs = body.rungs || [];
                 // A REBUILD KEEPS THE TAB the person is on (the form is
                 // rebuilt when the junction changes): read the active rung
@@ -168,7 +178,7 @@ const WORKSPACE_TAG = "transport";
                                            folded: _foldedUnlessOwned,
                                            holds: "overrides" })
                         .then(function (b) {
-                            if (!b) return 0;
+                            if (!b || seq !== _rungsSeq) return 0;
                             _rungSchemas[p.rung] = b.schema;
                             _rungHosts[p.rung] = p.host;
                             _restoreFormValues(p.host, b.schema, formSchema, p.rung);
@@ -178,6 +188,7 @@ const WORKSPACE_TAG = "transport";
                             }, 0);
                         });
                 })).then(function (counts) {
+                    if (seq !== _rungsSeq) return;
                     _setStatus("Form loaded ("
                         + counts.reduce(function (a, b) { return a + b; }, 0)
                         + " settings over " + rungs.length + " rungs).");
@@ -224,10 +235,18 @@ const WORKSPACE_TAG = "transport";
         }
     }
 
-    /* What one rung's tab holds, into its session slot. */
+    /* What one rung's tab holds, into its session slot -- field by field
+     * (`formSchema.heldValues`): a field that will not read keeps the value
+     * it was last saved with, so one half-typed field does not stop every
+     * later edit on the tab being saved (the K7 review). */
     function _saveRung(container, schema, formSchema, rung) {
         try {
-            var values = formSchema.collectForm(container, schema);
+            var kept = null;
+            try {
+                kept = JSON.parse(root.sessionStorage.getItem(_formKey(rung))
+                                  || "null");
+            } catch (_) { kept = null; }
+            var values = formSchema.heldValues(container, schema, kept);
             root.sessionStorage.setItem(
                 _formKey(rung), JSON.stringify(values));
         } catch (_) {
@@ -712,6 +731,7 @@ const WORKSPACE_TAG = "transport";
     // the Describe handler diffs every rung's panel without re-fetching.
     var _rungSchemas = {};
     var _rungHosts = {};
+    var _rungsSeq = 0;             // the newest draw of the rung tabs
     var _sharedSchema = null;      // the shared panel's, by _fetchAndRenderShared
 
     /* THE SHARED PANEL (engines/transport.md 3.8.2): the items the
@@ -733,7 +753,15 @@ const WORKSPACE_TAG = "transport";
             var t = null;
             host.addEventListener("change", function () {
                 if (t) clearTimeout(t);
-                t = setTimeout(_renderRungs, 300);
+                t = setTimeout(function () {
+                    // A VALUE THAT WILL NOT READ is said beside its field,
+                    // and the rungs keep the template the panel last
+                    // described: drawn without it, a hint that had followed
+                    // the person's mesh fell back to the cited one while the
+                    // panel still showed theirs (the K7 review).
+                    try { _sharedValues(); } catch (_) { return; }
+                    _renderRungs();
+                }, 300);
             });
         }
         return _fetchSurface("shared", host, formSchema).then(function (body) {
@@ -779,9 +807,9 @@ const WORKSPACE_TAG = "transport";
         return fs.collectForm(host, _sharedSchema);
     }
 
-    /* ...for a rung's tab to be drawn from: {} while it holds a value that
-     * will not read -- its field says why, and the rungs keep the template
-     * the panel last described. */
+    /* ...for a rung's tab to be drawn from.  The panel's own change listener
+     * draws the tabs only once it reads, and a citation draws the panel
+     * afresh first; {} answers a panel not drawn yet. */
     function _sharedHeld() {
         try { return _sharedValues(); }
         catch (_) { return {}; }
