@@ -739,12 +739,14 @@ def _environment_for(base: Path, target: Optional[str] = None):
     return machine_for(base, target=target)
 
 
-def _vibration_block(stage: str, cfg, relaxed_by) -> dict:
+def _vibration_block(stage: str, cfg, relaxed_by, *, criterion) -> dict:
     """A SIESTA force-constant deck's `vibration` block: the facts its job's
     finish reads and no SIESTA keyword states (`engines/vibration.md`
     § 5.3), built here because only `prep` holds all of them -- the stage,
     its resolved config, the relax run it read the coordinates from
-    (:func:`_vibration_stage_geometry`), the molbuilder rendering the deck."""
+    (:func:`_vibration_stage_geometry`), the molbuilder rendering the deck.
+    ``criterion`` is the relaxation rung's own ``relax_force_tol`` -- the
+    force the reference geometry was relaxed to (plan § 5w K4)."""
     from .. import __version__ as _mb_version
     from ..pyscf.stages import VIBRATION_RELAX_STAGE
     from ..spectra.siesta_vibration import vibration_record
@@ -753,7 +755,7 @@ def _vibration_block(stage: str, cfg, relaxed_by) -> dict:
     # and the finish's remedy can (`engines/vibration.md` § 5.3, § 5.5).
     return vibration_record(
         stage=stage,
-        force_criterion_ev_ang=getattr(cfg, "relax_force_tol", None),
+        force_criterion_ev_ang=criterion,
         already_relaxed=bool(getattr(cfg, "already_relaxed", False)),
         relaxation=relaxed_by,
         relaxation_stage=VIBRATION_RELAX_STAGE,
@@ -1123,7 +1125,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     _render_cell = None
     # A SIESTA force-constant deck carries a `vibration` block (below), built
     # per element from its resolved config and the relax run read here.
-    _finishes, _relaxed_by = False, None
+    _finishes, _relaxed_by, _criterion = False, None, None
     if task.calculation == "vibration" and str(task.engine) == "siesta":
         # A DISPLACEMENT SWEEP NEEDS A DIRECTORY PER STAGE (`engines/
         # vibration.md` § 5.9): SIESTA names its force constants and the
@@ -1158,6 +1160,20 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         struct, _render_cell, _relaxed_by = _vibration_stage_geometry(
             base, task, pset, struct, log=log)
         _finishes = _render_kind == "vibration"
+        # THE FINISH'S FORCE CRITERION IS THE RELAXATION'S OWN (plan § 5w
+        # K4, M11 SS-C6): `relax_force_tol` is read by the relaxation rung
+        # alone, so it is that rung's value -- the criterion the reference
+        # geometry was relaxed to -- and the template's when the structure
+        # is stated relaxed.  The force-constant stage's own copy was read
+        # until 2026-09-30, so a preset that relaxed at 0.05 judged at 0.01.
+        from ..resolve import resolved_ladder
+        from ..template import stage_role
+        _criterion = next(
+            (getattr(c, "relax_force_tol", None) for n, c in resolved_ladder(
+                template_path.read_text(encoding="utf-8"), task,
+                seam.config_cls)
+             if stage_role(str(task.engine), "vibration", n) == "relaxation"),
+            getattr(pset[0].render_config(), "relax_force_tol", None))
     # The DATA FILES the engine will open, before any deck is written: a
     # missing pseudopotential is a run that cannot start, and finding that out
     # here costs a second (project-layout.md § 2.6).  Idempotent -- what is
@@ -1288,7 +1304,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                                          **({"cell": _render_cell}
                                             if _render_cell is not None else {}),
                                          **({"vibration": _vibration_block(
-                                                pset.stage, cfg, _relaxed_by)}
+                                                pset.stage, cfg, _relaxed_by,
+                                                criterion=_criterion)}
                                             if _finishes and not element.is_trial
                                             else {}),
                                          # THE RELAX STAGE'S RECORD reaches
@@ -1637,31 +1654,11 @@ def _resolve_transport(base, task, stage: str, allocation,
     # `why_role`), which also lays each rung's own answers on its config.
     # This step refused transport's own copy until 2026-09-28, and no other
     # kind refused at all.
-    # AND THE RUNG THAT OWNS A VALUE (`stages`, the same § 6.4): "only these
-    # rungs may; it is not that rung's business anywhere else".  Asked of
-    # THE ONE DOOR the describe door asks too
-    # (`transport/stages.py::foreign_overrides`), so a description written
-    # on any road -- the tab, the stage table, the CLI, a hand edit --
-    # meets the same refusal.  `resolve` knows no ownership and would write
-    # a transmission window into the seed's deck, where the keyword is
-    # inert: TR8's defect on the roads TR8 did not cover; refused since
-    # 2026-09-24.
-    from ..transport.stages import foreign_overrides
-    _foreign = foreign_overrides({b.name: (b.overrides or {})
-                                  for b in (task.stages or ())})
-    if _foreign:
-        _rung = _foreign[0][0]
-        _names = [n for r, n, _o in _foreign if r == _rung]
-        _owners = sorted({o for r, _n, _os in _foreign if r == _rung
-                          for o in _os})
-        raise PrepError(
-            f"stage {_rung!r} overrides "
-            f"{', '.join(map(repr, _names))}, which "
-            f"{'belongs' if len(_names) == 1 else 'belong'} to "
-            f"{' / '.join(_owners)} -- not this rung's "
-            f"(engines/template.md 6.4, the `stages` declaration).  "
-            f"Move {'it' if len(_names) == 1 else 'them'} to the "
-            f"rung that owns {'it' if len(_names) == 1 else 'them'}.")
+    # AND THE RUNG THAT READS A VALUE (`stages`, the same § 6.4) is asked at
+    # that one door too, for every kind (`template.unread_overrides`, plan
+    # § 5w K4): a transmission window on the seed's rung is refused there
+    # by name.  This step asked transport's own copy of it until
+    # 2026-09-30.
 
     tmpl = find_template(base)
     if tmpl is None:
@@ -2477,11 +2474,13 @@ def _rung_kind(task, stage_name: Optional[str]) -> str:
     programs (`vibration_render_kind`): the `relax` rung an optimisation,
     every other rung the vibration.  A PySCF vibration relaxes inside its
     one deck, so its rungs are all the vibration.  Two answers stood until
-    2026-09-29, one engine-scoped and one not (the K6 review, R9)."""
-    if (task.calculation == "vibration" and str(task.engine) == "siesta"
-            and stage_name):
-        from ..pyscf.stages import vibration_render_kind
-        return vibration_render_kind(stage_name)
+    2026-09-29, one engine-scoped and one not (the K6 review, R9); since
+    2026-09-30 it is read off the rung's ROLE, the one rule every door asks
+    which items a rung reads by (`template.stage_role`, plan § 5w K4)."""
+    from ..template import stage_role
+    if stage_role(str(task.engine), str(task.calculation),
+                  stage_name) == "relaxation":
+        return "optimization"
     return str(task.calculation)
 
 

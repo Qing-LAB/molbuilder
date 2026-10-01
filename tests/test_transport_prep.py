@@ -2082,12 +2082,14 @@ class TestTheOverrideLane:
         transmission window placed on the seed was written into the seed's
         deck, where `tbtrans` never reads it, and the transmission ran on
         the default.  Silently, on every road TR8 did not cover, until
-        2026-09-24.  The refusal names the owning rung.
+        2026-09-24.  The refusal names the rung that reads it -- the one door
+        every kind's description check and `resolve` ask since 2026-09-30
+        (`template.unread_overrides`, plan § 5w K4).
         """
         self._with_override(calc, "seed", {"transmission_n_points": 101})
-        with pytest.raises(PrepError, match="(?i)not this rung") as e:
+        with pytest.raises(PrepError, match="only the transmission rung") as e:
             prep_calculation(calc, "seed")
-        assert "transmission" in str(e.value) and "'seed'" in str(e.value)
+        assert "not 'seed'" in str(e.value), str(e.value)
 
     def test_an_unknown_knob_is_refused_by_name(self, calc):
         """A misspelled override key is refused, quoting the key.

@@ -476,6 +476,19 @@ def resolve(template_text: str, task, config_cls, *,
                 f"stage {stage_obj.name!r} overrides "
                 f"{', '.join(map(repr, held))}, which the rung fixes: "
                 f"{why_role(held[0])}.  Remove the override.")
+        # ...nor one THIS RUNG DOES NOT READ (`template.md` § 6.4's `stages`,
+        # by the rung's role -- plan § 5w K4): a force-constant run's
+        # relaxation settings, a seed's transmission window, an item the
+        # kind does not carry at all.  Each would be written into a deck
+        # that ignores it; it was refused for transport alone, at its own
+        # prep step, until 2026-09-30.
+        from .template import unread_overrides, why_unread
+        unread = unread_overrides(_engine, _kind, stage_obj.name,
+                                  sorted(stage_obj.overrides))
+        if unread:
+            raise ResolveError(
+                f"stage {stage_obj.name!r} overrides {unread[0]!r}, "
+                f"{why_unread(unread[0], _engine, _kind, stage_obj.name)}.")
         try:
             base = effective_config(base, stage_obj.overrides)
         except ValueError as exc:

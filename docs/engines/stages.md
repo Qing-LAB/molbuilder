@@ -724,7 +724,17 @@ its stages, and a finding about the sequence carries **no** stage label: it is a
 fact about the description, not about a member of it (the same rule that already
 governs a shared-config complaint, § 6.2). What the checks *are* — which
 parameters must not go backwards, and by how much — is `engines/tuning.md`'s to
-say, not this contract's.
+say, not this contract's; **the catalogue carries it**, each item's `tightens`
+(`"down"` for a tolerance, `"up"` for a mesh cutoff — `template.md` § 5), set
+where `tuning.md` § 2 gives a tier table, and read on every engine
+*(2026-09-30, plan § 5w K4: a table of SIESTA's four stood in
+`validation/stages.py` until then, M11 PO-C14)*. **Only rungs of one role are
+compared** (`template.stage_role`, `template.md` § 6.4): a ladder tightens one
+calculation as it goes, and rungs that are different programs on different cells
+— transport's five, a vibration's relaxation and its force constants — are not
+one calculation tuned twice, so a transport rung's own tolerance never reads as
+a loosening (M11 T-F14). An optimization's rungs have no roles and are compared
+whole.
 
 **An `error` in any stage blocks the whole produce**, not just its own deck.
 That is not a policy choice made here — it falls out of § 7.2: the folder appears

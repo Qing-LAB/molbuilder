@@ -224,9 +224,15 @@ every rung is not a column (`shared`)** — it is edited in the template, on the
 tab that owns it, and a column here would be a per-rung override `prep`
 refuses by name. *(Measured 2026-09-24: a transport folder's picker offered
 thirteen shared values, `mesh_cutoff` and `basis_size` among them.)* **A column
-a rung does not own (`stages`) shows on that rung's row as a disabled cell
-naming the rungs that own it**, never as an editor — the payload carries the
-owners, and `prep` refuses such an override on every road since the same day.
+a rung does not read (`stages`, by the rung's ROLE) shows on that rung's row as
+a disabled cell naming the rungs that read it**, never as an editor — a
+transmission window on the seed's row, a relaxation tolerance on a vibration's
+`freq`. The payload carries each item's roles and, beside the columns, how the
+kind names its rungs' roles (`roles`, `template.stage_role_rule`), so the table
+maps each row to its role and keeps no rule of its own; the description's own
+check and `resolve` refuse such an override on every road *(by role for every
+kind since 2026-09-30, plan § 5w K4; for transport's rungs, by name, since
+2026-09-24)*.
 
 ### 5.1 An empty cell shows the number, and it comes from the folder
 
@@ -825,7 +831,7 @@ Every one of these can silently destroy a value if its rule is not stated.
 | **reorder** | moves a stage | the files are written in order and `restart` reads that order, so this is a real edit, not a display preference |
 | **enable / disable** | marks a stage to run or skip | changes what `prep` will build and what the hand-off says; it does **not** delete the row's values |
 | **edit a cell** | sets one stage's value | nothing else moves |
-| **apply a stage preset** | fills a row from a tier | a preset knows several fields. If some are not columns yet it **adds them first** — a preset that half-applied would be worse than one that refused. **And it is offered only where it CAN apply**: the menu holds a tier only when every field it carries may be a column of this folder's kind (`/api/task-setup/presets?calculation=`, the columns route's own membership rule), so an optimization's rows and a vibration ladder's rows carry `coarse / medium / tight` and a transport ladder's rows carry no menu at all — its rungs own none of those fields ([`engines/transport.md § 2a.7`](?doc=engines/transport.md): a rung carries its role's profile). *Until 2026-09-24 every transport rung offered the relaxation tiers (plan W31).* |
+| **apply a stage preset** | fills a row from a tier | a preset knows several fields. If some are not columns yet it **adds them first** — a preset that half-applied would be worse than one that refused. **And it is offered only where it CAN apply**: the menu holds a tier only when every field it carries may be a column of this folder's kind (`/api/task-setup/presets?calculation=`, the columns route's own membership rule), so an optimization's rows and a vibration ladder's rows carry `coarse / medium / tight` and a transport ladder's rows carry no menu at all — its rungs own none of those fields ([`engines/transport.md § 2a.7`](?doc=engines/transport.md): a rung carries its role's profile). *Until 2026-09-24 every transport rung offered the relaxation tiers (plan W31).* **And a preset fills only what the row's rung reads**: on a vibration ladder the `freq` row takes none of the relaxation tier's values, which the `relax` row alone reads (plan § 5w K4). |
 | **add a measurement point** | turns a value into an axis | the value becomes the first point, so measuring never discards what you chose |
 | **open a folder** | replaces the whole page from that folder's description | a **load, not a merge**: values, columns, stages and order all come from the file, because a half-loaded description is one nobody can reason about. The id is read, never recomputed |
 

@@ -1851,7 +1851,12 @@ def api_task_setup_columns():
             # belongs to.
             "stages": list(it.stages),
         })
-    return jsonify({"ok": True, "engine": engine, "items": out})
+    # ...BY THE RUNG'S ROLE, and how this kind names its rungs' roles rides
+    # with the columns as data (`template.stage_role_rule`, plan § 5w K4):
+    # the table maps each row to its role with it and keeps no rule of its
+    # own.  `null` for a kind without roles -- every rung reads every item.
+    return jsonify({"ok": True, "engine": engine, "items": out,
+                    "roles": _T.stage_role_rule(engine, _calc_kind)})
 
 
 @bp.route("/api/task-setup/template-values", methods=["GET"])

@@ -108,20 +108,22 @@ def preflight(task, config_cls=None, *,
     # -- 3. every named field exists in the schema ------------------------
     fields = {f.name: f for f in dataclasses.fields(cls)}
     out.extend(_names_exist(task, cls, fields))
+    # ...and every override is READ by the rung it is on (§ 6.4's `stages`,
+    # by the rung's role -- plan § 5w K4), the one door `resolve` asks too.
+    unread = _overrides_a_rung_reads(task)
+    out.extend(unread)
 
-    # -- 4. every value is inside the schema's bounds ---------------------
-    #  ...which begins with being a value that field can HOLD.  Found by the
-    #  M2 seam walk (2026-08-07): `relax_steps: 100.7` is inside its range and
-    #  is not an integer, and reached the deck as `MD.NumCGsteps 100.7`.
-    out.extend(_values_are_the_declared_type(task, cls, fields))
-    out.extend(_values_in_bounds(task, fields))
-    out.extend(_bias_points_in_range(task))
-
-    # -- 5. the sequence's own findings (§ 6.4 / § 6.6a) -- warnings -------
+    # The RESOLVED ladder (template ⊕ each stage's overrides) when the caller
+    # has the template: the checks below that judge a rung as it will run
+    # read it, and one of them refuses -- so it is asked before the range
+    # check, whose warning stands aside for a refused value (§ 5.3).
+    from .stages import (check_a_relaxation_takes_a_step,
+                         check_identical_stages,
+                         check_ladder_does_not_loosen)
+    _engine, _kind = str(task.engine), _kind_of(task)
+    ladder: list = []
     if template_text is not None and task.stages:
         from ..resolve import resolved_ladder
-        from .stages import (check_identical_stages,
-                             check_ladder_does_not_loosen)
         try:
             ladder = resolved_ladder(template_text, task, cls)
         except Exception:
@@ -129,8 +131,27 @@ def preflight(task, config_cls=None, *,
             # later, with its own wording (a template it cannot rebuild
             # from) -- a sequence WARNING must not preempt it as a crash.
             ladder = []
-        out.extend(check_ladder_does_not_loosen(ladder))
-        out.extend(check_identical_stages(ladder))
+    # A rung that relaxes takes a step (plan § 5w K4): judged on the rung as
+    # the description resolves it.
+    stepless = check_a_relaxation_takes_a_step(ladder, engine=_engine,
+                                               kind=_kind)
+
+    # -- 4. every value is inside the schema's bounds ---------------------
+    #  ...which begins with being a value that field can HOLD.  Found by the
+    #  M2 seam walk (2026-08-07): `relax_steps: 100.7` is inside its range and
+    #  is not an integer, and reached the deck as `MD.NumCGsteps 100.7`.
+    out.extend(_values_are_the_declared_type(task, cls, fields))
+    out.extend(_values_in_bounds(
+        task, fields,
+        refused={(i.stage, i.where.split(".", 1)[1])
+                 for i in (*unread, *stepless)}))
+    out.extend(stepless)
+    out.extend(_bias_points_in_range(task))
+
+    # -- 5. the sequence's own findings (§ 6.4 / § 6.6a) -- warnings -------
+    out.extend(check_ladder_does_not_loosen(ladder, engine=_engine,
+                                            kind=_kind))
+    out.extend(check_identical_stages(ladder))
     return out
 
 
@@ -565,7 +586,30 @@ def _why_not(task, key: str, value) -> str:
                    kind=kind) or ""
 
 
-def _values_in_bounds(task, fields) -> List[Issue]:
+def _overrides_a_rung_reads(task) -> List[Issue]:
+    """Every override is read by the rung it is on (`engines/template.md`
+    § 6.4's ``stages``, by the rung's role; plan § 5w K4): a force-constant
+    run's relaxation settings, a seed's transmission window, an item the
+    kind does not carry at all -- each is refused by name where the
+    description is written, never written into a deck that ignores it.  The
+    one door ``resolve`` asks too (``template.unread_overrides``); it was
+    transport's alone, at its describe door and its prep, until
+    2026-09-30."""
+    from ..template import unread_overrides, why_unread
+    engine, kind = str(task.engine), _kind_of(task)
+    out: List[Issue] = []
+    for st in (task.stages or ()):
+        for name in unread_overrides(engine, kind, st.name,
+                                     sorted(st.overrides)):
+            out.append(Issue(
+                "error",
+                f"stage {st.name!r} overrides {name!r}, "
+                f"{why_unread(name, engine, kind, st.name)}.",
+                where=f"config.{name}", stage=st.name))
+    return out
+
+
+def _values_in_bounds(task, fields, *, refused=frozenset()) -> List[Issue]:
     """Every override's value is inside the bounds the schema declares.
 
     Enum ``choices`` and what the one per-value door refuses -- a component
@@ -580,15 +624,20 @@ def _values_in_bounds(task, fields) -> List[Issue]:
     A field with neither is unbounded on purpose and is not checked — the
     schema is the authority on what a bound is, and inventing one here would
     refuse a description for breaking a rule nobody wrote.
+
+    ``refused`` holds the ``(stage, item)`` overrides the rung does not read
+    (:func:`_overrides_a_rung_reads`): each drew that refusal, and draws
+    nothing more here -- one value, one refusal (`engines/template.md` § 5.3).
     """
-    from .metadata import not_carried_by, outside_range
-    foreign = not_carried_by(str(task.engine), _kind_of(task))
+    from .metadata import outside_range
     out: List[Issue] = []
     for st in (task.stages or ()):
         for key, value in st.overrides.items():
             f = fields.get(key)
             if f is None:
                 continue                    # already reported by _names_exist
+            if (st.name, key) in refused:
+                continue                    # the rung does not read it
             rng = f.metadata.get("range")
             choices = f.metadata.get("choices")
             if choices and not is_member(value, choices):
@@ -603,7 +652,7 @@ def _values_in_bounds(task, fields) -> List[Issue]:
             # § 5.3): refused where the description is written, never first
             # at prep on the machine that runs it.  A value refused here
             # draws that refusal alone, its range warning standing aside.
-            clause = "" if key in foreign else _why_not(task, key, value)
+            clause = _why_not(task, key, value)
             if clause:
                 shown = list(value) if isinstance(value, tuple) else value
                 out.append(Issue("error",
@@ -615,10 +664,10 @@ def _values_in_bounds(task, fields) -> List[Issue]:
             # helper the settings gate asks too (`metadata.outside_range`,
             # which leaves a bool and any other non-number to the type
             # check) -- a scalar alone was checked here until 2026-09-30, so
-            # a triple's range was warned at prep and silent at save.  An
-            # item this kind does not carry is not this calculation's to warn
-            # about, as it is not the gate's.
-            if rng and key not in foreign:
+            # a triple's range was warned at prep and silent at save.  (An
+            # item this kind does not carry is refused above, by the rung
+            # check, and never reaches here.)
+            if rng:
                 lo, hi = rng
                 for i, v in outside_range(value, rng):
                     shown = key if i is None else f"{key}[{i}]"

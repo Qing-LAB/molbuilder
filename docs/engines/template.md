@@ -730,7 +730,8 @@ recorded because the reverse assumption produced a "leak" that was not one.)*
 | `shared` | **binds every rung of these kinds** — `shared = ["transport"]` on the `citation` rows and on `electrodes_bulk` (Class A, `engines/transport.md` § 2a.3; `electrodes_bulk` since 2026-09-29, one value for the two rungs that read it, § 6.1b); on the electronic state's four items for **every** kind that has them — `net_charge` and `method` for optimization and vibration, `spin_treatment` and `unpaired_electrons` for those and transport — because the state belongs to the calculation, never to a stage (`science/chemistry-correctness.md` § 2a, ES1; M6); and on the calculation's identity for every SIESTA kind — `system_label`, `species_order`, `psml_lib` (2026-09-29, K1): each rung reads what the one before it wrote under that label, numbered by that species table (the `.XV` holds each atom's species index, `ioxv.F`) and built on that pseudopotential set. Three readers ask it: the transport tab's shared panel shows these and nothing else, the per-rung form never offers one, and `prep` refuses a stage override naming one — for every kind, at the one resolve door (§ 3.8.2), saying why (`template.why_shared`). Filtering on `citation` for this question offered the species order as a per-rung override (2026-09-23) |
 | `role` | **nobody is asked: the rung fixes it, for these kinds** — `role = ["transport"]` on `solution_method`, `ts_hs_save` and `bias_voltage_v`; every SIESTA kind on `write_forces` and `write_coor_step` (2026-09-29, K1). A list of kinds, for `citation`'s reason. The answer is the catalogue's `value` unless `role_values` names the rung's own; `resolve` puts it into the rung's config, and every door that could set it refuses (§ 6.4, the third answerer) |
 | `role_values` | **a rung whose role gives another answer than `value`**, by the rung's name — `role_values = { device = "transiesta" }` on `solution_method`. Only on a `role` item; each value passes the item's own `type` at parse time, as `recommended`'s do. Like `recommended`, a catalogue key: it does not travel into a calculation's template, whose role items hold no value — `resolve` asks the catalogue (`template.role_answers`) |
-| `stages` | **which rungs of the kind may carry their own value** — `stages = ["electrode_L", "electrode_R"]`; on a `role` item, which nobody sets, the rungs that write it. Absent means any rung may (§ 6.4) |
+| `stages` | **which rungs of the kind read it, by the rung's ROLE** — `stages = ["electrode_L", "electrode_R"]` on a lead's item, `stages = ["relaxation"]` on the relaxation settings (2026-09-30, plan § 5w K4); only those rungs may carry their own value, and on a `role` item, which nobody sets, it names the rungs that write it. Absent means every rung reads it (§ 6.4) |
+| `tightens` | **which way a ladder makes this item tighter** — `"down"` for a tolerance, `"up"` for a mesh cutoff (2026-09-30, plan § 5w K4). Set where [`tuning.md`](?doc=engines/tuning.md) § 2 gives a tier table and nowhere else; the ladder check reads it on every engine ([`stages.md`](?doc=engines/stages.md) § 4 R3) |
 | `label` | the **human name** — *"MPI ranks (np)"*. Not the field name; a surface shows this |
 | ~~`section`~~ | **RETIRED at `@2` — use `category` (§ 6.2).** It held a free-text fieldset name per engine (*"SCF"*, *"Compute & budget"*), so two engines expressing one idea disagreed on the label and no surface could group across them. A section-less item was still an item, and that stays true of `category`: membership is TOTAL (§ 7) |
 | `null_label` | what **unset** is called on an optional item — *"(auto)"*, *"(single-process)"* |
@@ -938,8 +939,13 @@ source:
 
 A value the engine takes is not a limit, however odd: `relax_steps = 0` is a
 single point (`MD.Steps`, `read_options.F90`), and `prep bench` pins exactly
-that to measure one SCF on the rung's own deck — so the item keeps its range,
-and a person who sets 0 is warned.
+that to measure one SCF on the rung's own deck — so the item keeps its range.
+What a DESCRIPTION states is another matter: a rung that relaxes in 0 steps
+relaxes nothing, and a vibration's force constants would be taken at a geometry
+nobody relaxed, so the description's own check refuses `relax_steps = 0` beside
+a `relax_type` that moves atoms, on the rungs that read it
+(`validation.stages.check_a_relaxation_takes_a_step`, plan § 5w K4) — at every
+describe and at `prep`, never seeing the bench's pin, which is prep's own.
 
 **One door for whether a value may stand: `template.why_not(item, value,
 engine=, kind=)`.** It is asked by the description's own check (a stage's
@@ -961,8 +967,10 @@ draws one refusal** — the first that holds of:
 and so does any check on what is built from it — the k-point mesh made from a
 refused grid is not judged — on every surface. **And an item the calculation
 does not carry is no door's to judge**: the kind narrows the catalogue (§ 6.3),
-so a lead's `electrode_kz` on an optimization is neither refused nor warned — it
-reaches no deck of that kind.
+so a lead's `electrode_kz` in an optimization's config is neither refused nor
+warned — it reaches no deck of that kind. A stage *override* naming one is
+another thing: no rung reads it, so it is refused by name, by the door that
+refuses an override on a rung that does not read it (§ 6.4, plan § 5w K4).
 
 **A value is judged as `resolve` will read it.** A description's JSON has one
 number type, so a whole float for a count is the count it names — `0.0` for a
@@ -1762,14 +1770,39 @@ template copies each item's declaration, `role` with it — so the two output
 switches joined under it, although what fixes them is what molbuilder reads
 back rather than a rung's part in a ladder.
 
-**`stages` is `calculations` one level down.** `calculations` says which KINDS
-have this parameter at all; `stages` says which RUNGS of such a kind may answer
-it differently from each other.
+**`stages` is `calculations` one level down — by the rung's ROLE** *(roles,
+2026-09-30, plan § 5w K4)*. `calculations` says which KINDS have this parameter
+at all; `stages` says which RUNGS of such a kind read it, naming each rung by
+what it does in the kind:
+
+| kind | its rungs' roles (`template.KIND_ROLES`) | a stage's role (`template.stage_role`) |
+|---|---|---|
+| transport | `seed`, `electrode_L`, `electrode_R`, `device`, `transmission` | its name — the five rungs are fixed |
+| vibration | `relaxation`, `force_constants` | on SIESTA the stage named `relax` relaxes and every other stage measures force constants, whatever it is called; a PySCF vibration relaxes inside its one deck, so each of its rungs is the force-constant run ([`vibration.md`](?doc=engines/vibration.md) § 5.2a) |
+| optimization | none | — every rung reads every item the kind carries: one calculation tuned N ways |
 
 | state | means |
 |---|---|
-| no `stages` | **any rung may own it** — the ordinary case, and the optimization ladder's behaviour, where any promoted field may vary per rung |
-| `stages = [...]` | only these rungs may; it is not that rung's business anywhere else. On a `role` item, which nobody sets, it names the rungs that write it — a lead's `TS.HS.Save` |
+| no `stages` | **every rung of the kind reads it** — the ordinary case |
+| `stages = [...]` | only rungs of these roles read it, and only they may carry their own value. On a `role` item, which nobody sets, it names the rungs that write it — a lead's `TS.HS.Save` |
+
+**One door asks it, for every kind** — `template.reads(item, engine, kind,
+stage)`, and for a rung's overrides `template.unread_overrides`: the
+description's own check (at every describe and at `prep`) and `resolve` refuse
+an override on a rung that does not read the item — or of an item the kind does
+not carry at all — by name, with `template.why_unread`'s reason, instead of
+writing it into a deck that ignores it. The stage table draws such a cell
+disabled, naming the rungs that read it, and fills a preset only into the rungs
+that read each value (`task-setup.md` § 5). A kind without roles reads every
+item on every rung, so one declaration serves an item two kinds share: the
+relaxation settings declare `stages = ["relaxation"]`, which a vibration reads
+as its relaxation rung's and an optimization as every rung's. A name in `stages`
+must be a role of a kind that carries the item, and a kind with roles that
+carries it must find one of its own there — both refused when the catalogue is
+read. *(Until 2026-09-30 `stages` named transport's rungs alone, checked by
+transport's own copy of this door: a vibration's force-constant rung was offered
+the relaxation's settings, and its copy of `relax_force_tol` became the
+finish's criterion — M11 SS-C6.)*
 
 It exists because a composite kind's rungs are **different programs on different
 cells** rather than one calculation tuned N ways
@@ -1780,12 +1813,10 @@ guess** which rung an override belongs to — and the guess made was *the device
 so a value the transmission owned was written into a deck `tbtrans` never reads
 and silently never took effect.
 
-Stage names are a kind's own vocabulary, so `stages` is only meaningful on an
-item that belongs to one kind — which `calculations` already says. Ask with
-`select(t, stages="device")`; an item declaring no stages matches every rung
-asked about, which is what keeps the ordinary case ordinary. A kind's role
+Ask with `select(t, stages=<role>)`; an item declaring no stages matches every
+role asked about, which is what keeps the ordinary case ordinary. A kind's role
 items are `fixed_by_role(engine, kind)`, and one rung's answers
-`role_answers(engine, kind, stage)` — the rung's `stages` respected, so a lead's
+`role_answers(engine, kind, stage)` — the rung's role respected, so a lead's
 `ts_hs_save` is no other rung's.
 
 **Where a machine fact comes from — the whole chain, and it is four steps.**

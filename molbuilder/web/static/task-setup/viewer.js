@@ -274,22 +274,22 @@ function renderStages(task) {
         const ov = (st && st.overrides) || {};
         for (const col of varies) {
             const has = Object.prototype.hasOwnProperty.call(ov, col);
-            // A COLUMN THIS RUNG DOES NOT OWN (template.md § 6.4's `stages`,
-            // carried on the column payload): the catalogue names the rungs
-            // that may carry their own value for the item, and every other
-            // rung's cell would be a control `prep` refuses by name -- so it
-            // is drawn disabled, naming the owners, never as an editor
-            // (task-setup.md § 5).  A transmission window on the seed's row,
-            // for one.
+            // A COLUMN THIS RUNG DOES NOT READ (template.md § 6.4's `stages`,
+            // carried on the column payload, by the rung's ROLE): the
+            // catalogue names the roles whose rungs read the item, and every
+            // other rung's cell would be a control `prep` refuses by name --
+            // so it is drawn disabled, naming the readers, never as an
+            // editor (task-setup.md § 5).  A transmission window on the
+            // seed's row; a relaxation tolerance on a vibration's `freq`.
             const owners = (_meta[col] && Array.isArray(_meta[col].stages)
                             && _meta[col].stages.length)
                 ? _meta[col].stages : null;
-            if (owners && !owners.includes(name)) {
+            if (owners && !readsHere(col, name)) {
                 const foreign = el("input", {
                     class: "ts-cell", value: "", disabled: "yes",
                     placeholder: "\u2014",
-                    title: col + " belongs to " + owners.join(", ")
-                           + " \u2014 not this rung's (template.md \u00a7 6.4)",
+                    title: col + " is read by the " + owners.join(" / ")
+                           + " rung \u2014 not this one (template.md \u00a7 6.4)",
                     "aria-label": name + " " + col + " (not this rung's)",
                     "data-foreign": "yes",
                 });
@@ -1462,6 +1462,10 @@ function renderCameOver(obj) {
 
 let _cols = null;       // every parameter this engine has  {name,label,group}
 let _colsKey = null;
+/* How this kind names its rungs' roles, handed with the columns
+ * (`template.stage_role_rule`, plan § 5w K4): `{named, otherwise}`, or null
+ * for a kind without roles.  Read by `roleOf` alone. */
+let _roleRule = null;
 const _colsInflight = {};   // key -> the pending fetch (see loadColumnChoices)
 /* name -> the catalogue's own item, so the table can show what a parameter
  * DEFAULTS to and what it is for.  The catalogue already carries `default`,
@@ -1562,11 +1566,29 @@ async function loadColumnChoices(engine) {
         const items = (got.ok && got.body && got.body.items) || [];
         if (_colsKey !== key) return items;      // a newer load owns the slot
         _cols = items;
+        _roleRule = (got.ok && got.body && got.body.roles) || null;
         _fillMeta(_cols);
         return _cols;
     })();
     _colsInflight[key] = p;
     try { return await p; } finally { delete _colsInflight[key]; }
+}
+
+/** The role the stage `name` plays, by the rule the columns came with
+ *  (`template.stage_role_rule`) -- `null` on a kind without roles. */
+function roleOf(name) {
+    if (!_roleRule) return null;
+    return (_roleRule.named && _roleRule.named[name])
+        || _roleRule.otherwise || name;
+}
+
+/** Does the stage `name` read the item `col`?  Every rung of a kind without
+ *  roles does, and so does every rung of an item declaring none. */
+function readsHere(col, name) {
+    const own = (_meta[col] && Array.isArray(_meta[col].stages))
+        ? _meta[col].stages : [];
+    const role = roleOf(name);
+    return role === null || !own.length || own.includes(role);
 }
 
 /** Publish a vocabulary's items into `_meta` -- the ONE place a cell's
@@ -1845,12 +1867,19 @@ async function loadPresets(engine) {
 function applyPreset(i, values) {
     if (!_task || !_task.stages || !_task.stages[i]) return;
     const v = variesOf(); if (!v) return;
-    const added = [];
+    // ONLY WHAT THIS RUNG READS (plan § 5w K4): a vibration's `freq` row
+    // takes no relaxation tolerance -- the description's check would refuse
+    // the value, and the finish would have judged with it.
+    const read = {};
     for (const key of Object.keys(values)) {
+        if (readsHere(key, _task.stages[i].name)) read[key] = values[key];
+    }
+    const added = [];
+    for (const key of Object.keys(read)) {
         if (v.indexOf(key) === -1) { v.push(key); added.push(key); }
     }
     const ov = _task.stages[i].overrides || (_task.stages[i].overrides = {});
-    Object.assign(ov, values);
+    Object.assign(ov, read);
     if (added.length) {
         setState(_mode === "handover" ? "handover" : "loaded",
                  "Preset applied",

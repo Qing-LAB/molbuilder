@@ -138,8 +138,12 @@ def vibration_stages(engine: str, *, already_relaxed: bool) -> List["Stage"]:
 def vibration_render_kind(stage_name: str) -> str:
     """Which deck a vibration stage renders (`engines/vibration.md` § 5.2a):
     the ``relax`` stage is the ordinary relaxation deck -- nothing is
-    invented for it -- and every other rung is the kind's own."""
-    return ("optimization" if stage_name == VIBRATION_RELAX_STAGE
+    invented for it -- and every other rung is the kind's own.  Read off the
+    rung's ROLE on the engine whose vibration is two programs, SIESTA
+    (`template.stage_role`, the one rule, plan § 5w K4)."""
+    from ..template import stage_role
+    return ("optimization"
+            if stage_role("siesta", "vibration", stage_name) == "relaxation"
             else "vibration")
 
 

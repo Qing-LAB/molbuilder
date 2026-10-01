@@ -41,31 +41,6 @@ from ..issues import Issue
 #  R3 — which parameters must not go backwards                          #
 # --------------------------------------------------------------------- #
 
-#: field -> (direction, what the tier ladder does, where tuning.md says so).
-#:
-#: ``"down"`` means a *tighter* setting is a **smaller** number, so the ladder's
-#: values must not increase; ``"up"`` means tighter is larger.
-#:
-#: **Only what `tuning.md` gives an explicit tier table for is here.** It has
-#: none for ``basis_size`` or ``pao_energy_shift``, so neither is checked — a
-#: monotonic direction invented here would be a scientific claim with no source,
-#: and a false "your ladder loosens" is worse than a missing one: the first
-#: teaches users to ignore the check.
-_MONOTONIC: dict = {
-    "relax_force_tol": (
-        "down", "0.10 screening -> 0.04 publishable -> 0.01 tight (eV/A)",
-        "tuning.md 2.3"),
-    "relax_max_displ": (
-        "down", "0.30 screening -> 0.05 publishable -> 0.02 tight (A)",
-        "tuning.md 2.2"),
-    "dm_tolerance": (
-        "down", "1e-3 screening -> 1e-4 publishable -> 1e-5 tight",
-        "tuning.md 2.4"),
-    "mesh_cutoff": (
-        "up", "150 screening -> 350 publishable -> 500 tight (Ry)",
-        "tuning.md 2.5"),
-}
-
 #: Values within this relative distance are "the same tier", not a loosening.
 #: A ladder that holds a parameter steady is ordinary — most stages change one
 #: or two things — and float arithmetic on a round-tripped value must not be
@@ -74,13 +49,29 @@ _REL_TOL = 1e-9
 
 
 def check_ladder_does_not_loosen(
-    resolved: Sequence[Tuple[str, Any]],
+    resolved: Sequence[Tuple[str, Any]], *, engine: str = "siesta",
+    kind: str = "optimization",
 ) -> List[Issue]:
     """§ 4 R3. One ``warn`` per parameter that goes backwards along the ladder.
 
     ``resolved`` is ``[(stage name, effective config), ...]`` **in ladder
     order**, enabled stages only — the order is the thing being checked, so a
     caller that sorts or filters differently is asking a different question.
+
+    **Which parameters, and which way, is the catalogue's** — each item's
+    ``tightens`` (`engines/template.md` § 5), set where `engines/tuning.md`
+    § 2 gives a tier table and nowhere else: a direction invented without
+    one would be a scientific claim with no source, and a false "your ladder
+    loosens" is worse than a missing one — it teaches people to ignore the
+    check.  The table stood here, SIESTA's four alone, until 2026-09-30
+    (plan § 5w K4, M11 PO-C14).
+
+    **Only rungs of one ROLE are compared** (`template.stage_role`): a ladder
+    tightens one calculation as it goes, and rungs that are different
+    programs on different cells — transport's five, a vibration's relaxation
+    and its force constants — are not one calculation tuned twice.  So a
+    transport rung's own tolerance never reads as a loosening (M11 T-F14),
+    and an optimization, whose rungs have no roles, is compared whole.
 
     Severity is ``warn``, never ``error``, and that follows the rule
     `validation.md § 4.1` already states: *adequacy is advisory,
@@ -92,31 +83,73 @@ def check_ladder_does_not_loosen(
     **No stage label.** The finding is about the description: naming one of the
     two stages would put the blame on a member for a property of the pair.
     """
+    from ..template import catalogue, reads, select, stage_role
     out: List[Issue] = []
-    for field, (direction, ladder, cite) in _MONOTONIC.items():
-        prev_name: Optional[str] = None
-        prev_val: Optional[float] = None
+    for it in select(catalogue(), engine=engine, calculation=kind):
+        if not it.tightens:
+            continue
+        last: dict = {}                      # role -> (stage name, value)
         for name, cfg in resolved:
-            val = getattr(cfg, field, None)
+            if not reads(it, engine, kind, name):
+                continue
+            val = getattr(cfg, it.name, None)
             if val is None:
                 continue
             val = float(val)
-            if prev_val is not None and _loosens(prev_val, val, direction):
+            role = stage_role(engine, kind, name)
+            if role in last and _loosens(last[role][1], val, it.tightens):
+                prev_name, prev_val = last[role]
                 out.append(Issue(
                     "warn",
-                    f"{field} loosens from {prev_val:g} in stage "
+                    f"{it.name} loosens from {prev_val:g} in stage "
                     f"{prev_name!r} to {val:g} in stage {name!r}. A ladder "
-                    f"tightens as it goes ({ladder}, {cite}); a later stage "
-                    f"that is coarser discards what the earlier one paid "
-                    f"for. Deliberate? Then nothing is wrong -- this is "
-                    f"advice, not a refusal",
-                    where=f"stages.loosens.{field}",
+                    f"tightens as it goes (engines/tuning.md 2, the tier "
+                    f"tables); a later stage that is coarser discards what "
+                    f"the earlier one paid for. Deliberate? Then nothing is "
+                    f"wrong -- this is advice, not a refusal",
+                    where=f"stages.loosens.{it.name}",
                 ))
                 # One finding per parameter, not one per adjacent pair: a
                 # three-stage ladder built backwards would otherwise report
                 # the same mistake twice and read as two problems.
                 break
-            prev_name, prev_val = name, val
+            last[role] = (name, val)
+    return out
+
+
+def check_a_relaxation_takes_a_step(
+    resolved: Sequence[Tuple[str, Any]], *, engine: str = "siesta",
+    kind: str = "optimization",
+) -> List[Issue]:
+    """A rung that relaxes takes at least one step (plan § 5w K4; M11 SS-C5).
+
+    ``relax_steps = 0`` beside a ``relax_type`` that moves atoms is a single
+    point (``MD.Steps 0``, `read_options.F90`): the rung relaxes nothing, and
+    a vibration's force constants are then taken at a geometry nobody
+    relaxed.  Refused where a DESCRIPTION states it — on the rungs that read
+    ``relax_steps`` (`template.reads`), as the description resolves them —
+    because the value itself is one SIESTA takes: ``prep bench`` pins exactly
+    0 to time one SCF on a rung's own deck, and that pin is prep's own,
+    never part of a description (`engines/template.md` § 5.3).
+    """
+    from ..template import catalogue, one, reads
+    try:
+        steps = one(catalogue(), "relax_steps", engine=engine)
+    except KeyError:
+        return []
+    out: List[Issue] = []
+    for name, cfg in resolved:
+        moves = getattr(cfg, "relax_type", None)
+        if (moves in (None, "none") or getattr(cfg, "relax_steps", None) != 0
+                or not reads(steps, engine, kind, name)):
+            continue
+        out.append(Issue(
+            "error",
+            f"stage {name!r} relaxes ({moves}) in relax_steps = 0 steps -- "
+            f"MD.Steps 0 is a single point (read_options.F90), so the rung "
+            f"relaxes nothing.  Give it at least one step "
+            f"(engines/template.md 5.3)",
+            where="config.relax_steps", stage=name))
     return out
 
 

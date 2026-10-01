@@ -4624,7 +4624,7 @@ as a milestone does (§ 0a). **Approved 2026-09-29** (§ 5w.3); K6 is first.
 | **K1** | **who answers, per kind** — the markers exist and are missing | `write_forces` / `write_coor_step` fixed on for **every SIESTA kind** *(user, 2026-09-29: "siesta always write forces and always write cordinates - that's needed for later use of data")* — answered by the framework, never a control, echoed read-only: SIESTA ships both off (`LongOutput`), and what reads them later is the per-step trajectory, the relaxation record's held-atom-aware force, and the vibration finish's step 0 (§ 5.5), which fails after the whole force-constant run without them; `shared` for **every** kind on the identity items (`system_label`, `psml_lib`, `species_order`: one calculation, one name, one species table); `resolve` refuses a stage override of a `role` item as it refuses a `shared` one — one door beside `why_shared` | SS-C1, SO-C2, T-F5 |
 | **K2** | **which values a kind may take** | a per-kind choice set on the item, the sibling of `recommended` (§ 6.3a), read by the form, the stage table's cells, the preflight and `prep` — so a value the kind cannot run is never offered and is refused by name if written | SS-C4 (Verlet / Nose / none on a vibration's relaxation), PO-C3 (berny), SO-C13 (transiesta on an optimization), T-F20 (spin treatments per engine and kind — `electronic_state.CAPABILITY` is the same fact in a second home), PS-C2's refusal half |
 | **K3** | **hard bounds against a recommended range** — and the k-point mesh *(user, 2026-09-30)* | `range` stays advisory, one warning on every surface; a declared hard domain is refused on every surface with one message — never an error in one door and a warning in another; every rung's k-point sampling decided in one place (`kmesh.py`) | SS-C5 (`fc_displacement` > 0 — SIESTA divides by it; the `relax_steps` half moved to K4), PS-C22 (temperature and pressure > 0), T-F15 (bias points distinct, and warned outside the item's range), SO-N4 (one range, two severities), T-F2 (from K17) |
-| **K4** | **where an item binds, per rung ROLE** | `stages` names a rung's role, and the kind says which role a stage plays — transport: its name; vibration: a relaxation or a force-constant rung, whatever the stage is called (`vibration_render_kind`); optimization: no roles. The stage table offers each rung only what its deck reads and echoes the rest (§ 6.6 obligation 3); a preset fills only the rungs that read it; each item's tightening direction is declared, so R3 reads it for every engine and skips a kind whose rungs are different programs; a relaxation rung relaxes — `relax_steps = 0` there relaxes nothing, while `prep bench`'s single-point pin of it is legitimate | SS-C6, PO-C14, T-F14, SS-C5's `relax_steps` half *(from K3, 2026-09-30)* |
+| **K4** | **where an item binds, per rung ROLE** — **done 2026-09-30** (§ 5w.5) | `stages` names a rung's role, and the kind says which role a stage plays — transport: its name; vibration: a relaxation or a force-constant rung, whatever the stage is called (`vibration_render_kind`); optimization: no roles. The stage table offers each rung only what its deck reads and echoes the rest (§ 6.6 obligation 3); a preset fills only the rungs that read it; each item's tightening direction is declared, so R3 reads it for every engine and skips a kind whose rungs are different programs; a relaxation rung relaxes — `relax_steps = 0` there relaxes nothing, while `prep bench`'s single-point pin of it is legitimate | SS-C6, PO-C14, T-F14, SS-C5's `relax_steps` half *(from K3, 2026-09-30)* |
 | **K5** | **execution values with several homes** | one home per rung — the run card, `stages[i].execution` — and one resolved answer every reader asks (`resolve`'s, with its provenance): the deck, the wrapper, the scheduler's GPU ask, the bench, Task setup's cards and hints; the stage table stops offering execution items as columns; a transport rung takes its run card like any other rung | SO-C1 (a rung's `use_gpu` never reaches `--gres`), T-F3, SO-N12, the `--from` hint |
 | **K6** | **the engine's own outcome, assumed instead of read** | one relaxation outcome record and one policy for both engines: the PySCF decks read geomeTRIC's convergence flag (`geometric_solver.kernel`) — `halt` raises before anything is written, `continue` re-enters from the geometry it stopped at (`pyscf.md` § 3 already says *extend this rung*), `proceed` records *not converged*; one remedy text for a non-stationary reference, read by `prep` and the finish; whether a retry resumes is the kind's warm-state declaration (`warm-files.toml`: an FC run restarts at `FC.First`), read by the wrapper; a capability the engine lacks (gpu4pyscf's `stability`) is declared and asked, never called and caught | PS-C1 = PO-C1, SS-C2, SS-C3, PO-C2, PO-C15 |
 | **K7** | **the form's value model** | one field state on every surface: the template's value, the kind's default and the value's source (§ 6.6 obligation 2's four states); blank is *not chosen* for every field and never the first choice; the rung surface shows the template the rung will run; a set optional field is sent; a value that will not coerce is refused naming its field | T-F25, T-F1, T-F24, SS-C16, SO-N5, PS-C12; the K3 review's fractional k count and a triple's findings beside it |
@@ -5042,6 +5042,53 @@ reviewers' probes (the archive's § E lists) among its runs.
   written, then the Send writing) — red under each of its four mutations;
   the Send tests' calculations carry their pseudopotentials, as a person's
   do.
+* **K4 — done 2026-09-30** (SS-C6, PO-C14, T-F14, SS-C5's `relax_steps` half,
+  and K3's owed override of an item the kind does not carry; ruled: *"yes,
+  catalogue as the one source, go ahead"*, after the user asked *"where is the
+  information stored that tells what parameters will be used by what engine
+  in what kind of setup?"* and *"we want logical and clean design that serves
+  unified purpose"*). **The catalogue's `stages` names rung ROLES** — no new
+  key: transport's are its five rungs, by name; a vibration's `relaxation`
+  and `force_constants`; an optimization has none, so every rung reads every
+  item (`template.KIND_ROLES`). **One rule** maps a stage to its role,
+  `template.stage_role_rule` / `stage_role` — on SIESTA the stage named
+  `relax` relaxes and every other measures force constants; a PySCF
+  vibration relaxes inside its one deck — and `vibration_render_kind` and
+  prep's `_rung_kind` are read off it (they were two encodings of it).
+  **One door** for *does this rung read it*, `template.reads` /
+  `unread_overrides` / `why_unread`, asked by the description's own check (at
+  every describe and at `prep`) and by `resolve`: an override on a rung that
+  does not read the item, or of an item the kind does not carry, is refused
+  by name. Transport's own copy (`transport/stages.foreign_overrides`, asked
+  by its describe route and its prep step) is deleted; `TRANSPORT_STAGES`
+  reads the role vocabulary. Declared: the SIESTA relaxation settings
+  `stages = ["relaxation"]`, `fc_displacement` and PySCF's
+  `displacement_amplitude_ang` `stages = ["force_constants"]` (PySCF's
+  `geom_*` stay every rung's — its vibration relaxes in-process); the catalogue
+  refuses at load a `stages` name no carrying kind has, and a declared kind
+  with roles it names none of. **The ladder check** (R3) reads each item's
+  new `tightens` (`"up"`/`"down"`, set where `tuning.md` § 2 has a tier
+  table) on every engine — the SIESTA-only table in `validation/stages.py`
+  is deleted — and compares only rungs of one role, so transport's per-rung
+  tolerances never read as a loosening. **The stage table** maps each row to
+  its role with the rule handed beside its columns (`roles`), draws a cell
+  its rung does not read disabled, naming the readers, and fills a preset
+  only into the rungs that read each value. **The vibration finish** judges
+  the reference geometry by the relaxation rung's own `relax_force_tol` (the
+  template's when stated relaxed), not the force-constant stage's copy.
+  **A rung that relaxes takes a step**: `relax_steps = 0` beside a moving
+  `relax_type` is refused by the description's own check, on the rungs that
+  read it (`validation.stages.check_a_relaxation_takes_a_step`) — not as a
+  hard limit, since the settings gate cannot tell `prep bench`'s own
+  measurement pin of 0 from a stated value, and the description check never
+  sees the pin; its range warning stands aside. Contract: `template.md`
+  § 6.4 (owner), § 5, § 5.3; `stages.md` § 4 R3; `vibration.md` § 5.2a,
+  § 5.5; `task-setup.md` § 5, § 9. Tests: five on the road
+  (`test_where_an_item_binds_e2e.py`: the save's refusals by role and kind,
+  the ladder by role on PySCF and transport, the stepless relaxation, the
+  finish's criterion through `prep`, the stage table in the browser) — red
+  under each of their twelve mutations; one transport test's wording
+  updated.
 
 ---
 

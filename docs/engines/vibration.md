@@ -1087,6 +1087,18 @@ same template and the same **sorted copy** (§ 5.2): `MD.TypeOfRun` from
 `Geometry.Constraints`. Nothing is invented for it; `spec_for` renders the
 optimization deck for a stage named `relax` inside the vibration kind.
 
+**Each stage's settings are its role's** *(plan § 5w K4)*. The `relax` stage
+is the vibration's `relaxation` rung and every other stage a `force_constants`
+rung (`template.stage_role`, [`template.md`](?doc=engines/template.md) § 6.4):
+the relaxation's driver, step cap, force tolerance and largest step are read by
+the relaxation rung alone (`stages = ["relaxation"]`), and `fc_displacement` by
+the force-constant rungs alone — so the stage table offers each only on its own
+row, a preset fills only the rungs that read each value, and a value on the
+other rung is refused by name. *(Until 2026-09-30 both rows were offered all of
+them, and a preset that relaxed at 0.05 eV/Å left 0.01 on `freq` — M11 SS-C6.)*
+On PySCF the one `freq` rung relaxes inside its deck, so its `geom_*` settings
+are read there.
+
 **The relaxed geometry travels as coordinates, not as a restart file.** When
 `prep` prepares a force-constant stage — `freq`, or any other stage after `relax` in a displacement sweep (§ 5.9); which stages those are is asked of `vibration_render_kind`, never of a name — and the ladder holds a `relax` stage, it reads the
 relaxed geometry from that stage's **newest attempt, which must have
@@ -1382,7 +1394,10 @@ and writes `relaxation.max_force_eh_bohr` — the largest over the **free**
 atoms (R5) — beside `max_force_all_atoms_eh_bohr`, and `converged` judged
 against **this description's own `relax_force_tol`** — the item is on the
 vibration template (§ 3.1), so the yardstick is the tolerance the person set
-or left at the kind's recommendation, resolved for the stage by `prep` and recorded in the deck's `vibration` block; `engine_metadata.reference_force_criterion_ev_ang` records the
+or left at the kind's recommendation — **the relaxation rung's own**, the force
+the reference geometry was relaxed to, and the template's when the structure is
+stated relaxed — resolved by `prep` and recorded in the deck's `vibration` block
+*(the force-constant stage's own copy was read until 2026-09-30, plan § 5w K4)*; `engine_metadata.reference_force_criterion_ev_ang` records the
 number used. *(Until 2026-09-24 the catalogue's general default stood in for
 it.)* The positions the projection and the artifact use are the run's own
 reference geometry, its FC step 0 (§ 5.2a). The judged

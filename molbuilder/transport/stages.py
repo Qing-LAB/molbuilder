@@ -7,10 +7,13 @@ This module owns TWO facts and the renders that follow from them:
   dependency order.  Fixed by design, not configurable — skipping is
   the per-stage ``enabled`` flag in ``task.json`` (the seed's Q4 skip),
   never a different ladder.
-* **Which rung owns an override** (:func:`foreign_overrides`,
-  :func:`stages_for_transport`): the catalogue's ``stages`` declaration,
-  read.  This is what puts a person's T(E) window into the deck
-  ``tbtrans`` runs rather than the one ``siesta`` runs.
+* **The per-rung bags, as stages** (:func:`stages_for_transport`).  Which
+  rung READS an override is the catalogue's ``stages`` declaration, asked
+  through the one door every kind's description check and ``resolve`` ask
+  (``template.unread_overrides``, `engines/template.md` § 6.4) -- what puts
+  a person's T(E) window into the deck ``tbtrans`` runs rather than the one
+  ``siesta`` runs.  It was this module's own check, for transport alone,
+  until 2026-09-30 (plan § 5w K4).
 
 **NOTHING IN THIS MODULE RENDERS A DECK ANY MORE.**  All five rungs go
 through the framework's own pipeline — ``siesta.input.spec_for`` with
@@ -42,13 +45,15 @@ from __future__ import annotations
 from typing import Tuple
 
 from ..config.transport import TransportConfig
+from ..template import KIND_ROLES
 from .compose import ComposedJunction
 
 #: The composite's fixed ladder (§ 4.2) -- the five stages in
 #: dependency order.  ``jobset init`` writes exactly these into
-#: ``task.json``; `prep` names its rungs from the same tuple.
-TRANSPORT_STAGES = ("seed", "electrode_L", "electrode_R",
-                    "device", "transmission")
+#: ``task.json``; `prep` names its rungs from the same tuple.  They are the
+#: kind's rung ROLES too, so their one home is the catalogue's role
+#: vocabulary (`template.KIND_ROLES`, `engines/template.md` § 6.4).
+TRANSPORT_STAGES = KIND_ROLES["transport"]
 
 #: **WHICH FACT EACH RUNG ANSWERS WITH** — a column, because the five rungs
 #: do not answer the same question and reading them as if they did is a
@@ -255,38 +260,6 @@ RUNG_NOTES = {
 }
 
 
-def foreign_overrides(bags) -> list:
-    """Every ``(rung, item, owners)`` where *bags* gives a rung a value for
-    an item the catalogue's ``stages`` declaration does not let it own
-    (`engines/template.md` § 6.4: *"only these rungs may; it is not that
-    rung's business anywhere else"*).
-
-    **The one door for that rule**, asked by the describe door before a
-    description is written and by `prep` before a deck is -- so a
-    description written on any road (the tab, the stage table, the CLI, a
-    hand edit) meets the same refusal.  *bags* maps a rung name to its
-    override mapping, the shape ``task.stages`` carries.  An item declaring
-    no rungs is any rung's and is never foreign.
-
-    **An item the rung FIXES is no rung's to own** (`role`,
-    `engines/template.md` § 6.4): its ``stages`` names the rungs that write
-    it, and an override naming it is refused on every rung by `resolve`,
-    saying why -- so it is left out here, where it would be told to move to
-    a rung that refuses it too.
-    """
-    from ..template import catalogue, select
-
-    owner = {it.name: tuple(it.stages)
-             for it in select(catalogue(), engine="siesta")
-             if it.stages and "transport" not in it.role}
-    out: list = []
-    for rung, bag in dict(bags or {}).items():
-        for name in sorted(dict(bag or {})):
-            if name in owner and rung not in owner[name]:
-                out.append((rung, name, owner[name]))
-    return out
-
-
 def stages_for_transport(bags=None):
     """The composite's five rungs as ``Stage`` objects, each carrying the
     overrides that are ITS OWN -- *bags* maps a rung name to that rung's
@@ -301,7 +274,8 @@ def stages_for_transport(bags=None):
     declared no rung on the device -- the holding position the per-stage
     surface (TR7) was to replace.  The per-rung form now asks the question
     per rung (`engines/transport.md` § 3.8.2a), so a bag arrives already
-    placed, and :func:`foreign_overrides` is the check both doors ask.
+    placed, and the description's own check and ``resolve`` refuse a value
+    on a rung that does not read it (``template.unread_overrides``).
     """
     from ..task import Stage
 

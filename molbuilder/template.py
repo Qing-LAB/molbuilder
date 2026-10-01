@@ -286,6 +286,12 @@ class Item:
     #: never one.  Every door asks :func:`why_not`, so the refusal is one
     #: message wherever it is met; a triple is held per component.
     above: Tuple[Any, ...] = ()
+    #: WHICH WAY A LADDER TIGHTENS THIS ITEM (plan § 5w K4): ``"down"`` -- a
+    #: tighter setting is a smaller number (a tolerance) -- or ``"up"`` (a
+    #: mesh cutoff); ``""`` when no tier table says (`engines/tuning.md`
+    #: § 2), and then a ladder's order is not judged on it.  Read by the
+    #: ladder check (`engines/stages.md` § 4 R3) on every engine.
+    tightens: str = ""
     #: THE CHOICES A KIND MAY TAKE (§ 6.3a, 2026-09-30), as ``(key, members)``
     #: pairs -- ``recommended``'s sibling: that says where a kind's value
     #: starts, this which values the kind can take at all.  A key is a kind
@@ -437,10 +443,15 @@ class Item:
     #: `device` rung, so that a value the transmission owned never reached the
     #: transmission's deck.
     #:
-    #: Stage names are a kind's own vocabulary, so this is only meaningful on
-    #: an item that belongs to one kind — which `calculations` already says.
+    #: THE NAMES ARE ROLES (:data:`KIND_ROLES`, plan § 5w K4): a transport
+    #: rung by its name, a vibration's ``relaxation`` or ``force_constants``
+    #: whatever the stage is called (:func:`stage_role`).  Each kind reads
+    #: its own roles here, and a kind without roles reads every item on every
+    #: rung -- so the relaxation settings declare ``["relaxation"]`` once, a
+    #: vibration's relax rung's alone and every rung's of an optimization.
     #:
-    #: Ask it directly, or filter for it: ``select(t, stages="device")``.
+    #: Ask it directly, or filter for it: ``select(t, stages="device")``;
+    #: whether one rung reads an item is :func:`reads`.
     stages: Tuple[str, ...] = ()
 
     #: Whether *unset* is a state this item has at all — and since 2026-08-14
@@ -513,6 +524,29 @@ class Item:
                 _refuse(f"read_by names {_r!r}, which is not a layer -- the "
                         f"vocabulary is {', '.join(KINDS)} (§ 6.1)",
                         where=self.name)
+        # § 6.4: `stages` names ROLES of the kinds that carry the item -- a
+        # name no such kind has is a misspelling that would let no rung read
+        # it, and a role-bearing kind the item DECLARES that it names none of
+        # would carry an item none of its rungs reads.  Both refused, by
+        # name.  (A calculation's template is the catalogue narrowed to one
+        # kind and states no `calculations`; its names are held to every
+        # kind's roles.)
+        if self.stages:
+            _kinds = [k for k in (self.calculations or tuple(KIND_ROLES))
+                      if k in KIND_ROLES]
+            _known = {r for k in _kinds for r in KIND_ROLES[k]}
+            for _s in self.stages:
+                if _s not in _known:
+                    _refuse(f"stages names {_s!r}, which is no rung role of "
+                            f"the kinds that carry this item -- they are "
+                            f"{', '.join(sorted(_known)) or '(none)'} "
+                            f"(engines/template.md § 6.4)", where=self.name)
+            for _k in (k for k in self.calculations if k in KIND_ROLES):
+                if not set(self.stages) & set(KIND_ROLES[_k]):
+                    _refuse(f"stages names no rung of {a_kind(_k)}, which "
+                            f"carries this item -- none of its rungs would "
+                            f"read it (engines/template.md § 6.4)",
+                            where=self.name)
         # `group` is OPTIONAL (presentation), but when present it is closed --
         # a typo would put the item on no card at all, which renders it loose
         # below the form and sends every finding about it to the residual
@@ -910,7 +944,7 @@ _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "ancho
                    "choices", "value", "default", "recommended", "offered", "optional", "required",
                    "allocation",
                    "citation", "shared", "role", "role_values", "stages",
-                   "unit", "range", "above", "tier", "pattern",
+                   "unit", "range", "above", "tightens", "tier", "pattern",
                    "group", "label", "null_label", "read_by", "help")
 
 
@@ -945,6 +979,8 @@ def _item_payload(it: Item) -> Dict[str, Any]:
         out["range"] = list(it.range)
     if it.above:
         out["above"] = {"value": it.above[0], "why": it.above[1]}
+    if it.tightens:
+        out["tightens"] = it.tightens
     if it.group:
         out["group"] = it.group
     if it.category:
@@ -1449,6 +1485,19 @@ def _offered_from(name: str, raw, type_: str, choices,
     return tuple(out)
 
 
+def _tightens_from(name: str, raw) -> str:
+    """``tightens`` as read: ``"up"``, ``"down"``, or absent (plan § 5w K4).
+    Any other word is refused -- a direction the ladder check cannot read
+    would judge a ladder backwards, or not at all, in silence."""
+    if raw is None:
+        return ""
+    if raw not in ("up", "down"):
+        _refuse(f"tightens must be \"up\" or \"down\", not {raw!r} -- which "
+                f"way a ladder makes this item tighter (engines/stages.md "
+                f"§ 4 R3)", where=name)
+    return raw
+
+
 def _above_from(name: str, body: Mapping, type_: str) -> Tuple[Any, ...]:
     """An item's hard limit (§ 5.3), ``(bound, why)``: a number the value
     must exceed and the sentence every refusal gives, on a numeric item --
@@ -1695,6 +1744,7 @@ def _item_from(name: str, body: Any) -> Item:
         offered=_offered_from(name, body.get("offered"), type_, choices,
                               tuple(body.get("engines", ()) or ())),
         above=_above_from(name, body, type_),
+        tightens=_tightens_from(name, body.get("tightens")),
         refs=tuple(body.get("refs", ()) or ()),
         allocation=bool(body.get("allocation", False)),
         citation=tuple(body.get("citation", ()) or ()),
@@ -1822,6 +1872,94 @@ def why_shared(name: str) -> str:
             "about it (engines/transport.md § 2a.7)")
 
 
+#: THE RUNG ROLES each kind's ``stages`` names (§ 6.4, plan § 5w K4): which
+#: rung of a kind reads an item, named by what the rung DOES -- the kind's
+#: own vocabulary.  Transport's roles are its five rungs, by name; a
+#: vibration's are its relaxation and its force-constant run, whatever the
+#: stages are called.  A kind absent here has no roles: every rung reads
+#: every item the kind carries (an optimization ladder is one calculation
+#: tuned N ways).
+KIND_ROLES: Dict[str, Tuple[str, ...]] = {
+    "transport": ("seed", "electrode_L", "electrode_R", "device",
+                  "transmission"),
+    "vibration": ("relaxation", "force_constants"),
+}
+
+
+def stage_role_rule(engine: str, kind: str) -> Optional[Dict[str, Any]]:
+    """How a ``kind`` calculation on ``engine`` names its rungs' roles, as
+    DATA -- ``{"named": {stage: role}, "otherwise": role}``, where an
+    ``"otherwise"`` of ``None`` means *a rung's role is its name* -- or
+    ``None`` for a kind without roles.  The one statement of the rule:
+    :func:`stage_role` reads it, and so does a surface that maps its own
+    rows (the stage table, which is handed it with its columns).
+
+    A transport rung's role is its name.  A SIESTA vibration's ``relax``
+    stage is its relaxation and every other stage its force-constant run,
+    whatever it is called (`engines/vibration.md` § 5.2a); a PySCF
+    vibration relaxes inside its one deck, so each of its rungs is the
+    force-constant run."""
+    if kind not in KIND_ROLES:
+        return None
+    if kind == "transport":
+        return {"named": {}, "otherwise": None}
+    from .pyscf.stages import VIBRATION_RELAX_STAGE
+    return {"named": ({VIBRATION_RELAX_STAGE: "relaxation"}
+                      if str(engine) == "siesta" else {}),
+            "otherwise": "force_constants"}
+
+
+def stage_role(engine: str, kind: str, stage: Optional[str]) -> Optional[str]:
+    """The role the rung ``stage`` plays in a ``kind`` calculation on
+    ``engine`` (:func:`stage_role_rule`) -- the ONE rule every door asks
+    which items a rung reads with (§ 6.4).  ``None`` for a kind without
+    roles, or no stage."""
+    rule = stage_role_rule(engine, kind)
+    if rule is None or stage is None:
+        return None
+    return rule["named"].get(stage) or rule["otherwise"] or stage
+
+
+def reads(item: "Item", engine: str, kind: str, stage: Optional[str]) -> bool:
+    """Does the rung ``stage`` of a ``kind`` calculation read ``item``?  Not
+    when the kind does not carry it (`calculations`); on a kind without
+    roles, always; else when its ``stages`` names the rung's role, or names
+    none (§ 6.4)."""
+    if item.calculations and kind not in item.calculations:
+        return False
+    role = stage_role(engine, kind, stage)
+    return role is None or not item.stages or role in item.stages
+
+
+def unread_overrides(engine: str, kind: str, stage: str, names) -> List[str]:
+    """The names among a rung's overrides that the rung does not read -- the
+    one door the description's own check and ``resolve`` ask (§ 6.4, plan
+    § 5w K4), so an override nothing reads is refused by name rather than
+    written into a deck that ignores it.  A name no catalogue item of the
+    engine carries is the name check's, and an item the rung FIXES is
+    :func:`why_role`'s; both are left to them."""
+    items = {it.name: it for it in select(catalogue(), engine=engine)}
+    return [n for n in names if n in items and kind not in items[n].role
+            and not reads(items[n], engine, kind, stage)]
+
+
+def why_unread(name: str, engine: str, kind: str, stage: str) -> str:
+    """Why the rung ``stage`` does not read ``name`` -- the clause both doors
+    give after *"stage <s> overrides <name>"*."""
+    it = one(catalogue(), name, engine=engine)
+    if it.calculations and kind not in it.calculations:
+        return (f"which {a_kind(kind)} does not carry -- no rung of it reads "
+                f"it, so the value would change nothing (engines/template.md "
+                f"6.3)")
+    role = stage_role(engine, kind, stage)
+    who = " / ".join(it.stages)
+    rung = repr(stage) if role == stage else f"{stage!r} (its {role} rung)"
+    return (f"which only the {who} rung{'s' if len(it.stages) > 1 else ''} "
+            f"of {a_kind(kind)} read{'' if len(it.stages) > 1 else 's'}, not "
+            f"{rung} -- set it there (engines/template.md 6.4, the `stages` "
+            f"declaration)")
+
+
 def fixed_by_role(engine: str, kind: str) -> frozenset:
     """The items the rungs of a ``kind`` calculation fix -- the catalogue's
     `role` (§ 6.4), asked rather than listed.  No stage override, pin, sweep
@@ -1844,7 +1982,9 @@ def role_answers(engine: str, kind: str,
     renders (`engines/transport.md` § 2a.10).
     """
     out: Dict[str, Any] = {}
-    for it in select(catalogue(), engine=engine, stages=stage):
+    # ...by the rung's ROLE (`stage_role`), which on transport is its name.
+    for it in select(catalogue(), engine=engine,
+                     stages=stage_role(engine, kind, stage)):
         if kind not in it.role:
             continue
         if stage is None and it.stages:
@@ -2085,9 +2225,9 @@ def select(t: "Template", *, category=None, engine=None,
         if shared is not None and bool(it.shared) is not bool(shared):
             continue  # `True` = binds every rung of some kind
         if stages is not None:
-            # A STAGE NAME, not a boolean: "may this rung own this item?".
-            # An item declaring no stages may be owned by any -- the ordinary
-            # case -- so it matches every name asked about.
+            # A RUNG'S ROLE (`stage_role`), not a boolean: "does this rung
+            # read this item?".  An item declaring no stages is read by any
+            # -- the ordinary case -- so it matches every role asked about.
             if it.stages and stages not in it.stages:
                 continue
         # A CALCULATION KIND, read as the stage is: "does this item apply to

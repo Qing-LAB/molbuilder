@@ -6,9 +6,8 @@ here:
 
   * :mod:`.compose`   — resolve the citation, extract + gate the
     electrodes, the travelling compose record.
-  * :mod:`.stages`    — TRANSPORT_STAGES, the per-stage input DAG, and
-    ``foreign_overrides`` (the override a rung's ``stages`` declaration does
-    not own).
+  * :mod:`.stages`    — TRANSPORT_STAGES and the per-stage input DAG.
+    Which rung reads an override is the catalogue's (``template.reads``).
   * :mod:`.deck`      — ``transport_spec``: the ``DeckSpec`` every one of
     the five rungs renders through, and ``SHAPE_OF_RUNG``, the table
     saying which of the four deck shapes each rung gets.

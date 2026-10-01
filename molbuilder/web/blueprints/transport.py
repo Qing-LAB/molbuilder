@@ -358,7 +358,6 @@ def api_transport_describe() -> Any:
     from molbuilder.transport.citation_defaults import (
         transport_template_text)
     from molbuilder.transport.stages import (TRANSPORT_STAGES,
-                                             foreign_overrides,
                                              resolvable_override_names,
                                              stages_for_transport)
     _RESOLVABLE = resolvable_override_names()
@@ -452,17 +451,9 @@ def api_transport_describe() -> Any:
                                      f"calculation's template -- there it "
                                      f"applies to all five rungs at once."
                             }), 400
-    # A RUNG'S VALUE ON A RUNG THAT DOES NOT OWN IT -- the one door prep
-    # asks too, so the tab and the cluster refuse alike.
-    _foreign = foreign_overrides(bags)
-    if _foreign:
-        _rung, _name, _owners = _foreign[0]
-        return jsonify({"ok": False,
-                        "error": f"{_name!r} belongs to "
-                                 f"{' / '.join(_owners)}, not to "
-                                 f"{_rung!r} -- set it on that rung's tab "
-                                 f"(engines/template.md 6.4, the `stages` "
-                                 f"declaration)"}), 400
+    # A RUNG'S VALUE ON A RUNG THAT DOES NOT READ IT is the description's
+    # own check's to refuse, below, as at every describe and at prep
+    # (`template.unread_overrides`, plan § 5w K4).
     for _name in shared_chosen:
         if _name not in _shared_names:
             return jsonify({"ok": False,
