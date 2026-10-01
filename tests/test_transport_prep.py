@@ -1403,7 +1403,7 @@ class TestTheGather:
         dest.mkdir()
         with pytest.raises(PrepError) as e:
             gather_transport_inputs(calc, self._task(calc), "device", dest)
-        assert "none ran the deck this composition renders" in str(e.value)
+        assert "none ran the deck electrode_L renders now" in str(e.value)
 
     def test_a_concluded_attempt_missing_its_product_is_refused(
             self, calc, tmp_path):
@@ -2890,3 +2890,49 @@ def test_a_transport_rung_takes_its_run_card(calc, monkeypatch):
     assert r.exit_code == 0, r.output
     deck = (calc / "01_seed" / "T_01_seed.fdf").read_text()
     assert _says(deck, "Diag.Algorithm", "ELPA-2STAGE"), deck[:3000]
+
+
+def test_a_leads_result_from_before_a_template_change_is_refused(
+        calc, monkeypatch):
+    """GOAL: the device never starts from a lead that ran a different deck.
+
+    CONTRACT (`engines/transport.md` § 6, the gather's second gate; plan
+    § 5w K11, T-F30): an upstream attempt is gathered only if it ran the
+    deck that rung renders NOW.  A mismatch is a mistake, refused by name.
+    The gather compared with the stage folder's LAST render, which a value
+    changed since leaves as it was -- so the leads' stale `.TSHS` were
+    carried into the device and `.gathered-from` called them consistent.
+
+    Driven through ``jobset prep run``: the leads and the seed are prepped
+    and their runs concluded, the shared ``mesh_cutoff`` is changed in the
+    template, and the device's prep is refused.
+    """
+    import dataclasses
+
+    from click.testing import CliRunner
+
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    from molbuilder.template import config_from_template, template_with_values
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(calc.parents[2]))
+
+    def prep(stage):
+        return CliRunner().invoke(jobset_group, [
+            "prep", "run", stage, "--bundle", str(calc), "--target", "this"])
+
+    for stage, product in (("seed", "T.DM"),
+                           ("electrode_L", "T_L-electrode.TSHS"),
+                           ("electrode_R", "T_R-electrode.TSHS")):
+        r = prep(stage)
+        assert r.exit_code == 0, r.output
+        _conclude(calc, stage, [product])
+    tpl = calc / "T.template.toml"
+    cfg = config_from_template(tpl.read_text(), SiestaConfig)
+    tpl.write_text(template_with_values(
+        dataclasses.replace(cfg, mesh_cutoff=cfg.mesh_cutoff + 100.0),
+        engine="siesta", calculation="transport"))
+
+    r = prep("device")
+    assert r.exit_code != 0, r.output
+    assert "renders now" in r.output, r.output

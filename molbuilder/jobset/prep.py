@@ -1696,6 +1696,102 @@ def _resolve_transport(base, task, stage: str, allocation,
     return element
 
 
+def _transport_rung(base, task, stage: str, composed, allocation, *,
+                    pins=None, log=None):
+    """What one transport rung's decks render from --
+    ``(struct, config, state, element)``.
+
+    ONE DOOR, asked by `_prep_transport` to write the rung's decks and by
+    :func:`gather_transport_inputs` to render an upstream rung NOW, from the
+    current template, junction and run card (plan § 5w K11, T-F30): the
+    gather compared an upstream attempt with that stage folder's LAST render,
+    which a change since did not touch, so a stale result was carried
+    forward and recorded as consistent.
+    """
+    from ..transport.transiesta import electrode_hs_stem
+    # (i) THE STRUCTURE.  Two of them, out of the one cited file: the
+    # junction, and the lead taken out of it by its region label -- same
+    # atoms, same relaxation, a subset rather than a geometry derived from
+    # anywhere else.  That is what lets the seam stay `spec_for(struct,
+    # cfg, ...)`: a deck describes a structure, and these are two.
+    if stage in ("electrode_L", "electrode_R"):
+        model = (composed.electrode_left if stage == "electrode_L"
+                 else composed.electrode_right)
+        struct = model.as_structure()
+        # The lead's identity IS the .TSHS stem the device deck names --
+        # one spelling, `electrode_hs_stem`, read by both writers.
+        label = electrode_hs_stem(task.label, model.label)
+    else:
+        # The junction -- and for the device it carries the region
+        # partition the NEGF block is built from.
+        struct, label = composed.sorted.structure, task.label
+
+    # (iii) THE CONFIG: the template ⊕ this rung's overrides ⊕ its run card,
+    # with provenance recording which source set each value.
+    element = _resolve_transport(base, task, stage, allocation, pins=pins,
+                                 log=log)
+    # WHAT THE DECK WRITER IS HANDED is values ⊕ the allocation-marked fields
+    # (`ResolvedConfig.render_config`), the same object every other kind's
+    # emitter gets.  Rendering from bare `.values` left the emitter blind to
+    # the rank count and the memory ceiling it is supposed to record.
+    config = element.render_config()
+    if label != task.label:
+        config = dataclasses.replace(config, system_label=label)
+    # THE ELECTRONIC STATE BELONGS TO THE CALCULATION (ES1,
+    # `science/chemistry-correctness.md` § 2a) -- and on a transport ladder
+    # that is physics, not bookkeeping: TranSIESTA joins the leads'
+    # self-energies to the device, so every rung must solve the same spin
+    # channels.  A blank spin is decided ONCE, on the JUNCTION, and every
+    # rung -- a lead included -- is handed that answer.  Decided per rung, a
+    # molecule with an open-d centre would polarize the device beside
+    # non-polarized leads.
+    # The VALUES are folded into the config, so every reader of the rung's
+    # config -- the gate, the record, the pseudopotential screening -- reads
+    # the junction's answer; the STATE itself, with where each value came
+    # from, is handed to the deck writer, which says so in every rung
+    # (§ 2a.5).  Folded alone, the rungs read it as *stated*.
+    from ..electronic_state import electronic_state
+    state = electronic_state(composed.sorted.structure, config,
+                             kind="transport")
+    # A STATE TRANSIESTA CANNOT RUN is refused HERE, on the junction, where
+    # each value still says where it came from (`template.md` § 6.3a, ES4):
+    # once folded into the rungs' configs, every rung's gate would call a
+    # recorded or detected value *stated*.
+    from ..validation.chemistry import check_electronic_state
+    refused = [i for i in check_electronic_state(
+        composed.sorted.structure, config, calculation="transport")
+        if i.severity == "error"]
+    if refused:
+        raise PrepError(refused[0].message)
+    config = dataclasses.replace(
+        config,
+        spin_treatment=state.spin_treatment.value,
+        unpaired_electrons=state.unpaired_electrons.value)
+    return struct, config, state, element
+
+
+def _transport_spec(task, stage: str, struct, config, state, volts=None):
+    """One transport deck's ``(spec, cfg)`` -- the bias point's when
+    ``volts`` is given (the point is the rung's answer, `engines/template.md`
+    § 6.4; a single-bias rung keeps the 0 V `resolve` laid on)."""
+    from ..siesta.input import spec_for as _siesta_spec_for
+    cfg = (config if volts is None else
+           dataclasses.replace(config, bias_voltage_v=float(volts)))
+    with _user_error_as_prep():
+        try:
+            spec = _siesta_spec_for(struct, cfg,
+                                    stage_token=(token_for(task, stage)
+                                                 or None),
+                                    calculation="transport", state=state)
+        except ValueError as exc:
+            # `transport_spec` refuses an unknown rung with a message
+            # written FOR a person, and `_user_error_as_prep` translates
+            # only ValidationError / RuntimeConfigError / WrapperError --
+            # deliberately, so a TypeError still looks like the bug it is.
+            raise PrepError(str(exc)) from exc
+    return spec, cfg
+
+
 def _prep_transport(base_dir, stage: Optional[str] = None, *,
                     allocation=None, env: str = None,
                     emit_sbatch: bool = True,
@@ -1737,8 +1833,6 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     from ..task import bias_token
     from ..transport.stages import (TRANSPORT_STAGES, bias_points,
                                     warm_declaration)
-    from ..transport.transiesta import electrode_hs_stem
-    from ..siesta.input import spec_for as _siesta_spec_for
     from ..runwrap import write_run_wrapper
     from ..paths import Shape
 
@@ -1871,23 +1965,6 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     stage_dir = (base / shape.stage_dir(token)) if token else base
     script = _rf(task.label, ".fdf", token or None)
 
-    # (i) THE STRUCTURE.  Two of them, out of the one cited file: the
-    # junction, and the lead taken out of it by its region label -- same
-    # atoms, same relaxation, a subset rather than a geometry derived from
-    # anywhere else.  That is what lets the seam stay `spec_for(struct,
-    # cfg, ...)`: a deck describes a structure, and these are two.
-    if stage in ("electrode_L", "electrode_R"):
-        model = (composed.electrode_left if stage == "electrode_L"
-                 else composed.electrode_right)
-        struct = model.as_structure()
-        # The lead's identity IS the .TSHS stem the device deck names --
-        # one spelling, `electrode_hs_stem`, read by both writers.
-        label = electrode_hs_stem(task.label, model.label)
-    else:
-        # The junction -- and for the device it carries the region
-        # partition the NEGF block is built from.
-        struct, label = composed.sorted.structure, task.label
-
     # (ii) THE ALLOCATION, folded BEFORE the resolve and not after.
     #
     # The description's own queue/wall/memory ask and its reporting policy are
@@ -1899,49 +1976,13 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     allocation = _with_notify(
         _under_description(allocation, task.allocation, chosen), task.notify)
 
-    # (iii) THE CONFIG: the template ⊕ this rung's overrides, with
-    # provenance recording which source set each value.
-    element = _resolve_transport(base, task, stage,
-                                 allocation or Resources(), pins=pins,
-                                 log=_tlog)
-    # WHAT THE DECK WRITER IS HANDED is values ⊕ the allocation-marked fields
-    # (`ResolvedConfig.render_config`), the same object every other kind's
-    # emitter gets.  Rendering from bare `.values` left the emitter blind to
-    # the rank count and the memory ceiling it is supposed to record.
-    config = element.render_config()
+    # (i) + (iii) THE RUNG -- its structure, its config and the junction's
+    # electronic state, through the one door the gather asks too when it
+    # renders an upstream rung now (`_transport_rung`, plan § 5w K11).
+    struct, config, _junction_state, element = _transport_rung(
+        base, task, stage, composed, allocation or Resources(), pins=pins,
+        log=_tlog)
     res = element.resources
-    if label != task.label:
-        config = dataclasses.replace(config, system_label=label)
-    # THE ELECTRONIC STATE BELONGS TO THE CALCULATION (ES1,
-    # `science/chemistry-correctness.md` § 2a) -- and on a transport ladder
-    # that is physics, not bookkeeping: TranSIESTA joins the leads'
-    # self-energies to the device, so every rung must solve the same spin
-    # channels.  A blank spin is decided ONCE, on the JUNCTION, and every
-    # rung -- a lead included -- is handed that answer.  Decided per rung, a
-    # molecule with an open-d centre would polarize the device beside
-    # non-polarized leads.
-    # The VALUES are folded into the config, so every reader of the rung's
-    # config -- the gate, the record, the pseudopotential screening -- reads
-    # the junction's answer; the STATE itself, with where each value came
-    # from, is handed to the deck writer, which says so in every rung
-    # (§ 2a.5).  Folded alone, the rungs read it as *stated*.
-    from ..electronic_state import electronic_state
-    _junction_state = electronic_state(composed.sorted.structure, config,
-                                       kind="transport")
-    # A STATE TRANSIESTA CANNOT RUN is refused HERE, on the junction, where
-    # each value still says where it came from (`template.md` § 6.3a, ES4):
-    # once folded into the rungs' configs, every rung's gate would call a
-    # recorded or detected value *stated*.
-    from ..validation.chemistry import check_electronic_state
-    _refused = [i for i in check_electronic_state(
-        composed.sorted.structure, config, calculation="transport")
-        if i.severity == "error"]
-    if _refused:
-        raise PrepError(_refused[0].message)
-    config = dataclasses.replace(
-        config,
-        spin_treatment=_junction_state.spin_treatment.value,
-        unpaired_electrons=_junction_state.unpaired_electrons.value)
 
     # The pseudopotentials travel with the citation, and the screening runs
     # against THIS config -- the one the deck renders from -- because what
@@ -1975,20 +2016,9 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
         # catalogue does not hold (`engines/template.md` § 6.4): the list is
         # the bias's only home (`engines/transport.md` § 2a.10), and a
         # single-bias rung keeps the answer `resolve` laid on, 0 V.
-        cfg = (config if volts is None else
-               dataclasses.replace(config, bias_voltage_v=float(volts)))
+        spec, cfg = _transport_spec(task, stage, struct, config,
+                                    _junction_state, volts)
         with _user_error_as_prep():
-            try:
-                spec = _siesta_spec_for(struct, cfg,
-                                        stage_token=(token or None),
-                                        calculation="transport",
-                                        state=_junction_state)
-            except ValueError as exc:
-                # `transport_spec` refuses an unknown rung with a message
-                # written FOR a person, and `_user_error_as_prep` translates
-                # only ValidationError / RuntimeConfigError / WrapperError --
-                # deliberately, so a TypeError still looks like the bug it is.
-                raise PrepError(str(exc)) from exc
             _sc.prepare_deck(spec, struct, cfg, out_dir / script,
                              log=_tlog, dest_dir=base, findings=findings)
 
@@ -2091,11 +2121,11 @@ def gather_transport_inputs(base_dir, task, stage: str,
     ruling Q2 — transport never runs its pieces for you):
 
     * the upstream stage must have been PREPPED (its deck rendered);
-    * it must hold a CONCLUDED attempt **whose deck matches the current
-      render byte-for-byte** — a re-pointed citation or changed contract
-      re-renders the decks at prep, so a concluded attempt of the OLD
-      deck no longer answers for this composition and is skipped; if no
-      attempt matches, the refusal says the decks changed;
+    * it must hold a CONCLUDED attempt **whose deck matches the deck that
+      rung renders NOW** -- from the current template, junction and run
+      card, through the rung's own door (`_transport_rung`), never the
+      stage folder's last render, which a change since leaves as it was
+      (plan § 5w K11).  A mismatch is a mistake: refused by name;
     * the concluded, matching attempt must actually hold the file.
 
     The newest qualifying attempt wins (identical decks → identical
@@ -2115,6 +2145,7 @@ def gather_transport_inputs(base_dir, task, stage: str,
                           seed_enabled=("seed" in enabled))
     shape = Shape.named(task.shape)
     gathered: List[tuple] = []
+    composed = None              # the junction, read once, when first needed
     for upstream, filename in inputs:
         token = token_for(task, upstream)
         up_dir = base / shape.stage_dir(token)
@@ -2161,17 +2192,25 @@ def gather_transport_inputs(base_dir, task, stage: str,
         #
         # `same_calculation` masks exactly those fields and keeps every
         # other byte, the region partition included (`script_emit`).
+        # THE DECK THE UPSTREAM RUNG RENDERS NOW (plan § 5w K11, T-F30).
+        # This read the stage folder's LAST render, which a changed template
+        # value or a re-pointed junction leaves as it was until that rung
+        # is prepped again -- so a stale result was carried forward, and
+        # `.gathered-from` said it was consistent.
+        if composed is None:
+            composed = _composed_junction(base, task)
+        now = _rung_deck_now(base, task, upstream, composed,
+                             volts=(bias if upstream == "device" else None))
         matching = [d for d in concluded
                     if (d / current_deck.name).is_file()
                     and _sc.same_calculation(
-                        (d / current_deck.name).read_text(),
-                        current_deck.read_text())]
+                        (d / current_deck.name).read_text(), now)]
         if not matching:
             raise PrepError(
                 f"{upstream} has {len(concluded)} concluded attempt(s), "
-                f"but none ran the deck this composition renders -- the "
-                f"junction citation or its contract changed since they "
-                f"ran, so their {filename} answers a different "
+                f"but none ran the deck {upstream} renders now -- its "
+                f"template, its junction or its run card changed since "
+                f"they ran, so their {filename} answers a different "
                 f"calculation.  Re-{run_first}")
         src = matching[0] / filename
         if not src.is_file():
@@ -2186,6 +2225,45 @@ def gather_transport_inputs(base_dir, task, stage: str,
     if gathered:
         write_gathered_from(attempt_dir, gathered)
     return gathered
+
+
+def _composed_junction(base, task):
+    """The junction this calculation is composed from -- its record beside
+    ``task.json``, for the cited junction (`_prep_transport` step 3a writes
+    it before any rung's deck)."""
+    from ..projects import find_projects_root
+    from ..transport.compose import load_compose_record
+    why: list = []
+    composed = load_compose_record(base, citation=task.slots["junction"],
+                                   tree_root=find_projects_root(base),
+                                   why=why)
+    if composed is None:
+        raise PrepError(
+            f"this calculation's junction cannot be read for the gather: "
+            f"{why[0] if why else 'there is no composition record'}.  Prep "
+            f"the rung again, which composes it.")
+    return composed
+
+
+def _rung_deck_now(base, task, stage: str, composed, *, volts=None) -> str:
+    """The deck ``stage`` renders NOW -- its text exactly as `prep run`
+    writes it, from the current template, junction and the rung's run card
+    (`_transport_rung`, `_transport_spec`, `script_emit.render_deck`).
+    A transport deck records no machine sizing, so no allocation is
+    needed to render it."""
+    from .model import Resources
+    from .prep_inputs import _declared_execution_pins
+    card = task.run_condition(stage)
+    pins = {}
+    if card:
+        pins, _axes, _value_axes = _declared_execution_pins(
+            base, task.engine, {k: [v] for k, v in card.items()})
+    struct, config, state, _element = _transport_rung(
+        base, task, stage, composed, Resources(), pins=pins or None)
+    spec, cfg = _transport_spec(task, stage, struct, config, state, volts)
+    with _user_error_as_prep():
+        return _sc.render_deck(spec, struct, cfg, verbose=True,
+                               dest_dir=base).text
 
 
 def gather_for_stage(base_dir, task, stage: str) -> List[Tuple[Path, Optional[float], List[tuple]]]:

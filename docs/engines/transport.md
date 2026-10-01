@@ -2737,7 +2737,7 @@ copies an upstream file only if **three gates** all pass:
 | gate | what it refuses |
 |---|---|
 | the upstream stage is PREPPED | citing a stage that was never set up |
-| it holds a CONCLUDED attempt **whose deck matches the current one byte-for-byte** | integrating a result produced by a *different* deck — the silent-wrong-answer case |
+| it holds a CONCLUDED attempt **whose deck matches the deck that rung renders NOW** — from the current template, junction and run card, byte for byte but for the generation stamp (`same_calculation`); never the stage folder's last render, which a change since leaves as it was (plan § 5w K11) | integrating a result produced by a *different* deck — the silent-wrong-answer case. A mismatch is a mistake, refused by name |
 | that attempt actually holds the named file | a run that concluded without writing what it promised |
 
 The newest attempt that passes all three wins, and the copy records its

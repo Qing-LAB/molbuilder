@@ -4631,7 +4631,7 @@ as a milestone does (§ 0a). **Approved 2026-09-29** (§ 5w.3); K6 is first.
 | **K8** | **what the engine sees** | one door for the engine's frame facts: the axis kinds PySCF computes with (a cluster: isolated on all three), read by the deck, the Methods count and the R7 note alike; the box checks run for an engine that uses a cell | PS-C4, PO-C13; the K3 review's dipole advisory, keyed on the k count |
 | **K9** | **engine facts restated in prose** | each item's engine default declared once with its source (file:line), and the help's deviation sentence (§ 5.2), the template comment and the deck's *not set* line (§ 6.6 obligation 4) written from it; one measured fixture — the engine's own account of a minimal run, SIESTA's fdf log — checks every declared default; a comment restating engine behaviour is cut to the one home | SO-C6, SO-C7, SO-C14, SS-C7, SS-C8, SS-C9, T-F31, PO-C18, PO-C19, and the § 5.2 half of every help text |
 | **K10** | **where things are on disk** | one reader of a rung's attempts, a bias scan's per-point folders included; carry names from the rung's own naming door; a kind's warm set carries what its rungs read | T-F27/F13, PO-C16, SS-C14 |
-| **K11** | **comparing against a stale render** | the gather check renders each upstream rung now, in memory, through the one render door, and compares that | T-F30 |
+| **K11** | **comparing against a stale render** — **done 2026-09-30** (§ 5w.5) | the gather check renders each upstream rung now, in memory, through the one render door, and compares that | T-F30 |
 | **K12** | **stage names** | one resolver and one printer: a deck header prints the name `launch` accepts; names fold case everywhere (`stages.md`) | SS-C11, SS-C15 |
 | **K13** | **file writers** | every file molbuilder writes goes through `persist`'s atomic writer, and the PySCF deck's own is spliced from it | SS-C17, V1.37 |
 | **K14** | **allocations** | one name map between the catalogue's items and `Resources` (`omp_threads` ↔ `cpus_per_task`, `gpu_count` ↔ `gres`), read by `render_config` and `prep_inputs` alike; one meaning of a blank budget on every engine — the run card's fit panel included, which reads the run through the bench's enumerator (an absent `gpu_count` ranges over the devices, an absent `mpi_np` gets the machine's grid) where the run takes one device and `auto_ranks`; the engine's parallel model (MPI or OpenMP) declared and read by the scheduler header | SO-C8, SO-C5, PS-C6 = PO-C7, PO-C8; the K5 review's C1 |
@@ -5143,6 +5143,21 @@ reviewers' probes (the archive's § E lists) among its runs.
   `gres`), and is kept because its old comment was false. **C1** — the run
   card's fit panel reads the run through the bench's enumerator — is
   K14's (one meaning of a blank budget) and is carried there.
+* **K11 — done 2026-09-30** (T-F30; user: *"mismatch is a mistake. period."*).
+  The gather compares an upstream rung's concluded attempt with the deck that
+  rung renders NOW — `_rung_deck_now`, through the rung's one door
+  (`_transport_rung`: its structure, the template ⊕ its overrides ⊕ its run
+  card resolved, the junction's electronic state; `_transport_spec` per bias
+  point), the same pair `_prep_transport` writes the rung's decks with — and
+  refuses a mismatch by name. It compared with the stage folder's LAST
+  render, which a template value changed since, or a re-pointed junction,
+  leaves as it was, so a stale lead's `.TSHS` was carried into the device and
+  `.gathered-from` called it consistent. A transport deck records no machine
+  sizing (no BENCH-MARKS block), so the render needs no allocation, and the
+  comparison is `same_calculation`'s as it stood. `engines/transport.md` § 6's
+  gate row says so. Test, through `jobset prep run`: the leads and the seed
+  concluded, `mesh_cutoff` changed in the template, the device's prep refused
+  — red against the stage-folder comparison.
 
 ---
 
