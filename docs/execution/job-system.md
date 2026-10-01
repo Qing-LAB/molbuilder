@@ -1200,8 +1200,14 @@ the commands; one that concluded without converging is taken, with a warning.
 **An explicit choice is taken as said**: `--from <attempt>` names any run —
 `prep` says what it sees there (still running, stopped, failed, not converged)
 and refuses only what cannot be done (no such attempt, no restart files in it)
-— and `--cold` starts from the calculation's structure. Either way `prep` prints
-which run the stage continues from, and the decision ledger records it:
+— and `--cold` starts from the calculation's structure. What cannot be taken is
+refused **before anything is written** too: a run that is not an attempt of
+this calculation, `--from` with `--cold`, either on the flat layout or a bias
+scan, either on a bench — and the attempt is opened once, with what it carries,
+so a refusal leaves an attempt an earlier prep set up as it was *(W52; until
+2026-10-01 these refusals came after the five steps had written, one of them
+after an earlier carry had been taken away)*. Either way `prep` prints which run
+the stage continues from, and the decision ledger records it:
 
 ```text
   continues from 01_coarse/run-0 (the stage before it; concluded rc=0 at Thu Sep 24 02:38:51 PM MST 2026; converged): copied H2.XV, H2.DM, H2.MD.nc, H2.MD, H2.MDE, H2.ANI

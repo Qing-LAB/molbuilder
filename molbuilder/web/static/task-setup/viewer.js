@@ -2785,11 +2785,15 @@ function _showPrepAnswer(wrap, say, r, onConfirm) {
     if (a) {
         line("Attempt " + a.dir + (a.fresh ? "" : " (reused — not launched yet)"));
         line("brought in: " + (a.brought || []).join(", "));
-        if (!r.continuation && (a.copied || []).length) {
-            line("copied from " + a.continued_from + ": " + a.copied.join(", "));
-        } else if (!r.continuation) {
-            line(a.cold ? "cold start — nothing copied in"
-                        : "nothing carried in (the first stage, or one that starts clean)");
+        // WHAT IT STARTS FROM when it continues from no run -- the
+        // terminal's own words, off the same answer: a cold start asked
+        // for, a linked stage's input (prep takes it from the stages
+        // before it), or nothing (W52).
+        if (!r.continuation) {
+            line(r.cold ? "cold start — nothing copied in"
+                 : r.linked ? "its input is prep's own — taken from the "
+                              + "stages before it, not carried from a run"
+                 : "nothing carried in (the first stage, or one that starts clean)");
         }
     }
     for (const p of (r.points || [])) {

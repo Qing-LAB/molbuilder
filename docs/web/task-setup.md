@@ -1098,7 +1098,9 @@ the terminal prints, from the same answer:
   calculation's ledger as this tab's answer. Confirm first asks what Prep asks:
   unsaved edits are not in the `task.json` prep reads (§ 7a);
 * **the folders written**, **what each deck's checks said**, and **the
-  attempt** — opened or reused, what was brought in, what was copied from which
+  attempt** — opened or reused, what was brought in, what it starts from (the
+  run it continues from, a cold start you asked for, a linked stage's input
+  that prep takes from the stages before it, or nothing), what was copied from which
   attempt — or, on a transport bias scan, one attempt per point;
 * **what a transport rung gathered** from the concluded rungs upstream;
 * **the resources** the stage will launch with, and **whether the deck

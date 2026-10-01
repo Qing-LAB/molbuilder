@@ -187,6 +187,23 @@ def test_a_flat_stage_records_the_run_it_continued_from(tmp_path,
     assert record["continued_from"] == "H2_01_coarse-run0", record
 
 
+def test_a_linked_stage_says_its_input_is_preps_own(tmp_path, monkeypatch):
+    """A SIESTA vibration's `freq` is written at the geometry `relax`
+    relaxed to -- prep takes it, no run is continued -- so its prep says so,
+    never that it is like a first stage (`job-system.md` § 5.4, the linked
+    column).
+
+    MUTATION THIS MUST FAIL AGAINST: the answer not saying the stage is
+    linked (both doors fall back to "nothing carried in")."""
+    bundle = describe_h2(tmp_path, monkeypatch, calculation="vibration")
+    assert _prep(bundle, "relax").exit_code == 0
+    a_finished_run(bundle / "01_relax" / "run-0", stem="H2_01_relax")
+    r = _prep(bundle, "freq")
+    assert r.exit_code == 0, r.output
+    assert "its input is prep's own" in r.output, r.output
+    assert "nothing carried in" not in r.output, r.output
+
+
 def test_a_newer_run_is_never_passed_over_and_a_verdict_is_said(ladder):
     """Coarse ran once and did not converge, then was launched again: the
     newer run has not concluded, so medium's prep refuses -- the older run
@@ -318,7 +335,7 @@ def test_the_browser_doors_offer_the_choice_and_take_it(ladder):
     (bundle.parent / "elsewhere").mkdir()
     r = post(stage="medium", **{"from": "../elsewhere"})
     assert r.status_code == 400, r.get_json()
-    assert "`from` names a run of this calculation" in r.get_json()["error"]
+    assert "--from names a run of this calculation" in r.get_json()["error"]
 
 
 def test_the_run_panel_says_what_a_run_continued_from(ladder):

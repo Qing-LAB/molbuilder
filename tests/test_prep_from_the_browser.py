@@ -567,8 +567,9 @@ def test_a_preflight_refusal_keeps_its_notes_on_both_doors(
     assert r.exit_code != 0, r.output
     assert r.output.index("starts clean") < r.output.index(
         "fails its own preflight"), r.output
+    # The notes, then the refusal itself -- a decision too (W52).
     assert (_ledger_decisions(calc) == _ledger_decisions(twin)
-            == [("prep", "preflight-report")])
+            == [("prep", "preflight-report"), ("prep", "refused")])
 
 
 def test_a_folder_holding_two_templates_is_refused_in_words_on_both_doors(

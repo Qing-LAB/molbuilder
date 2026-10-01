@@ -656,8 +656,8 @@ def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
             f"{', '.join(want)}, and the library they should come from is "
             f"not a directory.  "
             + describe_psml_anchor(str(lib_raw), dest_dir=base)
-            + f"  Put the .psml files there, or set `psml_lib` to a "
-              f"directory that has them.")
+            + "  Put the .psml files there, or set `psml_lib` to a "
+              "directory that has them.")
     missing = copy_pseudopotentials(want, lib, pdir)
     if missing:
         raise PrepError(
@@ -963,9 +963,17 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                      chosen=None,
                      pipeline_log: bool = False,
                      opened: Optional[list] = None,
-                     findings: Optional[list] = None) -> List[Path]:
+                     findings: Optional[list] = None,
+                     continue_from: Optional[str] = None,
+                     cold: bool = False,
+                     named: bool = True) -> List[Path]:
     """**`prep`, entire** — the five steps of `project-layout.md` § 2.3.1, in
     the order it calls *forced rather than chosen*.
+
+    ``continue_from`` / ``cold`` / ``named`` are what the stage continues
+    from, as :func:`prep_stage` decided it before anything was written: the
+    attempt is opened ONCE, with its carry (`materialize.prepare_attempt`).
+    Saying neither leaves a reused attempt's carry as it is.
 
     1. **resolve the machine** — READ its record, persist the snapshot as
        ``environment.json``; refuse when no record answers (§ 3.1);
@@ -1023,7 +1031,9 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                                translation=translation, target=target,
                                chosen=chosen,
                                pipeline_log=pipeline_log,
-                               opened=opened, findings=findings)
+                               opened=opened, findings=findings,
+                               continue_from=continue_from, cold=cold,
+                               named=named)
     from ..pipeline_log import PipelineLog, config_rows
     from ..resolve import ResolveError, resolve
     from ..task import FILENAME as TASK_FILENAME
@@ -1034,7 +1044,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # two can never disagree (A-1/A-2).  Imported once for the whole function
     # -- the log's own home is the same container, and a second import site
     # would be a second chance to spell it differently.
-    from .materialize import bench_container, trial_dir
+    from .materialize import bench_container
     from ..paths import Shape
 
     base = Path(base_dir).resolve()
@@ -1048,6 +1058,10 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
 
     # ---- 1. resolve the machine ---------------------------------------- #
     environment = _environment_for(base, target)
+    # BEFORE ANYTHING IS WRITTEN: a record that does not state how to enter
+    # the named machine's environment is refused here, not after the decks
+    # and the job-set are on disk (W52).
+    _require_remote_activation(target, environment)
 
     # ---- 2. resolve the parameters ------------------------------------- #
     task = read_task(desc)
@@ -1251,7 +1265,6 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     _real_stderr, _sys.stderr = _sys.stderr, _once
     try:
         for element in pset:
-            stem = _rf_stem(element.label, token or None)
             script = _rf(element.label, seam.suffix, token or None)
             # WHERE THIS ELEMENT'S FILES GO -- its own directory, never the
             # bundle root (user, 2026-08-24; `project-layout.md` § 1.0 always
@@ -1439,13 +1452,12 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # probed states its own activation, and the generator reads it from the
     # same field whoever it is for.
     #
-    # A record that does not state it is refused HERE rather than
-    # substituted there.  This is the layer that knows a remote target was
-    # named, and substituting this machine's activation for another
-    # machine's is the 2026-08-24 failure exactly: it succeeds at generate
-    # time and dies on the cluster hours later on a path that exists only
-    # here.
-    _require_remote_activation(target, environment)
+    # A record that does not state it was refused at step 1, before anything
+    # was written (`_require_remote_activation`).  This is the layer that
+    # knows a remote target was named, and substituting this machine's
+    # activation for another machine's is the 2026-08-24 failure exactly: it
+    # succeeds at generate time and dies on the cluster hours later on a path
+    # that exists only here.
     dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
                        record_dir=record_dir, log=log,
                        machine_record=environment)
@@ -1478,7 +1490,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # § 1.5a gave trials attempts.  Only the ladder rung was left half-done --
     # the asymmetry was inside this function, not between two surfaces.
     if kind == "ladder" and stage:
-        reports = _open_attempts(js, base, stage)
+        reports = _open_attempts(js, base, stage, continue_from=continue_from,
+                                 cold=cold, named=named)
         if opened is not None:
             opened.extend(reports)
 
@@ -1488,7 +1501,9 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
 
 
 def _open_attempts(js: JobSet, base: Path, stage: str,
-                   containers: Sequence[Optional[Path]] = (None,)) -> List:
+                   containers: Sequence[Optional[Path]] = (None,), *,
+                   continue_from: Optional[str], cold: bool,
+                   named: bool) -> List:
     """Open this rung's attempt(s) — **step 6, and both arms take it.**
 
     Returns the :class:`~molbuilder.jobset.materialize.Attempt` reports, in
@@ -1508,16 +1523,21 @@ def _open_attempts(js: JobSet, base: Path, stage: str,
     here once and the refusal never has to fire.
 
     Idempotent by ``resolve_attempt``'s rule — reuse the last attempt until it
-    has been launched, then open the next — so a caller that opens one itself
-    (the CLI, passing ``--from`` or ``--cold``) lands on this same directory
-    rather than a second one.
+    has been launched, then open the next.  ``continue_from`` / ``cold`` /
+    ``named`` -- REQUIRED, they decide which run the attempt starts from
+    (`code-audit.md` D1) -- are prep's decision, so the attempt is opened
+    once, with its carry: it was opened with none and then again with it
+    until 2026-10-01, and a refusal between the two left an earlier carry
+    undone (W52).
     """
     from .materialize import prepare_attempt, shape_of as _shape_of
 
     sh = _shape_of(js, base)
     if sh is None or not sh.keeps_attempts_as_directories:
         return []
-    reports = [prepare_attempt(js, base, stage, container=c)
+    reports = [prepare_attempt(js, base, stage, container=c,
+                               continue_from=continue_from, cold=cold,
+                               named=named)
                for c in containers]
     for rep in reports:
         _move_progress_channel_into(rep.dir)
@@ -1837,7 +1857,10 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                     chosen=None,
                     pipeline_log: bool = False,
                     opened: Optional[list] = None,
-                    findings: Optional[list] = None) -> List[Path]:
+                    findings: Optional[list] = None,
+                    continue_from: Optional[str] = None,
+                    cold: bool = False,
+                    named: bool = True) -> List[Path]:
     """`prep` for the transport COMPOSITE — one rung of the ladder.
 
     **The same five steps every kind takes**, with one step of its own.
@@ -1895,6 +1918,10 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
 
     # ---- 1. resolve the machine ---------------------------------------- #
     environment = _environment_for(base, target)
+    # BEFORE ANYTHING IS WRITTEN: a record that does not state how to enter
+    # the named machine's environment is refused here, not after the decks
+    # and the job-set are on disk (W52).
+    _require_remote_activation(target, environment)
 
     # ---- 2. the description, and WHICH rung ---------------------------- #
     task = read_task(desc)
@@ -2073,14 +2100,11 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
               resumes=resumes_for(str(task.engine), _rung_kind(task, stage),
                                   base))
 
-    # BEFORE ANYTHING IS WRITTEN, and that is the whole point of the check.
-    # It stood after the per-point wrapper loop below until 2026-09-16, so
-    # `prep run device --target sol` against a record that states no
-    # activation wrote one wrapper per bias point carrying THIS machine's
-    # activation and only then refused -- and the refusal's own premise
-    # (`_require_remote_activation`: *"refused HERE rather than substituted
-    # downstream"*) is that those files must not exist.
-    _require_remote_activation(target, environment)
+    # The activation the wrappers below carry was checked at step 1, before
+    # anything was written: this check stood after the per-point wrapper
+    # loop until 2026-09-16, and then here -- after the decks, the compose
+    # record and the pseudos -- until 2026-10-01 (W52), while its own premise
+    # (`_require_remote_activation`) is that no such file may exist.
 
     # Each bias point's directory gets its own wrapper, beside its own deck
     # -- the same render `prep_jobset` gives the stage directory, through
@@ -2136,7 +2160,9 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # attempt (above, the same day) removed the symptom and left the gap, so a
     # device job could reach the node and die for want of an electrode `.TSHS`.
     reports = _open_attempts(js, base, stage,
-                             containers=[d for d, _ in point_dirs] or (None,))
+                             containers=[d for d, _ in point_dirs] or (None,),
+                             continue_from=continue_from, cold=cold,
+                             named=named)
     if opened is not None:
         opened.extend(reports)
     if _tlog is not None:
@@ -2809,6 +2835,14 @@ class PrepAnswer:
     #: Which run this stage continues from, and what it was
     #: (`continuation.Continuation`).
     continuation: Optional[object] = None
+    #: A LINKED stage -- its kind gives its rungs roles (`template.KIND_ROLES`)
+    #: -- whose input is prep's own, taken from the stages before it: what
+    #: both doors say in place of "nothing carried in" (W52: a `freq` built
+    #: at `relax`'s geometry was said to be like a first stage).
+    linked: bool = False
+    #: The person said ``--cold`` (the attempt's own ``cold`` says only that
+    #: it started clean, which prep now states whenever nothing continues).
+    cold: bool = False
 
     def as_dict(self, base) -> dict:
         """The answer as JSON, paths relative to the calculation folder --
@@ -2858,6 +2892,8 @@ class PrepAnswer:
                                   line=self.continuation.line(
                                   a.copied if a is not None else ()))
                              if self.continuation is not None else None),
+            "linked": self.linked,
+            "cold": self.cold,
         }
 
 
@@ -2975,6 +3011,13 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         # WHAT WAS FOUND RIDES WITH THE REFUSAL: a sentence that points at
         # "the crossed-out list above" is honest only if the list is shown.
         _record_preflight()
+        # AND THE REFUSAL IS A DECISION TOO (`job-system.md` § 5.3: every
+        # decision the entry makes lands in the ledger) -- in a described
+        # calculation only: a folder that is not one gets no ledger of ours
+        # (W52: after a refusal the stage's last line read `prepped`).
+        if desc.is_file():
+            ledger(base, "prep", "refused", kind=kind, stage=stage,
+                   reason=str(exc))
         exc.findings, exc.notes, exc.partial = (tuple(findings), tuple(notes),
                                                 out)
         return exc
@@ -2999,6 +3042,11 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                 "(project-layout.md § 2.1); run `molbuilder jobset init` "
                 "first.  (Hand-built job-sets remain launchable: `launch` "
                 "and `status` read job-set.json directly.)")
+        if (from_attempt or cold) and kind == "bench":
+            raise PrepError(
+                "--from / --cold choose what a RUN starts from; a bench "
+                "trial measures its point from the structure, always "
+                "(job-system.md § 7).")
         if (from_attempt or cold) and stage is None:
             raise PrepError(
                 "--from / --cold describe ONE stage's attempt; name the "
@@ -3073,8 +3121,15 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                 base, task, stage, from_attempt=from_attempt, cold=cold)
             if refused:
                 raise PrepError(refused)
-        if continuation is not None and continuation.by_default:
-            from_attempt = continuation.source    # None on the flat layout
+        # WHAT THE ATTEMPT IS OPENED WITH, decided here and handed to the
+        # five steps, which open it once: the run it continues from, or --
+        # when it continues from nothing -- clean, so a carry an earlier
+        # prep left is taken away rather than read by an engine that was
+        # not told to (`materialize.prepare_attempt`).
+        continue_from = (continuation.source if continuation is not None
+                         else None)
+        start_clean = continuation is None
+        named = not (continuation is not None and continuation.by_default)
         if on_found is not None:
             on_found(findings, notes)
 
@@ -3112,8 +3167,14 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                                 pins=pins, translation=translation,
                                 target=target, chosen=chosen,
                                 pipeline_log=pipeline_log, opened=opened,
-                                findings=deck_findings)
+                                findings=deck_findings,
+                                continue_from=continue_from,
+                                cold=start_clean, named=named)
         seen: set = set()
+        # ONE ENTRY PER FOLDER: on the flat layout every stage's folder is
+        # the calculation's one, and the answer listed it once per stage --
+        # "prepped 3 job dir(s)" for one stage (W52).
+        dirs = list(dict.fromkeys(dirs))
         out = PrepAnswer(
             kind, stage, findings=findings, notes=notes, dirs=list(dirs),
             provenance=ledger_prepped(base, kind=kind, stage=stage, dirs=dirs),
@@ -3130,65 +3191,49 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         if kind == "bench":
             return out
 
-        # 7 · THE ATTEMPT.  Flat keeps no attempt directories, so a flat
-        #     prep is complete here -- unless --from / --cold asked for
-        #     attempt machinery, whose refusal is `prepare_attempt`'s to word.
+        # 7 · THE ATTEMPT -- opened by the five steps, ONCE, with what it
+        #     continues from (`_open_attempts`; until 2026-10-01 it was opened
+        #     a second time here, and a refusal between the two left an
+        #     earlier carry undone -- W52).  Flat keeps no attempt
+        #     directories: the run is the calculation's folder.
+        from ..template import KIND_ROLES
+        out.linked = (getattr(task, "calculation", None)
+                      or "optimization") in KIND_ROLES
+        out.cold = bool(cold)
+        out.continuation = continuation
         js = JobSet.load(base / JOBSET_FILENAME)
         sh = shape_of(js, base)
-        if (sh is not None and not sh.keeps_attempts_as_directories
-                and not from_attempt and not cold):
+        if sh is not None and not sh.keeps_attempts_as_directories:
             out.flat = True
-            out.continuation = continuation
             _flat_continued_from(base, task, stage, continuation)
-            if continuation is not None:
-                ledger(base, "prep", "continues", stage=stage,
-                       **continuation.ledger_facts(), copied=[])
-            return out
-        # A TRANSPORT BIAS SCAN keeps one attempt per point (04_device/v0.2/
-        # run-<n>, layout ruled 2026-08-29), which the five steps opened;
-        # each is gathered against its own voltage.
-        from ..transport.stages import scan_points
-        scan = scan_points(task, stage) if is_transport else ()
-        if scan:
-            if from_attempt or cold:
-                raise PrepError(
-                    "--from / --cold name ONE attempt, and a bias scan keeps "
-                    "one per point -- per-point continuation is not named "
-                    "yet (transport-design.md 4.3; re-prep opens fresh "
-                    "attempts for every point).")
-            out.points = gather_for_stage(base, task, stage)
-            return out
-        from .materialize import prepare_attempt
-        try:
-            rep = prepare_attempt(
-                js, base, stage, continue_from=from_attempt, cold=cold,
-                named=not (continuation is not None
-                           and continuation.by_default))
-        except ValueError as e:
-            raise PrepError(str(e))
-        # FRESH IS THE FIRST OPEN'S ANSWER: the five steps opened this
-        # attempt a moment ago, so opening it again here finds it unlaunched
-        # and calls it reused (2026-09-25).
-        out.attempt = dataclasses.replace(
-            rep, fresh=next((a.fresh for a in opened if a.dir == rep.dir),
-                            rep.fresh))
-        out.continuation = continuation
+            run_dir, rep_stage, copied = base, stage, []
+        else:
+            # A TRANSPORT BIAS SCAN keeps one attempt per point (04_device/
+            # v0.2/run-<n>, layout ruled 2026-08-29), which the five steps
+            # opened; each is gathered against its own voltage.
+            from ..transport.stages import scan_points
+            if is_transport and scan_points(task, stage):
+                out.points = gather_for_stage(base, task, stage)
+                return out
+            rep = opened[0]
+            out.attempt = rep
+            run_dir, rep_stage, copied = rep.dir, rep.stage, list(rep.copied)
+            if is_transport:
+                out.gathered = [pair for _att, _v, got
+                                in gather_for_stage(base, task, rep.stage)
+                                for pair in got]
         if continuation is not None:
             # THE DECISION, LOGGED (`job-system.md` § 5.4): which run, by
             # default or named, what it was, and what came across.
             ledger(base, "prep", "continues", stage=stage,
-                   **continuation.ledger_facts(), copied=list(rep.copied))
+                   **continuation.ledger_facts(), copied=copied)
         elif cold:
             ledger(base, "prep", "starts-cold", stage=stage)
-        if is_transport:
-            out.gathered = [pair for _att, _v, got
-                            in gather_for_stage(base, task, rep.stage)
-                            for pair in got]
 
         # 8 · WHAT IT WILL LAUNCH WITH, and whether the deck agrees: `launch`
         #     refuses a deck rendered for another width, and prep is the step
         #     that exists so there are no surprises there (`agreement.py`).
-        job = next((j for j in js.jobs if j.name == rep.stage), None)
+        job = next((j for j in js.jobs if j.name == rep_stage), None)
         if job is not None:
             r = job.resources
             out.resources = {"mpi_np": r.mpi_np,
@@ -3196,10 +3241,10 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                              "continue_retries": r.continue_retries}
             out.deck = Path(job.script).name
             from .agreement import launch_agreement
-            agreement = launch_agreement(rep.dir, job)
+            agreement = launch_agreement(run_dir, job)
             if agreement.verdict != "silent":
                 out.agreement = agreement
-                ledger(base, "prep", "launch-agreement", stage=rep.stage,
+                ledger(base, "prep", "launch-agreement", stage=rep_stage,
                        verdict=agreement.verdict,
                        rendered_for=agreement.rendered_text,
                        launching_at=agreement.launch_text)

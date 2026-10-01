@@ -1051,15 +1051,18 @@ def _resolve_stage(js, stage, verb: str):
 @click.argument("kind", type=click.Choice(_KINDS))
 @click.argument("stage", required=False, default=None)
 @_bundle_option()
-@click.option("--from", "from_attempt", default=None, metavar="STAGE/run-N",
-              help="the attempt this run continues from, e.g. "
-                   "'01_coarse/run-0'.  Its warm files are COPIED in.  "
+@click.option("--from", "from_attempt", default=None,
+              metavar="NN_STAGE/run-N",
+              help="the attempt this run continues from, by its folder -- "
+                   "e.g. '01_coarse/run-0'.  Its warm files are COPIED in.  "
                    "Without it, a continuing stage takes the newest attempt "
                    "of the stage before it, which must have concluded "
-                   "(job-system.md 5.4).")
+                   "(job-system.md 5.4).  The flat layout and a bias scan "
+                   "have no single attempt to name.")
 @click.option("--cold", is_flag=True,
-              help="start this run clean -- skip the copy.  With a directory "
-                   "per attempt there is nothing to move aside.")
+              help="start this run from the calculation's structure -- "
+                   "nothing is copied in.  On the flat layout a stage starts "
+                   "clean by its run card's `restart: clean` instead.")
 @click.option("--env", default=None,
               help="force one conda env for every job (default: auto-route "
                    "per script from the .fdf -- correct for a mixed CPU/GPU "
@@ -1116,9 +1119,21 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     # tab's Prep buttons call it too.  This verb collects what the person
     # said -- the flags -- asks the one question when there is one, and
     # prints the answer; the act itself is `prep.prep_stage`'s.
+    from ..scheduler.quantities import (canonical_gres, canonical_mem,
+                                        canonical_time)
     from .model import Resources as _Alloc
     from .prep import prep_stage
     base = Path(bundle).resolve()
+    # A SPELLING THAT IS NO AMOUNT is refused in the verb's voice, naming the
+    # flag -- through the same readers the record uses (`Resources`), which
+    # raised it as a traceback until 2026-10-01 (W52).
+    for _flag, _said, _read in (("--time", time_, canonical_time),
+                                ("--mem", mem, canonical_mem),
+                                ("--gpus", gres, canonical_gres)):
+        try:
+            _read(_said)
+        except ValueError as e:
+            raise click.ClickException(f"{_flag}: {e}")
     allocation = _Alloc(mpi_np=mpi_np, cpus_per_task=cpus_per_task,
                         gres=gres, time=time_, mem=mem,
                         max_memory_mb=max_memory_mb, domain=domain)
@@ -1268,15 +1283,18 @@ def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
     click.echo(f"prepared {rep.stage}: {rep.dir.relative_to(base)}"
                f"{'' if rep.fresh else '  (reused -- not launched yet)'}")
     click.echo(f"  brought in: {', '.join(rep.brought)}")
+    # WHAT IT STARTS FROM, said (`job-system.md` § 5.4) -- one line, read off
+    # the answer both doors print: the run it continues from (which, by
+    # default or named, what it was, what came across); a cold start asked
+    # for; a linked stage's input, which prep takes from the stages before
+    # it (W52: said to be like a first stage's); or nothing.
     if ans.continuation is not None:
-        # WHAT IT CONTINUES FROM, said (`job-system.md` § 5.4): which run, by default
-        # or named, what it was, and what came across.
         click.echo("  " + ans.continuation.line(rep.copied))
-    elif rep.copied:
-        click.echo(f"  copied from {rep.continued_from}: "
-                   f"{', '.join(rep.copied)}")
-    elif rep.cold:
+    elif ans.cold:
         click.echo("  cold start -- nothing copied in")
+    elif ans.linked:
+        click.echo("  its input is prep's own -- taken from the stages "
+                   "before it, not carried from a run")
     else:
         click.echo("  nothing carried in (the first stage, or one that "
                    "starts clean)")

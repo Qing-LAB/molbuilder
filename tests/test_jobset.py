@@ -3191,7 +3191,8 @@ def test_every_directory_prep_makes_says_what_it_is(tmp_path):
         assert (d / calcdirs.read(d).of).resolve() == tmp_path.resolve()
 
 
-def test_the_progress_channel_ends_up_in_the_run_and_nowhere_else(tmp_path):
+def test_the_progress_channel_ends_up_in_the_run_and_nowhere_else(
+        tmp_path, monkeypatch):
     """One home for the live log, and the home is the run directory.
 
     `project-layout.md` § 1.0: a run directory "holds everything it
@@ -3208,36 +3209,21 @@ def test_the_progress_channel_ends_up_in_the_run_and_nowhere_else(tmp_path):
     going, so the stage directory reported a FINISHED calculation as
     *Running*, permanently, and offered the stub to open.
 
+    Driven through `jobset init` -> `prep run` (`support.road`).
+
     MUTATION THIS MUST FAIL AGAINST: copy instead of move, or leave the seed
     where it was rendered.
     """
-    from molbuilder.jobset.prep import _open_attempts
-
-    import json as _json
-    js = _token_ladder("JOB_01_coarse.fdf")
-    for job in js.jobs:
-        (tmp_path / job.script).write_text("x")
-    # The SHAPE is read, never inferred (`stages.md` § 6.7), so the
-    # description has to be here or `_open_attempts` correctly opens none.
-    (tmp_path / "task.json").write_text(_json.dumps({
-        "schema": "molbuilder/task@1", "engine": {"name": "siesta"},
-        "shape": "hierarchical",
-        "run": {"name": "JOB", "id": "JOB_X"},
-        "structure": {"source": "x.xyz", "formula": "X", "atoms": 1},
-        "stages": [{"name": "coarse", "enabled": True, "overrides": {}}],
-    }), encoding="utf-8")
-    stage_dir = tmp_path / "01_coarse"
-    stage_dir.mkdir()
-    seeded = stage_dir / "JOB_01_coarse.molwatch.log"
-    seeded.write_text("# molwatch trajectory log v1\n# job: JOB\n")
-
-    reports = _open_attempts(js, tmp_path, "coarse")
-
-    assert reports, "the hierarchical shape opens an attempt"
-    attempt = reports[0].dir
-    assert (attempt / seeded.name).is_file(), (
+    from support.road import describe_h2, jobset
+    bundle = describe_h2(tmp_path, monkeypatch)
+    r = jobset("prep", "run", "coarse", "--bundle", bundle,
+               "--target", "this")
+    assert r.exit_code == 0, r.output
+    log = "H2_01_coarse.molwatch.log"
+    attempt = bundle / "01_coarse" / "run-0"
+    assert (attempt / log).is_file(), (
         f"the seeded progress log did not reach the run directory; "
         f"{attempt} holds {sorted(p.name for p in attempt.iterdir())}")
-    assert not seeded.exists(), (
+    assert not (bundle / "01_coarse" / log).exists(), (
         f"the seed is still in the stage container as well -- two homes for "
         f"one log is the state that reported a finished run as 'Running'")

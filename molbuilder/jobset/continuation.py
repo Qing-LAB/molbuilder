@@ -134,33 +134,34 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
                         ) -> Tuple[Optional[Continuation], Optional[str]]:
     """``(continuation, refusal)`` for ``stage`` (`job-system.md` § 5.4).
 
-    **Named** (``--from``): taken as said -- what the run was is read and
-    reported, never refused here; `prepare_attempt` refuses only what cannot
-    be done (no such attempt, no restart files in it).  **By default**, for a
-    continuing stage of an independent ladder (`_independent`): the NEWEST
+    First, what cannot be taken at all is refused, before prep writes
+    anything (:func:`_cannot_be_named`): a run that is not one of this
+    calculation's, ``--from`` with ``--cold``, either on the flat layout or
+    a bias scan.  **Named** (``--from``): taken as said, for any kind -- what
+    the run was is read and reported; `prepare_attempt` refuses only what
+    cannot be done (no restart files in it).  **By default**, for a
+    continuing stage of an independent ladder (`_stage_before`): the NEWEST
     attempt of the enabled stage before it, which must have concluded and not
     failed -- an older one never stands in, because a stage re-launched to
     tighten is the run the person means.  Otherwise the refusal, worded by
     what the run's state says and naming the commands that work on this
-    layout.  ``(None, None)`` for ``--cold``, a linked kind, the first stage,
-    a stage that starts clean, and one the description disables (prepped by
-    name, it has no stage before it).  ``verdict=False`` leaves the
-    relaxation unread -- for a reader that never prints it."""
+    layout.  ``(None, None)`` for ``--cold``, a linked kind's default, the
+    first stage, a stage that starts clean, and one the description disables
+    (prepped by name, it has no stage before it).  ``verdict=False`` leaves
+    the relaxation unread -- for a reader that never prints it."""
     from ..identity import command_stage
     base = Path(base)
-    if cold or not _independent(task):
+    refused = _cannot_be_named(base, task, stage, from_attempt, cold)
+    if refused:
+        return None, refused
+    if cold:
         return None, None
     if from_attempt:
+        # A RUN NAMED is taken as said, for any kind -- what it was is
+        # reported and recorded, a linked stage's as much as any (W52: a
+        # linked stage's `--from` was copied and neither said nor ledgered).
         attempt = base / from_attempt
-        if not attempt.is_dir():
-            return None, None
-        head = Path(from_attempt).parts[0]
-        try:
-            named = command_stage(head)
-        except ValueError:
-            named = head
-        if named not in {s.name for s in task.stages}:
-            return None, None
+        named = command_stage(Path(from_attempt).parts[0])
         concluded, state, converged = read_run(base, task, named, attempt,
                                                attempt.parent, verdict=verdict)
         return Continuation(stage=named, source=str(Path(from_attempt)),
@@ -170,6 +171,53 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
     if prev is None:
         return None, None
     return _by_default(base, task, stage, prev, verdict=verdict)
+
+
+def _cannot_be_named(base: Path, task, stage: str, from_attempt,
+                     cold: bool) -> Optional[str]:
+    """Why ``--from`` / ``--cold`` cannot be taken here -- said BEFORE prep
+    writes anything (W52: each was refused only after the five steps had
+    rendered, one of them after an earlier carry had been undone) -- or
+    ``None``.  Both doors ask through this: the browser's prep route refused
+    a path out of the calculation, and `--from` with `--cold`, on its own,
+    while the terminal took both."""
+    if not (from_attempt or cold):
+        return None
+    if from_attempt and cold:
+        return ("--from and --cold are two answers to one question -- name "
+                "the run it continues from, or start it from the "
+                "calculation's structure.")
+    from pathlib import PurePosixPath
+    from ..identity import command_stage
+    from ..paths import Shape
+    from ..transport.stages import scan_points
+    from .materialize import FLAT_HAS_NO_ATTEMPTS
+    if not Shape.named(task.shape).keeps_attempts_as_directories:
+        return FLAT_HAS_NO_ATTEMPTS
+    if scan_points(task, stage):
+        return ("--from / --cold name ONE attempt, and a bias scan keeps one "
+                "per point -- per-point continuation is not named yet "
+                "(engines/transport.md; re-prep opens fresh attempts for "
+                "every point).")
+    if from_attempt:
+        p = PurePosixPath(str(from_attempt))
+        if p.is_absolute() or ".." in p.parts:
+            return (f"--from names a run of this calculation, by its folder "
+                    f"(01_coarse/run-0): {from_attempt!r}")
+        if not (base / from_attempt).is_dir():
+            return (f"--from {from_attempt!r}: no such attempt in this "
+                    f"calculation.  Name an attempt directory that has "
+                    f"already run, e.g. '01_coarse/run-0'.")
+        head = p.parts[0]
+        try:
+            named = command_stage(head)
+        except ValueError:
+            named = None
+        if named not in {s.name for s in task.stages}:
+            return (f"--from {from_attempt!r}: {head!r} is not a stage "
+                    f"folder of this calculation -- name a run as "
+                    f"<NN>_<stage>/run-<n>.")
+    return None
 
 
 def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool

@@ -1299,20 +1299,13 @@ def api_task_setup_prep():
     # § 5.4): by default the newest attempt of the stage before it, which
     # must have concluded -- the default the CLI takes too.  The page's
     # **Continue from** choice is the CLI's two flags: `from`, a run of this
-    # calculation named by its folder (`01_coarse/run-0`), and `cold`.
+    # calculation named by its folder (`01_coarse/run-0`), and `cold`.  What
+    # cannot be taken -- a path out of the calculation, both at once -- the
+    # one entry refuses, for both doors (`continuation._cannot_be_named`;
+    # this route refused those two on its own until 2026-10-01, W52).
     from_raw = body.get("from")
     from_attempt = (str(from_raw).strip() or None) if from_raw else None
     cold = bool(body.get("cold"))
-    if from_attempt is not None and (
-            pathlib.PurePosixPath(from_attempt).is_absolute()
-            or ".." in pathlib.PurePosixPath(from_attempt).parts):
-        return jsonify({"ok": False, "error":
-                        f"`from` names a run of this calculation, by its "
-                        f"folder (01_coarse/run-0): {from_attempt!r}"}), 400
-    if from_attempt is not None and cold:
-        return jsonify({"ok": False, "error":
-                        "`from` and `cold` are two answers to one question "
-                        "-- name a run, or start cold"}), 400
     plan_only = bool(body.get("plan"))
 
     if kind not in ("run", "bench"):

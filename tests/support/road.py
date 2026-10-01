@@ -47,9 +47,11 @@ def jobset(*args):
 
 
 def describe_h2(tmp_path, monkeypatch, *, shape: str = "hierarchical",
-                name: str = "H2") -> Path:
-    """`jobset init` of the shipped `publishable` ladder on a held H2 in a
-    box -- the bundle, at ``<projects>/P/optimization/<name>``."""
+                name: str = "H2",
+                calculation: str = "optimization") -> Path:
+    """`jobset init` on a held H2 in a box -- the bundle, at
+    ``<projects>/P/<calculation>/<name>``: an optimization's shipped
+    `publishable` ladder, or a vibration's own (`relax`, `freq`)."""
     from conftest import write_pseudos
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.structure import Structure
@@ -68,12 +70,14 @@ def describe_h2(tmp_path, monkeypatch, *, shape: str = "hierarchical",
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     monkeypatch.chdir(tree.parent)
     r = jobset("init", "--structure", "P/structure/h2.xyz",
-               "--bundle", f"P/optimization/{name}", "--engine", "siesta",
+               "--bundle", f"P/{calculation}/{name}", "--engine", "siesta",
                "--shape", shape, "--name", name,
-               "--stage-strategy", "publishable",
+               "--calculation", calculation,
+               *(("--stage-strategy", "publishable")
+                 if calculation == "optimization" else ()),
                "--psml-lib", "pseudopotential")
     assert r.exit_code == 0, r.output
-    bundle = tree / "P" / "optimization" / name
+    bundle = tree / "P" / calculation / name
     (bundle / ".molbuilder.json").write_text(json.dumps(
         {"script_generation": {"activation": "conda activate",
                                "preamble": "true"}}))

@@ -784,6 +784,18 @@ class Attempt:
     cold:           bool
 
 
+#: Why ``--from`` and ``--cold`` mean nothing on the flat layout -- said by
+#: `continuation` before prep writes anything, and by `prepare_attempt`
+#: to a caller that asks it anyway.
+FLAT_HAS_NO_ATTEMPTS = (
+    "this calculation's shape is 'flat', which has no attempt directories "
+    "to open: runs are told apart by the wrapper's output index "
+    "(<label>_<NN>_<name>-run<N>.out) and every stage reads the files the "
+    "stage before it left in the one folder (project-layout.md § 1) -- so "
+    "there is no run to name with --from, and a stage starts clean by its "
+    "run card's `restart: clean`, not by --cold.")
+
+
 def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                     continue_from: Optional[str] = None,
                     cold: bool = False,
@@ -813,7 +825,9 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     (user, 2026-08-21).  ``cold=True`` means start
     clean, and with a directory per attempt that is simply *skip the copy* —
     there is nothing to move aside, because a fresh attempt is empty unless
-    something is put in it.
+    something is put in it.  Re-preparing a REUSED attempt, either statement
+    first takes away what an earlier one carried in; saying neither leaves
+    the attempt's carry as it is.
 
     ``carry`` names the files to copy; it defaults to :func:`warm_carry` for
     **this pair** — the stage being prepared and the stage that produced the
@@ -831,14 +845,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     base = Path(base_dir)
     sh = shape_of(jobset, base_dir)
     if sh is not None and not sh.keeps_attempts_as_directories:
-        raise ValueError(
-            "this calculation's shape is 'flat', which has no attempt "
-            "directories to open: runs are told apart by the wrapper's "
-            "output index (<label>_<NN>_<name>-run<N>.out) and every stage "
-            "reads the files the stage before it left in the one folder "
-            "(project-layout.md § 1) -- so there is no run to name with "
-            "--from, and a stage starts clean by its run card's `restart: "
-            "clean`, not by --cold.")
+        raise ValueError(FLAT_HAS_NO_ATTEMPTS)
     dir_of = job_dir_names(jobset, sh)
     refs = stage_refs(jobset)
     stage_name = resolve_stage_ref([refs[j.name] for j in jobset.jobs],
@@ -941,8 +948,14 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # wearing its other face, and it is silent.  Only files the marker says we
     # carried in are removed, and never a symlink, so nothing a user put here
     # by hand is touched.
+    #
+    # ONLY WHEN THE CALLER SAYS WHAT IT NOW CONTINUES FROM -- a run, or
+    # ``cold``.  A caller that says neither changes nothing: prep's five
+    # steps opened the attempt that way and undid a carry a moment before its
+    # own refusal, which left an attempt prepared a minute ago stripped of
+    # what it was to start from (W52).
     marker = continued_from_marker(attempt)
-    if not is_new and marker.is_file():
+    if not is_new and marker.is_file() and (cold or continue_from):
         # The WHOLE declared set, not the pair-filtered one: the previous prep
         # may have named a different source and so copied a conditional file
         # this one would not, and a mind changed from `--from A` to `--cold`
