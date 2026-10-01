@@ -203,9 +203,11 @@ def spectra_render_checks(struct: Structure,
     if _frozen_idx and _positions is not None:
         from ..spectra.normal_modes import rigid_motions
         try:
+            # ON THE AXES THE DECK COMPUTES ON -- the view's, a cluster's
+            # (`cell.engine_axis_kinds`, plan § 5w K8): the structure's own
+            # told a periodic structure a count its deck never removes.
             _n_rigid = len(rigid_motions(
-                _positions, _frozen_idx,
-                getattr(struct, "axis_kind", None) or ("isolated",) * 3,
+                _positions, _frozen_idx, cfg.axis_kind,
                 cell=getattr(struct, "cell", None)))
         except ValueError:
             _n_rigid = None      # an index out of range is reported below
@@ -583,9 +585,13 @@ def siesta_vibration_checks(struct: Structure, cfg, *,
         return issues
     if held:
         from ..spectra.normal_modes import rigid_motions
+        # On the axes SIESTA computes on -- the structure's, through the one
+        # door every engine's count asks (`cell.engine_axis_kinds`).
+        from ..cell import engine_axis_kinds
+        from ..template import engine_name
         n_rigid = len(rigid_motions(
             struct.positions, held,
-            getattr(struct, "axis_kind", None) or ("isolated",) * 3,
+            engine_axis_kinds(engine_name(type(cfg)), struct),
             cell=getattr(struct, "cell", None)))
         if n_rigid:
             issues.append(Issue(

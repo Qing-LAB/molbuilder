@@ -663,6 +663,41 @@ def to_engine(struct: Structure, *,
 
 
 # --------------------------------------------------------------------- #
+#  What the engine computes with -- the structure's kinds, or a         #
+#  cluster's                                                            #
+#                                                                       #
+#  Contract: docs/model/structure-periodicity.md § 2.1 (plan § 5w K8).  #
+# --------------------------------------------------------------------- #
+
+#: The engines that build the atoms as ONE MOLECULE in free space, whatever
+#: the structure's cell: PySCF's ``gto.M`` is gas phase.  Such an engine
+#: computes a cluster -- isolated on all three axes, no cell -- so its
+#: electron count is a molecule's, a vibration removes a free cluster's
+#: motions, and it has no box to judge.  Moved here from
+#: ``electronic_state`` (where it decided *finite* alone) on 2026-10-01.
+MOLECULAR = frozenset({"pyscf"})
+
+_CLUSTER = ("isolated", "isolated", "isolated")
+
+
+def engine_axis_kinds(engine: str, struct: Structure) -> Tuple[str, str, str]:
+    """The axis kinds ``engine`` computes ``struct`` on -- the one door every
+    question about the CALCULATION asks, rather than the structure's own field
+    (§ 2.1): a cluster's on an engine in :data:`MOLECULAR`, else the
+    structure's.  The structure keeps its kinds either way."""
+    if engine in MOLECULAR:
+        return _CLUSTER
+    return tuple(struct.axis_kind or _CLUSTER)
+
+
+def computes_in_cell(engine: str) -> bool:
+    """Whether ``engine`` computes in the structure's cell -- so its settings
+    gate judges the box (§ 6.1a, table B).  An engine in :data:`MOLECULAR`
+    computes in free space; its box only places the atoms (§ 6.0)."""
+    return engine not in MOLECULAR
+
+
+# --------------------------------------------------------------------- #
 #  A layered slab's own periodic repeat                                 #
 #                                                                       #
 #  Contract: docs/science/junction-cell.md § 5.  One caller --          #

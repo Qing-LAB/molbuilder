@@ -4628,7 +4628,7 @@ as a milestone does (§ 0a). **Approved 2026-09-29** (§ 5w.3); K6 is first.
 | **K5** | **execution values with several homes** | one home per rung — the run card, `stages[i].execution` — and one resolved answer every reader asks (`resolve`'s, with its provenance): the deck, the wrapper, the scheduler's GPU ask, the bench, Task setup's cards and hints; the stage table stops offering execution items as columns; a transport rung takes its run card like any other rung | SO-C1 (a rung's `use_gpu` never reaches `--gres`), T-F3, SO-N12, the `--from` hint |
 | **K6** | **the engine's own outcome, assumed instead of read** | one relaxation outcome record and one policy for both engines: the PySCF decks read geomeTRIC's convergence flag (`geometric_solver.kernel`) — `halt` raises before anything is written, `continue` re-enters from the geometry it stopped at (`pyscf.md` § 3 already says *extend this rung*), `proceed` records *not converged*; one remedy text for a non-stationary reference, read by `prep` and the finish; whether a retry resumes is the kind's warm-state declaration (`warm-files.toml`: an FC run restarts at `FC.First`), read by the wrapper; a capability the engine lacks (gpu4pyscf's `stability`) is declared and asked, never called and caught | PS-C1 = PO-C1, SS-C2, SS-C3, PO-C2, PO-C15 |
 | **K7** | **the form's value model** — **done 2026-10-01** (§ 5w.5) | one field state on every surface: the template's value, the kind's default and the value's source (§ 6.6 obligation 2's four states); blank is *not chosen* for every field and never the first choice; the rung surface shows the template the rung will run; a set optional field is sent; a value that will not coerce is refused naming its field | T-F25, T-F1, T-F24, SS-C16, SO-N5, PS-C12; the K3 review's fractional k count and a triple's findings beside it |
-| **K8** | **what the engine sees** | one door for the engine's frame facts: the axis kinds PySCF computes with (a cluster: isolated on all three), read by the deck, the Methods count and the R7 note alike; the box checks run for an engine that uses a cell | PS-C4, PO-C13; the K3 review's dipole advisory, keyed on the k count |
+| **K8** | **what the engine sees** — **done 2026-10-01** (§ 5w.5) | one door for the engine's frame facts: the axis kinds PySCF computes with (a cluster: isolated on all three), read by the deck, the Methods count and the R7 note alike; the box checks run for an engine that uses a cell | PS-C4, PO-C13; the K3 review's dipole advisory, keyed on the k count |
 | **K9** | **engine facts restated in prose** | each item's engine default declared once with its source (file:line), and the help's deviation sentence (§ 5.2), the template comment and the deck's *not set* line (§ 6.6 obligation 4) written from it; one measured fixture — the engine's own account of a minimal run, SIESTA's fdf log — checks every declared default; a comment restating engine behaviour is cut to the one home | SO-C6, SO-C7, SO-C14, SS-C7, SS-C8, SS-C9, T-F31, PO-C18, PO-C19, and the § 5.2 half of every help text |
 | **K10** | **where things are on disk** | one reader of a rung's attempts, a bias scan's per-point folders included; carry names from the rung's own naming door; a kind's warm set carries what its rungs read | T-F27/F13, PO-C16, SS-C14 |
 | **K11** | **comparing against a stale render** — **done 2026-09-30** (§ 5w.5) | the gather check renders each upstream rung now, in memory, through the one render door, and compares that | T-F30 |
@@ -5209,6 +5209,33 @@ reviewers' probes (the archive's § E lists) among its runs.
   mesh's finding beside the mesh, a reload, and a rung's tab end to end — 22
   mutations, each red. `test_form_state_persistence_js.py` retired with the
   by-id reader it pinned, and the panel-ordering source pin with its premise.
+* **K8 — done 2026-10-01** (PS-C4, PO-C13; the K3 review's dipole advisory).
+  **What the engine computes with has one door** — `cell.engine_axis_kinds(
+  engine, struct)` (`structure-periodicity.md` § 2.1): the structure's axis
+  kinds on an engine that computes in a cell, a cluster's — isolated on all
+  three — on one that builds the atoms as a molecule in free space
+  (`cell.MOLECULAR`, moved from `electronic_state`, where it decided *finite*
+  alone). Every question about the calculation asks it: the electronic
+  state's *finite*; a vibration's surviving motions — on PySCF the deck's view
+  carries them (`axis_kind`), the deck writes them as `AXIS_KIND`, and the
+  Methods count and the settings check's R7 note read the same, where they
+  counted the structure's (water in a periodic box, its oxygen held, was told
+  six modes and none removed while the deck removed three, PS-C4); SIESTA's
+  dipole advisory, asked of the axes, never the k count — a crystal or a
+  junction sampled at Γ alone was told it sat in a 3-D vacuum cell. **The
+  box's advice is an in-cell engine's** (`cell.computes_in_cell`): a PySCF
+  deck no longer hears vacuum, image or face advice about a box it never uses
+  (PO-C13). **Its refusals stay every engine's**: an impossible box is a broken
+  structure, and the browser's request seam already refused it whatever the
+  engine, so the settings gate says the same and the two roads cannot disagree
+  — PO-C13's error half closes as that, not as a PySCF exemption. Contract:
+  `structure-periodicity.md` § 2.1, § 6.1a; `chemistry-correctness.md` § 2a;
+  `vibration.md` § 3, § 4.1; `validation.md` § 6. Tests through the road: the
+  periodic water's vibration through `init` / `prep` (the deck's `AXIS_KIND`,
+  its Methods count, the note), the box's advice on both engines through the
+  live check, the hydrogen chain on PySCF's detection table (a molecule's
+  doublet — the M6 fix had no test), the dipole advisory on a molecule at
+  4×4×4 and a crystal at Γ — 8 mutations, each red.
 
 ---
 

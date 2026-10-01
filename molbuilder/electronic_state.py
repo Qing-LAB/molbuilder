@@ -90,15 +90,6 @@ _RUNS: Dict[str, FrozenSet[str]] = {
     "pyscf": frozenset({"optimization", "vibration"}),
 }
 
-#: The engines that build the atoms as ONE MOLECULE whatever the structure's
-#: cell: PySCF's ``gto.M`` is gas phase (``validation/pyscf.py`` says so of
-#: a periodic structure).  Their calculation is finite, so its electron count
-#: is a molecule's -- parity binds (ES3; ``gto.M`` refuses a mismatch) and no
-#: moment floats (ES6).  Judged by the structure's axes alone, a periodic
-#: structure handed to PySCF was told to float an iron moment PySCF cannot
-#: float, and an odd count skipped the parity PySCF enforces (the M6 review).
-MOLECULAR = frozenset({"pyscf"})
-
 def engines_for(kind: str) -> tuple:
     """The engines that run ``kind``, so a form for an engine that does not
     run the kind has no state to ask for."""
@@ -187,10 +178,10 @@ class ElectronicState:
     #: ΣZ − charge.  The valence count has the same parity: core shells hold
     #: an even number of electrons.
     n_electrons: int
-    #: The calculation's system is finite: every axis isolated
-    #: (``model/structure-periodicity.md`` § 2), or an engine that builds the
-    #: atoms as one molecule (``MOLECULAR``).  Parity binds a finite system
-    #: only (ES3).
+    #: The calculation's system is finite: every axis the ENGINE computes on
+    #: is isolated (``cell.engine_axis_kinds``,
+    #: ``model/structure-periodicity.md`` § 2.1) -- PySCF's always, being a
+    #: molecule in free space.  Parity binds a finite system only (ES3).
     finite: bool
     recommended: Recommended
     #: The metals and their usual spins the decision was made from.
@@ -250,8 +241,13 @@ def electronic_state(struct: Structure, cfg: Any, *,
     recorded = _recorded(struct)
     charge = _charge(struct, cfg, kind, recorded)
     n_electrons = total_electrons(struct, charge.value)
-    finite = engine in MOLECULAR or all(
-        k == "isolated" for k in (struct.axis_kind or ("isolated",) * 3))
+    # FINITE IS THE CALCULATION'S, read from the axes the engine computes on
+    # (`cell.engine_axis_kinds`): judged by the structure's alone, a periodic
+    # structure handed to PySCF was told to float an iron moment PySCF cannot
+    # float, and an odd count skipped the parity `gto.M` enforces (the M6
+    # review).
+    from .cell import engine_axis_kinds
+    finite = all(k == "isolated" for k in engine_axis_kinds(engine, struct))
     rec = recommend(struct, facts, n_electrons=n_electrons, finite=finite)
     treatment, count = _spin(cfg, rec, finite, recorded, engine, kind)
     return ElectronicState(

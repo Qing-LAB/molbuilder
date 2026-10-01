@@ -38,8 +38,10 @@ def rigid_motions(positions, held, axis_kind, cell=None, tol_ang=1e-3):
 
     ``positions`` are every atom's coordinates, shape (n_atoms, 3), in
     Angstrom.  ``held`` is the set of 0-based atom indices held in place
-    (may be empty).  ``axis_kind`` is the structure's own per-axis kind --
-    three of ``"periodic"``, ``"isolated"``, ``"transport"`` -- and
+    (may be empty).  ``axis_kind`` is the per-axis kind the ENGINE computes
+    on (``cell.engine_axis_kinds``: the structure's in a cell, a cluster's
+    in free space) -- three of ``"periodic"``, ``"isolated"``,
+    ``"transport"`` -- and
     ``cell`` its lattice vectors as ROWS, required whenever an axis is
     not isolated: which turns survive depends on the vectors, not only on
     how many there are.

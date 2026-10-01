@@ -718,12 +718,17 @@ def _validate_siesta(struct: Structure, cfg,
     # finite vacuum cell" and recommend a larger cell or an explicit
     # dipole correction.
     #
-    # Triggered only when the cell looks like the auto-vacuum case:
-    # every count of the mesh the deck writes 1 (one k-point, no PBC
-    # physics intended).  A genuine periodic crystal with k>1 is meant to
-    # carry image-image interactions and shouldn't trip this warning.
-    if state is not None and meshes and meshes[0].single_point \
-            and len(struct.positions) > 0:
+    # Triggered only for a box of vacuum on every axis -- an isolated
+    # molecule: the axes SIESTA computes on (`cell.engine_axis_kinds`,
+    # `model/structure-periodicity.md` § 2.1), never the k-point count.  It
+    # asked whether the mesh had one point until 2026-10-01 (the K3 review),
+    # so a crystal or a junction sampled at Gamma alone -- which carries its
+    # images by design -- was told it sat in a 3-D vacuum cell.
+    from ..cell import engine_axis_kinds
+    from ..template import engine_name
+    vacuum_box = all(k == "isolated" for k in
+                     engine_axis_kinds(engine_name(type(cfg)), struct))
+    if state is not None and vacuum_box and len(struct.positions) > 0:
         try:
             from ..chemistry import estimate_dipole_moment_debye
             # The state's charge -- this spelled the charge rule out inline

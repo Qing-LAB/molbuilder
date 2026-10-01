@@ -255,15 +255,21 @@ def _cluster(el, n):
     (lambda: _mol(["Mn", "O"], [[0, 0, 0], [1.9, 0, 0]]), "dft.UKS", 5),
     (lambda: _mol(["Ru", "O"], [[0, 0, 0], [1.9, 0, 0]]), "dft.UKS", 2),
     (lambda: _mol(["Fe", "H"], [[0, 0, 0], [1.6, 0, 0]]), "dft.UKS", 1),
+    (_hydrogen_chain, "dft.UKS", 1),
 ], ids=["Au2", "Au3", "Au5", "Cu4", "Pd2", "Au4+Fe", "Mn", "Ru-usual-2",
-        "Fe-parity-moved"])
+        "Fe-parity-moved", "H-chain-computed-as-a-molecule"])
 def test_the_detection_table_on_pyscf(isolated_projects_root, make, cls,
                                       spin):
     """The rest of § 2a.1b's rows, where PySCF writes the answer: a noble
     cluster below four atoms and a closed-d10 pair go by parity; an open-d
     metal decides even beside gold; Mn's usual count is 5, an unlisted
     open-d metal's 2; and a usual count of the wrong parity for this
-    electron count (Fe-H has 27) moves by one."""
+    electron count (Fe-H has 27) moves by one.  And a structure that
+    repeats is computed as a molecule (`cell.engine_axis_kinds`,
+    `model/structure-periodicity.md` § 2.1): the hydrogen chain's odd count
+    is a doublet here, where SIESTA's repeating cell is not a spin -- judged
+    by the structure's axes, PySCF was handed a restricted single electron
+    (the M6 review; the door since K8)."""
     _d, _s, py = _pyscf(isolated_projects_root, make())
     assert re.search(rf"^mf = {re.escape(cls)}\(mol\)$", py, re.M), py
     assert re.search(rf"^\s+spin\s+= {spin},$", py, re.M), py

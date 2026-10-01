@@ -140,6 +140,18 @@ class VibrationConfigView:
         return self._state
 
     @property
+    def axis_kind(self):
+        """THE AXES THE DECK COMPUTES ON (`model/structure-periodicity.md`
+        § 2.1, plan § 5w K8): ``gto.M`` builds a molecule in free space, so a
+        cluster's, whatever the structure's -- asked of the one door
+        (`cell.engine_axis_kinds`), and read by the deck's count, the
+        Methods count and the settings check's note alike.  The latter two
+        counted the structure's own until 2026-10-01 (PS-C4)."""
+        from ..cell import engine_axis_kinds
+        from ..template import engine_name
+        return engine_axis_kinds(engine_name(type(self._cfg)), self._struct)
+
+    @property
     def scf_class(self) -> str:
         """``RKS`` / ``UKS`` / ``RHF`` / ``UHF`` -- composed from the state
         (`pyscf/layout.scf_class`), never read off one field."""

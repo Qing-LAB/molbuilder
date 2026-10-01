@@ -297,16 +297,22 @@ def test_dipole_in_vacuum_nonpolar_molecule_no_warn():
 
 
 
-def test_dipole_with_kgrid_no_warn():
-    """A polar molecule in a periodic cell (k > 1) is INTENDED to
-    have image-image interactions; the dipole warning is for the
-    Gamma-only vacuum case where the user probably didn't realise."""
-    s = Structure(
-        elements=["F", "H"],
-        positions=np.array([[0.0, 0.0, 0.0], [0.92, 0.0, 0.0]]),
-    )
-    cfg = SiestaConfig(kgrid=(4, 4, 4))   # genuinely periodic
-    issues = validate(s, cfg, cell=_vacuum_cell(30.0))
+def test_the_dipole_advisory_asks_the_axes_not_the_k_count():
+    """`model/structure-periodicity.md` § 2.1 (plan § 5w K8): the advisory
+    is for a box of vacuum on every axis -- the axes SIESTA computes on,
+    never the k-point count.  A polar molecule sampled 4x4x4 still sits among
+    its images, and is told so; the same pair as a crystal, periodic on
+    every axis, carries its images by design and is not -- sampled at Gamma
+    alone, which is what told it "a 3-D vacuum cell" while the advisory
+    asked whether the mesh had one point (the K3 review)."""
+    hf = dict(elements=["F", "H"],
+              positions=np.array([[0.0, 0.0, 0.0], [0.92, 0.0, 0.0]]))
+    issues = validate(Structure(**hf), SiestaConfig(kgrid=(4, 4, 4)),
+                      cell=_vacuum_cell(30.0))
+    assert [i for i in issues if i.where == "geometry.dipole"], issues
+    crystal = Structure(**hf, cell=np.eye(3) * 5.0,
+                        axis_kind=("periodic",) * 3)
+    issues = validate(crystal, SiestaConfig(kgrid=(1, 1, 1)))
     assert [i for i in issues if i.where == "geometry.dipole"] == []
 
 

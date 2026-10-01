@@ -448,7 +448,9 @@ The spin, **at that charge**, and knowing whether the structure repeats:
 the atoms as one gas-phase molecule whatever cell the structure carries
 (`validation/pyscf.py` says so of a periodic structure), so a PySCF calculation is
 finite: parity binds it (ES3; `gto.M` refuses a mismatch) and no moment floats
-(ES6). `electronic_state.MOLECULAR` names such engines. Judged by the axes alone, a
+(ES6). `cell.MOLECULAR` names such engines, and *finite* is read from the axes
+the engine computes with — every one isolated — through the one door,
+`cell.engine_axis_kinds` ([`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2.1). Judged by the axes alone, a
 periodic structure handed to PySCF was told to float an iron moment PySCF cannot
 float, and an odd count skipped the parity PySCF enforces (the M6 review).
 

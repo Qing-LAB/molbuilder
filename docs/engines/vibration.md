@@ -431,7 +431,11 @@ nothing found* on every surface — the silent skip that finding **F4** of
 [`science/validation.md`](?doc=science/validation.md) forbids: derived facts
 are derived server-side, inside the one gate). Both say, from the one rank
 rule: how many atoms are held, how many whole-body motions survive and will
-be removed, and how many modes will be reported (R7). PySCF's adds the
+be removed, and how many modes will be reported (R7) — counted on the axes the
+engine computes with (`cell.engine_axis_kinds`,
+[`model/structure-periodicity.md`](?doc=model/structure-periodicity.md) § 2.1),
+which on PySCF are a cluster's whatever the structure's: the count the deck
+removes, the one its Methods paragraph states. PySCF's adds the
 finite-difference and amplitude checks and the cost of what was ticked (the
 parity of the electron count is the electronic state's, asked for every engine), stated from what the code does (R8); SIESTA's
 checks are § 5.8. **A structure with a repeating axis is computed as an
@@ -459,6 +463,7 @@ and writes `<label>.spectra.json` beside itself after every phase.
 ```text
 # constants from the description: JOB, ATOMS, ELEMENTS, N_ATOMS, FROZEN_INDICES_USER
 # (the held set as the structure gave it) → FROZEN_ATOM_IDXS / FREE_ATOM_IDXS,
+# AXIS_KIND (the axes gto.M computes on: a cluster's, cell.engine_axis_kinds),
 # ALREADY_RELAXED, GEOM_* criteria, THERMO_T_K, THERMO_P_ATM, THERMO_T_GRID (the deck's
 # copy of normal_modes.THERMO_GRID_K), COMPUTE_IR, COMPUTE_RAMAN, RAMAN_FD_STEP_ANG,
 # DISPLACEMENT_AMPLITUDE_ANG,

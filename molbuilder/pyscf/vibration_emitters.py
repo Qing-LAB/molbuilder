@@ -309,6 +309,11 @@ def _emit_constants(struct: Structure,
     out.append("# 2026-08-21.)")
     out.append(f"FROZEN_INDICES_USER        = {list(cfg.frozen_indices)!r}  "
                f"# 0-based")
+    # THE AXES gto.M COMPUTES ON -- a cluster's, from the one door
+    # (`cell.engine_axis_kinds`), the axes the Methods count and the
+    # settings check counted the same motions on.
+    out.append(f"AXIS_KIND                  = {tuple(cfg.axis_kind)!r}  "
+               f"# a molecule in free space")
     out.append("")
     out.append("# Spectrum knobs.")
     out.append(f"COMPUTE_RAMAN              = {bool(cfg.compute_raman)!r}")
@@ -1215,12 +1220,11 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("# over what survives -- one code path, so the two cannot disagree.")
     out.append("#")
     out.append("# gto.M builds a molecule in free space, so the motions the energy is")
-    out.append("# invariant under are an isolated system's -- stated here.  A structure")
+    out.append("# invariant under are an isolated system's (AXIS_KIND).  A structure")
     out.append("# that repeats along an axis is computed as this cluster: its cell is")
     out.append("# not respected, and the settings check said so before this was written.")
     out.append("_LAMBDA, NORM_MODES_CANONICAL, RIGID_PATTERNS = vibrational_modes(")
-    out.append("    HESS, MASSES_AMU, COORDS_EQ_ANG, FROZEN_ATOM_IDXS,")
-    out.append("    ('isolated', 'isolated', 'isolated'))")
+    out.append("    HESS, MASSES_AMU, COORDS_EQ_ANG, FROZEN_ATOM_IDXS, AXIS_KIND)")
     out.append("N_RIGID = int(len(RIGID_PATTERNS))")
     out.append("# omega = sign(lambda) * sqrt(|lambda|): a negative eigenvalue of the")
     out.append("# mass-weighted Hessian is an imaginary mode, reported as a negative")

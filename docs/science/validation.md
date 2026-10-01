@@ -434,7 +434,11 @@ the labels drive the whole device/electrode split, so the
 ## 6. Adding a new engine
 
 1. Declare what it can run: the kinds in `electronic_state.engines_for`'s
-   table (and in `MOLECULAR` if it builds the atoms as one molecule), and on
+   table (and in `cell.MOLECULAR` if it builds the atoms as one molecule in
+   free space — then every question about the calculation's axes, the box's
+   advice among them, is answered for a cluster:
+   [`model/structure-periodicity.md`](?doc=model/structure-periodicity.md)
+   § 2.1), and on
    the state's two items the choices each of its kinds offers (`offered` with
    the engine's key, [`engines/template.md`](?doc=engines/template.md) § 6.3a —
    no `free` among its counts if it cannot float a moment), with a reason in

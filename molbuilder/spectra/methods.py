@@ -454,9 +454,11 @@ def _mode_count(struct: Structure, cfg: "VibrationConfigView"):
         return max(0, 3 * n_free - 6), 6
     frozen = [int(i) for i in (cfg.frozen_indices or [])
               if 0 <= int(i) < len(positions)]
+    # ON THE AXES THE DECK COMPUTES ON -- the view's (`cell.engine_axis_kinds`,
+    # plan § 5w K8): the structure's own stated a periodic structure's count
+    # while the deck removed a cluster's motions (PS-C4).
     n_rigid = len(rigid_motions(
-        positions, frozen,
-        getattr(struct, "axis_kind", None) or ("isolated",) * 3,
+        positions, frozen, cfg.axis_kind,
         cell=getattr(struct, "cell", None)))
     return 3 * n_free - n_rigid, n_rigid
 
