@@ -36,6 +36,8 @@ from _road import conda_hook, env_available, env_bin
 CONDA_SH = conda_hook()
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
+pytestmark = pytest.mark.engine
+
 _needs = {env: pytest.mark.skipif(
     not (CONDA_SH.is_file() and env_available(env)),
     reason=f"needs the {env} env + a detectable conda hook")

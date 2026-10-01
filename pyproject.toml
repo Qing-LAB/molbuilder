@@ -134,6 +134,7 @@ auth = ["authlib>=1.3", "python-cas>=1.6"]
 # the CLAUDE.md memory entry "No pip install -e .".)
 test = [
     "pytest>=7",
+    "pytest-xdist>=3",
     "pyflakes>=3",
 ]
 
@@ -239,5 +240,6 @@ markers      = [
     "smoke: end-to-end smoke tests that subprocess-run a generated script (slow; require pyscf)",
     "e2e: browser-driven Playwright tests (slow; require chromium install)",
     "slow: tests that take > 1s (full-suite runs include these; pre-commit skips)",
+    "engine: starts a real SIESTA / TranSIESTA / PySCF process; runs one at a time (docs/process/testing.md § 6.1a)",
     "capture_on_fail: dump browser state + console to test-artifacts/ on failure (flagged intermittents)",
 ]

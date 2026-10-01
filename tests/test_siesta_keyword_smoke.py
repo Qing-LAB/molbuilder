@@ -62,6 +62,8 @@ import pytest
 # honestly constructed.  See tests/fixtures/psml/README.md.
 _H_PSML_SOURCE = Path(__file__).resolve().parent / "fixtures" / "psml" / "H.psml"
 
+pytestmark = pytest.mark.engine
+
 
 def _siesta_binary():
     """Return the path to the molbuilder-siesta env's siesta binary,

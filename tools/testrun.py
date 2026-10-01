@@ -2,9 +2,10 @@
 """Batched test runner + LIVE progress reader.
 
 Runs the pytest suite in two speed-separated batches -- ``none2e`` (fast unit /
-JS / node tests) and ``e2e`` (slow Playwright) -- with ``tools.progress_plugin``
-streaming every result to ``.test-progress/<batch>.jsonl`` as it happens, so
-``status`` can report live at any moment (no buffered-until-exit blindness).
+JS / node tests) and ``e2e`` (slow Playwright) -- or any targeted set, spread
+over the machine's cores, with ``tools.progress_plugin`` streaming every result
+to ``.test-progress/<batch>.jsonl`` as it happens, so ``status`` can report
+live at any moment (no buffered-until-exit blindness).
 
 Usage
 -----
@@ -13,6 +14,8 @@ Usage
     python tools/testrun.py run e2e            # all *_e2e.py
     python tools/testrun.py run all            # everything, one file
     python tools/testrun.py run e2e tests/test_molbuilder_e2e.py   # explicit targets
+    python tools/testrun.py run tests/test_a.py tests/test_b.py     # a targeted set
+    python tools/testrun.py run none2e --workers 1                   # one process
     python tools/testrun.py run lf             # rerun ONLY last-run failures (any batch)
 
     # read progress LIVE, any time, from another shell:
@@ -27,10 +30,15 @@ Design notes
   session retrieves them at a stable path -- no job-specific tmp.
 * ``failed`` prints node-ids you can pass straight back to pytest to rerun only
   the failures -- the fix-the-whole-batch-then-verify loop, no full reruns.
-* Single pytest process per batch is single-core, so two batches run
-  concurrently on a multi-core box without contention (xdist not required).
+* A run is spread over ``--workers`` pytest-xdist processes
+  (``docs/process/testing.md`` § 6.1a): each test file runs whole in one
+  worker, and every ``engine`` test shares one worker, so no two computations
+  overlap.  ``tests/conftest.py`` names the groups; this passes
+  ``--dist loadgroup`` so the scheduler honours them.  ``lf`` runs in one
+  process.
 """
 import argparse
+import importlib.util
 import json
 import os
 import fcntl
@@ -48,6 +56,11 @@ BATCHES = {
     "e2e":    ["tests/", "-o", "python_files=*_e2e.py"],  # collect only *_e2e.py
     "all":    ["tests/"],
 }
+
+
+def _default_workers():
+    """A quarter of the cores, at most 8 (`testing.md` § 6.1a says why)."""
+    return min(8, max(1, (os.cpu_count() or 1) // 4))
 
 
 def _progress_path(batch):
@@ -271,9 +284,13 @@ def _summarise(batch, path):
 def cmd_run(args):
     os.makedirs(PROGRESS_DIR, exist_ok=True)
     extra = args.targets
+    workers = args.workers
     if args.batch == "lf":
         sel = ["tests/", "--last-failed", "--last-failed-no-failures", "none"]
         batch_file = "lf"
+        # One process: the failures are picked by id as the tests are
+        # collected, and in a worker every id carries its group.
+        workers = 1
     elif args.batch in BATCHES:
         sel = list(BATCHES[args.batch]) if not extra else list(extra)
         batch_file = args.batch
@@ -282,6 +299,13 @@ def cmd_run(args):
         sel = [args.batch] + list(extra)
         batch_file = "custom"
     prog = _progress_path(batch_file)
+    if workers > 1 and importlib.util.find_spec("xdist") is None:
+        print("[testrun] REFUSING: spreading the run needs pytest-xdist, which "
+              "this env does not have.", file=sys.stderr)
+        print("[testrun]   install what the env declares: python -m molbuilder "
+              "envs repair molbuilder", file=sys.stderr)
+        print("[testrun]   or run in one process: --workers 1", file=sys.stderr)
+        return 2
 
     # One run per batch.  Two runs of the same batch append to one progress
     # file, and the interleaved events make `status` nonsense -- more tests
@@ -310,7 +334,16 @@ def cmd_run(args):
     cmd = [sys.executable, "-m", "pytest", *sel,
            "-p", "tools.progress_plugin", f"--progress-file={prog}",
            "-q", "-rf", "--tb=line"]
-    print(f"[testrun] batch={batch_file}  progress={prog}", flush=True)
+    if workers > 1:
+        # A WORKER THAT DIES ENDS THE RUN, as a crash ends a one-process run.
+        # A replacement is wrong when the dead worker had finished groups:
+        # xdist 3.8.0 hands those back as work, the replacement is given one
+        # with nothing left in it, and the run waits for ever (measured
+        # 2026-09-30, `testing.md` § 6.1a).
+        cmd += ["-n", str(workers), "--dist", "loadgroup",
+                "--max-worker-restart", "0"]
+    print(f"[testrun] batch={batch_file}  workers={workers}  progress={prog}",
+          flush=True)
     print("[testrun] " + " ".join(cmd), flush=True)
     # cache provider ON (default) so `run lf` works.
     #
@@ -401,6 +434,10 @@ def main(argv=None):
     pr.add_argument("--force", action="store_true",
                     help="run even if this batch is already running "
                          "(their progress files will interleave)")
+    pr.add_argument("--workers", type=int, default=_default_workers(),
+                    help="processes to spread the run over (default: a "
+                         "quarter of the cores, at most 8; 1 = one "
+                         "process; lf always runs in one)")
     pr.set_defaults(func=cmd_run)
 
     ps = sub.add_parser("status", help="summarise live progress")

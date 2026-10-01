@@ -25,9 +25,12 @@ from _road import conda_hook, env_available
 
 CONDA_SH = conda_hook()
 
-pytestmark = pytest.mark.skipif(
-    not (CONDA_SH.is_file() and env_available("molbuilder-pySCF")),
-    reason="needs the molbuilder-pySCF env + a detectable conda hook")
+pytestmark = [
+    pytest.mark.engine,
+    pytest.mark.skipif(
+        not (CONDA_SH.is_file() and env_available("molbuilder-pySCF")),
+        reason="needs the molbuilder-pySCF env + a detectable conda hook"),
+]
 
 
 def _jobset(*args):

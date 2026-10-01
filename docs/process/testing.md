@@ -27,6 +27,7 @@ Tests are marked by **layer**, and the marker is orthogonal to the directory (a
 | `smoke` | — | subprocess-runs a *generated script* (slow; needs pyscf) |
 | `e2e` | — | browser-driven Playwright (slow; needs chromium) |
 | `slow` | — | > 1 s (full runs include these; pre-commit skips them) |
+| `engine` | — | starts a real SIESTA / TranSIESTA / PySCF process, itself or through a fixture; such tests run one at a time (§ 6.1a) |
 | `capture_on_fail` | — | dump browser state + console to `test-artifacts/` on failure |
 
 The rule of thumb: **cover a contract at the lowest layer that can see it.** A
@@ -593,13 +594,13 @@ These are the durable patterns — follow them and the e2e tests stay stable:
 ## 6.1 How to actually run the suite — `tools/testrun.py`
 
 Use the project's runner. It exists because a bare `pytest` gives you nothing
-until it exits ~25 minutes later, and piping it to a file or through `tail` is
-worse than nothing: the output buffers until the process ends, and a `tail`
-silently truncates the failure list, so you draw conclusions from a fraction of
-the failures.
+until it exits, and piping it to a file or through `tail` is worse than nothing:
+the output buffers until the process ends, and a `tail` silently truncates the
+failure list, so you draw conclusions from a fraction of the failures.
 
 ```bash
-python tools/testrun.py run none2e   # every non-e2e test (run it in the background)
+python tools/testrun.py run tests/test_a.py tests/test_b.py   # a targeted set
+python tools/testrun.py run none2e   # every non-e2e test
 python tools/testrun.py run e2e      # the Playwright batch
 python tools/testrun.py run lf       # rerun ONLY the last run's failures
 python tools/testrun.py status              # live summary of every batch
@@ -610,13 +611,12 @@ python tools/testrun.py failed none2e       # bare node-ids, to feed back to pyt
 `tools/progress_plugin.py` streams **each test outcome** to
 `.test-progress/<batch>.jsonl`, flushed per test, so `status` is accurate *while
 the run is in flight* and readable from any other shell or session — the path is
-stable and git-ignored, never a job-specific temp file. The two batches are
-single-process, so `none2e` and `e2e` can run concurrently on a multi-core box
-without contention.
+stable and git-ignored, never a job-specific temp file.
 
-The working loop this enables: launch a batch, read `status --fails`, fix, then
-`run lf` to verify just those failures instead of paying for a whole re-run, and
-finally one clean full batch before committing.
+The working loop this enables: run the tests the change touched, read
+`status --fails`, fix, then `run lf` to verify just those failures instead of
+paying for a whole re-run. A whole batch is for a change that moves or removes a
+whole surface, not a step before every commit.
 
 > **Why this is documented so emphatically.** On 2026-07-29 a session ran three
 > full sweeps as `pytest … | tail -14`, saw 7 of 31 failures, inferred the rest
@@ -631,6 +631,69 @@ view, and when an unfamiliar test fails, check it against `HEAD` in a throwaway
 `git worktree` before assuming it is someone else's problem — that is how you
 tell a regression you just pushed from breakage that was already there, and it
 takes a few seconds.
+
+### 6.1a A run is spread over the machine's cores
+
+`run` hands the tests to pytest-xdist: `--workers N` processes, by default a
+quarter of the cores and at most 8; `--workers 1` is one process. Two rules
+decide what may run beside what, and `tests/conftest.py` applies both as the
+tests are collected:
+
+1. **A file runs whole, in order, in one worker.** Its module fixtures are built
+   once and its tests meet each other exactly as in one process, so spreading a
+   run changes *when* a file runs, never *how*.
+2. **A test that runs a real engine runs alone among those that do.** It carries
+   `@pytest.mark.engine` (§ 1) — on the module when every test in the file
+   starts SIESTA, TranSIESTA or PySCF, on the test when only some do — and every
+   engine test in the run shares one worker. Two computations never overlap
+   (the same one-at-a-time rule as job submission), and an engine's threads
+   never compete with another engine's.
+
+`run lf` stays in one process: it re-runs a handful of tests, picked by their
+ids as they are collected.
+
+**A test's id may not depend on when it is collected.** Every worker collects
+the whole run, and xdist refuses a run whose workers disagree, so a clock value
+belongs inside the test, never in its parameters: the first spread run
+(2026-09-30) stopped at collection on a timestamp in
+`test_notify_listener.py`'s parametrize ids.
+
+What a spread run keeps from a one-process run:
+
+- **One progress file, one writer.** Only the process `testrun` starts writes
+  `.test-progress/<batch>.jsonl`. The workers receive the run's own arguments,
+  so they load the plugin too, and it stays silent in them. Every result is
+  relayed to the writer, so the file reads exactly as a one-process run's
+  does.
+- **A crash ends the run.** A worker that dies ends it, as a crash ends a
+  one-process run: the test it was running is recorded as failed with the
+  crash as the reason, so `status --fails` names it, and a test not yet
+  started does not run, so `status` calls such a run PARTIAL. `testrun`
+  passes `--max-worker-restart 0` because a replacement worker is wrong when
+  the dead one had finished groups: xdist 3.8.0 hands those back as work, the
+  replacement is given one with nothing left in it, and the run waits for
+  ever (measured 2026-09-30).
+- **Plain test ids.** xdist appends the group to every id
+  (`…::test_x@tests/test_y.py`); `tests/conftest.py` takes it off each result
+  before anything reads it, so `status --fails`, `failed`, the terminal's
+  summary and the last-failed cache carry ids pytest accepts back.
+- **The canaries.** The `the_suite_leaves_your_*_alone` fixtures run once per
+  worker. Each worker's window covers every test it runs, so together they
+  cover the run.
+
+Two batches launched side by side each get their own workers, and each its
+own engine worker; `run all` covers both in one run.
+
+**Why a quarter of the cores, at most 8** (the one-process runs of 2026-09-29,
+by file): `none2e` took 50 minutes, 49 of them outside the engine tests and
+most of that per-test setup, which spreads evenly; its longest file takes 3.4
+minutes, so past ~8 workers that file sets the wall time. `e2e` is bound by its
+engine tests — 15 of its 23 minutes — which run one at a time at any worker
+count. The other three quarters stay with the dev server and the engine
+tests' own threads. Measured on 2026-09-30: `run all` on eight workers ran all
+9540 tests in 20 minutes, where the two batches took 73 one after the other.
+The 64 engine tests ran one at a time from minute 1.4 to minute 20.0, and the
+rest finished inside that window on the other seven.
 
 ## 7. What gates a commit
 

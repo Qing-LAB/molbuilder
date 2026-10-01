@@ -207,6 +207,7 @@ def test_pyscf_generated_script_emits_preview_block_text():
     assert inst_pos < opt_pos
 
 
+@pytest.mark.engine
 def test_pyscf_generated_script_runs_and_produces_preview(tmp_path):
     """End-to-end: generate the script, run it, verify <job>.molwatch.log
     starts with a step 0 preview block (energy=None, no forces) BEFORE

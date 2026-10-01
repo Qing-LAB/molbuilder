@@ -11,13 +11,15 @@ So the rule these tests hold is not about pytest at all -- it is that every
 state this reader can be in either supports a count or says it does not.
 ``tools/progress_plugin.py``'s half is that a file is truncated only when its
 previous run reached ``done``; a new run appends a generation instead of
-destroying evidence.
+destroying evidence -- and that a run spread over workers still has one writer
+and reads exactly as a one-process run does.
 """
 from __future__ import annotations
 
 import json
 import os
 import time
+from pathlib import Path
 
 import pytest
 
@@ -287,3 +289,94 @@ def test_configure_appends_a_generation_instead_of_wiping_a_live_run(tmp_path):
     assert recs[-1]["event"] == "start" and recs[-1]["pid"] == os.getpid()
     # And the reader then answers about the NEW generation, not the fragment.
     assert testrun._summarise("b", str(p))["run"] == recs[-1]["run"]
+
+
+# --------------------------------------------------------------------------- #
+#  A run spread over workers                                                  #
+# --------------------------------------------------------------------------- #
+
+#: Every test notes the worker it ran on.
+_NOTE = ("import os, pathlib\n"
+         "import pytest\n"
+         "def note(name):\n"
+         "    (pathlib.Path({seen!r}) / name).write_text(\n"
+         "        os.environ['PYTEST_XDIST_WORKER'])\n")
+
+
+def _spread_run(tmp_path, files):
+    """``testrun.py run --workers 2`` over a suite whose ``conftest.py`` and
+    ``pyproject.toml`` ARE the real suite's (links), so the rules a run is
+    spread by are the suite's own.  Returns the summary, the suite and where
+    each test ran."""
+    suite, seen = tmp_path / "suite", tmp_path / "seen"
+    suite.mkdir()
+    seen.mkdir()
+    repo = Path(testrun.REPO)
+    (suite / "conftest.py").symlink_to(repo / "tests" / "conftest.py")
+    (suite / "pyproject.toml").symlink_to(repo / "pyproject.toml")
+    for name, body in files.items():
+        (suite / name).write_text(_NOTE.format(seen=str(seen)) + body)
+    assert testrun.main(["run", str(suite), "--workers", "2"]) == 1
+    s = testrun._summarise("custom", testrun._progress_path("custom"))
+    return s, suite, {f.name: f.read_text() for f in seen.iterdir()}
+
+
+@pytest.mark.slow
+def test_a_run_spread_over_workers_reads_as_one_run(tmp_path, monkeypatch):
+    """GOAL: a run spread over xdist workers is reported exactly as a
+    one-process run is, and spread the way `testing.md` § 6.1a says.
+
+    CONTRACT: one progress file from one writer, ``done`` with every
+    collected test counted; the failed ids are the plain ones pytest accepts
+    back, in the progress file and in the last-failed cache that ``run lf``
+    reads; a file runs in one worker; every engine test, marked on its module
+    or on itself, shares one worker.
+    """
+    monkeypatch.setattr(testrun, "PROGRESS_DIR", str(tmp_path / "progress"))
+    s, suite, ran_on = _spread_run(tmp_path, {
+        "test_alpha.py": ("def test_a1(): note('a1')\n"
+                          "def test_a2(): note('a2')\n"
+                          "def test_a3(): note('a3')\n"),
+        "test_beta.py": ("def test_b1(): note('b1')\n"
+                         "def test_b2(): note('b2'); assert False\n"
+                         "def test_b3(): note('b3')\n"),
+        # The two largest files, so that by file alone xdist's first
+        # assignment -- largest group first, one per worker -- would part them.
+        "test_engine_one.py": ("pytestmark = pytest.mark.engine\n"
+                               "def test_e1(): note('e1')\n"
+                               "def test_e2(): note('e2')\n"
+                               "def test_e3(): note('e3')\n"
+                               "def test_e4(): note('e4')\n"),
+        "test_engine_two.py": ("@pytest.mark.engine\n"
+                               "def test_e5(): note('e5')\n"
+                               "def test_f1(): note('f1')\n"
+                               "def test_f2(): note('f2')\n"
+                               "def test_f3(): note('f3')\n"),
+    })
+    assert (s["state"], s["collected"], s["ran"]) == ("done", 14, 14), s
+    events = [e["event"] for e in testrun._read_events(s["path"])]
+    assert [e for e in events if e != "test"] == ["start", "collected", "done"]
+    assert [nid for nid, _ in s["failed_ids"]] == ["test_beta.py::test_b2"], s
+    lastfailed = suite / ".pytest_cache" / "v" / "cache" / "lastfailed"
+    assert list(json.loads(lastfailed.read_text())) == ["test_beta.py::test_b2"]
+    assert len({ran_on[t] for t in ("a1", "a2", "a3")}) == 1, ran_on
+    assert len({ran_on[f"e{i}"] for i in range(1, 6)}) == 1, ran_on
+
+
+@pytest.mark.slow
+def test_a_worker_that_dies_ends_the_run_and_names_its_test(
+        tmp_path, monkeypatch):
+    """GOAL: a crash in a spread run is reported as what it is, and the run
+    ends -- as a crash ends a one-process run.
+
+    CONTRACT: the test whose worker died is recorded once, as failed, with
+    the crash as its reason, so ``status --fails`` names it; no replacement
+    worker re-runs it (`testing.md` § 6.1a: a replacement could be handed a
+    finished group and wait for ever).
+    """
+    monkeypatch.setattr(testrun, "PROGRESS_DIR", str(tmp_path / "progress"))
+    s, _suite, _ran_on = _spread_run(tmp_path, {
+        "test_crash.py": "def test_c1(): note('c1'); os._exit(3)\n"})
+    assert (s["state"], s["collected"], s["ran"]) == ("done", 1, 1), s
+    [(nid, reason)] = s["failed_ids"]
+    assert nid == "test_crash.py::test_c1" and "crashed" in reason, s

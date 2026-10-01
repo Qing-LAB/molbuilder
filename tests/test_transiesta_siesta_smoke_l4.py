@@ -36,6 +36,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.engine
+
 
 def _siesta_bin() -> Path:
     """The SIESTA binary inside the molbuilder-siesta env, located through the

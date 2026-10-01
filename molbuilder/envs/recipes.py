@@ -1245,7 +1245,12 @@ _HOST = Recipe(
         "rdkit", "openbabel", "biopython",
         "flask", "click", "plotly",
         "authlib", "python-cas",
-        "pytest", "pyflakes",
+        # The test runner, its parallel workers and the static check.
+        # `pytest-xdist` is what lets `tools/testrun.py` spread a run over
+        # the machine's cores (`docs/process/testing.md` § 6.1a) -- a
+        # plugin of the suite's own runner, so it sits beside pytest rather
+        # than with the opt-in browser tooling below.
+        "pytest", "pytest-xdist", "pyflakes",
         # System metrics for the web UI's system-load blueprint.
         # ``molbuilder serve`` imports the blueprint at startup; without
         # psutil the import (and the whole server) hard-fails with

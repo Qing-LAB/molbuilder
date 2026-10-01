@@ -37,7 +37,7 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = [pytest.mark.e2e, pytest.mark.slow]
+pytestmark = [pytest.mark.e2e, pytest.mark.slow, pytest.mark.engine]
 
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")

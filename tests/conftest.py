@@ -821,6 +821,19 @@ def _capture_on_fail(request):
     print(f"[capture_on_fail] diagnostic written -> {out}")
 
 
+def _worker_group(item) -> str:
+    """Which tests share a worker in a spread run (`testing.md` § 6.1a).
+
+    Every engine test shares one, so no two computations overlap; any other
+    test goes with its own file, which then runs whole, in order, in one
+    worker -- its module fixtures built once, as in one process.
+    """
+    if item.get_closest_marker("engine") is not None:
+        return "engine"
+    return item.nodeid.split("::", 1)[0]
+
+
+@pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(config, items):
     """Auto-apply ``e2e`` to ``*_e2e.py`` files + ``integration`` to
     files that subprocess-run a real engine binary (siesta /
@@ -835,6 +848,13 @@ def pytest_collection_modifyitems(config, items):
     File-name pattern is a coarse pre-classifier; finer-grained
     decisions still belong on individual tests via explicit
     decorators.
+
+    In an xdist worker it also names each test's group
+    (:func:`_worker_group`).  xdist's own hook in the worker turns that
+    group into a suffix on the test's id, which is what the scheduler
+    groups by -- and that hook is registered after this file, so this one
+    is ``tryfirst``: run after it, it would find no group, and every test
+    would be scheduled on its own.
     """
     import importlib.util as _ilu
     import pytest as _pt
@@ -859,6 +879,7 @@ def pytest_collection_modifyitems(config, items):
                "`bash scripts/install-env.sh install molbuilder "
                "--with-dev-tools --yes`")
 
+    in_worker = hasattr(config, "workerinput")
     for item in items:
         fn = item.fspath.basename
         if fn.endswith("_e2e.py") or "_e2e_" in fn:
@@ -868,6 +889,30 @@ def pytest_collection_modifyitems(config, items):
         if "_smoke" in fn or "_smoke_l4" in fn:
             item.add_marker(_pt.mark.integration)
             item.add_marker(_pt.mark.smoke)
+        if in_worker:
+            item.add_marker(_pt.mark.xdist_group(_worker_group(item)))
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_logreport(report):
+    """A result relayed from an xdist worker gets its plain test id back.
+
+    The group suffix a worker puts on every id (``…::test_a@tests/test_x.py``,
+    above) is for the scheduler alone.  Every other reader would carry an id
+    pytest cannot find: the terminal's summary, the last-failed cache that
+    ``testrun.py run lf`` re-runs, and the progress file ``testrun.py
+    failed`` prints.  A relayed report is the one carrying ``node``, the
+    worker it came from; a worker's own report keeps the suffix, because
+    xdist checks it against the test before relaying it.  ``tryfirst`` so
+    every reader sees the plain id.
+    """
+    if getattr(report, "node", None) is None:
+        return
+    # xdist finds its suffix again as the last ``@`` that no ``]`` follows --
+    # a parametrized id may hold an ``@`` of its own.
+    head, at, group = report.nodeid.rpartition("@")
+    if at and "]" not in group:
+        report.nodeid = head
 
 
 # --------------------------------------------------------------------- #

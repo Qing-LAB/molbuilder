@@ -34,6 +34,8 @@ from support.results_export import save_to_project, wait_for_viewer
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 CONDA_SH = conda_hook()
 
+pytestmark = pytest.mark.engine
+
 
 def _jobset(*args):
     from click.testing import CliRunner

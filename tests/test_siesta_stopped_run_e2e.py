@@ -38,9 +38,12 @@ from _road import conda_hook, env_available, env_bin
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 CONDA_SH = conda_hook()
 
-pytestmark = pytest.mark.skipif(
-    not (CONDA_SH.is_file() and env_available("molbuilder-siesta")),
-    reason="needs the molbuilder-siesta env + a detectable conda hook")
+pytestmark = [
+    pytest.mark.engine,
+    pytest.mark.skipif(
+        not (CONDA_SH.is_file() and env_available("molbuilder-siesta")),
+        reason="needs the molbuilder-siesta env + a detectable conda hook"),
+]
 
 #: The calculation's own values: an SCF that cannot reach 1e-8 in ten cycles
 #: of plain linear mixing at 0.001 -- no Pulay history, which otherwise

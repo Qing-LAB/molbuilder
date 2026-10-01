@@ -761,7 +761,7 @@ HOST_CONDA_PACKAGES=(
     rdkit openbabel biopython
     flask click plotly
     authlib python-cas
-    pytest pyflakes
+    pytest pytest-xdist pyflakes
     "psutil>=5.9"
     numactl
     # run-checkpoints subsystem (docs/execution/running-a-job.md § 6):

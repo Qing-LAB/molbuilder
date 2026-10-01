@@ -370,8 +370,8 @@ def test_the_signature_covers_the_TIMESTAMP_too(store):
 
 
 @pytest.mark.parametrize("ts,why", [
-    ("%d" % (int(time.time()) - 3600), "an hour old"),
-    ("%d" % (int(time.time()) + 3600), "an hour ahead"),
+    (-3600, "an hour old"),
+    (3600, "an hour ahead"),
     ("not-a-number", "unparseable"),
     ("", "absent"),
 ])
@@ -380,6 +380,10 @@ def test_a_stale_or_unreadable_timestamp_is_refused(store, ts, why):
     a compute node's clock is not ours to trust closely and a run that
     reports late is not a run that is lying."""
     client, log_root = store
+    if isinstance(ts, int):
+        # An offset, stamped as the test runs: the test's id is then the same
+        # in every worker that collects it (`testing.md` § 6.1a).
+        ts = "%d" % (int(time.time()) + ts)
     assert _post(client, ts=ts).status_code == 404, why
     assert _lines(log_root) == []
 

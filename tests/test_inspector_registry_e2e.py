@@ -33,6 +33,8 @@ pytest.importorskip("flask")
 ROOT = Path(__file__).resolve().parents[1]
 
 
+# It runs a real PySCF optimisation, so a test that asks for it carries
+# `@pytest.mark.engine` (`docs/process/testing.md` § 6.1a).
 @pytest.fixture(scope="module")
 def ongoing_trajectory(isolated_projects_root_module) -> str:
     """A multi-frame `*_geom_optim.xyz` from a REAL optimisation, mid-run.
@@ -622,6 +624,7 @@ class TestInspectorListenerTeardown:
             assert "error" in got["cls"].split(), (name, got)
         assert "trajectory-status" in out["trajectory"]["cls"].split(), out
 
+    @pytest.mark.engine
     def test_no_trajectory_listener_survives_dispose(
             self, page, flask_server, ongoing_trajectory):
         """Every listener the trajectory core registers is undone on dispose.
@@ -746,6 +749,7 @@ class TestInspectorListenerTeardown:
                 f"teardowns never ran -- an observer or a timer the scope "
                 f"was handed is still live")
 
+    @pytest.mark.engine
     def test_no_trajectory_poll_survives_dispose(
             self, page, flask_server, ongoing_trajectory):
         """The same contract for the OTHER core.
@@ -940,6 +944,7 @@ class TestInspectorErrorCardRuntime:
 #  the builder actually applies it on the way to the file.               #
 # --------------------------------------------------------------------- #
 
+@pytest.mark.engine
 def test_the_exported_csv_does_not_carry_the_users_name(
         page, flask_server, ongoing_trajectory):
     """Click Export CSV; the header names the run, not the account.

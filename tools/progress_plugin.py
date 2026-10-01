@@ -31,14 +31,19 @@ reported as "not executed" that had executed.  When the file does not end in a
 ``done`` record the new run APPENDS its own ``start`` generation instead, so
 nothing is destroyed and the reader can tell the generations apart.
 
-Single-process only (xdist is not installed here); a module global holds the
-path.  If xdist is ever added, switch to writing per-worker files.
+**A run spread over xdist workers has one writer** (`docs/process/testing.md`
+§ 6.1a): the process the run was started in.  Every worker's results are
+relayed to it, so the file reads exactly as a one-process run's does; the
+workers load this plugin too (they receive the run's own arguments) and stay
+silent.  A module global holds the path, because there is one writer.
 """
 import json
 import os
 import time
 
-_STATE = {"path": None, "run": None}
+import pytest
+
+_STATE = {"path": None, "run": None, "collected": False}
 
 
 def pytest_addoption(parser):
@@ -87,9 +92,16 @@ def _previous_run_finished(path):
 
 
 def pytest_configure(config):
+    # A WORKER IS NOT A WRITER.  Each one would open its own generation in the
+    # one file -- with eight workers, nine `start` records from nine
+    # processes, the interleaving `testrun.py status` refuses to count.  Its results reach the writer
+    # through xdist, which fires `pytest_runtest_logreport` there for each.
+    if hasattr(config, "workerinput"):
+        return
     path = config.getoption("--progress-file")
     _STATE["path"] = path
     _STATE["run"] = f"{os.getpid()}-{int(time.time())}"
+    _STATE["collected"] = False
     # Truncate only a file whose previous run finished; otherwise append a new
     # generation beside records that are still someone's evidence.
     if _previous_run_finished(path):
@@ -101,8 +113,28 @@ def pytest_configure(config):
     _write({"event": "start", "pid": os.getpid(), "time": time.time()})
 
 
+def _collected(n):
+    """The run's total, written once."""
+    if not _STATE["collected"]:
+        _STATE["collected"] = True
+        _write({"event": "collected", "n": n, "time": time.time()})
+
+
 def pytest_collection_finish(session):
-    _write({"event": "collected", "n": len(session.items), "time": time.time()})
+    _collected(len(session.items))
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_xdist_node_collection_finished(node, ids):
+    """The run's total, when it is spread over workers.
+
+    The writer collects nothing then -- the workers do -- so
+    `pytest_collection_finish` never fires in it.  Every worker collects the
+    whole run, and xdist aborts a run whose workers disagree, so the first
+    worker's count is the run's.  A replacement worker, where xdist starts
+    one, collects again; that count is not written a second time.
+    """
+    _collected(len(ids))
 
 
 def pytest_runtest_logreport(report):
@@ -119,10 +151,15 @@ def pytest_runtest_logreport(report):
     # `testrun.py status` printed `FAIL 0` -- a canary firing read as green.
     # Observed 2026-09-22: the checkout canary caught a real edit-during-run
     # and the summary said the suite was clean.
+    #
+    # A WORKER THAT DIES, in a spread run, is reported by xdist as a failure
+    # of the test it was running, under a phase that is none of the three.
+    # Left out, the one test that names the crash had no record at all.
     is_call = report.when == "call"
     is_setup_terminal = report.when == "setup" and report.outcome in ("failed", "skipped")
     is_teardown_failure = report.when == "teardown" and report.outcome == "failed"
-    if not (is_call or is_setup_terminal or is_teardown_failure):
+    is_crash = report.when not in ("setup", "call", "teardown")
+    if not (is_call or is_setup_terminal or is_teardown_failure or is_crash):
         return
     reason = ""
     if report.outcome == "failed":
@@ -134,8 +171,8 @@ def pytest_runtest_logreport(report):
         # The phase is part of the identity: a teardown failure shares its
         # nodeid with the same test's passing CALL record, and without this
         # the reader sees one test both passed and failed.
-        "nodeid": (report.nodeid if is_call or is_setup_terminal
-                   else f"{report.nodeid} [teardown]"),
+        "nodeid": (f"{report.nodeid} [teardown]" if is_teardown_failure
+                   else report.nodeid),
         "outcome": report.outcome,
         "duration": round(getattr(report, "duration", 0.0), 2),
         "reason": reason,
