@@ -2525,10 +2525,9 @@ def _under_description(flags, declared, chosen=None) -> "Resources":
 
       * ``allocation`` -- the queue, the wall, the memory this calculation
         asks the SCHEDULER for (`stages.md` § 6.8a).
-      * a ``bench`` entry with ONE point on a machine-answered item -- the
-        launch SHAPE the person chose: *"run it at eight"*
-        (`generator.md` § 4.3a).  Several points is a question to measure and
-        is not an ask at all, so only length one is read here.
+      * the run card's machine items -- the launch SHAPE the person chose:
+        *"run it at eight"* (``chosen``, `stages.md` § 6.8d).  A ``bench``
+        entry is a question to measure at any length, never an ask.
 
     A flag is what the person is asking for right now, so a stated flag wins
     and an unstated one leaves the file's answer standing.  Whole-object

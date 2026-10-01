@@ -37,6 +37,15 @@ def _live_ladder_decks(struct, template, stages, engine: str = "siesta"):
             continue
         eff = effective_config(template, getattr(st, "overrides", None),
                                where=f"stage {st.name!r}")
+        # ...and the rung's RUN CARD, as `prep run` pins it (`stages.md`
+        # § 6.8d): its template items -- the machine's answers are the
+        # launch, never a value of the deck.
+        from molbuilder.template import template_fields
+        card = {k: v for k, v in (getattr(st, "execution", None) or {}).items()
+                if k in template_fields(type(template))}
+        if card:
+            eff = effective_config(eff, card,
+                                   where=f"stage {st.name!r} execution")
         tok = stage_token(i, st.name)
         # THE SEAM CARRIES A FORM, not finished text (2026-08-18,
         # `script-preparation.md` § 4.3): the engine describes its deck and the

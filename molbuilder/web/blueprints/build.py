@@ -1721,8 +1721,13 @@ def api_task_setup_sweepable():
 
     from molbuilder import template as _T
     parsed = _T.catalogue()
+    # THE KIND NARROWS IT, as it narrows the columns: a kind's run card
+    # offers only what that kind carries (`template.md` § 6.3's sibling
+    # rule) -- a vibration's or a transport's was offered `restart`, which
+    # neither carries, and the deck ignored it (the K5 review's C2).
+    kind = str(request.args.get("calculation") or "") or None
     out = []
-    for it in _T.select(parsed, engine=engine):
+    for it in _T.select(parsed, engine=engine, calculation=kind):
         if "execution" not in (it.category or ()):
             continue
         out.append({
@@ -1798,19 +1803,19 @@ def api_task_setup_columns():
     `engines/stages.md` § 6.2: *"Any setting the description is allowed to hold
     may become a column. The ones it is not allowed to hold may not."*  There is
     no separate list — § 1.2 already says a stage may name any field of the
-    shared schema, and `template.md` § 7 already forbids the description to hold
-    the settings the machine answers.  Those two rules give the set with nothing
-    left to decide, and it is the same membership `prep` applies when it accepts
-    or refuses an override: a column offered here is a column `prep` will take.
+    shared schema but a run setting, which is the rung's run card (§ 6.8d;
+    the machine's answers among them, `template.md` § 7), a `shared` value
+    and a `role` one.  Those rules give the set with nothing left to decide,
+    and it is the same membership `prep` applies when it accepts or refuses an
+    override: a column offered here is a column `prep` will take.
 
     **Why this is not `/api/build/schema`**, which is what the tab read until
     2026-08-18.  That is the PARAMETER FORM's schema, and it filters the whole
     `staging` group out on purpose — a form does not ask a person how many ranks
     the scheduler granted (`form-schema.md` § 1.3).  Filtering a panel and
-    limiting a table are different jobs, and borrowing the answer to the first
-    for the second cost the table its most important column: `restart`, the
-    field that decides whether a ladder is a ladder, sits in `staging` and so
-    could never be added.  Every ladder built anywhere but
+    limiting a table are different jobs.  (Borrowing the form's answer once
+    cost the table `restart`, which was a column then; since 2026-09-30 it is
+    the rung's run card, with every other run setting -- plan § 5w K5.)  Every ladder built anywhere but
     `jobset init --stage-strategy` therefore ran every stage `clean`.
 
     `group` rides along because it is still the right answer to a different

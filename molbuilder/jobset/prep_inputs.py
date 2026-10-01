@@ -135,12 +135,14 @@ _MEASUREMENT_PINS = {"max_scf_iter": 3, "relax_steps": 0, "restart": "clean",
                      "continue_retries": 0, "scf_must_converge": False}
 
 
-def _gpu_inventory(base):
+def _gpu_inventory(base, routing=None):
     """The cluster's GPU ``(per-node count, type)`` from THE gpu domain
     row (`scheduler.place.candidates` -- one walk, shared with the cap and
     the routing, so the grid's device count, the cap and the submission
     can never read three different rows) -- § 4.3a's fallback when THIS
-    node's probe has none (a login node).
+    node's probe has none (a login node).  ``routing`` is the target's own
+    menu when the caller holds its record (a run prepped with ``--target``,
+    before the folder has snapshotted it); else the folder's.
 
     ``(None, None)`` when that row records no inventory.  Refuses when it
     records SEVERAL types: choosing one would be a ranking, and the probe
@@ -152,7 +154,9 @@ def _gpu_inventory(base):
     # CAPABILITY, not duration: `prep` asks which nodes have devices, not how
     # long a job may run, so it passes no wall and the answer is the menu's
     # own recommendation -- the first gpu-capable row (R7).
-    rows = candidates(get_routing(project_dir=Path(base)), prefer_gpu=True)
+    rows = candidates(routing if routing is not None
+                      else get_routing(project_dir=Path(base)),
+                      prefer_gpu=True)
     row = rows[0] if rows else None
     # `Domain.devices`, never `row.gpu`: the column has two spellings and this
     # read the map one only, so the documented hand-declared row
@@ -166,7 +170,7 @@ def _gpu_inventory(base):
             f"domain {row.name!r} records several GPU types "
             f"({', '.join(sorted(d.type for d in inv))}), and choosing one "
             f"is not the machine's call.  Edit that row in environment.json "
-            f"to keep the type this benchmark should measure.")
+            f"to keep the one type this calculation's GPU work uses.")
     dev = inv[0]
     return (dev.per_node or None), dev.type
 
@@ -505,19 +509,22 @@ def declared_run_shape(base, target, task, stage=None):
     # WHETHER there is a device is the run's answer (the card's `use_gpu`
     # over the template's); HOW MANY is this block's `gpu_count`, else one
     # (G5); WHICH KIND is the machine's.  A count without a device run is not
-    # an ask -- it is a contradiction, and validation names it.
+    # an ask: it is dropped here, and `prep_run_inputs` says so.
     if want_devices is None:
         want_devices = run_uses_device(base, task, stage)
     if not want_devices:
         out.pop("gres", None)
         return out
     from ..scheduler import machine_for
-    topo = getattr(machine_for(Path(base), target=target,
-                               probe=(target is None)), "topology", None)
+    rec = machine_for(Path(base), target=target, probe=(target is None))
+    topo = getattr(rec, "topology", None)
     # WHICH CARD, by the bench's own two producers in its order: the stated
     # choice or the target's probe, else the queue menu's GPU inventory --
     # a login node's probe sees no card, and the cluster behind it does.
-    gtype = _gpu_type_for_bench(base, topo) or _gpu_inventory(base)[1]
+    # The TARGET's menu, from the record in hand: the folder's would be this
+    # machine's on a fresh `prep --target` (the K5 review's B2).
+    gtype = (_gpu_type_for_bench(base, topo)
+             or _gpu_inventory(base, getattr(rec, "domains", None))[1])
     n = out.get("gres", 1)
     out["gres"] = f"gpu:{gtype}:{n}" if gtype else f"gpu:{n}"
     return out
@@ -533,10 +540,14 @@ def run_inputs(base, target, task, stage=None):
     cannot disagree about what a name means.
     """
     cond = task.run_condition(stage)
-    if not cond:
-        return {}, {}
-    pins, _axes, _value_axes = _declared_execution_pins(
-        base, task.engine, {k: [v] for k, v in cond.items()})
+    pins = {}
+    if cond:
+        pins, _axes, _value_axes = _declared_execution_pins(
+            base, task.engine, {k: [v] for k, v in cond.items()})
+    # THE SHAPE EVEN WHEN THE CARD IS EMPTY: a template whose `use_gpu` is on
+    # is a device run with nothing on its card, and its device ask is made
+    # here like any other (`gpu.md` G5).  It returned before this, so that
+    # run reached the header with no ask (the K5 review's B1).
     return declared_run_shape(base, target, task, stage), dict(pins or {})
 
 
@@ -586,10 +597,23 @@ def prep_run_inputs(base, target, task, stage, allocation=None, *,
     # by field, and there is no field-by-field merge onto nothing.  A surface
     # with no flags passes an empty ask, not an absent one.
     allocation = allocation if allocation is not None else Resources()
+    # What the PERSON said, before anything is folded in: the note in step 4
+    # is for a shape nobody stated, and a device ask derived from `use_gpu`
+    # (G5's one device) is not a statement about the ranks.
+    _flags_stated = any(getattr(allocation, f, None) not in (None, "")
+                        for f in ("mpi_np", "cpus_per_task", "gres"))
 
     # 1 · THE CONDITION -- the only thing on the launch-shape ladder between
     #     `auto_ranks` and a flag (`architecture.md` § 5.2).
     chosen, cond_pins = run_inputs(base, target, task, stage)
+    if ("gpu_count" in task.run_condition(stage)
+            and not run_uses_device(base, task, stage)):
+        # A COUNT WITHOUT A DEVICE RUN asks for nothing (`gpu.md` G4/G5),
+        # and dropping it unsaid is the silent-value class -- the card
+        # offers both rows, so this is a person mid-way through deciding.
+        note("  `gpu_count` is on the run card but `use_gpu` is off -- no "
+             "device is asked for.  Set `use_gpu` on the card to run on "
+             "the GPU, or remove the count.")
     known = {f.name for f in _dc.fields(Resources)}
     patch = {k: v for k, v in chosen.items()
              if k in known and getattr(allocation, k, None) in (None, "")}
@@ -634,8 +658,10 @@ def prep_run_inputs(base, target, task, stage, allocation=None, *,
     #     The note this replaces named the WRAPPER's runtime policy, because
     #     an unstated shape used to be settled at run time on the machine the
     #     job landed on.  It is settled at prep now, from the target's record.
-    if not any(getattr(allocation, f, None) not in (None, "")
-               for f in ("mpi_np", "cpus_per_task", "gres")):
+    _card_stated = any(k in task.run_condition(stage)
+                       for k in ("mpi_np", "omp_threads", "threads",
+                                 "gpu_count"))
+    if not (_flags_stated or _card_stated):
         _rec = None
         _ambiguous = None
         _resolve_failed = None

@@ -5004,9 +5004,12 @@ def _render_sbatch_for(script_path: Path, *,
     # on the domain's ordinary row.  An explicit ``env`` speaks for SIESTA
     # only -- its GPU build is a separate env, so naming the CPU one points
     # the deck away from the device; PySCF's GPU path lives in its one env.
+    # And a device ASK places as a device run, as it heads the header below
+    # (an explicit `gres` forces the GPU header): the two must not disagree.
     _prefer_gpu = bool(
-        (env is None or script_path.suffix.lower() != ".fdf")
-        and _wants_gpu(script_path, resources))
+        getattr(resources, "gres", None)
+        or ((env is None or script_path.suffix.lower() != ".fdf")
+            and _wants_gpu(script_path, resources)))
 
     scheduler = _rc.get_scheduler(project_dir=project_dir)
     if scheduler is None:

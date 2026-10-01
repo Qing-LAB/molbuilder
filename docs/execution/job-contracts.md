@@ -154,7 +154,8 @@ was. No new stage mechanism, no fourth key in the description.
 
 ```jsonc
 { "name": "scattering",
-  "overrides": { "restart": "continue", "required": [".TSHS", ".TSDE"] } }
+  "overrides": { "required": [".TSHS", ".TSDE"] },
+  "execution": { "restart": "continue" } }
 ```
 
 Extensions, not filenames: molbuilder prepends the run id, so a stage cannot

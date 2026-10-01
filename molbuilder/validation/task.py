@@ -204,12 +204,28 @@ def _execution_names_a_speed_knob(task) -> List[Issue]:
     # wall clock or a queue -- but a RUN owns them separately from the bench
     # (`stages.md` § 6.8e), so they are admitted here by name.
     from ..task import LANE_ASKS
-    known = {i.name for i in select(catalogue(), engine=task.engine)
+    from ..template import a_kind
+    kind = _kind_of(task)
+    every = {i.name for i in select(catalogue(), engine=task.engine)
+             if "execution" in (i.category or ())}
+    # ...THAT THIS KIND CARRIES: a run card's value is read by the kind's
+    # decks or by nothing (`template.md` § 6.3), as an override is (K4) --
+    # `restart` on a vibration's card was pinned into a deck that ignores it.
+    known = {i.name for i in select(catalogue(), engine=task.engine,
+                                     calculation=kind)
              if "execution" in (i.category or ())} | set(LANE_ASKS)
     out: List[Issue] = []
     for where, block in blocks:
         for name in sorted(block):
             if name in known:
+                continue
+            if name in every:
+                out.append(Issue(
+                    "error",
+                    f"{where} names {name!r}, which {a_kind(kind)} does not "
+                    f"carry -- no rung of it reads it, so the value would "
+                    f"change nothing (engines/template.md 6.3)",
+                    where=f"task.{where}.{name}"))
                 continue
             out.append(Issue(
                 "error",

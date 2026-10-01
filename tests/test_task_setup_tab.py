@@ -288,12 +288,15 @@ def _row_badge(name, points, machine):
 
 
 
-def test_one_point_is_a_choice_and_several_a_measurement():
-    """`generator.md` § 2 — a run is a sweep of length one, so both states are
-    the same structure at different lengths.  Verified legal by the reader:
-    `bench` takes a non-empty list, and a one-element list parses."""
-    assert _row_badge("diag_algorithm", ["ELPA-1STAGE"], False)["verdict"] \
-        == "chosen \u00b7 1 point"
+def test_one_point_is_the_trials_value_and_several_a_measurement():
+    """A one-point non-machine row is what EVERY TRIAL runs with -- never the
+    run's value, which is its run card's (`stages.md` § 6.8, § 6.8d; user,
+    2026-09-30: *"trials only"*).  The card called it "chosen", which told a
+    person their run was decided by a row `prep run` no longer reads.
+    Several points are a measurement."""
+    one = _row_badge("diag_algorithm", ["ELPA-1STAGE"], False)
+    assert one["verdict"] == "every trial \u00b7 1 point"
+    assert one["kind"] == "chosen", "the row lost its tint"
     assert _row_badge("diag_algorithm", ["A", "B"], False)["verdict"] \
         == "measured \u00b7 2 points"
 
@@ -321,14 +324,6 @@ def test_a_ONE_POINT_MACHINE_row_is_a_trial_not_a_decision():
     assert many["verdict"] == "measured \u00b7 3 points"
     assert many["kind"] == "machine"
 
-
-def test_a_one_point_row_that_is_NOT_machine_answered_is_still_a_choice():
-    """The other half, so the fix is not "call everything measured": a deck
-    knob with one point is the value that stage runs at (`generator.md`
-    § 4.3a).  Only the machine-answered rows changed."""
-    one = _row_badge("diag_algorithm", ["ELPA-1STAGE"], False)
-    assert one["verdict"] == "chosen \u00b7 1 point"
-    assert one["kind"] == "chosen"
 
 
 
@@ -366,6 +361,10 @@ def test_the_column_picker_offers_no_run_setting(web_client):
     until 2026-09-30, and a rung's `use_gpu` set as one reached its deck and
     not the scheduler's device ask (SO-C1)."""
     from molbuilder.template import run_settings
+    # The set is the catalogue's own answer; that it holds the settings this
+    # rule is about is asserted, so an empty answer cannot pass vacuously.
+    assert {"restart", "use_gpu", "diag_algorithm", "mpi_np"} <= run_settings(
+        "siesta")
     j = web_client.get("/api/task-setup/columns?engine=siesta").get_json()
     names = [i["name"] for i in j["items"]]
     assert names, "the picker offered nothing at all"
@@ -850,6 +849,20 @@ def test_a_refused_cell_is_the_door_s_400_not_a_500(web_client):
 # --------------------------------------------------------------------- #
 #  The value SHAPE reaches the tab (user, 2026-08-20)                    #
 # --------------------------------------------------------------------- #
+
+def test_the_run_card_offers_only_what_the_kind_carries(web_client):
+    """A kind's run card offers the run settings that kind carries
+    (`template.md` § 6.3's sibling rule, as the columns are narrowed):
+    `restart` is an optimization's, and a vibration's card offered it -- a
+    value its deck would ignore (the K5 review's C2, 2026-09-30)."""
+    def names(kind):
+        j = web_client.get("/api/task-setup/sweepable?engine=siesta"
+                           f"&calculation={kind}").get_json()
+        return {i["name"] for i in j["items"]}
+    assert "restart" in names("optimization")
+    assert "restart" not in names("vibration")
+    assert "use_gpu" in names("vibration")
+
 
 def test_both_pickers_payloads_carry_the_value_shape(web_client):
     """A bool or enum parameter edits through a dropdown of its legal

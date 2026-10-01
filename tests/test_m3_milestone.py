@@ -87,10 +87,10 @@ def test_a_two_stage_ladder_answers_the_group_both_ways(h2o):
     rung continued from whatever the directory held."""
     template = SiestaConfig(system_label=ID, relax_type="CG")
     decks = _live_ladder_decks(h2o, template, [
-        Stage(name="coarse", overrides={"restart": "clean",
-                                        "mesh_cutoff": 150.0}),
-        Stage(name="tight",  overrides={"restart": "continue",
-                                        "mesh_cutoff": 300.0}),
+        Stage(name="coarse", overrides={"mesh_cutoff": 150.0},
+              execution={"restart": "clean"}),
+        Stage(name="tight",  overrides={"mesh_cutoff": 300.0},
+              execution={"restart": "continue"}),
     ])
 
     # Keyed by FILENAME (`<label>_<stage>.fdf`), not by stage name -- which
@@ -110,8 +110,8 @@ def test_the_two_stages_are_otherwise_the_same_calculation(h2o):
     resume from nothing."""
     template = SiestaConfig(system_label=ID, relax_type="CG")
     decks = _live_ladder_decks(h2o, template, [
-        Stage(name="coarse", overrides={"restart": "clean"}),
-        Stage(name="tight",  overrides={"restart": "continue"}),
+        Stage(name="coarse", execution={"restart": "clean"}),
+        Stage(name="tight",  execution={"restart": "continue"}),
     ])
     # Read as a VALUE, not pinned as text: the emitter pads the key, and this
     # test is about the label being one label, not about its column width.

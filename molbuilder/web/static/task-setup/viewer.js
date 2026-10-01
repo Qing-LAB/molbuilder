@@ -565,18 +565,6 @@ function runConditionOf(task, stage) {
     return out;
 }
 
-/** What one run setting of this rung RESOLVES to -- its run card, the
- *  template under it, the catalogue's default under both: what `prep run`
- *  pins, read the way `prep` reads it.  The run card is the one place a
- *  rung's run setting lives (`stages.md` § 6.8d, plan § 5w K5), so a hint
- *  about the rung asks this, never a stage column. */
-function runSettingOf(task, stage, name) {
-    const card = runConditionOf(task, stage);
-    if (name in card) return card[name];
-    if (name in _tmpl.values) return _tmpl.values[name];
-    const m = _meta[name];
-    return m ? m.default : undefined;
-}
 
 /** The parameters this card offers: every setting a bench MAY vary, plus
  *  whatever the condition already states, plus any the person added here.
@@ -858,12 +846,14 @@ function renderMachine(task) {
         const chosen = pts.length === 1 && !machineAnswers(name);
         const kind = machineAnswers(name) ? "machine"
                                           : (chosen ? "chosen" : "measured");
-        // A ONE-POINT MACHINE ROW IS ONE TRIAL, NOT AN ANSWER.  `mpi_np: [8]`
-        // is *measure eight* (`stages.md` § 6.8); what the run uses is the
-        // card in the rung's own tab.  Calling it "chosen" here told the
-        // person their run was decided by a row `prep run` never reads.
+        // A ONE-POINT ROW IS THE TRIALS' VALUE, NEVER THE RUN'S.  `mpi_np:
+        // [8]` is *measure eight*; `use_gpu: [true]` is what every trial
+        // runs with (`stages.md` § 6.8) -- and since 2026-09-30 neither is
+        // read by `prep run`: what the run uses is the card in the rung's
+        // own tab (§ 6.8d).  "chosen" told the person their run was decided
+        // by a row `prep run` never reads.
         const verdict = chosen
-            ? "chosen · 1 point"
+            ? "every trial · 1 point"
             : `measured · ${pts.length} point${pts.length === 1 ? "" : "s"}`;
 
         const chips = pts.map((p, i) => {
@@ -1637,8 +1627,12 @@ const BENCH_START = { mpi_np: [4, 8, 16], omp_threads: [1, 2] };
 async function loadSweepChoices(engine) {
     /* Keyed by ENGINE, like `_cols` (R2-1): a bare `if (_sweep)` served
      * the first folder's engine to every folder opened after it -- a
-     * PySCF description got SIESTA's machine rows. */
-    const key = engine || "siesta";
+     * PySCF description got SIESTA's machine rows.  And by KIND, as the
+     * columns are: a vibration's or a transport's run card was offered
+     * `restart`, which neither kind carries (the K5 review's C2). */
+    const kind = (_task && _task.calculation)
+        || (_handover && _handover.calculation) || "optimization";
+    const key = (engine || "siesta") + ":" + kind;
     if (_sweep && _sweepKey === key) {
         _fillSweepMeta(_sweep);      // same reason as the column cache above
         return _sweep;
@@ -1659,7 +1653,9 @@ async function loadSweepChoices(engine) {
      * has; only a surface that cannot get its SUBSTANCE may refuse. */
     const p = (async () => {
         const got = await fetchVocabulary(
-            "/api/task-setup/sweepable?engine=" + encodeURIComponent(key),
+            "/api/task-setup/sweepable?engine="
+            + encodeURIComponent(engine || "siesta")
+            + "&calculation=" + encodeURIComponent(kind),
             "sweepable settings");
         const items = (got.ok && got.body && got.body.items) || [];
         if (_sweepKey !== key) return items;   // a newer load owns the slot
@@ -2177,7 +2173,7 @@ function renderNext(task) {
     // sequence, taught once with the first stage as the example.  summarize
     // writes bench-result.json (the record); the report is PRINTED
     // (a REPORT nothing reads but you); `prep run` uses `execution` --
-    // template < declaration < execution < flags.
+    // template < the calculation's execution < the rung's < flags.
     /* `--bundle <path from the projects root>` for every command this
      * tab teaches.  Naming the bundle is what lets the line be pasted
      * from anywhere; the sidebar already knows the folder, so the user
@@ -2264,11 +2260,14 @@ function renderNext(task) {
          * the count (`_fs.runs`, from the folder's answer) and uses it. */
         let from = "";
         const hierarchical = _shape === "hierarchical";
-        /* THE RUNG'S `restart` AS IT WILL RUN -- its run card over the
-         * template (`runSettingOf`).  This read the stage's COLUMN, so a
-         * rung continuing by the template's default (`continue`) was taught
-         * no `--from` at all (the K5 review's `--from` hint). */
-        const restart = runSettingOf(_task || task, name, "restart");
+        /* WHAT THE RUNG'S RUN CARD SAYS -- the one place a rung's
+         * `restart` is stated (`stages.md` § 6.8d, plan § 5w K5); this read
+         * the stage's COLUMN.  Only what the card STATES: a rung that
+         * states nothing keeps the template's value, and how such a rung
+         * is handed its predecessor is the stage hand-over's (plan W37,
+         * M2h) -- a default read in here taught transport's rungs a
+         * `--from` their prep refuses (the K5 review's A1). */
+        const restart = runConditionOf(_task || task, name).restart;
         if (i > 0 && String(restart || "") === "continue" && hierarchical) {
             const prev = enabled[i - 1];
             /* THE TOKEN COMES FROM THE SERVER (`_fs.tokens`), not spelled

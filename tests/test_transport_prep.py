@@ -2865,3 +2865,28 @@ class TestTheSpinTranSIESTARuns(_LadderThroughTheCli):
         assert r.exit_code != 0, r.output
         assert "spin_treatment = non-collinear (recorded" in r.output, (
             r.output)
+
+
+def test_a_transport_rung_takes_its_run_card(calc, monkeypatch):
+    """GOAL: a transport rung is run the way its run card says.
+
+    CONTRACT (`stages.md` § 6.8d, plan § 5w K5, T-F3): a setting stated on a
+    rung's run card reaches that rung's deck, on transport as on every kind.
+    `_prep_transport` refused every pin until 2026-09-30, so the card's
+    solver -- or its `use_gpu` -- stopped the prep.  Driven through
+    ``jobset prep run``, the one entry that reads the card.
+    """
+    from click.testing import CliRunner
+
+    from molbuilder.jobset._cli import jobset_group
+    from molbuilder.projects import PROJECTS_ROOT_ENV
+    monkeypatch.setenv(PROJECTS_ROOT_ENV, str(calc.parents[2]))
+    doc = json.loads((calc / "task.json").read_text())
+    seed = next(s for s in doc["stages"] if s["name"] == "seed")
+    seed["execution"] = {"diag_algorithm": "ELPA-2STAGE"}
+    (calc / "task.json").write_text(json.dumps(doc))
+    r = CliRunner().invoke(jobset_group, ["prep", "run", "seed", "--bundle",
+                                          str(calc), "--target", "this"])
+    assert r.exit_code == 0, r.output
+    deck = (calc / "01_seed" / "T_01_seed.fdf").read_text()
+    assert _says(deck, "Diag.Algorithm", "ELPA-2STAGE"), deck[:3000]

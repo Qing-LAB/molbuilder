@@ -365,9 +365,11 @@ limited to.
 > now continues, which is what a ladder is.
 >
 > ⚠ **The tag is a default, never a restriction.** Any field of the shared schema
-> may be promoted, whatever group it carries — § 1.2's rule stands, with its one
-> exception: an item bound to the whole calculation (`shared`) is not a column at
-> all. The group only decides what is *already ticked* when the tab opens.
+> may be promoted, whatever group it carries — § 1.2's rule stands, with its
+> exceptions: an item bound to the whole calculation (`shared`), one the rung
+> fixes (`role`) and a run setting (the catalogue's `execution` items, each
+> rung's run card, § 6.8d) are not columns at all. The group only decides what
+> is *already ticked* when the tab opens.
 >
 > **What the tag was actually built for, since it is easy to over-read.** It is a
 > **UI grouping**, added 2026-06-13 to fix a reported bug: the form used to mix
@@ -1614,8 +1616,9 @@ destroy the plan to measure.
 
 **Where the answer goes instead.** `bench` runs on the target and writes
 `bench-result.json`, whose `choice` carries the measured value alongside the
-rank and GPU counts; `prep` reads it there
-([`job-system.md § 7`](?doc=execution/job-system.md)). Two files, two jobs: the
+rank and GPU counts; `summarize` prints it as a report, and no code reads it —
+what the run uses is its run card (§ 6.8d;
+[`job-system.md § 7`](?doc=execution/job-system.md)). Two files, two jobs: the
 description says what to ask, the result says what the machine said.
 
 **A field may appear here that may never appear in the template**, and that is

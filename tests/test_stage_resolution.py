@@ -355,15 +355,15 @@ def test_two_stages_resolve_independently():
 def test_a_stage_may_override_ANY_field_not_a_privileged_four():
     """**The gate.**  `mesh_cutoff` was unreachable before; so were
     `basis_size` and `kgrid`.  Nothing about them is special now — they are
-    fields of the shared schema like any other."""
+    fields of the shared schema like any other (a run setting excepted: it
+    is the rung's run card's, `stages.md` § 1.2)."""
     cfg = effective_config(_template(), {
         "mesh_cutoff": 400.0, "basis_size": "TZP", "kgrid": (2, 2, 2),
-        "relax_type": "Broyden", "restart": "continue"})
+        "relax_type": "Broyden"})
     assert cfg.mesh_cutoff == 400.0
     assert cfg.basis_size == "TZP"
     assert tuple(cfg.kgrid) == (2, 2, 2)
     assert cfg.relax_type == "Broyden"
-    assert cfg.restart == "continue"
 
 
 def test_an_unknown_field_is_refused_by_name():

@@ -137,9 +137,10 @@ def resolvable_override_names() -> frozenset:
     `prep` resolves a rung's config through
     :func:`molbuilder.resolve.resolve` against
     :class:`~molbuilder.config.siesta.SiestaConfig`, so a name that is not one
-    of its fields is refused there by name, and an ``allocation``-marked one is
-    refused as *"a machine fact the description must never carry"*
-    (`engines/template.md` § 7). Those two facts are the whole vocabulary, and
+    of its fields is refused there by name, and a RUN SETTING -- the
+    catalogue's ``execution`` items, the machine's answers among them -- is
+    refused as an override: it is the rung's run card's (`engines/stages.md`
+    § 6.8d, plan § 5w K5). Those two facts are the whole vocabulary, and
     this is where they are turned into one question both doors ask.
 
     **Both doors had a different, wider answer, and the gap was measured
@@ -152,18 +153,20 @@ def resolvable_override_names() -> frozenset:
     either road, refused the whole calculation while naming a field they had
     never typed (*"did you mean 'omp_threads'?"*).
 
-    Which names are the machine's is the catalogue's own answer — this is what
-    ``select(t, allocation=True)`` is for, rather than a fourth frozenset.
+    Which names are run settings is the catalogue's own answer
+    (``template.run_settings``), rather than a fourth frozenset.  Until the
+    K5 review this subtracted the machine's answers alone, so the rung tabs
+    offered the solver, ``block_size`` and ``parallel_over_k`` -- each then
+    refused at the save with *"put it on the run card"*.
     """
     import dataclasses
 
     from ..config.siesta import SiestaConfig
-    from ..template import catalogue, select
+    from ..template import run_settings
 
-    machine = {i.name for i in select(catalogue(), engine="siesta",
-                                      allocation=True)}
+    on_the_card = run_settings("siesta")
     return frozenset(f.name for f in dataclasses.fields(SiestaConfig)
-                     if f.name not in machine)
+                     if f.name not in on_the_card)
 
 
 def bias_points(task) -> Tuple[float, ...]:

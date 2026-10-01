@@ -4634,7 +4634,7 @@ as a milestone does (§ 0a). **Approved 2026-09-29** (§ 5w.3); K6 is first.
 | **K11** | **comparing against a stale render** | the gather check renders each upstream rung now, in memory, through the one render door, and compares that | T-F30 |
 | **K12** | **stage names** | one resolver and one printer: a deck header prints the name `launch` accepts; names fold case everywhere (`stages.md`) | SS-C11, SS-C15 |
 | **K13** | **file writers** | every file molbuilder writes goes through `persist`'s atomic writer, and the PySCF deck's own is spliced from it | SS-C17, V1.37 |
-| **K14** | **allocations** | one name map between the catalogue's items and `Resources` (`omp_threads` ↔ `cpus_per_task`, `gpu_count` ↔ `gres`), read by `render_config` and `prep_inputs` alike; one meaning of a blank budget on every engine; the engine's parallel model (MPI or OpenMP) declared and read by the scheduler header | SO-C8, SO-C5, PS-C6 = PO-C7, PO-C8 |
+| **K14** | **allocations** | one name map between the catalogue's items and `Resources` (`omp_threads` ↔ `cpus_per_task`, `gpu_count` ↔ `gres`), read by `render_config` and `prep_inputs` alike; one meaning of a blank budget on every engine — the run card's fit panel included, which reads the run through the bench's enumerator (an absent `gpu_count` ranges over the devices, an absent `mpi_np` gets the machine's grid) where the run takes one device and `auto_ranks`; the engine's parallel model (MPI or OpenMP) declared and read by the scheduler header | SO-C8, SO-C5, PS-C6 = PO-C7, PO-C8; the K5 review's C1 |
 | **K15** | **deck values rendered per item** | one formatter in the layout's line door — the value exact, never a per-item format string | PS-C9 = PO-C5 |
 | **K16** | **the run record's parameter rows** | `declarations(engine, calculation, stage)` — the rung's own items | SS-C10 |
 | **K17** | **physics each needing a build or a refusal** (not a framework gap) | PS-C3 (PCM's solvent terms on the held-atom, IR-only and Raman routes — build and measure, or refuse); PS-C2 (two spin channels in the spectrum record — build, or K2 refuses); SO-C3 (the GPU-ELPA `BlockSize` realignment `tuning.md` promises — build it); SO-C10/C11 (`ParallelOverK` — SIESTA's default unless set; ELPA forces it off); SO-C12 (pseudopotentials by exact name); PO-C4 (the geomeTRIC log — write it or drop the promise); PO-C10 (the ECP read back from the molecule); PO-C12 (a `-V` functional with D3); T-F35 (the T(E) window covers the bias window); T-F26 (only the L and R electrode labels); T-F4/F34 (a fixed ladder's controls); T-F2 *(moved to K3, done 2026-09-30)*; T-F28 (the device's E_F, iterations and poles in the record); PS-C13 (mode numbers bounded at `prep`); the K3 review's `ParallelOverK` counted before time reversal, and the vibration's level-of-theory check blind to the recorded k-mesh | as listed |
@@ -5105,9 +5105,10 @@ reviewers' probes (the archive's § E lists) among its runs.
   `prep_inputs.run_condition`) is what every reader takes — the deck's pins
   and the launch shape at `prep`, `run_uses_device`, the sequence checks
   (`resolved_ladder` lays each rung's card, so § 6.6a's *starts clean*
-  reads the card's `restart`), the Task setup tab (`runSettingOf`, which
-  the `--from` hint now asks — it read a stage column, so a rung continuing
-  by the template's default was taught no `--from`). **Transport takes its
+  reads the card's `restart`), the Task setup tab (`runConditionOf`: the
+  `--from` hint reads what the rung's card STATES — it read a stage column;
+  a rung that states nothing is the stage hand-over's, W37/M2h).
+  **Transport takes its
   run card** (T-F3): `_prep_transport` refused every pin, so a run card's
   `use_gpu` on a transport rung stopped the prep; its rung now resolves
   with the card's pins. **The GPU ask, asked while checking the user's
@@ -5120,6 +5121,28 @@ reviewers' probes (the archive's § E lists) among its runs.
   device. SLURM's untyped `gpu:N` read as a type (`--gres=gpu:gpu:N`) is
   fixed in `_parse_gres_flag`. None of the 51 descriptions under
   `projects/` used a run setting as a column or a one-point bench row.
+  **Reviewed 2026-09-30** by an agent reading `af91d223` (code only), every
+  finding re-read against the code: **A1** the hint fell back to the
+  catalogue's default `continue`, so every transport rung after the first
+  and a vibration's `freq` were taught a `--from` their prep refuses and
+  their Prep buttons only previewed — it reads the card alone now, and a
+  browser case pins it; **A2** the transport tab's rung vocabulary
+  (`resolvable_override_names`) subtracted only the machine's answers, so it
+  offered the solver, `block_size` and `parallel_over_k`, each refused at the
+  save — it subtracts `run_settings`; **B1** a template `use_gpu` with an
+  empty card returned before the device ask; **B2** the card type's queue
+  menu was read from the folder, not the `--target` record in hand; **B3**
+  the Measure card called a one-point row "chosen" — "every trial"; **B4** a
+  `gpu_count` without `use_gpu` was dropped unsaid — `prep` says so; **B5**
+  placement ignored a stated `gres`; **C2** the run card offered, and the
+  description's check accepted, a run setting the kind does not carry
+  (`restart` on a vibration) — narrowed by kind on both; **B6** nine stale
+  sentences. **T2**: a transport rung's card reaching its deck, through
+  `jobset prep run`. Not so: *"reverting each GPU fix turns them red"* —
+  the header's gate is unreachable on the road (prep now always states the
+  `gres`), and is kept because its old comment was false. **C1** — the run
+  card's fit panel reads the run through the bench's enumerator — is
+  K14's (one meaning of a blank budget) and is carried there.
 
 ---
 

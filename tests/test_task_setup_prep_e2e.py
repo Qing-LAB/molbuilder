@@ -1197,12 +1197,10 @@ def test_a_continuing_rung_copies_a_command_naming_the_LAST_attempt(
     import json as _json
     tj = two_stage_dir / "task.json"
     doc = _json.loads(tj.read_text())
-    # A STAGE MAY ONLY OVERRIDE WHAT `varies` PROMOTED (`stages.md` § 6.2) --
-    # otherwise a demoted parameter leaves a value hiding, and `read_task`
-    # refuses the document by name.  Promote it, then set it.
-    doc["varies"] = sorted(set(doc.get("varies") or []) | {"restart"})
-    doc["stages"][1]["overrides"] = dict(doc["stages"][1].get("overrides") or {},
-                                         restart="continue")
+    # THE RUNG'S RUN CARD says it continues -- the one place a rung's
+    # `restart` lives (`stages.md` § 6.8d, plan § 5w K5).
+    doc["stages"][1]["execution"] = dict(doc["stages"][1].get("execution")
+                                         or {}, restart="continue")
     tj.write_text(_json.dumps(doc, indent=2))
     # three attempts on the rung being continued FROM
     for n in (0, 1, 2):
@@ -1223,6 +1221,32 @@ def test_a_continuing_rung_copies_a_command_naming_the_LAST_attempt(
     assert not any("run-0" in c for c in tails), tails
 
 
+def test_a_rung_whose_card_says_nothing_is_taught_no_from(
+        page, flask_server, two_stage_dir):
+    """The hint teaches what a rung's RUN CARD states, and nothing else.
+
+    A rung whose card states no `restart` runs with the template's value,
+    and how such a rung is handed its predecessor is the stage hand-over's
+    (plan W37, M2h).  A default read into the hint taught every transport
+    rung after the first a `--from` its prep refuses, and turned their Prep
+    buttons into previews (the K5 review's A1, 2026-09-30).
+    """
+    for n in (0, 1):
+        (two_stage_dir / "01_coarse" / f"run-{n}").mkdir(parents=True)
+    _open(page, flask_server, two_stage_dir)
+    page.wait_for_selector("pre.ts-cmd", state="attached", timeout=20000)
+    page.wait_for_function(
+        "() => Array.from(document.querySelectorAll('pre.ts-cmd'))"
+        "        .some(e => e.textContent.includes('jobset prep run'))",
+        timeout=20000)
+    cmds = page.eval_on_selector_all(
+        "pre.ts-cmd", "els => els.map(e => e.textContent)")
+    assert cmds, "the page taught no commands at all"
+    assert not any("--from" in c for c in cmds), (
+        "a rung whose card states nothing was taught a --from: "
+        + repr([c for c in cmds if "--from" in c]))
+
+
 def test_a_FLAT_bundle_is_taught_no_from_at_all(
         page, flask_server, two_stage_dir):
     """The other half, so the rule is not "always emit a tail".
@@ -1238,9 +1262,8 @@ def test_a_FLAT_bundle_is_taught_no_from_at_all(
     tj = two_stage_dir / "task.json"
     doc = _json.loads(tj.read_text())
     doc["shape"] = "flat"
-    doc["varies"] = sorted(set(doc.get("varies") or []) | {"restart"})
-    doc["stages"][1]["overrides"] = dict(doc["stages"][1].get("overrides") or {},
-                                         restart="continue")
+    doc["stages"][1]["execution"] = dict(doc["stages"][1].get("execution")
+                                         or {}, restart="continue")
     tj.write_text(_json.dumps(doc, indent=2))
 
     _open(page, flask_server, two_stage_dir)

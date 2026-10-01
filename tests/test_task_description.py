@@ -499,11 +499,13 @@ def test_a_task_built_in_code_writes_the_same_shape(tmp_path):
                        created="2026-08-07T10:00:00-07:00"),
         structure=StructureRef(source="projects/x/structure/h2.xyz",
                                formula="H2", atoms=2),
-        varies=("mesh_cutoff", "restart"),
+        varies=("mesh_cutoff",),
         stages=(Stage(name="coarse", enabled=True,
-                      overrides={"mesh_cutoff": 150, "restart": "clean"}),
+                      overrides={"mesh_cutoff": 150},
+                      execution={"restart": "clean"}),
                 Stage(name="tight", enabled=True,
-                      overrides={"mesh_cutoff": 300, "restart": "continue"})),
+                      overrides={"mesh_cutoff": 300},
+                      execution={"restart": "continue"})),
     )
     p = write_task(tmp_path / FILENAME, task)
     assert read_task(p) == task

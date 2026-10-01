@@ -250,3 +250,18 @@ class TestTransportCoreJsServed:
         assert "onChange" not in code
         assert "_adoptCitation" in code, (
             "the cite flow is the one structure door")
+
+
+def test_a_rung_tab_offers_no_run_setting(web):
+    """A run setting is the rung's run card's, never a rung override
+    (`stages.md` § 6.8d, plan § 5w K5): the rung tabs offered the solver,
+    `block_size` and `parallel_over_k` -- each then refused at the save
+    with *"put it on the run card"* (the K5 review's A2, 2026-09-30)."""
+    from molbuilder.template import run_settings
+    body = web.get("/api/transport/schema?surface=rung").get_json()
+    names = {f["name"] for s in body["schema"]["sections"]
+             for f in s["fields"]}
+    assert names, "the rung surface offered nothing"
+    assert "diag_algorithm" in run_settings("siesta")
+    assert not (names & run_settings("siesta")), sorted(
+        names & run_settings("siesta"))

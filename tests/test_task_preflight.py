@@ -353,6 +353,17 @@ def test_comma_text_is_refused_for_a_list_field():
     assert "['Au', 'C', 'H', 'S']" in issue.message
 
 
+def test_a_run_card_value_the_kind_does_not_carry_is_refused():
+    """A run card's value is read by the kind's decks or by nothing
+    (`template.md` § 6.3), as an override is (K4): `restart` is an
+    optimization's, and on a vibration's card it was pinned into a deck that
+    ignores it (the K5 review's C2, 2026-09-30)."""
+    issues = _errors(preflight(_task(calculation="vibration",
+                                     execution={"restart": "clean"})))
+    assert any("'restart'" in i.message and "does not carry" in i.message
+               for i in issues), issues
+
+
 def test_an_optional_field_still_checks_the_type_inside_it():
     """The other half of the source-text bug.  ``Optional[float]`` is not
     the string ``"float"``, so an optional field accepted anything at all."""
