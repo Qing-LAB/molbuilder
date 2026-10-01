@@ -224,46 +224,33 @@ def api_results_dir():
     root = calcdirs.root_of(directory)
     ladder = None
     # A CALCULATION ROOT HAS A LADDER (`web/results.md` § 2.4; `plan.md`
-    # § 5c.3 c-d): N rungs, each a run directory below it.  THE RUNGS ARE THE
-    # DESCRIPTION'S (`task.stages`, `stages.md` § 6.7: the ladder is read,
-    # never inferred); each one's state is `jobset_status`'s reading -- the
-    # one ladder door the CLI's `status` verb reads, CONSUMED here, never
-    # copied.  A described rung the job-set does not hold yet is NOT_PREPPED
-    # in the reader's own words: a transport ladder is prepped rung by rung,
-    # so the job-set grows while the description already names all five
-    # (measured 2026-09-24: a root with the seed prepped answered a one-rung
-    # ladder).  `null` for a container that is not the root.
+    # § 5c.3 c-d): N rungs, each a run directory below it -- `jobset_status`'s
+    # answer, the one the CLI's `status` verb prints, CONSUMED here, never
+    # copied.  Its rows are the description's stages (`job-system.md` § 5.3),
+    # the ones not prepped yet among them: a transport ladder is prepped rung
+    # by rung, so the job-set grows while the description already names all
+    # five (measured 2026-09-24: a root with the seed prepped answered a
+    # one-rung ladder).  This route composed that itself until 2026-10-01,
+    # and the CLI's `status` listed the prepped rungs alone.  `null` for a
+    # container that is not the root.
     if (place == calcdirs.CONTAINER and root is not None
             and Path(root).resolve() == directory.resolve()):
         from molbuilder.jobset.model import FILENAME as JOBSET_FILENAME
         from molbuilder.jobset.model import JobSet
-        from molbuilder.jobset.runstatus import NOT_PREPPED, jobset_status
-        from molbuilder.task import FILENAME as TASK_FILENAME, read_task
+        from molbuilder.jobset.runstatus import jobset_status
         try:
-            _described = [s.name for s in
-                          read_task(directory / TASK_FILENAME).stages]
             jpath = directory / JOBSET_FILENAME
-            _known = ({s.name: s
-                       for s in jobset_status(JobSet.load(jpath),
-                                              directory).stages}
-                      if jpath.is_file() else {})
+            got_status = jobset_status(
+                JobSet.load(jpath) if jpath.is_file() else None, directory)
         except (OSError, ValueError, KeyError, TypeError) as exc:
             attempts.append(f"the ladder could not be read: {exc}")
         else:
-            rows = []
-            for name in _described:
-                s = _known.get(name)
-                rows.append(
-                    {"name": name, "seq": s.seq, "state": s.state,
-                     "detail": s.detail, "dir": s.dir,
-                     "attempt": s.attempt} if s is not None else
-                    {"name": name, "seq": None, "state": NOT_PREPPED[0],
-                     "detail": NOT_PREPPED[1], "dir": None,
-                     "attempt": None})
-            _open = [r["name"] for r in rows if r["state"] != "finished"]
-            ladder = {"complete": not _open,
-                      "first_incomplete": _open[0] if _open else None,
-                      "stages": rows}
+            ladder = {"complete": got_status.complete,
+                      "first_incomplete": got_status.first_incomplete,
+                      "stages": [{"name": s.name, "seq": s.seq,
+                                  "state": s.state, "detail": s.detail,
+                                  "dir": s.dir, "attempt": s.attempt}
+                                 for s in got_status.stages]}
 
     # THE LABEL, so each file can be read back EXACTLY.  `role_of` answers
     # WITHOUT one and therefore cannot answer an underscore role at all --

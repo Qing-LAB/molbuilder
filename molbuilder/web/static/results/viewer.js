@@ -185,7 +185,7 @@
         title.className = "results-ladder-title";
         title.textContent = "This calculation's ladder \u2014 " + stages.length
             + " rung" + (stages.length === 1 ? "" : "s")
-            + (ladder.complete ? ", every rung finished"
+            + (ladder.complete ? ", every enabled rung finished"
                : (ladder.first_incomplete
                   ? ", next to run: " + ladder.first_incomplete.replace("_", " ")
                   : ""));

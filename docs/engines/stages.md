@@ -1743,8 +1743,9 @@ description.
 now archived. Both are about `task.json`, so they belong here.*
 
 1. **Is `task.json` the right name?** It sidesteps the collision the word *plan*
-   already has in this domain — `jobset plan` the verb, and *"Job-set plan"* the
-   registry label for `job-set.json`.
+   already has in this domain — *"Job-set plan"*, the registry label for
+   `job-set.json`, and prep's `STAGE-PLAN.md` (and `jobset plan` the verb, until
+   it was folded into `status`, 2026-10-01).
 2. **Is a description editable by hand?** It is JSON sitting beside the decks,
    so it will be. If yes, the reader owes a person the same errors it owes the
    browser — which is an argument for § 6's refusal rule being **loud rather

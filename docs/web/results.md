@@ -375,8 +375,8 @@ Two rules keep this from hiding anything:
 
 ### 2.4 A calculation root shows its LADDER
 
-A **hierarchical** calculation root — the directory holding `task.json` and
-`job-set.json` — is a container, so it has no run state and no record
+A **hierarchical** calculation root — the directory holding `task.json` — is a
+container, so it has no run state and no record
 ([`project-layout.md`](?doc=execution/project-layout.md) § 1.4a); what it has
 is a **ladder**: N rungs, each a run directory below it. Each rung's run writes
 its own result in its directory — a vibration's spectrum in its `freq` attempt
@@ -388,8 +388,10 @@ force-constant stages (§ 5.9 there).
 `GET /api/results/dir` answers
 such a root with `ladder: {complete, first_incomplete, stages: [{name, seq,
 state, detail, dir, attempt}]}`, read from `jobset_status`, the ladder door the
-CLI's `status` verb reads — consumed, never copied — and `null` for anything
-else (a rung's directory, a folder nothing prepped). A **flat** calculation
+CLI's `status` verb reads — consumed, never copied: every stage of the
+description, the ones not prepped yet among them
+([`execution/job-system.md`](?doc=execution/job-system.md) § 5.3), before
+anything is prepped too — and `null` for anything else (a rung's directory). A **flat** calculation
 root is itself the run: it answers a state and a record like any run directory
 (§ 3a), and no ladder. A bias scan's rung reads from its first point not
 finished, and its detail names the point

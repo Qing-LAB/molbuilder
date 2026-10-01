@@ -922,7 +922,9 @@ class TestTheContractEndpoint:
         # status reader's own words -- the job-set grows rung by rung
         from molbuilder.jobset.runstatus import NOT_PREPPED
         assert (by["device"]["state"], by["device"]["detail"]) == NOT_PREPPED
-        assert by["device"]["attempt"] is None and by["device"]["seq"] is None
+        # its number is the description's -- the one `#4` names
+        # (`job-system.md` § 5.3)
+        assert by["device"]["attempt"] is None and by["device"]["seq"] == 4
         stage = client.get("/api/results/dir?path=" + str(calc / "01_seed")).get_json()
         assert stage["ok"] and stage["ladder"] is None
 

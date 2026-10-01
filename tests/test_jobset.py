@@ -85,9 +85,9 @@ def test_jobset_roundtrips_through_job_set_at_1():
     """A `JobSet` survives `to_dict` -> `from_dict` losslessly, nested records
     included.
 
-    `job-set.json` is the file every later verb reads: `plan`, `submit` and
-    `status` all work from the loaded object, never from the description that
-    built it (`job-system.md` § 3.1). A field the codec drops is a resource
+    `job-set.json` is the file every later verb reads: `launch` and `status`
+    work from the loaded object for what was prepped, never from the
+    description that built it (`job-system.md` § 3.1). A field the codec drops is a resource
     request or a warm-file declaration that vanishes between `prep` and `launch`,
     with nothing to compare against. The two spot checks -- `warm[0].name` and
     `resources.exclusive` -- are the nested levels a shallow dict copy flattens.
@@ -847,35 +847,13 @@ def test_jobset_write_load_roundtrip(tmp_path):
 
 
 # --------------------------------------------------------------------- #
-#  molbuilder jobset CLI (plan / prep / submit over a bundle)           #
+#  molbuilder jobset CLI (status / prep / submit over a bundle)         #
 # --------------------------------------------------------------------- #
 
 def _runner():
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     return CliRunner(), jobset_group
-
-
-def test_cli_plan_reads_jobset_json(tmp_path):
-    """`jobset plan --bundle <dir>` finds `job-set.json` in the bundle and renders
-    the plan from it.
-
-    The CLI's contract with the on-disk layout: the file is found by NAME at the
-    bundle root, not passed as a path (`job-system.md` § 5). The remaining
-    assertions hold the wording that went with the deleted dependency edges
-    (2026-08-10) -- no `s1 -> s2` order the framework claims to enforce, and
-    `ONE AT A TIME` as an instruction to a person.
-    """
-    _ladder().write(tmp_path / "job-set.json")
-    runner, grp = _runner()
-    r = runner.invoke(grp, ["plan", "--bundle", str(tmp_path)])
-    assert r.exit_code == 0, r.output
-    assert "JOB-SET PLAN" in r.output
-    # Not "Order: s1 -> s2" -- that line named an order one job waited on, and
-    # it went with the edges (2026-08-10).  A ladder still prints an order,
-    # but it is an instruction to a PERSON, not a dependency.
-    assert "s1 -> s2" not in r.output
-    assert "ONE AT A TIME" in r.output
 
 
 def test_cli_errors_without_jobset_json(tmp_path):
@@ -886,7 +864,7 @@ def test_cli_errors_without_jobset_json(tmp_path):
     much more alarming thing to be told about work you believe you prepared.
     """
     runner, grp = _runner()
-    r = runner.invoke(grp, ["plan", "--bundle", str(tmp_path)])
+    r = runner.invoke(grp, ["status", "--bundle", str(tmp_path)])
     assert r.exit_code != 0
     assert "no job-set.json" in r.output
 
@@ -1814,17 +1792,16 @@ def test_every_label_in_the_per_stage_view_is_padded_off_the_longest(tmp_path):
         assert re.match(r"^ {2}\S.*?\s{2,}\S", line), f"label runs into value: {line!r}"
 
 
-def test_plan_and_status_take_the_bundle_the_same_way_every_verb_does(tmp_path):
+def test_status_takes_the_bundle_the_way_every_verb_does(tmp_path):
     """One word cannot mean the folder on two verbs and the stage on two others.
     `jobset status tight` answered *"Directory 'tight' does not exist"* -- a
     complaint about a path the user never meant to type (§ 5.3)."""
     _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf").write(
         tmp_path / "job-set.json")
     runner, grp = _runner()
-    for verb in ("plan", "status"):
-        r = runner.invoke(grp, [verb, "--bundle", str(tmp_path)])
-        assert r.exit_code == 0, r.output
-        assert "coarse" in r.output
+    r = runner.invoke(grp, ["status", "--bundle", str(tmp_path)])
+    assert r.exit_code == 0, r.output
+    assert "coarse" in r.output
     # ...and the positional is a STAGE, resolved the way every other verb
     # resolves one.  A NUMBER, deliberately: an exact name would pass even if
     # the command took the string verbatim and never reached the resolver.

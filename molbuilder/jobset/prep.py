@@ -371,8 +371,9 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     # (`project-layout.md` § 1.0; user, 2026-08-24).
 
     # ---- 4. emit STAGE-PLAN.md (§ 5 D3; mirrors bench's BENCH-PLAN.md) --- #
-    # The reviewable plan lands in the bundle at prep, not just on the
-    # `jobset plan` command's stdout.  It carries the CONFIG PROVENANCE --
+    # The reviewable plan lands in the bundle at prep -- the table `jobset
+    # plan` printed until it folded into `status <stage>` (2026-10-01), which
+    # reads the same columns per stage.  It carries the CONFIG PROVENANCE --
     # which files supplied the effective execution settings -- so a
     # behaviour difference between two machines is explained by the bundle
     # itself (user request 2026-08-12; secrets excluded by construction).

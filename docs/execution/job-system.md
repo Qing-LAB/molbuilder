@@ -23,7 +23,6 @@ ladder or a benchmark sweep is a bigger one. Same verbs, no shortcuts:
 ```
 jobset init        write the portable description        (your laptop)
 jobset prep        derive decks + scripts FOR this machine   (the target)
-jobset plan        show what would run, warm files, resources
 jobset launch      ONE job per invocation -- run or submit
 jobset summarize   summarize results that exist: a sweep's trials -> the
                    record + the report, PRINTED; a transport calculation's
@@ -32,7 +31,9 @@ jobset summarize   summarize results that exist: a sweep's trials -> the
                    (engines/vibration.md 5.9).  It never makes a run's
                    result: every run writes its own (a SIESTA vibration's
                    job derives its modes itself, engines/vibration.md 5.5)
-jobset status      per-stage status + the resume point
+jobset status      every stage of the description: where it stands + the
+                   resume point; with a stage, that stage in full -- its
+                   deck, what it carries, its resources, its attempts
 ```
 
 | key rule | one line | where |
@@ -112,8 +113,8 @@ You have a molecule `bdt.xyz` and want a publication-quality relaxed geometry on
 your cluster. You run **one** command to produce a *bundle* — a self-contained
 directory holding a coarse stage and a tight stage plus a `job-set.json`
 describing both. You `scp` the bundle to the cluster, then work **one stage at a
-time**: `prep run coarse` (lay out its folder and wrapper), `plan` (review the
-resources), `submit run coarse` (hand that one job to the scheduler). When it
+time**: `prep run coarse` (lay out its folder and wrapper), `status coarse` (review
+its deck and resources), `launch run coarse` (hand that one job to the scheduler). When it
 finishes you **look at it**, then `prep run tight --from 01_coarse/run-0` —
 which copies coarse's relaxed coordinates in — and submit that. You check
 `status` whenever you like. You never wrote a `#SBATCH` header.
@@ -128,8 +129,8 @@ which copies coarse's relaxed coordinates in — and submit that. You check
 > `task.json` + the template — [`web/task-setup.md`](?doc=web/task-setup.md)),
 > `prep` through the same entry the terminal calls (§ 5.3, *One prep, two
 > doors*), and the Results tab; `launch` stays on the terminal **by design**:
-> it spends a queue slot, one job per invocation, by hand. What the web still
-> lacks is a plan view and a per-stage status roll-up — § 8.
+> it spends a queue slot, one job per invocation, by hand. The Results tab shows
+> `status`'s ladder (§ 5.3); a web plan view was dropped (W14, § 8).
 
 > ### How a ladder advances
 >
@@ -140,6 +141,10 @@ which copies coarse's relaxed coordinates in — and submit that. You check
 > What a stage continues from is a **real file, copied in at `prep`**, from a
 > run **you name**. By then it has finished and you have read it, so there is
 > nothing to resolve later and nothing pointing at a file that does not exist.
+> That is a ladder of **independent** stages; in a **linked** one — a
+> vibration's `freq`, transport's device and transmission — `prep` takes a
+> stage's input from the stages before it, because the calculation fixes it
+> (§ 5.4).
 >
 > | | |
 > |---|---|
@@ -158,7 +163,7 @@ Six decisions shape everything below. Understanding them makes the rest obvious.
 
 **1. Describe work as data; keep the engine out of it.** A `JobSet` is a plain
 data object (a JSON file), not code. Producers turn engine configs *into* a
-`JobSet`; the orchestration verbs (`prep`/`plan`/`launch`/`status`) operate on
+`JobSet`; the orchestration verbs (`prep`/`launch`/`status`) operate on
 the `JobSet` **without knowing or caring which engine it targets**. This is why
 one small set of verbs can drive SIESTA ladders and benchmark sweeps alike, and
 why adding a new engine later means writing one new *producer*, not a new
@@ -659,9 +664,9 @@ heading named `bench/to_jobset.py::sweep_to_jobset` as the builder until
 
 ---
 
-## 5. The workflow — init, prep, plan, launch, summarize, status
+## 5. The workflow — init, prep, launch, summarize, status
 
-**One verb on the host** (where you design the calculation) and **five on the
+**One verb on the host** (where you design the calculation) and **four on the
 target** (where it runs). They mirror the design: the host step writes files and
 nothing else, and scheduler contact happens only at `launch`.
 
@@ -669,10 +674,9 @@ nothing else, and scheduler contact happens only at `launch`.
 |---|---|---|
 | **host** | `describe` | write the portable description — § 5.1 |
 | target | `prep` | resolve this machine, render the deck and wrapper, build the run directory |
-| target | `plan` | print the jobs and their resources; change nothing |
 | target | `launch` | start **one** job — `--mode direct` or `--mode submit` |
 | target | `summarize` | summarize results that exist: a benchmark's trials into a verdict; a transport calculation's bias points into its I–V record; a SIESTA vibration's force-constant stages into its displacement sweep (`engines/vibration.md` § 5.9). Never a run's own result — every run writes that itself (§ 5.5 there) |
-| target | `status` | roll up where the calculation has got to |
+| target | `status` | every stage of the description, where it stands, and the one to resume from; with a stage, that stage in full |
 
 > **This section's title and its count were both stale** *(corrected
 > 2026-08-11)*. It read *"produce, prep, plan, submit, watch"* over *"four verbs
@@ -690,10 +694,9 @@ flowchart LR
     subgraph target["TARGET — the run loop (summarize joins it for a benchmark, § 5.3)"]
       direction LR
       PR["prep<br/>lay out the stage/point folders<br/>+ their wrappers"]
-      PL["plan<br/>review the chain"]
-      SU["submit<br/>--mode submit | direct"]
+      SU["launch<br/>--mode submit | direct"]
       ST["status<br/>per-stage roll-up"]
-      PR --> PL --> SU --> ST
+      PR --> SU --> ST
     end
     P -->|"scp the bundle"| PR
 ```
@@ -789,7 +792,7 @@ flowchart LR
 ```
 molbuilder jobset <verb> <kind> [<stage>] [<trial>]  [options]
                     │      │        │         │
-                    │      │        │         └─ submit bench only: WHICH trial
+                    │      │        │         └─ launch bench only: WHICH trial
                     │      │        │            to launch, by its point's NAME
                     │      │        │            (`G1K4C6` — the directory adds
                     │      │        │            the `bench-` prefix, § 6.3).
@@ -803,11 +806,11 @@ molbuilder jobset <verb> <kind> [<stage>] [<trial>]  [options]
                     │      │           a bare number and the token are legal
                     │      │           stage NAMES, so neither can double as
                     │      │           an ordinal spelling)
-                    │      └────────── what is being prepped or submitted:
+                    │      └────────── what is being prepped or launched:
                     │                  `run` (the calculation) or `bench`
                     │                  (the measurement of it)
-                    └───────────────── describe · prep · submit · summarize
-                                       · status · plan
+                    └───────────────── init · prep · launch · summarize
+                                       · status
 ```
 
 **A name is matched in any case** — `TIGHT` is `tight`, as every stage name
@@ -827,7 +830,7 @@ trial's deck names its own launch, `launch bench <stage> <trial>`.
 **`#N` is the stage's `seq`, never its row.** With stage 2 disabled the
 ladder is `01_coarse` and `03_tight`, so `#3` means *tight* and there is no `#2`
 to type — the same number you see in the directory, in the deck's filename, and
-in the `seq` column of `plan` and `status`. That is what
+in the `seq` column of `status`. That is what
 [`engines/stages.md`](?doc=engines/stages.md) R5 is protecting: a
 position shifts when the ladder changes, and an assigned ordinal does not.
 
@@ -835,7 +838,7 @@ A **sweep** has no ordinals — its points are independent and have no order —
 its points resolve by name, and a refusal there does not offer you numbers it
 does not have.
 
-`describe`, `status` and `plan` take no *kind* — they are about the calculation,
+`describe` and `status` take no *kind* — they are about the calculation,
 not about one run of it. **The kind is a positional, not a `--bench` flag**, because
 `prep bench` and `prep run` are peers: measuring and running are the same act
 over different parameters (`project-layout.md § 2.3.1a`).
@@ -851,7 +854,7 @@ over different parameters (`project-layout.md § 2.3.1a`).
 > | `summarize` | ✅ a transport calculation's bias points into `<label>.transport.json` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), and a SIESTA vibration's force-constant stages compared into `<label>.fc-sweep.json` ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.9); any other calculation is refused, naming those two — its outputs *are* the results, read by `status` and the Results tab *(this cell said only "refuses" until 2026-09-29)* | ✅ **LANDED 2026-08-12** (step 6 u4) — discovery keyed by `job-set.json`, results through the ordinary artifacts, async | — |
 > | `describe` | — | — | ✅ **LANDED 2026-08-11** (plan step 2). Its predecessor `molbuilder fdf … --jobset` is **deleted** (§ 5.1) — it wrote a finished flat bundle and emitted *both* directory shapes at once |
 > | `status` | — | — | ✅ whole calculation · ✅ per-stage (`status <stage>`) |
-> | `plan` | — | — | ✅ |
+> | ~~`plan`~~ | — | — | folded into `status <stage>` 2026-10-01 |
 >
 > *(Until 2026-08-12 the `bench` cells read ⛔ with pointers at `molbuilder
 > bench generate` / `bench prep` / `bench siesta-gpu`, and this note called
@@ -1088,25 +1091,42 @@ handing a scheduler one job at a time, and `project-layout.md § 1.6` for why
 the judgement belongs *between* two stages rather than in a flag typed before
 either has run.
 
-#### The read-only verbs
+#### The read-only verb
 
 ```bash
-molbuilder jobset plan   --bundle ./bundle   # the jobs, resources and carry set — changes nothing
-molbuilder jobset status --bundle ./bundle   # per-stage state + which stage is next
+molbuilder jobset status --bundle ./bundle   # every stage, where it stands, which is next
 molbuilder jobset status                     # the same, from inside the folder
 
-molbuilder jobset status tight               # ...and what happened to ONE stage
+molbuilder jobset status tight               # ...and ONE stage in full
 molbuilder jobset status '#3'                # the same stage, by its number
 ```
 
+**The table is the description's ladder** *(2026-10-01)*: one row per stage
+`task.json` names, in its order and with its number, from the moment `init`
+writes it — so it lists the stages before anything is prepped, and a ladder
+prepped one stage at a time (transport) shows every stage, the ones not prepped
+yet as `not-started — no directory yet (not prepped)`. A stage the description
+disables (`enabled: false`) is listed as disabled — whether or not it was
+prepped — and is never the stage to resume from; enable it to run it. The table
+ends with the stage to resume from, and one nothing has prepped yet is named
+with the command that prepares it: an independent stage `--from` the latest
+attempt of the enabled stage before it, which a bare `prep` would not take
+(§ 5.4). The Results tab's ladder is this same answer
+([`web/results.md`](?doc=web/results.md) § 2.4). A job set with no description
+beside it — a hand-built one, a benchmark's sweep — lists its own jobs.
+
 The per-stage form answers a different question from the table. The table says
-*where is this calculation up to*; `status <stage>` says *what happened to this
-one* — which attempt it is on, whether it was launched and how, what geometry it
-continued from, and what it left behind:
+*where is this calculation up to*; `status <stage>` says *what this stage is* —
+the deck it runs, what it takes from a run it continues from, the resources it
+asks for — and *what happened to it*: which attempt it is on, whether it was
+launched and how, what geometry it continued from, and what it left behind:
 
 ```text
 STAGE 03_tight -- running
 
+  deck            bdt_relax_03_tight.fdf
+  carries         bdt_relax.XV, bdt_relax.DM, bdt_relax.MD.nc, bdt_relax.MD, bdt_relax.MDE, bdt_relax.ANI, bdt_relax.CG
+  resources       n=32, c=2
   attempt         run-1   (of run-0, run-1)
   launched        submit as job 481923 at 2026-08-10T19:04:08Z
   command         sbatch -J tight -p public … tight.sbatch
@@ -1125,9 +1145,11 @@ the structure has **no** `continued from` line, because `continued_from` is
 *absent* rather than null, and absent is a different claim from *"continued from
 nothing"* (`checkpointing.md` S3).
 
-- **`plan`** prints the jobs, each one's resources, and what each would take
-  from a run it is continued from. It changes nothing — the "look before you
-  leap" step.
+- **`status <stage>`** is where a stage's deck, what it carries and its
+  resources are read before a launch — the "look before you leap" step. That
+  was a verb of its own, `plan`, until 2026-10-01: the two read the same
+  `job-set.json`, and two verbs listing one ladder answered *what is here*
+  twice. Prep still writes the whole table into the folder (`STAGE-PLAN.md`).
 - **`launch`** names **one** stage and takes a `--mode` (falling back to
   `execution.mode` — C11, 2026-08-11; unset in both is a refusal, § 5.3):
   - **`launch`** hands that one job to SLURM. One `sbatch`, one invocation, no
@@ -1138,12 +1160,35 @@ nothing"* (`checkpointing.md` S3).
     the safe way to see what will happen.
 - **`status`** reads the run directory (asking `run_status`,
   [`running-a-job.md § 4.2`](?doc=execution/running-a-job.md)) and reports each
-  stage's state, its restart files, and the first incomplete stage — then stops.
+  stage of the description — its state, its restart files — and the first
+  incomplete stage, then stops.
   It prints resume guidance but **never auto-resumes** (design decision #5); you
   re-submit the incomplete stage yourself, and the engine warm-starts from its
   own `.XV`.
 
 ### 5.4 How a ladder advances
+
+**Two kinds of ladder, one way to run them** *(2026-10-01)*. Every ladder runs
+the same way — `prep run <stage>`, then `launch run <stage>`, one stage at a
+time — and nothing starts a stage but you. What differs is **what a stage
+starts from**:
+
+| | **independent stages** | **linked stages** |
+|---|---|---|
+| what they are | one calculation tuned several ways — an optimization's `coarse → medium → tight` | different jobs, each using another's output — a SIESTA vibration's `relax → freq`; transport's seed and leads → device → transmission |
+| the stages | named by you, as many as you like ([`engines/stages.md`](?doc=engines/stages.md) § 2) | the kind's own, each by its role ([`engines/template.md`](?doc=engines/template.md) § 6.4) |
+| what a stage starts from | the run **you name**: `prep run tight --from 01_coarse/run-0` copies that run's geometry, its density and — for the same optimiser — its history ([`project-layout.md`](?doc=execution/project-layout.md) § 2.3.4). Without `--from` it starts from the calculation's structure | the stages before it, **taken by `prep` itself**: `freq` the relaxed coordinates of `relax`'s newest attempt, which must have concluded ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a); the device the seed's density and the leads' Hamiltonians, the transmission the device's, each from the newest concluded attempt that ran the deck that stage renders now ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) |
+| when the stage before has not concluded | `prep` goes ahead, and the stage starts from the structure; a run named by `--from` is copied as it is | `prep` refuses and names the stage to run first; a transport stage's deck is still written, so it can be read |
+| another source | yours to choose — any attempt by `--from`, none by `--cold` | none: the hand-over is fixed, and no other run can be named for it — to change it, run the stage before again. `--from` and `--cold` still name or skip an earlier attempt of the same stage (a bias scan refuses both) |
+
+*(W37, agreed 2026-09-27 and not built yet: a continuing independent stage will
+start, by default, from the previous stage's newest attempt, which must have
+concluded — an older one never stands in, and an unconverged one is taken with
+a warning — and `--from` and `--cold` stay as the explicit choice.)* In the `flat` layout every stage
+shares one folder, so a stage finds the files the previous one left where they
+lie, and there is no attempt for `--from` to name.
+
+An independent ladder, advancing:
 
 ```mermaid
 sequenceDiagram
@@ -1499,8 +1544,8 @@ what this whole section exists to prevent.
 ### Shipped today (command line)
 
 The `JobSet` model and persistence; the description-to-plan derivation at
-`prep` (§ 4 — the `ParameterSet`, one deck and wrapper per element); all six
-verbs (`describe` / `prep` / `plan` / `launch` / `summarize` / `status`) in
+`prep` (§ 4 — the `ParameterSet`, one deck and wrapper per element); all five
+verbs (`init` / `prep` / `launch` / `summarize` / `status`) in
 both `submit` and `direct` modes; SLURM submission with routing domains, **one
 job per invocation**; and the full benchmark workflow through the same loop
 (§ 7). Saving and re-entering a calculation's states is `molbuilder checkpoint`

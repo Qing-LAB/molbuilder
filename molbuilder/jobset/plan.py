@@ -24,7 +24,9 @@ from .materialize import stage_refs
 from .model import JobSet
 
 
-def _res_str(r) -> str:
+def resources_text(r) -> str:
+    """A job's resources in one line -- ``n=32, c=2, gpu:1`` -- read by the
+    written plan (`STAGE-PLAN.md`) and by `status <stage>`."""
     bits: List[str] = []
     if r.domain:
         bits.append(f"domain={r.domain}")
@@ -74,7 +76,7 @@ def render_plan(jobset: JobSet) -> str:
         # make and still be true.
         warm = ", ".join(w.name for w in j.warm) or "-"
         rows.append((refs[j.name].seq_text, j.name, j.script, warm,
-                     _res_str(j.resources)))
+                     resources_text(j.resources)))
     # Off `hdr`, not off a literal count -- a hand-written column count stops
     # matching the header the moment a column is added.
     w = [max(len(r[k]) for r in rows + [hdr]) for k in range(len(hdr))]

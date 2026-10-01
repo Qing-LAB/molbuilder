@@ -30,7 +30,6 @@ from ..issues import Issue
 
 from .ledger import record as _ledger
 from .model import JobSet
-from .plan import render_plan
 from .prep import PrepError
 from .submit import submit_jobset, SubmitError
 from .runstatus import jobset_status, render_stage_status, render_status
@@ -47,8 +46,9 @@ def _load(bundle: str) -> tuple:
     "nothing has happened here": a sweep keeps its set in the bench
     container rather than the root, a described calculation is simply not
     prepped yet, and a bare directory has not been described at all.  Shared
-    by five verbs, so what it says is about the STATE it found and not about
-    the verb that arrived.
+    by the verbs that read a job set -- `launch`, a hand-built sweep's bench
+    verbs, `status` where no description stands -- so what it says is about
+    the STATE it found and not about the verb that arrived.
     """
     base = Path(bundle)
     jpath = base / _JOBSET_FILE
@@ -733,41 +733,45 @@ def init_cmd(structure, bundle: str, shape: str,
         f"  cd {out_dir} && molbuilder jobset prep run <stage>", err=True)
 
 
-@jobset_group.command("plan",
-                      short_help="show the plan (jobs, warm files, resources)")
-@_bundle_option()
-def plan_cmd(bundle: str) -> None:
-    """Print the job-set plan: one row per job — its seq, input deck, warm
-    files and resources, in ladder order.  Reads only ``job-set.json`` --
-    changes nothing.  (Stages do not chain and nothing here is a
-    dependency: what a stage continues from is said at ``prep --from``,
-    project-layout.md § 1.6.)"""
-    js, _ = _load(bundle)
-    click.echo(render_plan(js))
-
-
 @jobset_group.command("status", short_help="show per-stage status + resume point")
 @click.argument("stage", required=False, default=None)
 @_bundle_option()
 def status_cmd(stage, bundle: str) -> None:
-    """Show each stage's run state (finished / running / failed / queued /
-    pending / not-started), which warm-restart files are present, and the FIRST
-    incomplete stage (the one to resume from).  Read-only -- molbuilder
-    informs; you decide whether to continue or switch (job-system.md
-    § 5.3).  Reuses the same directory decoder as the Results tab.
+    """Show every stage of the description -- its run state (finished /
+    running / failed / queued / pending / not-started), which warm-restart
+    files are present -- and the FIRST incomplete stage (the one to resume
+    from).  The stages are listed from the moment `init` writes them, the
+    ones not prepped yet among them (job-system.md § 5.3).  Read-only --
+    molbuilder informs; you decide whether to continue or switch.  Reuses
+    the same directory decoder as the Results tab.
 
     With a STAGE -- its name, or #N its number, like every other verb -- it
-    answers the other question instead: *what happened to this one*, with its
-    attempts, its launch record and what it continued from.  That form is only
-    answerable because a try is a directory and a launch is a record
+    answers the other question instead: *what this one is and what happened
+    to it* -- its deck, what it carries, its resources, its attempts, its
+    launch record and what it continued from.  That form is only answerable
+    because a try is a directory and a launch is a record
     (project-layout.md § 1.5, § 1.6).
     """
-    js, base = _load(bundle)
+    from ..task import FILENAME as _TASK_FILE
+    base = Path(bundle)
+    if (base / _TASK_FILE).is_file():
+        # THE DESCRIPTION'S LADDER (job-system.md § 5.3, 2026-10-01): every
+        # stage it names, before the first prep and as prep reaches each.
+        jpath = base / _JOBSET_FILE
+        try:
+            js = JobSet.load(jpath) if jpath.is_file() else None
+        except ValueError as e:
+            raise click.ClickException(str(e))
+        name = _described_stage(base, stage)
+    else:
+        js, base = _load(bundle)
+        name = (_resolve_stage_name(js, stage) if stage is not None
+                else None)
     status = jobset_status(js, base)
-    if stage is None:
+    if name is None:
         click.echo(render_status(status))
         return
-    click.echo(render_stage_status(status, _resolve_stage_name(js, stage)))
+    click.echo(render_stage_status(status, name))
 
 
 # --------------------------------------------------------------------- #
@@ -802,15 +806,17 @@ def _check_kind(kind: str, js=None) -> None:
             f"(job-system.md § 5.3).")
 
 
-def _bench_stage(base, stage):
-    """The stage a bench verb was given, as the description spells it,
-    through the ONE resolver -- its name in any case, or ``#N``
+def _described_stage(base, stage):
+    """The stage a verb was given, as the description spells it, through
+    the ONE resolver -- its name in any case, or ``#N``
     (`identity.resolve_stage_ref`, `job-system.md` § 5.3) -- and what the
     verb then finds, records and PRINTS (a pasted ``#2`` would be a comment
-    in bash).  The bench verbs matched the exact name in a lookup of their
-    own until K12, so `launch bench '#2'` refused the stage `prep bench '#2'`
-    had just prepared (plan § 5w K12).  ``None`` stays ``None``, and a sweep
-    with no description has no ladder to resolve against: its name stands."""
+    in bash).  Asked by the verbs that name a stage the description holds
+    whether or not it is prepped: the bench verbs, which matched the exact
+    name in a lookup of their own until K12, so `launch bench '#2'` refused
+    the stage `prep bench '#2'` had just prepared (plan § 5w K12), and
+    `status`.  ``None`` stays ``None``, and a folder with no description has
+    no ladder to resolve against: its name stands."""
     from ..identity import StageRef, resolve_stage_ref
     from ..task import FILENAME, read_task
     desc = Path(base) / FILENAME
@@ -828,7 +834,7 @@ def _stage_bench_dir(base, stage):
     through the description — where its trials, its job-set and its verdict
     all live.  Returns ``(container_path, token)``.  ``stage`` is the
     description's own spelling -- the verb resolved it first
-    (:func:`_bench_stage`); a bare invocation is refused with the ladder
+    (:func:`_described_stage`); a bare invocation is refused with the ladder
     listed — § 6.5 gives every description a ladder, so there is always a
     stage to name and never a bare form to fall back to."""
     from ..task import FILENAME, read_task
@@ -1412,7 +1418,7 @@ def summarize_cmd(kind: str, stage, bundle: str,
             "--tolerance-cm1 is a displacement sweep's -- a SIESTA "
             "vibration's force-constant stages compared "
             "(engines/vibration.md 5.9)")
-    stage = _bench_stage(bundle, stage)
+    stage = _described_stage(bundle, stage)
     js, base = _load_bench_set(bundle, stage)
     _check_kind(kind, js)
     from .summarize import (run_summarize_jobset,
@@ -1546,7 +1552,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             "meaning for `launch run``, --mode direct, or a named trial.")
     if kind == "bench":
         # the stage's own sweep record, from its bench container (§ 6.3)
-        stage = _bench_stage(bundle, stage)
+        stage = _described_stage(bundle, stage)
         js, base = _load_bench_set(bundle, stage)
     else:
         if trial is not None:

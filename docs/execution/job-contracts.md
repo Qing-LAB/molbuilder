@@ -851,7 +851,7 @@ the string*.
 
 | verb | takes | citation |
 |---|---|---|
-| `init`, `plan`, `prep`, `launch`, `status`, `summarize` | `--bundle` | **tree address**, fenced to the root |
+| `init`, `prep`, `launch`, `status`, `summarize`, `migrate` | `--bundle` | **tree address**, fenced to the root |
 | `init` | `--structure` | **tree address** — a structure lives in `<project>/structure/` |
 | `prep` | `--from STAGE/run-N` | inside-bundle |
 | `init` | `--psml-lib` | § 2.5a's rule — a path inside the tree, measured from its root |

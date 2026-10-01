@@ -28,6 +28,7 @@ from .materialize import (attempts, job_dir_names, read_run_launch,
                           latest_attempt, run_dir, shape_of,
                           stage_refs)
 from .model import JobSet
+from .plan import resources_text
 
 # Engine-native warm-restart files keyed by the project id (system label).
 # DERIVED from the one rules file (job-contracts § 4.2a; U3/W2, 2026-08-13):
@@ -72,7 +73,8 @@ class StageStatus:
     place one is ever made.
     """
     ref:        StageRef
-    dir:        str
+    #: The stage's directory, or ``None`` before anything prepped it.
+    dir:        Optional[str]
     #: not-started/pending/queued/running/failed/finished/unknown.  ``queued`` is
     #: the contract's own word (project-layout.md § 1.6, *"queued as job
     #: 481923"*) for launched-but-no-output-yet, which is exactly the state an
@@ -97,6 +99,18 @@ class StageStatus:
     #: -- the job's own fact (`Job.resumes`, `job-contracts.md` § 4.2a), so
     #: the status says what re-submitting it will do.
     resumes: bool = True
+    #: Whether anything has prepped it -- a description's stage before its
+    #: first prep is listed all the same (`job-system.md` § 5.3).
+    prepped: bool = True
+    #: Whether the description runs it -- a disabled stage is listed, and is
+    #: never the stage to resume from (§ 5.3).
+    enabled: bool = True
+    #: What the stage IS, the plan's columns (`plan` folded into
+    #: `status <stage>`, 2026-10-01): its deck, what it would take from a
+    #: run it continues from, and the resources it asks for.
+    script: Optional[str] = None
+    carries: List[str] = field(default_factory=list)
+    resources: Optional[str] = None
 
     @property
     def name(self) -> str:
@@ -131,7 +145,13 @@ class JobSetStatus:
     engine:          str
     stages:          List[StageStatus]
     first_incomplete: Optional[str]   # name of the first non-finished stage (resume here)
-    complete:        bool             # every stage finished
+    complete:        bool             # every enabled stage finished
+    #: The attempt the first incomplete stage continues from when nothing has
+    #: prepped it and it is an INDEPENDENT stage -- the stage before it's
+    #: latest, ``01_coarse/run-0`` (`job-system.md` § 5.4) -- so the command
+    #: the status prints names it.  ``None`` for a linked stage, whose input
+    #: prep takes itself, and where there is no attempt to name.
+    resume_from: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -197,8 +217,8 @@ def _label_of(job: Any, fallback: str) -> str:
 
 #: The state a stage has before `prep` has made it a directory -- the ONE
 #: spelling, read by `_stage_state` for a planned stage whose directory is
-#: missing and by the Results door for a described stage the job-set does
-#: not hold yet (`web/results.md` § 2.4).
+#: missing and by :func:`jobset_status` for a described stage nothing has
+#: prepped yet (`job-system.md` § 5.3, `web/results.md` § 2.4).
 NOT_PREPPED = ("not-started", "no directory yet (not prepped)")
 
 
@@ -254,96 +274,171 @@ def _rung_homes(base: Path, task, job_name: str, d: Path) -> list:
     return rung_containers(base, task, job_name)
 
 
-def jobset_status(jobset: JobSet, base_dir) -> JobSetStatus:
-    """Read the on-disk status of every stage of ``jobset`` under
-    ``base_dir`` (read-only).  ``first_incomplete`` is the first stage that
-    is not ``finished`` — the stage to resume from; ``None`` (and
-    ``complete=True``) when every stage finished."""
+def _job_status(base: Path, jobset: JobSet, job, task, *, sh, dirs,
+                refs) -> StageStatus:
+    """One prepped job's status, read from where its attempts are."""
+    d = base / dirs[job.name]
+    # WHICH FILES are this stage's, asked of the layout (§ 9's `Shape`).
+    # In the hierarchy the directory already answered; in flat every stage
+    # shares one, and the deck's token in each filename is the answer.
+    token = refs[job.name].token
+    # THE LABEL IS THIS JOB'S, NOT THE JOBSET'S.  A sweep's `JobSet.name`
+    # is `task.label`, while each trial's deck is `f"{task.label}-{token}"`
+    # (`resolve._label_for`) -- so narrowing by the jobset's name matched
+    # NOTHING for a trial, and a finished trial answered § 1.6's forbidden
+    # "prepped, not launched".  Read off the deck the way `summarize` does
+    # (`Path(job.script).stem` minus the stage suffix), which is the name
+    # the files actually carry.
+    job_label = _label_of(job, jobset.name)
+    out_glob = (sh.stage_glob(token, job_label)
+                if (sh is not None and token) else "*")
+    read = []
+    for home, volts in _rung_homes(base, task, job.name, d):
+        # WHERE the run happened, asked of the layer that decides layout
+        # -- the latest attempt where there is one, the container for a
+        # flat run (project-layout.md § 1.5).  Globbing the folder
+        # regardless was blind to the whole attempt layer: a finished
+        # hierarchical stage read as "prepped, not launched" because its
+        # .out is one level down.
+        attempt = latest_attempt(home)  # None is the ANSWER: prepared?
+        observed = run_dir(home)        # ...and this is where to look
+        # WHERE the launch record lives mirrors where submit WRITES it
+        # (submit.py `_where_recorded`): the attempt when one exists; a
+        # sweep trial's at the trial's top -- until 2026-08-20 this read
+        # the attempt only, so a grouped-submitted trial answered § 1.6's
+        # exact forbidden line ("prepped, not launched") while its record
+        # sat one level up; and a flat stage's own record, named by its
+        # deck, in the directory every stage shares (2026-09-27).
+        launch = read_run_launch(
+            attempt if attempt is not None else home,
+            basename=(None if attempt is not None
+                      or jobset.kind == "sweep"
+                      else Path(job.script).stem))
+        read.append((home, volts, attempt, observed, launch)
+                    + _stage_state(observed, launch, out_glob))
+    # A SCAN'S RUNG SPEAKS FROM ITS FIRST POINT NOT FINISHED, in the
+    # scan's order -- the order its chain walks -- and from its last once
+    # every point has: a rung with a point outstanding is the stage to
+    # resume from, and the row names the point (`web/results.md` § 2.4;
+    # `engines/transport.md` § 2a.12, *which of five runs is the one
+    # still outstanding*).  Any other rung has one folder, which speaks.
+    home, volts, attempt, observed, launch, state, detail = next(
+        (r for r in read if r[5] != _DONE), read[-1])
+    where = attempt.name if attempt else None
+    if volts is not None:
+        detail = f"{volts:g} V: {detail}"
+        where = f"{home.name}/{where}" if where else None
+    return StageStatus(
+        ref=refs[job.name], dir=d.name, state=state, detail=detail,
+        attempt=where,
+        attempts=attempts(home),
+        launch=launch,
+        resumes=job.resumes,
+        # THE SAME LABEL THE STATE WAS READ WITH.  This asked for
+        # `jobset.name` while everything else in the loop had moved to
+        # `job_label` -- so the fix `_label_of` exists for was applied to
+        # the `.out` and not to the warm files beside it.  Measured on a
+        # staged sweep trial: `siesta-AuBDTAu-G0K20C1.XV` on disk, warm
+        # files reported `[]`, and `jobset status` told a person there
+        # was nothing to restart from.
+        warm_files=_warm_present(observed, job_label, jobset.engine),
+        # WHAT THE STAGE IS -- the plan's own columns, read per stage by
+        # `status <stage>` since `plan` folded into it (2026-10-01).
+        script=str(job.script),
+        carries=[w.name for w in job.warm],
+        resources=resources_text(job.resources),
+    )
+
+
+def _not_prepped(ref: StageRef, stage) -> StageStatus:
+    """A stage the description names and nothing has prepped -- `NOT_PREPPED`
+    in the reader's own words; a disabled one says so (`job-system.md`
+    § 5.3)."""
+    on = getattr(stage, "enabled", True) is not False
+    return StageStatus(
+        ref=ref, dir=None, state=NOT_PREPPED[0],
+        detail=(NOT_PREPPED[1] if on else
+                "disabled in the description (enabled: false); not prepped"),
+        prepped=False, enabled=on)
+
+
+def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
+    """Read the on-disk status of every stage under ``base_dir`` (read-only).
+
+    **The rows are the description's ladder** when a description stands
+    beside the set (`job-system.md` § 5.3, 2026-10-01): every stage
+    ``task.json`` names, in its order and with its number, the ones nothing
+    has prepped yet as :data:`NOT_PREPPED` -- so a calculation lists its
+    stages before its first prep (``jobset`` is then ``None``), and a ladder
+    prepped one stage at a time lists them all.  The Results tab's ladder is
+    this answer (`web/results.md` § 2.4).  A set with no description beside
+    it -- a hand-built one, a benchmark's sweep -- lists its own jobs.
+
+    ``first_incomplete`` is the first stage that is not ``finished`` -- the
+    stage to resume from, never a disabled one; ``None`` (and
+    ``complete=True``) when every enabled stage finished."""
     from ..task import FILENAME as TASK_FILENAME, read_task
     base = Path(base_dir)
-    label = jobset.name
-    stages: List[StageStatus] = []
-    first_incomplete: Optional[str] = None
-    sh = shape_of(jobset, base_dir)
-    dirs = job_dir_names(jobset, sh)
-    refs = stage_refs(jobset)
+    sweep = jobset is not None and jobset.kind == "sweep"
     task = (read_task(base / TASK_FILENAME)
-            if jobset.kind != "sweep" and (base / TASK_FILENAME).is_file()
-            else None)
-    for job in jobset.jobs:
-        d = base / dirs[job.name]
-        # WHICH FILES are this stage's, asked of the layout (§ 9's `Shape`).
-        # In the hierarchy the directory already answered; in flat every stage
-        # shares one, and the deck's token in each filename is the answer.
-        token = refs[job.name].token
-        # THE LABEL IS THIS JOB'S, NOT THE JOBSET'S.  A sweep's `JobSet.name`
-        # is `task.label`, while each trial's deck is `f"{task.label}-{token}"`
-        # (`resolve._label_for`) -- so narrowing by the jobset's name matched
-        # NOTHING for a trial, and a finished trial answered § 1.6's forbidden
-        # "prepped, not launched".  Read off the deck the way `summarize` does
-        # (`Path(job.script).stem` minus the stage suffix), which is the name
-        # the files actually carry.
-        job_label = _label_of(job, label)
-        out_glob = (sh.stage_glob(token, job_label)
-                    if (sh is not None and token) else "*")
-        read = []
-        for home, volts in _rung_homes(base, task, job.name, d):
-            # WHERE the run happened, asked of the layer that decides layout
-            # -- the latest attempt where there is one, the container for a
-            # flat run (project-layout.md § 1.5).  Globbing the folder
-            # regardless was blind to the whole attempt layer: a finished
-            # hierarchical stage read as "prepped, not launched" because its
-            # .out is one level down.
-            attempt = latest_attempt(home)  # None is the ANSWER: prepared?
-            observed = run_dir(home)        # ...and this is where to look
-            # WHERE the launch record lives mirrors where submit WRITES it
-            # (submit.py `_where_recorded`): the attempt when one exists; a
-            # sweep trial's at the trial's top -- until 2026-08-20 this read
-            # the attempt only, so a grouped-submitted trial answered § 1.6's
-            # exact forbidden line ("prepped, not launched") while its record
-            # sat one level up; and a flat stage's own record, named by its
-            # deck, in the directory every stage shares (2026-09-27).
-            launch = read_run_launch(
-                attempt if attempt is not None else home,
-                basename=(None if attempt is not None
-                          or jobset.kind == "sweep"
-                          else Path(job.script).stem))
-            read.append((home, volts, attempt, observed, launch)
-                        + _stage_state(observed, launch, out_glob))
-        # A SCAN'S RUNG SPEAKS FROM ITS FIRST POINT NOT FINISHED, in the
-        # scan's order -- the order its chain walks -- and from its last once
-        # every point has: a rung with a point outstanding is the stage to
-        # resume from, and the row names the point (`web/results.md` § 2.4;
-        # `engines/transport.md` § 2a.12, *which of five runs is the one
-        # still outstanding*).  Any other rung has one folder, which speaks.
-        home, volts, attempt, observed, launch, state, detail = next(
-            (r for r in read if r[5] != _DONE), read[-1])
-        where = attempt.name if attempt else None
-        if volts is not None:
-            detail = f"{volts:g} V: {detail}"
-            where = f"{home.name}/{where}" if where else None
-        stages.append(StageStatus(
-            ref=refs[job.name], dir=d.name, state=state, detail=detail,
-            attempt=where,
-            attempts=attempts(home),
-            launch=launch,
-            resumes=job.resumes,
-            # THE SAME LABEL THE STATE WAS READ WITH.  This asked for
-            # `jobset.name` while everything else in the loop had moved to
-            # `job_label` -- so the fix `_label_of` exists for was applied to
-            # the `.out` and not to the warm files beside it.  Measured on a
-            # staged sweep trial: `siesta-AuBDTAu-G0K20C1.XV` on disk, warm
-            # files reported `[]`, and `jobset status` told a person there
-            # was nothing to restart from.
-            warm_files=_warm_present(observed, job_label, jobset.engine),
-        ))
-        if first_incomplete is None and state != _DONE:
-            first_incomplete = job.name
+            if not sweep and (base / TASK_FILENAME).is_file() else None)
+    if jobset is None and task is None:
+        raise ValueError(f"nothing to report in {base}: no job set and no "
+                         f"description")
+    kw = {}
+    if jobset is not None:
+        sh = shape_of(jobset, base_dir)
+        kw = {"sh": sh, "dirs": job_dir_names(jobset, sh),
+              "refs": stage_refs(jobset)}
+    stages: List[StageStatus] = []
+    if task is not None:
+        held = {j.name: j for j in (jobset.jobs if jobset is not None
+                                    else ())}
+        for st, ref in zip(task.stages,
+                           StageRef.ladder([s.name for s in task.stages])):
+            job = held.get(st.name)
+            if job is None:
+                stages.append(_not_prepped(ref, st))
+                continue
+            row = _job_status(base, jobset, job, task, **kw)
+            if getattr(st, "enabled", True) is False:
+                # PREPPED, THEN DISABLED: its run is read as ever, and the
+                # row says the description no longer runs it.
+                row = dataclasses.replace(
+                    row, enabled=False,
+                    detail=f"disabled in the description; {row.detail}")
+            stages.append(row)
+    else:
+        stages = [_job_status(base, jobset, job, None, **kw)
+                  for job in jobset.jobs]
+    first = next((s for s in stages if s.state != _DONE and s.enabled),
+                 None)
     return JobSetStatus(
-        name=jobset.name, engine=jobset.engine, stages=stages,
-        first_incomplete=first_incomplete,
-        complete=(first_incomplete is None),
+        name=(jobset.name if jobset is not None else task.label),
+        engine=(jobset.engine if jobset is not None else str(task.engine)),
+        stages=stages,
+        first_incomplete=(first.name if first is not None else None),
+        complete=(first is None),
+        resume_from=_resume_from(task, stages, first),
     )
+
+
+def _resume_from(task, stages: List[StageStatus],
+                 first: Optional[StageStatus]) -> Optional[str]:
+    """The attempt an INDEPENDENT stage nothing has prepped continues from:
+    the latest of the enabled stage before it (`job-system.md` § 5.4, *a
+    run you name* -- and the name is this one).  A linked stage's input is
+    prep's own -- the kind names its rungs' roles (`template.KIND_ROLES`,
+    § 5.4's linked column) -- and a flat stage has no attempt to name."""
+    from ..template import KIND_ROLES
+    if (task is None or first is None or first.prepped
+            or task.calculation in KIND_ROLES):
+        return None
+    before = [s for s in stages[:stages.index(first)] if s.enabled]
+    prev = before[-1] if before else None
+    if prev is None or not prev.prepped or prev.attempt is None:
+        return None
+    return f"{prev.dir}/{prev.attempt}"
 
 
 def render_status(status: JobSetStatus) -> str:
@@ -377,10 +472,22 @@ def render_status(status: JobSetStatus) -> str:
     lines += ["  " + fmt(r) for r in rows]
     lines.append("")
     if status.complete:
-        lines.append("All stages finished. Nothing to resume.")
+        lines.append("All stages finished. Nothing to resume."
+                     if all(s.enabled for s in status.stages) else
+                     "Every enabled stage finished. Nothing to resume.")
     else:
         first = next((s for s in status.stages
                       if s.name == status.first_incomplete), None)
+        if first is not None and not first.prepped:
+            # NOTHING TO RE-SUBMIT: the stage has no folder yet, so the next
+            # step is to prepare it -- an independent stage FROM the run
+            # before it, which a bare prep would not take (§ 5.4).
+            lines.append(
+                f"First incomplete stage: {first.name}, not prepped yet:\n"
+                f"    molbuilder jobset prep run {first.name}"
+                + (f" --from {status.resume_from}"
+                   if status.resume_from else ""))
+            return "\n".join(lines)
         what = ("the engine warm-starts from its own restart files"
                 if first is None or first.resumes else
                 "it runs again from its first step -- this kind of run does "
@@ -396,8 +503,10 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
     """One stage, in full — the per-stage form `job-system.md` § 5.3 reserves.
 
     The table answers *where is this calculation up to*; this answers *what
-    happened to this stage*, which is a different question and the one you ask
-    before deciding whether to run it again. It is only answerable at all
+    this stage is* -- its deck, what it carries, its resources, the columns
+    `plan` printed until it folded in here (2026-10-01) -- and *what happened
+    to it*, which is a different question and the one you ask before
+    deciding whether to run it again. It is only answerable at all
     because of the attempt layer: the tries are directories, and the launch is
     a record rather than an inference from an empty folder (§ 1.5, § 1.6).
 
@@ -406,7 +515,24 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
     a second answer to *was this launched?*
     """
     s = next(x for x in status.stages if x.name == stage_name)
-    rows: List[tuple] = []
+    if not s.prepped:
+        # WHAT YOU CAN TYPE (`job-system.md` § 5.3): a disabled stage's prep
+        # is refused on a transport ladder, so it is told how to enable it.
+        how = (f"Prep it:  molbuilder jobset prep run {s.name}"
+               + (f" --from {status.resume_from}"
+                  if s.name == status.first_incomplete
+                  and status.resume_from else "")
+               if s.enabled else
+               "Enable it in Task setup (or task.json) to run it.")
+        return "\n".join([f"STAGE {s.ref.label} -- {s.state}", "",
+                          f"  {s.detail}", "", how])
+    rows: List[tuple] = [
+        # WHAT THE STAGE IS, before what happened to it -- the plan's columns
+        # (`plan` folded in here, 2026-10-01; `job-system.md` § 5.3).
+        ("deck", s.script or "-"),
+        ("carries", ", ".join(s.carries) or "-"),
+        ("resources", s.resources or "-"),
+    ]
 
     tries = ", ".join(attempt_name(n) for n in s.attempts) or "-"
     rows.append(("attempt", f"{s.attempt or '-'}"

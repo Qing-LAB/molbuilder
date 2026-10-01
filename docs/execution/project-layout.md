@@ -1527,7 +1527,11 @@ week.
 This is the one worth reading slowly, because it is where the design differs
 most from what people expect.
 
-**A stage does not "connect" to the one before it. You hand it a file.**
+**A stage does not "connect" to the one before it. You hand it a file.** That
+is a ladder of independent stages; a linked stage — a vibration's `freq`,
+transport's device and transmission — has its input fixed by the calculation,
+and `prep` takes it from the stage before
+([`job-system.md`](?doc=execution/job-system.md) § 5.4).
 
 ```
 molbuilder jobset prep run tight --from 01_coarse/run-0
