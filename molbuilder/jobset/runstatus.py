@@ -159,11 +159,16 @@ class JobSetStatus:
     resume_refused: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
+        """THE WIRE FORM -- the Results tab's ladder is this (`web/results.md`
+        § 2.4), the next prep's answer included (W52: the route built a dict
+        of its own and dropped it)."""
         return {
             "name": self.name, "engine": self.engine,
             "first_incomplete": self.first_incomplete,
             "complete": self.complete,
             "stages": [s.to_dict() for s in self.stages],
+            "resume_from": self.resume_from,
+            "resume_refused": self.resume_refused,
         }
 
 
@@ -392,15 +397,22 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
               "refs": stage_refs(jobset)}
     stages: List[StageStatus] = []
     if task is not None:
-        held = {j.name: j for j in (jobset.jobs if jobset is not None
-                                    else ())}
+        # ONE KEY for a stage's name, in any case (`identity.stage_key`):
+        # a stage renamed in case only kept its prepped job (W52: the exact
+        # join read it as not prepped and offered `prep run` again).
+        from ..identity import stage_key
+        held = {stage_key(j.name): j for j in (jobset.jobs if jobset is not None
+                                               else ())}
         for st, ref in zip(task.stages,
                            StageRef.ladder([s.name for s in task.stages])):
-            job = held.get(st.name)
+            job = held.get(stage_key(st.name))
             if job is None:
                 stages.append(_not_prepped(ref, st))
                 continue
-            row = _job_status(base, jobset, job, task, **kw)
+            # THE DESCRIPTION'S NAME AND NUMBER on its row: the ladder is the
+            # description's, and `status <stage>` finds the row by it.
+            row = dataclasses.replace(
+                _job_status(base, jobset, job, task, **kw), ref=ref)
             if getattr(st, "enabled", True) is False:
                 # PREPPED, THEN DISABLED: its run is read as ever, and the
                 # row says the description no longer runs it.
@@ -425,16 +437,26 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
 
 def _next_continuation(base: Path, task, first: Optional[StageStatus]) -> dict:
     """What the next prep of the first incomplete stage will continue from,
-    or why it would refuse -- asked of `continuation.continuation_answer`, the one
-    door `prep` asks too, so the two never disagree about the same run (the
-    W37 review: a rule of status's own told a stage set to start clean that
-    it would continue, and named nothing on the flat layout)."""
+    or why it would refuse (:func:`stage_continuation`) -- ``{}`` once it
+    is prepped."""
     if task is None or first is None or first.prepped:
         return {}
+    return stage_continuation(base, task, first.name)
+
+
+def stage_continuation(base: Path, task, name: str) -> dict:
+    """``{"resume_from": ...}`` or ``{"resume_refused": ...}`` -- what a
+    prep of ``name`` would continue from, or why it would refuse -- asked of
+    `continuation.continuation_answer`, the one door `prep` asks too, so the
+    two never disagree about the same run (the W37 review: a rule of
+    status's own told a stage set to start clean that it would continue).
+    For the stage `status <stage>` names as much as for the first
+    incomplete one (W52: a later stage was told `Prep it` while its prep
+    refused)."""
     from .continuation import continuation_answer
     # NO VERDICT: status names the run, not its relaxation -- and the table
     # (the Results tab's ladder too) is read far more often than prepped.
-    got, refused = continuation_answer(base, task, first.name, verdict=False)
+    got, refused = continuation_answer(base, task, name, verdict=False)
     if got is not None:
         return {"resume_from": got.where()}
     if refused:
@@ -443,8 +465,8 @@ def _next_continuation(base: Path, task, first: Optional[StageStatus]) -> dict:
 
 
 def render_status(status: JobSetStatus) -> str:
-    """Human-readable status table + the resume pointer (the inform
-    surface for the CLI / plan / UI)."""
+    """Human-readable status table + the next step, worded by the state of
+    the first incomplete stage (`job-system.md` § 5.3)."""
     lines: List[str] = [
         f"JOB-SET STATUS -- {status.name} ({status.engine})",
         "",
@@ -495,18 +517,38 @@ def render_status(status: JobSetStatus) -> str:
                 + (f"   # continues from {status.resume_from}"
                    if status.resume_from else ""))
             return "\n".join(lines)
-        what = ("the engine warm-starts from its own restart files"
-                if first is None or first.resumes else
-                "it runs again from its first step -- this kind of run does "
-                "not resume")
-        lines.append(
-            f"First incomplete stage: {status.first_incomplete}.  "
-            f"molbuilder does NOT auto-resume -- you decide: re-submit that "
-            f"stage ({what}) or switch parameters (`engines/stages.md`).")
+        lines.append(next_step(first, status.first_incomplete))
     return "\n".join(lines)
 
 
-def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
+def next_step(s: Optional[StageStatus], name: str) -> str:
+    """What to do about a PREPPED stage that has not finished, by its state
+    -- each a command that works (W52: every state was told to "re-submit
+    that stage (the engine warm-starts from its own restart files)", a
+    queued or running one included, and a stage that starts clean, whose
+    re-launch is refused, alike).  molbuilder does NOT auto-resume; the
+    person decides (`engines/stages.md`)."""
+    state = s.state if s is not None else "stopped"
+    if state == "pending":
+        return (f"First incomplete stage: {name}, prepped and not "
+                f"launched:\n    molbuilder jobset launch run {name}")
+    if state in ("queued", "running"):
+        return (f"First incomplete stage: {name}, {state} -- let it "
+                f"finish; `molbuilder jobset status {name}` shows its run.")
+    if s is not None and s.resumes and s.carries:
+        how = ("launch it again -- it continues from its own latest run:\n"
+               f"    molbuilder jobset launch run {name}")
+    else:
+        how = ("prep it again for a fresh attempt -- it does not continue "
+               f"from a run of its own:\n    molbuilder jobset prep run "
+               f"{name}")
+    return (f"First incomplete stage: {name}, {state}.  molbuilder does NOT "
+            f"auto-resume -- you decide: {how}\n  or change its parameters "
+            f"first (engines/stages.md).")
+
+
+def render_stage_status(status: JobSetStatus, stage_name: str,
+                        continuation: Optional[Dict[str, str]] = None) -> str:
     """One stage, in full — the per-stage form `job-system.md` § 5.3 reserves.
 
     The table answers *where is this calculation up to*; this answers *what
@@ -518,22 +560,29 @@ def render_stage_status(status: JobSetStatus, stage_name: str) -> str:
     a record rather than an inference from an empty folder (§ 1.5, § 1.6).
 
     Everything printed comes off the :class:`StageStatus` the reader already
-    built. Nothing here opens a file — a second reader of ``run.json`` would be
-    a second answer to *was this launched?*
+    built and ``continuation`` -- :func:`stage_continuation`'s answer for a
+    stage nothing has prepped, which the caller asks; without it, the
+    table's own answer for the first incomplete stage. Nothing here opens a
+    file — a second reader of ``run.json`` would be a second answer to *was
+    this launched?*
     """
     s = next(x for x in status.stages if x.name == stage_name)
     if not s.prepped:
         # WHAT YOU CAN TYPE (`job-system.md` § 5.3): a disabled stage's prep
-        # is refused on a transport ladder, so it is told how to enable it.
-        nxt = s.name == status.first_incomplete
+        # is refused on a transport ladder, so it is told how to enable it;
+        # one whose prep would refuse is told why, with the commands.
+        cont = (continuation if continuation is not None else
+                {"resume_from": status.resume_from,
+                 "resume_refused": status.resume_refused}
+                if s.name == status.first_incomplete else {})
         how = ("Enable it in Task setup (or task.json) to run it."
                if not s.enabled else
                "Its prep refuses for now:\n"
-               + textwrap.indent(status.resume_refused, "    ")
-               if nxt and status.resume_refused else
+               + textwrap.indent(cont["resume_refused"], "    ")
+               if cont.get("resume_refused") else
                f"Prep it:  molbuilder jobset prep run {s.name}"
-               + (f"   # continues from {status.resume_from}"
-                  if nxt and status.resume_from else ""))
+               + (f"   # continues from {cont['resume_from']}"
+                  if cont.get("resume_from") else ""))
         return "\n".join([f"STAGE {s.ref.label} -- {s.state}", "",
                           f"  {s.detail}", "", how])
     rows: List[tuple] = [

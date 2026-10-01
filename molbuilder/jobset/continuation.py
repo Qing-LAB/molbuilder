@@ -167,10 +167,17 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
         return Continuation(stage=named, source=str(Path(from_attempt)),
                             by_default=False, concluded=concluded, state=state,
                             converged=converged), None
-    prev = _stage_before(base, task, stage)
-    if prev is None:
-        return None, None
-    return _by_default(base, task, stage, prev, verdict=verdict)
+    try:
+        prev = _stage_before(base, task, stage)
+        if prev is None:
+            return None, None
+        return _by_default(base, task, stage, prev, verdict=verdict)
+    except Exception as exc:                             # noqa: BLE001
+        # RAISES NOTHING, as this module promises: a template prep would
+        # refuse is a refusal here too, said -- `status` printed a traceback
+        # and the Results tab lost its whole ladder over it (W52).
+        return None, (f"what `{stage}` continues from cannot be read: "
+                      f"{exc}")
 
 
 def _cannot_be_named(base: Path, task, stage: str, from_attempt,

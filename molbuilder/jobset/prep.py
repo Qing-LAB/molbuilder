@@ -3036,6 +3036,17 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                 pass      # an unreadable description: the gate below owns it
         if not (desc.is_file() and (is_transport
                                     or find_template(base) is not None)):
+            # INSIDE A CALCULATION -- one of its stage or attempt folders --
+            # the folder says which one it belongs to (`calcdirs.root_of`);
+            # `init` there would describe a new calculation inside an
+            # attempt (W52).
+            from .. import calcdirs
+            root = calcdirs.root_of(base)
+            if root is not None and Path(root).resolve() != base:
+                raise PrepError(
+                    f"{base} is a folder of the calculation at {root}; "
+                    f"`prep` works on the calculation -- name that folder "
+                    f"(the command line's `--bundle`).")
             raise PrepError(
                 f"{base} is not a described calculation -- no task.json + "
                 "template pair.  `prep` derives everything from those two "

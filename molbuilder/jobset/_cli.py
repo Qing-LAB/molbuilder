@@ -81,26 +81,15 @@ def _load(bundle: str) -> tuple:
                     sweeps.append(str(_p.parent.relative_to(base)))
             except Exception:          # unreadable: not evidence of anything
                 pass
-        if sweeps:
-            where = ", ".join(sweeps[:3]) + ("..." if len(sweeps) > 3 else "")
-            _how = ("`molbuilder jobset summarize bench <stage>` reads the "
-                    "trials and prints the verdict"
-                    if described else
-                    "that folder has no " + _TASK_FILE + ", so `summarize` "
-                    "cannot read it either -- it works through the "
-                    "description")
-            raise click.ClickException(
-                f"no {_JOBSET_FILE} at the root of {base}, so there is no "
-                f"LADDER here to report on -- but a sweep is prepped in "
-                f"{where}.  A sweep's state is its own verb: {_how}.  "
-                f"`status` answers the other question -- which RUNG is done "
-                f"and which to resume from (project-layout.md § 2.3.2).")
+        b = _bundle_hint(base)
         if described:
             # THE EXACT COMMAND, not a placeholder (user, 2026-08-20: a
             # detected problem carries the invocation that repairs it).  The
             # rung is in hand -- the description is right there -- so naming
             # `<stage>` would be this refusal declining to read a file it has
-            # already found.
+            # already found.  A benchmark prepped here is named beside it --
+            # it is not the run (W52: the run was refused with a note about
+            # the sweep that named no way to prep the run).
             _rung = "<stage>"
             try:
                 from ..task import read_task as _read_task
@@ -109,14 +98,38 @@ def _load(bundle: str) -> tuple:
                               if st.enabled is not False), "<stage>")
             except Exception:      # a description mid-edit is its own error
                 pass
+            bench = (f"  (A benchmark is prepped in "
+                     f"{', '.join(sweeps[:3])}{'...' if len(sweeps) > 3 else ''}"
+                     f" -- its own verbs are `launch bench` and `summarize "
+                     f"bench`.)" if sweeps else "")
             raise click.ClickException(
                 f"no {_JOBSET_FILE} in {base}: this calculation is described "
-                f"but nothing is prepped yet.  `prep` derives the set from "
-                f"the description (job-system.md § 5.1):\n"
-                f"    molbuilder jobset prep run {_rung}")
+                f"but no run is prepped yet.  `prep` derives the set from "
+                f"the description (job-system.md § 4):\n"
+                f"    molbuilder jobset prep run {_rung}{b}" + bench)
+        if sweeps:
+            where = ", ".join(sweeps[:3]) + ("..." if len(sweeps) > 3 else "")
+            raise click.ClickException(
+                f"no {_JOBSET_FILE} at the root of {base}, and no "
+                f"{_TASK_FILE}: a hand-built sweep is prepped in {where}, "
+                f"and its verbs are `launch bench` and `summarize bench` -- "
+                f"which read a sweep through its description, so a "
+                f"description-less one is launched and read by hand.")
+        # INSIDE A CALCULATION -- one of its stage or attempt folders -- is
+        # not "nothing here": the folder says which calculation it belongs
+        # to (`calcdirs.root_of`, `project-layout.md` § 1.4a), and that is
+        # where the verb works (W52: it was told to run `init`, which would
+        # describe a new calculation inside an attempt).
+        from .. import calcdirs
+        root = calcdirs.root_of(base)
+        if root is not None and Path(root).resolve() != base.resolve():
+            raise click.ClickException(
+                f"{base} is a folder of the calculation at {root}; the "
+                f"verbs work on the calculation -- name it with "
+                f"`--bundle`:{_bundle_hint(root) or ' (run it from there)'}")
         raise click.ClickException(
             f"no {_JOBSET_FILE} in {base} -- nothing to do.  The host "
-            "describes it and `prep` derives it (job-system.md § 5.1); run "
+            "describes it and `prep` derives it (job-system.md § 4); run "
             "`molbuilder jobset init` first.")
     try:
         return JobSet.load(jpath), base
@@ -750,7 +763,9 @@ def status_cmd(stage, bundle: str) -> None:
     (project-layout.md § 1.5, § 1.6).
     """
     from ..task import FILENAME as _TASK_FILE
+    from .runstatus import stage_continuation
     base = Path(bundle)
+    task = None
     if (base / _TASK_FILE).is_file():
         # THE DESCRIPTION'S LADDER (job-system.md § 5.3, 2026-10-01): every
         # stage it names, before the first prep and as prep reaches each.
@@ -760,15 +775,28 @@ def status_cmd(stage, bundle: str) -> None:
         except ValueError as e:
             raise click.ClickException(str(e))
         name = _described_stage(base, stage)
+        from ..task import read_task
+        try:
+            task = read_task(base / _TASK_FILE)
+        except Exception as exc:                        # noqa: BLE001
+            raise click.ClickException(f"{_TASK_FILE}: {exc}")
     else:
         js, base = _load(bundle)
         name = (_resolve_stage_name(js, stage) if stage is not None
                 else None)
-    status = jobset_status(js, base)
+    try:
+        status = jobset_status(js, base)
+    except (OSError, ValueError, KeyError) as exc:
+        # A refusal, in the verb's voice -- never a traceback (W52).
+        raise click.ClickException(str(exc))
     if name is None:
         click.echo(render_status(status))
         return
-    click.echo(render_stage_status(status, name))
+    row = next(s for s in status.stages if s.name == name)
+    click.echo(render_stage_status(
+        status, name,
+        stage_continuation(base, task, name)
+        if task is not None and not row.prepped else None))
 
 
 # --------------------------------------------------------------------- #

@@ -245,12 +245,9 @@ def api_results_dir():
         except (OSError, ValueError, KeyError, TypeError) as exc:
             attempts.append(f"the ladder could not be read: {exc}")
         else:
-            ladder = {"complete": got_status.complete,
-                      "first_incomplete": got_status.first_incomplete,
-                      "stages": [{"name": s.name, "seq": s.seq,
-                                  "state": s.state, "detail": s.detail,
-                                  "dir": s.dir, "attempt": s.attempt}
-                                 for s in got_status.stages]}
+            # THE ONE WIRE FORM (`JobSetStatus.to_dict`), the next prep's
+            # answer included -- a dict of this route's own dropped it (W52).
+            ladder = got_status.to_dict()
 
     # THE LABEL, so each file can be read back EXACTLY.  `role_of` answers
     # WITHOUT one and therefore cannot answer an underscore role at all --

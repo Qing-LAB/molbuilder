@@ -1118,9 +1118,18 @@ disables (`enabled: false`) is listed as disabled — whether or not it was
 prepped — and is never the stage to resume from; enable it to run it. The table
 ends with the stage to resume from, and one nothing has prepped yet is named
 with the command that prepares it — for an independent stage, beside the run
-that command will continue from (§ 5.4). The Results tab's ladder is this same answer
-([`web/results.md`](?doc=web/results.md) § 2.4). A job set with no description
-beside it — a hand-built one, a benchmark's sweep — lists its own jobs.
+that command will continue from, or with why its prep would refuse, whole, its
+commands included (§ 5.4). A prepped one is told what its state calls for: not
+launched — launch it; queued or running — let it finish; stopped or failed —
+launch it again, which continues from its own latest run, or, for a stage that
+does not continue from a run of its own, prep it again *(each a command that
+works; until 2026-10-01 every state was told to "re-submit")*. `status
+<stage>` asks the same door for the stage it names. The Results tab's ladder is
+this same answer ([`web/results.md`](?doc=web/results.md) § 2.4) — its wire form,
+`JobSetStatus.to_dict`, the next prep's answer included. A job set with no
+description beside it — a hand-built one, a benchmark's sweep — lists its own
+jobs. A folder inside a calculation — a stage's, an attempt's — is answered with
+the calculation it belongs to.
 
 The per-stage form answers a different question from the table. The table says
 *where is this calculation up to*; `status <stage>` says *what this stage is* —
@@ -1159,8 +1168,8 @@ nothing"* (`checkpointing.md` S3).
   twice. Prep still writes the whole table into the folder (`STAGE-PLAN.md`).
 - **`launch`** names **one** stage and takes a `--mode` (falling back to
   `execution.mode` — C11, 2026-08-11; unset in both is a refusal, § 5.3):
-  - **`launch`** hands that one job to SLURM. One `sbatch`, one invocation, no
-    dependency flag, nothing queued behind it.
+  - **`submit`** hands that one job to SLURM — shown first, and asked (S4). One
+    `sbatch`, one invocation, no dependency flag, nothing queued behind it.
   - **`direct`** runs that one job **locally** (`bash …run.sh`) and waits for
     it. This is the workstation path.
   - `--dry-run` prints the exact command it *would* run, without launching —
@@ -1169,9 +1178,9 @@ nothing"* (`checkpointing.md` S3).
   [`running-a-job.md § 4.2`](?doc=execution/running-a-job.md)) and reports each
   stage of the description — its state, its restart files — and the first
   incomplete stage, then stops.
-  It prints resume guidance but **never auto-resumes** (design decision #5); you
-  re-submit the incomplete stage yourself, and the engine warm-starts from its
-  own `.XV`.
+  It prints the next step, by the stage's state, but **never auto-resumes**
+  (design decision #5): you launch the incomplete stage again yourself, and it
+  continues from its own latest run.
 
 ### 5.4 How a ladder advances
 

@@ -134,6 +134,8 @@ def test_status_lists_every_stage_from_the_description(tmp_path, monkeypatch):
     assert [(s["name"], s["seq"]) for s in ladder["stages"]] == [
         (s["name"], n) for n, s in enumerate(stages, start=1)], ladder
     assert ladder["first_incomplete"] == second, ladder
+    # ...the next prep's answer with it -- the one wire form (W52).
+    assert ladder["resume_from"] == f"01_{first}/run-0", ladder
 
     # EVERY ENABLED STAGE CONCLUDED: the disabled one is not what is left
     # (the conclusion markers stand in for runs, which left no restart files
@@ -146,3 +148,85 @@ def test_status_lists_every_stage_from_the_description(tmp_path, monkeypatch):
     assert r.exit_code == 0, r.output
     assert "Every enabled stage finished. Nothing to resume." in r.output, (
         r.output)
+
+
+def test_the_next_step_is_worded_by_the_stages_state(tmp_path, monkeypatch):
+    """`status` says what the first incomplete stage's state calls for, as a
+    command that works: prepped and not launched -- launch it; sent and not
+    started -- let it finish; failed -- launch it again, which continues from
+    its own latest run.  A later stage asked about by name is told why its
+    prep would refuse, whole.
+
+    MUTATIONS THIS MUST FAIL AGAINST: every state told to "re-submit that
+    stage"; `status <stage>` answering a later stage without asking the
+    continuation door (it was told "Prep it")."""
+    from molbuilder.scheduler import Domain
+    from support.road import (a_finished_run, a_queue_that_answers,
+                              describe_h2, jobset)
+    a_queue_that_answers(tmp_path, monkeypatch, [
+        Domain(name="htc", partition="htc", qos="public",
+               max_time="0-04:00:00")])
+    bundle = describe_h2(tmp_path, monkeypatch)
+    r = jobset("status", "medium", "--bundle", bundle)
+    assert r.exit_code == 0, r.output
+    assert "Its prep refuses for now" in r.output, r.output
+    assert "molbuilder jobset prep run coarse" in r.output, r.output
+
+    assert jobset("prep", "run", "coarse", "--bundle", bundle,
+                  "--target", "this").exit_code == 0
+    r = jobset("status", "--bundle", bundle)
+    assert ("prepped and not launched:\n    molbuilder jobset launch run "
+            "coarse") in r.output, r.output
+
+    assert jobset("launch", "run", "coarse", "--bundle", bundle, "--mode",
+                  "submit", "--domain", "htc", "--yes").exit_code == 0
+    r = jobset("status", "--bundle", bundle)
+    assert "coarse, queued -- let it finish" in r.output, r.output
+
+    a_finished_run(bundle / "01_coarse" / "run-0", rc=1)
+    r = jobset("status", "--bundle", bundle)
+    assert "coarse, failed" in r.output, r.output
+    assert ("continues from its own latest run:\n    molbuilder jobset "
+            "launch run coarse") in r.output, r.output
+
+
+def test_status_answers_what_it_cannot_read_and_where_it_was_asked(
+        tmp_path, monkeypatch):
+    """A template prep would refuse is said in the table's last line, never
+    a traceback; a stage renamed in case only keeps its prepped job; asked
+    from inside one of its stage folders, `status` names the calculation it
+    belongs to.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the continuation door raising (a
+    traceback); stages joined to jobs by exact name; a stage folder told to
+    run `init`."""
+    from molbuilder.web.app import create_app
+    from support.road import describe_h2, jobset
+    bundle = describe_h2(tmp_path, monkeypatch)
+
+    template = next(bundle.glob("*.template.toml"))
+    kept = template.read_text()
+    template.write_text("this is not a template [\n")
+    r = jobset("status", "--bundle", bundle)
+    assert r.exit_code == 0 and r.exception is None, r.output
+    assert "refuses for now" in r.output, r.output
+    assert "continues from cannot be read" in r.output, r.output
+    template.write_text(kept)
+
+    assert jobset("prep", "run", "coarse", "--bundle", bundle,
+                  "--target", "this").exit_code == 0
+
+    task = json.loads((bundle / "task.json").read_text())
+    task["stages"][0]["name"] = "COARSE"
+    r = create_app(config={}).test_client().post(
+        "/api/task-setup/save",
+        json={"dest": str(bundle), "text": json.dumps(task)})
+    assert r.status_code == 200, r.get_json()
+    r = jobset("status", "--bundle", bundle)
+    assert r.exit_code == 0, r.output
+    assert _row(r.output, "COARSE")[3] == "pending", r.output
+
+    r = jobset("status", "--bundle", bundle / "01_coarse")
+    assert r.exit_code != 0, r.output
+    assert "is a folder of the calculation at" in r.output, r.output
+    assert "jobset init" not in r.output, r.output
