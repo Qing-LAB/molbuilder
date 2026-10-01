@@ -323,9 +323,9 @@ decisions, the roadmap holds plans).
 - **Code review checks three things beyond code quality:** target-tool
   correctness for generated SIESTA/PySCF outputs, scientific defensibility of
   defaults, and the layering invariant (no L1→L2, no L2→L3 imports).
-- **Every commit keeps the suite green** (the pre-commit gate runs `pytest -m
-  "not slow"`); no intermediate-broken-state commits — split a refactor finer
-  instead.
+- **Every commit keeps the suite green**: the tests the change touched pass
+  before it is committed ([`process/testing.md` § 7](?doc=process/testing.md));
+  no intermediate-broken-state commits — split a refactor finer instead.
 - **A new dependency needs a one-line justification** in the decisions log
   naming the wheel it replaces; the default is to add none.
 

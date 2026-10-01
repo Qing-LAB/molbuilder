@@ -1,10 +1,8 @@
 #  molbuilder developer Makefile.
 #
 #  Targets:
-#    make test         pre-commit pytest (everything except ``slow``);
-#                      runs e2e by default -- the 2026-06-14 dispatcher
-#                      BLOCKER showed that filtering e2e out of the
-#                      pre-commit gate is the wrong tradeoff.
+#    make test         every test except ``slow``, e2e included, in one
+#                      process (the runner is tools/testrun.py)
 #    make test-all     full pytest sweep INCLUDING slow-marked tests
 #    make web          launch the dev server on :8080 (foreground)
 #    make web-bg       launch the dev server in the background
@@ -22,12 +20,9 @@ PORT      ?= 8080
 help:
 	@grep -E '^\.PHONY|^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | head -20
 
-# Default pre-commit suite: everything except `slow` and the
-# atom-list (browser-only) file.  e2e is INCLUDED -- the 2026-06-14
-# dispatcher-clobber BLOCKER showed why filtering e2e out is the
-# wrong tradeoff (the test that catches the bug class existed and
-# was hidden behind `-m "not e2e"`).  See memory:
-# feedback_dont_hide_failing_tests.
+# Every test except `slow` and the atom-list (browser-only) file, e2e
+# included.  What a commit must pass is the tests it touched, through
+# tools/testrun.py (docs/process/testing.md § 7).
 test:
 	$(PYTEST) -q --no-header \
 		--ignore=tests/test_atom_list_render_paths.py \

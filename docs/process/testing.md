@@ -26,7 +26,7 @@ Tests are marked by **layer**, and the marker is orthogonal to the directory (a
 | `integration` | L4 | several subsystems agreeing on one shared fact |
 | `smoke` | — | subprocess-runs a *generated script* (slow; needs pyscf) |
 | `e2e` | — | browser-driven Playwright (slow; needs chromium) |
-| `slow` | — | > 1 s (full runs include these; pre-commit skips them) |
+| `slow` | — | > 1 s (`make test` skips them) |
 | `engine` | — | starts a real SIESTA / TranSIESTA / PySCF process, itself or through a fixture; such tests run one at a time (§ 6.1a) |
 | `capture_on_fail` | — | dump browser state + console to `test-artifacts/` on failure |
 
@@ -697,10 +697,21 @@ rest finished inside that window on the other seven.
 
 ## 7. What gates a commit
 
-There is **no CI** — enforcement is the **pre-commit hook**
-([`conventions.md § 1`](?doc=process/conventions.md)): `pytest -m "not slow"` (which
-deliberately keeps `e2e` in), pyflakes, and a `node -c` syntax check on changed
-`*.js`. So the suite you run locally *is* the gate.
+There is **no CI**. Two things gate a commit, and only the first is a hook:
+
+- **The pre-commit hook** (`.pre-commit-config.yaml`, installed by
+  `make precommit`): file hygiene, pyflakes, and a `node -c` syntax check on
+  each changed `*.js`.
+- **The tests the change touched**, run through `tools/testrun.py` (§ 6.1)
+  before committing: the unit's own tests and every test file that touches a
+  name the change moved or added. The set is found by what the change touched,
+  never by layer, so it holds the touched areas' e2e tests too — the
+  2026-06-14 workspace-dispatcher clobber shipped through three commits
+  because the e2e test that caught it sat behind `-m "not e2e"`.
+
+The whole suite is not a step before every commit *(user, 2026-09-30)*. It
+runs when the touched set cannot bound what could break — a change that moves
+or removes a whole surface — and the reason is said before it is launched.
 
 A ready-to-use GitHub Actions workflow sits beside this doc at
 `process/github-workflows-test.yml`. It is a **template, not a live workflow** —

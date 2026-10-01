@@ -15,7 +15,8 @@ bearing.
 
 ## 1. The conventions that are actually enforced
 
-These are gated — a violation fails `pytest` (and therefore the pre-commit hook):
+These are held by a check — a test, the pre-commit hook, or review where the
+item says so:
 
 - **Layering — imports only point *down*.** The code is layered, and the two
   **surfaces** (`cli.py` and `web/`) are the top layer: nothing lower may import
@@ -34,10 +35,10 @@ These are gated — a violation fails `pytest` (and therefore the pre-commit hoo
   (`.pre-commit-config.yaml`) — it doesn't lint style, only "would this actually
   run" (undefined names, unused imports). Plus a `node -c` syntax check on any
   changed `*.js`.
-- **The full test suite gates every commit.** The pre-commit config runs `pytest -m
-  "not slow"` — and it deliberately does **not** exclude `e2e` as a class (the
-  comment in the config says so outright: gate on the tests that catch production
-  bugs); it only `--ignore`s one chromium-heavy file. **No doc rule rides that
+- **The tests a change touched gate its commit** — run through
+  `tools/testrun.py`, chosen by what the change touched, e2e included; the whole
+  suite only when that set cannot bound what could break
+  ([`testing.md` § 7](?doc=process/testing.md)). **No doc rule rides that
   gate**: `tests/test_docs_structure.py` was retired in `082ba979`, with the 60
   others that asserted where things live rather than what they do. The rules
   below are review standards, and the diff is what catches drift in them.
@@ -46,8 +47,9 @@ These are gated — a violation fails `pytest` (and therefore the pre-commit hoo
   assert "the body doesn't contain X" without first pinning the status code.
 
 Two things worth internalising from the list: there is **no CI** — all of this is
-enforced by the **local pre-commit hook** (there is no `.github/workflows/`); and
-the code runs from the tree (`pythonpath=["."]`, **no `pip install -e`**).
+held locally, by the pre-commit hook and the tests run before a commit (there is
+no `.github/workflows/`); and the code runs from the tree (`pythonpath=["."]`,
+**no `pip install -e`**).
 
 ## 2. The module-provenance header (advisory)
 
