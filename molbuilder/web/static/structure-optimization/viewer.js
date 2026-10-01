@@ -225,7 +225,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         return out;
     }
 
-    function renderIssues(panelId, issues, formContainerId) {
+    function renderIssues(panelId, issues, formContainerId, reveal) {
         const f = (window.molbuilder || {}).validationFindings;
         if (!f) return { total: 0, residual: 0, byGroup: {}, byField: {},
                          counts: { error: 0, warn: 0, info: 0 } };
@@ -236,6 +236,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             panel:     $(panelId),
             formScope: formContainerId ? $(formContainerId) : null,
             fieldIds:  _fieldIds(engine),
+            reveal:    !!reveal,
         });
     }
 
@@ -267,11 +268,11 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
     /* ONE PLACE this tab shows an engine's findings -- the live preflight's
      * and the hand-over's (the cell gate's notices) -- through the one
      * renderer, in that engine's panel beside its form. */
-    function _showFindings(engine, issues) {
+    function _showFindings(engine, issues, reveal) {
         return renderIssues(
             (engine === "siesta") ? "fdf-issues" : "pyscf-issues", issues,
             (engine === "siesta") ? "siesta-form-container"
-                                  : "pyscf-form-container");
+                                  : "pyscf-form-container", reveal);
     }
 
     // What the live preflight said last, per engine -- the findings a Send
@@ -1413,7 +1414,8 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             // The hand-over's findings in the engine's panel, beside the
             // live preflight's, which are still true of the form it sends.
             standing:     _live[engine],
-            showFindings: (issues) => _showFindings(engine, issues),
+            // ...and a refusal's first error brought into view.
+            showFindings: (issues) => _showFindings(engine, issues, true),
             structure: _structureForRequest(),
             engine:    engine,
             params:    collectParams(engine),

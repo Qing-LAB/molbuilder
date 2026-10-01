@@ -206,6 +206,10 @@
         } else {
             req.structure = structure;
             req.params    = o.params || {};
+            // The folder the files go into: a SIESTA calculation's
+            // pseudopotentials are checked against it, the files already
+            // there counting (`handover-procedure.md` § 2.2).
+            req.dest      = dest;
         }
         /* NO HAND-OVER FOR THE COMPOSITE (user ruling 2026-08-29):
          * nothing is awaiting -- stages, shape and identity are fixed

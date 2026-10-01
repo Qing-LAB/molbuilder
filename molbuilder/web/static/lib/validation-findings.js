@@ -47,6 +47,8 @@
  *       formScope: <element>,   // optional: searched for .card-issues panels
  *       fieldIds:  {mesh_cutoff: "p-mesh-cutoff", ...},  // optional
  *       emptyText: "No issues yet.",  // optional: shown instead of hiding
+ *       reveal:    true,        // optional: bring the first error into view
+ *                                // -- a Send's refusal, not a live check
  *   });
  *   // summary = {total, residual, byGroup: {<role>: n},
  *   //            byField: {<where>: n}, counts: {error, warn, info}}
@@ -289,6 +291,22 @@ const _module = (function (root) {
                 panel.hidden = false;
             } else {
                 panel.hidden = true;
+            }
+        }
+        // BROUGHT INTO VIEW, when asked: a Send's refusal names a field the
+        // person may have scrolled past (the pseudopotential folder sits in
+        // the first card, plan § 5w K20) -- the form first, beside its
+        // control, then the residual panel.  A live check never asks.
+        if (opts.reveal) {
+            var scopes = [opts.formScope, panel];
+            for (var k = 0; k < scopes.length; k++) {
+                var first = scopes[k] && scopes[k].querySelector
+                    && scopes[k].querySelector(
+                        ".issue-item[data-severity='error']");
+                if (first && first.scrollIntoView) {
+                    first.scrollIntoView({ block: "center" });
+                    break;
+                }
             }
         }
         return summary;

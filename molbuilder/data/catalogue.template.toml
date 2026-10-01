@@ -971,6 +971,7 @@ group = "setup"
 label = "Pseudopotential directory (.psml)"
 null_label = "(none)"
 optional = true
+required = ["optimization", "vibration"]
 help = """
 Path to a directory of .psml pseudopotential files, one per element.  A pseudopotential stands in for an atom's core electrons, and SIESTA needs one for every element in your structure.
 ONE SOURCE, ONE SET, NO CONFLICTS.  Every file in this directory should come from the SAME download -- same functional, same relativistic level, same standard/stringent tier -- and be named for its element (``Au.psml``), one file per element.  That is the name SIESTA opens, and it has no search path.  Mixing sets, or keeping variants side by side, is the one mistake here that cannot be caught downstream: the run converges and gives you a plausible number computed with something other than what you asked for.  prep copies this set into the calculation for you, so this directory is the only place the set is curated -- get it right once, here.

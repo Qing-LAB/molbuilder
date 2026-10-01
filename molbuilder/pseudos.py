@@ -83,6 +83,13 @@ def psml_sources(elements, *, dest_dir=None,
     return out
 
 
+#: The library's conventional name: the tree's own ``pseudopotential``
+#: folder, measured from the tree root (`job-contracts.md` § 2.5a) -- what
+#: an unset ``psml_lib`` is told to use, and named only when it covers the
+#: structure (plan § 5w K20).
+CONVENTIONAL_LIBRARY = "pseudopotential"
+
+
 class PsmlLibError(ValueError):
     """A ``psml_lib`` spelling the rule cannot answer -- dotted, or an
     absolute path outside the projects tree.  The message teaches the

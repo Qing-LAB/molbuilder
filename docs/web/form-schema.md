@@ -75,6 +75,7 @@ is where the *data* comes from.
 | `labels` (a triple's x/y/z) | derived from `type` — the k-point mesh's axis names (`kmesh.AXES`) |
 | `fixed` (a triple's locked components) | derived from the kind: the components it fixes, `{z: {value: 1, why: "…"}}` (`kmesh.fixed`, [`engines/siesta.md`](?doc=engines/siesta.md) § 6.1) — a transport calculation's third k component, which no rung reads. The triple draws each locked at its value with the reason beside it, and the value still travels, so the template states it *(2026-09-30)* |
 | `null_option` | derived: the item is optional |
+| `required` | derived from the kind: the item's `required` kinds ([`engines/template.md`](?doc=engines/template.md) § 5) — the control is drawn required, and red while it is empty. The value may still be blank; the refusal is the Send's, beside the field ([`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § 1) *(2026-09-30)* |
 | `tier` · `pattern` · `optional` | **item keys added for this** — § 1.2 |
 
 An item's hard limit (`above`) is **not** sent: the form computes no verdict of

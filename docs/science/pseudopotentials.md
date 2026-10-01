@@ -102,6 +102,20 @@ says per element whether that file comes from the folder or from `psml_lib`
 | **WARN** (advisory) | `xc_mismatch`, `relativistic_mismatch`, `generator_mismatch`, `parse_warning` | a strong smell that *might* be intentional (curated mix, deliberate SR/FR choice) — surfaced loudly, but the user may proceed |
 | `ok` | — | silent pass |
 
+**Settled before the folder exists — at the Send** *(plan § 5w K20; user,
+2026-09-30: "it seems user easily misses this in the first setup and only finds
+out after the script is generated")*. On the Build and Spectrum tabs' SIESTA
+form the directory is marked required (the item's `required` kinds,
+[`engines/template.md`](?doc=engines/template.md) § 5) and drawn red while it is
+empty. The live check (the web preflight) warns while it is unset — naming the
+tree's `pseudopotential` folder when that folder covers every element of the
+structure, a suggestion and never a fill — and checks each element and its XC
+family once it is set. The Send asks the same check of the folder it writes
+into (`validation.siesta.pseudopotential_findings`: pseudopotentials already
+beside the calculation count, as at `prep`) and refuses until every element is
+covered — its findings beside the field, the page brought to it. Not PySCF's (it
+reads no pseudopotentials) nor transport's (they come with the citation).
+
 > **History (2026-07).** Two changes produced the unified set above: (a) XC-*family*
 > mismatch was split off as `xc_family_mismatch` → **ERROR** (an earlier version
 > treated all XC mismatch as one WARN and left family-vs-author blocking "for

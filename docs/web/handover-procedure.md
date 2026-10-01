@@ -104,6 +104,19 @@ the same way. *(A tab does not decide for its user — `tabs.md`. The sender
 listed each notice as a bullet in the status line until 2026-09-30 — a
 second renderer.)*
 
+### 2.2 The pseudopotentials — covered before a SIESTA calculation is written *(plan § 5w K20)*
+
+**Step 1's render also asks the pseudopotential check of the folder the
+hand-over writes into** — the rule `prep` opens the files by
+(`pseudos.psml_sources`: the folder's own files first, then `psml_lib`), through
+`validation.siesta.pseudopotential_findings` — **and refuses until every element
+is covered.** A SIESTA run cannot start without them, and a person setting up a
+first calculation found out only after the script was generated (user,
+2026-09-30). The sender passes the folder (`dest`); the refusal's findings land
+beside the field through the tab's findings panel, and the page is brought to
+the first of them. PySCF reads no pseudopotentials, and transport describes on
+its own tab with the citation's own ([`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § 1).
+
 ---
 
 ## 3. The hand-over file

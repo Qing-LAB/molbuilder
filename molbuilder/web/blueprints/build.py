@@ -1071,6 +1071,34 @@ def api_task_setup_handover():
     except (ValueError, TypeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
+    # THE PSEUDOPOTENTIALS, SETTLED BEFORE A SIESTA CALCULATION IS WRITTEN
+    # (`handover-procedure.md` § 2.2, plan § 5w K20): the check `prep` makes,
+    # asked of the folder the files go into -- pseudopotentials already
+    # beside it count -- and a refusal until every element is covered, its
+    # findings for the tab to put beside the field.  The sender names the
+    # folder (`dest`); a caller that names none is asked about the library
+    # alone, as the live check is.
+    if engine == "siesta":
+        dest_dir = None
+        if body.get("dest"):
+            try:
+                dest_dir = _resolve_within_roots(str(body["dest"]))
+            except _PickerError as exc:
+                return jsonify({"ok": False, "error": exc.message}), exc.status
+        from molbuilder.validation.siesta import pseudopotential_findings
+        psml = pseudopotential_findings(struct, cfg, calculation=calculation,
+                                        dest_dir=dest_dir)
+        if any(i.severity == "error" for i in psml):
+            return jsonify({
+                "ok": False,
+                "error": "the pseudopotentials are not settled: SIESTA needs "
+                         "a .psml file for every element, so this would "
+                         "write a calculation that cannot start -- the "
+                         "findings are beside the pseudopotential field "
+                         "(handover-procedure.md 2.2)",
+                "findings": _issues_to_json(psml, cfg=cfg),
+            }), 400
+
     from molbuilder.identity import normalise_id, run_id
     from molbuilder.template import (template_filename as _template_filename,
                                      template_with_values)

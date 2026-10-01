@@ -360,6 +360,11 @@
         if (f.tier === "advanced") {
             labelEl.classList.add("is-advanced");
         }
+        // DRAWN REQUIRED (`required`, form-schema.md § 1.1): the value may
+        // still be blank, and the Send refuses until it is answered.
+        if (f.required) {
+            labelEl.classList.add("is-required");
+        }
         let input;
         switch (f.kind) {
             case "checkbox":   input = makeCheckbox(f);  break;
@@ -414,6 +419,14 @@
         }
         const badge = engineKeyBadge(f);
         if (badge) labelEl.appendChild(badge);
+        // ...AND RED WHILE IT IS EMPTY -- a typed value, a pick or a restore
+        // (`setValues` fires `input`) each clears it.
+        if (f.required && input && "value" in input) {
+            const mark = () => labelEl.classList.toggle(
+                "is-empty", !String(input.value || "").trim());
+            input.addEventListener("input", mark);
+            mark();
+        }
         // WHY A COMPONENT IS LOCKED, beside the control -- the same
         // `.lock-reason` hint a locked field carries (form-schema.css).
         if (f.fixed) {

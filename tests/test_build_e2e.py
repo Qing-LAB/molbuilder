@@ -790,6 +790,11 @@ class TestSendToTaskSetup:
             "H 0.957  0.000 0.000\n"
             "H -0.239 0.927 0.000\n"
         )
+        # The pseudopotentials already beside the calculation, as a person
+        # leaves them: the Send refuses a SIESTA calculation without them
+        # (`handover-procedure.md` § 2.2).
+        from conftest import write_pseudos
+        write_pseudos(calc, ["O", "H"])
         return calc, xyz
 
     def _calc_dir_with_a_cell(self, tmp_path, monkeypatch):
@@ -813,6 +818,8 @@ class TestSendToTaskSetup:
             "H 9.957  9.000 9.000\n"
             "H 8.761  9.927 9.000\n"
         )
+        from conftest import write_pseudos
+        write_pseudos(calc, ["O", "H"])
         return calc, xyz
 
     def _load_and_send(self, page, base_url, calc, xyz, before_send=None):
@@ -950,6 +957,74 @@ class TestSendToTaskSetup:
         # ...beside the live warning, which is still there.
         assert page.evaluate(beside), (
             "the send cleared the live check's warning from the form")
+
+    def test_send_waits_for_the_pseudopotentials(self, page, flask_server,
+                                                  isolated_projects_root):
+        """The pseudopotential folder is settled before the files are
+        written (`web/handover-procedure.md` § 2.2, plan § 5w K20; user,
+        2026-09-30: *"it seems user easily misses this in the first setup and
+        only finds out after the script is generated"*).  On the SIESTA form
+        the field is drawn required and red while empty, and the live check
+        names the tree's `pseudopotential` folder, which covers the
+        structure; a Send with no folder and no files beside the calculation
+        is refused -- the finding beside the field, brought into view,
+        nothing written; set to the folder, the Send writes.
+
+        MUTATIONS THIS MUST FAIL AGAINST: the Send not asking the check (the
+        files are written); the field not drawn required; the suggestion not
+        made; the refusal not brought into view."""
+        calc = isolated_projects_root / "proj" / "opt" / "water-run"
+        calc.mkdir(parents=True)
+        xyz = calc / "water.xyz"
+        xyz.write_text("3\nwater\n"
+                       "O 0.000  0.000 0.000\n"
+                       "H 0.957  0.000 0.000\n"
+                       "H -0.239 0.927 0.000\n")
+        from conftest import write_pseudos
+        library = isolated_projects_root / "pseudopotential"
+        library.mkdir()
+        write_pseudos(library, ["O", "H"])
+        field = ("document.querySelector('#p-psml-lib')"
+                 ".closest('.schema-field')")
+
+        def unset_and_said(page):
+            page.wait_for_function(
+                f"() => {{ const w = {field};"
+                "  return w.classList.contains('is-required')"
+                "    && w.classList.contains('is-empty')"
+                "    && [...w.querySelectorAll('.field-issues .issue-item')]"
+                "       .some(r => r.textContent.includes("
+                "           'folder covers all 2 element(s)')); }",
+                timeout=10_000)
+
+        self._load_and_send(page, flask_server, calc, xyz,
+                            before_send=unset_and_said)
+        page.wait_for_function(
+            "() => (document.querySelector('#handover-status') || {})"
+            "      .textContent.includes('pseudopotentials are not settled')",
+            timeout=10_000)
+        assert not (calc / "task.1st.json").exists(), (
+            "the refusal still wrote the hand-over")
+        seen = page.evaluate(
+            f"() => {{ const r = {field}.querySelector("
+            "    \".field-issues .issue-item[data-severity='error']\");"
+            "  if (!r) return null;"
+            "  const b = r.getBoundingClientRect();"
+            "  return {top: b.top, bottom: b.bottom,"
+            "          height: window.innerHeight}; }")
+        assert seen is not None, "the refusal is not beside the field"
+        assert 0 <= seen["top"] and seen["bottom"] <= seen["height"], seen
+
+        page.fill("#p-psml-lib", "pseudopotential")
+        page.dispatch_event("#p-psml-lib", "input")
+        assert not page.evaluate(
+            f"() => {field}.classList.contains('is-empty')")
+        page.locator("#send-to-task-setup").click()
+        page.wait_for_function(
+            "() => (document.querySelector('#handover-status') || {})"
+            "      .textContent.includes('Wrote')",
+            timeout=10_000)
+        assert (calc / "task.1st.json").is_file()
 
     def test_send_refuses_a_folder_that_is_already_described(
             self, page, flask_server, tmp_path, monkeypatch):

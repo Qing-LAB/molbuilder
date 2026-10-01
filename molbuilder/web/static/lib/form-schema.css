@@ -390,6 +390,17 @@ details.workflow-group[open] > summary.workflow-group-header::before {
     font-weight: 700;
     opacity: 0.6;
 }
+/* A field this kind's Send refuses without (`required`, form-schema.md
+ * § 1.1): said beside its caption, and red while its control is empty. */
+.schema-field.is-required > .schema-field-text::after {
+    content: " · required";
+    color: var(--error);
+    font-weight: 600;
+}
+.schema-field.is-required.is-empty input {
+    border-color: var(--error);
+    box-shadow: 0 0 0 1px var(--error);
+}
 
 /* ---- Engine-key badge ----
  *

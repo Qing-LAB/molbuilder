@@ -785,8 +785,12 @@ the calculation's own folder first (`pseudos/`, then any left at its root),
 then the `psml_lib` folder for what the calculation lacks. So a calculation
 whose files sit beside it needs no `psml_lib`, and a library that lacks a
 species the calculation already has refuses nothing. Before a calculation
-folder exists (the Build tab) only the library can answer, and an unset one
-is a warning, not a refusal. *(Until 2026-09-25 the gate read the library
+folder exists (the Build tab's live check) only the library can answer, and an
+unset one is a warning there — naming the tree's `pseudopotential` folder when
+that folder covers the structure; the Send, which knows the folder it writes
+into, asks the same rule of it and refuses until every species is covered
+([`science/pseudopotentials.md`](?doc=science/pseudopotentials.md) § 1, plan
+§ 5w K20). *(Until 2026-09-25 the gate read the library
 alone and `prep` never told it the folder, so every transport rung — whose
 files come with the citation — was told `psml_lib` was unset.)*
 

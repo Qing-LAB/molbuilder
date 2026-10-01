@@ -1011,8 +1011,9 @@
 
     /* ONE PLACE this tab shows an engine's findings -- the live
      * preflight's and the hand-over's (the cell gate's notices) --
-     * through the one renderer (lib/validation-findings.js). */
-    function showFindings(engine, issues) {
+     * through the one renderer (lib/validation-findings.js); `reveal`
+     * brings a Send's first error into view. */
+    function showFindings(engine, issues, reveal) {
         const vf = (window.molbuilder || {}).validationFindings;
         if (!vf) return;
         /* fieldIds lands each finding beside its own control -- the same
@@ -1037,6 +1038,7 @@
         vf.render(issues, { panel: els.preflightPanel,
                             formScope: els.form[engine],
                             fieldIds: ids,
+                            reveal: !!reveal,
                             emptyText: "No findings yet — checks "
                                 + "run live as you edit." });
     }
@@ -1073,7 +1075,8 @@
             // The hand-over's findings in this engine's panel, beside the
             // live preflight's, which are still true of the form it sends.
             standing:     live[engine],
-            showFindings: (issues) => showFindings(engine, issues),
+            // ...and a refusal's first error brought into view.
+            showFindings: (issues) => showFindings(engine, issues, true),
             structure:   _structure,
             engine:      engine,
             params:      collectParams(engine),

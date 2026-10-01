@@ -55,8 +55,9 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
     caller reads it off the electronic state; until 2026-09-28 nothing passed
     it, so a spin-orbit run was screened as scalar.
     """
-    from ..pseudos import (PsmlLibError, check_coverage, ERROR_STATUSES,
-                           expected_xc_family, psml_sources, resolve_psml_lib)
+    from ..pseudos import (CONVENTIONAL_LIBRARY, PsmlLibError, check_coverage,
+                           ERROR_STATUSES, expected_xc_family, psml_sources,
+                           resolve_psml_lib)
     labels = list(dict.fromkeys(str(e).strip() for e in struct.elements))
     found = (psml_sources(labels, dest_dir=dest_dir) if dest_dir is not None
              else dict.fromkeys(labels))
@@ -88,11 +89,14 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
             "error" if dest_dir is not None else "warn",
             ("cfg.psml_lib is not set -- SIESTA needs .psml files for "
              "every element (H, C, N, O, S, Fe, ...) and will refuse "
-             "to start without them.  Download from "
+             "to start without them."
+             + _the_convention_covers(lacking, cfg, dest_dir=dest_dir,
+                                      relativistic=relativistic)
+             + "  Download from "
              "http://www.pseudo-dojo.org (PBE-SR, standard, PSML "
              "format) and set cfg.psml_lib to that directory.  "
-             "Convention: the bare name `pseudopotential`, which means "
-             "the projects tree this calculation lives in "
+             f"Convention: the bare name `{CONVENTIONAL_LIBRARY}`, which "
+             "means the projects tree this calculation lives in "
              "(job-contracts.md 2.5a) -- do NOT write the projects/ "
              "prefix.  Once set, this preflight will check "
              "coverage + XC-family match against your structure's "
@@ -166,6 +170,57 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
             out.append(Issue(severity, message,
                               f"config.psml_lib.{entry.element}"))
     return out
+
+
+def _the_convention_covers(lacking, cfg, *, dest_dir=None,
+                           relativistic: str = "scalar") -> str:
+    """The sentence an unset directory earns when the tree's own
+    ``pseudopotential`` folder would answer it (plan § 5w K20): named only
+    when it holds every element the calculation lacks and the coverage check
+    refuses none of them -- a suggestion, never a fill.  ``""`` otherwise."""
+    from ..pseudos import (CONVENTIONAL_LIBRARY, ERROR_STATUSES, PsmlLibError,
+                           check_coverage, expected_xc_family,
+                           resolve_psml_lib)
+    try:
+        folder = resolve_psml_lib(CONVENTIONAL_LIBRARY, dest_dir=dest_dir)
+    except PsmlLibError:
+        return ""
+    if not lacking or not folder.is_dir():
+        return ""
+    xc_authors = (getattr(cfg, "xc_authors", "") or "").strip()
+    found = check_coverage(lacking, folder,
+                           expected_xc_family=expected_xc_family(xc_authors),
+                           expected_xc_authors=xc_authors or None,
+                           expected_relativistic=relativistic)
+    if any(e.status in ERROR_STATUSES for e in found):
+        return ""
+    return (f"  The tree's `{CONVENTIONAL_LIBRARY}` folder covers all "
+            f"{len(lacking)} element(s) this needs ({', '.join(lacking)}): "
+            f"set the field to `{CONVENTIONAL_LIBRARY}`.")
+
+
+def _relativistic(state) -> str:
+    """What the run needs of each file: fully relativistic for a spin-orbit
+    treatment (`science/chemistry-correctness.md` § 2a.3), scalar otherwise."""
+    return ("spin-orbit" if state is not None
+            and state.spin_treatment.value == "spin-orbit" else "scalar")
+
+
+def pseudopotential_findings(struct: Structure, cfg, *,
+                             calculation: str = "optimization",
+                             dest_dir=None) -> List[Issue]:
+    """The pseudopotential check alone, as the settings gate asks it -- for a
+    door that asks nothing else: the hand-over, before it writes a SIESTA
+    calculation's folder, which it names as ``dest_dir`` so the files
+    already there count as at `prep` (`web/handover-procedure.md` § 2.2,
+    plan § 5w K20)."""
+    from ..chemistry import every_label_resolves
+    from ..electronic_state import KINDS, electronic_state
+    state = (electronic_state(struct, cfg, kind=calculation)
+             if calculation in KINDS and every_label_resolves(struct)
+             else None)
+    return _check_siesta_pseudo_coverage(struct, cfg, dest_dir=dest_dir,
+                                         relativistic=_relativistic(state))
 
 
 def _psml_files(struct, cfg, *, dest_dir=None) -> dict:
@@ -552,10 +607,7 @@ def _validate_siesta(struct: Structure, cfg,
     # become WARN (silent wrong bond lengths otherwise).  A spin-orbit run
     # needs fully-relativistic files.
     issues += _check_siesta_pseudo_coverage(
-        struct, cfg, dest_dir=dest_dir,
-        relativistic=("spin-orbit" if state is not None
-                      and state.spin_treatment.value == "spin-orbit"
-                      else "scalar"))
+        struct, cfg, dest_dir=dest_dir, relativistic=_relativistic(state))
 
     # MeshCutoff floor: warn below 150 Ry (production-defensible
     # threshold).  The dataclass slider lower bound is 100 Ry; this

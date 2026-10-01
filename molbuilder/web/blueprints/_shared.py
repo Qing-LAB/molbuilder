@@ -1125,6 +1125,11 @@ def _item_to_field(item, id_prefix: str,
     if item.optional:
         out["null_option"] = True
         out["null_label"] = item.null_label or "(auto)"
+    # DRAWN REQUIRED ON THE KINDS THAT DECLARE IT (`template.Item.required`,
+    # plan § 5w K20): the value may still be blank, and the Send refuses
+    # until it is answered -- the pseudopotential folder on SIESTA.
+    if calculation in item.required:
+        out["required"] = True
     if item.refs:
         # RESOLVED here, server-side, from the one bibliography
         # (molbuilder/references.py) -- the form shows a real title and

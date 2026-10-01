@@ -411,6 +411,14 @@ class Item:
     #: Ask it directly, or filter for it: ``select(t, shared=True)``.
     shared: Tuple[str, ...] = ()
 
+    #: **WHICH KINDS' FORMS DRAW THIS OPTIONAL ITEM AS REQUIRED** (plan § 5w
+    #: K20).  Unset stays a state the item has; on these kinds the Send
+    #: refuses until the question is answered, so the form marks the control
+    #: required and red while it is empty -- the pseudopotential folder on a
+    #: SIESTA optimization or vibration.  A list of CALCULATION KINDS, like
+    #: `shared`; absence means *not required*.  It refuses nothing itself.
+    required: Tuple[str, ...] = ()
+
     #: **WHICH RUNGS may carry their own value for this item.**
     #:
     #: `calculations` one level down: that says which KINDS have this
@@ -899,7 +907,8 @@ def _toml_key(k: Any) -> str:
 #: what it is, then what it is worth, then what bounds it, then the prose.
 _ITEM_KEY_ORDER = ("kind", "category", "engines", "calculations", "refs", "anchor", "engine_key",
                    "manual", "expands", "type",
-                   "choices", "value", "default", "recommended", "offered", "optional", "allocation",
+                   "choices", "value", "default", "recommended", "offered", "optional", "required",
+                   "allocation",
                    "citation", "shared", "role", "role_values", "stages",
                    "unit", "range", "above", "tier", "pattern",
                    "group", "label", "null_label", "read_by", "help")
@@ -969,6 +978,8 @@ def _item_payload(it: Item) -> Dict[str, Any]:
                               for k, v in it.role_values}
     if it.shared:
         out["shared"] = list(it.shared)
+    if it.required:
+        out["required"] = list(it.required)
     if it.stages:
         out["stages"] = list(it.stages)
     if it.label:
@@ -1692,6 +1703,7 @@ def _item_from(name: str, body: Any) -> Item:
                                 type_, choices, keyed_by="rung",
                                 example='role_values = { device = "transiesta" }'),
         shared=tuple(body.get("shared", ()) or ()),
+        required=tuple(body.get("required", ()) or ()),
         stages=tuple(body.get("stages", ()) or ()),
         null_label=str(body.get("null_label", "") or ""),
     )

@@ -4639,8 +4639,8 @@ as a milestone does (§ 0a). **Approved 2026-09-29** (§ 5w.3); K6 is first.
 | **K16** | **the run record's parameter rows** | `declarations(engine, calculation, stage)` — the rung's own items | SS-C10 |
 | **K17** | **physics each needing a build or a refusal** (not a framework gap) | PS-C3 (PCM's solvent terms on the held-atom, IR-only and Raman routes — build and measure, or refuse); PS-C2 (two spin channels in the spectrum record — build, or K2 refuses); SO-C3 (the GPU-ELPA `BlockSize` realignment `tuning.md` promises — build it); SO-C10/C11 (`ParallelOverK` — SIESTA's default unless set; ELPA forces it off); SO-C12 (pseudopotentials by exact name); PO-C4 (the geomeTRIC log — write it or drop the promise); PO-C10 (the ECP read back from the molecule); PO-C12 (a `-V` functional with D3); T-F35 (the T(E) window covers the bias window); T-F26 (only the L and R electrode labels); T-F4/F34 (a fixed ladder's controls); T-F2 *(moved to K3, done 2026-09-30)*; T-F28 (the device's E_F, iterations and poles in the record); PS-C13 (mode numbers bounded at `prep`); the K3 review's `ParallelOverK` counted before time reversal, and the vibration's level-of-theory check blind to the recorded k-mesh | as listed |
 | **K18** | **a PySCF run's level of theory, recorded by no reader** *(R6, ruled 2026-09-29)* | the PySCF half of the one reader: `parse.contract.contract_of` reads a PySCF deck's stated basis, method, functional, charge and spin, and `contract_fields_of` answers for a PySCF config — so the Results tab's export carries `info.calculation` for a PySCF run as for a SIESTA one, a blank charge or spin is read from it (ES7), and a vibration's level-of-theory check works on both engines; the deck's own pair carries none, by V1.31's one-source rule | R6 (K6 review) |
-| **K19** | **a deck's spin in SIESTA's older words — warned, not read** *(found by the K2 review; user 2026-09-30: "a warning is all needed")* | molbuilder writes only `Spin.Fix` / `Spin.Total`; a deck it did not write that uses the older `FixSpin` / `TotalSpin` (SIESTA still honours them, `read_options.F90`) is read without them, so its fixed moment would read as floating — a warning says so where the deck is read, naming the words to write | the K2 review's outside finding |
-| **K20** | **the pseudopotential directory, settled before the Build tab is left** *(user, 2026-09-30: "it seems user easily misses this in the first setup and only finds out after the script is generated")* | on a SIESTA form the field is marked required in the setup card, red while empty; a live check beside it runs `prep`'s own coverage check as the folder is typed or picked (each element found, and its XC family against the functional); a suggestion, never a guess -- *use `projects/pseudopotential`, covers all N elements* -- when that folder covers the structure; and Send refuses until covered, the hand-over asking the same check of the folder it writes into (pseudopotentials already beside the calculation count, as at `prep`), the page scrolling to the field. Not PySCF's (none) nor transport's (they come with the citation) | the Build preflight's warn-only case; the hand-over checking none |
+| **K19** | **a deck's spin in SIESTA's older words — warned, not read** *(found by the K2 review; user 2026-09-30: "a warning is all needed")* — **closed without code 2026-09-30**: a transport citation drops a fixed count whatever words carried it (TranSIESTA cannot hold one, `count_must_float`), so the older words change no template; the only other reader of such a deck is a foreign run opened on the Results tab, which molbuilder did not write — dropped by the user's rule | molbuilder writes only `Spin.Fix` / `Spin.Total`; a deck it did not write that uses the older `FixSpin` / `TotalSpin` (SIESTA still honours them, `read_options.F90`) is read without them, so its fixed moment would read as floating — a warning says so where the deck is read, naming the words to write | the K2 review's outside finding |
+| **K20** | **the pseudopotential directory, settled before the Build tab is left** — **done 2026-09-30** (§ 5w.5) *(user, 2026-09-30: "it seems user easily misses this in the first setup and only finds out after the script is generated")* | on a SIESTA form the field is marked required in the setup card, red while empty; a live check beside it runs `prep`'s own coverage check as the folder is typed or picked (each element found, and its XC family against the functional); a suggestion, never a guess -- *use `projects/pseudopotential`, covers all N elements* -- when that folder covers the structure; and Send refuses until covered, the hand-over asking the same check of the folder it writes into (pseudopotentials already beside the calculation count, as at `prep`), the page scrolling to the field. Not PySCF's (none) nor transport's (they come with the citation) | the Build preflight's warn-only case; the hand-over checking none |
 | **K21** | **a spin-polarized junction's transmission, both channels** *(user, 2026-09-30)* | the transmission record reads TBtrans's two spin channels and carries both, G = (e²/h)(T↑ + T↓) -- `engines/transport.md` § 2a.4, § 5s P5 -- so a polarized junction's result is finished, not only its device run | § 5s P5 |
 | **K22** | **per-atom starting spins** *(user, 2026-09-30)* | design first, for the user's word: where the starting moments live (the structure's own per-atom data, or a template item) and how SIESTA is told them (`DM.InitSpin`) -- a floating moment starts every atom at its largest moment, aligned (`m_new_dm.F90`), which serves one radical or one magnetic centre and not several coupled antiferromagnetically | -- |
 
@@ -5019,6 +5019,29 @@ reviewers' probes (the archive's § E lists) among its runs.
   `jobset init` discarding gate ③'s warnings (latent: its ladder presets
   hold none); duplicate k tests in `validation/test_geometry.py`; stale
   names from before K3 (§ 5w.2's sweep).
+* **K19 — closed without code 2026-09-30** (the row says why: a transport
+  citation drops a fixed count whatever words carried it).
+* **K20 — done 2026-09-30** (user: *"it seems user easily misses this in the
+  first setup and only finds out after the script is generated"*). The
+  pseudopotential folder is settled before a SIESTA calculation is written:
+  the item declares the kinds whose forms draw it **required** (`required`,
+  a new item key — `template.md` § 5; `psml_lib` on optimization and
+  vibration, not transport, whose files come with the citation), and the
+  form marks it and draws it red while empty; the live check's unset
+  warning names the tree's `pseudopotential` folder when it covers every
+  element the calculation lacks (`pseudos.CONVENTIONAL_LIBRARY`, a
+  suggestion, never a fill); the **Send asks the same check of the folder
+  it writes into** (`validation.siesta.pseudopotential_findings`; the
+  sender passes `dest`, and files already beside the calculation count, as
+  at `prep`) and refuses until every element is covered, its findings
+  beside the field and the first brought into view (the renderer's
+  `reveal`). Contract: `science/pseudopotentials.md` § 1 (owner);
+  `job-contracts.md` § 2.5a; `handover-procedure.md` § 2.2;
+  `template.md` § 5; `form-schema.md` § 1.1. Tests: one browser test on the
+  Build tab (the mark, the suggestion, the refusal in view with nothing
+  written, then the Send writing) — red under each of its four mutations;
+  the Send tests' calculations carry their pseudopotentials, as a person's
+  do.
 
 ---
 
