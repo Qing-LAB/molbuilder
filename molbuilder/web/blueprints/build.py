@@ -1425,7 +1425,9 @@ def api_task_setup_prep():
         # header carried the domain's width (caught by review, 2026-09-02).
         try:
             from molbuilder.scheduler import machine_for
-            _rec = machine_for(dest, target=target, probe=(target is None))
+            # READ, never probed (`configuration.md` M-4; W52): a machine
+            # with no record is the refusal Prep gives, not a measurement.
+            _rec = machine_for(dest, target=target)
         except Exception:                                     # noqa: BLE001
             _rec = None
         _n_atoms = getattr(getattr(task, "structure", None), "atoms", None)

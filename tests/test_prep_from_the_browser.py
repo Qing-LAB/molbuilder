@@ -126,7 +126,7 @@ def test_the_local_machine_can_be_NAMED(web_client, described):
     # the important half -- it does not raise the ambiguity refusal
     from molbuilder.scheduler.record import AmbiguousTarget
     try:
-        machine_for(target=LOCAL_TARGET, probe=False)
+        machine_for(target=LOCAL_TARGET)
     except AmbiguousTarget:
         pytest.fail("naming this machine still reads as silence")
 

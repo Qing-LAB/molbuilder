@@ -135,7 +135,7 @@ _MEASUREMENT_PINS = {"max_scf_iter": 3, "relax_steps": 0, "restart": "clean",
                      "continue_retries": 0, "scf_must_converge": False}
 
 
-def _gpu_inventory(base, routing=None):
+def _gpu_inventory(base, routing=None, *, card=None):
     """The cluster's GPU ``(per-node count, type)`` from THE gpu domain
     row (`scheduler.place.candidates` -- one walk, shared with the cap and
     the routing, so the grid's device count, the cap and the submission
@@ -148,6 +148,11 @@ def _gpu_inventory(base, routing=None):
     records SEVERAL types: choosing one would be a ranking, and the probe
     buried ``best_gpu_type`` for exactly that (scheduler/probe.py, N3) --
     the remedy is curating the row down to the type this bench measures.
+    A ``card`` already chosen -- stated, or the target's probed one
+    (:func:`_gpu_type_for_bench`) -- is no ranking: the row answers that
+    card's count, and refuses only if it does not hold it (W52: the row's
+    card replaced a stated one, so the bench measured a card the run does
+    not ask for).
     """
     from ..runtime_config import get_routing
     from ..scheduler.place import candidates
@@ -165,6 +170,15 @@ def _gpu_inventory(base, routing=None):
     inv = row.devices if row is not None else ()
     if not inv:
         return None, None
+    if card:
+        held = [d for d in inv if d.type == card]
+        if not held:
+            raise PrepError(
+                f"domain {row.name!r} records GPU types "
+                f"{', '.join(sorted(d.type for d in inv))}, and not the "
+                f"card this calculation measures ({card}: "
+                f"scheduler.gpu.default_type, else the machine's probe).")
+        return (held[0].per_node or None), card
     if len(inv) > 1:
         raise PrepError(
             f"domain {row.name!r} records several GPU types "
@@ -516,7 +530,7 @@ def declared_run_shape(base, target, task, stage=None):
         out.pop("gres", None)
         return out
     from ..scheduler import machine_for
-    rec = machine_for(Path(base), target=target, probe=(target is None))
+    rec = machine_for(Path(base), target=target)
     topo = getattr(rec, "topology", None)
     # WHICH CARD, by the bench's own two producers in its order: the stated
     # choice or the target's probe, else the queue menu's GPU inventory --
@@ -713,27 +727,20 @@ def prep_run_inputs(base, target, task, stage, allocation=None, *,
                     "\n  To measure first:       "
                     + command("prep", "bench", stage, base=base)))
         elif _ambiguous is not None:
-            _opts = "\n".join(
-                f"      --target {c}" for c in _ambiguous.choices
-                if c != "(this machine)")
+            # THE REFUSAL'S OWN WORDS (`AmbiguousTarget`), never a second
+            # set: this one said "already probed" whatever was so (W52).
             note("  no launch shape in `execution` and no flags, and\n"
                  "  more than one machine is on file -- so there is no\n"
-                 "  target to read a core count FROM until you name one:\n"
-                 + _opts +
-                 "\n      --target this   # this machine, already probed\n"
-                 "  Nothing needs probing: these records exist.")
+                 "  target to read a core count FROM until you name one: "
+                 + str(_ambiguous))
         elif _resolve_failed is not None:
             pass          # the refusal that follows names the real cause
         else:
-            # THIS MACHINE is probed with no name (`this` is reserved), a
-            # named one on itself, the note after `#` (W52).
-            from ..scheduler.record import LOCAL_TARGET
+            from ..scheduler.record import probe_line
             note(f"  no launch shape in `execution`, no flags, and no "
                  f"core count for {_where} --\n"
                  f"  `prep` will refuse rather than guess.  Probe it:\n"
-                 f"  molbuilder jobset probe --write"
-                 + ("" if target in (None, LOCAL_TARGET) else
-                    f" --name {target}   # on that machine"))
+                 f"  {probe_line(target)}")
 
     # `chosen` is returned for the PREVIEW to name; it is already folded in.
     return allocation, pins, chosen
@@ -830,7 +837,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     from ..task import FILENAME as TASK_FILENAME, read_task
     from ..template import (read_template, template_path,
                             select as template_select)
-    from .prep import _environment_for
+    from .prep import _environment_read
     task = read_task(Path(base) / TASK_FILENAME)
     # A DESCRIPTION WITH NO BENCH is refused before any machine is read: a
     # refusal about the target would otherwise answer a question the
@@ -842,7 +849,11 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # box you happen to be typing on (P2, 2026-08-17).  Without this a
     # benchmark prepped on a workstation for a cluster measured the
     # workstation -- 20 cores, no GPU -- and said nothing.
-    environment = _environment_for(base, target)
+    # READ, NOT SNAPSHOTTED: the bench card asks this on every edit, and
+    # `prep bench` writes its snapshot at step 1 of the five, after the
+    # under-way question (W52: every edit tied the calculation to the
+    # machine on the picker).
+    environment = _environment_read(base, target)
     topo = getattr(environment, "topology", None)
     gpn = getattr(topo, "gpus_per_node", None) or 0
     cps = getattr(topo, "cores_per_socket", None)
@@ -918,21 +929,35 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
         # No GPU on THIS node -- but the cluster behind a login node may
         # still have one: the probe records each partition's gres
         # inventory on its domain row (§ 4.3a), and that answers here.
-        _gpn, _gtype = _gpu_inventory(base)
+        # ONLY WHAT IS MISSING, from the TARGET's menu in hand -- the run's
+        # order: the card stated, else probed, else the row's; the count
+        # from the row (W52: the row's card replaced a stated one, and the
+        # folder's menu answered for a `--target` prep).
+        _gpn, _gtype = _gpu_inventory(
+            base, getattr(environment, "domains", None), card=gtype)
         if _gpn:
-            gpn, gtype = _gpn, _gtype
+            gpn, gtype = gpn or _gpn, gtype or _gtype
         else:
+            # TWO STEPS, both said (W52: "delete environment.json to
+            # re-probe" -- prep never probes, and deleting re-reads the same
+            # record): re-probe the record, then let the calculation follow.
+            from ..scheduler.record import LOCAL_TARGET, probe_line
+            _which = ("this machine" if target in (None, LOCAL_TARGET)
+                      else repr(target))
             raise PrepError(
                 f"this description asks for the GPU (use_gpu = "
                 f"{'a cpu-vs-gpu axis' if mixed else 'true'}), so the "
                 f"benchmark enumerates a GPU grid (G × ranks-per-GPU × "
-                f"cores) -- and this machine's probe found no GPU topology "
-                f"(gpus_per_node={gpn!r}, gpu_type={gtype!r}) and no "
-                f"domain row with a recorded GPU inventory.  Delete "
-                f"environment.json to re-probe, run `jobset probe --write` "
-                f"on the cluster's login node, or run the benchmark on "
-                f"the target it is meant to measure -- the comparison is "
-                f"by node type (asu-sol.md § 5.2).")
+                f"cores) -- and the record it reads ({_which}) states no "
+                f"GPU (gpus_per_node={gpn!r}, gpu_type={gtype!r}) and no "
+                f"queue with a recorded GPU inventory.  If that machine has "
+                f"one, its record is out of date: re-probe it --\n"
+                f"    {probe_line(target)}\n"
+                f"  -- and delete this calculation's environment.json if it "
+                f"has one, so the next prep snapshots the new record "
+                f"(configuration.md M-3).  Or prep for the machine that has "
+                f"the GPU (`--target`): the comparison is by node type "
+                f"(asu-sol.md § 5.2).")
 
     # The axes come from the split above -- the value entries already left
     # as pins or value axes, so what remains is machine-answered by

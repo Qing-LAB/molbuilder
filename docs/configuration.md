@@ -110,7 +110,7 @@ named.
 |---|---|---|
 | `molbuilder.json` (machine) | 1. `$MOLBUILDER_CONFIG_DIR/molbuilder.json` if that variable is set — **the root, exactly as given** (§ 2.1c)<br>2. `$XDG_CONFIG_HOME/molbuilder/molbuilder.json` if that variable is set<br>3. `~/.config/molbuilder/molbuilder.json` | **one file.** There is no search: the branches above choose a DIRECTORY, and the file is the one in it. A `./molbuilder.json` in the working directory is not read (§ 2.1a) |
 | `.molbuilder.json` (project) | `<project-dir>/.molbuilder.json` | **deep-merged** over the machine file, project wins — *the one merge in this document*. Objects recurse, scalars and arrays replace |
-| `environment.json` | 1. `<calculation>/environment.json`<br>2. a **named target**, when one was asked for: `<config dir>/environments/<name>.json`<br>3. `<config dir>/environment.json` — the config directory is § 2.1c's three branches, **`MOLBUILDER_CONFIG_DIR` included**; this row stated only the last two until 2026-09-12<br>4. a fresh probe — **only when the caller asked for one** | **whole record**, first found wins (M-3). No field merge |
+| `environment.json` | 1. `<calculation>/environment.json`<br>2. a **named target**, when one was asked for: `<config dir>/environments/<name>.json`<br>3. `<config dir>/environment.json` — the config directory is § 2.1c's three branches, **`MOLBUILDER_CONFIG_DIR` included**; this row stated only the last two until 2026-09-12 — and when none answers, nothing: **no reader probes** (M-4; until 2026-10-01 a fourth row read *a fresh probe, only when the caller asked*) | **whole record**, first found wins (M-3). No field merge |
 | `catalogue.template.toml` | `molbuilder/data/` inside the installed package | one file; it ships with the code |
 | `<engine>/warm-files.toml` | 1. `<calculation>/warm-files.toml`<br>2. `molbuilder/<engine>/warm-files.toml` in the package | first found wins — a calculation's tuned copy replaces the shipped one |
 | `<label>.template.toml`, `task.json` | the calculation folder, and nowhere else | there is nothing to combine — one calculation, one description |
@@ -983,10 +983,12 @@ the artifact that satisfies it.
 ### M-3 — two scopes, precedence and not merge
 
 1. **the calculation** — `<calculation>/environment.json`, snapshotted by `prep`
-   step 1 and, once written, never overwritten;
-2. **the machine** — written by `jobset probe`, shared by every calculation here;
-3. **a fresh probe** — when neither file exists, and only when the caller asked
-   for one (M-4).
+   step 1 and, once written, never overwritten; a preview reads the record it
+   would snapshot and writes nothing (`web/task-setup.md` § 11.1);
+2. **the machine** — written by `jobset probe`, shared by every calculation here.
+
+When neither answers, nothing does: **no reader probes** (M-4). `jobset probe`
+is the only thing that measures a machine, and the refusal names it.
 
 **And one more, which is a name rather than a location.** It is consulted
 **second** — after the calculation's own snapshot, before this machine's
@@ -1027,7 +1029,8 @@ second read returning a plain `dict`.
 | `read_environment(path)` · `write_environment(env, path)` | one record at **one file**, or `None` — malformed is `None`, not an exception |
 | `machine_scope_path()` · `environments_dir()` · `named_environments()` | **where** the records live: this machine's, and the named ones |
 | `record_scopes(bundle_dir, target)` | the precedence as **data** — `[(label, path), …]`, in order |
-| `machine_for(bundle_dir, *, target=, probe=)` | M-3's precedence, entire — the one function a caller asks |
+| `machine_for(bundle_dir, *, target=)` | M-3's precedence, entire — the one function a caller asks |
+| `probe_command(name)` · `probe_line(name)` | the command that writes a machine's record — bare for this machine (`this` is reserved, and `probe` refuses it), `--name` for a named target, run on that machine; every refusal that asks for a record prints it, a line of its own with the note after `#` *(W52: four spellings, one of them a command `probe` refuses)* |
 | `UnknownTarget` | a named target that does not exist, or one that contradicts the calculation's snapshot |
 
 **No consumer reads either file directly.**
@@ -1039,12 +1042,16 @@ second read returning a plain `dict`.
 > Named targets are a second location, so a private `_read_named` grew beside
 > it and there were two readers of one format again. A path-keyed door has one.
 >
-> **`probe` is off by default.** `machine_for` used to detect whenever no
-> record answered, and `get_routing` calls it on every lookup — so a read-only
-> getter shelled out to `sinfo`, `scontrol`, `lscpu` and `nvidia-smi`, 56 ms a
-> call, and on a login node a round trip to the scheduler. Probing is opt-in
-> and `prep` step 1 is the caller that opts in, because it is the one that
-> writes the answer down afterwards.
+> **No reader probes** *(W52, 2026-10-01)*. `machine_for` used to detect
+> whenever no record answered, and `get_routing` calls it on every lookup — so
+> a read-only getter shelled out to `sinfo`, `scontrol`, `lscpu` and
+> `nvidia-smi`, 56 ms a call, and on a login node a round trip to the
+> scheduler. Probing became opt-in on 2026-08-17, and `prep` step 1 stopped
+> opting in when it stopped guessing (`project-layout.md` § 2.3.1: *step 1
+> reads, it does not probe, ever*) — but a GPU run's sizing and every Task
+> setup preview still opted in, measuring a machine with no record a moment
+> before step 1 refused for want of one. The parameter is gone: a record is
+> read, or the caller refuses with `probe_command`.
 
 ### M-5 — this record stays JSON
 

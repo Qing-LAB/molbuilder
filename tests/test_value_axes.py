@@ -161,6 +161,35 @@ def test_two_inventory_types_refuse_with_the_curation_remedy(sol_calc):
     assert "a100.20gb" in str(e.value)
 
 
+def test_a_stated_card_is_the_one_measured(sol_calc):
+    """The card stated in molbuilder.json (`scheduler.gpu.default_type`) is
+    the one the bench measures, as it is the one the run asks for -- the
+    card stated, else probed, else the row's, and from the row only the
+    COUNT (`_gpu_type_for_bench`).  So a row of two types is no ranking to
+    refuse once the person has chosen.
+
+    PREVENTS (the W52 review, P2a-09): on a login node, whose probe sees no
+    card, the row's card replaced the stated one -- and a row of two types
+    refused, telling the person to edit a measured record they had already
+    answered.
+
+    MUTATION THIS MUST FAIL AGAINST: the row's card taken over a stated
+    one."""
+    env = json.loads((sol_calc / "environment.json").read_text())
+    env["domains"][1]["gpu"] = {"a100": 4, "a100.20gb": 16}
+    (sol_calc / "environment.json").write_text(json.dumps(env))
+    cfg = json.loads((sol_calc / ".molbuilder.json").read_text())
+    cfg["scheduler"] = {"kind": "slurm",
+                        "directives": {"partition": "general",
+                                       "qos": "public"},
+                        "gpu": {"default_type": "a100.20gb"}}
+    (sol_calc / ".molbuilder.json").write_text(json.dumps(cfg))
+    _declare(sol_calc, USERS_MATRIX)
+    points, _pins, tr = bench_inputs(sol_calc, None)
+    g2 = next(p for p in points if p["G"] == 2)
+    assert tr.to_resources(g2, None)["gres"] == "gpu:a100.20gb:2"
+
+
 def test_a_hand_declared_device_row_enumerates_like_a_probed_one(sol_calc):
     """The documented hand-declared spelling — `asu-sol.md` § 5.3's
     ``{"type": "a100", "per_node": 4, "mem_gb": 80}`` — is the SAME fact as
@@ -188,14 +217,20 @@ def test_a_hand_declared_device_row_enumerates_like_a_probed_one(sol_calc):
 
 def test_no_gpu_anywhere_refuses_with_both_remedies(sol_calc):
     """No local GPU and no recorded inventory: the family cannot be
-    enumerated, and the refusal names the probe AND the menu."""
+    enumerated, and the refusal names the probe AND the menu -- and the
+    two steps that make a calculation follow a re-probed machine
+    (`configuration.md` M-3: prep never probes, so deleting the snapshot
+    alone re-reads the same record; W52)."""
     env = json.loads((sol_calc / "environment.json").read_text())
     del env["domains"][1]["gpu"]
     (sol_calc / "environment.json").write_text(json.dumps(env))
     _declare(sol_calc, USERS_MATRIX)
     with pytest.raises(PrepError) as e:
         bench_inputs(sol_calc, None)
-    assert "no domain row with a recorded GPU inventory" in str(e.value)
+    said = str(e.value)
+    assert "no queue with a recorded GPU inventory" in said, said
+    assert "molbuilder jobset probe --write\n" in said, said
+    assert "delete this calculation's environment.json" in said, said
 
 
 # --------------------------------------------------------------------- #

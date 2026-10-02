@@ -2599,6 +2599,7 @@ def render_run_wrapper(script_path: Path, *,
             # command.  The record is the ONE place a core count is read
             # from (`running-a-job.md` § 3.1).
             _local = _rec is None
+            from .scheduler.record import probe_command as _probe_command
             raise WrapperError(
                 "cannot size this job: nothing states a rank count and "
                 + ("this machine has no record."
@@ -2606,7 +2607,7 @@ def render_run_wrapper(script_path: Path, *,
                    "the target's record carries no core count.")
                 + "\n  Either state it -- `execution` in task.json, or "
                   "--np N on the prep -- or record the machine's topology:\n"
-                + ("    molbuilder jobset probe --write\n"
+                + ("    " + _probe_command(None) + "\n"
                    if _local else
                    # THE NAME IS THE PERSON'S, asked for in words: a `NAME`
                    # to fill in, and a `(note)` bash cannot parse (W52).
@@ -4920,9 +4921,10 @@ def header_ntasks(mpi_np, *, gpu=False, gpu_count=None, auto=None):
         return int(auto), ("nothing stated -- the selected target/domain's "
                            "own core count")
     return None, ("nothing states a rank count and the target's record says "
-                  "no core count -- probe the machine (`molbuilder jobset "
-                  "probe --write --name NAME`) or state one, because a "
-                  "default invented here would be about the wrong machine")
+                  "no core count -- probe that machine (`molbuilder jobset "
+                  "probe --write` on it, with `--name` for a named target) "
+                  "or state one, because a default invented here would be "
+                  "about the wrong machine")
 
 
 def _render_sbatch_for(script_path: Path, *,

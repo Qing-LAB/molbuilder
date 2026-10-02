@@ -120,8 +120,8 @@ _NO_RECORD = (
 
 def resolve_target(base_dir, target: Optional[str] = None) -> Path:
     """**Step 1 of the five: resolve the machine** (`project-layout.md`
-    § 2.3.1) — probe cores, GPUs, scheduler and conda, and persist the answer
-    as ``environment.json`` beside the bundle.
+    § 2.3.1) — read the machine's record (its cores, GPUs, scheduler and
+    environment) and snapshot it as ``environment.json`` beside the bundle.
 
     **This step existed only inside the benchmark until 2026-08-10.**
     `bench/prep.py` did it; `prep_jobset` did not do it at all, so a staged
@@ -139,9 +139,12 @@ def resolve_target(base_dir, target: Optional[str] = None) -> Path:
     schema saying it was never the benchmark's to own.
 
     Written once per bundle and **not** overwritten on a later prep: the file
-    records what this machine is, and re-probing on every stage would make two
+    records what this machine is, and re-reading on every stage would make two
     stages of one calculation disagree about their own target for no reason a
-    user asked for. Delete it to force a re-probe.
+    user asked for.  A calculation that should follow a re-probed machine
+    deletes its file, and the next prep snapshots the new record
+    (`configuration.md` M-3).  A preview reads without writing
+    (:func:`_environment_read`).
 
     **IT DOES NOT PROBE.  A machine that has no record is a REFUSAL**
     *(user, 2026-09-02: "all environments have to be explicitly probed and
@@ -175,17 +178,33 @@ def resolve_target(base_dir, target: Optional[str] = None) -> Path:
     # prep stops.
     env = machine_for(target=target)
     if env is None:
-        # THIS MACHINE is probed with no name -- `this` is reserved and the
-        # probe refuses it -- and a note goes after `#`, where a shell reads
-        # none (W52: `--name this   (on that machine)`, refused twice over).
-        from ..scheduler.record import LOCAL_TARGET
-        here = target in (None, LOCAL_TARGET)
-        raise PrepError(_NO_RECORD.format(
-            which=("this machine" if here else repr(target)),
-            cmd=("molbuilder jobset probe --write" if here
-                 else f"molbuilder jobset probe --write --name {target}"
-                      "   # on that machine")))
+        raise _no_record(target)
     return write_environment(env, out)
+
+
+def _no_record(target: Optional[str]) -> PrepError:
+    """The refusal of a machine with no record, naming the probe that
+    writes one (`scheduler.probe_line`: THIS machine's with no name -- `this`
+    is reserved and the probe refuses it; W52)."""
+    from ..scheduler.record import LOCAL_TARGET, probe_line
+    return PrepError(_NO_RECORD.format(
+        which=("this machine" if target in (None, LOCAL_TARGET)
+               else repr(target)),
+        cmd=probe_line(target)))
+
+
+def _environment_read(base: Path, target: Optional[str] = None):
+    """Step 1's ANSWER WITHOUT ITS WRITE -- the record `prep` would snapshot,
+    for a preview, which writes nothing (`web/task-setup.md` § 11.1).  The
+    bench card asked :func:`_environment_for` on every edit until 2026-10-01,
+    so looking at a calculation with the picker on one machine tied it to
+    that machine before anything was prepped (W52).  Refuses as step 1
+    does when no record answers."""
+    from ..scheduler import machine_for
+    env = machine_for(base, target=target)
+    if env is None:
+        raise _no_record(target)
+    return env
 
 
 def _flat_continued_from(base: Path, task, stage: str, continuation) -> None:
@@ -1611,7 +1630,7 @@ def _require_remote_activation(target: Optional[str], environment) -> None:
     sitting at is the most ordinary thing this tool does, and it was blocked
     from the browser's Prep button by a check meant for a cluster."""
     from ..scheduler import environments_dir
-    from ..scheduler.record import LOCAL_TARGET
+    from ..scheduler.record import LOCAL_TARGET, probe_command
     if (target and target != LOCAL_TARGET
             and not (getattr(environment, "script_generation", None) or {}
                      ).get("activation")):
@@ -1620,7 +1639,7 @@ def _require_remote_activation(target: Optional[str], environment) -> None:
             f"environment, so a wrapper generated here would carry THIS "
             f"machine's activation -- a path that need not exist there.\n"
             f"  Fix: on {target}, run\n"
-            f"      molbuilder jobset probe --write --name {target}\n"
+            f"      {probe_command(target)}\n"
             f"  then copy the record it writes into\n"
             f"      {environments_dir()}\n"
             f"  here, and prep again.\n"

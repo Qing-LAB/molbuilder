@@ -369,13 +369,40 @@ def test_scheduler_flag_forces_the_kind_and_names_the_named_file(tmp_path):
     assert "--target sol-x" in r.output
 
 
+#: How each machine enters its environment -- a fact the record carries,
+#: asked about like the rest (W52: replaced unasked, so a probe over Sol's
+#: record from a workstation put the workstation's hook into it).
+_SOL_ENTERS = {"activation": "source activate"}
+_DESK_ENTERS = {"activation": "conda activate"}
+
+
+def test_a_record_that_does_not_read_is_said_before_it_is_replaced(
+        tmp_path):
+    """A file at the record's path that does not read -- a newer schema, a
+    hand edit gone wrong -- is said to be there, never written over as if
+    absent; `--yes` skips the question, never the line (W52: `read_environment`
+    answers absent and unreadable alike, and the probe took the one for the
+    other).
+
+    MUTATION THIS MUST FAIL AGAINST: the write path asking only whether a
+    record READ."""
+    (tmp_path / "sol-x.json").write_text("{ not a record")
+    r = _cli(["--name", "sol-x", "--scheduler", "slurm",
+              "--set", "cores_per_socket=64",
+              "--write", "--yes", "--out", str(tmp_path)])
+    assert r.exit_code == 0, r.output
+    assert "is there and does not read" in r.output, r.output
+
+
 def _two_envs():
     from molbuilder.scheduler import Domain, Environment, Topology
     before = Environment(scheduler="workstation",
                          topology=Topology(gpus_per_node=4, gpu_type="a100"),
+                         script_generation=dict(_SOL_ENTERS),
                          detected_at="2026-08-01T00:00:00+00:00")
     probed = Environment(scheduler="workstation",
                          topology=Topology(gpus_per_node=1, gpu_type="rtx"),
+                         script_generation=dict(_DESK_ENTERS),
                          detected_at="2026-08-19T00:00:00+00:00")
     return before, probed
 
@@ -391,12 +418,14 @@ def test_consent_no_keeps_the_record_yes_takes_the_probe(monkeypatch,
     monkeypatch.setattr(click, "confirm", lambda *a, **k: False)
     out = _probe_consent_merge(before, probed, yes=False)
     assert out.topology.gpus_per_node == 4 and out.topology.gpu_type == "a100"
+    assert out.script_generation == _SOL_ENTERS
     assert out.detected_at == "2026-08-19T00:00:00+00:00"   # stamp follows
     assert "kept recorded" in capsys.readouterr().out
     before, probed = _two_envs()
     monkeypatch.setattr(click, "confirm", lambda *a, **k: True)
     out = _probe_consent_merge(before, probed, yes=False)
     assert out.topology.gpus_per_node == 1 and out.topology.gpu_type == "rtx"
+    assert out.script_generation == _DESK_ENTERS
 
 
 def test_consent_eof_keeps_everything_silence_is_no(monkeypatch, capsys):
@@ -443,6 +472,7 @@ def test_domains_diff_as_one_fact(monkeypatch, capsys):
     from molbuilder.jobset._cli import _probe_consent_merge
     before, probed = _two_envs()
     probed.topology = before.topology            # isolate the domains diff
+    probed.script_generation = before.script_generation
     probed.domains = [Domain(name="short", partition="p", qos="q",
                              max_time="1:00:00")]
     asked = []

@@ -2096,6 +2096,17 @@ def _probe_consent_merge(before, probed, *, yes: bool):
                       probed.site.partition,
                       lambda: setattr(probed.site, "partition",
                                       before.site.partition)))
+    # THE THREE FACTS THAT TRAVEL WITH A RECORD (`diagnostics.local_facts`:
+    # how the machine enters its environment, which envs it holds, what they
+    # were built for) are asked about like every other difference.  They were
+    # replaced unasked, so a probe over Sol's record from a workstation put
+    # the workstation's activation into it whatever was answered, and every
+    # job then died sourcing a path Sol does not have (W52).
+    for _f in ("script_generation", "conda_envs", "env_arch"):
+        b, pv = getattr(before, _f), getattr(probed, _f)
+        if b != pv:
+            diffs.append((_f, b, pv,
+                          lambda n=_f, v=b: setattr(probed, n, v)))
     # The reachable-domain SET is one fact -- a per-row question would ask
     # about a menu nobody composed row by row.
     if [d.to_row() for d in before.domains] != \
@@ -2208,10 +2219,14 @@ def cmd_machines() -> None:
         # gap the ambiguity refusal had (`record.LOCAL_TARGET`, 2026-08-24);
         # a hint that names only half the options is half a hint.
         from ..scheduler.record import LOCAL_TARGET
-        click.echo("More than one machine could be meant, so `prep` requires "
-                   "`--target <name>` (being asked costs one flag; being "
-                   "given the wrong one costs a queue wait).")
-        click.echo(f"    --target {LOCAL_TARGET}   is this machine.")
+        # ONLY BEFORE THE FIRST PREP: a calculation that holds its snapshot
+        # has its answer, and is asked nothing (`record.machine_for`'s C1;
+        # W52: this said `prep` requires the flag, always).
+        click.echo("More than one machine could be meant, so a calculation's "
+                   "first `prep` asks which, with `--target` (being asked "
+                   "costs one flag; being given the wrong one costs a queue "
+                   "wait); once prepped, it keeps the record it took.")
+        click.echo(f"    --target {LOCAL_TARGET}   # this machine")
 
 
 @jobset_group.command("probe",
@@ -2482,10 +2497,20 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
 
     before = read_environment(target / fname)
     if before is None:
-        # Nothing to clobber: one consent creates the record.
+        # Nothing to clobber: one consent creates the record -- unless a file
+        # IS there and does not read, which is said, never treated as absent
+        # (W52: `read_environment` answers both with `None`, and a newer
+        # schema or a hand-fixed record was replaced unasked; `--yes` skips
+        # the question, never this line).
+        there = (target / fname).exists()
+        if there:
+            click.echo(f"\n{target / fname} is there and does not read as a "
+                       f"record this molbuilder knows -- writing replaces "
+                       f"it.")
         if not yes:
             try:
-                click.confirm(f"Write this record to {target / fname}?",
+                click.confirm("Replace it with this record?" if there else
+                              f"Write this record to {target / fname}?",
                               abort=True)
             except click.exceptions.Abort:
                 click.echo("\n  no answer -- nothing written "

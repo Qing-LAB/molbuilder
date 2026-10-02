@@ -862,10 +862,8 @@ def known_machines() -> List[Dict[str, object]]:
             # while a named target takes `--name` and must be probed on the
             # machine it describes.  (Said `--name (this machine)` until
             # 2026-08-22, which is not a name and not a command.)
-            fix = ("`jobset probe --write` here"
-                   if kind == "local"
-                   else "`jobset probe --write --name %s` on that machine"
-                        % name)
+            fix = (f"`{probe_command(None)}` here" if kind == "local"
+                   else f"`{probe_command(name)}` on that machine")
             return {"name": name, "kind": kind, "path": str(path),
                     "readable": False, "detected_at": "", "domains": [],
                     "mem_total_gb": None, "gpus_per_node": None,
@@ -1061,8 +1059,8 @@ class UnknownTarget(Exception):
         listed = ", ".join(self.known) or "(none)"
         super().__init__(
             f"no machine record named {name!r}.  Known targets: {listed}.  "
-            f"Write one with `molbuilder jobset probe --write --name {name}` "
-            f"on that machine, or declare it by hand in "
+            f"Write one with `{probe_command(name)}` on that machine, or "
+            f"declare it by hand in "
             f"{environments_dir() / (name + '.json')}.")
 
     @classmethod
@@ -1080,8 +1078,8 @@ class UnknownTarget(Exception):
         Exception.__init__(exc, (
             f"--target {name!r} names a record that cannot be read: {path}.\n"
             f"  It is absent, not JSON, or a schema this molbuilder does not "
-            f"know.  Re-write it with `molbuilder jobset probe --write "
-            f"--name {name}` on that machine."))
+            f"know.  Re-write it with `{probe_command(name)}` on that "
+            f"machine."))
         return exc
 
     @classmethod
@@ -1127,12 +1125,21 @@ class AmbiguousTarget(Exception):
         self.choices = sorted(choices)
         listed = "\n".join(f"    --target {c}" for c in self.choices
                            if c != "(this machine)")
-        listed += f"\n    --target {LOCAL_TARGET}   (this machine)"
+        listed += f"\n    --target {LOCAL_TARGET}   # this machine"
+        # "NOTHING NEEDS PROBING" ONLY WHEN IT IS SO: with no record of its
+        # own, `--target this` is refused next, and the probe it needs is the
+        # one command that helps (W52: the refusal said so unconditionally,
+        # and every printed way out was a dead end).
+        here = read_environment(machine_scope_path()) is not None
         super().__init__(
             "several machines could be meant and none was named.  Say which "
             "this calculation is for:\n" + listed +
             "\n    (there is no default; name one of the above)\n"
-            "  These records already exist -- nothing needs probing.")
+            + ("  These records already exist -- nothing needs probing."
+               if here else
+               "  This machine has no record yet, so `--target "
+               f"{LOCAL_TARGET}` needs one first:\n    "
+               + probe_command(None)))
 
 
 #: THE TYPEABLE NAME FOR THIS MACHINE (2026-08-24).  ``known_machines``
@@ -1146,8 +1153,25 @@ class AmbiguousTarget(Exception):
 LOCAL_TARGET = "this"
 
 
+def probe_command(name: Optional[str] = None) -> str:
+    """The command that writes the record for machine ``name`` -- THIS
+    machine's with no name (:data:`LOCAL_TARGET` is reserved, and the probe
+    refuses it), a named target's with ``--name``, run on that machine.  ONE
+    spelling for every refusal that asks for a record (`configuration.md`
+    M-4; W52: four spellings, one of them a command the probe refuses)."""
+    if name in (None, LOCAL_TARGET):
+        return "molbuilder jobset probe --write"
+    return f"molbuilder jobset probe --write --name {name}"
+
+
+def probe_line(name: Optional[str] = None) -> str:
+    """:func:`probe_command` as a line of its own, where it is run said
+    after ``#`` -- the shell reads no note (`job-system.md` § 5.3)."""
+    return probe_command(name) + (
+        "" if name in (None, LOCAL_TARGET) else "   # on that machine")
+
+
 def machine_for(bundle_dir=None, *, target: Optional[str] = None,
-                probe: bool = False,
                 local_only: bool = False) -> Optional["Environment"]:
     """**The precedence, entire** — the one function a caller asks.
 
@@ -1159,14 +1183,14 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
     disagree about their own target.  A calculation that should follow a
     re-probed machine deletes its file.
 
-    ``probe`` adds a fresh detection when no scope answered, and **defaults to
-    off**.  It is opt-in because probing shells out to ``sinfo``, ``scontrol``,
-    ``lscpu`` and ``nvidia-smi``, and a *read-only getter must not do that*:
-    `get_routing` asks this on every call, so with the default the other way
-    round every domain lookup ran four subprocesses -- 56 ms a call here, and a
-    round trip to the scheduler on a login node.  `resolve_target` (prep step
-    1) is the one caller that wants it, because it is the one that WRITES the
-    answer down afterwards.
+    **It never probes** (`configuration.md` M-4): when no scope answers it
+    answers ``None``, and the caller refuses with :func:`probe_command`.  A
+    ``probe`` flag added a fresh detection until 2026-10-01 -- opt-in since
+    2026-08-17, when every lookup shelling out to ``sinfo``, ``scontrol``,
+    ``lscpu`` and ``nvidia-smi`` cost 56 ms a call -- and its last two
+    callers, a GPU run's sizing and the Task setup preview, measured a
+    machine with no record a moment before `prep` step 1 refused for want of
+    one (W52).
 
     ``local_only`` asks a DIFFERENT question from everything else in this
     function: not *"which machine is this calculation for"* (bundle / target /
@@ -1186,13 +1210,7 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
     and must not run.
     """
     if local_only:
-        env = read_environment(machine_scope_path())
-        if env is not None or not probe:
-            return env
-        try:
-            return resolve_environment()
-        except Exception:          # pragma: no cover - probing is optional
-            return None
+        return read_environment(machine_scope_path())
     # A named target is validated FIRST, before any scope is consulted.  It
     # read the calculation's snapshot first and returned it when present, on
     # the reasoning that the snapshot *is* the answer already taken.  That made
@@ -1275,12 +1293,7 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
             if _want.to_dict() != env.to_dict():
                 raise UnknownTarget.conflict(target, bundle_dir)
         return env
-    if not probe:
-        return None
-    try:
-        return resolve_environment()
-    except Exception:              # pragma: no cover - probing is optional
-        return None
+    return None
 
 
 __all__ = [
@@ -1288,7 +1301,7 @@ __all__ = [
     "detect_scheduler", "detect_topology", "detect_site",
     "resolve_environment",
     "machine_scope_path", "environments_dir", "named_environments",
-    "LOCAL_TARGET",
+    "LOCAL_TARGET", "probe_command", "probe_line",
     "record_scopes",
     "topology_field_types",
     "read_environment", "write_environment", "machine_for", "UnknownTarget",

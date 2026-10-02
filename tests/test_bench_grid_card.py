@@ -243,11 +243,17 @@ class TestPickingThisMachineIsAnAnswer:
 
     def test_the_grid_resolves_when_this_machine_was_picked(
             self, client, bundle, machine_with_named_records):
+        """...and the card, a preview, writes nothing: it reads the record a
+        prep would snapshot (`configuration.md` M-3; W52 -- every edit pause
+        snapshotted the picked machine into the calculation, so a later Prep
+        for another was refused as a contradiction of a prep never made)."""
         d = _post(client, self._unprepped(bundle),
                   {"mpi_np": [48], "omp_threads": [1], "use_gpu": [False]},
                   target="(this machine)")
         assert d["ok"] is True, d
         assert d["cells"], "a picked machine must yield cells"
+        assert not (bundle / "environment.json").exists(), (
+            "the card snapshotted the machine into the calculation")
 
     def test_naming_nothing_is_still_refused(
             self, client, bundle, machine_with_named_records):

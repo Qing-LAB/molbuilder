@@ -217,7 +217,7 @@ def test_a_machine_without_gpus_is_refused_by_name(calc):
         Environment(scheduler="workstation",
                     topology=Topology(sockets=1,
                                       cores_per_socket=4)).to_json() + "\n")
-    with pytest.raises(PrepError, match=r"no GPU topology"):
+    with pytest.raises(PrepError, match=r"states no GPU"):
         bench_inputs(calc, None)
 
 

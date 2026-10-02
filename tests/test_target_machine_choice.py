@@ -100,6 +100,9 @@ class TestTheUserChoosesTheMachine:
         assert f"--target {LOCAL_TARGET}" in res.output
         assert "omit --target" not in res.output, (
             "the refusal is telling the user to do the thing that caused it")
+        # this machine HAS its record, so nothing needs probing -- said only
+        # when it is so (W52)
+        assert "nothing needs probing" in res.output, res.output
 
     def test_c1_the_BENCH_arm_refuses_in_words_not_a_traceback(self, machines):
         """The same which-machine question, asked by `prep bench` -- which
@@ -228,6 +231,14 @@ class TestTheCasesReadingFoundThatPokingDidNot:
         res = _prep("P/optimization/w")
         assert res.exit_code != 0, res.output
         assert "several machines could be meant" in res.output
+        # ...and `--target this` needs a record first: the refusal says so
+        # and names the probe that writes it, bare -- never "nothing needs
+        # probing", which sent this case down a dead end (`--name this` is
+        # refused by the probe; W52).
+        assert "nothing needs probing" not in res.output, res.output
+        assert "This machine has no record yet" in res.output, res.output
+        assert "molbuilder jobset probe --write\n" in res.output + "\n", (
+            res.output)
 
     def test_c3_fires_even_when_the_bundle_is_already_prepped(self, machines):
         """`record_scopes` puts the calculation's snapshot FIRST, so a check
