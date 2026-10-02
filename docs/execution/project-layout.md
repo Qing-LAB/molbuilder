@@ -1201,8 +1201,9 @@ Naming them apart is what makes step 1 answerable.
 - **D4 · The machine config** — the `scheduler` block of `molbuilder.json`
   (`running-a-job.md` § 5.3). It holds what you **want**: the default partition
   and QoS, the account, the activation command, and the policy no probe may
-  invent (`gpu.exclusive`, `gpu.mem`, `defaults` — the probe's own
-  notes call these *"POLICY, not probed"*). It is **not** where detection is
+  invent (`defaults` — the probe's own notes call these *"POLICY, not
+  probed"*; the GPU block that stood beside it is gone since 2026-10-01,
+  `execution/gpu.md` § 1.2). It is **not** where detection is
   overridden; that door belongs on the probed side
   ([`configuration.md` § 5](?doc=configuration.md) M-5).
 
@@ -1211,7 +1212,7 @@ Naming them apart is what makes step 1 answerable.
 | | rule | why |
 |---|---|---|
 | **M1** | **Capability is resolved on the machine that will run the job, never before.** | The bundle you produce names no machine (§ 2.1). This is target isolation — `job-system.md` § 2, decision 3 |
-| **M2** | **Detection and declaration cover different facts, and each owns its own.** *Detected:* cores, GPUs and their type, the scheduler, **the partitions and QoS you can actually reach and their wall limits**. *Preference:* which of them you **want** — the default partition and QoS, the account, the activation command, `gpu.exclusive`, `gpu.mem`, `defaults`. **A machine reports what exists; only you can say what you want** — and when the machine is not the one you are standing on, you state its facts yourself (M2a). | *(Amended 2026-08-17 — the declared list said "the QoS … the partition you are entitled to", citing `environment.py::detect_site`'s claim that those are "not reliably derivable from `sinfo`". `scheduler_probe.parse_allowed_qos` derives exactly that from `sacctmgr -nP show assoc user=$USER`, so the tree held two modules disagreeing about whether one fact is detectable. Entitlement **is** probed; preference is not — [`configuration.md` § 5](?doc=configuration.md) M-1.)* |
+| **M2** | **Detection and declaration cover different facts, and each owns its own.** *Detected:* cores, GPUs and their type, the scheduler, **the partitions and QoS you can actually reach and their wall limits**. *Preference:* which of them you **want** — the default partition and QoS, the account, the activation command, `defaults`. **A machine reports what exists; only you can say what you want** — and when the machine is not the one you are standing on, you state its facts yourself (M2a). | *(Amended 2026-08-17 — the declared list said "the QoS … the partition you are entitled to", citing `environment.py::detect_site`'s claim that those are "not reliably derivable from `sinfo`". `scheduler_probe.parse_allowed_qos` derives exactly that from `sacctmgr -nP show assoc user=$USER`, so the tree held two modules disagreeing about whether one fact is detectable. Entitlement **is** probed; preference is not — [`configuration.md` § 5](?doc=configuration.md) M-1.)* |
 | **M2a** | **A fact may be PROBED or DECLARED, and the probe wins when there is one.** *What partitions and QoS you can reach* is a fact: detected when you are on the machine, written down by hand when you are not (describing on a workstation for a cluster). *Which one this run wants* is a preference and stays in `molbuilder.json`. `prep` checks the second against the first (M4's capability ⊇ allocation) | *(Rewritten twice on 2026-08-17.)* It first said the partition is the one fact both sides supply and **declaration wins** — a tie-break. The rewrite removed the tie-break by declaring the fact "probed only", which made the workstation-describing-a-cluster case an **error**: you cannot probe a machine you are not on. The third form keeps the split by ROLE (fact vs preference) and settles the overlap by EVIDENCE (a measurement beats a note), which is the only ordering that leaves both cases expressible. Full argument: [`configuration.md` § 5](?doc=configuration.md) M-1 |
 | **M3** | **What was detected and what was declared must both be recoverable from the run directory.** | *"the numbers were wrong"* is unanswerable if you cannot tell a probe from a setting |
 | **M4** | **The scheduler ask is an input to `prep`, not a decision at submit.** *(Amended 2026-09-02: "not a field of the description" held while `Allocation` carried the launch shape too. The shape now IS a description field — `task.json`'s `execution`, D2 — because what a run computes at is the person's decision and must survive being written down. The wall clock, the memory and the queue stay `prep`'s input, and the reasoning below is theirs.)* | Both halves are forced. Not the description: it names no machine, so it cannot know 64 cores exist. **Not submit**: step 3 renders the deck, and a deck carries values *derived from the rank count* (block size), plus the GPU line that picks the environment the wrapper activates. A deck written before the allocation is known has guessed |
@@ -1230,7 +1231,7 @@ flowchart TB
       W --> E
       H --> E
     end
-    C["<b>molbuilder.json</b> — what you WANT<br/>default partition + QoS, account,<br/>activation, gpu.mem, defaults"]
+    C["<b>molbuilder.json</b> — what you WANT<br/>default partition + QoS, account,<br/>activation, defaults"]
     A["<b>ALLOCATION — what this run asks for</b><br/>8 ranks · 1 GPU · 4 h<br/><i>given to prep</i>"]
     P["<b>prep</b><br/>step 1 snapshots capability → environment.json<br/>steps 3-4 render the deck and wrapper<br/><b>against this allocation</b>"]
     S["<b>submit</b><br/>checks the deck still agrees<br/>launches ONE job"]

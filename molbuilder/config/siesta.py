@@ -945,9 +945,9 @@ class SiestaConfig:
         "allocation": True,
         "item_kind":  "wrapper",
         "workflow_group": "staging",
-        "label":      "GPUs per trial (G)",
-        "engine_key":  "(molbuilder: scheduler ``--gres=gpu:<type>:G``; "
-                       "not in .fdf)",
+        "label":      "GPUs (G)",
+        "engine_key":  "(molbuilder: scheduler ``--gres=gpu:G``; "
+                       "not in the deck)",
         "null_label": "(machine proposes)",
         "range":      (1, 16),
         "skip_cli":   True,

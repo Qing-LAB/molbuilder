@@ -133,6 +133,13 @@ def calc(tmp_path):
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
                                       gpu_type="a100")).to_json() + "\n")
+    # A GPU RUN STATES HOW MANY (`execution/gpu.md` G5): the calculation's
+    # run card says it once, for every rung that does not say otherwise.
+    # The bench never reads it -- its GPU counts are its own grid's.
+    tj = dest / "task.json"
+    d = json.loads(tj.read_text())
+    d["execution"] = {"gpu_count": 1}
+    tj.write_text(json.dumps(d, indent=2))
     return dest
 
 
@@ -211,15 +218,6 @@ def test_trials_nest_inside_the_stage_they_measure(calc):
     # nothing landed at the old flat location
     assert not (calc / f"bench-{name}").exists()
     assert not (calc / f"point-{name}").exists()
-
-
-def test_a_machine_without_gpus_is_refused_by_name(calc):
-    (calc / "environment.json").write_text(
-        Environment(scheduler="workstation",
-                    topology=Topology(sockets=1,
-                                      cores_per_socket=4)).to_json() + "\n")
-    with pytest.raises(PrepError, match=r"states no GPU"):
-        bench_inputs(calc, None)
 
 
 def test_cli_prep_bench_requires_a_stage(calc):
@@ -920,7 +918,8 @@ class TestTheRunsOwnCondition:
     def test_a_grid_and_a_run_condition_COEXIST(self, calc):
         """The case the conflated design could not express at all."""
         self._write(calc, bench=self.BENCH,
-                    execution={"mpi_np": 2, "omp_threads": 2})
+                    execution={"mpi_np": 2, "omp_threads": 2,
+                               "gpu_count": 1})
         r = self._run(calc)["resources"]
         assert (r["mpi_np"], r["cpus_per_task"]) == (2, 2)
         # AND THE PLAN TO MEASURE SURVIVES, byte for byte
@@ -930,7 +929,8 @@ class TestTheRunsOwnCondition:
     def test_a_run_needs_no_bench_at_all(self, calc):
         """*"User can run without bench."*  Not executed, not summarized,
         not even declared."""
-        self._write(calc, execution={"mpi_np": 2, "omp_threads": 2})
+        self._write(calc, execution={"mpi_np": 2, "omp_threads": 2,
+                                     "gpu_count": 1})
         assert "bench" not in json.loads((calc / "task.json").read_text())
         r = self._run(calc)["resources"]
         assert (r["mpi_np"], r["cpus_per_task"]) == (2, 2)
@@ -946,7 +946,9 @@ class TestTheRunsOwnCondition:
                 json.dumps({k: v for k, v in
                             json.loads((calc / "task.json").read_text()).items()
                             if k != "execution"}, indent=2))
-            r = self._run(calc)["resources"]
+            # The GPU count on the prep: this calculation runs on a GPU, and
+            # a GPU run states how many (`gpu.md` G5) -- a count, not a shape.
+            r = self._run(calc, "coarse", "--gpus", "1")["resources"]
             assert r.get("mpi_np") is None, (bench, r)
 
     def test_a_stage_lays_its_own_over_the_calculations(self, calc):
@@ -955,7 +957,8 @@ class TestTheRunsOwnCondition:
         d = json.loads((calc / "task.json").read_text())
         stages = [dict(s) for s in d["stages"]]
         stages[0]["execution"] = {"mpi_np": 2}
-        self._write(calc, execution={"mpi_np": 1, "omp_threads": 2},
+        self._write(calc, execution={"mpi_np": 1, "omp_threads": 2,
+                                     "gpu_count": 1},
                     stages=stages)
         first = self._run(calc, stages[0]["name"])["resources"]
         assert (first["mpi_np"], first["cpus_per_task"]) == (2, 2)
@@ -977,33 +980,6 @@ class TestTheRunsOwnCondition:
         assert r["gres"] == "gpu:1", r["gres"]
         deck = next((calc / "01_coarse").glob("*.fdf")).read_text()
         assert "Diag.Algorithm     ELPA-2STAGE" in deck
-
-    def test_a_device_count_survives_when_use_gpu_is_only_in_the_TEMPLATE(
-            self, calc):
-        """The ordinary GPU description: the template says `use_gpu = true`
-        and the condition names only how many devices.
-
-        `declared_run_shape` asked the shipped CATALOGUE whether this was GPU
-        work, and the catalogue's `use_gpu` value is `false` -- so the test
-        was a constant and the typed `gpu_count` was SILENTLY DELETED unless
-        the condition also spelled `use_gpu`.  `run_uses_device` reads the
-        calculation's own template, which is what `bench_inputs` always
-        did."""
-        from molbuilder.jobset.prep_inputs import run_uses_device
-        from molbuilder.task import read_task
-
-        # the `calc` fixture's template carries use_gpu = True
-        self._write(calc, execution={"mpi_np": 2, "gpu_count": 1})
-        t = read_task(calc / "task.json")
-        assert run_uses_device(calc, t, "coarse") is True
-        r = self._run(calc)["resources"]
-        assert r["gres"] == "gpu:1", (
-            "a typed device count was dropped: " + repr(r.get("gres")))
-
-    def test_a_CPU_condition_gets_no_device_ask(self, calc):
-        self._write(calc, execution={"mpi_np": 2, "omp_threads": 2,
-                                     "use_gpu": False})
-        assert self._run(calc)["resources"].get("gres") is None
 
     def test_the_calculations_wall_and_memory_outrank_the_verdict(self, calc):
         """`architecture.md` § 5.2's scheduler ladder is
@@ -1190,7 +1166,10 @@ class TestTheRunsOwnCondition:
         assert auto_ranks(None) is None, "no record, no invented number"
         self._write(calc)
         d = json.loads((calc / "task.json").read_text())
-        d.pop("execution", None)
+        # A CPU RUN: the rank count is what is unstated here, and a GPU run
+        # states its GPU count (`gpu.md` G5) -- `use_gpu` is a run setting,
+        # not a launch shape.
+        d["execution"] = {"use_gpu": False}
         (calc / "task.json").write_text(json.dumps(d, indent=2))
         self._run(calc)
         w = next((calc / "01_coarse").glob("*.run.sh")).read_text()
@@ -2370,6 +2349,11 @@ def test_prep_names_what_an_unstated_shape_will_do(calc):
     from molbuilder.jobset.model import Resources
     from molbuilder.task import read_task
 
+    # A CPU RUN, so nothing at all need be stated: a GPU run states its GPU
+    # count (`gpu.md` G5), and a count is part of the shape.
+    d = json.loads((calc / "task.json").read_text())
+    d["execution"] = {"use_gpu": False}
+    (calc / "task.json").write_text(json.dumps(d, indent=2))
     self_task = read_task(calc / "task.json")
 
     # nothing stated -> the note names where the width comes from

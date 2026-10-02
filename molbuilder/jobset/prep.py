@@ -2668,8 +2668,9 @@ def _under_description(flags, declared, chosen=None) -> "Resources":
     Two things come out of `task.json`, and they are two because they answer
     two questions:
 
-      * ``allocation`` -- the queue, the wall, the memory this calculation
-        asks the SCHEDULER for (`stages.md` § 6.8a).
+      * ``allocation`` -- the queue, the wall, the memory and the GPU
+        binding this calculation asks the SCHEDULER for (`stages.md`
+        § 6.8a).
       * the run card's machine items -- the launch SHAPE the person chose:
         *"run it at eight"* (``chosen``, `stages.md` § 6.8d).  A ``bench``
         entry is a question to measure at any length, never an ask.
@@ -2695,6 +2696,10 @@ def _under_description(flags, declared, chosen=None) -> "Resources":
                           ("mem", declared.mem)):
             if val and getattr(out, name, None) in (None, ""):
                 patch[name] = val
+        # THE BINDING SWITCH, when said: `False` is the value that matters,
+        # so it is not tested for truth (`execution/gpu.md` G9).
+        if declared.gpu_binding is not None and out.gpu_binding is None:
+            patch["gpu_binding"] = declared.gpu_binding
     # ALREADY IN `Resources`' OWN WORDS -- `to_resources` speaks them, so
     # there is no name map here and no second place for one to drift.
     known = {f.name for f in _dc.fields(Resources)}

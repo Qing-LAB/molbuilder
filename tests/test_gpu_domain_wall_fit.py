@@ -232,38 +232,6 @@ class TestTheRequestStatesCoresOnce:
         assert {i.limit for i in why} == {"walltime", "cores", "mem"}
 
 
-class TestSilenceIsNotARefusal:
-    """R3 over every limit, devices included.
-
-    A domain that states no GPU inventory is not claiming it has none -- a
-    hand-declared row often states only the wall.  Refusing on silence made
-    an explicitly named domain unusable the moment its record was terse, which
-    surfaced the day R9 started admitting the named path (2026-08-23).
-
-    Preferring nodes that DO have devices is a choice, and choices belong to
-    `place.candidates`; admission only refuses what the record rules out.
-    """
-
-    def test_a_terse_row_admits_a_gpu_request(self):
-        assert admits(_dom(name="fast"), Request(gpus=2)) == []
-
-    def test_a_row_that_states_too_few_refuses(self):
-        assert _why(_dom(name="one", gpu={"a100": 1}), Request(gpus=2)) == [
-            ("gpus", 2, 1)]
-
-    def test_a_row_that_states_enough_admits(self):
-        assert admits(_dom(name="four", gpu={"a100": 4}), Request(gpus=2)) == []
-
-    def test_choosing_still_prefers_rows_with_devices(self):
-        """The preference did not move into admission -- it stayed in the
-        walk, which is why the automatic path is unchanged by the above."""
-        from molbuilder.scheduler.place import candidates
-        terse = _dom(name="terse")
-        withgpu = _dom(name="withgpu", gpu={"a100": 4})
-        assert [d.name for d in candidates([terse, withgpu], prefer_gpu=True)] \
-            == ["withgpu"]
-
-
 class TestNamingADomainDoesNotSkipTheCheck:
     """Contract § 5: `--domain` reaches the same admission test.  Your choice
     is honoured as a CHOICE, not as permission to skip verification -- until
@@ -298,17 +266,6 @@ class TestTheGpuColumnHasTwoShapes:
     Found 2026-08-23, when admission started reading the column and crashed
     with `int('a100')` on the second shape.
     """
-
-    def test_the_probed_shape_is_type_to_count(self):
-        d = _dom(name="sol", gpu={"a100": 4, "h100": 8})
-        assert admits(d, Request(gpus=8)) == []
-        assert _why(d, Request(gpus=9)) == [("gpus", 9, 8)]
-
-    def test_the_declared_shape_describes_one_device(self):
-        d = _dom(name="hand", gpu={"type": "a100", "per_node": 4,
-                                   "mem_gb": 80})
-        assert admits(d, Request(gpus=4)) == []
-        assert _why(d, Request(gpus=5)) == [("gpus", 5, 4)]
 
     def test_a_label_in_the_column_is_skipped_not_raised(self):
         """An unreadable value is not a small one (R3) -- and it must not

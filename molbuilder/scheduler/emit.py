@@ -42,6 +42,9 @@ class Directives:
     ntasks:        Optional[int] = None
     cpus_per_task: Optional[int] = None
     gres:          Optional[str] = None
+    #: ``--gres-flags=enforce-binding`` beside the GPU ask, unless the
+    #: calculation turned it off (`execution/gpu.md` G9).
+    gpu_binding:   bool = True
     mem:           Optional[str] = None
     exclusive:     bool = False
 
@@ -72,6 +75,7 @@ class Directives:
             ntasks=getattr(r, "mpi_np", None),
             cpus_per_task=getattr(r, "cpus_per_task", None),
             gres=getattr(r, "gres", None),
+            gpu_binding=getattr(r, "gpu_binding", None) is not False,
             mem=getattr(r, "mem", None),
             exclusive=bool(getattr(r, "exclusive", False)),
         )
@@ -133,12 +137,15 @@ class Directives:
         It rides WITH the gres because it is meaningless without one: it
         asks the scheduler to put the task on the socket its GPU is
         attached to, which is the difference between a device on the local
-        PCIe root and one across the interconnect.
+        PCIe root and one across the interconnect.  A calculation may turn
+        it off (`allocation.gpu_binding`, `execution/gpu.md` G9) -- for both
+        spellings at once, since this is the one place either is written.
         """
         if not self.gres:
             return []
-        return [f"{prefix}--gres={self.gres}",
-                f"{prefix}--gres-flags=enforce-binding"]
+        return [f"{prefix}--gres={self.gres}"] + (
+            [f"{prefix}--gres-flags=enforce-binding"] if self.gpu_binding
+            else [])
 
     def _memory_lines(self, prefix: str, *, spell_all: bool) -> List[str]:
         """``--exclusive`` and ``--mem`` are mutually exclusive.

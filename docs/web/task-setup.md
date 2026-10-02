@@ -407,7 +407,8 @@ each other.
 
 > **This is about CATALOGUE ITEMS, and the tab also holds something else**
 > *(2026-08-24)*. The queue card ("Where it runs, and what it may use") sets
-> `task.json`'s `allocation` — `domain` / `time` / `mem` — and those are **not**
+> `task.json`'s `allocation` — `domain` / `time` / `mem`, and the GPU binding —
+> and those are **not**
 > points to try. The distinction is the one § 6.8a of
 > [`stages.md`](?doc=engines/stages.md) draws: `max_memory_mb` above is a
 > per-rank `ulimit` the *deck* carries, a machine-answered template parameter;
@@ -623,7 +624,7 @@ its point count:
 | a **measure**-card setting | `task.json`'s `bench` | the points to try. A one-point NON-machine entry is the trials' value, a pin over the template for them alone *(user rule, 2026-08-20; trials only since 2026-09-30)*; a machine axis is only ever a point to measure |
 | a **run**-card setting | `task.json`'s `execution` | **one value each** — what the run uses (`stages.md` § 6.8d). Independent of `bench`: a run needs no benchmark, and declaring a grid states nothing about the run. **Three destinations, chosen by the catalogue and never by a second key:** a machine item becomes the launch shape; `time` and `domain` are this run's own scheduler ask (§ 6.8e, and the row below); every other catalogue item is a pin over the template |
 | the notify card | `task.json`'s `notify` | the reporting policy — when, to which channels **by name**, with which fields ([`stages.md`](?doc=engines/stages.md) § 6.9; the card is § 9b). Never an address or a key: those stay on the machine that runs the job ([`run-reports.md`](?doc=execution/run-reports.md) § 1) |
-| a queue, a wall, a memory ask | `task.json`'s `allocation` | **what this calculation asks the scheduler for** (`stages.md` § 6.8a) — three fields, each optional. Not the launch shape: that is a machine-card row, one row above. **And not the last word on two of them:** a run may state its OWN `time` and `domain` on the run card, because a benchmark and a run want different wall clocks and different queues (§ 6.8e). `mem` has no such second home, deliberately — a trial and a run hold about the same memory |
+| a queue, a wall, a memory ask, the GPU binding | `task.json`'s `allocation` | **what this calculation asks the scheduler for** (`stages.md` § 6.8a) — four fields, each optional. The GPU binding is a tick-box, ticked by default: every GPU ask then carries `--gres-flags=enforce-binding`, and unticking writes `"gpu_binding": false` ([`gpu.md`](?doc=execution/gpu.md) G9). The card writes the block whole, which is why the switch is on it. Not the launch shape: that is a machine-card row, one row above. **And not the last word on two of them:** a run may state its OWN `time` and `domain` on the run card, because a benchmark and a run want different wall clocks and different queues (§ 6.8e). `mem` has no such second home, deliberately — a trial and a run hold about the same memory |
 
 ```jsonc
 // task.json — molbuilder/task@1

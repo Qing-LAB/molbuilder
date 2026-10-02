@@ -334,14 +334,23 @@ def test_only_submits_one_side_and_the_named_queue_wins(sol_calc):
     `--gpu-domain` necessary.  The claim is unchanged — a stated queue wins —
     only the spelling is per-side now.
     """
+    # A SECOND QUEUE WITH GPUS, named for the GPU side: the stated queue
+    # must win over the one placement would pick (`general`, first on the
+    # menu).  This named the cpu-only `htc` until 2026-10-01 -- the gap
+    # that let a GPU group onto a queue with no GPUs (`scheduler.md` R2a).
+    env = json.loads((sol_calc / "environment.json").read_text())
+    env["domains"].append({"name": "public", "partition": "public",
+                           "qos": "public", "max_time": "7-00:00:00",
+                           "max_cores": 48, "gpu": {"a100": 4}})
+    (sol_calc / "environment.json").write_text(json.dumps(env, indent=2))
     _declare(sol_calc, _small_matrix())
     _prep(sol_calc)
-    out = _submit_dry(sol_calc, "--only", "gpu", "--gpu-domain", "htc")
+    out = _submit_dry(sol_calc, "--only", "gpu", "--gpu-domain", "public")
     plans = [l for l in out.splitlines() if "WOULD run" in l]
     assert len(plans) == 3
     assert all("bench-group-gpu-" in l for l in plans)
-    assert all("-p htc" in l for l in plans), \
-        "--domain overrides the preference for every shelf"
+    assert all("-p public" in l for l in plans), \
+        "the named queue wins over the preference for every shelf"
     assert "bench-group-cpu" not in out
 
 

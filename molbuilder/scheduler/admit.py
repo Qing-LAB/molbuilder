@@ -186,22 +186,30 @@ def _compare(row, *, cores: Optional[int] = None,
             why.append(Refusal("mem", row.name, asked=f"{mem_gb:g} GB", allowed=f"{cap_gb:g} GB"))
 
     if gpus:
-        # THE ONE GPU CHECK (`scheduler.md` R2a; user, 2026-10-01): the
-        # queue has GPUs -- `place.candidates` offers a GPU job only queues
-        # whose record lists them -- and a node there holds as many as were
-        # asked.  No card is compared: a GPU ask names none, and which card
-        # a node carries is the machine's business.
-        #
-        # R3 APPLIES TO DEVICES TOO.  A domain that states no inventory is not
-        # claiming it has none -- plenty of records describe a queue without
-        # enumerating its gres, and a hand-declared row often states only the
-        # wall.  Refusing on silence made an explicitly named domain
-        # unusable the moment its record was terse (caught 2026-08-23, when
-        # R9 started admitting the named path).
-        most = _devices_offered(row)
-        if most is not None and most < gpus:
+        # THE ONE GPU CHECK (`scheduler.md` R2a; user, 2026-10-01: "the only
+        # thing you check is the gpu dependent task is scheduled to the
+        # group/domain that actually claimed to have it, and has the capacity
+        # as requested"): the queue's record CLAIMS GPUs -- a `gpu` column or
+        # a `gpu_partition` (`domain_serves_gpu`) -- and a node there holds
+        # as many as were asked.  Both halves here, so a queue NAMED with
+        # `--domain` meets the check a queue `place.candidates` picked does:
+        # the named path skipped the first half until 2026-10-01.  No card
+        # is compared: a GPU ask names none, and which card a node carries
+        # is the machine's business.
+        if not domain_serves_gpu(row):
             why.append(Refusal("gpus", row.name, unit="GPUs", asked=gpus,
-                               allowed=most))
+                               allowed=0, note="its record lists no GPUs"))
+        else:
+            # R3 FOR THE COUNT.  A queue that claims GPUs without saying how
+            # many is silent about the number, not claiming none -- records
+            # describe a GPU queue by its `gpu_partition` alone, and refusing
+            # on that silence made an explicitly named domain unusable the
+            # moment its record was terse (caught 2026-08-23, when R9 started
+            # admitting the named path).
+            most = _devices_offered(row)
+            if most is not None and most < gpus:
+                why.append(Refusal("gpus", row.name, unit="GPUs", asked=gpus,
+                                   allowed=most))
     return why
 
 

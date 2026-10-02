@@ -79,6 +79,12 @@ def bundle(tmp_path):
                                         gpus_per_node=4),
                       domains=[Domain.from_row(r) for r in _DOMAINS])
     (dest / "environment.json").write_text(env.to_json() + "\n")
+    # A GPU RUN STATES HOW MANY (`execution/gpu.md` G5), on the calculation's
+    # run card; the bench never reads it.
+    tj = dest / "task.json"
+    d = json.loads(tj.read_text())
+    d["execution"] = {"gpu_count": 1}
+    tj.write_text(json.dumps(d, indent=2))
     return dest
 
 

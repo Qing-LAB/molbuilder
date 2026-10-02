@@ -1325,8 +1325,8 @@ def _gpu_socket_affinity_block() -> str:
         '        echo "molbuilder[rank ${_lr}/${_ls}]: WARN cross-socket '
         '-- GPU numa=$_numa is on socket $_gpu_sock but this rank owns '
         'cores only on socket(s) $_my_socks; host<->device + ELPA OpenMP '
-        'pay a remote hop. Request --exclusive for clean GPU timing '
-        '(running-a-job.md § 3.3)." >&2\n'
+        'pay a remote hop -- this machine\'s scheduler did not keep the '
+        'job\'s cores beside its GPU (running-a-job.md § 3.3)." >&2\n'
         '        ;;\n'
         '    esac\n'
         'fi\n'
@@ -4923,8 +4923,8 @@ def header_ntasks(mpi_np, *, gpu=False, gpu_count=None, auto=None):
     """
     if mpi_np and int(mpi_np) >= 1:
         return int(mpi_np), "stated"
-    if gpu:
-        return int(gpu_count or 1), "one rank per device (no rank count stated)"
+    if gpu and gpu_count:
+        return int(gpu_count), "one rank per GPU asked for (no rank count stated)"
     if auto and int(auto) >= 1:
         return int(auto), ("nothing stated -- the selected target/domain's "
                            "own core count")
@@ -4954,14 +4954,15 @@ def _render_sbatch_for(script_path: Path, *,
         and GPU jobs.  For GPU jobs ``--gres`` carries the **GPU count**,
         which is INDEPENDENT of the rank count: under the K-ranks-per-GPU
         load-balance model (running-a-job.md § 3.3), ranks may exceed GPUs (e.g. 8 ranks
-        sharing 1 A100 via MPS -> ``-n 8 --gres=gpu:a100:1``).
-      * Unset ``mpi_np`` falls back to 1 (the launcher still resolves the
-        runtime rank count from ``SLURM_NTASKS``, running-a-job.md § 3.1).
+        sharing 1 GPU via MPS -> ``-n 8 --gres=gpu:1``).
+      * Unset ``mpi_np`` is :func:`header_ntasks`'s: one rank per GPU asked
+        for, else the target's width, else a refusal.
     """
     from . import runtime_config as _rc
     r = resources
     mpi_np, cpus_per_task = r.mpi_np, r.cpus_per_task
     time, gres, mem, exclusive = r.time, r.gres, r.mem, r.exclusive
+    gpu_binding = r.gpu_binding
     if project_dir is None:
         project_dir = (script_path.parent
                        if script_path.parent.exists() else None)
@@ -5097,9 +5098,13 @@ def _render_sbatch_for(script_path: Path, *,
         except ValueError as e:
             raise WrapperError(f"invalid --gres: {e}") from None
         gpu = True  # an explicit --gres forces a GPU header
-
     if gpu and gpu_count is None:
-        gpu_count = 1       # default to 1 GPU when --gres count not given
+        # NO DEFAULT COUNT (`execution/gpu.md` G5): refused here, before a
+        # rank count is worked out from it -- this asked one GPU until
+        # 2026-10-01.  `render_sbatch` keeps the same guard for a caller
+        # that reaches it directly.
+        raise WrapperError(_NO_GPU_COUNT)
+
     # WHEN NOBODY SAID, ASK FOR THE MACHINE (user, 2026-09-02: "is it possible
     # to let the default mpi core be max core number... having it be 1 core
     # would be an overlook").  It floored at 1 until then, so an unstated run
@@ -5152,6 +5157,7 @@ def _render_sbatch_for(script_path: Path, *,
         time=time,
         gpu=gpu,
         gpu_count=gpu_count,
+        gpu_binding=gpu_binding,
         mem=mem,
         exclusive=exclusive,
     )
@@ -5164,6 +5170,13 @@ def _render_sbatch_for(script_path: Path, *,
 
 # The GPU ask is read by `scheduler.quantities.parse_gres_flag` -- a count,
 # never a card (`scheduler.md` R2a).
+
+#: A GPU job with no GPU count is refused, never given one (`execution/gpu.md`
+#: G5).  `prep` refuses such a run first, naming the same two ways to say it.
+_NO_GPU_COUNT = (
+    "this job runs on a GPU and states no GPU count -- write `gpu_count` on "
+    "its run card (task.json `execution`), or `--gpus N` on the prep "
+    "(docs/execution/gpu.md G5).")
 
 
 # `_mem_to_mb` and its `_MEM_RE` were DELETED 2026-08-24: defined once,
@@ -5182,6 +5195,7 @@ def render_sbatch(script_path: Path,
                   time: Optional[str] = None,
                   gpu: bool = False,
                   gpu_count: Optional[int] = None,
+                  gpu_binding: Optional[bool] = None,
                   mem: Optional[str] = None,
                   exclusive: Optional[bool] = None) -> str:
     """Render the ``<basename>.sbatch`` submission script.
@@ -5213,10 +5227,12 @@ def render_sbatch(script_path: Path,
         own caller contradicts).  Under sbatch the
         launcher reads ``SLURM_NTASKS`` (the resolution chain in the args block), so this
         ``-n`` and ``mpirun -np`` agree by construction (running-a-job.md § 3.1).
-      gpu: emit the ``--gres`` + ``--gres-flags=enforce-binding`` lines
-        and route to ``scheduler.gpu.partition`` (running-a-job.md § 5.3).
-      exclusive: ``--exclusive``.  Defaults to ``scheduler.gpu.exclusive``
-        for GPU jobs (None => use the config value); always off for CPU.
+      gpu: emit ``--gres=gpu:<gpu_count>`` -- and
+        ``--gres-flags=enforce-binding`` unless ``gpu_binding`` is False
+        (`execution/gpu.md` G9).  A GPU job with no ``gpu_count`` is
+        refused (G5).
+      exclusive: ``--exclusive`` for a GPU job whose resources say so;
+        always off for CPU.
     """
     if not isinstance(ntasks, int) or ntasks < 1:
         raise WrapperError(
@@ -5230,7 +5246,6 @@ def render_sbatch(script_path: Path,
         )
 
     directives = dict(scheduler.get("directives") or {})
-    gpu_cfg    = dict(scheduler.get("gpu") or {})
     defaults   = dict(scheduler.get("defaults") or {})
 
     partition = directives.get("partition")
@@ -5246,31 +5261,21 @@ def render_sbatch(script_path: Path,
         )
 
     if gpu:
-        # GPU jobs route to gpu.partition when set; else the same
-        # partition, from the scheduler config (running-a-job.md § 5.3).
-        partition = gpu_cfg.get("partition") or partition
-        # NO CARD: the ask is a count, and which card a node carries is the
-        # machine's business (`scheduler.md` R2a).  This filled in
-        # `scheduler.gpu.default_type` and refused without one until
-        # 2026-10-01.
+        # THE PARTITION IS THE PLACEMENT'S -- the target's own
+        # `gpu_partition` where its record names one (`place._bind`).  This
+        # put `scheduler.gpu.partition` from THIS machine's molbuilder.json
+        # over it until 2026-10-01, and took a card (`default_type`), a
+        # whole node (`exclusive`) and a memory (`mem`) from there too,
+        # whatever the target (`execution/gpu.md` § 1.2).
         if gpu_count is None:
-            # ONE DEFAULT FOR AN ABSENT ASK: 1 device (`execution/gpu.md` G5).
-            #
-            # This read ``gpu_count = ntasks`` until 2026-08-23 -- one GPU per
-            # rank, the model D12e retired on 2026-08-13 -- while
-            # `_render_sbatch_for`, this function's ONLY production caller,
-            # already defaulted to 1 before calling in.  Two defaults for one
-            # absent value, one function apart, and the wrong one was the one
-            # a direct caller reached: a 32-rank job asked for 32 devices.
-            # Nothing in production took that path, and the only thing keeping
-            # it alive was a test that pinned it (`test_sbatch_emit.py`).
-            #
-            # Ranks and devices stay INDEPENDENT -- K ranks share a device via
-            # MPS (running-a-job.md § 3.3) -- which is exactly why the rank
-            # count is the wrong thing to derive a device count from.
-            gpu_count = 1
-        if exclusive is None:
-            exclusive = bool(gpu_cfg.get("exclusive", False))
+            # NO DEFAULT COUNT (`execution/gpu.md` G5, 2026-10-01).  It was
+            # one device until then -- and `ntasks` before 2026-08-23, one
+            # GPU per rank, the model D12e retired.  Ranks and devices stay
+            # INDEPENDENT (K ranks share a device via MPS, running-a-job.md
+            # § 3.3), so no count is derived from the ranks either.  `prep`
+            # refuses such a run first; this is the emitter's own guard.
+            raise WrapperError(_NO_GPU_COUNT)
+        exclusive = bool(exclusive)
     else:
         exclusive = False  # CPU jobs never request a whole node here
 
@@ -5280,25 +5285,19 @@ def render_sbatch(script_path: Path,
     walltime = time if time is not None else defaults.get("time")
     # MEMORY IS WHAT THE USER STATED, FULL STOP (user dictation,
     # 2026-08-24).  An explicit --mem wins; else the site-wide
-    # ``defaults.mem`` a person wrote in molbuilder.json; else the
-    # GPU-job value a person wrote as ``scheduler.gpu.mem``; else NOTHING
-    # is emitted and the scheduler's own default stands.  What stood here
+    # ``defaults.mem`` a person wrote in molbuilder.json; else NOTHING is
+    # emitted and the scheduler's own default stands.  (A GPU job took
+    # ``scheduler.gpu.mem`` before that last step until 2026-10-01.)  What stood here
     # until today -- a per-.fdf memory MODEL (base + dense + mesh terms,
     # a safety factor, a floor, a cap) and a floor/ceiling CLAMP band for
     # GPU jobs -- is deleted, not disabled: five Sol jobs (62039301-05)
     # OOM'd against defaults while the machinery that claimed to prevent
     # exactly that sat unconfigured and silent.  No estimation, no
     # clamping, no numbers wearing a user's clothes.
-    mem_comment: Optional[str] = None
     if mem is not None:
         memory = mem
     else:
         memory = defaults.get("mem")           # site-wide, user-written
-        if memory is None and gpu:
-            memory = gpu_cfg.get("mem")        # per-GPU-job, user-written
-            if memory is not None:
-                mem_comment = ("# --mem = scheduler.gpu.mem "
-                               "(user-configured GPU default).")
 
     # NO site inference (D12g, 2026-08-12): `site = "asu-sol" if
     # partition == "public"` hard-coded a facility name from a partition
@@ -5330,6 +5329,7 @@ def render_sbatch(script_path: Path,
     _d = Directives(partition=partition, qos=qos, walltime=walltime,
                     ntasks=ntasks, cpus_per_task=cpus,
                     gres=(f"gpu:{gpu_count}" if gpu else None),
+                    gpu_binding=gpu_binding is not False,
                     mem=(memory or None), exclusive=bool(exclusive))
     if exclusive:
         # The ignored value, said out loud so it is never a silent surprise
@@ -5338,8 +5338,6 @@ def render_sbatch(script_path: Path,
         lines.append(
             f"# --exclusive owns the whole node -> ALL its memory.  Configured "
             f"mem ({memory or 'unset'}) is IGNORED; --mem=0 = all node RAM.")
-    elif memory and mem_comment:
-        lines.append(mem_comment)
     # `--gres-flags=enforce-binding` USED TO BE APPENDED HERE, header-only,
     # on the reasoning that "the command line never states it -- so it stays
     # here".  That reasoning is backwards: the command line not stating it

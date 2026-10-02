@@ -1398,7 +1398,7 @@ separate question and still open (`project-layout.md § 8`).
 
 ### 6.8a `allocation` — what this calculation asks the scheduler for
 
-*(Added 2026-08-24, user.)* Three optional fields, and absent means
+*(Added 2026-08-24, user.)* Four optional fields, and absent means
 **unstated**:
 
 ```json
@@ -1410,6 +1410,7 @@ separate question and still open (`project-layout.md § 8`).
 | `domain` | which **queue** — the same answer `--domain` gives |
 | `time` | the **wall**. Unstated, the target queue's own ceiling is requested |
 | `mem` | the **memory ask**. Unstated, the scheduler's own default decides |
+| `gpu_binding` | whether a GPU ask carries `--gres-flags=enforce-binding` — the job's cores kept beside its GPUs. Unstated, it does; `false` sends the GPU ask without it, for the benchmark and the runs alike, so a benchmark measures the layout the run will use ([`gpu.md`](?doc=execution/gpu.md) G9; user, 2026-10-01) |
 
 **Why it is here and not in `bench`.** § 6.8's rule still holds — the file
 records what a person *asked*, never what a machine *found* — and these are
@@ -1526,7 +1527,8 @@ earns the typed device ask, the `G × K` rank split, the by-name refusal and
 the queue check that a trial gets, with no translation of its own.
 
 **Why not `allocation`.** That block is what this calculation asks the
-**scheduler** for — the queue, the wall, the memory (§ 6.8a). `execution` is
+**scheduler** for — the queue, the wall, the memory, the GPU binding
+(§ 6.8a). `execution` is
 what the **job** runs as. A `--mem` and an `mpi_np` are answered by different
 things and refused by different doors, and one block holding both was tried on
 2026-09-01 and made the reader unable to say which of the two a key belonged

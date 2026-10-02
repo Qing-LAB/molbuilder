@@ -58,8 +58,9 @@ def _write_project(project_dir: Path, cfg: dict) -> None:
 # that.  This is a hand-written SLURM config used to exercise the READER, and
 # it is named for the reader now because it was named `_ASU_SOL` until
 # 2026-09-05 and had drifted from the shipped file it claimed to mirror:
-# `gpu.exclusive` True here against `false` there, `cpus_per_task` 12 against
-# 8, and the whole `mem_model` block missing.  Nothing was broken by the
+# `gpu.exclusive` True here against `false` there (a key gone since
+# 2026-10-01), `cpus_per_task` 12 against 8, and the whole `mem_model` block
+# missing.  Nothing was broken by the
 # drift -- the assertions matched this dict, so the test passed -- but anyone
 # reading it learned the wrong numbers for the real cluster, where the
 # shipped preset prices `exclusive` at ~276 CHE/h against ~69.
@@ -70,7 +71,6 @@ _A_SLURM_CONFIG = {
             "partition": "public", "qos": "public",
             "mail_type": "ALL", "mail_user": "%u@asu.edu", "export": "NONE",
         },
-        "gpu": {"partition": "public", "exclusive": True},
         "defaults": {"time": "0-04:00:00", "cpus_per_task": 12, "mem": None},
     }
 }
@@ -98,8 +98,6 @@ def test_a_full_slurm_block_resolves(sandbox):
     assert sched["directives"]["partition"] == "public"
     assert sched["directives"]["qos"] == "public"
     assert sched["directives"]["export"] == "NONE"
-    assert sched["gpu"]["partition"] == "public"
-    assert sched["gpu"]["exclusive"] is True
     assert sched["defaults"]["cpus_per_task"] == 12
     assert sched["defaults"]["mem"] is None
 
@@ -127,7 +125,6 @@ def test_project_overrides_server(sandbox):
     assert sched["defaults"]["time"] == "0-00:30:00"
     # ... but server-wide keys survive the deep-merge.
     assert sched["directives"]["qos"] == "public"
-    assert sched["gpu"]["exclusive"] is True
     assert sched["defaults"]["cpus_per_task"] == 12
 
 
@@ -186,15 +183,6 @@ def test_directives_must_be_object(sandbox):
     _write_server(sandbox, {"scheduler": {
         "kind": "slurm", "directives": "public"}})
     with pytest.raises(RuntimeConfigError, match="directives.*object"):
-        get_scheduler()
-
-
-def test_gpu_exclusive_must_be_bool(sandbox):
-    _write_server(sandbox, {"scheduler": {
-        "kind": "slurm",
-        "directives": {"partition": "public", "qos": "public"},
-        "gpu": {"exclusive": "yes"}}})
-    with pytest.raises(RuntimeConfigError, match="exclusive.*bool"):
         get_scheduler()
 
 

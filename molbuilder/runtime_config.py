@@ -87,16 +87,20 @@ _ROUTING_MOVED = (
     "'scheduler.directives.partition' and '.qos'.")
 
 
-#: Same shape as `_ROUTING_MOVED`: a retired key gets its own sentence.  A
-#: GPU ask names no card -- `--gres=gpu:N` -- and which card a node carries
-#: is that machine's business (`execution/scheduler.md` R2a, user
-#: 2026-10-01: "we never claimed any card type").  This key put a card into
-#: every GPU ask, from a person's config, against M-1.
-_GPU_CARD_RETIRED = (
-    "{path}: 'scheduler.gpu.default_type' is no longer configured.  A GPU "
-    "job asks for a NUMBER of GPUs -- `--gres=gpu:N` -- and which card a "
-    "node carries is that machine's business (docs/execution/scheduler.md "
-    "R2a).  Delete the line.")
+#: Same shape as `_ROUTING_MOVED`: a retired block gets its own sentence.
+#: Every GPU fact is the TARGET's record's and every GPU ask is the job's
+#: own (`execution/gpu.md` § 1, user 2026-10-01: "all resources are
+#: explicit, and based on the target machine's .json environment
+#: manifest").  This block wrote THIS machine's settings into every GPU job
+#: -- a card (`default_type`), a partition over the target's own
+#: `gpu_partition`, a whole node, a memory default -- whatever the target.
+_GPU_BLOCK_RETIRED = (
+    "{path}: 'scheduler.gpu' is no longer configured.  A GPU job asks for a "
+    "NUMBER of GPUs (`gpu_count` on its run card, or `--gpus N`) and names "
+    "no card; where GPU work is submitted is the target's record "
+    "(`gpu_partition`, written by `molbuilder jobset probe`); its memory is "
+    "asked like any job's (`--mem`, or `allocation.mem` in task.json) "
+    "(docs/execution/gpu.md § 1).  Delete the block.")
 
 
 #: Same shape as `_ROUTING_MOVED`: a retired key gets its own sentence, not
@@ -1724,7 +1728,9 @@ _SCHEDULER_DEFAULT_KEYS: tuple = ("time", "cpus_per_task", "mem")
 def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
     """Validate + normalise the ``scheduler`` block of one merged config.
 
-    Returns the resolved ``{kind, directives, gpu, defaults}`` dict.
+    Returns the resolved ``{kind, directives, defaults}`` dict (and
+    ``placement_priority`` when one is stated).  A ``gpu`` block is refused
+    by name (`_GPU_BLOCK_RETIRED`).
     Raises :class:`RuntimeConfigError` on shape errors AND on the
     refuse-to-emit rule (running-a-job.md § 5.3): a ``slurm`` site
     that omits ``directives.partition`` or ``directives.qos`` cannot
@@ -1755,8 +1761,10 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
             )
         return dict(v)
 
+    if "gpu" in raw:
+        raise RuntimeConfigError(_GPU_BLOCK_RETIRED.format(
+            path=CONFIG_FILENAME))
     directives = _as_obj("directives")
-    gpu        = _as_obj("gpu")
     defaults   = _as_obj("defaults")
 
     # WHICH AXIS DECIDES between queues that all fit (2026-08-23, user).
@@ -1814,37 +1822,6 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
                 f"string; got {type(directives[k]).__name__}."
             )
 
-    # gpu block: partition string, exclusive bool -- and no card.
-    if "default_type" in gpu:
-        raise RuntimeConfigError(_GPU_CARD_RETIRED.format(
-            path=CONFIG_FILENAME))
-    for k in ("partition",):
-        if k in gpu and gpu[k] is not None and not isinstance(gpu[k], str):
-            raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: 'scheduler.gpu.{k}' must be a string; "
-                f"got {type(gpu[k]).__name__}."
-            )
-    if "exclusive" in gpu and not isinstance(gpu["exclusive"], bool):
-        raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: 'scheduler.gpu.exclusive' must be a "
-            f"boolean; got {type(gpu['exclusive']).__name__}."
-        )
-    # gpu.mem: GPU-specific memory default (string or null).  GPU nodes
-    # typically have less RAM per rank than CPU nodes (e.g. 24 GB/GPU vs
-    # 2 TB/node), so a single defaults.mem can't cover both.  GPU jobs
-    # use gpu.mem when set; CPU jobs use defaults.mem.
-    if "mem" in gpu and gpu["mem"] is not None \
-            and not isinstance(gpu["mem"], str):
-        raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: 'scheduler.gpu.mem' must be a string "
-            f"(e.g. \"24G\") or null; got {type(gpu['mem']).__name__}."
-        )
-    # ``gpu.mem_cap_per_gpu`` was VALIDATED here and read by nothing once
-    # the memory clamp was deleted (2026-08-24) -- a key a person could
-    # set, that this file accepted, and that changed nothing.  Removed
-    # rather than left standing: an accepted setting with no effect is
-    # worse than a refused one.  A GPU job's default is ``gpu.mem``.
-
     # defaults: time str|None, cpus_per_task int|None, mem str|None.
     if "time" in defaults and defaults["time"] is not None \
             and not isinstance(defaults["time"], str):
@@ -1870,7 +1847,6 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
     out = {
         "kind":       kind,
         "directives": directives,
-        "gpu":        gpu,
         "defaults":   defaults,
     }
     # ABSENT when unset, so a reader can tell "this site did not choose" from
@@ -1961,7 +1937,6 @@ def get_scheduler(
         {
             "kind":       "slurm",
             "directives": {partition, qos, mail_type, mail_user, export, ...},
-            "gpu":        {partition, exclusive, mem},
             "defaults":   {time, cpus_per_task, mem},
         }
         or None.
@@ -2025,9 +2000,9 @@ def get_scheduler(
             raise RuntimeConfigError(f"{where}: {msg}") from None
         raise
 
-    # NO CARD IS FILLED IN.  This copied the probed node's card into
-    # `gpu.default_type` until 2026-10-01, so every GPU ask carried a card
-    # nobody asked for (`execution/scheduler.md` R2a).
+    # NOTHING IS FILLED IN FROM THE RECORD.  This copied the probed node's
+    # card into `gpu.default_type` until 2026-10-01, so every GPU ask
+    # carried a card nobody asked for (`execution/gpu.md` § 1.2).
     return out
 
 

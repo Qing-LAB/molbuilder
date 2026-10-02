@@ -86,18 +86,20 @@ def test_a_human_spelling_is_accepted_at_the_door_and_normalised():
 
 
 def test_a_launch_shape_here_is_sent_to_the_block_that_owns_it():
-    """`generator.md` § 4.3a: ranks, threads and devices are a `bench` entry
-    -- several points to measure, one point to use -- so the knob you might
-    instead measure has ONE home.  This block is the SCHEDULER's ask.
+    """`stages.md` § 6.8d: ranks, threads and GPUs are the run card's
+    (`execution`, one value) and a benchmark's axes (`bench`, several).  This
+    block is the SCHEDULER's ask.
 
     The refusal has to say that, because it is not a typo: `mpi_np` is a real
     setting in the wrong block, and "unknown key" alone sends a person
     looking for a spelling mistake they did not make.  (It IS what this block
-    briefly held, on 2026-09-01.)"""
+    briefly held, on 2026-09-01; and the refusal sent a person to a one-point
+    `bench` entry, which no run reads, until 2026-10-01.)"""
     for value in ([4, 8], 8):
         with pytest.raises(Exception) as e:
             _task(allocation={"mpi_np": value})
-        assert "bench" in str(e.value) and "ONE point" in str(e.value), e.value
+        said = str(e.value)
+        assert "run card" in said and "`execution`" in said, said
 
     # and a real typo still gets the near-miss, not the lecture
     with pytest.raises(Exception) as e:

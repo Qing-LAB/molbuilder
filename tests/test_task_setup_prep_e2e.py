@@ -459,6 +459,89 @@ def filled_dir(isolated_projects_root_module):
         pass
 
 
+@pytest.fixture(scope="module")
+def binding_dir(isolated_projects_root_module):
+    """A described calculation that says nothing about the GPU binding --
+    its own folder, so what the test saves reaches no other test."""
+    import numpy as np
+
+    from conftest import write_pseudos
+    from molbuilder import describe as D
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.scheduler import Environment, Topology
+    from molbuilder.structure import Structure
+    from molbuilder.task import Stage
+
+    root = isolated_projects_root_module / "prep_binding"
+    (root / "structure").mkdir(parents=True)
+    d = root / "optimization" / "binding"
+    struct = Structure(elements=["H", "H"],
+                       positions=np.array([[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 0.74]]),
+                       vacuum=(10.0, 10.0, 10.0))
+    src = root / "structure" / "binding.xyz"
+    src.write_text(struct.to_xyz(), encoding="utf-8")
+    D.write_description(
+        D.build_description(struct, SiestaConfig(system_label="binding"),
+                            [Stage(name="coarse")], engine="siesta",
+                            shape="hierarchical", name="binding",
+                            source=str(src)),
+        d, struct=struct)
+    write_pseudos(d, ["H"])
+    (d / "environment.json").write_text(
+        Environment(scheduler="slurm",
+                    topology=Topology(sockets=2, cores_per_socket=32),
+                    script_generation={"preamble": "true",
+                                       "activation": "conda activate"},
+                    ).to_json() + "\n", encoding="utf-8")
+    return d
+
+
+def _saved_allocation(where, ok, timeout=20.0):
+    """`task.json`'s `allocation`, once a save has made ``ok`` true of it --
+    what the page wrote is the file, so the file is what is waited on."""
+    import time
+    end = time.monotonic() + timeout
+    while True:
+        alloc = json.loads((where / "task.json").read_text()).get(
+            "allocation", {})
+        if ok(alloc) or time.monotonic() > end:
+            return alloc
+        time.sleep(0.1)
+
+
+def test_the_gpu_binding_box_writes_the_switch(page, flask_server,
+                                               binding_dir):
+    """`execution/gpu.md` G9, from the page's side: the queue card's GPU
+    binding box writes `allocation.gpu_binding` -- unticked writes `false`,
+    ticked again removes it, since ticked is the rule.  The card writes the
+    whole `allocation` block, so a switch it did not carry it would erase.
+    This is the page's half; what a prep makes of the switch is the GPU
+    contract's table (`test_gpu_contract.py`)."""
+    _open(page, flask_server, binding_dir)
+    page.evaluate(
+        "() => { const d = document.getElementById('ts-editor-card');"
+        "        if (d && 'open' in d) d.open = true; }")
+    box = "#ts-ask-gpu-binding"
+    page.wait_for_selector("#ts-target-choice .opt", timeout=20000)
+    if not page.is_visible(box):
+        page.click("#ts-target-choice .opt")     # the machine, as a person picks it
+    page.wait_for_selector(box, state="visible", timeout=20000)
+    assert page.is_checked(box), "ticked is the rule: the binding is sent"
+
+    page.uncheck(box)
+    page.click("#ts-save")
+    alloc = _saved_allocation(binding_dir,
+                              lambda a: a.get("gpu_binding") is False)
+    assert alloc.get("gpu_binding") is False, alloc
+
+    page.check(box)
+    page.click("#ts-save")
+    alloc = _saved_allocation(binding_dir, lambda a: "gpu_binding" not in a)
+    assert "gpu_binding" not in alloc, (
+        "ticked is the rule, so ticking again writes nothing: " + repr(alloc))
+
+
 def _rows(page):
     """Every run-card row, as {name: {kind, value, placeholder}}."""
     return page.evaluate(

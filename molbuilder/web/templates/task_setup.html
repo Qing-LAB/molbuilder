@@ -163,6 +163,21 @@
                    aria-describedby="ts-ask-mem-note">
             <span class="ts-ask-note" id="ts-ask-mem-note"></span>
           </div>
+          {#- THE CALCULATION'S GPU BINDING (execution/gpu.md G9): ticked is
+             the rule -- every GPU ask carries --gres-flags=enforce-binding --
+             and unticking writes `allocation.gpu_binding: false`, for the
+             benchmark and the runs alike.  Here because this card writes the
+             whole `allocation` block: a switch it did not carry, it would
+             erase. -#}
+          <div class="ts-ask">
+            <label class="ts-ask-label" for="ts-ask-gpu-binding">GPU binding</label>
+            <input id="ts-ask-gpu-binding" type="checkbox" checked
+                   aria-describedby="ts-ask-gpu-binding-note">
+            <span class="ts-ask-note" id="ts-ask-gpu-binding-note">GPU jobs:
+              their cores kept beside their GPUs
+              (<code>--gres-flags=enforce-binding</code>). Untick to ask
+              without it.</span>
+          </div>
         </div>
 
         {#- THE RUN'S VALUES ARE NOT ASKED HERE.  They stood in this card

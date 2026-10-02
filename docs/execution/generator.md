@@ -471,9 +471,10 @@ be decided* overwrites both.
 
 A device ask is a **count** and names no card: which card a node carries is
 the machine's business (`scheduler.md` R2a). **Every run that uses a device
-gets its ask here**, a count stated or not (`gpu.md` G5: an absent
-`gpu_count` is one device) and on every engine — PySCF carries no
-`gpu_count`, so before 2026-09-30, when the header asked a SIESTA deck
+is asked for its count here**, on every engine — the run card's
+`gpu_count`, which PySCF carries too since 2026-10-01, or `--gpus N` — and
+one that states none is refused (`gpu.md` G5: no default; it was one device
+until 2026-10-01). Before 2026-09-30, when the header asked a SIESTA deck
 alone, a PySCF run whose card said `use_gpu` reached the queue with no
 device. *(Until 2026-10-01 a card was looked up here — a stated
 `scheduler.gpu.default_type`, else the target's probe, else its queues — and
@@ -952,7 +953,7 @@ that an absent `engines` key means every engine.)*
 
 | | SIESTA | PySCF |
 |---|---|---|
-| catalogue rows | 61 items | **47 items** | *(each engine's EXCLUSIVE rows; `net_charge`, `use_gpu`, `already_relaxed`, `temperature_K`, `spin_treatment` and `unpaired_electrons` name both and so count in neither — merged 2026-08-19, 2026-08-23, 2026-09-24 and 2026-09-28 (the last three that day; the electronic state's two, M6, replacing SIESTA's `spin_total` and PySCF's `spin`), `template.md` § 6.3; PySCF's `es_top_n` and `es_threshold` removed 2026-09-28; SIESTA's `tbt_verbosity` added 2026-09-29; PySCF's one-choice `optimizer` retired with `berny` the same day)*
+| catalogue rows | 60 items | **47 items** | *(each engine's EXCLUSIVE rows; `net_charge`, `use_gpu`, `already_relaxed`, `temperature_K`, `spin_treatment`, `unpaired_electrons` and `gpu_count` (PySCF's since 2026-10-01, `execution/gpu.md` § 1.1) name both and so count in neither — merged 2026-08-19, 2026-08-23, 2026-09-24 and 2026-09-28 (the last three that day; the electronic state's two, M6, replacing SIESTA's `spin_total` and PySCF's `spin`), `template.md` § 6.3; PySCF's `es_top_n` and `es_threshold` removed 2026-09-28; SIESTA's `tbt_verbosity` added 2026-09-29; PySCF's one-choice `optimizer` retired with `berny` the same day)*
 | every row maps to a config field | yes | **yes** |
 | `warm-files.toml` in its package | yes | **yes** — `base` · `optimization` · `vibration` |
 | identity literal declared | `SystemLabel` | **`JOB`** (`config/pyscf.py`) |

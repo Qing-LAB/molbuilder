@@ -43,7 +43,7 @@ is requested — the full amount the cluster allows there — and a queue that
 states none gets no wall at all. `--trial-timeout` exists so one hung trial
 cannot eat a group's whole wall; unstated, no per-trial bound exists.
 **Memory**: `--mem`, at prep or at launch, else the user's own config
-(`defaults.mem` / `gpu.mem`), else nothing — the scheduler's default
+(`defaults.mem`), else nothing — the scheduler's default
 decides, and the plan says so before anything submits. Hitting a limit is a
 result; inventing one is not.
 

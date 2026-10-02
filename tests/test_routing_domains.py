@@ -314,23 +314,6 @@ def test_provenance_shows_which_record_supplied_the_domains(tmp_path):
 
 # ---- no card in the person's config (`scheduler.md` R2a) ----------------- #
 
-def test_no_card_is_configured_or_filled_in(tmp_path):
-    """A GPU ask names no card (`scheduler.md` R2a; user, 2026-10-01), so
-    none is filled in from the probed node -- and a config still naming one
-    is refused, by name, saying to delete it.
-
-    PREVENTS: `scheduler.gpu.default_type` filled in from the probed node's
-    card, so every GPU ask carried it, and read as an override of it."""
-    _write_config(tmp_path, dict(_SCHED, gpu={"partition": "public"}))
-    _write_record(tmp_path, gpu_type="a100")
-    assert "default_type" not in get_scheduler(project_dir=tmp_path)["gpu"]
-    _write_config(tmp_path, dict(_SCHED, gpu={"partition": "public",
-                                              "default_type": "a30"}))
-    with pytest.raises(RuntimeConfigError,
-                       match="default_type' is no longer configured"):
-        get_scheduler(project_dir=tmp_path)
-
-
 # ---- the gpu column: two spellings, ONE reading ------------------------- #
 #
 # Two things write the column and neither is wrong: a probe maps gres type to
@@ -339,36 +322,6 @@ def test_no_card_is_configured_or_filled_in(tmp_path):
 # the documented hand-declared row made `prep bench` refuse, naming
 # ``mem_gb``/``per_node``/``type`` as GPU types.  `Domain.devices` is the one
 # reading (`execution/scheduler.md` § 4, "Device").
-
-def test_a_probed_gpu_column_reads_as_its_types():
-    row = Domain(name="g", partition="general", qos="public",
-                 gpu={"a100": 4, "a100.20gb": 16})
-    assert {(d.type, d.per_node) for d in row.devices} == \
-        {("a100", 4), ("a100.20gb", 16)}
-    assert all(d.mem_gb is None for d in row.devices), \
-        "sinfo does not report device memory; inventing it would be a lie"
-
-
-def test_a_declared_gpu_column_reads_as_ONE_device():
-    """`asu-sol.md` § 5.3's spelling.  Three keys, one device -- the reading
-    that the map-only reader got backwards."""
-    row = Domain(name="g", partition="general", qos="public",
-                 gpu={"type": "a100", "per_node": 4, "mem_gb": 80})
-    assert len(row.devices) == 1
-    d = row.devices[0]
-    assert (d.type, d.per_node, d.mem_gb) == ("a100", 4, 80.0)
-
-
-def test_both_spellings_answer_the_same_question():
-    """The fact is *what one node offers*.  Same answer, either spelling --
-    which is the property every caller of `devices` relies on."""
-    probed = Domain(name="g", partition="general", qos="public",
-                    gpu={"a100": 4})
-    declared = Domain(name="g", partition="general", qos="public",
-                      gpu={"type": "a100", "per_node": 4, "mem_gb": 80})
-    assert [(d.type, d.per_node) for d in probed.devices] == \
-           [(d.type, d.per_node) for d in declared.devices]
-
 
 def test_a_silent_or_unreadable_column_states_no_count():
     """R3 applies to devices: *the row does not say* is ``None``, never zero.

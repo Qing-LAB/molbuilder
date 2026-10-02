@@ -97,7 +97,7 @@ class Ask:
 
 
 def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
-                gpu: bool = False) -> str:
+                gpus: Optional[int] = None) -> str:
     """**Every queue this machine offers, and which of them can take this job.**
 
     The framework does not choose (user, 2026-08-23: *"just don't guess
@@ -136,7 +136,7 @@ def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
         wall = human_wall(secs)
         mem = f"{float(d.max_mem_gb):g} GB" if d.max_mem_gb else "-"
         dev = ", ".join(f"{x.type} x{x.per_node}" for x in d.devices) or "-"
-        why = _why_not(d, ask, cores=cores, gpu=gpu)
+        why = _why_not(d, ask, cores=cores, gpus=gpus)
         mark = "  " if not why else "! "
         lines.append(
             f"{mark}{i:<2} {d.name:<12} {d.partition + '/' + d.qos:<22} "
@@ -249,20 +249,22 @@ def _machine_lines(row, *, cores: Optional[int] = None) -> List[str]:
     return out
 
 
-def _why_not(row, ask: Ask, *, cores=None, gpu: bool = False) -> "List[Refusal]":
+def _why_not(row, ask: Ask, *, cores=None,
+             gpus: Optional[int] = None) -> "List[Refusal]":
     """Why this queue cannot take this job — empty when it can.
 
     Reuses the scheduler's own admission so the listing and the submission
     cannot disagree about what fits: a table that says yes where the check
-    says no is worse than no table.
+    says no is worse than no table.  ``gpus`` is the job's own GPU count --
+    this asked every queue about ONE GPU until 2026-10-01, so a queue whose
+    nodes hold four read as taking an eight-GPU job the door then refused.
     """
     from ..scheduler.admit import Request, admits
     # `Refusal`s since 2026-09-09: each carries its `limit`, `asked` and
     # `allowed`.  The listing renders `.message`; a caller wanting to know
     # WHICH limit bit reads the field instead of the sentence.
     return list(admits(row, Request(ranks=cores, walltime_s=ask.time_s,
-                                    mem_gb=ask.mem_gb,
-                                    gpus=1 if gpu else None)))
+                                    mem_gb=ask.mem_gb, gpus=gpus or None)))
 
 
 def gpu_share_notes(gpu_count: Optional[int], mpi_np: Optional[int], *,

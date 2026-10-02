@@ -2080,7 +2080,7 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 
 | Artifact | File | Schema string | Authoritative code | Key top-level fields |
 |---|---|---|---|---|
-| User config | `molbuilder.json` / `.molbuilder.json` | *(validated, no `@N`)* | `runtime_config.py` | `scheduler{kind,directives,gpu,defaults}`, `execution`, `script_generation`, `envs` — **what you want**, never what a machine reports ([`configuration.md`](?doc=configuration.md) § 5 M-1); `scheduler.routing` and `scheduler.gpu.default_type` moved to the row below 2026-08-17, and `default_type` was removed 2026-10-01 — no GPU ask names a card (`scheduler.md` R2a) |
+| User config | `molbuilder.json` / `.molbuilder.json` | *(validated, no `@N`)* | `runtime_config.py` | `scheduler{kind,directives,defaults}`, `execution`, `script_generation`, `envs` — **what you want**, never what a machine reports ([`configuration.md`](?doc=configuration.md) § 5 M-1); `scheduler.routing` and `scheduler.gpu.default_type` moved to the row below 2026-08-17, and the whole `scheduler.gpu` block was removed 2026-10-01 — every GPU fact is the target's record's and every GPU ask the job's own (`execution/gpu.md` § 1) |
 | Machine record | `environment.json` — the calculation's, a **named target**, then this machine's; first found wins ([`configuration.md`](?doc=configuration.md) § 5 M-3) | `molbuilder/environment@2` | `scheduler/record.py`, and only `scheduler/record.py` — the door is § 5 M-4's table | `scheduler`, `topology`, `site`, `domains` — **what the target machine is**, in one shape whether it is a cluster or a workstation |
 | ~~Benchmark manifest~~ | ~~`bench-manifest.json`~~ | ~~`molbuilder/bench-manifest@2`~~ | *(retired — no writer, no reader; note below)* | ~~`points.{cpu,gpu}`~~ |
 | Benchmark result | `<seq>_<stage>/bench/bench-result.json` — in the stage's container (§ 6.3) | `molbuilder/bench-result@1` | `bench/result.py` | `schema`, `generated_at`, `environment`, `system`, `points`, `choice`, `tool` — *this row said `points`, `choice`, `recommend` until 2026-09-05; `recommend_resources` was deleted 2026-08-24 (user) and `to_dict()` has not emitted it since, though records written before then still carry the key on disk* |
@@ -2224,11 +2224,12 @@ them; within a layer, one concept has exactly one name.
 | Walltime | `defaults.time` | **`time`** → `-t` | `ask.canonical_time` at every human edge (the tab's box, `--time`, a hand-edited file), and `Resources.__post_init__` enforces it for the four roads that reach the class. **The exchange side is SLURM's spelling and nothing else** — `engines/stages.md` § 6.8a |
 | Memory | `defaults.mem` | `mem` → `--mem` | `ask.canonical_mem`, the same way. *(This cell said `render_sbatch` (estimate) until 2026-08-24. There is no estimate: the baked memory model was **deleted, not unwired** in the estimation purge — `runwrap.py` says so at its own site — and a table still pointing at it is how a reader learns that a deleted mechanism is live.)* |
 | Per-rank memory cap | `max_memory_mb` | `max_memory_mb` — **not a SLURM flag** | the wrapper's `ulimit -v`. A different question from `mem`, which asks the *scheduler*; they shared a row until 2026-08-24 and the row could not describe either translation correctly |
-| Whole-node | `gpu.exclusive` | `exclusive` → `--exclusive` | — |
+| Whole-node | — *(`gpu.exclusive` until 2026-10-01; nothing asks for one since)* | `exclusive` → `--exclusive` | — |
+| GPU binding | `allocation.gpu_binding` (`task.json`) | `gpu_binding` → `--gres-flags=enforce-binding` beside a GPU ask, unless `false` | `prep`'s fold of the description (`execution/gpu.md` G9) |
 | Partition | `directives.partition` | `partition` → `-p` | resolved from `domain` |
 | QoS | `directives.qos` | `qos` → `-q` | resolved from `domain` |
 | Routing domain | `routing[].name` / `execution.domain` | `domain` (in `jobset.Resources`) | `--domain` → `-p`/`-q` |
-| GPU request | `use_gpu` | `gres` → `--gres`, and `use_gpu` itself rides `Resources` | the GPU type comes from the record; the ANSWER is carried, not read back out of the deck (2026-08-23, `execution/gpu.md` G7). *(This row named `diag_algorithm` as a second source until 2026-08-14. The solver choice decides no resource and no environment — the packaged SIESTA runs ELPA on CPU, `engines/siesta.md` § 7.2 — so `Diag.ELPA.GPU` is the one keyword read.)* |
+| GPU request | `use_gpu`, `gpu_count` | `gres` → `--gres=gpu:<count>`, and `use_gpu` itself rides `Resources` | a COUNT, stated (`gpu_count`, `--gpus N`) and never defaulted, naming no card (`execution/gpu.md` G5, `scheduler.md` R2a); the ANSWER is carried, not read back out of the deck (2026-08-23, `execution/gpu.md` G7). *(This row named `diag_algorithm` as a second source until 2026-08-14. The solver choice decides no resource and no environment — the packaged SIESTA runs ELPA on CPU, `engines/siesta.md` § 7.2 — so `Diag.ELPA.GPU` is the one keyword read.)* |
 | Eigensolver | `diag_algorithm` (`ScaLAPACK` / `ELPA-1STAGE` / `ELPA-2STAGE`) | `.fdf`: `Diag.Algorithm` | `render_fdf` |
 | Non-convergence policy (**PySCF only**) | `on_nonconvergence` | *(no scheduler name)* | the emitted `.py`'s own control flow — PySCF's ladder ran as a loop in one process, so the policy was a branch inside the script (⚠ that loop is retired, [`stages.md § 1.1a`](?doc=engines/stages.md)). SIESTA's stages are separate jobs a person starts, so it has no equivalent; `engines/stages.md § 3` keeps the field out of the shared stage schema for that reason |
 | Warm-retry budget | `continue_retries` (0–5) | `continue_retries` — **not a SLURM flag** | `resolve.py` — rides the element's `Resources`; `prep` bakes it into the wrapper |
@@ -2275,14 +2276,14 @@ concept, one name" framing here is the SLURM mapping, not a Python rename.)
 > the object; which of the two names it uses inside is its own business, and no
 > caller can pass a subset. Rule A9 checks the pair it produces.
 
-The `jobset.Resources` dataclass holds exactly **fifteen** fields: seven the
+The `jobset.Resources` dataclass holds exactly **sixteen** fields: eight the
 scheduler reads, and eight riders that become no scheduler flag. A rider rides
 here because the alternative is a second hand-kept road from a job to its
 wrapper, and a copied argument list has lost fields on that road before.
 
 | field | read by | what it carries |
 |---|---|---|
-| `domain` · `time` · `exclusive` · `mem` · `gres` · `mpi_np` · `cpus_per_task` | the submit engine | the ask the scheduler reads (the table above) |
+| `domain` · `time` · `exclusive` · `mem` · `gres` · `gpu_binding` · `mpi_np` · `cpus_per_task` | the submit engine | the ask the scheduler reads (the table above); `gpu_binding` is the calculation's switch for the binding a GPU ask carries (`execution/gpu.md` G9) |
 | `program` | the wrapper | WHICH binary it launches; unset is the engine's own. The transmission stage runs tbtrans over the device stage's deck text, so the deck cannot carry it (transport-design.md § 4.2) |
 | `continue_retries` | the wrapper | the warm-retry budget — the table's last row above; running-a-job.md § 3.5 |
 | `max_memory_mb` | the wrapper | its `ulimit -v` cap — a runtime guard against a runaway allocation, distinct from `mem`, which asks the scheduler |

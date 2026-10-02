@@ -886,9 +886,10 @@ registry answer two questions.)*
 `environment.json` recorded `topology.gpu_type`, probed from `scontrol`.
 `molbuilder.json`'s `scheduler.gpu.default_type` recorded the same physical
 fact, probed from `sinfo`. Only the first reached the code that builds the ask.
-*(`default_type` is gone since 2026-10-01: a card is a machine's fact, and no
-GPU ask names one — `execution/scheduler.md` R2a. A `molbuilder.json` still
-carrying it is refused by name.)*
+*(The whole `scheduler.gpu` block is gone since 2026-10-01 and refused by
+name: a card is a machine's fact and no GPU ask names one, and its partition,
+whole-node and memory settings put this machine's choices into every target's
+GPU job — `execution/gpu.md` § 1.2.)*
 
 The disagreement went deeper than a duplicated value. `scheduler/record.py`'s
 `detect_site` leaves `qos` and `account` unset and says why: *"they are site
@@ -911,7 +912,7 @@ is the clearest statement of the rule.)*
 | answers | *what is this machine* | *what do I want from it* |
 | file | `environment.json` | `molbuilder.json` |
 | arrives by | **probe** when you are standing on the machine · **declaration** when you are not | always a person |
-| examples | cores, GPUs and their type, memory, scheduler kind, the partitions and QoS you can reach and their walls, **how a shell enters an environment there** (`script_generation`), **which environments exist there** | which partition to default to, `gpu.exclusive`, `gpu.mem`, `defaults`, **which environment to use** |
+| examples | cores, GPUs and their type, memory, scheduler kind, the partitions and QoS you can reach and their walls, **how a shell enters an environment there** (`script_generation`), **which environments exist there** | which partition to default to, `defaults`, **which environment to use** |
 
 > **The bootstrap is a fact, and it took a wasted afternoon to place it
 > correctly** *(2026-08-24)*. `module load mamba` is not something a person
@@ -963,10 +964,10 @@ writing one).
 **A probe still never writes a preference.** That half of M-1 stands: what
 partitions exist is a fact either way; which one you want is not.
 
-**A probe never writes a preference.** `derive_scheduler_block` already draws
-this line for itself — *"exclusivity + memory are POLICY, not probed … `gpu.mem`
-must be configured as a site policy (it cannot be probed)"* — and then crosses
-it, emitting a `directives` block whose partition is `route_parts[0]`, *the
+**A probe never writes a preference.** `derive_scheduler_block` (replaced
+2026-08-17) drew this line for itself — *"exclusivity + memory are POLICY, not
+probed … `gpu.mem` must be configured as a site policy (it cannot be
+probed)"*, a key gone since 2026-10-01 — and then crossed it, emitting a `directives` block whose partition is `route_parts[0]`, *the
 cheapest*. Cheapest is a preference. What partitions exist is a fact and moves
 to `environment.json`; which one you want stays a choice in `molbuilder.json`.
 

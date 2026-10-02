@@ -1529,9 +1529,9 @@ actually reach, and their wall limits — and writes that to `environment.json`
 with `--write`, so every calculation on this machine reads one probed answer
 instead of each re-probing its own.
 
-It writes **facts only**. Which partition you want, the account, and the policy
-no probe can invent (`gpu.exclusive`, `gpu.mem`) stay yours, in `molbuilder.json`
-— the split is [`configuration.md` § 5](?doc=configuration.md) M-1.
+It writes **facts only**. Which partition you want and the account stay yours,
+in `molbuilder.json` — the split is [`configuration.md` § 5](?doc=configuration.md)
+M-1.
 *(Until 2026-08-17 this verb proposed a whole `scheduler` config block, defaulting
 your partition to the cheapest one it found; a probe choosing on your behalf is
 what that rule removes.)*

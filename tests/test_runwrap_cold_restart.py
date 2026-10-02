@@ -172,39 +172,9 @@ class TestColdFlagText:
 # --------------------------------------------------------------------- #
 
 
-def _strip_preamble_activation(text: str) -> str:
-    """Remove the baked preamble + conda-activation block (script-
-    execution blocks 3-4) from a rendered wrapper so the behaviour
-    tests can EXECUTE it in a bare CI shell.  ``module load mamba`` /
-    ``source activate`` exit 127 without an HPC module system or conda;
-    under ``set -e`` that aborts the wrapper before the cold block ever
-    runs.  ``_log`` is defined earlier (block 2) so the cold block's
-    logging survives the strip.  Mirrors test_runwrap.py's executable-
-    test stripping; the difference here is we KEEP ``_log``."""
-    pre = text.find("# --- Baked preamble")
-    assert pre >= 0, "baked-preamble marker not found in wrapper"
-    # Since U10 the bootstrap AND the post-activation state dump each sit
-    # inside a help guard (if [ "$_mb_help" = "0" ]); the cut must span
-    # from the FIRST guard's opener through the SECOND guard's close, or
-    # the truncated wrapper keeps an unopened fi.
-    start = text.rfind('if [ "$_mb_help" = "0" ]; then', 0, pre)
-    assert start >= 0, "help-guard opener not found before the preamble"
-    em = text.find("which python:", pre)
-    assert em >= 0, "activation conda-dump end marker not found"
-    close = text.find("\nfi\n", em)
-    assert close >= 0, "post-activation guard close not found"
-    # ``set -u`` is restored explicitly: the real wrapper disables
-    # nounset around the activation (NVCC_PREPEND_FLAGS) and re-enables
-    # it INSIDE the region cut here, so without this line the stripped
-    # harness runs everything after the preamble with nounset off --
-    # which is how the unbraced-$_warm_label death (redo NEW-1) stayed
-    # invisible to every executed test in this file.
-    return (
-        text[:start]
-        + "# preamble + activation stripped for CI (no conda here).\n"
-        + "set -u\n"
-        + text[close + 4:]
-    )
+# The stripping lives in `tests/support/road.py`, beside the road the
+# GPU contract's run-script cases drive.
+from support.road import strip_preamble_activation as _strip_preamble_activation
 
 
 def _truncated_siesta(tmp_path: Path, basename: str = "myjob") -> Path:
@@ -464,7 +434,8 @@ class TestGpuFlagPrecedence:
         }))
         fdf = tmp_path / "myjob.fdf"
         fdf.write_text(_GPU_FDF)
-        wrapper = write_run_wrapper(fdf, resources=Resources())   # emits myjob.sbatch too (-n 1)
+        # one GPU, stated -- a GPU job states its count (`gpu.md` G5); -n 1
+        wrapper = write_run_wrapper(fdf, resources=Resources(gres="gpu:1"))
         assert "#SBATCH -n 1" in (tmp_path / "myjob.sbatch").read_text()
         wrapper.write_text(_strip_preamble_activation(wrapper.read_text()))
         proc = _dry(wrapper, tmp_path, "-np", "3")

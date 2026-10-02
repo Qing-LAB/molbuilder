@@ -605,6 +605,22 @@ class PySCFConfig:
         "engine_key":  "lib.num_threads(N) + os.environ['OMP_NUM_THREADS']",
         "null_label": "(auto: physical cores)",
     })
+    gpu_count: Optional[int] = field(default=None, metadata={
+        "category": ("execution",),
+        # THE SAME ITEM AS SIESTA'S, since 2026-10-01 (`execution/gpu.md`
+        # § 1.1): how many GPUs a run asks for, stated on its run card -- an
+        # allocation ask, never a template value, and no default.  PySCF had
+        # none until then, so a PySCF GPU run could only be given one GPU,
+        # unsaid.
+        "allocation": True,
+        "item_kind":  "wrapper",
+        "workflow_group": "staging",
+        "section": "Compute & budget",
+        "label":      "GPUs (G)",
+        "engine_key":  "(molbuilder: scheduler ``--gres=gpu:G``; "
+                       "not in the deck)",
+        "range":      (1, 16),
+    })
     use_gpu: bool = field(default=False, metadata={
         "category": ("execution",),
         "workflow_group": "staging",

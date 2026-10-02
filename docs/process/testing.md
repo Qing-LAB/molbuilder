@@ -587,6 +587,22 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   *(This paragraph carried "1,147 of the 1,255" until 2026-09-07, three
   sentences after telling you not to quote a number from a document. Both
   figures had moved. The tool is the answer; there is no number here now.)*
+- **A contract's cases are a TABLE, run down the road** *(user, 2026-10-01:
+  "why can't test be just data/config file driven query kind of test?";
+  "(1) query, allow or deny, (2) correctly produce slurm command/header, (3)
+  correctly execute locally if that's the target")*. Where a contract is a
+  set of cases — what a person or a probe writes, and what molbuilder must
+  answer — the cases are rows of one data file, and ONE runner drives each
+  down the road a person runs (`init → prep → launch --dry-run`; on a
+  machine with no queue, the run script's own dry run), checking three
+  layers: **allowed or refused**, with the words; **what is produced** — the
+  header, the `sbatch` line, the deck, the run script; **what the run script
+  does here**. A stand-in plays what the box cannot be (`sbatch` that queues
+  nothing, `nvidia-smi` that reports the GPUs a row gives), from
+  `tests/support/road.py`. A rule changes; its rows change — never a function
+  per case, and never a test of an internal step a row already reaches. The
+  first is the GPU contract's (`tests/data/gpu_contract.toml`,
+  `tests/test_gpu_contract.py`; `execution/gpu.md` § 7).
 - **State-composition tests** — the molview class of bug: a value is correct in
   isolation but wrong once composed with a sibling piece of state. These get an
   explicit test that exercises the *combination*, not each part alone.

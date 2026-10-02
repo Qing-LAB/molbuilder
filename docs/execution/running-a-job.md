@@ -871,7 +871,6 @@ which spelling won.
     "kind": "slurm",
     "directives": { "partition": "public", "qos": "public",
                     "mail_type": "ALL", "mail_user": "you@example.edu", "export": "NONE" },
-    "gpu":      { "partition": "public", "exclusive": false, "mem": "64G" },
     "defaults": { "time": "0-04:00:00", "cpus_per_task": 8, "mem": null },
     "routing":  [ { "name": "short", "max_time": "0-04:00:00",
                     "partition": "public", "qos": "public" } ]
@@ -885,17 +884,11 @@ which spelling won.
   `mail_user` — SLURM's `%u` / `%j` patterns expand only in `-o` / `-e`
   filenames, never in `--mail-user`, so `"%u@…"` is sent literally and bounces
   (the emitter warns when it sees a `%`).
-- **`gpu`** — `{partition, exclusive, mem}`. A GPU job routes its `-p` to
-  `gpu.partition` and asks `--gres=gpu:<count>` — a count: molbuilder names no
-  card, and which card a node carries is the machine's business
-  ([`scheduler.md`](?doc=execution/scheduler.md) R2a; `default_type`, a card,
-  was here until 2026-10-01). `mem` is the `--mem` a GPU job gets
-  when nothing else states one — a value **you** wrote, once, for this
-  machine (§ 5.3.1). `exclusive: false` is the recommended HPC default: GPU
-  nodes are shared multi-GPU boxes, and a job kept inside its proportional
-  share backfills far sooner (and burns far less fairshare) than one
-  reserving a whole node — reserve `exclusive: true` for benchmark-grade
-  timings.
+- **No `gpu` block** — refused by name since 2026-10-01. A GPU job asks
+  `--gres=gpu:<count>`, the count its run card or `--gpus` states, and goes to
+  the partition the target's record names for GPU work (`gpu_partition`);
+  its memory is asked like any job's (§ 5.3.1)
+  ([`gpu.md`](?doc=execution/gpu.md) § 1).
 - **`defaults`** — job-agnostic `{time, cpus_per_task, mem}` fallbacks.
 - **`routing`** — a menu of named domains
   `{name, max_time, max_mem_gb?, partition, qos, gpu_partition?}`; order is the
@@ -905,8 +898,10 @@ which spelling won.
 
 **What the `.sbatch` header carries** (`render_sbatch`): a fixed `-J <basename>`,
 `-N 1`, `-n <ranks>`, `-o slurm.%j.out` / `-e slurm.%j.err`; `-c` / `-t` from
-`defaults` (or caller); `-p` / `-q` from `directives` (GPU → `gpu.partition`);
-for GPU jobs `--gres=gpu:<count>` + `--gres-flags=enforce-binding`; and
+`defaults` (or caller); `-p` / `-q` from the placement on the target's record
+(GPU work → the queue's `gpu_partition`); for GPU jobs `--gres=gpu:<count>`
+and — unless the calculation's `allocation.gpu_binding` is `false` —
+`--gres-flags=enforce-binding` ([`gpu.md`](?doc=execution/gpu.md) G9); and
 memory per § 5.3.1. The body is a single line — `bash <basename>.run.sh "$@"` —
 because the inner wrapper owns activation and launch. It is withheld only where
 the machine names no queue to address — a record saying `workstation`, or no
@@ -927,12 +922,13 @@ What a job's `--mem` is, in order — every line a person wrote:
 
 1. an explicit `--mem` (prep or launch; hard override), else
 2. `defaults.mem` if set (site-wide, `molbuilder.json`), else
-3. `gpu.mem` for a GPU job if set (per-machine, `molbuilder.json`), else
-4. **nothing is emitted** — the scheduler's own default decides, and the
+3. **nothing is emitted** — the scheduler's own default decides, and the
    launch plan says so out loud before anything submits (Sol's is a tight
    per-GPU or per-core rate; that is the scheduler's answer, not ours).
 
-An **exclusive** job takes the whole node (`--mem=0`).
+An **exclusive** job takes the whole node (`--mem=0`) — though nothing asks
+for one since `gpu.exclusive` went (2026-10-01): `--mem 0` asks for the
+node's whole memory directly.
 
 Wall time follows the same rule: `--time` (prep or launch), else the target
 queue's own ceiling — the full amount the cluster allows there — else

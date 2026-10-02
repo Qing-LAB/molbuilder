@@ -1533,40 +1533,6 @@ def test_re_prepping_cold_removes_what_the_previous_prep_carried_in(tmp_path):
     assert not (attempt / ".continued-from").exists()
 
 
-def test_a_gpu_stage_is_routed_by_its_DECK_not_by_an_unset_gres(tmp_path):
-    """`job-contracts.md § 6.2` derives the GPU request *"from `.fdf` + GPU
-    type"*, and the halves live apart on purpose: the deck travels with the
-    bundle, the GPU **type** is a cluster fact that `job-system.md` decision #3
-    (target isolation) keeps out of what you produce on a laptop.
-
-    So the ladder producer leaves `gres` unset and is right to — `stages.py`
-    says *"scheduler resources … resolve at submit"*.  What was missing is that
-    submit asked `bool(job.resources.gres)`, always false for a ladder, so a
-    stage whose deck selects a GPU eigensolver went to the **CPU partition**
-    while its own rendered header asked for a GPU.
-    """
-    from molbuilder.jobset.submit import _job_wants_gpu
-    from molbuilder.jobset.model import Job, Resources
-
-    d = tmp_path / "03_tight"; d.mkdir()
-    gpu_job = Job(name="tight", script="JOB_03_tight.fdf")
-    (d / "JOB_03_tight.fdf").write_text(
-        "SystemLabel JOB\nDiag.Algorithm ELPA-2stage\nDiag.ELPA.GPU .true.\n")
-    assert _job_wants_gpu(d, gpu_job) is True
-
-    cpu = tmp_path / "01_coarse"; cpu.mkdir()
-    cpu_job = Job(name="coarse", script="JOB_01_coarse.fdf")
-    (cpu / "JOB_01_coarse.fdf").write_text(
-        "SystemLabel JOB\nDiag.Algorithm divide-and-conquer\n")
-    assert _job_wants_gpu(cpu, cpu_job) is False
-
-    # a sweep point that STATES its gres is honoured unchanged: the benchmark
-    # sweeps a GPU count, which is not a property of one deck
-    pt = tmp_path / "bench-G1K1C4"; pt.mkdir()
-    assert _job_wants_gpu(pt, Job(name="p", script="job-gpu.fdf",
-                                  resources=Resources(gres="gpu:1"))) is True
-
-
 def test_status_takes_a_stage_and_answers_the_other_question(tmp_path):
     """`job-system.md` § 5.3 reserves a per-stage form and marked it unbuilt.
 
@@ -3065,7 +3031,16 @@ def test_submit_defaults_the_domain_from_the_bundles_execution_block(
     # `scheduler.routing` in the file above until the prober stopped writing
     # into a person's config.  What the bundle still chooses is WHICH domain
     # (`execution.domain`) -- the preference half of `configuration.md` § 5 M-1.
-    _write_domains(bundle, [("fast", "htc", "express", "0-04:00:00")])
+    # The sweep asks for GPUs, so the queue it is routed to lists them
+    # (`scheduler.md` R2a).
+    from molbuilder.scheduler import (FILENAME, Domain, Environment,
+                                      Topology, write_environment)
+    write_environment(
+        Environment(scheduler="slurm", topology=Topology(cores_per_socket=64),
+                    domains=[Domain(name="fast", partition="htc",
+                                    qos="express", max_time="0-04:00:00",
+                                    gpu={"a100": 4})]),
+        bundle / FILENAME)
     runner, grp = _runner()
     r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
                             "--dry-run", "--yes"])
@@ -3076,63 +3051,6 @@ def test_submit_defaults_the_domain_from_the_bundles_execution_block(
 # --------------------------------------------------------------------- #
 #  G7 — the GPU answer travels; the deck is not re-read for it          #
 # --------------------------------------------------------------------- #
-
-def test_submit_asks_the_allocation_not_the_deck_which_engine_wants_a_gpu(
-        tmp_path):
-    """`gpu.md` G7: *"The value travels; the deck is not re-read for it."*
-
-    `submit._job_wants_gpu` decides the PARTITION and whether `--gres` is
-    emitted; `runwrap._wants_gpu` decides which conda env the wrapper
-    activates. They must answer the same question the same way, and
-    until 2026-09-04 they did not: submit grepped the deck for
-    `Diag.ELPA.GPU` -- a SIESTA keyword -- so it answered
-
-      * False for a PySCF run whose allocation said `use_gpu: true`
-        (queued on a device-less partition with no `--gres`, while the
-        wrapper activated the GPU env on it), and
-      * True for a SIESTA deck whose allocation said `use_gpu: false`,
-        overriding the stated answer with a file's opinion.
-
-    `model.py`'s `use_gpu` calls itself *"the ANSWER, carried rather than
-    re-derived"* and records four sites fixed 2026-08-23; this was a
-    fifth, a package away.
-
-    The deck scan survives for a caller that states NOTHING -- G7 is
-    explicit that this is not re-deriving, because such a caller has no
-    allocation to ask -- which is the third case below.
-    """
-    from molbuilder.jobset.model import Job, Resources
-    from molbuilder.jobset.submit import _job_wants_gpu
-    from molbuilder.runwrap import _wants_gpu
-
-    (tmp_path / "co2.py").write_text("# a PySCF deck\n")
-    (tmp_path / "s.fdf").write_text("SystemLabel s\nDiag.ELPA.GPU .true.\n")
-
-    pyscf_gpu = Job(name="co2", script="co2.py",
-                    resources=Resources(use_gpu=True))
-    siesta_no = Job(name="s", script="s.fdf",
-                    resources=Resources(use_gpu=False))
-    unstated  = Job(name="s", script="s.fdf", resources=Resources())
-
-    assert _job_wants_gpu(tmp_path, pyscf_gpu) is True, (
-        "a PySCF run whose allocation says use_gpu=true must route to a "
-        "GPU partition; the deck has no SIESTA keyword to find")
-    assert _job_wants_gpu(tmp_path, siesta_no) is False, (
-        "the allocation said use_gpu=false; a keyword in the deck does not "
-        "get to overrule it")
-    assert _job_wants_gpu(tmp_path, unstated) is True, (
-        "nothing was stated, so the deck is the only thing left to ask "
-        "-- G7 keeps this path deliberately")
-
-    # THE TWO DOORS AGREE.  This is the assertion that would have caught
-    # it: each door alone looked self-consistent.
-    for job in (pyscf_gpu, siesta_no, unstated):
-        deck = tmp_path / job.script
-        assert _job_wants_gpu(tmp_path, job) == _wants_gpu(deck, job.resources), (
-            f"submit and the wrapper disagree about {job.script}: submit "
-            f"picks the partition, the wrapper picks the env, and a job "
-            f"sent to a device-less queue then activates the GPU env")
-
 
 def test_every_directory_prep_makes_says_what_it_is(tmp_path):
     """Invariant 6b, and the drift half of it.

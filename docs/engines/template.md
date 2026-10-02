@@ -248,15 +248,16 @@ they have no catalogue row (`TransportConfig`'s own spellings, `num_threads`,
 `log_level`); `help_for` returns `""` for those and the caller falls back.
 
 **The rest of that duplication is the debt, and it is measured rather than
-guarded.** **487 facts live in two places** (measured 2026-08-20 at 307, 618
+guarded.** **491 facts live in two places** (measured 2026-08-20 at 307, 618
 on 2026-09-15 when the transport rows landed, 485 once `help` moved out, 490 with the SIESTA vibration item, 486 once the one-choice `engine` item retired, and 489 with `already_relaxed` on SIESTA, all 2026-09-24, and 486 once
 `wrap_into_cell` retired on 2026-09-25, 482 on 2026-09-28 once PySCF's
 `es_top_n` and `es_threshold` were removed and `temperature_K` joined SIESTA,
 and 487 the same day when the electronic state's `spin_treatment` and
 `unpaired_electrons` became items both engines declare, and 491 on
 2026-09-29 with `tbt_verbosity` -- `TBT.Verbosity`, which both NEGF decks
-wrote from outside the catalogue until then (`transport.md` § 6.1b) — and 487
-the same day once PySCF's one-choice `optimizer` retired with `berny` —
+wrote from outside the catalogue until then (`transport.md` § 6.1b) — 487
+the same day once PySCF's one-choice `optimizer` retired with `berny`, and
+491 on 2026-10-01 when `gpu_count` gained PySCF (`execution/gpu.md` § 1.1) —
 every fall in the series came from deleting a home rather than from adding a
 check, and the rises are items gaining a home: two merged items gaining a
 second engine, whose declarations `config/state.py` writes once, and one

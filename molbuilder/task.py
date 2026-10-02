@@ -119,11 +119,13 @@ _BIAS_KEYS = ("voltages_v",)
 #: the file-condition check live where the filesystem is (`init`
 #: resolves, `prep` composes -- transport/compose.classify_citation).
 _CITATION_RE = re.compile(r"^(?!/)(?!.*\.\.)[^\s]+$")
-#: The three SCHEDULER asks, and the whole of an `allocation` block
-#: (`stages.md` § 6.8a).  The launch SHAPE -- ranks, threads, devices -- is
-#: not here: it is a `bench` entry with one point (`generator.md` § 4.3a),
-#: because a knob you might instead measure has one home, not two.
+#: The SCHEDULER asks of an `allocation` block (`stages.md` § 6.8a): the
+#: three SLURM spells as text, and the one it switches -- whether a GPU ask
+#: carries its binding (`execution/gpu.md` G9).  The launch SHAPE -- ranks,
+#: threads, GPUs -- is not here: it is the run card's (`execution`,
+#: `stages.md` § 6.8d) and a benchmark's axes (`bench`).
 _ALLOCATION_KEYS = ("domain", "time", "mem")
+_ALLOCATION_SWITCHES = ("gpu_binding",)
 _NOTIFY_KEYS = ("on_scf_converged", "every_hours", "channels", "report")
 
 #: The two SCHEDULER asks a run owns, admitted to `execution` by name
@@ -187,7 +189,7 @@ class Run:
 @dataclass(frozen=True)
 class Allocation:
     """**What this calculation asks the scheduler for** — the queue, the
-    wall, the memory.
+    wall, the memory, and whether a GPU ask carries its binding.
 
     Added 2026-08-24 (user), because the Task-setup tab could set neither a
     time nor a memory ask and `prep` had no way to learn one: five Sol jobs
@@ -224,9 +226,15 @@ class Allocation:
     domain: str = ""
     time: str = ""
     mem: str = ""
+    #: ``False`` turns off ``--gres-flags=enforce-binding`` for this
+    #: calculation's GPU asks -- its benchmark and its runs alike, so a
+    #: benchmark measures the layout the run will use (`execution/gpu.md`
+    #: G9).  ``None`` is unstated, and the rule is that the binding is sent.
+    gpu_binding: Optional[bool] = None
 
     def __bool__(self) -> bool:
-        return bool(self.domain or self.time or self.mem)
+        return bool(self.domain or self.time or self.mem
+                    or self.gpu_binding is not None)
 
 
 @dataclass(frozen=True)
@@ -376,7 +384,7 @@ class Task:
     calculation: str = "optimization"
 
     #: WHAT THIS CALCULATION ASKS THE SCHEDULER FOR -- the queue, the wall,
-    #: the memory (:class:`Allocation`).  Absent-is-a-state, like ``bench``:
+    #: the memory, the GPU binding (:class:`Allocation`).  Absent-is-a-state, like ``bench``:
     #: an empty one writes no key, and every description written before
     #: 2026-08-24 says exactly what it always said by omitting it.
     #:
@@ -922,17 +930,22 @@ def _allocation_from_obj(obj: Mapping[str, Any]) -> "Allocation":
     # A LAUNCH SHAPE LANDING HERE IS THE ORDINARY MISTAKE, not a typo: it is
     # what the block held for one day in 2026-09-01, and what a person
     # reasonably reaches for.  The refusal names the block it belongs in.
-    _check_keys(raw, _ALLOCATION_KEYS, where="allocation",
-                note=". Ranks, threads and devices are not asked here -- a "
-                     "launch shape is a `bench` entry with ONE point "
-                     "(\"mpi_np\": [8]), so the knob you might instead "
-                     "measure has one home (generator.md 4.3a)")
+    _check_keys(raw, _ALLOCATION_KEYS + _ALLOCATION_SWITCHES,
+                where="allocation",
+                note=". Ranks, threads and GPUs are not asked here -- they "
+                     "are the run card's (`execution`: \"mpi_np\": 8), and "
+                     "a benchmark's axes (`bench`) (stages.md 6.8d)")
     for k in _ALLOCATION_KEYS:
         v = raw.get(k)
         if v is not None and not isinstance(v, str):
             _refuse(f"allocation.{k} must be a string -- write it the way "
                     f"you would type it (\"4h\", \"128G\", "
                     f"\"7-00:00:00\"); got {type(v).__name__}")
+    for k in _ALLOCATION_SWITCHES:
+        v = raw.get(k)
+        if v is not None and not isinstance(v, bool):
+            _refuse(f"allocation.{k} must be true or false; got "
+                    f"{type(v).__name__}")
     # Normalised on the way in, so nothing downstream meets two spellings
     # (the class docstring says why).  A refusal here names the field and
     # the forms it takes, because "invalid allocation" tells a person
@@ -947,7 +960,8 @@ def _allocation_from_obj(obj: Mapping[str, Any]) -> "Allocation":
             _refuse(f"allocation.{key}: {exc}")
     return Allocation(domain=str(raw.get("domain") or ""),
                       time=_canon(canonical_time, "time"),
-                      mem=_canon(canonical_mem, "mem"))
+                      mem=_canon(canonical_mem, "mem"),
+                      gpu_binding=raw.get("gpu_binding"))
 
 
 def _notify_from_obj(obj: Mapping[str, Any], *, engine: str,
@@ -1233,6 +1247,10 @@ def _task_to_dict(task: Task) -> dict:
             k: v for k, v in (("domain", task.allocation.domain),
                               ("time", task.allocation.time),
                               ("mem", task.allocation.mem)) if v}
+        # A SWITCH IS WRITTEN WHEN IT IS SAID, false included -- `false` is
+        # the one value that changes anything.
+        if task.allocation.gpu_binding is not None:
+            out["allocation"]["gpu_binding"] = task.allocation.gpu_binding
     if task.notify:
         out["notify"] = {
             k: v for k, v in (("on_scf_converged", task.notify.on_scf_converged),

@@ -671,6 +671,8 @@
     .ts-ask { grid-template-columns: 1fr; gap: var(--space-xs); }
 }
 .ts-ask-label { color: var(--text-secondary); font-size: var(--text-sm); }
+/* A switch sits at the start of the field's column, the size it is. */
+.ts-ask > input[type="checkbox"] { justify-self: start; }
 .ts-ask-input {
     font: inherit;
     color: inherit;

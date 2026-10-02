@@ -92,6 +92,12 @@ class Resources:
     exclusive:     Optional[bool]  = None
     mem:           Optional[str]   = None    # SLURM --mem (e.g. "120G", "0")
     gres:          Optional[str]   = None    # SLURM --gres, a count: "gpu:1"
+    #: Whether a GPU ask carries ``--gres-flags=enforce-binding`` -- the
+    #: job's cores on the socket its GPUs sit on (`execution/gpu.md` G9).
+    #: ``None`` is the rule, and the rule is that it does; ``False`` arrives
+    #: from the description's ``allocation.gpu_binding``, which turns it off
+    #: for the calculation, its benchmark and its runs alike.
+    gpu_binding:   Optional[bool]  = None
     #: Whether this run uses a GPU -- the ANSWER, carried rather than
     #: re-derived.  `read_by = ["wrapper"]` on the catalogue item says the
     #: wrapper depends on it (`engines/template.md` § 6.1), and until

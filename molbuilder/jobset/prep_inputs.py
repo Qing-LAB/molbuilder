@@ -394,12 +394,11 @@ def declared_run_shape(base, target, task, stage=None):
 
     The device ask is a COUNT -- ``gpu:N`` -- and names no card: which card
     a node carries is the machine's business (`scheduler.md` R2a; a card was
-    looked up here, 2026-09-30 to 2026-10-01).  It is decided HERE for every
-    run that uses a device, stated count or not (`execution/gpu.md` G5: an
-    absent ``gpu_count`` is one device, in one place): until 2026-09-30 a
-    run whose card said ``use_gpu`` without a count reached the header with
-    no ask, and a PySCF run, which carries no ``gpu_count`` at all, could
-    take no other road.
+    looked up here, 2026-09-30 to 2026-10-01).  The count is the run card's
+    own ``gpu_count``, on every engine; a device run that states none gets
+    no ask here, and `prep_run_inputs` refuses it once a flag has had its
+    say (`execution/gpu.md` G5: no default -- it was one device, filled in
+    here, until 2026-10-01).
     """
     cond = task.run_condition(stage)
     from ..template import catalogue, select
@@ -430,8 +429,8 @@ def declared_run_shape(base, target, task, stage=None):
         elif field in known:
             out[field] = val
     # WHETHER there is a device is the run's answer (the card's `use_gpu`
-    # over the template's); HOW MANY is this block's `gpu_count`, else one
-    # (G5); which card is the machine's business, never asked (R2a).  A
+    # over the template's); HOW MANY is this block's `gpu_count` (G5: no
+    # default); which card is the machine's business, never asked (R2a).  A
     # count without a device run is not an ask: it is dropped here, and
     # `prep_run_inputs` says so.
     if want_devices is None:
@@ -439,7 +438,8 @@ def declared_run_shape(base, target, task, stage=None):
     if not want_devices:
         out.pop("gres", None)
         return out
-    out["gres"] = f"gpu:{out.get('gres', 1)}"
+    if "gres" in out:
+        out["gres"] = f"gpu:{out['gres']}"
     return out
 
 
@@ -458,9 +458,10 @@ def run_inputs(base, target, task, stage=None):
         pins, _axes, _value_axes = _declared_execution_pins(
             base, task.engine, {k: [v] for k, v in cond.items()})
     # THE SHAPE EVEN WHEN THE CARD IS EMPTY: a template whose `use_gpu` is on
-    # is a device run with nothing on its card, and its device ask is made
-    # here like any other (`gpu.md` G5).  It returned before this, so that
-    # run reached the header with no ask (the K5 review's B1).
+    # is a device run with nothing on its card, and its count is asked for
+    # like any other's (`gpu.md` G5 -- refused, unstated, by
+    # `prep_run_inputs`).  It returned before this, so that run reached the
+    # header with no ask (the K5 review's B1).
     return declared_run_shape(base, target, task, stage), dict(pins or {})
 
 
@@ -511,8 +512,7 @@ def prep_run_inputs(base, target, task, stage, allocation=None, *,
     # with no flags passes an empty ask, not an absent one.
     allocation = allocation if allocation is not None else Resources()
     # What the PERSON said, before anything is folded in: the note in step 4
-    # is for a shape nobody stated, and a device ask derived from `use_gpu`
-    # (G5's one device) is not a statement about the ranks.
+    # is for a shape nobody stated.
     _flags_stated = any(getattr(allocation, f, None) not in (None, "")
                         for f in ("mpi_np", "cpus_per_task", "gres"))
 
@@ -532,6 +532,17 @@ def prep_run_inputs(base, target, task, stage, allocation=None, *,
              if k in known and getattr(allocation, k, None) in (None, "")}
     if patch:
         allocation = _dc.replace(allocation, **patch)
+    # A DEVICE RUN STATES HOW MANY (`execution/gpu.md` G5): the run card's
+    # `gpu_count`, or `--gpus N` -- folded just above, so a flag counts.  It
+    # was one device, filled in unsaid, until 2026-10-01 (user: "there is
+    # no default. all resources are explicit").
+    if allocation.gres in (None, "") and run_uses_device(base, task, stage):
+        raise PrepError(
+            f"stage {stage!r} runs on a GPU (`use_gpu` -- its run card, "
+            f"else the template) and states no GPU count.  Write it on the "
+            f"run card -- \"execution\": {{\"gpu_count\": N}} in task.json, "
+            f"the calculation's or this stage's -- or say it on this prep: "
+            f"--gpus N (docs/execution/gpu.md G5).")
 
     # 1b · AND THE CALCULATION'S SCHEDULER ASK, before the verdict for the
     #      same reason: `architecture.md` § 5.2's scheduler ladder is

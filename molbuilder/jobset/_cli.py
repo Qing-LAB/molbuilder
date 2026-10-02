@@ -994,9 +994,8 @@ MEM_METAVAR = "SIZE"
 MEM_HELP = ("how much TOTAL memory this needs -- `128G`, `80GB`, `0.5T`, or "
             "a bare number of GB.  `0` asks for all of the node's.  "
             "Unstated, what molbuilder.json says decides -- "
-            "`scheduler.defaults.mem`, then `scheduler.gpu.mem` for a GPU "
-            "job -- else the scheduler's own default (running-a-job.md "
-            "§ 5.3.1).")
+            "`scheduler.defaults.mem` -- else the scheduler's own default "
+            "(running-a-job.md § 5.3.1).")
 
 
 def _duration(text):
@@ -1808,9 +1807,15 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                           for j in launching), default=0) or None
             _gpu = only_side == "gpu" or (bool(launching) and all(
                 j.resources.gres or j.resources.use_gpu for j in launching))
+            # ...and the GPU COUNT the door admits (`submit._gres_count`),
+            # never a stand-in of one.
+            from .submit import _gres_count
+            _gpus = (max((_gres_count(j.resources.gres or "")
+                          for j in launching), default=0) or None
+                     if _gpu else None)
             click.echo(queue_table(
                 _rows, Ask(time_s=time_s, mem_gb=parse_mem_gb(mem)),
-                cores=_cores, gpu=_gpu))
+                cores=_cores, gpus=_gpus))
             raise click.ClickException(
                 "no --domain, so no queue was chosen.  Name one from the "
                 "list above with `--domain`, name it in the "
@@ -2301,8 +2306,7 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
     The unnamed form writes ``environment.json`` at the machine scope, so one
     probe serves every calculation here (`configuration.md` § 5).
 
-    **Facts only.** Which partition you want, the account, and the policy no
-    probe can invent (``gpu.exclusive``, ``gpu.mem``) stay yours, in
+    **Facts only.** Which partition you want and the account stay yours, in
     ``molbuilder.json`` -- M-1: a probe never chooses on your behalf.
 
     Run it on a login node for a cluster; on a workstation it records the same

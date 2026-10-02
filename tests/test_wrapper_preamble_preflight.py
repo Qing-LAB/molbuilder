@@ -414,57 +414,6 @@ class TestTheHeaderNamesTheQueueTheAllocationAsKED:
             assert got != ["-p public", "-q public"], (dom, got)
 
 
-def test_a_gpu_job_goes_to_the_domains_gpu_partition(tmp_path, monkeypatch):
-    """`Placement`, not a `(partition, qos)` tuple.
-
-    A domain may declare `gpu_partition` -- where GPU work goes when that
-    differs from the same domain's ordinary partition -- and
-    `scheduler.place._bind` is what reads it: ``(gpu_partition or
-    partition) if prefer_gpu else partition``.
-
-    The first version of this resolution was a hand-written loop over the
-    routing rows returning ``(row.partition, row.qos)``, which is `place`'s
-    named branch reimplemented WITHOUT that line: both decks would have gone
-    to the ordinary partition, so the GPU job would run on the wrong queue
-    -- and only for the jobs that care about the distinction.
-    """
-    import os
-    from molbuilder.scheduler import (Domain, Environment, Topology,
-                                      write_environment, FILENAME)
-    from molbuilder.runwrap import render_wrappers
-    monkeypatch.chdir(tmp_path)
-    env = Environment(
-        scheduler="slurm", topology=Topology(),
-        script_generation={"preamble": "module load mamba",
-                           "activation": "source activate"},
-        domains=[Domain(name="mix", partition="cpu-part", qos="public",
-                        gpu_partition="gpu-part", max_time="4:00:00",
-                        gpu={"type": "a100", "per_node": 4})])
-    write_environment(env, tmp_path / FILENAME)
-
-    def header(deck_text, res):
-        (tmp_path / "D.fdf").write_text(deck_text)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            out = render_wrappers(tmp_path / "D.fdf", resources=res,
-                                  project_dir=tmp_path, machine_record=env,
-                                  emit_sbatch=True)
-        sb = [x for n, x in out.files if n.endswith(".sbatch")]
-        assert sb, "no .sbatch emitted"
-        return [l.replace("#SBATCH ", "") for l in sb[0].splitlines()
-                if l.startswith("#SBATCH -p")]
-
-    gpu = header("SystemName t\nSystemLabel t\nNumberOfAtoms 2\n"
-                 "Diag.ELPA.GPU .true.\n",
-                 Resources(mpi_np=4, cpus_per_task=1, domain="mix",
-                           time="0-04:00:00", mem="8G", gres="gpu:a100:1"))
-    cpu = header("SystemName t\nSystemLabel t\nNumberOfAtoms 2\n",
-                 Resources(mpi_np=4, cpus_per_task=1, domain="mix",
-                           time="0-04:00:00", mem="8G"))
-    assert gpu == ["-p gpu-part"], gpu
-    assert cpu == ["-p cpu-part"], cpu
-
-
 def test_an_unstated_wall_takes_the_NAMED_queues_ceiling(tmp_path, monkeypatch):
     """With no `--time`, the header states the ceiling of the queue it
     names -- the only value that queue can never reject as too long.
@@ -558,22 +507,3 @@ class TestOneReaderOfSlurmsGresSpelling:
         assert _parse_gres("gpu:4") == (4, None)
         assert _parse_gres("(null)") == (None, None)
 
-
-def test_both_spellings_carry_gres_flags(tmp_path):
-    """R1: the header and the command line are two renderings of one
-    placement.  `--gres-flags=enforce-binding` was appended by the header
-    alone, from `runwrap`, on the reasoning that "the command line never
-    states it".  That is backwards -- the command line not stating it is
-    the disagreement R1 forbids.  It rides with the gres now, because it
-    is meaningless without one."""
-    from molbuilder.scheduler.emit import Directives
-    d = Directives(partition="general", qos="public", gres="gpu:a100:1",
-                   ntasks=4, walltime="0-04:00:00")
-    hdr = " ".join(d.header_lines())
-    cli = " ".join(d.sbatch_flags())
-    assert "--gres-flags=enforce-binding" in hdr
-    assert "--gres-flags=enforce-binding" in cli
-    # and no gres at all -> no binding flag in either
-    bare = Directives(partition="p", qos="q", ntasks=4)
-    assert "gres" not in " ".join(bare.header_lines())
-    assert "gres" not in " ".join(bare.sbatch_flags())

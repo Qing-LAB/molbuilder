@@ -309,9 +309,13 @@ partially-probed cluster unusable.
 group/domain that actually claimed to have it, and has the capacity as
 requested (gpu_number). that's it"; "we never claimed any card type".)* A GPU
 job goes only to a queue whose record lists GPUs — the `gpu` column the probe
-writes from what the scheduler reports — and is admitted there only when one
-node offers at least the number asked: the most any node of that queue holds,
-whatever its card. That is the whole of the GPU check.
+writes from what the scheduler reports, or a `gpu_partition` — and is admitted
+there only when one node offers at least the number asked: the most any node
+of that queue holds, whatever its card. That is the whole of the GPU check,
+and it is made in `admits`, so a queue named with `--domain` meets it as a
+queue placement picked does *(the named path skipped the first half until
+2026-10-01)*. A queue that lists GPUs without saying how many is never refused
+on the number (R3).
 
 **molbuilder names no card.** A GPU ask is `--gres=gpu:N`; which card a node
 carries is the machine's business, and its scheduler places the job on one that

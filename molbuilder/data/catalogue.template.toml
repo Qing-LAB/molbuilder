@@ -819,19 +819,21 @@ The value only bakes in a default, it is not final. The wrapper accepts ``bash r
 """
 
 [item.gpu_count]
+# BOTH ENGINES since 2026-10-01 (`execution/gpu.md` § 1.1): how many GPUs a
+# run asks for is stated, on every engine, and has no default -- PySCF had
+# no item for it, so a PySCF GPU run could only be given one GPU, unsaid.
 kind = "wrapper"
 category = ["execution"]
-engines = ["siesta"]
-engine_key = "(molbuilder: scheduler ``--gres=gpu:<type>:G``; not in .fdf)"
+engine_key = "(molbuilder: scheduler ``--gres=gpu:G``; not in the deck)"
 type = "int"
 allocation = true
 range = [1, 16]
 group = "staging"
-label = "GPUs per trial (G)"
+label = "GPUs (G)"
 help = """
-How many GPU devices one trial (or run) asks the scheduler for.
-Ranks per device follow as mpi_np / G, and the split must be even -- ELPA's own rule is the same rank count on every device -- so a bench cell whose mpi_np does not divide by G is dropped by name at prep.
-Declared in the bench block it is an axis: gpu_count = [1, 2, 4] measures exactly those device counts. Leave it out and prep proposes the divisors of each declared rank count.
+How many GPUs a run -- or one benchmark trial -- asks the scheduler for: a count, and no card; which card a node carries is that machine's business.  A run that uses the GPU states it; there is no default, and prep refuses a GPU run without one.
+SIESTA: ranks per GPU follow as mpi_np / G, and the split must be even -- ELPA's own rule is the same rank count on every device -- so a bench cell whose mpi_np does not divide by G is dropped by name at prep.  Declared in the bench block it is an axis: gpu_count = [1, 2, 4] measures exactly those counts.  Leave it out of the bench and prep proposes the divisors of each declared rank count.
+PySCF: one process, on the GPUs the job is given.
 """
 
 [item.block_size]

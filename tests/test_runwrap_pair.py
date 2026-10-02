@@ -32,7 +32,6 @@ from molbuilder.runwrap import write_run_wrapper
 _SCHED = {
     "kind": "slurm",
     "directives": {"partition": "public", "qos": "public"},
-    "gpu": {"partition": "public", "exclusive": True},
     "defaults": {"time": "0-04:00:00", "cpus_per_task": None, "mem": None},
 }
 
@@ -107,31 +106,6 @@ def test_the_pair_agrees_about_ranks_and_cores(project):
         "the launcher's baked OMP default disagrees with `-c 8`.  Off a "
         "scheduler this default IS the thread count, so a benchmark sweeping "
         "cores-per-rank measures one point N times.")
-
-
-def test_the_pair_agrees_that_there_is_no_gpu(project):
-    """A CPU allocation asks for no GPU in either file.
-
-    A stray ``--gres`` queues every job behind a GPU node it never uses; a
-    stray ``Diag.ELPA.GPU`` in the deck would route the launcher to the GPU
-    env.  The two are read from different places, which is why they are
-    compared rather than assumed to move together.
-    """
-    run_sh, sbatch = _render(project, Resources(mpi_np=4, cpus_per_task=2))
-    assert _directive(sbatch, "--gres") is None, sbatch
-    assert "molbuilder-siesta-gpu" not in run_sh, (
-        "a CPU allocation routed the launcher to the GPU environment")
-
-
-def test_the_pair_agrees_about_the_gpu_when_one_is_asked_for(project):
-    """And the other direction, so the test above cannot pass by never
-    emitting a GPU header at all."""
-    deck = _DECK + "Diag.Algorithm ELPA-1STAGE\nDiag.ELPA.GPU .true.\n"
-    res = Resources(mpi_np=4, cpus_per_task=2, gres="gpu:1")
-    run_sh, sbatch = _render(project, res, deck=deck)
-    assert _directive(sbatch, "--gres") == "gpu:1", sbatch
-    assert "molbuilder-siesta-gpu" in run_sh, (
-        "the deck asks for the GPU and the launcher activates the CPU env")
 
 
 def test_the_door_refuses_a_loose_allocation(project):

@@ -1114,6 +1114,7 @@ function _resetPerFolderState(keep) {
         const box = $(id);
         if (box) box.value = "";
     }
+    { const b = $("ts-ask-gpu-binding"); if (b) b.checked = true; }
     /* THE PREP PLAN AND THE FILE LIST ARE THIS FOLDER'S TOO: a refresh the
      * last folder scheduled is cancelled, one in flight is discarded, and
      * both cards stay hidden until this folder's description paints them
@@ -3297,10 +3298,12 @@ function paintAskNotes() {
     }
 }
 
-/** The three asks as `task.json`'s `allocation` carries them. */
+/** The asks as `task.json`'s `allocation` carries them -- the whole block,
+ *  since `applyBlockToDoc` writes it whole. */
 function askValues() {
     const t = ($("ts-ask-time") || {}).value || "";
     const m = ($("ts-ask-mem") || {}).value || "";
+    const b = $("ts-ask-gpu-binding");
     const out = {};
     if (_fs.queue) out.domain = _fs.queue;
     // THE RECORD GETS ONE SPELLING.  The box accepts "4h" because that is
@@ -3309,6 +3312,9 @@ function askValues() {
     // `-t 4h` and SLURM refused the tool's written value.
     if (t.trim()) out.time = _canonTime(t);
     if (m.trim()) out.mem = _canonMem(m);
+    // Ticked is the rule and writes nothing; unticked is the one value that
+    // changes anything (`execution/gpu.md` G9).
+    if (b && !b.checked) out.gpu_binding = false;
     return out;
 }
 
@@ -3471,10 +3477,12 @@ function readAsksFromTask(task) {
     _fs.queue = a.domain || "";
     const t = $("ts-ask-time");
     const m = $("ts-ask-mem");
+    const b = $("ts-ask-gpu-binding");
     // Loaded from the DESCRIPTION: a person put these there, so they carry
     // no auto mark and no queue click may replace them.
     if (t) { t.value = a.time || ""; delete t.dataset.mbAuto; }
     if (m) { m.value = a.mem || ""; delete m.dataset.mbAuto; }
+    if (b) b.checked = a.gpu_binding !== false;
 }
 
 /* ---------- when this run should tell you something ---------- */
@@ -3802,6 +3810,13 @@ function watchAskControls() {
             refreshSave();
         });
         el.addEventListener("change", () => { paintAskNotes(); applyAsksToDoc(); refreshSave(); });
+    }
+    {
+        const el = $("ts-ask-gpu-binding");
+        if (el && !el.dataset.mbWatched) {
+            el.dataset.mbWatched = "1";
+            el.addEventListener("change", () => { applyAsksToDoc(); refreshSave(); });
+        }
     }
     // The notify card writes on `change` for the same reason the asks do:
     // rewriting the document under a moving cursor is how an editor fights

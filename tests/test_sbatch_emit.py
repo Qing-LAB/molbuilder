@@ -32,7 +32,6 @@ _SCHED = {
         "partition": "public", "qos": "public",
         "mail_type": "ALL", "mail_user": "%u@asu.edu", "export": "NONE",
     },
-    "gpu": {"partition": "public", "exclusive": True},
     "defaults": {"time": "0-04:00:00", "cpus_per_task": None, "mem": None},
 }
 
@@ -107,117 +106,11 @@ def test_mail_user_real_address_not_flagged(tmp_path):
     assert "do NOT expand" not in txt
 
 
-def test_gpu_header_shape(tmp_path):
-    fdf = tmp_path / "gpu-2a100.fdf"
-    fdf.write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .true.\n")
-    txt = render_sbatch(fdf, _SCHED, ntasks=2, cpus_per_task=12,
-                        gpu=True, gpu_count=2, exclusive=False)
-    assert "#SBATCH -n 2" in txt
-    assert "#SBATCH -c 12" in txt
-    assert "#SBATCH --gres=gpu:2" in txt
-    assert "#SBATCH --gres-flags=enforce-binding" in txt   # § 7.5.1
-    # exclusive=False override honoured (benchmark sweep, § 11.2 / D9).
-    assert "--exclusive" not in txt
-
-
-def test_gpu_exclusive_defaults_from_config(tmp_path):
-    fdf = tmp_path / "prod.fdf"
-    fdf.write_text("Diag.ELPA.GPU .true.\n")
-    # exclusive=None => use scheduler.gpu.exclusive (True for asu-sol).
-    txt = render_sbatch(fdf, _SCHED, ntasks=1, gpu=True)
-    assert "#SBATCH --exclusive" in txt
-
-
-def test_an_absent_gpu_count_defaults_to_one_device(tmp_path):
-    """**G5** (`execution/gpu.md`): one default for an absent ask, and it is
-    **1 device** — not the rank count.
-
-    *Replaces* `test_gpu_count_defaults_to_ntasks`, which asserted
-    ``ntasks=3 -> --gres=gpu:a100:3``: the *one rank per GPU* model D12e
-    retired on 2026-08-13.  It was the only thing keeping that model alive —
-    `_render_sbatch_for`, the one production caller, already defaulted to 1,
-    so the two disagreed one function apart and the wrong one was the branch
-    a direct caller reached.  Note the test immediately below has asserted
-    the REPLACING model — ranks and devices independent — the whole time.
-    """
-    fdf = tmp_path / "g.fdf"
-    fdf.write_text("Diag.ELPA.GPU .true.\n")
-    txt = render_sbatch(fdf, _SCHED, ntasks=3, gpu=True)
-    assert "#SBATCH --gres=gpu:1" in txt, (
-        "an absent gpu_count must ask for ONE device; deriving it from the "
-        "rank count is the retired 1-rank-per-GPU model (gpu.md G5)")
-    # ...and the rank count is untouched by the device default.
-    assert "#SBATCH -n 3" in txt or "#SBATCH --ntasks=3" in txt
-
-
-def test_gpu_ranks_independent_of_gpu_count(tmp_path):
-    """K ranks sharing FEWER GPUs via MPS: -n is the RANK count, --gres is
-    the GPU count -- they are independent (the load-balance model)."""
-    fdf = tmp_path / "g.fdf"
-    fdf.write_text("Diag.ELPA.GPU .true.\n")
-    txt = render_sbatch(fdf, _SCHED, ntasks=8, cpus_per_task=3,
-                        gpu=True, gpu_count=1)        # 8 ranks, 1 GPU
-    assert "#SBATCH -n 8" in txt                       # ranks, NOT 1
-    assert "#SBATCH -c 3" in txt
-    assert "#SBATCH --gres=gpu:1" in txt
-
-
 def test_mem_emitted_when_set(tmp_path):
     fdf = tmp_path / "m.fdf"
     fdf.write_text("x\n")
     txt = render_sbatch(fdf, _SCHED, ntasks=8, mem="120G")
     assert "#SBATCH --mem=120G" in txt
-
-
-def test_gpu_memory_falls_back_to_shared_default(tmp_path):
-    """A GPU job uses defaults.mem only when scheduler.gpu.mem is absent."""
-    sched = dict(_SCHED)
-    sched["defaults"] = dict(_SCHED["defaults"], mem="200G")
-    gfdf = tmp_path / "g.fdf"; gfdf.write_text("Diag.ELPA.GPU .true.\n")
-    gtxt = render_sbatch(gfdf, sched, ntasks=8, gpu=True, gpu_count=1,
-                         exclusive=False)
-    cfdf = tmp_path / "c.fdf"; cfdf.write_text("x\n")
-    ctxt = render_sbatch(cfdf, sched, ntasks=64)
-    # With no gpu.mem configured, both job types fall back to defaults.mem.
-    assert "#SBATCH --mem=200G" in gtxt
-    assert "#SBATCH --mem=200G" in ctxt
-
-
-def test_gpu_mem_config_key_is_used(tmp_path):
-    """With nothing to size from (no defaults.mem, no parseable system),
-    a GPU job requests the scheduler.gpu.mem FLOOR — not the site's
-    tight per-GPU default."""
-    sched = dict(_SCHED)
-    sched["gpu"] = dict(_SCHED["gpu"], mem="64G")
-    sched["defaults"] = dict(_SCHED["defaults"], mem=None)
-    gfdf = tmp_path / "g.fdf"; gfdf.write_text("Diag.ELPA.GPU .true.\n")
-    gtxt = render_sbatch(gfdf, sched, ntasks=8, gpu=True, gpu_count=1,
-                         exclusive=False)
-    assert "#SBATCH --mem=64G" in gtxt
-
-
-def test_cpu_job_ignores_gpu_mem_floor(tmp_path):
-    """gpu.mem is a GPU-job knob; a CPU job with no defaults.mem emits
-    NO --mem at all (the scheduler's own default decides), never the GPU
-    value."""
-    sched = dict(_SCHED)
-    sched["gpu"] = dict(_SCHED["gpu"], mem="64G")
-    sched["defaults"] = dict(_SCHED["defaults"], mem=None)
-    cfdf = tmp_path / "c.fdf"; cfdf.write_text("x\n")
-    ctxt = render_sbatch(cfdf, sched, ntasks=64)
-    assert "--mem=64G" not in ctxt
-    assert "#SBATCH --mem=" not in ctxt
-
-
-def test_explicit_mem_beats_the_gpu_default(tmp_path):
-    """An explicit --mem is the operator's judgment and wins outright."""
-    sched = dict(_SCHED)
-    sched["gpu"] = dict(_SCHED["gpu"], mem="64G")
-    gfdf = tmp_path / "g.fdf"; gfdf.write_text("Diag.ELPA.GPU .true.\n")
-    gtxt = render_sbatch(gfdf, sched, ntasks=8, gpu=True, gpu_count=1,
-                         mem="470G", exclusive=False)
-    assert "#SBATCH --mem=470G" in gtxt
-    assert "CAPPED" not in gtxt
 
 
 def test_explicit_mem_overrides_default(tmp_path):
@@ -227,20 +120,6 @@ def test_explicit_mem_overrides_default(tmp_path):
     txt = render_sbatch(fdf, sched, ntasks=8, gpu=True, gpu_count=1,
                         mem="120G", exclusive=False)
     assert "#SBATCH --mem=120G" in txt and "64G" not in txt
-
-
-def test_exclusive_ignores_mem_takes_whole_node(tmp_path):
-    """Exclusive owns the whole node -> --mem=0; any configured/explicit mem
-    is ignored, and the script says so (§ 4.3.1)."""
-    sched = dict(_SCHED)
-    sched["defaults"] = dict(_SCHED["defaults"], mem="120G")
-    fdf = tmp_path / "g.fdf"; fdf.write_text("Diag.ELPA.GPU .true.\n")
-    txt = render_sbatch(fdf, sched, ntasks=8, gpu=True, gpu_count=1,
-                        exclusive=True)
-    assert "#SBATCH --exclusive" in txt
-    assert "#SBATCH --mem=0" in txt
-    assert "#SBATCH --mem=120G" not in txt
-    assert "IGNORED" in txt                                # loud comment
 
 
 def test_cpus_omitted_when_unset(tmp_path):
@@ -304,127 +183,6 @@ def test_wrapper_emits_sbatch_when_scheduler_configured(project):
     txt = sbatch.read_text()
     assert "#SBATCH -n 64" in txt
     assert "--gres" not in txt          # CPU .fdf -> no GPU lines
-
-
-def test_wrapper_gpu_fdf_emits_gres(project):
-    fdf = project / "gpu.fdf"
-    fdf.write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .true.\n")
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=2, gres="gpu:2", cpus_per_task=12, exclusive=False))
-    txt = (project / "gpu.sbatch").read_text()
-    assert "#SBATCH --gres=gpu:2" in txt
-    assert "#SBATCH -c 12" in txt
-    assert "#SBATCH --gres-flags=enforce-binding" in txt
-
-
-def test_wrapper_gpu_has_socket_affinity_block(project):
-    # GPU launcher carries the § 7.5.2 socket co-location logic: pin under
-    # a whole-node (--exclusive) cpuset, WARN on a shared cross-socket
-    # allocation, exec via the $_pin prefix.  write_run_wrapper bash -n's
-    # the rendered wrapper, so reaching here = it parses.
-    fdf = project / "g.fdf"
-    fdf.write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .true.\n")
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=4, gres="gpu:1", cpus_per_task=6))
-    runsh = (project / "g.run.sh").read_text()
-    assert "socket co-location" in runsh
-    assert "socket-pin -> GPU socket" in runsh        # the pin branch
-    assert "WARN cross-socket" in runsh               # the warn branch
-    assert "exec $_pin siesta" in runsh               # numactl-or-nothing
-    assert "physical_package_id" in runsh
-    assert "MB_NO_SOCKET_PIN" in runsh                # the A/B disable toggle
-
-
-def test_wrapper_cpu_has_no_socket_affinity_block(project):
-    # CPU jobs have no GPU to co-locate against.
-    fdf = project / "c.fdf"
-    fdf.write_text("NumberOfAtoms 444\n")
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=8))
-    runsh = (project / "c.run.sh").read_text()
-    assert "socket co-location" not in runsh
-    assert "exec $_pin siesta" not in runsh
-
-
-def test_wrapper_gpu_K_ranks_share_one_gpu(project):
-    """The benchmark case: 8 (or 4) ranks share ONE A100 via MPS ->
-    -n must be the rank count (8), --gres the GPU count (1)."""
-    fdf = project / "gpu-k8.fdf"
-    fdf.write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .true.\n")
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=8, gres="gpu:1", cpus_per_task=3, exclusive=False))
-    txt = (project / "gpu-k8.sbatch").read_text()
-    assert "#SBATCH -n 8" in txt                  # ranks (was wrongly 1)
-    assert "#SBATCH -c 3" in txt
-    assert "#SBATCH --gres=gpu:1" in txt     # one GPU, shared
-
-
-def test_gpu_fdf_auto_gres_without_cli(project):
-    """A .fdf with Diag.ELPA.GPU .true. emits a GPU header even without
-    --gres: the GPU count defaults to ONE (ranks share it via MPS) and
-    -n is the rank count -- not 1-rank-per-GPU."""
-    fdf = project / "auto.fdf"
-    fdf.write_text("Diag.ELPA.GPU .true.\n")
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=2))
-    txt = (project / "auto.sbatch").read_text()
-    assert "#SBATCH --gres=gpu:1" in txt      # default 1 GPU
-    assert "#SBATCH -n 2" in txt                    # ranks share it
-
-
-# A complete-enough fdf so the memory estimator parses a real system
-# (N_orb > 0) and the runtime mem-audit block is emitted.
-_PARSEABLE_FDF = """\
-NumberOfAtoms 4
-MeshCutoff 300 Ry
-PAO.BasisSize TZP
-LatticeConstant 1.0 Ang
-%block LatticeVectors
-10.0 0.0 0.0
-0.0 10.0 0.0
-0.0 0.0 10.0
-%endblock LatticeVectors
-%block ChemicalSpeciesLabel
-1 6 C
-%endblock ChemicalSpeciesLabel
-%block AtomicCoordinatesAndAtomicSpecies
-0.0 0.0 0.0 1
-0.1 0.0 0.0 1
-0.0 0.1 0.0 1
-0.0 0.0 0.1 1
-%endblock AtomicCoordinatesAndAtomicSpecies
-"""
-
-
-def test_workstation_gpu_knobs_match_launcher_contract(project):
-    # CONTRACT: the env vars the bench/run adapter emits for a workstation
-    # GPU point MUST be exactly the ones the generated launcher reads, or
-    # the rank/omp count is silently wrong (params valid bash, wrong
-    # meaning).  This pins producer (adapter) <-> consumer (launcher).
-
-    fdf = project / "g.fdf"
-    fdf.write_text(_PARSEABLE_FDF + "Diag.ELPA.GPU .true.\n")
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=4, gres="gpu:1", cpus_per_task=6))
-    launcher = (project / "g.run.sh").read_text()
-    # The launcher's LAUNCH honours MB_NP / OMP_NUM_THREADS (`_mpi_np` reads
-    # MB_NP/SLURM_NTASKS; `_omp_threads` reads OMP_NUM_THREADS).  NOTE: a baked
-    # explicit mpi_np makes MOLBUILDER_MPI_NP a no-op for the launch (it only
-    # sets the shadowed auto-default) -- so the workstation sweep MUST use
-    # MB_NP, not MOLBUILDER_MPI_NP (bug fixed 2026-06-28).
-    assert "MB_NP" in launcher
-    assert "OMP_NUM_THREADS" in launcher
-
-    # (the bash-sweep emitters `format_bench`/`format_run` were DELETED
-    # 2026-08-12, step 6 u5: trials are rendered by `jobset prep bench` --
-    # each wrapper carrying its OWN translated resources is pinned in
-    # test_prep_bench_fold.test_each_trials_resources_carry_its_own_
-    # coordinate -- and a verdict reaches prep through
-    # `execution` in task.json, pinned in test_prep_bench_fold.py.)
-
-
-def test_wrapper_gpu_has_no_mem_audit(project):
-    # The runtime mem-audit block is not emitted in this path (independent of
-    # the header mem; GPU jobs use gpu.mem rather than the CPU estimator).
-    fdf = project / "job.fdf"
-    fdf.write_text(_PARSEABLE_FDF + "Diag.ELPA.GPU .true.\n")
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=4, gres="gpu:1", cpus_per_task=6))
-    runsh = (project / "job.run.sh").read_text()
-    assert "_mb_mem_est=$(awk" not in runsh
 
 
 def test_no_scheduler_no_sbatch(tmp_path, monkeypatch):

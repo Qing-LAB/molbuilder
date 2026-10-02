@@ -626,14 +626,17 @@ def _group_envelope(jobs) -> "Resources":
     # prep-time statement existed and never reached the sbatch command.
     mems = {j.resources.mem for j in jobs}
     times = {j.resources.time for j in jobs}
-    if len(mems) > 1 or len(times) > 1:
+    # ...and the GPU binding, the description's switch for the whole
+    # calculation (`execution/gpu.md` G9) -- one value over a sweep, too.
+    binds = {j.resources.gpu_binding for j in jobs}
+    if len(mems) > 1 or len(times) > 1 or len(binds) > 1:
         raise SubmitError(
-            f"the group's trials disagree about mem/time "
-            f"({sorted(mems)} / {sorted(times)}) -- prep bakes one "
-            f"allocation over a sweep, so this is a bug, not a "
-            f"declaration problem.")
+            f"the group's trials disagree about mem/time/gpu_binding "
+            f"({sorted(mems, key=str)} / {sorted(times, key=str)} / "
+            f"{sorted(binds, key=str)}) -- prep bakes one allocation over "
+            f"a sweep, so this is a bug, not a declaration problem.")
     return Resources(mpi_np=n, cpus_per_task=c, gres=gres,
-                     exclusive=exclusive,
+                     exclusive=exclusive, gpu_binding=next(iter(binds)),
                      mem=next(iter(mems)), time=next(iter(times)))
 
 
