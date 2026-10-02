@@ -361,21 +361,15 @@ def api_build_molecule():
     # everything else instead of living only in a status line that the next
     # load erases.
     #
-    # THE TRAILING `#` RESERVES THE NAME, and it is doing real work.  Region
-    # labels are ONE namespace, shared by the user's own labels and by the
-    # transport vocabulary -- where any label ending `-electrode` IS a lead
-    # (`transport.sort.is_electrode_label`, and TranSIESTA itself imposes no
-    # naming rule; the suffix is ours and is stripped before the deck is
-    # written).  The name generator takes whatever a person types, so a PubChem
-    # search for "gold-electrode" would otherwise have labelled the whole
-    # molecule a TranSIESTA electrode, silently, and the next transport run
-    # would have believed it.
-    #
-    # The marker settles that WITHOUT touching the electrode matcher in either
-    # direction: `gold-electrode#` does not end in `-electrode`, so the
-    # question never arises.  It also keeps a machine-written label telling
-    # apart from a hand-written one, which is the thing a shared namespace
-    # otherwise loses.  Measured to survive both persistence paths -- the
+    # THE TRAILING `#` MARKS IT MOLBUILDER'S.  Region labels are ONE
+    # namespace, shared by the user's own labels and by the ones molbuilder
+    # reads -- `L-electrode` and `R-electrode` among them, the leads
+    # (`transport.sort.ELECTRODE_LABELS`).  The name generator takes whatever
+    # a person types, and with the `#` after it the label is never a lead
+    # name, whatever was typed; and a machine-written label stays told apart
+    # from a hand-written one, which is the thing a shared namespace
+    # otherwise loses (`model/structure-annotations.md` § 5.1).  Measured to
+    # survive both persistence paths -- the
     # `.molstruct.json` pair and the deck's ATOM-METADATA block, whose lines
     # are already `#`-prefixed comments and whose readers strip a prefix rather
     # than splitting on the character.

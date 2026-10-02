@@ -1997,7 +1997,7 @@ fixed.**
 | **and they arrive as the ENGINE's defaults, which is a real change to what runs** | `siesta_config_for` fills 26 of `SiestaConfig`'s 66 fields from the transport description; the other **40 take `SiestaConfig()`'s own values**. So the seed deck now carries `SCF.Mixer.Weight 0.02`, `SCF.Mixer.History 8`, `MaxSCFIterations 1000`, `DM.Tolerance 1e-05`, `DM.EnergyTolerance 1e-04 eV` where it previously carried **nothing** and SIESTA's own 5.x values governed. `config/siesta.py` states those defaults' provenance plainly: they follow best practice for *"a small / medium … system that's **about to be relaxed**"*. A metallic Au junction warm-up is not that system, and **nobody has made the scientific case that 0.02 / 8 is right for it** — a conservative mixing weight is the usual choice for a metal, which is a reason to expect it is *safe*, not evidence that it is *tuned*. Treat this as a deliberate change of governing defaults pending that case, not as a free win |
 | ~~four rungs are still off the seam~~ | **Closed 2026-09-16.** The seam question — *what does a composite kind hand its renderer?* — is answered, and the answer is *a structure*, like every other kind: `prep` picks WHICH structure the rung describes (`composed.sorted.structure`, or `model.as_structure()` for a lead taken out by its region label) and `spec_for` is unchanged. Nothing reaches for the `ComposedJunction` from inside the renderer |
 | ~~`--pipeline-log` is still a no-op here~~ | **Closed.** `_prep_transport` opens a `PipelineLog` and carries it through resolve, the deck render and — since 2026-09-16 — `prep_jobset`, so STEP 4 (wrappers) and STEP 5 (run directories) reach the file too; it had lost those two by not passing `log=` |
-| ~~two settings-gate warnings are now visible and both are **wrong for transport**~~ | (a) `psml_lib`: `jobset init` refuses `--psml-lib` here because the pseudopotentials travel with the citation, yet the deck warned SIESTA "will refuse to start" — **FIXED 2026-09-25**: `prep` hands the gate the calculation folder, and the gate reads the files the run will open, the folder first, by the one rule `prep` fetches by (`pseudos.psml_sources`, `job-contracts.md` § 2.5a). The deck still states the pseudopotential provenance itself. (b) `structure.regions`: **FIXED 2026-09-23.** It said the region labels *"do NOT consume / do not shape this calculation"* on every transport deck, about the partition the whole ladder is built from. The claim that the checks "cannot see the kind" was wrong: `validation/__init__` has set `engine_kw["calculation"]` for every validator all along, and `check_unconsumed_region_labels` simply never asked. It asks now, and for transport the consumed set is `sort.PARTITION_LABELS` plus any `*-electrode` name — so a label transport genuinely cannot read is still named, which is § 4's rule |
+| ~~two settings-gate warnings are now visible and both are **wrong for transport**~~ | (a) `psml_lib`: `jobset init` refuses `--psml-lib` here because the pseudopotentials travel with the citation, yet the deck warned SIESTA "will refuse to start" — **FIXED 2026-09-25**: `prep` hands the gate the calculation folder, and the gate reads the files the run will open, the folder first, by the one rule `prep` fetches by (`pseudos.psml_sources`, `job-contracts.md` § 2.5a). The deck still states the pseudopotential provenance itself. (b) `structure.regions`: **FIXED 2026-09-23.** It said the region labels *"do NOT consume / do not shape this calculation"* on every transport deck, about the partition the whole ladder is built from. The claim that the checks "cannot see the kind" was wrong: `validation/__init__` has set `engine_kw["calculation"]` for every validator all along, and `check_unconsumed_region_labels` simply never asked. It asks now, and for transport the consumed set is `sort.PARTITION_LABELS` (plus any `*-electrode` name until 2026-10-02, when the leads became two exact names, § 4) — so a label transport genuinely cannot read is still named, which is § 4's rule |
 | ~~`calculation="transport"` composes no kind science~~ | **Closed, and one check had to be re-homed.** `_KIND_VALIDATORS["transport"]` is registered and fires on every rung. `TransiestaEngine.preflight` was keyed on `TransportConfig` in `_ENGINE_VALIDATORS`, so it dispatched for no rung (the engine was deleted 2026-09-17, the class 2026-10-02) — of what it carried, the region partition and the atom order are `sort`'s own refusals and structural on the ladder path, and the open-shell question is the electronic state's one family, asked by `validate()` for every rung against the junction's resolved spin instead of preflight's hardcoded closed shell. The remainder was the **high-bias advisory**, which is now in the kind validator *(the kz≠1 refusal it stood beside left it 2026-09-30: a component the kind fixes, `kmesh.fixed` — [`siesta.md`](?doc=engines/siesta.md) § 6.1)* |
 | `validate_subject` is unanswered, so the gate judges a frame the deck does not express | Narrowed 2026-09-25: `_emit_geometry` writes the frame `cell.to_engine` places, and the gate's `cell.resolve` places the box at the same `−engine_offset` of the design, so containment is judged in the deck's frame. Still open for a lead that states no cell, whose deck box is transport's own vacuum box and not the one the gate resolves. The optimization spec sets that slot precisely because *"judging the input would judge something nobody runs"* |
 | ~~the transport arm of `spec_for` silently drops `cell=`~~ | **Closed 2026-10-02 (M5 step 3).** The dispatch forwards only `(struct, config, stage_token)`, so it now refuses by name every render argument it does not read — `cell`, `vibration`, `relaxed_by`, `trial` — instead of dropping it: a transport deck's cell is the composed junction's own (§ 2a.9) |
@@ -2395,24 +2395,19 @@ device. The convention (the *vocabulary* is owned by
   the device. Most 2-terminal junctions need none. Named 2026-08-28 with the
   composite design ([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md)
   § 4.1a — the categorical sort places buffer atoms outermost).
-- **`<name>-electrode`** — any label ending `-electrode`/`_electrode`/bare
-  `electrode` (case-insensitive) is read as a lead
-  (`transport.sort.is_electrode_label`). **A transport run is 2-terminal**:
-  the ladder builds two leads (`electrode_L`, `electrode_R`), and the sort
-  places only `L-electrode`, `R-electrode`, `bridge` and `buffer` — an atom
-  that carries none of the four is refused. A `tip-electrode` or
-  `gate-electrode` is therefore not a junction molbuilder builds — **but it is
-  not refused yet when its atoms also carry a partition label**: the device
-  deck then declares a third lead whose `.TSHS` no rung writes (plan D4).
-  *(This said they "work without code changes" until 2026-10-02.)*
-  **Except a label ending `#`**, which molbuilder wrote itself and this engine
-  never reads as a lead: a generated structure is signed with the text that
-  built it (`gold-electrode#` from a PubChem search), and without the marker
-  that signature would have partitioned the device
-  ([`model/structure-annotations.md`](?doc=model/structure-annotations.md)
-  § 5.1). The suffix convention is molbuilder's own, not TranSIESTA's —
-  electrode names are free strings in `%block TS.Elecs`, and the emitter strips
-  the suffix before writing the deck, so SIESTA never sees the word.
+- **The leads are two exact names**, `L-electrode` and `R-electrode`
+  (`transport.sort.ELECTRODE_LABELS`; user, 2026-10-02: *"these are just two
+  matching names"*). **A transport run is 2-terminal**: the ladder builds two
+  leads (`electrode_L`, `electrode_R`), and the sort places only
+  `L-electrode`, `R-electrode`, `bridge` and `buffer` — an atom that carries
+  none of the four is refused. Any other label, `tip-electrode` included,
+  rides along and is warned about below. TranSIESTA's own electrode names are
+  free strings in `%block TS.Elecs`; the emitter writes `L` and `R`.
+  *(Until 2026-10-02 any label ending `-electrode`/`_electrode`/bare
+  `electrode` was read as a lead, so a third one on atoms that also carried a
+  partition label passed the sort and the device deck declared a lead whose
+  `.TSHS` no rung writes — plan D4. Before that day this bullet said a
+  `tip-electrode` worked "without code changes".)*
 
 **A label this engine does not consume is WARNED about, never dropped in
 silence.** TranSIESTA reads the canonical 2-terminal set plus `buffer`; a
@@ -2423,10 +2418,10 @@ is raised before the missing-region check returns, so it surfaces even on an
 incomplete region set.)
 
 **Emitter behavior** (`transiesta.py::emit_electrode_declarations`,
-`_find_electrode_regions`): electrode regions are discovered, **sorted by
+`_find_electrode_regions`): the two leads are found by name, **sorted by
 z-centroid** (lowest first), and the modern SIESTA 4.1+/5.x syntax is emitted — one
-`%block TS.Elec.<name>` per lead (the block name is the label minus the
-`-electrode` suffix: `L-electrode` → `L`), a `%block TS.ChemPots` + per-name
+`%block TS.Elec.<name>` per lead (`L-electrode` → `L`, `R-electrode` →
+`R`), a `%block TS.ChemPots` + per-name
 `%block TS.ChemPot.<name>`, and `SolutionMethod transiesta`. **The two halves have
 different owners**: the LOWER electrode gets `semi-inf-direction -A3` and the first
 `elec-pos` (decided by z — it is where the lead physically continues), while the

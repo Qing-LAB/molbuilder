@@ -42,11 +42,10 @@ from typing import List, Optional, Tuple
 import numpy as np
 
 from .sort import (
-    ELECTRODE_LABEL_SUFFIX,
+    ELECTRODE_LABELS,
     REGION_BUFFER,
     REGION_LEFT_ELECTRODE,
     REGION_RIGHT_ELECTRODE,
-    is_electrode_label,
 )
 from ..structure import Structure
 
@@ -74,31 +73,10 @@ from ..structure import Structure
 _ISOLATED_ELECTRODE_VACUUM_ANG = 15.0
 
 
-def _sanitize_electrode_block_name(label: str) -> str:
-    """Convert a user-facing region label to a SIESTA block-safe name.
-
-    Examples:
-        "L-electrode"   → "L"
-        "R-electrode"   → "R"
-        "tip-electrode" → "tip"
-        "tip_electrode" → "tip"
-        "electrode"     → "electrode"   (no prefix — keep verbatim)
-
-    The SIESTA fdf parser is forgiving about block names; we only
-    need to strip the convention's suffix so the per-electrode
-    blocks (``%block TS.Elec.<name>``) don't carry the redundant
-    "-electrode" tag.  Empty or pure-suffix labels are returned
-    unchanged so the user sees their input echoed in errors.
-    """
-    if not is_electrode_label(label):
-        return label
-    stem = label
-    for sep in ("-", "_"):
-        candidate = sep + ELECTRODE_LABEL_SUFFIX
-        if stem.lower().endswith(candidate):
-            return stem[: -len(candidate)] or label
-    # ends with "electrode" directly (no separator) — keep verbatim
-    return label
+#: Each lead's TranSIESTA name, the ``<name>`` of its ``%block
+#: TS.Elec.<name>``.  TranSIESTA takes any string there; these are the two
+#: the decks have always carried.
+_BLOCK_NAME = {REGION_LEFT_ELECTRODE: "L", REGION_RIGHT_ELECTRODE: "R"}
 
 
 def electrode_hs_stem(job_name: str, label: str) -> str:
@@ -178,8 +156,8 @@ def pole_energy_for(poles: int, temperature_k: float) -> float:
 def _find_electrode_regions(
     struct: Structure,
 ) -> List[Tuple[str, str, List[int]]]:
-    """Return (user_label, block_name, indices) for every region
-    whose label ends with the electrode-suffix convention.
+    """Return (label, block_name, indices) for each of the two leads,
+    ``L-electrode`` and ``R-electrode`` by exact name (`sort.ELECTRODE_LABELS`).
 
     Sorted by z-centroid ascending so the first entry is the LOWER
     electrode (minimum z) and the last the upper one.  This ordering
@@ -191,14 +169,13 @@ def _find_electrode_regions(
     other way round, and the deck says so.
     """
     out: List[Tuple[str, str, List[int], float]] = []
-    for label, indices in (struct.regions or {}).items():
-        if not is_electrode_label(label):
-            continue
+    regions = struct.regions or {}
+    for label in ELECTRODE_LABELS:
+        indices = list(regions.get(label) or ())
         if not indices:
             continue
-        block_name = _sanitize_electrode_block_name(label)
         z_centroid = float(np.mean(struct.positions[indices, 2]))
-        out.append((label, block_name, list(indices), z_centroid))
+        out.append((label, _BLOCK_NAME[label], indices, z_centroid))
     out.sort(key=lambda e: e[3])
     return [(label, name, idxs) for (label, name, idxs, _z) in out]
 
@@ -538,9 +515,9 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
     (audit SCI-B1, 2026-06-18): per-electrode ``%block TS.Elec.<name>`` with
     ``HS``, ``chem-pot``, ``used-atoms``, ``elec-pos``, ``bloch`` and
     ``semi-inf-direction``; chemical potentials in ``%block TS.ChemPots`` and
-    one ``%block TS.ChemPot.<name>`` each.  Electrodes are the regions whose
-    label ends in ``-electrode``, ordered by z-centroid: the LOWER block gets
-    ``semi-inf-direction -A3`` and the first ``elec-pos``; the ``Left`` /
+    one ``%block TS.ChemPot.<name>`` each.  The leads are the regions named
+    ``L-electrode`` and ``R-electrode``, ordered by z-centroid: the LOWER block
+    gets ``semi-inf-direction -A3`` and the first ``elec-pos``; the ``Left`` /
     ``Right`` chemical potential binds by the region's NAME, and the deck says
     which lead ends up at mu = +V/2.
 
@@ -550,42 +527,21 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
     converges while doing it.  This text has been measured against a live
     5.4.2 run (§ 6.1b: 27 / 27 atoms at 1-27 and 94-120, as written).
     """
+    # TWO LEADS, ALWAYS: no other label is one (`sort.ELECTRODE_LABELS`),
+    # and the sort refuses a junction missing either before any deck is
+    # rendered (`sort.categorical_sort`).
     electrodes = _find_electrode_regions(struct)
-    # Canonical 2-terminal naming: the z-min electrode binds to the
-    # ``Left`` chempot (mu = +V/2); z-max binds to ``Right`` (mu = -V/2).
-    # For arbitrary multi-electrode runs the chempot binding is the
-    # electrode's own name (and the user must set mu per chempot via
-    # a future form field; today the multi-terminal path raises a
-    # preflight notice).
-    is_two_terminal = len(electrodes) == 2
     semi_inf = {0: "-A3", len(electrodes) - 1: "+A3"}
-    chempot_for = {}
-    labels = [lab for lab, _n, _i in electrodes]
-    canonical = (sorted(labels) == sorted([REGION_LEFT_ELECTRODE,
-                                           REGION_RIGHT_ELECTRODE]))
-    if is_two_terminal and canonical:
-        # Bind the chempot by the region's own NAME.  Under the one
-        # convention (L-electrode = low z; sort.py refuses anything
-        # else) this is identical to binding by z-centroid -- so the deck
-        # reads `TS.Elec.L -> chem-pot Left` with no inversion possible,
-        # and `V = V_left - V_right` means what the labels say.  Naming it
-        # keeps the deck honest if the gate ever moves.
-        for label, block_name, _idxs in electrodes:
-            chempot_for[block_name] = (
-                "Left" if label == REGION_LEFT_ELECTRODE else "Right")
-    elif is_two_terminal:
-        # Two leads under non-canonical labels: nothing says which
-        # reservoir is which, so follow the CONVENTION -- Left is the
-        # first electrode, the -A3 (low-z) end (legacy <=4.0
-        # TS.NumUsedAtomsLeft: "the first N atoms").
-        chempot_for[electrodes[0][1]] = "Left"
-        chempot_for[electrodes[1][1]] = "Right"
-    else:
-        # Fallback: each electrode binds to its own chempot.  Same
-        # name; the user customises bias per chempot when the
-        # multi-terminal UI lands.
-        for _label, block_name, _idxs in electrodes:
-            chempot_for[block_name] = block_name
+    # The chempot binds by the region's own NAME: L-electrode -> Left
+    # (mu = +V/2), R-electrode -> Right.  On the usual convention
+    # (L-electrode = low z) that is the same as binding by z-centroid, so
+    # the deck reads `TS.Elec.L -> chem-pot Left` and `V = V_left -
+    # V_right` means what the labels say; on a junction labeled the other
+    # way round the two halves name different blocks, and the deck says so
+    # below.
+    chempot_for = {block_name: ("Left" if label == REGION_LEFT_ELECTRODE
+                                else "Right")
+                   for label, block_name, _idxs in electrodes}
 
     lines: List[str] = [
         "# --- The junction: its electrodes and reservoirs ---",
@@ -594,8 +550,8 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
         "# leads attached, and tbtrans -- given no TBT.* electrode blocks --",
         "# reads these same TS.* ones (SIESTA 5.4.2, Util/TS/TBtrans/",
         "# m_tbt_options.F90).  Every line is derived from the region labels:",
-        "# a region named `*-electrode` is a lead, and its atoms are the",
-        "# contiguous range written below.",
+        "# the regions named L-electrode and R-electrode are the leads, and",
+        "# each one's atoms are the contiguous range written below.",
         "%block TS.Elecs",
     ]
     for _label, block_name, _idxs in electrodes:
@@ -660,30 +616,28 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
     # (``electrodes`` is z-sorted) and mu comes from the NAME, so on a
     # junction labeled the other way round these two lines name
     # different blocks.
-    if is_two_terminal:
-        low_label = electrodes[0][0]
-        plus_label = next((lab for lab, name, _i in electrodes
-                           if chempot_for[name] == "Left"), None)
+    low_label = electrodes[0][0]
+    plus_label = next(lab for lab, name, _i in electrodes
+                      if chempot_for[name] == "Left")
+    lines.append(
+        f"# {low_label} is the LOW-z lead: listed first, "
+        f"semi-inf-direction -A3.")
+    lines.append(
+        f"# {plus_label} carries mu = +V/2 (chem-pot Left), so "
+        f"V = V_left - V_right.")
+    if plus_label != low_label:
         lines.append(
-            f"# {low_label} is the LOW-z lead: listed first, "
-            f"semi-inf-direction -A3.")
-        if plus_label is not None:
-            lines.append(
-                f"# {plus_label} carries mu = +V/2 (chem-pot Left), so "
-                f"V = V_left - V_right.")
-            if plus_label != low_label:
-                lines.append(
-                    "# NOTE: those are DIFFERENT blocks.  This junction "
-                    "is labeled with")
-                lines.append(
-                    f"#   {plus_label} on the HIGH-z end, so the HIGH-z "
-                    f"lead is the positively")
-                lines.append(
-                    "#   biased one -- the reverse of the usual "
-                    "convention, and intentional")
-                lines.append(
-                    "#   unless the labels were swapped by mistake "
-                    "(engines/transport.md § 4).")
+            "# NOTE: those are DIFFERENT blocks.  This junction "
+            "is labeled with")
+        lines.append(
+            f"#   {plus_label} on the HIGH-z end, so the HIGH-z "
+            f"lead is the positively")
+        lines.append(
+            "#   biased one -- the reverse of the usual "
+            "convention, and intentional")
+        lines.append(
+            "#   unless the labels were swapped by mistake "
+            "(engines/transport.md § 4).")
     lines.append(
         "# The two reservoirs.  `%block TS.ChemPots` names them; each is")
     lines.append(
@@ -692,39 +646,21 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
         "# written with its note beside this block: at zero bias the ±V/2")
     lines.append(
         "# split is inert; at a finite bias it sets the two Fermi levels.")
-    lines.append("%block TS.ChemPots")
-    if is_two_terminal:
-        lines.append("  Left")
-        lines.append("  Right")
-    else:
-        for _label, block_name, _idxs in electrodes:
-            lines.append(f"  {block_name}")
-    lines.append("%endblock TS.ChemPots")
-    lines.append("")
-
-    if is_two_terminal:
-        lines.extend([
-            "%block TS.ChemPot.Left",
-            "  mu  V/2",
-            "%endblock TS.ChemPot.Left",
-            "",
-            "%block TS.ChemPot.Right",
-            "  mu -V/2",
-            "%endblock TS.ChemPot.Right",
-            "",
-        ])
-    else:
-        # Multi-terminal placeholder: equal-spaced chempots.  Users
-        # must override via the form's per-chempot mu when the
-        # multi-terminal scope ships.
-        for _label, block_name, _idxs in electrodes:
-            lines.extend([
-                f"%block TS.ChemPot.{block_name}",
-                "  mu  0.0  # multi-terminal placeholder — set "
-                "explicitly per chempot",
-                f"%endblock TS.ChemPot.{block_name}",
-                "",
-            ])
+    lines.extend([
+        "%block TS.ChemPots",
+        "  Left",
+        "  Right",
+        "%endblock TS.ChemPots",
+        "",
+        "%block TS.ChemPot.Left",
+        "  mu  V/2",
+        "%endblock TS.ChemPot.Left",
+        "",
+        "%block TS.ChemPot.Right",
+        "  mu -V/2",
+        "%endblock TS.ChemPot.Right",
+        "",
+    ])
 
     if buffer_idx:
         # The sorted layout puts buffers OUTERMOST ([buf][L][bridge]

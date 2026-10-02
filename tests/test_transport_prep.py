@@ -817,10 +817,11 @@ class TestTheLadderPreps:
             "stage will write -- one spelling, both writers")
         assert _says(elec, "TS.HS.Save", ".true.")
 
-    def test_the_device_deck_is_transiesta_on_the_sorted_junction(self, calc):
+    def test_the_device_deck_is_transiesta_on_the_sorted_junction(self,
+                                                                  tmp_path):
         """SCIENCE. The device deck is `SolutionMethod transiesta` with a `TS.Elecs`
-        block, and its coordinate block is CATEGORICALLY SORTED -- six Au rows, then
-        the four bridge rows as S C C S.
+        block naming the two leads, and its coordinate block is CATEGORICALLY
+        SORTED -- six Au rows, then the four bridge rows as S C C S.
 
         Catches the two ways the device stage stops being an NEGF calculation.
         Without `transiesta` + `TS.Elecs` it is an ordinary closed-boundary
@@ -831,13 +832,24 @@ class TestTheLadderPreps:
         the molecule. Asserting the species column, not just the row count, is what
         distinguishes "sorted" from "reordered into a different wrong order".
 
+        The junction also carries `tip-electrode` on its bridge atoms: the
+        leads are two exact names, so the deck declares `L` and `R` and no
+        third lead whose `.TSHS` no rung writes (plan D4, closed 2026-10-02).
+
         Contract: `engines/transport.md` § 4 (region labels drive the partition;
-        the categorical sort) + § 2 (the L | bridge | R partition is one cell).
+        the leads are two exact names; the categorical sort) + § 2 (the
+        L | bridge | R partition is one cell).
         """
+        from _deck import fdf_block
+        struct = _junction_struct()
+        struct.regions["tip-electrode"] = list(struct.regions[REGION_BRIDGE])
+        root = tmp_path / "projects"
+        _write_junction(root, struct)
+        calc = _describe_transport(root)
         prep_calculation(calc, "device")
         text = (calc / "04_device" / "T_04_device.fdf").read_text()
         assert _says(text, "SolutionMethod", "transiesta")
-        assert "%block TS.Elecs" in text
+        assert [row[0] for row in fdf_block(text, "TS.Elecs")] == ["L", "R"]
         # Sorted: the first six coordinate rows are the lower Au electrode,
         # the next four the bridge (S C C S).
         #

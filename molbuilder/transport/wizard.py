@@ -7,9 +7,10 @@ The #1 TranSIESTA footgun is that the device run and the separate
 electrode run must share **one geometry + one numerical contract**, yet
 the user assembles the electrode by hand and the couplings silently
 drift (invariant set § 6.7).  The wizard removes the hand-assembly: it
-extracts the ``*-electrode`` region's *exact* atoms from the device and
-emits the matching bulk-lead ``.fdf``, so the cross-run invariants hold
-**by construction**, not by the user remembering to copy values.
+extracts each lead's *exact* atoms (``L-electrode``, ``R-electrode``) from
+the device and emits the matching bulk-lead ``.fdf``, so the cross-run
+invariants hold **by construction**, not by the user remembering to copy
+values.
 
 Guaranteed-by-construction invariants
 -------------------------------------
@@ -72,6 +73,7 @@ import numpy as np
 from ..cell import (LAYER_TOL_ANG, bulk_z_period, classify_seam,
                     detect_layers)
 from ..structure import Structure
+from .sort import ELECTRODE_LABELS
 from .transiesta import (
     _compute_cell_from_extents,
     _find_electrode_regions,
@@ -363,8 +365,8 @@ def extract_electrode_model(
     layer_tol_ang: float = LAYER_TOL_ANG,
     min_thickness_ang: float = MIN_ELECTRODE_THICKNESS_ANG,
 ) -> ElectrodeModel:
-    """Build an :class:`ElectrodeModel` for one ``*-electrode`` region —
-    and refuse the region outright if it is not a bulk lead.
+    """Build an :class:`ElectrodeModel` for one lead, ``L-electrode`` or
+    ``R-electrode`` — and refuse the region outright if it is not a bulk lead.
 
     The lateral cell is the **device's** (a, b) — so the lead tiles the
     device cross-section (I6).  The z-period is derived from the layer
@@ -397,7 +399,7 @@ def extract_electrode_model(
         raise ValueError(
             f"region {label!r} is not an electrode region; found "
             f"{sorted(electrodes) or 'none'} "
-            f"(labels must end with the *-electrode convention)")
+            f"(the leads are {' and '.join(ELECTRODE_LABELS)})")
     block_name, idxs = electrodes[label]
     idxs = sorted(idxs)
 

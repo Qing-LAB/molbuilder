@@ -91,12 +91,12 @@ def check_electrode_labels_are_frozen(struct: Structure, *,
     The refusal belongs at compose, where transport IS the intent, and it is
     already there.
     """
-    from ..transport.sort import is_electrode_label
+    from ..transport.sort import ELECTRODE_LABELS
     from ..structure import FROZEN_LABEL
 
     regions = getattr(struct, "regions", None) or {}
     lead_idx = {i for name, idxs in regions.items()
-                if is_electrode_label(name) for i in (idxs or ())}
+                if name in ELECTRODE_LABELS for i in (idxs or ())}
     if not lead_idx:
         return []
     frozen = set(getattr(struct, "frozen_atoms", None) or ())
@@ -148,24 +148,21 @@ def check_unconsumed_region_labels(struct: Structure, *, engine: str,
     ``engine_kw["calculation"]``) and this function simply never asked.
 
     For transport the consumed set is `sort.PARTITION_LABELS` -- asked of
-    the module that owns the partition, never re-listed here -- plus any
-    ``*-electrode`` name, which the device deck's emitter reads as a lead.
-    (A transport run takes two; whether a third is refused is plan D4,
-    `engines/transport.md` § 4.)  Anything else is
-    genuinely unread and is still named, which is § 4's own rule: *"a label
-    this engine does not consume is WARNED about, never dropped in
-    silence."*
+    the module that owns the partition, never re-listed here.  Anything
+    else is genuinely unread and is still named, which is § 4's own rule:
+    *"a label this engine does not consume is WARNED about, never dropped
+    in silence."*  (Until 2026-10-02 any ``*-electrode`` name was consumed
+    too, as a lead; the leads are two exact names now, `engines/transport.md`
+    § 4.)
     """
     from ..structure import FROZEN_LABEL
     regions = getattr(struct, "regions", None) or {}
     consumed = {FROZEN_LABEL}
     if calculation == "transport":
-        from ..transport.sort import is_electrode_label
         from ..transport.sort import PARTITION_LABELS
         consumed |= set(PARTITION_LABELS)
         inert = sorted(name for name, idxs in regions.items()
-                       if idxs and name not in consumed
-                       and not is_electrode_label(name))
+                       if idxs and name not in consumed)
         what = "transport ladder"
         # AND THE ADVICE IS THE KIND'S TOO.  Telling a transport calculation
         # its labels "stay in the sidecar for /transport" is nonsense -- this
@@ -173,8 +170,8 @@ def check_unconsumed_region_labels(struct: Structure, *, engine: str,
         # for a stray label on a junction.  Fixing WHICH labels are named and
         # leaving this sentence would have been half the defect.
         advice = ("The partition it reads is "
-                  "L-electrode / R-electrode / bridge / buffer, plus any "
-                  "*-electrode name; anything else rides along untouched. "
+                  "L-electrode / R-electrode / bridge / buffer; anything "
+                  "else rides along untouched. "
                   "Rename it to one of those if it was meant to be part of "
                   "the junction.")
     else:

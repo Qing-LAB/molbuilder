@@ -1134,8 +1134,7 @@ def _unique_label(label: str, taken: "set") -> str:
     """``"benzene#"`` beside an existing one becomes ``"benzene#2"``.
 
     The number goes at the END, after molbuilder's own ``#`` provenance mark,
-    so the mark stays where `is_electrode_label` and the rest of the label
-    vocabulary look for it.
+    so the mark stays right after the text it signs.
     """
     if label not in taken:
         return label

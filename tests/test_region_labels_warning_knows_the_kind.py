@@ -66,9 +66,10 @@ def test_transport_still_names_a_label_it_genuinely_cannot_read():
         assert consumed not in named
 
 
-def test_a_named_electrode_is_consumed_by_the_suffix_convention():
-    """`tip-electrode` is a lead without a code change (§ 4), so the check
-    asks `is_electrode_label` rather than matching the canonical four."""
+def test_a_label_ending_electrode_is_not_a_lead():
+    """The leads are two exact names (§ 4, user 2026-10-02), so a
+    `tip-electrode` is a label transport does not read -- and is named."""
     s = _junction()
     s.regions["tip-electrode"] = [2]
-    assert _named(s, "transport") is None
+    msg = _named(s, "transport")
+    assert msg is not None and "tip-electrode" in msg

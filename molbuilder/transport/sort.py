@@ -44,11 +44,11 @@ from ..structure import Structure, remap_annotations
 # --------------------------------------------------------------------- #
 #
 # The labels a transport junction's atoms carry in the `.molstruct.json`
-# sidecar's `regions`, and the one rule that says which of them is a lead.
-# Here because this module owns the partition they make; everything that
-# reads a region label -- the emitter, compose, validation -- asks here, so a
-# rename happens once.  (They lived in `config/transport.py` beside
-# `TransportConfig` until that class retired, M5 step 3, 2026-10-02.)
+# sidecar's `regions`.  Here because this module owns the partition they
+# make; everything that reads a region label -- the emitter, compose,
+# validation -- asks here, so a rename happens once.  (They lived in
+# `config/transport.py` beside `TransportConfig` until that class retired,
+# M5 step 3, 2026-10-02.)
 
 REGION_LEFT_ELECTRODE  = "L-electrode"
 REGION_RIGHT_ELECTRODE = "R-electrode"
@@ -58,30 +58,16 @@ REGION_BRIDGE          = "bridge"
 #: Optional -- most 2-terminal junctions need none.
 REGION_BUFFER          = "buffer"
 
-#: A region whose label ENDS WITH this suffix (case-insensitive, optionally
-#: after ``-`` or ``_``) is an electrode to the TranSIESTA emitter:
-#: ``L-electrode`` and ``R-electrode`` fit it.
-ELECTRODE_LABEL_SUFFIX = "electrode"
-
-
-def is_electrode_label(label: str) -> bool:
-    """True iff ``label`` names an electrode region by the ``*-electrode``
-    rule: ``<name>-electrode``, ``<name>_electrode`` or the bare suffix,
-    case-insensitive -- the ONE implementation (`structure-annotations.md`
-    § 5)."""
-    if not isinstance(label, str):
-        return False
-    lo = label.lower()
-    return (lo == ELECTRODE_LABEL_SUFFIX
-            or lo.endswith("-" + ELECTRODE_LABEL_SUFFIX)
-            or lo.endswith("_" + ELECTRODE_LABEL_SUFFIX))
-
+#: The two leads, by EXACT name -- the list every reader of "which regions
+#: are leads" asks (`structure-annotations.md` § 5; user, 2026-10-02:
+#: "these are just two matching names").  A transport run is 2-terminal,
+#: so any other label, ``tip-electrode`` included, is not a lead.
+ELECTRODE_LABELS = (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE)
 
 #: The four PARTITION labels — exactly one per atom.  Everything else
 #: (``interface``, ``frozen_atoms``, user labels) is partition-neutral
 #: bookkeeping that rides along untouched.
-PARTITION_LABELS = (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE,
-                    REGION_BRIDGE, REGION_BUFFER)
+PARTITION_LABELS = (*ELECTRODE_LABELS, REGION_BRIDGE, REGION_BUFFER)
 
 #: The transport axis is the THIRD cell axis (z) — the same convention
 #: the emitter already uses (electrode regions sorted by z-centroid,

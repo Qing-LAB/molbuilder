@@ -556,13 +556,13 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
     if _cell is not None and getattr(struct, "n_atoms", 0):
         from ..cell import (SEAM_VACUUM_FACTOR, transport_room,
                             transverse_reach)
-        from ..transport.sort import is_electrode_label
+        from ..transport.sort import ELECTRODE_LABELS
         # THE LEAD: the electrode-labelled atoms of a junction, one list per
         # lead; an electrode rung's structure IS the lead and carries no
         # labels, so all of it.
         leads = [list(idx) for label, idx in
                  (getattr(struct, "regions", None) or {}).items()
-                 if is_electrode_label(label) and idx]
+                 if label in ELECTRODE_LABELS and idx]
         if not leads:
             leads = [list(range(struct.n_atoms))]
         room, spacing = transport_room(struct.positions, _cell, leads)
@@ -594,7 +594,7 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
         kinds = getattr(struct, "axis_kind", None) or ("isolated",) * 3
         named = ([label for label, idx in
                   (getattr(struct, "regions", None) or {}).items()
-                  if is_electrode_label(label) and idx]
+                  if label in ELECTRODE_LABELS and idx]
                  or ["the lead"])
         for ax, name in ((0, "a"), (1, "b")):
             if kinds[ax] != "periodic":
