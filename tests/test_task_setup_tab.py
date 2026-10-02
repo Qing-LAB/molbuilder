@@ -1350,7 +1350,7 @@ def _recorded_pair(root, *, edited=None):
                   vacuum=(10.0, 10.0, 10.0))
     s.info = {"calculation": {
         "engine": "siesta",
-        "contract": {"basis_size": "TZP", "siesta_mesh_cutoff_ry": 275},
+        "contract": {"basis_size": "TZP", "mesh_cutoff": 275},
         "source": "Relax.fdf", "source_sha256": "c" * 64}}
     if edited:
         s.info["calculation"][f"{edited}_modified"] = True

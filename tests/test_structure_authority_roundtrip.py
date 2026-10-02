@@ -311,7 +311,7 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
                       positions=np.array([[0., 0, 0], [1., 0, 0], [0, 1., 0]]))
         s.cell = np.diag([8., 8., 8.])
         s.info = {"calculation": {"engine": "siesta",
-                                  "contract": {"siesta_mesh_cutoff_ry": 300}}}
+                                  "contract": {"mesh_cutoff": 300}}}
         return s
 
     @pytest.mark.parametrize("name", [
@@ -443,7 +443,7 @@ class TestAnEditOutdatesTheContractWithoutErasingIt:
             cell=np.diag([8., 8., 12.]),
             regions={"L-electrode": [0], "bridge": [1, 2], "R-electrode": [3]},
             info={"calculation": {"engine": "siesta",
-                                  "contract": {"siesta_mesh_cutoff_ry": 300}}})
+                                  "contract": {"mesh_cutoff": 300}}})
         out = categorical_sort(s).structure
         assert "structure_modified" not in out.info["calculation"]
         assert out.info["calculation"]["contract"]

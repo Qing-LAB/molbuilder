@@ -64,21 +64,17 @@ _FROM_DECK = {
     "unpaired_electrons":       "unpaired_electrons",
 }
 
-#: The same answers, arriving from a RECORD instead of a deck -> the
-#: catalogue's spelling.  The k-grid goes through the same
+#: The same answers, arriving from a RECORD instead of a deck.  The record
+#: speaks the catalogue's names (`model/parse.md` § 5b), so each is taken as
+#: it stands -- the list is `parse/contract.py`'s, beside the writer, so the
+#: writer and this reader cannot drift.  The charge is read apart (a cited
+#: charge is refused, not defaulted); the k-grid goes through the same
 #: :func:`_apply_kgrid` as the deck's.
-#:
-#: The record's field names against ``SiestaConfig``'s -- the ONE table,
-#: kept beside `_siesta_contract` in `parse/contract.py` (which writes the
-#: record in those names) so the writer and this reader cannot drift.  The
-#: charge is read apart (a cited charge is refused, not defaulted).  A
-#: second, hand-written copy of this table stood below the import until
-#: 2026-09-28 and silently replaced it.
 from molbuilder.parse.contract import K_MESH_RECORD_KEYS
-from molbuilder.parse.contract import RECORD_TO_SIESTA_FIELD as _RECORD
+from molbuilder.parse.contract import RECORDED_FIELDS
 from molbuilder.parse.contract import STATE_RECORD_KEYS
 
-_FROM_RECORD = {k: v for k, v in _RECORD.items() if k != "net_charge"}
+_FROM_RECORD = tuple(k for k in RECORDED_FIELDS if k != "net_charge")
 
 
 def _apply_kgrid(kw: dict, kgrid, shifts=None) -> None:
@@ -181,10 +177,10 @@ def citation_answers(cite_dir) -> CitationAnswers:
         if (recorded or {}).get("structure_modified"):
             for key in STATE_RECORD_KEYS:
                 block.pop(key, None)
-        for src, dst in _FROM_RECORD.items():
-            v = block.get(src)
+        for key in _FROM_RECORD:
+            v = block.get(key)
             if v is not None:
-                kw[dst] = v
+                kw[key] = v
         _apply_kgrid(kw, *(block.get(k) for k in K_MESH_RECORD_KEYS))
         source = "record" if recorded else "none"
         source_name = str((recorded or {}).get("source") or "")

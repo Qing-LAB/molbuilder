@@ -1035,10 +1035,10 @@ class TestTheRecordedContract:
         s2.info = {"calculation": {
             "engine": "siesta",
             "contract": {"basis_size": "TZP",
-                         "siesta_mesh_cutoff_ry": 275,
+                         "mesh_cutoff": 275,
                          "xc_functional": "GGA", "xc_authors": "revPBE",
-                         "k_mesh_transverse": [3, 3, 2],
-                         "electronic_temperature_k": 150.0},
+                         "kgrid": [3, 3, 2],
+                         "electronic_temperature": 150.0},
             "source": "Relax.fdf", "source_sha256": "c" * 64}}
         if edited:
             # what `markContractOutdated(kind)` writes, at the same keys

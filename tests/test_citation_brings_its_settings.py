@@ -24,13 +24,13 @@ from molbuilder.workingcopy_structure import StructureCodec
 #: Deliberately NOT the catalogue's defaults, so a value that arrives proves
 #: it was read rather than defaulted: the defaults are 300 Ry / DZP / 1x1x1.
 RECORDED = {
-    "siesta_mesh_cutoff_ry":    400,
+    "mesh_cutoff":    400,
     "basis_size":               "TZP",
     "xc_functional":            "GGA",
     "xc_authors":               "PBE",
-    "k_mesh_transverse":        [4, 4, 1],
+    "kgrid":        [4, 4, 1],
     "kgrid_displacement":       [0.5, 0.25, 0.75],
-    "electronic_temperature_k": 350.0,
+    "electronic_temperature": 350.0,
 }
 
 
@@ -240,7 +240,7 @@ def test_the_transport_axis_is_forced_to_one_whichever_source_answered(
     calculation does not sample the transport axis at all.  One rule, both
     sources -- `_apply_kgrid` -- so a deck and a record cannot force it
     differently."""
-    rec = dict(RECORDED, k_mesh_transverse=[3, 5, 7])
+    rec = dict(RECORDED, kgrid=[3, 5, 7])
     cfg = _cite(tmp_path, _junction(engine="siesta", source="x.fdf",
                                     contract=rec))
     assert cfg.kgrid == (3, 5, 1), "the third component is not the deck's"

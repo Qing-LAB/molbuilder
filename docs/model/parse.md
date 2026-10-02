@@ -1093,6 +1093,23 @@ less than no answer.
 > failure. A refusal would make every un-recordable directory an error at a
 > layer that is only ever adding detail.
 
+**The record speaks the catalogue's names** *(user, 2026-10-02: "if only three
+readers for D2, i'd rather unify the names, rather than having a drift from
+contract")*. A key is the setting's catalogue item — `basis_size`,
+`mesh_cutoff`, `pao_energy_shift`, `xc_functional`, `xc_authors`, `kgrid`,
+`kgrid_displacement`, `electronic_temperature`, and the electronic state's
+`net_charge`, `spin_treatment`, `unpaired_electrons` — in the catalogue's unit,
+so every reader takes it as it stands: the vibration check (`contract_fields_of(cfg)`
+gives the calculation about to run in the same names, so a difference reads
+*"mesh_cutoff: relaxed with 300, this run 400"*) and the transport citation
+(`transport/citation_defaults.py`). Which engine and which deck the values came
+from is the block's own `engine`, `source` and `source_sha256`.
+
+*(A record written before 2026-10-02 named four of them differently —
+`siesta_mesh_cutoff_ry`, `energy_shift_ry`, `electronic_temperature_k`,
+`k_mesh_transverse` — through a translation table that has gone. Nothing reads
+those names: user, "don't care about old projects".)*
+
 ### 5b.1 The relaxation record — what the run says about its final geometry
 
 `contract.relaxation_of(directory)` reads back **what the run did to the

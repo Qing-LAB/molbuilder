@@ -2322,7 +2322,7 @@ def _with_a_recorded_contract(extra=""):
             [__atomRow(0, "C", 0), __atomRow(1, "O", 1)],
             {structure: {info: {calculation: {
                 engine: "siesta", source: "Relax.fdf",
-                contract: {siesta_mesh_cutoff_ry: 275}}}}});
+                contract: {mesh_cutoff: 275}}}}});
         await m.installMolecule({
             text: "2\\n\\nC 0 0 0\\nO 1 0 0\\n", filename: "x.xyz"});
     """ + extra + """
@@ -2379,7 +2379,7 @@ def test_a_cell_edit_flags_the_structure_and_not_the_labels():
             cell: [[9,0,0],[0,9,0],[0,0,9]], engine_offset: null,
             axis_kind: ["periodic","periodic","periodic"]},
             info: {calculation: {engine: "siesta", source: "Relax.fdf",
-                                 contract: {siesta_mesh_cutoff_ry: 275},
+                                 contract: {mesh_cutoff: 275},
                                  structure_modified: true}}};
         await m.commitPeriodicityOp("cell", [[9,0,0],[0,9,0],[0,0,9]]);
     """))

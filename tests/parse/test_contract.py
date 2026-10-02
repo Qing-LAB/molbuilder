@@ -33,10 +33,10 @@ def test_one_siesta_deck_answers_the_contract(tmp_path):
     assert len(out["source_sha256"]) == 64
     c = out["contract"]
     assert c["basis_size"] == "SZ"
-    assert c["siesta_mesh_cutoff_ry"] == 250.0
+    assert c["mesh_cutoff"] == 250.0
     assert c["xc_authors"] == "PBE"
-    assert c["k_mesh_transverse"] == [4, 4, 2]
-    assert c["electronic_temperature_k"] == 200.0
+    assert c["kgrid"] == [4, 4, 2]
+    assert c["electronic_temperature"] == 200.0
 
 
 def test_no_deck_is_none(tmp_path):
@@ -54,22 +54,22 @@ def test_a_deck_stating_nothing_is_none(tmp_path):
     assert contract_of(tmp_path) is None
 
 
-def test_the_contract_keys_are_the_contracted_vocabulary(tmp_path):
-    """The recorded block's keys are the record's own vocabulary -- the
-    one table that maps them to the catalogue's names, and the k-point
-    keys it carries apart (user, 2026-08-29: 'these names should be agreed
-    on contracts so you don't drift or hallucinate').  A key outside it is
-    drift at the source: every consumer downstream (the citation fill, the
-    relaxation check) would carry a name nothing reads."""
-    from molbuilder.parse.contract import (K_MESH_RECORD_KEYS,
-                                           RECORD_TO_SIESTA_FIELD)
-    vocabulary = set(RECORD_TO_SIESTA_FIELD) | set(K_MESH_RECORD_KEYS)
+def test_the_record_speaks_the_catalogues_names(tmp_path):
+    """Every key the recorded block carries is the calculation's own name for
+    that setting (`model/parse.md` § 5b; user, 2026-10-02: "i'd rather unify
+    the names, rather than having a drift from contract") -- so each reader
+    takes it as it stands, and a key the calculation does not have is drift
+    at the source: the citation fill and the relaxation check would carry a
+    name nothing reads."""
+    import dataclasses
+    from molbuilder.config.siesta import SiestaConfig
+    names = {f.name for f in dataclasses.fields(SiestaConfig)}
     (tmp_path / "Relax.fdf").write_text(_DECK)
     out = contract_of(tmp_path)
-    stray = set(out["contract"]) - vocabulary
+    stray = set(out["contract"]) - names
     assert not stray, (
-        f"contract_of emits {sorted(stray)} outside the record's "
-        f"vocabulary {sorted(vocabulary)}")
+        f"contract_of records {sorted(stray)}, which are not the settings' "
+        f"own names")
 
 
 # --------------------------------------------------------------------- #

@@ -3,8 +3,8 @@
 The ONE interface behind the Results tab's contract recording
 (`archive/2026-09-01-structure-info-plan.md` I5): given a directory, find the one
 engine deck in it and answer the electronic contract it states, in the
-record's own field names (:data:`RECORD_TO_SIESTA_FIELD` maps them to the
-catalogue's) — so a recorded block (`info.calculation`) defaults a
+catalogue's own names (:data:`RECORDED_FIELDS`) — so a recorded block
+(`info.calculation`) defaults a
 transport calculation's template when a pair carrying it is cited
 (`transport-design.md` § 4.1b, the recorded-contract shade).
 
@@ -32,7 +32,7 @@ def contract_of(directory) -> Optional[Dict[str, Any]]:
     """The recorded-contract block for *directory*, or ``None``.
 
     Shape (the ``info.calculation`` block):
-    ``{"engine", "contract": {record field -> value},
+    ``{"engine", "contract": {catalogue name -> value},
     "source": <deck name>, "source_sha256"}`` — only fields the deck
     actually states appear in ``contract``.
     """
@@ -49,43 +49,32 @@ def contract_of(directory) -> Optional[Dict[str, Any]]:
     return None
 
 
-#: The recorded contract's field names against ``SiestaConfig``'s -- ONE
-#: table, read by :func:`contract_fields_of` here and by the transport
-#: citation fill (`transport/citation_defaults.py`), so the two cannot
-#: disagree about which attribute a record's key is.  Only two spellings
-#: differ; the table is written out because both vocabularies are facts
-#: about classes, not derivable from each other.
-RECORD_TO_SIESTA_FIELD: Dict[str, str] = {
-    "basis_size":               "basis_size",
-    "siesta_mesh_cutoff_ry":    "mesh_cutoff",
-    "energy_shift_ry":          "pao_energy_shift",
-    "electronic_temperature_k": "electronic_temperature",
-    "xc_functional":            "xc_functional",
-    "xc_authors":               "xc_authors",
-    # THE ELECTRONIC STATE THE RUN CARRIED (`science/chemistry-correctness.md`
-    # § 2a, ES7) -- the four items' own names on both sides.
-    "net_charge":               "net_charge",
-    "spin_treatment":           "spin_treatment",
-    "unpaired_electrons":       "unpaired_electrons",
-}
+#: The settings the recorded contract carries, by their CATALOGUE names --
+#: the record speaks the calculation's own vocabulary (`model/parse.md` § 5b;
+#: user, 2026-10-02: "i'd rather unify the names, rather than having a drift
+#: from contract"), so a reader takes a key as it stands.  Read by
+#: :func:`contract_fields_of` here and by the transport citation fill
+#: (`transport/citation_defaults.py`).  The k-point mesh is apart
+#: (:data:`K_MESH_RECORD_KEYS`); the electronic state's three ride at the end.
+RECORDED_FIELDS = ("basis_size", "mesh_cutoff", "pao_energy_shift",
+                   "electronic_temperature", "xc_functional", "xc_authors",
+                   "net_charge", "spin_treatment", "unpaired_electrons")
 
 #: The electronic state's recorded keys -- compared RESOLVED, never raw
 #: (:func:`contract_fields_of`).
 STATE_RECORD_KEYS = ("net_charge", "spin_treatment", "unpaired_electrons")
 
 #: The k-point mesh's recorded keys -- the run's counts and offset, carried
-#: APART from the table above: a citation takes them through the mesh's own
+#: APART from the list above: a citation takes them through the mesh's own
 #: rule (`transport/citation_defaults._apply_kgrid`, the transport axis laid
-#: on), never verbatim, and nothing compares them field by field.  The
-#: counts keep the name their first reader gave them, "transverse", because
-#: records on disk carry it; the offset (2026-09-30) is the item's own.
-K_MESH_RECORD_KEYS = ("k_mesh_transverse", "kgrid_displacement")
+#: on), never verbatim, and nothing compares them field by field.
+K_MESH_RECORD_KEYS = ("kgrid", "kgrid_displacement")
 
 
 def contract_fields_of(cfg, *, state=None) -> Dict[str, Any]:
-    """The level of theory a config is ABOUT TO RUN, in the recorded
-    contract's own field names -- the other half of :func:`_siesta_contract`,
-    through :data:`RECORD_TO_SIESTA_FIELD`.  A consumer comparing a
+    """The level of theory a config is ABOUT TO RUN, in the names the
+    recorded contract uses -- the catalogue's (:data:`RECORDED_FIELDS`), the
+    other half of :func:`_siesta_contract`.  A consumer comparing a
     structure's ``info.calculation`` against the calculation it is being
     handed to compares this dict field by field.  Only fields the config
     class has appear; an engine with no recorded contract (PySCF today)
@@ -97,11 +86,11 @@ def contract_fields_of(cfg, *, state=None) -> Dict[str, Any]:
     relaxed for another state is warned).  Without a state they are left out.
     """
     out: Dict[str, Any] = {}
-    for key, attr in RECORD_TO_SIESTA_FIELD.items():
+    for key in RECORDED_FIELDS:
         if key in STATE_RECORD_KEYS:
             continue
-        if hasattr(cfg, attr) and getattr(cfg, attr) is not None:
-            out[key] = getattr(cfg, attr)
+        if getattr(cfg, key, None) is not None:
+            out[key] = getattr(cfg, key)
     if state is not None and out:
         out["net_charge"] = state.net_charge.value
         out["spin_treatment"] = state.spin_treatment.value
@@ -260,17 +249,19 @@ def _siesta_contract(deck: Path) -> Optional[Dict[str, Any]]:
         # the deck does not state.
         return None
     contract = {k: v for k, v in {
+        # The catalogue's names (`RECORDED_FIELDS`) in the catalogue's
+        # units -- the parse converts each to it on the way in.
         "basis_size":               p.basis_size,
-        "energy_shift_ry":          p.energy_shift_ry,
+        "pao_energy_shift":         p.energy_shift_ry,
         "xc_functional":            p.xc_functional,
         "xc_authors":               p.xc_authors,
-        "siesta_mesh_cutoff_ry":    p.mesh_cutoff_ry,
+        "mesh_cutoff":              p.mesh_cutoff_ry,
         # THE K-POINT MESH (`K_MESH_RECORD_KEYS`): the run's counts, all
         # three, and since 2026-09-30 its offset (`engines/siesta.md` § 6.1).
-        "k_mesh_transverse":        (list(p.kgrid) if p.kgrid else None),
+        "kgrid":                    (list(p.kgrid) if p.kgrid else None),
         "kgrid_displacement":       (list(p.kgrid_displacement)
                                      if p.kgrid_displacement else None),
-        "electronic_temperature_k": p.electronic_temperature_k,
+        "electronic_temperature":   p.electronic_temperature_k,
         # What the run carried -- SIESTA's defaults answer what the deck
         # leaves out, so these are always known (ES7's hand-over reads them).
         "net_charge":               p.net_charge,

@@ -1664,8 +1664,8 @@ edit had actually done.
 2026-09-07)*.  One flag was set by geometry ops, cell ops **and label
 writes** alike, which made it unusable by the only reader that wanted
 it: the settings a later calculation inherits are `mesh_cutoff`,
-`k_mesh_transverse` and — since 2026-09-30 — its offset `kgrid_displacement`,
-`xc_functional`, `electronic_temperature_k` — and, since 2026-09-28, the
+`kgrid` and — since 2026-09-30 — its offset `kgrid_displacement`,
+`xc_functional`, `electronic_temperature` — and, since 2026-09-28, the
 charge and spin the run carried (ES7) — and
 **a label write cannot invalidate any of them** — labels are names for
 atoms, and no setting is a function of a name.  A reader acting on the

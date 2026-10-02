@@ -21,8 +21,8 @@ the exported ``.molstruct.json`` pair without another line changing.
 Two keys:
 
 * ``calculation`` — the electronic contract the directory's deck records
-  (``parse.contract.contract_of``), in the record's own field names
-  (``parse.contract.RECORD_TO_SIESTA_FIELD`` maps them to the catalogue's),
+  (``parse.contract.contract_of``), in the catalogue's own names
+  (``parse.contract.RECORDED_FIELDS``),
   so a cited pair defaults a transport calculation's template
   (`transport-design.md` § 4.1b).
 * ``relaxation`` — what the run did to the geometry it left
