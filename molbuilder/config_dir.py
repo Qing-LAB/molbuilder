@@ -1,7 +1,8 @@
 """Where molbuilder keeps its own per-user files — stated once.
 
-``$XDG_CONFIG_HOME/molbuilder``, else ``~/.config/molbuilder``.  Three
-modules computed that same two-line rule independently:
+``$MOLBUILDER_CONFIG_DIR``, else ``$XDG_CONFIG_HOME/molbuilder``, else
+``~/.config/molbuilder`` (`configuration.md` § 2.1c).  Three modules
+computed that rule independently:
 
 * ``runtime_config._machine_config_file`` -> ``molbuilder.json``
 * ``scheduler/record.machine_scope_path`` -> ``environment.json`` and the
@@ -283,9 +284,9 @@ def relative_home(resolve) -> str:
     name.  It joined ``notify``, and when the credentials moved into `secrets/`
     the printed recipe went on telling people to write a webhook where nothing
     reads it -- silently, because a notifier swallows every failure by design.
-    The AST guard could not catch that: it matches the literal ``"notify"`` and
-    the string there was ``"$cfg/notify"``.  Deriving the tail is what closes
-    it.
+    The AST guard of the time (retired 2026-09-26) could not catch that: it
+    matched the literal ``"notify"`` and the string there was
+    ``"$cfg/notify"``.  Deriving the tail is what closes it.
 
     **It lives here, not in `placement`** *(moved 2026-09-20)*.  It never
     touches that module's table -- it is `config_dir` arithmetic over a

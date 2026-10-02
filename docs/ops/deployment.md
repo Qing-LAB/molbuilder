@@ -266,7 +266,7 @@ TLS-terminating proxy (and binding loopback), or knowingly passing
 flowchart LR
   U["browser"] -->|"HTTPS"| PX["reverse proxy (nginx/Caddy/…)<br/>terminates TLS · optional extra auth · optional limit_req"]
   PX -->|"HTTP, loopback"| S["molbuilder serve<br/>127.0.0.1:8000 (auth + rate-limit + CSP)"]
-  S --> FS["&lt;cwd&gt;/projects/ on disk"]
+  S --> FS["the projects tree on disk"]
 ```
 
 The recommended production setup is a **reverse proxy terminating TLS** in front
@@ -404,6 +404,20 @@ A blocked request gets an empty **`429`** with `Connection: close` and
 bypass the limiter entirely.** State is in memory only — it clears on restart, and
 is per-process (another reason not to fan out to many workers).
 
+**Its settings** are the `rate_limit` section of `molbuilder.json`, each key
+checked where the config is read — a wrong type or an unlisted key is refused,
+naming it, before any server starts on it (`configuration.md` § 4):
+
+| key | type | default | what it does |
+|---|---|---|---|
+| `enabled` | true / false | `true` | the whole limiter — off, nothing is counted or blocked |
+| `window_404_s` · `threshold_404` | seconds above 0 · a count, `0` off | `30` · `20` | the 404-storm signal |
+| `window_total_s` · `threshold_total` | seconds above 0 · a count, `0` off | `60` · `0` | the total-burst signal (off by default) |
+| `cooldown_s` | seconds above 0 | `3600` | how long a block lasts |
+| `trust_proxy` | true / false | `false` | read the client's address from `X-Forwarded-For` |
+| `max_tracked_ips` | a count above 0 | `10000` | the most addresses held at once (the least recently seen dropped first) |
+| `allowlist` | addresses or networks | `["127.0.0.1", "::1"]` | never limited |
+
 Two admin routes let an operator inspect and clear blocks:
 
 - `GET /api/admin/rate_limit/status` → `{enabled, blocked:[{ip,reason,ttl_s}], …}`
@@ -519,9 +533,9 @@ from the exact OOM it would let you hit.
 **Where the template comes from now:** `molbuilder envs init-config` writes it,
 and `envs bootstrap` runs that at the end of a first install. It seeds every
 section that can be empty, each with a `_`-prefixed comment block saying who
-fills it in — you, a command, or a probe — and it *asks* the two values only you
-know: the activation form, which it writes into this machine's record, and
-where the projects tree lives. A generated
+fills it in — you, or a command — and it *asks* the two values only you
+know: the activation form, which it writes as `env_init` (the probe copies it
+into this machine's record), and where the projects tree lives. A generated
 template cannot drift from the reader, because the same package writes both.
 
 **Your site's own values come from your site** — measured by `jobset probe`
@@ -539,8 +553,9 @@ bytes.** The config file gets copied, backed up, and diffed as you tune a
 deployment — secrets must not travel with it. Every secret lives in
 molbuilder's config directory, and the config references it by path.
 
-**That directory is `$XDG_CONFIG_HOME/molbuilder`, or `~/.config/molbuilder`
-when the variable is unset** (`molbuilder.config_dir.config_dir`) — the same
+**That directory is `$MOLBUILDER_CONFIG_DIR`, else `$XDG_CONFIG_HOME/molbuilder`,
+else `~/.config/molbuilder`** (`molbuilder.config_dir.config_dir`,
+`configuration.md` § 2.1c) — the same
 one `molbuilder auth-setup` writes to, so a wizard-generated deployment and a
 hand-made one put their secrets in the same place.
 
@@ -589,17 +604,18 @@ Notes:
   `/etc/letsencrypt/live/<host>/`), not at the config directory; renewal
   tooling rotates them in place.
 - A CAS provider (e.g. ASURITE) has no client secret — nothing to create.
-- The same directory holds `molbuilder.json` itself when you do not want
-  one per launch directory (the XDG fallback in the search order above).
+- The same directory holds `molbuilder.json` itself — its one home: a file in
+  the launch directory is not read (`configuration.md` § 2.1a).
   Config and secrets sharing a directory is fine and is what the code does:
   the rule that protects you is *paths, never literals* — the config may be
   copied and diffed; the `0600` files beside it may not.
 
 ## 6. What's on disk at runtime
 
-A running server keeps your work under **`<launch-cwd>/projects/`** (the whole
-project/topic/structure/job tree). Config and secrets live in `molbuilder.json`
-(cwd) and `~/.config/molbuilder/` (`0600`). The rate-limiter's blocklist is memory
+A running server keeps your work under **the projects tree** — `paths.projects`,
+else the checkout's `projects/` ([`installation.md`](?doc=ops/installation.md)
+§ 2.1) — the whole project/topic/structure/job tree. Config and secrets live in
+the config directory: `molbuilder.json` and `secrets/` (`0600`). The rate-limiter's blocklist is memory
 only. The server assumes a **writable working directory** and makes no
 shared-filesystem assumptions.
 

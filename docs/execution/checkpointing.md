@@ -264,12 +264,11 @@ nothing else — moving it changes where a file is kept, never whether it is kep
 > A per-folder config would let one folder behave differently from another for no
 > recorded reason. That is a trap, not a feature.
 
-> **The door is shut rather than merely unused.** A `checkpoint` section placed
-> in a project- or calculation-scope config is **refused**, naming this rule —
-> not read and quietly dropped. A section that is parsed, validated and then
-> ignored looks effective, and the folder is then saved under rules nobody
-> applied. The accessor takes no directory argument at all, which is what stops
-> the per-folder scope coming back the next time a caller has one in hand.
+> **There is no door to shut.** `molbuilder.json` is one file, in the config
+> directory — no project or calculation scope exists to place a `checkpoint`
+> section in ([`configuration.md`](?doc=configuration.md) § 2) — and the
+> accessor takes no directory argument at all, which is what stops a per-folder
+> scope coming back the next time a caller has one in hand.
 
 ---
 
@@ -1397,7 +1396,7 @@ conclude there is nothing to do.
 | **S1** | everything is stored; the two stores are the only exclusions | ✅ the fixed ignore tail is gone; a walk over a saved folder asserts it |
 | **S1a** | `.gitignore` generated, one source | ✅ the block holds nothing but archive patterns; a user's own entries are left alone |
 | **S1b** | the store is chosen by measuring the file | ✅ 10 MB by default; engine entries only let a family skip the measuring, and a big file never reaches `git add` at all |
-| **S1c** | the classification lives in molbuilder's config, one home | ✅ in `molbuilder.json`; a section in any narrower scope is **refused**, and the accessor takes no directory |
+| **S1c** | the classification lives in molbuilder's config, one home | ✅ in `molbuilder.json`, the one config file; there is no narrower scope, and the accessor takes no directory |
 | **I1** | archived content is never modified | ✅ structural — the name is the content digest, so changed content is a different archive |
 | **I2** | a MANIFEST is authoritative | ✅ existence, size and sha256 for every entry, run over every archive in the folder |
 | **I2a** | a restore replays the save, and consults nothing | ✅ what a restore removes is decided by git and the MANIFEST, never by the classification |

@@ -33,7 +33,6 @@ from ...issues import Issue
 from flask import Blueprint, jsonify, request
 
 from molbuilder import calcdirs
-from molbuilder.runtime_config import CONFIG_FILENAME as _CONFIG_FILENAME
 
 from molbuilder.checkpoint import (
     Repo,

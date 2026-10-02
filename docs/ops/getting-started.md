@@ -67,13 +67,15 @@ end, which creates it in the config directory —
 `$MOLBUILDER_CONFIG_DIR` if you set it, else `$XDG_CONFIG_HOME/molbuilder/`, else
 `~/.config/molbuilder/` ([`deployment.md` § 5](?doc=ops/deployment.md)) — with
 every section that can be empty present and empty, each carrying an
-`_`-prefixed comment block saying who fills it in: you, a command, or a probe.
+`_`-prefixed comment block saying who fills it in: you, or a command.
 
 > **Edit it; do not replace it.** Its comment blocks name what fills each
 > section, and what may go in it at all is
 > [`configuration.md`](?doc=configuration.md) § 4. The activation `bootstrap`
-> asked you for is not in this file: it is a fact of this machine, in its
-> record (§ 3).
+> asked you for is in this file, as `env_init` — how a shell enters an
+> environment on this machine. `jobset probe --write` copies it into this
+> machine's record (§ 3), and into a named record written on another machine
+> (§ 4).
 
 **The one key you are likely to change** is how work leaves this machine. On a
 workstation, jobs run right here:
@@ -92,8 +94,8 @@ There is no default queue: each job names its own, with its wall and memory, in
 its description or on the command line
 ([`execution/architecture.md`](?doc=execution/architecture.md) § 5.2).
 
-Open the file and read the comment blocks; they name the command or the probe
-that fills each remaining section, so there is nothing to guess at.
+Open the file and read the comment blocks; they name the command that fills
+each remaining section, so there is nothing to guess at.
 
 Where your calculations live is the other thing `bootstrap` **asked** you, for
 the same reason: its default is inside the clone, which is often not where you
@@ -112,9 +114,9 @@ from, so you never have to infer it.
 molbuilder jobset probe --write          # THIS machine -> environment.json
 ```
 
-> **No `--name` for the machine you are on.** `--name` is how you record a
-> machine you are *not* on (§ 4): it writes
-> `environments/<name>.json` instead, so on this machine it would leave
+> **No `--name` for the machine you are on.** `--name` writes this machine's
+> record as `environments/<name>.json` — the name ANOTHER machine preps it by
+> (§ 4) — so on this machine it would leave
 > `environment.json` untouched and stale while looking like a refresh — and the
 > named record it creates then makes every `prep` without `--target` refuse,
 > because two machines could be meant. This section said

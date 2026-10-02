@@ -2046,9 +2046,8 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
 
     # THE CONFIG DIRECTORY IS PART OF A FIRST INSTALL.  Until this ran
     # here, a bootstrap left the machine one file short of being able to
-    # render any wrapper -- `running-a-job.md` 5.2 names the symptom
-    # (*"the .fdf saved but no .run.sh appeared"*) and says it bites a
-    # workstation first.  This is the moment the answer is known: the
+    # render any wrapper (`running-a-job.md` 5.2).  This is the moment the
+    # answer is known: the
     # env manager has just been located and confirmed.
     click.echo("")
     click.echo("=" * 70)
@@ -2360,9 +2359,9 @@ def cmd_init_config(activation: "Optional[str]", probe: bool,
                                      `env_init`: how a shell enters a conda
                                      env here, which has no default and is
                                      asked
-      <config dir>/secrets/          0700 + a README: the mode rule, what
-                                     belongs here, and the three secrets that
-                                     cannot (they have one fixed home each)
+      <config dir>/secrets/          0700 + a README: the mode rule, the
+                                     two kinds of credential in it and the
+                                     function each is reached through
       <config dir>/environments/     0700 -- records for machines you prep FOR
       <config dir>/environment.json  this machine, probed -- carrying a
                                      copy of `env_init`
@@ -2371,9 +2370,11 @@ def cmd_init_config(activation: "Optional[str]", probe: bool,
     moment the answer is known: how this machine enters a conda env, and where
     the project tree lives.  `--yes` takes both defaults and PRINTS them.
 
-    **Idempotent, and never overwrites.**  A file that already exists is
-    reported and left exactly as it is; re-running prints what is there.  Run
-    automatically at the end of ``bootstrap``.
+    **Idempotent.**  A file a person wrote is never overwritten -- re-running
+    prints what is there.  molbuilder's own two READMEs are rewritten when
+    their text is out of date, and a molbuilder.json with no
+    env_init.activation gains the one asked.  Run automatically at the end of
+    ``bootstrap``.
     """
     click.echo(f"config directory: {config_dir()}")
     _seed_config(activation, auto_yes, probe,

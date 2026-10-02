@@ -887,7 +887,7 @@ over different parameters (`project-layout.md § 2.3.1a`).
 >
 > | | `run` | `bench` | no kind |
 > |---|:--:|:--:|:--:|
-> | `prep` | ✅ `prep run <stage>` — the stage is **required** ([`engines/stages.md`](?doc=engines/stages.md) § 6.5); with no stage it lists the ladder and refuses | ✅ **LANDED 2026-08-12** (step 6) — `prep bench <stage>`: probe the machine, enumerate the grid, render the trials into the stage's `bench/` | — the kind is required |
+> | `prep` | ✅ `prep run <stage>` — the stage is **required** ([`engines/stages.md`](?doc=engines/stages.md) § 6.5); with no stage it lists the ladder and refuses | ✅ **LANDED 2026-08-12** (step 6) — `prep bench <stage>`: read the target's record, enumerate the grid, render the trials into the stage's `bench/` | — the kind is required |
 > | `launch` | ✅ | ✅ **LANDED 2026-08-12** (step 6) — `launch bench <stage> [<trial>]`: under `submit`, the whole sweep as one grouped job per resource shelf (2026-08-21, `generator.md § 4.3a`), under `direct` each trial here in turn; a named trial launches alone | — |
 > | `summarize` | ✅ a transport calculation's bias points into `<label>.transport.json` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), and a SIESTA vibration's force-constant stages compared into `<label>.fc-sweep.json` ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.9); any other calculation is refused, naming those two — its outputs *are* the results, read by `status` and the Results tab *(this cell said only "refuses" until 2026-09-29)* | ✅ **LANDED 2026-08-12** (step 6 u4) — discovery keyed by `job-set.json`, results through the ordinary artifacts, async | — |
 > | `init` | — | — | ✅ **LANDED 2026-08-11** as `describe` (plan step 2). Its predecessor `molbuilder fdf … --jobset` is **deleted** (§ 5.1) — it wrote a finished flat bundle and emitted *both* directory shapes at once |
@@ -1428,7 +1428,8 @@ flowchart LR
   scheduler via `scontrol show node`, not from whatever login node you happen to
   be on), so the numbers are the ones the job will actually run against. The
   record holds only the machine's **facts** — what was probed, and the
-  activation and preamble declared to the probe there; what you want stays in
+  `env_init` declared in that machine's `molbuilder.json` and copied in by the
+  probe there; what you want stays in
   `molbuilder.json` ([`configuration.md` § 4–5](?doc=configuration.md)).
 - **Trials are the stage's science, made measurable — by pins, not by
   splicing.** Each trial's deck is **rendered from the description** like any

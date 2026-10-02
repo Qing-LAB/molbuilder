@@ -40,9 +40,6 @@ written) or `persist` (how a versioned document is written).  Nothing here
 touches a filesystem, a scheduler, or a workflow, which is what lets
 `task.py` and `jobset/` both reach it without either importing the other
 (`docs/design.md`, "Architecture").
-
-Stdlib-only, like the rest of this package: a machine record is read on the
-target inside a backend environment with no molbuilder installed.
 """
 
 from __future__ import annotations

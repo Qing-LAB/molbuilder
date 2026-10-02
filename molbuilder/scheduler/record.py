@@ -3,9 +3,10 @@
 The first half of the benchmark workflow's pluggable seam
 (docs/execution/job-system.md, § 5): **probes** that learn the
 target's scheduler + hardware topology + site facts, and the versioned
-JSON record they produce (``environment@1`` — registry row: job-contracts
-§ 6.1; produced by ``resolve_target`` at prep step 1) that every later stage
-and any external tool reads.
+JSON record they produce (``environment@2`` — registry row: job-contracts
+§ 6.1; written by ``jobset probe --write`` ON the machine it describes, and
+copied beside a calculation at its first prep) that every later stage and any
+external tool reads.
 
 **Section references below cite the archived
 `docs/archive/old_docs/job-execution.md` design record** (the live homes are job-system § 7 and job-contracts § 6.1; R8,
@@ -45,8 +46,9 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 SCHEMA = "molbuilder/environment@2"
 #
-# @1 -> @2 (N2, 2026-08-17): ``domains`` added, and ``site.qos`` became a field
-# something actually writes.  A MAJOR bump rather than a minor, deliberately:
+# @1 -> @2 (N2, 2026-08-17): ``domains`` added -- each row carrying the QoS
+# the probe read for it (``site.qos`` was meant to be written then; nothing
+# writes it).  A MAJOR bump rather than a minor, deliberately:
 # ``from_dict`` tolerates missing keys, so an @1 record would parse -- and would
 # read as *a cluster with no reachable domains*, which is indistinguishable from
 # a real cluster where you hold no QoS.  The bump is what makes an old record
@@ -144,12 +146,13 @@ class Domain:
     """One **reachable** (partition, qos) pair, and what it allows.
 
     A fact, not a preference: it says *you may submit here, for this long*,
-    never *submit here*.  Which domain a run wants is `molbuilder.json`'s
-    (`configuration.md` § 5, M-1).
+    never *submit here*.  Which domain a run wants is the job's own
+    statement (`execution/architecture.md` § 5.2).
 
     **One type for both ways a fact arrives** (2026-08-17).  It carried four
-    fields when only the prober built one, and a hand-declared row -- which is
-    how a workstation states a cluster's capability -- went through
+    fields when only the prober built one, and a hand-declared row -- how a
+    workstation stated a cluster's capability, before a record was probed ON
+    the cluster and copied (2026-10-02) -- went through
     `get_routing` as a **raw dict** instead, so the same function returned a
     4-key mapping or a 6-key one depending on which branch ran.  A caller could
     not rely on the shape of its own answer.  The columns below are the ones
@@ -241,8 +244,8 @@ class Domain:
     def from_row(cls, row: Mapping[str, Any]) -> Optional["Domain"]:
         """A mapping -> a Domain, or ``None`` when it is not one.
 
-        The ONE parser, used by the probe, by the record reader and by a
-        declared ``scheduler.routing`` row alike.  ``name``/``partition``/
+        The ONE parser, used by the probe and by the record reader alike.
+        ``name``/``partition``/
         ``qos`` have no default: a row missing one is not a domain, and
         dropping it beats inventing a blank one that a `prep` check would then
         compare an ask against.
@@ -350,10 +353,11 @@ class Environment:
     #: every job on Sol died with
     #: ``line 196: /home/.../conda.sh: No such file or directory``.
     #:
-    #: ``{}`` means the record predates this field or was written by a
-    #: probe that could not read a config.  Absent is NOT "use the local
-    #: machine's" -- that substitution is the bug -- so a caller
-    #: generating for a named target REFUSES and asks for a re-probe.
+    #: ``{}`` means the record predates this field, or the `molbuilder.json`
+    #: of the machine it was probed on declared no ``env_init``.  Absent is
+    #: NOT "use the local machine's" -- that substitution is the bug -- so
+    #: prep REFUSES any target whose record carries no activation, saying
+    #: where to declare it (`jobset.prep._require_activation`).
     #:
     #: Shape: ``{"preamble": str, "activation": str}``, both optional.
     env_init: Dict[str, str] = field(default_factory=dict)
@@ -708,7 +712,8 @@ def detect_site(scheduler: str) -> Tuple[Site, str]:
 
     The split is by **command**, not by knowability: this function is the NODE
     probe and asks ``sinfo``/``scontrol``; the cluster probe (`jobset probe`)
-    asks ``sacctmgr`` and fills ``site.qos`` and ``domains``.  What genuinely
+    asks ``sacctmgr`` which QoS your account may use and writes each into its
+    ``domains`` row; ``site.qos`` is written by nothing.  What genuinely
     is policy, and stays in `molbuilder.json`, is which of them you *want*."""
     if scheduler != "slurm":
         return Site(), "n/a"
@@ -986,7 +991,7 @@ def record_scopes(bundle_dir=None,
     Returns ``[(label, path), ...]``, first match wins.  Stated as data rather
     than as an if/elif chain inside the reader, so *"which file answers?"* is
     read off a list instead of traced through control flow -- the shape
-    `runtime_config._SECTIONS` already uses for the config scopes next door.
+    `runtime_config._SECTIONS` already uses for the config's sections.
 
     ``target`` names a machine explicitly and is resolved by the CALLER
     (:func:`machine_for`), because an unknown name is an error rather than a
@@ -1060,9 +1065,7 @@ class UnknownTarget(Exception):
         listed = ", ".join(self.known) or "(none)"
         super().__init__(
             f"no machine record named {name!r}.  Known targets: {listed}.  "
-            f"Write one with `{probe_command(name)}` {probe_steps(name)}, "
-            f"or declare it by hand in "
-            f"{environments_dir() / (name + '.json')}.")
+            f"Write one with `{probe_command(name)}` {probe_steps(name)}.")
 
     @classmethod
     def unreadable(cls, name: str, path) -> "UnknownTarget":

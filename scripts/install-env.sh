@@ -333,7 +333,8 @@ bash scripts/install-env.sh clean molbuilder-siesta-gpu --yes
 bash scripts/install-env.sh doctor
 
 # 8. Re-seed / inspect the per-user config directory (bootstrap
-#    already ran this; it never overwrites, so re-running is safe):
+#    already ran this; it never overwrites a file you wrote, so re-running
+#    is safe):
 bash scripts/install-env.sh init-config
 
 # 9. TEST TOOLING (optional -- only if you run the test suite):
@@ -391,8 +392,8 @@ Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
                   because install time is the one moment the answer is
                   known.  --activation states the first, --projects PATH the
                   second; --yes takes both defaults and prints them.  Run
-                  automatically at the end of bootstrap, never
-                  overwrites.  See docs/ops/installation.md section 2.1
+                  automatically at the end of bootstrap; never overwrites
+                  a file you wrote.  See docs/ops/installation.md section 2.1
   install <recipe>   create the env and run its whole plan.  On an env
                      that ALREADY EXISTS the create is skipped and the
                      declared conda set is installed instead, so a recipe

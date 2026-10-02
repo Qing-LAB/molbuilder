@@ -218,8 +218,8 @@ to parse a login page as data.
 
 Sessions are signed with a key at `<config dir>/secrets/secret_key` — one home,
 not a configured path (`configuration.md` § 2.1e)
-(conventionally in the config directory — `$XDG_CONFIG_HOME/molbuilder`,
-else `~/.config/molbuilder`). Not in `molbuilder.json`, not in the
+(the config directory — [`configuration.md`](?doc=configuration.md) § 2.1c).
+Not in `molbuilder.json`, not in the
 tree, and never committed. Client secrets follow the same rule — one file per
 provider. See [`deployment.md`](?doc=ops/deployment.md) § 5.1.
 
@@ -240,9 +240,7 @@ things were wrong with that, and the second is the one that bites:
   per-user file would have been **a config the reader never looks at** — the
   wizard reporting success while sign-in stayed off.
 
-Asking the reader where it reads is what keeps the two from disagreeing. Pass
-`--output` to name a path outright; that answers the question and nothing
-overrides it.
+Asking the reader where it reads is what keeps the two from disagreeing.
 
 > **The file is gitignored, and has never been committed** —
 > `molbuilder.json`, which holds `auth` and `tls`.

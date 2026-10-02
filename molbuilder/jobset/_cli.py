@@ -2033,14 +2033,12 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
 
 
 # --------------------------------------------------------------------- #
-#  probe-scheduler -- MOVED here from `molbuilder bench` on 2026-08-17.  #
-#                                                                        #
-#  It was the last inhabitant of a command group whose four lifecycle    #
-#  verbs were deleted in the 2026-08-12 fold, and it is not a benchmark  #
-#  verb at all: it reads a live SLURM cluster and proposes a `scheduler` #
-#  config block.  Leaving it there kept a group alive whose name no      #
-#  longer described anything, so `molbuilder bench` is gone and every    #
-#  verb now lives under `jobset` (user, 2026-08-17).                     #
+#  probe -- this machine's record, read off the machine.  It came from   #
+#  `molbuilder bench` on 2026-08-17 as `probe-scheduler`, the last        #
+#  inhabitant of a group whose lifecycle verbs went in the 2026-08-12     #
+#  fold (every verb lives under `jobset` -- user, 2026-08-17), and        #
+#  proposed a `scheduler` config block; that block is refused since      #
+#  2026-10-02, and the probe writes the machine's record instead.        #
 # --------------------------------------------------------------------- #
 
 #: Marks a key a row does not carry, so the field diff below can tell
@@ -2263,13 +2261,13 @@ def cmd_machines() -> None:
 @click.option("--write", "do_write", is_flag=True, default=False,
               help="write the probed record (shows a diff + confirms).")
 @click.option("--name", default=None, metavar="NAME",
-              help="RECORD THIS AS A NAMED TARGET you can prep FOR, rather "
-                   "than as the machine you are standing on.  Run `probe "
-                   "--write --name sol` on Sol's login node, copy the file it "
-                   "writes to the directory `jobset machines` prints, and "
-                   "`prep --target sol` sizes for Sol from anywhere.  Without "
-                   "it the record describes THIS box, which is the wrong "
-                   "answer whenever you prep on a laptop for a cluster.")
+              help="write THIS machine's record as environments/NAME.json, "
+                   "the name another machine preps it by.  The probe always "
+                   "measures the machine it runs on: run `probe --write "
+                   "--name sol` on Sol's login node, copy the file it writes "
+                   "to the directory `jobset machines` prints, and `prep "
+                   "--target sol` sizes for Sol from there.  Without it the "
+                   "record is this machine's own environment.json.")
 @click.option("--yes", is_flag=True, default=False,
               help="with --write: take every probed value without asking "
                    "(scripts).  Without it, each difference against an "
@@ -2285,7 +2283,7 @@ def cmd_machines() -> None:
               type=click.Choice(["slurm", "workstation"]),
               help="force the scheduler kind instead of detecting it "
                    "(source 'flag').")
-def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
+def cmd_probe(out, do_write: bool, name, yes: bool,
                         sets, scheduler_flag) -> None:
     """Record what a machine IS -- cores, GPUs, scheduler, and on a cluster
     every (partition, QoS) you may actually submit to, with its wall.
@@ -2355,9 +2353,9 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
             raise click.ClickException(
                 f"--set {key}: {raw!r} is not {types[key].__name__}")
 
-    # The NODE probe first -- scheduler, topology, default partition.  It is
-    # the same call `prep` step 1 makes, so the two cannot disagree about what
-    # this machine is.
+    # The NODE probe first -- scheduler, topology, default partition: the one
+    # node prober, the one `envs init-config` seeds this machine's record
+    # through too, so the two cannot disagree about what this machine is.
     env = resolve_environment(now_iso=now, overrides=overrides or None,
                               scheduler_override=scheduler_flag)
 

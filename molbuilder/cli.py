@@ -210,7 +210,8 @@ cli.add_command(envs_group)
 # `molbuilder bench ...` was DELETED 2026-08-17 (user: all verbs are unified
 # under `jobset`).  Its four lifecycle verbs went in the 2026-08-12 fold, and
 # its last inhabitant -- `probe-scheduler`, a scheduler-config helper that was
-# never a benchmark verb -- moved to `jobset probe-scheduler`.  A group whose
+# never a benchmark verb -- moved to `jobset`, where it is `jobset probe` (it
+# writes the machine's record since 2026-10-02).  A group whose
 # name no longer described anything it contained was the last thing keeping
 # two spellings alive for one act (process/conventions.md 3).
 

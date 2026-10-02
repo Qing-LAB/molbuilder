@@ -53,7 +53,7 @@ def config_root(tmp_path, monkeypatch) -> Path:
 def machine_config(config_root):
     """Write the machine config where the reader will find it.
 
-    ``machine_config({"execution": {"mode": "direct"}})`` -- returns the path,
+    ``machine_config({"launch": {"mode": "direct"}})`` -- returns the path,
     and may be called again to replace the file mid-test.
 
     It writes the WHOLE file rather than merging, because that is what the

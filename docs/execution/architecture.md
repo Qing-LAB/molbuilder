@@ -1133,7 +1133,7 @@ flowchart LR
     OBS["<b>5 · you look</b> — floor 6<br/><code>jobset status</code>"]
 
     PORT -->|"scp — it means the<br/>same thing anywhere"| PREP
-    CFG -->|"activation · envs → step 4<br/>scheduler · execution → submit"| PREP
+    CFG -->|"envs → step 4<br/>launch.mode → launch"| PREP
     PREP --> WS & HPC
     WS --> RUN
     HPC --> RUN

@@ -184,7 +184,7 @@ flowchart TB
 |---|:--:|:--:|---|
 | Generate + run one task | ✅ | ✅ | `running-a-job.md` |
 | Watch a run's live trajectory + monitor | ✅ | ✅ | `running-a-job.md § 4` |
-| `molbuilder.json` config (envs, activation, scheduler) | ✅ | — | `running-a-job.md § 5` |
+| `molbuilder.json` config (launch, envs, `env_init` — `configuration.md` § 4) | ✅ | — | `running-a-job.md § 5` |
 | Checkpoint / restore a run (`molbuilder checkpoint`) | ✅ | ✅ | `running-a-job.md § 6` |
 | Describe a staged calculation (shape · stages · bench) | ✅ | ✅ | `web/task-setup.md`, `job-system.md § 5.1` |
 | Prep a staged ladder (one stage at a time) | ✅ | ✅ *(the one prep entry, for a named machine)* | `job-system.md § 5.3` |

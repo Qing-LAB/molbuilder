@@ -2192,10 +2192,12 @@ within one artifact, never about ignoring which artifact.)*
 
 ### 6.1a Machine facts — moved
 
-The rules that decide **which file a machine fact belongs in** — probed facts to
-`environment.json`, chosen preferences to `molbuilder.json`, a probe never
-writing a preference, one door reading and writing the record, and the bump to
-`molbuilder/environment@2` — are M-1 through M-5 of
+The rules that decide **which file a machine fact belongs in** — facts to
+`environment.json`, preferences to `molbuilder.json` (and `env_init`, declared
+there and copied into every record by the probe), a probe never writing a
+preference, one door reading and writing the record, the bump to
+`molbuilder/environment@2`, and the probe asking before it overwrites — are
+M-1 through M-6 of
 [`configuration.md` § 5](?doc=configuration.md).
 
 They lived here from 2026-08-17 until later the same day. They moved because

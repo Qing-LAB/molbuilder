@@ -8,7 +8,7 @@ belong together, because when they did not, a ``#SBATCH`` header could name a
 
 Phase 1 (2026-08-23) moved the two pieces that already worked:
 
-  * :mod:`molbuilder.scheduler.record` — ``Machine``/``Environment``,
+  * :mod:`molbuilder.scheduler.record` — ``Environment``,
     ``Domain``, ``Topology``, ``Site``; reading and writing records; the
     scopes a record may live in; named targets.  **It also RUNS the
     detection commands** — ``_run``, ``detect_scheduler``,
@@ -32,10 +32,11 @@ They move so that admission, placement and emission have somewhere to be:
 leaving the data model in a general-purpose ``environment.py`` is what let the
 CHECK drift away from the record it checks (contract § 5).
 
-**Both modules are stdlib-only, and this file must stay that way.**  A record
-travels with a bundle and is read on the target inside a backend environment
-that has no molbuilder installed, so importing anything heavier here would
-break reading a record on the machine that runs the job.
+**Nothing here is shipped beside a job.**  The record is JSON and reads
+anywhere; what travels with a run is `runwrap.MONITOR_COMPANIONS`
+(`record.py`'s header).  *(This said the package was stdlib-only so a record
+could be read on the target with no molbuilder installed, until 2026-10-02 --
+`record.py` retracted the same claim on 2026-09-13.)*
 
 The re-exports below are the subsystem's public surface — what the rest of
 molbuilder is meant to use.  Anything not listed is internal to its module.

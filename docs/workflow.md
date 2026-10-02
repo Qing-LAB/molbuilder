@@ -169,14 +169,15 @@ a different cluster, or benchmark it on a short queue and run it on a long one,
 **without editing it**. The rule is
 [`generator.md § 4.1`](?doc=execution/generator.md).
 
-**A machine fact does not have to be detected — it has to be true.** You can
-only probe the machine you are standing on, and the ordinary workflow is to
-describe a calculation on your workstation for a cluster you are not on. So a
-fact arrives **by probe when you are there and by declaration when you are
-not**, and both are facts. What stays in `molbuilder.json` is not "the things
-we could not detect" but **the things only you can answer** — which queue to
-default to, which account to charge. The full split is
-[`configuration.md § 5`](?doc=configuration.md) M-1.
+**A machine's facts are probed ON that machine.** You can only probe the
+machine you are standing on, and the ordinary workflow is to describe a
+calculation on your workstation for a cluster you are not on. So the cluster's
+record is written there — `jobset probe --write --name sol` on its login node —
+and copied to where you prep. What stays in `molbuilder.json` is **your
+preferences about this installation** — how a launch is sent, the env names,
+where projects live, the server's settings — and how a shell enters an
+environment here, `env_init`. A job's queue, wall and memory are the job's
+own. The full split is [`configuration.md § 5`](?doc=configuration.md) M-1.
 
 **The folder says nothing about a machine at all** — not the ranks to use, and
 not even the ranks to *try*. What to measure is said at the command, and it is
@@ -197,7 +198,7 @@ The ones you will actually meet:
 | `<label>.template.toml` | this calculation's answers | **TOML** — a person reads and edits it |
 | `task.json` | the steps | **JSON** — mostly machine-written |
 | `<label>.source.xyz` + `.source.molstruct.json` | the atoms, plus where they came from | plain text + JSON sidecar |
-| `molbuilder.json` | what **you** want from this installation — the queue to default to, the account, the activation command | JSON, hand-edited |
+| `molbuilder.json` | what **you** want from this installation — how a launch is sent, the env names, where projects live, the server's settings — and how a shell enters an environment here (`env_init`) | JSON, hand-edited |
 | `environment.json` | what the target machine **is** | JSON, written by a probe |
 | `job-set.json` | the jobs this folder amounts to | JSON |
 | `<label>_01_coarse.fdf` | the engine's input | the engine's own format |

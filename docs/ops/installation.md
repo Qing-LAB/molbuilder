@@ -58,13 +58,14 @@ of truth; the `molbuilder envs` command reads it.
 > [`env-framework.md`](?doc=ops/env-framework.md).
 
 
-## The package manager — one recorded fact, one door *(2026-08-21)*
+## The package manager — one setting, one door *(2026-08-21)*
 
 **Resolution order, everywhere in the CLI:**
 
-1. **`envs.manager` in `molbuilder.json`** — this machine's recorded
-   manager, an absolute path to a conda-compatible CLI (mamba /
-   micromamba / conda).  Record it once on machines where the manager
+1. **`envs.manager` in `molbuilder.json`** — which manager to use on this
+   machine, an absolute path to a conda-compatible CLI (mamba /
+   micromamba / conda) — a preference (`configuration.md` § 4).  Set it once
+   on machines where the manager
    arrives via `module load` (ASU Sol), because a PATH probe's answer
    there changes with the shell's module state:
 
@@ -72,9 +73,9 @@ of truth; the `molbuilder envs` command reads it.
    "envs": { "manager": "/packages/apps/mamba/2.6.2/bin/mamba" }
    ```
 
-   A recorded manager that is missing or not executable **refuses with
+   A named manager that is missing or not executable **refuses with
    the reason** — it never silently falls back to a probe, because a
-   wrong recorded fact is a defect to surface.
+   wrong setting is a defect to surface.
 2. The PATH probe: `mamba` → `micromamba` → `conda`.
 3. `$MAMBA_EXE` / `$CONDA_EXE` (validated executable).
 
@@ -125,8 +126,9 @@ produce, by a fake manager that emits exactly its signature
 
 **M2's config-writing site is fixed too**: `initconfig.conda_hook` asks
 `<mgr> info --json` for `root_prefix` instead of taking the binary's
-grandparent, because the line it produces is written into this machine's
-record and a wrong one fails in a job on a cluster, not here. The
+grandparent, because the line it produces is this machine's
+`env_init.preamble`, copied into every record the probe writes, and a wrong one
+fails in a job on a cluster, not here. The
 manager a cluster module puts on PATH is a shell wrapper whose own location says
 nothing about the installation, which is exactly what a derivation cannot see.
 
@@ -204,8 +206,8 @@ discover:
 ~/.config/molbuilder/              0700
 ├── molbuilder.json                0600 -- a TEMPLATE: every section present
 │                                  and empty, each with a comment saying who
-│                                  fills it (you, a command, or a probe)
-├── environment.json               this machine, probed -- with its activation
+│                                  fills it (you, or a command)
+├── environment.json               this machine, probed -- env_init copied in
 ├── environments/                  0700 -- records for machines you prep FOR
 │   └── README                     that the probe runs on the TARGET and the
 │                                  record is copied here -- the mistake this
@@ -228,16 +230,19 @@ known and every later surface can only report that nobody said:
 
 * **how this machine enters a conda env** — the activation has no default, and
   unset it makes *every* generated wrapper refuse to render. It is written into
-  this machine's record, `environment.json`, beside the preamble found from the
-  conda installation: how a shell enters an environment is a fact of the
-  machine ([`configuration.md`](?doc=configuration.md) § 5 M-1).
+  `molbuilder.json` as `env_init`, beside the preamble found from the conda
+  installation, and `jobset probe --write` copies both into every record it
+  writes ([`configuration.md`](?doc=configuration.md) § 4).
 * **where the project tree lives** — its default is inside the checkout, which
   is often not what you want on a cluster (a home with a quota, or scratch).
   Declared, it is written as `paths.projects`.
 
 `--yes` takes both defaults and **prints** them. `--projects PATH` declares the
-tree non-interactively. Nothing is ever overwritten: a file that exists is
-reported and left alone, so re-running is a no-op that shows you what is there.
+tree non-interactively. A file a person wrote is never overwritten — a file that
+exists is reported, so re-running shows you what is there — with two
+exceptions it reports as `rewritten`: molbuilder's own two READMEs, when their
+text is out of date, and a `molbuilder.json` with no `env_init.activation`,
+which gains the one you were asked for and nothing else.
 
 **Where the tree is, you are always told.** Four things can answer — an explicit
 argument, `$MOLBUILDER_PROJECTS`, `paths.projects`, the default — so every
@@ -268,9 +273,7 @@ The config directory is `$MOLBUILDER_CONFIG_DIR` if set, else
 
 **Why the installer and not first run.** The activation has no
 default, and without it *every* wrapper refuses to render —
-[`running-a-job.md`](?doc=execution/running-a-job.md) § 5.2 names the symptom as
-*"the `.fdf` saved but no `.run.sh` appeared"* and says it bites a workstation
-first. Install is the one moment in the program's life when the answer is both
+[`running-a-job.md`](?doc=execution/running-a-job.md) § 5.2. Install is the one moment in the program's life when the answer is both
 known and being discussed: conda has just been located and you have just
 confirmed it. Every later surface can only report that nobody ever said.
 
@@ -287,10 +290,11 @@ than silent. Override it without being asked:
 bash scripts/install-env.sh init-config --activation "source activate" --yes
 ```
 
-**Nothing is ever overwritten.** Every step reports `created` or `kept`; a file
-that exists is left exactly as it is, down to its bytes — so re-running is a
-no-op that prints what is already there, and a `molbuilder.json` you have been
-editing is never merged into. Re-run it any time:
+**A file you wrote is never overwritten.** Every step reports `created`,
+`kept` or `rewritten`: a file that exists is left as it is, except
+molbuilder's own two READMEs, rewritten when their text is out of date, and a
+`molbuilder.json` with no `env_init.activation`, which gains the one asked —
+nothing else in it is touched. Re-run it any time:
 
 ```bash
 bash scripts/install-env.sh init-config     # idempotent; asks about activation
@@ -308,7 +312,8 @@ memory ([`architecture.md`](?doc=execution/architecture.md) § 5.2).
 `molbuilder auth-setup` writes the `auth` block (CAS or Google) and **preserves
 every other key**, so running it after `bootstrap` keeps every seeded
 section — it refuses only when an `auth` block is already there, and
-`--force` replaces that one section. For the other providers (GitHub, Microsoft,
+`--force` replaces its providers list and nothing else — the write is a merge,
+so `auth.trust_proxy` survives. For the other providers (GitHub, Microsoft,
 ORCID), TLS and the admin list, the keys are documented where the rules live —
 there is **no example config file in this repository** to copy from, and that is
 deliberate (`ops/deployment.md` § 5: a config file is yours, and a second

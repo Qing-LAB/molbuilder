@@ -621,9 +621,8 @@ def _read_auth(raw: Mapping[str, Any]):
     return {"providers": validated, "trust_proxy": trust_proxy}
 
 
-#: One URL segment: letters, digits, '-' and '_'.  Deliberately narrow --
-#: Both retired 2026-08-31.  The listener is switched on by the key file
-#: itself, which now carries its own route.
+#: The two notify settings, both retired 2026-08-31.  The listener is switched
+#: on by the key file itself, which now carries its own route.
 _NOTIFY_SETTINGS_MOVED = (
     "{f}: '{key}' was retired on 2026-08-31 and is no longer read.\n"
     "\n"
@@ -810,12 +809,6 @@ def _read_admin(raw: Mapping[str, Any]):
     return dict(section)
 
 
-#: name -> how it is read · whether provenance may print its values · whether
-#: it is retired.  Every section lives in THIS machine's molbuilder.json, the
-#: one config file.  ``provenance_safe`` gates `config_provenance`: True only
-#: where every value is printable in logs (no secrets, no paths to secrets).
-#: A ``retired`` row exists only to refuse its section by name, so the
-#: unknown-key refusal never offers it as a known one.
 #: Every directory ``paths`` may name.  A closed set: a key nothing reads
 #: would look effective and do nothing, which is the argument behind every
 #: refusal in `configuration.md`.
@@ -967,6 +960,12 @@ def _read_rate_limit(raw: Mapping[str, Any]):
     return section
 
 
+#: name -> how it is read · whether provenance may print its values · whether
+#: it is retired.  Every section lives in THIS machine's molbuilder.json, the
+#: one config file.  ``provenance_safe`` gates `config_provenance`: True only
+#: where every value is printable in logs (no secrets, no paths to secrets).
+#: A ``retired`` row exists only to refuse its section by name, so the
+#: unknown-key refusal never offers it as a known one.
 _SECTIONS: Dict[str, Dict[str, Any]] = {
     "tls":               {"read": _read_tls,
                           "provenance_safe": False},
@@ -1337,7 +1336,8 @@ ACTIVATION_FORMS: tuple = ("source activate", "conda activate")
 
 
 # --------------------------------------------------------------------- #
-#  Multi-scope read/write API (docs/execution/running-a-job.md § 5)                      #
+#  The machine config file -- where it is, and how it is written        #
+#  (`configuration.md` § 2)                                             #
 # --------------------------------------------------------------------- #
 
 
@@ -1475,8 +1475,8 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     inert-fixture bug class is invisible without it).
 
     Safe for logs **by construction**: paths, presence, and the effective
-    values of :data:`_PROVENANCE_SECTIONS` plus the scheduler's routing
-    domain names — never the file contents (see the allowlist note above).
+    values of :data:`_PROVENANCE_SECTIONS` plus the names of the target
+    record's queues — never the file contents (see the allowlist note above).
 
     Returns ``{"sources": [...], "effective": {...}, "domains": [...]}``:
     ``sources`` lists each file consulted as ``{scope, path, found}`` -- this
@@ -1539,11 +1539,9 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     for path, via in env_scopes:
         sources.append({"scope": "environment", "path": str(path),
                         "found": path.is_file(), "via": via})
-    # Through `get_routing`, NOT a second resolution.  This read the probed
-    # record directly and so reported "no domains" on a workstation whose
-    # config declared two -- a display whose whole job is to say where a value
-    # came from, disagreeing with the reader that actually answers it.  One
-    # question, one function.
+    # Through `get_routing`, NOT a second resolution: a display whose whole job
+    # is to say where a value came from must ask the reader that answers it.
+    # One question, one function.
     from .scheduler.record import AmbiguousTarget, UnknownTarget
     try:
         domains = [d.name for d in get_routing(project_dir=project_dir)]
@@ -1580,7 +1578,8 @@ def format_provenance(prov: Mapping[str, Any]) -> str:
 
 def _deep_merge(base: Dict[str, Any],
                  overlay: Dict[str, Any]) -> Dict[str, Any]:
-    """Per docs/execution/running-a-job.md § 5:
+    """How `write_config_scope` lays a patch over the file
+    (`configuration.md` § 2.3):
        * scalars: overlay replaces base
        * objects: recurse
        * arrays:  overlay replaces base (no element-wise merge)

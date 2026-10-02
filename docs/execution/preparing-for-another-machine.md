@@ -91,8 +91,10 @@ rsync -a Au-BDT-Au/optimization/Relax/ cluster:~/molbuilder/projects/Au-BDT-Au/o
 `launch` is **not** run here — starting a job happens where the job runs
 (§ 5's closing note).
 
-**Where the files are.** `$XDG_CONFIG_HOME` is honoured; the default is
-`~/.config`:
+**Where the files are.** In the config directory —
+[`configuration.md`](?doc=configuration.md) § 2.1c: `$MOLBUILDER_CONFIG_DIR`,
+else `$XDG_CONFIG_HOME/molbuilder`, else `~/.config/molbuilder`. With neither
+variable set:
 
 | | path |
 |---|---|
@@ -285,8 +287,8 @@ not get its own rules: it surfaces the ones above.
   it fired on every named-target prep, including the ones where the
   target's record had answered and the wrapper was correct. The rule now
   has one enforcement point and it is a refusal, not a warning: `prep`
-  refuses a named target whose record cannot say how to enter its
-  environment. A wrapper that is generated is a wrapper whose bootstrap
+  refuses any target — this machine or a named one — whose record cannot
+  say how to enter its environment. A wrapper that is generated is a wrapper whose bootstrap
   came off the record it names.
 
 > **This narrowed a stated boundary, deliberately.** `job-system.md` § 4 said

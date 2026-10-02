@@ -13,8 +13,7 @@ was given the cheapest ceiling that fits -- ordered by a `placement_priority`
 from `molbuilder.json` -- which was a queue nobody named for it.
 
 **This module takes the menu; it does not fetch it.**  Reading configuration
-belongs to a higher layer, and the package is stdlib-only so a record can be
-read on the target inside a backend env with no molbuilder installed.
+belongs to a higher layer.
 """
 from __future__ import annotations
 

@@ -51,7 +51,7 @@ self-containment is a deliberate contract (§ 2).
 | Know how many MPI ranks / OMP threads a run actually uses, and how GPUs are pinned | **§ 3 — Runtime resource resolution** |
 | See what flags `bash my-job.run.sh` accepts | **§ 3.4** |
 | Watch a running job, read failure hints, or ask how a run is doing | **§ 4 — Watching a run, and reading it back** |
-| Configure envs, activation, and the SLURM header via `molbuilder.json` | **§ 5 — Configuration** |
+| Configure envs and how a shell enters them (`env_init`) in `molbuilder.json` | **§ 5 — Configuration** |
 | Snapshot / restore a run directory | **§ 6 — Checkpointing** |
 
 The on-disk shapes this guide drives — the run directory layout, the wrapper
@@ -130,7 +130,7 @@ five kinds, and the contract governs **when** each may be read:
 |---|---|---|
 | **T** | conda **T**ool availability | is `siesta` on `PATH` in the env? |
 | **M** | HPC **M**odules | `module load mamba` |
-| **C** | **C**onfig | `molbuilder.json` activation form + scheduler |
+| **C** | **C**onfig | the target's record (`env_init`, copied from that machine's `molbuilder.json`) and `molbuilder.json`'s `envs` |
 | **A** | **A**llocation | `SLURM_NTASKS`, `CUDA_VISIBLE_DEVICES` |
 | **H** | **H**ardware topology | physical core count, GPU→NUMA node |
 
@@ -148,17 +148,17 @@ So at runtime the wrapper never runs `which conda`, never reads
 **verbatim** (`conda activate <env>` or `source activate <env>`) inside a
 clean-shell bootstrap, then launches the engine.
 
-### 2.2 The two "detection" jobs at prep time
+### 2.2 The two prep-time jobs
 
-- **Autodetect the activation method (workstation only).** On a personal
-  machine, `molbuilder` can detect the conda base and emit
-  `activation = "conda activate"` plus a `source "<base>/etc/profile.d/conda.sh"`
-  preamble (the hook line is baked because a non-interactive
-  `bash job.run.sh` never sources `~/.bashrc`, so `conda activate` would
-  otherwise be undefined). On HPC this is *not* auto-detected — you declare it
-  in config
-  (`activation = "source activate"`, `preamble = "module load mamba/latest"`),
-  because a login node's modules are not the compute node's.
+- **Bake the activation — declared, never detected.** prep writes the target
+  record's `env_init` into the wrapper (§ 5.2): copied there by the probe from
+  that machine's `molbuilder.json`, where `envs init-config` asked for it at
+  install and offered a recommendation — `conda activate` plus a
+  `source "<base>/etc/profile.d/conda.sh"` preamble where conda's hook is on
+  disk (the hook line is baked because a non-interactive `bash job.run.sh` never
+  sources `~/.bashrc`, so `conda activate` would otherwise be undefined); on HPC
+  typically `source activate` after `module load mamba/latest`, because a login
+  node's modules are not the compute node's.
 - **Doctor (every target).** Verifies prerequisites — the engine env exists, the
   tool is present — and reports what is missing. It **never installs**; a
   missing GPU env, for instance, raises at generate time with an install hint
@@ -257,8 +257,9 @@ generate time (`molbuilder/diagnostics.py`, `molbuilder/runwrap.py`):
   hint. An env named explicitly always wins over the route.
 
 The env **names** are overridable per category in `molbuilder.json` (`envs`,
-§ 5.4); the four defaults are `molbuilder-siesta`, `molbuilder-siesta-gpu`,
-`molbuilder-pySCF`, `molbuilder-MDtools`.
+§ 5.4); the categories and their defaults are
+[`configuration.md`](?doc=configuration.md) § 4's — `diagnostics.DEFAULT_ENV_NAMES`,
+and `envs.host` for the host env.
 
 > The wrapper file shapes (`.run.sh` inner + `.sbatch` outer), the run-indexed
 > output names, and warm/cold restart are defined in
@@ -772,8 +773,10 @@ is litter, not a second opinion.
 retired keys and what to do instead. It holds your preferences and nothing
 else: **no value of a job** (its queue, wall, memory, ranks, cores per rank and
 GPU count are the job's own — [`architecture.md`](?doc=execution/architecture.md)
-§ 5.2) and **no fact about a machine** (its queues, topology, activation and
-preamble are that machine's record — `configuration.md` § 5). An unknown
+§ 5.2) and **no fact about a machine** (its queues and topology are that
+machine's record — `configuration.md` § 5) — except `env_init`, how a shell
+enters an environment HERE, which the probe copies into every record it writes
+(§ 5.2). An unknown
 top-level key is refused with the known sections named, never ignored; a key
 starting with `_` is a comment.
 
@@ -782,7 +785,7 @@ same file also configures the *server* — sign-in, TLS, the rate limiter, the
 admin list ([`ops/deployment.md`](?doc=ops/deployment.md) § 5,
 [`ops/access-control.md`](?doc=ops/access-control.md)).
 
-### 5.1 Where config lives, and merge order
+### 5.1 Where config lives
 
 - **Server-wide** `molbuilder.json` — **one file**, in the config directory:
   `$MOLBUILDER_CONFIG_DIR` if set, else `$XDG_CONFIG_HOME/molbuilder/`, else
@@ -809,7 +812,9 @@ exists *(user, 2026-10-02)*:
 and **`jobset probe --write` copies them into every record it writes** — this
 machine's `environment.json`, or a named `<name>.json` to carry to where you
 prep. A copy that is wrong for the machine it describes is edited by hand, in
-that record; an edit to `molbuilder.json` reaches a record at its next probe.
+that record; an edit to `molbuilder.json` reaches a record at its next `probe
+--write`, which asks about each difference (`--yes` takes them all; silence
+keeps the record's).
 
 `activation` must be `"source activate"` or `"conda activate"` and has **no
 default**: a target whose record carries none is refused at prep, saying where
@@ -875,7 +880,8 @@ stand in now if prep let it through, and that is a value nobody stated too.
   (§ 2.3).
 
 Config is written at mode `0600` by `write_config_scope` (deep-merge a patch
-onto the chosen scope, re-validate, then write in place).
+onto the one file, re-validate, then write it atomically —
+`configuration.md` § 2.3).
 
 ### 5.5 The launch door — who may start a run, and how the run proves it
 
@@ -883,12 +889,13 @@ onto the chosen scope, re-validate, then write in place).
 files decide the launch, how the decision reaches the running job, and what
 the job's own log says about it.*
 
-**Two config files feed every launch, and each value knows where it came
-from:**
+**Two files feed every launch — this machine's config and the target's
+record — and each value knows where it came from:**
 
 | file | scope | found where |
 |---|---|---|
 | `molbuilder.json` | **this machine** — `launch.mode`, the environment names, `env_init` | the config directory: `$MOLBUILDER_CONFIG_DIR`, else `$XDG_CONFIG_HOME/molbuilder/`, else `~/.config/molbuilder/` |
+| the target's record | **the machine the job runs on** — its queues, topology, and the `env_init` copied from it | `environment.json`, or `environments/<name>.json` for a named target ([`configuration.md`](?doc=configuration.md) § 5) |
 
 `prep` and `launch` print the provenance — every path consulted, found or
 absent, and each effective value tagged with its source file — and `prep`

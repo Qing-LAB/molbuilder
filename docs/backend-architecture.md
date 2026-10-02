@@ -214,7 +214,7 @@ The design intent ([`execution/job-system.md`](?doc=execution/job-system.md)):
 | `jobset/runstatus.py` | L2 | read-only per-stage status + warm-file inventory | none since U3 — derives from the § 4.2a rules files (W2 closed) |
 | `bench/` | L2 | benchmark sweep; a **JobSet producer** | siesta (sanctioned — producer) |
 | `runwrap.py` | L2 | the `.run.sh` / `.sbatch` launcher emitter | **deep** (see W1) |
-| `runtime_config.py` | L2 | `molbuilder.json` reader (scheduler / routing / exec) | — (see W3) |
+| `runtime_config.py` | L2 | `molbuilder.json` reader — one registry row per section (`configuration.md` § 4) | — (see W3) |
 | `diagnostics.py` | L2 | host capability snapshot + env-for-category routing | env-category tables (config, fine) |
 | `envs/` | L2 | conda-env dispatch + doctor / validate / install toolkit | — (clean) |
 | `checkpoint.py` | L1 | git-backed run-dir snapshot/restore + binary archiving | engine glob tables, *parameterized* (fine) |

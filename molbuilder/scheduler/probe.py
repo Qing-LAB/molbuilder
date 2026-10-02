@@ -1,26 +1,23 @@
-"""``molbuilder bench probe-scheduler`` -- turn a live SLURM cluster into a
-proposed ``scheduler`` config block (job-system.md § 7).
+"""``molbuilder jobset probe`` -- what a live SLURM cluster offers, read on
+its login node into that machine's record (`configuration.md` § 5).
 
-Probes ``sinfo``/``sacctmgr`` on the target's login node and DERIVES the
-``scheduler.{directives,gpu,routing}`` block the user would otherwise
-hand-write by reading those tools (§ 4.1, § 4.3 — these and the section
-references below cite the archived `docs/archive/old_docs/job-execution.md`
-design record; the
-live surface is `molbuilder bench probe-scheduler`, job-system § 7).  The
-framework hardcodes
-NO partition names or limits -- everything here comes from the live system
-(the § 12 anti-hardcoding rule, made executable).
+Probes ``sinfo``/``sacctmgr`` and DERIVES the record's ``domains`` -- each
+partition and QoS your account can reach, with its walls, caps and per-job
+policy -- that a person would otherwise read off those tools by hand.  The
+framework hardcodes NO partition names or limits: everything here comes from
+the live system (the anti-hardcoding rule, made executable).  Section
+references below (§ 4.x, § 12) cite the archived design record
+`docs/archive/old_docs/job-execution.md`.
 
 Pure parsing + derivation lives here (testable on captured text); the CLI
-runs the subprocesses and optionally writes the result to ``environment.json``
-through ``write_environment``.
+(`jobset/_cli.py`) runs the subprocesses and writes the record through
+``write_environment``.
 
 Moved ``bench/probe.py`` -> ``molbuilder/scheduler_probe.py`` 2026-08-12,
-and into the scheduler subsystem as ``scheduler/probe.py`` 2026-08-23
-(follow-up to the U-program): what it produces is a ``scheduler`` CONFIG
-block for molbuilder.json -- runtime_config's domain, floor 1 -- and
-nothing it does is benchmarking.  It lives beside ``record.py``, the
-other machine-probe.
+and into the scheduler subsystem as ``scheduler/probe.py`` 2026-08-23.  It
+proposed a ``scheduler`` config block for molbuilder.json until that block
+was retired on 2026-10-02: a machine's facts are its record's.  It lives
+beside ``record.py``, the other machine-probe.
 """
 
 from __future__ import annotations

@@ -780,8 +780,8 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # under-way question (W52: every edit tied the calculation to the
     # machine on the picker).
     environment = _environment_read(base, target)
-    # THE TARGET'S MENU, from the record in hand -- its probed queues, else
-    # the declared ones -- for every check below (`runtime_config.routing_of`;
+    # THE TARGET'S MENU, from the record in hand -- its probed queues -- for
+    # every check below (`runtime_config.routing_of`;
     # W52: the cells read the folder's menu, which a calculation not yet
     # prepped cannot name when several machines are on file).
     from ..runtime_config import routing_of
@@ -1047,8 +1047,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
 
     # "THIS MACHINE" WAS THE WRONG WORD.  The menu these cells are checked
     # against is the TARGET's -- `prep --target sol` on a workstation reads
-    # the record for Sol, and a declared `scheduler.routing` describes a
-    # cluster you are not standing on at all
+    # the record for Sol, a cluster you are not standing on at all
     # (`preparing-for-another-machine.md`).  So the count is about the
     # QUEUES, and says so.
     note(f"  bench grid: {len(checked)} combination(s) enumerated, "

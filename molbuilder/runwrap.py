@@ -3217,7 +3217,7 @@ def render_run_wrapper(script_path: Path, *,
     # a scope derived from its parent would look for environment.json in
     # the job dir -- one level below the file.  The
     # parent stays as the fallback for a caller that points at a script
-    # sitting wherever its bundle root is (the web build route, tests).
+    # sitting wherever its bundle root is (tests).
     _project_dir = project_dir if project_dir is not None else (
         script_path.parent if script_path.parent.exists() else None)
     # WHOSE MACHINE IS THIS SCRIPT FOR?
@@ -4325,9 +4325,9 @@ def write_run_wrapper(script_path: Path, *,
     """Write what :func:`render_wrappers` produced, and return the wrapper's path.
 
     **This function renders nothing.**  It is the writing half of step 4, kept
-    beside the rendering half so both conductors — `jobset/prep` and the web
-    build route — write the set the same way rather than each deciding what a
-    wrapper needs beside it.
+    beside the rendering half so every writer of a wrapper set -- `jobset/prep`
+    is the one today -- writes it the same way rather than deciding for itself
+    what a wrapper needs beside it.
 
     **Through the one writer** (`script-preparation.md` § 3.2, W4), which keeps
     the reader's USER-CUSTOM block.  The wrapper EMITS that block — it invites

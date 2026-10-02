@@ -18,9 +18,6 @@ one missing function, and it lives here.
 Split out of ``record.py`` at phase 2 (2026-08-23) so the CHECK cannot drift
 away from the record it checks -- which is exactly what happened while they
 shared a general-purpose module.
-
-Stdlib-only, like the rest of the package: a record is read on the target
-inside a backend env with no molbuilder installed.
 """
 from __future__ import annotations
 

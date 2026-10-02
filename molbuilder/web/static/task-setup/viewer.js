@@ -3636,7 +3636,7 @@ function renderResolved(d) {
      * to answer. */
     for (const [key, v] of Object.entries(d.effective || {})) {
         facts.appendChild(el("div", null,
-            el("dt", null, key.replace("script_generation.", "")),
+            el("dt", null, key),
             el("dd", null, String(v.value || "\u2014")),
             el("dd", { class: "hint" }, "from " + (v.from || "?"))));
     }

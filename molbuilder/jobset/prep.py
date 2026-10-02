@@ -134,9 +134,10 @@ def resolve_target(base_dir, target: Optional[str] = None) -> Path:
     case."*
 
     So the module moved out of `bench/` and became ``molbuilder/environment``.
-    Its persisted artifact was **already** registered as
-    ``molbuilder/environment@1`` (`job-contracts.md` § 6.1), which is the
-    schema saying it was never the benchmark's to own.
+    Its persisted artifact was **already** registered then, as
+    ``molbuilder/environment@1`` (`job-contracts.md` § 6.1; ``@2`` since
+    2026-08-17), which is the schema saying it was never the benchmark's to
+    own.
 
     Written once per bundle and **not** overwritten on a later prep: the file
     records what this machine is, and re-reading on every stage would make two
@@ -280,9 +281,9 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
 
     # ---- 0. resolve the machine (§ 2.3.1 step ONE) ---------------------- #
     # Idempotent by contract (resolve_target early-returns on an existing
-    # environment.json).  On the described route `prep_calculation` already
-    # ran step 1; this call is the LEGACY route's step 1 -- prep_jobset is a
-    # public entry for bundles that predate `describe` -- not a re-decision.
+    # environment.json).  Every production caller is the described route,
+    # whose `prep_calculation` already ran step 1; this call serves a direct
+    # caller of `prep_jobset` (its tests) -- not a re-decision.
     resolve_target(base)
 
     # ---- 1. render wrappers once per distinct script, IN THE JOB DIR --- #

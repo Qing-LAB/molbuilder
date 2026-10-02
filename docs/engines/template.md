@@ -2039,7 +2039,7 @@ Three things are **not** items, each excluded by a rule that already exists:
 
 | not an item | why | where it lives instead |
 |---|---|---|
-| **a machine fact's VALUE** — how many ranks this job got, which queue, what wall time | this file must never *assert* a machine (§ 2, G1) | resolved at `prep`, from `environment.json` and `molbuilder.json`. The **item** may be declared (§ 6.4) so a surface can ask and the wrapper writer knows to look; writing a `value` to one **here** is what a reader **refuses** |
+| **a machine fact's VALUE** — how many ranks this job got, which queue, what wall time | this file must never *assert* a machine (§ 2, G1) | stated by the job and checked at `prep` against the target's record (`execution/architecture.md` § 5.2). The **item** may be declared (§ 6.4) so a surface can ask and the wrapper writer knows to look; writing a `value` to one **here** is what a reader **refuses** |
 | **the ladder** — the list of stages | an item is a parameter; a list of stages is the mission | `task.json` ([`stages.md`](?doc=engines/stages.md) § 1.1) |
 | **the structure** — which atoms exist, and their labels | an input to the calculation, never edited by the generator, and it travels as its own file (§ 9.1) | the data files ([`project-layout.md`](?doc=execution/project-layout.md) § 2.1) |
 

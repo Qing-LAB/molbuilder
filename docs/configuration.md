@@ -152,7 +152,7 @@ Retiring the step took **no migration and no compatibility layer** (user,
 practice?")*
 
 `molbuilder.json` is not ordinary configuration. It carries `tls.cert` and
-`tls.cert` and `tls.key`, and the `auth.providers` block — paths to private
+`tls.key`, and the `auth.providers` block — paths to private
 keys, and provider credentials. A world-readable copy on a shared login node is
 a real exposure, not a tidiness question.
 
@@ -160,7 +160,7 @@ a real exposure, not a tidiness question.
 
 | | mode | why |
 |---|---|---|
-| `molbuilder.json` (either location) | **`0600`** | owner reads and writes; nobody else has any business with it |
+| `molbuilder.json` | **`0600`** | owner reads and writes; nobody else has any business with it |
 | the per-user config directory | **`0700`** | a listable directory names the file even when the file itself is shut |
 
 **Writing it this way was already done; checking it was not.** `write_config_scope`
@@ -240,8 +240,11 @@ wrapper (`execution/running-a-job.md` § 5.2). **`molbuilder envs
 init-config` creates it**, and `bootstrap` runs it at the end of a first
 install ([`ops/installation.md`](?doc=ops/installation.md) § 2.1). Nothing else
 changes: the directory is still not *required* to exist, every caller still
-writes on demand, and the seeding never overwrites — a file that is there is
-reported and left byte-for-byte as it is.
+writes on demand, and the seeding never overwrites a file a person wrote — a
+file that is there is reported and left as it is. Two things it rewrites, and
+says so: molbuilder's own two READMEs, when their text is out of date, and a
+`molbuilder.json` with no `env_init.activation`, which gains the one asked
+([`ops/installation.md`](?doc=ops/installation.md) § 2.1).
 
 ### 2.1d Operational state — `$XDG_STATE_HOME`, and `paths` may name it
 
@@ -328,8 +331,8 @@ restart, behind a warning in a log nobody reads.
 
 ### 2.2 Which file actually took effect is displayed, never inferred
 
-Two files can supply `launch` — the machine's, and a project's — and three can
-supply a machine record (§ 5 M-3), so *"it read the wrong config"* is a real
+One file supplies `launch` — this machine's — and three can supply a machine
+record (§ 5 M-3), so *"it read the wrong config"* is a real
 and frequent diagnosis. Two rules make it a readable one:
 
 - **Every refusal names the resolved path**, not the generic filename.
@@ -436,7 +439,7 @@ door for the kind of file it has, and the door knows:
 |---|---|---|
 | a secret, whole | `auth_setup.write_secret_file(path, text)` | parent at `0700`, then `write_bytes(…, mode=0o600)` |
 | a secret that must **never be replaced** once it exists — the session key | `write_bytes(…, mode=0o600, exclusive=True)`, catching `FileExistsError` | creates the name or fails; the caller then reads the existing secret back and signs with **that**, so losing the race costs nothing |
-| `molbuilder.json` | `runtime_config.write_config_scope(patch)` | merge over what is there, validate the merge, `write_bytes`, then `0600` — and the auth wizard's writer since 2026-09-13; it had one of its own |
+| `molbuilder.json` | `runtime_config.write_config_scope(patch)` | merge over what is there, validate the merge, then `write_bytes` at `0600` — the mode set as the file is written, never after — and the auth wizard's writer since 2026-09-13; it had one of its own |
 | anything else, whole | `persist.write_json` / `write_bytes` | the shared-artifact mode |
 | a log, **appended** | `serve_daemon.open_private` | the one case temp-and-rename cannot serve |
 | anything written BY THE MONITOR on a compute node | `pathlib`, deliberately | it ships beside the job, where the only module of ours it can reach is one that travels with it — see below |
@@ -453,7 +456,7 @@ Four remain.)*
 |---|---|
 | an appended log (`serve_daemon.open_private`) | below |
 | **the supervisor's pidfile** | a few bytes rewritten at every start, holding an address rather than a secret, read by the next `stop`/`restart`. A truncated one is replaced on the next start; there is nothing in it to preserve |
-| **a README this program seeds** (`envs init-config`, and a new project's skeleton) | written into a directory the same call just made, never overwritten — a person may have added notes — so there is no previous content to protect, and none of them carries a credential |
+| **a README this program seeds** (`envs init-config`, and a new project's skeleton) | written into a directory the same call just made — `envs init-config`'s two are also rewritten whole when their text is out of date, being molbuilder's own text — so there is no person's content to protect, and none of them carries a credential |
 | **anything the monitor writes on a compute node** | it ships beside the job, and `persist` does not travel with it — see below |
 
 **One of those needs the longer reason.** *(Two did until 2026-09-13: the
@@ -572,7 +575,7 @@ deliberately absent**: that is § 6.1's registry, and R-C1 forbids the copy.
 
 | file | writer | scope | what it answers |
 |---|---|---|---|
-| `molbuilder.json` | a person | machine | **what you want from this installation** — the server's own settings, which environments to use, how a launch is sent. No fact about a machine and no value of a job (§ 4) |
+| `molbuilder.json` | a person | machine | **what you want from this installation** — the server's own settings, which environments to use, how a launch is sent. No value of a job, and no fact about a machine but one: `env_init`, how a shell enters an environment here, which the probe copies into every record it writes (§ 4) |
 | `environment.json` | a probe | machine *and* calculation (§ 5 M-3) | **what the target machine is** — cores, GPUs, scheduler, the queues you can actually reach, and how a shell enters an environment there |
 | `<label>.template.toml` | `describe` / the Task-setup tab | calculation | **every parameter of this calculation**, with the value in force |
 | `task.json` | `describe` / the Task-setup tab | calculation | **what changes** — the ladder, what varies, the structure reference |
@@ -768,7 +771,7 @@ end — so a first install arrives with a usable starting point rather than an
 empty directory. It seeds the
 config directory at `0700`, `molbuilder.json` at `0600` **as a template** —
 every section that can be empty present and empty, each with a `_`-prefixed
-comment saying who fills it (you, a command, or a probe) — plus `secrets/` and
+comment saying who fills it (you, or a command) — plus `secrets/` and
 `environments/` at `0700`, and `environment.json` from the probe. Two values are
 **asked**, never detected, because install time is the one moment the answer is
 known: the **activation** (it has no default), written into `molbuilder.json`
@@ -847,7 +850,7 @@ that column cannot disagree with the code.
 | `env_init.activation` · `env_init.preamble` | how a shell on THIS machine enters a conda environment — `conda activate` or `source activate`, with no default — and the shell run before it (`module load mamba`, or sourcing conda's hook). Asked by `envs init-config`; `jobset probe --write` copies both into every record it writes, and prep reads them from the target's record | `runtime_config.get_env_init` ← `jobset probe` | no | [`running-a-job.md`](?doc=execution/running-a-job.md) § 5.2 |
 | `paths.projects` | where the project tree is | `projects.projects_root` ← every surface | yes | § 2.1d |
 | `tls.cert` · `tls.key` | the paths of the server's HTTPS certificate and key | `serve` | no | [`ops/deployment.md`](?doc=ops/deployment.md) § 5 |
-| `auth.providers` · `auth.trust_proxy` | who may sign in and how; whether a proxy's forwarded headers are honoured. Written by `molbuilder auth-setup` | `web/auth.py` | no | [`ops/deployment.md`](?doc=ops/deployment.md) · [`ops/access-control.md`](?doc=ops/access-control.md) |
+| `auth.providers` · `auth.trust_proxy` | who may sign in and how; whether a proxy's forwarded headers are honoured. `providers` is written by `molbuilder auth-setup`, which leaves `trust_proxy` as it is | `web/auth.py` | no | [`ops/deployment.md`](?doc=ops/deployment.md) · [`ops/access-control.md`](?doc=ops/access-control.md) |
 | `admin.emails` | who may use the operator-only web actions: restarting the server, the rate limiter's block list | `runtime_config.get_admin_emails` ← `web/admin.py` | no | [`ops/access-control.md`](?doc=ops/access-control.md) § 5–6 |
 | `rate_limit.enabled` · `.window_404_s` · `.threshold_404` · `.window_total_s` · `.threshold_total` · `.cooldown_s` · `.trust_proxy` · `.max_tracked_ips` · `.allowlist` | the web server's request limiter: on or off, its thresholds, who it never blocks | `web/rate_limit.py` | no | [`ops/deployment.md`](?doc=ops/deployment.md) |
 | `checkpoint.size_limit_bytes` · `checkpoint.engines.<engine>` | which run files are too large to save with a folder | `runtime_config.get_checkpoint` ← `checkpoint.py` | no | [`execution/checkpointing.md`](?doc=execution/checkpointing.md) § 4 |
@@ -898,7 +901,7 @@ GPU job — `execution/gpu.md` § 1.2.)*
 The disagreement went deeper than a duplicated value. `scheduler/record.py`'s
 `detect_site` leaves `qos` and `account` unset and says why: *"they are site
 policy, not reliably derivable from `sinfo`, so they come from the user's
-config, not detection."* In the same tree, `scheduler_probe.parse_allowed_qos`
+config, not detection."* In the same tree, `scheduler/probe.py::parse_allowed_qos`
 derives exactly that from `sacctmgr -nP show assoc user=$USER format=QOS`. Two
 modules disagreed about whether a fact is detectable — one probed it, the other
 declared it unprobeable — and `Site.qos` / `Site.account` have been dataclass
@@ -991,8 +994,8 @@ names the probe.
 **second** — after the calculation's own snapshot, before this machine's
 record — because asking for a target by name is more specific than asking for
 wherever you happen to be, and less specific than an answer this calculation
-has already taken. `jobset probe --name sol`
-writes a record to `<machine scope>/environments/sol.json`, and `prep --target
+has already taken. `jobset probe --write --name sol`, run ON Sol, writes Sol's
+record as `environments/sol.json`; copied to where you prep, `prep --target
 sol` asks for it by name. That is how you prep for a cluster from a workstation
 — the machine you are describing is not the machine you are on, so *which
 record* stops being answerable by location alone.
@@ -1054,7 +1057,8 @@ second read returning a plain `dict`.
 
 § 3's rule is *TOML when a person reads and edits it* — the reason
 `<label>.template.toml` and `warm-files.toml` are TOML. Under M-1 no person
-edits `environment.json`: a probe writes it and a person re-probes. A
+edits `environment.json` but to correct a copied `env_init` (§ 4): a probe
+writes it and a person re-probes. A
 machine-written, machine-read file stays JSON.
 
 The cost of doing otherwise is concrete rather than aesthetic. `tomllib` reads
@@ -1062,7 +1066,7 @@ TOML and does not write it, so the only TOML emitter in this tree is
 `template.py`'s, hand-rolled and guarded by round-tripping its own output back
 through `tomllib` and comparing (*"the writer checks itself"*).
 Writing this record as TOML would pull that emitter into the prober, or grow a
-second one, for a file no person edits.
+second one, for a file a person edits only to correct one copied value.
 
 **The declared-override door is fed by flags, not a file** *(2026-08-19)*:
 `jobset probe --set gpus_per_node=4` answers *"how do I tell it this machine
@@ -1157,7 +1161,7 @@ document that owns each.
 
 | what | owner | status |
 |---|---|---|
-| One scope, three names — `"project"` · `"bundle"` · *"a project or calculation folder"* | `job-contracts.md` § 6.3 (identifier conventions) | **closed 2026-08-23** — `project` everywhere (`runtime_config._SECTIONS`, `config_provenance`); marked here 2026-09-29 |
+| One scope, three names — `"project"` · `"bundle"` · *"a project or calculation folder"* | `job-contracts.md` § 6.3 (identifier conventions) | **closed 2026-08-23** — `project` everywhere; marked here 2026-09-29. *(The project scope itself was removed on 2026-10-02: `molbuilder.json` is one file, § 2.)* |
 | ~~`verbose_comments` and `write_molwatch_log` are items in the catalogue for neither engine~~ — **withdrawn 2026-08-17: this was my misreading.** All three (`max_memory_mb` too) *are* catalogue items; they declare **no `engines` list**, so a per-engine query misses them while a plain lookup finds them. That is correct for what they are — a machine fact and two emitter switches, none of them engine-specific | — | **closed.** The rule they follow is *an item with no `engines` applies to every engine*, and [`engines/template.md`](?doc=engines/template.md) states it twice — in § 5's key table and in § 6.3's writer rule. This row claimed no document said it, which was the second half of the same misreading |
 | `resolve_environment(overrides=…)` — **`jobset probe` is the caller** (`jobset/_cli.py`) and passes no `overrides`, so a machine fact cannot be declared through the verb yet. The missing sliver is the flag surface (`--set key=value`, a scheduler override), not the door or its caller — misread once (2026-08-19) as "the function has no caller" | this document, § 5 M-5 | **CLOSED — re-measured 2026-09-20.** Both flags exist: `jobset probe --help` lists `--set KEY=VALUE` (*"declare a topology fact the probe cannot see"*) and `--scheduler [slurm\|workstation]`. The row said *"the flags are not built"* long after they were |
 | **One fact, two keys:** *is a proxy in front of this server?* is `auth.trust_proxy` — which installs werkzeug's `ProxyFix` for one hop, so sign-in builds the public URL and the client address the WHOLE server reads, the limiter's included, becomes the one the proxy added — AND `rate_limit.trust_proxy`, with which the limiter alone takes the FIRST `X-Forwarded-For` entry: the one a visitor can write when the proxy appends to the header, as nginx's usual setting does. With the first on, the second adds only that forgeable reading; and the first cannot be set without sign-in (`auth` requires providers), so a server with no sign-in behind a proxy has only the forgeable one | this document, § 4 | **OPEN — found 2026-10-02**, both `false` on the machine it was found on. One key, read once by the server and installing `ProxyFix` for everything, is the fix; which section holds it is the user's call. *(This row first said the limiter would count every client as the proxy with only the sign-in key on — wrong: `ProxyFix` rewrites the address the limiter reads.)* |
