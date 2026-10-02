@@ -599,6 +599,17 @@ def init_cmd(structure, bundle: str, shape: str,
 
     out_dir = _P(bundle)
     run_name = name or out_dir.name
+    # ONE CALCULATION PER FOLDER (user, 2026-10-01: refuse).  A folder that
+    # already holds a description is changed in Task setup or its
+    # task.json; `init` over it re-described it silently, leaving whatever
+    # was prepped there describing a calculation that no longer existed
+    # (W52, P1a-12).  Refused before anything is read or written.
+    from ..task import FILENAME as _TASK
+    if (out_dir / _TASK).is_file():
+        raise click.ClickException(
+            f"{out_dir} already holds a calculation ({_TASK}) -- one "
+            f"calculation per folder.  Change it in Task setup or its "
+            f"{_TASK}, or describe the new one in a folder of its own.")
 
     if calculation == "transport":
         _init_transport(out_dir=out_dir, shape=shape, run_name=run_name,
@@ -2366,11 +2377,12 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
             # cluster from a workstation): the domains are not probeable
             # from here, and saying "workstation record" would contradict
             # the scheduler the user just declared.
+            from ..scheduler.record import probe_command, probe_steps
             notes.append("no sinfo reachable from here, so no domains "
-                         "were probed -- on the cluster's login node, "
-                         "`molbuilder jobset probe --write --name` with "
-                         "this record's name fills them; or the record "
-                         "rides with none.")
+                         f"were probed -- `{probe_command(name)}` "
+                         + (probe_steps(name) if name else
+                            "on the cluster's login node")
+                         + " fills them; or the record rides with none.")
         else:
             notes.append("no sinfo, so no scheduler domains -- this is a "
                          "workstation record (topology only).")
@@ -2510,19 +2522,32 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
         # (W52: `read_environment` answers both with `None`, and a newer
         # schema or a hand-fixed record was replaced unasked; `--yes` skips
         # the question, never this line).
-        there = (target / fname).exists()
+        dest = target / fname
+        if dest.exists() and not dest.is_file():
+            # NOT A FILE AT ALL -- a directory: a record cannot replace it,
+            # and the write would end in a traceback (the fix-6 review).
+            raise click.ClickException(
+                f"{dest} is there and is not a file -- move it aside, and "
+                f"probe again.")
+        there = dest.exists()
         if there:
-            click.echo(f"\n{target / fname} is there and does not read as a "
-                       f"record this molbuilder knows -- writing replaces "
+            import os as _os
+            why = ("cannot be read here (permissions)"
+                   if not _os.access(dest, _os.R_OK) else
+                   "does not read as a record this molbuilder knows")
+            click.echo(f"\n{dest} is there and {why} -- writing replaces "
                        f"it.")
         if not yes:
             try:
-                click.confirm("Replace it with this record?" if there else
-                              f"Write this record to {target / fname}?",
-                              abort=True)
+                ok = click.confirm("Replace it with this record?" if there
+                                   else f"Write this record to {dest}?",
+                                   default=False)
             except click.exceptions.Abort:
                 click.echo("\n  no answer -- nothing written "
                            "(silence is no).")
+                return
+            if not ok:
+                click.echo("  nothing written.")
                 return
     else:
         env = _probe_consent_merge(before, env, yes=yes)

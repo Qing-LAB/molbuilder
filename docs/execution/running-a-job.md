@@ -303,7 +303,7 @@ fixes it**:
 
 ```
 molbuilder jobset probe --write                 # this machine
-molbuilder jobset probe --write --name NAME     # on the target
+molbuilder jobset probe --write --name sol      # on that machine; then copy sol.json here
 ```
 
 **This holds for the local machine too** *(user, 2026-09-02: "even for the

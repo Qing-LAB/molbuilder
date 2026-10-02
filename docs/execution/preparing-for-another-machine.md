@@ -194,7 +194,9 @@ its partitions, its node mix, or its installed environments since the probe
 will be prepped against the old answer. `environment.json` carries
 `detected_at`, so the age is knowable; surfacing it is left to the surfaces
 rather than made a refusal, because a six-month-old record is often still
-exactly right. Re-probe when the machine changed.
+exactly right. Re-probe when the machine changed — and delete the
+`environment.json` of each calculation that should follow it: a calculation
+keeps the record it was first prepped with (`configuration.md` M-3).
 
 ---
 

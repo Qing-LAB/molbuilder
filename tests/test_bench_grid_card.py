@@ -247,13 +247,21 @@ class TestPickingThisMachineIsAnAnswer:
         prep would snapshot (`configuration.md` M-3; W52 -- every edit pause
         snapshotted the picked machine into the calculation, so a later Prep
         for another was refused as a contradiction of a prep never made)."""
-        d = _post(client, self._unprepped(bundle),
-                  {"mpi_np": [48], "omp_threads": [1], "use_gpu": [False]},
-                  target="(this machine)")
-        assert d["ok"] is True, d
-        assert d["cells"], "a picked machine must yield cells"
-        assert not (bundle / "environment.json").exists(), (
-            "the card snapshotted the machine into the calculation")
+        bundle = self._unprepped(bundle)
+        for target in ("(this machine)", "sol"):
+            d = _post(client, bundle,
+                      {"mpi_np": [48], "omp_threads": [1],
+                       "use_gpu": [False]}, target=target)
+            assert d["ok"] is True, (target, d)
+            assert d["cells"], "a picked machine must yield cells"
+            # ...checked against the PICKED machine's queues: with several
+            # machines on file and nothing snapshotted, the folder names no
+            # menu, and every cell was checked against none (the W52 fix-6
+            # review: the card's "fits" came back empty)
+            assert set(d["cells"][0]["fits"]) == {"short", "public"}, (
+                target, d["cells"][0])
+            assert not (bundle / "environment.json").exists(), (
+                "the card snapshotted the machine into the calculation")
 
     def test_naming_nothing_is_still_refused(
             self, client, bundle, machine_with_named_records):

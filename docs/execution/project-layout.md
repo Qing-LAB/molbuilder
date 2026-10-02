@@ -1134,14 +1134,14 @@ each one.
 into, which is the rest of this document.
 
 **Step 1 READS. It does not probe, ever.** `environment.machine_for` walks the
-scopes — the calculation's own snapshot, then this machine's record, then a
-named target — and **the first one found is the whole answer**, with no
+scopes — the calculation's own snapshot, then a named target, then this
+machine's record (`configuration.md` M-3) — and **the first one found is the whole answer**, with no
 field-level merge. **When none answers, `prep` refuses** and names the one
 command that fixes it:
 
 ```
 molbuilder jobset probe --write                 # this machine
-molbuilder jobset probe --write --name NAME     # on the target
+molbuilder jobset probe --write --name sol      # on that machine; then copy sol.json here
 ```
 
 *(User, 2026-09-02: "all environments have to be explicitly probed and stored.

@@ -2407,8 +2407,10 @@ def render_run_wrapper(script_path: Path, *,
             f"(``Diag.ELPA.GPU .true.``) but the ``{target_env}`` env is "
             f"not installed "
             + ("on the machine this bundle is being prepared FOR (read "
-               "from its probed record; re-probe it if you installed the "
-               "env since).  " if _rec_envs else "on this machine.  ")
+               "from its probed record: if you installed the env since, "
+               "re-probe that machine and delete this calculation's "
+               "environment.json, so the next prep reads the new record).  "
+               if _rec_envs else "on this machine.  ")
             + f"GPU support is the one thing the packaged "
             f"SIESTA does not have -- its ELPA is built without the GPU "
             f"entry -- so it lives only in that source build.  Either "
@@ -2609,10 +2611,16 @@ def render_run_wrapper(script_path: Path, *,
                   "--np N on the prep -- or record the machine's topology:\n"
                 + ("    " + _probe_command(None) + "\n"
                    if _local else
-                   # THE NAME IS THE PERSON'S, asked for in words: a `NAME`
-                   # to fill in, and a `(note)` bash cannot parse (W52).
-                   "    on that machine, `molbuilder jobset probe --write "
-                   "--name` with the name you prep it by\n")
+                   # WHICH MACHINE the record describes is not in it, so
+                   # the steps are said in words: re-probe it where it is,
+                   # bring the record here, and let the calculation follow
+                   # -- its snapshot is what was read (W52, and the fix-6
+                   # review: re-probing alone changed nothing).
+                   "    re-probe the machine it describes -- `molbuilder "
+                   "jobset probe --write` on it, with --name and its name "
+                   "for a named target, then its record copied here -- and "
+                   "delete this calculation's environment.json, so the "
+                   "next prep reads the new record\n")
                 + "  A rank count is read from a record and nowhere else, so "
                   "that a number is never about the wrong machine."
             )

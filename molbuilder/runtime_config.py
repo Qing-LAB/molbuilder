@@ -2134,8 +2134,22 @@ def get_routing(
     this machine's own DECLARED menu counts as "what this machine knows"
     exactly as much as a probed one does.
     """
-    from .scheduler import Domain, machine_for
-    env = machine_for(project_dir, local_only=local_only)
+    from .scheduler import machine_for
+    return routing_of(machine_for(project_dir, local_only=local_only),
+                      project_dir)
+
+
+def routing_of(env, project_dir: Optional[Path] = None) -> List["Domain"]:
+    """The submission-domain menu OF a machine record in hand -- its probed
+    domains, else the declared ``scheduler.routing`` rows -- for a caller
+    that already holds the record it means (a ``--target`` prep reads the
+    TARGET's, which ``get_routing`` cannot name before the calculation has
+    snapshotted it).  :func:`get_routing` is this, asked of the record
+    ``machine_for`` answers (W52: the bench read the folder's menu through
+    ``get_routing`` while it held the target's record, and on a calculation
+    not yet prepped that question was refused and swallowed, so its cells
+    were checked against no menu at all)."""
+    from .scheduler import Domain
     domains = list(env.domains) if env is not None else []
     if not domains:
         # No probed domains: either a workstation (there are none to have) or a

@@ -553,12 +553,16 @@ framework rule, not a script patch)*:
   count's divisors, and the flag rides each point as an ordinary value
   coordinate — so the deck's answer and the point's family agree by
   construction, and `launch`'s placement (below) needs no new declaration.
-  The GPU family's device count and type come from the probed topology
-  when this node has one, else from the **domain menu's GPU inventory**
-  (`jobset probe` records each partition's `gres` types on its domain row)
-  — a login node can therefore enumerate the GPU family for the cluster
-  behind it.  Several inventory types on the row is a question the machine
-  may not answer: refused by name, with the remedy of curating the row.
+  The GPU family's card is the run's: the one stated
+  (`scheduler.gpu.default_type`), else the target's probed one, else the
+  **domain menu's GPU inventory** (`jobset probe` records each partition's
+  `gres` types on its domain row) — a login node can therefore enumerate the
+  GPU family for the cluster behind it.  Its device count is the node's own
+  only when the node carries that card; else it is the count of the queue
+  that holds it.  With no card chosen, several inventory types on the row is
+  a question the machine may not answer: refused by name, with the remedy of
+  curating the row *(W52, 2026-10-01: the row's card replaced a stated one,
+  and a node's own count stood in for a card it does not carry)*.
 - **Enumerate every combination, cross out what no queue can hold, show what
   is left** *(user, 2026-08-30: "we don't have to fight with what language we
   use to indicate error, but present the correct outcome")*.  The queues are

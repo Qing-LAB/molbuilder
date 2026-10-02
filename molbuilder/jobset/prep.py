@@ -184,7 +184,7 @@ def resolve_target(base_dir, target: Optional[str] = None) -> Path:
 
 def _no_record(target: Optional[str]) -> PrepError:
     """The refusal of a machine with no record, naming the probe that
-    writes one (`scheduler.probe_line`: THIS machine's with no name -- `this`
+    writes one (`scheduler.record.probe_line`: THIS machine's with no name -- `this`
     is reserved and the probe refuses it; W52)."""
     from ..scheduler.record import LOCAL_TARGET, probe_line
     return PrepError(_NO_RECORD.format(
@@ -194,12 +194,13 @@ def _no_record(target: Optional[str]) -> PrepError:
 
 
 def _environment_read(base: Path, target: Optional[str] = None):
-    """Step 1's ANSWER WITHOUT ITS WRITE -- the record `prep` would snapshot,
-    for a preview, which writes nothing (`web/task-setup.md` § 11.1).  The
-    bench card asked :func:`_environment_for` on every edit until 2026-10-01,
-    so looking at a calculation with the picker on one machine tied it to
-    that machine before anything was prepped (W52).  Refuses as step 1
-    does when no record answers."""
+    """Step 1's ANSWER, read -- the record `prep` snapshots
+    (:func:`resolve_target` writes it, after this is checked), and all a
+    preview asks, which writes nothing (`web/task-setup.md` § 11.1).  The
+    bench card snapshotted on every edit until 2026-10-01, so looking at a
+    calculation with the picker on one machine tied it to that machine
+    before anything was prepped (W52).  Refuses as step 1 does when no
+    record answers."""
     from ..scheduler import machine_for
     env = machine_for(base, target=target)
     if env is None:
@@ -767,28 +768,6 @@ def _engine_seam(engine: str) -> EngineSeam:
         f"name.")
 
 
-def _environment_for(base: Path, target: Optional[str] = None):
-    """**Step 1**, and its answer is *returned* rather than only written.
-
-    ``resolve_target`` persisted ``environment.json`` and its return value was
-    discarded by the only caller — so floor 1 resolved a machine and nothing
-    downstream ever heard the answer. That is the same defect as floor 2's, one
-    storey down, and it is why this returns the object.
-
-    **The reading and the precedence are not this module's** (N1). They were
-    inline here -- a ``json.loads`` plus a hand-written fallback -- which is how
-    the tree came to hold two readers of one file returning two different
-    types.  ``environment.machine_for`` is the one door, and the narrow-except
-    reasoning that used to live in this body moved with it.
-    """
-    from ..scheduler import machine_for
-    resolve_target(base, target)       # step 1 proper: snapshot, idempotent
-    # NO `probe=`: step 1 above has already refused if no record answers, so
-    # by here one exists.  A probe as a fallback would be the guess § 3.1
-    # forbids, arriving one call later.
-    return machine_for(base, target=target)
-
-
 def _vibration_block(stage: str, cfg, relaxed_by, *, criterion) -> dict:
     """A SIESTA force-constant deck's `vibration` block: the facts its job's
     finish reads and no SIESTA keyword states (`engines/vibration.md`
@@ -1084,11 +1063,13 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             f"runnable directory; write one first with `jobset init`.")
 
     # ---- 1. resolve the machine ---------------------------------------- #
-    environment = _environment_for(base, target)
-    # BEFORE ANYTHING IS WRITTEN: a record that does not state how to enter
-    # the named machine's environment is refused here, not after the decks
-    # and the job-set are on disk (W52).
+    # READ, CHECK, THEN WRITE.  A record that does not state how to enter the
+    # named machine's environment is refused before anything is on disk --
+    # the snapshot included, or the remedy's re-copied record would then
+    # contradict it (W52, and its fix's review).
+    environment = _environment_read(base, target)
     _require_remote_activation(target, environment)
+    resolve_target(base, target)          # step 1 proper: the snapshot
 
     # ---- 2. resolve the parameters ------------------------------------- #
     task = read_task(desc)
@@ -1640,7 +1621,8 @@ def _require_remote_activation(target: Optional[str], environment) -> None:
             f"machine's activation -- a path that need not exist there.\n"
             f"  Fix: on {target}, run\n"
             f"      {probe_command(target)}\n"
-            f"  then copy the record it writes into\n"
+            f"  -- taking its script_generation when it asks -- then copy "
+            f"the record it writes into\n"
             f"      {environments_dir()}\n"
             f"  here, and prep again.\n"
             f"  (The probe records the machine's own script_generation "
@@ -1896,7 +1878,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     sort, gate, extract the leads — is step 3a below and belongs to this
     arm. Everything else is the shared machinery, un-forked::
 
-        1  the machine            `_environment_for`
+        1  the machine            `_environment_read`, then `resolve_target`
         2  the description        `read_task`, and WHICH rung
         3a the citation           compose  (transport's own)
         3b the data files         the pseudos travel with the citation
@@ -1944,11 +1926,13 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
             "case of that axis, one point at zero).")
 
     # ---- 1. resolve the machine ---------------------------------------- #
-    environment = _environment_for(base, target)
-    # BEFORE ANYTHING IS WRITTEN: a record that does not state how to enter
-    # the named machine's environment is refused here, not after the decks
-    # and the job-set are on disk (W52).
+    # READ, CHECK, THEN WRITE.  A record that does not state how to enter the
+    # named machine's environment is refused before anything is on disk --
+    # the snapshot included, or the remedy's re-copied record would then
+    # contradict it (W52, and its fix's review).
+    environment = _environment_read(base, target)
     _require_remote_activation(target, environment)
+    resolve_target(base, target)          # step 1 proper: the snapshot
 
     # ---- 2. the description, and WHICH rung ---------------------------- #
     task = read_task(desc)

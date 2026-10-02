@@ -987,8 +987,10 @@ the artifact that satisfies it.
    would snapshot and writes nothing (`web/task-setup.md` § 11.1);
 2. **the machine** — written by `jobset probe`, shared by every calculation here.
 
-When neither answers, nothing does: **no reader probes** (M-4). `jobset probe`
-is the only thing that measures a machine, and the refusal names it.
+When neither answers, nothing does: **no reader probes** (M-4). A machine is
+measured only when a person asks — `jobset probe`, or `envs init-config`
+seeding this machine's own record through the same prober — and the refusal
+names the probe.
 
 **And one more, which is a name rather than a location.** It is consulted
 **second** — after the calculation's own snapshot, before this machine's

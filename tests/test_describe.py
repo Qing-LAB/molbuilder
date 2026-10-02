@@ -421,3 +421,26 @@ def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box
     ident = "job_name" if engine == "pyscf" else "system_label"
     assert written[ident].source == "person", written[ident].source
 
+
+def test_init_refuses_a_folder_that_already_holds_a_calculation(
+        tmp_path, monkeypatch):
+    """One calculation per folder (user, 2026-10-01): `init` on a described
+    folder is refused, naming where the description is changed -- and the
+    description stays as it was.  Through the verb (`support.road`).
+
+    PREVENTS (the W52 review, P1a-12): `init` re-describing a calculation
+    silently, under whatever had been prepped from it.
+
+    MUTATION THIS MUST FAIL AGAINST: the refusal removed (the second `init`
+    rewrites task.json)."""
+    from support.road import describe_h2, jobset
+    bundle = describe_h2(tmp_path, monkeypatch)
+    before = (bundle / "task.json").read_bytes()
+    r = jobset("init", "--structure", "P/structure/h2.xyz",
+               "--bundle", "P/optimization/H2", "--engine", "siesta",
+               "--shape", "flat", "--name", "H2",
+               "--psml-lib", "pseudopotential")
+    assert r.exit_code != 0, r.output
+    assert "already holds a calculation" in r.output, r.output
+    assert (bundle / "task.json").read_bytes() == before
+

@@ -863,7 +863,7 @@ def known_machines() -> List[Dict[str, object]]:
             # machine it describes.  (Said `--name (this machine)` until
             # 2026-08-22, which is not a name and not a command.)
             fix = (f"`{probe_command(None)}` here" if kind == "local"
-                   else f"`{probe_command(name)}` on that machine")
+                   else f"`{probe_command(name)}` {probe_steps(name)}")
             return {"name": name, "kind": kind, "path": str(path),
                     "readable": False, "detected_at": "", "domains": [],
                     "mem_total_gb": None, "gpus_per_node": None,
@@ -1059,8 +1059,8 @@ class UnknownTarget(Exception):
         listed = ", ".join(self.known) or "(none)"
         super().__init__(
             f"no machine record named {name!r}.  Known targets: {listed}.  "
-            f"Write one with `{probe_command(name)}` on that machine, or "
-            f"declare it by hand in "
+            f"Write one with `{probe_command(name)}` {probe_steps(name)}, "
+            f"or declare it by hand in "
             f"{environments_dir() / (name + '.json')}.")
 
     @classmethod
@@ -1078,8 +1078,8 @@ class UnknownTarget(Exception):
         Exception.__init__(exc, (
             f"--target {name!r} names a record that cannot be read: {path}.\n"
             f"  It is absent, not JSON, or a schema this molbuilder does not "
-            f"know.  Re-write it with `{probe_command(name)}` on that "
-            f"machine."))
+            f"know.  Re-write it with `{probe_command(name)}` "
+            f"{probe_steps(name)}."))
         return exc
 
     @classmethod
@@ -1131,15 +1131,24 @@ class AmbiguousTarget(Exception):
         # one command that helps (W52: the refusal said so unconditionally,
         # and every printed way out was a dead end).
         here = read_environment(machine_scope_path()) is not None
+        # ...and a NAMED record that does not read needs probing again: it
+        # is listed, so it is said (the fix-6 review).
+        dead = sorted(n for n, path in named_environments().items()
+                      if n in self.choices and read_environment(path) is None)
+        tail = ("  These records already exist -- nothing needs probing."
+                if here and not dead else "")
+        if not here:
+            tail = ("  This machine has no record yet, so `--target "
+                    f"{LOCAL_TARGET}` needs one first:\n    "
+                    + probe_command(None))
+        for n in dead:
+            tail += (f"\n  {n}'s record does not read: re-write it with "
+                     f"`{probe_command(n)}` {probe_steps(n)}.")
         super().__init__(
             "several machines could be meant and none was named.  Say which "
             "this calculation is for:\n" + listed +
             "\n    (there is no default; name one of the above)\n"
-            + ("  These records already exist -- nothing needs probing."
-               if here else
-               "  This machine has no record yet, so `--target "
-               f"{LOCAL_TARGET}` needs one first:\n    "
-               + probe_command(None)))
+            + tail.lstrip("\n"))
 
 
 #: THE TYPEABLE NAME FOR THIS MACHINE (2026-08-24).  ``known_machines``
@@ -1164,11 +1173,24 @@ def probe_command(name: Optional[str] = None) -> str:
     return f"molbuilder jobset probe --write --name {name}"
 
 
+def probe_steps(name: Optional[str] = None) -> str:
+    """Where :func:`probe_command` runs, and what follows it, in words:
+    ``here`` for this machine; for a named target, on that machine -- and
+    then the record it writes copied into this machine's ``environments/``,
+    without which the remedy leaves the same refusal (W52, the fix-6
+    review: only the activation check said "copy")."""
+    if name in (None, LOCAL_TARGET):
+        return "here"
+    return (f"on that machine, then copy the {name}.json it writes into "
+            f"{environments_dir()}/ here")
+
+
 def probe_line(name: Optional[str] = None) -> str:
-    """:func:`probe_command` as a line of its own, where it is run said
-    after ``#`` -- the shell reads no note (`job-system.md` § 5.3)."""
+    """:func:`probe_command` as a line of its own, where it is run -- and,
+    for a named target, the copy that follows -- said after ``#``: the
+    shell reads no note (`job-system.md` § 5.3)."""
     return probe_command(name) + (
-        "" if name in (None, LOCAL_TARGET) else "   # on that machine")
+        "" if name in (None, LOCAL_TARGET) else f"   # {probe_steps(name)}")
 
 
 def machine_for(bundle_dir=None, *, target: Optional[str] = None,
@@ -1275,8 +1297,9 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
     # produces one -- so the presence of any named record is what makes the
     # question ambiguous.  Requiring a local record here first would let the
     # commonest cluster setup (named targets, nothing probed locally) fall
-    # through to a fresh probe of the machine the user is sitting at, which
-    # is the exact failure this refusal exists to stop.
+    # through to the machine the user is sitting at -- a fresh probe of it,
+    # when readers still probed -- which is the exact failure this refusal
+    # exists to stop.
     if target is None and _named:
         _snapshot = calculation_record(bundle_dir) if bundle_dir is not None else None
         if _snapshot is None or not _snapshot.is_file():
@@ -1301,7 +1324,7 @@ __all__ = [
     "detect_scheduler", "detect_topology", "detect_site",
     "resolve_environment",
     "machine_scope_path", "environments_dir", "named_environments",
-    "LOCAL_TARGET", "probe_command", "probe_line",
+    "LOCAL_TARGET", "probe_command", "probe_line", "probe_steps",
     "record_scopes",
     "topology_field_types",
     "read_environment", "write_environment", "machine_for", "UnknownTarget",

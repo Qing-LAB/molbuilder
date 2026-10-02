@@ -149,10 +149,11 @@ def _gpu_inventory(base, routing=None, *, card=None):
     buried ``best_gpu_type`` for exactly that (scheduler/probe.py, N3) --
     the remedy is curating the row down to the type this bench measures.
     A ``card`` already chosen -- stated, or the target's probed one
-    (:func:`_gpu_type_for_bench`) -- is no ranking: the row answers that
-    card's count, and refuses only if it does not hold it (W52: the row's
-    card replaced a stated one, so the bench measured a card the run does
-    not ask for).
+    (:func:`_gpu_type_for_bench`) -- is no ranking: the first GPU queue that
+    holds it answers its count, as `launch` would place the run's
+    ``gpu:<card>:N``, and only none holding it refuses (W52: the row's card
+    replaced a stated one, so the bench measured a card the run does not
+    ask for).
     """
     from ..runtime_config import get_routing
     from ..scheduler.place import candidates
@@ -171,14 +172,15 @@ def _gpu_inventory(base, routing=None, *, card=None):
     if not inv:
         return None, None
     if card:
-        held = [d for d in inv if d.type == card]
-        if not held:
-            raise PrepError(
-                f"domain {row.name!r} records GPU types "
-                f"{', '.join(sorted(d.type for d in inv))}, and not the "
-                f"card this calculation measures ({card}: "
-                f"scheduler.gpu.default_type, else the machine's probe).")
-        return (held[0].per_node or None), card
+        for r in rows:
+            held = [d for d in r.devices if d.type == card]
+            if held:
+                return (held[0].per_node or None), card
+        recorded = sorted({d.type for r in rows for d in r.devices})
+        raise PrepError(
+            f"the machine's queues record GPU types {', '.join(recorded)}, "
+            f"and not the card this calculation measures ({card}: "
+            f"scheduler.gpu.default_type, else the machine's probe).")
     if len(inv) > 1:
         raise PrepError(
             f"domain {row.name!r} records several GPU types "
@@ -239,7 +241,8 @@ def _gpu_type_for_bench(base, topo):
 
 
 def _cells_this_machine_holds(base, plan, gtype, *,
-                              local_cores=None, local_gpus=None):
+                              local_cores=None, local_gpus=None,
+                              routing=None):
     """Every enumerated bench cell, checked one by one against THIS
     machine's queues -- ``[(fam, (g, k, c), domains, why)]`` in enumeration
     order, ``domains`` naming every queue that would take the cell and
@@ -278,12 +281,13 @@ def _cells_this_machine_holds(base, plan, gtype, *,
     from ..runtime_config import get_routing
     from ..scheduler.admit import Request, admits
     from ..scheduler.place import candidates
-    try:
-        routing = get_routing(project_dir=Path(base))
-    except Exception:                                       # noqa: BLE001
-        # No readable menu is not a small menu (R3): a record we cannot
-        # read must not cross out work the machine may well run.
-        routing = []
+    if routing is None:
+        try:
+            routing = get_routing(project_dir=Path(base))
+        except Exception:                                   # noqa: BLE001
+            # No readable menu is not a small menu (R3): a record we cannot
+            # read must not cross out work the machine may well run.
+            routing = []
 
     if not routing:
         return [(fam, cell, (), _local_refusals(cell, fam, gtype,
@@ -529,6 +533,7 @@ def declared_run_shape(base, target, task, stage=None):
     if not want_devices:
         out.pop("gres", None)
         return out
+    from ..runtime_config import routing_of
     from ..scheduler import machine_for
     rec = machine_for(Path(base), target=target)
     topo = getattr(rec, "topology", None)
@@ -538,7 +543,7 @@ def declared_run_shape(base, target, task, stage=None):
     # The TARGET's menu, from the record in hand: the folder's would be this
     # machine's on a fresh `prep --target` (the K5 review's B2).
     gtype = (_gpu_type_for_bench(base, topo)
-             or _gpu_inventory(base, getattr(rec, "domains", None))[1])
+             or _gpu_inventory(base, routing_of(rec, Path(base)))[1])
     n = out.get("gres", 1)
     out["gres"] = f"gpu:{gtype}:{n}" if gtype else f"gpu:{n}"
     return out
@@ -685,12 +690,11 @@ def prep_run_inputs(base, target, task, stage, allocation=None, *,
             _rec = machine_for(Path(base), target=target)
         except _Ambiguous as _exc:      # noqa: PERF203
             # "SEVERAL MACHINES, NONE NAMED" IS NOT "NO RECORD", and the hint
-            # below said the second when it meant the first -- so the advice
-            # was `probe --write`, which cannot help: the record already
-            # exists, probing rewrites it, and `probe --name this` refuses
-            # because `this` is reserved.  Every road from that sentence is a
-            # dead end, and the one word that fixes it (`--target this`) was
-            # printed AFTER it, by the real error (user, 2026-09-08).
+            # below said the second when it meant the first -- advice to
+            # probe, when the one word that fixes it (`--target`) was printed
+            # AFTER it, by the real error (user, 2026-09-08).  The note below
+            # now prints that refusal's own words, which name the probe only
+            # where one is needed.
             _ambiguous = _exc
         except Exception as _exc:                             # noqa: BLE001
             # ANY OTHER RESOLUTION FAILURE SPEAKS FOR ITSELF, and better than
@@ -854,6 +858,12 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # under-way question (W52: every edit tied the calculation to the
     # machine on the picker).
     environment = _environment_read(base, target)
+    # THE TARGET'S MENU, from the record in hand -- its probed queues, else
+    # the declared ones -- for every check below (`runtime_config.routing_of`;
+    # W52: the cells read the folder's menu, which a calculation not yet
+    # prepped cannot name when several machines are on file).
+    from ..runtime_config import routing_of
+    menu = routing_of(environment, Path(base))
     topo = getattr(environment, "topology", None)
     gpn = getattr(topo, "gpus_per_node", None) or 0
     cps = getattr(topo, "cores_per_socket", None)
@@ -925,25 +935,44 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
             f"would render identical decks under different labels.  Drop "
             f"the entry.")
 
-    if any(families) and (not gpn or not gtype):
-        # No GPU on THIS node -- but the cluster behind a login node may
-        # still have one: the probe records each partition's gres
-        # inventory on its domain row (§ 4.3a), and that answers here.
-        # ONLY WHAT IS MISSING, from the TARGET's menu in hand -- the run's
-        # order: the card stated, else probed, else the row's; the count
-        # from the row (W52: the row's card replaced a stated one, and the
-        # folder's menu answered for a `--target` prep).
-        _gpn, _gtype = _gpu_inventory(
-            base, getattr(environment, "domains", None), card=gtype)
+    # THE NODE'S OWN COUNT ONLY FOR THE NODE'S OWN CARD.  A login node
+    # probes none, and a node carrying another card than the one measured
+    # counts the wrong device -- either way the queue that holds the card
+    # answers (§ 4.3a: the probe records each partition's gres inventory on
+    # its domain row).  The run's order, from the TARGET's menu in hand: the
+    # card stated, else probed, else the row's; the count the card's queue's
+    # (W52: the row's card replaced a stated one, and a node's own count
+    # stood in for a stated card it does not carry).
+    _own = bool(gpn) and gtype is not None and \
+        gtype == getattr(topo, "gpu_type", None)
+    if any(families) and not _own:
+        _gpn, _gtype = _gpu_inventory(base, menu, card=gtype)
         if _gpn:
-            gpn, gtype = gpn or _gpn, gtype or _gtype
+            gpn, gtype = _gpn, gtype or _gtype
         else:
             # TWO STEPS, both said (W52: "delete environment.json to
             # re-probe" -- prep never probes, and deleting re-reads the same
             # record): re-probe the record, then let the calculation follow.
-            from ..scheduler.record import LOCAL_TARGET, probe_line
-            _which = ("this machine" if target in (None, LOCAL_TARGET)
-                      else repr(target))
+            # NAMED BY THE RECORD THAT ANSWERED: the calculation's own
+            # snapshot is read first, whatever the flag says (W52, the
+            # fix-6 review: a calculation prepped for Sol was told to probe
+            # "this machine").
+            from ..scheduler.record import (LOCAL_TARGET, calculation_record,
+                                            probe_line)
+            _snap = calculation_record(Path(base))
+            if _snap is not None and _snap.is_file():
+                _which = ("this calculation's environment.json, snapshotted "
+                          "at its first prep")
+                _redo = ("re-probe the machine it describes -- `molbuilder "
+                         "jobset probe --write` on it, with --name and its "
+                         "name for a named target, then its record copied "
+                         "here -- and delete this calculation's "
+                         "environment.json, so the next prep snapshots the "
+                         "new record (configuration.md M-3)")
+            else:
+                _which = ("this machine's" if target in (None, LOCAL_TARGET)
+                          else f"{target!r}'s")
+                _redo = f"re-probe it --\n    {probe_line(target)}\n "
             raise PrepError(
                 f"this description asks for the GPU (use_gpu = "
                 f"{'a cpu-vs-gpu axis' if mixed else 'true'}), so the "
@@ -951,13 +980,9 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
                 f"cores) -- and the record it reads ({_which}) states no "
                 f"GPU (gpus_per_node={gpn!r}, gpu_type={gtype!r}) and no "
                 f"queue with a recorded GPU inventory.  If that machine has "
-                f"one, its record is out of date: re-probe it --\n"
-                f"    {probe_line(target)}\n"
-                f"  -- and delete this calculation's environment.json if it "
-                f"has one, so the next prep snapshots the new record "
-                f"(configuration.md M-3).  Or prep for the machine that has "
-                f"the GPU (`--target`): the comparison is by node type "
-                f"(asu-sol.md § 5.2).")
+                f"one, its record is out of date: {_redo}.  Or prep for the "
+                f"machine that has the GPU (`--target`): the comparison is "
+                f"by node type (asu-sol.md § 5.2).")
 
     # The axes come from the split above -- the value entries already left
     # as pins or value axes, so what remains is machine-answered by
@@ -1083,7 +1108,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     plan = [(fam, cell) for fam in families for cell in _family_cells(fam)]
     checked = _cells_this_machine_holds(base, plan, gtype,
                                         local_cores=cores_total,
-                                        local_gpus=gpn)
+                                        local_gpus=gpn, routing=menu)
     _axes = ("G", "K", "C") if (mixed or on_gpu) else ("K", "C")
 
     kept    = [(f, cell, doms) for f, cell, doms, why in checked if not why]

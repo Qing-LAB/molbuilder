@@ -327,6 +327,28 @@ class TestTheCasesReadingFoundThatPokingDidNot:
             "naming this machine and naming nothing resolved DIFFERENT "
             "records for the same box")
 
+    def test_a_record_that_cannot_enter_its_machine_leaves_nothing_behind(
+            self, machines):
+        """A named machine whose record states no activation is refused --
+        and the calculation is left as it was, no snapshot written, so the
+        refusal's own remedy (re-probe there, copy the record here, prep
+        again) is taken by the next prep instead of contradicting a record
+        the refused one left behind (W52, the fix-6 review: step 1 wrote the
+        snapshot, then checked).
+
+        MUTATION THIS MUST FAIL AGAINST: the snapshot written before the
+        check."""
+        machines.write("sol", json.dumps({
+            **{k: v for k, v in _REC.items() if k != "script_generation"},
+            "scheduler": "slurm"}))
+        machines.this_machine()
+        res = _prep("P/optimization/w", "--target", "sol")
+        assert res.exit_code != 0, res.output
+        assert "does not say how to enter" in res.output, res.output
+        bundle = machines.tree / "P" / "optimization" / "w"
+        assert not (bundle / "environment.json").is_file(), (
+            "a refused prep left the record it refused behind")
+
     def test_no_machine_record_at_all_is_a_REFUSAL_naming_the_probe(
             self, machines):
         """**A machine that has not been probed cannot be prepped for**
