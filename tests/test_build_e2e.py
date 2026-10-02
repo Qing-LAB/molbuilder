@@ -169,7 +169,7 @@ def _open_build(page, base_url):
 
 class TestFormSchemasRender:
     """Both engine forms fetch their schema and render fields.  A
-    regression in dataclass_to_form_schema or in form-schema.js'
+    regression in catalogue_to_form_schema or in form-schema.js'
     renderer would leave the containers empty -- silent UI break."""
 
     def test_siesta_form_renders_fields_after_init(

@@ -722,6 +722,18 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
         # its 56 template items are this catalogue's shared rows (§ 3.3),
         # and its decks reuse THIS module's sections and syntax door
         # rather than restating them.
+        # A RENDER ARGUMENT THIS ARM DOES NOT READ is refused by name: a
+        # transport deck derives no cell -- it is the composed junction's own
+        # (§ 2a.9) -- and has no vibration, relaxation record or bench trial.
+        # Passed, each was dropped in silence (§ 3.6a).
+        unread = [name for name, value in (
+            ("cell", cell), ("vibration", vibration),
+            ("relaxed_by", relaxed_by), ("trial", trial)) if value is not None]
+        if unread:
+            raise ValueError(
+                f"a transport deck reads no {', '.join(unread)} -- its cell "
+                f"is the composed junction's own "
+                f"(docs/engines/transport.md § 2a.9).")
         from ..transport.deck import transport_spec
         return transport_spec(struct, config or SiestaConfig(),
                               stage_token=stage_token, state=state)

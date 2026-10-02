@@ -1,8 +1,8 @@
 """molbuilder.config -- engine-parameter dataclasses (L1 nouns).
 
 These are pure data: each engine config is a ``@dataclass`` with field
-metadata that drives CLI options, web form schema, and the validation
-pass.  The L2 generators (``molbuilder.siesta.input.render_fdf``,
+metadata the validation pass reads (`web/form-schema.md` § 1a); the forms
+are drawn from the catalogue.  The L2 generators (``molbuilder.siesta.input.render_fdf``,
 ``molbuilder.pyscf.input.render_script``) consume them; nothing in
 this package imports from generators.
 

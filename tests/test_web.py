@@ -1317,178 +1317,9 @@ def test_modify_translate_rejects_nan_offset(web_client):
     assert "finite" in r.get_json()["error"]
 
 
-# --------------------------------------------------------------------- #
-#  dataclass_to_form_schema -- the schema generator that backs the     #
-#  /api/build/schema/{siesta,pyscf} endpoints.  Tests use a hand-      #
-#  written tiny dataclass so they don't couple to the production       #
-#  SiestaConfig / PySCFConfig field set; the endpoint tests further    #
-#  below exercise the real configs.                                    #
-# --------------------------------------------------------------------- #
-
-
-from dataclasses import dataclass as _schema_dc, field as _schema_field
-from typing import Optional as _Optional, Tuple as _Tuple
-
-
-@_schema_dc
-class _FakeCfgForSchema:
-    """One field per supported kind so a single test covers them all.
-
-    Defined at module scope (not inside a helper) so
-    ``typing.get_type_hints`` can resolve Optional / Tuple against
-    this module's globals.
-    """
-    flag: bool = _schema_field(default=True, metadata={
-        "section": "Basics", "label": "Flag",
-        "help": "a plain boolean checkbox",
-    })
-    count: int = _schema_field(default=3, metadata={
-        "section": "Basics", "label": "Count",
-        "range": (0, 100), "tier": "advanced",
-    })
-    size_ang: float = _schema_field(default=1.5, metadata={
-        "section": "Geometry", "label": "Size", "unit": "Å",
-        "range": (0.1, 10.0),
-    })
-    method: str = _schema_field(default="A", metadata={
-        "section": "Geometry", "label": "Method",
-        "choices": ("A", "B", "C"),
-    })
-    title: str = _schema_field(default="default-title", metadata={
-        "section": "Basics", "label": "Title",
-        "pattern": r"^[A-Za-z0-9_\-]+$",
-    })
-    opt_int: _Optional[int] = _schema_field(default=None, metadata={
-        "section": "Geometry", "label": "Optional int",
-        "null_label": "(auto)",
-    })
-    tri: _Optional[bool] = _schema_field(default=None, metadata={
-        "section": "Basics", "label": "Tri-state",
-    })
-    grid: _Tuple[int, int, int] = _schema_field(default=(1, 1, 1), metadata={
-        "section": "Geometry", "label": "Grid",
-    })
-    # No section -> omitted from schema.
-    internal: int = _schema_field(default=0, metadata={
-        "help": "no section, should not appear in schema",
-    })
-    # id_suffix override so the legacy-id contract is exercised.
-    legacy_name: str = _schema_field(default="leg", metadata={
-        "section": "Basics", "id_suffix": "lname",
-        "label": "Legacy",
-    })
-
-
-def _schema_fixture_cls():
-    return _FakeCfgForSchema
-
-
-def test_dataclass_schema_groups_by_section_in_declaration_order():
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
-    sch = dataclass_to_form_schema(_schema_fixture_cls(), id_prefix="t")
-    assert sch["config"] == "_FakeCfgForSchema"
-    assert sch["id_prefix"] == "t"
-    section_names = [s["name"] for s in sch["sections"]]
-    # "Basics" comes first because the first sectioned field (flag)
-    # declares it; "Geometry" follows because size_ang is the first
-    # field declaring that section.  Order MUST follow declaration.
-    assert section_names == ["Basics", "Geometry"], section_names
-
-
-def test_dataclass_schema_omits_unsectioned_fields():
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
-    sch = dataclass_to_form_schema(_schema_fixture_cls(), id_prefix="t")
-    all_names = [f["name"] for s in sch["sections"] for f in s["fields"]]
-    # `internal` has no section and must be absent.
-    assert "internal" not in all_names
-
-
-def test_dataclass_schema_id_convention_with_override():
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
-    sch = dataclass_to_form_schema(_schema_fixture_cls(), id_prefix="t")
-    fmap = {f["name"]: f for s in sch["sections"] for f in s["fields"]}
-    # Default convention: f.name with underscores -> hyphens.
-    assert fmap["size_ang"]["id"] == "t-size-ang"
-    assert fmap["opt_int"]["id"] == "t-opt-int"
-    # id_suffix metadata override:
-    assert fmap["legacy_name"]["id"] == "t-lname"
-
-
-def test_dataclass_schema_kind_inference():
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
-    sch = dataclass_to_form_schema(_schema_fixture_cls(), id_prefix="t")
-    fmap = {f["name"]: f for s in sch["sections"] for f in s["fields"]}
-    assert fmap["flag"]["kind"] == "checkbox"
-    assert fmap["count"]["kind"] == "int"
-    assert fmap["size_ang"]["kind"] == "number"
-    assert fmap["method"]["kind"] == "select"
-    assert fmap["title"]["kind"] == "text"
-    assert fmap["opt_int"]["kind"] == "int"
-    assert fmap["opt_int"]["null_option"] is True
-    assert fmap["opt_int"]["null_label"] == "(auto)"
-    assert fmap["tri"]["kind"] == "tri-select"
-    assert fmap["tri"]["choices"] == ["auto", "true", "false"]
-    assert fmap["grid"]["kind"] == "int-triple"
-    assert fmap["grid"]["labels"] == ["x", "y", "z"]
-
-
-def test_dataclass_schema_passes_through_range_unit_pattern():
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
-    sch = dataclass_to_form_schema(_schema_fixture_cls(), id_prefix="t")
-    fmap = {f["name"]: f for s in sch["sections"] for f in s["fields"]}
-    assert fmap["count"]["min"] == 0 and fmap["count"]["max"] == 100
-    assert fmap["size_ang"]["min"] == 0.1
-    assert fmap["size_ang"]["max"] == 10.0
-    assert fmap["size_ang"]["unit"] == "Å"
-    assert fmap["title"]["pattern"] == r"^[A-Za-z0-9_\-]+$"
-
-
-def test_dataclass_schema_serialises_defaults():
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
-    sch = dataclass_to_form_schema(_schema_fixture_cls(), id_prefix="t")
-    fmap = {f["name"]: f for s in sch["sections"] for f in s["fields"]}
-    assert fmap["flag"]["default"] is True
-    assert fmap["count"]["default"] == 3
-    assert fmap["size_ang"]["default"] == 1.5
-    assert fmap["method"]["default"] == "A"
-    # Tuple becomes a list for JSON compatibility.
-    assert fmap["grid"]["default"] == [1, 1, 1]
-    # Optional defaults to None pass through as null.
-    assert fmap["opt_int"]["default"] is None
-
-
-def test_dataclass_schema_is_json_serialisable():
-    """The schema MUST be json.dumps-able with no custom encoder --
-    the endpoint returns it via jsonify()."""
-    import json
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
-    sch = dataclass_to_form_schema(_schema_fixture_cls(), id_prefix="t")
-    serialised = json.dumps(sch)
-    # Round-trips without loss.
-    assert json.loads(serialised) == sch
-
-
-def test_dataclass_schema_honors_form_section_order_override():
-    """A class-level _form_section_order tuple overrides declaration
-    order without forcing the user to reorder fields.  Section names
-    in the tuple come first (in the tuple's order); any extra
-    sections present in field metadata but missing from the tuple
-    keep their declaration-order position appended after."""
-    from dataclasses import dataclass as _dc, field as _f
-    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
-
-    @_dc
-    class Reordered:
-        _form_section_order = ("Z", "X")  # declared order is X, Y, Z
-        x: int = _f(default=0, metadata={"section": "X"})
-        y: int = _f(default=0, metadata={"section": "Y"})
-        z: int = _f(default=0, metadata={"section": "Z"})
-
-    sch = dataclass_to_form_schema(Reordered, id_prefix="t")
-    names = [s["name"] for s in sch["sections"]]
-    # Explicit "Z", "X" come first; then "Y" tacked on (in declaration
-    # position 2 of the original ordering).
-    assert names == ["Z", "X", "Y"], names
+# (The tests of `dataclass_to_form_schema` -- eight, on a hand-written
+#  fixture dataclass -- were retired with the function, 2026-10-02, M5 step
+#  3: no route had called it since the forms moved to the catalogue.)
 
 
 def test_siesta_form_schema_matches_documented_layout():
@@ -1496,9 +1327,9 @@ def test_siesta_form_schema_matches_documented_layout():
 
     Repointed 2026-08-15 from ``dataclass_to_form_schema`` to
     ``catalogue_to_form_schema``.  The tab is served by the catalogue
-    builder (``build.py`` /api/build/schema); the dataclass builder now
-    serves only spectra and transport, whose configs are not in the
-    catalogue.  Asked the old builder, this test could not see the tab:
+    builder (``build.py`` /api/build/schema); the dataclass builder was
+    deleted on 2026-10-02.  Asked the old builder, this test could not see
+    the tab:
     it passed UNCHANGED on the day ``restart`` and ``continue_retries``
     left the form, which is precisely the regression a layout test exists
     to catch.
@@ -1638,8 +1469,8 @@ def _flatten_schema_fields(sch):
 
 
 def test_engine_key_present_on_every_siesta_form_field():
-    """Every SIESTA field that lands in the form (has ``section``)
-    MUST carry an ``engine_key`` metadata.  Without it the UI's
+    """Every SIESTA item the form renders MUST carry an
+    ``engine_key``.  Without it the UI's
     source-of-truth badge is silently missing for that field."""
     from molbuilder.web.blueprints._shared import catalogue_to_form_schema
     from molbuilder.config.siesta import SiestaConfig
@@ -1664,11 +1495,6 @@ def test_engine_key_present_on_every_pyscf_form_field():
     )
 
 
-# (test_engine_key_present_on_every_spectra_form_field retired at the
-#  U6 close: dataclass_to_form_schema on a spectra config returns zero
-#  sections since P3 -- the form metadata left the dataclass -- so the
-#  test pinned an empty set and could not fail.  Its sibling was retired
-#  with the route; this one had survived.)
 def test_engine_key_marks_molbuilder_only_fields_with_paren_prefix():
     """molbuilder-only fields (preprocessing / wrapper / filename
     knobs that don't reach the engine) MUST have engine_key

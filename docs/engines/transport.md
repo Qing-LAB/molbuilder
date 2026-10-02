@@ -253,7 +253,7 @@ rather than a crash — which is why they are guards in code and not advice.
 
 | # | must be true | enforced where | on the composite path? |
 |---|---|---|---|
-| 1 | device `kz = 1` | **fixed**: the rung's mesh writes 1 (`kmesh.mesh_for`), the form draws the component locked, and every door refuses another value (`kmesh.fixed` through `template.why_not`, [`siesta.md`](?doc=engines/siesta.md) § 6.1) *(an error in `validation._validate_transport_kind`, the kind's validator, from 2026-09-16 until 2026-09-30, beside a warning about the same axis in the SIESTA validator)* | ✅ on every door. *(Named `TransiestaEngine.preflight` here until 2026-09-16; that one is keyed on `TransportConfig` in `_ENGINE_VALIDATORS` and every rung now resolves a `SiestaConfig`, so it dispatches for nothing. Its OTHER checks — region contiguity, the region partition — went silent with it: see § 3.6a. The open-shell question is the electronic state's, asked on every rung since 2026-09-28.)* |
+| 1 | device `kz = 1` | **fixed**: the rung's mesh writes 1 (`kmesh.mesh_for`), the form draws the component locked, and every door refuses another value (`kmesh.fixed` through `template.why_not`, [`siesta.md`](?doc=engines/siesta.md) § 6.1) *(an error in `validation._validate_transport_kind`, the kind's validator, from 2026-09-16 until 2026-09-30, beside a warning about the same axis in the SIESTA validator)* | ✅ on every door. *(Named `TransiestaEngine.preflight` here until 2026-09-16; that one was keyed on `TransportConfig` in `_ENGINE_VALIDATORS` while every rung resolved a `SiestaConfig`, so it dispatched for nothing — deleted 2026-09-17, the class 2026-10-02. Its OTHER checks — region contiguity, the region partition — went silent with it: see § 3.6a. The open-shell question is the electronic state's, asked on every rung since 2026-09-28.)* |
 | 2 | electrode `kz` dense | default **40**, a catalogue row (`electrode_kz`) a lead's mesh reads | ✅ **held** — the value reaches the deck (measured: the lead renders `0 0 40`), it is editable in the template, and it is refused at 1 by its own limit (`above`) and warned below 20 by its range, on every door ([`siesta.md`](?doc=engines/siesta.md) § 6.1; `_validate_transport_kind` held both from 2026-09-17 until 2026-09-30). *This row said the warn "still lives only in the standalone `molbuilder transport preflight` verb, so a composite run never sees it" — true when written, and left standing for several hours after the re-homing that fixed it.*
 | 3 | transverse k identical in lead and device | one shared `kgrid`, and every rung's mesh reads it (`kmesh.mesh_for`) — TranSIESTA itself stops on *"found incompatible k-grids"* | ✅ by construction |
 | 3a | the junction is neutral | **error**, the electronic state's family (`validation/chemistry.py`, ES7) — and a cited run that carried a charge is refused at `init` — the boundaries are open, so the electron count is the electrodes' to set, and a lead must stay neutral or the Fermi level every stage is measured against moves | ✅ on every prep, since 2026-09-16 (§ 2a.7's deferral, declared on the row and enforced at the gate) |
@@ -1317,7 +1317,7 @@ of an open boundary**, and the reason the two are computed separately at all.
 |---|---|
 | ~~**the bias has two homes**~~ | `task.bias` (the description's axis, giving the `v*` directories) and `bias_voltage_v` (a template row with a range and help). The axis won: each point's deck was the resolved config with that voltage replaced, and with no axis the template's value answered. **Closed 2026-09-29 (K1)**: the axis is the one home — `bias_voltage_v` is the point a rung renders, fixed by the rung, and a template value or a stage override naming it is refused (§ 2a.10) |
 | **the NEGF electrode block is lifted, not tabled** | `%block TS.Elecs` and the per-electrode blocks are still the pre-seam emitter's, wrapped in one `Block` *(with one small projection at the boundary until 2026-09-29, when the block's VALUES moved to the catalogue and the projection went — § 6.1b)*. Deliberate: TranSIESTA identifies each electrode by a **contiguous atom range**, so an off-by-one computes transmission through a region that is not the molecule *and converges while doing it*. That emitter has been measured against a live 5.4.2 binary; a rewrite would have to earn that again for no gain |
-| **`TransportConfig` survives** | only to feed that lifted emitter. TR4 already deleted the general projection when the template made it unnecessary; this is the last one, and it goes when the block is tabled. *(It went 2026-09-29, § 6.1b; the class retires with M5 step 3)* |
+| ~~**`TransportConfig` survives**~~ | only to feed that lifted emitter. TR4 already deleted the general projection when the template made it unnecessary; this is the last one, and it goes when the block is tabled. *(It went 2026-09-29, § 6.1b; the class retired 2026-10-02, M5 step 3)* |
 | **net charge and gating** | deferred by ruling (§ 2a.7) |
 
 #### Two defects this work found in itself
@@ -1581,9 +1581,9 @@ Four rules, and each one costs something measurable:
 | the rule | what transport does | what it cost |
 |---|---|---|
 | **floor 3 renders the text of every file**, from a `ParameterSet`, through `spec_for` → `DeckSpec` → `prepare_deck` | `transport/transiesta.py::render_script` concatenates literal f-strings. It is not floor 3's file, takes no `ParameterSet`, and never reaches `prepare_deck` | the keyword set was **fixed in code**: the seed deck `prep` rendered carried **13 keywords and 4 blocks** against a template offering **45 deck-reaching items**. ✅ **CLOSED 2026-09-16 — all five rungs render through `spec_for` → `DeckSpec` → `prepare_deck`** (§ 2a.14). The seed deck is 488 lines, a lead 419, the device 584, each with a validation report and the engine's check gate |
-| **floor 2 holds what the person asked for** | transport had no template, so the parameters were *defined* in `TransportConfig` — which is no floor at all | 32 parameters of surface, none of them the ~40 a SIESTA run needs. `MaxSCFIterations` and `DM.Tolerance` cannot reach ANY transport deck: not from the citation, not from a form, not from `task.json` |
+| **floor 2 holds what the person asked for** | transport had no template, so the parameters were *defined* in `TransportConfig` — which is no floor at all | 32 parameters of surface, none of them the ~40 a SIESTA run needs. `MaxSCFIterations` and `DM.Tolerance` cannot reach ANY transport deck: not from the citation, not from a form, not from `task.json`. ✅ **CLOSED** — transport has a template since TR1 (2026-09-16, § 3.6 item 5), and `TransportConfig` retired 2026-10-02 |
 | **`prep` is the conductor, not a floor: it may call, but it may never decide** | `_prep_transport` is a second conductor that decides — it composes, gates, extracts and renders | no `resolve`, so no `ParameterSet` and no provenance; `--pipeline-log` is a documented no-op; no validation report; no read-back check |
-| **floor 2 must never name a machine** | `max_memory_mb` and `num_threads` are `TransportConfig` fields | two controls that reach the deck only as comment lines |
+| **floor 2 must never name a machine** | `max_memory_mb` and `num_threads` are `TransportConfig` fields | two controls that reach the deck only as comment lines. ✅ **CLOSED 2026-10-02** — both went with the class (§ 3.6 item 12) |
 
 #### Why it is this way, from the history rather than from a rationale
 
@@ -1680,8 +1680,8 @@ addition.
 > **A measurement that looked the other way, and why it was wrong.** Comparing
 > `TransportConfig`'s 32 fields against the catalogue shows 21 of 22 *settable*
 > fields disjoint, which reads as *"transport shares almost nothing"*. That
-> measures the wrong object: `TransportConfig` is the artefact this section
-> concludes should not exist, and its "settable" surface is small precisely
+> measures the wrong object: `TransportConfig` was the artefact this section
+> concludes should not exist *(retired 2026-10-02)*, and its "settable" surface is small precisely
 > because the electronic half arrives from the citation instead of being typed.
 > **Transport's DECK is mostly shared; only its FORM is mostly new.**
 
@@ -1717,7 +1717,9 @@ Two of those rows are corrections to what ships today:
 * **The machine row.** `max_memory_mb` and `num_threads` are `TransportConfig`
   fields in a form section today, which G1 and § 7 forbid on floor 2 — and they
   reach the deck only as comment lines, so they are controls that move nothing.
-  As `allocation` items they become what they are.
+  As `allocation` items they become what they are. *(Done 2026-10-02: the
+  two fields went with the class; a rung's are `SiestaConfig`'s `max_memory_mb`
+  and `omp_threads`, both `allocation` items.)*
 * **The citation row** is the one that needs a name, and § 3.4.3 gives it.
 
 #### 3.4.2 The second axis: WHICH STAGE'S DECK carries the item
@@ -1764,9 +1766,9 @@ refused* — and the citation is structurally the same kind of source. **So the
 one framework extension this design asks for is a sibling of `allocation` on the
 same axis.**
 
-It earns itself rather than being convenient: it replaces two Python frozensets
-(`SEALED_ALWAYS`, `CONTRACT_FIELDS`) and a predicate currently spelled twice in
-two files with disagreeing formulations, it puts *"who answers this"* on the
+It earns itself rather than being convenient: it replaced two Python frozensets
+(`SEALED_ALWAYS`, `CONTRACT_FIELDS`) and a predicate then spelled twice in
+two files with disagreeing formulations (the last of them deleted 2026-10-02), it puts *"who answers this"* on the
 axis § 6.4 already owns, and any later kind whose values arrive from a cited
 result inherits it. Both refusal doors then read one declaration.
 
@@ -1892,13 +1894,18 @@ cannot be done first.** Each line is falsifiable.
    this item's own wording: they arrive from the **description**, not from the
    citation — the cited run only supplies the defaults (§ 2a.7, ruling 1).
 6. `molbuilder/config/transport.py` **does not exist**; the shape is
-   `SiestaConfig` plus the `citation` marker. **Half done 2026-09-16**: every
-   rung resolves a `SiestaConfig`, and TR4 deleted the general projection when
-   the template made it unnecessary. The last projection, at the boundary
-   of the lifted NEGF block (`deck._legacy_view`), went 2026-09-29 with the
-   block's values (§ 6.1b); the class retires in M5 step 3.
-7. `dataclass_to_form_schema` **has no production caller** and is to be
-   deleted; the transport form is generated from the catalogue.
+   `SiestaConfig` plus the `citation` marker. **✅ DONE 2026-10-02 — M5 step
+   3.** Every rung has resolved a `SiestaConfig` since 2026-09-16, when TR4
+   deleted the general projection; the last projection, at the boundary of
+   the lifted NEGF block (`deck._legacy_view`), went 2026-09-29 with the
+   block's values (§ 6.1b); and the class retired with its module, whose
+   region-label vocabulary moved to `transport/sort.py`, the module that owns
+   the partition those labels make.
+7. `dataclass_to_form_schema` **does not exist**; the transport form is
+   generated from the catalogue. **✅ DONE 2026-10-02 — M5 step 3**: the form
+   moved onto the catalogue on 2026-09-24 (§ 3.8.6), and the builder, its
+   tests and the form keys nothing read once it was gone
+   (`web/form-schema.md` § 1a) were deleted with the class.
    ⚠️ **Two corrections (2026-09-23).** *"and is deleted"* — it is not;
    it still has test callers, and § 3.7's row saying it is LIVE was true
    until the swap that removed its last production caller was reverted
@@ -1926,7 +1933,10 @@ cannot be done first.** Each line is falsifiable.
 **Floor 2 names no machine.**
 
 12. `max_memory_mb` and `num_threads` are `allocation` items, answered at
-    `prep`, not fields of a description.
+    `prep`, not fields of a description. **✅ DONE 2026-10-02**: both
+    `TransportConfig` fields went with the class; what a transport rung runs
+    with is `SiestaConfig`'s `max_memory_mb` and `omp_threads`, `allocation`
+    items whose values the job states (W53).
 
 ### 3.6a The seed rung, on the seam — what that changed and what it did not
 
@@ -1983,15 +1993,15 @@ fixed.**
 
 | | |
 |---|---|
-| the 21 are **present**, not yet **answerable** | `config_for` still validates a stage override against `TransportConfig`'s field names, so `max_scf_iter` as an override is refused. They become settable when the override vocabulary becomes the engine's (§ 3.6 items 5–12) |
+| ~~the 21 are **present**, not yet **answerable**~~ | **Closed.** `config_for` validated a stage override against `TransportConfig`'s field names, so `max_scf_iter` as an override was refused. Since TR4 a rung's overrides resolve against the engine's vocabulary (`jobset/prep.py::_resolve_transport`), narrowed since 2026-09-30 to the items the rung reads (`template.unread_overrides`, the one door every road asks); `config_for` was deleted on 2026-10-02 |
 | **and they arrive as the ENGINE's defaults, which is a real change to what runs** | `siesta_config_for` fills 26 of `SiestaConfig`'s 66 fields from the transport description; the other **40 take `SiestaConfig()`'s own values**. So the seed deck now carries `SCF.Mixer.Weight 0.02`, `SCF.Mixer.History 8`, `MaxSCFIterations 1000`, `DM.Tolerance 1e-05`, `DM.EnergyTolerance 1e-04 eV` where it previously carried **nothing** and SIESTA's own 5.x values governed. `config/siesta.py` states those defaults' provenance plainly: they follow best practice for *"a small / medium … system that's **about to be relaxed**"*. A metallic Au junction warm-up is not that system, and **nobody has made the scientific case that 0.02 / 8 is right for it** — a conservative mixing weight is the usual choice for a metal, which is a reason to expect it is *safe*, not evidence that it is *tuned*. Treat this as a deliberate change of governing defaults pending that case, not as a free win |
 | ~~four rungs are still off the seam~~ | **Closed 2026-09-16.** The seam question — *what does a composite kind hand its renderer?* — is answered, and the answer is *a structure*, like every other kind: `prep` picks WHICH structure the rung describes (`composed.sorted.structure`, or `model.as_structure()` for a lead taken out by its region label) and `spec_for` is unchanged. Nothing reaches for the `ComposedJunction` from inside the renderer |
 | ~~`--pipeline-log` is still a no-op here~~ | **Closed.** `_prep_transport` opens a `PipelineLog` and carries it through resolve, the deck render and — since 2026-09-16 — `prep_jobset`, so STEP 4 (wrappers) and STEP 5 (run directories) reach the file too; it had lost those two by not passing `log=` |
 | ~~two settings-gate warnings are now visible and both are **wrong for transport**~~ | (a) `psml_lib`: `jobset init` refuses `--psml-lib` here because the pseudopotentials travel with the citation, yet the deck warned SIESTA "will refuse to start" — **FIXED 2026-09-25**: `prep` hands the gate the calculation folder, and the gate reads the files the run will open, the folder first, by the one rule `prep` fetches by (`pseudos.psml_sources`, `job-contracts.md` § 2.5a). The deck still states the pseudopotential provenance itself. (b) `structure.regions`: **FIXED 2026-09-23.** It said the region labels *"do NOT consume / do not shape this calculation"* on every transport deck, about the partition the whole ladder is built from. The claim that the checks "cannot see the kind" was wrong: `validation/__init__` has set `engine_kw["calculation"]` for every validator all along, and `check_unconsumed_region_labels` simply never asked. It asks now, and for transport the consumed set is `sort.PARTITION_LABELS` plus any `*-electrode` name — so a label transport genuinely cannot read is still named, which is § 4's rule |
-| ~~`calculation="transport"` composes no kind science~~ | **Closed, and one check had to be re-homed.** `_KIND_VALIDATORS["transport"]` is registered and fires on every rung. `TransiestaEngine.preflight` is keyed on `TransportConfig` in `_ENGINE_VALIDATORS`, so it dispatches for no rung any more — of what it carried, the region partition and the atom order are `sort`'s own refusals and structural on the ladder path, and the open-shell question is the electronic state's one family, asked by `validate()` for every rung against the junction's resolved spin instead of preflight's hardcoded closed shell. The remainder was the **high-bias advisory**, which is now in the kind validator *(the kz≠1 refusal it stood beside left it 2026-09-30: a component the kind fixes, `kmesh.fixed` — [`siesta.md`](?doc=engines/siesta.md) § 6.1)* |
+| ~~`calculation="transport"` composes no kind science~~ | **Closed, and one check had to be re-homed.** `_KIND_VALIDATORS["transport"]` is registered and fires on every rung. `TransiestaEngine.preflight` was keyed on `TransportConfig` in `_ENGINE_VALIDATORS`, so it dispatched for no rung (the engine was deleted 2026-09-17, the class 2026-10-02) — of what it carried, the region partition and the atom order are `sort`'s own refusals and structural on the ladder path, and the open-shell question is the electronic state's one family, asked by `validate()` for every rung against the junction's resolved spin instead of preflight's hardcoded closed shell. The remainder was the **high-bias advisory**, which is now in the kind validator *(the kz≠1 refusal it stood beside left it 2026-09-30: a component the kind fixes, `kmesh.fixed` — [`siesta.md`](?doc=engines/siesta.md) § 6.1)* |
 | `validate_subject` is unanswered, so the gate judges a frame the deck does not express | Narrowed 2026-09-25: `_emit_geometry` writes the frame `cell.to_engine` places, and the gate's `cell.resolve` places the box at the same `−engine_offset` of the design, so containment is judged in the deck's frame. Still open for a lead that states no cell, whose deck box is transport's own vacuum box and not the one the gate resolves. The optimization spec sets that slot precisely because *"judging the input would judge something nobody runs"* |
-| the transport arm of `spec_for` silently drops `cell=` | The dispatch sits above every use of `cell` and forwards only `(struct, config, stage_token)`. No live caller passes it, so there is no failure today — it is a silent-drop hazard at a public signature |
-| the projection narrows one range | `TransportConfig.energy_shift_ry` allows `(0.0001, 0.1)`; `pao_energy_shift` allows `(0.001, 0.05)`. A citation whose deck says `PAO.EnergyShift 0.0005 Ry` is legal upstream and now draws a warn. Warn-only, so it cannot refuse a prep |
+| ~~the transport arm of `spec_for` silently drops `cell=`~~ | **Closed 2026-10-02 (M5 step 3).** The dispatch forwards only `(struct, config, stage_token)`, so it now refuses by name every render argument it does not read — `cell`, `vibration`, `relaxed_by`, `trial` — instead of dropping it: a transport deck's cell is the composed junction's own (§ 2a.9) |
+| ~~the projection narrows one range~~ | **One range since 2026-10-02.** `TransportConfig.energy_shift_ry` allowed `(0.0001, 0.1)` against `pao_energy_shift`'s `(0.001, 0.05)`; the class is gone, and a citation whose deck says `PAO.EnergyShift 0.0005 Ry` draws `pao_energy_shift`'s warn — warn-only, so it cannot refuse a prep |
 
 **The two configs, and the one fill.**  Floor 3 resolves a row by
 `getattr(config, name)`, so a deck rendered from a config with different field
@@ -2000,7 +2010,10 @@ names omits those rows *silently* — which is why the seed must render from
 second answer to *what is this junction's electronic contract*, and § 5 exists
 to stop those two disagreeing.  So `config_for` remains the single fill and
 `siesta_config_for` re-expresses its answer; the mapping is six names, four of
-them physics.  It retires with `TransportConfig`.
+them physics.  It retires with `TransportConfig`.  *(Closed: the fill from the
+citation is `transport/citation_defaults.py`'s since `764addd3`, into the
+template — one answer; `siesta_config_for` went with TR4, and `config_for`,
+left as residue, was deleted with `TransportConfig` on 2026-10-02.)*
 
 ---
 
@@ -2010,16 +2023,17 @@ Rectification, not accretion. **This is a PLAN, in the present tense, and the
 "deleted" column is what each row is FOR — not a record that it happened.**
 Measured 2026-09-23: four of the six rows are still live, and reading the table
 as a record is what made three of them look like settled decisions during the
-X1 audit. The state column says where each one actually stands.
+X1 audit. The state column says where each one actually stands — **all six
+done by 2026-10-02** (M5 step 3).
 
-| to stop existing | why | state, measured 2026-09-23 |
+| to stop existing | why | state |
 |---|---|---|
-| `TransportConfig` (32 fields) | a second vocabulary for one shape, exactly as `SpectraConfig` was before it was retired | **LIVE.** `config/transport.py` exists; § 2a.14 records why — it feeds the lifted NEGF block and goes when that block is tabled |
-| `SEALED_ALWAYS`, `CONTRACT_FIELDS`, and the twice-spelled sealed predicate | one declaration on the item replaces them | **LIVE**, both read in production (`stages.py`, `blueprints/transport.py`) |
-| `_form_section_order`, `_form_section_descriptions` | `category` and the catalogue's own prose | not re-measured |
+| `TransportConfig` (32 fields) | a second vocabulary for one shape, exactly as `SpectraConfig` was before it was retired | **DONE 2026-10-02** (M5 step 3, TD4): `config/transport.py` deleted; the region labels moved to `transport/sort.py` |
+| `SEALED_ALWAYS`, `CONTRACT_FIELDS`, and the twice-spelled sealed predicate | one declaration on the item replaces them | **DONE 2026-10-02** — deleted with `config_for`, their last reader, which had no production caller |
+| `_form_section_order`, `_form_section_descriptions` | `category` and the catalogue's own prose | **DONE 2026-10-02** — deleted with the class and the form builder that read them, `SiestaConfig`'s and `PySCFConfig`'s order tuples too |
 | the private `_emit_header` and the hand-written keyword lines | the shared reserved-block writers and one emitter per value shape | **DONE** — `_emit_header` deleted 2026-09-17 |
-| `dataclass_to_form_schema` | its last caller goes with the form route | **LIVE**, called from `blueprints/transport.py` |
-| `DEFAULT_ELECTRODE_KZ` as a function default | a catalogue row | **the row exists and reaches the deck** (§ 2a.14 measured `0 0 40`); the module constant also still exists, unread |
+| `dataclass_to_form_schema` | its last caller goes with the form route | **DONE 2026-10-02** — the route moved to the catalogue on 2026-09-24; the builder was deleted with its tests |
+| `DEFAULT_ELECTRODE_KZ` as a function default | a catalogue row | **DONE** — the row exists and reaches the deck (§ 2a.14 measured `0 0 40`); the unread module constant was deleted 2026-10-02 |
 
 ---
 
@@ -2324,7 +2338,7 @@ person sees it.
 | **the card** | the parameters card gains a `.tabs` strip, one `.tab-btn` per KNOWN engine and one `.tab-panel` each — `index.html`'s pattern, reused rather than reinvented |
 | **the panel IS the engine** | the active panel is the value of the sealed `engine` field nothing renders; the panel decides which renderer runs, as on the optimization tab |
 | **the schema** | `/api/transport/schema` answers per engine beside `surface=` (§ 3.8.2's two surfaces, each per engine); an unknown engine is a clean refusal, never a defaulted answer |
-| **one config per engine** | `TransportConfig` is **TranSIESTA's** and loses both `pyscf_*` fields; a PySCF-NEGF config is authored WITH that backend, not before — a config nothing renders from is the residue this rule exists to prevent. The name stays: it is referenced by 14 modules and 16 test files and a rename carries no behaviour |
+| **one config per engine** | TranSIESTA's is `SiestaConfig` — every rung resolves one, and `TransportConfig` retired (TD4, 2026-10-02), so its panel draws the catalogue's TranSIESTA items; a PySCF-NEGF config is authored WITH that backend, not before — a config nothing renders from is the residue this rule exists to prevent. *(This said `TransportConfig` keeps its name and loses its two `pyscf_*` fields; TD4 superseded it.)* |
 | **the override gate follows** | its vocabulary is the SELECTED engine's field names, so a PySCF name is **refused** for a TranSIESTA run rather than accepted and ignored |
 | **a known engine with no backend is a DISABLED tab** | *(the user's choice, against hiding it and against live fields)* — drawn from the known engines, disabled, its title saying what would make it live: *no PySCF-NEGF backend is built yet; transport ships on TranSIESTA*. A disabled button cannot be chosen, so nothing can be described on it and no field of its can travel; what it buys is that the separation is visible on the page, and the tab goes live the day a backend registers |
 | **what does not change** | the citation, the region labels, the five derived stages, the bias and the shared panel are the **composite's**, not an engine's (§§ 3.1, 4, 5). Only the per-rung form is per-engine, because that is the only part of the surface whose vocabulary an engine owns |
@@ -2382,8 +2396,15 @@ device. The convention (the *vocabulary* is owned by
   composite design ([`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md)
   § 4.1a — the categorical sort places buffer atoms outermost).
 - **`<name>-electrode`** — any label ending `-electrode`/`_electrode`/bare
-  `electrode` (case-insensitive) is a lead — so `tip-electrode`, `gate-electrode`
-  work without code changes (`config.transport.is_electrode_label`).
+  `electrode` (case-insensitive) is read as a lead
+  (`transport.sort.is_electrode_label`). **A transport run is 2-terminal**:
+  the ladder builds two leads (`electrode_L`, `electrode_R`), and the sort
+  places only `L-electrode`, `R-electrode`, `bridge` and `buffer` — an atom
+  that carries none of the four is refused. A `tip-electrode` or
+  `gate-electrode` is therefore not a junction molbuilder builds — **but it is
+  not refused yet when its atoms also carry a partition label**: the device
+  deck then declares a third lead whose `.TSHS` no rung writes (plan D4).
+  *(This said they "work without code changes" until 2026-10-02.)*
   **Except a label ending `#`**, which molbuilder wrote itself and this engine
   never reads as a lead: a generated structure is signed with the text that
   built it (`gold-electrode#` from a PubChem search), and without the marker
@@ -2574,7 +2595,7 @@ be.
 |---|---|---|
 | Composition | `transport/compose.py` | citation → parsed `.XV` → categorical sort → electrode extraction, which IS the lead gate (frozen, unmoved, evenly spaced — `wizard.extract_electrode_model`, consolidated there 2026-09-20); the travelling record (`junction.xyz` + `junction.cited.fdf` + sidecars). Holds I11 — it reads real orbital ranges from the citation's `.ion` files and refuses a lead thinner than its own principal layer |
 | Electrode extraction | `transport/wizard.py` (`ElectrodeModel`, `extract_electrode_model`) | **derives** a bulk lead from the labeled device — it ASKS `transiesta._find_electrode_regions` for the partition and `cell.detect_layers` / `cell.bulk_z_period` for the z-period (§ 7.1) rather than re-deriving either. `as_structure()` hands `prep` a `Structure`, so the lead renders through the same seam as every other rung |
-| Stages | `transport/stages.py` | the five-rung ladder, its DAG (`stage_inputs` — which stage consumes which concluded stage before it, § 1), the one config from the citation's deck (`config_for`), the per-stage renders |
+| Stages | `transport/stages.py` | the five-rung ladder, its DAG (`stage_inputs` — which stage consumes which concluded stage before it, § 1), the per-rung bags (`stages_for_transport`), the bias points and the containers each rung runs in; it renders no deck (`transport/deck.py` tables the shapes) |
 | Deck | `transport/deck.py` | the NEGF arm of `spec_for` — **the one writer of all five rung texts**, reached as `siesta.input.spec_for(struct, cfg, calculation="transport")` → `DeckSpec` → `prepare_deck`. It reuses `transiesta._emit_geometry` and `emit_electrode_declarations` as its emission library (`_emit_basis_and_xc` was deleted 2026-09-18; `_emit_transiesta_block` became `emit_electrode_declarations` on 2026-09-29, its values moving to the catalogue) |
 | Kind gate | `validation/__init__.py` (`_validate_transport_kind`) | the invariants that must fire on **every** transport prep, keyed on `task.calculation`: I12 (no vacuum where the crystal continues, measured from the lead — § 6.1c) and the pole energy's 20-pole floor (§ 6.1c). § 5 names which holder holds which; the k-point sampling (I7–I9) is the mesh's, [`siesta.md`](?doc=engines/siesta.md) § 6.1 |
 | k-point mesh | `kmesh.py` | every rung's sampling — the shared transverse pair, the open axis's one point, a lead's `electrode_kz`, the transmission's `tbt_k_grid`, the offset on every rung — decided once and read by the writer, the settings gate and the record ([`siesta.md`](?doc=engines/siesta.md) § 6.1) |
@@ -2898,8 +2919,8 @@ open defect ... a control that does nothing", citing `render_stage_deck`, which
 was deleted 2026-09-17. § 2a.14 measured the lead deck rendering `0 0 40` and
 § 5 I9 named `_validate_transport_kind` as its holder — `electrode_kz`'s own
 limit and range since 2026-09-30. The row reaches the deck.
-What does still exist is the unread module constant `wizard.DEFAULT_ELECTRODE_KZ`
-— § 3.7's last row, and X1 ②.)*
+The unread module constant `wizard.DEFAULT_ELECTRODE_KZ` — § 3.7's last row,
+and X1 ② — was deleted 2026-10-02.)*
 
 ---
 
@@ -3264,7 +3285,7 @@ A defensible starting point (**all values to be convergence-tested**, per § 5's
 | XC | GGA-PBE | identical across all 3 runs (I1) |
 | Pseudos | PseudoDojo PBE (Au/C/S/H), validated | `molbuilder pseudo check` gate ([van Setten 2018]) |
 | Basis | **DZP everywhere** | DZP = double-ζ + polarization (SIESTA PAO tier); drop to the smaller SZP for bulk-Au only after a `T(E)` check |
-| `MeshCutoff` | 400 Ry (converge 300→500) | Au is **semicore** (5s5p5d valence — a shallow d shell) → needs a fine grid. The config default is **300** (`config/transport.py::siesta_mesh_cutoff_ry`); the § 3 example overrides to 400 |
+| `MeshCutoff` | 400 Ry (converge 300→500) | Au is **semicore** (5s5p5d valence — a shallow d shell) → needs a fine grid. The config default is **300** (`SiestaConfig.mesh_cutoff`), and a transport rung takes the cited relaxation's own value (`transport/citation_defaults.py`); the § 3 example overrides to 400 |
 | `PAO.EnergyShift` | 0.01 Ry | sets orbital range → electrode thickness |
 | Transverse k | converge 2×2 → 4×4 → 6×6 | identical in device and electrode (I7) |
 | Device `kz` | **1** | open boundary (I8) |
@@ -3452,8 +3473,8 @@ single-point, or a relaxation if those layers are not frozen.
   from the shipped `<label>.transport.json`); and a **PySCF-NEGF** backend —
   which arrives as **a `spec_for` arm and a set of catalogue rows**, its OWN
   config dataclass and the panel that renders it (§ 3.8.8), all in one commit.
-  Until then its sub-tab is drawn and disabled, and `TransportConfig` carries
-  none of its fields.  *(This said the backend "arrives as a registered
+  Until then its sub-tab is drawn and disabled, and no config carries its
+  fields.  *(This said the backend "arrives as a registered
   engine".  There is no engine registry: `transport/engine_base.py` was deleted
   2026-09-17 and spectra's went at its migration's P3 —
   [`overview.md`](?doc=engines/overview.md) § 5 is the live statement of how an

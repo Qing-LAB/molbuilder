@@ -19,13 +19,12 @@ This module owns TWO facts and the renders that follow from them:
 through the framework's own pipeline — ``siesta.input.spec_for`` with
 ``calculation="transport"`` -> :mod:`molbuilder.transport.deck`, whose
 ``SHAPE_OF_RUNG`` tables the four deck shapes — which is what lets the
-template's items reach them.  :func:`config_for` below is what is LEFT of
-the pre-seam path: it has no production caller
-(`engines/transport.md` § 6.1a), and the electronic contract is resolved
-by ``prep._resolve_transport`` from the calculation's own template.
-:func:`render_stage_deck` stood beside it until 2026-09-17 and is deleted;
-the tombstone at the end of this file says why a second renderer could not
-be left standing.
+template's items reach them; the electronic contract is resolved by
+``prep._resolve_transport`` from the calculation's own template.
+``config_for``, the pre-seam path's projection onto ``TransportConfig``,
+had no production caller and went with that class (M5 step 3, 2026-10-02);
+:func:`render_stage_deck` went on 2026-09-17 -- the tombstone at the end of
+this file says why a second renderer could not be left standing.
 
 That template is also why ruling Q5 no longer holds as written: § 2a.7
 reversed it.  The cited relaxation DEFAULTS the electronic description
@@ -45,9 +44,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from ..config.transport import TransportConfig
 from ..template import KIND_ROLES
-from .compose import ComposedJunction
 
 #: The composite's fixed ladder (§ 4.2) -- the five stages in
 #: dependency order.  ``jobset init`` writes exactly these into
@@ -82,54 +79,6 @@ STAGE_FACT = {
     "device":       "scf",
     "transmission": "product",
 }
-
-
-class StageError(Exception):
-    """A stage whose deck cannot be rendered — the message names the
-    stage and what blocks it, ready to surface verbatim."""
-
-
-#: The TransportConfig fields a stage override may NOT set — the
-#: electronic contract is the citation's to say (ruling Q5: electrode
-#: and device must stay unable to disagree), the bias axis is
-#: ``task.bias``'s, the identity the task's.  ONE spelling: `config_for`
-#: refuses on it at prep, and the web hand-over refuses on it at send —
-#: same set, same reason, both name the field.
-#: A FIELD WHOSE KEYWORD IS UNRESOLVED — rendered nowhere, so it cannot be
-#: a control that does nothing.
-#:
-#: `transmission_relative_to_ef` wrote `TS.TBT.Erange.RelToEF`, which the
-#: 5.4.2 tbtrans does not know.  Its replacement is not a rename — whether a
-#: `%block TBT.Contour` line's energies are absolute or relative to the
-#: device E_F could not be settled from the binary — and inventing a mapping
-#: is what put four dead keywords in the deck (`plan.md` § 5o).  It stays a
-#: field so the question has an address, and stays out of the form so nobody
-#: is offered a switch that moves nothing.  It is NOT sealed: an override
-#: naming it is still refused by nothing here, because there is nothing to
-#: refuse — it reaches no deck.
-UNRESOLVED_FIELDS = frozenset({"transmission_relative_to_ef"})
-
-#: The description's OWN facts — refused as overrides for EVERY
-#: citation form: the engine is fixed, the label names the job, the
-#: bias is the description's `--bias`.
-SEALED_ALWAYS = frozenset({"engine", "job_name", "bias_voltages_v"})
-
-#: The electronic contract.  Sealed when the citation carries a deck
-#: (form A — fdf-is-truth, ruling Q5); OPEN when it is a labeled
-#: structure pair (form B — there is no deck to be truth, so these are
-#: the description's own fields).  transport-design.md § 4.1b.
-#:
-#: THE RECORD'S OWN KEYS -- `parse/contract.py`'s one table (the record's
-#: names against ``SiestaConfig``'s), plus the k-point mesh it carries apart
-#: -- so the recorded vocabulary and this set cannot drift.  They did: this
-#: was a hand-written seven, and when the record began carrying the
-#: electronic state (ES7, 2026-09-28) only the table learned it.
-from ..parse.contract import K_MESH_RECORD_KEYS as _K_MESH_KEYS
-from ..parse.contract import RECORD_TO_SIESTA_FIELD as _RECORD_FIELDS
-CONTRACT_FIELDS = frozenset(_RECORD_FIELDS) | frozenset(_K_MESH_KEYS)
-
-#: Both sets together — what a form-A citation refuses.
-SEALED_TRANSPORT_FIELDS = SEALED_ALWAYS | CONTRACT_FIELDS
 
 
 def resolvable_override_names() -> frozenset:
@@ -255,8 +204,7 @@ def stage_inputs(stage: str, task_label: str, *,
     electrode and device rows are never optional — they are the physics
     (the self-energies, and the converged H the transmission reads).
     """
-    from ..config.transport import (REGION_LEFT_ELECTRODE,
-                                    REGION_RIGHT_ELECTRODE)
+    from .sort import REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE
     from .transiesta import electrode_hs_stem
     elec = [
         ("electrode_L",
@@ -350,154 +298,6 @@ def stages_for_transport(bags=None):
             f"ladder's rungs are {', '.join(TRANSPORT_STAGES)}.")
     return [Stage(name=n, enabled=True, overrides=dict(bags.get(n) or {}))
             for n in TRANSPORT_STAGES]
-
-
-def config_for(task, composed: ComposedJunction, *,
-               stage: str = None) -> TransportConfig:
-    """The config ONE stage renders from.
-
-    **Per rung, not per calculation.**  Until 2026-09-15 this merged all
-    five override bags into a single config, so a name carried by two
-    rungs took whichever bag came last in ladder order -- and it took it
-    for EVERY rung.  Nothing observable broke while the ``device`` bag
-    was the only one ever filled, which is exactly why it wanted pinning
-    before that stopped being true.  *stage* names the rung whose bag
-    applies; ``None`` applies none of them.
-
-    EVERY bag is still validated whatever *stage* asks for, so an
-    unknown or sealed name in any rung refuses at the first prep rather
-    than at the rung that happens to carry it.
-
-    Identity from the task (label, bias); the electronic contract from
-    the cited attempt's own deck (`compose.fdf_params` — fdf-is-truth);
-    the transverse k from the relaxation's k-grid, its transport axis laid
-    on by the k-point mesh's rule where the value is born
-    (``kmesh.with_fixed``, `engines/siesta.md` § 6.1 -- the NEGF open
-    boundary is never BZ-sampled).  Transport-only knobs
-    (transmission window / grid, contour) keep their defaults until the
-    Transport tab describes them (P7).
-    """
-    from ..kmesh import with_fixed
-    fdf = composed.fdf_params
-    kw = {}
-    recorded = getattr(composed, "recorded_contract", None)
-    if recorded is not None and composed.deck_text is None:
-        # The RECORDED contract (4.1b's third shade, structure-info-plan
-        # I6): the pair's sidecar carries the finished run's own values
-        # (info.calculation, written by the Results tab from the deck),
-        # and they fill the config exactly as a cited deck would --
-        # fdf-is-truth transferred to the recorded copy.  Only KNOWN
-        # contract fields apply; kz is forced 1 like every fill here.
-        import dataclasses as _dcf
-        _holds = {f.name for f in _dcf.fields(TransportConfig)}
-        for name, value in dict(recorded.get("contract") or {}).items():
-            # A recorded name this older config does not hold -- the
-            # electronic state -- reaches the decks through the template and
-            # `resolve`, the live path.
-            if name not in CONTRACT_FIELDS or name not in _holds:
-                continue
-            if name == "k_mesh_transverse":
-                try:
-                    counts = tuple(int(v) for v in value[:3])
-                except (TypeError, ValueError):
-                    continue
-                if len(counts) != 3:
-                    continue
-                kw[name] = with_fixed("kgrid", counts, "transport")
-            elif name == "siesta_mesh_cutoff_ry":
-                kw[name] = int(round(float(value)))
-            else:
-                kw[name] = value
-    if getattr(fdf, "kgrid", None):
-        kw["k_mesh_transverse"] = with_fixed(
-            "kgrid", tuple(int(v) for v in fdf.kgrid), "transport")
-    if getattr(fdf, "mesh_cutoff_ry", None):
-        kw["siesta_mesh_cutoff_ry"] = int(round(fdf.mesh_cutoff_ry))
-    if getattr(fdf, "energy_shift_ry", None):
-        kw["energy_shift_ry"] = float(fdf.energy_shift_ry)
-    if getattr(fdf, "basis_size", None):
-        kw["basis_size"] = str(fdf.basis_size)
-    # The verbatim spelling, not the normalised comparison key `.xc` --
-    # the decks this config renders should say what the citation said.
-    if getattr(fdf, "xc_functional", None):
-        kw["xc_functional"] = str(fdf.xc_functional)
-    if getattr(fdf, "xc_authors", None):
-        kw["xc_authors"] = str(fdf.xc_authors)
-    if getattr(fdf, "electronic_temperature_k", None):
-        kw["electronic_temperature_k"] = float(fdf.electronic_temperature_k)
-    # THE TRANSPORT-ONLY KNOBS (transmission window/grid, contour,
-    # electrode kz-adjacent fields) travel as STAGE OVERRIDES in
-    # task.json -- the composite has no template, so the stages' own
-    # override bags are the description's one place for them (P7b,
-    # 2026-08-29; the Transport tab writes them there).  All five bags
-    # merge in ladder order into the ONE config every deck renders
-    # from; an unknown name refuses here, before anything renders.
-    import dataclasses as _dc
-
-    from ..config.siesta import SiestaConfig
-
-    # THE VOCABULARY IS THE ENGINE'S, and `TransportConfig`'s names are
-    # accepted beside it only while that class survives.
-    #
-    # An override names a CATALOGUE row now -- `electrode_kz`,
-    # `transmission_emin_ev`, `negf_eq_pole_ev` -- because that is what the
-    # template declares and what `resolve` resolves.  Checking against
-    # `TransportConfig` alone refused a person's own lead k-density by
-    # telling them it "is not a transport parameter", which it plainly is
-    # (measured 2026-09-16, routing `electrode_kz` to the two lead rungs).
-    #
-    # What this function still uniquely guards is IDENTITY -- `job_name`,
-    # `engine`, the bias axis -- which `resolve` would let a stage override
-    # because they are ordinary schema fields to it.  That is why it is
-    # still called, and it is what has to survive when TransportConfig goes
-    # (TR6).
-    known = ({f.name for f in _dc.fields(TransportConfig)}
-             | {f.name for f in _dc.fields(SiestaConfig)})
-    # What remains after SEALED_TRANSPORT_FIELDS IS the transport-only
-    # vocabulary (window, grid, contour, runtime).
-    for bag in (task.stages or ()):
-        for name, value in (bag.overrides or {}).items():
-            if name not in known:
-                raise StageError(
-                    f"stage {bag.name!r} overrides {name!r}, which is "
-                    f"not a transport parameter (TransportConfig field "
-                    f"names are the vocabulary; transport-design.md "
-                    f"4.2).")
-            if name in SEALED_ALWAYS:
-                raise StageError(
-                    f"stage {bag.name!r} overrides {name!r}, which is "
-                    f"the description's own field (identity, bias) -- "
-                    f"set it where the description sets it, never as a "
-                    f"stage override.")
-            if name in CONTRACT_FIELDS:
-                # SHARED, therefore not a per-stage override.  The reason
-                # changed on 2026-09-16 and the refusal did not: § 2a.7
-                # ruled the cited run DEFAULTS these values rather than
-                # sealing them, so "the citation's to say" is no longer
-                # true -- but "every rung shares one value" still is, and
-                # a per-stage override is exactly what would break it.
-                raise StageError(
-                    f"stage {bag.name!r} overrides {name!r}, which is "
-                    f"SHARED by every stage of this calculation -- the "
-                    f"electrode and the device must not be able to "
-                    f"disagree about it.  Change it in the template, "
-                    f"where it applies to all five rungs at once; it was "
-                    f"filled in from the run you cited and it is yours "
-                    f"to change (engines/transport.md 2a.7).")
-            # VALIDATED for every rung; APPLIED only for the one asked
-            # about, so one rung's tuning cannot reach another's deck.
-            # A name this older config does not hold is legitimate and
-            # simply not its business: it reaches the deck through the
-            # template and `resolve`, which is the live path.
-            if name not in {f.name for f in _dc.fields(TransportConfig)}:
-                continue
-            if bag.name == stage:
-                kw[name] = value
-    return TransportConfig(
-        engine="transiesta",
-        job_name=task.label,
-        bias_voltages_v=list(task.bias) or [0.0],
-        **kw)
 
 
 # `render_stage_deck` DELETED 2026-09-17 -- a SECOND writer of the transport

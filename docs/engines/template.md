@@ -233,9 +233,16 @@ its validators — enough to hold a value on the way to the engine. In practice 
 still carries copies of the template's facts — `label`, `range`, `unit`,
 `choices`, `engine_key` and `workflow_group`, which is
 `tests/test_catalogue_agreement.py`'s `MIRRORED` set and the one place that
-list is defined — because two consumers still read them off the class rather
-than off the catalogue: the legacy form builder that Spectra and Transport use,
-and the code that decides which card a validator finding lands on.
+list is defined — because consumers still read them off the class rather
+than off the catalogue: the settings gate's metadata pass
+(`validation/metadata.py` — `range`, `choices`, and `label`, `unit` and
+`engine_key` for its messages), the description check of a stage's overrides
+(`range`, `choices` — `validation/task.py`), the form payload's coercion
+(`choices` — `_shared.coerce_to_field_type`) and the code that decides which
+card a validator finding lands on (`workflow_group`). The legacy form builder
+that Spectra and Transport used was one more reader until it was deleted
+with `TransportConfig` (2026-10-02); `web/form-schema.md` § 1a lists every
+key's readers.
 
 **`help` is no longer among them** *(2026-09-16)*. It is the fact a user
 actually reads, and it had the worst drift of the six: 149 of 158 fields
@@ -243,9 +250,10 @@ carried different text in the two homes, so which version somebody saw
 depended only on which door they came through — the Build tab read the
 catalogue, the Spectra and Transport tabs read the dataclass, and `--help`
 read the dataclass too. Every surface now asks `template.help_for`, and the
-150 duplicated strings are deleted. Eight fields keep their own copy because
-they have no catalogue row (`TransportConfig`'s own spellings, `num_threads`,
-`log_level`); `help_for` returns `""` for those and the caller falls back.
+150 duplicated strings are deleted. The eight copies kept for fields with no
+catalogue row were all `TransportConfig`'s, and went with it on 2026-10-02:
+every field of the two engine classes has its help in the catalogue, and
+`help_for` is the only reader.
 
 **The rest of that duplication is the debt, and it is measured rather than
 guarded.** **491 facts live in two places** (measured 2026-08-20 at 307, 618
@@ -277,25 +285,25 @@ sentence — the one a reader of the contract acts on — went on promising the
 guard. Restored 2026-09-17, scoped to what was actually claimed, and
 mutation-tested: widening `mesh_cutoff`'s range on the class alone turns it red.
 
-**And there is a SECOND duplication this section has never named: 20 field
-names are declared in both `SiestaConfig` and `TransportConfig`** — `basis_size`,
+**A SECOND duplication, class against class, is gone with `TransportConfig`
+(2026-10-02): 20 field names were declared in both `SiestaConfig` and
+`TransportConfig`** — `basis_size`,
 `xc_functional`, `xc_authors`, `max_memory_mb`, `negf_eq_pole_ev`,
 `negf_neq_eta_ev`, `electrodes_bulk` (`elecs_bulk` until 2026-09-29), the six `tbt_*` flags, `tbt_k_grid`,
 `tbt_spin`, `tbt_elecs_eta_ev`, `tbt_contours_eta_ev`, `tbt_t_eig`, and the
-three `transmission_*` items (measured 2026-09-17). This is class-against-class,
-not catalogue-against-class, so `MIRRORED` does not reach it and neither does
-the test above — and `default`, the key that matters most here, is not a
+three `transmission_*` items (measured 2026-09-17). It was class-against-class,
+not catalogue-against-class, so `MIRRORED` did not reach it and neither did
+the test above — and `default`, the key that mattered most there, is not a
 mirrored fact in the first place.
 
-It has already cost a run. `negf_eq_pole_ev` was corrected to `0.0` on the
+It cost a run. `negf_eq_pole_ev` was corrected to `0.0` on the
 SIESTA class on 2026-09-16 and left at `1.5` on the transport class, which is
 18 poles against TranSIESTA's minimum of 20 at the 300 K the same config ships
 — so every deck rendered through `transiesta.render_script` stopped before the
-SCF loop. Fixed 2026-09-17; `max_memory_mb` (`None` against `8000`) is the one
-remaining divergence and is inert, because the live seam resolves the SIESTA
-class and only the legacy renderer reads the transport one. **Whether that
-second renderer should exist at all is the open question** — a home that
-nothing reads is a home that drifts until something does.
+SCF loop. Fixed 2026-09-17. **Whether that second renderer should exist at all
+was the open question** — a home that nothing reads is a home that drifts until
+something does — and the answer was no: the renderer was deleted, and the class
+that fed it retired by TD4.
 
 The cost is measured, not hypothetical: on 2026-09-14 a fix to the dataclass
 half of `engine`'s `item_kind` passed three tests while the catalogue half
@@ -325,8 +333,10 @@ than for writing a test that has to know that exception.
 **The form question is closed.** `web/form-schema.md` § 1 now builds the SIESTA
 and PySCF forms from the catalogue: cards from `group`, legends from `category`,
 controls from `type` with bounds from `range` and `choices`, badges from
-`engine_key`. `section` — the old per-engine fieldset name — is retired for
-those two engines and survives only for Spectra and Transport.
+`engine_key`. `section` — the old per-engine fieldset name — is retired: the
+last tabs built from a dataclass, Spectra's (P3) and Transport's (2026-09-24),
+moved onto the catalogue, and the builder and the key were deleted with
+`TransportConfig` on 2026-10-02.
 
 **And the template is not a deck.** A deck is a **floor 3 (plan)** product,
 written by the engine's deck writer at `prep` step 3, on the target machine.

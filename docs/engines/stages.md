@@ -244,8 +244,9 @@ catalogue's, the two agreeing only by the coincidence of both naming
 `mf.conv_tol`. That is the drift § 1.1 exists to prevent, sitting inside the
 exception § 1.1 granted.
 
-**None of them gets a `--flag`.** They are set per rung, in `task.json`, so
-they declare `skip_cli`. That is not a new
+**None of them gets a `--flag`.** They are set per rung, in `task.json` — and
+no config field has generated a command-line option since the dataclass →
+click bridge was deleted (2026-09-17). That is not a new
 policy: the flat `--geom-max-steps` family was **deliberately retired** when
 these knobs became per-stage, and a catalogue row that regenerated them would
 have undone that.
@@ -460,9 +461,9 @@ limited to.
 > `tests/test_catalogue_agreement.py::test_every_catalogue_item_declares_a_panel`,
 > with a second guard that the renderer knows every card the form asks for.
 >
-> `section` remains live for `SpectraConfig` and `TransportConfig`, whose tabs
-> still call `dataclass_to_form_schema`; `tests/test_issues_workflow_group.py::TestEveryExposedFieldIsTagged`
-> now covers exactly those two ([`web/form-schema.md`](?doc=web/form-schema.md) § 1a).
+> `section` itself is gone *(2026-10-02)*: the last tab that read it moved onto
+> the catalogue on 2026-09-24, and the dataclass form builder and the key were
+> deleted with `TransportConfig` ([`web/form-schema.md`](?doc=web/form-schema.md) § 1a).
 >
 > **And the selection is made in place, one checkbox per parameter** (user,
 > 2026-08-07) — **not** a separate list of stage-able settings anywhere. The form

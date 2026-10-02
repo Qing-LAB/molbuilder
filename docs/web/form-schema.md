@@ -5,8 +5,8 @@
 **Companions:** [`runtime.md`](?doc=web/runtime.md) — the shared building blocks
 (form-schema is one of them, big enough for its own doc);
 [`engines/siesta.md`](?doc=engines/siesta.md) +
-[`engines/pyscf.md`](?doc=engines/pyscf.md) — the `SiestaConfig` / `PySCFConfig`
-dataclasses these forms are generated from; `web-api.md` — the
+[`engines/pyscf.md`](?doc=engines/pyscf.md) — the engines whose catalogue
+items these forms are drawn from; `web-api.md` — the
 `/api/build/schema/*` routes (web wave); [`plans/plan.md`](?doc=plans/plan.md) **W15** —
 the pending ES-module conversion.
 
@@ -169,15 +169,30 @@ stale unnoticed. **The vocabulary grows; the axis does not.**
 meaning, function and reader in a contract**, so that expanding the data set has
 rules rather than precedents.*
 
-**Twenty-two keys are in use across the four engine configs**, and they split
-into two groups that this table conflated until 2026-08-17 — when it listed
-fifteen and said *"this is all of them"*, while seven were in the tree with no
-entry anywhere. The rule above is what made that a defect rather than an
-oversight: a tag with no contract entry is a tag whose meaning is whatever the
-last person to add one assumed.
+**15 keys are carried by the two engine configs** *(measured on every run,
+`tests/test_doc_claims.py`)*, and they split into two groups that this table conflated until
+2026-08-17 — when it listed fifteen and said *"this is all of them"*, while
+seven were in the tree with no entry anywhere. The rule above is what made that
+a defect rather than an oversight: a tag with no contract entry is a tag whose
+meaning is whatever the last person to add one assumed. *(It said twenty-two
+across four configs until 2026-10-02. `SpectraConfig` retired on 2026-08-22
+and `TransportConfig` on 2026-10-02, and the dataclass form builder went with
+the last of them. Four keys went that day because nothing read them any more:
+`section`, `id_suffix` and `step`, which only the builder read; `skip_cli`,
+unread since the click bridge's deletion on 2026-09-17; and `optional`, which
+the template takes from the field's `Optional[...]` type and the form from
+the catalogue — 136 declarations. `help` left the classes the same day: the
+catalogue is its one home, read through `template.help_for`.)*
 
 **Group 1 — the form's own tags**, below. They describe *how a field is
-presented*, and this document owns them.
+presented*, and this document owns them. **The form reads them from the
+catalogue** (§ 1). A config class carries copies — the two-homes debt of
+[`engines/template.md`](?doc=engines/template.md) § 2.1a — and the table names
+what reads the class's copy. `test_every_mirrored_fact_agrees` compares six of
+them with the catalogue (`label`, `unit`, `engine_key`, `range`, `choices`,
+`workflow_group`); the copies of `tier`, `pattern` and `null_label` are read
+only by `template.declaration_for`, which no production code calls, and nothing
+compares them — they go when that debt is paid.
 
 **Group 2 — the catalogue's axes**, which happen to ride on the same
 `field(metadata=…)` because that is where a config class carries anything.
@@ -189,13 +204,12 @@ them:
 |---|---|---|
 | `category` | which question about the calculation this answers | `template.md` § 6.2 |
 | `read_by` | which other layer derives from the value | `template.md` § 6.1 |
-| `resolver` | who computes the value when it is unset | `template.md` § 6.4 |
 | `allocation` | this value belongs to the allocation, so a template may never carry one | `template.md` § 7 |
 | `expands` | the engine keywords a `deck` item produces | `template.md` § 5 |
 | `item_kind` | the item's `kind` when it is not the default `engine` | `template.md` § 6 |
 | `validate` | a per-field checker the validation layer runs | `validation/` |
 
-*(An eighth, `decl_type`, is **read** by `template.declaration_for` — it names
+*(A seventh, `decl_type`, is **read** by `template.declaration_for` — it names
 the validation type where a Python annotation cannot, and is checked against
 `template.TYPES`. No field carries one today; it is listed so that the next
 person to need it finds the entry rather than inventing a second spelling.)*
@@ -206,22 +220,17 @@ person to need it finds the entry rather than inventing a second spelling.)*
 > handled*, never *what it means scientifically*; that belongs in `help` and in
 > [`engines/tuning.md`](?doc=engines/tuning.md).
 
-| Key | What it says | Who reads it |
-|---|---|---|
-| **`label`** | the field's display name | the form builder; falls back to the field name |
-| **`help`** | one sentence of guidance, shown beside the control | the form builder, and the CLI's `--help` |
-| **`section`** | which fieldset it belongs to — **and whether it is exposed at all.** A field with no `section` is internal and no surface renders it. ⚠ **Only for `TransportConfig` only since P3 (2026-08-21)** — see the note below | `dataclass_to_form_schema`; the CLI option generator |
-| **`workflow_group`** | which card — one of [`template.md`](?doc=engines/template.md) § 5's closed vocabulary, **not** restated here — and therefore **where a finding about it appears** | `form-schema.js` (card order), `validation-findings.js` (finding placement), `_shared.py::resolve_workflow_group` (wire enrichment) |
-| **`engine_key`** | the deck keyword it becomes (`MeshCutoff`) — **or a parenthesised note when the field is not a deck line at all**, e.g. `mpi_np`'s *"(molbuilder: .run.sh `mpirun -np N` only; not in .fdf)"* | the emitters; BENCH-MARKS; anything tracing a value to the file it lands in |
-| **`tier`** | CLI exposure level — a `--tier` filter shows only matching fields | `cli.py`'s option generator |
-| **`skip_cli`** | this field has no command-line option | `cli.py` |
-| **`range`** | `(min, max)`, inclusive — a recommendation, warned and never refused ([`engines/template.md`](?doc=engines/template.md) § 5.3) | the form builder → the control's bounds; validators |
-| **`choices`** | the legal values of an enum → a dropdown | the form builder |
-| **`unit`** | the unit shown beside the control (`Ry`, `eV/Å`) | the form builder. **Display only** — it never converts anything |
-| **`step`** | the numeric input's step; `"any"` for free floats | the form builder |
-| **`pattern`** | a regex the value must match | the form builder → the control's `pattern` |
-| **`null_label`** | what the *unset* option is called on an optional field — `"(default)"`, `"(auto)"` | the form builder's tri-select |
-| **`id_suffix`** | overrides the DOM id derived from the field name, where the derived one would collide or read badly | `_shared.py`'s schema emitter |
+| Key | What it says | The form reads the catalogue's | The class's copy is read by |
+|---|---|---|---|
+| **`label`** | the field's display name | the control's legend; falls back to the item name | the settings gate's messages (`validation/metadata.py`) |
+| **`workflow_group`** | which card — one of [`template.md`](?doc=engines/template.md) § 5's closed vocabulary, **not** restated here — and therefore **where a finding about it appears** | `form-schema.js` (card order) | `_shared.py::resolve_workflow_group`, which stamps each finding with its card for `validation-findings.js` to place |
+| **`engine_key`** | the deck keyword it becomes (`MeshCutoff`) — **or a parenthesised note when the field is not a deck line at all**, e.g. `mpi_np`'s *"(molbuilder: .run.sh `mpirun -np N` only; not in .fdf)"* | the keyword badge | the settings gate's messages |
+| **`tier`** | `basic` / `advanced` — a judgement about the parameter; the form dims an advanced field (§ 1.2) | `form-schema.js` | `template.declaration_for` only |
+| **`range`** | `(min, max)`, inclusive — a recommendation, warned and never refused ([`engines/template.md`](?doc=engines/template.md) § 5.3) | the control's bounds | the settings gate; the description check (`validation/task.py`) |
+| **`choices`** | the legal values of an enum → a dropdown | the dropdown | the settings gate; the description check; `_shared.py::coerce_to_field_type` |
+| **`unit`** | the unit shown beside the control (`Ry`, `eV/Å`). **Display only** — it never converts anything | beside the control | the settings gate's messages |
+| **`pattern`** | a regex the value must match | the control's `pattern` | `template.declaration_for` only |
+| **`null_label`** | what the *unset* option is called on an optional field — `"(default)"`, `"(auto)"` | the tri-select's blank | `template.declaration_for` only |
 
 > ### ⚠ `section` no longer decides visibility on the two engine forms
 >
@@ -240,16 +249,15 @@ person to need it finds the entry rather than inventing a second spelling.)*
 > 2026-09-29 — by declaration, not by omission: the rung fixes both on every
 > SIESTA kind, [`template.md`](?doc=engines/template.md) § 6.4.)*
 >
-> `section` is still live for **`TransportConfig` only**, whose tab still
-> calls `dataclass_to_form_schema` (the spectra schema route retired at P3
-> — the Spectrum tab reads the catalogue's vibration form). Until those move, the tag means
-> two different things depending on which class carries it, and the rules below
-> say which.
+> **`section` itself is gone** *(2026-10-02)*. The transport tab moved onto
+> the catalogue on 2026-09-24, which left the dataclass form builder no
+> caller; it was deleted with `TransportConfig`, and the 90 `section`
+> declarations still on the two engine classes went with it.
 
 ### The rules a new field must satisfy
 
-1. **Every field must be placeable, and how you say so depends on the class.**
-   * **`SiestaConfig` / `PySCFConfig`** — the parameter belongs in
+1. **Every field must be placeable.**
+   * The parameter belongs in
      `data/catalogue.template.toml`, and its item must declare a `group` from
      the closed vocabulary (`template.GROUPS`). An item with no group renders
      loose below the cards and its findings fall to the residual panel instead
@@ -257,11 +265,6 @@ person to need it finds the entry rather than inventing a second spelling.)*
      `tests/test_catalogue_agreement.py::test_every_catalogue_item_declares_a_panel`,
      plus `test_the_renderer_knows_every_card_the_form_actually_asks_for` —
      because a card the renderer does not draw looks exactly like no card.
-   * **`TransportConfig`** — `section` and `workflow_group`
-     still move together, for the reason that rule always had: a field exposed
-     with no group renders bare after the cards, and a group with no `section`
-     is a tag nothing can read. **Guarded:**
-     `tests/test_issues_workflow_group.py::TestEveryExposedFieldIsTagged`.
    * The two engine classes still carry `workflow_group` **as well as** the
      catalogue's `group`, and the two must agree: the form reads the
      catalogue's, while finding-placement reads the class's
@@ -338,7 +341,7 @@ flowchart LR
   controls, then — when the user submits — reads every control back into a
   plain values object that goes to the generate step.
 
-Because both directions start from the one dataclass, the form a user fills in
+Because both directions start from the one catalogue, the form a user fills in
 and the config the server rebuilds can't drift apart.
 
 ## 3. The six calls
@@ -420,19 +423,20 @@ control. The nine kinds:
 | a list of numbers | a comma-separated number box |
 | a list of sub-configs (the relaxation **stages**) | a table with one row per stage |
 
-Anything the server doesn't recognize falls back to a plain text box (with a
-warning), so an un-mapped field never silently disappears.
+Anything the server doesn't recognize falls back to a plain text box, so an
+un-mapped item never disappears.
 
 ## 5. A worked example — why the SIESTA form has the fields it has
 
 1. The Build tab, with SIESTA selected, calls
    `formSchema.fetchSchema("siesta")`.
-2. The server walks `SiestaConfig`, turns each sectioned field into a small
-   description (mesh cutoff → a number input; the k-grid `Tuple[int,int,int]` →
-   three linked inputs), and returns them grouped by section.
+2. The server reads the catalogue's SIESTA items
+   (`catalogue_to_form_schema`), turns each into a small description (mesh
+   cutoff → a number input; the k-grid → three linked inputs), and returns
+   them grouped by card and category.
 3. `renderForm` draws exactly those controls — so the form shows the SIESTA
-   options **because `SiestaConfig` has those fields**, not because someone
-   wrote a SIESTA form.
+   options **because the catalogue declares those items**, not because
+   someone wrote a SIESTA form.
 4. The user edits, and `collectForm` reads the controls back into a values
    object that is sent to generate the `.fdf`.
 5. Later, reopening a saved config calls `setValues` to refill the same form.

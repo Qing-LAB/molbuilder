@@ -91,7 +91,7 @@ def check_electrode_labels_are_frozen(struct: Structure, *,
     The refusal belongs at compose, where transport IS the intent, and it is
     already there.
     """
-    from ..config.transport import is_electrode_label
+    from ..transport.sort import is_electrode_label
     from ..structure import FROZEN_LABEL
 
     regions = getattr(struct, "regions", None) or {}
@@ -149,8 +149,9 @@ def check_unconsumed_region_labels(struct: Structure, *, engine: str,
 
     For transport the consumed set is `sort.PARTITION_LABELS` -- asked of
     the module that owns the partition, never re-listed here -- plus any
-    ``*-electrode`` name, since the suffix convention is what makes
-    ``tip-electrode`` a lead without a code change (§ 4).  Anything else is
+    ``*-electrode`` name, which the device deck's emitter reads as a lead.
+    (A transport run takes two; whether a third is refused is plan D4,
+    `engines/transport.md` § 4.)  Anything else is
     genuinely unread and is still named, which is § 4's own rule: *"a label
     this engine does not consume is WARNED about, never dropped in
     silence."*
@@ -159,7 +160,7 @@ def check_unconsumed_region_labels(struct: Structure, *, engine: str,
     regions = getattr(struct, "regions", None) or {}
     consumed = {FROZEN_LABEL}
     if calculation == "transport":
-        from ..config.transport import is_electrode_label
+        from ..transport.sort import is_electrode_label
         from ..transport.sort import PARTITION_LABELS
         consumed |= set(PARTITION_LABELS)
         inert = sorted(name for name, idxs in regions.items()

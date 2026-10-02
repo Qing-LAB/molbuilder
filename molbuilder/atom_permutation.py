@@ -18,8 +18,8 @@ recorded once and inverted once, through one pair): a reader asks
 and never inverts by hand.
 
 ITS OWN MODULE, because the record travels.  It sat in `transport/sort.py`
-until 2026-09-28, whose imports -- the structure, the transport config -- do
-not exist beside a job; the SIESTA vibration's finish runs there and reads the
+until 2026-09-28, whose imports -- the structure among them -- do not exist
+beside a job; the SIESTA vibration's finish runs there and reads the
 record, and a reader that cannot import the record's class would have to
 invert by hand, which is what this module exists to end.  The sort still
 WRITES the record (`sort.write_permutation`), from the result it produced.

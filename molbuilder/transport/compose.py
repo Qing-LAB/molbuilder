@@ -9,9 +9,10 @@ what the § 4.1a fence forbids crossing the sort); overlay it on the
 cited calculation's labeled source structure; run the categorical sort
 (P2); apply the frozen-unmoved gate; extract the two electrode models
 from the sorted blocks (the wizard's move, § 4.2); and record the
-provenance — citation, attempt, content hashes, and the parameter
-snapshot read from **the attempt's own deck** (the fdf that actually
-ran is the truth about a result; user ruling 2026-08-28).
+provenance — citation, attempt, and the content hashes of the files it
+was composed from, **the attempt's own deck** among them (the fdf that
+actually ran is the truth about a result; user ruling 2026-08-28), and a
+cited pair's recorded contract.
 
 Pure composition: everything here reads the tree and returns objects;
 the caller (prep's transport arm, P4b) owns what lands on disk where.
@@ -28,11 +29,10 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from ..atom_permutation import PERMUTATION_FILE, read_permutation
-from ..config.transport import (REGION_LEFT_ELECTRODE,
-                                REGION_RIGHT_ELECTRODE)
 from ..structure import Structure
 from ..parse.fdf import parse_fdf_params
-from .sort import SortResult, categorical_sort
+from .sort import (REGION_LEFT_ELECTRODE, REGION_RIGHT_ELECTRODE,
+                   SortResult, sort_by, write_permutation)
 from ..units import UnknownUnit
 from .wizard import ElectrodeModel, extract_electrode_model
 
@@ -210,9 +210,6 @@ class ComposedJunction:
     relaxed: Optional[Structure]
     electrode_left: ElectrodeModel
     electrode_right: ElectrodeModel
-    #: the parameter snapshot read from the cited deck — ``None`` for a
-    #: form-B citation (§ 4.1b: a labeled structure carries no contract)
-    fdf_params: Optional[object]
     #: the cited deck TEXT, verbatim — the fdf that actually ran is the
     #: truth about a result, so the copy that travels is the file itself,
     #: re-parseable anywhere (user ruling 2026-08-28).  ``None`` for a
@@ -225,11 +222,6 @@ class ComposedJunction:
     #: which § 4.1b form the citation satisfied — "relaxation" (A) or
     #: "structure" (B)
     form: str = "relaxation"
-    #: a form-B pair's RECORDED contract (`info.calculation` in its
-    #: sidecar — the Results tab wrote it from the finished run's own
-    #: deck; structure-info-plan.md I5/I6).  When present the contract
-    #: fields seal exactly as form A's do; ``None`` = the open lane.
-    recorded_contract: Optional[Dict[str, object]] = None
 
 
 def _sha256(path: Path) -> str:
@@ -960,7 +952,6 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
         deck = xv_path = None
         src_pos = None
         deck_text = None
-        params = None
         concluded = None
         # Form B's labels are the pair's own sidecar, which is already
         # in `cited` -- listed in the provenance below like every other
@@ -973,10 +964,7 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
         deck, xv_path, concluded = cited.deck, cited.xv, cited.concluded
         deck_text = deck.read_text()
         recorded = None
-        # PARSED ONCE.  The gates below and the returned snapshot are
-        # the same reading of the same bytes; a second parse in the
-        # return was a second answer free to drift from the one the
-        # gates ran on.
+        # The cited deck's own reading, for the gates below.
         try:
             params = parse_fdf_params(deck_text, source=deck.name)
         except UnknownUnit as exc:
@@ -1046,7 +1034,7 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
     # junction states (`model/structure.md` § 2.2a).
     relaxed = struct.replace(positions=xv_pos.copy(), cell=cell)
 
-    sorted_res = categorical_sort(relaxed)
+    sorted_res = sort_by(relaxed, "transport")
     dev = sorted_res.structure
 
     # The electrode models, extracted from the SORTED blocks -- and the
@@ -1093,11 +1081,9 @@ def compose_junction(citation: str, *, tree_root) -> ComposedJunction:
         relaxed=relaxed,
         electrode_left=elec_l,
         electrode_right=elec_r,
-        fdf_params=params,
         deck_text=deck_text,
         provenance=provenance,
         form=cited.form,
-        recorded_contract=recorded,
     )
 
 
@@ -1123,7 +1109,7 @@ def write_compose_record(base_dir, composed: ComposedJunction) -> List[str]:
     if composed.deck_text is not None:
         (base_dir / JUNCTION_DECK).write_text(composed.deck_text)
     write_json(base_dir / PROVENANCE_FILE, composed.provenance)
-    write_json(base_dir / PERMUTATION_FILE, composed.sorted.sidecar())
+    write_permutation(base_dir, composed.sorted)
 
     expected = record_files(composed.form)
     missing = [n for n in expected if not (base_dir / n).is_file()]
@@ -1135,22 +1121,6 @@ def write_compose_record(base_dir, composed: ComposedJunction) -> List[str]:
             f"rely on it.  (The geometry travels as a PAIR; its label "
             f"file is what carries the electrode regions.)")
     return list(expected)
-
-
-def _params_or_none(deck_text):
-    """The recorded deck's parameters, or None when it states a unit this
-    build cannot convert.
-
-    A travelled record is REBUILT rather than re-gated, so an unreadable
-    unit here must not take the whole folder down -- the fields simply go
-    unanswered, which is what `None` already means to every consumer.
-    """
-    if not deck_text:
-        return None
-    try:
-        return parse_fdf_params(deck_text)
-    except UnknownUnit:
-        return None
 
 
 def load_compose_record(base_dir, *, citation: str, tree_root=None,
@@ -1222,7 +1192,8 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
     sorted_res = SortResult(
         structure=dev,
         original_to_sorted=perm.original_to_sorted,
-        sorted_to_original=perm.sorted_to_original)
+        sorted_to_original=perm.sorted_to_original,
+        key=perm.key)
     ion_dir = None
     if tree_root is not None:
         try:
@@ -1245,9 +1216,7 @@ def load_compose_record(base_dir, *, citation: str, tree_root=None,
         relaxed=None,
         electrode_left=elec_l,
         electrode_right=elec_r,
-        fdf_params=(_params_or_none(deck_text)),
         deck_text=deck_text,
         provenance=provenance,
         form=form,
-        recorded_contract=provenance.get("recorded_contract"),
     )

@@ -4,30 +4,27 @@ The ``/transport-calculation`` tab's server half.  The tab is the
 composite's WHOLE describe surface (user ruling 2026-08-29: no
 hand-over — nothing is awaiting, so the tab selects and decides):
 
-    GET  /api/transport/schema            form-rendering schema for
-                                          the TransportConfig dataclass
+    GET  /api/transport/schema            the tab's two surfaces, the
+                                          shared panel and a rung's form,
+                                          from the catalogue narrowed to
+                                          the kind
     GET  /api/transport/describe_attempt  the slot picker's describe
                                           seam: one line from a cited
                                           attempt's own .fdf, plus the
                                           server-spelled citation and
                                           the calculation's source file
+    POST /api/transport/swap_electrodes   swap L-electrode / R-electrode
+                                          on a cited junction, once the
+                                          person agrees to the offer
     POST /api/transport/describe          the FINISHED task.json text —
                                           the web spelling of `jobset
                                           init --calculation transport`;
                                           the browser writes it where
                                           the user chose
-    POST /api/transport/render            validate + render a device
-                                          .fdf from a posted structure
-                                          (the engine registry's
-                                          validation surface; the
-                                          composite renders through
-                                          prep, never through this)
 
-Mirrors the contract of Build's ``/api/build/schema/<engine>`` and
-Spectra's ``/api/spectra/render``: the dataclass field metadata
-is the single source of truth; the JS renders the form directly
-from the returned schema; the render endpoint is thin and
-dispatches all engine-specific logic through the registry.
+Mirrors Build's ``/api/build/schema/<engine>``: the form is drawn from the
+catalogue (`catalogue_to_form_schema`), and every deck renders through
+`prep`, never through a route here.
 """
 
 from __future__ import annotations

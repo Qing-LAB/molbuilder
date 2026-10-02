@@ -1,8 +1,9 @@
 /* Schema-driven form rendering for the Build tab.
  *
  * Consumes the JSON schema produced by the server-side
- * ``molbuilder.web.blueprints._shared.dataclass_to_form_schema``
- * (see GET /api/build/schema/<engine>) and renders an HTML form
+ * ``molbuilder.web.blueprints._shared.catalogue_to_form_schema``
+ * (GET /api/build/schema/<engine>, GET /api/transport/schema) and
+ * renders an HTML form
  * inside a container element, then later collects the user's
  * values back into a flat object whose keys match the dataclass
  * field names.
@@ -34,7 +35,8 @@
  *     GET /api/build/schema/<engine> that throws on error and
  *     returns the schema body.
  *
- * Kinds handled (mirrors _shared.py::_field_to_schema):
+ * Kinds handled (the server's are `_shared.py::_control_for`'s;
+ * `comma-floats` has had no emitter since 2026-10-02 -- plan D3):
  *
  *   checkbox    : <input type=checkbox>
  *   int         : <input type=number step=1>          (with null option if optional)
@@ -316,7 +318,7 @@
         // Three labelled number inputs sharing one id prefix.  Each
         // cell carries its own sub-label so kgrid (Tuple[int,int,int])
         // reads as "kx 1  ky 1  kz 1" instead of three anonymous boxes.
-        // Sub-ids: f.id + "-" + label, e.g. "p-k-x" / "p-k-y" / "p-k-z";
+        // Sub-ids: f.id + "-" + label, e.g. "p-kgrid-x" / "p-kgrid-y" / "p-kgrid-z";
         // collectForm reassembles into [int, int, int].
         // ``isInt`` splits the step exactly as makeNumber does for the
         // scalars.  A float triple stepping by 1 makes the browser call 0.5
@@ -586,8 +588,8 @@
 
     // Workflow-group metadata (2026-06-13).  Each .workflow-group--<role>
     // card gets a label + a subtitle explaining "what changes when".
-    // The roles come from the field-level ``workflow_group`` metadata
-    // emitted by ``_shared.dataclass_to_form_schema``.  Fields whose
+    // The roles come from each item's catalogue ``group``, emitted as
+    // ``workflow_group`` by ``_shared.catalogue_to_form_schema``.  Fields whose
     // section contains only UNTAGGED fields render bare (no workflow-
     // group wrapper).
     const WORKFLOW_GROUP_META = {

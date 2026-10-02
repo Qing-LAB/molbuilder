@@ -10,7 +10,7 @@ the provenance survives the save.
 THE TRAILING `#` IS LOAD-BEARING, not decoration.  Region labels are ONE
 namespace: the user's own labels, and the transport vocabulary where any label
 ending `-electrode` IS a semi-infinite lead
-(`config.transport.is_electrode_label`).  The name generator takes whatever a
+(`transport.sort.is_electrode_label`).  The name generator takes whatever a
 person types into it, so a PubChem search for `gold-electrode` would have
 labelled the whole molecule a TranSIESTA electrode -- silently, at HTTP 200,
 and the next transport run would have believed it.
@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.config.transport import is_electrode_label
+from molbuilder.transport.sort import is_electrode_label
 
 
 @pytest.fixture()

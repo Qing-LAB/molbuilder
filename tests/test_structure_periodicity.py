@@ -1,6 +1,6 @@
 """Structure periodicity fields — axis_kind / vacuum + resolve_cell
 (structure-periodicity.md, Phase 2a data model).  k-grid is deliberately NOT
-here: it's a reciprocal-space sampling knob on SiestaConfig / TransportConfig.
+here: it's a reciprocal-space sampling knob on SiestaConfig.
 """
 import numpy as np
 import pytest

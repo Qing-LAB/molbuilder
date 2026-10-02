@@ -350,8 +350,8 @@ It is not a deletion plan, and a row written from one must say so — see
 
 *Why this rule exists:* the same session produced a confident "nothing reads
 this, it looks like an offered control" about `TransportConfig.num_threads`,
-inferred from the presence of form metadata. The route that consumes that
-metadata (`web/blueprints/transport.py:543`) filters the field out by
+inferred from the presence of form metadata. The route that consumed that
+metadata then (`web/blueprints/transport.py:543`) filtered the field out by
 predicate, with a comment naming it. The claim was half wrong, and one file
 read would have caught it.
 

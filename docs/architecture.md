@@ -234,7 +234,7 @@ current → target status matrix.
 | `persist` | L1 | shared **versioned-doc** schema check + atomic JSON IO | `schema_major`, `check_schema_major`, `read_json`, `write_json` | [`execution/job-contracts.md`](?doc=execution/job-contracts.md) |
 | `parse/` | L2 | unified **read stack**: FileParsers and the one DirParser → typed `ParseResult`; under the engine parsers, stdlib grammar tables and reading passes that travel with the monitor | `parse.{detect,parse,parse_dir}`; `parse.dirs.job.run_status`; `parse.engines._run_ending.ending_of` | [`model/parse.md`](?doc=model/parse.md) |
 | `sidecars/`, `script_emit` | L2 | write-side JSON sidecars + the reserved-block emitter | `sidecars.{to_dict,save,load,apply_to_structure}`; `script_emit.emit_*` | sidecar → [`model/structure-molstruct.md`](?doc=model/structure-molstruct.md); blocks → [`execution/job-contracts.md`](?doc=execution/job-contracts.md) |
-| `config/` | L1 | the engine-knob **dataclasses** (`SiestaConfig` / `PySCFConfig` / `SpectraConfig` / `TransportConfig`) — the lingua franca | `config.siesta.SiestaConfig`, `config.pyscf.PySCFConfig`, … | [`engines/`](?doc=engines/overview.md); the JS form built from them → [`web/form-schema.md`](?doc=web/form-schema.md) |
+| `config/` | L1 | the engine-knob **dataclasses** (`SiestaConfig` / `PySCFConfig`) — the lingua franca | `config.siesta.SiestaConfig`, `config.pyscf.PySCFConfig` | [`engines/`](?doc=engines/overview.md); the JS form, built from the catalogue → [`web/form-schema.md`](?doc=web/form-schema.md) |
 
 ### Safety, checkpoints, validation
 

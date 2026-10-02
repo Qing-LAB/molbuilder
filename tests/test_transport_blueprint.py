@@ -25,32 +25,6 @@ class TestTransportSchemaEndpoint:
         assert body["ok"] is True
         assert "schema" in body
 
-    def test_every_field_carries_engine_key_metadata(self):
-        """Per the 2026-05-26 decision (web-api.md § 4) + the
-        2026-06-10 post-ship review: every form field MUST declare
-        an ``engine_key`` in its metadata so users see exactly
-        which keyword the field writes into the generated script.
-        SiestaConfig and PySCFConfig already pin
-        this; TransportConfig was the post-review gap.
-
-        Pin so a future field addition that forgets ``engine_key``
-        surfaces at test time instead of as a silent UX hole.
-        """
-        from dataclasses import fields
-        from molbuilder.config.transport import TransportConfig
-        missing = [
-            f.name for f in fields(TransportConfig)
-            if "engine_key" not in f.metadata
-        ]
-        assert not missing, (
-            f"TransportConfig fields missing engine_key metadata: "
-            f"{missing}.  Add engine_key to the field declaration "
-            f"in molbuilder/config/transport.py — see the existing "
-            f"fields for the convention "
-            f"('(molbuilder: ...)' for selector/path fields, "
-            f"the actual engine keyword string otherwise)."
-        )
-
     def test_a_rungs_tab_offers_its_own_items_and_what_any_rung_may_set(self, web):
         """`engines/transport.md` § 3.8.2a: the per-rung form is a tab per
         rung.  `?surface=rung&rung=<name>` answers that tab -- the items
@@ -153,32 +127,6 @@ class TestTransportSchemaEndpoint:
         assert not missing, (
             f"fields missing render metadata: {missing}"
         )
-
-    def test_builder_kinds_for_sequence_fields(self):
-        """The BUILDER's branch pins, kept at the builder (the served
-        schema filters these sealed fields out, but the branches they
-        regression-pin are shared by every config form):
-
-        * ``Sequence[float]`` → ``comma-floats`` with the factory
-          default serialized as a comma-string (2026-06-11: it fell
-          through to ``text`` with a blank input);
-        * ``Tuple[int, int, int]`` → ``int-triple`` with three
-          labelled spinners (same review: it was a free-text field).
-        """
-        from molbuilder.web.blueprints._shared import (
-            dataclass_to_form_schema)
-        from molbuilder.config.transport import TransportConfig
-        schema = dataclass_to_form_schema(TransportConfig, "t")
-        by_name = {f["name"]: f
-                   for s in schema["sections"] for f in s["fields"]}
-        bias = by_name["bias_voltages_v"]
-        assert bias["kind"] == "comma-floats"
-        assert bias["default"] == "0.0"
-        kmesh = by_name["k_mesh_transverse"]
-        assert kmesh["kind"] == "int-triple"
-        assert kmesh["default"] == [1, 1, 1]
-        assert kmesh["labels"] == ["x", "y", "z"]
-
 
 class TestTransportPageRendering:
 

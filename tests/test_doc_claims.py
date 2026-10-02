@@ -422,6 +422,15 @@ def _mirrored_fact_count():
     return n
 
 
+def _metadata_key_count():
+    """The field-metadata vocabulary `form-schema.md` § 1a's two tables
+    enumerate: every key either engine config's fields carry."""
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.config.pyscf import PySCFConfig
+    return len({key for cls in (SiestaConfig, PySCFConfig)
+                for f in dataclasses.fields(cls) for key in f.metadata})
+
+
 def _stage_group(engine):
     return sum(1 for i in _catalogue_items().values()
                if i.get("group") == "stage" and engine in (i.get("engines") or ()))
@@ -447,6 +456,10 @@ MEASURED = {
     "optional items carrying null_label (template.md § 5)":
         ("engines/template.md", r"of \d+ optional items only (\d+) carry one",
          lambda: _optional_items()[1]),
+    "field-metadata keys (form-schema.md § 1a)":
+        ("web/form-schema.md",
+         r"\*\*(\d+) keys are carried by the two engine configs\*\*",
+         _metadata_key_count),
     "optional items (form-schema.md § 1.2)":
         ("web/form-schema.md", r"of \*\*(\d+)\*\* optional items",
          lambda: _optional_items()[0]),

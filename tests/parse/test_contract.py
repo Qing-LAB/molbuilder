@@ -55,19 +55,21 @@ def test_a_deck_stating_nothing_is_none(tmp_path):
 
 
 def test_the_contract_keys_are_the_contracted_vocabulary(tmp_path):
-    """The recorded block's keys ARE TransportConfig's CONTRACT_FIELDS
-    -- one agreed vocabulary (user, 2026-08-29: 'these names should be
-    agreed on contracts so you don't drift or hallucinate').  A key
-    outside the set is drift at the source: every consumer downstream
-    (the sealed fill, the pane, the pair) would carry a name nothing
-    reads."""
-    from molbuilder.transport.stages import CONTRACT_FIELDS
+    """The recorded block's keys are the record's own vocabulary -- the
+    one table that maps them to the catalogue's names, and the k-point
+    keys it carries apart (user, 2026-08-29: 'these names should be agreed
+    on contracts so you don't drift or hallucinate').  A key outside it is
+    drift at the source: every consumer downstream (the citation fill, the
+    relaxation check) would carry a name nothing reads."""
+    from molbuilder.parse.contract import (K_MESH_RECORD_KEYS,
+                                           RECORD_TO_SIESTA_FIELD)
+    vocabulary = set(RECORD_TO_SIESTA_FIELD) | set(K_MESH_RECORD_KEYS)
     (tmp_path / "Relax.fdf").write_text(_DECK)
     out = contract_of(tmp_path)
-    stray = set(out["contract"]) - set(CONTRACT_FIELDS)
+    stray = set(out["contract"]) - vocabulary
     assert not stray, (
-        f"contract_of emits {sorted(stray)} outside CONTRACT_FIELDS "
-        f"{sorted(CONTRACT_FIELDS)} -- the vocabulary is the contract")
+        f"contract_of emits {sorted(stray)} outside the record's "
+        f"vocabulary {sorted(vocabulary)}")
 
 
 # --------------------------------------------------------------------- #

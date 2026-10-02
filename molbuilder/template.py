@@ -729,21 +729,19 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
     grammar: that is a gap in the vocabulary, and the loud version of it is the
     only one that gets fixed.
     """
-    # NO section gate (U16, 2026-08-12).  ``section`` answers *where on
-    # the form* -- a surface hint, legitimately absent for a field no tab
-    # shows -- while membership is § 7's TOTAL rule: every parameter the
-    # schema declares is an item, excluded only by the three rows below.
-    # The gate that stood here was a fourth, unlisted exclusion, and it
+    # Membership is § 7's TOTAL rule (U16, 2026-08-12): every parameter
+    # the schema declares is an item, excluded only by the three rows
+    # below.  The form-placement gate that stood here until then was a
+    # fourth, unlisted exclusion, and it
     # silently kept species_order (identity-sensitive, run-identity
     # § 6a), write_forces, write_coor_step, write_molwatch_log and
     # copy_psml out of every template.
 
     # § 7 lists three things that are NOT items, and the first is "a machine
     # fact -- ranks, GPUs, queue, partition, wall time".  A field that declares
-    # itself one is excluded HERE rather than by having its ``section`` taken
-    # away, because a `section` answers *"may a surface show this"* and this
-    # answers *"is it part of the calculation's description"* -- two questions
-    # that happen to have had one switch.
+    # itself one is excluded HERE, by its own declaration: *"is it part of
+    # the calculation's description"* is not the question of where a surface
+    # shows it.
     # § 6.4 (schema @2): a machine fact's VALUE is still forbidden, but the
     # ITEM is declared -- valueless, flagged as the scheduler's to answer.
     # A surface must know the question exists in order to ask it, and the
@@ -830,11 +828,11 @@ def declaration_for(f: "dataclasses.Field", annotation) -> Optional[Item]:
         stages=_stages,
         kind=kind,
         type=type_,
-        # THE CATALOGUE FIRST -- `help_for` is the one home for what a user
-        # reads, and a dataclass keeps its own copy only for the few fields
-        # that have no row.  This read the copy until 2026-09-16, when there
-        # were two of them and they had drifted apart on 149 of 158 fields.
-        help=(help_for(f.name) or str(f.metadata.get("help", "") or "")),
+        # THE CATALOGUE -- `help_for` is the one home for what a user reads.
+        # This read a dataclass's own copy until 2026-09-16, when the two had
+        # drifted apart on 149 of 158 fields; the last class copies went with
+        # `TransportConfig` (2026-10-02).
+        help=help_for(f.name),
         default=(f.default if f.default is not dataclasses.MISSING else None),
         anchor=(anchor if kind == "engine" else ""),
         # The FULL spelling, whatever the kind -- a wrapper or produce item
@@ -865,16 +863,14 @@ def declarations_for(config_cls) -> List[Item]:
 
     * it is how ``data/catalogue.template.toml`` was extracted from the classes
       on 2026-08-14 — a one-off that will not be repeated;
-    * the live Build form still reads ``label`` / ``help`` / ``range`` /
-      ``unit`` / ``choices`` off the dataclass fields
-      (``web/blueprints/_shared.py``), so that metadata cannot be deleted until
-      the form is rebuilt from the catalogue — **deferred**
-      (`template-unification-plan.md` § 4, § 2.1a(b)).
+    * the tests that compare a class's copies of the catalogue's facts with
+      the catalogue call it -- the two-homes debt of `template.md` § 2.1a,
+      whose production readers of the class copies are the validation pass
+      and finding placement (`web/form-schema.md` § 1a).  Every form has been
+      drawn from the catalogue since 2026-09-24, and the dataclass form
+      builder was deleted on 2026-10-02.
 
-    **Until then 307 facts live in two homes**, which is D3 broken, and
-    ``tests/test_catalogue_agreement.py`` is the only thing keeping them in
-    step. When the form moves, the metadata goes, and this function goes with
-    it.
+    When the debt is paid, the copies go, and this function goes with them.
 
     Declaration order, not alphabetical: the config's field order is the form's
     order and the deck's order, and a template a person reads should not be a
@@ -1839,8 +1835,7 @@ def help_for(name: str, *, first_paragraph: bool = False) -> str:
     belong. Item names are unique across the catalogue, so no engine argument
     is needed to resolve one.
 
-    Returns ``""`` for a name the catalogue does not declare; the caller then
-    falls back to whatever it has (a handful of fields have no row).
+    Returns ``""`` for a name the catalogue does not declare.
     """
     text = _help_index().get(name, "")
     if first_paragraph and text:

@@ -15,7 +15,7 @@ Two things were wrong with the thing it guarded, and neither was the lookup:
    fire whatever the index was. The earlier fix to the *indexing* (a token
    minus one is ``NaN``) was necessary and not sufficient.
 2. **The lift was never needed.** ``continue_retries`` is an ordinary
-   ``SiestaConfig`` field in the *Compute & budget* section, so ``collectForm``
+   ``SiestaConfig`` field, so ``collectForm``
    already returns it. `engines/stages.md § 3` says so outright: *"it is an
    ordinary shared field; what made it look special is only where it lands."*
 
@@ -44,18 +44,10 @@ VIEWER = (REPO / "molbuilder" / "web" / "static" / "structure-optimization"
 
 def test_continue_retries_is_an_ordinary_collected_field():
     """The whole mechanism, in one assertion: the form collector returns one
-    entry per dataclass field, and this is one — in a rendered section, with
-    no flag holding it back."""
+    entry per dataclass field, and this is one -- on the form because the
+    catalogue carries it (`web/form-schema.md` § 1a)."""
     fields = {f.name: f for f in dataclasses.fields(SiestaConfig)}
     assert "continue_retries" in fields
-    md = fields["continue_retries"].metadata or {}
-    assert not md.get("skip_cli") and not md.get("hidden")
-    # It used to assert ``md.get("section")`` here, on the rule *"a field with
-    # no section is not rendered at all"*.  That rule was RETIRED on
-    # 2026-08-15: the SIESTA and PySCF forms are built from the catalogue, so
-    # a field is on the form because the catalogue carries it and `section`
-    # gates nothing (`web/form-schema.md` § 1a).  The assertion had stopped
-    # meaning what it said, which is worse than not being there.
     from molbuilder import template as _T
     cat = _T.read_template(_T.load_catalogue())
     assert _T.one(cat, "continue_retries", engine="siesta") is not None, (

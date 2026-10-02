@@ -14,7 +14,8 @@ Properties under guard, each named for its failure:
 * the electronic contract (basis · XC · energy shift · mesh · k ·
   electronic T) is read from the CITED attempt's own deck and lands in
   every stage's deck — one template governs (§ 5's invariant set, baked
-  identically into all three fdfs; `stages.config_for`, fdf-is-truth);
+  identically into all three fdfs; `transport/citation_defaults.py`,
+  fdf-is-truth);
 * the electrode deck's SystemLabel IS the ``.TSHS`` stem the device
   deck references — one spelling, both writers;
 * the emitter's order-preflight never fires: a source whose atom order
@@ -38,7 +39,7 @@ import numpy as np
 import pytest
 
 from conftest import write_pseudos
-from molbuilder.config.transport import (REGION_BRIDGE, REGION_BUFFER,
+from molbuilder.transport.sort import (REGION_BRIDGE, REGION_BUFFER,
                                          REGION_LEFT_ELECTRODE,
                                          REGION_RIGHT_ELECTRODE)
 from molbuilder.jobset.prep import PrepError
@@ -722,6 +723,10 @@ class TestTheLadderPreps:
         for name in ("junction.xyz", "junction.cited.fdf",
                      "slot-provenance.json", "atom-permutation.json"):
             assert (calc / name).is_file(), name
+        # ...the permutation through its one writer, naming the sort key
+        # (`model/overview.md` § 2.2: one writer, one reader, every kind)
+        from molbuilder.atom_permutation import read_permutation
+        assert read_permutation(calc).key == "transport"
         # pseudos arrived from the citation, grouped
         assert (calc / "pseudos" / "Au.psml").is_file()
         # the run plan carries the rung
@@ -2193,7 +2198,7 @@ class TestTheOverrideLane:
 
 class TestFormBContract:
     """4.1b: a labeled-pair citation has no deck, so the electronic
-    contract is the description's own -- CONTRACT_FIELDS become
+    contract is the description's own -- the contract's items are
     ordinary overrides and land in the rendered deck."""
 
     def test_an_open_contract_field_reaches_the_deck(self, tmp_path):

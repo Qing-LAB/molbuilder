@@ -28,7 +28,6 @@ def net_charge():
     phosphate rule (``model/chemistry.md`` § 1)."""
     return field(default=None, metadata={
         "category": ("system",),
-        "section": "System",
         "workflow_group": "profile",
         "label": "Net charge",
         # The engine_key names both spellings because the item belongs to
@@ -52,7 +51,6 @@ def spin_treatment():
     kind (ES4)."""
     return field(default=None, metadata={
         "category": ("system",),
-        "section": "Spin",
         "workflow_group": "profile",
         "label": "Spin treatment",
         "choices": TREATMENTS,
@@ -69,7 +67,6 @@ def unpaired_electrons():
     only, ES6)."""
     return field(default=None, metadata={
         "category": ("system",),
-        "section": "Spin",
         "workflow_group": "profile",
         "label": "Unpaired electrons (2S)",
         "choices": COUNTS,

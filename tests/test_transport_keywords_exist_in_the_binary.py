@@ -275,31 +275,6 @@ def _toy_junction():
                  "R-electrode": [4, 5]})
 
 
-def _junction_and_config():
-    """The smallest thing that renders a device deck: a labelled junction.
-
-    The same toy Au-S-C-Au the engine's own tests use -- geometry is
-    meaningless here, because what is under test is the LABELS the deck
-    writes, and those come from the region vocabulary and the config.
-    """
-    import numpy as np
-
-    from molbuilder.config.transport import (REGION_BRIDGE,
-                                             REGION_LEFT_ELECTRODE,
-                                             REGION_RIGHT_ELECTRODE,
-                                             TransportConfig)
-    from molbuilder.structure import Structure
-    struct = Structure(
-        elements=["Au", "Au", "S", "C", "Au", "Au"],
-        positions=np.array([[0, 0, 0], [2, 0, 0], [4, 0, 0],
-                            [6, 0, 0], [8, 0, 0], [10, 0, 0]], dtype=float),
-        regions={REGION_LEFT_ELECTRODE: [0, 1],
-                 REGION_BRIDGE: [2, 3],
-                 REGION_RIGHT_ELECTRODE: [4, 5]},
-    )
-    return struct, TransportConfig(job_name="kwcheck")
-
-
 #: The four lines the SIESTA 5.4.0 manual says a `%block TS.Elec.<name>`
 #: MUST carry: "There are a few lines that must be present, HS,
 #: semi-inf-dir, electrode-pos, chem-pot.  The remaining options are
@@ -328,7 +303,7 @@ def test_every_electrode_block_carries_the_manuals_required_lines(with_buffer):
 
     from molbuilder import script_emit as _sc
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.config.transport import (REGION_BRIDGE,
+    from molbuilder.transport.sort import (REGION_BRIDGE,
                                              REGION_LEFT_ELECTRODE,
                                              REGION_RIGHT_ELECTRODE)
     from molbuilder.siesta.input import spec_for

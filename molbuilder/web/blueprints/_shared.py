@@ -51,10 +51,11 @@ def resolve_workflow_group(where: str, cfg) -> Optional[str]:
     should attach to the workflow-group card whose fields they
     concern: a ``config.mesh_cutoff`` finding belongs in the Stage
     card; ``config.spin_treatment`` belongs in the Run profile card;
-    ``config.max_scf_iter`` belongs in the Compute & budget card.
-    The mapping is the SAME single source of truth that drives the
-    form-schema render: each dataclass field's
-    ``metadata["workflow_group"]``.
+    ``config.max_scf_iter`` belongs in the Budget card.  The mapping is
+    each dataclass field's ``metadata["workflow_group"]`` -- the class's
+    copy of the catalogue's ``group``, which the form draws its cards by;
+    `test_every_mirrored_fact_agrees` keeps the two equal
+    (`web/form-schema.md` § 1a).
 
     Returns ``None`` for:
       * Issues that don't target a config field (where prefix isn't
@@ -574,310 +575,6 @@ def finite_float(name: str, value: Any, default: float = 0.0) -> float:
 
 
 # --------------------------------------------------------------------- #
-#  JSON -> dataclass coercion (Build's SIESTA / PySCF config; reusable  #
-#  for any future dataclass-driven Modify endpoint, e.g. M5 electrode)  #
-# --------------------------------------------------------------------- #
-
-
-def dataclass_to_form_schema(cls, id_prefix: str) -> Dict[str, Any]:
-    """Build a JSON form-rendering schema from an L1 config dataclass.
-
-    Closes the last Principle-#1 anti-pattern: the SIESTA + PySCF
-    form fields in ``web/templates/index.html`` and the per-field
-    parse logic in ``viewer.js`` used to duplicate the dataclass
-    field set (~50 fields each side).  This generator walks
-    ``dataclasses.fields(cls)`` ONCE and emits everything the JS
-    renderer needs to construct the form -- so adding a new field
-    is now a one-line metadata change on the dataclass.
-
-    Schema shape::
-
-        {
-          "config":    "SiestaConfig",
-          "id_prefix": "p",
-          "sections":  [
-            {"name": "System", "fields": [<field_schema>, ...]},
-            ...
-          ],
-        }
-
-    Per-field shape (subset; only the relevant keys for the field's
-    inferred kind are present)::
-
-        {
-          "name":     "<dataclass field name>",         # canonical key
-          "id":       "<id_prefix>-<id_suffix>",        # HTML id
-          "label":    "<human label>",                  # from metadata.label
-          "help":     "<help / tooltip>",
-          "default":  <JSON-serialisable default>,
-          "tier":     "basic" | "advanced",
-          "kind":     "checkbox" | "int" | "number" | "text"
-                      | "select" | "tri-select" | "int-triple",
-          # number / int:
-          "min": ..., "max": ..., "step": ...,
-          # select / tri-select:
-          "choices": [...],
-          "null_option": True,
-          "null_label":  "<label for the empty option>",
-          # int-triple (kgrid):
-          "labels": ["x", "y", "z"],
-          # display:
-          "unit": "Å" | "Ry" | ...,
-          "pattern": "<HTML pattern attr>",
-        }
-
-    **Opt-in via ``section``**: only fields whose metadata declares a
-    ``"section"`` key are exposed.  Fields without a section live on
-    the dataclass for the Python API / CLI but stay off the web form
-    (psml paths, write_forces always-on flags, MD-only knobs that
-    only matter for relax_type=Verlet, etc.).
-
-    **ID override via ``id_suffix``**: by default the HTML id is
-    ``"{id_prefix}-{field_name.replace('_', '-')}"``.  A few fields
-    have shorter legacy ids (e.g. ``p-temperature`` for
-    ``electronic_temperature``); they declare ``"id_suffix"`` so the
-    compatibility engine + sessionStorage list stay backwards-
-    compatible.
-
-    **Section ordering**: by default sections appear in the order
-    their first field is declared in the dataclass.  When the class
-    declares an ``_form_section_order`` class attribute (a tuple /
-    list of section names), sections appear in that order instead;
-    any sections present in field metadata but missing from the
-    explicit order get appended after the explicit ones in
-    declaration order.  This lets a dataclass control form layout
-    without reorganising the (often natural) field declaration
-    order.
-    """
-    hints = typing.get_type_hints(cls)
-    sections_in_order: List[str] = []
-    by_section: Dict[str, List[Dict[str, Any]]] = {}
-    for f in fields(cls):
-        section = f.metadata.get("section")
-        if not section:
-            continue
-        if section not in by_section:
-            sections_in_order.append(section)
-            by_section[section] = []
-        by_section[section].append(_field_to_schema(f, hints, id_prefix))
-
-    # Explicit section ordering via _form_section_order on the class.
-    # Names not present in that list keep their declaration-order
-    # position (appended after the explicit names).
-    declared_order = getattr(cls, "_form_section_order", None)
-    if declared_order:
-        seen = set()
-        ordered: List[str] = []
-        for name in declared_order:
-            if name in by_section and name not in seen:
-                ordered.append(name)
-                seen.add(name)
-        for name in sections_in_order:
-            if name not in seen:
-                ordered.append(name)
-                seen.add(name)
-        sections_in_order = ordered
-
-    # Per-section descriptions (optional class attribute).  When a
-    # class declares ``_form_section_descriptions: Dict[str, str]``,
-    # each section's schema entry picks up its blurb and the form
-    # renderer surfaces it below the legend.  Sections missing from
-    # the dict get no description (omitted from the output) so this
-    # is opt-in per class.
-    descriptions = getattr(cls, "_form_section_descriptions", {}) or {}
-
-    def _section_entry(s: str) -> Dict[str, Any]:
-        entry: Dict[str, Any] = {"name": s, "fields": by_section[s]}
-        desc = descriptions.get(s)
-        if desc:
-            entry["description"] = desc
-        return entry
-
-    return {
-        "config":    cls.__name__,
-        "id_prefix": id_prefix,
-        "sections": [_section_entry(s) for s in sections_in_order],
-    }
-
-
-def _catalogue_help(name: str) -> str:
-    """The catalogue's help — asked of `template.help_for`, the one home.
-
-    This kept its own cached index for a few hours; the CLI then needed the
-    same lookup, and a second copy of "where does help come from" is the
-    duplication this whole change is about.
-    """
-    from molbuilder.template import help_for
-    return help_for(name)
-
-
-def _field_to_schema(f: dataclasses.Field,
-                     hints: Dict[str, Any],
-                     id_prefix: str) -> Dict[str, Any]:
-    """One dataclass field -> one schema entry.
-
-    Pure inspection: no I/O, no side effects, only field.type +
-    field.metadata + field.default.  Optional[X] unwraps to X with
-    ``optional=True`` so the renderer knows to emit an empty/auto
-    sentinel option.
-    """
-    ann = hints.get(f.name, f.type)
-    origin = typing.get_origin(ann)
-    args = typing.get_args(ann)
-    is_optional = (origin is typing.Union and type(None) in args)
-    if is_optional:
-        ann = next((a for a in args if a is not type(None)), str)
-        origin = typing.get_origin(ann)
-        args   = typing.get_args(ann)
-
-    md = dict(f.metadata)
-    id_suffix = md.get("id_suffix", f.name.replace("_", "-"))
-    out: Dict[str, Any] = {
-        "name":     f.name,
-        "id":       f"{id_prefix}-{id_suffix}",
-        "label":    md.get("label", f.name.replace("_", " ").capitalize()),
-        # THE CATALOGUE IS THE ONE HOME FOR WHAT A USER READS.  This took
-        # `md["help"]` -- the dataclass's copy -- until 2026-09-16, and the
-        # two homes had drifted to 149 of 158 fields carrying DIFFERENT text
-        # (`engines/template.md` 2.1a's measured debt, made visible).  Which
-        # version a person saw then depended only on which form builder their
-        # tab used: Build reads the catalogue, Spectra and Transport come
-        # through here, so a help rewrite could land on one tab and not the
-        # other -- which is exactly what happened.
-        #
-        # The dataclass copy stays as the fallback for the handful of fields
-        # that have no catalogue row, and dies with the metadata when the
-        # remaining consumers move across.
-        "help":     _catalogue_help(f.name) or md.get("help", ""),
-        "default":  _serialize_default(f, ann),
-        "optional": is_optional,
-        "tier":     md.get("tier", "basic"),
-    }
-    if "unit" in md:
-        out["unit"] = md["unit"]
-    # Source-of-truth tag: the actual engine keyword this UI field
-    # writes into the generated input.  Surfaced next to the form label
-    # so the user can map UI -> generated script -> engine manual /
-    # error messages without guessing.  Optional metadata key; fields
-    # without an obvious 1:1 keyword mapping (kgrid as a block, etc.)
-    # leave it unset and the UI shows no tag.
-    if "engine_key" in md:
-        out["engine_key"] = md["engine_key"]
-    # Workflow-group tag (2026-06-13): one of "system" / "stage" /
-    # "budget".  Drives the .workflow-group--<kind> card wrappers
-    # in form-schema.js + STAGE_PRESETS' restricted write surface
-    # in viewer.js.  Fields without this tag render bare (outside
-    # any workflow-group wrapper) and STAGE_PRESETS never touches
-    # them.  See docs/web/results.md + the
-    # .workflow-group framework in lib/form-schema.css.
-    if "workflow_group" in md:
-        out["workflow_group"] = md["workflow_group"]
-
-    choices = md.get("choices")
-    if choices is not None:
-        out["kind"] = "select"
-        out["choices"] = list(choices)
-        # An Optional[str] with explicit choices needs an empty
-        # sentinel option in the UI (e.g. the dispersion select
-        # whose "none" choice maps to None).
-        if is_optional:
-            out["null_option"] = True
-            out["null_label"] = md.get("null_label", "(default)")
-    elif ann is bool:
-        if is_optional:
-            # Optional[bool] -> tri-select (auto / true / false).
-            # Today only parallel_over_k uses this pattern.
-            out["kind"] = "tri-select"
-            out["choices"] = ["auto", "true", "false"]
-        else:
-            out["kind"] = "checkbox"
-    elif ann is int:
-        out["kind"] = "int"
-        rng = md.get("range")
-        if rng is not None:
-            out["min"], out["max"] = rng
-        if is_optional:
-            out["null_option"] = True
-            out["null_label"] = md.get("null_label", "(auto)")
-    elif ann is float:
-        out["kind"] = "number"
-        # step="any" is the HTML "accept any float"; widgets can
-        # override with metadata["step"] when they want spinner steps.
-        out["step"] = md.get("step", "any")
-        rng = md.get("range")
-        if rng is not None:
-            out["min"], out["max"] = rng
-        if is_optional:
-            out["null_option"] = True
-            out["null_label"] = md.get("null_label", "(auto)")
-    elif origin is tuple and args:
-        # Tuple[int, int, int] -- kgrid + Transport's k_mesh_transverse.
-        # Renderer emits three side-by-side number inputs with sub-ids
-        # f"{id}-{labels[i]}", labelled with the k-point mesh's axis names
-        # (`kmesh.AXES`), as the catalogue builder labels them.
-        out["kind"] = "int-triple"
-        from molbuilder.kmesh import AXES
-        out["labels"] = list(AXES)
-    elif origin in (list, tuple) and args and args[0] is float:
-        # Variable-length List[float] -- Transport's bias_voltages_v.
-        # No fixed-arity widget makes sense; render as text and let
-        # the user enter a comma-separated list.  ``coerce_to_field_type``
-        # parses it back into List[float] before the dataclass sees it.
-        out["kind"] = "comma-floats"
-    elif ann is str:
-        out["kind"] = "text"
-    else:
-        # Sequence[str] (species_order) etc. -- not exposed in the
-        # form today.  Fall back to text so the schema is at least
-        # well-formed for tests, but the field shouldn't have a
-        # section anyway.
-        out["kind"] = "text"
-
-    if "pattern" in md:
-        out["pattern"] = md["pattern"]
-    return out
-
-
-def _serialize_default(f: dataclasses.Field, ann: Any = None) -> Any:
-    """JSON-friendly default for the schema.
-
-    Tuples become lists for JSON compatibility.  When the field uses
-    ``default_factory`` (Transport's ``bias_voltages_v: List[float]``
-    is the first such case), call the factory so the form shows the
-    actual default — without this, the form opens with a blank input
-    and the user can't see what the production-tuned default is.
-    ``ann`` is the already-resolved type hint (per ``hints`` in
-    ``_field_to_schema``); used to decide whether a list default
-    should serialize as a comma-string (``List[float]`` for the
-    comma-floats text input) or stay a list (``List[int]`` for the
-    int-triple renderer).
-    """
-    if f.default is not dataclasses.MISSING:
-        v = f.default
-    elif f.default_factory is not dataclasses.MISSING:    # type: ignore[misc]
-        try:
-            v = f.default_factory()                       # type: ignore[misc]
-        except Exception:
-            return None
-    else:
-        return None
-    if isinstance(v, tuple):
-        return list(v)
-    if isinstance(v, list):
-        args = typing.get_args(ann) if ann is not None else ()
-        origin = typing.get_origin(ann) if ann is not None else None
-        # List[float] -> comma-string (comma-floats text input
-        # pre-populates from this).  List[int] -> keep as list (no
-        # variable-length int field exposed in the form today, but
-        # the contract stays JSON-friendly).
-        if origin in (list, tuple) and args and args[0] is float:
-            return ", ".join(repr(x) for x in v)
-        return list(v)
-    return v
-
-
-
-# --------------------------------------------------------------------- #
 #  The form schema, built from the CATALOGUE                            #
 #                                                                       #
 #  `web/form-schema.md` § 1: the catalogue is the source of truth.  The  #
@@ -897,9 +594,8 @@ _CONTROL_FOR_TYPE = {
     "int3":    "int-triple",
     "float3":  "float-triple",
     # A list renders as a TEXT input holding a comma-separated value, which
-    # is what `comma-floats` already is and what ``coerce_to_field_type``
-    # already parses back (`Sequence[str]`, `Sequence[float]`).  No new
-    # control kind: the renderer has one for this shape already.
+    # ``coerce_to_field_type`` parses back.  No new control kind: the
+    # renderer has one for this shape already.
     "strlist": "text",
     "intlist": "text",
 }
@@ -1249,8 +945,8 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
         return _as_number(field.name, value, ann)
     if ann is str:
         return str(value)
-    # Tuple[int, int, int] (kgrid) and Tuple[float, float, float]
-    # (kgrid_displacement, Transport's k_mesh_transverse).
+    # Tuple[int, int, int] (kgrid, tbt_k_grid) and Tuple[float, float, float]
+    # (kgrid_displacement).
     #
     # A COMMA STRING PARSES, for the same reason the Sequence[*] branches
     # just below accept one: a non-browser client sends the text a person
@@ -1295,17 +991,6 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
             # refused element-wise -- `int(4.5)` truncated silently, which
             # the note here said this did not do.
             return [_as_number(field.name, v, int) for v in value]
-        return value
-    # Sequence[float] (Transport's bias_voltages_v) -- accept a comma-
-    # separated string ("0.0, 0.5, 1.0") or an already-list value.
-    # Without this branch the form layer's text-input string passes
-    # through unchanged and the dataclass stores it as a str, which
-    # then fails downstream when the engine slices ``bias[0]``.
-    if origin in (list, tuple) and args and args[0] is float:
-        if isinstance(value, str):
-            value = [s for s in value.split(",") if s.strip()]
-        if isinstance(value, (list, tuple)):
-            return [_as_number(field.name, v, float) for v in value]
         return value
     # Anything else: pass through.
     return value

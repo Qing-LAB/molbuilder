@@ -69,8 +69,6 @@ def test_the_field_exists_with_ui_metadata():
     makes ONE declaration reach the UI, the template and the doc.  A
     field with no label/help is invisible where the user sets it."""
     f = PySCFConfig.__dataclass_fields__["scf_conv_tol_grad"]
-    # ``section`` gates nothing for PySCFConfig since 2026-08-15 (the form
-    # is built from the catalogue) -- not pinned.
     assert f.metadata["engine_key"] == "mf.conv_tol_grad"
     assert f.metadata["label"]
     # The help lives in the CATALOGUE since 2026-09-16 -- one home, asked
@@ -142,8 +140,6 @@ def test_chosen_and_derived_are_distinguishable(kw, expected):
 
 def test_soscf_field_exists_with_ui_metadata():
     f = PySCFConfig.__dataclass_fields__["scf_soscf"]
-    # ``section`` gates nothing for PySCFConfig since 2026-08-15 (the form
-    # is built from the catalogue) -- not pinned.
     assert f.metadata["engine_key"] == "mf.newton()"
     assert f.metadata["label"]
     # The help lives in the CATALOGUE since 2026-09-16 -- one home, asked

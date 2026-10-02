@@ -154,7 +154,8 @@ class FdfParams:
     electronic_temperature_k: Optional[float] = None
     #: XC as the deck SPELLS it (``xc`` above is the normalised
     #: comparison key; these carry the verbatim words for a consumer
-    #: that re-emits them -- the transport composite's `config_for`).
+    #: that re-emits them -- the transport citation's defaults,
+    #: `transport/citation_defaults.py`).
     xc_functional: Optional[str] = None
     xc_authors: Optional[str] = None
     #: THE ELECTRONIC STATE THE DECK RAN WITH, in the four items' own words

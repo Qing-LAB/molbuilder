@@ -30,7 +30,7 @@ import numpy as np
 import pytest
 
 from molbuilder.cell import to_engine
-from molbuilder.config.transport import (REGION_BRIDGE,
+from molbuilder.transport.sort import (REGION_BRIDGE,
                                          REGION_LEFT_ELECTRODE,
                                          REGION_RIGHT_ELECTRODE)
 from molbuilder.structure import Structure
@@ -206,9 +206,11 @@ class TestHappyPath:
         # electrode models extracted from the sorted blocks
         assert len(out.electrode_left.elements) == 6
         assert len(out.electrode_right.elements) == 6
-        # the fdf snapshot is the attempt's own deck
-        assert out.fdf_params.mesh_cutoff_ry == pytest.approx(300.0)
-        assert "PBE" in out.fdf_params.xc
+        # the deck that travels is the attempt's own
+        from molbuilder.parse.fdf import parse_fdf_params
+        assert parse_fdf_params(out.deck_text).mesh_cutoff_ry == \
+            pytest.approx(300.0)
+        assert "PBE" in parse_fdf_params(out.deck_text).xc
         # provenance carries the hashes
         assert out.provenance["citation"] == _CITE
         assert len(out.provenance["files"]["Relax.XV"]) == 64
@@ -810,7 +812,9 @@ class TestTravelCopy:
                            atol=1e-6)
         assert back.sorted.sorted_to_original == \
             out.sorted.sorted_to_original
-        assert back.fdf_params.mesh_cutoff_ry == pytest.approx(300.0)
+        from molbuilder.parse.fdf import parse_fdf_params
+        assert parse_fdf_params(back.deck_text).mesh_cutoff_ry == \
+            pytest.approx(300.0)
         assert back.provenance["citation"] == _CITE
         assert len(back.electrode_left.elements) == 6
 
@@ -858,7 +862,7 @@ class TestFormB:
         root, cite = self._pair_dir(tmp_path)
         out = compose_junction(cite, tree_root=root)
         assert out.form == "structure"
-        assert out.deck_text is None and out.fdf_params is None
+        assert out.deck_text is None
         assert out.provenance["evidence"] == "given"
         assert len(out.electrode_left.elements) == 6
 
@@ -1046,8 +1050,8 @@ class TestTheRecordedContract:
         root, cite = self._recorded_pair(tmp_path)
         out = compose_junction(cite, tree_root=root)
         assert out.form == "structure"
-        assert out.recorded_contract is not None
-        assert out.recorded_contract["contract"]["basis_size"] == "TZP"
+        assert out.provenance["recorded_contract"]["contract"][
+            "basis_size"] == "TZP"
         assert out.provenance["recorded_contract"]["source"] == "Relax.fdf"
 
     def test_an_edit_since_the_record_is_said_out_loud(self, tmp_path, capsys):
@@ -1067,7 +1071,8 @@ class TestTheRecordedContract:
         out = compose_junction(cite, tree_root=root)
 
         # It still composes, and still seals -- warn, not refuse.
-        assert out.recorded_contract["contract"]["basis_size"] == "TZP"
+        assert out.provenance["recorded_contract"]["contract"][
+            "basis_size"] == "TZP"
 
         said = capsys.readouterr().err
         assert "citation.structure_modified" in said, (
@@ -1122,78 +1127,8 @@ class TestTheRecordedContract:
         s.info = {"calculation": {"structure_modified": True}}   # no contract
         StructureCodec().write(s, d / "junction.xyz")
         out = compose_junction("plain", tree_root=root)
-        assert out.recorded_contract is None
+        assert "recorded_contract" not in out.provenance
         assert "structure_modified" not in capsys.readouterr().err
-
-    def test_the_record_fills_the_config_and_forces_kz(self, tmp_path):
-        from molbuilder.transport.stages import config_for
-        from molbuilder.task import Stage, Task, derive_run
-        root, cite = self._recorded_pair(tmp_path)
-        out = compose_junction(cite, tree_root=root)
-        task = Task(engine="siesta", shape="hierarchical",
-                    run=derive_run("T", cite, stage_names=("seed",)),
-                    structure=None, calculation="transport",
-                    slots={"junction": cite}, bias=(0.0,), varies=(),
-                    stages=(Stage(name="seed", enabled=True,
-                                  overrides={}),))
-        cfg = config_for(task, out)
-        assert cfg.basis_size == "TZP"
-        assert cfg.siesta_mesh_cutoff_ry == 275
-        assert cfg.xc_authors == "revPBE"
-        assert cfg.k_mesh_transverse == (3, 3, 1), "kz forced 1, always"
-        assert cfg.electronic_temperature_k == 150.0
-
-    def test_a_rungs_override_stays_on_that_rung(self, tmp_path):
-        """ONE config PER RUNG, not one per calculation.
-
-        `config_for` merged all five override bags into a single config
-        until 2026-09-15, so a name set by one rung reached every deck.
-        Nothing observable broke while only the `device` bag was ever
-        filled -- which is precisely why it needed pinning before the
-        bags stopped being empty: it is the shape that made a per-stage
-        value (`SolutionMethod`, `TS.HS.Save`) impossible to express.
-
-        Contract: `engines/transport.md` § 6.1.
-        """
-        from molbuilder.transport.stages import config_for
-        from molbuilder.task import Stage, Task, derive_run
-        root, cite = self._recorded_pair(tmp_path)
-        out = compose_junction(cite, tree_root=root)
-        stages = tuple(
-            Stage(name=n, enabled=True,
-                  overrides={"transmission_n_points": 77} if n == "device"
-                             else {})
-            for n in ("seed", "device"))
-        task = Task(engine="siesta", shape="hierarchical",
-                    run=derive_run("T", cite, stage_names=("seed", "device")),
-                    structure=None, calculation="transport",
-                    slots={"junction": cite}, bias=(0.0,),
-                    varies=("transmission_n_points",), stages=stages)
-        assert config_for(task, out, stage="device").transmission_n_points == 77
-        assert config_for(task, out, stage="seed").transmission_n_points == 401, (
-            "the device rung's override reached the seed's config: the bags "
-            "are merging again instead of applying per rung")
-
-    def test_the_record_seals_the_contract_fields(self, tmp_path):
-        from molbuilder.transport.stages import StageError, config_for
-        from molbuilder.task import Stage, Task, derive_run
-        root, cite = self._recorded_pair(tmp_path)
-        out = compose_junction(cite, tree_root=root)
-        task = Task(engine="siesta", shape="hierarchical",
-                    run=derive_run("T", cite, stage_names=("seed",)),
-                    structure=None, calculation="transport",
-                    slots={"junction": cite}, bias=(0.0,),
-                    varies=("basis_size",),
-                    stages=(Stage(name="seed", enabled=True,
-                                  overrides={"basis_size": "SZ"}),))
-        with pytest.raises(StageError) as e:
-            config_for(task, out)
-        msg = str(e.value)
-        assert "SHARED" in msg or "shared" in msg, (
-            f"the refusal's reason is that the value is shared by every "
-            f"stage -- not that a recorded contract owns it.  § 2a.7 "
-            f"reversed the latter: {msg}")
-        assert "template" in msg, f"and it must say where to change it: {msg}"
 
     def test_a_plain_pair_stays_open(self, tmp_path):
         from molbuilder.workingcopy_structure import StructureCodec
@@ -1202,7 +1137,7 @@ class TestTheRecordedContract:
         d.mkdir(parents=True)
         StructureCodec().write(_junction_struct(), d / "junction.xyz")
         out = compose_junction("plain", tree_root=root)
-        assert out.recorded_contract is None
+        assert "recorded_contract" not in out.provenance
 
     def test_the_travel_copy_keeps_the_record(self, tmp_path):
         from molbuilder.transport.compose import (load_compose_record,
@@ -1214,7 +1149,8 @@ class TestTheRecordedContract:
         write_compose_record(dest, out)
         back = load_compose_record(dest, citation=cite)
         assert back is not None
-        assert back.recorded_contract["contract"]["basis_size"] == "TZP"
+        assert back.provenance["recorded_contract"]["contract"][
+            "basis_size"] == "TZP"
 
 
 class TestTheCellIsStatedOnceOrNotAtAll:

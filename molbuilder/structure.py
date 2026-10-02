@@ -394,8 +394,9 @@ class Structure:
     Some labels are RESERVED -- something downstream acts on the
     name.  ``frozen`` (:data:`FROZEN_LABEL`) marks atoms whose
     positions stay fixed during relaxations and Hessian builds;
-    it is consumed by the vibration deck (relax + Hessian) and
-    TransportConfig (NEGF lead-fixing).  A reserved label is stored,
+    it is consumed by the vibration deck (relax + Hessian), the
+    relaxation decks, and the transport lead gate (a lead's atoms must
+    be held -- `transport/wizard.py`).  A reserved label is stored,
     validated, filtered and serialised exactly like any other; the
     only thing it gets of its own is one designated read, the
     :attr:`frozen_atoms` accessor.
@@ -453,7 +454,7 @@ class Structure:
     axis_kind:     Optional[Tuple[str, str, str]] = None
     # Isolation padding (Å) on isolated axes -- the PER-SIDE vacuum gap.
     # (k-grid is NOT here: it's a reciprocal-space SAMPLING knob, a CALCULATION
-    # parameter that lives on SiestaConfig / TransportConfig, not the geometry.
+    # parameter that lives on SiestaConfig, not the geometry.
     # structure-periodicity.md.)  Default 0 keeps existing call sites unchanged.
     vacuum:        Optional[Tuple[float, float, float]] = None
     # THE OFFSET THIS STRUCTURE STATES (Angstrom), or None -- then the rule

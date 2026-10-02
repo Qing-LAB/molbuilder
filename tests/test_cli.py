@@ -7,8 +7,6 @@ roles:
   * every subcommand parses the documented happy-path invocation
   * subcommand routing (``main(["X", ...]) -> proper handler``) works
     for the build verbs without hitting heavy external deps
-  * the dataclass -> click bridge (add_dataclass_options) wires every
-    PySCFConfig field through to the right kwarg
 
 Heavy dispatches (smiles needs RDKit, name needs PubChem, watch serve
 binds a port) are tested via mocks where reasonable and via ``--help``
@@ -273,56 +271,6 @@ def test_validate_pretty_json_indents(capsys, tmp_path):
     assert "\n  " in out
 
 
-# --------------------------------------------------------------------- #
-#  Phase 5e: add_dataclass_options decorator                            #
-# --------------------------------------------------------------------- #
-
-
-
-
-
-
-# --------------------------------------------------------------------- #
-#  Bridge coverage: every non-skip dataclass field is wired to the CLI  #
-#                                                                       #
-#  Safety net for the add_dataclass_options bridge under cmd_pyscf.     #
-#  Three layers, each catching a different class of bug:                #
-#                                                                       #
-#    1. Bridge exposure -- every PySCFConfig field without              #
-#       ``skip_cli=True`` must appear as a click option on the          #
-#       subcommand's ``--help``.  Catches "bridge dropped a field"      #
-#       when the metadata key is misspelled or a new field lands        #
-#       without metadata.                                               #
-#                                                                       #
-#    2. CLI -> Config plumbing -- (flag, value) pairs invoked against   #
-#       a patched ``convert`` that captures the constructed config.     #
-#       Catches wrong-kwarg-name and type-coercion bugs.                #
-#                                                                       #
-#  The SiestaConfig half of every layer was RETIRED 2026-08-11 with     #
-#  `molbuilder fdf` (C2): SiestaConfig no longer meets click at all,    #
-#  so there is no bridge to guard.  What those tests really protected   #
-#  -- a described value reaching the deck unchanged -- is owned by the  #
-#  template round-trip (test_template_roundtrip.py, all 39 exposed      #
-#  fields) and `prep`'s preflight declared-type row; the rendered deck  #
-#  by test_prep_calculation.py.                                         #
-# --------------------------------------------------------------------- #
-
-
-
-
-def _h2_xyz_at(path):
-    path.write_text("2\nh2\nH 0 0 0\nH 0.74 0 0\n")
-    return str(path)
-
-
-def _stub_pyscf_summary(out_path):
-    return {"py": str(out_path), "n_atoms": 2, "charge": 0, "label": "h2"}
-
-
-
-
-
-
 # The 20-case "each default renders in the FDF" sweep that sat here was
 # retired 2026-08-19.  Every case re-ran the section walk the deck-runner
 # tests already pin, over values that are DECLARED DATA in the catalogue;
@@ -331,44 +279,13 @@ def _stub_pyscf_summary(out_path):
 # tests/test_every_form_field_reaches_the_deck.py, which fails NAMING the
 # field whenever changing it cannot change the deck.
 
+# (`test_real_subcommand_choice_validation_rejects_typos` was retired
+#  2026-10-02: `molbuilder pyscf` was deleted on 2026-09-17 with the
+#  dataclass -> click bridge, so click's "No such command" exit 2 passed it
+#  -- the vacuous green its own comment had retired the `fdf` rows for.)
+
+
 # ---- Modify electrode-spec parser is case-insensitive on key ----- #
-
-
-# ---- Bridge: metadata['choices'] -> click.Choice ---------------- #
-
-
-
-
-@pytest.mark.parametrize("subcommand,flag,bad_val", [
-    # The two ("fdf", …) rows were RETIRED 2026-08-12: with the verb deleted
-    # (C2), click's "No such command" also exits 2, so they passed while
-    # asserting nothing about choice validation -- a vacuous green.  Choice
-    # metadata for SiestaConfig is enforced on the described path by the
-    # preflight's declared-type row instead.
-    ("pyscf", "--method",          "UKKS"),
-    ("pyscf", "--scf-init-guess",  "huckl"),
-])
-def test_real_subcommand_choice_validation_rejects_typos(
-        subcommand, flag, bad_val, tmp_path):
-    """The five config fields whose dataclass metadata carries a
-    ``choices`` tuple keep their constraint after the bridge migration:
-    a typo on the real ``fdf`` / ``pyscf`` subcommands fails at parse
-    time with exit code 2 rather than producing a broken FDF / .py."""
-    in_xyz = _h2_xyz_at(tmp_path / "h2.xyz")
-    out_path = tmp_path / ("h2.fdf" if subcommand == "fdf" else "h2.py")
-    with pytest.raises(SystemExit) as exc:
-        cli.main([subcommand, in_xyz, str(out_path), flag, bad_val])
-    assert exc.value.code == 2
-
-
-# ---- Bridge: unknown types must error loudly (P3) --------------- #
-
-
-
-
-
-
-
 
 def test_modify_electrode_spec_key_case_insensitive():
     """``@CONTACT=`` / ``@Contact=`` are accepted (R3 fix: the parser

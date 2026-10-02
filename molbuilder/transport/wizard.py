@@ -77,12 +77,6 @@ from .transiesta import (
     _find_electrode_regions,
 )
 
-# A bulk-lead kz default.  A thin lead cell has a large 1-D Brillouin
-# zone along transport, so it needs dense sampling (§ 4.2); 40 is a
-# safe starting point for a metal lead and is meant to be converged by
-# the convergence sweep (§ 6.5), not trusted blindly.
-DEFAULT_ELECTRODE_KZ = 40
-
 #: A heuristic advisory floor (Å) for the wizard's note below --
 #: nothing refuses on it.  The REAL principal-layer gate lives in
 #: `transport/compose.py` and compares the orbital interaction range
@@ -505,7 +499,6 @@ def extract_electrode_model(
 # second one had a duplicate.
 
 __all__ = [
-    "DEFAULT_ELECTRODE_KZ",
     "ElectrodeModel",
     "FROZEN_TOL_ANG",
     "extract_electrode_model",

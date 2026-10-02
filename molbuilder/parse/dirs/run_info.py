@@ -21,9 +21,10 @@ the exported ``.molstruct.json`` pair without another line changing.
 Two keys:
 
 * ``calculation`` — the electronic contract the directory's deck records
-  (``parse.contract.contract_of``), in the field names
-  ``TransportConfig`` speaks, so a cited pair fills a transport config
-  1:1 (`transport-design.md` § 4.1b).
+  (``parse.contract.contract_of``), in the record's own field names
+  (``parse.contract.RECORD_TO_SIESTA_FIELD`` maps them to the catalogue's),
+  so a cited pair defaults a transport calculation's template
+  (`transport-design.md` § 4.1b).
 * ``relaxation`` — what the run did to the geometry it left
   (``parse.contract.relaxation_of``, `model/parse.md` § 5b.1): its force
   tolerance, the largest force left on the atoms it moved, the held set

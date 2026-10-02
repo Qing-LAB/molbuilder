@@ -1,8 +1,8 @@
 """SiestaConfig -- every parameter the SIESTA .fdf generator emits.
 
-L1 dataclass.  Field metadata (label / unit / range / tier / help)
-drives the CLI option list, the web form schema, and the validation
-pass at ``molbuilder/validation.py``; the SIESTA generator at
+L1 dataclass.  Its field metadata is read by the validation pass
+(``molbuilder/validation/``; the readers are `web/form-schema.md` § 1a's)
+-- the forms are drawn from the catalogue; the SIESTA generator at
 ``molbuilder/siesta/input.py:render_fdf`` is the only consumer of the
 configured values themselves.
 
@@ -189,57 +189,6 @@ def _validate_basename(label: str):
 
 @dataclass
 class SiestaConfig:
-    # Explicit form-section order for the schema-driven Build form.
-    # Without this, sections would appear in the order their first
-    # field is declared below -- which puts Spin / Parallel at the
-    # end (they were grouped with the late-arriving "extras" rather
-    # than near the SCF block).  This list keeps the form's visual
-    # order close to SIESTA's own .fdf reading order: setup first,
-    # then SCF + sampling, then the optimisation algorithm, then I/O.
-    # 2026-05-27 reorder: "Parallel execution" moved from 5th to LAST
-    # (just above the Generate / Save action row in the form).  Reason:
-    # the section holds CODE/EXECUTION knobs (MPI ranks, OMP threads,
-    # ScaLAPACK BlockSize, memory cap) -- the "how to run it" axis,
-    # orthogonal to the "what to compute" axis the physics sections
-    # (System / Basis / XC / SCF / Spin / k-grid / Relaxation /
-    # Output) cover.  Interleaving Parallel between SCF and Spin
-    # broke the mental flow.  Now physics-first, plumbing-last so
-    # the user designs the calculation then sizes the machine.
-    # 2026-06-15 second restructure: merged "Relaxation" + "Parallel
-    # execution" into a single "Compute & budget" section.  Reasoning:
-    # both sections covered "how the run proceeds" -- the optimization
-    # algorithm + its budget on one hand, the MPI/OMP resources on the
-    # other.  Splitting them across two sections forced the user to
-    # scroll past unrelated cards (Output) between two semantically
-    # connected groups.  Merging keeps the physics axis (System ->
-    # Basis -> XC -> SCF -> Spin -> Output) compact and gathers all
-    # the "execution strategy + resources" knobs in one section.
-    # The workflow-group cards INSIDE the new section split the merged
-    # fields cleanly:
-    #   * Profile card -- relax_type + MD physics (room/temp/dt)
-    #   * Stage card   -- force_tol + max_displ (convergence targets)
-    #   * Budget card  -- relax_steps + BlockSize + ParallelOverK +
-    #                     diag_algorithm
-    #   * Staging card -- mpi_np + omp_threads + gpu_count + use_gpu +
-    #                     max_memory_mb + continue_retries (the
-    #                     workflow_group="staging" members)
-    #
-    # ``use_gpu`` moved rows here on 2026-08-23 -- on paper only: the
-    # field's own metadata 1200 lines below has said `workflow_group:
-    # "staging"` all along, and so does the catalogue, which is what the
-    # form actually reads.  This comment had it on the Budget card, so the
-    # one place a person looks for the layout disagreed with the two places
-    # that produce it (`execution/gpu.md` C2).
-    _form_section_order = (
-        "System",
-        "Basis & grid",
-        "Exchange-correlation",
-        "SCF",
-        "Spin",
-        "Output & positioning",
-        "Compute & budget",   # ← optimization algo + resources, sits right above Generate
-    )
-
     # System
     # 2026-05-27 cleanup: SystemName / SystemLabel are functionally one
     # field for our generated .fdf -- the web UI exposed a single "Job
@@ -259,7 +208,6 @@ class SiestaConfig:
         # what orders the fields -- filed under `procedure` it rendered
         # BELOW the pseudopotential directory, which reads backwards for
         # the first thing a user types.
-        "section":  "System",
         # Run-profile identity — what the run IS named.  Lives in the
         # Run profile workflow-group card alongside the system-character
         # knobs (mixing weight, electronic temperature, spin) because
@@ -268,7 +216,6 @@ class SiestaConfig:
         "workflow_group": "setup",
         "label":    "System label (output prefix)",
         "engine_key":  'SystemLabel',
-        "id_suffix": "system-label",
         "pattern":  r"^[A-Za-z0-9_\-]+$",
         "validate": _validate_basename("system_label"),
     })
@@ -281,15 +228,10 @@ class SiestaConfig:
     # Basis
     basis_size: str = field(default="DZP", metadata={
         "category": ("method", "accuracy"),
-        "section": "Basis & grid",
         # Workflow-group tag (2026-06-15): joined the Stage card so it
         # sits alongside ``mesh_cutoff``, ``pao_energy_shift``, and
         # ``kgrid`` — all of which are "how finely we sample the
         # calculation" knobs that scale with the convergence target.
-        # Previously this field rendered as a one-control "Base" card
-        # bare in the Basis & grid section, separated by visual gap
-        # from the actual basis-relevant knobs in the Stage card next
-        # to it (user complaint 2026-06-15).
         #
         # Tagging ``stage`` puts basis_size in the same workflow-group
         # card as the other "sampling-fidelity" knobs.  It is NOT in
@@ -306,7 +248,6 @@ class SiestaConfig:
     })
     pao_energy_shift: float = field(default=0.01, metadata={
         "category": ("method", "accuracy"),
-        "section": "Basis & grid",
         "workflow_group": "stage",
         "label": "Orbital confinement (energy shift)", "unit": "Ry",
         "engine_key":  'PAO.EnergyShift',
@@ -326,13 +267,8 @@ class SiestaConfig:
         # for phonon / vibrational work.
     })
 
-    # Mesh cutoff lives in the "Basis & grid" section in the form
-    # (next to the basis-size dropdown) even though it's strictly a
-    # real-space-grid parameter; SIESTA users think of "basis + grid"
-    # together when sizing their run.
     mesh_cutoff: float = field(default=300.0, metadata={
         "category": ("accuracy",),
-        "section": "Basis & grid",
         # Workflow-group tag (2026-06-13): "stage" means switching the
         # relaxation-stage preset MAY rewrite this field.  Three
         # tag values exist (system / stage / budget) — see docs/web/
@@ -357,7 +293,6 @@ class SiestaConfig:
     # XC
     xc_functional: str = field(default="GGA", metadata={
         "category": ("method",),
-        "section": "Exchange-correlation",
         "workflow_group": "profile",
         "label":   "XC functional family",
         "engine_key":  'XC.functional',
@@ -365,7 +300,6 @@ class SiestaConfig:
     })
     xc_authors: str = field(default="PBE", metadata={
         "category": ("method",),
-        "section": "Exchange-correlation",
         "workflow_group": "profile",
         "label":   "XC parameterisation",
         "engine_key":  'XC.authors',
@@ -382,7 +316,6 @@ class SiestaConfig:
     # SCF
     solution_method: str = field(default="diagon", metadata={
         "category": ("method", "convergence"),
-        "section": "SCF",
         # Profile-level: SCF solver family is a system-level
         # decision (diagon / OMM / TranSIESTA), set once with XC +
         # basis.  Switching stages MUST NOT rewrite this.
@@ -393,7 +326,6 @@ class SiestaConfig:
     })
     mixing_weight: float = field(default=0.02, metadata={
         "category": ("convergence",),
-        "section": "SCF",
         # System characteristic — depends on what the system IS
         # (metallic / organic / open-shell), NOT on the stage.
         # Switching stages MUST NOT rewrite this.
@@ -405,7 +337,6 @@ class SiestaConfig:
     })
     pulay_history: int = field(default=8, metadata={
         "category": ("convergence",),
-        "section": "SCF",
         # Profile-level: DIIS history depth pairs with mixing_weight
         # (also profile) — both are SCF-stability tuning that
         # depends on what the system IS, not on the stage.
@@ -417,7 +348,6 @@ class SiestaConfig:
     })
     dm_tolerance: float = field(default=1e-5, metadata={
         "category": ("accuracy",),
-        "section": "SCF",
         "workflow_group": "stage",
         "label": "Density-matrix tolerance",
         "engine_key":  'DM.Tolerance',
@@ -426,7 +356,6 @@ class SiestaConfig:
     })
     dm_energy_tolerance: float = field(default=1e-4, metadata={
         "category": ("accuracy",),
-        "section": "SCF",
         "workflow_group": "stage",
         "label": "SCF free-energy tolerance", "unit": "eV",
         "engine_key":  'DM.EnergyTolerance',
@@ -440,7 +369,6 @@ class SiestaConfig:
     # here, so the form renders them side by side without special-casing.
     scf_energy_converge: bool = field(default=False, metadata={
         "category": ("accuracy",),
-        "section": "SCF",
         "workflow_group": "stage",
         "label": 'Also require the free energy to settle',
         "engine_key":  'SCF.FreeE.Converge',
@@ -448,7 +376,6 @@ class SiestaConfig:
     })
     max_scf_iter: int = field(default=1000, metadata={
         "category": ("convergence",),
-        "section": "SCF",
         # Resource-budget cap — "how long am I willing to wait" — NOT
         # part of the convergence-target staging.  Switching stages
         # MUST NOT halve / double this value silently.
@@ -469,11 +396,9 @@ class SiestaConfig:
     # ABNORMAL_TERMINATION and no sweep could ever produce a verdict.
     scf_must_converge: Optional[bool] = field(default=None, metadata={
         "category": ("convergence",),
-        "section": "SCF",
         "workflow_group": "budget",
         "label": "Abort if the SCF hits its cycle cap",
         "null_label": "(SIESTA default: abort)",
-        "optional": True,
         "engine_key":  'SCF.MustConverge',
         "tier":  "advanced",
     })
@@ -487,36 +412,24 @@ class SiestaConfig:
         # real one lived in Convergence targets, so the same word named two
         # different places.
         "category": ("system", "accuracy"),
-        "section": "SCF",
         "workflow_group": "profile",
         "label": "Electronic temperature (smearing)", "unit": "K",
         "engine_key":  'ElectronicTemperature',
-        "id_suffix": "temperature",
         "range": (0.0, 5000.0),
         "tier":  "advanced",
     })
 
-    # k-grid -- Tuple field with custom CLI parsing; not auto-generated
-    # by add_dataclass_options (the bridge handles only scalar types).
-    # In the schema-driven form this renders as three side-by-side int
-    # inputs (kx / ky / kz) under id sub-suffixes "x", "y", "z".
+    # k-grid -- three integers; the form renders them as three
+    # side-by-side inputs (kx / ky / kz).
     kgrid: Tuple[int, int, int] = field(default=(1, 1, 1), metadata={
         "category": ("accuracy",),
-        # 2026-06-13 fold: k-grid (Monkhorst-Pack) is reciprocal-space
-        # sampling; basis_size / mesh_cutoff / pao_energy_shift are
-        # real-space sampling.  Same conceptual family — all are
-        # "how finely we sample the calculation."  Folding into
-        # "Basis & grid" so the form stops having a one-field section.
-        "section": "Basis & grid",
         # Folded into the Stage card (a convergence knob: more
         # k-points → tighter sampling → more cost) per the
         # web-ui-coherence Rule 2 attachment pass on 2026-06-13.
         "workflow_group": "stage",
         "label": "k-point mesh",
         "engine_key":  '%block kgrid_Monkhorst_Pack',
-        "id_suffix": "k",
         "tier":  "basic",
-        "skip_cli": True,
         # Bounds PER COMPONENT, a recommendation (validation/metadata.py's
         # `outside_range`); the form puts them on each of the three inputs.
         # 0 or below is the catalogue's hard limit, refused on every door.
@@ -540,14 +453,6 @@ class SiestaConfig:
             # Same block as kgrid; the note says which column, and
             # ``_bare_anchor`` keeps only the keyword.
             "engine_key": '%block kgrid_Monkhorst_Pack  (displ column)',
-            # NO ``section`` / ``id_suffix`` / ``tier``.
-            # Those three are the OLD Build form's keys, and ``section`` is the
-            # opt-in that puts a field on it -- retired at `@2` in favour of
-            # ``category`` (`engines/template.md` § 5).  The UI is to be rebuilt
-            # FROM the template; a new field does not join the form that is
-            # being replaced (user, 2026-08-14).  ``category`` is what a surface
-            # groups by, and it is here.
-            "skip_cli": True,
             # Per component, a recommendation, inclusive: the browser box is
             # [0, 1], and the metadata pass warns outside it
             # (`outside_range`).  The offset wraps, so 1.0 names Gamma again.
@@ -569,7 +474,6 @@ class SiestaConfig:
     # FDF's verbose comments.
     relax_type: str = field(default="CG", metadata={
         "category": ("procedure",),
-        "section": "Compute & budget",
         # 2026-08-07: was ``workflow_group="profile"``, on the reasoning that
         # the relax/MD algorithm family is a run-shape identity choice.  It is
         # not: a LADDER CHANGES THE OPTIMIZER ON PURPOSE -- CG to warm up, then
@@ -580,12 +484,10 @@ class SiestaConfig:
         "workflow_group": "stage",
         "label": "Relaxation / MD algorithm",
         "engine_key":  'MD.TypeOfRun',
-        "id_suffix": "relax",
         "choices": ("CG", "Broyden", "FIRE", "Verlet", "Nose", "none"),
     })
     relax_steps: int = field(default=200, metadata={
         "category": ("procedure",),
-        "section": "Compute & budget",
         "item_kind":  "deck",
         "expands":    ['MD.Steps', 'MD.FinalTimeStep'],
         # Resource-budget cap — same as max_scf_iter, this is "how
@@ -601,11 +503,9 @@ class SiestaConfig:
     })
     relax_force_tol: float = field(default=0.02, metadata={
         "category": ("accuracy",),
-        "section": "Compute & budget",
         "workflow_group": "stage",
         "label": "Force convergence threshold", "unit": "eV/Å",
         "engine_key":  'MD.MaxForceTol',
-        "id_suffix": "force-tol",
         "range": (0.001, 0.5),
         "tier":  "advanced",
     })
@@ -615,11 +515,9 @@ class SiestaConfig:
     # type is fixed by the kind; only the nudge size is a person's choice.
     fc_displacement: float = field(default=0.04, metadata={
         "category": ("accuracy",),
-        "section": "Vibration",
         "workflow_group": "stage",
         "label": "Force-constant displacement", "unit": "Bohr",
         "engine_key":  'FC.Displacement',
-        "id_suffix": "fc-displ",
         "range": (0.005, 0.2),
         "tier":  "advanced",
     })
@@ -630,7 +528,6 @@ class SiestaConfig:
     # refusal.
     already_relaxed: bool = field(default=False, metadata={
         "category": ("procedure",),
-        "section": "Vibration",
         "workflow_group": "profile",
         "label": 'Structure is already relaxed',
         "tier": "basic",
@@ -647,24 +544,20 @@ class SiestaConfig:
     # gas-phase translational term one would enter.
     temperature_K: float = field(default=298.15, metadata={
         "category": ("procedure",),
-        "section": "Vibration",
         "workflow_group": "profile",
         "label": "Thermochemistry temperature", "unit": "K",
         # `produce`, as `already_relaxed` beside it: no SIESTA keyword --
         # the deck's `vibration` block carries it to the finish.
         "item_kind": "produce",
         "engine_key": "(molbuilder: the thermochemistry's temperature -- PySCF's thermo.thermo(temperature=) for a free molecule, the harmonic vibrational sums otherwise and in SIESTA's finish)",
-        "id_suffix": "temperature",
         "range": (1.0, 5000.0),
         "tier":  "advanced",
     })
     relax_max_displ: float = field(default=0.05, metadata={
         "category": ("procedure", "convergence"),
-        "section": "Compute & budget",
         "workflow_group": "stage",
         "label": "Max displacement per step", "unit": "Å",
         "engine_key":  'MD.MaxDispl (CG / Broyden / FIRE)',
-        "id_suffix": "max-displ",
         "range": (0.001, 0.5),
         "tier":  "advanced",
     })
@@ -684,7 +577,6 @@ class SiestaConfig:
     # those two it becomes NO sbatch flag -- it is baked in at install time.
     continue_retries: int = field(default=1, metadata={
         "category": ("execution",),
-        "section":        "Compute & budget",
         "item_kind":  "wrapper",
         # MOVED to the staging surface 2026-08-15 (user): it is spent OUTSIDE
         # the engine call.  Nothing here reaches the .fdf -- the wrapper
@@ -719,12 +611,11 @@ class SiestaConfig:
     # SIESTA SILENTLY uses these defaults when the user picks Verlet
     # or Nose from the form -- so the user gets a 300 K / 1 fs / 0 K
     # target-temperature run with no UI hint that they could change
-    # them.  Adding ``section`` here promotes them into the form so
-    # the user at least SEES them on the page; their help text marks
+    # them.  They are on the form so the user at least SEES them on
+    # the page; their help text marks
     # them as ignored-for-CG so the form doesn't mislead non-MD users.
     md_initial_temperature: float = field(default=300.0, metadata={
         "category": ("procedure",),
-        "section": "Compute & budget",
         # Profile-level: MD ensemble identity (initial-velocity-
         # seed temperature for Verlet/Nose); set with the run, not
         # tightened stage-to-stage.
@@ -736,7 +627,6 @@ class SiestaConfig:
     })
     md_target_temperature: Optional[float] = field(default=None, metadata={
         "category": ("procedure",),
-        "section": "Compute & budget",
         # Profile-level: NVT target temperature is MD ensemble
         # identity (Nose-Hoover thermostat target).
         "workflow_group": "profile",
@@ -748,7 +638,6 @@ class SiestaConfig:
     })
     md_length_timestep: float = field(default=1.0, metadata={
         "category": ("procedure",),
-        "section": "Compute & budget",
         # Profile-level: MD integration timestep depends on system
         # composition (bonded H needs ~0.5 fs, heavier systems 1
         # fs); chosen with the run, not tightened stage-to-stage.
@@ -772,7 +661,6 @@ class SiestaConfig:
     # "start from" row (web/task-setup-plan.md § 6).
     restart: str = field(default="continue", metadata={
         "category": ("convergence", "execution"),
-        "section": "Compute & budget",
         "item_kind":  "deck",
         "expands":    ['DM.UseSaveDM', 'MD.UseSaveXV', 'MD.UseSaveCG'],
         # MOVED to the staging surface 2026-08-15 (user).  It is not a
@@ -785,7 +673,6 @@ class SiestaConfig:
         "workflow_group": "staging",
         "label": "Start from",
         "choices": ("clean", "continue"),
-        "id_suffix": "restart",
         "tier": "advanced",
         "engine_key": ("(molbuilder: one field, one mechanism per "
                        "engine -- SIESTA expands it to DM.UseSaveDM / "
@@ -808,16 +695,13 @@ class SiestaConfig:
     # Output + positioning flags (2026-06-13): all of these are set
     # once per project and don't change between stages — tag them as
     # workflow_group="profile" so they fold into the Run profile card
-    # alongside SystemLabel / pseudo / spin.  Kills the "Output &
-    # positioning" section as a separate untagged surface (the user
-    # was hunting for these knobs at the bottom of the form).
+    # alongside SystemLabel / pseudo / spin.
 
     # When True, every section in the emitted FDF carries inline tuning
     # hints (parameter ranges, what to change when SCF / CG misbehave,
     # etc.) plus a "Troubleshooting" block at the end.
     verbose_comments: bool = field(default=True, metadata={
         "category": ("procedure",),
-        "section": "Output & positioning",
         "item_kind":  "produce",
         "workflow_group": "output",
         "label": "Verbose inline comments",
@@ -850,14 +734,12 @@ class SiestaConfig:
     })
     write_coor_xmol: bool = field(default=True, metadata={
         "category": ("procedure",),
-        "section": "Output & positioning",
         "workflow_group": "output",
         "label": "Write XMOL .xyz",
         "engine_key":  'WriteCoorXmol',
     })
     write_md_history: bool = field(default=True, metadata={
         "category": ("procedure",),
-        "section": "Output & positioning",
         "workflow_group": "output",
         "label": "Write MD history (.MD/.MDE)",
         "engine_key":  'WriteMDhistory',
@@ -869,14 +751,12 @@ class SiestaConfig:
     # see, in the same place, that the animation file is a different switch.
     write_md_xmol: bool = field(default=True, metadata={
         "category": ("procedure",),
-        "section": "Output & positioning",
         "workflow_group": "output",
         "label": "Write XMOL animation (.ANI)",
         "engine_key":  'WriteMDXmol',
     })
     write_hs: bool = field(default=True, metadata={
         "category": ("procedure",),
-        "section": "Output & positioning",
         "workflow_group": "output",
         "label": "Write H+S matrices",
         "engine_key":  'SaveHS',
@@ -897,33 +777,23 @@ class SiestaConfig:
     # failure mode -- `propor: ERROR: IMAX = 0` -- by overriding
     # SIESTA's auto-picked BlockSize, which can be too coarse for
     # the per-atom distribution pass on small molecules.
-    # Both default to None -> auto-detect.  The CLI bridge can't
-    # represent a tri-state Optional[bool] (None / True / False) with
-    # a flag pair, so we mark them skip_cli=True; users who need to
-    # override go through the Python API.  Block-size auto picks a
+    # Both default to None -> auto-detect.  Block-size auto picks a
     # power-of-2 from n_atoms; over_k auto turns on when the k-grid
     # has multiple k-points.
-    # MPI rank count for ``mpirun -np N siesta`` -- exposed on the
-    # form so the user can pick the rank count alongside the other
-    # parallel-execution knobs.  The run.sh wrapper reads this from
-    # the form params.  None / 0 / 1 -> single-process (no mpirun).
+    # MPI rank count for ``mpirun -np N siesta``.
+    # None / 0 / 1 -> single-process (no mpirun).
     # Don't confuse with block_size (BlockSize for ScaLAPACK
     # within a rank); rank count is the OUTER parallelism.
     # The parallel-execution family (MPI ranks, OMP threads, GPU count,
     # BlockSize, parallel-over-k, memory cap; the machine-answered ones
     # moved to workflow_group="staging" on 2026-08-15).  Compute layout
     # is "how much compute am I willing to spend on this run" — same category as MaxSCFIterations and
-    # MD.Steps.  Folds the Parallel-execution section into the
-    # Compute & budget workflow-group card.
+    # MD.Steps.
     mpi_np: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
-        "section": "Compute & budget",
         # NOT a template item: a machine fact, which floor 2 must never
         # name (engines/template.md 7).  It arrives as the ALLOCATION at
         # `prep`, on the machine that will run it (project-layout.md M4).
-        # The `section` stays so the Build form can still offer it until
-        # the web has a prep surface of its own (P10/P11) -- exposure to a
-        # surface and membership of the template are different questions.
         "allocation": True,
         "item_kind":  "wrapper",
         "workflow_group": "staging",
@@ -931,7 +801,6 @@ class SiestaConfig:
         "engine_key":  '(molbuilder: .run.sh ``mpirun -np N`` only; not in .fdf)',
         "null_label": "(single-process)",
         "range":      (1, 1024),
-        "skip_cli":   True,
     })
 
     gpu_count: Optional[int] = field(default=None, metadata={
@@ -950,7 +819,6 @@ class SiestaConfig:
                        "not in the deck)",
         "null_label": "(machine proposes)",
         "range":      (1, 16),
-        "skip_cli":   True,
     })
 
     block_size: Optional[int] = field(default=None, metadata={
@@ -964,21 +832,16 @@ class SiestaConfig:
         # (ELPA falls back to the CPU).  `pow2` survives where it belongs --
         # BENCH-MARKS, a constraint the benchmark puts on its own sweep.
         "validate": (lambda value, cfg: _validate_block_size(value)),
-        "section": "Compute & budget",
         "workflow_group": "budget",
         "label": "ScaLAPACK block size",
         "engine_key":  'BlockSize',
-        "id_suffix": "block-size",
         "null_label": "(auto)",
-        "skip_cli": True,
     })
     parallel_over_k: Optional[bool] = field(default=None, metadata={
         "category": ("execution",),
-        "section": "Compute & budget",
         "workflow_group": "budget",
         "label": "ParallelOverK",
         "engine_key":  'Diag.ParallelOverK',
-        "skip_cli": True,
     })
     # OpenMP threads per MPI rank.  Controls the run-wrapper's
     # ``export OMP_NUM_THREADS=<N>`` line (see molbuilder/runwrap.py).
@@ -989,13 +852,9 @@ class SiestaConfig:
     # with the PySCF / spectra scripts.
     omp_threads: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
-        "section": "Compute & budget",
         # NOT a template item: a machine fact, which floor 2 must never
         # name (engines/template.md 7).  It arrives as the ALLOCATION at
         # `prep`, on the machine that will run it (project-layout.md M4).
-        # The `section` stays so the Build form can still offer it until
-        # the web has a prep surface of its own (P10/P11) -- exposure to a
-        # surface and membership of the template are different questions.
         "allocation": True,
         "item_kind":  "wrapper",
         "workflow_group": "staging",
@@ -1006,20 +865,15 @@ class SiestaConfig:
         # value when reading the run back via runtime_info).
         "engine_key":  '(molbuilder: .run.sh OMP_NUM_THREADS + .fdf runtime_info comment)',
         "null_label": "(auto: physical cores)",
-        "skip_cli":   True,
     })
     # SIESTA SystemMemory directive: MB cap for the SCF/diag working
     # set.  Not auto-set in the .fdf today; if set here, runtime_info
     # records it so the /results trajectory inspector shows the cap.
     max_memory_mb: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
-        "section": "Compute & budget",
         # NOT a template item: a machine fact, which floor 2 must never
         # name (engines/template.md 7).  It arrives as the ALLOCATION at
         # `prep`, on the machine that will run it (project-layout.md M4).
-        # The `section` stays so the Build form can still offer it until
-        # the web has a prep surface of its own (P10/P11) -- exposure to a
-        # surface and membership of the template are different questions.
         "allocation": True,
         "item_kind":  "wrapper",
         "workflow_group": "staging",
@@ -1035,11 +889,9 @@ class SiestaConfig:
         # normal state is unset, which means the node's maximum.
         "range":      (100, 1_000_000),
         "null_label": "(no cap)",
-        "skip_cli":   True,
     })
     use_gpu: bool = field(default=False, metadata={
         "category": ("execution",),
-        "section": "Compute & budget",
         "workflow_group": "staging",
         "label":     "Use GPU (NVIDIA)",
         # OPTIONAL accelerator on top of an ELPA ``diag_algorithm``
@@ -1074,7 +926,6 @@ class SiestaConfig:
         "item_kind":   "deck",
         "expands":     ("Diag.ELPA.GPU",),
         "engine_key":  "Diag.ELPA.GPU (SIESTA) | mf = mf.to_gpu() (PySCF)",
-        "id_suffix": "use-gpu",
     })
     diag_algorithm: str = field(default="ScaLAPACK", metadata={
         "category": ("execution",),
@@ -1091,7 +942,6 @@ class SiestaConfig:
         # key exists to remove, pointing the other way: a dependency
         # asserted where none exists makes the wrapper look like it
         # consults a value it never opens.
-        "section": "Compute & budget",
         "workflow_group": "budget",
         "label":     "Diagonalizer",
         # The EIGENSOLVER choice -- independent of hardware (engines/
@@ -1107,7 +957,6 @@ class SiestaConfig:
         # Default ScaLAPACK = SIESTA's own default; ELPA is a freely
         # selectable upgrade, gated by neither GPU nor a source build.
         "engine_key":  'Diag.Algorithm',
-        "id_suffix": "diag-algorithm",
         "choices":   ("ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE"),
         "tier":      "advanced",
     })
@@ -1117,7 +966,6 @@ class SiestaConfig:
     # the CLI side, also hand-rolled.
     psml_lib: Optional[str] = field(default=None, metadata={
         "category": ("method",),
-        "section":    "System",
         "item_kind":  "produce",
         # Run-profile identity — which pseudopotential library this
         # run uses is fixed per-project, set alongside SystemLabel
@@ -1126,7 +974,6 @@ class SiestaConfig:
         "label":      "Pseudopotential directory (.psml)",
         "engine_key":  '(molbuilder: stages .psml files next to .fdf; SIESTA reads them by element basename)',
         "null_label": "(none)",
-        "skip_cli":   True,
     })
     copy_psml: bool = field(default=True, metadata={
         "workflow_group": "output",
@@ -1144,7 +991,6 @@ class SiestaConfig:
         "workflow_group": "profile",
         "category": ("system",),
         "label": "Species order",
-        "skip_cli": True,
             "engine_key":  '(molbuilder: ChemicalSpeciesLabel block ordering)',
         "item_kind": "produce",
     })

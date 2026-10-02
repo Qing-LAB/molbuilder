@@ -19,7 +19,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from molbuilder.config.transport import (REGION_BRIDGE, REGION_BUFFER,
+from molbuilder.transport.sort import (REGION_BRIDGE, REGION_BUFFER,
                                          REGION_LEFT_ELECTRODE,
                                          REGION_RIGHT_ELECTRODE)
 from molbuilder.structure import AtomChannel, Structure

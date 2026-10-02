@@ -3,10 +3,10 @@
 The ONE interface behind the Results tab's contract recording
 (`archive/2026-09-01-structure-info-plan.md` I5): given a directory, find the one
 engine deck in it and answer the electronic contract it states, in the
-exact field names ``TransportConfig`` speaks — so a recorded block
-(`info.calculation`) fills a transport config 1:1 when a pair carrying
-it is cited (`transport-design.md` § 4.1b, the recorded-contract
-shade).
+record's own field names (:data:`RECORD_TO_SIESTA_FIELD` maps them to the
+catalogue's) — so a recorded block (`info.calculation`) defaults a
+transport calculation's template when a pair carrying it is cited
+(`transport-design.md` § 4.1b, the recorded-contract shade).
 
 Per-engine, behind one door:
 
@@ -32,7 +32,7 @@ def contract_of(directory) -> Optional[Dict[str, Any]]:
     """The recorded-contract block for *directory*, or ``None``.
 
     Shape (the ``info.calculation`` block):
-    ``{"engine", "contract": {TransportConfig field -> value},
+    ``{"engine", "contract": {record field -> value},
     "source": <deck name>, "source_sha256"}`` — only fields the deck
     actually states appear in ``contract``.
     """

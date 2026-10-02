@@ -217,9 +217,11 @@ non-empty string — `Structure._validate_regions`).
 > **The convention, in one line:** any region whose label ends with
 > `-electrode`, `_electrode`, or bare `electrode` (case-insensitive) is a
 > transport **lead**. The Python helper is
-> `config.transport.is_electrode_label(label)` (`:100`), and it is the **only**
+> `transport.sort.is_electrode_label(label)`, and it is the **only**
 > implementation — the browser does not decide electrode-ness at all, it carries
-> the labels and the server reads them.
+> the labels and the server reads them. *(It sat in `config/transport.py` until
+> 2026-10-02, when that module's config class retired; the vocabulary moved to
+> the module that owns the partition the labels make.)*
 >
 > *(This cited a JS mirror, `region-label-definitions.js::isElectrodeLabel`,
 > "pinned to agree by `test_region_label_definitions_js.py`". Both files went in
@@ -233,9 +235,10 @@ The canonical labels the Modify tab ships and the emitter interprets:
 |---|---|
 | `L-electrode` | left semi-infinite lead — the **bulk** slice SIESTA replicates as a lead |
 | `R-electrode` | right lead (mirror of L for the canonical 2-terminal case) |
-| `bridge` | scattering region — the molecule + any lead-side atoms that break periodicity; **implicit** ("not in any electrode region"), not an emitted block |
+| `bridge` | scattering region — the molecule + any lead-side atoms that break periodicity; not an emitted block, but **assigned, never implied**: the transport sort refuses an atom that carries no partition label, or two (`transport/sort.py`) |
+| `buffer` *(optional)* | atoms excluded from the NEGF region (`TS.Atoms.Buffer`) — padding at the outer ends of the device, beyond the electrode blocks |
 | `interface` *(optional)* | a sub-label flagging contact atoms still inside `bridge` (for projected-DOS / charge-transfer); does **not** change the partition |
-| `<name>-electrode` | additional lead (multi-terminal / asymmetric); the stem before the suffix becomes the SIESTA block name |
+| `<name>-electrode` | read as a lead by `is_electrode_label`; the stem before the suffix becomes the SIESTA block name. **A transport run is 2-terminal** — the ladder builds two leads — so a third is not a junction molbuilder builds; it is not yet refused when its atoms also carry a partition label ([`engines/transport.md`](?doc=engines/transport.md) § 4) |
 
 **The emitter behaviour** — how `transiesta.py::_find_electrode_regions`
 (`:195`) discovers leads, sorts by z-centroid, assigns chempot `Left`/`Right` +
@@ -341,7 +344,7 @@ sidecar persistence (annotations since v4, current v7) + the ATOM-METADATA block
 emit/apply + the Results recovery bridge;
 the two built-in engine translations (`frozen_atoms` → `Geometry.Constraints`, region
 tags → transport blocks); the region-label vocabulary + `is_electrode_label`
-(Python + JS); the JS L1/L2/L3 channel model + the generalized filter.
+(Python, § 5); the JS L1/L2/L3 channel model + the generalized filter.
 
 **Open work** (`plans/plan.md` **W15**): **`value`-channel filtering
 end-to-end** — the server must resolve a `by_value` rule, and the channels

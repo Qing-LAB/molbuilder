@@ -183,9 +183,9 @@ def test_the_two_registries_hold_what_the_contract_says():
 # `TransiestaEngine`.  It called `validate(water_struct, TransportConfig())`
 # and asked only that SOME transport-flavoured word appeared -- its own
 # comment said so.  **No production caller ever made that call**: every
-# transport rung resolves a `SiestaConfig`, and the two sites that build a
-# `TransportConfig` build it as a projection for the NEGF block emitter and
-# never validate it.  So the test pinned a dispatch that existed only for
+# transport rung resolves a `SiestaConfig`, and the two sites that built a
+# `TransportConfig` built it as a projection for the NEGF block emitter and
+# never validated it (both are gone, the class with them, 2026-10-02).  So the test pinned a dispatch that existed only for
 # the test, and kept the dead registration alive for a day after the last
 # real caller (`POST /api/transport/render`) was deleted.
 #

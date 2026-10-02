@@ -436,7 +436,7 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
     """The transport KIND's science — keyed on ``task.calculation``, so it
     fires whatever config class the deck renders from.
 
-    Distinct from :func:`_validate_transport` beside it, which is keyed on
+    It replaced ``_validate_transport``, which was keyed on
     ``TransportConfig`` and therefore stopped firing for any rung that moved
     onto the framework's seam (the seed, 2026-09-15). A rule that only runs
     for one of two config classes is not a gate; this one runs for the kind.
@@ -556,7 +556,7 @@ def _validate_transport_kind(struct: Structure, cfg, cell, *,
     if _cell is not None and getattr(struct, "n_atoms", 0):
         from ..cell import (SEAM_VACUUM_FACTOR, transport_room,
                             transverse_reach)
-        from ..config.transport import is_electrode_label
+        from ..transport.sort import is_electrode_label
         # THE LEAD: the electrode-labelled atoms of a junction, one list per
         # lead; an electrode rung's structure IS the lead and carries no
         # labels, so all of it.
@@ -642,9 +642,7 @@ def _register_default_engines() -> None:
     broken install, and the ``except ImportError: pass`` that stood here
     until 2026-09-27 would have left that engine's scientific validation
     silently absent -- every deck of it passing a gate that checked nothing.
-    Only the config CLASS is imported eagerly (as a registry key); the
-    validator BODY for spectra/transport imports its engine lazily at call
-    time (see the wrappers above)."""
+    Only the config CLASS is imported eagerly (as a registry key)."""
     from ..config.siesta import SiestaConfig
     from ..config.pyscf import PySCFConfig
     _ENGINE_VALIDATORS[SiestaConfig] = _validate_siesta

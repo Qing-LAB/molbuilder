@@ -5,7 +5,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from molbuilder.config.transport import TransportConfig
 from molbuilder.sidecars import molstruct as msj
 from molbuilder.structure import Structure
 from molbuilder.parse.fdf import parse_fdf_params
@@ -230,3 +229,15 @@ def test_the_transport_axis_is_never_padded_with_vacuum():
         "the atom span, with no padding: an 8 A vacuum on the transport "
         "axis must not lengthen the device")
 
+
+def test_a_transport_deck_refuses_a_render_argument_it_does_not_read():
+    """`spec_for`'s transport arm dropped `cell=` (and `vibration`,
+    `relaxed_by`, `trial`) in silence; it refuses them by name
+    (`engines/transport.md` § 3.6a).  API-LEVEL because no road reaches it:
+    `prep._transport_spec`, the arm's only caller, passes none of them."""
+    from molbuilder.siesta.input import spec_for
+    struct = Structure(elements=["Au", "Au"],
+                       positions=np.array([[0.0, 0.0, 0.0],
+                                           [0.0, 0.0, 2.9]]))
+    with pytest.raises(ValueError, match="reads no cell"):
+        spec_for(struct, calculation="transport", cell=np.eye(3) * 10.0)

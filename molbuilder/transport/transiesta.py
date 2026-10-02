@@ -41,7 +41,7 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
-from ..config.transport import (
+from .sort import (
     ELECTRODE_LABEL_SUFFIX,
     REGION_BUFFER,
     REGION_LEFT_ELECTRODE,
@@ -645,7 +645,7 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
             lines.append(f"  elec-pos end       "
                          f"{-(n_total - max(idxs))}")
         # `bloch 1 1 1`, FIXED, not a control (the field was withdrawn
-        # 2026-09-15 -- see `config/transport.py`).  molbuilder derives
+        # 2026-09-15).  molbuilder derives
         # the electrode from the junction's own labelled atoms, so the
         # electrode cell IS the device cross-section and no expansion
         # applies.
@@ -755,14 +755,14 @@ def emit_electrode_declarations(struct: Structure, cfg) -> List[str]:
 #
 # The class ended as one classmethod, `preflight`, reached only through
 # `_ENGINE_VALIDATORS[TransportConfig]` in `validation/__init__.py`.  **Nothing
-# validates a `TransportConfig`.**  Every rung resolves a `SiestaConfig`
+# validated a `TransportConfig`.**  Every rung resolves a `SiestaConfig`
 # (`engines/transport.md` 2a.14), and the two sites that built a
 # `TransportConfig` then -- `deck.py::_legacy_view` and
 # `stages.py::config_for` -- built it as a projection to feed the lifted
 # NEGF block emitter and never validated it.  So the registration
 # dispatched for nothing.  (`_legacy_view` went on 2026-09-29, when the
-# block's values moved to the catalogue; `config_for` has no production
-# caller.)
+# block's values moved to the catalogue; `config_for`, with no production
+# caller, went with the class on 2026-10-02.)
 #
 # It was kept after that became true because one surface still built a
 # `TransportConfig` and validated it: `POST /api/transport/render`.  That route

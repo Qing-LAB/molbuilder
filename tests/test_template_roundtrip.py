@@ -205,11 +205,8 @@ def test_every_item_carries_what_a_surface_needs_to_render_it():
     held the *field* name, ``section`` was read only to decide exposure and
     then discarded, and ``null_label`` was gone entirely."""
     for item in T.declarations_for(SiestaConfig):
-        # A label and a fieldset serve the FORM.  An item with no section
-        # sits on no tab (§ 7/U16: membership is total; section answers
-        # only *where on the form*), so demanding them there would invent
-        # UI for a field no surface renders.  What every item DOES owe
-        # every reader is its help text.
+        # A label serves the FORM, which renders an item under its first
+        # category; what every item owes every reader is its help text.
         if item.category:
             assert item.label, f"{item.name} has no human-readable label"
         assert item.help, f"{item.name} has no help text"
@@ -240,9 +237,9 @@ def test_every_exposed_field_becomes_an_item_and_declares_its_kind():
     # The membership rule, stated exactly (U16 made it literal): every
     # parameter the schema declares is an item, excluded only by § 7's
     # named rows -- "a machine fact" (``allocation``, a fact a field
-    # declares about itself) and the ladder.  ``section`` is NOT in this
-    # expression at all: it answers *where on the form*, and gating
-    # membership on it was the fourth, unlisted exclusion that silently
+    # declares about itself) and the ladder.  No form-placement tag is in
+    # this expression: gating membership on one was the fourth, unlisted
+    # exclusion that silently
     # kept species_order (identity-sensitive) out of every template.
     # At @2 an allocation field IS a member (§ 6.4): the item is declared,
     # valueless, so a surface can ask for ranks and the wrapper writer knows

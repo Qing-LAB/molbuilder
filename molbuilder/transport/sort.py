@@ -37,10 +37,45 @@ from typing import List, Optional, Tuple
 import numpy as np
 
 from ..atom_permutation import PERMUTATION_FILE, PERMUTATION_SCHEMA
-from ..config.transport import (REGION_BRIDGE, REGION_BUFFER,
-                                REGION_LEFT_ELECTRODE,
-                                REGION_RIGHT_ELECTRODE)
 from ..structure import Structure, remap_annotations
+
+# --------------------------------------------------------------------- #
+#  The region-label vocabulary -- `model/structure-annotations.md` § 5   #
+# --------------------------------------------------------------------- #
+#
+# The labels a transport junction's atoms carry in the `.molstruct.json`
+# sidecar's `regions`, and the one rule that says which of them is a lead.
+# Here because this module owns the partition they make; everything that
+# reads a region label -- the emitter, compose, validation -- asks here, so a
+# rename happens once.  (They lived in `config/transport.py` beside
+# `TransportConfig` until that class retired, M5 step 3, 2026-10-02.)
+
+REGION_LEFT_ELECTRODE  = "L-electrode"
+REGION_RIGHT_ELECTRODE = "R-electrode"
+REGION_BRIDGE          = "bridge"
+#: Atoms excluded from the NEGF region entirely (``TS.Atoms.Buffer``):
+#: padding at the OUTER ends of the device, beyond the electrode blocks.
+#: Optional -- most 2-terminal junctions need none.
+REGION_BUFFER          = "buffer"
+
+#: A region whose label ENDS WITH this suffix (case-insensitive, optionally
+#: after ``-`` or ``_``) is an electrode to the TranSIESTA emitter:
+#: ``L-electrode`` and ``R-electrode`` fit it.
+ELECTRODE_LABEL_SUFFIX = "electrode"
+
+
+def is_electrode_label(label: str) -> bool:
+    """True iff ``label`` names an electrode region by the ``*-electrode``
+    rule: ``<name>-electrode``, ``<name>_electrode`` or the bare suffix,
+    case-insensitive -- the ONE implementation (`structure-annotations.md`
+    § 5)."""
+    if not isinstance(label, str):
+        return False
+    lo = label.lower()
+    return (lo == ELECTRODE_LABEL_SUFFIX
+            or lo.endswith("-" + ELECTRODE_LABEL_SUFFIX)
+            or lo.endswith("_" + ELECTRODE_LABEL_SUFFIX))
+
 
 #: The four PARTITION labels — exactly one per atom.  Everything else
 #: (``interface``, ``frozen_atoms``, user labels) is partition-neutral
@@ -156,11 +191,10 @@ def write_permutation(directory, result: SortResult) -> "Path":
     the schema, one file (`model/overview.md` § 2.2: recorded once).  The
     record, its class and its reader are `atom_permutation`'s, which travels
     beside a job where this module cannot."""
-    import json
     from pathlib import Path
+    from ..persist import write_json
     out = Path(directory) / PERMUTATION_FILE
-    out.write_text(json.dumps(result.sidecar(), indent=2) + "\n",
-                   encoding="utf-8")
+    write_json(out, result.sidecar())
     return out
 
 

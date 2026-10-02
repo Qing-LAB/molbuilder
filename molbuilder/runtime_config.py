@@ -2,7 +2,7 @@
 
 This module is named ``runtime_config`` (not just ``config``) because
 ``molbuilder.config`` is the engine-parameter dataclasses package
-(``SiestaConfig``, ``PySCFConfig``, ``TransportConfig``).  Different
+(``SiestaConfig``, ``PySCFConfig``).  Different
 concerns:
 
 * ``molbuilder.config.*``        -- L1 dataclasses, calculation

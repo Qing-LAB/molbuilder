@@ -34,7 +34,7 @@ The shared "nouns" and the cross-engine chemistry:
 
 - **`structure.py`** — the `Structure` dataclass + XYZ/PDB/PySCF/ASE readers/writers; the common currency between builders and consumers ([`structure.md`](?doc=model/structure.md)).
 - **`frame.py`** — `Frame` + `Trajectory` (parser-output types). **`chemistry.py`** — the shared element/adjacency helpers ([`chemistry.md`](?doc=model/chemistry.md)). **`selection.py`** — the atom-selection rule grammar. **`engine_atom_index.py`** — the 0-based ⇄ engine-index translation. **`residues.py`**, **`issues.py`** (`Issue`/`ValidationError`).
-- **`config/`** — the engine-parameter dataclasses (`SiestaConfig`/`PySCFConfig`/`SpectraConfig`/`TransportConfig`).
+- **`config/`** — the engine-parameter dataclasses (`SiestaConfig`/`PySCFConfig`).
 - **`parse/`** — the unified file/text/dir → `ParseResult` layer ([`parse.md`](?doc=model/parse.md)), split into `coords/` (geometry parsers), `engines/` (`.out`/`.log` parsers), `scripts/` (the reserved-block text parsers), `dirs/` (directory composers), `sidecars/` (sidecar **read** side).
 - **`sidecars/`** — the sidecar JSON **write** side (a deliberate read/write split from `parse/sidecars/`).
 - **`validation/`** — the pre-emission validation package (`chemistry`/`geometry`/`siesta`/`pyscf`/`metadata`/`sidecar`) ([`science/validation.md`](?doc=science/validation.md)). **`pseudos.py`** — SIESTA `.psml` validation ([`pseudopotentials.md`](?doc=science/pseudopotentials.md)).

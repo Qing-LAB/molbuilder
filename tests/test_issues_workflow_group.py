@@ -20,11 +20,8 @@ These tests pin:
 
 from __future__ import annotations
 
-import dataclasses
-
 import pytest
 
-from molbuilder.config.transport import TransportConfig
 from molbuilder.issues import Issue
 from molbuilder.pyscf import PySCFConfig
 from molbuilder.siesta import SiestaConfig
@@ -206,98 +203,8 @@ class TestIssuesToJsonEnrichment:
         assert out[0]["workflow_group"] == "profile"
 
 
-# ===================================================================== #
-#  Integration completeness — a field is in the form, or it is not      #
-# ===================================================================== #
-
-class TestEveryExposedFieldIsTagged:
-    """A field exposed in the form MUST carry a ``workflow_group``.
-
-    User rule, 2026-08-07: *"all template fields should have a tag that
-    either enriches the information/validation or gives very minimum brief
-    information — if any field does not have that, someone added a new field
-    and did not finish the integration to the data system."*
-
-    Two pieces of metadata decide a field's place in the surface, and they
-    answer different questions:
-
-      ``section``         is this field in the form at all?  A field without
-                          one is deliberately internal and the form never
-                          shows it.
-      ``workflow_group``  WHICH card, and therefore where a finding about it
-                          appears (``web/ui-contract.md`` Rule 2).
-
-    **So they must move together.**  A field with a ``section`` and no
-    ``workflow_group`` renders bare after the cards and its findings fall to a
-    residual panel instead of sitting beside the field they concern — a
-    half-integrated field, which is exactly the state this test exists to
-    catch.  The reverse, a tagged field with no ``section``, is a tag nothing
-    can ever read.
-
-    ⚠ **SiestaConfig and PySCFConfig left this rule on 2026-08-15**, and the
-    parametrize list below is the whole change.  Their form is built from
-    ``data/catalogue.template.toml``, which has no ``section``: an item is on
-    the form because the catalogue carries it, so a field without one is no
-    longer internal.  That was the POINT — ``section`` was an opt-in and
-    fifteen ordinary parameters never got one, so `write_forces`,
-    `species_order`, `copy_psml`, PySCF's `ecp` / `auxbasis` / `diis_space`
-    and the rest were invisible while reaching the generated file all along.
-    Keeping them here would pin the very gate that hid them
-    (`web/form-schema.md` § 1a).
-
-    What replaces it for those two is not weaker: the catalogue must give
-    EVERY item a card, guarded by
-    ``test_catalogue_agreement.py::test_every_catalogue_item_declares_a_panel``,
-    and the class's ``workflow_group`` must agree with the catalogue's
-    ``group`` — the form reads one and finding-placement reads the other.
-
-    **Transport still calls ``dataclass_to_form_schema``**, so for it the
-    rule is unchanged and still guarded here.
-    """
-
-
-    @pytest.mark.parametrize("cfg_cls", [TransportConfig])
-    def test_the_tag_comes_from_the_vocabulary(self, cfg_cls):
-        """A tag must be one the vocabulary knows, not merely present.
-
-        The sibling above asks *is there a tag*; this asks *is it a real
-        one*.  A misspelled or stale tag passes the first and fails here:
-        it routes findings to a card that does not exist, which renders the
-        same as no tag at all — the residual panel — so the two checks
-        cannot be collapsed into one.
-
-        **The vocabulary is read, never copied.** `template.GROUPS` is the
-        owner; a hand-kept list here would be a second answer to a
-        one-owner question, and that is exactly what broke on 2026-08-15,
-        when `output` and `staging` were added and this test failed two
-        legitimate tags for no reason but its own staleness.
-
-        *Moved here 2026-09-03 from `test_live_poll_invariants_audit.py`,
-        which was retired: it was one of three tests in that file that
-        actually ran the code (testing.md § 3a).*
-        """
-        from molbuilder.template import GROUPS
-
-        valid = set(GROUPS)
-        tagged = [(f.name, tag) for f in dataclasses.fields(cfg_cls)
-                  if (tag := f.metadata.get("workflow_group")) is not None]
-        # A class with no tags at all would make the check below vacuously
-        # true -- "none of zero tags is wrong".  The version this moved from
-        # had that hole; the mutation that proves the check works (retag one
-        # field to a misspelling) would also have passed on an empty list.
-        assert tagged, (
-            f"{cfg_cls.__name__} carries no workflow_group metadata at all, "
-            f"so this test examined nothing.  Either the tags were dropped "
-            f"-- which is the bug its sibling above catches -- or this class "
-            f"no longer builds its form from dataclass metadata and should "
-            f"leave the parametrize list, as SIESTA and PySCF did.")
-        bad = [(cfg_cls.__name__, name, tag)
-               for name, tag in tagged if tag not in valid]
-        assert not bad, (
-            f"config field(s) tagged with a workflow_group the vocabulary "
-            f"does not define: {bad}.\nAllowed: {sorted(valid)}.  A tag "
-            f"outside this set routes the field's findings nowhere, which "
-            f"looks identical to an untagged field.  Either fix the "
-            f"spelling or add the group to `template.GROUPS` — the "
-            f"vocabulary is the one place that decides."
-        )
+# The integration-completeness class (`section` and `workflow_group` moving
+# together) was retired 2026-10-02 with its one remaining case,
+# `TransportConfig` (M5 step 3).  Every form is the catalogue's now, where
+# `test_catalogue_agreement.py::test_every_catalogue_item_declares_a_panel`
+# guards the same rule.

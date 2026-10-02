@@ -70,12 +70,6 @@ def test_use_gpu_metadata_is_present():
     """
     field = SiestaConfig.__dataclass_fields__["use_gpu"]
     md = field.metadata
-    # ``section`` is NOT asserted: it gates nothing for SiestaConfig /
-    # PySCFConfig since 2026-08-15, when their forms moved onto the
-    # catalogue (`web/form-schema.md` § 1a -- *"for those two classes
-    # `section` is read by nothing"*).  Pinning its exact string made
-    # this test look like it guarded where the control appears; it
-    # guarded a dead tag.  `workflow_group` below is the live one.
     # ``staging`` -- the group whose items a parameter form deliberately does
     # NOT ask, because the Job Prep UI answers them (web/task-setup.md § 6.1,
     # § 6.2).  The class's ``workflow_group`` must MIRROR the catalogue item's
@@ -83,7 +77,6 @@ def test_use_gpu_metadata_is_present():
     # the catalogue's, finding-placement reads this one, so a disagreement puts
     # the control on one card and its warnings on another.
     assert md["workflow_group"] == "staging"
-    assert md["id_suffix"] == "use-gpu"
     # The engine_key must reference the SIESTA fdf keyword so the
     # methods-text generator can cite it; an empty value would let
     # the field silently drift from the keyword the generator emits.
@@ -174,14 +167,12 @@ def test_render_fdf_gpu_with_scalapack_is_rejected():
 def test_diag_algorithm_field_metadata():
     """A dropdown with three choices (ScaLAPACK + the two ELPA variants),
     default ScaLAPACK (safe on the precompiled CPU env), always shown (NOT
-    gated behind GPU).  ``section`` is not pinned -- see the note in
-    ``test_use_gpu_metadata_is_present``."""
+    gated behind GPU)."""
     field = SiestaConfig.__dataclass_fields__["diag_algorithm"]
     md = field.metadata
     assert md["workflow_group"] == "budget"
     assert md["choices"] == ("ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE")
     assert md["engine_key"] == "Diag.Algorithm"
-    assert md["id_suffix"] == "diag-algorithm"
     assert SiestaConfig().diag_algorithm == "ScaLAPACK"
 
 

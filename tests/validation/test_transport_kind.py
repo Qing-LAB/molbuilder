@@ -2,10 +2,11 @@
 
 `_validate_transport_kind` is registered in ``_KIND_VALIDATORS`` and keyed on
 ``task.calculation``, so it fires for whatever config class the deck renders
-from. That matters here: its sibling ``_validate_transport`` is keyed on
+from. That matters here: its sibling ``_validate_transport`` was keyed on
 ``TransportConfig`` in ``_ENGINE_VALIDATORS``, and every rung has resolved a
-``SiestaConfig`` since the seam migration — so the engine-keyed one dispatches
-for no rung, and this is the only transport science that runs on a prep.
+``SiestaConfig`` since the seam migration — so the engine-keyed one dispatched
+for no rung (both are deleted), and this is the only transport science that
+runs on a prep.
 
 **It carried three rules and none of them had a test** (found 2026-09-16). Each
 one below is a case where being wrong costs a queue wait and produces a
@@ -136,9 +137,9 @@ class TestThePoleEnergyIsTiedToTheTemperature:
 class TestTheLinearResponseAdvisory:
     """|V| > 2 V is outside the Landauer regime — a warn, never a refusal.
 
-    Its old home (`TransiestaEngine.preflight`) is keyed on ``TransportConfig``
-    and fires for no rung, so a person could describe a 3 V scan and be told
-    nothing on the road that runs. Bias is the one axis a transport
+    Its old home (`TransiestaEngine.preflight`) was keyed on
+    ``TransportConfig`` and fired for no rung, so a person could describe a
+    3 V scan and be told nothing on the road that runs. Bias is the one axis a transport
     calculation exists to sweep.
     """
 

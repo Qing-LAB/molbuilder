@@ -364,7 +364,7 @@ def api_build_molecule():
     # THE TRAILING `#` RESERVES THE NAME, and it is doing real work.  Region
     # labels are ONE namespace, shared by the user's own labels and by the
     # transport vocabulary -- where any label ending `-electrode` IS a lead
-    # (`config.transport.is_electrode_label`, and TranSIESTA itself imposes no
+    # (`transport.sort.is_electrode_label`, and TranSIESTA itself imposes no
     # naming rule; the suffix is ours and is stripped before the deck is
     # written).  The name generator takes whatever a person types, so a PubChem
     # search for "gold-electrode" would otherwise have labelled the whole
@@ -824,7 +824,7 @@ def api_build_schema(engine: str):
     """Form-rendering schema for the SIESTA or PySCF Build panel.
 
     Returns the JSON-friendly shape produced by
-    ``_shared.dataclass_to_form_schema()`` -- see the helper docstring
+    ``_shared.catalogue_to_form_schema()`` -- see the helper docstring
     for the exact field/section layout.  The Build tab's JS calls
     this once on page load and renders the form panel directly from
     the returned schema; no static HTML field declarations are
