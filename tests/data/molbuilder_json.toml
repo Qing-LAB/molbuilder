@@ -70,7 +70,8 @@ line = ["-p cpu"]
 
 [[case]]
 name = "every preference section, together, reads"
-machine_config = { launch = { mode = "submit" }, env_init = { activation = "conda activate" }, envs = { siesta = "molbuilder-siesta" }, checkpoint = { size_limit_bytes = 1000000 }, rate_limit = { enabled = false }, admin = { emails = ["someone@example.edu"] }, tls = { cert = "/srv/cert.pem", key = "/srv/key.pem" } }
+# (`paths` is left out: it would move the project tree this road runs in.)
+machine_config = { launch = { mode = "submit" }, env_init = { activation = "conda activate" }, envs = { siesta = "molbuilder-siesta" }, checkpoint = { size_limit_bytes = 1000000 }, rate_limit = { enabled = false }, admin = { emails = ["someone@example.edu"] }, tls = { cert = "/srv/cert.pem", key = "/srv/key.pem" }, auth = { providers = [{ id = "google", label = "Google", kind = "google", allowed_users = ["someone@example.edu"], client_id = "x.apps.googleusercontent.com", client_secret_file = "/srv/google.secret" }] } }
 header = ["#SBATCH -p cpu"]
 
 # ===================================================================== #
@@ -88,14 +89,29 @@ machine_config = { script_generation = { activation = "source activate", preambl
 refused = '"env_init": {"activation": "source activate", "preamble": "module load mamba"}'
 
 [[case]]
-name = "execution is refused, showing the launch block to write instead"
+name = "execution is refused, showing the launch block to write instead, and that its default queue has no replacement"
 machine_config = { execution = { mode = "submit", domain = "cpu" } }
-refused = '"launch": {"mode": "submit"}'
+refused = ['"launch": {"mode": "submit"}', "'domain' has no replacement: a job names its own queue"]
 
 [[case]]
-name = "...and says its default queue has no replacement"
-machine_config = { execution = { mode = "submit", domain = "cpu" } }
-refused = "'domain' has no replacement: a job names its own queue"
+name = "the flat tls keys are refused, showing the section to write"
+machine_config = { cert = "/c.pem", key = "/k.pem" }
+refused = ["'tls' is a section, not top-level keys", '"tls": {"cert": "...", "key": "..."}']
+
+[[case]]
+name = "secret_key_file is refused, naming the session key's one home"
+machine_config = { secret_key_file = "~/.mb/key" }
+refused = ["'secret_key_file' is no longer configured", "<config dir>/secrets/secret_key"]
+
+[[case]]
+name = "an operational path is refused, naming the variable that replaces it"
+machine_config = { paths = { logs = "/somewhere" } }
+refused = ["'paths.logs' is no longer configured", "XDG_STATE_HOME"]
+
+[[case]]
+name = "a retired notify setting is refused, saying the key file carries its route"
+machine_config = { notify_keys_file = "~/.mb/notify_keys" }
+refused = ["'notify_keys_file' was retired on 2026-08-31", "molbuilder notify-token"]
 
 [[case]]
 name = "an unknown section is refused, naming the live ones and no retired one"

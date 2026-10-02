@@ -256,7 +256,8 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # `launch --dry-run`, and on a machine with no queue the run script's own
 # dry run -- checking the layers it names (`docs/process/testing.md` § 6):
 #
-#   1. ALLOWED OR REFUSED, in its words -- at prep (`refused`, `said`) or at
+#   1. ALLOWED OR REFUSED, in its words -- at prep (`refused`, a sentence or a
+#      list of them; `said`) or at
 #      launch (`launch_refused`, `listing`);
 #   2. WHAT IS PRODUCED -- the `.sbatch` header (`header`, or
 #      `header_absent`), the deck (`deck`), the run script (`run_sh`), each
@@ -450,7 +451,12 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
 
     # 1 · ALLOWED OR REFUSED -- at prep, in its words
     if "refused" in case:
-        assert r.exit_code != 0 and case["refused"] in r.output, _one_line(r)
+        # One sentence, or several of one refusal -- a row is one input, so
+        # what its refusal must say is listed on it, never a second row.
+        said = case["refused"]
+        assert r.exit_code != 0, _one_line(r)
+        for words in ([said] if isinstance(said, str) else said):
+            assert words in r.output, _one_line(r)
         return
     assert r.exit_code == 0, _one_line(r)
     for words in case.get("said", []):

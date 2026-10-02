@@ -78,11 +78,8 @@ run = { use_gpu = true }
 prep = ["--gpus", "0"]
 refused = "--gpus:"
 
-[[case]]
-name = "molbuilder.json's scheduler block -- its gpu block too -- is refused by name"
-run = { mpi_np = 4 }
-machine_config = { scheduler = { directives = { partition = "cpu", qos = "public" }, gpu = { mem = "64G" } } }
-refused = "'scheduler' is no longer configured"
+# (The `scheduler` block's refusal is `molbuilder_json.toml`'s row: the reader
+#  refuses on the key, so its gpu sub-block is no second path -- 2026-10-02.)
 
 [[case]]
 name = "SIESTA on a GPU is refused when the target has no GPU build of it"

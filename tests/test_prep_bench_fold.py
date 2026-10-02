@@ -1696,53 +1696,7 @@ def test_a_flat_one_stage_calculation_preps_to_completion(tmp_path):
     assert "flat" in res.output
 
 
-def test_a_config_refusal_is_a_refusal_not_a_traceback(tmp_path, monkeypatch):
-    """A8 (redo 2026-08-12): the described route's most likely
-    first-contact failure -- ``script_generation.activation`` unset --
-    escaped `prep` as a raw ``RuntimeConfigError`` traceback.  The named
-    user-fixable classes translate to PrepError at the library seam, so
-    the CLI answers with the refusal text, not a stack.
-
-    Sandboxed cwd+HOME: the first version of this test passed a fake HOME
-    to CliRunner's ``env`` -- which never touches ``os.environ`` -- and
-    prepped GREEN off the developer's own molbuilder.json in the repo cwd."""
-    from click.testing import CliRunner
-    from molbuilder import describe as D
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.jobset._cli import jobset_group
-    from molbuilder.structure import Structure
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "home").mkdir()
-    # THE BOX IS PROBED, AND STATES NO ACTIVATION -- which is the condition
-    # under test.  Moving HOME moves the machine scope out from under
-    # conftest's own record, and prep refuses without one at all; the default
-    # record carries an `env_init`, which would supply the very field
-    # this test removes and the refusal would never fire.
-    from conftest import write_machine_record
-    write_machine_record(env_init={})
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0],
-                                           [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
-    dest = tmp_path / "calc"
-    D.write_description(
-        D.build_description(struct, SiestaConfig(system_label="JOB"),
-                            _one_stage(),
-                            engine="siesta", shape="hierarchical",
-                            name="JOB", source=str(tmp_path / "h2.xyz")),
-        dest)
-    from conftest import write_pseudos
-    write_pseudos(dest, sorted(set(struct.elements)))
-    _state_the_run(dest)
-    res = CliRunner().invoke(jobset_group,
-                             ["prep", "run", "coarse", "--bundle", str(dest),
-                              "--no-sbatch"])
-    assert res.exit_code != 0
-    assert "activation" in res.output, res.output
-    assert "Traceback" not in res.output, res.output
+# `test_a_config_refusal_is_a_refusal_not_a_traceback` retired 2026-10-02 (W54): its setup is the record gate, which `tests/data/launch_values.toml` drives down the road (a record that states no activation is refused).
 
 
 def test_prep_bench_asks_when_a_trial_is_already_launched(calc):

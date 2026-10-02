@@ -653,21 +653,7 @@ class TestAdminRoleGate:
         )
         assert r.status_code == 403
 
-    def test_a_malformed_admin_list_does_not_crash_the_app(self):
-        """Junk entries in the admin list are dropped, and the valid address survives.
-
-        `molbuilder.json` is hand-edited (`deployment.md` § 5). A `None` or an
-        `int` in the list must not raise while the app is being built -- the server
-        would fail to start over a typo in a section that gates two routes -- and the
-        blanks must not enter the set, where an empty string would match a session
-        carrying no email.
-        """
-        # Non-string entries + blanks are dropped so a typo in
-        # molbuilder.json doesn't take the server down on start.
-        from molbuilder.web.admin import named_admins
-        app, _client = _build_client(
-            {}, admins=["valid@asu.edu", "", None, 42, "  "])
-        assert named_admins(app) == frozenset({"valid@asu.edu"})
+    # `test_a_malformed_admin_list_does_not_crash_the_app` retired 2026-10-02 (W54): the reader refuses this list where the config is read (`runtime_config._read_admin`); it passed only because `create_app(config=)` skips validation.
 
     def test_the_admin_list_does_not_move_when_the_limiter_is_off(self):
         """It hung off the limiter's own object until 2026-08-03, so turning

@@ -237,24 +237,7 @@ class TestTheWizardWritesWhereTheReaderReads:
             "auth-setup", "--provider", "asu", "--asurite", "jdoe", *extra,
         ], catch_exceptions=False)
 
-    def test_with_no_cwd_config_it_writes_the_per_user_one(
-            self, isolated_home, monkeypatch, tmp_path):
-        run_dir = tmp_path / "somewhere-else"
-        run_dir.mkdir()
-        monkeypatch.chdir(run_dir)
-
-        r = self._run()
-        assert r.exit_code == 0, r.output
-
-        xdg = isolated_home / ".config" / "molbuilder" / "molbuilder.json"
-        assert xdg.is_file(), r.output
-        assert not (run_dir / "molbuilder.json").exists(), (
-            "the wizard wrote into the directory it was launched from")
-        assert json.loads(xdg.read_text())["auth"]["providers"][0]["kind"] == "cas"
-        assert stat.S_IMODE(xdg.stat().st_mode) == 0o600
-        # ...and it does not tell the user to cd anywhere: a per-user config is
-        # read from any directory, and saying otherwise teaches the wrong model.
-        assert "cd " not in r.output or "read from anywhere" in r.output
+    # `test_with_no_cwd_config_it_writes_the_per_user_one` retired 2026-10-02 (W54): `test_cli_asu_only_writes_the_config_and_keeps_the_session_key` writes and checks the same file; `test_a_cwd_config_does_not_attract_it` the launch directory.
 
     def test_a_cwd_config_does_not_attract_it(
             self, isolated_home, monkeypatch, tmp_path):
@@ -283,27 +266,7 @@ class TestTheWizardWritesWhereTheReaderReads:
             "env_init": {"activation": "conda activate"}}, (
             "the wizard edited a file the program does not read")
 
-    def test_it_merges_into_what_is_already_at_the_one_location(
-            self, isolated_home, monkeypatch, tmp_path):
-        """The wizard adds a section; it does not replace the file.
-
-        This was asserted against the cwd branch before that branch existed
-        no more, and the property is the one worth keeping: a machine with
-        `launch` or `envs` already set must not lose them to a sign-in
-        setup.
-        """
-        monkeypatch.chdir(tmp_path)
-        target = isolated_home / ".config" / "molbuilder" / "molbuilder.json"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps({"launch": {"mode": "direct"}}))
-
-        r = self._run(("--force",))
-        assert r.exit_code == 0, r.output
-
-        after = json.loads(target.read_text())
-        assert after["auth"]["providers"][0]["kind"] == "cas"
-        assert after["launch"]["mode"] == "direct", (
-            "the wizard replaced the file instead of merging into it")
+    # `test_it_merges_into_what_is_already_at_the_one_location` retired 2026-10-02 (W54): it equals `test_cli_merges_into_a_config_that_has_no_auth_block` -- `--force` does nothing without an auth block.
 
 def test_cli_asurite_defaults_to_system_user(isolated_home, monkeypatch):
     """When --asurite is not passed, the wizard prompts with the

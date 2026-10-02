@@ -3055,8 +3055,8 @@ class TestSidebarStubsUI:
 class TestRootsContract:
     """Single-root contract: Capabilities.file_picker_roots() returns
     exactly the projects/ entry.  file_picker.roots in molbuilder.json
-    was removed; passing it is silently ignored (unknown sections are
-    OK per the runtime_config contract)."""
+    was removed; a config still naming it is refused, like any section the
+    registry does not list (`configuration.md` § 4)."""
 
     def test_capabilities_returns_only_projects_root(self):
         """A second root re-entering at the SOURCE -- the CWD, or an operator-
@@ -3074,30 +3074,7 @@ class TestRootsContract:
         assert label == "projects"
         assert str(path).endswith("/projects")
 
-    def test_stale_file_picker_section_is_refused_by_name(self, tmp_path):
-        """A retired config section read and silently dropped: an operator's
-        `file_picker.roots` block sits in the file looking effective while the
-        picker ignores it -- which is what happened to a real config before the
-        unknown-keys guard (2026-08-12).
-
-        `configuration.md` § 4 (the `runtime_config._SECTIONS` registry makes
-        "known" one total list, so anything outside it is refused). Precisely:
-        `file_picker` is NOT a named gravestone the way `secret_key_file` is --
-        it falls to the generic unknown-top-level-key refusal, which quotes the
-        offending key, which is why matching on the name passes.
-        """
-        # The file_picker section went with the single-root pivot, and
-        # since the unknown-keys guard (2026-08-12) a section the loader
-        # does not know is REFUSED with its name, not silently dropped:
-        # "a key this loader does not know would be silently
-        # ineffective" is exactly what happened to a user's stale
-        # file_picker block under the old graceful ignore.
-        from molbuilder.runtime_config import RuntimeConfigError, read_config
-        cfg_file = tmp_path / "molbuilder.json"
-        cfg_file.write_text('{"file_picker": {"roots": ["~/scratch"]}}')
-        with pytest.raises(RuntimeConfigError, match="file_picker"):
-            read_config(cfg_file)
-
+    # `test_stale_file_picker_section_is_refused_by_name` retired 2026-10-02 (W54): the generic unknown-section refusal is a row of `tests/data/molbuilder_json.toml`.
 
 # RETIRED 2026-09-09 -- `TestTheDownloadButtonSaysWhatItIsDoing` held a
 # user-dated contract (2026-08-29: the message lives INSIDE the button while the

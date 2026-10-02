@@ -114,16 +114,16 @@ record = { env_init = {} }
 refused = "this machine's record does not say how a shell enters an environment there"
 
 [[case]]
-name = "...a named target too -- recorded on that machine, its record copied here"
+name = "...a named target too -- recorded on that machine, its record copied here, and the refusal says the copy back"
 machine = "named"
 named_record = { env_init = {} }
-refused = "the record of 'sol' does not say how a shell enters an environment there"
+refused = ["the record of 'sol' does not say how a shell enters an environment there", "on that machine, then copy the sol.json it writes into"]
 
 [[case]]
-name = "...and the refusal says the copy back"
+name = "this machine's own env_init never reaches a wrapper written for another machine"
 machine = "named"
-named_record = { env_init = {} }
-refused = "on that machine, then copy the sol.json it writes into"
+machine_config = { env_init = { activation = "conda activate", preamble = "source /home/u/miniconda3/etc/profile.d/conda.sh" } }
+run_sh_lacks = ["miniconda3"]
 
 [[case]]
 name = "a calculation's own copy of its record is named when it states no activation -- no probe reaches it"

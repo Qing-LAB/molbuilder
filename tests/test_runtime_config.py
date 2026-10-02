@@ -30,7 +30,7 @@ import json
 import pytest
 
 from molbuilder.runtime_config import (CONFIG_FILENAME, RuntimeConfigError,
-                                         get_envs, get_tls, read_config)
+                                         read_config)
 
 
 @pytest.fixture(autouse=True)
@@ -75,9 +75,7 @@ def test_the_config_molbuilder_SEEDS_reads(monkeypatch, tmp_path):
     read_config()
 
 
-def test_missing_file_returns_empty_dict(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    assert read_config() == {}
+# `test_missing_file_returns_empty_dict` retired 2026-10-02 (W54): it equals `test_machine_config_file.py::test_no_config_files_returns_empty`.
 
 
 def test_empty_json_object_returns_empty_dict(monkeypatch, tmp_path):
@@ -86,18 +84,10 @@ def test_empty_json_object_returns_empty_dict(monkeypatch, tmp_path):
     assert read_config() == {}
 
 
-def test_malformed_json_raises_usage_error(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / CONFIG_FILENAME).write_text("{ this is not json")
-    with pytest.raises(RuntimeConfigError, match="invalid JSON"):
-        read_config()
+# `test_malformed_json_raises_usage_error` retired 2026-10-02 (W54): `test_auth_config.py`'s door test refuses the same file and checks it names the path (R10).
 
 
-def test_non_dict_top_level_raises(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / CONFIG_FILENAME).write_text(json.dumps(["not", "a", "dict"]))
-    with pytest.raises(RuntimeConfigError, match="top-level value must be an object"):
-        read_config()
+# `test_non_dict_top_level_raises` retired 2026-10-02 (W54): `test_auth_config.py`'s door test refuses the same file and checks it names the path (R10).
 
 
 def test_non_dict_tls_section_raises(monkeypatch, tmp_path):
@@ -119,13 +109,7 @@ def test_non_dict_envs_section_raises(monkeypatch, tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_nested_tls_section_parses(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
-        "tls": {"cert": "/c.pem", "key": "/k.pem"},
-    }))
-    cfg = read_config()
-    assert cfg == {"tls": {"cert": "/c.pem", "key": "/k.pem"}}
+# `test_nested_tls_section_parses` retired 2026-10-02 (W54): it equals the first half of `test_the_tls_section_is_read`.
 
 
 def test_nested_envs_section_parses(monkeypatch, tmp_path):
@@ -156,27 +140,7 @@ def test_nested_envs_section_parses(monkeypatch, tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_the_flat_tls_spelling_is_REFUSED_and_the_message_shows_the_new_one(
-        monkeypatch, tmp_path):
-    """Safety, not tidiness: TLS is how the server is reachable at all.
-
-    A file that quietly lost its certificate would fall back to plain HTTP
-    -- the failure would be *the site still loads*, over an unencrypted
-    connection nobody was told about.  So the flat spelling is not ignored
-    and not folded: it stops the loader, by name, with the section to write.
-    """
-    monkeypatch.chdir(tmp_path)
-    for body in ({"cert": "/c.pem", "key": "/k.pem"},
-                 {"key": "/k.pem"},
-                 {"cert": "/f.pem", "tls": {"cert": "/n.pem"}}):
-        (tmp_path / CONFIG_FILENAME).write_text(json.dumps(body))
-        with pytest.raises(RuntimeConfigError) as exc:
-            read_config()
-        said = str(exc.value)
-        assert "'tls' is a section" in said, said
-        # IT SHOWS THE ANSWER, not just the complaint.
-        assert '"tls": {"cert"' in said, (
-            "the refusal does not show the spelling to write: " + said)
+# `test_the_flat_tls_spelling_is_REFUSED_and_the_message_shows_the_new_one` retired 2026-10-02 (W54): a row of `tests/data/molbuilder_json.toml`, down the road, with both sentences.
 
 
 def test_the_tls_section_is_read(monkeypatch, tmp_path):
@@ -196,23 +160,7 @@ def test_the_tls_section_is_read(monkeypatch, tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_unknown_top_level_keys_are_refused_by_name(monkeypatch, tmp_path):
-    """This pinned the OPPOSITE until 2026-08-12 ("free to grow new
-    sections without breaking older readers") -- and that tolerance is
-    exactly how `admin` and `rate_limit`, sections with live getters,
-    were silently dropped: the file looked configured and nobody could
-    be admin.  A key the loader does not know is a typo or a section
-    nobody wired -- both deserve an error naming what IS known."""
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
-        "tls":   {"cert": "/c.pem", "key": "/k.pem"},
-        "future_section": {"some_key": 42},
-    }))
-    with pytest.raises(RuntimeConfigError, match="future_section"):
-        read_config()
-    # the refusal teaches: every known section is named
-    with pytest.raises(RuntimeConfigError, match="admin"):
-        read_config()
+# `test_unknown_top_level_keys_are_refused_by_name` retired 2026-10-02 (W54): a row of `tests/data/molbuilder_json.toml` (it names the live sections too).
 
 
 def test_admin_emails_survive_the_loader(monkeypatch, tmp_path):
@@ -258,19 +206,13 @@ def test_admin_with_a_broken_emails_shape_is_refused(monkeypatch, tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def test_get_tls_on_empty_cfg_returns_empty():
-    assert get_tls({}) == {}
+# `test_get_tls_on_empty_cfg_returns_empty` retired 2026-10-02 (W54): an accessor's shape, not a result through the road.
 
 
-def test_get_tls_returns_section_copy():
-    cfg = {"tls": {"cert": "/c.pem", "key": "/k.pem"}}
-    out = get_tls(cfg)
-    out["mutated"] = "should not leak back"
-    assert "mutated" not in cfg["tls"]
+# `test_get_tls_returns_section_copy` retired 2026-10-02 (W54): an accessor's shape, not a result through the road.
 
 
-def test_get_envs_on_missing_section_returns_empty():
-    assert get_envs({"tls": {"cert": "/c.pem"}}) == {}
+# `test_get_envs_on_missing_section_returns_empty` retired 2026-10-02 (W54): an accessor's shape, not a result through the road.
 
 
 # --------------------------------------------------------------------- #
@@ -287,12 +229,7 @@ def test_read_config_rejects_non_string_envs_value(monkeypatch, tmp_path):
         read_config()
 
 
-def test_read_config_rejects_non_string_envs_key(monkeypatch, tmp_path):
-    # JSON forces string keys at parse time, so we exercise this path
-    # via _normalise directly to confirm the validation is in place.
-    from molbuilder.runtime_config import _normalise
-    with pytest.raises(RuntimeConfigError, match="envs"):
-        _normalise({"envs": {42: "x"}})
+# `test_read_config_rejects_non_string_envs_key` retired 2026-10-02 (W54): JSON keys are strings, so no file can reach it -- and an unlisted key is refused before its type is read.
 
 
 def test_read_config_rejects_non_string_tls_value(monkeypatch, tmp_path):
@@ -316,14 +253,6 @@ def test_read_config_rejects_empty_string_envs_value(monkeypatch, tmp_path):
         read_config()
 
 
-def test_underscore_keys_are_comments_and_pass(monkeypatch, tmp_path):
-    """JSON has no comments; the committed templates use "_comment_*"
-    keys.  An explicit underscore marker is not the typo class the
-    unknown-key refusal exists for (running-a-job.md § 5)."""
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / CONFIG_FILENAME).write_text(json.dumps({
-        "_comment_about_this_file": "explains things",
-        "tls": {"cert": "/c.pem", "key": "/k.pem"},
-    }))
-    cfg = read_config()
-    assert cfg == {"tls": {"cert": "/c.pem", "key": "/k.pem"}}
+# `test_underscore_keys_are_comments_and_pass` retired 2026-10-02 (W54): a row of `tests/data/molbuilder_json.toml` (a comment at the top and inside a section).
+
+

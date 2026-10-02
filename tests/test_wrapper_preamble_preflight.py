@@ -1,7 +1,7 @@
 """A baked preamble must not fail as a bare bash error on the target.
 
-**The failure this closes (Sol, 2026-08-24).** `script_generation.preamble`
-is baked VERBATIM into the `.run.sh` from the machine that ran `prep`.  The
+**The failure this closes (Sol, 2026-08-24).** The preamble (`env_init`'s
+since 2026-10-02) is baked VERBATIM into the `.run.sh` from the machine that ran `prep`.  The
 workstation's config says
 
     source /home/u/miniconda3/etc/profile.d/conda.sh
@@ -132,80 +132,10 @@ class TestTheGeneratedScriptRefusesActionably:
         assert cp.returncode != 78, out
 
 
-class TestActivationComesFromTheMachineRecord:
-    """THE FIX for the Sol failure, and the rule behind it.
-
-    A wrapper is generated on one machine and executed on another.  How a
-    shell enters its environment differs between them -- `module load
-    mamba` + `source activate` on ASU Sol, a `conda.sh` hook on the
-    workstation -- so that fact travels on the TARGET'S RECORD, which is
-    the thing that crosses (user, 2026-08-24: *"the jobset probe should do
-    its job whether it's running on the local machine or a remote HPC
-    environment.  Either way, it should provide the only set of data the
-    script generator would need"*).
-
-    Before this, `prep --target sol` took Sol's queues and topology from
-    its record and the WORKSTATION's preamble from `molbuilder.json`, so
-    every job died on `source /home/u/miniconda3/.../conda.sh`.
-    """
-
-    @staticmethod
-    def _sol():
-        from molbuilder.scheduler import Environment, Topology
-        return Environment(
-            scheduler="slurm", topology=Topology(),
-            env_init={"preamble": "module load mamba",
-                               "activation": "source activate"})
-
-    def test_the_targets_activation_is_what_gets_baked(self, tmp_path):
-        (tmp_path / "JOB.fdf").write_text(
-            "SystemName t\nSystemLabel t\nNumberOfAtoms 1\n")
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            text = render_run_wrapper(
-                tmp_path / "JOB.fdf",
-                resources=Resources(mpi_np=48, cpus_per_task=1),
-                env="molbuilder-siesta", project_dir=tmp_path,
-                machine_record=self._sol())
-        assert "module load mamba" in text
-        assert "source activate molbuilder-siesta" in text
-        assert "TARGET PREAMBLE" in text
-
-    def test_this_machines_activation_does_not_leak_into_a_remote_wrapper(
-            self, tmp_path, monkeypatch):
-        """The regression, stated as the thing that must NOT appear.
-
-        This repo's own root `molbuilder.json` carries
-        `source /home/u/miniconda3/etc/profile.d/conda.sh`, and it is
-        what got baked.  With a target record present it must not be
-        consulted at all -- so this does NOT chdir away: the local config
-        is deliberately in scope and must still be ignored.
-        """
-        (tmp_path / "JOB.fdf").write_text(
-            "SystemName t\nSystemLabel t\nNumberOfAtoms 1\n")
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            text = render_run_wrapper(
-                tmp_path / "JOB.fdf",
-                resources=Resources(mpi_np=4, cpus_per_task=1),
-                env="e", project_dir=tmp_path, machine_record=self._sol())
-        assert "conda.sh" not in text
-        assert "miniconda3" not in text
-
-    def test_the_probe_records_this_machines_activation(self):
-        """`probe` writes it wherever it runs -- which is what makes
-        copying a record here sufficient to generate a script that runs
-        there."""
-        from molbuilder.scheduler import Environment
-        rec = Environment.from_dict({
-            "schema": "molbuilder/environment@2", "scheduler": "slurm",
-            "env_init": {"preamble": "module load mamba",
-                                  "activation": "source activate"}})
-        assert rec.env_init["activation"] == "source activate"
-        # and a record written before the field still loads
-        old = Environment.from_dict({"schema": "molbuilder/environment@2",
-                                     "scheduler": "slurm"})
-        assert old.env_init == {}
+# `TestActivationComesFromTheMachineRecord` retired 2026-10-02 (W54 T2, T26):
+# its leak test could not fail -- no local config existed to leak -- and is
+# a `launch_values.toml` row now, down the road; the record's activation
+# baked is `test_runwrap_v2.py`'s; and its "probe" test ran no probe.
 
 
 class TestTheEnvGateAsksTheTargetMachine:
@@ -282,78 +212,10 @@ class TestTheEnvGateAsksTheTargetMachine:
         assert self._render(tmp_path, self._rec([]))
 
 
-class TestTheHeaderNamesTheQueueTheAllocationAsKED:
-    """R1 (`execution/scheduler.md`): the `#SBATCH` header and the `sbatch`
-    command line are two RENDERINGS of one placement, never two decisions.
-
-    The command line honoured it -- `submit` builds
-    `Directives.of(placement, r)` from a placement resolved against the
-    TARGET's record.  The header did not: it read `partition`/`qos` straight
-    out of the local `molbuilder.json`'s `scheduler.directives`, falling back
-    to the record only when no such block existed.  So a bundle prepped on a
-    workstation FOR Sol carried `-p public -q public` -- the workstation's
-    default -- while its allocation asked for `htc` (`-p htc -q public`).
-    The block is refused by name since 2026-10-02 (`configuration.md` § 4);
-    what remains to check is that the queue the job names decides the pair.
-
-    It fails SILENTLY, which is why it is worth a test: `public` IS a real
-    Sol domain, so `sbatch` accepts the file and the job runs on hardware
-    nobody chose.  `jobset launch` masks it because flags beat the header --
-    but the header's own comment tells you to `sbatch` the file directly.
-    """
-
-    @staticmethod
-    def _sol_with_menu(tmp_path):
-        from molbuilder.scheduler import (Domain, Environment, Topology,
-                                          write_environment, FILENAME)
-        env = Environment(
-            scheduler="slurm", topology=Topology(),
-            env_init={"preamble": "module load mamba",
-                               "activation": "source activate"},
-            domains=[Domain(name="debug", partition="htc", qos="debug",
-                            max_time="00:15:00"),
-                     Domain(name="htc", partition="htc", qos="public",
-                            max_time="4:00:00"),
-                     Domain(name="general", partition="general", qos="public",
-                            max_time="14-00:00:00")])
-        write_environment(env, tmp_path / FILENAME)
-        return env
-
-    def _header(self, tmp_path, monkeypatch, domain):
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-        rec = self._sol_with_menu(tmp_path)
-        (tmp_path / "JOB.fdf").write_text(
-            "SystemName t\nSystemLabel t\nNumberOfAtoms 2\n")
-        from molbuilder.runwrap import render_wrappers
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            out = render_wrappers(
-                tmp_path / "JOB.fdf",
-                resources=Resources(mpi_np=4, cpus_per_task=1, domain=domain,
-                                    time="0-04:00:00", mem="8G"),
-                project_dir=tmp_path, machine_record=rec, emit_sbatch=True)
-        sb = [x for n, x in out.files if n.endswith(".sbatch")]
-        assert sb, "no .sbatch was emitted"
-        return [l.replace("#SBATCH ", "") for l in sb[0].splitlines()
-                if l.startswith("#SBATCH -p") or l.startswith("#SBATCH -q")]
-
-    def test_the_named_domain_decides_the_pair(self, tmp_path, monkeypatch):
-        assert self._header(tmp_path, monkeypatch, "htc") == [
-            "-p htc", "-q public"]
-
-    def test_a_different_domain_gives_a_different_partition(
-            self, tmp_path, monkeypatch):
-        assert self._header(tmp_path, monkeypatch, "general") == [
-            "-p general", "-q public"]
-
-    def test_same_partition_different_qos_is_honoured(
-            self, tmp_path, monkeypatch):
-        """`debug` and `htc` are the SAME partition; only the QoS differs,
-        and it is what drops the wall from 4 h to 15 min.  A resolution that
-        carried only the partition would lose the whole distinction."""
-        assert self._header(tmp_path, monkeypatch, "debug") == [
-            "-p htc", "-q debug"]
+# `TestTheHeaderNamesTheQueueTheAllocationAsKED` retired 2026-10-02 (W54
+# T26): the queue a job names decides `-p` and `-q` in the rows of
+# `tests/data/launch_values.toml` (same partition, another QoS) and
+# `gpu_contract.toml` (each queue's own partition), down the road.
 
 
 class TestOneReaderOfSlurmsGresSpelling:

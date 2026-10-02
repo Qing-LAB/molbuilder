@@ -139,24 +139,7 @@ def test_an_unknown_column_survives_the_type(tmp_path):
 
 # ---- where a value came from is displayed, not inferred --------------- #
 
-def test_a_refusal_names_WHICH_file_carries_the_key(tmp_path):
-    """A refusal must point at the file a person has to edit, by its path
-    -- not the generic ``molbuilder.json`` (R10, 2026-08-12; N4 reintroduced
-    it, costing thirteen confusing failures whose real cause was a config two
-    directories up).  Checked on the ``scheduler`` block, refused by name
-    since 2026-10-02 (`configuration.md` § 4).
-    """
-    block = {"scheduler": {"kind": "slurm"}}
-    xdg = tmp_path / "home" / ".config" / "molbuilder"
-    xdg.mkdir(parents=True)
-    (xdg / "molbuilder.json").write_text(json.dumps(block))
-    expected = xdg / "molbuilder.json"
-
-    with pytest.raises(RuntimeConfigError) as exc:
-        read_config()
-    assert str(expected) in str(exc.value), (
-        f"the refusal must name {expected}; got: {exc.value}")
-    assert "'scheduler' is no longer configured" in str(exc.value), exc.value
+# `test_a_refusal_names_WHICH_file_carries_the_key` retired 2026-10-02 (W54): a refusal naming its file (R10) is `test_auth_config.py`'s door test; the `scheduler` refusal a row of `tests/data/molbuilder_json.toml`.
 
 
 def test_provenance_shows_which_record_supplied_the_domains(tmp_path):

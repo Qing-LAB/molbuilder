@@ -101,11 +101,7 @@ def test_resolve_cli_flag_alone_without_pair_falls_back(
     assert "incomplete" in capsys.readouterr().err
 
 
-def test_resolve_malformed_json_raises_usage_error(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "molbuilder.json").write_text("{ this is not json")
-    with pytest.raises(click.UsageError, match="invalid JSON"):
-        _resolve_tls(None, None)
+# `test_resolve_malformed_json_raises_usage_error` retired 2026-10-02 (W54): the door test in `test_auth_config.py` refuses the same file, naming its path; `test_a_malformed_molbuilder_json_is_refused_where_it_is_read` holds the CLI surface.
 
 
 def test_a_malformed_molbuilder_json_is_refused_where_it_is_read(
@@ -131,22 +127,7 @@ def test_a_malformed_molbuilder_json_is_refused_where_it_is_read(
     assert "invalid JSON" in err
 
 
-def test_resolve_refuses_unknown_keys(monkeypatch, tmp_path):
-    """U7 (2026-08-12): an unknown top-level key is REFUSED with the known
-    sections named -- 'tolerated so the file can grow' is the exact hole
-    that silently ate admin/rate_limit.  This test fabricated a 'host'
-    key (no consumer anywhere) to pin the retired tolerance, and lived in
-    a file the fix session's hand-rolled batteries never ran -- the fresh
-    full testrun.py batch is what caught it."""
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "molbuilder.json").write_text(json.dumps(
-        {"tls": {"cert": "/c.pem", "key": "/k.pem"}, "host": "example.com"}))
-    with pytest.raises(Exception, match="unknown top-level key.*host"):
-        _resolve_tls(None, None)
-    # ...and the section itself still reads
-    (tmp_path / "molbuilder.json").write_text(json.dumps(
-        {"tls": {"cert": "/c.pem", "key": "/k.pem"}}))
-    assert _resolve_tls(None, None) == ("/c.pem", "/k.pem")
+# `test_resolve_refuses_unknown_keys` retired 2026-10-02 (W54): a row of `tests/data/molbuilder_json.toml`.
 
 
 # --------------------------------------------------------------------- #

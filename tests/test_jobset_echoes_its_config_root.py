@@ -59,30 +59,9 @@ def test_the_file_is_named_and_marked_found(tmp_path):
     assert "(found, via config-dir)" in line
 
 
-def test_a_file_in_the_working_directory_is_not_what_it_names(tmp_path,
-                                                              monkeypatch):
-    """The banner's job inverted on 2026-08-31 and this is the half that
-    matters now.
-
-    It used to save a person from editing the wrong one of three files.  It
-    now saves them from editing a file that is not read at all -- so the line
-    must name the config directory even when there is a `molbuilder.json`
-    sitting right where the command was run.
-    """
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "molbuilder.json").write_text('{"launch": {"mode": "submit"}}')
-    line = _first_line(["machines"])
-    assert str(tmp_path / "molbuilder.json") not in line
-    assert str(tmp_path / "config-root") in line
+# `test_a_file_in_the_working_directory_is_not_what_it_names` retired 2026-10-02 (W54): a cwd file not being read is `test_config_warnings.py`'s to say, once.
 
 
-def test_the_line_names_the_same_file_config_provenance_would():
-    """Two lines describing one file must not be able to name two different
-    ones -- both go through `machine_config_path`, so this pins that they
-    stay wired to the SAME function rather than each growing its own
-    resolution."""
-    from molbuilder.runtime_config import machine_config_path
-    path = machine_config_path()
-    line = _first_line(["machines"])
-    assert str(path) in line
-    assert "via config-dir" in line
+# `test_the_line_names_the_same_file_config_provenance_would` retired 2026-10-02 (W54): it repeated `test_the_file_is_named_and_marked_found` -- both read `machine_config_path`.
+
+

@@ -211,11 +211,9 @@ MALFORMED_AUTH = [
                                                                             "email_attribute"),
 
     # ---- retired spellings: named, not reported as a typo ----------------
-    # `configuration.md` § 2.1e -- the session key has ONE home now, and a
-    # person who wrote this wrote a file that WORKED, so they are owed the
-    # new spelling rather than "unknown top-level key".
-    ("secret_key_file-retired", {"secret_key_file": "~/.mb/key"},  "no longer configured"),
-    # ...and inside `auth`, where the wizard wrote it before 2026-08-31.
+    # The session key's path inside `auth`, where the wizard wrote it before
+    # 2026-08-31 (`configuration.md` § 2.1e; the top-level spelling is a
+    # row of `tests/data/molbuilder_json.toml`).
     ("auth-secret_key_file-retired", {"auth": {"providers": [_google_entry()],
                                                "secret_key_file": "~/.mb/key"}},
                                               "no longer configured"),
@@ -286,11 +284,9 @@ class TestTheConfigFileIsRefusedAtTheDoor:
     """
 
     # (bad file contents, fragments the refusal must contain)
+    # (The four `auth` rows that stood first here were MALFORMED_AUTH's own,
+    # through the same door, until 2026-10-02.)
     BAD = [
-        ('{"auth": {}}', ["auth.providers"]),
-        ('{"auth": {"providers": []}}', ["non-empty"]),
-        ('{"auth": {"providers": {"id": "x"}}}', ["non-empty list"]),
-        ('{"auth": {"providers": ["not-an-object"]}}', ["must be an object"]),
         ('{"auth": {"providers": [', ["invalid JSON", "line"]),
         ('[]', ["top-level", "object"]),
         ('"a string"', ["top-level", "object"]),
@@ -1016,37 +1012,10 @@ class TestMixedConfig:
         assert kinds == ["google", "github", "microsoft", "orcid", "cas"]
 
 
-# --------------------------------------------------------------------- #
-#  secret_key_file (unchanged from previous schema)                     #
-# --------------------------------------------------------------------- #
-
-
-class TestSecretKeyFileIsRetired:
-    """The session key has ONE home, and the config does not name it.
-
-    A configurable location for a single file is how that key came to live in
-    two places at once: the config said ``~/.molbuilder/secret.key`` while the
-    wizard wrote ``<config dir>/secret_key``, so running the wizard produced a
-    key the server never read -- and reported success.
-
-    REFUSED rather than ignored, because a setting that is read and silently
-    dropped looks effective: someone would point it somewhere and wonder why
-    their sessions still died on every restart.
-    """
-
-
-    def test_the_refusal_names_where_the_key_lives_now(self):
-        """A refusal that does not name the replacement is a dead end."""
-        with pytest.raises(RuntimeConfigError) as e:
-            _normalise({"secret_key_file": "/anywhere"})
-        assert "secret_key" in str(e.value)
-
-    def test_it_does_not_read_as_a_typo(self):
-        """The generic 'unknown top-level key' message would send the reader
-        looking for a misspelling.  This key moved, and the message says so."""
-        with pytest.raises(RuntimeConfigError) as e:
-            _normalise({"secret_key_file": "/anywhere"})
-        assert "unknown top-level" not in str(e.value)
+# `TestSecretKeyFileIsRetired` retired 2026-10-02 (W54 T6, T8): its first
+# check was met by the refused key's own quoted name, and its second
+# repeated a row; the top-level key is a `molbuilder_json.toml` row, the
+# key inside `auth` a MALFORMED_AUTH row.
 
 
 # --------------------------------------------------------------------- #

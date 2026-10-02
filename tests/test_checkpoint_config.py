@@ -28,7 +28,6 @@ import json
 import pytest
 
 from molbuilder.runtime_config import (
-    CONFIG_FILENAME,
     RuntimeConfigError,
     get_checkpoint,
 )
@@ -46,9 +45,13 @@ def _own_scope(checkpoint_config):
 
 
 def _write_config(section) -> None:
-    """Put a ``checkpoint`` section where the contract says it lives."""
-    with open(CONFIG_FILENAME, "w", encoding="utf-8") as fh:
-        json.dump({"checkpoint": section}, fh)
+    """Put a ``checkpoint`` section where the contract says it lives -- this
+    machine's one config file, asked of its door (it was written into the
+    working directory, read only because the fixture had changed into the
+    config directory first, until 2026-10-02)."""
+    from molbuilder.runtime_config import machine_config_path
+    machine_config_path().write_text(json.dumps({"checkpoint": section}),
+                                     encoding="utf-8")
 
 
 # ------------------------------------------------------------------ #
@@ -72,10 +75,7 @@ def test_size_limit_is_changeable():
 # ------------------------------------------------------------------ #
 
 
-@pytest.mark.parametrize("engine", ["generic", "siesta", "pyscf"])
-def test_the_three_named_entries_exist(engine):
-    """§ 4: `generic` plus `siesta` and `pyscf`."""
-    assert isinstance(get_checkpoint(engine)["always_large"], list)
+# `test_the_three_named_entries_exist` retired 2026-10-02 (W54): it could not fail -- a missing engine falls back to generic's list; `test_an_engine_hint_selects_that_engines_families` holds the entries.
 
 
 def test_generic_names_nothing_so_everything_is_measured():

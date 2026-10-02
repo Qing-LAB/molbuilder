@@ -21,36 +21,7 @@ from __future__ import annotations
 import pytest
 
 
-@pytest.fixture
-def moved(monkeypatch, tmp_path):
-    """One operator action -- set ``XDG_CONFIG_HOME`` -- moves everything."""
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "elsewhere"))
-    return tmp_path / "elsewhere" / "molbuilder"
-
-
-def _all_four():
-    # Asked of `config_dir` itself.  These went through
-    # `auth_setup.secret_key_path` / `default_secret_dir` until 2026-09-13 --
-    # pass-throughs that were this module's point made backwards: a second
-    # public name for a door `config_dir` owns (I8).
-    from molbuilder.config_dir import config_dir, session_key
-    from molbuilder.runtime_config import _machine_config_file
-    from molbuilder.scheduler import environments_dir, machine_scope_path
-    return {
-        "secret_key":     session_key(),
-        "secret_dir":     config_dir(),
-        "environment":    machine_scope_path(),
-        "environments":   environments_dir(),
-        "molbuilder.json": _machine_config_file(),
-    }
-
-
-def test_every_per_user_file_sits_under_the_one_directory(moved):
-    """The property that matters to an operator: move the variable, and the
-    secrets, the machine record and the config all move TOGETHER."""
-    for name, p in _all_four().items():
-        assert moved in p.parents or p == moved, (
-            f"{name} -> {p} is not under {moved}")
+# `test_every_per_user_file_sits_under_the_one_directory` retired 2026-10-02 (W54): the same check, through XDG, as `test_every_door_moves_with_the_one_variable`.
 
 
 def test_the_directory_is_read_at_call_time_not_captured_at_import(
@@ -109,15 +80,7 @@ class TestTheRootCanBeNamedOutright:
         monkeypatch.setenv(CONFIG_DIR_ENV, "")
         assert config_dir() == tmp_path / "xdg" / "molbuilder"
 
-    def test_it_moves_every_per_user_file_together(self, monkeypatch, tmp_path):
-        """The property the variable exists for -- the same one
-        ``XDG_CONFIG_HOME`` has, asserted for the new door too."""
-        from molbuilder.config_dir import CONFIG_DIR_ENV
-        monkeypatch.setenv(CONFIG_DIR_ENV, str(tmp_path / "one"))
-        for name, path in _all_four().items():
-            assert (tmp_path / "one") in path.parents \
-                or path == tmp_path / "one", f"{name} -> {path}"
-
+    # `test_it_moves_every_per_user_file_together` retired 2026-10-02 (W54): a subset of `test_every_door_moves_with_the_one_variable`.
 
 # ---------------------------------------------------------------------------
 # The second root — RETIRED 2026-08-31
@@ -210,27 +173,11 @@ class TestOperationalStateFollowsTheVariablesOnly:
         assert reports_dir() == cfg / "state" / "molbuilder" / "reports"
         assert runtime_dir() == cfg / "state" / "molbuilder" / "run"
 
-    @pytest.mark.parametrize("key", ["logs", "run", "reports"])
-    def test_the_retired_key_is_refused(self, cfg, key):
-        from molbuilder.runtime_config import RuntimeConfigError, read_config
-        self._write(cfg, {"paths": {key: "/somewhere"}})
-        with pytest.raises(RuntimeConfigError, match="no longer configured"):
-            read_config()
+    # `test_the_retired_key_is_refused` retired 2026-10-02 (W54): a row of `tests/data/molbuilder_json.toml`, naming the variable that replaces it.
 
-    def test_the_refusal_names_the_variable_that_replaces_it(self, cfg):
-        """A refusal that does not name the replacement is a dead end."""
-        from molbuilder.runtime_config import RuntimeConfigError, read_config
-        self._write(cfg, {"paths": {"logs": "/somewhere"}})
-        with pytest.raises(RuntimeConfigError) as e:
-            read_config()
-        assert "XDG_STATE_HOME" in str(e.value)
+    # `test_the_refusal_names_the_variable_that_replaces_it` retired 2026-10-02 (W54): the same row says XDG_STATE_HOME.
 
-    def test_it_does_not_read_as_a_typo(self, cfg):
-        from molbuilder.runtime_config import RuntimeConfigError, read_config
-        self._write(cfg, {"paths": {"run": "/somewhere"}})
-        with pytest.raises(RuntimeConfigError) as e:
-            read_config()
-        assert "unknown key" not in str(e.value)
+    # `test_it_does_not_read_as_a_typo` retired 2026-10-02 (W54): the row's own sentence is the retired-key one, so it is not the typo list.
 
     def test_projects_stays(self, cfg):
         """Data rather than operational state, no XDG equivalent, and
@@ -239,11 +186,8 @@ class TestOperationalStateFollowsTheVariablesOnly:
         self._write(cfg, {"paths": {"projects": "/data/projects"}})
         assert read_config()["paths"]["projects"] == "/data/projects"
 
-    def test_a_key_nothing_reads_is_still_refused(self, cfg):
-        from molbuilder.runtime_config import RuntimeConfigError, read_config
-        self._write(cfg, {"paths": {"cache": "/tmp/x"}})
-        with pytest.raises(RuntimeConfigError, match="cache"):
-            read_config()
+    # `test_a_key_nothing_reads_is_still_refused` retired 2026-10-02 (W54): `test_projects.py::test_a_malformed_setting_is_refused_not_ignored` drives the same branch.
+
 # ---------------------------------------------------------------------------
 # One API — archive/2026-09-01-config-access-plan.md § 5
 # ---------------------------------------------------------------------------

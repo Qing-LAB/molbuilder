@@ -2725,23 +2725,25 @@ def _prep_bundle(base, *, scheduler: bool, monkeypatch):
         if scheduler:
             j.resources = dataclasses.replace(
                 j.resources, domain="public", time="0-04:00:00", mem="8G")
-    from molbuilder.scheduler import (FILENAME, Domain, Environment,
-                                      Topology, write_environment)
-    write_environment(
-        Environment(scheduler="slurm" if scheduler else "workstation",
-                    topology=Topology(sockets=2, cores_per_socket=64),
-                    domains=([Domain(name="public", partition="public",
-                                     qos="public", max_time="1-00:00:00")]
-                             if scheduler else []),
-                    env_init={"activation": "conda activate",
-                                       "preamble": "source /x/conda.sh"}),
-        base / FILENAME)
+    from molbuilder.scheduler import Domain, Topology
     monkeypatch.chdir(base)
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(base))
-    # The record follows the config root: this env var moves the
-    # machine scope, and prep refuses without a record there.
+    # THE MACHINE'S RECORD, in a config directory of its own: the bundle is
+    # where prep SNAPSHOTS it, so a record written there is the copy, not the
+    # machine.  Until 2026-10-02 the cluster record was written into the
+    # bundle, the config root pointed there too, and the conftest default
+    # then overwrote it -- both arms prepped a workstation, and the claim
+    # below compared a workstation with itself.
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR",
+                       str(base.parent / f"{base.name}-config"))
     from conftest import write_machine_record
-    write_machine_record()
+    write_machine_record(
+        scheduler="slurm" if scheduler else "workstation",
+        topology=Topology(sockets=2, cores_per_socket=64),
+        domains=([Domain(name="public", partition="public",
+                         qos="public", max_time="1-00:00:00")]
+                 if scheduler else []),
+        env_init={"activation": "conda activate",
+                  "preamble": "source /x/conda.sh"})
     prep_jobset(js, base, env="molbuilder-siesta")
     return base
 

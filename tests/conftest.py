@@ -90,7 +90,6 @@ def checkpoint_config(tmp_path, monkeypatch):
     """
     home = tmp_path / "config-home"
     home.mkdir()
-    monkeypatch.chdir(home)
     # THE SANDBOX IS THE CONFIG ROOT.  One variable answers for every door
     # (§ 2.1c), which is what the three-line HOME/XDG dance below it used to
     # approximate -- kept, because a test that reads $HOME for something else
