@@ -425,7 +425,7 @@ def test_a_malformed_file_can_still_be_FIXED_from_the_page(client):
 #  it writes here, always                                                 #
 # --------------------------------------------------------------------- #
 
-def test_execution_mode_does_not_gate_the_write(tmp_path, monkeypatch):
+def test_the_launch_mode_does_not_gate_the_write(tmp_path, monkeypatch):
     """A `submit` machine is a machine with a scheduler
     (`running-a-job.md` § 5.4) -- a login node, which is exactly where the
     file belongs.  The route read it as *"the jobs run somewhere I cannot
@@ -439,7 +439,7 @@ def test_execution_mode_does_not_gate_the_write(tmp_path, monkeypatch):
     cfgdir = tmp_path / ".config/molbuilder"
     cfgdir.mkdir(parents=True)
     (cfgdir / "molbuilder.json").write_text(
-        json.dumps({"execution": {"mode": "submit"}}))
+        json.dumps({"launch": {"mode": "submit"}}))
     monkeypatch.chdir(tmp_path)
     c = create_app(config={"rate_limit": {"enabled": False}}).test_client()
     r = c.put(CH + "/lab", json={"url": "https://qlab/api/x", "key": SECRET})

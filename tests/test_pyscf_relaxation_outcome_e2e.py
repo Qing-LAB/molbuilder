@@ -86,14 +86,17 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
         path.write_text(template_with_values(cfg, engine="pyscf",
                                              calculation=calculation))
     task = read_task(bundle / "task.json")
+    # The run states its threads (`architecture.md` § 5.2); a case's own
+    # run card goes over it.
     stage = dataclasses.replace(task.stages[0], overrides=dict(overrides),
-                                execution=dict(execution or {}))
+                                execution={"threads": 1, **(execution or {})})
     write_task(bundle / "task.json", dataclasses.replace(
         task, stages=(stage,),
         varies=tuple(dict.fromkeys((*task.varies, *overrides)))))
-    (bundle / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": f"source {CONDA_SH}"}}))
+    # How a shell enters conda HERE is this machine's record's to say.
+    from conftest import write_machine_record
+    write_machine_record(script_generation={
+        "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
     r = _jobset("prep", "run", stage.name, "--bundle", bundle,
                 "--target", "this")
     assert r.exit_code == 0, r.output
@@ -237,7 +240,8 @@ def test_an_open_shell_run_on_the_gpu_says_its_stability_was_not_checked(
         template={"method": "HF", "basis": "sto-3g",
                   "spin_treatment": "unrestricted", "unpaired_electrons": 2},
         overrides={"geom_max_steps": 1, "on_nonconvergence": "proceed"},
-        execution={"use_gpu": True})
+        # A GPU run states how many (`execution/gpu.md` G5: no default).
+        execution={"use_gpu": True, "gpu_count": 1})
     assert "GPU acceleration ON" in said, said[-3000:]
     assert ("stability: NOT CHECKED -- this mean field declares no stability "
             "analysis") in said, said[-3000:]

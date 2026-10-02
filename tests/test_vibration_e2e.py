@@ -66,9 +66,14 @@ def _describe(tmp_path, monkeypatch, *, frozen=()):
         "--calculation", "vibration", "--name", "W"])
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "frequency" / "V"
-    (bundle / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": f"source {CONDA_SH}"}}))
+    # How a shell enters conda HERE is this machine's record's to say -- and
+    # the run states its threads (`architecture.md` § 5.2).
+    from conftest import write_machine_record
+    write_machine_record(script_generation={
+        "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
+    task = json.loads((bundle / "task.json").read_text())
+    task["execution"] = {**task.get("execution", {}), "threads": 1}
+    (bundle / "task.json").write_text(json.dumps(task, indent=2))
     return bundle
 
 

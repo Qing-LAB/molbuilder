@@ -61,10 +61,10 @@ accurate/accommodating" — "and which part is none of your business".)*
 |---|---|---|
 | **Does this run use a GPU?** | the person — `use_gpu` on the run card (`execution`), over the template's value; an axis of a bench | renders each engine's keyword (`Diag.ELPA.GPU`, gpu4pyscf), takes SIESTA to its GPU build, asks the scheduler for GPUs. Not said, no GPU is asked for |
 | **How many GPUs?** | the person — `gpu_count` on the run card, both engines, or `--gpus N` on the prep | asks `--gres=gpu:N`. **No default:** a run that uses a GPU and states no count is refused at prep, naming where to write it (G5). A bench that names no `gpu_count` measures each count that divides its rank counts, up to the most one node holds (§ 3.1) |
-| **Which queue may take it?** | the target's record, written by `jobset probe` | only a queue whose record lists GPUs, where one node holds at least N — whether the queue was picked or named with `--domain`. That is the whole of the GPU check ([`scheduler.md`](?doc=execution/scheduler.md) R2a). A GPU job's cores are checked against the widest node that HAS GPUs (R3) |
-| **Where is GPU work submitted?** | the target's record — the queue's `gpu_partition` | `-p` names it, when the record does |
+| **Which queue may take it?** | the target's record, written by `jobset probe` | only a queue whose record lists GPUs, where one node holds at least N — the queue the job names (`allocation.domain`, the run card, `--domain`). That is the whole of the GPU check ([`scheduler.md`](?doc=execution/scheduler.md) R2a). A GPU job's cores are checked against the widest node that HAS GPUs (R3) |
+| **Where is GPU work submitted?** | the target's record — a queue's `gpu_partition` column, where the record carries one (the probe does not write it) | `-p` names it when the record does, else the queue's own partition |
 | **Are the job's cores bound to its GPUs?** | molbuilder: yes — and the person may turn it off, `"gpu_binding": false` in `task.json`'s `allocation` | sends `--gres-flags=enforce-binding` with every GPU ask, unless turned off (G9) |
-| **How do the ranks share the GPUs?** | molbuilder's launch script, at run time | spreads the ranks over the GPUs the scheduler GAVE the job (counted from `CUDA_VISIBLE_DEVICES`), starts MPS when ranks outnumber GPUs, pins each rank to its GPU's NUMA node ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.3). A GPU job that states no rank count runs one rank per GPU it asked for |
+| **How do the ranks share the GPUs?** | molbuilder's launch script, at run time | spreads the ranks over the GPUs the scheduler GAVE the job (counted from `CUDA_VISIBLE_DEVICES`), starts MPS when ranks outnumber GPUs, pins each rank to its GPU's NUMA node ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.3). The rank and thread counts are the stated ones — a GPU job that states none is refused at prep, like any job ([`architecture.md`](?doc=execution/architecture.md) § 5.2) |
 | **Can the deck run on a GPU there?** | the target's record — which environments exist | SIESTA: refused at prep when the target has no GPU build of SIESTA; PySCF: checked at run start, because a login node cannot see a device (G6, G8) |
 
 **Every fact comes from the target's own record.** A target is known only
@@ -101,7 +101,8 @@ queues; and a queue whose record marks GPUs — a `gpu` column or a
 - **Anything about this machine, when this machine is not the target.**
 
 **Gone, 2026-10-01: `molbuilder.json`'s `scheduler.gpu` block**, refused by
-name. Its `default_type` named a card, and its `partition`, `exclusive` and
+name — with the rest of the `scheduler` block since 2026-10-02
+([`configuration.md`](?doc=configuration.md) § 4). Its `default_type` named a card, and its `partition`, `exclusive` and
 `mem` wrote this machine's settings into every GPU job — `partition`
 overriding the target's own `gpu_partition`. A GPU job's memory is asked
 exactly as a CPU job's (`running-a-job.md` § 5.3.1), and nothing asks for a
@@ -119,7 +120,7 @@ whole node.
 | `Diag.ELPA.GPU` | *(rendered)* | the SIESTA deck | the keyword `use_gpu` becomes |
 | `gpu4pyscf` / `to_gpu()` | *(rendered)* | the PySCF deck | the same, for PySCF |
 | `Device(type, per_node, mem_gb)` | **the probe, or the operator** | `environment.json` · `Domain.gpu` | what one node of a queue **offers** — the ceiling; its `type` is shown, never compared |
-| `Domain.gpu_partition` | **the probe, or the operator** | `environment.json` | where GPU work lands when that differs |
+| `Domain.gpu_partition` | **the record** — the probe does not write it; honoured where a record carries it | `environment.json` | where GPU work lands when that differs |
 | `topology.gpus_per_node` · `gpu_type` | **the probe** | `environment.json` | what the probed node has — the count bounds a bench's GPU counts; the card is shown, never compared |
 
 > **The ask and the ceiling are different variables, and the names hide it.**
@@ -158,7 +159,7 @@ and sit on different cards on purpose.
 **G4 — The ask is bounded by the ceiling, and they are different names.**
 A request states `gpu_count`; a record states `Device.per_node`. Admission
 takes a GPU job only to a queue whose record lists GPUs and compares the
-count with the most one node holds — the queue picked or named
+count with the most one node holds — on the queue the job names
 ([`scheduler.md`](?doc=execution/scheduler.md) R2a). Neither may be read as
 the other.
 
@@ -231,13 +232,13 @@ flowchart TB
 
     DECK --> ENV{"molbuilder-siesta-gpu<br/>present?"}
     ENV -->|no| REFUSE2["<b>wrapper refuses to emit</b><br/>names the env + install (G6, G8)"]
-    ENV -->|yes| RT["<b>the GPU runtime</b><br/>gres · binding (G9) · MPS · NUMA pin · rank/thread budget<br/>--mem = what the person stated"]
+    ENV -->|yes| RT["<b>the GPU runtime</b><br/>gres · binding (G9) · MPS · NUMA pin<br/>ranks, threads, --mem = what the person stated"]
 
     COUNT --> RT
     TOPO -.->|"GPUs per node, when no queue lists them"| RT
     RT --> REQ["<b>Request</b> gpus = gpu_count<br/><i>gres gpu:N — no card</i>"]
 
-    REQ --> ADMIT{"admission — picked or named<br/>the queue lists GPUs, and<br/>gpus ≤ the most one node holds?<br/><i>(scheduler.md R2a)</i>"}
+    REQ --> ADMIT{"admission — the queue the job names<br/>lists GPUs, and<br/>gpus ≤ the most one node holds?<br/><i>(scheduler.md R2a)</i>"}
     DEV -.-> ADMIT
     ADMIT -->|no| REFUSE3["<b>refused locally</b><br/>names the number that would fit"]
     ADMIT -->|yes| PLACE["placement — one decision"]
@@ -308,10 +309,10 @@ leaves the reader unable to recognise the wrong version.
 > **All four are corrected** *(re-read against the tree 2026-09-29)*: C1 —
 > `engines/tuning.md` quotes the old sentence only inside its correction; C2 —
 > `config/siesta.py`'s card comment says it had `use_gpu` on the Budget card and
-> why that was wrong; C3 — the wrapper defaults an absent `gpu_count` to one
-> device (`runwrap._render_sbatch_for`, and `header_ntasks` answers one rank per
-> device); C4 — `test_sbatch_emit.py` no longer pins one rank per GPU. The
-> table below is the record of what they said.
+> why that was wrong; C3 — corrected then to one device, and since 2026-10-01
+> a refusal (G5); the rank count it implied is stated or refused since
+> 2026-10-02 (`architecture.md` § 5.2); C4 — `test_sbatch_emit.py` no longer
+> pins one rank per GPU. The table below is the record of what they said.
 
 | # | where | says | true |
 |---|---|---|---|
@@ -320,17 +321,6 @@ leaves the reader unable to recognise the wrong version.
 | **C3** | `runwrap.render_sbatch` | absent `gpu_count` ⇒ `ntasks` (*"one GPU per rank"*) | 1 device (G5). `_render_sbatch_for` already defaults to 1, so the two disagree one function apart |
 | **C4** | `tests/test_sbatch_emit.py` | pins the `ntasks` default as *"1 rank/GPU default"* | that model was retired 2026-08-13; the test is the only thing keeping it alive |
 | **C5** | `runwrap._render_sbatch_for`, the no-config branch | a machine with **probed** domains and a **probed** `topology.gpu_type` cannot emit a GPU header at all — *"no gpu type resolved"* | gone 2026-10-01 with the card itself: a GPU header asks `gpu:N` and needs no type |
-
-> **C5 was found by writing C4's replacement test**, which is the argument for
-> the test rather than a note about it. When a machine states no `scheduler`
-> block, `_render_sbatch_for` hand-builds
-> `{"kind": "slurm", "directives": {partition, qos}}` from the probed menu — and
-> that dict carries **no `gpu` key**, so the fill-in that copies
-> `topology.gpu_type` into `scheduler.gpu.default_type` never runs. The
-> measurement is in the record, the header path is a different path, and the
-> job refuses. **Same class as C1–C4** — a GPU fact reachable by one route and
-> not the other — which is why it is listed here rather than filed as its own
-> bug.
 
 **C1 and C2 are the same error and the important one.** Both put the
 person's choice on the machine's side of the only line that matters. C1 is
@@ -386,7 +376,7 @@ queue card's box writes `allocation.gpu_binding` — is one browser test,
 
 | test | why it goes |
 |---|---|
-| `test_sbatch_emit.py` — the `ntasks`-default case | pins the retired *one rank per GPU* model (C4). Its replacement asserts the **single** default of G5 |
+| `test_sbatch_emit.py` — the `ntasks`-default case | pins the retired *one rank per GPU* model (C4). G5 has no default since 2026-10-01, and a rank count none since 2026-10-02: the table's rows refuse both |
 | any test naming `use_gpu` as the question rather than the SIESTA spelling | after phase 3 there is one name; a test that asserts the pair is asserting the gap |
 
 **Added** — each pins a rule that could not previously be checked:

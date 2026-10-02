@@ -62,9 +62,13 @@ def _described(tmp_path, monkeypatch, engine, calculation):
                   else ()))
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / calculation / "H2"
-    (bundle / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
+    # THE RUN CARD STATES THE LAUNCH SHAPE, as a person's does: a run whose
+    # shape is stated nowhere is refused at prep (`architecture.md` § 5.2).
+    tj = bundle / "task.json"
+    d = json.loads(tj.read_text())
+    d["execution"] = ({"mpi_np": 2, "omp_threads": 1} if engine == "siesta"
+                      else {"threads": 1})
+    tj.write_text(json.dumps(d, indent=2))
     return bundle
 
 

@@ -70,7 +70,7 @@ def test_a_file_in_the_working_directory_is_not_what_it_names(tmp_path,
     sitting right where the command was run.
     """
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "molbuilder.json").write_text('{"execution": {"mode": "local"}}')
+    (tmp_path / "molbuilder.json").write_text('{"launch": {"mode": "submit"}}')
     line = _first_line(["machines"])
     assert str(tmp_path / "molbuilder.json") not in line
     assert str(tmp_path / "config-root") in line

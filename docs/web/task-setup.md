@@ -348,7 +348,7 @@ other's block.
 | measure | `mpi_np` `4` `8` `16` | 3 trials |
 | measure | `omp_threads` `1` `2` | × 2 → 6 combinations |
 | run | `mpi_np` = `8` | what the run asks for |
-| run | *(blank)* | the target's own width (`auto_ranks`), else a refusal |
+| run | *(blank)* | refused at prep, naming this card and the prep flag ([`architecture.md`](?doc=execution/architecture.md) § 5.2) |
 
 **A one-point row in the MEASURE card is the trials' value, never the
 run's.** On a non-machine item it pins the template for the trials
@@ -544,10 +544,12 @@ this whole redesign answers *(user, 2026-09-01: "it requires the bench to be
 fully executed… it tries to conceal all decision from user")*, and it is a
 property of the data model rather than of this page.
 
-**Blank is a state, and it is the ordinary one.** What no row states is sized
-from the selected target's own width — or refused when that target has no
-record — and the card says which, by name.  **A benchmark never fills a blank
-row**: it reports, you decide (`architecture.md` § 5.2).
+**Blank is a state, and prep refuses it for a launch value.** The ranks, the
+cores per rank, a GPU run's count — and on a target with a scheduler the
+queue, wall and memory — stated in no row and on no flag are refused at prep,
+and the card shows that refusal, naming where to state the value
+(`architecture.md` § 5.2). **A benchmark never fills a blank row**: it
+reports, you decide.
 
 **Three states, and a row shows which one it is in.** They are the visible
 form of the placeholder rule above, so they are named rather than left to the
@@ -557,7 +559,7 @@ styling: the row carries the state and the CSS reads it.
 |---|---|---|---|
 | **chosen** | this rung's own value, from `stages[i].execution` | ordinary | you decided it here |
 | **inherited** | *empty*, with the calculation-wide value as the placeholder, marked *(every stage)* | quieter, never struck | the row is **answered, just not here** — blank on this rung means *no disagreement*, and filling the field with the merged value would make blank and `×` unreachable |
-| **unstated** | *empty*, placeholder *— not stated* (or a format example for `time` / `domain`) | quieter | the state every description was in before this card existed. **Not an error** |
+| **unstated** | *empty*, placeholder *— not stated* (or a format example for `time` / `domain`) | quieter | **not an error in the card** — a deck item keeps the template's value; a launch value stated nowhere is refused at prep, and the card says so |
 
 That the field is left EMPTY for an inherited row is the load-bearing half: an
 inherited value shown as text is indistinguishable from one you typed, and
@@ -624,7 +626,7 @@ its point count:
 | a **measure**-card setting | `task.json`'s `bench` | the points to try. A one-point NON-machine entry is the trials' value, a pin over the template for them alone *(user rule, 2026-08-20; trials only since 2026-09-30)*; a machine axis is only ever a point to measure |
 | a **run**-card setting | `task.json`'s `execution` | **one value each** — what the run uses (`stages.md` § 6.8d). Independent of `bench`: a run needs no benchmark, and declaring a grid states nothing about the run. **Three destinations, chosen by the catalogue and never by a second key:** a machine item becomes the launch shape; `time` and `domain` are this run's own scheduler ask (§ 6.8e, and the row below); every other catalogue item is a pin over the template |
 | the notify card | `task.json`'s `notify` | the reporting policy — when, to which channels **by name**, with which fields ([`stages.md`](?doc=engines/stages.md) § 6.9; the card is § 9b). Never an address or a key: those stay on the machine that runs the job ([`run-reports.md`](?doc=execution/run-reports.md) § 1) |
-| a queue, a wall, a memory ask, the GPU binding | `task.json`'s `allocation` | **what this calculation asks the scheduler for** (`stages.md` § 6.8a) — four fields, each optional. The GPU binding is a tick-box, ticked by default: every GPU ask then carries `--gres-flags=enforce-binding`, and unticking writes `"gpu_binding": false` ([`gpu.md`](?doc=execution/gpu.md) G9). The card writes the block whole, which is why the switch is on it. Not the launch shape: that is a machine-card row, one row above. **And not the last word on two of them:** a run may state its OWN `time` and `domain` on the run card, because a benchmark and a run want different wall clocks and different queues (§ 6.8e). `mem` has no such second home, deliberately — a trial and a run hold about the same memory |
+| a queue, a wall, a memory ask, the GPU binding | `task.json`'s `allocation` | **what this calculation asks the scheduler for** (`stages.md` § 6.8a) — four fields, each optional here; a queue, wall or memory stated nowhere else is refused at prep on a target with a scheduler ([`architecture.md`](?doc=execution/architecture.md) § 5.2). The GPU binding is a tick-box, ticked by default: every GPU ask then carries `--gres-flags=enforce-binding`, and unticking writes `"gpu_binding": false` ([`gpu.md`](?doc=execution/gpu.md) G9). The card writes the block whole, which is why the switch is on it. Not the launch shape: that is a machine-card row, one row above. **And not the last word on two of them:** a run may state its OWN `time` and `domain` on the run card, because a benchmark and a run want different wall clocks and different queues (§ 6.8e). `mem` has no such second home, deliberately — a trial and a run hold about the same memory |
 
 ```jsonc
 // task.json — molbuilder/task@1
@@ -1058,8 +1060,8 @@ a hint rather than choosing.
 **The order is shown because it is load-bearing.** `summarize bench` writes a
 report you read; **you** then fill these rows, and `prep run` uses them.
 Skipping the middle step is no longer silent: the rows are right there, filled
-or blank, above the command that consumes them — and a blank row reads as
-*this one falls to the target's own width* rather than as nothing.
+or blank, above the command that consumes them — and a blank launch row
+reads as *prep will refuse this* rather than as nothing.
 
 **The directory names come from the producer.** Flat and hierarchical name
 things differently (§ 4), and a page that composed them itself would be a
@@ -1074,7 +1076,7 @@ applies to that prep and no other. A thirty-second measurement queued behind a
 two-day reservation is the cost of forgetting that, not a missing field.
 
 **It works the same on a workstation and against a cluster.** Nothing here
-reads `execution.mode`: the commands are the commands, the admission check is
+reads `launch.mode`: the commands are the commands, the admission check is
 the target's, and *which* machine is § 6's question, answered once above.
 
 ### 11.1 What a Prep button shows — the command line's answer, whole

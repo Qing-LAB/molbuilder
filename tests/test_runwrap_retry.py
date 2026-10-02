@@ -22,7 +22,6 @@ relative name — exit 127 under the canonical ``bash <base>.run.sh``.
 """
 from __future__ import annotations
 
-import json
 import subprocess
 from pathlib import Path
 
@@ -50,7 +49,8 @@ ASK_GEOM = "_mb_ending relaxation-capped"
 
 @pytest.fixture
 def sandbox(tmp_path, monkeypatch):
-    """Minimal config so the generator will emit (mirrors test_runwrap_v2)."""
+    """An isolated config root and synthetic caps (mirrors test_runwrap_v2);
+    the activation the generator needs is the record's, `_MACHINE`."""
     monkeypatch.chdir(tmp_path)
     # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
     # working-directory step, which is gone (configuration.md § 2.1a) --
@@ -60,23 +60,29 @@ def sandbox(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
-    (tmp_path / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"preamble": "module load mamba",
-                              "activation": "source activate"},
-    }))
     set_capabilities(Capabilities(runtime_config={},
                                   conda_binary="/usr/bin/conda"))
     yield tmp_path
     set_capabilities(None)
 
 
+def _machine():
+    """This machine's record: how a shell enters an environment here --
+    the activation's one home (`configuration.md` § 5 M-1)."""
+    from molbuilder.scheduler import Environment, Topology
+    return Environment(scheduler="workstation", topology=Topology(),
+                       script_generation={"preamble": "module load mamba",
+                                          "activation": "source activate"})
+
+
 def _render(**kw) -> str:
-    """The wrapper's text for a four-rank SIESTA job.
+    """The wrapper's text for a four-rank, one-thread SIESTA job.
 
     ``kw`` are allocation fields: the door takes the object whole (A8), so
     they are set on it rather than passed beside it."""
-    return render_run_wrapper(Path("/x/JOB.fdf"),
-                              resources=Resources(mpi_np=4, **kw))
+    return render_run_wrapper(Path("/x/JOB.fdf"), machine_record=_machine(),
+                              resources=Resources(mpi_np=4, cpus_per_task=1,
+                                                  **kw))
 
 
 # --------------------------------------------------------------------- #

@@ -14,6 +14,7 @@ so ``queued`` is what there is to see.
 """
 from __future__ import annotations
 
+import json
 import os
 
 import pytest
@@ -57,9 +58,13 @@ def submitted(tmp_path, monkeypatch):
                 "--shape", "flat", "--name", "H2")
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "optimization" / "H2"
-    (bundle / ".molbuilder.json").write_text(
-        '{"script_generation": {"activation": "conda activate", '
-        '"preamble": "true"}}')
+    # EVERY LAUNCH VALUE STATED (`architecture.md` § 5.2): the run card's
+    # threads, and the queue, wall and memory a job sent to it carries.
+    tj = bundle / "task.json"
+    d = json.loads(tj.read_text())
+    d["execution"] = {"threads": 1}
+    d["allocation"] = {"domain": "htc", "time": "0-01:00:00", "mem": "8G"}
+    tj.write_text(json.dumps(d, indent=2))
     r = _jobset("prep", "run", "coarse", "--bundle", bundle,
                 "--target", "this")
     assert r.exit_code == 0, r.output

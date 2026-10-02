@@ -15,7 +15,6 @@ Pins:
 """
 from __future__ import annotations
 
-import json
 import textwrap
 from pathlib import Path
 
@@ -38,14 +37,10 @@ def _isolated(monkeypatch, tmp_path_factory):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     cwd = tmp_path_factory.mktemp("cwd")
-    (cwd / "molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
     monkeypatch.chdir(cwd)
-    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
-    # working-directory step, which is gone (configuration.md § 2.1a) --
-    # without naming the directory the write lands in a file nothing
-    # opens, and the test passes having configured nothing.
+    # THE SANDBOX IS THE CONFIG ROOT -- and holds no config: how a shell
+    # enters an environment is the machine record's (`configuration.md`
+    # § 5 M-1), written below.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cwd))
     # AND THE RECORD GOES IN LAST, after every scope-moving call above:
     # it is written where `machine_scope_path()` resolves NOW, and prep
@@ -173,8 +168,6 @@ def _staged(xyz, tmp_path, strategy):
     writes it — but it is now assembled a stage at a time, which is the split
     the whole design rests on.
     """
-    import json
-
     from molbuilder import describe as D
     from molbuilder.workingcopy_structure import StructureCodec
     from molbuilder.config.siesta import SiestaConfig
@@ -197,17 +190,10 @@ def _staged(xyz, tmp_path, strategy):
         tmp_path)
     from conftest import write_pseudos
     write_pseudos(tmp_path, sorted(set(struct.elements)))
-    # The DOTTED, bundle-scoped project config -- the scope the wrapper
-    # writer resolves from the script's own directory.  The undotted name is
-    # the cwd-first server scope, and writing it here was inert: the tests
-    # silently read the developer's repo-root config (proven isolated,
-    # 2026-08-12).
-    (tmp_path / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "source /opt/conda/etc/profile.d/conda.sh"}}))
     for s in stages:
         if s.enabled:
-            prep_calculation(tmp_path, s.name, allocation=Resources(mpi_np=4))
+            prep_calculation(tmp_path, s.name,
+                             allocation=Resources(mpi_np=4, cpus_per_task=1))
     return tmp_path
 
 

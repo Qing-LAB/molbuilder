@@ -1,20 +1,16 @@
-"""Placement — which queue a request goes in, and why not, when it cannot.
+"""Placement — the queue a job NAMES, bound and admitted, or why not.
 
 The contract is ``docs/execution/scheduler.md``; this module is § 5's decision
 graph, in one walk:
 
-    any queues at all?              no  -> None: run directly, no header
-    did the user name one?          yes -> admit THAT one, or refuse
-    which serve this KIND of work?  none -> refuse
-    of those, which ADMIT it?       none -> refuse, with every reason
-                                    some -> the cheapest ceiling that fits
+    any queues at all, and none named?  -> None: nothing was promised
+    the job names one                   -> admit THAT one, or refuse
+    the job names none on a menu        -> refuse: a job names its own queue
 
-Written as one function because it was two.  Until 2026-08-23 the CPU side
-walked the menu for a row that fits while the GPU side looked only at the
-first gpu-capable row -- so a grouped benchmark needing 38 minutes was routed
-into ASU Sol's 15-minute ``debug`` queue, and when that did not fit, routing
-returned "no preference" and let the rendered header's directives stand.  The
-header named the same row.  Two branches, written separately, disagreeing.
+**Nothing here chooses a queue** *(user, 2026-10-02: "explicit job config is
+the only way allowed"; `architecture.md` § 5.2)*.  Until then an unnamed job
+was given the cheapest ceiling that fits -- ordered by a `placement_priority`
+from `molbuilder.json` -- which was a queue nobody named for it.
 
 **This module takes the menu; it does not fetch it.**  Reading configuration
 belongs to a higher layer, and the package is stdlib-only so a record can be
@@ -83,177 +79,48 @@ def candidates(routing, *, prefer_gpu: bool) -> List:
 
 
 
-#: The axes placement may be ordered by, and the order it uses when nobody
-#: says otherwise.  **A closed set**: an unknown name is refused rather than
-#: dropped, because a priority silently ignored is a preference that looks
-#: honoured and is not.
-PRIORITY_AXES = ("cores", "memory", "walltime")
-
-#: **GPU is not in that list, and is not missing from it.**  Whether a run
-#: wants a device is settled BEFORE any ordering: `candidates` splits the menu
-#: by kind, so a GPU request only ever sees gpu-capable queues and CPU work
-#: prefers cpu-only ones.  It is structurally first, which is stronger than
-#: being first in a sort key -- a tie-break can be outweighed, a filter cannot.
-PRIORITY_DEFAULT = ("cores", "memory", "walltime")
-
-
-def _excess(row, request: Request, priority=None) -> tuple:
-    """Which admitting queue to prefer.  Lower sorts first.
-
-    **Cores are the requirement; memory is the chooser.**  A calculation's
-    wall-clock depends most critically on how many cores it gets, so the core
-    count is not something to trade away — and `admits` has already guaranteed
-    it before this is consulted.  Memory is different: these jobs are core
-    bound and do not press against memory ceilings, so **the queue offering
-    LESS memory is the one that is easier to allocate**, and asking for a
-    2 TB partition you do not need buys a longer wait and nothing else.
-    *(User, 2026-08-23; `submission.md` § 3.)*
-
-    So the key is lexicographic, not a sum, and **the order is the person's**
-    (`PRIORITY_DEFAULT`, overridable per site):
-
-        (unknown ceilings, *ratios in the declared priority order*)
-
-    The default is cores, then memory, then walltime.  A site whose jobs press
-    on memory rather than on cores says so and gets a different order, which
-    is a preference and lives in the config -- never in the machine record
-    (M-1).
-
-    **A sum was wrong and measurably so.**  The first version added the three
-    ratios equally, and on a Sol-shaped menu the walltime ratios span 6x-76x
-    while memory spans 2x-16x — so the sum was a walltime sort in disguise and
-    the memory axis could not decide anything.  Averaging three quantities
-    that differ by an order of magnitude in spread is a way of choosing by the
-    loudest one.
-
-    Unknown ceilings lead, so a row whose fit we can measure is preferred to
-    one that has merely not said no (R3) — an unmeasured queue must not win by
-    silence.  Each ratio is ``ceiling / ask``, computed only where **both**
-    sides are known; where either is missing the axis contributes ``0.0`` and
-    cannot decide.
-    """
-    from .admit import domain_ceiling_s
-    pairs = {
-        "cores":    (request.ranks, row.max_cores),
-        "memory":   (request.mem_gb, row.max_mem_gb),
-        "walltime": (request.walltime_s, domain_ceiling_s(row)),
-    }
-    order = tuple(priority) if priority else PRIORITY_DEFAULT
-    unknown = 0
-    ratios = []
-    for axis in order:
-        ask, ceiling = pairs[axis]
-        try:
-            ask_f = float(ask) if ask else 0.0
-            ceil_f = float(ceiling) if ceiling else 0.0
-        except (TypeError, ValueError):
-            ask_f = ceil_f = 0.0
-        if ceil_f <= 0:
-            unknown += 1
-        ratios.append(ceil_f / ask_f if (ask_f > 0 and ceil_f > 0) else 0.0)
-    return (unknown, *ratios)
-
-
-def check_priority(order) -> tuple:
-    """Validate a declared priority order, or raise.
-
-    An unknown axis is REFUSED, not dropped: a preference that is silently
-    ignored looks honoured and is not, which is the failure this whole
-    document exists to remove.  A partial order is legal -- naming only
-    ``["memory"]`` means *memory decides and the rest may fall where they
-    fall* -- because that is a real thing to want and refusing it would make
-    the person write out axes they do not care about.
-    """
-    order = tuple(order or ())
-    bad = [a for a in order if a not in PRIORITY_AXES]
-    if bad:
-        raise ValueError(
-            f"placement priority names {', '.join(map(repr, bad))}, which "
-            f"{'is' if len(bad) == 1 else 'are'} not an axis placement can "
-            f"order by.  Choose from {', '.join(PRIORITY_AXES)}.  (Whether a "
-            f"run wants a GPU is settled before any ordering -- the menu is "
-            f"split by kind first -- so it is not one of these.)")
-    dupes = [a for a in order if order.count(a) > 1]
-    if dupes:
-        raise ValueError(
-            f"placement priority repeats {sorted(set(dupes))!r}; each axis "
-            f"decides once or the order after it can never be reached.")
-    return order
-
-
 def place(routing, request: Request, *, prefer_gpu: bool,
-          named: Optional[str] = None,
-          priority: Optional[Sequence[str]] = None) -> Optional[Placement]:
-    """Walk § 5's graph.  ``None`` means *this machine has no menu* — nothing
-    was promised, so the rendered header's directives stand (R6).
+          named: Optional[str]) -> Optional[Placement]:
+    """Bind ``request`` to the queue the job NAMES, admitted on its row.
 
-    Raises :class:`Unplaceable` when there IS a menu and nothing on it can
-    take the request.  That distinction is the whole of R6: refusing where we
-    hold the record that says the scheduler will refuse, and proceeding where
-    we hold no such record.  **A queue NAMED on a machine with no menu is
-    refused too**: the name is a request this machine cannot honour, and
-    going ahead under the header's own queue sent the job somewhere nobody
-    named while the ledger recorded the name (W52).
+    ``None`` means *this machine has no menu and the job names no queue* --
+    nothing was promised, so there is nothing to bind (R6).  Raises
+    :class:`Unplaceable` when the job names no queue on a machine that has
+    them (a job names its own -- `architecture.md` § 5.2), when the named
+    queue is not on the menu, or when it cannot take the request: we hold the
+    record that says the scheduler would refuse, so we say so first.  **A
+    queue named on a machine with no menu is refused too**: the name is a
+    request this machine cannot honour (W52).
     """
     rows = list(routing or [])
+    if not named:
+        if not rows:
+            return None
+        raise Unplaceable(
+            [Refusal("no_domain", "this job",
+                     note="it names no queue -- a job names its own "
+                          "(allocation.domain, --domain); this machine "
+                          f"offers {', '.join(d.name for d in rows)}")],
+            gpu_side=prefer_gpu)
     if not rows:
-        if named:
-            raise Unplaceable(
-                [Refusal("no_domain", named,
-                         note="this machine's record lists no queues to "
-                              "choose from")],
-                gpu_side=prefer_gpu)
-        return None
-
-    if named:
-        for d in rows:
-            if d.name == named:
-                why = admits(d, request)
-                if why:
-                    raise Unplaceable(why, gpu_side=prefer_gpu)
-                return _bind(d, prefer_gpu)
-        # A finding like every other refusal (`admit._refusal`), so
-        # `Unplaceable` carries ONE shape rather than two.
         raise Unplaceable(
             [Refusal("no_domain", named,
-                     note=f"this machine offers "
-                          f"{', '.join(d.name for d in rows)}")],
+                     note="this machine's record lists no queues to "
+                          "choose from")],
             gpu_side=prefer_gpu)
-
-    pool = candidates(rows, prefer_gpu=prefer_gpu)
-    if not pool:
-        # A Refusal like every other, NOT a bare string: `Unplaceable.__init__`
-        # reads `.message` off each reason, so a string here raises
-        # AttributeError FROM INSIDE THE CONSTRUCTOR -- which no
-        # `except Unplaceable` can catch (runwrap.py, submit.py both have one).
-        # A machine with no GPU-capable queue crashed instead of refusing.
-        raise Unplaceable(
-            [Refusal("no_queue", "this machine",
-                     note="no gpu-capable queue" if prefer_gpu
-                          else "no queue for cpu work")],
-            gpu_side=prefer_gpu)
-
-    reasons: List[str] = []
-    fits = []
-    for d in pool:
-        why = admits(d, request)
-        if not why:
-            fits.append(d)
-        else:
-            reasons.extend(why)
-    if fits:
-        # THE CHEAPEST CEILING THAT FITS -- across every dimension the request
-        # states, not merely the shortest wall.  This took the FIRST admitting
-        # row until 2026-08-23, and the menu is ordered by walltime, so the
-        # choice was "the shortest queue that says yes" rather than "the queue
-        # this job actually needs".
-        #
-        # `min` is stable, so among equally tight rows the menu's own order
-        # still decides -- the recommendation R7 speaks of survives as the
-        # tie-break rather than being overruled.
-        return _bind(min(fits, key=lambda d: _excess(d, request, priority)),
-                     prefer_gpu)
-    raise Unplaceable(reasons, gpu_side=prefer_gpu)
+    for d in rows:
+        if d.name == named:
+            why = admits(d, request)
+            if why:
+                raise Unplaceable(why, gpu_side=prefer_gpu)
+            return _bind(d, prefer_gpu)
+    # A finding like every other refusal (`admit._refusal`), so
+    # `Unplaceable` carries ONE shape rather than two.
+    raise Unplaceable(
+        [Refusal("no_domain", named,
+                 note=f"this machine offers "
+                      f"{', '.join(d.name for d in rows)}")],
+        gpu_side=prefer_gpu)
 
 
 def _bind(domain, prefer_gpu: bool) -> Placement:

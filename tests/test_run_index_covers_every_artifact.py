@@ -41,8 +41,8 @@ real one writing real samples to the flags the real wrapper passed it.
 the run index has nothing to do with what the engine computes and
 `test_conclusion_marker.py` already established the pattern — *"the whole
 meaning lives in shell control flow no unit test of Python can see."* And
-`conda`, because `script_generation.activation` is a CLOSED set (the config
-refuses anything but `conda activate` / `source activate`), so the rendered
+`conda`, because the record's activation is a CLOSED set (anything but
+`conda activate` / `source activate` is refused), so the rendered
 script always shells out to it and a bare `bash` has no `conda init` behind
 it — stubbing it keeps the test dependent on itself rather than on whether
 the developer's shell happens to be initialised.
@@ -82,18 +82,18 @@ def _a_prepared_calculation(tmp_path: Path, engine: str = _ENGINE) -> Path:
     """
     root = tmp_path / "calc"
     root.mkdir()
-    # A bundle carries the script_generation block the wrapper needs; the
-    # machine record is the conftest's autouse `write_machine_record`, since
-    # 2026-09-02 a precondition rather than something prep arranges.
-    (root / ".molbuilder.json").write_text(
-        '{"script_generation": {"preamble": "", "activation": "conda activate"}}')
+    # The activation the wrapper needs is the machine record's -- the
+    # conftest's autouse `write_machine_record`, since 2026-09-02 a
+    # precondition rather than something prep arranges, and the
+    # activation's one home since 2026-10-02.
     (root / f"{LABEL}.fdf").write_text(
         "SystemName test\nSystemLabel J\nNumberOfAtoms 2\n"
         "DM.UseSaveDM .false.\nMD.UseSaveXV .false.\n")
 
     jobset = JobSet(name="J", engine="siesta", kind="ladder",
                     jobs=[Job(name="01_coarse", script=f"{LABEL}.fdf",
-                              resources=Resources(mpi_np=1))])
+                              resources=Resources(mpi_np=1,
+                                                  cpus_per_task=1))])
     prep_jobset(jobset, root, env="molbuilder-siesta", emit_sbatch=False)
 
     stage = root / STAGE_DIR

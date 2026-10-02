@@ -394,7 +394,7 @@ actual two-stage ladder for benzene-dithiol on gold, with every field annotated:
         "time":          "1-00:00:00",
         "exclusive":     null,
         "mem":           null,
-        "gres":          "gpu:a100:1",
+        "gres":          "gpu:1",
         "mpi_np":        32,          // 4× the ranks: the tight stage is the
         "cpus_per_task": 4            // expensive one, and per-job resources
       },                              // are the whole reason they are per-job
@@ -418,8 +418,11 @@ It claimed to be the dump itself until 2026-10-01, beside seven of fifteen
 fields and a time in a form the model never stores.)*
 
 > **`null` is a value here, and it does not mean "zero" or "off".** It means
-> **"not decided yet — resolve it at submit"**. A `mem` of `null` lets the
-> scheduler config's default apply; a `mem` of `"0"` is SLURM's *"give me the
+> **unstated**, and prep never leaves a launch value the job needs unstated: a
+> missing rank count, cores per rank or GPU count — and, on a target with a
+> scheduler, a missing queue, wall or memory — is refused at prep
+> ([`architecture.md` § 5.2](?doc=execution/architecture.md)). What stays `null`
+> is what this job does not use. A `mem` of `"0"` is SLURM's *"give me the
 > whole node's memory"*. The fields are written out even when null so the file
 > shows you the complete set of questions that will be answered, rather than
 > hiding the ones nobody answered yet. This is the *assistant, not nanny* rule in
@@ -604,9 +607,10 @@ list, so the ladder lives in `task.json`, never in the config
   > 01_coarse/run-2` may continue a stage two rungs back, or an earlier attempt
   > of this same stage. So the comparison moved to the pair that actually
   > matters.
-- **Resources are per-stage**, defaulting to inherit the config's ranks/threads
-  and otherwise resolved at submit — so a coarse stage and a tight stage can be
-  sized differently.
+- **Resources are per-stage** — each stage's run card (`execution`) states its
+  own over the calculation's, and nothing is filled in
+  ([`architecture.md` § 5.2](?doc=execution/architecture.md)) — so a coarse
+  stage and a tight stage can be sized differently.
 
 **The shipped default ladder** (the *structure*; the *values* and their
 scientific rationale live in [`engines/tuning.md`](?doc=engines/tuning.md)):
@@ -990,21 +994,14 @@ attempt, so an earlier stage's geometry is still openable after a later one has
 run. Equally, an HPC job can be `flat`. Nothing in molbuilder infers one from the
 other.
 
-> `--mode` falls back to `execution.mode` **(C11, landed 2026-08-11)**: flag,
+> `--mode` falls back to `launch.mode` in `molbuilder.json` **(C11, landed
+> 2026-08-11; the key was spelled `execution.mode` until 2026-10-02)**: flag,
 > then config — and the chain ends there. Unset in both is a **refusal**, not
 > a derivation from the detected scheduler: deciding `launch` from detection
 > would gate submission on where you happen to be standing, which
 > `running-a-job.md` § 5.4 forbids (*the mode, not the detected scheduler,
-> gates submission*).
->
-> ⚠ **That key has no live contract.** It is validated by code and cited
-> throughout `molbuilder/bench/` as *"docs/archive/old_docs/job-execution.md § 8.13"* — a document
-> **retired in the 2026-07 migration** (`archive/2026-07-28-document-migration.md`
-> maps it to `execution/running-a-job.md`, whose section numbers did not
-> survive). So `execution` is a config section the code enforces and no live
-> document fully defines. `launch` was wired to it 2026-08-11 (C11, the note
-> above); writing the key's own contract is the half that remains — today
-> `running-a-job.md` § 5.4 is its nearest live statement.
+> gates submission*). The key's contract is
+> [`configuration.md` § 4](?doc=configuration.md) and `running-a-job.md` § 5.4.
 
 #### The loop
 
@@ -1027,7 +1024,8 @@ flowchart TD
 **`prep` prints what it resolved, and `launch` shows what it decides.** `prep`
 is the only place the measured numbers, the chosen starting geometry and the
 rendered deck appear together; `launch` then shows the exact `sbatch` line — the
-queue and the wall it decides at that moment — and asks before anything is sent
+queue, wall and memory as sent, prep's unless a launch flag changed them — and
+asks before anything is sent
 ([`submission.md`](?doc=execution/submission.md) S4, every door; ruled
 2026-10-01).
 
@@ -1202,7 +1200,7 @@ nothing"* (`checkpointing.md` S3).
   `job-set.json`, and two verbs listing one ladder answered *what is here*
   twice. Prep still writes the whole table into the folder (`STAGE-PLAN.md`).
 - **`launch`** names **one** stage and takes a `--mode` (falling back to
-  `execution.mode` — C11, 2026-08-11; unset in both is a refusal, § 5.3):
+  `launch.mode` — C11, 2026-08-11; unset in both is a refusal, § 5.3):
   - **`submit`** hands that one job to SLURM — shown first, and asked (S4). One
     `sbatch`, one invocation, no dependency flag, nothing queued behind it.
   - **`direct`** runs that one job **locally** (`bash …run.sh`) and waits for
@@ -1338,26 +1336,16 @@ system** adds is submission and routing:
   activation and launch. You submit the outer file; it hands off to the inner
   one. This split means the scheduler header and the run logic evolve
   independently, and the exact same `.run.sh` works with or without a scheduler.
-- **The `.sbatch` is not always written, and there are two reasons it may not
-  be.** The `.run.sh` is always there; the header beside it appears only when
-  there is a queue to address. It is withheld when:
-  1. **the machine record says `workstation`** — that machine has no queue, so
-     a header for it would be a file nobody can submit. A record saying
-     `slurm`, **or no record at all**, keeps emitting: absent evidence is not
-     evidence of absence, and refusing on a cluster nobody probed is worse
-     than an extra file. *(Until 2026-08-17 this asked whether a `scheduler`
-     **block** was configured, on the premise that a workstation needs no
-     config. `configuration.md` M6 retired that premise — a workstation
-     records its capability too — and block-presence stopped discriminating:
-     a workstation with one config got 14 `.sbatch` files for a queue it does
-     not have.)*
-  2. **no `(partition, qos)` pair can be resolved** — the caller's own
-     resolved pair is used, else the routing menu's first row, which
-     `get_routing` documents as the recommendation. Only when there is no
-     pair at all is there genuinely no queue to write a header for.
+- **The `.sbatch` is not always written.** The `.run.sh` is always there; the
+  header beside it is withheld only where **the target's record says
+  `workstation`** — that machine has no queue, so a header for it would be a
+  file nobody can submit — or where you asked for none (`prep --no-sbatch`). A
+  target with a scheduler gets one, and every value in it is stated: a run
+  that names no queue, wall or memory is refused at prep, never given a header
+  that picks one ([`architecture.md` § 5.2](?doc=execution/architecture.md)).
 
-  So *"I prepped and got no `.sbatch`"* has exactly these two answers, and
-  both are about the **machine**, never about the calculation.
+  So *"I prepped and got no `.sbatch`"* has two answers: the machine's record
+  says `workstation`, or you said `--no-sbatch`.
 - **One `sbatch` per invocation, per-job flags win.** The submitter passes each job's
   resources as command-line `sbatch` flags (`-J`, `-n`, `-c`, `--gres`, `-t`,
   `--exclusive`), which **override** the rendered header — so a whole sweep can
@@ -1365,21 +1353,20 @@ system** adds is submission and routing:
 - **One request, three doors.** A stage, a grouped bench's shelf and a bias
   chain build their `sbatch` line the same way (`submit._sbatch_request`): what
   `prep` baked, under what was said at launch (`--time`, `--mem`; `0` is the
-  whole node); **admitted** against the whole of it — wall, cores, memory, GPUs
-  and their type — on the queue it is sent to, against what this machine's
-  record says now ([`scheduler.md`](?doc=execution/scheduler.md) R9); and the
-  wall, when nothing states one, that queue's own ceiling. *(Until 2026-10-01 the
-  stage's door sent the launch queue's `-p/-q` under the wall `prep`'s header had
-  worked out for its own queue, and admitted nothing.)* The queue itself is
-  named once, for the work being launched: `--domain`, else what `prep` baked
-  for **this** stage, else `execution.domain` — for `--mode ask` as for
-  `submit`.
+  whole node); **admitted** against the whole of it — wall, cores, memory, the
+  GPU count — on the queue it is sent to, against what this machine's record
+  says now ([`scheduler.md`](?doc=execution/scheduler.md) R9). *(Until
+  2026-10-01 the stage's door sent the launch queue's `-p/-q` under the wall
+  `prep`'s header had worked out for its own queue, and admitted nothing.)* The
+  queue itself is named once, for the work being launched: `--domain`, else
+  what `prep` baked for **this** stage — for `--mode ask` as for `submit`.
 - **Routing domains.** Instead of hard-coding a partition, you name a **domain**
-  (`--domain public`, or `execution.domain` in config). A domain is a friendly
-  name for a `(partition, qos)` pair (with an optional separate GPU partition);
-  `launch` resolves it and refuses an unknown name with the list of configured
-  ones — and a named one on a machine whose record lists no queues at all. Partition and qos are **required** for a SLURM site — the framework
-  refuses to emit a header it knows will be rejected (design decision #4).
+  — in the description (`allocation.domain`, or the run card's `domain`), on
+  `prep --domain`, or on `launch --domain`. A domain is a friendly name for a
+  `(partition, qos)` pair of the target's record (with an optional separate GPU
+  partition); an unknown name is refused with the record's list — and a named
+  one on a machine whose record lists no queues at all. The framework refuses
+  to emit a header it knows will be rejected (design decision #4).
 - **Render every job, then submit them.** A grouped submission (the bench
   sweep, § 7) writes **all** its shelf scripts before it sends the first one,
   and **one scheduler refusal does not cancel the rest**: the shelves are
@@ -1404,7 +1391,7 @@ system** adds is submission and routing:
   to, not just which stage.
 
 A workstation — a machine whose record says so — simply gets `.run.sh` files
-and is run with `--mode direct` (or `execution.mode: direct` set once — the
+and is run with `--mode direct` (or `launch.mode: direct` set once — the
 mode is always stated, never derived).
 
 ---
@@ -1440,8 +1427,9 @@ flowchart LR
   resolved to the **compute node's** real core and GPU counts (read from the
   scheduler via `scontrol show node`, not from whatever login node you happen to
   be on), so the numbers are the ones the job will actually run against. The
-  record holds only what was **probed**; what you want from the machine stays in
-  `molbuilder.json` ([`configuration.md` § 5](?doc=configuration.md)).
+  record holds only the machine's **facts** — what was probed, and the
+  activation and preamble declared to the probe there; what you want stays in
+  `molbuilder.json` ([`configuration.md` § 4–5](?doc=configuration.md)).
 - **Trials are the stage's science, made measurable — by pins, not by
   splicing.** Each trial's deck is **rendered from the description** like any
   deck, with the benchmark's pins laid over the resolved values
@@ -1529,9 +1517,11 @@ actually reach, and their wall limits — and writes that to `environment.json`
 with `--write`, so every calculation on this machine reads one probed answer
 instead of each re-probing its own.
 
-It writes **facts only**. Which partition you want and the account stay yours,
-in `molbuilder.json` — the split is [`configuration.md` § 5](?doc=configuration.md)
-M-1.
+It writes **facts only** — what it measured, and the activation and preamble
+you declare to it there (`--activation`, `--preamble`). Which queue a job uses
+is that job's own statement ([`architecture.md` § 5.2](?doc=execution/architecture.md));
+`molbuilder.json` holds no scheduler settings — the split is
+[`configuration.md` § 4–5](?doc=configuration.md) M-1.
 *(Until 2026-08-17 this verb proposed a whole `scheduler` config block, defaulting
 your partition to the cheapest one it found; a probe choosing on your behalf is
 what that rule removes.)*

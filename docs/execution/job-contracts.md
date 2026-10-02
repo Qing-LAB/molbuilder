@@ -941,11 +941,11 @@ wrapper contains these and nothing else:
 |---|---|
 | **Per-run log file** | where this invocation's log goes — emitted FIRST, before the gate, so even a refused launch leaves a record *(row order corrected 2026-08-13: it sat 8th while emitting first)* |
 | **Launch-door gate** | one launch door (`job-system.md` § 5.3): `launch` sets `MB_LAUNCHED_BY` (direct: child env; sbatch: `--export=ALL,MB_LAUNCHED_BY=jobset-launch`, robust to site export policy). Without it a terminal call warns and asks (a **yes is exported**, so the warm-retry re-exec keeps the answer; **EOF refuses** with the verdict line); a non-interactive call refuses with exit 2 and the fix; `-h`/`--help` is **scanned** before the gate (§ 5.5's verb — the gate steps aside; the usage text itself prints later, in the args loop) with no bootstrap run. `MB_LAUNCHED_BY=manual` is the deliberate, logged override — the verdict is recorded in the job's `.out` **and the runwrap log** either way *(user 2026-08-12; edges repaired U10)* |
-| **Baked preamble** | the site's own lines, verbatim from `script_generation.preamble` |
+| **Baked preamble** | the target machine's own lines, verbatim from its record's preamble ([`running-a-job.md` § 5.2](?doc=execution/running-a-job.md)) |
 | **Activation** | the one activation statement, verbatim |
 | **Continuation flags** | the shared `--continue` / `--cold` / `--force` handling |
 | **SIESTA-specific argument parsing** | `-np` / `-omp` and friends |
-| **OpenMP thread sizing** | PySCF only. Resolves the thread count — `-omp` flag, else `OMP_NUM_THREADS`, else the scheduler's allocation, else this node's physical cores — and **exports** it, so the wrapper and the script cannot disagree. Deciding, not computing: the node is the last resort, never the first answer. Added 2026-08-13 (P1b) because the wrapper deliberately left the variable unset and the script counted the whole node, so a job holding 8 cores of a 128-core node started 128 threads and time-sliced them onto its 8. PySCF is OpenMP-only, so `-np` is accepted, reported and ignored — `launch` passes it to every run script |
+| **OpenMP thread sizing** | PySCF only. Resolves the thread count — `-omp` flag, else `OMP_NUM_THREADS`, else the scheduler's allocation, else the stated value baked at prep (an unstated one is refused at prep; the node's physical cores stood in until 2026-10-02 — `running-a-job.md` § 3.2) — and **exports** it, so the wrapper and the script cannot disagree. Added 2026-08-13 (P1b) because the wrapper deliberately left the variable unset and the script counted the whole node, so a job holding 8 cores of a 128-core node started 128 threads and time-sliced them onto its 8. PySCF is OpenMP-only, so `-np` is accepted, reported and ignored — `launch` passes it to every run script |
 | **Run index resolution** | picks `-runN` so a re-run never overwrites |
 | **Cold restart: SAY WHAT WOULD BE LOST, THEN STOP** | what `--cold` does — NAMES everything the id names, minus what molbuilder wrote (§ 4.1, U17), and refuses; `--force` proceeds and the engine overwrites them. It moved them into an aside directory until 2026-08-18; keeping a state is `molbuilder checkpoint save` and it is never automatic |
 | **Runtime status banner** | prints what it found — warm files, ranks |
@@ -956,7 +956,7 @@ wrapper contains these and nothing else:
 | **Thread / BLAS pinning** | the OMP/MKL/OpenBLAS thread exports (and, hybrid GPU builds, the OMP bind vars) — real compute-node policy, headered and listed since 2026-08-13 (E-6: it rendered headerless, structurally invisible to the guard below) |
 | **GPU load-balance: rank <-> GPU matching** | *(GPU decks only)* maps MPI ranks onto visible GPUs (K ranks per device via MPS) so a 2-GPU node does not stack every rank on device 0 |
 | **MPS daemon** | *(GPU decks only)* starts the per-job Hyper-Q daemon when ranks share a GPU — per-job pipe/log dirs, readiness poll with a no-MPS fallback, torn down by the one EXIT trap (same E-6 repair as the pinning row) |
-| **GPU mode: ELPA-CUDA defaults** | *(GPU decks only)* the researched rank/thread policy for the ELPA-CUDA build, overridable by every knob the usage names |
+| **GPU mode: placement** | *(GPU decks only)* whether NVIDIA's MPS is on the machine, and the NUMA node GPU 0 sits on — probed at prep, `MOLBUILDER_GPU_NUMA` overrides — for the socket wrap below.  It sets no rank or thread count: those are the stated ones (`running-a-job.md` § 3.3).  A policy that worked out its own stood here until 2026-10-02 |
 | **GPU<->CPU socket co-location** | *(GPU decks only)* pins ranks beside the GPU's own NUMA node so host<->device traffic stays on-socket |
 | **Geometry-cap check + warm-retry** | *(`continue_retries` > 0)* bounded re-exec with `--continue` on a geometry-step cap hit — the retry budget the deck records; the cap is asked of `_mb_ending` (below), never grepped |
 | **PySCF wrapper argument parsing** | *(PySCF wrappers)* the same flag handling for the `.py` route |
@@ -1009,8 +1009,8 @@ The wrapper is **plain, readable bash**. Two properties are load-bearing:
 
 - **Activation is a configurable line, not `conda run`.** The wrapper emits an
   activation statement of its own (typically `conda activate <env>`) drawn
-  from `runtime_config.require_activation`, so a site can substitute its own
-  module-load / venv scheme. (The old illustrative `conda run -n … --no-capture-output`
+  from the target machine's record, so a site can substitute its own
+  module-load / venv scheme ([`running-a-job.md` § 5.2](?doc=execution/running-a-job.md)). (The old illustrative `conda run -n … --no-capture-output`
   example is outdated.)
 - **Outputs are run-indexed and never clobbered.** stdout goes to
   `my-job-runN.out` (SIESTA) / `my-job-runN.pyscf.log` (PySCF). The first run
@@ -1050,8 +1050,9 @@ function** (`jobset/prep.py`) rather than reimplementing wrappers — see
 
 molbuilder does **not** manage the launched process: the monitor beside it
 watches and tells (§ 2.1), and the Results tab reads the directory back (§ 2.4;
-`running-a-job.md` § 4.2). The resource header's SLURM flags come from your
-`molbuilder.json` (§ 6.3).
+`running-a-job.md` § 4.2). The resource header's SLURM flags are the job's own
+stated values, its queue bound on the target's record
+([`architecture.md` § 5.2](?doc=execution/architecture.md)).
 
 ### 2.7 What the layout does not govern
 
@@ -1281,8 +1282,8 @@ a catalogue that says `1000` and `300.0`.)*
   **When the ceiling actually bites:** it falls under the old `16` floor once
   `10·n_atoms / mpi_np < 16` — roughly **when the rank count passes ~0.6× the
   atom count**. That is a small molecule on a big node, which is ordinary, and
-  it stays inside the regime `running-a-job.md § 3.1` allows (the wrapper caps
-  auto ranks at `n_atoms`). It is the same *"small systems → load imbalance"*
+  nothing lowers a stated rank count to avoid it (`running-a-job.md § 3.1`).
+  It is the same *"small systems → load imbalance"*
   case `tuning.md § 2.11` warns about, arriving as a number.
   > ### ⚠ This document stated that derivation twice, a factor of ten apart
   >
@@ -2080,8 +2081,8 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 
 | Artifact | File | Schema string | Authoritative code | Key top-level fields |
 |---|---|---|---|---|
-| User config | `molbuilder.json` / `.molbuilder.json` | *(validated, no `@N`)* | `runtime_config.py` | `scheduler{kind,directives,defaults}`, `execution`, `script_generation`, `envs` — **what you want**, never what a machine reports ([`configuration.md`](?doc=configuration.md) § 5 M-1); `scheduler.routing` and `scheduler.gpu.default_type` moved to the row below 2026-08-17, and the whole `scheduler.gpu` block was removed 2026-10-01 — every GPU fact is the target's record's and every GPU ask the job's own (`execution/gpu.md` § 1) |
-| Machine record | `environment.json` — the calculation's, a **named target**, then this machine's; first found wins ([`configuration.md`](?doc=configuration.md) § 5 M-3) | `molbuilder/environment@2` | `scheduler/record.py`, and only `scheduler/record.py` — the door is § 5 M-4's table | `scheduler`, `topology`, `site`, `domains` — **what the target machine is**, in one shape whether it is a cluster or a workstation |
+| User config | `molbuilder.json` / `.molbuilder.json` | *(validated, no `@N`)* | `runtime_config.py` | `launch`, `envs`, `paths`, and the server's `tls`, `auth`, `admin`, `rate_limit`, `checkpoint` — **what you want**, never what a machine reports and never a value of a job; every key and what it is for is [`configuration.md`](?doc=configuration.md) § 4. The `scheduler` and `script_generation` blocks are refused by name since 2026-10-02 (the activation and preamble moved to the row below), and `execution` there was renamed `launch` |
+| Machine record | `environment.json` — the calculation's, a **named target**, then this machine's; first found wins ([`configuration.md`](?doc=configuration.md) § 5 M-3) | `molbuilder/environment@2` | `scheduler/record.py`, and only `scheduler/record.py` — the door is § 5 M-4's table | `scheduler`, `topology`, `site`, `domains`, `script_generation` (the activation and preamble) — **what the target machine is**, in one shape whether it is a cluster or a workstation |
 | ~~Benchmark manifest~~ | ~~`bench-manifest.json`~~ | ~~`molbuilder/bench-manifest@2`~~ | *(retired — no writer, no reader; note below)* | ~~`points.{cpu,gpu}`~~ |
 | Benchmark result | `<seq>_<stage>/bench/bench-result.json` — in the stage's container (§ 6.3) | `molbuilder/bench-result@1` | `bench/result.py` | `schema`, `generated_at`, `environment`, `system`, `points`, `choice`, `tool` — *this row said `points`, `choice`, `recommend` until 2026-09-05; `recommend_resources` was deleted 2026-08-24 (user) and `to_dict()` has not emitted it since, though records written before then still carry the key on disk* |
 | Bench group | `<seq>_<stage>/bench/launch/bench-group.run.sh` + `bench-group.log` (+ its `.sbatch` and SLURM's own `slurm.%j.out` — all four in `launch/` since 2026-08-24, roadmap 7.10 L3, so the container holds trial directories and one folder rather than the group's machinery mixed among them) — the grouped submission's sequencer and its log (user, 2026-08-20): regenerated at each `submit bench --mode submit` from the trials still unlaunched, runs each under its per-trial time bound from the container (the parent that sees every trial), and exits nonzero when any trial failed so `squeue` prompts a look at the log. **One group per side AND resource shelf** (`generator.md` § 4.3a, 2026-08-21): qualifiers appear only when needed — `bench-group`, `-cpu`/`-gpu` when the sweep spans both sides, a shelf token when a side spans several exact resource asks (`-G2K16C1` = 2 GPUs, 16 ranks **per GPU**, 1 core per rank) — **the same spelling its trials carry**, read off a trial rather than derived a second way. It was `-g2n32c1` (lowercase, `n` = TOTAL ranks) until 2026-08-24, while the very directories that job launches were named `bench-G2K16C1…`: same three facts, two vocabularies, side by side in one listing — which is what § 6.3 exists to prevent. Same files per group, each an exact-fit allocation so nothing idles inside it. | *(bash + text)* | `jobset/submit.py` | one `run_trial` line per pending trial |
@@ -2221,14 +2222,14 @@ them; within a layer, one concept has exactly one name.
 |---|---|---|---|
 | MPI ranks | `mpi_np` | `mpi_np` → `-n` | *(same name)* |
 | OMP cores / rank | `omp_threads` (SIESTA), `threads` (PySCF) | **`cpus_per_task`** → `-c` | `resolve.py` — the allocation is assembled at `prep` in exchange names (`--cpus-per-task`); a sweep's `C` axis reaches it through `MachineTranslation` |
-| Walltime | `defaults.time` | **`time`** → `-t` | `ask.canonical_time` at every human edge (the tab's box, `--time`, a hand-edited file), and `Resources.__post_init__` enforces it for the four roads that reach the class. **The exchange side is SLURM's spelling and nothing else** — `engines/stages.md` § 6.8a |
-| Memory | `defaults.mem` | `mem` → `--mem` | `ask.canonical_mem`, the same way. *(This cell said `render_sbatch` (estimate) until 2026-08-24. There is no estimate: the baked memory model was **deleted, not unwired** in the estimation purge — `runwrap.py` says so at its own site — and a table still pointing at it is how a reader learns that a deleted mechanism is live.)* |
+| Walltime | `time` (`allocation`, the run card) | **`time`** → `-t` | `ask.canonical_time` at every human edge (the tab's box, `--time`, a hand-edited file), and `Resources.__post_init__` enforces it for the four roads that reach the class. **The exchange side is SLURM's spelling and nothing else** — `engines/stages.md` § 6.8a |
+| Memory | `mem` (`allocation`) | `mem` → `--mem` | `ask.canonical_mem`, the same way. *(This cell said `render_sbatch` (estimate) until 2026-08-24. There is no estimate: the baked memory model was **deleted, not unwired** in the estimation purge — `runwrap.py` says so at its own site — and a table still pointing at it is how a reader learns that a deleted mechanism is live.)* |
 | Per-rank memory cap | `max_memory_mb` | `max_memory_mb` — **not a SLURM flag** | the wrapper's `ulimit -v`. A different question from `mem`, which asks the *scheduler*; they shared a row until 2026-08-24 and the row could not describe either translation correctly |
 | Whole-node | — *(`gpu.exclusive` until 2026-10-01; nothing asks for one since)* | `exclusive` → `--exclusive` | — |
 | GPU binding | `allocation.gpu_binding` (`task.json`) | `gpu_binding` → `--gres-flags=enforce-binding` beside a GPU ask, unless `false` | `prep`'s fold of the description (`execution/gpu.md` G9) |
-| Partition | `directives.partition` | `partition` → `-p` | resolved from `domain` |
-| QoS | `directives.qos` | `qos` → `-q` | resolved from `domain` |
-| Routing domain | `routing[].name` / `execution.domain` | `domain` (in `jobset.Resources`) | `--domain` → `-p`/`-q` |
+| Partition | — *(the target's record)* | `partition` → `-p` | resolved from `domain` |
+| QoS | — *(the target's record)* | `qos` → `-q` | resolved from `domain` |
+| Routing domain | `domain` (`allocation`, the run card) | `domain` (in `jobset.Resources`) | `--domain` → `-p`/`-q` |
 | GPU request | `use_gpu`, `gpu_count` | `gres` → `--gres=gpu:<count>`, and `use_gpu` itself rides `Resources` | a COUNT, stated (`gpu_count`, `--gpus N`) and never defaulted, naming no card (`execution/gpu.md` G5, `scheduler.md` R2a); the ANSWER is carried, not read back out of the deck (2026-08-23, `execution/gpu.md` G7). *(This row named `diag_algorithm` as a second source until 2026-08-14. The solver choice decides no resource and no environment — the packaged SIESTA runs ELPA on CPU, `engines/siesta.md` § 7.2 — so `Diag.ELPA.GPU` is the one keyword read.)* |
 | Eigensolver | `diag_algorithm` (`ScaLAPACK` / `ELPA-1STAGE` / `ELPA-2STAGE`) | `.fdf`: `Diag.Algorithm` | `render_fdf` |
 | Non-convergence policy (**PySCF only**) | `on_nonconvergence` | *(no scheduler name)* | the emitted `.py`'s own control flow — PySCF's ladder ran as a loop in one process, so the policy was a branch inside the script (⚠ that loop is retired, [`stages.md § 1.1a`](?doc=engines/stages.md)). SIESTA's stages are separate jobs a person starts, so it has no equivalent; `engines/stages.md § 3` keeps the field out of the shared stage schema for that reason |
@@ -2298,8 +2299,8 @@ its credential stay in the user's own file on the machine that runs the job
 (run-reports.md § 1). A channel name may ride, because it grants nothing.
 *(This sentence said "exactly seven" once while its own list carried more; an
 equality test now holds it to the dataclass in both directions.)*  `partition`
-and `qos` are **not** `Resources` fields; they are config `directives.*`
-resolved from `domain` by the submit engine.
+and `qos` are **not** `Resources` fields; they are the target record's,
+resolved from `domain`.
 
 **Everything else a `Job` carries is `resources`, `warm` and `traits`** — which files it
 would take from a run it is continued from, and the values a condition on one is

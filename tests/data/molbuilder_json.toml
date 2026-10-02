@@ -1,0 +1,116 @@
+# WHAT `molbuilder.json` MAY HOLD -- `docs/configuration.md` § 4.
+#
+# Your preferences about this installation, and nothing else: no fact about
+# a machine (that is its record, `environment.json`) and no value of a job
+# (that is the job's own statement).  A key the contract does not list is
+# refused, and a retired one is refused BY NAME, saying what to do instead.
+#
+# `tests/test_molbuilder_json.py` runs every case down the road a person
+# runs, through the one runner every contract table shares
+# (`tests/support/road.py`, `run_road_case`, whose header names each key):
+# `machine_config` is this machine's file, `config` a calculation's own.
+#
+# A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
+
+# Every case's run states its launch values, so what is under test is the
+# config alone (`architecture.md` § 5.2).
+[run_base.siesta]
+mpi_np = 2
+omp_threads = 1
+
+[allocation_base]
+domain = "cpu"
+time = "01:00:00"
+mem = "8G"
+
+[[queues]]
+name = "cpu"
+partition = "cpu"
+qos = "public"
+max_time = "1-00:00:00"
+max_cores = 64
+
+# ===================================================================== #
+#  `launch` -- how a job is sent when no --mode is given                #
+# ===================================================================== #
+
+[[case]]
+name = "launch.mode in this machine's file sends a launch given no --mode"
+machine_config = { launch = { mode = "submit" } }
+launch_mode = ""
+launch = []
+line = ["-p cpu", "-q public"]
+
+[[case]]
+name = "a calculation's own launch.mode wins over this machine's"
+machine_config = { launch = { mode = "direct" } }
+config = { launch = { mode = "submit" } }
+launch_mode = ""
+launch = []
+line = ["-p cpu"]
+
+[[case]]
+name = "no --mode and no launch.mode is refused, naming the key"
+launch_mode = ""
+launch = []
+launch_refused = "sets no `launch.mode`"
+
+[[case]]
+name = "a launch.mode that is neither direct nor submit is refused"
+machine_config = { launch = { mode = "batch" } }
+refused = 'launch.mode must be "direct" or "submit"'
+
+[[case]]
+name = "launch holds one key -- a queue is not a preference"
+machine_config = { launch = { mode = "submit", domain = "cpu" } }
+refused = "'launch' holds one key, 'mode'; got 'domain'"
+
+[[case]]
+name = "a comment key is ignored, at the top and inside a section"
+machine_config = { _note = "mine", launch = { _comment = "this box", mode = "submit" } }
+launch_mode = ""
+launch = []
+line = ["-p cpu"]
+
+# ===================================================================== #
+#  Every preference section reads                                        #
+# ===================================================================== #
+
+[[case]]
+name = "every preference section, together, reads"
+machine_config = { launch = { mode = "submit" }, envs = { siesta = "molbuilder-siesta" }, checkpoint = { size_limit_bytes = 1000000 }, rate_limit = { enabled = false }, admin = { emails = ["someone@example.edu"] }, tls = { cert = "/srv/cert.pem", key = "/srv/key.pem" } }
+header = ["#SBATCH -p cpu"]
+
+# ===================================================================== #
+#  Retired, refused BY NAME with what to do instead                     #
+# ===================================================================== #
+
+[[case]]
+name = "the scheduler block is refused, saying where its values live now"
+machine_config = { scheduler = { kind = "slurm", directives = { partition = "cpu", qos = "public" }, defaults = { cpus_per_task = 8 } } }
+refused = "'scheduler' is no longer configured (retired 2026-10-02) -- delete the block"
+
+[[case]]
+name = "script_generation is refused with the probe line that records its values"
+machine_config = { script_generation = { activation = "source activate", preamble = "module load mamba" } }
+refused = "molbuilder jobset probe --write --activation 'source activate' --preamble 'module load mamba'"
+
+[[case]]
+name = "execution is refused, showing the launch block to write instead"
+machine_config = { execution = { mode = "submit", domain = "cpu" } }
+refused = '"launch": {"mode": "submit"}'
+
+[[case]]
+name = "...and says its default queue has no replacement"
+machine_config = { execution = { mode = "submit", domain = "cpu" } }
+refused = "'domain' has no replacement: a job names its own queue"
+
+[[case]]
+name = "an unknown section is refused, naming the ones there are"
+machine_config = { queue = "cpu" }
+refused = "unknown top-level key(s) 'queue'"
+
+[[case]]
+name = "a section of this machine's only, in a calculation's own file, is refused"
+config = { envs = { siesta = "molbuilder-siesta" } }
+refused = "may not live in a PROJECT-scope file"

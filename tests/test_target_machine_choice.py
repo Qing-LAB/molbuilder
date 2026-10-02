@@ -29,8 +29,14 @@ from molbuilder.scheduler import AmbiguousTarget, UnknownTarget
 #: activation into a wrapper bound for another one, so a fixture that
 #: omitted it stopped every target test at that refusal instead of at the
 #: guard it meant to exercise.
-_REC = {"schema": "molbuilder/environment@2", "domains": [], "topology": {},
-        "site": {}, "source": {},
+#:
+#: It lists one queue, so a prep for it can name the queue its header asks
+#: for (`architecture.md` § 5.2: a job sent to a scheduler states its queue,
+#: and the record lists what it may name).
+_REC = {"schema": "molbuilder/environment@2",
+        "domains": [{"name": "q", "partition": "q", "qos": "normal",
+                     "max_time": "1-00:00:00"}],
+        "topology": {}, "site": {}, "source": {},
         "script_generation": {"preamble": "module load mamba",
                               "activation": "source activate"}}
 
@@ -72,6 +78,15 @@ def _prep(bundle: str, *extra):
         "init", "--structure", "P/structure/h2.xyz", "--bundle", bundle,
         "--shape", "flat", "--engine", "pyscf"])
     assert init.exit_code == 0, init.output
+    # EVERY LAUNCH VALUE IS STATED (`architecture.md` § 5.2): the run card's
+    # threads, and the queue, wall and memory a cluster's header carries --
+    # in the description, so every prep of this bundle states them.
+    from molbuilder.projects import projects_root
+    tj = projects_root() / bundle / "task.json"
+    d = json.loads(tj.read_text())
+    d["execution"] = {"threads": 1}
+    d["allocation"] = {"domain": "q", "time": "01:00:00", "mem": "1G"}
+    tj.write_text(json.dumps(d, indent=2))
     return r.invoke(jobset_group,
                     ["prep", "run", "coarse", "--bundle", bundle, *extra])
 
@@ -344,7 +359,8 @@ class TestTheCasesReadingFoundThatPokingDidNot:
         machines.this_machine()
         res = _prep("P/optimization/w", "--target", "sol")
         assert res.exit_code != 0, res.output
-        assert "does not say how to enter" in res.output, res.output
+        assert "does not say how a shell enters an environment" \
+            in res.output, res.output
         bundle = machines.tree / "P" / "optimization" / "w"
         assert not (bundle / "environment.json").is_file(), (
             "a refused prep left the record it refused behind")

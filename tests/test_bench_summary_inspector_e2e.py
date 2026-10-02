@@ -69,14 +69,13 @@ def sweep(tmp_path, monkeypatch):
         calc)
     from conftest import write_pseudos
     write_pseudos(calc, ["H"])
-    (calc / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
     (calc / "environment.json").write_text(
         Environment(scheduler="workstation",
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
-                                      gpu_type="a100")).to_json() + "\n")
+                                      gpu_type="a100"),
+                    script_generation={"activation": "conda activate",
+                                       "preamble": "true"}).to_json() + "\n")
 
     sweep_spec, pins, translation = bench_inputs(calc, None)
     prep_calculation(calc, "coarse",

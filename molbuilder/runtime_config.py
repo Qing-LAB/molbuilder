@@ -52,7 +52,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional
 
 from .config_dir import PRIVATE_FILE_MODE, config_dir
 
@@ -76,35 +76,50 @@ CONFIG_FILENAME = "molbuilder.json"
 # the project directory, same schema as the server-wide molbuilder.json.
 PROJECT_CONFIG_FILENAME = ".molbuilder.json"
 
-#: One message, two raisers -- `get_scheduler` (which knows the file) and
-#: `_validate_scheduler` (which does not).  ``{path}`` is what a person edits.
-_ROUTING_MOVED = (
-    "{path}: 'scheduler.routing' is no longer configured here.  The reachable "
-    "(partition, qos) domains are PROBED, not declared -- run `molbuilder "
-    "jobset probe --write` and they land in environment.json, where every "
-    "calculation on this machine reads one answer (docs/configuration.md "
-    "§ 5).  What stays yours in this file is which of them you WANT: "
-    "'scheduler.directives.partition' and '.qos'.")
+#: THREE SECTIONS RETIRED ON 2026-10-02, each refused by name with what to do
+#: instead (`configuration.md` § 4) -- the file holds a person's preferences and
+#: nothing else (user, 2026-10-01: "all resources are explicit, and based on the
+#: target machine's .json environment manifest"; 2026-10-02: "explicit job
+#: config is the only way allowed").
+#:
+#: ``scheduler`` put THIS machine's choices into every job it prepped, for any
+#: target: a queue nobody named for that job, `-c`/`-t`/`--mem` defaults, a
+#: queue menu typed by hand, an order to pick queues by.
+_SCHEDULER_RETIRED = (
+    "{path}: 'scheduler' is no longer configured (retired 2026-10-02) -- "
+    "delete the block.  Nothing in it may be set for every job:\n"
+    "  * a job's queue, wall, memory, ranks and cores per rank are the JOB's "
+    "own: its description (`allocation`, or the run card `execution` in "
+    "task.json) or the prep/launch flags (--domain, --time, --mem, --np, "
+    "--cpus-per-task, --gpus) -- prep refuses one stated nowhere;\n"
+    "  * a machine's scheduler and queues are its RECORD's: `molbuilder jobset "
+    "probe --write` on that machine, the record copied here.\n"
+    "(docs/configuration.md § 4; docs/execution/architecture.md § 5.2)")
+
+#: How a shell enters an environment is a FACT of the machine the job runs on
+#: (`configuration.md` § 5 M-1), so it lives in that machine's record.  It
+#: lived here too, and `jobset probe` copied it across -- after which the
+#: record won, and an edit to this file did nothing until the next probe.
+_SCRIPT_GENERATION_MOVED = (
+    "{path}: 'script_generation' is no longer configured here (moved "
+    "2026-10-02).  How a shell enters an environment on a machine is a fact "
+    "of that machine, kept in its record -- on the machine the jobs run on, "
+    "record the values this file holds:\n"
+    "    {command}\n"
+    "then delete the section (docs/configuration.md § 4, § 5 M-1).")
+
+#: `execution` is the RUN CARD in task.json -- ranks, threads, GPUs, wall,
+#: queue.  This file used the same name for how a launch is sent, and carried a
+#: default queue (`domain`) every job without one received.
+_EXECUTION_RENAMED = (
+    "{path}: 'execution' is now 'launch' (renamed 2026-10-02), so that "
+    "`execution` means only the run card in task.json.  Write\n"
+    "    \"launch\": {launch}\n"
+    "instead.{dropped}  (docs/configuration.md § 4)")
 
 
-#: Same shape as `_ROUTING_MOVED`: a retired block gets its own sentence.
-#: Every GPU fact is the TARGET's record's and every GPU ask is the job's
-#: own (`execution/gpu.md` § 1, user 2026-10-01: "all resources are
-#: explicit, and based on the target machine's .json environment
-#: manifest").  This block wrote THIS machine's settings into every GPU job
-#: -- a card (`default_type`), a partition over the target's own
-#: `gpu_partition`, a whole node, a memory default -- whatever the target.
-_GPU_BLOCK_RETIRED = (
-    "{path}: 'scheduler.gpu' is no longer configured.  A GPU job asks for a "
-    "NUMBER of GPUs (`gpu_count` on its run card, or `--gpus N`) and names "
-    "no card; where GPU work is submitted is the target's record "
-    "(`gpu_partition`, written by `molbuilder jobset probe`); its memory is "
-    "asked like any job's (`--mem`, or `allocation.mem` in task.json) "
-    "(docs/execution/gpu.md § 1).  Delete the block.")
-
-
-#: Same shape as `_ROUTING_MOVED`: a retired key gets its own sentence, not
-#: the generic "unknown top-level key".
+#: Same shape as `_SCHEDULER_RETIRED`: a retired key gets its own sentence,
+#: not the generic "unknown top-level key".
 _SECRET_KEY_MOVED = (
     "{path}: 'secret_key_file' is no longer configured.  The session key has "
     "ONE home -- <config dir>/secrets/secret_key -- and is created "
@@ -636,13 +651,82 @@ def _read_notify_retired(key):
     return read
 
 
+#: The one key `launch` holds, and the two values it takes.
+_LAUNCH_MODES = ("direct", "submit")
+
+
+def _read_launch(raw: Mapping[str, Any]):
+    """``launch`` -- how `jobset launch` sends a job when no ``--mode`` is
+    given (`running-a-job.md` § 5.4).  ``mode`` is its one key; another is
+    refused by name, because a key nothing reads looks effective and is not.
+    A ``_``-prefixed key is a comment, as at the top level."""
+    section = _require_object_section(raw, "launch")
+    if section is None:
+        return None
+    unknown = sorted(k for k in section
+                     if k != "mode" and not str(k).startswith("_"))
+    if unknown:
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'launch' holds one key, 'mode'; got "
+            f"{', '.join(map(repr, unknown))}.  A job's queue, wall and "
+            f"shape are the job's own (docs/execution/architecture.md "
+            f"§ 5.2).")
+    mode = section.get("mode")
+    if mode is not None and mode not in _LAUNCH_MODES:
+        raise RuntimeConfigError(
+            f'{CONFIG_FILENAME}: launch.mode must be "direct" or "submit"; '
+            f"got {mode!r} (docs/execution/running-a-job.md § 5.4).")
+    return section
+
+
+def _read_scheduler_retired(raw: Mapping[str, Any]):
+    """``scheduler`` is refused by name (:data:`_SCHEDULER_RETIRED`)."""
+    if raw.get("scheduler") is None:
+        return None
+    raise RuntimeConfigError(_SCHEDULER_RETIRED.format(path=CONFIG_FILENAME))
+
+
+def _read_script_generation_moved(raw: Mapping[str, Any]):
+    """``script_generation`` is refused by name, with the probe line that
+    records THIS file's values in the machine's record -- so following the
+    message moves the values rather than retyping them."""
+    if raw.get("script_generation") is None:
+        return None
+    import shlex
+    section = raw["script_generation"]
+    section = section if isinstance(section, Mapping) else {}
+    command = "molbuilder jobset probe --write"
+    for key in ("activation", "preamble"):
+        value = section.get(key)
+        if isinstance(value, str) and value.strip():
+            command += f" --{key} {shlex.quote(value)}"
+    raise RuntimeConfigError(_SCRIPT_GENERATION_MOVED.format(
+        path=CONFIG_FILENAME, command=command))
+
+
+def _read_execution_renamed(raw: Mapping[str, Any]):
+    """``execution`` is refused by name, with the ``launch`` block to write
+    in its place and what has no replacement."""
+    if raw.get("execution") is None:
+        return None
+    section = raw["execution"]
+    section = section if isinstance(section, Mapping) else {}
+    mode = section.get("mode")
+    launch = json.dumps({"mode": mode}) if mode else '{"mode": "direct"}'
+    gone = sorted(k for k in section
+                  if k != "mode" and not str(k).startswith("_"))
+    dropped = (f"  {', '.join(map(repr, gone))} "
+               f"{'has' if len(gone) == 1 else 'have'} no replacement: a job "
+               f"names its own queue (`allocation.domain` in task.json, or "
+               f"--domain)." if gone else "")
+    raise RuntimeConfigError(_EXECUTION_RENAMED.format(
+        path=CONFIG_FILENAME, launch=launch, dropped=dropped))
+
 
 def _require_object_section(raw: Mapping[str, Any], name: str):
-    """The lazy-validated sections (scheduler, execution, rate_limit):
-    merged and/or validated by their getters or consumers, so here we
-    only keep the key alive and reject a non-object early.  A partial
-    block (e.g. project scope supplying only ``defaults.time``) is legal
-    at this layer -- completeness is a merged-config property."""
+    """A section that must be an object: keep the key alive and reject a
+    non-object early.  ``rate_limit`` is validated by its consumer; the
+    other callers check their own keys after this."""
     if name not in raw:
         return None
     section = raw[name]
@@ -697,8 +781,8 @@ def _read_admin(raw: Mapping[str, Any]):
 #: working around one -- see :data:`_OPERATIONAL_PATHS_MOVED`.
 _PATH_KEYS = ("projects",)
 
-#: Same shape as `_ROUTING_MOVED` and `_SECRET_KEY_MOVED`: a retired key gets
-#: its own sentence, so it does not read as a typo.
+#: Same shape as `_SCHEDULER_RETIRED` and `_SECRET_KEY_MOVED`: a retired key
+#: gets its own sentence, so it does not read as a typo.
 _OPERATIONAL_PATHS_MOVED = (
     "{path}: 'paths.{key}' is no longer configured.  Operational state follows "
     "XDG's own directories -- $XDG_STATE_HOME for logs and reports, "
@@ -786,18 +870,18 @@ _SECTIONS: Dict[str, Dict[str, Any]] = {
                           "scopes": ("machine",), "provenance_safe": False},
     "notify_route":      {"read": _read_notify_retired("notify_route"),
                           "scopes": ("machine",), "provenance_safe": False},
-    "execution":         {"read": lambda raw: _require_object_section(
-                              raw, "execution"),
+    "launch":            {"read": _read_launch,
                           "scopes": ("machine", "project"),
                           "provenance_safe": True},
-    "script_generation": {"read": lambda raw: (
-                              _validate_script_generation(
-                                  raw["script_generation"])
-                              if "script_generation" in raw else None),
+    # RETIRED 2026-10-02 -- refused by name in either scope, each with what to
+    # do instead (`configuration.md` § 4).
+    "execution":         {"read": _read_execution_renamed,
                           "scopes": ("machine", "project"),
-                          "provenance_safe": True},
-    "scheduler":         {"read": lambda raw: _require_object_section(
-                              raw, "scheduler"),
+                          "provenance_safe": False},
+    "script_generation": {"read": _read_script_generation_moved,
+                          "scopes": ("machine", "project"),
+                          "provenance_safe": False},
+    "scheduler":         {"read": _read_scheduler_retired,
                           "scopes": ("machine", "project"),
                           "provenance_safe": False},
     "checkpoint":        {"read": lambda raw: (
@@ -1147,101 +1231,12 @@ def get_checkpoint(engine: Optional[str] = None) -> Dict[str, Any]:
     }
 
 
-# --------------------------------------------------------------------- #
-#  script_generation section (docs/execution/running-a-job.md § 5)                     #
-# --------------------------------------------------------------------- #
-
-
-# Two and only two keys -- see docs/execution/running-a-job.md § 5
-#
-# ``preamble``:   verbatim multi-line bash, default empty.
-# ``activation``: how to activate the env.  NO DEFAULT -- the operator
-#                 must set it explicitly in at least one scope, OR the
-#                 generator refuses to emit a wrapper (per § 2).
-#: The two legal values, in ONE home.  Public because the validator is no
-#: longer the only reader: `envs init-config` offers these at install time
-#: as the prompt's choices, and a second literal there would be a second
-#: list to keep in step.  Presentation order is the caller's business.
+#: The activation's two legal values, in ONE home.  It is a fact of the
+#: machine a job runs on and lives in that machine's record
+#: (`configuration.md` § 5 M-1); `envs init-config` and `jobset probe
+#: --activation` offer these as the choices.  Presentation order is the
+#: caller's business.
 ACTIVATION_FORMS: tuple = ("source activate", "conda activate")
-_SCRIPT_GENERATION_DEFAULTS: Dict[str, Any] = {
-    "preamble":   "",
-    "activation": None,  # explicit-only; no smuggled default
-}
-
-#: Retired `script_generation` keys, REFUSED BY NAME -- the same treatment
-#: `secret_key_file`, `scheduler.routing` and the flat `cert`/`key` get, and
-#: for the same reason (§ 2.1a): a key that is read and silently transformed,
-#: or read and dropped, looks effective while nobody can tell from the file
-#: which spelling took effect.
-#:
-#: `preactivate` was accepted as an alias for `preamble` "for one release" and
-#: the other two warned-and-dropped, from the v2 rewrite of
-#: `running-a-job.md` § 5 until 2026-09-14, when the exception was closed
-#: (user: *"clean up old names, we need explicit consistent setup"*).
-_SCRIPT_GENERATION_RETIRED = {
-    "preactivate": (
-        "{path}: 'script_generation.preactivate' is no longer configured.  "
-        "It is now 'preamble' -- the same value, the same meaning: arbitrary "
-        "shell run before activation (the `module load` lines).  Rename the "
-        "key; nothing else changes.  (It was accepted as an alias until "
-        "2026-09-14.  Refused rather than aliased because two spellings for "
-        "one setting is how a file comes to disagree with itself about which "
-        "one is in effect -- docs/configuration.md § 2.1a.)"),
-    "preactivate_format": (
-        "{path}: 'script_generation.preactivate_format' is no longer "
-        "configured and has no replacement.  The preamble is emitted "
-        "verbatim; there is no format to choose.  Delete the line."),
-    "autodetect_conda": (
-        "{path}: 'script_generation.autodetect_conda' is no longer "
-        "configured and has no replacement.  How this machine enters a conda "
-        "env is DECLARED, never detected -- 'script_generation.activation', "
-        "which `molbuilder envs init-config` asks about and writes "
-        "(docs/execution/running-a-job.md § 5.2).  Delete the line."),
-}
-
-
-def _validate_script_generation(raw: Mapping[str, Any]) -> Dict[str, Any]:
-    """Validate one scope's ``script_generation`` section.
-
-    Returns a normalised copy with defaults filled in.  Raises
-    :class:`RuntimeConfigError` on a shape error, and on a RETIRED key by
-    name (`_SCRIPT_GENERATION_RETIRED`) -- it warned and carried on until
-    2026-09-14.
-    """
-    if not isinstance(raw, Mapping):
-        raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: 'script_generation' must be an "
-            f"object; got {type(raw).__name__}."
-        )
-    out = dict(_SCRIPT_GENERATION_DEFAULTS)
-    # preamble (new name)
-    if "preamble" in raw:
-        v = raw["preamble"]
-        if not isinstance(v, str):
-            raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: 'script_generation.preamble' "
-                f"must be a string (multi-line bash); got "
-                f"{type(v).__name__}."
-            )
-        out["preamble"] = v
-    # Retired keys -- REFUSED, each with its own sentence.
-    for retired, message in _SCRIPT_GENERATION_RETIRED.items():
-        if retired in raw:
-            raise RuntimeConfigError(message.format(path=CONFIG_FILENAME))
-    # activation -- no default; ``None`` is the "not set" sentinel.
-    # Only reject genuine bad values, not the sentinel (so this
-    # validator is idempotent -- the read pipeline normalises the
-    # raw file, then get_script_generation may call us again on the
-    # already-normalised dict which carries None).
-    if "activation" in raw and raw["activation"] is not None:
-        v = raw["activation"]
-        if v not in ACTIVATION_FORMS:
-            raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: 'script_generation.activation' "
-                f"must be one of {ACTIVATION_FORMS!r}; got {v!r}."
-            )
-        out["activation"] = v
-    return out
 
 
 # --------------------------------------------------------------------- #
@@ -1457,23 +1452,6 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
                 # later scope overwrites: project wins, mirroring _deep_merge
                 effective[f"{section}.{key}"] = {"value": value,
                                                  "from": scope_name}
-    # ONE exception, asked of its owner rather than re-derived (R10):
-    # script_generation.preamble does not merge project-wins -- it
-    # CONCATENATES server-then-project (get_script_generation's bespoke
-    # rule), and showing one scope as the source misreported the other
-    # half away.
-    if "script_generation.preamble" in effective:
-        try:
-            chunks = get_script_generation(
-                project_dir=project_dir)["preamble_chunks"] or []
-            if len(chunks) > 1:
-                effective["script_generation.preamble"] = {
-                    "value": " + ".join(t for _sc, t in chunks),
-                    "from": "+".join(_sc for _sc, _t in chunks)
-                            + " (concatenated)"}
-        except Exception:
-            pass                      # display must never break a prep
-
     # Domains come from the MACHINE RECORD since N4, not from these files, so
     # provenance follows them there -- a display that kept reporting the old
     # home would say "(none)" on a correctly-probed cluster.  The record's own
@@ -1591,13 +1569,9 @@ def read_effective_config(
 
     When ``project_dir`` is None: returns the server-wide layer alone.
     When provided: deep-merges server-wide ← project (project wins per
-    the rules in :func:`_deep_merge`).
-
-    NOTE: the merge here is the GENERIC merge.  Subsystems with
-    field-specific merge rules (like ``script_generation.preamble``,
-    which concatenates rather than replaces) must use their dedicated
-    getter -- e.g. :func:`get_script_generation` reads both scopes
-    and concatenates ``preamble``, ignoring the generic merge.
+    the rules in :func:`_deep_merge`).  The one merge there is: no section
+    has a rule of its own since `script_generation` left this file
+    (2026-10-02).
     """
     server = read_config()
     if project_dir is None:
@@ -1606,473 +1580,20 @@ def read_effective_config(
     return _deep_merge(server, project)
 
 
-def get_script_generation(
-    project_dir: Optional[Path] = None,
-) -> Dict[str, Any]:
-    """Return the effective ``script_generation`` section.
-
-    Per docs/execution/running-a-job.md § 5 + § 4:
-      * ``preamble``: server-wide + project concatenated (server
-        first), joined by ``"\\n"``.
-      * ``activation``: project wins if set; else server-wide if set;
-        else None.  The generator is responsible for refusing to emit
-        a wrapper when ``activation`` is None
-        (:func:`require_activation`).
-
-    Returns:
-        {
-            "preamble":    "<concatenated lines>",  # may be empty
-            "activation":  "source activate" | "conda activate" | None,
-            "_preamble_scopes": ["server", "project"] subset,
-        }
-    """
-    server_raw = read_config().get("script_generation") or {}
-    project_raw: Dict[str, Any] = {}
-    if project_dir is not None:
-        project_raw = _read_project(Path(project_dir)).get(
-            "script_generation") or {}
-
-    # Both scopes arrive validated -- `read_config` runs the registry's
-    # reader, which IS `_validate_script_generation` (type errors caught, the
-    # preactivate -> preamble alias applied).  A scope with no section gets
-    # the defaults.
-    server   = server_raw or dict(_SCRIPT_GENERATION_DEFAULTS)
-    project  = project_raw or dict(_SCRIPT_GENERATION_DEFAULTS)
-
-    # Per-scope preamble chunks (server first, then project).  Empty
-    # strings drop out so the renderer can emit per-scope sentinel
-    # blocks without conditional logic.  ``preamble_chunks`` is the
-    # API the renderer uses; ``preamble`` (joined) is the
-    # convenience field for callers that just want the merged text.
-    chunks: List[Tuple[str, str]] = []
-    for label, src in (("server", server), ("project", project)):
-        text = (src.get("preamble") or "").rstrip("\n")
-        if text:
-            chunks.append((label, text))
-    preamble = "\n".join(c[1] for c in chunks)
-
-    # activation: project wins; else server; else None (no default).
-    activation: Optional[str] = (
-        project.get("activation")
-        if project.get("activation") is not None
-        else server.get("activation")
-    )
-
-    return {
-        "preamble":         preamble,
-        "preamble_chunks":  chunks,        # list of (scope, text)
-        "activation":       activation,
-    }
-
-
-def require_activation(project_dir: Optional[Path] = None) -> str:
-    """Return the effective ``activation`` value, or raise.
-
-    Per docs/execution/running-a-job.md § 5 (refuse-to-emit rule): the generator must
-    refuse to emit a wrapper if ``script_generation.activation`` isn't
-    set in either scope.  Use this helper at every wrapper-render
-    entry point so the error message + doc reference are consistent.
-
-    Raises :class:`RuntimeConfigError` with an operator-facing message
-    when the key is missing.
-    """
-    sg = get_script_generation(project_dir=project_dir)
-    if sg["activation"] is None:
-        raise RuntimeConfigError(
-            "script_generation.activation is not set in molbuilder.json "
-            "(or .molbuilder.json).  The wrapper generator refuses to "
-            "emit a script that can't activate its conda env.\n"
-            "\n"
-            "Fix: add to molbuilder.json (server-wide):\n"
-            '    {\n'
-            '      "script_generation": {\n'
-            '        "preamble": "module load mamba",\n'
-            '        "activation": "source activate"\n'
-            '      }\n'
-            '    }\n'
-            "\n"
-            "Use ``conda activate`` if your conda hook is sourced "
-            "(typical for local dev installs).  Use ``source "
-            "activate`` for HPC clusters where ``module load mamba`` "
-            "is the toolchain.  See docs/execution/running-a-job.md § 5"
-        )
-    return sg["activation"]
-
-
-# detect_conda_activation was deleted 2026-08-13 (V22): zero callers
-# anywhere -- activation is DECLARED (script_generation.activation),
-# never detected, per running-a-job.md § 5.
-
-
-# --------------------------------------------------------------------- #
-#  scheduler section (docs/execution/job-system.md)          #
-# --------------------------------------------------------------------- #
-
-
-# Supported scheduler kinds.  Only SLURM today; PBS/local are future.
-_SCHEDULER_KINDS: tuple = ("slurm",)
-
-# ``directives`` keys we recognise (stable site #SBATCH header values).
-# Unknown keys are accepted verbatim (forward-compat) but these are the
-# ones the emitter maps to canonical flags.
-_SCHEDULER_DIRECTIVE_KEYS: tuple = (
-    "partition", "qos", "mail_type", "mail_user", "export",
-)
-
-# Per-job defaults (running-a-job.md § 5.3, § 6).  ``time`` is a
-# walltime string; ``cpus_per_task`` an int (OMP width per rank); ``mem``
-# a string like "120G" or None (=> scheduler default).
-_SCHEDULER_DEFAULT_KEYS: tuple = ("time", "cpus_per_task", "mem")
-
-
-def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
-    """Validate + normalise the ``scheduler`` block of one merged config.
-
-    Returns the resolved ``{kind, directives, defaults}`` dict (and
-    ``placement_priority`` when one is stated).  A ``gpu`` block is refused
-    by name (`_GPU_BLOCK_RETIRED`).
-    Raises :class:`RuntimeConfigError` on shape errors AND on the
-    refuse-to-emit rule (running-a-job.md § 5.3): a ``slurm`` site
-    that omits ``directives.partition`` or ``directives.qos`` cannot
-    produce a header that will allocate, so we fail at generate time
-    while the user is at a terminal -- never after a job has queued.
-    """
-    if not isinstance(raw, Mapping):
-        raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: 'scheduler' must be an object; got "
-            f"{type(raw).__name__}."
-        )
-
-    kind = raw.get("kind", "slurm")
-    if kind not in _SCHEDULER_KINDS:
-        raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: 'scheduler.kind' must be one of "
-            f"{_SCHEDULER_KINDS!r}; got {kind!r}."
-        )
-
-    def _as_obj(key: str) -> Dict[str, Any]:
-        v = raw.get(key, {})
-        if v is None:
-            return {}
-        if not isinstance(v, Mapping):
-            raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: 'scheduler.{key}' must be an object; "
-                f"got {type(v).__name__}."
-            )
-        return dict(v)
-
-    if "gpu" in raw:
-        raise RuntimeConfigError(_GPU_BLOCK_RETIRED.format(
-            path=CONFIG_FILENAME))
-    directives = _as_obj("directives")
-    defaults   = _as_obj("defaults")
-
-    # WHICH AXIS DECIDES between queues that all fit (2026-08-23, user).
-    # A PREFERENCE, so it lives here and never in the machine record (M-1):
-    # the record measures what the queues offer, this says which of those
-    # facts matters most at this site.  Default in `place.PRIORITY_DEFAULT`.
-    #
-    # Refused when it names something placement cannot order by -- a
-    # preference that is silently dropped looks honoured and is not.
-    priority = raw.get("placement_priority")
-    if priority is not None:
-        if not isinstance(priority, (list, tuple)):
-            raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: 'scheduler.placement_priority' must be "
-                f"a list of axis names; got {type(priority).__name__}.")
-        from .scheduler.place import check_priority
-        try:
-            priority = list(check_priority(priority))
-        except ValueError as e:
-            raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: 'scheduler.placement_priority': {e}")
-
-    # Refuse-to-emit: slurm needs a partition + qos (§ 10).
-    for required in ("partition", "qos"):
-        val = directives.get(required)
-        if not (isinstance(val, str) and val.strip()):
-            raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: 'scheduler.directives.{required}' is "
-                f"required for a slurm site but is missing/empty.  The "
-                f".sbatch generator refuses to emit a header that won't "
-                f"allocate.\n"
-                f"\n"
-                f"Fix: add to molbuilder.json -- the shape is below, and "
-                f"your site's own partition/qos names come from "
-                f"`sinfo`/`sacctmgr` there, not from a preset:\n"
-                f'    {{\n'
-                f'      "scheduler": {{\n'
-                f'        "kind": "slurm",\n'
-                f'        "directives": {{"partition": "public", '
-                f'"qos": "public"}}\n'
-                f'      }}\n'
-                f'    }}\n'
-                f"\n"
-                f"On ASU Sol use partition/qos \"public\" (the \"general\" "
-                f"partition went private in May 2026).  See "
-                f"docs/execution/asu-sol.md § 3 (partition and QOS are one pair)."
-            )
-
-    # String-typed directives must actually be strings (catch e.g. a
-    # numeric partition).  Unknown keys pass through untouched.
-    for k in _SCHEDULER_DIRECTIVE_KEYS:
-        if k in directives and not isinstance(directives[k], str):
-            raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: 'scheduler.directives.{k}' must be a "
-                f"string; got {type(directives[k]).__name__}."
-            )
-
-    # defaults: time str|None, cpus_per_task int|None, mem str|None.
-    if "time" in defaults and defaults["time"] is not None \
-            and not isinstance(defaults["time"], str):
-        raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: 'scheduler.defaults.time' must be a "
-            f"string (e.g. \"0-04:00:00\") or null; got "
-            f"{type(defaults['time']).__name__}."
-        )
-    if "cpus_per_task" in defaults and defaults["cpus_per_task"] is not None \
-            and not isinstance(defaults["cpus_per_task"], int):
-        raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: 'scheduler.defaults.cpus_per_task' must be "
-            f"an integer or null; got "
-            f"{type(defaults['cpus_per_task']).__name__}."
-        )
-    if "mem" in defaults and defaults["mem"] is not None \
-            and not isinstance(defaults["mem"], str):
-        raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: 'scheduler.defaults.mem' must be a string "
-            f"(e.g. \"120G\") or null; got {type(defaults['mem']).__name__}."
-        )
-
-    out = {
-        "kind":       kind,
-        "directives": directives,
-        "defaults":   defaults,
-    }
-    # ABSENT when unset, so a reader can tell "this site did not choose" from
-    # "this site chose the default" -- `place` supplies its own default and
-    # says so, rather than the config pretending to have made a decision.
-    if priority is not None:
-        out["placement_priority"] = priority
-    # routing: REFUSED here since 2026-08-17 (N4).  It used to pass through to
-    # get_routing, which owned the domain schema.  A domain is what `sinfo` and
-    # `sacctmgr` measured, so it belongs in the machine record, and a probe no
-    # longer writes into a person's config file (`configuration.md` § 5, M-1).
-    # Refused rather than ignored, for this file's own stated reason: a section
-    # read, validated and then silently dropped looks effective while nobody
-    # applied it -- and a stale hand-written menu is exactly the case where
-    # "looks effective" gets a job rejected by the scheduler.
-    # routing rides through verbatim: DECLARED capability (`_declared_routing`),
-    # which `get_routing` uses when nothing has been probed.  It was refused
-    # here for part of 2026-08-17, on a rule that made the workstation-
-    # describing-a-cluster case an error -- the one case that must declare.
-    if raw.get("routing") is not None:
-        out["routing"] = raw["routing"]
-    return out
-
-
-def _declared_routing(project_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
-    """``scheduler.routing`` read as **declared capability**, not as an error.
-
-    *(Corrected 2026-08-17, same day, after the user pointed at the machine
-    this actually runs on.)*  N4 refused this key outright, on the rule
-    "domains are PROBED, not declared".  That rule sorted by the wrong axis.
-
-    **You can only probe the machine you are standing on.** A person
-    describing a calculation on a workstation, to run on a cluster, cannot
-    probe the cluster -- so they write its partitions and walls down by hand,
-    and those rows are *facts*, merely declared ones rather than detected
-    ones.  Refusing them made the one case that NEEDS declaring an error, and
-    bricked `prep` on a workstation over a block describing a machine
-    elsewhere.
-
-    The axis is **fact vs preference**, not probed vs chosen.  This module
-    already knew that and I did not read it: ``Environment.source``'s
-    vocabulary is ``scontrol`` / ``lscpu`` / **``flag``**, and ``flag`` is the
-    declared case; ``resolve_environment(overrides=...)`` is its door.
-
-    Probed still wins where both exist -- standing on the machine beats a
-    hand-written note about it -- which is why this is a FALLBACK.
-    """
-    out: List[Dict[str, Any]] = []
-    scopes = [read_config().get("scheduler")]
-    if project_dir is not None:
-        scopes.append(_read_project(Path(project_dir)).get("scheduler"))
-    for raw in scopes:
-        if not isinstance(raw, Mapping):
-            continue
-        rows = raw.get("routing")
-        if isinstance(rows, list):
-            # Rows ride through WHOLE.  An operator's own columns
-            # (`node_types`, `max_cores`, `max_mem_gb`, `gpu{}`) are the point
-            # of declaring -- R10, 2026-08-12: rebuilding a row from a
-            # known-key list made drafting a column indistinguishable from
-            # not writing one.  A reader owns only the keys it checks.
-            out = [dict(r) for r in rows if isinstance(r, Mapping)]
-    return out
-
-
 def get_paths() -> Dict[str, Any]:
     """The effective ``paths`` block, or ``{}``.  See :func:`_read_paths`."""
     return dict(read_config().get("paths") or {})
 
 
-def get_scheduler(
-    project_dir: Optional[Path] = None,
-) -> Optional[Dict[str, Any]]:
-    """Return the effective ``scheduler`` block, or ``None`` if unset.
-
-    Mirrors :func:`get_script_generation`'s lifecycle (read at generate
-    time only).  Server-wide and project scopes are deep-merged (the
-    generic ``_deep_merge`` rule -- objects recurse, scalars/arrays
-    replace; project wins), then validated.
-
-    Returns ``None`` when neither scope defines a ``scheduler`` block --
-    the signal to emit only ``.run.sh`` (today's behaviour) and skip the
-    ``.sbatch`` (running-a-job.md § 5.3).  When a block IS present it
-    is validated strictly, so a malformed/partial site config raises
-    here rather than producing a header that won't allocate.
-
-    Returns:
-        {
-            "kind":       "slurm",
-            "directives": {partition, qos, mail_type, mail_user, export, ...},
-            "defaults":   {time, cpus_per_task, mem},
-        }
-        or None.
-    """
-    server_raw  = read_config().get("scheduler")
-    project_raw: Optional[Mapping[str, Any]] = None
-    project_path = None
-    if project_dir is not None:
-        project_path = _project_config_file(project_dir)
-        project_raw = _read_project(Path(project_dir)).get("scheduler")
-
-    # AN EMPTY BLOCK IS UNSET, not a malformed one (2026-09-12).  This tested
-    # `is None`, so the `"scheduler": {}` that `envs init-config` SEEDS into
-    # every fresh molbuilder.json fell through to strict validation, which
-    # assumes `kind: slurm` and then demands a partition:
-    #
-    #   molbuilder.json: 'scheduler.directives.partition' is required for a
-    #   slurm site but is missing/empty.
-    #
-    # On a laptop, from a config molbuilder wrote and nobody edited.  Measured
-    # 2026-09-12 by feeding `seed_document()`'s own output back to this
-    # function.  `tls: {}` and `envs: {}` already collapse to unset; this is the
-    # one section where present-and-empty meant "validate me as a site".
-    #
-    # Empty reading as unset is also the right answer for a person who CLEARS
-    # the block: the docstring above promises None "when neither scope defines a
-    # scheduler block", and an empty object defines nothing.  The result is
-    # emit-only-`.run.sh`, which is exactly what no scheduler config should mean.
-    if not server_raw and not project_raw:
-        return None
-
-    # Each scope's block is an object or absent: `read_config` has already
-    # refused anything else (the registry's reader), so there is no third
-    # case to branch on here.
-    merged: Dict[str, Any] = {}
-    if server_raw:
-        merged = _deep_merge(merged, dict(server_raw))
-    if project_raw:
-        merged = _deep_merge(merged, dict(project_raw))
-
-    # Name the FILE the block came from.  `_validate_scheduler` sees only the
-    # MERGED mapping, so every refusal it raises -- a bad `kind`, a missing
-    # directive -- could say no more than the generic "molbuilder.json", which
-    # names two possible files (machine, project) and answers neither.  R10
-    # fixed exactly this for `read_config` on 2026-08-12 and the scheduler
-    # getter was never given the same treatment.
-    #
-    # Where ONE scope defines the block we can pin it exactly; where both do,
-    # both are listed rather than one guessed at.
-    contributors = [str(path) for path, raw in
-                    ((machine_config_path(), server_raw),
-                     (project_path, project_raw))
-                    if isinstance(raw, Mapping)]
-    try:
-        out = _validate_scheduler(merged)
-    except RuntimeConfigError as exc:
-        msg = str(exc)
-        if contributors and not any(c in msg for c in contributors):
-            where = contributors[0] if len(contributors) == 1 else \
-                " + ".join(contributors)
-            raise RuntimeConfigError(f"{where}: {msg}") from None
-        raise
-
-    # NOTHING IS FILLED IN FROM THE RECORD.  This copied the probed node's
-    # card into `gpu.default_type` until 2026-10-01, so every GPU ask
-    # carried a card nobody asked for (`execution/gpu.md` § 1.2).
-    return out
-
-
-def get_execution(
-    project_dir: Optional[Path] = None,
-) -> Dict[str, Any]:
-    """Return the effective ``execution`` block: the run-vs-submit launch
-    policy, read at prep time on the target.  The nearest live contract is
-    `running-a-job.md` § 5.4 — the section this block's retired home
-    (*docs/archive/old_docs/job-execution.md* § 8.13,
-    2026-07 migration) maps to; the key's own
-    full contract is still to be written (`job-system.md` § "The loop").
-
-    Server-wide and project scopes are deep-merged (project wins).
-
-    Returns:
-        {
-            "mode":       "direct" | "submit" | None,   # None -> UNSET: the
-                          # caller refuses or asks.  Never derived from the
-                          # detected scheduler -- § 5.4: the mode, not the
-                          # scheduler, gates submission
-            "submit_via": "slurm",                       # backend when submit
-            "domain":     str | None,  # the queue a launch names when it
-                          # names none -- a domain of the machine record's
-                          # menu (`scheduler.record.Domain`)
-        }
-
-    ``mode`` is the source of truth for HOW a job is launched -- `launch`
-    reads it when ``--mode`` is not given -- decoupled from the machine
-    record's scheduler: you can be *on* slurm yet launch ``direct``, or
-    ``submit`` from an interactive shell.  A malformed ``mode`` or
-    ``domain`` raises.
-    """
-    # THROUGH THE ONE DOOR.  This spelled the two-scope merge itself -- read
-    # server, read project, `_deep_merge` -- which is `read_effective_config`
-    # exactly, and that function had no production caller at all.  Same two
-    # file reads either way (neither is cached), same result; measured
-    # 2026-09-13 against a config with both scopes set.
-    #
-    # The `isinstance(..., Mapping)` guards that stood here were unreachable:
-    # both scope readers VALIDATE before returning, so an `execution` that is
-    # not an object is refused there and never arrives.  What they actually
-    # did was silently ignore a malformed project section in the one case the
-    # validation ever missed -- the opposite of this module's own rule that a
-    # section read and then dropped is worse than one never allowed.
-    merged = read_effective_config(project_dir).get("execution") or {}
-
-    mode = merged.get("mode")
-    if mode is not None and mode not in ("direct", "submit"):
-        # NAME THE FILE THAT SET IT (§ 2.2 rule 1).  This said "Fix it in
-        # .molbuilder.json" for a value that may sit in the machine file,
-        # sending the person to a file that need not exist (review C-L4).
-        scopes = [(machine_config_path(), read_config())]
-        if project_dir is not None:
-            scopes.append((_project_config_file(project_dir),
-                           _read_project(Path(project_dir))))
-        where = [str(p) for p, cfg in scopes
-                 if (cfg.get("execution") or {}).get("mode") == mode]
-        raise RuntimeConfigError(
-            f'execution.mode must be "direct" or "submit"; got {mode!r}.\n'
-            f"Fix it in {' or '.join(where) or CONFIG_FILENAME} "
-            f"(running-a-job.md § 5.4).")
-    submit_via = merged.get("submit_via", "slurm")
-    domain = merged.get("domain")
-    if domain is not None and not isinstance(domain, str):
-        raise RuntimeConfigError(
-            f"execution.domain must be a string (a queue of the machine "
-            f"record's menu); "
-            f"got {type(domain).__name__} (running-a-job.md § 5.4).")
-    return {"mode": mode, "submit_via": submit_via, "domain": domain}
+def get_launch(project_dir: Optional[Path] = None) -> Dict[str, Any]:
+    """The effective ``launch`` block -- ``{"mode": "direct" | "submit" |
+    None}`` -- the machine's, with a project's over it (`running-a-job.md`
+    § 5.4).  ``None`` is UNSET, and `launch` then refuses rather than
+    derive one: deciding ``submit`` from a DETECTED scheduler would gate
+    submission on detection.  Both scopes arrive validated
+    (:func:`_read_launch`), so nothing is checked here."""
+    merged = read_effective_config(project_dir).get("launch") or {}
+    return {"mode": merged.get("mode")}
 
 
 def get_routing(
@@ -2098,11 +1619,9 @@ def get_routing(
     ``gpu_partition`` came to redirect GPU work from inside ``extra``, the bag
     the record documents as uninterpreted.
 
-    Returns ``[]`` when there is no record, or on a workstation, which is the
-    same signal it always was: no named menu, so the rendered header's default
-    directives stand.
-    Order is preserved (cheapest ceiling -> most general); the FIRST fitting
-    domain is the recommendation.
+    Returns ``[]`` when there is no record, or on a workstation: no queue to
+    name.  Order is the record's; nothing here chooses among them -- a job
+    names its own (`execution/architecture.md` § 5.2).
 
     ``project_dir`` selects the calculation scope, so a folder carried to a
     cluster reads the record `prep` snapshotted beside it (M-3's precedence,
@@ -2110,40 +1629,25 @@ def get_routing(
 
     ``local_only`` bypasses ``project_dir`` and asks a different question --
     :func:`molbuilder.scheduler.record.machine_for`'s ``local_only`` docstring
-    has the reasoning.  The declared-routing fallback below still applies:
-    this machine's own DECLARED menu counts as "what this machine knows"
-    exactly as much as a probed one does.
+    has the reasoning.
     """
     from .scheduler import machine_for
-    return routing_of(machine_for(project_dir, local_only=local_only),
-                      project_dir)
+    return routing_of(machine_for(project_dir, local_only=local_only))
 
 
-def routing_of(env, project_dir: Optional[Path] = None) -> List["Domain"]:
+def routing_of(env) -> List["Domain"]:
     """The submission-domain menu OF a machine record in hand -- its probed
-    domains, else the declared ``scheduler.routing`` rows -- for a caller
-    that already holds the record it means (a ``--target`` prep reads the
-    TARGET's, which ``get_routing`` cannot name before the calculation has
-    snapshotted it).  :func:`get_routing` is this, asked of the record
-    ``machine_for`` answers (W52: the bench read the folder's menu through
-    ``get_routing`` while it held the target's record, and on a calculation
-    not yet prepped that question was refused and swallowed, so its cells
-    were checked against no menu at all)."""
-    from .scheduler import Domain
-    domains = list(env.domains) if env is not None else []
-    if not domains:
-        # No probed domains: either a workstation (there are none to have) or a
-        # cluster nobody has run `jobset probe` on yet.  Fall back to what was
-        # DECLARED -- the only source available when the target is not this
-        # machine.
-        domains = [d for d in (Domain.from_row(r)
-                               for r in _declared_routing(project_dir))
-                   if d is not None]
-    # ONE shape, whichever branch ran.  Until 2026-08-17 the probed branch
-    # emitted a 4-key mapping built here by hand and the declared branch passed
-    # its rows through whole, so a caller got 4 keys or 6 depending on which
-    # source answered -- from the same function.
-    return domains
+    domains -- for a caller that already holds the record it means (a
+    ``--target`` prep reads the TARGET's, which ``get_routing`` cannot name
+    before the calculation has snapshotted it).  :func:`get_routing` is this,
+    asked of the record ``machine_for`` answers.
+
+    **The record's queues and nothing else** *(user, 2026-10-02)*.  A queue
+    list typed into ``molbuilder.json`` (``scheduler.routing``) stood in when
+    a record had none, and it described a machine its author was not on; a
+    target's queues are probed on that machine and its record copied here
+    (`configuration.md` § 5)."""
+    return list(env.domains) if env is not None else []
 
 
 def write_config_scope(
@@ -2268,7 +1772,6 @@ __all__ = [
     "get_auth",
     "get_providers",
     "get_rate_limit",
-    "get_script_generation",
-    "require_activation",
-    "get_scheduler",
+    "get_launch",
+    "ACTIVATION_FORMS",
 ]

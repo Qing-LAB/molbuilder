@@ -25,9 +25,13 @@ the same menu, both gpu-capable and both big enough.  The CPU branch had
 always walked the menu for a row that fits; the GPU branch only ever
 looked at row 0.
 
-The menu below is Sol's, verbatim from the ``environment.json`` copied
-back off the cluster, so this test fails if the real fix regresses rather
-than only a simplified stand-in.
+The selector itself is gone since 2026-10-02: a job NAMES its queue
+(`architecture.md` § 5.2), and the named queue is admitted on its row or
+refused with every reason (`TestNamingADomainDoesNotSkipTheCheck` below).
+What stays here is that check -- what "fits" means, cores, memory, the GPU
+column -- read against Sol's menu, verbatim from the ``environment.json``
+copied back off the cluster, so a regression shows against the real rows
+rather than only a simplified stand-in.
 """
 from __future__ import annotations
 
@@ -35,15 +39,6 @@ import pytest
 
 from molbuilder.scheduler import Domain, Request, admits
 from molbuilder.scheduler.place import Unplaceable, place
-
-
-def _gpu(rows, needed_s=None):
-    """The GPU side's placement — `scheduler.place`, walked.
-
-    Was `jobset.submit.gpu_domain_row`; phase 4 moved the walk into the
-    scheduler subsystem, where both sides share it (2026-08-23).
-    """
-    return place(rows, Request(walltime_s=needed_s), prefer_gpu=True)
 
 
 def _row_holds(domain, needed_s):
@@ -84,54 +79,13 @@ def _dom(**kw):
 _FIFTEEN_MIN = 15 * 60
 
 
-class TestTheSelectorSkipsACeilingItCannotUse:
+class TestNoMenuPromisesNothing:
 
-    def test_a_short_group_still_takes_the_cheapest_row(self):
-        """Cheapest-ceiling-first is unchanged when the job actually fits --
-        a bounded single trial belongs in `debug`, which is the whole point
-        of that ordering."""
-        assert _gpu(SOL, 600).name == "debug"
-
-    def test_the_group_that_failed_on_sol_now_routes_to_a_row_that_holds_it(self):
-        """Tens of minutes: `debug` is skipped, the next gpu-capable row
-        that can hold it wins -- still the cheapest ceiling among those
-        that fit, not the biggest."""
-        row = _gpu(SOL, 38 * 60)
-        assert row.name == "htc"
-        assert (row.partition, row.qos) == ("htc", "public")
-
-    def test_a_very_long_group_walks_further_down(self):
-        assert _gpu(SOL, 5 * 24 * 3600).name == "public"
-
-    def test_a_cpu_only_row_is_never_offered_to_the_gpu_side(self):
-        """`highmem` has the ceiling but no devices."""
-        for need in (600, 38 * 60, 5 * 24 * 3600):
-            assert _gpu(SOL, need).domain.gpu is not None
-
-    def test_asking_nothing_about_duration_keeps_the_old_answer(self):
-        """prep's device inventory and per-family core cap ask about
-        CAPABILITY, not duration -- their answer must not move."""
-        assert _gpu(SOL).name == "debug"
-        assert _gpu(SOL, None).name == "debug"
-
-    def test_nothing_fits_refuses_and_says_why(self):
-        """Not "fall back to row 0" -- that is what submitted the doomed job.
-
-        Phase 4 turned the None into a refusal that carries its reasons: a
-        caller cannot mistake "nothing fits" for "no preference" and let the
-        header's directives stand, which is exactly what happened on Sol.
-        """
-        tiny = [Domain.from_row({"name": "debug", "partition": "htc",
-                                 "qos": "debug", "max_time": "00:15:00",
-                                 "gpu": {"a100": 1}})]
-        with pytest.raises(Unplaceable) as exc:
-            _gpu(tiny, _FIFTEEN_MIN + 1)
-        assert exc.value.reasons[0].allowed == "00:15:00"
-
-    def test_no_menu_at_all_is_not_a_refusal(self):
-        """R6's other half: a machine that promised nothing gets its header
-        left alone, rather than a refusal it cannot act on."""
-        assert place([], Request(walltime_s=10 ** 6), prefer_gpu=True) is None
+    def test_no_menu_and_no_name_is_not_a_refusal(self):
+        """R6: a machine that promised nothing -- no queues, and none named
+        -- gets no placement, rather than a refusal it cannot act on."""
+        assert place([], Request(walltime_s=10 ** 6), prefer_gpu=True,
+                     named=None) is None
 
 
 class TestWhatFittingMeans:

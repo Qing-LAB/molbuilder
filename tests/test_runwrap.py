@@ -8,7 +8,6 @@ confirm chmod and the resulting filename.
 
 from __future__ import annotations
 
-import json
 import re
 import stat
 from pathlib import Path
@@ -22,38 +21,33 @@ from molbuilder.runwrap import (WrapperError, render_run_wrapper,
 from molbuilder.jobset.model import Resources
 
 
+from molbuilder.scheduler import Environment as _Env, Topology as _Topo
+
+#: THIS MACHINE'S RECORD, as `jobset probe --write --activation ...
+#: --preamble ...` writes it: how a shell enters an environment here is its
+#: fact, and every wrapper reads it off the record (`configuration.md` § 5
+#: M-1).  A render of a deck in a folder that does not exist names it, as
+#: prep names the target's.
+_MACHINE = _Env(scheduler="workstation",
+                topology=_Topo(sockets=2, cores_per_socket=32),
+                script_generation={"preamble": "module load mamba",
+                                   "activation": "source activate"})
+
+
 @pytest.fixture(autouse=True)
 def _autosetup_minimal_config(tmp_path, monkeypatch):
-    """Every render in this file needs at least a minimal
-    ``script_generation.activation`` so the generator's refuse-to-emit
-    guard (docs/execution/running-a-job.md § 5) is satisfied.  Give each test a cwd
-    molbuilder.json with the canonical Sol defaults; tests that want
-    different config can rewrite the file."""
+    """Every render in this file reads the activation off the machine's
+    record (`configuration.md` § 5 M-1), so each test's config root holds
+    that record -- `_MACHINE`, the canonical Sol activation.  A test that
+    wants another rewrites `environment.json`."""
     monkeypatch.chdir(tmp_path)
-    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
-    # working-directory step, which is gone (configuration.md § 2.1a) --
-    # without naming the directory the write lands in a file nothing
-    # opens, and the test passes having configured nothing.
+    # THE SANDBOX IS THE CONFIG ROOT -- and so the machine scope, where the
+    # record a deck under it is rendered with lives.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
-    (tmp_path / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {
-            "preamble":   "module load mamba",
-            "activation": "source activate",
-        }
-    }))
-    # A PROBED MACHINE.  Since 2026-09-02 a rank count is read from a record
-    # and nowhere else -- no probe of the running box, no fallback
-    # (`running-a-job.md` § 3.1).  A wrapper cannot be rendered on an
-    # unprobed machine, so a fixture that renders one probes first,
-    # exactly as a person does:  molbuilder jobset probe --write
-    from molbuilder.scheduler import Environment as _Env, Topology as _Topo
-    (tmp_path / "environment.json").write_text(
-        _Env(scheduler="slurm",
-             topology=_Topo(sockets=2, cores_per_socket=32)).to_json()
-        + "\n")
+    (tmp_path / "environment.json").write_text(_MACHINE.to_json() + "\n")
     yield tmp_path
 
 
@@ -99,11 +93,12 @@ def test_render_siesta_always_uses_mpirun():
     replaced by a captured run + propor diagnostic (see
     ``test_render_siesta_emits_propor_diagnostic``)."""
     _bind()
-    text = render_run_wrapper(Path("/somewhere/my-job.fdf"), resources=Resources())
+    text = render_run_wrapper(Path("/somewhere/my-job.fdf"), machine_record=_MACHINE,
+                              resources=Resources(mpi_np=4, cpus_per_task=1))
     # The MPI branch sets ``_launch_cmd="$_numa_wrap_gpu mpirun
     # -np $_mpi_np $_mpirun_bind $_siesta_target"`` -- the ``$_numa_wrap_gpu``
     # slot is empty for CPU mode (defensive default) and populated
-    # by ``_gpu_runtime_defaults_block`` for GPU mode.
+    # by ``_gpu_runtime_block`` for GPU mode.
     assert ('_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np '
             '$_mpirun_bind $_siesta_target"' in text)
     # The launcher call uses the probe-resolved cmd + the fdf;
@@ -155,6 +150,7 @@ def test_the_node_it_ran_on_is_recorded_on_EVERY_path():
     """
     _bind()
     cpu = render_run_wrapper(Path("/somewhere/cpu-job.fdf"),
+                             machine_record=_MACHINE,
                              resources=Resources(mpi_np=4, cpus_per_task=2))
     assert cpu.count("detected phys_cores=") == 1, (
         "a CPU trial records no node shape -- `node_phys_cores` cannot be "
@@ -175,7 +171,8 @@ def test_render_siesta_with_mpi_ranks():
     """mpi_np from the form becomes the DEFAULT for -np; the launcher
     line uses the runtime $_mpi_np shell variable so user can override."""
     _bind()
-    text = render_run_wrapper(Path("/somewhere/my-job.fdf"), resources=Resources(mpi_np=4))
+    text = render_run_wrapper(Path("/somewhere/my-job.fdf"), machine_record=_MACHINE,
+                              resources=Resources(mpi_np=4, cpus_per_task=1))
     # Generation-time default baked into a shell variable.
     assert "_mpi_np_default=4" in text
     # Probe block's MPI branch uses the runtime variable.
@@ -187,7 +184,8 @@ def test_render_siesta_mpi_np_one_still_uses_mpirun():
     """np=1 still goes through mpirun -- a SIESTA-MPI build needs
     the MPI runtime even for a single rank.  The default propagates."""
     _bind()
-    text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources(mpi_np=1))
+    text = render_run_wrapper(Path("/x/y.fdf"), machine_record=_MACHINE,
+                              resources=Resources(mpi_np=1, cpus_per_task=1))
     assert "_mpi_np_default=1" in text
     assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
 
@@ -197,7 +195,8 @@ def test_render_siesta_emits_np_arg_parser():
     override.  Pin the parser shape so a regression silently
     re-bakes the rank count."""
     _bind()
-    text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources(mpi_np=15))
+    text = render_run_wrapper(Path("/x/y.fdf"), machine_record=_MACHINE,
+                              resources=Resources(mpi_np=15, cpus_per_task=1))
     # Default fallback chain: arg -> env -> generation-time value.
     # Precedence chain: -np flag > MB_NP env > SLURM_NTASKS >
     # PBS_NP > generation-time default.  Honoring SLURM_NTASKS means
@@ -226,7 +225,8 @@ def test_render_siesta_emits_propor_diagnostic():
     from `matel_table.F90`, and IMAX = 0 is an all-zero radial table
     (`science/overview.md` retracted it on 2026-09-17)."""
     _bind()
-    text = render_run_wrapper(Path("/x/hemeC.fdf"), resources=Resources(mpi_np=15))
+    text = render_run_wrapper(Path("/x/hemeC.fdf"), machine_record=_MACHINE,
+                              resources=Resources(mpi_np=15, cpus_per_task=1))
     # Captured run, not exec.  2026-06-26: the launch is piped through
     # the _mb_scf_tee timing filter (§ 11.0b), so the exit code is read
     # from ${PIPESTATUS[0]} (awk must not mask SIESTA's exit), not $?.
@@ -282,8 +282,8 @@ def test_the_wrapper_asks_how_the_run_ended_over_both_channels(tmp_path):
     from molbuilder.runwrap import MONITOR_BUNDLE, monitor_bundle
 
     _bind()
-    text = render_run_wrapper(Path("/x/hemeC.fdf"),
-                              resources=Resources(mpi_np=8))
+    text = render_run_wrapper(Path("/x/hemeC.fdf"), machine_record=_MACHINE,
+                              resources=Resources(mpi_np=8, cpus_per_task=1))
     start = text.index("_mb_ending_able() {")
     func = text[start:text.index("\n}\n", text.index("_mb_ending() {")) + 3]
     (tmp_path / MONITOR_BUNDLE).write_bytes(monitor_bundle())
@@ -329,7 +329,8 @@ def test_render_siesta_emits_build_probe_block():
     Pins the key shell idioms so a regression doesn't silently
     de-probe the wrapper back to a static launcher."""
     _bind()
-    text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources(mpi_np=4))
+    text = render_run_wrapper(Path("/x/y.fdf"), machine_record=_MACHINE,
+                              resources=Resources(mpi_np=4, cpus_per_task=1))
     # Probe runs siesta --version once -- and CANNOT BLOCK THE JOB
     # (2026-08-25).  This asserted the exact spelling
     # `siesta --version 2>/dev/null`, which is a pipe with no clock on it:
@@ -387,7 +388,8 @@ def test_render_siesta_redirects_stdout_per_job_layout_v1():
     job-contracts.md (post-2026-05-30: ``-runN`` series for
     ``--continue`` support).  First run is -run0."""
     _bind()
-    text = render_run_wrapper(Path("/x/system-label.fdf"), resources=Resources())
+    text = render_run_wrapper(Path("/x/system-label.fdf"), machine_record=_MACHINE,
+                              resources=Resources(mpi_np=4, cpus_per_task=1))
     assert "> $_out_file" in text
     # The resolver bakes the basename into the per-script template.
     assert '_out_file="system-label-run${_run_n}.out"' in text
@@ -405,26 +407,17 @@ def test_the_rank_count_is_the_users_and_nothing_lowers_it():
     advice for a wrong reason where it fired, and refused good rank counts
     everywhere else.
 
-    So: a 64-core target with a 30-atom molecule asks for 64, and a user who
-    says 200 gets 200.
+    So: a user who says 200 ranks for a 30-atom molecule gets 200.  (An
+    unstated count is refused at prep since 2026-10-02 -- there is no
+    default left to clamp; `tests/data/launch_values.toml`.)
     """
-    from molbuilder.scheduler import Environment, Topology
     _bind()
-    rec = Environment(scheduler="slurm",
-                      topology=Topology(sockets=2, cores_per_socket=32))
-
-    auto = render_run_wrapper(Path("/x/small-mol.fdf"), n_atoms=30,
-                              resources=Resources(), machine_record=rec)
-    assert "_mpi_np_default=64" in auto, (
-        "the auto default must be the target's width; it was lowered to the "
-        "atom count")
-    assert "_mpi_np_default=30" not in auto
-    assert "clamped" not in auto
-
     user = render_run_wrapper(Path("/x/small-mol.fdf"), n_atoms=30,
-                              resources=Resources(mpi_np=200),
-                              machine_record=rec)
+                              resources=Resources(mpi_np=200,
+                                                  cpus_per_task=1),
+                              machine_record=_MACHINE)
     assert "_mpi_np_default=200" in user, "a stated rank count is honoured"
+    assert "clamped" not in user
     assert "propor IMAX" not in user, (
         "the wrapper still predicts an abort from the system's size -- the "
         "prediction the ruling removed")
@@ -478,8 +471,7 @@ def test_write_run_wrapper_parses_n_atoms_from_fdf(tmp_path,
 
     Until the 2026-09-03 ruling the parsed count fed a CLAMP, and this test
     asserted the rank default had been lowered to it.  It feeds the notice
-    now; the rank count is the target's width either way.  The fixture's
-    record is 2 x 32 = 64 cores."""
+    now; the rank count is the stated one either way."""
     _bind()
     fdf_text = (
         "SystemName        tiny\n"
@@ -489,10 +481,11 @@ def test_write_run_wrapper_parses_n_atoms_from_fdf(tmp_path,
     )
     fdf_path = tmp_path / "tiny.fdf"
     fdf_path.write_text(fdf_text)
-    wrapper_path = write_run_wrapper(fdf_path, resources=Resources())
+    wrapper_path = write_run_wrapper(
+        fdf_path, resources=Resources(mpi_np=64, cpus_per_task=1))
     text = wrapper_path.read_text()
     assert "_mpi_np_default=64" in text, (
-        "the rank default is the target's width; nothing lowers it now")
+        "the stated rank count was lowered -- nothing lowers it now")
     assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
     # The parsed count reached the notice: 12 atoms -> ~120 orbitals.
     assert "_norb_est=120" in text, (
@@ -505,17 +498,15 @@ def test_write_run_wrapper_unparseable_fdf_renders_unclamped(tmp_path,
     pre-emission stub) still renders -- better to render SOMETHING than to
     refuse.
 
-    It said "falls back to physical_cores" and patched that function until
-    2026-09-02; the width comes from the record either way
-    (`running-a-job.md` § 3.1).  What a missing atom count costs is the
-    occupancy NOTICE -- it is simply not stated, rather than stated from an
-    invented number."""
+    What a missing atom count costs is the occupancy NOTICE -- it is simply
+    not stated, rather than stated from an invented number."""
     _bind()
     fdf_path = tmp_path / "broken.fdf"
     fdf_path.write_text("# .fdf with no NumberOfAtoms line\n")
-    wrapper_path = write_run_wrapper(fdf_path, resources=Resources())
+    wrapper_path = write_run_wrapper(
+        fdf_path, resources=Resources(mpi_np=64, cpus_per_task=1))
     text = wrapper_path.read_text()
-    # The record's width (2 x 32), unclamped -- nothing to clamp against.
+    # The stated count, unclamped -- nothing to clamp against.
     assert "_mpi_np_default=64" in text
     assert '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"' in text
     assert "_norb_est" not in text, (
@@ -535,13 +526,12 @@ def test_write_run_wrapper_unparseable_fdf_renders_unclamped(tmp_path,
 
 
 def test_render_siesta_mpi_pins_blas_to_one_and_sets_omp():
-    """SIESTA + mpi_np >= 2: BLAS pinned to 1 per rank, OMP set
-    (auto-divided across ranks by default) -- the cross-cutting
-    anti-oversubscription recipe shared with PySCF / spectra.
-    Rewritten 2026-05-22 from the original OMP=1 contract (which
-    crippled hybrid runs) to OMP=physical_cores // mpi_np."""
+    """SIESTA + mpi_np >= 2: BLAS pinned to 1 per rank, OMP set to the
+    stated cores per rank -- the cross-cutting anti-oversubscription recipe
+    shared with PySCF / spectra."""
     _bind()
-    text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources(mpi_np=4))
+    text = render_run_wrapper(Path("/x/y.fdf"), machine_record=_MACHINE,
+                              resources=Resources(mpi_np=4, cpus_per_task=1))
     # BLAS is always 1 per rank.
     assert "export MKL_NUM_THREADS=1" in text
     assert "export OPENBLAS_NUM_THREADS=1" in text
@@ -561,11 +551,12 @@ def test_render_siesta_mpi_pins_blas_to_one_and_sets_omp():
 
 
 def test_render_siesta_omp_threads_kwarg_wins():
-    """User-set omp_threads overrides the physical_cores // mpi_np
-    auto-detect.  The wrapper emits exactly the value the user asked
-    for so cluster schedulers (which allocate cores explicitly) win."""
+    """A stated omp_threads is the value the wrapper bakes -- exactly what
+    the user asked for, so cluster schedulers (which allocate cores
+    explicitly) and the run agree."""
     _bind()
-    text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources(mpi_np=4, cpus_per_task=2))
+    text = render_run_wrapper(Path("/x/y.fdf"), machine_record=_MACHINE,
+                              resources=Resources(mpi_np=4, cpus_per_task=2))
     # As of 2026-06-15, the wrapper exports a SHELL VAR (so it can
     # honor ``-omp N`` and ``OMP_NUM_THREADS`` env at run time) and the
     # numeric value lives in ``_omp_threads_default=N``.  Pin both
@@ -574,23 +565,11 @@ def test_render_siesta_omp_threads_kwarg_wins():
     assert "export OMP_NUM_THREADS=$_omp_threads" in text
 
 
-def test_render_siesta_single_process_still_pins_blas():
-    """Single-process SIESTA: BLAS still pinned to 1 per process so
-    BLAS doesn't spawn its own pool on top of OMP threads.  OMP gets
-    physical cores by default (the user wants threading -- BLAS=1 +
-    OMP=physical is the canonical recipe, not BLAS-only)."""
-    _bind()
-    text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources())     # no mpi_np
-    assert "export MKL_NUM_THREADS=1" in text
-    assert "export OPENBLAS_NUM_THREADS=1" in text
-    # OMP set to physical cores (numerical value, not absent).
-    assert "export OMP_NUM_THREADS=" in text
-
-
 def test_render_siesta_mpi_np_one_pins_blas_too():
     """np=1 is single-process semantically; same recipe as no-mpi."""
     _bind()
-    text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources(mpi_np=1))
+    text = render_run_wrapper(Path("/x/y.fdf"), machine_record=_MACHINE,
+                              resources=Resources(mpi_np=1, cpus_per_task=1))
     assert "export OPENBLAS_NUM_THREADS=1" in text
     assert "export OMP_NUM_THREADS=" in text
 
@@ -599,7 +578,9 @@ def test_render_siesta_max_memory_emits_ulimit():
     """max_memory_mb kwarg becomes a ``ulimit -v`` soft cap so a
     runaway SIESTA process can't OOM the host."""
     _bind()
-    text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources(mpi_np=4, max_memory_mb=8192))
+    text = render_run_wrapper(Path("/x/y.fdf"), machine_record=_MACHINE,
+                              resources=Resources(mpi_np=4, cpus_per_task=1,
+                                                  max_memory_mb=8192))
     assert "ulimit -v" in text
     # 8192 MB = 8388608 KB.
     assert "8388608" in text
@@ -622,7 +603,8 @@ def test_render_pyscf_never_serialises_threading():
         multiplying.
     """
     _bind()
-    text = render_run_wrapper(Path("/x/y.py"), resources=Resources())
+    text = render_run_wrapper(Path("/x/y.py"), machine_record=_MACHINE,
+                              resources=Resources(cpus_per_task=1))
     for needle in ("MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
         assert needle not in text, (
             f"PySCF wrapper pins {needle!r} -- BLAS pinning is the "
@@ -634,9 +616,11 @@ def test_render_pyscf_never_serialises_threading():
             "PySCF wrapper pins OpenMP to a single thread -- that "
             "serialises its main parallelism path"
         )
-    # ...and the count is taken from the allocation before the machine.
+    # ...and the count is taken from the allocation before the value
+    # stated at prep -- never from the node (it was, until 2026-10-02).
     assert text.index("SLURM_CPUS_PER_TASK") < text.index(
-        '_omp_from="node physical')
+        '_omp_from="stated at prep"')
+    assert '_omp_from="node physical' not in text
 
 
 # --------------------------------------------------------------------- #
@@ -646,7 +630,8 @@ def test_render_pyscf_never_serialises_threading():
 
 def test_render_pyscf():
     _bind()
-    text = render_run_wrapper(Path("/somewhere/my-job.py"), resources=Resources())
+    text = render_run_wrapper(Path("/somewhere/my-job.py"), machine_record=_MACHINE,
+                              resources=Resources(cpus_per_task=1))
     assert "python my-job.py" in text
     assert 'source activate molbuilder-pySCF' in text
     # PySCF scripts handle their own logging; no stdout redirect.
@@ -663,9 +648,11 @@ def test_render_pyscf_ignores_mpi_np():
         return "\n".join(l for l in text.splitlines()
                          if not l.lstrip("# ").startswith("generated-at"))
     _bind()
-    a = render_run_wrapper(Path("/x/y.py"), resources=Resources())
+    a = render_run_wrapper(Path("/x/y.py"), machine_record=_MACHINE,
+                              resources=Resources(cpus_per_task=1))
     _bind()
-    b = render_run_wrapper(Path("/x/y.py"), resources=Resources(mpi_np=8))
+    b = render_run_wrapper(Path("/x/y.py"), machine_record=_MACHINE,
+                              resources=Resources(mpi_np=8, cpus_per_task=1))
     assert _logic(a) == _logic(b)
 
 
@@ -673,7 +660,8 @@ def test_render_multidot_basename_preserved():
     """``job.spectra.py`` should keep its multi-dotted stem in the
     wrapper text (so users see ``python job.spectra.py``)."""
     _bind()
-    text = render_run_wrapper(Path("/x/job.spectra.py"), resources=Resources())
+    text = render_run_wrapper(Path("/x/job.spectra.py"), machine_record=_MACHINE,
+                              resources=Resources(cpus_per_task=1))
     assert "python job.spectra.py" in text
 
 
@@ -684,14 +672,17 @@ def test_render_multidot_basename_preserved():
 
 def test_render_explicit_env_override():
     _bind()
-    text = render_run_wrapper(Path("/x/y.fdf"), env="my-custom-siesta", resources=Resources())
+    text = render_run_wrapper(Path("/x/y.fdf"), env="my-custom-siesta",
+                              machine_record=_MACHINE,
+                              resources=Resources(mpi_np=4, cpus_per_task=1))
     assert 'source activate my-custom-siesta' in text
 
 
 def test_render_picks_up_config_env_override():
     """Per-machine envs overrides flow through Capabilities -> wrapper."""
     _bind({"siesta": "siesta-ng-v54"})
-    text = render_run_wrapper(Path("/x/y.fdf"), resources=Resources())
+    text = render_run_wrapper(Path("/x/y.fdf"), machine_record=_MACHINE,
+                              resources=Resources(mpi_np=4, cpus_per_task=1))
     assert 'source activate siesta-ng-v54' in text
 
 
@@ -704,7 +695,8 @@ def test_write_creates_sibling_dot_run_sh(tmp_path):
     _bind()
     script = tmp_path / "my-job.fdf"
     script.write_text("# fake fdf\n")
-    wrapper = write_run_wrapper(script, resources=Resources())
+    wrapper = write_run_wrapper(script,
+                                resources=Resources(mpi_np=4, cpus_per_task=1))
     assert wrapper == tmp_path / "my-job.run.sh"
     assert wrapper.is_file()
     # The probe-driven launcher resolves the actual ``siesta`` command
@@ -716,7 +708,7 @@ def test_write_sets_executable_bit(tmp_path):
     _bind()
     script = tmp_path / "x.py"
     script.write_text("print('ok')\n")
-    wrapper = write_run_wrapper(script, resources=Resources())
+    wrapper = write_run_wrapper(script, resources=Resources(cpus_per_task=1))
     mode = wrapper.stat().st_mode
     assert mode & stat.S_IXUSR
     assert mode & stat.S_IXGRP
@@ -728,13 +720,13 @@ def test_write_preserves_multidot_basename(tmp_path):
     _bind()
     script = tmp_path / "job.spectra.py"
     script.write_text("# fake\n")
-    wrapper = write_run_wrapper(script, resources=Resources())
+    wrapper = write_run_wrapper(script, resources=Resources(cpus_per_task=1))
     assert wrapper.name == "job.spectra.run.sh"
 
 
 def test_write_overwrites_existing(tmp_path):
     """The second write RE-RENDERS: the new mpi_np lands as the baked
-    default, and the first render never had one.  (G-2, 2026-08-13: the
+    value, and the first render had another.  (G-2, 2026-08-13: the
     pins that stood here -- ``first != second`` and ``"-np 8" in second``
     -- were satisfied by the generation timestamp and by the wrapper's
     always-present usage text, so the write→render plumbing of mpi_np
@@ -742,9 +734,10 @@ def test_write_overwrites_existing(tmp_path):
     _bind()
     script = tmp_path / "x.fdf"
     script.write_text("# fake\n")
-    wrapper = write_run_wrapper(script, resources=Resources())
+    wrapper = write_run_wrapper(script,
+                                resources=Resources(mpi_np=4, cpus_per_task=1))
     first = wrapper.read_text()
-    write_run_wrapper(script, resources=Resources(mpi_np=8))
+    write_run_wrapper(script, resources=Resources(mpi_np=8, cpus_per_task=1))
     second = wrapper.read_text()
     assert "_mpi_np_default=8" in second
     assert "_mpi_np_default=8" not in first
@@ -753,7 +746,8 @@ def test_write_overwrites_existing(tmp_path):
 def test_write_missing_script_raises(tmp_path):
     _bind()
     with pytest.raises(WrapperError, match="not found"):
-        write_run_wrapper(tmp_path / "does-not-exist.fdf", resources=Resources())
+        write_run_wrapper(tmp_path / "does-not-exist.fdf",
+                          resources=Resources(mpi_np=4, cpus_per_task=1))
 
 
 # ---------------------------------------------------------------------
@@ -843,7 +837,9 @@ def _emit_truncated_wrapper(tmp_path, basename, suffix=".fdf"):
     _bind()
     script = tmp_path / f"{basename}{suffix}"
     script.write_text("# fake\n")
-    wrapper_path = write_run_wrapper(script, resources=Resources())
+    wrapper_path = write_run_wrapper(
+        script, resources=(Resources(cpus_per_task=1) if suffix == ".py"
+                           else Resources(mpi_np=4, cpus_per_task=1)))
     text = wrapper_path.read_text()
     # Strip the per-run logging + conda activation block in-place
     # (preserving line numbers downstream).  Range: from the
@@ -979,22 +975,19 @@ def test_help_flag_lists_continue_and_force(tmp_path, _autosetup_minimal_config)
     with empty + use a conda-activate form that works in the test
     bash (we don't have ``module load`` or a real env, so the wrapper
     would abort before reaching the arg parser otherwise)."""
-    import json as _json
-    # Override the autouse fixture's preamble to nothing + use the
-    # ``conda activate`` form (the test bash has a stub ``conda`` we
-    # can mock OR the wrapper aborts before the argv parser runs --
-    # which is the point this test was originally written to verify
-    # didn't happen).
-    (_autosetup_minimal_config / "molbuilder.json").write_text(_json.dumps({
-        "script_generation": {
-            "preamble":   "",
-            "activation": "conda activate",
-        }
-    }))
+    # Override the record's preamble to nothing + use the ``conda
+    # activate`` form (the test bash has a stub ``conda`` we can mock OR
+    # the wrapper aborts before the argv parser runs -- which is the point
+    # this test was originally written to verify didn't happen).  The
+    # record is the activation's one home (`configuration.md` § 5 M-1).
+    (_autosetup_minimal_config / "environment.json").write_text(
+        _Env(scheduler="workstation",
+             topology=_Topo(sockets=2, cores_per_socket=32),
+             script_generation={"activation": "conda activate"}).to_json())
     _bind()
     script = tmp_path / "myjob.fdf"
     script.write_text("# fake\n")
-    wrapper_path = write_run_wrapper(script, resources=Resources())
+    wrapper_path = write_run_wrapper(script, resources=Resources(mpi_np=4, cpus_per_task=1))
     # Stub conda so ``conda activate <env>`` returns 0 immediately --
     # the wrapper proceeds to the argv parser, where ``-h`` short-
     # circuits with the help message.
@@ -1030,7 +1023,7 @@ def test_pyscf_wrapper_redirects_via_out_file(tmp_path):
     _bind()
     script = tmp_path / "myjob.py"
     script.write_text("# fake\n")
-    wrapper_path = write_run_wrapper(script, resources=Resources())
+    wrapper_path = write_run_wrapper(script, resources=Resources(cpus_per_task=1))
     text = wrapper_path.read_text()
     assert "python myjob.py > $_out_file 2>&1" in text
     assert '_out_file="myjob-run${_run_n}.pyscf.log"' in text
@@ -1042,7 +1035,7 @@ def test_pyscf_wrapper_emits_continue_args_block(tmp_path):
     _bind()
     script = tmp_path / "myjob.py"
     script.write_text("# fake\n")
-    wrapper_path = write_run_wrapper(script, resources=Resources())
+    wrapper_path = write_run_wrapper(script, resources=Resources(cpus_per_task=1))
     text = wrapper_path.read_text()
     # 2026-06-14: ``--cold``/``--from-scratch`` joined the cross-
     # engine arg set; the case labels are aligned in the bash
@@ -1108,7 +1101,7 @@ def test_pyscf_wrapper_banner_mentions_pyscf_log_not_out(tmp_path):
     _bind()
     script = tmp_path / "myjob.py"
     script.write_text("# fake\n")
-    wrapper_path = write_run_wrapper(script, resources=Resources())
+    wrapper_path = write_run_wrapper(script, resources=Resources(cpus_per_task=1))
     text = wrapper_path.read_text()
     assert "first run -> -run0.pyscf.log" in text, (
         "PySCF wrapper banner must show the .pyscf.log suffix"
@@ -1124,7 +1117,7 @@ def test_siesta_wrapper_banner_still_mentions_out(tmp_path):
     _bind()
     script = tmp_path / "myjob.fdf"
     script.write_text("SystemLabel myjob\n")
-    wrapper_path = write_run_wrapper(script, resources=Resources())
+    wrapper_path = write_run_wrapper(script, resources=Resources(mpi_np=4, cpus_per_task=1))
     text = wrapper_path.read_text()
     assert "first run -> -run0.out" in text
     assert "first run -> -run0.pyscf.log" not in text
@@ -1157,7 +1150,7 @@ def test_pyscf_wrapper_passes_bash_n(tmp_path):
     # Use a non-trivial JOB literal with both double quotes (canonical)
     # so the awk -F regex actually has to handle them.
     script.write_text('JOB = "pdt-mol"\nimport pyscf\n')
-    wrapper_path = write_run_wrapper(script, resources=Resources())
+    wrapper_path = write_run_wrapper(script, resources=Resources(cpus_per_task=1))
     cp = subprocess.run(
         ["bash", "-n", str(wrapper_path)],
         capture_output=True, text=True, timeout=15,
@@ -1178,7 +1171,7 @@ def test_pyscf_wrapper_passes_bash_n_single_quoted_job(tmp_path):
     import subprocess
     script = tmp_path / "pyscf_relax.py"
     script.write_text("JOB = 'pdt-mol'\nimport pyscf\n")
-    wrapper_path = write_run_wrapper(script, resources=Resources())
+    wrapper_path = write_run_wrapper(script, resources=Resources(cpus_per_task=1))
     cp = subprocess.run(
         ["bash", "-n", str(wrapper_path)],
         capture_output=True, text=True, timeout=15,
@@ -1198,7 +1191,7 @@ def test_siesta_wrapper_passes_bash_n(tmp_path):
     import subprocess
     script = tmp_path / "myjob.fdf"
     script.write_text("SystemLabel myjob\nNumberOfAtoms 0\n")
-    wrapper_path = write_run_wrapper(script, resources=Resources())
+    wrapper_path = write_run_wrapper(script, resources=Resources(mpi_np=4, cpus_per_task=1))
     cp = subprocess.run(
         ["bash", "-n", str(wrapper_path)],
         capture_output=True, text=True, timeout=15,
@@ -1264,7 +1257,7 @@ def test_pyscf_wrapper_with_full_inventory_passes_bash_n(tmp_path):
     import subprocess
     script = tmp_path / "myjob.py"
     script.write_text('JOB = "myjob"\nimport pyscf\n')
-    wrapper_path = write_run_wrapper(script, resources=Resources())
+    wrapper_path = write_run_wrapper(script, resources=Resources(cpus_per_task=1))
     cp = subprocess.run(
         ["bash", "-n", str(wrapper_path)],
         capture_output=True, text=True, timeout=15,
@@ -1372,7 +1365,8 @@ def test_every_siesta_warm_suffix_reaches_both_halves_of_the_wrapper(tmp_path):
 
     # Engine is routed by extension, and the basename comes from the path --
     # `.fdf` is what makes this the SIESTA wrapper.
-    script = render_run_wrapper(Path("/somewhere/job.fdf"), resources=Resources())
+    script = render_run_wrapper(Path("/somewhere/job.fdf"), machine_record=_MACHINE,
+                                resources=Resources(mpi_np=4, cpus_per_task=1))
 
     # The cold-restart aside block, and the warm-detection test, are both in
     # the one script; every suffix must appear for the file-name patterns of
@@ -1400,20 +1394,20 @@ def test_the_py_wrappers_continuation_story_is_the_decks_own(tmp_path):
     the old unconditional auto-resume claim."""
     cont = tmp_path / "opt.py"
     cont.write_text('JOB = "opt"\nmf.init_guess = "chkfile"\n')
-    w = render_run_wrapper(cont, resources=Resources())
+    w = render_run_wrapper(cont, resources=Resources(cpus_per_task=1))
     assert "gated" in w and "described ``continue``" in w
     assert "reads no prior" not in w
 
     vib = tmp_path / "vib.py"
     vib.write_text('JOB = "vib"\nJSON_PATH = "vib.spectra.json"\n')
-    w2 = render_run_wrapper(vib, resources=Resources())
+    w2 = render_run_wrapper(vib, resources=Resources(cpus_per_task=1))
     assert "reads no prior\n#    engine state" in w2.replace("  ", " ") \
         or "reads no prior" in w2
     assert 'init-guess' not in w2 or "gated" not in w2
 
     clean = tmp_path / "cln.py"
     clean.write_text('JOB = "cln"\n')
-    w3 = render_run_wrapper(clean, resources=Resources())
+    w3 = render_run_wrapper(clean, resources=Resources(cpus_per_task=1))
     assert "NO prior-state" in w3
 
 
@@ -1440,9 +1434,6 @@ class TestTheHeaderReadsTheProbedRecord:
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
         (tmp_path / "home").mkdir(exist_ok=True)
-        (tmp_path / ".molbuilder.json").write_text(json.dumps(
-            {"script_generation": {"preamble": "module load mamba",
-                                   "activation": "source activate"}}))
         (tmp_path / "environment.json").write_text(json.dumps({
             "schema": "molbuilder/environment@2",
             "scheduler": "slurm",
@@ -1460,16 +1451,22 @@ class TestTheHeaderReadsTheProbedRecord:
 
     def test_no_scheduler_block_but_probed_domains_still_yields_a_header(
             self, tmp_path, monkeypatch):
+        """The queue in the header is the one the JOB names, bound on the
+        record -- `public` is (general, public) there.  The menu's first
+        row stood in for an unnamed one until 2026-10-02
+        (`architecture.md` § 5.2)."""
         from molbuilder.jobset.model import Resources
         from molbuilder.runwrap import _render_sbatch_for
         deck = self._sol_shaped(tmp_path, monkeypatch)
-        header = _render_sbatch_for(deck, resources=Resources(mpi_np=4),
-                                    env=None)
+        header = _render_sbatch_for(
+            deck, resources=Resources(mpi_np=4, cpus_per_task=1,
+                                      domain="public", time="0-04:00:00",
+                                      mem="8G"),
+            env=None)
         assert header is not None, (
             "refused to write a header for a machine whose probed record "
             "names reachable domains")
-        # The menu's FIRST row is the documented recommendation.
-        assert "#SBATCH -p htc" in header
+        assert "#SBATCH -p general" in header
         assert "#SBATCH -q public" in header
 
     def test_the_pair_submit_resolved_wins(self, tmp_path, monkeypatch):
@@ -1477,9 +1474,10 @@ class TestTheHeaderReadsTheProbedRecord:
         from molbuilder.jobset.model import Resources
         from molbuilder.runwrap import _render_sbatch_for
         deck = self._sol_shaped(tmp_path, monkeypatch)
-        header = _render_sbatch_for(deck, resources=Resources(mpi_np=4),
-                                    env=None,
-                                    domain_pq=("general", "public"))
+        header = _render_sbatch_for(
+            deck, resources=Resources(mpi_np=4, cpus_per_task=1,
+                                      time="0-04:00:00", mem="8G"),
+            env=None, domain_pq=("general", "public"))
         assert "#SBATCH -p general" in header
         assert "#SBATCH -q public" in header
 
@@ -1518,15 +1516,14 @@ class TestTheBootstrapFailsFast:
     """
 
     def _bootstrap_span(self, tmp_path):
-        import json
+        # The preamble and activation are the autouse fixture's record's
+        # (`_MACHINE`: `module load mamba`, `source activate`).
         from molbuilder.jobset.model import Resources
         from molbuilder.runwrap import render_run_wrapper
-        (tmp_path / ".molbuilder.json").write_text(json.dumps(
-            {"script_generation": {"preamble": "module load mamba",
-                                   "activation": "source activate"}}))
         (tmp_path / "job.fdf").write_text("SystemLabel job\n")
         text = render_run_wrapper(tmp_path / "job.fdf",
-                                  resources=Resources(mpi_np=4),
+                                  resources=Resources(mpi_np=4,
+                                                      cpus_per_task=1),
                                   env="molbuilder-siesta")
         lines = text.splitlines()
         start = next(i for i, l in enumerate(lines) if l.strip() == "set +u")
@@ -1586,7 +1583,8 @@ def test_a_generated_wrapper_declares_its_engine(deck, engine):
     from molbuilder.script_emit import _extract_provenance_dict
 
     text = render_run_wrapper(Path("/somewhere") / deck,
-                              resources=Resources())
+                              machine_record=_MACHINE,
+                              resources=Resources(mpi_np=4, cpus_per_task=1))
     block = _extract_provenance_dict(text)
     assert block is not None, "the wrapper carries no PROVENANCE block"
     assert block.get("engine") == engine, (
@@ -1624,7 +1622,8 @@ class TestBothEnginesConclude:
         _bind()
         deck = tmp_path / "myjob.py"
         deck.write_text(f"import sys\nsys.exit({rc})\n")
-        wrapper = write_run_wrapper(deck, resources=Resources())
+        wrapper = write_run_wrapper(deck,
+                                    resources=Resources(cpus_per_task=1))
         # `_strip_activation` removes the block that DEFINES `_log`, so the
         # stripped wrapper needs a no-op stand-in.  A shim rather than a
         # second stripper: the wrapper under test must be the shipped one

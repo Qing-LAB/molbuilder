@@ -176,6 +176,13 @@ def test_a_flat_stage_records_the_run_it_continued_from(tmp_path,
         Domain(name="htc", partition="htc", qos="public",
                max_time="0-04:00:00")])
     bundle = describe_h2(tmp_path, monkeypatch, shape="flat")
+    # A job sent to that queue states its queue, wall and memory
+    # (`architecture.md` § 5.2) -- in the description, as a person does.
+    import json
+    tj = bundle / "task.json"
+    d = json.loads(tj.read_text())
+    d["allocation"] = {"domain": "htc", "time": "0-01:00:00", "mem": "8G"}
+    tj.write_text(json.dumps(d, indent=2))
     assert _prep(bundle, "coarse").exit_code == 0
     assert _jobset("launch", "run", "coarse", "--bundle", bundle, "--mode",
                    "submit", "--domain", "htc", "--yes").exit_code == 0

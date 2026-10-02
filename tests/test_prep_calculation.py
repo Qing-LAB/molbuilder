@@ -47,13 +47,11 @@ def _isolated(monkeypatch, tmp_path_factory):
 def calc(tmp_path):
     """A described calculation, exactly as `jobset init` leaves it.
 
-    The activation config is the **dotted, bundle-scoped**
-    ``.molbuilder.json`` — the project scope the wrapper writer resolves
-    from the script's own directory.  An undotted ``molbuilder.json`` here
-    is INERT (that name is the cwd-first server scope), and until 2026-08-12
-    this fixture wrote exactly that: the tests then silently resolved
-    ``script_generation.activation`` from the developer's repo-root config —
-    14 of 24 failed under an isolated cwd+HOME while green in-repo.
+    How a shell enters an environment is the MACHINE RECORD's
+    (`configuration.md` § 5 M-1) -- conftest's probed record carries it, so
+    the calculation needs no config of its own.  (It wrote a
+    ``.molbuilder.json`` `script_generation` until 2026-10-02, when that
+    section left the file.)
     """
     struct = Structure(elements=["S", "C", "C", "H"],
                        positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.78],
@@ -67,9 +65,6 @@ def calc(tmp_path):
         default_siesta_stages("publishable"),
         engine="siesta", shape="hierarchical", name="calc", source=str(src))
     D.write_description(desc, dest)
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "source /opt/conda/etc/profile.d/conda.sh"}}))
     _pseudos_for(dest, ["S", "C", "H"])
     return dest
 
@@ -88,12 +83,12 @@ def test_prep_renders_the_deck_it_used_to_demand(calc):
     the producer ran at *produce*.  A described calculation carries no deck at
     all, so this passing is the migration."""
     assert not list(calc.glob("*.fdf"))
-    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=32))
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=32, cpus_per_task=1))
     assert (calc / "01_coarse" / "calc_01_coarse.fdf").is_file()
 
 
 def test_the_five_steps_all_leave_their_mark(calc):
-    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8, cpus_per_task=1))
     assert (calc / "environment.json").is_file()        # 1 resolve the machine
     assert (calc / "01_coarse" / "calc_01_coarse.fdf").is_file()      # 3 render the deck
     assert (calc / "01_coarse" / "calc_01_coarse.run.sh").is_file()   # 4 render the wrapper
@@ -104,7 +99,7 @@ def test_floor_three_is_written_by_prep_not_read_by_it(calc):
     """`describe` writes floor 2 only.  Until `prep` derived floor 3 from it,
     there was nothing to derive it from and nothing that did."""
     assert not (calc / "job-set.json").exists()
-    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8, cpus_per_task=1))
     js = json.loads((calc / "job-set.json").read_text())
     assert [j["name"] for j in js["jobs"]] == ["coarse"]
     assert js["jobs"][0]["script"] == "calc_01_coarse.fdf"
@@ -122,7 +117,7 @@ def test_the_deck_records_the_rank_count_it_was_rendered_for(calc):
     Both now come from one resolved element, so they cannot disagree.
     """
     from molbuilder.script_emit import _extract_bench_marks_dict
-    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=32))
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=32, cpus_per_task=1))
     marks = _extract_bench_marks_dict(
         (calc / "01_coarse" / "calc_01_coarse.fdf").read_text())
     assert marks.get("mpi_np") == 32
@@ -135,7 +130,7 @@ def test_the_launch_agreement_holds_for_a_deck_prep_just_made(calc):
     from molbuilder.jobset.agreement import launch_agreement
     from molbuilder.jobset._cli import _load
     from molbuilder.jobset.materialize import job_dir_names, shape_of
-    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=32))
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=32, cpus_per_task=1))
     js, _ = _load(str(calc))
     # the deck lives in the JOB's directory (L1, roadmap 7.10) -- ask the
     # naming authority, exactly as the launch door does.
@@ -160,12 +155,12 @@ def test_the_named_stages_overrides_are_what_got_rendered(calc):
     """`coarse` is CG at a loose force tolerance and `medium` is Broyden at a
     tighter one.  Rendering the wrong rung would be silent, so this names the
     values rather than asserting a file exists."""
-    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8, cpus_per_task=1))
     coarse = (calc / "01_coarse" / "calc_01_coarse.fdf").read_text()
     assert "MD.TypeOfRun CG" in coarse
     assert "MD.MaxForceTol 0.05" in coarse
 
-    prep_calculation(calc, "medium", allocation=Resources(mpi_np=8))
+    prep_calculation(calc, "medium", allocation=Resources(mpi_np=8, cpus_per_task=1))
     medium = (calc / "02_medium" / "calc_02_medium.fdf").read_text()
     assert "MD.TypeOfRun Broyden" in medium
     assert "MD.MaxForceTol 0.04" in medium
@@ -177,14 +172,14 @@ def test_the_deck_carries_its_stages_token_and_header(calc):
     the science of the config being rendered, so the comment cannot drift from
     the keywords below it (decision 27).  Gated here because `prep` is the
     token's producer now -- ``molbuilder fdf --stage N`` was, until it went."""
-    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8, cpus_per_task=1))
     coarse = (calc / "01_coarse" / "calc_01_coarse.fdf").read_text()
     assert "calc_01_coarse.out" in coarse
     assert "# Stage 01_coarse --" in coarse
 
 
 def test_the_template_supplies_what_no_stage_varies(calc):
-    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8, cpus_per_task=1))
     assert "MeshCutoff 300.0" in (calc / "01_coarse" / "calc_01_coarse.fdf").read_text()
 
 
@@ -203,7 +198,7 @@ def test_pseudopotentials_beside_the_calculation_need_no_library(calc):
     calculation are used without this field); `pseudos.psml_sources` (the
     folder first, then the library -- one rule for prep and the gate).
     """
-    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=32))
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=32, cpus_per_task=1))
     report = (calc / "01_coarse" / "calc_01_coarse.validation.txt").read_text()
     assert "[config.psml_lib" not in report, report
 
@@ -235,11 +230,8 @@ def test_the_folder_wins_over_a_library_that_lacks_a_species(
         default_siesta_stages("publishable"),
         engine="siesta", shape="hierarchical", name="calc", source=str(src)),
         dest)
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
     _pseudos_for(dest, ["S", "C", "H"])            # the folder: all three
-    prep_calculation(dest, "coarse", allocation=Resources(mpi_np=32))
+    prep_calculation(dest, "coarse", allocation=Resources(mpi_np=32, cpus_per_task=1))
     report = (dest / "01_coarse" / "calc_01_coarse.validation.txt").read_text()
     assert "[config.psml_lib" not in report, report
 
@@ -252,7 +244,7 @@ def test_a_folder_with_no_description_is_refused_by_name(tmp_path):
     (tmp_path / "empty").mkdir()
     with pytest.raises(PrepError, match=r"jobset init"):
         prep_calculation(tmp_path / "empty", "coarse",
-                         allocation=Resources(mpi_np=8))
+                         allocation=Resources(mpi_np=8, cpus_per_task=1))
 
 
 def test_a_structure_that_changed_since_describing_is_refused(calc, tmp_path):
@@ -268,12 +260,12 @@ def test_a_structure_that_changed_since_describing_is_refused(calc, tmp_path):
                   positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),
                   vacuum=(10.0, 10.0, 10.0)).to_xyz())
     with pytest.raises(PrepError, match=r"structure has changed"):
-        prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
+        prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8, cpus_per_task=1))
 
 
 def test_a_stage_that_is_not_in_the_ladder_is_refused(calc):
     with pytest.raises(PrepError, match=r"coarse"):
-        prep_calculation(calc, "nonesuch", allocation=Resources(mpi_np=8))
+        prep_calculation(calc, "nonesuch", allocation=Resources(mpi_np=8, cpus_per_task=1))
 
 
 # --------------------------------------------------------------------- #
@@ -300,14 +292,15 @@ def test_the_warm_retry_budget_travels_the_described_route(calc):
     assert "value = 1" in body, body
     tpl.write_text(head + sep + body.replace("value = 1", "value = 4", 1)
                    + nxt + rest)
-    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8, cpus_per_task=1))
     text = (calc / "01_coarse" / "calc_01_coarse.run.sh").read_text()
     assert "_siesta_retry_max=4" in text, (
         "the template's warm-retry budget never reached the wrapper -- "
         "the § 6.2 translation at resolve.py is broken again (A-5)")
     # an explicitly stated allocation wins over the template's answer
     prep_calculation(calc, "coarse",
-                     allocation=Resources(mpi_np=8, continue_retries=2))
+                     allocation=Resources(mpi_np=8, cpus_per_task=1,
+                                         continue_retries=2))
     text = (calc / "01_coarse" / "calc_01_coarse.run.sh").read_text()
     assert "_siesta_retry_max=2" in text
 
@@ -335,7 +328,7 @@ def test_the_descriptions_notify_block_reaches_the_wrapper(calc):
     obj["notify"] = {"on_scf_converged": True, "every_hours": 4}
     task_file.write_text(_json.dumps(obj))
 
-    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8, cpus_per_task=1))
 
     wrappers = list(calc.rglob("*.run.sh"))
     assert wrappers, "prep wrote no wrapper"
@@ -375,7 +368,7 @@ def test_the_descriptions_channel_names_reach_the_wrapper(calc):
     obj["notify"] = {"on_scf_converged": True, "channels": ["slack", "lab"]}
     task_file.write_text(_json.dumps(obj))
 
-    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8, cpus_per_task=1))
     text = "\n".join(w.read_text() for w in calc.rglob("*.run.sh"))
     assert '--notify-channels "slack,lab"' in text
 
@@ -395,7 +388,7 @@ def test_an_EMPTY_channel_list_survives_prep(calc):
     obj["notify"] = {"on_scf_converged": True, "channels": []}
     task_file.write_text(_json.dumps(obj))
 
-    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8, cpus_per_task=1))
     text = "\n".join(w.read_text() for w in calc.rglob("*.run.sh"))
     assert '--notify-channels ""' in text
 
@@ -403,6 +396,6 @@ def test_an_EMPTY_channel_list_survives_prep(calc):
 def test_a_description_without_notify_leaves_the_wrapper_alone(calc):
     """The other half: absent must stay absent all the way down, or every
     prepped bundle changes for people who never asked for this."""
-    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8))
+    prep_calculation(calc, "coarse", allocation=Resources(mpi_np=8, cpus_per_task=1))
     text = "\n".join(w.read_text() for w in calc.rglob("*.run.sh"))
     assert "--notify-" not in text

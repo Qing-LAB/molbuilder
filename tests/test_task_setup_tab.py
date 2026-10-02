@@ -568,21 +568,17 @@ def _child_env_with_a_config(tmp_path):
     looked for in the working directory (`configuration.md` § 2.1a).
 
     So the child is given a root of its own, holding the one thing the render
-    requires: ``script_generation.activation``.  ``monkeypatch`` cannot reach
-    across a process boundary, which is why the environment is built here
-    rather than set on the parent.
+    requires: a probed record, carrying the activation -- its one home
+    (`configuration.md` § 5 M-1).  ``monkeypatch`` cannot reach across a
+    process boundary, which is why the environment is built here rather than
+    set on the parent.
     """
-    import json
     import os
     root = tmp_path / "child-config-root"
     root.mkdir(parents=True, exist_ok=True)
-    (root / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"preamble": "module load mamba",
-                              "activation": "source activate"},
-    }))
-    # AND THE CHILD'S MACHINE IS PROBED.  The child resolves its scope from
-    # the env var below, not from this process's -- and prep refuses without
-    # a record there (`running-a-job.md` § 3.1).
+    # THE CHILD'S MACHINE IS PROBED.  The child resolves its scope from the
+    # env var below, not from this process's -- and prep refuses without a
+    # record there (`running-a-job.md` § 3.1).
     from conftest import write_machine_record
     write_machine_record(at=root)
     env = dict(os.environ)
@@ -629,9 +625,12 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
         (d / out["template_name"]).write_text(out["template_text"])
         over = _json.loads(out["handover_text"])
 
+        # The run card states its launch shape, as a run's must
+        # (`architecture.md` § 5.2).
         described = {"schema": "molbuilder/task@1", "engine": over["engine"],
                      "shape": "flat", "run": over["run"],
                      "structure": over["structure"], "varies": [],
+                     "execution": {"mpi_np": 1, "omp_threads": 1},
                      "stages": [{"name": "coarse", "enabled": True,
                                  "overrides": {}}]}
         s = web_client.post("/api/task-setup/save",
@@ -731,6 +730,7 @@ def test_a_dispersion_turned_off_on_the_form_is_off_in_the_deck(
     described = {"schema": "molbuilder/task@1", "engine": over["engine"],
                  "shape": "flat", "run": over["run"],
                  "structure": over["structure"], "varies": [],
+                 "execution": {"threads": 1},
                  "stages": [{"name": "coarse", "enabled": True,
                              "overrides": {}}]}
     s = web_client.post("/api/task-setup/save",
@@ -1143,8 +1143,7 @@ class TestTheTabShowsWhatAPrepWouldResolve:
         from conftest import write_machine_record
         write_machine_record()
         (tmp_path / "molbuilder.json").write_text(_json.dumps(
-            {"script_generation": {"preamble": "source /home/local/conda.sh",
-                                   "activation": "conda activate"}}))
+            {"launch": {"mode": "direct"}}))
         if bundle_cfg:
             (b / ".molbuilder.json").write_text(_json.dumps(bundle_cfg))
         return b
@@ -1157,8 +1156,8 @@ class TestTheTabShowsWhatAPrepWouldResolve:
         assert r["ok"], r
         # the shape config_provenance produces, not a re-description of it
         assert {s["scope"] for s in r["sources"]} >= {"machine", "project"}
-        assert "script_generation.preamble" in r["effective"]
-        assert "from" in r["effective"]["script_generation.preamble"]
+        assert "launch.mode" in r["effective"]
+        assert "from" in r["effective"]["launch.mode"]
 
     # `test_a_remote_target_is_warned_and_a_local_one_is_not` and
     # `test_the_warning_is_the_same_rule_the_cli_uses` were RETIRED

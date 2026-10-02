@@ -92,13 +92,16 @@ def _describe(tree, monkeypatch, positions, shape="hierarchical"):
         "--name", "H2", "--psml-lib", "pseudopotential"])
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "frequency" / "F"
-    (bundle / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": f"source {CONDA_SH}"}}))
+    # How a shell enters conda HERE is this machine's record's to say -- the
+    # activation's one home (`configuration.md` § 5 M-1).
+    from conftest import write_machine_record
+    write_machine_record(script_generation={
+        "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
     task = json.loads((bundle / "task.json").read_text())
-    # Two atoms: the person's own door for the rank count, not the
-    # target's sizing (prep says so when it sizes from the target).
-    task["execution"] = {**task.get("execution", {}), "mpi_np": 2}
+    # Two atoms, two ranks, one thread: the run states its shape
+    # (`architecture.md` § 5.2).
+    task["execution"] = {**task.get("execution", {}), "mpi_np": 2,
+                         "omp_threads": 1}
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
     return bundle
 

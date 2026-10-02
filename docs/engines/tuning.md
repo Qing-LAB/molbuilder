@@ -604,10 +604,11 @@ sharing regime is the measured territory of the ELPA2 GPU paper
 (`references.bib: Yu2021` — Yu et al., *Comput. Phys. Commun.* **262**,
 107808, 2021), and MPS admits at most **48 processes per device** on the
 A100's generation (`references.bib: NvidiaMPS`). **This stack's ELPA is
-built without NCCL** (checked in its build log), which is why the
-wrapper's default lands near ~4 ranks per GPU with MPS — the tuned point
-for this kind of build; what NCCL is and when it would change this is
-answered at the end of this section.
+built without NCCL** (checked in its build log), which is why about 4 ranks
+per GPU with MPS is the point to state on the run card for this kind of build
+— the wrapper has no default of its own (`execution/architecture.md` § 5.2);
+what NCCL is and when it would change this is answered at the end of this
+section.
 
 **The node arithmetic — the 48 is a ceiling, not a target.** Per device,
 K ranks each holding C cores must fit the node: **K × C ≤ cores / G**.

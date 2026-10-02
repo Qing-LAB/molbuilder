@@ -31,7 +31,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from .diagnostics import EXTENSION_TO_CATEGORY, get_capabilities
 # The channel-name rule, from the module that owns the file those names
@@ -68,12 +68,6 @@ if TYPE_CHECKING:                       # floor 5 reading floor 3's object
 # SystemLabel often contains dots.
 _SAFE_WRAPPER_NAME_RE = re.compile(r"^[A-Za-z0-9._\-]+$")
 
-
-# The record's spelling for a wall.  This module had its own copy
-# (`_slurm_walltime`), byte-identical, whose docstring named the fold as a
-# candidate "when the scheduler subsystem exists" -- it exists, and this is
-# it.  One object, one module (`docs/design.md`, "Architecture").
-from .scheduler.quantities import slurm_time
 
 
 class WrapperError(Exception):
@@ -1666,178 +1660,57 @@ def _ending_question_func() -> str:
 
 
 
-def _gpu_runtime_defaults_block() -> str:
-    """Bash that probes hardware and computes GPU-mode MPI/OMP defaults.
+def _gpu_runtime_block() -> str:
+    """Bash for a GPU run's PLACEMENT: whether MPS is available, and the
+    NUMA node the GPU is attached to.  It sets no rank or thread count.
 
-    Encodes the GPU-mode placement policy for our ELPA-CUDA build
-    (single workstation, 1 GPU, no NCCL).  Inputs come from
-    ``lscpu`` / NVML / kernel sysfs; outputs are shell variables
-    consumed by the rest of the SIESTA wrapper template:
+    **The counts are the stated ones** *(2026-10-02, `architecture.md`
+    § 5.2)*.  This block computed its own until then -- about
+    ``phys_cores / 4`` ranks with MPS, 2 or 1 without, the core budget divided
+    among them as threads, overridable by ``MOLBUILDER_MPI_NP`` /
+    ``MOLBUILDER_OMP_NUM_THREADS`` -- and ``--mps`` re-derived them after the
+    flags were parsed, replacing even a stated, baked rank count.  Each was a
+    number nobody stated for that run.
 
-      * ``_gpu_mpi_np_default``: with MPS, ``phys_cores // 4`` capped
-        at 4 (ELPA 2024.05 release notes report 4 ranks/GPU as the
-        no-NCCL throughput optimum; BSC MareNostrum5 SIESTA-ACC report
-        confirms on V100/A100/H100); without MPS, 2 dual-socket or
-        ``cps >= 16``, else 1.
-      * ``_gpu_numa``: NUMA node the GPU is attached to.  Baked at
-        script-generation time by :func:`_probe_gpu0_numa` (NVML
-        ``nvmlDeviceGetPciInfo`` + kernel sysfs
-        ``/sys/bus/pci/devices/<id>/numa_node``); overridable at run
-        time via ``MOLBUILDER_GPU_NUMA``.  Either an integer string
-        ("0", "1", ...) or the literal "unknown" when no GPU was
-        present at generation time / NVML failed / sysfs reports
-        "-1".  Stable: not subject to nvidia-smi tabular-layout drift.
-      * ``_gpu_budget``: phys-core budget the OMP arithmetic divides.
-        Two regimes:
-          - NUMA-pinned (``_gpu_numa != "unknown"`` AND
-            ``_n_sockets >= 2`` AND numactl is on PATH): ``_cps`` --
-            the full GPU-proximate socket.  The other socket sits
-            idle, leaving plenty of room for the kernel + ELPA-GPU
-            host driver thread without reserving a core.
-          - Single-socket OR GPU-NUMA unknown: ``_phys_cores - 1``
-            -- the whole box minus 1 core for the driver thread,
-            because there is no other socket to absorb it.
-      * ``_omp_default``: ``_gpu_budget // mpi_np`` -- divide the
-        budget across ranks.  Policy revised 2026-06-16 after the
-        OMP-per-rank correction: OMP threads DO accelerate ELPA's
-        host-side eigensolver stages and SIESTA's non-solver host
-        code even when ``Diag.ELPA.GPU`` is on.  The "GPU choice at
-        runtime not compatible with OpenMP" ELPA docs sentence
-        applies to the ``elpa_setup_gpu`` runtime-switch API
-        (2023.11+), NOT to OpenMP threading within a rank that uses
-        ``elpa_set("nvidia-gpu", 1)`` at SCF-setup time (which is
-        the path SIESTA takes when ``Diag.ELPA.GPU .true.`` is set).
-      * Override knobs (read here so the same banner can name them):
-        ``MOLBUILDER_MPI_NP`` and ``MOLBUILDER_OMP_NUM_THREADS``.
+    Outputs, consumed by the rest of the SIESTA wrapper:
 
-    The block also prints a kubectl-context-switch-style one-line
-    banner to stderr so the user sees the mode change without scrolling
-    through the full wrapper banner.  A second line surfaces the
-    derived "chosen X ranks × Y threads = Z of phys_cores" arithmetic
-    and the GPU-NUMA proximity so the user can decide whether to
-    override.  (A ``molbuilder envs advise`` guided pick stood here until
-    2026-09-12; it guessed what `jobset prep bench` MEASURES, on the login
-    node rather than the compute node, and is gone.)
-    pick.
+      * ``_have_mps`` / ``_use_mps_default``: NVIDIA's Multi-Process Service
+        is on PATH, and whether this run starts it (``--mps`` / ``--no-mps``
+        and ``MOLBUILDER_USE_MPS`` decide; the MPS block below gates it on
+        ranks sharing a GPU).
+      * ``_gpu_numa``: the NUMA node GPU 0 is attached to, baked at
+        script-generation time by :func:`_probe_gpu0_numa` (NVML + kernel
+        sysfs); overridable at run time via ``MOLBUILDER_GPU_NUMA``.  An
+        integer string, or ``"unknown"``.
+      * ``_numa_wrap_gpu``: the ``numactl`` prefix that keeps a single-GPU
+        run on its GPU's socket, where the box has two and numactl is there.
     """
     return (
-        "# --- GPU mode: ELPA-CUDA defaults (no NCCL in our build) ---\n"
-        "# Policy researched 2026-06-15; sources cited in runwrap.py.\n"
-        "# Override anywhere via MOLBUILDER_MPI_NP /\n"
-        "# MOLBUILDER_OMP_NUM_THREADS / wrapper '-np N' / MB_NP env.\n"
-        '# Hardware probe -- prefer lscpu because it gives PHYSICAL\n'
-        '# cores (HT-aware); nproc returns logical, which counts HT\n'
-        '# siblings and would make _cps too large -> over-binding.\n'
-        # ``|| true`` INSIDE the substitution: an assignment whose
-        # substitution fails triggers errexit, so with lscpu absent the
-        # wrapper died HERE -- before the nproc fallback written for
-        # exactly that case, and before -h could print usage (R9).
-        # (the probe itself is hoisted to `env_prefix`, so it runs on
-        # the CPU path too; $_phys_cores / $_n_sockets / $_cps are
-        # already set when this block starts.)
+        "# --- GPU mode: placement (MPS, NUMA) -- the counts are stated ---\n"
         # ---- MPS availability ----
-        # NVIDIA Multi-Process Service: a daemon that lets multiple
-        # CUDA client processes share one GPU CONCURRENTLY via Hyper-Q
-        # instead of serialising through the driver context.  Without
-        # MPS, our 2 MPI ranks queue their CUDA calls sequentially --
-        # one rank's ELPA-GPU diag must finish before the other's can
-        # start.  With MPS, both ranks' kernels run on the GPU at the
-        # same time.  The binary lives on the HOST DRIVER side
-        # (nvidia-cuda-mps-control); not a conda package.
+        # NVIDIA Multi-Process Service: a daemon that lets multiple CUDA
+        # client processes share one GPU CONCURRENTLY via Hyper-Q instead of
+        # serialising through the driver context.  The binary lives on the
+        # HOST DRIVER side (nvidia-cuda-mps-control); not a conda package.
         '_have_mps=0\n'
         'if command -v nvidia-cuda-mps-control >/dev/null 2>&1; '
         'then _have_mps=1; fi\n'
-        # User overrides: --mps / --no-mps flag wins; env var second;
-        # default ON when MPS is available AND the run will use >= 2
-        # ranks (single-rank MPS adds overhead with no concurrency
-        # benefit).  Decided AFTER mpi_np resolves below.
+        # --mps / --no-mps win (the args block); the env var second; on when
+        # MPS is available.  The MPS block starts it only when ranks share
+        # a GPU -- single-rank MPS is overhead with no concurrency benefit.
         '_use_mps_default="${MOLBUILDER_USE_MPS:-$_have_mps}"\n'
-        '# Echo what we detected so the user can sanity-check it.\n'
-        '# Format ``mps_available=yes/no`` to make it obvious that\n'
-        '# this is a binary capability flag, not a count (no matter\n'
-        '# how many MPI ranks you run, there\'s exactly ONE MPS\n'
-        '# daemon per GPU -- the ranks share it).\n'
         '_have_mps_str="no"; '
         '[ "$_have_mps" = "1" ] && _have_mps_str="yes"\n'
-        # The topology half of this line moved to the probe that
-        # measures it (see _phys_cores_probe_block); what is left is
-        # GPU's own.
         'echo "molbuilder: mps_available=$_have_mps_str" >&2\n'
-        # ---- MPI rank policy ----
-        # With MPS: target ~4 ranks/GPU (ELPA User Guide §"ELPA -
-        # Usability" reports 4 ranks/GPU as the sweet spot without
-        # NCCL on 2024.05; our older 2021.11.001 build runs in the
-        # same regime).  Cap so each rank gets >= 4 cores -- ranks
-        # crammed onto fewer cores lose to MPI overhead.
-        # Without MPS: ranks serialise on the GPU, so 2 is the
-        # practical ceiling (the prior 2026-06-15 policy).
-        # A FUNCTION, not inline (R9/F6, 2026-08-12): the policy branches
-        # on the MPS state, and --mps/--no-mps are parsed LATER in the
-        # args block -- computed inline, --no-mps without -np kept the
-        # 4-rank MPS-regime default the no-MPS policy caps at 2.  The
-        # args block re-invokes this after parsing (idempotent).
-        '_mb_gpu_rank_policy() {\n'
-        'if [ "$_use_mps_default" = "1" ]; then\n'
-        '    _gpu_mpi_np_default=$(( _phys_cores / 4 ))\n'
-        '    [ "$_gpu_mpi_np_default" -gt 4 ] && _gpu_mpi_np_default=4\n'
-        '    [ "$_gpu_mpi_np_default" -lt 1 ] && _gpu_mpi_np_default=1\n'
-        'else\n'
-        '    if [ "$_n_sockets" -ge 2 ]; then\n'
-        '        _gpu_mpi_np_default=2\n'
-        '    elif [ "$_cps" -ge 16 ]; then\n'
-        '        _gpu_mpi_np_default=2\n'
-        '    else\n'
-        '        _gpu_mpi_np_default=1\n'
-        '    fi\n'
-        'fi\n'
-        # NO ATOM-COUNT CLAMP (user ruling, 2026-09-03).  The `n_atoms`
-        # PARAMETER went with it on 2026-09-12 -- it survived the ruling,
-        # feeding only an `n_atoms_lit` literal that nothing interpolated, so
-        # this function took an argument it could not act on.  A clamp stood
-        # here mirroring the CPU path's, on the theory that
-        # ``mpi_np > n_atoms`` causes the ``propor IMAX=0`` abort.  That
-        # theory is wrong -- the abort came from a psml problem, not from
-        # the system's size -- and how many ranks to spend on a system is
-        # the user's decision, not the wrapper's.  What replaces it is a
-        # NOTICE about orbitals per rank, emitted once on the shared path
-        # below; see `_orbitals_per_rank_notice`.
-        #
-        # return 0, EXPLICITLY: the body would otherwise end on the
-        # `[ ... -lt 1 ] && ...` guard, which FAILS on every box whose
-        # computed default is >= 1 -- and a function's return is its last
-        # command's status, so under set -e the wrapper died at the first
-        # bare call below (found 2026-08-12 by the F6 probe).  It used to
-        # be the atom clamp that covered this; with the clamp gone the
-        # explicit return is the whole answer.
-        + 'return 0\n'
-        + '}\n'
-        '_mb_gpu_rank_policy\n'
-        +
         # ---- GPU NUMA proximity (probed at generation time) ----
-        # Resolved by the Python generator via ``_probe_gpu0_numa()``
-        # using NVML (the official NVIDIA library, already imported
-        # by the load-monitor blueprint) + the kernel sysfs ABI
-        # (``/sys/bus/pci/devices/<id>/numa_node``).  No string-
-        # scraping of ``nvidia-smi``'s tabular output -- that was
-        # the failure mode of the 2026-06-16 run where libnuma
-        # rejected ``--cpunodebind=N/A`` because we misread the
-        # "GPU NUMA ID" column as NUMA Affinity.
-        #
-        # Baked literal:
-        #   * an integer string ("0", "1", ...) when NVML + sysfs
-        #     report a real NUMA assignment for GPU 0
-        #   * "unknown" when no GPU present at generation time, NVML
-        #     can't bind, sysfs says "-1" (no affinity), or the host
-        #     is single-NUMA
-        # The runtime override ``MOLBUILDER_GPU_NUMA=N`` wins over
-        # the baked value (useful for moving the wrapper between
-        # boxes or when sysfs lies).
-        # NB: explicit ``is None`` check; ``probe() or "unknown"`` is
-        # WRONG because 0 is a valid NUMA node (very common on
-        # single-GPU boxes where GPU 0 sits on socket 0) and would
-        # be silently swallowed by the truthy fallback.  Caught
-        # 2026-06-16 by smoke after the libnuma N/A regression.
-        _baked_numa_literal_line() +
+        # Resolved by the Python generator via ``_probe_gpu0_numa()`` using
+        # NVML + the kernel sysfs ABI.  No string-scraping of
+        # ``nvidia-smi``'s tabular output -- that was the failure mode of
+        # the 2026-06-16 run where libnuma rejected ``--cpunodebind=N/A``.
+        # The runtime override ``MOLBUILDER_GPU_NUMA=N`` wins over the
+        # baked value.  NB: an explicit ``is None`` check, because 0 is a
+        # valid NUMA node.
+        + _baked_numa_literal_line() +
         '# Defence in depth: even if the baked / override value got\n'
         '# garbage, refuse to use it as a NUMA target unless it parses\n'
         '# as a non-negative integer.\n'
@@ -1845,59 +1718,18 @@ def _gpu_runtime_defaults_block() -> str:
         '    ""|*[!0-9]*) _gpu_numa="unknown" ;;\n'
         'esac\n'
         # ---- numactl availability + NUMA-pin decision ----
-        # numactl is the canonical tool for restricting a child
-        # process tree to one NUMA node.  We wrap mpirun (not each
-        # rank) so the cpuset is inherited uniformly by every rank
-        # OpenMPI forks.  Three conditions must all hold:
-        #   1. dual-socket+ box (single-socket has no NUMA penalty)
-        #   2. GPU NUMA known (else we don't know which socket)
-        #   3. numactl on PATH (otherwise the wrap would no-op)
+        # We wrap mpirun (not each rank) so the cpuset is inherited
+        # uniformly by every rank OpenMPI forks.  Three conditions:
+        # dual-socket+ box, GPU NUMA known, numactl on PATH.
         '_numa_wrap_gpu=""\n'
-        '_numa_pinned=0\n'
         'if [ "$_gpu_numa" != "unknown" ] && '
         '[ "$_n_sockets" -ge 2 ] && '
         'command -v numactl >/dev/null 2>&1; then\n'
         '    _numa_wrap_gpu="numactl --cpunodebind=$_gpu_numa '
         '--membind=$_gpu_numa"\n'
-        '    _numa_pinned=1\n'
         'fi\n'
-        # ---- Phys-core budget for the OMP arithmetic ----
-        # NUMA-pinned: only the GPU socket is usable, but its full
-        # capacity is available (the OTHER socket sits idle, so the
-        # kernel + ELPA-GPU host driver thread can use it -- no need
-        # to reserve a core on the GPU socket).
-        # Single-socket / NUMA unknown: whole box is in play but the
-        # driver thread shares this socket, so leave 1 core.
-        'if [ "$_numa_pinned" = 1 ]; then\n'
-        '    _gpu_budget=$_cps\n'
-        'else\n'
-        '    _gpu_budget=$(( _phys_cores - 1 ))\n'
-        '    [ "$_gpu_budget" -lt 1 ] && _gpu_budget=1\n'
-        'fi\n'
-        # OMP policy (2026-06-16): fill the budget -- one OMP thread
-        # per available core, divided across ranks.  OMP threads
-        # accelerate BOTH ELPA's host-side eigensolver stages
-        # (tridiag, back-transform) AND SIESTA's non-solver host code
-        # (H_matrix_setup, grid, nlefsm) even when Diag.ELPA.GPU is
-        # on.  See the docstring for the policy correction note.
-        '_omp_default=$(( _gpu_budget / _gpu_mpi_np_default ))\n'
-        '[ "$_omp_default" -lt 1 ] && _omp_default=1\n'
-        '# Apply env-var overrides (precedence: env > policy)\n'
-        '_gpu_mpi_np_default="${MOLBUILDER_MPI_NP:-$_gpu_mpi_np_default}"\n'
-        '_omp_default="${MOLBUILDER_OMP_NUM_THREADS:-$_omp_default}"\n'
-        '# Stringify the MPS boolean for the banner.  ``mps=on`` /\n'
-        '# ``mps=off`` reads unambiguously next to the numeric\n'
-        '# ``mpi_np=N`` / ``OMP=M`` -- no risk of the reader thinking\n'
-        '# ``mps=1`` means "1 MPS instance" (there is no count to\n'
-        '# choose: one MPS daemon per GPU, all ranks share it).\n'
-        # NO user-facing advisory here.  This block runs BEFORE the rank /
-        # OMP / MPS overrides (SLURM_NTASKS, MB_NP, -np, --mps, or a baked
-        # bench literal) are resolved, so announcing "chosen N ranks" from
-        # the probe here could contradict what actually launches.  The
-        # SINGLE authoritative GPU-resource summary is printed once, in the
-        # post-resolution launch banner (search "GPU resources"), with the
-        # real resolved values.  We only stringify the MPS default for the
-        # --dry-run banner's pre-resolution preview.
+        # ``mps=on`` / ``mps=off`` reads unambiguously next to the numeric
+        # counts in the --dry-run banner (one daemon per GPU; no count).
         '_use_mps_str="off"; '
         '[ "$_use_mps_default" = "1" ] && _use_mps_str="on"\n'
         "\n"
@@ -2521,156 +2353,39 @@ def render_run_wrapper(script_path: Path, *,
     #     -- ``python job.py`` run by hand, with no wrapper.
     env_prefix = ""
     if category == "siesta":
-        # GPU mode is detected from the .fdf (the single source of
-        # truth -- see _fdf_requests_gpu).  When on, the wrapper
-        # switches to the ELPA-CUDA runtime defaults policy
-        # (_mb_gpu_rank_policy; shipped values, not the 2026-06-15
-        # draft this comment carried until D12f):
-        #   * with MPS: mpi_np = phys_cores/4, capped at 4
-        #   * without: 2 on dual-socket / >=16-core-socket, else 1
-        #   * OMP = core budget / EFFECTIVE rank count (post-parse)
-        #   * mpirun --bind-to core --map-by package:PE=$OMP
-        # Sources: ELPA User Guide §"ELPA - Usability" (Raven A100,
-        # 2024.05 benchmarks); SIESTA performance-options doc; OpenMPI
-        # 5.0 mpirun(1) ("socket" is an alias for "package").
-        # NCCL/RCCL is NOT compiled into our ELPA 2021.11.001 build,
-        # so we sit firmly in the "multi-rank-per-GPU" regime; the
-        # 1-rank-per-GPU best case only applies when NCCL is on.
+        # GPU mode is the run's own answer (`_wants_gpu`, the one door).  It
+        # decides the GPU placement block below (MPS, NUMA) and the env --
+        # and nothing about the counts, which are stated in either mode.
         gpu_mode = (script_path.suffix.lower() == ".fdf"
                     and _wants_gpu(script_path, resources))
-        # Resolve MPI rank count.  SIESTA is fundamentally an MPI
-        # code; even single-host execution is launched via mpirun.
-        # When the user leaves mpi_np blank we default to ALL physical
-        # cores -- that matches user expectation ("the wrapper should
-        # use MPI") instead of silently emitting a bare ``siesta``
-        # invocation that ignores all but one core.
+        # THE RANKS AND THE THREADS ARE STATED (user, 2026-10-02: "explicit
+        # job config is the only way allowed"; `architecture.md` § 5.2) --
+        # and baked as stated.  An unstated count became the target's width
+        # (ranks), one (threads), or -- on a GPU -- this script's own policy,
+        # worked out at launch; each was a number nobody stated.  Whether
+        # both are stated is asked ONCE, before anything is written:
+        # `prep_inputs.launch_refusal` for a run, the grid's own point for a
+        # benchmark (`MachineTranslation`).
         #
-        # No atom-count clamp: see the ruling recorded at the resolution
-        # below.
-        # THE TARGET'S CORES, NOT THIS BOX'S (user, 2026-09-02).  A bundle
-        # prepped on a 20-core desk for a 64-core node baked 20 and, run
-        # bare there (`launch --mode direct`), used 20 -- a number about the
-        # wrong machine.  Under sbatch it was masked, because SLURM_NTASKS
-        # wins; direct execution has no such cover.  `machine_record` is the
-        # target's own record, already carried here for exactly this class of
-        # fact, and `auto_ranks` is the same rule the .sbatch header uses --
-        # so the two agree by construction rather than by coincidence.
-        # THE SAME DOOR THE `.sbatch` PATH USES.  It resolves the record from
-        # the project directory when the caller passed none; this path only
-        # looked at the argument, so the pair A9 governs read two different
-        # records -- the header sized from the target and the baked default
-        # refused, for one and the same job.
-        _rec = machine_record
-        if _rec is None:
-            from .scheduler.record import AmbiguousTarget as _Ambiguous
-            try:
-                from .scheduler import machine_for
-                _rec = machine_for(project_dir or script_path.parent)
-            except _Ambiguous:
-                # NOT "no record" -- THE OPPOSITE, and swallowing it told the
-                # person the reverse of the truth.  `AmbiguousTarget` means
-                # several machines ARE on file and none was named; its own
-                # message lists them, `--target this` included.  Folding it
-                # into `_rec = None` produced *"this machine has no record --
-                # run `jobset probe --write`"*, which is false when the record
-                # is right there, and sends you to a command that cannot help:
-                # probing again rewrites the record that already exists, and
-                # `probe --name this` refuses because `this` is reserved.  So
-                # the advice led to a dead end and the design looked
-                # self-contradictory when it was only mis-reported
-                # (user, 2026-09-08).  Let the real refusal through.
-                raise
-            except Exception:                                 # noqa: BLE001
-                # A genuinely absent record: the refusal below names the
-                # command that creates one, and that IS the right advice.
-                _rec = None
-        _target = auto_ranks(_rec, None,
-                             getattr(resources, "domain", None))
-        _whose = "the selected target/domain's cores"
-        if _target is None and (mpi_np is None or int(mpi_np) < 1):
-            # ONE RULE, NO SPECIAL CASE (user, 2026-09-02: "even for the
-            # current machine, the environment.json must be present
-            # otherwise user is required to run jobset probe first").
-            #
-            # A workstation was allowed to fall back to `physical_core_count`
-            # for part of this day, on the reasoning that *this box IS the
-            # machine, so its own count is not about somewhere else*.  True,
-            # and still the wrong shape: the number then comes from a
-            # different source depending on how the bundle was set up, so
-            # "where did 20 come from" has two answers -- and probing is one
-            # command.  The record is the ONE place a core count is read
-            # from (`running-a-job.md` § 3.1).
-            _local = _rec is None
-            from .scheduler.record import probe_command as _probe_command
-            raise WrapperError(
-                "cannot size this job: nothing states a rank count and "
-                + ("this machine has no record."
-                   if _local else
-                   "the target's record carries no core count.")
-                + "\n  Either state it -- `execution` in task.json, or "
-                  "--np N on the prep -- or record the machine's topology:\n"
-                + ("    " + _probe_command(None) + "\n"
-                   if _local else
-                   # WHICH MACHINE the record describes is not in it, so
-                   # the steps are said in words: re-probe it where it is,
-                   # bring the record here, and let the calculation follow
-                   # -- its snapshot is what was read (W52, and the fix-6
-                   # review: re-probing alone changed nothing).
-                   "    re-probe the machine it describes -- `molbuilder "
-                   "jobset probe --write` on it, with --name and its name "
-                   "for a named target, then its record copied here -- and "
-                   "delete this calculation's environment.json, so the "
-                   "next prep reads the new record\n")
-                + "  A rank count is read from a record and nowhere else, so "
-                  "that a number is never about the wrong machine."
-            )
-        phys = _target or 1
-        # THE RANK COUNT IS THE USER'S (user ruling, 2026-09-03).  An
-        # atom-count clamp stood here -- the auto path silently lowered
-        # the default to ``n_atoms``, and a user-set value above it got a
-        # WARNING predicting a ``propor IMAX=0`` abort.  Both are gone.
-        # The abort they cited came from a PSML problem, not from the
-        # system's size, so the rule was unscientific: it gave the right
-        # advice for the wrong reason on the systems where it happened to
-        # help, and refused ranks that would have been fine on the rest.
-        # Whether a rank count suits a system is not the wrapper's
-        # judgement to make.
-        #
-        # What is objective, and is a NOTICE rather than a limit: SIESTA
-        # distributes ORBITALS across ranks, so orbitals-per-rank is the
-        # occupancy.  At or below one, ranks have nothing to hold -- see
-        # `_orbitals_per_rank_notice`, emitted below against the rank
-        # count actually resolved at run time.
-        if mpi_np is None or int(mpi_np) < 1:
-            resolved_mpi = max(1, phys)
-            mpi_source = f"auto: {_whose} ({phys})"
-        else:
-            resolved_mpi = int(mpi_np)
-            mpi_source = "user-set"
-
-        # OMP threads.  SIESTA mainline is mostly NOT OMP-aware;
-        # pure MPI + OMP=1 is the standard SIESTA recipe.  User can
-        # explicitly request hybrid by setting omp_threads > 1 (only
-        # meaningful with an OMP-compiled SIESTA build).
-        if omp_threads is None:
-            resolved_omp = 1
-            omp_source   = "default; SIESTA isn't reliably OMP-aware"
-        else:
-            resolved_omp = max(1, int(omp_threads))
-            omp_source   = "user-set"
+        # THE RANK COUNT IS THE USER'S (user ruling, 2026-09-03), and nothing
+        # lowers it either: what is objective -- orbitals per rank -- is a
+        # NOTICE (`_orbitals_per_rank_notice`), against the count actually
+        # resolved at run time.
+        resolved_mpi = int(mpi_np)
+        resolved_omp = int(omp_threads)
 
         # NOTE: the actual launch command is computed at RUN time by
         # the probe block below, NOT here -- the wrapper picks
         # ``mpirun -np $_mpi_np siesta`` vs bare ``siesta`` based on
         # what ``siesta --version`` reports for the currently-installed
         # binary AND the runtime $_mpi_np value (from -np / MB_NP /
-        # generation-time default).  ``inner`` is the post-probe
-        # shell expression; the launch_block at the bottom of this
-        # function wraps it in ``set +e`` + propor-detection.  The
+        # the stated value).  ``inner`` is the post-probe shell
+        # expression; the launch_block at the bottom of this function
+        # wraps it in ``set +e`` + propor-detection.  The
         # ``description`` string here is for the wrapper file header
         # only -- the user's actual -np at run time may differ.
         inner = f"$_launch_cmd {script_name} > $_out_file"
-        description = f"SIESTA run, default -np {resolved_mpi}"
+        description = f"SIESTA run, -np {resolved_mpi} as stated"
 
         # ---- Argument-parsing prelude (SIESTA only) ----
         # The wrapper accepts ``-np N`` (or env var ``MB_NP=N``) so
@@ -2694,84 +2409,22 @@ def render_run_wrapper(script_path: Path, *,
         # ORDER matters: --continue/--force are recognised first so
         # callers can combine them with -np in any order
         # (``--continue -np 8`` and ``-np 8 --continue`` both work).
-        # GPU-mode default expressions for ``_mpi_np_default`` /
-        # ``_omp_threads_default``.  Precedence in GPU mode:
         #
-        #   1. User explicitly set ``mpi_np`` / ``omp_threads`` on the
-        #      form (the values arrive in this function as non-None
-        #      kwargs) -- bake them into the wrapper as literal ints.
-        #   2. User left them auto (kwargs are None) AND gpu_mode is
-        #      on -- defer to the runtime-probed GPU policy via
-        #      ``$_gpu_mpi_np_default`` / ``$_omp_default`` (set by
-        #      _gpu_runtime_defaults_block injected earlier in
-        #      env_prefix).
-        #   3. CPU mode -- bake the resolved integer (existing path).
-        #
-        # The pre-2026-06-15 shape skipped step 1 and always used the
-        # bash shell var in GPU mode, silently dropping the user's
-        # form choices.
-        user_set_mpi = mpi_np is not None
-        user_set_omp = omp_threads is not None
-        # CPU-branch defaults: resolved_mpi already reflects the user's
-        # choice or the target's own width -- bake it verbatim.
-        cpu_mpi_default = str(resolved_mpi)
-        cpu_omp_default = str(resolved_omp)
-        # GPU-branch defaults: honour an explicit user-set choice, else
-        # use the runtime-probed GPU policy variables emitted by
-        # _gpu_runtime_defaults_block.  When the wrapper is generated
-        # in CPU mode (no GPU defaults block emitted) but the user
-        # later toggles Diag.ELPA.GPU .true. in the .fdf, those vars
-        # don't exist -- fall back to safe hardcoded 4 ranks / 1 OMP
-        # (the ELPA 2024.05 no-NCCL throughput optimum on 1 GPU).
-        if user_set_mpi:
-            gpu_mpi_default = str(resolved_mpi)
-        elif gpu_mode:
-            gpu_mpi_default = "$_gpu_mpi_np_default"
-        else:
-            gpu_mpi_default = "4"
-        if user_set_omp:
-            gpu_omp_default = str(resolved_omp)
-        elif gpu_mode:
-            gpu_omp_default = "$_omp_default"
-        else:
-            gpu_omp_default = "1"
-        # Runtime selector: re-read the .fdf at LAUNCH (not at
-        # generation) so a user who manually toggles ``Diag.ELPA.GPU``
-        # in the .fdf after the wrapper is emitted gets the right
-        # rank count automatically.  Before this (2026-06-26 fix),
-        # gpu_mode was baked at gen time -- a CPU-mode bake left
-        # _mpi_np_default=20 in place, which OOM'd the GPU when the
-        # user later set Diag.ELPA.GPU .true.  See task #36.
+        # THE STATED COUNTS, BAKED -- the same two in GPU and CPU mode.  A
+        # GPU-mode policy value stood here until 2026-10-02, and the deck was
+        # re-read at LAUNCH to choose between the two sets: a wrapper that
+        # answered differently from the deck it was rendered with, for a
+        # hand-edited deck.
         _mpi_np_default_assignment = (
-            f'# Default mpi_np / omp_threads -- re-evaluated at LAUNCH\n'
-            f'# from the current .fdf so toggling the GPU flag after\n'
-            f'# generation picks up the right rank count (task #36 fix).\n'
-            f'# SAME RULE as generation (_fdf_requests_gpu), and it has to\n'
-            f'# be: fdf ignores case AND . - _ in a keyword, so the name is\n'
-            f'# squashed before comparing; and libfdf takes the FIRST match\n'
-            f'# (fdf_locate stops there), so the first value wins.\n'
-            f'# This matched "diag.elpa.gpu" literally and kept the LAST\n'
-            f'# value until 2026-09-18 -- a deck spelling Diag_ELPA_GPU got\n'
-            f'# the GPU env at prep and CPU rank defaults here.\n'
-            f'_mb_gpu_val=$(awk \'{{ sub(/\\r$/, ""); sub(/#.*/, "") }} {{ lk = tolower($1) }} lk == "%block" {{ inb = 1; next }} lk == "%endblock" {{ inb = 0; next }} inb {{ next }} {{ k = lk; gsub(/[._-]/, "", k) }} (k == "diagelpagpu" || k == "diagelpausegpu") && !(k in seen) {{ seen[k] = 1; v[k] = tolower($2) }} END {{ for (q in v) {{ split("{" ".join(_GPU_TRUTHY)}", tset, " "); for (ti in tset) if (v[q] == tset[ti]) {{ print v[q]; exit }} }} }}\' "{script_name}" 2>/dev/null || true)\n'
-            f'case "$_mb_gpu_val" in\n'
-            f'    {"|".join(_GPU_TRUTHY)})\n'
-            f'        _mb_gpu_active=1\n'
-            f'        _mpi_np_default={gpu_mpi_default}\n'
-            f'        _omp_threads_default={gpu_omp_default}\n'
-            f'        echo "molbuilder: .fdf requests GPU '
-            f'($_mb_gpu_val) -> default mpi_np=$_mpi_np_default, '
-            f'omp=$_omp_threads_default" >&2 ;;\n'
-            f'    *)\n'
-            f'        _mb_gpu_active=0\n'
-            f'        _mpi_np_default={cpu_mpi_default}\n'
-            f'        _omp_threads_default={cpu_omp_default} ;;\n'
-            f'esac\n'
+            f"# The stated rank and thread counts, baked at prep\n"
+            f"# (running-a-job.md § 3.1-3.2).\n"
+            f"_mpi_np_default={resolved_mpi}\n"
+            f"_omp_threads_default={resolved_omp}\n"
         )
         siesta_args_block = (
             _continue_force_args_parser("SIESTA wrapper")
             + f"# --- SIESTA-specific argument parsing -----------\n"
-            f"# Override the generation-time defaults with: ``-np N`` /\n"
+            f"# Override the stated counts with: ``-np N`` /\n"
             f"# ``-omp N`` flags, or ``MB_NP`` / ``OMP_NUM_THREADS`` env\n"
             f"# vars.  Useful for retrying after a propor crash (see the\n"
             f"# diagnostic at the bottom of this wrapper) or for bench\n"
@@ -2782,14 +2435,14 @@ def render_run_wrapper(script_path: Path, *,
             f"#   2. ``MB_NP`` env var (manual override)\n"
             f"#   3. ``SLURM_NTASKS`` (scheduler-allocated under sbatch)\n"
             f"#   4. ``PBS_NP`` (scheduler-allocated under qsub)\n"
-            f"#   5. generation-time default ($_mpi_np_default)\n"
+            f"#   5. the stated value, baked at prep ($_mpi_np_default)\n"
             f"# Per docs/execution/running-a-job.md § 5: reading scheduler env vars for\n"
             f"# launch tuning is part of the wrapper contract -- the user\n"
             f"# reserved ``--ntasks=N`` from SLURM, the wrapper honors it.\n"
             f'_mpi_np="${{MB_NP:-${{SLURM_NTASKS:-${{PBS_NP:-$_mpi_np_default}}}}}}"\n'
             # OMP precedence: -omp flag > OMP_NUM_THREADS env >
-            # SLURM_CPUS_PER_TASK (the sbatch ``-c`` allocation) > policy
-            # default.  Honoring a user-set OMP_NUM_THREADS matches the
+            # SLURM_CPUS_PER_TASK (the sbatch ``-c`` allocation) > the
+            # stated value, baked at prep.  Honoring a user-set OMP_NUM_THREADS matches the
             # standard OMP-toolchain convention; the prior wrapper
             # unconditionally clobbered it, which surprised users
             # benching with ``OMP_NUM_THREADS=8 ./run.sh``.  Under sbatch
@@ -2801,40 +2454,11 @@ def render_run_wrapper(script_path: Path, *,
             f'_omp_threads="${{OMP_NUM_THREADS:-'
             f'${{SLURM_CPUS_PER_TASK:-$_omp_threads_default}}}}"\n'
             f'_dry_run=0\n'
-            # Explicit-flag markers: --mps/--no-mps re-derive the rank
-            # and OMP defaults for the new regime, and these are how the
-            # re-derivation knows a value was USER-CHOSEN and must not be
-            # touched.  Without the guard, `-np 9 --no-mps` ended at the
-            # 2-rank policy default -- the arm's chain read MB_NP/SLURM
-            # (unset) and fell through to the policy, clobbering the
-            # flag (redo F6, runtime-proven 2026-08-12).
+            # Explicit-flag markers, read by the source report below
+            # (`--dry-run` names where each count came from).
             f'_np_from_flag=0\n'
             f'_omp_from_flag=0\n'
-            + (
-                # The --mps/--no-mps arm body, ONE function so the two
-                # arms cannot drift apart.  Defined here, before the
-                # parse loop -- a definition between case arms is a bash
-                # syntax error.  See the arm comment below for the F6
-                # story it exists to close.
-                '_mb_mps_arm() {\n'
-                '    _use_mps_default="$1"\n'
-                '    type _mb_gpu_rank_policy >/dev/null 2>&1 '
-                '|| return 0\n'
-                '    _mb_gpu_rank_policy\n'
-                '    _gpu_mpi_np_default='
-                '"${MOLBUILDER_MPI_NP:-$_gpu_mpi_np_default}"\n'
-                '    if [ "$_np_from_flag" = "0" ]; then\n'
-                '        _mpi_np="${MB_NP:-${SLURM_NTASKS:-'
-                '${PBS_NP:-$_gpu_mpi_np_default}}}"\n'
-                '    fi\n'
-                # The OMP width is NOT re-derived here: a later `-np`
-                # would change the rank count after the fact, so the
-                # width comes from the post-parse epilogue below, where
-                # the effective count is final.
-                '}\n'
-                if gpu_mode else ""
-            ) +
-            f'while [ $# -gt 0 ]; do\n'
+            + f'while [ $# -gt 0 ]; do\n'
             f'    case "$1" in\n'
             f"        -np|--np)\n"
             f'            if [ $# -lt 2 ]; then\n'
@@ -2855,31 +2479,20 @@ def render_run_wrapper(script_path: Path, *,
             f"            # read the log to confirm the command matches\n"
             f"            # the allocation (running-a-job.md § 3.3).\n"
             f'            _dry_run=1; shift ;;\n'
-            # MPS toggle.  Default state is decided in the GPU runtime
-            # defaults block based on (a) ``nvidia-cuda-mps-control``
-            # binary presence and (b) the MOLBUILDER_USE_MPS env var.
-            # These flags ALWAYS win.  Single-rank runs auto-disable
-            # below (MPS has overhead with no concurrency benefit when
-            # only one process touches the GPU).
+            # MPS toggle.  Default state is decided in the GPU placement
+            # block based on (a) ``nvidia-cuda-mps-control`` binary
+            # presence and (b) the MOLBUILDER_USE_MPS env var.  These flags
+            # ALWAYS win, and they switch the daemon and nothing else: the
+            # rank count is the stated one either way.  (They re-derived it
+            # from a GPU policy until 2026-10-02, replacing even a stated,
+            # baked count.)  Single-rank runs auto-disable below (MPS has
+            # overhead with no concurrency benefit when only one process
+            # touches the GPU).
             + (
-                # The flag flips the REGIME, and the rank policy branches
-                # on the regime -- but the policy ran back in the GPU
-                # block, pre-parse, so --no-mps without -np kept the
-                # 4-rank MPS default the no-MPS policy caps at 2 (R9/F6).
-                # Re-derive for the new regime, mirroring the GPU block's
-                # own order (policy -> MOLBUILDER_MPI_NP override -> OMP
-                # width from the budget), and SKIP anything the user set
-                # explicitly: an unguarded re-resolve read MB_NP/SLURM
-                # (unset) and fell to the policy default, so `-np 9
-                # --no-mps` ran 2 ranks while the comment here claimed
-                # "-np still wins" (redo F6, 2026-08-12).  One body,
-                # parameterized by the regime, so the two arms cannot
-                # drift apart (the body is _mb_mps_arm, defined above
-                # the parse loop).
                 "        --mps)\n"
-                '            _mb_mps_arm 1; shift ;;\n'
+                '            _use_mps_default=1; shift ;;\n'
                 "        --no-mps)\n"
-                '            _mb_mps_arm 0; shift ;;\n'
+                '            _use_mps_default=0; shift ;;\n'
                 if gpu_mode else ""
             ) +
             f"        -h|--help)\n"
@@ -2925,14 +2538,11 @@ def render_run_wrapper(script_path: Path, *,
                 f"                   deck's to say.\n"
             )
             + _cold_usage_entry(warm_examples=".DM/.CG/.XV among them")
-            + f"  -np N            override MPI rank count.  Default at\n"
-            f"                   generation time was $_mpi_np_default.\n"
+            + f"  -np N            override the MPI rank count.  Stated\n"
+            f"                   at prep: $_mpi_np_default.\n"
             f"  -omp N,          override OpenMP threads per MPI rank.\n"
-            f"  -t N, --threads  Aliased.  Default was $_omp_threads_default.\n"
-            f"                   (For SIESTA: pure MPI w/ OMP=1 is the\n"
-            f"                   typical CPU recipe; GPU mode auto-fills\n"
-            f"                   the core budget divided by the rank\n"
-            f"                   count.)\n"
+            f"  -t N, --threads  Aliased.  Stated at prep:\n"
+            f"                   $_omp_threads_default.\n"
             f"  --dry-run        resolve + log the launch command and the\n"
             f"                   rank->GPU/NUMA placement for the current\n"
             f"                   allocation, then exit WITHOUT running\n"
@@ -2945,11 +2555,6 @@ def render_run_wrapper(script_path: Path, *,
             f"                     ``export MB_NP=\\$SLURM_NTASKS``).\n"
             f"  OMP_NUM_THREADS=N  same as -omp N (standard OMP toolchain\n"
             f"                     convention; honored if set in env).\n"
-            f"  MOLBUILDER_MPI_NP=N\n"
-            f"  MOLBUILDER_OMP_NUM_THREADS=N\n"
-            f"                     GPU-mode policy overrides applied\n"
-            f"                     BEFORE -np / -omp.  Useful when a\n"
-            f"                     workstation has unusual topology.\n"
             f"\n"
             f"On 'propor: ERROR: IMAX = 0' crashes at startup, retry\n"
             f"with a smaller -np.  See the diagnostic the wrapper prints\n"
@@ -2971,51 +2576,25 @@ def render_run_wrapper(script_path: Path, *,
             f'\'$_omp_threads\'" >&2\n'
             f"    exit 1\n"
             f"fi\n"
-            + (
-                # Auto-OMP width from the EFFECTIVE rank count, once the
-                # count is FINAL.  Inside the parse loop the answer
-                # depends on flag order (`--no-mps -np 9` derived the
-                # width before -np landed: 9 ranks x the 2-rank width);
-                # here _mpi_np is settled and validated positive.
-                # Explicit choices still win: -omp (_omp_from_flag),
-                # OMP_NUM_THREADS, SLURM_CPUS_PER_TASK, and the
-                # MOLBUILDER_* policy overrides, in the same precedence
-                # as the pre-parse resolution.  GPU regime only -- the
-                # CPU width is baked and has no runtime budget.
-                'if [ "$_mb_gpu_active" = "1" ] && '
-                '[ "$_omp_from_flag" = "0" ] && '
-                'type _mb_gpu_rank_policy >/dev/null 2>&1; then\n'
-                '    _omp_default=$(( _gpu_budget / _mpi_np ))\n'
-                '    [ "$_omp_default" -lt 1 ] && _omp_default=1\n'
-                '    _omp_default='
-                '"${MOLBUILDER_OMP_NUM_THREADS:-$_omp_default}"\n'
-                '    _omp_threads="${OMP_NUM_THREADS:-'
-                '${SLURM_CPUS_PER_TASK:-$_omp_default}}"\n'
-                'fi\n'
-                if gpu_mode else ""
-            ) +
+            +
             # WHERE each number came from, computed once the values are
             # final -- the --dry-run report prints these so a wrong scale
             # is caught BEFORE a queue slot is spent (user design,
             # 2026-08-13: dry-run is the pre-submission inspection).
-            '_np_source="generation default"\n'
+            '_np_source="stated at prep"\n'
             'if [ "$_np_from_flag" = "1" ]; then _np_source="-np flag"\n'
             'elif [ -n "${MB_NP:-}" ]; then _np_source="MB_NP env"\n'
             'elif [ -n "${SLURM_NTASKS:-}" ]; then '
             '_np_source="SLURM_NTASKS (the sbatch reservation)"\n'
             'elif [ -n "${PBS_NP:-}" ]; then '
             '_np_source="PBS_NP (the qsub reservation)"\n'
-            'elif [ "${_mb_gpu_active:-0}" = "1" ]; then '
-            '_np_source="GPU runtime policy"\n'
             'fi\n'
-            '_omp_source="generation default"\n'
+            '_omp_source="stated at prep"\n'
             'if [ "$_omp_from_flag" = "1" ]; then _omp_source="-omp flag"\n'
             'elif [ -n "${OMP_NUM_THREADS:-}" ]; then '
             '_omp_source="OMP_NUM_THREADS env"\n'
             'elif [ -n "${SLURM_CPUS_PER_TASK:-}" ]; then '
             '_omp_source="SLURM_CPUS_PER_TASK (the sbatch -c reservation)"\n'
-            'elif [ "${_mb_gpu_active:-0}" = "1" ]; then '
-            '_omp_source="core budget / rank count (GPU policy)"\n'
             'fi\n'
             f"\n"
             # SIESTA's stdout role, asked rather than taken from a default.
@@ -3031,7 +2610,7 @@ def render_run_wrapper(script_path: Path, *,
             # provenance for any trial, and a CPU sweep is the case that
             # most needs it (`plan.md` E4).
             _phys_cores_probe_block()
-            + (_gpu_runtime_defaults_block() if gpu_mode else "")
+            + (_gpu_runtime_block() if gpu_mode else "")
             + siesta_args_block
             # GPU load-balance: derive ranks-per-GPU from the resolved
             # rank count so MPS gates on real sharing + the per-rank
@@ -3039,17 +2618,13 @@ def render_run_wrapper(script_path: Path, *,
             # block (needs $_mpi_np) and BEFORE the MPS block (reads
             # $_ranks_per_gpu).  See _gpu_loadbalance_block.__doc__.
             + (_gpu_loadbalance_block() if gpu_mode else "")
-            + f"# MPI rank count: $_mpi_np (default: $_mpi_np_default, "
-            f"source: {mpi_source})\n"
+            + f"# MPI rank count: $_mpi_np (stated at prep: "
+            f"$_mpi_np_default)\n"
             + _orbitals_per_rank_notice(n_atoms)
             + f"# --- Thread / BLAS pinning ------------------------------\n"
-            f"#   * OMP_NUM_THREADS ({omp_source}): SIESTA mainline is\n"
-            f"#     mostly not OMP-aware, so pure MPI with OMP=1 is the\n"
-            f"#     standard recipe.  Bump only with an OMP-compiled\n"
-            f"#     SIESTA build (hybrid MPI+OMP).  In GPU mode the\n"
-            f"#     default is the hardware-derived policy value (see\n"
-            f"#     the GPU-mode block above); override with -omp N or\n"
-            f"#     by exporting OMP_NUM_THREADS before invoking.\n"
+            f"#   * OMP_NUM_THREADS: the stated cores per rank\n"
+            f"#     ({resolved_omp}); override with -omp N or by\n"
+            f"#     exporting OMP_NUM_THREADS before invoking.\n"
             f"#   * BLAS pinned to 1 per rank so OMP * BLAS doesn't\n"
             f"#     oversubscribe.\n"
             f"export OMP_NUM_THREADS=$_omp_threads\n"
@@ -3335,7 +2910,7 @@ def render_run_wrapper(script_path: Path, *,
                 if gpu_mode else
                 f'_mpirun_bind=""\n'
             )
-            # ``_numa_wrap_gpu`` is set by _gpu_runtime_defaults_block
+            # ``_numa_wrap_gpu`` is set by _gpu_runtime_block
             # in GPU mode; default to empty here so CPU-mode wrappers
             # (which never inject that block) still see a defined var
             # in the launch_cmd interpolation below.  This is also the
@@ -3423,9 +2998,9 @@ def render_run_wrapper(script_path: Path, *,
                 # that command guessed the answer `jobset prep bench`
                 # MEASURES, and probed whichever host it ran on -- the login
                 # node on a cluster, which is the machine the job will not
-                # run on.  The override knobs stay; the guess is gone.
-                'echo "                # tune: MOLBUILDER_MPI_NP / '
-                'MOLBUILDER_OMP_NUM_THREADS / -np / -omp / --mps / --no-mps "'
+                # run on.  The guess is gone, and so is the GPU policy the
+                # MOLBUILDER_* knobs overrode (2026-10-02).
+                'echo "                # tune: -np / -omp / --mps / --no-mps "'
                 '"(or measure it: prep bench, for this stage)"\n'
                 # IMPORTANT: keep the command on its own line so the
                 # user can copy-paste it directly into a shell.  An
@@ -3460,16 +3035,16 @@ def render_run_wrapper(script_path: Path, *,
     else:                                          # pyscf
         inner = f"python {script_name} > $_out_file 2>&1"
         description = "PySCF run"
-        # PySCF: the inline ``runtime_info`` block in the emitted
-        # .py sets OMP_NUM_THREADS / OPENBLAS_NUM_THREADS = 1 via
-        # ``os.environ.setdefault`` BEFORE numpy import.  We don't
-        # set them in the wrapper too -- doing so would override
-        # the env-respect (the script honors a pre-export) AND
-        # mask the in-script auto-detect that picks physical cores.
+        # THE THREADS ARE STATED (user, 2026-10-02; `architecture.md`
+        # § 5.2) -- the run card's `threads`, or `--cpus-per-task` on the
+        # prep, asked before anything is written (`prep_inputs.
+        # launch_refusal`).  The chain below ended at THIS NODE'S PHYSICAL
+        # CORES until then: a thread count nobody stated.
+        resolved_omp = int(omp_threads)
 
         # Argument parsing: PySCF gets --continue / --force +
         # a -h.  No engine-specific flags (PySCF doesn't have an
-        # MPI rank knob; threading is auto-detected in the script).
+        # MPI rank knob; its thread count is the stated one).
         pyscf_args_block = (
             _continue_force_args_parser("PySCF wrapper")
             + f"# --- PySCF wrapper argument parsing -------------\n"
@@ -3537,8 +3112,8 @@ def render_run_wrapper(script_path: Path, *,
                 warm_examples=".chk and _optimized.xyz among them")
             + f"  -omp N           OpenMP threads.  Highest precedence;\n"
             f"                   otherwise OMP_NUM_THREADS, else the\n"
-            f"                   scheduler's allocation, else this\n"
-            f"                   node's physical cores.\n"
+            f"                   scheduler's allocation, else the\n"
+            f"                   {resolved_omp} stated at prep.\n"
             f"  -np N            accepted and IGNORED -- PySCF is\n"
             f"                   OpenMP-only.  Present because\n"
             f"                   `jobset launch` passes it to every\n"
@@ -3555,16 +3130,14 @@ def render_run_wrapper(script_path: Path, *,
             f"done\n"
             f"\n"
             # --- Thread sizing: the WRAPPER decides ------------------
-            # Same order the script applies, resolved one layer up and
-            # EXPORTED, so the two cannot disagree and the banner can
-            # state the number before Python starts.  The script keeps
-            # its own identical chain for the case that matters: a user
-            # running ``python job.py`` by hand, with no wrapper at all.
+            # Resolved here and EXPORTED, so the deck's own chain sees it
+            # and the banner can state the number before Python starts.
             #
-            # The node is the last resort, not the first answer.  Asking
-            # the machine when a scheduler has granted a slice of it is
-            # how a job on a 128-core node claimed 128 threads for the 8
-            # cores it owned.
+            # The last rung is the STATED count, baked at prep -- never the
+            # node.  Asking the machine when a scheduler has granted a slice
+            # of it is how a job on a 128-core node claimed 128 threads for
+            # the 8 cores it owned; and with no scheduler it was a thread
+            # count nobody stated (2026-10-02).
             + "# --- OpenMP thread sizing (allocation first) ---\n"
             + _phys_cores_probe_block()
             + 'if [ -n "$_omp_flag" ]; then\n'
@@ -3584,15 +3157,17 @@ def render_run_wrapper(script_path: Path, *,
               # the exact 128-cores-for-an-8-core-allocation bug this
               # block exists to prevent, and doing it in the one
               # configuration where running WITHOUT the wrapper would
-              # have been correct.  Keep in step with
-              # runtime_info._mb_resolve_threads; the two are one policy
-              # in two languages and the test asserts they agree.
+              # have been correct.  Keep the scheduler rungs in step with
+              # runtime_info._mb_resolve_threads -- one policy in two
+              # languages.  The last rung is this wrapper's alone: the
+              # count stated at prep, which the deck run by this wrapper
+              # always receives exported.
               'elif [ -n "${PBS_NCPUS:-}" ]; then\n'
               '    _omp_threads="$PBS_NCPUS"; _omp_from="PBS_NCPUS"\n'
               'elif [ -n "${NSLOTS:-}" ]; then\n'
               '    _omp_threads="$NSLOTS"; _omp_from="NSLOTS"\n'
               'else\n'
-              '    _omp_threads="$_phys_cores"; _omp_from="node physical cores"\n'
+              f'    _omp_threads="{resolved_omp}"; _omp_from="stated at prep"\n'
               'fi\n'
               'export OMP_NUM_THREADS="$_omp_threads"\n'
               '\n'
@@ -3629,20 +3204,14 @@ def render_run_wrapper(script_path: Path, *,
             f"\n"
         )
 
-    # Per docs/execution/running-a-job.md § 5 (v2 rewrite, 2026-06-24): the wrapper is a
-    # self-contained shell script.  At generate time the generator reads
-    # ``script_generation.preamble`` and ``script_generation.activation``
-    # from molbuilder.json (server-wide) + .molbuilder.json (project,
-    # optional) and bakes them VERBATIM into the wrapper.  At runtime
-    # the wrapper does no discovery, no probing, no config-file reads,
-    # no env-var-driven behaviour switching.  If anything fails,
-    # ``set -euo pipefail`` aborts with the real bash error.
-    #
-    # Per § 2 of the design doc, ``activation`` has no default -- the
-    # generator refuses to emit a wrapper when it isn't set.  The
-    # ``require_activation`` helper raises RuntimeConfigError with a
-    # operator-facing message + the canonical molbuilder.json snippet.
-    from . import runtime_config as _rc
+    # Per docs/execution/running-a-job.md § 5.2: the wrapper is a
+    # self-contained shell script.  At generate time the generator reads the
+    # TARGET's preamble and activation off its record and bakes them
+    # VERBATIM into the wrapper.  At runtime the wrapper does no discovery,
+    # no probing, no config-file reads, no env-var-driven behaviour
+    # switching.  If anything fails, ``set -euo pipefail`` aborts with the
+    # real bash error.  The activation has no default: no record stating
+    # one, no wrapper.
     # The BUNDLE'S scope, stated by the caller since the layout repair
     # (roadmap 7.10 M1): the script is born in its job directory now, and
     # a scope derived from its parent would look for .molbuilder.json and
@@ -3671,31 +3240,32 @@ def render_run_wrapper(script_path: Path, *,
     # record and the WORKSTATION's preamble from `molbuilder.json`, so every
     # job on Sol died on `source /home/.../conda.sh`.  Two doors for one
     # fact -- which machine is this for -- answered out of two files.
-    _tsg = dict(getattr(machine_record, "script_generation", None) or {})
-    if _tsg.get("activation"):
-        # THE RECORD STATES IT, SO THE RECORD IS THE ANSWER -- the same
-        # field whether the machine is this one or a cluster.  `probe`
-        # writes it wherever it runs, which is what makes copying a record
-        # here sufficient to generate a script that runs there.
-        _preamble_chunks = ([("target", _tsg["preamble"].rstrip("\n"))]
-                            if _tsg.get("preamble") else [])
-        _activation_form = _tsg["activation"]
-    else:
-        # The record is silent.  The only legitimate substitute is the
-        # config of the very machine the record describes -- which is
-        # reachable only when that machine is THIS one, so that is the
-        # single case this branch serves.  `prep` refuses before reaching
-        # here when the record names somewhere else.
-        _sg = _rc.get_script_generation(project_dir=_project_dir)
-        _preamble_chunks = _sg["preamble_chunks"]
-        _activation_form = _rc.require_activation(project_dir=_project_dir)
-    # Render preamble with per-scope sentinel comments so a user
-    # reading the wrapper sees which scope contributed which lines.
-    # No xtrace, no fancy framing -- just the user's bash, baked.
+    # THE RECORD IS THE ONE HOME (`configuration.md` § 5 M-1, 2026-10-02) --
+    # this machine's too.  `molbuilder.json`'s `script_generation` stood in
+    # for a record that stated none until then: one fact, two homes, and the
+    # probe copied the file into the record, after which the record won.
+    _rec_sg = machine_record
+    if _rec_sg is None and _project_dir is not None:
+        from .scheduler import machine_for
+        _rec_sg = machine_for(_project_dir)
+    _tsg = dict(getattr(_rec_sg, "script_generation", None) or {})
+    if not _tsg.get("activation"):
+        from .scheduler.record import probe_command
+        raise WrapperError(
+            "no record says how a shell enters an environment on the machine "
+            "this script is for, so no wrapper can be written -- the "
+            "activation has no default (docs/configuration.md § 5 M-1).  On "
+            "that machine:\n"
+            f"    {probe_command(None)} --activation \"conda activate\" "
+            f"--preamble \"source <conda root>/etc/profile.d/conda.sh\"\n"
+            "  (or --activation \"source activate\" --preamble \"module "
+            "load mamba\" where a module gives the toolchain), and its "
+            "record copied here when that machine is not this one.")
+    _preamble_chunks = ([("target", _tsg["preamble"].rstrip("\n"))]
+                        if _tsg.get("preamble") else [])
+    _activation_form = _tsg["activation"]
     _scope_labels = {
-        "server":  "SERVER PREAMBLE (from molbuilder.json)",
-        "target":  "TARGET PREAMBLE (from the target machine's probed record)",
-        "project": "PROJECT ADDITIONS (from .molbuilder.json)",
+        "target": "TARGET PREAMBLE (from the target machine's record)",
     }
     if _preamble_chunks:
         _rendered_chunks = [
@@ -3736,19 +3306,19 @@ def render_run_wrapper(script_path: Path, *,
                     # so the guard fired and printed a sentence with two
                     # holes in it.  Caught by RUNNING the generated
                     # script, not by reading it.
-                    f"    _log ERROR 'It was baked verbatim from "
-                    f"script_generation.preamble on the machine that ran "
-                    f"prep, and this is a different machine.'",
-                    f"    _log ERROR 'Fix: set script_generation.preamble "
-                    f"in molbuilder.json HERE (for example: module load "
-                    f"mamba), then re-run prep on this machine -- or edit "
-                    f"the source line below.'",
+                    f"    _log ERROR 'It was baked verbatim from the "
+                    f"preamble of the record prep read, and this machine "
+                    f"is not the one that record describes.'",
+                    f"    _log ERROR 'Fix: on this machine, record its "
+                    f"preamble -- molbuilder jobset probe --write --preamble "
+                    f"(for example: module load mamba) -- and re-run prep "
+                    f"here, or edit the source line below.'",
                     f'    exit 78',           # EX_CONFIG
                     "fi",
                 ]
             _guard = "\n".join(_lines) + "\n\n"
         _preamble_block = (
-            "# --- Baked preamble (verbatim from molbuilder.json) ---\n"
+            "# --- Baked preamble (verbatim from the target's record) ---\n"
             + _guard
             + "_log STAGE \"running baked preamble\"\n"
             + "\n".join(_rendered_chunks)
@@ -3756,8 +3326,8 @@ def render_run_wrapper(script_path: Path, *,
         )
     else:
         _preamble_block = (
-            "# --- Baked preamble (none configured) ---\n"
-            "# (no script_generation.preamble in any scope)\n"
+            "# --- Baked preamble (none) ---\n"
+            "# (the target's record states no preamble)\n"
             "\n"
         )
 
@@ -3874,7 +3444,7 @@ def render_run_wrapper(script_path: Path, *,
         f"# screens before the usage text it asked for (U10, 2026-08-12).\n"
         f'if [ "$_mb_help" = "0" ]; then\n'
         f"{_preamble_block}"
-        f"# --- Activation (verbatim from script_generation.activation) ---\n"
+        f"# --- Activation (verbatim from the target's record) ---\n"
         f'_log STAGE "{_activation_form} {target_env}"\n'
         f"{_activation_form} {target_env}\n"
         f"fi\n"
@@ -4174,9 +3744,9 @@ def render_run_wrapper(script_path: Path, *,
     _is_pyscf = suffix == ".py"
     _resolved_defaults = {
         "target_env":    target_env,
-        "omp_threads": (
-            "auto" if omp_threads is None else str(omp_threads)
-        ),
+        # THE STATED COUNTS -- both engines refuse an unstated one above,
+        # so there is no "auto" to record (2026-10-02).
+        "omp_threads": str(omp_threads),
         "max_memory_mb": (
             "n/a" if max_memory_mb is None else str(max_memory_mb)
         ),
@@ -4184,9 +3754,7 @@ def render_run_wrapper(script_path: Path, *,
     if _is_pyscf:
         _resolved_defaults["mpi_np"] = "n/a (PySCF is OMP-only)"
     else:
-        _resolved_defaults["mpi_np"] = (
-            "auto" if mpi_np is None else str(mpi_np)
-        )
+        _resolved_defaults["mpi_np"] = str(mpi_np)
     _provenance = _sc.emit_provenance(
         generator_version=_sc.molbuilder_git_sha(),
         generated_at=_sc.generated_at_now(),
@@ -4786,153 +4354,68 @@ def write_run_wrapper(script_path: Path, *,
     return parent / rendered.wrapper_name
 
 
-def _placement_for(resources, domain_pq, project_dir, *, prefer_gpu=False):
-    """The :class:`~molbuilder.scheduler.place.Placement` this job is FOR.
+def _bound_queue(resources, domain_pq, env_rec, *, prefer_gpu=False):
+    """The queue this job NAMES, bound on the target's record -- a
+    :class:`~molbuilder.scheduler.place.Placement`, or ``None`` when the job
+    names none.
 
     ``Placement`` is R1's "ONE decision" -- the header and the `sbatch`
     command line are two renderings of it -- so this returns one rather than
-    a bare ``(partition, qos)``.  A tuple loses ``gpu_partition``: `_bind`
-    sends a GPU job to ``domain.gpu_partition or domain.partition``, and a
-    hand-rolled name lookup returns the ordinary partition for both, which
-    is the wrong queue for exactly the jobs that care.
+    a bare ``(partition, qos)``: `_bind` sends GPU work to the queue's
+    ``gpu_partition`` where the record carries one.
 
-    Resolution, in order of who knows:
+    Who names it, in order:
 
-    1. ``domain_pq`` -- the caller already placed it (`launch` does);
-    2. the domain the ALLOCATION names, through `place(..., named=...)`.
-       `Resources.domain` is what the person chose (`task.json`'s
-       ``allocation.domain``, or ``--domain``) and was read by nothing here
-       until 2026-08-24;
-    3. the menu's own recommendation for this kind of work.
+    1. ``domain_pq`` -- the caller already placed it (`launch` does, on the
+       record it admitted the request against);
+    2. the domain the job states (``Resources.domain`` -- `allocation.domain`,
+       the run card's ``domain``, ``--domain``).
 
-    **Asked about CAPABILITY, not fit.**  The request passed to `place` is
-    empty: whether this job fits is `launch`'s to decide against the machine
-    as it stands then (R9), and admitting here would refuse on a wall the
-    caller may not have set yet.  `Unplaceable` therefore means the menu
-    cannot serve this KIND of work at all, and the header simply states no
-    queue.
+    **Nothing else** *(user, 2026-10-02: "explicit job config is the only way
+    allowed")*.  An unnamed queue is not chosen here -- the menu's first row
+    stood in until then, and a named one the record does not list fell back
+    to it silently.  Prep refuses both before anything is written
+    (`prep_inputs.launch_refusal`).  What can still meet this is the queue
+    the record CAN'T take -- a GPU job naming a queue with no GPUs -- and
+    `place`, the binding, says so.
+
+    **Asked about CAPABILITY, not fit**: the request is empty.  Whether this
+    job fits the queue is the launch door's to decide against the machine as
+    it stands then (R9).
     """
     from .scheduler.place import Placement, Unplaceable, place
     from .scheduler import Request
-    from . import runtime_config as _rc
+    from .runtime_config import routing_of
 
-    rows = _rc.get_routing(project_dir=project_dir) or []
+    rows = routing_of(env_rec)
     if domain_pq and domain_pq[0] and domain_pq[1]:
         # Bind the ROW behind the pair, not just the two strings: callers
-        # downstream want the domain itself (its ceiling, its devices), and
-        # re-finding it by matching `(partition, qos)` against the menu is
-        # the lookup this function exists to do once.
+        # downstream want the domain itself, and re-finding it by matching
+        # `(partition, qos)` against the menu is the lookup this function
+        # exists to do once.
         _row = next((d for d in rows
                      if (d.partition, d.qos) == (domain_pq[0], domain_pq[1])),
                     None)
         return Placement(domain=_row, partition=domain_pq[0],
                          qos=domain_pq[1])
-    if not rows:
-        return None
     want = getattr(resources, "domain", None)
+    if not want:
+        return None
     try:
         return place(rows, Request(), prefer_gpu=prefer_gpu, named=want)
-    except Unplaceable:
-        if want:
-            # A named domain this machine does not offer.  Saying nothing
-            # is wrong -- but refusing at render time is `launch`'s call,
-            # not this renderer's, so fall back to the recommendation and
-            # let the launch door make the refusal with the full request.
-            try:
-                return place(rows, Request(), prefer_gpu=prefer_gpu)
-            except Unplaceable:
-                return None
-        return None
+    except Unplaceable as exc:
+        raise WrapperError(
+            f"this job names the queue {want!r}, which the target's record "
+            f"cannot take it on:\n    "
+            + "\n    ".join(r.message for r in exc.reasons)) from None
 
 
-def auto_ranks(machine_record, n_atoms=None, domain=None):
-    """The rank count to use when NOBODY stated one — read off the SELECTED
-    target and domain.  ``None`` when the record does not say, and the caller
-    must then refuse rather than guess.
-
-    *(user, 2026-09-02: "the default should come from the selected
-    target/domain, environment.json should be available, if not, the user is
-    required to do that. otherwise it's all blind.")*
-
-    **The domain first, when one is chosen.** A queue's width is not the
-    node's: `public` and `debug` on one cluster hold different machines, and
-    the row records them. `admit._widest_node` is the one reader of *"cores of
-    the largest machine in this row"* — from ``node_types`` when the record
-    lists them, from ``max_cores`` otherwise — and asking it here is what
-    keeps the default and the admission check answering from one place.
-
-    **Then the target's topology**, for a record with no domain menu — a
-    workstation is its own machine.
-
-    **Never this box.** A bundle prepped on a 20-core desk for a 64-core node
-    must ask for the node's width; `physical_core_count()` would answer about
-    the desk, and did until 2026-09-02.
-
-    **No atom-count clamp** *(user ruling, 2026-09-03)*.  This lowered the
-    header's ``--ntasks`` to ``n_atoms``, matching a clamp the wrapper's auto
-    path also applied, both citing the ``propor IMAX=0`` abort.  That abort
-    came from a PSML problem rather than the system's size, so the rule was
-    not science — and how many ranks to spend is the user's call.  The two
-    still agree, because neither clamps now, and the wrapper emits an
-    occupancy NOTICE instead (`_orbitals_per_rank_notice`).
-
-    ``n_atoms`` stays in the signature: callers pass it, and dropping the
-    parameter would silently change every call site's positional arguments.
-    """
-    cores = None
-    if domain:
-        for row in (getattr(machine_record, "domains", None) or ()):
-            if getattr(row, "name", None) != domain:
-                continue
-            try:
-                from .scheduler.admit import _widest_node
-                cores = _widest_node(row)[0]
-            except Exception:                                 # noqa: BLE001
-                cores = getattr(row, "max_cores", None)
-            break
-    if not cores:
-        topo = getattr(machine_record, "topology", None)
-        cps = getattr(topo, "cores_per_socket", None) if topo else None
-        if cps:
-            cores = int(cps) * int(getattr(topo, "sockets", None) or 1)
-    if not cores or int(cores) < 1:
-        return None
-    return int(cores)
-
-
-def header_ntasks(mpi_np, *, gpu=False, gpu_count=None, auto=None):
-    """``#SBATCH -n`` and WHERE IT CAME FROM — ``(ntasks, source)``.
-
-    **ONE RULE, TWO READERS** (`architecture.md` A13).  The emitter calls this
-    to write the header; the Task-setup tab's run card calls it to *show* what
-    the header will say.  A surface that worked the number out itself would
-    agree with the `.sbatch` only until one of them changed — and this is the
-    number a person most needs to see before spending a queue slot.
-
-    ``--gres`` carries the GPU COUNT; ``-n`` is the MPI RANK count, and the
-    two are INDEPENDENT: under the K-ranks-per-GPU load-balance model
-    (`running-a-job.md` § 3.3) ranks may exceed GPUs — eight ranks sharing one
-    A100 via MPS.  So ntasks is `mpi_np`, never the device count.
-
-    **THE FLOOR IS THE SURPRISE THIS EXISTS TO SURFACE.**  With no rank count
-    stated, a CPU header floors at ``-n 1``: under sbatch the launcher reads
-    ``SLURM_NTASKS`` (§ 3.1), which is what this header just set, so a
-    64-core node runs the job on ONE rank.  That is defensible as a header
-    that always allocates and indefensible as a silence — hence the source
-    string, and hence A13.
-    """
-    if mpi_np and int(mpi_np) >= 1:
-        return int(mpi_np), "stated"
-    if gpu and gpu_count:
-        return int(gpu_count), "one rank per GPU asked for (no rank count stated)"
-    if auto and int(auto) >= 1:
-        return int(auto), ("nothing stated -- the selected target/domain's "
-                           "own core count")
-    return None, ("nothing states a rank count and the target's record says "
-                  "no core count -- probe that machine (`molbuilder jobset "
-                  "probe --write` on it, with `--name` for a named target) "
-                  "or state one, because a default invented here would be "
-                  "about the wrong machine")
+#: A GPU job with no GPU count is refused, never given one (`execution/gpu.md`
+#: G5).  `prep` refuses such a run first, naming the same two ways to say it.
+_NO_GPU_COUNT = (
+    "this job runs on a GPU and states no GPU count -- write `gpu_count` on "
+    "its run card (task.json `execution`), or `--gpus N` on the prep "
+    "(docs/execution/gpu.md G5).")
 
 
 def _render_sbatch_for(script_path: Path, *,
@@ -4943,223 +4426,75 @@ def _render_sbatch_for(script_path: Path, *,
                        machine_record=None,
                        n_atoms: Optional[int] = None,
                        ) -> Optional[str]:
-    """Resolve the per-job header values and RETURN the ``.sbatch`` text when
-    this machine has a queue; ``None`` when it does not.
+    """The ``.sbatch`` text for this job when its target has a scheduler;
+    ``None`` when it does not.
 
     Returns text rather than writing, so the whole of step 4 can be rendered
     before anything is on disk (`script-preparation.md` § 5, W7).
 
-    Resolution rules (running-a-job.md § 3.1):
-      * ``-n`` (ntasks) = the **MPI rank count** (``mpi_np``) for BOTH CPU
-        and GPU jobs.  For GPU jobs ``--gres`` carries the **GPU count**,
-        which is INDEPENDENT of the rank count: under the K-ranks-per-GPU
-        load-balance model (running-a-job.md § 3.3), ranks may exceed GPUs (e.g. 8 ranks
-        sharing 1 GPU via MPS -> ``-n 8 --gres=gpu:1``).
-      * Unset ``mpi_np`` is :func:`header_ntasks`'s: one rank per GPU asked
-        for, else the target's width, else a refusal.
+    **Every value in it is one the job stated** (`architecture.md` § 5.2):
+    the queue it names, its wall, its memory, its cores per rank, its GPU
+    count and -- for SIESTA -- its rank count.  PySCF runs ONE process with
+    OpenMP threads, so its header asks for one task: that is what the engine
+    is, not a value anyone picks.  Whether each is stated is asked ONCE per
+    moment, by `prep_inputs.launch_refusal` -- at prep, before anything is
+    written, and at launch for a header written there (`submit.
+    _sbatch_request`).  Nothing is filled in: not the target's width, not a
+    rank per GPU, not a queue's ceiling, not a default from any config.
+
+    ``n_atoms`` stays in the signature for its callers; nothing here reads
+    it since the atom-count clamp went (2026-09-03).
     """
-    from . import runtime_config as _rc
     r = resources
-    mpi_np, cpus_per_task = r.mpi_np, r.cpus_per_task
-    time, gres, mem, exclusive = r.time, r.gres, r.mem, r.exclusive
-    gpu_binding = r.gpu_binding
     if project_dir is None:
         project_dir = (script_path.parent
                        if script_path.parent.exists() else None)
 
-    # Does the MACHINE have a scheduler?  (P1, 2026-08-17.)  This asked only
-    # whether a `scheduler` BLOCK was configured, on the old premise that "a
-    # workstation needs no scheduler block" (`architecture.md` § 9).  M6
-    # amended that premise on 2026-08-17 -- a workstation records its
-    # capability in a config file too -- so block-presence stopped
-    # discriminating, and a workstation with one config got 14 `.sbatch` files
-    # for a queue it does not have.  The probed record answers the actual
-    # question, and it is the answer `prep` step 1 just wrote down.
-    #
-    # A record that says `slurm`, or no record at all, keeps the old
-    # behaviour: absent evidence is not evidence of absence, and refusing to
-    # emit on a cluster nobody probed would be worse than an extra file.
-    # THE MACHINE IS DECIDED ONCE, AND IT WAS DECIDED BEFORE THIS.  When
-    # the caller hands over the record, that IS the answer -- the comment
-    # above already says so ("it is the answer `prep` step 1 just wrote
-    # down"), and resolving it a second time here is how the two artifacts
-    # of one render could come to describe two different machines: the
-    # `.run.sh` bootstrapping the target while the `.sbatch` asks whether
-    # SOME OTHER machine has a queue.
-    #
-    # It also refused outright.  `machine_for(project_dir)` with no target
-    # raises `AmbiguousTarget` when several records exist and the project
-    # dir carries no snapshot of its own -- so rendering for an explicitly
-    # named machine died on "several machines could be meant" while
-    # holding that machine's record in its hand (2026-08-24).
+    # THE MACHINE IS DECIDED ONCE, AND IT WAS DECIDED BEFORE THIS: the
+    # caller hands over the record, and that IS the answer -- resolving it a
+    # second time here is how the two artifacts of one render could come to
+    # describe two different machines.  A caller with none (the launch
+    # doors) reads the calculation's own snapshot.
     if machine_record is not None:
         env_rec = machine_record
     else:
         from .scheduler import machine_for
         env_rec = machine_for(project_dir)
-    if env_rec is not None and env_rec.scheduler == "workstation":
+    if env_rec is None or env_rec.scheduler != "slurm":
         return None  # no queue on this machine -> only .run.sh is meaningful
-
-    # Is this GPU work?  Needed BEFORE the queue is resolved, because
-    # `place` binds a GPU job to `domain.gpu_partition` where a domain
-    # declares one -- a different partition from the same domain's ordinary
-    # row.  Recomputed below for the header's own `--gres`; this is the same
-    # question asked earlier, not a second answer to it.
-    #
-    # ANY ENGINE'S RUN (`execution/gpu.md` G1, G7): the answer is the one
-    # door's.  This asked a SIESTA deck alone, so a PySCF GPU run was placed
-    # on the domain's ordinary row.  An explicit ``env`` speaks for SIESTA
-    # only -- its GPU build is a separate env, so naming the CPU one points
-    # the deck away from the device; PySCF's GPU path lives in its one env.
-    # And a device ASK places as a device run, as it heads the header below
-    # (an explicit `gres` forces the GPU header): the two must not disagree.
-    _prefer_gpu = bool(
-        getattr(resources, "gres", None)
-        or ((env is None or script_path.suffix.lower() != ".fdf")
-            and _wants_gpu(script_path, resources)))
-
-    scheduler = _rc.get_scheduler(project_dir=project_dir)
-    if scheduler is None:
-        # NO PREFERENCES FILE IS NOT THE SAME AS NO QUEUE.  `scheduler` in
-        # molbuilder.json is where a person records PREFERENCES (account,
-        # mail, defaults); which `(partition, qos)` pairs this account can
-        # actually reach is a MEASUREMENT, and `jobset probe` already wrote
-        # it into `environment.json` (`configuration.md` § 5, M-1:
-        # measurements in the machine record, preferences in the config).
-        #
-        # Refusing here read the wrong record.  On Sol it produced
-        # "submit mode needs a scheduler and this machine has none
-        # configured" directly under a diagnostic listing NINE probed
-        # domains -- and `launch` had already resolved the very
-        # partition/qos this header wants, and was passing them to
-        # `sbatch` as `-p`/`-q` on the same call (2026-08-21).
-        #
-        # So: take the pair the caller resolved, or -- for callers with no
-        # job to fit, like `prep` -- the menu's first row, which
-        # `get_routing` documents as the recommendation.  Only when there
-        # is no pair at all is there genuinely no queue to write a header
-        # for.
-        _pl = _placement_for(resources, domain_pq, project_dir,
-                             prefer_gpu=_prefer_gpu)
-        if _pl is None or not _pl.partition or not _pl.qos:
-            return None  # § 10: no scheduler -> emit only .run.sh
-        scheduler = {"kind": "slurm",
-                     "directives": {"partition": _pl.partition,
-                                    "qos": _pl.qos}}
-
-    # WHICH QUEUE IS ONE DECISION, AND IT IS NOT THE LOCAL CONFIG'S.
-    #
-    # R1 (`execution/scheduler.md`) says the header and the `sbatch` command
-    # line are two RENDERINGS of one placement, never two decisions.  The
-    # command line honours it -- `submit` builds `Directives.of(placement,
-    # r)` from a placement resolved against the TARGET's record.  The header
-    # did not: it took `partition`/`qos` straight from `scheduler.directives`
-    # in the local `molbuilder.json`, and only fell back to the record when
-    # no such block existed.
-    #
-    # So a bundle prepped on a workstation FOR SOL carried
-    # `-p public -q public` -- the workstation's configured default -- while
-    # its allocation asked for `htc` (`-p htc -q public`).  Different
-    # partition, different hardware.  And it fails SILENTLY: `public` is a
-    # real Sol domain, so `sbatch` accepts the file and the job simply runs
-    # somewhere nobody chose.  `jobset launch` masks it (flags beat the
-    # header) but the header's own instructions say to `sbatch` the file.
-    #
-    # The pair now always comes from the placement; the local block keeps
-    # what is genuinely a preference -- account, mail, output paths.
-    _resolved = _placement_for(resources, domain_pq, project_dir,
-                               prefer_gpu=_prefer_gpu)
-    if _resolved is not None and _resolved.partition and _resolved.qos:
-        scheduler = dict(scheduler)
-        _dirs = dict(scheduler.get("directives") or {})
-        _dirs["partition"] = _resolved.partition
-        _dirs["qos"] = _resolved.qos
-        scheduler["directives"] = _dirs
 
     suffix = script_path.suffix.lower()
     is_siesta = suffix == ".fdf"
-
     # Is this a GPU job?  The one door's answer for ANY engine (`gpu.md` G1,
-    # G7).  It read "only SIESTA .fdf can be" until 2026-09-30, so a PySCF
-    # run whose run card says `use_gpu` was submitted with no `--gres` --
-    # no device, and the deck stops (G6: no CPU fallback).  An explicit
-    # --env override still points a SIESTA deck away from its GPU build
-    # (mirrors the run-wrapper's env_lookup_category logic); PySCF's GPU
-    # path lives in its one env.
+    # G7).  An explicit --env override still points a SIESTA deck away from
+    # its GPU build (mirrors the run-wrapper's env_lookup_category logic);
+    # PySCF's GPU path lives in its one env.
     gpu = bool((env is None or not is_siesta)
                and _wants_gpu(script_path, resources))
     gpu_count: Optional[int] = None
-    if gres is not None:
+    if r.gres is not None:
         # A COUNT, never a card (`scheduler.md` R2a): `Resources` stores the
         # ask as `gpu:N`, and an older stored `gpu:<card>:N` reads as its N.
         from .scheduler.quantities import canonical_gres, parse_gres_flag
         try:
-            gpu_count = parse_gres_flag(canonical_gres(gres))
+            gpu_count = parse_gres_flag(canonical_gres(r.gres))
         except ValueError as e:
             raise WrapperError(f"invalid --gres: {e}") from None
         gpu = True  # an explicit --gres forces a GPU header
     if gpu and gpu_count is None:
-        # NO DEFAULT COUNT (`execution/gpu.md` G5): refused here, before a
-        # rank count is worked out from it -- this asked one GPU until
-        # 2026-10-01.  `render_sbatch` keeps the same guard for a caller
-        # that reaches it directly.
+        # NO DEFAULT COUNT (`execution/gpu.md` G5).
         raise WrapperError(_NO_GPU_COUNT)
 
-    # WHEN NOBODY SAID, ASK FOR THE MACHINE (user, 2026-09-02: "is it possible
-    # to let the default mpi core be max core number... having it be 1 core
-    # would be an overlook").  It floored at 1 until then, so an unstated run
-    # submitted to a 64-core node was allocated ONE task and ran on one rank
-    # -- SLURM_NTASKS is read from this very header, so the wrapper's own
-    # auto path never got a chance to answer.
-    ntasks, _ntasks_src = header_ntasks(
-        mpi_np, gpu=gpu, gpu_count=gpu_count,
-        auto=auto_ranks(env_rec, n_atoms, getattr(resources, "domain", None)))
-    if ntasks is None:
-        # BLIND IS NOT A DEFAULT (user, 2026-09-02).  A header with no rank
-        # count allocates one task; a rank count invented from THIS box is
-        # about the wrong machine.  Both are silent, and a run is hours.
-        raise WrapperError(
-            f"cannot size this job: {_ntasks_src}.\n"
-            f"  Either state it -- `execution` in task.json, or --np N on "
-            f"the prep -- or give the target a record with its core count."
-        )
-
-    # A HEADER MUST BE SUBMITTABLE ON ITS OWN (2026-08-23).
-    #
-    # The header names a queue.  If it states no wall, SLURM applies the
-    # PARTITION's default -- which on ASU Sol is longer than the `debug`
-    # QOS this header had just named permits, so `sbatch <trial>.sbatch`
-    # by hand died on QOSMaxWallDurationPerJobLimit.  `jobset launch`
-    # never saw it because it passes `-t` on the command line, where
-    # flags win; the trap was only ever armed for a human.
-    #
-    # Naming a queue and stating no time is the same defect from the
-    # other side: two halves of one placement, written by two emitters
-    # that could disagree.  So when nothing else supplies a wall, state
-    # the ceiling of the queue this header names -- the only value that
-    # queue can never reject as too long.
-    if time is None and _resolved is not None and _resolved.domain is not None:
-        # OFF THE PLACEMENT WE ALREADY HAVE.  This re-found the row by
-        # matching `(partition, qos)` back against the whole menu -- a second
-        # lookup for something `_placement_for` had just returned, and one
-        # that cannot tell two domains apart if they ever share a pair.
-        # `Placement.domain` IS the row (`scheduler/place.py`: "a request
-        # bound to a domain -- the ONE decision").
-        from .scheduler import domain_ceiling_s
-        _ceiling = domain_ceiling_s(_resolved.domain)
-        if _ceiling:
-            time = slurm_time(_ceiling)
+    placement = _bound_queue(r, domain_pq, env_rec, prefer_gpu=gpu)
+    ntasks = 1 if suffix == ".py" else r.mpi_np
 
     return render_sbatch(
-        script_path, scheduler,
-        ntasks=ntasks,
-        cpus_per_task=cpus_per_task,
-        time=time,
-        gpu=gpu,
-        gpu_count=gpu_count,
-        gpu_binding=gpu_binding,
-        mem=mem,
-        exclusive=exclusive,
+        script_path,
+        partition=placement.partition, qos=placement.qos,
+        ntasks=int(ntasks), cpus_per_task=int(r.cpus_per_task),
+        time=r.time, mem=r.mem,
+        gpu=gpu, gpu_count=gpu_count, gpu_binding=r.gpu_binding,
+        exclusive=r.exclusive,
     )
 
 
@@ -5168,76 +4503,58 @@ def _render_sbatch_for(script_path: Path, *,
 # --------------------------------------------------------------------- #
 
 
-# The GPU ask is read by `scheduler.quantities.parse_gres_flag` -- a count,
-# never a card (`scheduler.md` R2a).
-
-#: A GPU job with no GPU count is refused, never given one (`execution/gpu.md`
-#: G5).  `prep` refuses such a run first, naming the same two ways to say it.
-_NO_GPU_COUNT = (
-    "this job runs on a GPU and states no GPU count -- write `gpu_count` on "
-    "its run card (task.json `execution`), or `--gpus N` on the prep "
-    "(docs/execution/gpu.md G5).")
-
-
 # `_mem_to_mb` and its `_MEM_RE` were DELETED 2026-08-24: defined once,
-# called nowhere.  Its own docstring named what it was for -- comparing
-# a GPU band against "the estimator's/defaults' request" -- and the
-# estimator was deleted in the estimation purge, leaving the reader
-# behind.  Reading SLURM's memory text is `scheduler.quantities`'s job
-# (`parse_mem_gb`), where its human-dialect sibling can be seen beside it.
+# called nowhere.  Reading SLURM's memory text is `scheduler.quantities`'s
+# job (`parse_mem_gb`), where its human-dialect sibling can be seen beside it.
 
 
-def render_sbatch(script_path: Path,
-                  scheduler: Mapping[str, Any],
-                  *,
-                  ntasks: int,
-                  cpus_per_task: Optional[int] = None,
-                  time: Optional[str] = None,
+def render_sbatch(script_path: Path, *,
+                  partition: str, qos: str,
+                  ntasks: int, cpus_per_task: int,
+                  time: str, mem: str,
                   gpu: bool = False,
                   gpu_count: Optional[int] = None,
                   gpu_binding: Optional[bool] = None,
-                  mem: Optional[str] = None,
                   exclusive: Optional[bool] = None) -> str:
     """Render the ``<basename>.sbatch`` submission script.
 
-    The thin two-layer model (job-system.md § 6, § 5): an
-    ``#SBATCH`` header that allocates resources, then a one-line body
-    that delegates to the UNCHANGED launcher
-    ``bash <basename>.run.sh "$@"``.  The launcher still owns env
-    activation + the ``mpirun`` launch; the ``.sbatch`` never
+    The thin two-layer model (job-system.md § 6, § 5): an ``#SBATCH`` header
+    that allocates resources, then a one-line body that delegates to the
+    UNCHANGED launcher ``bash <basename>.run.sh "$@"``.  The launcher still
+    owns env activation + the ``mpirun`` launch; the ``.sbatch`` never
     re-implements ``module load`` / ``source activate`` (§ 2 principle 3).
 
-    Value sourcing (§ 6): stable site directives come from ``scheduler``;
-    per-job values (``ntasks``/``cpus_per_task``/``time``/``mem``/GPU
-    count/``exclusive``) arrive already resolved from the JOB'S OWN
-    RESOURCES -- floor 3 resolved them per element, ``prep`` passes them
-    through ``render_wrappers`` -> ``_render_sbatch_for``.  *(This
-    said "CLI flag -> .fdf -> config default" until the follow-up sweep,
-    2026-08-12 -- the resolution chain of the deleted ``molbuilder fdf``
-    route, not of any caller that exists.)*
+    **Every value is the job's own, and every one is required**
+    (`architecture.md` § 5.2): the queue it named, bound on the target's
+    record; its ranks, cores per rank, wall and memory; its GPU count.  There
+    is no site configuration to fall back on -- `molbuilder.json`'s
+    `scheduler` block, which supplied a queue, `-c`/`-t`/`--mem` defaults,
+    mail and export lines, is refused since 2026-10-02.
 
     Args:
-      scheduler: the resolved block from
-        :func:`runtime_config.get_scheduler` (``directives`` carry a
-        validated ``partition``+``qos``).
       ntasks: ``-n``.  The MPI rank count for CPU **and** GPU jobs --
-        ``--gres`` carries the GPU count separately, and K ranks may
-        share one GPU via MPS, so ntasks = mpi_np, NOT the GPU count
-        (this line said "1 rank per GPU -- pass gpu_count", which its
-        own caller contradicts).  Under sbatch the
-        launcher reads ``SLURM_NTASKS`` (the resolution chain in the args block), so this
-        ``-n`` and ``mpirun -np`` agree by construction (running-a-job.md § 3.1).
+        ``--gres`` carries the GPU count separately, and K ranks may share one
+        GPU via MPS, so ntasks = mpi_np, NOT the GPU count.  Under sbatch the
+        launcher reads ``SLURM_NTASKS``, so this ``-n`` and ``mpirun -np``
+        agree by construction (running-a-job.md § 3.1).
       gpu: emit ``--gres=gpu:<gpu_count>`` -- and
         ``--gres-flags=enforce-binding`` unless ``gpu_binding`` is False
-        (`execution/gpu.md` G9).  A GPU job with no ``gpu_count`` is
-        refused (G5).
+        (`execution/gpu.md` G9).  A GPU job with no ``gpu_count`` is refused
+        (G5).
       exclusive: ``--exclusive`` for a GPU job whose resources say so;
         always off for CPU.
     """
-    if not isinstance(ntasks, int) or ntasks < 1:
-        raise WrapperError(
-            f"render_sbatch: ntasks must be a positive int; got {ntasks!r}."
-        )
+    for name, value in (("ntasks", ntasks), ("cpus_per_task", cpus_per_task)):
+        if not isinstance(value, int) or value < 1:
+            raise WrapperError(
+                f"render_sbatch: {name} must be a positive int; got "
+                f"{value!r}.")
+    for name, value in (("partition", partition), ("qos", qos),
+                        ("time", time), ("mem", mem)):
+        if not (isinstance(value, str) and value.strip()):
+            raise WrapperError(
+                f"render_sbatch: {name} is required and was not stated "
+                f"(docs/execution/architecture.md § 5.2).")
 
     basename = Path(script_path).stem
     if not _SAFE_WRAPPER_NAME_RE.fullmatch(basename):
@@ -5245,69 +4562,22 @@ def render_sbatch(script_path: Path,
             f"unsafe script basename for sbatch emission: {basename!r}."
         )
 
-    directives = dict(scheduler.get("directives") or {})
-    defaults   = dict(scheduler.get("defaults") or {})
-
-    partition = directives.get("partition")
-    qos       = directives.get("qos")
-    # Refuse-to-emit (§ 10): get_scheduler already guarantees these, but
-    # render_sbatch may be called directly -- never emit a header that
-    # won't allocate.
-    if not partition or not qos:
-        raise WrapperError(
-            "render_sbatch: scheduler.directives.partition + qos are "
-            "required (running-a-job.md § 5.3).  Use "
-            "runtime_config.get_scheduler() which enforces this."
-        )
-
     if gpu:
-        # THE PARTITION IS THE PLACEMENT'S -- the target's own
-        # `gpu_partition` where its record names one (`place._bind`).  This
-        # put `scheduler.gpu.partition` from THIS machine's molbuilder.json
-        # over it until 2026-10-01, and took a card (`default_type`), a
-        # whole node (`exclusive`) and a memory (`mem`) from there too,
-        # whatever the target (`execution/gpu.md` § 1.2).
         if gpu_count is None:
-            # NO DEFAULT COUNT (`execution/gpu.md` G5, 2026-10-01).  It was
-            # one device until then -- and `ntasks` before 2026-08-23, one
-            # GPU per rank, the model D12e retired.  Ranks and devices stay
-            # INDEPENDENT (K ranks share a device via MPS, running-a-job.md
-            # § 3.3), so no count is derived from the ranks either.  `prep`
-            # refuses such a run first; this is the emitter's own guard.
+            # NO DEFAULT COUNT (`execution/gpu.md` G5, 2026-10-01).  Ranks
+            # and devices stay INDEPENDENT (K ranks share a device via MPS,
+            # running-a-job.md § 3.3), so no count is derived from the ranks
+            # either.  `prep` refuses such a run first; this is the
+            # emitter's own guard.
             raise WrapperError(_NO_GPU_COUNT)
         exclusive = bool(exclusive)
     else:
         exclusive = False  # CPU jobs never request a whole node here
 
-    # Per-job values: caller arg wins, else config default.
-    cpus = cpus_per_task if cpus_per_task is not None \
-        else defaults.get("cpus_per_task")
-    walltime = time if time is not None else defaults.get("time")
-    # MEMORY IS WHAT THE USER STATED, FULL STOP (user dictation,
-    # 2026-08-24).  An explicit --mem wins; else the site-wide
-    # ``defaults.mem`` a person wrote in molbuilder.json; else NOTHING is
-    # emitted and the scheduler's own default stands.  (A GPU job took
-    # ``scheduler.gpu.mem`` before that last step until 2026-10-01.)  What stood here
-    # until today -- a per-.fdf memory MODEL (base + dense + mesh terms,
-    # a safety factor, a floor, a cap) and a floor/ceiling CLAMP band for
-    # GPU jobs -- is deleted, not disabled: five Sol jobs (62039301-05)
-    # OOM'd against defaults while the machinery that claimed to prevent
-    # exactly that sat unconfigured and silent.  No estimation, no
-    # clamping, no numbers wearing a user's clothes.
-    if mem is not None:
-        memory = mem
-    else:
-        memory = defaults.get("mem")           # site-wide, user-written
-
-    # NO site inference (D12g, 2026-08-12): `site = "asu-sol" if
-    # partition == "public"` hard-coded a facility name from a partition
-    # string -- exactly what running-a-job § 5.3 forbids ("the framework
-    # hard-codes no names or limits").  The partition itself is the fact;
-    # it is already printed on its own directive line below.
     lines: List[str] = [
         "#!/bin/bash",
         "# === molbuilder sbatch header (scheduler: slurm) ===",
-        "# Generated at prep from the `scheduler` config block.",
+        "# Generated at prep from the job's own stated values.",
         "# Authoritative design: docs/execution/job-system.md.",
         "# Submit with:  cd <projdir>; sbatch "
         f"{basename}.sbatch   (NOT bash -- sbatch reads the #SBATCH header; bash would ignore it)",
@@ -5319,60 +4589,30 @@ def render_sbatch(script_path: Path,
     # ranks, the cores, the devices and the memory rule are rendered by
     # `scheduler.emit`, which also renders them for the `sbatch` command line
     # -- so the header and the flags are two spellings of one placement rather
-    # than two writers deciding separately.  That split is both Sol failures:
-    # a header naming `htc/debug` while the command line asked for 38 minutes,
-    # and a header naming a queue while stating no wall at all.
-    #
-    # `-J`, `-N`, the account, mail and the output paths stay here: the
-    # command line does not also decide them, so they cannot drift from it.
+    # than two writers deciding separately.
     from .scheduler.emit import Directives
-    _d = Directives(partition=partition, qos=qos, walltime=walltime,
-                    ntasks=ntasks, cpus_per_task=cpus,
+    _d = Directives(partition=partition, qos=qos, walltime=time,
+                    ntasks=ntasks, cpus_per_task=cpus_per_task,
                     gres=(f"gpu:{gpu_count}" if gpu else None),
                     gpu_binding=gpu_binding is not False,
-                    mem=(memory or None), exclusive=bool(exclusive))
+                    mem=mem, exclusive=bool(exclusive))
     if exclusive:
         # The ignored value, said out loud so it is never a silent surprise
         # (the mem<->exclusive rule -- running-a-job.md § 5.3.1).  The RULE
         # itself lives in the emitter; this is the explanation beside it.
         lines.append(
-            f"# --exclusive owns the whole node -> ALL its memory.  Configured "
-            f"mem ({memory or 'unset'}) is IGNORED; --mem=0 = all node RAM.")
-    # `--gres-flags=enforce-binding` USED TO BE APPENDED HERE, header-only,
-    # on the reasoning that "the command line never states it -- so it stays
-    # here".  That reasoning is backwards: the command line not stating it
-    # is what made the two renderings of one placement disagree, which is
-    # precisely what R1 forbids.  It now rides WITH the gres in
-    # `scheduler.emit`, in both spellings, because it is meaningless
-    # without one (2026-08-24).
+            f"# --exclusive owns the whole node -> ALL its memory.  The stated "
+            f"mem ({mem}) is IGNORED; --mem=0 = all node RAM.")
     lines.extend(_d.header_lines())
     lines.append("#SBATCH -o slurm.%j.out")
     lines.append("#SBATCH -e slurm.%j.err")
-    if directives.get("mail_type"):
-        lines.append(f"#SBATCH --mail-type={directives['mail_type']}")
-    if directives.get("mail_user"):
-        _mu = directives["mail_user"]
-        # Hint, don't twist: SLURM's %-patterns (%u/%j/%x) expand ONLY in
-        # -o/-e/-i filenames, never --mail-user -- a "%u@..." is sent
-        # literally and bounces.  We keep the user's value (it's their
-        # config) but flag it right here so it's obvious.
-        if "%" in _mu:
-            lines.append(
-                "# NOTE: SLURM %-patterns (%u/%j) do NOT expand in "
-                "--mail-user (only in -o/-e/-i);")
-            lines.append(
-                f'#       "{_mu}" is sent literally + bounces. Use a real '
-                "address, or drop mail_user (SLURM mails the submitter).")
-        lines.append(f"#SBATCH --mail-user=\"{_mu}\"")
-    if directives.get("export"):
-        lines.append(f"#SBATCH --export={directives['export']}")
 
     body = (
         "\n"
         "# SLURM lands us in SLURM_SUBMIT_DIR = the project dir; the\n"
-        "# launcher never cd's (running-a-job.md § 5).  --export=NONE means a\n"
-        "# clean env, so the launcher's `module load mamba` + activation\n"
-        "# are load-bearing (running-a-job.md § 2.2a).  \"$@\" forwards --cold / --continue.\n"
+        "# launcher never cd's (running-a-job.md § 5).  The launcher's\n"
+        "# preamble + activation are baked into it, so it needs nothing\n"
+        "# from the submitting shell.  \"$@\" forwards --cold / --continue.\n"
         f"bash {basename}.run.sh \"$@\"\n"
     )
     return "\n".join(lines) + "\n" + body

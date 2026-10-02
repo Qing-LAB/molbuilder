@@ -214,8 +214,8 @@ point. Being labelled did not stop it travelling: `summarize` wrote both into
 `run-config.toml`, `prep` folded them in wherever no flag said otherwise, and
 `sbatch` received them. A guess that reaches the scheduler is not a starting
 point, it is the number the job runs under. The wall and the memory are stated
-by the person, and unstated means the queue's own ceiling and the scheduler's
-own default ([`submission.md`](?doc=execution/submission.md) S1, S2).
+by the person, and unstated is refused at prep
+([`submission.md`](?doc=execution/submission.md) S1, S2).
 
 The trials live **under the stage they measure**, in their own container:
 
@@ -532,7 +532,7 @@ table keeps the count.*
 | 13 | **The `required` check is unbuilt.** A stage may declare what it cannot run without; nothing verifies it in the run directory | `job-contracts.md § 4.4` · `stages.md § 5` | a TranSIESTA ladder starting without its `.TSHS` |
 | 14 | ~~**Nothing offers a save before `prep` overwrites a folder.**~~ **Closed 2026-08-12** (that day's plan, A3/U14): `prep` now SAYS what is under way — launched attempts, launched trials, warm files — asks before re-rendering, and points at the checkpoint verbs when a checkpoint repo exists | `checkpointing.md § 9` · `run-identity.md § 6` | — |
 | 15 | **`checkpoint verify` has no verb.** The archive check exists and is reachable only by attempting a restore — the worst moment to learn an archive is gone | `checkpointing.md § 12` | knowing a history is intact |
-| 16 | ✅ **CLOSED 2026-08-11** (C11): `submit --mode` falls back to `execution.mode`; unset in both is a refusal, never a derivation from the detected scheduler (2026-08-12 aligned `bench` to the same rule) | `job-system.md § 5.3` · `running-a-job.md § 5.4` | — |
+| 16 | ✅ **CLOSED 2026-08-11** (C11): `submit --mode` falls back to `execution.mode` (`launch.mode` since 2026-10-02); unset in both is a refusal, never a derivation from the detected scheduler (2026-08-12 aligned `bench` to the same rule) | `job-system.md § 5.3` · `running-a-job.md § 5.4` | — |
 
 **Five of checkpointing's own invariants are untestable until the layout lands**
 — **S2**, **S3**, **S4**, **S6** and **L8** are stated, tracked and deliberately

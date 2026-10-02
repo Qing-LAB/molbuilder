@@ -127,7 +127,7 @@ implying one. That is the whole of the rule.
 │   48c 500G A100 (4 trials) · 128c 500G no gpu (2 trials)│     never judged
 │                                                         │
 ┌ G4K12C1ELPA1STAGE   ● finished        62.6 s/iter ──────┐
-│   np 48 · thr 1 · gpu:a100:4                            │
+│   np 48 · thr 1 · gpu:4                                 │
 │   on 48c 500G A100 (sol-g042)                           │  ← what the numbers
 │   peak 71.1 GB · cpu 88% · gpu 28% · vram 7.0 GB · 202 s│     below measure
 │   ran with: blocksize 64 · elpa_gpu nvidia-gpu          │

@@ -30,7 +30,6 @@ from the road it imitates.  The steps live here once.
 """
 from __future__ import annotations
 
-import json
 import os
 import shlex
 import shutil
@@ -72,7 +71,7 @@ def each_is_taken(output: str) -> int:
     printed = list(printed_commands(output))
     for words in printed:
         got = jobset(*words, *(["--dry-run"] if words[0] == "launch" else []))
-        assert got.exit_code == 0, (words, got.output)
+        assert got.exit_code == 0, f"{words}: {_one_line(got)}"
     return len(printed)
 
 
@@ -82,7 +81,12 @@ def describe_h2(tmp_path, monkeypatch, *, shape: str = "hierarchical",
     """`jobset init` on a held H2 in a box -- the bundle, at
     ``<projects>/P/<calculation>/<name>``: a SIESTA optimization's shipped
     `publishable` ladder, a vibration's own (`relax`, `freq`), or PySCF's
-    own ladder."""
+    own ladder.
+
+    ITS RUN CARD STATES THE LAUNCH SHAPE -- two ranks and one thread for
+    SIESTA, one thread for PySCF -- as a described calculation does: a run
+    whose shape is stated nowhere is refused at prep (`architecture.md`
+    § 5.2).  A test about that refusal takes the card away."""
     from conftest import write_pseudos
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.structure import Structure
@@ -110,9 +114,11 @@ def describe_h2(tmp_path, monkeypatch, *, shape: str = "hierarchical",
                *(("--psml-lib", "pseudopotential") if siesta else ()))
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / calculation / name
-    (bundle / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
+    import json
+    task = json.loads((bundle / "task.json").read_text())
+    task.setdefault("execution", {"mpi_np": 2, "omp_threads": 1} if siesta
+                    else {"threads": 1})
+    (bundle / "task.json").write_text(json.dumps(task, indent=2))
     return bundle
 
 
@@ -238,3 +244,252 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
     if concluded:
         (where / f"{stem}-run0.concluded").write_text(
             f"rc={rc} at Thu Sep 24 02:38:51 PM MST 2026\n")
+
+
+# --------------------------------------------------------------------- #
+#  ONE RUNNER FOR A CONTRACT'S CASE TABLE                               #
+# --------------------------------------------------------------------- #
+#
+# A contract's cases are rows of a TOML table (`tests/data/<contract>.toml`),
+# and every row runs down the road a person runs -- `jobset init`, the
+# description and the target's record written as the row says, `prep`,
+# `launch --dry-run`, and on a machine with no queue the run script's own
+# dry run -- checking the layers it names (`docs/process/testing.md` § 6):
+#
+#   1. ALLOWED OR REFUSED, in its words -- at prep (`refused`, `said`) or at
+#      launch (`launch_refused`, `listing`);
+#   2. WHAT IS PRODUCED -- the `.sbatch` header (`header`, or
+#      `header_absent`), the deck (`deck`), the run script (`run_sh`), each
+#      with a `_lacks` twin; the `sbatch` line launch shows (`line`,
+#      `line_lacks`); a benchmark's trials (`bench_gres`,
+#      `bench_header_lacks`);
+#   3. WHAT THE RUN SCRIPT DOES HERE -- its dry run, given the GPUs the
+#      machine hands it (`given_gpus`, `run_args`, `runs`).
+#
+# INPUTS: `engine` (siesta | pyscf); `run` -- the run card, task.json
+# `execution`, over the table's `run_base` for the engine; `allocation` --
+# task.json `allocation`, over the table's `allocation_base` where the
+# machine has a scheduler; `run_unset` / `allocation_unset` -- base keys a row
+# takes away; `template` -- values in the template (SIESTA's over the
+# table's `siesta_template`); `bench` -- task.json `bench`, then `prep bench`;
+# `config` -- the calculation's `.molbuilder.json`; `machine_config` -- THIS
+# machine's `molbuilder.json`; `prep` / `launch` -- the flags typed (launch
+# with `--mode submit`, unless `launch_mode` names another -- "" for none, so
+# the config's `launch.mode` decides); `machine` -- "this" (this machine IS
+# the target, its record
+# listing `queues`), "named" (this machine is a workstation; the target is a
+# record named `sol` listing `queues`) or "workstation" (no queues at all);
+# `record` -- more fields of THIS machine's record; `named_record` -- more
+# fields of the named target's; `queues` -- replaces the table's menu;
+# `probe` -- THIS machine's record made as a person makes it instead, by
+# `jobset probe --write --yes`, once per list of flags, in order.
+
+
+def _road_target(table, case, tmp_path, monkeypatch) -> str:
+    """The machine the case preps for, recorded as a probe records one --
+    and the name `--target` takes for it."""
+    from conftest import write_machine_record
+    from molbuilder.scheduler import (Domain, Environment, Topology,
+                                      machine_scope_path, write_environment)
+    for flags in case.get("probe", []):
+        r = jobset("probe", "--write", "--yes", *flags)
+        assert r.exit_code == 0, _one_line(r)
+    if "probe" in case:
+        return "this"
+    queues = [Domain.from_row(q)
+              for q in case.get("queues", table.get("queues", []))]
+    record = dict(case.get("record", {}))
+    where = case.get("machine", "this")
+    if where == "this":
+        a_queue_that_answers(tmp_path, monkeypatch, queues, **record)
+        return "this"
+    write_machine_record(**record)          # this machine: no queue at all
+    if where == "workstation":
+        return "this"
+    named = Path(machine_scope_path()).parent / "environments"
+    named.mkdir(parents=True, exist_ok=True)
+    fields = dict(scheduler="slurm", domains=queues,
+                  topology=Topology(sockets=2, cores_per_socket=24),
+                  script_generation={"activation": "conda activate",
+                                     "preamble": "true"})
+    fields.update(case.get("named_record", {}))
+    write_environment(Environment(**fields), named / "sol.json")
+    return "sol"
+
+
+def _over_base(base, mine, unset):
+    """A row's block over the table's base, less what the row takes away."""
+    out = dict(base or {})
+    out.update(mine or {})
+    for key in unset or ():
+        out.pop(key, None)
+    return out
+
+
+def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
+    """`jobset init` of H2, then the case's template values, description
+    blocks and `.molbuilder.json`."""
+    import dataclasses
+    import json
+    engine = case.get("engine", "siesta")
+    bundle = describe_h2(tmp_path, monkeypatch, engine=engine)
+    values = (dict(table.get("siesta_template", {}))
+              if engine == "siesta" else {})
+    values.update(case.get("template", {}))
+    if values:
+        from molbuilder.config.pyscf import PySCFConfig
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.template import (config_from_template, template_path,
+                                         template_with_values)
+        cls = SiestaConfig if engine == "siesta" else PySCFConfig
+        path = template_path(bundle, "H2")
+        cfg = dataclasses.replace(
+            config_from_template(path.read_text(), cls), **values)
+        path.write_text(template_with_values(cfg, engine=engine,
+                                             calculation="optimization"))
+    task = json.loads((bundle / "task.json").read_text())
+    scheduled = case.get("machine", "this") != "workstation"
+    blocks = {
+        "execution": (_over_base(table.get("run_base", {}).get(engine),
+                                 case.get("run"), case.get("run_unset"))
+                      if "bench" not in case else case.get("run")),
+        "allocation": _over_base(
+            table.get("allocation_base") if scheduled else None,
+            case.get("allocation"), case.get("allocation_unset")),
+        "bench": case.get("bench"),
+    }
+    for block, value in blocks.items():
+        if value:
+            task[block] = value
+        else:
+            task.pop(block, None)      # the row states none of it
+    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    if "config" in case:
+        (bundle / ".molbuilder.json").write_text(json.dumps(case["config"]))
+    if "machine_config" in case:
+        from molbuilder.runtime_config import machine_config_path
+        mine = machine_config_path()
+        mine.parent.mkdir(parents=True, exist_ok=True)
+        mine.write_text(json.dumps(case["machine_config"]))
+    return bundle
+
+
+def _road_lines(case, key, text):
+    """``key``'s lines are in ``text``; ``key_lacks``'s are not -- read with
+    runs of blanks as one, since a deck aligns its values in columns."""
+    import re
+    flat = re.sub(r"[ \t]+", " ", text)
+    for line in case.get(key, []):
+        assert line in flat, \
+            f"{key}: {line!r} missing from: {_one_line(text)}"
+    for line in case.get(f"{key}_lacks", []):
+        assert line not in flat, \
+            f"{key}: {line!r} present in: {_one_line(text)}"
+
+
+def _road_runs(bundle: Path, pattern: str) -> "list[Path]":
+    """The files of this pattern the run's prep wrote, outside a bench."""
+    return [p for p in bundle.rglob(pattern)
+            if "bench" not in p.relative_to(bundle).parts]
+
+
+def _the_runs(bundle: Path, pattern: str) -> Path:
+    """The file of this pattern the run's prep wrote -- in the stage's
+    folder and its attempt, one text in both."""
+    found = _road_runs(bundle, pattern)
+    assert found and len({p.read_text() for p in found}) == 1, found
+    return found[-1]
+
+
+def _one_line(text) -> str:
+    """A failure's text on ONE line: `tools/testrun.py` reports
+    ``--tb=line``, which shows a message's first line and nothing else --
+    and a command's first line is its config banner, never its answer.
+    Handed a command's RESULT, it adds the traceback of an exception the
+    command did not turn into a refusal, which its output never shows."""
+    if not isinstance(text, str):
+        import traceback
+        r, text = text, text.output
+        if r.exception is not None and not isinstance(r.exception,
+                                                      SystemExit):
+            text += "".join(traceback.format_exception(*r.exc_info)[-12:])
+    return " ⏎ ".join(ln.strip() for ln in text.splitlines() if ln.strip())
+
+
+def run_road_case(table, case, tmp_path, monkeypatch) -> None:
+    """ONE ROW of a contract's case table, down the road, every layer it
+    names checked."""
+    import json
+    import subprocess
+    target = _road_target(table, case, tmp_path, monkeypatch)
+    if "given_gpus" in case:
+        gpus_given(tmp_path, monkeypatch, case["given_gpus"])
+    bundle = _road_describe(table, case, tmp_path, monkeypatch)
+    kind = "bench" if "bench" in case else "run"
+    r = jobset("prep", kind, "coarse", "--bundle", bundle,
+               "--target", target, *case.get("prep", []))
+
+    # 1 · ALLOWED OR REFUSED -- at prep, in its words
+    if "refused" in case:
+        assert r.exit_code != 0 and case["refused"] in r.output, _one_line(r)
+        return
+    assert r.exit_code == 0, _one_line(r)
+    for words in case.get("said", []):
+        assert words in r.output, _one_line(r)
+
+    # 2 · WHAT IS PRODUCED -- the run's header, deck and run script
+    if case.get("header_absent"):
+        assert not _road_runs(bundle, "*.sbatch"), _road_runs(bundle,
+                                                              "*.sbatch")
+    deck = "*.py" if case.get("engine") == "pyscf" else "*.fdf"
+    for key, pattern in (("header", "*.sbatch"), ("deck", deck),
+                         ("run_sh", "*.run.sh")):
+        if key in case or f"{key}_lacks" in case:
+            _road_lines(case, key, _the_runs(bundle, pattern).read_text())
+    # ...a benchmark's trials
+    if kind == "bench":
+        plan = next(bundle.rglob("bench/job-set.json"))
+        asked = sorted({j["resources"]["gres"]
+                        for j in json.loads(plan.read_text())["jobs"]})
+        assert asked == sorted(case["bench_gres"]), asked
+        for header in plan.parent.rglob("*.sbatch"):
+            _road_lines({"h_lacks": case.get("bench_header_lacks", [])}, "h",
+                        header.read_text())
+    # ...and the `sbatch` line(s) launch shows -- one per shelf of a
+    # benchmark -- or its refusal
+    if "launch" in case:
+        mode = case.get("launch_mode", "submit")
+        r = jobset("launch", kind, "coarse", "--bundle", bundle,
+                   *(("--mode", mode) if mode else ()),
+                   "--dry-run", "--yes", *case["launch"])
+        if "launch_refused" in case:
+            assert r.exit_code != 0 and case["launch_refused"] in r.output, \
+                _one_line(r)
+        else:
+            assert r.exit_code == 0, _one_line(r)
+            sent = [ln for ln in r.output.splitlines() if "sbatch" in ln.split()]
+            assert sent, _one_line(r)
+            for ln in sent:
+                _road_lines(case, "line", " ".join(sbatch_line(ln)))
+        for words in case.get("listing", []):
+            assert words in r.output, _one_line(r)
+
+    # 3 · WHAT THE RUN SCRIPT DOES HERE -- its dry run, given the case's GPUs
+    if "given_gpus" in case:
+        script = _the_runs(bundle, "*.run.sh")
+        script.write_text(strip_preamble_activation(script.read_text()))
+        # The rank and thread counts this shell may carry are scrubbed, so
+        # what resolves is the script's own chain.
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("OMP_NUM_THREADS", "SLURM_CPUS_PER_TASK", "MB_NP",
+                            "SLURM_NTASKS", "SLURM_JOB_ID", "PBS_NP",
+                            "MOLBUILDER_USE_MPS")}
+        env.update(MB_LAUNCHED_BY="manual")
+        done = subprocess.run(["bash", str(script), "--dry-run",
+                               *case.get("run_args", [])],
+                              cwd=script.parent, capture_output=True,
+                              text=True, timeout=60, env=env)
+        said = done.stdout + done.stderr
+        assert done.returncode == 0, _one_line(said[-3000:])
+        for words in case["runs"]:
+            assert words in said, _one_line(said[-3000:])

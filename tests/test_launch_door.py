@@ -2,8 +2,10 @@
 
 PINS: ``docs/execution/job-system.md`` § 6 (*One request, three doors*: what
 `prep` baked, under what was said at launch, admitted on the queue it is sent
-to, the wall that queue's own ceiling when nothing states one; the queue
-named once, for the work being launched; `-J <calculation>/<job>`);
+to; the queue named once, for the work being launched; `-J
+<calculation>/<job>`); ``docs/execution/architecture.md`` § 5.2 (every
+launch value is stated -- the queue, the wall, the memory -- and a launch
+flag overrides what prep baked, never fills what nobody stated);
 ``docs/execution/submission.md`` S4 (nothing is submitted unseen -- every
 door; a judgement only the person can make takes "no" as Enter's answer);
 ``docs/execution/running-a-job.md`` § 5.5 (*`--mode ask` walks the identical
@@ -15,10 +17,10 @@ only on the person's judgement); plan W52.
 
 PREVENTS, each read in the code before 2026-10-01 (the W52 review):
 
-* a stage sent to the queue `--domain` named under the wall `prep`'s header
-  had worked out for ANOTHER queue -- a production stage killed at `debug`'s
-  fifteen minutes -- and sent with no question, while the grouped bench and
-  the bias chain asked;
+* a stage sent to the queue `--domain` named under a wall nobody stated --
+  the one `prep`'s header had worked out for ANOTHER queue, a production
+  stage killed at `debug`'s fifteen minutes -- and sent with no question,
+  while the grouped bench and the bias chain asked;
 * the queue one stage's prep baked routing every stage of the ladder;
 * `--mode ask` asking about a line with no queue on it, while `submit` would
   have sent the baked one;
@@ -56,13 +58,26 @@ def _queues(gpu: bool = False):
     return rows
 
 
+def _states_its_wall_and_memory(bundle, **more):
+    """The calculation states its wall and its memory -- task.json's
+    `allocation` -- as a run on a scheduler does, or prep refuses
+    (`architecture.md` § 5.2).  Its QUEUE each prep names for its own stage
+    (`--domain`), which is what this file is about -- or, given here, the
+    description names it for every stage."""
+    task = json.loads((bundle / "task.json").read_text())
+    task["allocation"] = {"time": "0-01:00:00", "mem": "8G", **more}
+    (bundle / "task.json").write_text(json.dumps(task, indent=2))
+    return bundle
+
+
 @pytest.fixture
 def cluster(tmp_path, monkeypatch):
     """A machine whose record names two queues -- `debug` (15 minutes) and
     `htc` (4 hours) -- a scheduler that answers, and the H2 ladder described
-    on it: ``(bundle, calls)``."""
+    on it, stating its wall and memory: ``(bundle, calls)``."""
     calls = a_queue_that_answers(tmp_path, monkeypatch, _queues())
-    return describe_h2(tmp_path, monkeypatch), calls
+    return _states_its_wall_and_memory(describe_h2(tmp_path, monkeypatch)), \
+        calls
 
 
 def _prep(bundle, stage="coarse", *more):
@@ -88,24 +103,25 @@ def _ledger(bundle):
 def test_a_stage_is_shown_asked_and_sent_with_its_own_queues_wall(cluster):
     """`launch run coarse --mode submit --domain htc`: before prep it is
     refused, naming the prep; after it, the exact line is shown -- the
-    calculation's name first in `-J`, the queue named, the wall of THAT
-    queue, the launch-door claim -- and asked about; with no one to answer
-    nothing is sent or recorded.  With `--yes` that very line is sent and
-    recorded.  `prep`'s header named `debug`, the menu's own first choice,
-    so a wall taken from the header would be fifteen minutes.
+    calculation's name first in `-J`, the queue named at launch, the wall
+    the description STATES, the launch-door claim -- and asked about; with
+    no one to answer nothing is sent or recorded.  With `--yes` that very
+    line is sent and recorded.  `prep`'s header named `debug`, the queue
+    that prep named; the wall is the stated hour on either queue, never
+    one queue's ceiling.
 
-    MUTATIONS THIS MUST FAIL AGAINST: the stage's door without the wall
-    default (the header's `debug` wall stands); sending without asking;
-    the ledger calling a declined or a dry run a launch."""
+    MUTATIONS THIS MUST FAIL AGAINST: the stage's door putting a queue's
+    ceiling in place of the stated wall; sending without asking; the ledger
+    calling a declined or a dry run a launch."""
     bundle, calls = cluster
     r = jobset("launch", "run", "coarse", "--bundle", bundle,
                "--mode", "submit", "--domain", "htc")
     assert r.exit_code != 0 and "prep run coarse" in r.output, r.output
 
-    _prep(bundle)
+    _prep(bundle, "coarse", "--domain", "debug")
     attempt = bundle / "01_coarse" / "run-0"
     header = next(attempt.glob("*.sbatch")).read_text()
-    assert "#SBATCH -q debug" in header, header        # prep's own choice
+    assert "#SBATCH -q debug" in header, header        # the queue prep named
 
     r = jobset("launch", "run", "coarse", "--bundle", bundle,
                "--mode", "submit", "--domain", "htc")
@@ -114,8 +130,8 @@ def test_a_stage_is_shown_asked_and_sent_with_its_own_queues_wall(cluster):
     assert "about to submit" in r.output, r.output
     assert _flag(shown, "-J") == "H2/coarse", shown
     assert (_flag(shown, "-p"), _flag(shown, "-q")) == ("htc", "public")
-    assert _flag(shown, "-t") == "0-04:00:00", (
-        "sent to htc under another queue's wall: " + " ".join(shown))
+    assert _flag(shown, "-t") == "0-01:00:00", (
+        "sent under a wall nobody stated: " + " ".join(shown))
     assert "ALL,MB_LAUNCHED_BY=jobset-launch" in shown, shown
     assert "nothing submitted" in r.output, r.output
     assert calls_made(calls) == [], "sent without the person's yes"
@@ -139,23 +155,28 @@ def test_a_stage_is_shown_asked_and_sent_with_its_own_queues_wall(cluster):
 
 def test_the_queue_prep_baked_belongs_to_its_own_stage(cluster):
     """`prep run coarse --domain debug` names coarse's queue -- not medium's.
-    Launched, coarse goes to `debug`; medium, which named none, is asked to
-    name one: the queues are listed and nothing is sent.
+    Launched, coarse goes to `debug`; medium, prepped naming none, is
+    refused at its prep with the record's queues listed (a run on a
+    scheduler names its queue, `architecture.md` § 5.2); named, it goes to
+    its own.
 
     MUTATION THIS MUST FAIL AGAINST: the baked queue read from every
     stage's row (medium sent to coarse's `debug`)."""
     bundle, calls = cluster
-    _prep(bundle, "coarse", "--domain", "debug")
-    _prep(bundle, "medium", "--cold")
+    _prep(bundle, "coarse", "--domain", "debug", "--time", "10m")
+    r = jobset("prep", "run", "medium", "--bundle", bundle,
+               "--target", "this", "--cold")
+    assert r.exit_code != 0, r.output
+    assert "(the target's record lists: debug, htc)" in r.output, r.output
+    _prep(bundle, "medium", "--cold", "--domain", "htc")
     r = jobset("launch", "run", "coarse", "--bundle", bundle,
                "--mode", "submit", "--dry-run")
     assert r.exit_code == 0, r.output
     assert _flag(_line(r.output), "-q") == "debug", r.output
     r = jobset("launch", "run", "medium", "--bundle", bundle,
                "--mode", "submit", "--dry-run")
-    assert r.exit_code != 0, r.output
-    assert "no --domain, so no queue was chosen" in r.output, r.output
-    assert "htc/public" in r.output, r.output           # the table, listed
+    assert r.exit_code == 0, r.output
+    assert _flag(_line(r.output), "-q") == "public", r.output
 
 
 def test_ask_asks_about_the_line_submit_would_send(cluster):
@@ -165,7 +186,7 @@ def test_ask_asks_about_the_line_submit_would_send(cluster):
     send carries no `--test-only`.  Nothing is recorded.
 
     MUTATION THIS MUST FAIL AGAINST: the queue resolved for `submit` alone
-    (the question asks about the menu's own preference, `debug`)."""
+    (the question asks about a line naming no queue)."""
     bundle, calls = cluster
     _prep(bundle, "coarse", "--domain", "htc")
     r = jobset("launch", "run", "coarse", "--bundle", bundle,
@@ -191,7 +212,7 @@ def test_memory_is_sent_as_said_and_zero_is_the_whole_node(cluster):
     MUTATION THIS MUST FAIL AGAINST: `launch` reading --mem as a number of
     gigabytes (`0` refused as "memory must be positive")."""
     bundle, _calls = cluster
-    _prep(bundle)
+    _prep(bundle, "coarse", "--domain", "htc")
     for said, sent in (("64G", "--mem=64G"), ("0", "--mem=0")):
         r = jobset("launch", "run", "coarse", "--bundle", bundle,
                    "--mode", "submit", "--domain", "htc", "--dry-run",
@@ -209,14 +230,14 @@ def test_direct_runs_what_was_typed_and_refuses_what_it_would_not_read(
     """`--mode direct` runs the stage's own wrapper here, the ranks and
     threads its prep stated as arguments; a scheduler's flag beside it is
     refused by name.
-    A bundle whose config says `submit` to `htc` launches that way when
-    nothing is typed, and `--mode direct` typed over it is not handed the
-    configured queue.
+    A bundle whose config says `launch.mode: submit` launches that way when
+    nothing is typed -- to the queue its prep named -- and `--mode direct`
+    typed over it runs here.
 
-    MUTATIONS THIS MUST FAIL AGAINST: a direct run without -np/-omp; a
-    configured `execution.domain` poured into a direct run."""
+    MUTATION THIS MUST FAIL AGAINST: a direct run without -np/-omp."""
     bundle, _calls = cluster
-    _prep(bundle, "coarse", "--np", "4", "--cpus-per-task", "2")
+    _prep(bundle, "coarse", "--np", "4", "--cpus-per-task", "2",
+          "--domain", "htc")
     r = jobset("launch", "run", "coarse", "--bundle", bundle,
                "--mode", "direct", "--dry-run")
     assert r.exit_code == 0, r.output
@@ -230,9 +251,8 @@ def test_direct_runs_what_was_typed_and_refuses_what_it_would_not_read(
                    "--mode", "direct", flag, value)
         assert r.exit_code != 0 and flag in r.output, (flag, r.output)
 
-    cfg = json.loads((bundle / ".molbuilder.json").read_text())
-    cfg["execution"] = {"mode": "submit", "domain": "htc"}
-    (bundle / ".molbuilder.json").write_text(json.dumps(cfg))
+    (bundle / ".molbuilder.json").write_text(
+        json.dumps({"launch": {"mode": "submit"}}))
     r = jobset("launch", "run", "coarse", "--bundle", bundle, "--dry-run")
     assert r.exit_code == 0, r.output
     assert _flag(_line(r.output), "-q") == "public", r.output
@@ -249,7 +269,7 @@ def test_a_stage_launched_before_continues_from_its_own_latest_run(cluster):
     MUTATION THIS MUST FAIL AGAINST: a planned re-launch opening its
     attempt (a dry run that writes)."""
     bundle, calls = cluster
-    _prep(bundle)
+    _prep(bundle, "coarse", "--domain", "htc")
     run0 = bundle / "01_coarse" / "run-0"
     r = jobset("launch", "run", "coarse", "--bundle", bundle,
                "--mode", "submit", "--domain", "htc", "--yes")
@@ -281,7 +301,7 @@ def test_a_run_that_never_concluded_is_followed_only_on_your_word(cluster):
     MUTATION THIS MUST FAIL AGAINST: the judgement taken without the
     person (an unconcluded run continued by default)."""
     bundle, calls = cluster
-    _prep(bundle)
+    _prep(bundle, "coarse", "--domain", "htc")
     run0 = bundle / "01_coarse" / "run-0"
     assert jobset("launch", "run", "coarse", "--bundle", bundle, "--mode",
                   "submit", "--domain", "htc", "--yes").exit_code == 0
@@ -309,7 +329,10 @@ def test_a_relaunch_that_cannot_continue_opens_nothing(cluster):
     continuation is checked; the remedy naming no calculation, a note on
     its line (`job-system.md` § 5.3)."""
     bundle, calls = cluster
-    _prep(bundle)
+    # The QUEUE IN THE DESCRIPTION: the remedy is typed back as printed, a
+    # bare `prep run`, so the stage's queue is the file's, not a flag's.
+    _states_its_wall_and_memory(bundle, domain="htc")
+    _prep(bundle, "coarse")
     assert jobset("launch", "run", "coarse", "--bundle", bundle, "--mode",
                   "submit", "--domain", "htc", "--yes").exit_code == 0
     r = jobset("launch", "run", "coarse", "--bundle", bundle,
@@ -330,8 +353,9 @@ def test_a_flat_stage_still_unconcluded_is_asked_like_an_attempt(
     MUTATION THIS MUST FAIL AGAINST: "was it launched" reading an attempt's
     `run.json` only (a flat stage always reads never launched)."""
     calls = a_queue_that_answers(tmp_path, monkeypatch, _queues())
-    bundle = describe_h2(tmp_path, monkeypatch, shape="flat")
-    _prep(bundle)
+    bundle = _states_its_wall_and_memory(
+        describe_h2(tmp_path, monkeypatch, shape="flat"))
+    _prep(bundle, "coarse", "--domain", "htc")
     assert jobset("launch", "run", "coarse", "--bundle", bundle, "--mode",
                   "submit", "--domain", "htc", "--yes").exit_code == 0
     assert (bundle / "H2_01_coarse.run.json").is_file()

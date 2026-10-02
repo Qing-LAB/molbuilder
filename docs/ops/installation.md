@@ -125,8 +125,8 @@ produce, by a fake manager that emits exactly its signature
 
 **M2's config-writing site is fixed too**: `initconfig.conda_hook` asks
 `<mgr> info --json` for `root_prefix` instead of taking the binary's
-grandparent, because the line it produces is written into the user's
-`molbuilder.json` and a wrong one fails in a job on a cluster, not here. The
+grandparent, because the line it produces is written into this machine's
+record and a wrong one fails in a job on a cluster, not here. The
 manager a cluster module puts on PATH is a shell wrapper whose own location says
 nothing about the installation, which is exactly what a derivation cannot see.
 
@@ -205,7 +205,7 @@ discover:
 ├── molbuilder.json                0600 -- a TEMPLATE: every section present
 │                                  and empty, each with a comment saying who
 │                                  fills it (you, a command, or a probe)
-├── environment.json               this machine, probed
+├── environment.json               this machine, probed -- with its activation
 ├── environments/                  0700 -- records for machines you prep FOR
 │   └── README                     that the probe runs on the TARGET and the
 │                                  record is copied here -- the mistake this
@@ -226,8 +226,11 @@ that cannot live here" — the opposite of what is now true.
 Two things are **asked**, because install time is the one moment the answer is
 known and every later surface can only report that nobody said:
 
-* **how this machine enters a conda env** — `script_generation.activation` has
-  no default, and unset it makes *every* generated wrapper refuse to render.
+* **how this machine enters a conda env** — the activation has no default, and
+  unset it makes *every* generated wrapper refuse to render. It is written into
+  this machine's record, `environment.json`, beside the preamble found from the
+  conda installation: how a shell enters an environment is a fact of the
+  machine ([`configuration.md`](?doc=configuration.md) § 5 M-1).
 * **where the project tree lives** — its default is inside the checkout, which
   is often not what you want on a cluster (a home with a quota, or scratch).
   Declared, it is written as `paths.projects`.
@@ -255,15 +258,15 @@ work out for itself:
 | what | why it is seeded here |
 |---|---|
 | `<config dir>/` | mode `0700` — the session key, the OAuth client secret and the notify tokens live in it. Matches what `auth-setup` already creates it as; the files inside are `0600` (`configuration.md` § 2.1b) |
-| `<config dir>/molbuilder.json` | `script_generation.activation`, mode `0600`, plus `_`-prefixed comment keys naming the command and the document that own each section |
+| `<config dir>/molbuilder.json` | the template — each section empty, with `_`-prefixed comment keys naming the command and the document that own it — and `paths.projects` when you declared one; mode `0600`. What may go in it is [`configuration.md`](?doc=configuration.md) § 4 |
 | `<config dir>/environments/` | where a record for a machine you prep **for** but are not **on** goes — `jobset probe --write --name sol` writes one, you copy it here |
-| `<config dir>/environment.json` | this machine, probed, through the same doors `jobset probe --write` uses |
+| `<config dir>/environment.json` | this machine, probed, through the same doors `jobset probe --write` uses — carrying the activation and preamble |
 
 The config directory is `$MOLBUILDER_CONFIG_DIR` if set, else
 `$XDG_CONFIG_HOME/molbuilder`, else `~/.config/molbuilder`
 (`configuration.md` § 2.1c).
 
-**Why the installer and not first run.** `script_generation.activation` has no
+**Why the installer and not first run.** The activation has no
 default, and without it *every* wrapper refuses to render —
 [`running-a-job.md`](?doc=execution/running-a-job.md) § 5.2 names the symptom as
 *"the `.fdf` saved but no `.run.sh` appeared"* and says it bites a workstation
@@ -274,7 +277,7 @@ confirmed it. Every later surface can only report that nobody ever said.
 **It is asked, never sniffed.** Activation is *declared*
 (`running-a-job.md` § 5; `detect_conda_activation` was deleted 2026-08-13 for
 having zero callers). `bootstrap` puts the question to you and writes your
-answer; `--yes` takes the recommendation — `conda activate` when conda's
+answer into this machine's record; `--yes` takes the recommendation — `conda activate` when conda's
 `etc/profile.d/conda.sh` hook is on disk, `source activate` otherwise — and
 **prints the line it wrote** either way, so a wrong default is visible rather
 than silent. Override it without being asked:
@@ -294,17 +297,20 @@ bash scripts/install-env.sh init-config     # idempotent; asks about activation
 
 `--no-probe` seeds the config but writes no `environment.json` — for a build
 host, or an image baked once and copied, where the machine installed on is not
-the machine that runs anything.
+the machine that runs anything. It therefore records no activation either: the
+machine that runs the work records its own, with `jobset probe --write
+--activation … --preamble …`.
 
-**What it deliberately does not seed** is the `scheduler` block. Partition, QOS
-and node topology are *facts about a machine*, not preferences
-(`configuration.md` M-1), and a guessed partition emits jobs the queue rejects.
-`jobset probe` measures them into `environment.json` instead.
+**What it deliberately does not seed**: `scheduler` and `script_generation`,
+both refused in `molbuilder.json` ([`configuration.md`](?doc=configuration.md)
+§ 4). The queues and node topology are *facts about a machine*, which `jobset
+probe` measures into `environment.json`; a job states its own queue, wall and
+memory ([`architecture.md`](?doc=execution/architecture.md) § 5.2).
 
 **Sign-in, TLS, the admin list** are sections of the same `molbuilder.json`.
 `molbuilder auth-setup` writes the `auth` block (CAS or Google) and **preserves
-every other key**, so running it after `bootstrap` keeps the seeded
-`script_generation` — it refuses only when an `auth` block is already there, and
+every other key**, so running it after `bootstrap` keeps every seeded
+section — it refuses only when an `auth` block is already there, and
 `--force` replaces that one section. For the other providers (GitHub, Microsoft,
 ORCID), TLS and the admin list, the keys are documented where the rules live —
 there is **no example config file in this repository** to copy from, and that is

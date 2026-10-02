@@ -27,7 +27,6 @@ module — the opposite condition.  This preamble names one.
 """
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import warnings
@@ -40,29 +39,24 @@ from molbuilder.runwrap import _preamble_source_targets, render_run_wrapper
 
 
 def _render(tmp_path: Path, preamble: str, monkeypatch=None) -> Path:
-    """Render a wrapper whose ONLY preamble is the one under test.
-
-    The server scope is read from the cwd's `molbuilder.json`, and this
-    repo's own root has one carrying `source
-    /home/u/miniconda3/etc/profile.d/conda.sh` -- the very line that
-    caused the Sol failure.  Without chdir'ing away, every case here would
-    silently inherit it and the "no absolute path" case could never be
-    expressed.
-    """
+    """Render a wrapper whose ONLY preamble is the one under test -- the
+    record's, the preamble's one home (`configuration.md` § 5 M-1), handed
+    over as prep hands the target's."""
+    from molbuilder.scheduler import Environment, Topology
     if monkeypatch is not None:
         monkeypatch.chdir(tmp_path)
-    (tmp_path / ".molbuilder.json").write_text(json.dumps({
-        "script_generation": {"preamble": preamble,
-                              "activation": "conda activate"},
-        "execution": {"mode": "direct"},
-    }))
     (tmp_path / "JOB.fdf").write_text(
         "SystemName t\nSystemLabel t\nNumberOfAtoms 1\n")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        text = render_run_wrapper(tmp_path / "JOB.fdf",
-                                  resources=Resources(mpi_np=1),
-                                  env="some-env", project_dir=tmp_path)
+        text = render_run_wrapper(
+            tmp_path / "JOB.fdf",
+            resources=Resources(mpi_np=1, cpus_per_task=1),
+            env="some-env", project_dir=tmp_path,
+            machine_record=Environment(
+                scheduler="workstation", topology=Topology(),
+                script_generation={"preamble": preamble,
+                                   "activation": "conda activate"}))
     sh = tmp_path / "JOB.run.sh"
     sh.write_text(text)
     os.chmod(sh, 0o755)
@@ -87,13 +81,7 @@ class TestWhichPathsAreChecked:
         ("", []),
     ])
     def test_extractor(self, line, expected):
-        assert _preamble_source_targets([("server", line)]) == expected
-
-    def test_both_scopes_in_order(self):
-        assert _preamble_source_targets(
-            [("server", "source /a/b.sh"), ("project", "source /c/d.sh")]
-        ) == ["/a/b.sh", "/c/d.sh"]
-
+        assert _preamble_source_targets([("target", line)]) == expected
 
 class TestTheGeneratedScriptRefusesActionably:
 
@@ -114,10 +102,13 @@ class TestTheGeneratedScriptRefusesActionably:
         assert cp.returncode == 78, out          # EX_CONFIG, not a bash 1/127
         assert "/opt/definitely-not-here/conda.sh" in out
         assert "does not exist on this machine" in out
-        # the message must be COMPLETE -- no empty command substitutions
-        assert "the machine that ran prep" in out
+        # the message must be COMPLETE -- no empty command substitutions --
+        # and name the fix: the record's preamble, recorded on this machine
+        # (it named molbuilder.json's `script_generation.preamble` until
+        # 2026-10-02, when the record became the preamble's one home)
+        assert "the record prep read" in out
         assert "module load mamba" in out
-        assert "script_generation.preamble" in out
+        assert "molbuilder jobset probe --write --preamble" in out
 
     def test_a_preamble_with_no_absolute_source_gets_no_guard(
             self, tmp_path, monkeypatch):
@@ -172,7 +163,8 @@ class TestActivationComesFromTheMachineRecord:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             text = render_run_wrapper(
-                tmp_path / "JOB.fdf", resources=Resources(mpi_np=48),
+                tmp_path / "JOB.fdf",
+                resources=Resources(mpi_np=48, cpus_per_task=1),
                 env="molbuilder-siesta", project_dir=tmp_path,
                 machine_record=self._sol())
         assert "module load mamba" in text
@@ -194,45 +186,11 @@ class TestActivationComesFromTheMachineRecord:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             text = render_run_wrapper(
-                tmp_path / "JOB.fdf", resources=Resources(mpi_np=4),
+                tmp_path / "JOB.fdf",
+                resources=Resources(mpi_np=4, cpus_per_task=1),
                 env="e", project_dir=tmp_path, machine_record=self._sol())
         assert "conda.sh" not in text
         assert "miniconda3" not in text
-
-    def test_a_record_that_states_nothing_falls_back_to_THIS_machine(
-            self, tmp_path, monkeypatch):
-        """The only legitimate substitute for a silent record is the config
-        of the machine that record describes -- reachable only when it is
-        this one.  `prep` refuses before reaching here when the record
-        names somewhere else.
-
-        THIS MACHINE'S CONFIG IS SUPPLIED, not found.  It read whatever
-        `./molbuilder.json` sat in the repo root -- the developer's own, whose
-        preamble happens to source a `conda.sh` -- so the assertion below was
-        really about the checkout rather than about the fallback.  It passed
-        or failed on a file no test controlled, and stopped meaning anything
-        the moment the machine scope left the working directory.
-        """
-        from molbuilder.scheduler import Environment, Topology
-        import json as _json
-        root = tmp_path / "machine-config"
-        root.mkdir()
-        (root / "molbuilder.json").write_text(_json.dumps({
-            "script_generation": {
-                "preamble": "source /opt/conda/etc/profile.d/conda.sh",
-                "activation": "conda activate"}}))
-        monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(root))
-        (tmp_path / "JOB.fdf").write_text(
-            "SystemName t\nSystemLabel t\nNumberOfAtoms 1\n")
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            text = render_run_wrapper(
-                tmp_path / "JOB.fdf", resources=Resources(mpi_np=4),
-                env="e", project_dir=tmp_path,
-                machine_record=Environment(scheduler="workstation",
-                                           topology=Topology()))
-        # the machine config supplied above is the server scope here
-        assert "conda.sh" in text
 
     def test_the_probe_records_this_machines_activation(self):
         """`probe` writes it wherever it runs -- which is what makes
@@ -286,7 +244,8 @@ class TestTheEnvGateAsksTheTargetMachine:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             return render_run_wrapper(
-                self._gpu_deck(tmp_path), resources=Resources(mpi_np=4),
+                self._gpu_deck(tmp_path),
+                resources=Resources(mpi_np=4, cpus_per_task=1),
                 project_dir=tmp_path, machine_record=record)
 
     def test_the_target_having_it_is_what_permits_generation(self, tmp_path):
@@ -334,6 +293,8 @@ class TestTheHeaderNamesTheQueueTheAllocationAsKED:
     to the record only when no such block existed.  So a bundle prepped on a
     workstation FOR Sol carried `-p public -q public` -- the workstation's
     default -- while its allocation asked for `htc` (`-p htc -q public`).
+    The block is refused by name since 2026-10-02 (`configuration.md` § 4);
+    what remains to check is that the queue the job names decides the pair.
 
     It fails SILENTLY, which is why it is worth a test: `public` IS a real
     Sol domain, so `sbatch` accepts the file and the job runs on hardware
@@ -359,19 +320,8 @@ class TestTheHeaderNamesTheQueueTheAllocationAsKED:
         return env
 
     def _header(self, tmp_path, monkeypatch, domain):
-        # a LOCAL config whose directives name a different queue entirely --
-        # the situation that produced the failure
-        import json
         monkeypatch.chdir(tmp_path)
-        # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
-        # working-directory step, which is gone (configuration.md § 2.1a) --
-        # without naming the directory the write lands in a file nothing
-        # opens, and the test passes having configured nothing.
         monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-        (tmp_path / "molbuilder.json").write_text(json.dumps({
-            "scheduler": {"kind": "slurm",
-                          "directives": {"partition": "public",
-                                         "qos": "public"}}}))
         rec = self._sol_with_menu(tmp_path)
         (tmp_path / "JOB.fdf").write_text(
             "SystemName t\nSystemLabel t\nNumberOfAtoms 2\n")
@@ -404,60 +354,6 @@ class TestTheHeaderNamesTheQueueTheAllocationAsKED:
         carried only the partition would lose the whole distinction."""
         assert self._header(tmp_path, monkeypatch, "debug") == [
             "-p htc", "-q debug"]
-
-    def test_the_local_configs_queue_never_leaks_in(
-            self, tmp_path, monkeypatch):
-        """The regression, stated as what must NOT appear: the local block
-        says `public/public` in every case above and must never win."""
-        for dom in ("htc", "general", "debug"):
-            got = self._header(tmp_path, monkeypatch, dom)
-            assert got != ["-p public", "-q public"], (dom, got)
-
-
-def test_an_unstated_wall_takes_the_NAMED_queues_ceiling(tmp_path, monkeypatch):
-    """With no `--time`, the header states the ceiling of the queue it
-    names -- the only value that queue can never reject as too long.
-
-    It found that row by matching `(partition, qos)` back against the whole
-    menu, which is a second lookup for something `_placement_for` had just
-    returned, and it cannot tell two domains apart that share a pair.
-    `Placement.domain` IS the row.
-
-    `debug` is the case that proves it: same PARTITION as `htc` on ASU Sol,
-    and only its QoS carries the 15-minute wall.  A partition-only match
-    would hand a debug job four hours.
-    """
-    from molbuilder.scheduler import (Domain, Environment, Topology,
-                                      write_environment, FILENAME)
-    from molbuilder.runwrap import render_wrappers
-    monkeypatch.chdir(tmp_path)
-    env = Environment(
-        scheduler="slurm", topology=Topology(),
-        script_generation={"preamble": "module load mamba",
-                           "activation": "source activate"},
-        domains=[Domain(name="debug", partition="htc", qos="debug",
-                        max_time="00:15:00"),
-                 Domain(name="htc", partition="htc", qos="public",
-                        max_time="4:00:00")])
-    write_environment(env, tmp_path / FILENAME)
-    (tmp_path / "D.fdf").write_text(
-        "SystemName t\nSystemLabel t\nNumberOfAtoms 2\n")
-
-    def wall(domain):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            out = render_wrappers(
-                tmp_path / "D.fdf",
-                resources=Resources(mpi_np=4, cpus_per_task=1,
-                                    domain=domain, mem="8G"),   # NO time
-                project_dir=tmp_path, machine_record=env, emit_sbatch=True)
-        sb = [x for n, x in out.files if n.endswith(".sbatch")][0]
-        return [l.replace("#SBATCH ", "") for l in sb.splitlines()
-                if l.startswith("#SBATCH -t")]
-
-    assert wall("htc") == ["-t 0-04:00:00"]
-    assert wall("debug") == ["-t 0-00:15:00"], (
-        "same partition as htc -- only the QoS carries the shorter wall")
 
 
 class TestOneReaderOfSlurmsGresSpelling:

@@ -73,7 +73,6 @@ def test_prep_writes_where_job_dir_names_will_look(tmp_path, monkeypatch):
     launch found nothing.  Two computations kept in step by hand agree until
     something moves.
     """
-    import json as _json
 
     import numpy as np
 
@@ -107,9 +106,6 @@ def test_prep_writes_where_job_dir_names_will_look(tmp_path, monkeypatch):
                             source=str(src)),
         dest)
     write_pseudos(dest, ["H"])
-    (dest / ".molbuilder.json").write_text(_json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
 
     stage = stages[0].name
     sweep, pins, translation = bench_inputs(dest, None)

@@ -18,7 +18,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-import json
 import pytest
 
 from molbuilder.config.pyscf import PySCFConfig
@@ -29,8 +28,9 @@ from molbuilder.structure import Structure
 
 
 @pytest.fixture(autouse=True)
-def _a_machine_config_with_an_activation(tmp_path, monkeypatch):
-    """`render_run_wrapper` refuses without `script_generation.activation`.
+def _a_machine_record_with_an_activation(tmp_path, monkeypatch):
+    """`render_run_wrapper` refuses without an activation in the machine's
+    record -- its one home (`configuration.md` § 5 M-1).
 
     These tests took it from whatever `./molbuilder.json` happened to sit in
     the repo root -- the developer's own, which no test had put under control,
@@ -38,13 +38,14 @@ def _a_machine_config_with_an_activation(tmp_path, monkeypatch):
     working directory (`configuration.md` § 2.1a).  Supplying it here is what
     makes the render depend on the test rather than on the checkout.
     """
+    from conftest import write_machine_record
     root = tmp_path / "config-root"
     root.mkdir(parents=True, exist_ok=True)
-    (root / "molbuilder.json").write_text(json.dumps({
-        # `conda activate` with no preamble: the suite stubs `conda` to
-        # succeed silently, which is all a wrapper in a bare shell needs
-        # (conftest's `product_toolchain_is_the_suites_own`).
-        "script_generation": {"preamble": "", "activation": "conda activate"}}))
+    # `conda activate` with no preamble: the suite stubs `conda` to succeed
+    # silently, which is all a wrapper in a bare shell needs (conftest's
+    # `product_toolchain_is_the_suites_own`).
+    write_machine_record(at=root,
+                         script_generation={"activation": "conda activate"})
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(root))
 
 
@@ -211,13 +212,15 @@ def test_the_wrapper_keeps_what_a_reader_put_in_their_own_section(tmp_path):
     deck = tmp_path / "t.fdf"
     deck.write_text("SystemLabel t\nNumberOfAtoms 1\n", encoding="utf-8")
 
-    wrapper = write_run_wrapper(deck, resources=Resources(mpi_np=1), env="e")
+    wrapper = write_run_wrapper(
+        deck, resources=Resources(mpi_np=1, cpus_per_task=1), env="e")
     marker = end_marker(BLOCK_USER_CUSTOM)
     wrapper.write_text(
         wrapper.read_text(encoding="utf-8").replace(
             marker, "export MY_OWN_FLAG=1\n" + marker), encoding="utf-8")
 
-    write_run_wrapper(deck, resources=Resources(mpi_np=1), env="e")
+    write_run_wrapper(deck, resources=Resources(mpi_np=1, cpus_per_task=1),
+                      env="e")
     assert "MY_OWN_FLAG" in wrapper.read_text(encoding="utf-8")
     assert oct(wrapper.stat().st_mode)[-3:] == "755", "still runnable"
 

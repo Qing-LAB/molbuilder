@@ -78,9 +78,12 @@ def test_status_lists_every_stage_from_the_description(tmp_path, monkeypatch):
                 "--psml-lib", "pseudopotential")
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "optimization" / "H2"
-    (bundle / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
+    # THE RUN CARD STATES THE LAUNCH SHAPE, as a person's does: a run whose
+    # shape is stated nowhere is refused at prep (`architecture.md` § 5.2).
+    tj = bundle / "task.json"
+    d = json.loads(tj.read_text())
+    d["execution"] = {"mpi_np": 2, "omp_threads": 1}
+    tj.write_text(json.dumps(d, indent=2))
     stages = json.loads((bundle / "task.json").read_text())["stages"]
     assert [s["enabled"] for s in stages] == [True, True, False], stages
     first, second, off = (s["name"] for s in stages)
@@ -170,6 +173,13 @@ def test_the_next_step_is_worded_by_the_stages_state(tmp_path, monkeypatch):
         Domain(name="htc", partition="htc", qos="public",
                max_time="0-04:00:00")])
     bundle = describe_h2(tmp_path, monkeypatch)
+    # ...and a job sent to that queue states its queue, wall and memory
+    # (`architecture.md` § 5.2) -- in the description, as a person does.
+    import json
+    tj = bundle / "task.json"
+    d = json.loads(tj.read_text())
+    d["allocation"] = {"domain": "htc", "time": "0-01:00:00", "mem": "8G"}
+    tj.write_text(json.dumps(d, indent=2))
     r = jobset("status", "medium", "--bundle", bundle)
     assert r.exit_code == 0, r.output
     assert "Its prep refuses for now" in r.output, r.output

@@ -2077,7 +2077,7 @@ def cmd_bootstrap(dry_run: bool, skip_existing: bool, clean: bool,
         # The realistic trigger is the documented form: `bootstrap` without
         # `--yes` has two questions to ask, and with no tty on stdin (nohup,
         # CI, a batch step) click aborts on the first one.  Every later verb
-        # then refuses for want of `script_generation.activation`, and the exit
+        # then refuses for want of an activation in the record, and the exit
         # code said the install was fine.
         seed_failed = True
 
@@ -2250,9 +2250,15 @@ def _warn_about_seeding_now(auto_yes: bool) -> bool:
 def _seed_config(activation: "Optional[str]", auto_yes: bool,
                  probe: bool, conda_binary: "Optional[str]",
                  projects: "Optional[str]" = None) -> None:
-    """Ask (unless told), seed, report.  Shared by the command and bootstrap."""
+    """Ask (unless told), seed, report.  Shared by the command and bootstrap.
+
+    The activation is asked only when this machine's record is written
+    (``probe``): the record is its one home (`configuration.md` § 5 M-1), and
+    an answer with nowhere to go would be a question for nothing."""
     recommended, preamble = _recommended_activation(conda_binary)
-    if activation is None:
+    if not probe:
+        activation = preamble = None
+    elif activation is None:
         if auto_yes:
             activation = recommended
         else:
@@ -2267,7 +2273,7 @@ def _seed_config(activation: "Optional[str]", auto_yes: bool,
                                   type=click.Choice(("1", "2")),
                                   show_choices=False)
             activation = "conda activate" if choice == "1" else "source activate"
-    if activation != "conda activate":
+    if activation not in (None, "conda activate"):
         # The hook line is what makes the ``conda activate`` FUNCTION exist in
         # a non-interactive shell.  ``source activate`` is a script on PATH and
         # needs no such thing, so carrying the line there would be a preamble
@@ -2334,9 +2340,9 @@ def _ask_projects_root(auto_yes: bool,
 @click.option("--activation", type=click.Choice(sorted(ACTIVATION_FORMS)),
               default=None,
               help="declare how this machine enters a conda env, instead of "
-                   "being asked.  Written into "
-                   "``script_generation.activation``, which has no default "
-                   "and without which EVERY wrapper refuses to render "
+                   "being asked.  Written into this machine's record "
+                   "(environment.json) -- the activation has no default, and "
+                   "without it every prep for this machine refuses "
                    "(docs execution/running-a-job.md 5.2).")
 @click.option("--no-probe", "probe", flag_value=False, default=True,
               help="do not write environment.json.  For a build host or a "
@@ -2351,16 +2357,16 @@ def cmd_init_config(activation: "Optional[str]", probe: bool,
 
     \b
       <config dir>/                  0700 -- it holds secrets
-      <config dir>/molbuilder.json   0600 -- a TEMPLATE: every section
-                                     present and empty, each with a comment
-                                     saying who fills it (you, a command, or
-                                     a probe).  `script_generation.activation`
-                                     is filled in, because it has no default.
+      <config dir>/molbuilder.json   0600 -- your preferences: every
+                                     section present and empty, each with a
+                                     comment saying what it is for
       <config dir>/secrets/          0700 + a README: the mode rule, what
                                      belongs here, and the three secrets that
                                      cannot (they have one fixed home each)
       <config dir>/environments/     0700 -- records for machines you prep FOR
-      <config dir>/environment.json  this machine, probed
+      <config dir>/environment.json  this machine, probed -- with how a
+                                     shell enters a conda env here, which
+                                     has no default and is asked
 
     Two things are ASKED, never detected, because install time is the one
     moment the answer is known: how this machine enters a conda env, and where

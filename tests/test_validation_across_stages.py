@@ -307,8 +307,6 @@ def test_the_sequence_warnings_reach_the_prep_surface(tmp_path):
     now ride the § 6.6 preflight when the template is in hand, and `prep`
     is the surface that has both halves.  Pinned through the CLI: the note
     must reach the person about to pay for the recompute."""
-    import json
-
     from click.testing import CliRunner
 
     from molbuilder import describe as D
@@ -328,7 +326,11 @@ def test_the_sequence_warnings_reach_the_prep_surface(tmp_path):
             # second continues are simply *more steps at these settings*.
             # ...on its RUN CARD, the one place a rung's `restart` lives
             # (`stages.md` § 6.8d) -- which the sequence checks read.
-            [Stage(name="a", overrides={"mesh_cutoff": 200.0}),
+            [Stage(name="a", overrides={"mesh_cutoff": 200.0},
+                   # the launch shape, stated as a person's run card states
+                   # it -- a run with none is refused at prep
+                   # (`architecture.md` § 5.2)
+                   execution={"mpi_np": 2, "omp_threads": 1}),
              Stage(name="b", overrides={"mesh_cutoff": 200.0},
                    execution={"restart": "clean"})],
             engine="siesta", shape="hierarchical",
@@ -336,9 +338,6 @@ def test_the_sequence_warnings_reach_the_prep_surface(tmp_path):
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, ["H"])
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
     r = CliRunner()
     res = r.invoke(jobset_group, ["prep", "run", "a", "--bundle", str(dest),
                                   "--no-sbatch"])

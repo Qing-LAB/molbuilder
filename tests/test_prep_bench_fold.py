@@ -72,6 +72,22 @@ def _one_stage():
     return (Stage(name="coarse", enabled=True, overrides={}),)
 
 
+#: How a shell enters an environment on the machines these tests prep for --
+#: a fact of each machine, carried by its record (`configuration.md` § 5
+#: M-1), here the calculation's own snapshot.
+_ENTERS = {"activation": "conda activate", "preamble": "true"}
+
+
+def _state_the_run(dest, **card):
+    """The description's run card states the run's launch shape, as a
+    person's description does: a run whose shape is stated nowhere is
+    refused at prep (`architecture.md` § 5.2)."""
+    tj = dest / "task.json"
+    d = json.loads(tj.read_text())
+    d["execution"] = {"mpi_np": 2, "omp_threads": 1, **card}
+    tj.write_text(json.dumps(d, indent=2))
+
+
 @pytest.fixture(autouse=True)
 def _sandbox(tmp_path_factory, monkeypatch):
     """cwd + HOME isolation for EVERY test here (I6, 2026-08-13).
@@ -121,24 +137,24 @@ def calc(tmp_path):
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
-    from conftest import write_pseudos
-    write_pseudos(dest, ["H"])
     # The probe's answer, pre-seeded: resolve_target early-returns on an
     # existing environment.json, so the grid enumerates THIS topology.
     (dest / "environment.json").write_text(
         Environment(scheduler="workstation",
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
-                                      gpu_type="a100")).to_json() + "\n")
-    # A GPU RUN STATES HOW MANY (`execution/gpu.md` G5): the calculation's
-    # run card says it once, for every rung that does not say otherwise.
-    # The bench never reads it -- its GPU counts are its own grid's.
+                                      gpu_type="a100"),
+                    script_generation=_ENTERS).to_json() + "\n")
+    # A RUN STATES ITS LAUNCH SHAPE (`architecture.md` § 5.2), and a GPU run
+    # how many GPUs (`execution/gpu.md` G5): the calculation's run card says
+    # it once, for every rung that does not say otherwise.  The bench never
+    # reads it -- its shapes and GPU counts are its own grid's.
+    _state_the_run(dest, gpu_count=1)
+    # ...and the wall and memory a job handed to a scheduler states, which
+    # the benchmark's trials share: these tests launch them in submit mode.
     tj = dest / "task.json"
     d = json.loads(tj.read_text())
-    d["execution"] = {"gpu_count": 1}
+    d["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
     tj.write_text(json.dumps(d, indent=2))
     return dest
 
@@ -434,12 +450,12 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     assert len(plans) < len(js["jobs"]) or len(shelves) == len(js["jobs"])
     assert "bench-group" in r.output
     assert ".sbatch" in plans[0]
-    # TIME IS NEVER INVENTED (user dictation, 2026-08-24).  This fixture is
-    # a workstation record -- no queue menu, so no ceiling to default to --
-    # and nothing was stated, so NO -t rides the command and the display
-    # says the scheduler's default stands.  A stated --time is the wall.
-    assert " -t " not in plans[0], (
-        f"a wall was invented on a machine with no ceiling: {plans[0]}")
+    # TIME IS NEVER INVENTED (user dictation, 2026-08-24): the wall is the
+    # one the description states -- `allocation.time`, on every shelf --
+    # and one stated nowhere is refused, not sent (`architecture.md` § 5.2).
+    # A --time at launch is the wall instead.
+    assert all(" -t 0-01:00:00 " in pl for pl in plans), (
+        f"the stated wall did not ride every shelf-job: {plans}")
     r2 = runner.invoke(jobset_group, ["launch", "bench", "coarse",
                                       "--bundle", str(calc),
                                       "--mode", "submit", "--dry-run",
@@ -499,14 +515,15 @@ def test_launch_bench_mem_reaches_the_grouped_sbatch_command(calc):
         f"--mem 128G never reached the sbatch command: {plans}")
 
 
-def test_the_launch_plan_states_gpu_sharing_and_what_is_unstated(calc):
+def test_the_launch_plan_states_gpu_sharing(calc):
     """**What a person approves says what will actually be asked for.**
 
     User, 2026-08-23: *"explicitly note for gpu enabled task: how many
     task will be sharing the gpu at the same time, and warn if that
-    number is exceedingly high"* -- and 2026-08-24, that an unstated
-    limit must be SAID rather than silently defaulted.  Both are checked
-    on the real launch door, from the very commands it is about to send.
+    number is exceedingly high"* -- checked on the real launch door, from
+    the very commands it is about to send.  (An unstated memory or wall was
+    SAID here too until 2026-10-02; it is refused now, never sent --
+    `architecture.md` § 5.2.)
 
     The arithmetic itself (`ask.gpu_share_notes`) is unit-tested; this
     pins that it REACHES the approval screen, which is the half that was
@@ -525,16 +542,6 @@ def test_the_launch_plan_states_gpu_sharing_and_what_is_unstated(calc):
     assert ratios, r.output
     assert len(ratios) == len(set(ratios)), f"repeated: {ratios}"
     assert any("rank(s)/GPU" in l for l in ratios)
-    # and the two unstated facts, each said exactly once
-    assert r.output.count("MEMORY NOT STATED") == 1, r.output
-    assert r.output.count("time not stated") <= 1
-    # a stated --mem removes its warning entirely
-    r2 = CliRunner().invoke(jobset_group, [
-        "launch", "bench", "coarse", "--bundle", str(calc),
-        "--mode", "submit", "--dry-run", "--yes",
-        "--mem", "128G"])
-    assert r2.exit_code == 0, r2.output
-    assert "MEMORY NOT STATED" not in r2.output
 
 
 def test_the_group_sequencer_runs_every_trial_and_survives_failures(
@@ -938,8 +945,11 @@ class TestTheRunsOwnCondition:
     def test_a_bench_alone_sizes_no_run(self, calc):
         """The other half of the separation: a grid is a plan to measure and
         says nothing about the run, whatever its arity.  With no condition
-        the run falls to `run-config.toml` and then the wrapper's policy,
-        which `prep` names out loud."""
+        the run's shape is stated nowhere, and prep refuses it -- the grid
+        does not stand in (`architecture.md` § 5.2)."""
+        from click.testing import CliRunner
+
+        from molbuilder.jobset._cli import jobset_group
         for bench in (self.BENCH, {"mpi_np": [8], "omp_threads": [2]}):
             self._write(calc, bench=bench)
             (calc / "task.json").write_text(
@@ -948,8 +958,11 @@ class TestTheRunsOwnCondition:
                             if k != "execution"}, indent=2))
             # The GPU count on the prep: this calculation runs on a GPU, and
             # a GPU run states how many (`gpu.md` G5) -- a count, not a shape.
-            r = self._run(calc, "coarse", "--gpus", "1")["resources"]
-            assert r.get("mpi_np") is None, (bench, r)
+            r = CliRunner().invoke(jobset_group,
+                                   ["prep", "run", "coarse", "--bundle",
+                                    str(calc), "--no-sbatch", "--gpus", "1"])
+            assert r.exit_code != 0 and "ranks (mpi_np)" in r.output, (
+                bench, r.output)
 
     def test_a_stage_lays_its_own_over_the_calculations(self, calc):
         """Both scopes, FIELD BY FIELD: a rung naming only `mpi_np` keeps the
@@ -998,7 +1011,7 @@ class TestTheRunsOwnCondition:
 
         d = json.loads((calc / "task.json").read_text())
         d["allocation"] = {"time": "2-00:00:00", "mem": "256G"}
-        d["execution"] = {"mpi_np": 2, "use_gpu": False}
+        d["execution"] = {"mpi_np": 2, "omp_threads": 1, "use_gpu": False}
         (calc / "task.json").write_text(json.dumps(d, indent=2))
         t = read_task(calc / "task.json")
         cont = calc / bench_container(Shape.named(t.shape),
@@ -1117,102 +1130,12 @@ class TestTheRunsOwnCondition:
         a sweep: every machine-answered catalogue item with a `Resources`
         field is carried, `max_memory_mb` among them -- it is settable as
         `--max-memory-mb`, so a description may say it too."""
-        self._write(calc, execution={"mpi_np": 2, "max_memory_mb": 4000,
+        self._write(calc, execution={"mpi_np": 2, "omp_threads": 1,
+                                     "max_memory_mb": 4000,
                                      "use_gpu": False})
         r = self._run(calc)["resources"]
         assert r["mpi_np"] == 2
         assert r["max_memory_mb"] == 4000
-
-    def test_an_unstated_field_is_left_for_the_wrapper(self, calc):
-        """`architecture.md` § 5.2 track B: an unnamed machine item is not a
-        gap to fill.  It is answered by `run-config.toml` if a benchmark left
-        one and by the wrapper's own chain at run time if not, so prep must
-        write NOTHING for it.
-
-        Routed through the enumerator, `{omp_threads: 4}` came back as
-        `mpi_np=1` -- a single-rank job nobody asked for, from a default a
-        grid needs and a condition does not."""
-        self._write(calc, execution={"omp_threads": 4, "use_gpu": False})
-        r = self._run(calc)["resources"]
-        assert r["cpus_per_task"] == 4
-        assert r.get("mpi_np") is None, (
-            "prep invented a rank count the description never named")
-
-    def test_an_unstated_rank_count_asks_for_the_TARGETS_machine(self, calc):
-        """*(user, 2026-09-02: "is it possible to let the default mpi core be
-        max core number for any cases when it is not set… having it be 1 core
-        would be an overlook")*
-
-        Two things were wrong and they compounded. The `.sbatch` header
-        floored at ``-n 1`` when nothing stated a rank count — and under
-        sbatch the wrapper reads ``SLURM_NTASKS`` from that very header, so a
-        64-core node ran the job on ONE rank and the wrapper's own auto path
-        never got a chance. Meanwhile that auto path read
-        `physical_core_count()` — the machine doing the PREP, not the one
-        that will run it.
-
-        Both now come from `auto_ranks(machine_record, n_atoms)`: the
-        target's own record, and nothing else. It was ALSO clamped to the
-        atom count until the 2026-09-03 ruling removed that -- the abort it
-        cited came from a PSML problem, not from the system's size. The
-        header and the wrapper agree by construction (rule A9) either way,
-        because they read the one function.
-        """
-        import re
-
-        from molbuilder.runwrap import auto_ranks, header_ntasks
-
-        # the fixture's record: 1 socket x 4 cores, and H2 -> 2 atoms
-        assert auto_ranks(None) is None, "no record, no invented number"
-        self._write(calc)
-        d = json.loads((calc / "task.json").read_text())
-        # A CPU RUN: the rank count is what is unstated here, and a GPU run
-        # states its GPU count (`gpu.md` G5) -- `use_gpu` is a run setting,
-        # not a launch shape.
-        d["execution"] = {"use_gpu": False}
-        (calc / "task.json").write_text(json.dumps(d, indent=2))
-        self._run(calc)
-        w = next((calc / "01_coarse").glob("*.run.sh")).read_text()
-        baked = {int(v) for v in re.findall(r"^\s*_mpi_np_default=(\d+)$",
-                                            w, re.M)}
-        assert baked and max(baked) <= 4, (
-            "the wrapper baked more ranks than the target has cores: " 
-            + repr(baked))
-        assert "the selected target/domain's cores" in w, (
-            "the wrapper still names the PREP machine's core count")
-
-    def test_nothing_to_go_on_REFUSES_rather_than_guessing(self):
-        """*(user, 2026-09-02: "environment.json should be available, if not,
-        the user is required to do that. otherwise it's all blind.")*
-
-        The two silent answers were a header that floors at ``-n 1`` and a
-        default read off whichever box ran `prep`.  Both look like a value
-        and neither is about the machine that will run the job, so the
-        producer returns nothing and the caller refuses by name."""
-        from molbuilder.runwrap import header_ntasks
-        assert header_ntasks(8, auto=64)[0] == 8, "a stated value still wins"
-        assert header_ntasks(None, auto=64)[0] == 64
-        n, why = header_ntasks(None, auto=None)
-        assert n is None, "a rank count was invented with nothing to go on"
-        assert "probe" in why and "state one" in why, why
-
-    def test_a_domain_wider_than_the_probe_node_is_what_is_asked_for(self):
-        """`auto_ranks` reads the SELECTED domain first: a queue's width is
-        not the login node's, and `admit._widest_node` is the one reader of
-        "cores of the largest machine in this row"."""
-        import types
-
-        from molbuilder.runwrap import auto_ranks
-        from molbuilder.scheduler.record import Domain
-        rec = types.SimpleNamespace(
-            domains=[Domain(name="public", partition="public", qos="public",
-                            max_cores=128)],
-            topology=types.SimpleNamespace(sockets=1, cores_per_socket=8))
-        assert auto_ranks(rec, None, "public") == 128
-        assert auto_ranks(rec, None, None) == 8, "no domain -> the topology"
-        assert auto_ranks(rec, 4, "public") == 128, (
-            "the atom count must not lower the header's width -- the clamp "
-            "was removed by the 2026-09-03 ruling")
 
     def test_which_machine_is_a_REFUSAL_not_a_traceback(self, calc):
         """`workflow.md` § 9.  Resolving the condition reaches
@@ -1410,9 +1333,7 @@ def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
+    _state_the_run(dest)
     from conftest import write_pseudos
     write_pseudos(dest, ["H"])
     r = CliRunner()
@@ -1501,9 +1422,7 @@ def test_a_one_stage_calculation_continues_from_its_own_attempt(tmp_path):
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
+    _state_the_run(dest)
     # A calculation that CONTINUES -- which is what a described calculation
     # does by default since 2026-08-18 (`run-identity.md` § 4 rule 3): a run
     # started in a folder that already holds a result was started after
@@ -1559,9 +1478,7 @@ def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
         dest, struct=struct)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
+    _state_the_run(dest)
     res = CliRunner().invoke(jobset_group,
                              ["prep", "run", "coarse", "--bundle", str(dest),
                               "--no-sbatch"])
@@ -1615,14 +1532,12 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
     (dest / "environment.json").write_text(
         Environment(scheduler="workstation",
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
-                                      gpu_type="a100")).to_json() + "\n")
+                                      gpu_type="a100"),
+                    script_generation=_ENTERS).to_json() + "\n")
     r = CliRunner()
     res = r.invoke(jobset_group, ["prep", "bench", "coarse", "--bundle",
                                   str(dest), "--no-sbatch"])
@@ -1676,9 +1591,6 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
                             engine="siesta", shape="hierarchical",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         ladder)
-    (ladder / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
     res = r.invoke(jobset_group, ["prep", "bench", "--bundle", str(ladder),
                                   "--no-sbatch"])
     assert res.exit_code != 0
@@ -1706,14 +1618,12 @@ def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
     (dest / "environment.json").write_text(
         Environment(scheduler="workstation",
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
-                                      gpu_type="a100")).to_json() + "\n")
+                                      gpu_type="a100"),
+                    script_generation=_ENTERS).to_json() + "\n")
     sweep, pins, translation = bench_inputs(dest, None)
     prep_calculation(dest, "coarse",
                      allocation=Resources(mpi_np=8, cpus_per_task=8),
@@ -1771,9 +1681,7 @@ def test_a_flat_one_stage_calculation_preps_to_completion(tmp_path):
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
+    _state_the_run(dest)
     r = CliRunner()
     res = r.invoke(jobset_group, ["prep", "run", "coarse", "--bundle",
                                   str(dest), "--no-sbatch"])
@@ -1829,6 +1737,7 @@ def test_a_config_refusal_is_a_refusal_not_a_traceback(tmp_path, monkeypatch):
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
     (dest / ".molbuilder.json").write_text("{}")   # no activation anywhere
+    _state_the_run(dest)
     res = CliRunner().invoke(jobset_group,
                              ["prep", "run", "coarse", "--bundle", str(dest),
                               "--no-sbatch"])
@@ -2332,45 +2241,6 @@ def test_a_verdictless_summarize_prints_no_report(calc):
     assert "bench recommendation" not in r.output
 
 
-def test_prep_names_what_an_unstated_shape_will_do(calc):
-    """**Prep does not go silent about the ordinary case.**
-
-    An unstated launch shape is normal, and *"sizing from the target"* and
-    *"about to refuse"* look identical until one of them is said
-    (`project-layout.md` § 2.3.3).  A stated shape silences the note -- it
-    is for the all-defaults case, and repeating what you just typed is
-    noise.
-
-    *(It named the WRAPPER's runtime policy, per engine, until 2026-09-02:
-    an unstated shape was settled at run time on whatever machine the job
-    landed on.  It is settled at prep now, from the target's record, so the
-    note names the target instead of the policy.)*"""
-    from molbuilder.jobset.prep_inputs import prep_run_inputs
-    from molbuilder.jobset.model import Resources
-    from molbuilder.task import read_task
-
-    # A CPU RUN, so nothing at all need be stated: a GPU run states its GPU
-    # count (`gpu.md` G5), and a count is part of the shape.
-    d = json.loads((calc / "task.json").read_text())
-    d["execution"] = {"use_gpu": False}
-    (calc / "task.json").write_text(json.dumps(d, indent=2))
-    self_task = read_task(calc / "task.json")
-
-    # nothing stated -> the note names where the width comes from
-    notes: list = []
-    prep_run_inputs(calc, None, self_task, "coarse", allocation=Resources(),
-                    notes=notes)
-    out = "\n".join(notes)
-    assert "no launch shape in `execution`" in out, out
-    assert ("sizing from" in out or "refuse rather than guess" in out), out
-
-    # a stated shape -> silence
-    notes = []
-    prep_run_inputs(calc, None, self_task, "coarse",
-                    allocation=Resources(mpi_np=4), notes=notes)
-    assert notes == []
-
-
 def test_the_table_measures_beside_the_ask_and_gates_gpu_columns():
     """The summary table: knobs beside measurements, `--` where nothing
     was measured, and GPU columns only when the sweep ASKED for a GPU —
@@ -2517,13 +2387,10 @@ def test_a_pyscf_runs_threads_reach_the_launch_shape(tmp_path):
                             engine="pyscf", shape="hierarchical", name="JOB",
                             source=str(tmp_path / "h2.xyz")),
         dest)
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
     (dest / "environment.json").write_text(
         Environment(scheduler="workstation",
-                    topology=Topology(sockets=1,
-                                      cores_per_socket=4)).to_json() + "\n")
+                    topology=Topology(sockets=1, cores_per_socket=4),
+                    script_generation=_ENTERS).to_json() + "\n")
     r = CliRunner().invoke(jobset_group, ["prep", "run", "only", "--bundle",
                                           str(dest), "--no-sbatch"])
     assert r.exit_code == 0, r.output

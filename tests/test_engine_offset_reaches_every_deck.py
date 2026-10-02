@@ -86,12 +86,20 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
     if engine == "siesta":
         from conftest import write_pseudos
         write_pseudos(dest, sorted(set(struct.elements)))
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
+    # THE RUN CARD STATES THE LAUNCH SHAPE, as a described calculation does
+    # (`architecture.md` § 5.2): four ranks of one thread for SIESTA -- this
+    # record's four cores -- and one thread for PySCF.
+    task = json.loads((dest / "task.json").read_text())
+    task["execution"] = ({"mpi_np": 4, "omp_threads": 1}
+                         if engine == "siesta" else {"threads": 1})
+    (dest / "task.json").write_text(json.dumps(task, indent=2))
+    # The machine the calculation is prepped for, with how a shell enters an
+    # environment there -- the record is that fact's one home.
     (dest / "environment.json").write_text(
         Environment(scheduler="workstation",
-                    topology=Topology(sockets=1, cores_per_socket=4)
+                    topology=Topology(sockets=1, cores_per_socket=4),
+                    script_generation={"activation": "conda activate",
+                                       "preamble": "true"}
                     ).to_json() + "\n")
     if before_prep is not None:
         before_prep(dest)

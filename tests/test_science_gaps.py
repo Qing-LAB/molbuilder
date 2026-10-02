@@ -342,8 +342,12 @@ def test_a_def2_basis_on_gold_asks_for_its_core_potential(tmp_path,
         "--calculation", "vibration", "--name", "A"])
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "spectrum" / "A"
-    (bundle / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate"}}))
+    # THE RUN CARD STATES THE THREADS, as a described calculation does
+    # (`architecture.md` § 5.2); how a shell enters an environment is the
+    # machine record's (`configuration.md` § 5 M-1).
+    task = json.loads((bundle / "task.json").read_text())
+    task["execution"] = {"threads": 1}
+    (bundle / "task.json").write_text(json.dumps(task, indent=2))
 
     def prep():
         r = run.invoke(jobset_group, ["prep", "run", "freq", "--bundle",

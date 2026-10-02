@@ -31,6 +31,20 @@ from support.road import (a_finished_run, describe_h2, each_is_taken, jobset,
                           printed_commands)
 
 
+def _described(tmp_path, monkeypatch, **kw):
+    """`describe_h2`'s calculation, its description stating the wall and the
+    memory too -- the two values a job handed to a scheduler states
+    (`architecture.md` § 5.2) -- so the `--mode submit` line a next step
+    prints is one that is taken, as it is for a person who stated them."""
+    import json
+    bundle = describe_h2(tmp_path, monkeypatch, **kw)
+    tj = bundle / "task.json"
+    d = json.loads(tj.read_text())
+    d["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
+    tj.write_text(json.dumps(d, indent=2))
+    return bundle
+
+
 def test_every_command_a_refusal_or_a_next_step_prints_is_taken(
         tmp_path, monkeypatch):
     """`prep run medium` before coarse has run is refused, naming how to run
@@ -44,7 +58,7 @@ def test_every_command_a_refusal_or_a_next_step_prints_is_taken(
     `--mode submit|direct`; a printed command naming no calculation; a
     stage-less refusal offering no command, a `<stage>`, or a launch with no
     mode."""
-    bundle = describe_h2(tmp_path, monkeypatch)
+    bundle = _described(tmp_path, monkeypatch)
     r = jobset("prep", "run", "medium", "--bundle", bundle,
                "--target", "this")
     assert r.exit_code != 0, r.output
@@ -88,7 +102,7 @@ def test_every_command_a_benchmark_prints_is_taken(tmp_path, monkeypatch,
     line; a sweep's status read from its bench folder, or worded as a
     ladder's; a flat sweep's stage not found (its container is
     `bench_<NN>_<stage>`, not inside a stage folder)."""
-    bundle = describe_h2(tmp_path, monkeypatch, shape=shape)
+    bundle = _described(tmp_path, monkeypatch, shape=shape)
     r = jobset("prep", "bench", "medium", "--bundle", bundle,
                "--target", "this")
     assert r.exit_code == 0, r.output

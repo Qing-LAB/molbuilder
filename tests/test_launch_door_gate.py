@@ -29,21 +29,21 @@ def _sandbox(tmp_path, monkeypatch):
 
 
 def _wrapper(tmp_path):
-    (tmp_path / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
     (tmp_path / "JOB.fdf").write_text("SystemLabel JOB\n")
-    # A PROBED MACHINE.  Since 2026-09-02 a rank count is read from a record
-    # and nowhere else -- no probe of the running box, no fallback
-    # (`running-a-job.md` § 3.1).  A wrapper cannot be rendered on an
-    # unprobed machine, so a fixture that renders one probes first,
-    # exactly as a person does:  molbuilder jobset probe --write
+    # A PROBED MACHINE, its record saying how a shell enters an environment
+    # there -- the activation's one home (`configuration.md` § 5 M-1); a
+    # wrapper is not rendered without one.  Its shape is STATED, as every
+    # run's is (`architecture.md` § 5.2).
     from molbuilder.scheduler import Environment as _Env, Topology as _Topo
     (tmp_path / "environment.json").write_text(
         _Env(scheduler="slurm",
-             topology=_Topo(sockets=2, cores_per_socket=32)).to_json()
+             topology=_Topo(sockets=2, cores_per_socket=32),
+             script_generation={"activation": "conda activate",
+                                "preamble": "true"}).to_json()
         + "\n")
-    return write_run_wrapper(tmp_path / "JOB.fdf", resources=Resources(), env="e")
+    return write_run_wrapper(tmp_path / "JOB.fdf", env="e",
+                             resources=Resources(mpi_np=2, cpus_per_task=1),
+                             emit_sbatch=False)
 
 
 # ---- the gate, in the emitted text and under execution ---------------- #
@@ -85,18 +85,18 @@ def test_a_claimed_call_passes_the_gate(tmp_path):
 
 def test_provenance_names_each_values_source(tmp_path, machine_config):
     machine_config(
-        {"execution": {"mode": "direct"},
-         "script_generation": {"activation": "conda activate"}})
+        {"paths": {"projects": "/srv/projects"},
+         "launch": {"mode": "direct"}})
     bundle = tmp_path / "calc"
     bundle.mkdir()
     (bundle / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "source activate"}}))
+        {"launch": {"mode": "submit"}}))
     prov = config_provenance(project_dir=bundle)
-    assert prov["effective"]["execution.mode"] == {
-        "value": "direct", "from": "machine"}
+    assert prov["effective"]["paths.projects"] == {
+        "value": "/srv/projects", "from": "machine"}
     # the project file wins where both speak
-    assert prov["effective"]["script_generation.activation"] == {
-        "value": "source activate", "from": "project"}
+    assert prov["effective"]["launch.mode"] == {
+        "value": "submit", "from": "project"}
     scopes = {s["scope"]: s for s in prov["sources"]}
     assert scopes["machine"]["found"] and scopes["machine"]["via"] == "config-dir"
     # `project`, ONE name for this scope (2026-08-23).  It answered to
@@ -114,13 +114,13 @@ def test_provenance_never_carries_secret_material(tmp_path, machine_config):
     (`secret_key_file` was a third such section until 2026-08-31; the session
     key now has one home and the config cannot name it at all.)"""
     machine_config(
-        {"execution": {"mode": "direct"},
+        {"launch": {"mode": "direct"},
          "tls": {"key": "PEMKEYMATERIAL"}})
     text = format_provenance(config_provenance(project_dir=None))
     assert "PEMKEYMATERIAL" not in text
     assert "tls" not in text
     assert "secret" not in text.lower()
-    assert "execution.mode = 'direct'" in text
+    assert "launch.mode = 'direct'" in text
 
 
 # ---- U10 (2026-08-12): the gate's four repaired edges ----------------- #

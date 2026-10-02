@@ -36,7 +36,6 @@ cannot be tested by a stub that never hangs.
 """
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import subprocess
@@ -91,18 +90,15 @@ def _trimmed(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
-    (tmp_path / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"preamble": "module load mamba",
-                              "activation": "source activate"}}))
-    # A PROBED MACHINE.  Since 2026-09-02 a rank count is read from a record
-    # and nowhere else -- no probe of the running box, no fallback
-    # (`running-a-job.md` § 3.1).  A wrapper cannot be rendered on an
-    # unprobed machine, so a fixture that renders one probes first,
-    # exactly as a person does:  molbuilder jobset probe --write
+    # A PROBED MACHINE, as a person records one -- `molbuilder jobset probe
+    # --write --activation "source activate" --preamble "module load mamba"`:
+    # the record is the activation's one home (`configuration.md` § 5 M-1).
     from molbuilder.scheduler import Environment as _Env, Topology as _Topo
     (tmp_path / "environment.json").write_text(
-        _Env(scheduler="slurm",
-             topology=_Topo(sockets=2, cores_per_socket=32)).to_json()
+        _Env(scheduler="workstation",
+             topology=_Topo(sockets=2, cores_per_socket=32),
+             script_generation={"preamble": "module load mamba",
+                                "activation": "source activate"}).to_json()
         + "\n")
     set_capabilities(Capabilities(
         runtime_config={}, conda_binary="/usr/bin/conda",
@@ -111,7 +107,10 @@ def _trimmed(tmp_path, monkeypatch):
     deck.write_text("SystemLabel myjob\nNumberOfAtoms 1\n"
                     "%block AtomicCoordinatesAndAtomicSpecies\n0 0 0 1\n"
                     "%endblock AtomicCoordinatesAndAtomicSpecies\n")
-    w = write_run_wrapper(deck, resources=Resources())
+    # The shape stated, as every run's is (`architecture.md` § 5.2); the
+    # tests below pass their own -np / -omp, which win at run time.
+    w = write_run_wrapper(deck, resources=Resources(mpi_np=4,
+                                                    cpus_per_task=1))
     text = w.read_text()
     # Drop the bootstrap (no conda in a bare shell) and stop before the
     # engine launch: the probe sits between them, which is the point.

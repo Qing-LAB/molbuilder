@@ -241,11 +241,12 @@ def _jobset(*args):
     return CliRunner().invoke(jobset_group, [str(a) for a in args])
 
 
-def _a_prepped_stage(tree, monkeypatch):
+def _a_prepped_stage(tree, monkeypatch, *stated):
     """One stage, described and prepped the way a person does it:
     `jobset init` on a structure in the projects tree, then `prep run
-    --target this`.  NO engine runs -- asking needs a prepped attempt and
-    nothing more."""
+    --target this`, stating its launch values as flags (``stated``) -- a
+    run states them or is refused (`architecture.md` § 5.2).  NO engine
+    runs -- asking needs a prepped attempt and nothing more."""
     from molbuilder.projects import PROJECTS_ROOT_ENV
     (tree / "P" / "structure").mkdir(parents=True)
     (tree / "P" / "structure" / "h2.xyz").write_text(
@@ -257,13 +258,8 @@ def _a_prepped_stage(tree, monkeypatch):
                 "--shape", "hierarchical", "--name", "H2")
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "optimization" / "H2"
-    # How a shell enters the env on this machine -- no wrapper is written
-    # without it (`running-a-job.md` § 5.2).
-    (bundle / ".molbuilder.json").write_text(
-        '{"script_generation": {"activation": "conda activate", '
-        '"preamble": "true"}}')
     r = _jobset("prep", "run", "coarse", "--bundle", bundle,
-                "--target", "this")
+                "--target", "this", *stated)
     assert r.exit_code == 0, r.output
     attempt = bundle / "01_coarse" / "run-0"
     assert attempt.is_dir(), sorted(p.name for p in bundle.iterdir())
@@ -340,7 +336,12 @@ def test_ask_answers_on_the_road_and_launches_nothing(tmp_path, monkeypatch,
         import os
         monkeypatch.setenv(
             "PATH", f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}")
-    bundle, attempt = _a_prepped_stage(tmp_path / "projects", monkeypatch)
+    # PySCF's threads, everywhere; where the machine has queues, the queue,
+    # the wall and the memory too.
+    bundle, attempt = _a_prepped_stage(
+        tmp_path / "projects", monkeypatch, "--cpus-per-task", "1",
+        *(("--domain", "htc", "--time", "1h", "--mem", "4G")
+          if machine == "scheduler answers" else ()))
     if machine == "no scheduler":
         _no_scheduler_on_path(monkeypatch)
 

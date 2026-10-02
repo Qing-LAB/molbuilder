@@ -19,7 +19,6 @@ flags them is one somebody will disable.
 from __future__ import annotations
 
 import inspect
-import json
 import re
 import shutil
 import subprocess
@@ -32,35 +31,36 @@ from molbuilder.jobset.model import Resources
 
 @pytest.fixture(autouse=True)
 def _isolated(monkeypatch, tmp_path_factory):
-    """The renders resolve script_generation config from cwd + HOME/XDG
-    (G-3, 2026-08-13): unsandboxed, every wrapper here was rendered with
-    the developer's repo-root molbuilder.json folded in, so what I4 was
-    checked against varied by machine -- and failed in an isolated cwd
-    (the writer rightly REFUSES with no activation declared, which is
-    exactly what running the file isolated exposed).  One sandboxed cwd +
-    HOME for the file, with the activation DECLARED by the test."""
+    """The renders resolve the activation from the machine's record (G-3,
+    2026-08-13): unsandboxed, every wrapper here was rendered with the
+    developer's own setup folded in, so what I4 was checked against varied
+    by machine -- and failed in an isolated cwd (the writer rightly REFUSES
+    with no activation declared, which is exactly what running the file
+    isolated exposed).  One sandboxed cwd + HOME for the file, with the
+    activation DECLARED by the test, in the record -- its one home since
+    2026-10-02 (`configuration.md` § 5 M-1)."""
     home = tmp_path_factory.mktemp("home")
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     cwd = tmp_path_factory.mktemp("cwd")
-    (cwd / "molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
     monkeypatch.chdir(cwd)
     # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
     # working-directory step, which is gone (configuration.md § 2.1a) --
     # without naming the directory the write lands in a file nothing
     # opens, and the test passes having configured nothing.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cwd))
-    # A PROBED MACHINE.  Since 2026-09-02 a rank count is read from a record
-    # and nowhere else -- no probe of the running box, no fallback
-    # (`running-a-job.md` § 3.1).  A wrapper cannot be rendered on an
-    # unprobed machine, so a fixture that renders one probes first,
-    # exactly as a person does:  molbuilder jobset probe --write
-    from molbuilder.scheduler import Environment as _Env, Topology as _Topo
+    # A PROBED MACHINE WITH A QUEUE, so the `.sbatch` shape is emitted for
+    # real: a header names a queue the record lists (`architecture.md`
+    # § 5.2), exactly as `molbuilder jobset probe --write` records one.
+    from molbuilder.scheduler import (Domain as _Domain, Environment as _Env,
+                                      Topology as _Topo)
     (cwd / "environment.json").write_text(
         _Env(scheduler="slurm",
-             topology=_Topo(sockets=2, cores_per_socket=32)).to_json()
+             topology=_Topo(sockets=2, cores_per_socket=32),
+             domains=[_Domain(name="public", partition="public",
+                              qos="public", max_time="1-00:00:00")],
+             script_generation={"activation": "conda activate",
+                                "preamble": "true"}).to_json()
         + "\n")
 
 
@@ -91,7 +91,9 @@ def _emit(tmp_path, resources=None, emit_sbatch=True):
     """Write a real wrapper for a real script and return every emitted file."""
     script = tmp_path / "job.fdf"
     script.write_text("SystemLabel job\n")
-    write_run_wrapper(script, resources=resources or Resources(),
+    write_run_wrapper(script,
+                      resources=resources or Resources(mpi_np=4,
+                                                       cpus_per_task=1),
                       env="molbuilder-siesta", emit_sbatch=emit_sbatch)
     return [p for p in tmp_path.iterdir() if p.is_file() and p != script]
 
@@ -127,8 +129,10 @@ def _texts(path):
 @pytest.mark.parametrize("kwargs", [
     {"emit_sbatch": False},
     {"emit_sbatch": True,
-     "resources": Resources(time="01:00:00", mem="8G", cpus_per_task=4)},
-    {"emit_sbatch": False, "resources": Resources(continue_retries=2)},
+     "resources": Resources(mpi_np=4, time="01:00:00", mem="8G",
+                            cpus_per_task=4, domain="public")},
+    {"emit_sbatch": False, "resources": Resources(mpi_np=4, cpus_per_task=1,
+                                                  continue_retries=2)},
     # `omp_threads` was the wrapper's own name for cores-per-rank until
     # 2026-08-17; it is `cpus_per_task` on the allocation and nowhere else
     # (job-contracts.md § 6.2, architecture.md § 3.1).
@@ -197,8 +201,9 @@ def test_the_rendered_text_is_what_gets_written(tmp_path):
                          if not l.lstrip("# ").startswith("generated-at"))
     script = tmp_path / "job.fdf"
     script.write_text("SystemLabel job\n")
-    rendered = render_run_wrapper(script, env="molbuilder-siesta", resources=Resources())
-    written = write_run_wrapper(script, resources=Resources(), env="molbuilder-siesta", emit_sbatch=False)
+    shape = Resources(mpi_np=4, cpus_per_task=1)
+    rendered = render_run_wrapper(script, env="molbuilder-siesta", resources=shape)
+    written = write_run_wrapper(script, resources=shape, env="molbuilder-siesta", emit_sbatch=False)
     assert _logic(written.read_text()) == _logic(rendered)
 
 

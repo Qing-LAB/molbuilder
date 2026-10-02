@@ -41,7 +41,8 @@ from conftest import write_pseudos
 from molbuilder.config.transport import (REGION_BRIDGE, REGION_BUFFER,
                                          REGION_LEFT_ELECTRODE,
                                          REGION_RIGHT_ELECTRODE)
-from molbuilder.jobset.prep import PrepError, prep_calculation
+from molbuilder.jobset.prep import PrepError
+from molbuilder.jobset.prep import prep_calculation as _prep_calculation
 from molbuilder.structure import Structure
 from test_transport_compose import _BRIDGE, _LAYERS_L, _LAYERS_R, _write_xv
 
@@ -237,6 +238,24 @@ def _cited_deck_text(struct, *, record=True):
             + block + "\n")
 
 
+#: THE LAUNCH SHAPE THESE DESCRIPTIONS STATE -- sixteen ranks of one thread,
+#: the default test machine's width -- on the run card, as a described
+#: calculation states it: a run script is not written for an unstated one
+#: (`architecture.md` § 5.2).
+_RUN_CARD = {"mpi_np": 16, "omp_threads": 1}
+
+
+def prep_calculation(base, stage=None, **kw):
+    """`prep`'s five steps, handed the run card's shape the way the prep
+    entry hands it (`prep_run_inputs` -> ``chosen``, in `Resources`' own
+    words) -- these tests drive the steps below the entry, which reads the
+    card.  A test's own ``chosen`` speaks over it, field by field."""
+    kw["chosen"] = {"mpi_np": _RUN_CARD["mpi_np"],
+                    "cpus_per_task": _RUN_CARD["omp_threads"],
+                    **(kw.get("chosen") or {})}
+    return _prep_calculation(base, stage, **kw)
+
+
 def _describe_transport(root, *, cite=_CITE, bias=(0.0, 0.2)):
     from molbuilder.task import Stage, Task, derive_run, write_task
     dest = root / "J" / "transport" / "T"
@@ -246,10 +265,9 @@ def _describe_transport(root, *, cite=_CITE, bias=(0.0, 0.2)):
         run=derive_run("T", cite, stage_names=_STAGES),
         structure=None, calculation="transport",
         slots={"junction": cite}, bias=bias, varies=(),
+        execution=dict(_RUN_CARD),
         stages=tuple(Stage(name=n, enabled=True, overrides={})
                      for n in _STAGES)))
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate"}}))
     # THE TEMPLATE, through the product's own doors -- `jobset init` writes
     # one for a transport description since 2026-09-16 (TR1), and a fixture
     # that skipped it would stop matching what this claims to reproduce.
@@ -326,9 +344,8 @@ class TestAnOverrideReachesTheRungThatOwnsIt:
             structure=None, calculation="transport",
             slots={"junction": _CITE}, bias=(),
             varies=tuple(sorted({n for b in bags.values() for n in b})),
+            execution=dict(_RUN_CARD),
             stages=tuple(stages_for_transport(bags))))
-        (dest / ".molbuilder.json").write_text(json.dumps(
-            {"script_generation": {"activation": "conda activate"}}))
         (dest / "T.template.toml").write_text(_T.template_with_values(
             siesta_config_from_citation(root / _CITE, label="T"),
             engine="siesta", calculation="transport"))

@@ -78,9 +78,10 @@ def test_a_garbage_allocation_variable_falls_through():
 
 
 def _pyscf_wrapper(tmp_path, monkeypatch):
-    """Render a PySCF run-wrapper in an isolated cwd + HOME."""
-    import json
+    """Render a PySCF run-wrapper in an isolated cwd + HOME, its thread
+    count stated (4) as every run's is (`architecture.md` § 5.2)."""
     from molbuilder import runwrap
+    from molbuilder.scheduler import Environment, Topology
     home = tmp_path / "home"; home.mkdir()
     monkeypatch.chdir(tmp_path)
     # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
@@ -90,11 +91,15 @@ def _pyscf_wrapper(tmp_path, monkeypatch):
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"preamble": "true",
-                               "activation": "source activate"}}))
+    # This machine's record: the activation's one home
+    # (`configuration.md` § 5 M-1).
+    (tmp_path / "environment.json").write_text(Environment(
+        scheduler="workstation", topology=Topology(),
+        script_generation={"preamble": "true",
+                           "activation": "source activate"}).to_json())
     (tmp_path / "job.py").write_text("print('hi')\n")
-    return runwrap.render_run_wrapper(tmp_path / "job.py", resources=Resources())
+    return runwrap.render_run_wrapper(tmp_path / "job.py",
+                                      resources=Resources(cpus_per_task=4))
 
 
 def test_the_wrapper_accepts_the_flags_submit_actually_sends(
@@ -118,8 +123,12 @@ def test_the_wrapper_exports_the_thread_count_it_resolved(
     run, but when the wrapper is in play its answer is the answer."""
     t = _pyscf_wrapper(tmp_path, monkeypatch)
     assert 'export OMP_NUM_THREADS="$_omp_threads"' in t
-    # The allocation is consulted BEFORE the node.
-    assert t.index("SLURM_CPUS_PER_TASK") < t.index('_omp_from="node physical')
+    # The allocation is consulted BEFORE the count stated at prep -- the
+    # wrapper's last rung since 2026-10-02, when the node's core count
+    # stopped standing in for a thread count nobody stated.
+    assert t.index("SLURM_CPUS_PER_TASK") < t.index(
+        '_omp_threads="4"; _omp_from="stated at prep"')
+    assert '_omp_from="node physical' not in t
 
 
 def test_the_wrapper_banner_states_where_the_count_came_from(
@@ -179,7 +188,7 @@ def test_the_wrapper_consults_the_same_chain_in_the_same_order(
     for v in _CHAIN[1:]:
         assert f'_omp_from="{v}"' in t, (
             f"the wrapper never consults {v}; under that scheduler it "
-            f"exports the node's core count and the script -- which DOES "
+            f"exports the stated count and the script -- which DOES "
             f"consult it -- is pre-empted by the export"
         )
-    assert t.index('_omp_from="node physical cores"') > max(at)
+    assert t.index('_omp_from="stated at prep"') > max(at)

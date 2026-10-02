@@ -977,7 +977,8 @@ runnable directory**, because only there do you know:
 
 - workstation or SLURM;
 - how conda or mamba is installed here, and whether activation is
-  `conda activate` or `source activate` (`molbuilder.json`);
+  `conda activate` or `source activate` (the machine's record,
+  `environment.json`);
 - what the hardware actually is, and what a benchmark measured on it.
 
 Then it **renders the final deck** — template ⊕ this stage's variables ⊕ this
@@ -1025,7 +1026,7 @@ last unknowns are known.
 flowchart LR
     T["<b>template.toml</b><br/>the science that never varies<br/><i>the browser · portable</i>"]
     S["<b>task.json</b><br/>this stage's values<br/><i>the browser · portable</i>"]
-    M["<b>molbuilder.json</b><br/>activation · scheduler · env names<br/><i>this machine · outside the tree</i>"]
+    M["<b>environment.json</b> · <b>molbuilder.json</b><br/>the target's activation and queues · env names<br/><i>outside the tree</i>"]
     B["<b>bench-result.json</b><br/>ranks · solver · GPU · memory<br/><i>measured here, optional</i>"]
     D["<b>&lt;label&gt;_&lt;token&gt;.fdf</b><br/>the deck the engine reads"]
     W["<b>&lt;label&gt;_&lt;token&gt;.run.sh</b><br/>the wrapper"]
@@ -1044,7 +1045,7 @@ until you are standing on the machine.
 |---|---|---|
 | `template.toml` | the browser | the physics: functional, basis, k-grid — **every parameter of the calculation, with its base value.** The hardware's parameters are *named* here too, deliberately without values — the last two rows are what answer them |
 | `task.json` | the browser | this stage's overrides — mesh cutoff, force tolerance, relaxation type |
-| `molbuilder.json` | this machine, outside the tree | how to activate an environment, which queue, what a walltime looks like |
+| the target's `environment.json` · `molbuilder.json` | outside the tree | how to activate an environment there, which queues exist (the record); which environment to use (`molbuilder.json`). The queue, wall and memory a run uses are its own statement ([`architecture.md` § 5.2](?doc=execution/architecture.md)) |
 | `bench-result.json` | measured on this machine, optional | rank count → `BlockSize`; whether a GPU was worth it → `Diag.ELPA.GPU` **and** which conda env |
 
 **A worked instance.** The same description, prepped on two machines:
@@ -1198,13 +1199,13 @@ Naming them apart is what makes step 1 answerable.
   `source` field saying where each fact came from. One shape whether the machine
   is a cluster or a workstation ([`configuration.md` § 5](?doc=configuration.md)
   M-2, M-3).
-- **D4 · The machine config** — the `scheduler` block of `molbuilder.json`
-  (`running-a-job.md` § 5.3). It holds what you **want**: the default partition
-  and QoS, the account, the activation command, and the policy no probe may
-  invent (`defaults` — the probe's own notes call these *"POLICY, not
-  probed"*; the GPU block that stood beside it is gone since 2026-10-01,
-  `execution/gpu.md` § 1.2). It is **not** where detection is
-  overridden; that door belongs on the probed side
+- **D4 · The machine config** — `molbuilder.json`. It holds what you
+  **want** — how a launch is sent, which environments to use, the server's
+  settings — and no value of a job and no fact of a machine: the `scheduler`
+  block that held a default partition, QoS, account and resource defaults is
+  refused by name since 2026-10-02, and the activation is the machine's record
+  ([`configuration.md` § 4](?doc=configuration.md)). It is **not** where
+  detection is overridden; that door belongs on the probed side
   ([`configuration.md` § 5](?doc=configuration.md) M-5).
 
 ##### Rules
@@ -1212,8 +1213,8 @@ Naming them apart is what makes step 1 answerable.
 | | rule | why |
 |---|---|---|
 | **M1** | **Capability is resolved on the machine that will run the job, never before.** | The bundle you produce names no machine (§ 2.1). This is target isolation — `job-system.md` § 2, decision 3 |
-| **M2** | **Detection and declaration cover different facts, and each owns its own.** *Detected:* cores, GPUs and their type, the scheduler, **the partitions and QoS you can actually reach and their wall limits**. *Preference:* which of them you **want** — the default partition and QoS, the account, the activation command, `defaults`. **A machine reports what exists; only you can say what you want** — and when the machine is not the one you are standing on, you state its facts yourself (M2a). | *(Amended 2026-08-17 — the declared list said "the QoS … the partition you are entitled to", citing `environment.py::detect_site`'s claim that those are "not reliably derivable from `sinfo`". `scheduler_probe.parse_allowed_qos` derives exactly that from `sacctmgr -nP show assoc user=$USER`, so the tree held two modules disagreeing about whether one fact is detectable. Entitlement **is** probed; preference is not — [`configuration.md` § 5](?doc=configuration.md) M-1.)* |
-| **M2a** | **A fact may be PROBED or DECLARED, and the probe wins when there is one.** *What partitions and QoS you can reach* is a fact: detected when you are on the machine, written down by hand when you are not (describing on a workstation for a cluster). *Which one this run wants* is a preference and stays in `molbuilder.json`. `prep` checks the second against the first (M4's capability ⊇ allocation) | *(Rewritten twice on 2026-08-17.)* It first said the partition is the one fact both sides supply and **declaration wins** — a tie-break. The rewrite removed the tie-break by declaring the fact "probed only", which made the workstation-describing-a-cluster case an **error**: you cannot probe a machine you are not on. The third form keeps the split by ROLE (fact vs preference) and settles the overlap by EVIDENCE (a measurement beats a note), which is the only ordering that leaves both cases expressible. Full argument: [`configuration.md` § 5](?doc=configuration.md) M-1 |
+| **M2** | **Detection and declaration cover different facts, and each owns its own.** *Detected:* cores, GPUs and their type, the scheduler, **the partitions and QoS you can actually reach and their wall limits**. *Preference:* which of them a run **uses** — its own statement (`allocation.domain`, `--domain`), never a default ([`architecture.md` § 5.2](?doc=execution/architecture.md)); the activation is a fact of the machine, in its record. **A machine reports what exists; only you can say what you want** — and a machine's facts are recorded by the probe on that machine, its record copied to where you prep (M2a). | *(Amended 2026-08-17 — the declared list said "the QoS … the partition you are entitled to", citing `environment.py::detect_site`'s claim that those are "not reliably derivable from `sinfo`". `scheduler_probe.parse_allowed_qos` derives exactly that from `sacctmgr -nP show assoc user=$USER`, so the tree held two modules disagreeing about whether one fact is detectable. Entitlement **is** probed; preference is not — [`configuration.md` § 5](?doc=configuration.md) M-1.)* |
+| **M2a** | **A fact is recorded by the probe ON its machine — measured, or declared to the probe there** (`--set`, `--activation`, `--preamble`), and the record is copied to where you prep. *What partitions and QoS you can reach* is such a fact; a queue list written by hand on another machine is refused (`configuration.md` § 5). *Which one this run uses* is the run's own statement. `prep` checks the second against the first (M4's capability ⊇ allocation) | *(Rewritten twice on 2026-08-17.)* It first said the partition is the one fact both sides supply and **declaration wins** — a tie-break. The rewrite removed the tie-break by declaring the fact "probed only", which made the workstation-describing-a-cluster case an **error**: you cannot probe a machine you are not on. The third form keeps the split by ROLE (fact vs preference) and settles the overlap by EVIDENCE (a measurement beats a note), which is the only ordering that leaves both cases expressible. Full argument: [`configuration.md` § 5](?doc=configuration.md) M-1 |
 | **M3** | **What was detected and what was declared must both be recoverable from the run directory.** | *"the numbers were wrong"* is unanswerable if you cannot tell a probe from a setting |
 | **M4** | **The scheduler ask is an input to `prep`, not a decision at submit.** *(Amended 2026-09-02: "not a field of the description" held while `Allocation` carried the launch shape too. The shape now IS a description field — `task.json`'s `execution`, D2 — because what a run computes at is the person's decision and must survive being written down. The wall clock, the memory and the queue stay `prep`'s input, and the reasoning below is theirs.)* | Both halves are forced. Not the description: it names no machine, so it cannot know 64 cores exist. **Not submit**: step 3 renders the deck, and a deck carries values *derived from the rank count* (block size), plus the GPU line that picks the environment the wrapper activates. A deck written before the allocation is known has guessed |
 | **M5** | **`launch` decides nothing. It checks that the deck and the launch still agree, refuses if they do not, and starts one job.** | The check already exists (`LaunchAgreement`). A launch that quietly disagrees with its deck is the failure M4 exists to prevent, arriving one step later |
@@ -1231,7 +1232,7 @@ flowchart TB
       W --> E
       H --> E
     end
-    C["<b>molbuilder.json</b> — what you WANT<br/>default partition + QoS, account,<br/>activation, defaults"]
+    C["<b>molbuilder.json</b> — what you WANT<br/>how a launch is sent, which environments<br/><i>no job value, no machine fact</i>"]
     A["<b>ALLOCATION — what this run asks for</b><br/>8 ranks · 1 GPU · 4 h<br/><i>given to prep</i>"]
     P["<b>prep</b><br/>step 1 snapshots capability → environment.json<br/>steps 3-4 render the deck and wrapper<br/><b>against this allocation</b>"]
     S["<b>submit</b><br/>checks the deck still agrees<br/>launches ONE job"]
@@ -1356,7 +1357,7 @@ sweep has finished,
 
 ```jsonc
 { "choice":    { "label": "G1K4C6", "engine": "gpu",
-                 "knobs": { "mpi_np": 4, "cpus_per_task": 6, "gres": "gpu:a100:1" },
+                 "knobs": { "mpi_np": 4, "cpus_per_task": 6, "gres": "gpu:1" },
                  "mechanism": { "use_gpu": true,
                                 "diag_algorithm": "ELPA-1STAGE" },
                  "rationale": "G1K4C6 fastest (2.3 s/iter); gpu-bound; vs G1K8C2 3.1 s/iter" } }
@@ -1381,8 +1382,9 @@ the real code — regenerate all three together if the writers change)*
 > **What the sweep still recommends is what it MEASURED**: which
 > configuration won, its ranks, threads, GPU request and solver. The wall
 > and the memory are the person's to state (`execution/submission.md` S1,
-> S2), and unstated means the queue's own ceiling and the scheduler's own
-> default — not a number derived from a benchmark.
+> S2), and unstated is refused at prep
+> ([`architecture.md` § 5.2](?doc=execution/architecture.md)) — never a number
+> derived from a benchmark.
 
 The summary itself is a table — one row per point, the sweep's knobs beside
 what the monitor measured — so the scaling is visible in one look rather
@@ -1390,8 +1392,8 @@ than one JSON dig per trial:
 
 ```
   point   np  thr  gpu         algorithm    s/iter  iters  wall  peak-mem  cpu%  gpu-sm%   vram  bound  state
-  G1K4C6   4    6  gpu:a100:1  ELPA-1stage     2.3      3   41s     83.5G    34       91  18.2G  gpu    completed
-  G1K8C2   8    2  gpu:a100:1  ELPA-1stage     3.1      3   58s     85.1G    52       64  18.9G  mixed  completed
+  G1K4C6   4    6  gpu:1       ELPA-1stage     2.3      3   41s     83.5G    34       91  18.2G  gpu    completed
+  G1K8C2   8    2  gpu:1       ELPA-1stage     3.1      3   58s     85.1G    52       64  18.9G  mixed  completed
 ```
 
 *(columns come from the record: `s/iter` is the steady-state SCF mean;
@@ -1459,11 +1461,10 @@ molbuilder jobset prep run tight
 
 **Every number in that line came from `task.json`.** Not from the benchmark,
 which reports and does not steer; not from this box, which is not the target.
-A parameter nobody stated is answered by `auto_ranks` — the selected
-target/domain's width — or refused by name
-([`architecture.md § 5.2`](?doc=execution/architecture.md)). There is no
-fourth source, and there is deliberately no rung between the two: **a run's
-launch is what a person wrote, or a refusal telling them what to write.**
+A launch value nobody stated is refused by name
+([`architecture.md § 5.2`](?doc=execution/architecture.md)), and there is no
+other source: **a run's launch is what a person wrote, or a refusal telling
+them what to write.**
 
 **FINDING IS NOT PERMISSION, AND THERE IS NO LONGER A FILE THAT GRANTS IT.**
 A benchmark lives inside the stage it measured, so prep can always *find*
@@ -1480,27 +1481,19 @@ a measurement should reach the launch by itself, if only the person nodded.
 The premise is what changed — a run's parameters are declared in the file that
 records asks, and a benchmark's job is to tell you what to declare.)*
 
-**And when `execution` states no launch shape, `prep` does not guess — it
-reads the target's own width, and refuses when the target has no record:**
+**And when `execution` states no launch shape, `prep` refuses** — before it
+writes anything — and names both places to state it: the run card (`execution`
+in `task.json`) and the prep flags (`--np`, `--cpus-per-task`, `--gpus`); a
+benchmark (`prep bench`) is how to find values worth stating. The wrapper has
+no default of its own on any engine — **PySCF has no rank count**, and its
+thread count is stated like SIESTA's cores per rank —
+[`running-a-job.md`](?doc=execution/running-a-job.md) § 3 states the chain
+once: a flag or the scheduler's echo of the header may choose among
+statements, never supply a number nobody stated. The engine's own bare
+default — `siesta` on one core of a 128-core node — is exactly what this
+exists to prevent; nothing here falls through to it.
 
-```
-  no launch shape in `execution` and no rank/thread flags --
-  sizing from the selected target/domain: public, 64 cores/node.
-  To decide it yourself:  "execution": {"mpi_np": N} in task.json
-  To measure first:       molbuilder jobset prep bench tight
-```
-
-The policy itself is [`running-a-job.md`](?doc=execution/running-a-job.md)
-§ 3's, stated once there: SIESTA is launched as MPI over all physical cores
-(OMP stays 1, and nothing clamps the count — `running-a-job.md` § 3); a deck
-that asks for the GPU gets
-the ELPA-CUDA placement defaults; **PySCF has no rank count** — its wrapper
-resolves the OMP thread count at run time (`-omp` flag → `OMP_NUM_THREADS`
-→ the scheduler's allocation → this node's physical cores). The engine's
-own bare default — `siesta` on one core of a 128-core node — is exactly
-what the wrapper exists to prevent; nothing here falls through to it.
-
-With the file applied, step 2 has a third input, which wins over the defaults. The measured
+Once the winner is written into `execution`, step 2 reads it like any statement. The measured
 rank count flows into step 3, where it changes `BlockSize`; the measured
 eigensolver changes `Diag.Algorithm`; and whether the GPU was worth it changes
 `Diag.ELPA.GPU`, which in step 4 changes **which environment the wrapper
@@ -2426,14 +2419,14 @@ how a folder stops being trustworthy.
 
 | File | Level | Format | Holds |
 |---|---|---|---|
-| `molbuilder.json` | outside the tree — the config directory (`$MOLBUILDER_CONFIG_DIR`, else `$XDG_CONFIG_HOME/molbuilder`) | validated, no version | **the machine**: activation, module preamble, scheduler, env names |
-| `.molbuilder.json` | ① project | same, deep-merged over the above, project wins | machine settings for this project |
+| `molbuilder.json` | outside the tree — the config directory (`$MOLBUILDER_CONFIG_DIR`, else `$XDG_CONFIG_HOME/molbuilder`) | validated, no version | **what you want**: how a launch is sent, env names, the server's settings ([`configuration.md` § 4](?doc=configuration.md)) |
+| `.molbuilder.json` | ① project | same, deep-merged over the above, project wins | `launch`, for this project |
 | `<label>.template.toml` | ③ calculation | `molbuilder/template@2` (TOML) — [`engines/template.md`](?doc=engines/template.md) | **the science backbone** — every parameter of the calculation, grouped by `category` and tagged with the `engines` it applies to. It **names** the parameters the hardware decides (the `execution` category) but carries **no value** for them: the question is the calculation's, the answer is `prep`'s, from `environment.json` |
 | `task.json` | ③ calculation | `molbuilder/task@1` | **what changes**: which parameters vary, the stages and their overrides, the shape, the structure reference, and an optional `bench` plan. **No `base` key** — what does not change is in the template, once (`stages.md` § 4; this row said "base settings" until 2026-08-16, naming a key removed on 2026-08-07) |
 | `<label>_<NN>_<stage>.fdf` | ④ stage | engine deck, complete | **the rendered deck** — template ⊕ this stage ⊕ this machine. Written by `prep`; delete it and re-prep |
 | `job-set.json` | ③ calculation (the RUN plan, merged per stage); a sweep's own record in the stage's `bench/` | `molbuilder/job-set@1` | the jobs and their resources. **Stages carry no edges** (§ 1.6) |
 | ~~`.molbuilder.json`~~ | ~~⑤ benchmark bundle~~ | *(retired — note below)* | ~~the activation the bundle carries to the target~~ |
-| `environment.json` | ③ calculation — **and** per-machine, outside the tree, where `jobset probe` writes it; the calculation's copy wins ([`configuration.md` § 5](?doc=configuration.md) M-3) | `molbuilder/environment@2` | the machine **as probed**: topology, scheduler, site, reachable domains. Never what you want from it — that is `molbuilder.json` |
+| `environment.json` | ③ calculation — **and** per-machine, outside the tree, where `jobset probe` writes it; the calculation's copy wins ([`configuration.md` § 5](?doc=configuration.md) M-3) | `molbuilder/environment@2` | the machine **as probed**: topology, scheduler, site, reachable domains, and the activation and preamble declared to the probe. Never what you want from it — that is `molbuilder.json` |
 | ~~`bench-manifest.json`~~ | ~~⑤ benchmark bundle~~ | *(retired — note below)* | ~~the two comparable points, and the source deck's hash~~ |
 | `bench-result.json` | the stage's `bench/` container | `molbuilder/bench-result@1` | every trial's timing and the winner.  **No wall and no memory**: those were derived from a safety factor and an assumed iteration count until 2026-08-24 (§ 2.3.2) |
 
@@ -2441,8 +2434,7 @@ how a folder stops being trustworthy.
 in § 2.6's table — ⑤ is the attempt — and the bundle it described died in the
 fold: the bundle-scope `.molbuilder.json` and its writer
 `_write_activation_config` were deleted with it, so activation now comes from
-the machine's own config, resolved at `prep` on the target, and travels in no
-folder; `bench-manifest.json` was retired the same day — nothing writes or
+the target machine's record, snapshotted into the calculation by `prep` step 1; `bench-manifest.json` was retired the same day — nothing writes or
 reads it (`job-contracts.md § 6.1`'s tombstone). `environment.json` is written
 by `prep` step 1 at the calculation root, on every prep, not only when
 measuring; and `job-set.json`'s old clause "the edge fields serve the
@@ -2450,10 +2442,14 @@ benchmark sweep" had been dead since 2026-08-10, when the edge fields
 themselves were deleted.)*
 
 **The split is strict, and it is why a calculation folder is portable**: the
-machine's knowledge lives in `molbuilder.json`, outside the calculation; the
-science lives in `task.json`, inside it. A calculation carries no walltime, no
-partition, no activation command. Copy it to another cluster and it still
-describes the same calculation (`job-system.md § 2`, decision 3).
+machine's knowledge lives in its record, outside the calculation until `prep`
+snapshots it; the science lives in `task.json`, inside it. A calculation carries
+no activation command and no machine's queue list; what it may carry is the
+job's own ask — `allocation`'s queue, wall and memory, the run card's shape —
+which each target's record checks
+([`architecture.md` § 5.2](?doc=execution/architecture.md)). Copy it to another
+cluster and it still describes the same calculation (`job-system.md § 2`,
+decision 3).
 
 The machine-measurement files are the one deliberate exception, and they sit
 with the machine's work, **not in the description**: `environment.json` at the
@@ -2675,8 +2671,11 @@ than no invariant, because it fails a directory that is working correctly.
 
 **Composition**
 
-10. **A calculation folder carries no machine knowledge** — no walltime, no
-    partition, no activation. Those are `molbuilder.json`'s, outside the tree.
+10. **A calculation folder carries no machine knowledge** — no activation, no
+    queue list, no topology. Those are the machine's record, outside the tree.
+    A job's own ask (`allocation`, the run card) is not machine knowledge: it
+    is checked against each target's record
+    ([`architecture.md` § 5.2](?doc=execution/architecture.md)).
     The machine-measurement files are the deliberate exception —
     `environment.json` at the root, the benchmark files in the stage's
     `bench/` container (§ 5.1). *(The last sentence said they "sit at ④"

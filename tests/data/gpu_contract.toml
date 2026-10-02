@@ -2,30 +2,26 @@
 #
 # Each case is what a person (or a probe) writes, and what molbuilder must
 # answer.  `tests/test_gpu_contract.py` runs every case down the road a
-# person runs -- `jobset init`, then the description and the machine record
-# written as the case says, `prep`, `launch --dry-run` -- and checks the
-# layers the case names:
-#
-#   1. ALLOWED OR REFUSED, with the words -- at prep (`refused`) or at
-#      launch (`launch_refused`, `listing`);
-#   2. WHAT IS PRODUCED -- the `.sbatch` header (`header`), the deck
-#      (`deck`), the run script (`run_sh`), each with a `_lacks` twin; the
-#      `sbatch` line launch shows (`line`, `line_lacks`); a benchmark's
-#      trials (`bench_gres`, `bench_header_lacks`); what prep says (`said`);
-#   3. WHAT THE RUN SCRIPT DOES HERE -- its dry run, given the GPUs the
-#      machine hands it (`given_gpus`, `runs`).
-#
-# INPUTS: `engine` (siesta | pyscf); `run` -- the calculation's run card,
-# task.json `execution`; `template` -- values in the template; `allocation`
-# -- task.json `allocation`; `bench` -- task.json `bench` (then `prep
-# bench`); `config` -- merged into the calculation's `.molbuilder.json`;
-# `prep` / `launch` -- the flags typed; `machine` -- "this" (this machine
-# IS the target, its record listing `queues`), "named" (this machine is a
-# workstation; the target is a record named `sol` listing `queues`), or
-# "workstation" (no queues at all); `record` -- more fields of the
-# target's record; `queues` -- replaces the menu below.
+# person runs, through the one runner every contract table shares
+# (`tests/support/road.py`, `run_road_case`, whose header names each key).
 #
 # A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
+
+# EVERY LAUNCH VALUE IS STATED (`architecture.md` § 5.2): each case's run
+# card is this, under its own `run`, and on a machine with a scheduler its
+# `allocation` is this, under its own -- so a case states only what it is
+# about, and takes away (`run_unset`, `allocation_unset`) what it refuses.
+[run_base.siesta]
+mpi_np = 2
+omp_threads = 1
+
+[run_base.pyscf]
+threads = 1
+
+[allocation_base]
+domain = "gpu"
+time = "01:00:00"
+mem = "8G"
 
 # What every SIESTA case's template carries, under the case's own
 # `template`: the ELPA solver, because a SIESTA GPU run needs one -- GPU with
@@ -83,10 +79,10 @@ prep = ["--gpus", "0"]
 refused = "--gpus:"
 
 [[case]]
-name = "molbuilder.json's gpu block is refused by name, whatever the job"
+name = "molbuilder.json's scheduler block -- its gpu block too -- is refused by name"
 run = { mpi_np = 4 }
 config = { scheduler = { directives = { partition = "cpu", qos = "public" }, gpu = { mem = "64G" } } }
-refused = "'scheduler.gpu' is no longer configured"
+refused = "'scheduler' is no longer configured"
 
 [[case]]
 name = "SIESTA on a GPU is refused when the target has no GPU build of it"
@@ -109,6 +105,8 @@ launch_refused = "needs 8 GPUs but gpu allows 4 GPUs"
 [[case]]
 name = "the queue list checks the job's own GPU count"
 run = { use_gpu = true, gpu_count = 8, mpi_np = 8 }
+prep = ["--no-sbatch"]
+allocation_unset = ["domain"]
 launch = []
 launch_refused = "no --domain"
 listing = ["needs 8 GPUs but gpu allows 4 GPUs",
@@ -130,6 +128,7 @@ line_lacks = ["--gres"]
 [[case]]
 name = "a queue that marks GPUs without a count is not refused on the number"
 queues = [{ name = "terse", partition = "t", qos = "public", gpu_partition = "tgpu", max_time = "1-00:00:00" }]
+allocation = { domain = "terse" }
 run = { use_gpu = true, gpu_count = 8, mpi_np = 8 }
 launch = ["--domain", "terse"]
 line = ["--gres=gpu:8", "-p tgpu"]
@@ -137,6 +136,7 @@ line = ["--gres=gpu:8", "-p tgpu"]
 [[case]]
 name = "a record silent about which nodes hold the GPUs keeps its whole ceiling"
 queues = [{ name = "old", partition = "old", qos = "public", max_time = "1-00:00:00", max_cores = 48, gpu = { a100 = 4 } }]
+allocation = { domain = "old" }
 run = { use_gpu = true, gpu_count = 2, mpi_np = 4096 }
 launch = ["--domain", "old"]
 launch_refused = "needs 4096 cores but old allows 48 cores"
@@ -158,6 +158,7 @@ launch_refused = "needs 5 GPUs but gpu allows 4 GPUs"
 [[case]]
 name = "a node list that names no GPUs keeps its widest node for a GPU job"
 queues = [{ name = "site", partition = "p", qos = "public", max_time = "1-00:00:00", gpu = { type = "a100", per_node = 4 }, node_types = [{ cores = 96, nodes = 2 }] }]
+allocation = { domain = "site" }
 run = { use_gpu = true, gpu_count = 1, mpi_np = 97 }
 launch = ["--domain", "site"]
 launch_refused = "needs 97 cores but site allows 96 cores"
@@ -165,6 +166,7 @@ launch_refused = "needs 97 cores but site allows 96 cores"
 [[case]]
 name = "a queue listing several cards holds the most any node holds"
 queues = [{ name = "public", partition = "public", qos = "public", max_time = "1-00:00:00", gpu = { a100 = 4, "a100.20gb" = 16 }, node_types = [{ cores = 48, nodes = 50, gpu = { a100 = 4 } }, { cores = 48, nodes = 2, gpu = { "a100.20gb" = 16 } }] }]
+allocation = { domain = "public" }
 run = { use_gpu = true, gpu_count = 16, mpi_np = 16 }
 launch = ["--domain", "public"]
 line = ["--gres=gpu:16"]
@@ -195,10 +197,11 @@ line = ["--gres=gpu:2"]
 line_lacks = ["enforce-binding"]
 
 [[case]]
-name = "a PySCF run states its count like SIESTA's"
+name = "a PySCF run states its count like SIESTA's, on one process"
 engine = "pyscf"
-run = { use_gpu = true, gpu_count = 2 }
-header = ["#SBATCH -p gpu", "#SBATCH --gres=gpu:2"]
+run = { use_gpu = true, gpu_count = 2, threads = 4 }
+header = ["#SBATCH -n 1", "#SBATCH -c 4", "#SBATCH -p gpu",
+          "#SBATCH --gres=gpu:2"]
 deck = ["to_gpu()"]
 
 [[case]]
@@ -208,9 +211,10 @@ run = { gpu_count = 2, mpi_np = 4 }
 header = ["#SBATCH --gres=gpu:2"]
 
 [[case]]
-name = "with no rank count, one rank per GPU asked for"
+name = "a GPU run states its rank count -- one per GPU is not assumed"
 run = { use_gpu = true, gpu_count = 2 }
-header = ["#SBATCH -n 2", "#SBATCH --gres=gpu:2"]
+run_unset = ["mpi_np"]
+refused = "ranks (mpi_np)"
 
 [[case]]
 name = "a --gpus flag beats the card"
@@ -239,6 +243,37 @@ header_lacks = ["--gres"]
 said = ["`gpu_count` is on the run card but `use_gpu` is off"]
 
 [[case]]
+name = "a GPU run binds its ranks to cores and to its GPU's socket, and says so"
+run = { use_gpu = true, gpu_count = 1, mpi_np = 4 }
+run_sh = ['_mpirun_bind="--bind-to core --map-by package:PE=$_omp_threads"',
+          '_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind $_siesta_target"',
+          "MOLBUILDER_GPU_NUMA",
+          "GPU resources : GPU mode (ELPA-CUDA, no NCCL) -- chosen $_mpi_np ranks × $_omp_threads threads",
+          "(or measure it: prep bench, for this stage)"]
+run_sh_lacks = ["ppr:", "nvidia-smi topo -m", "MOLBUILDER_MPI_NP",
+                "envs advise", "_mb_gpu_val"]
+
+[[case]]
+name = "a CPU run carries no GPU placement"
+run = { use_gpu = false }
+run_sh = ['_numa_wrap_gpu="${_numa_wrap_gpu:-}"', '_mpirun_bind=""']
+run_sh_lacks = ["_have_mps=", "MOLBUILDER_GPU_NUMA"]
+
+[[case]]
+name = "a CPU run on ScaLAPACK runs the packaged build"
+template = { diag_algorithm = "ScaLAPACK" }
+run = { use_gpu = false }
+run_sh = ["molbuilder-siesta"]
+run_sh_lacks = ["molbuilder-siesta-gpu"]
+
+[[case]]
+name = "--env names the env a job activates, over the GPU route"
+run = { use_gpu = true, gpu_count = 1 }
+prep = ["--env", "molbuilder-siesta"]
+run_sh = ["molbuilder-siesta"]
+run_sh_lacks = ["molbuilder-siesta-gpu"]
+
+[[case]]
 name = "a prep for another machine reads that machine's record"
 machine = "named"
 run = { use_gpu = true, gpu_count = 1 }
@@ -262,6 +297,7 @@ line_lacks = ["enforce-binding"]
 [[case]]
 name = "a benchmark on GPUs where no queue lists any is refused"
 queues = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 128 }]
+allocation = { domain = "cpu" }
 bench = { use_gpu = [true], mpi_np = [8] }
 refused = "no queue with recorded GPUs"
 
@@ -287,4 +323,12 @@ name = "...whatever was asked: it counts what it is given"
 machine = "workstation"
 run = { use_gpu = true, gpu_count = 2, mpi_np = 4 }
 given_gpus = "0"
+runs = ["4 ranks over 1 GPU(s) = 4 rank(s)/GPU"]
+
+[[case]]
+name = "the MPS switch starts the daemon and leaves the stated rank count"
+machine = "workstation"
+run = { use_gpu = true, gpu_count = 1, mpi_np = 4 }
+given_gpus = "0"
+run_args = ["--mps"]
 runs = ["4 ranks over 1 GPU(s) = 4 rank(s)/GPU"]

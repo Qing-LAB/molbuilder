@@ -36,7 +36,6 @@ known clean state without having to manually ``rm`` the files.
 """
 from __future__ import annotations
 
-import json
 import os
 import re
 import shutil
@@ -52,12 +51,11 @@ from molbuilder.jobset.model import Resources
 
 @pytest.fixture(autouse=True)
 def _autosetup_minimal_config(tmp_path, monkeypatch):
-    """Every wrapper render needs a ``script_generation.activation`` or
-    the v2 wrapper-independence contract's refuse-to-emit guard
-    (docs/execution/running-a-job.md § 5, landed 2026-06-25) rejects it.  Mirror
-    test_runwrap.py's fixture: a cwd molbuilder.json with the canonical
-    Sol defaults so write_run_wrapper can emit.  Without this the whole
-    file fails with RuntimeConfigError ("activation is not set")."""
+    """Every wrapper render reads the activation off the machine's record
+    (`configuration.md` § 5 M-1) or refuses to emit.  Mirror
+    test_runwrap.py's fixture: the config root holds this machine's
+    record, with the canonical Sol activation, so write_run_wrapper can
+    emit."""
     monkeypatch.chdir(tmp_path)
     # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
     # working-directory step, which is gone (configuration.md § 2.1a) --
@@ -67,12 +65,6 @@ def _autosetup_minimal_config(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
-    (tmp_path / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {
-            "preamble":   "module load mamba",
-            "activation": "source activate",
-        }
-    }))
     # A PROBED MACHINE.  Since 2026-09-02 a rank count is read from a record
     # and nowhere else -- no probe of the box that happens to be running, no
     # fallback (`running-a-job.md` § 3.1, user: "so we are not guess at
@@ -81,8 +73,11 @@ def _autosetup_minimal_config(tmp_path, monkeypatch):
     #     molbuilder jobset probe --write
     from molbuilder.scheduler import Environment as _Env, Topology as _Topo
     (tmp_path / "environment.json").write_text(
-        _Env(scheduler="slurm",
-             topology=_Topo(sockets=2, cores_per_socket=32)).to_json() + "\n")
+        _Env(scheduler="workstation",
+             topology=_Topo(sockets=2, cores_per_socket=32),
+             script_generation={"preamble": "module load mamba",
+                                "activation": "source activate"}).to_json()
+        + "\n")
     yield tmp_path
 
 
@@ -119,13 +114,13 @@ class TestColdFlagText:
             "SystemLabel  myjob\nNumberOfAtoms 1\n%block AtomicCoordinatesAndAtomicSpecies\n"
             "0 0 0 1\n%endblock AtomicCoordinatesAndAtomicSpecies\n"
         )
-        return write_run_wrapper(script, resources=Resources()).read_text()
+        return write_run_wrapper(script, resources=Resources(mpi_np=4, cpus_per_task=1)).read_text()
 
     def _pyscf_wrapper(self, tmp_path: Path) -> str:
         _bind()
         script = tmp_path / "myjob.py"
         script.write_text("# fake\n")
-        return write_run_wrapper(script, resources=Resources()).read_text()
+        return write_run_wrapper(script, resources=Resources(cpus_per_task=1)).read_text()
 
     def test_siesta_cold_in_help(self, tmp_path):
         text = self._siesta_wrapper(tmp_path)
@@ -189,7 +184,7 @@ def _truncated_siesta(tmp_path: Path, basename: str = "myjob") -> Path:
         "%block AtomicCoordinatesAndAtomicSpecies\n0 0 0 1\n"
         "%endblock AtomicCoordinatesAndAtomicSpecies\n"
     )
-    wrapper = write_run_wrapper(script, resources=Resources())
+    wrapper = write_run_wrapper(script, resources=Resources(mpi_np=4, cpus_per_task=1))
     text = _strip_preamble_activation(wrapper.read_text())
     # Truncate at the first ``mpirun`` so the cold block has executed
     # but the SIESTA launch is skipped.  Append explicit exit 0 so
@@ -209,7 +204,7 @@ def _truncated_pyscf(tmp_path: Path, basename: str = "myjob") -> Path:
     _bind()
     script = tmp_path / f"{basename}.py"
     script.write_text("# fake\n")
-    wrapper = write_run_wrapper(script, resources=Resources())
+    wrapper = write_run_wrapper(script, resources=Resources(cpus_per_task=1))
     text = _strip_preamble_activation(wrapper.read_text())
     # The launch line, anchored on the `set +e` that immediately precedes
     # it.  It was `exec python` until 2026-09-08, when the PySCF branch
@@ -303,7 +298,9 @@ class TestPyscfFreshDirectorySurvives:
             script.write_text("# fake\n" if make.endswith(".py") else
                               "SystemLabel myjob\n")
             _bind()
-            text = write_run_wrapper(script, resources=Resources()).read_text()
+            text = write_run_wrapper(
+                script, resources=(Resources(cpus_per_task=1) if make.endswith(".py")
+                                   else Resources(mpi_np=4, cpus_per_task=1))).read_text()
             assert not re.search(r"\$_warm_label[A-Za-z0-9_]", text), (
                 f"{make}: unbraced $_warm_label concatenation renders"
             )
@@ -322,7 +319,7 @@ def _gpu_wrapper(tmp_path: Path, fdf_text: str) -> Path:
     _bind_gpu()
     fdf = tmp_path / "myjob.fdf"
     fdf.write_text(fdf_text)
-    wrapper = write_run_wrapper(fdf, resources=Resources())
+    wrapper = write_run_wrapper(fdf, resources=Resources(mpi_np=4, cpus_per_task=1))
     wrapper.write_text(_strip_preamble_activation(wrapper.read_text()))
     return wrapper
 
@@ -332,8 +329,7 @@ def _dry(wrapper: Path, tmp_path: Path, *args: str):
     so the resolution under test is the FLAG chain, not this shell's."""
     env = {**os.environ, "MB_LAUNCHED_BY": "manual"}
     for k in ("OMP_NUM_THREADS", "SLURM_CPUS_PER_TASK", "MB_NP",
-              "SLURM_NTASKS", "PBS_NP", "MOLBUILDER_MPI_NP",
-              "MOLBUILDER_OMP_NUM_THREADS"):
+              "SLURM_NTASKS", "PBS_NP"):
         env.pop(k, None)
     return subprocess.run(["bash", str(wrapper), "--dry-run", *args],
                           cwd=tmp_path, capture_output=True, text=True,
@@ -359,7 +355,7 @@ class TestTrialLabelledCold:
             "%block AtomicCoordinatesAndAtomicSpecies\n0 0 0 1\n"
             "%endblock AtomicCoordinatesAndAtomicSpecies\n")
         wrapper = write_run_wrapper(script, label="JOB-G1K4C6",
-                                    resources=Resources())
+                                    resources=Resources(mpi_np=4, cpus_per_task=1))
         text = _strip_preamble_activation(wrapper.read_text())
         cut = text.find("mpirun")
         if cut < 0:
@@ -381,10 +377,9 @@ class TestGpuFlagPrecedence:
     """Redo F6 (2026-08-12, runtime-proven): ``-np 9 --no-mps`` ran 2
     ranks -- the MPS arm's re-resolve chain read MB_NP/SLURM (unset) and
     fell through to the regime policy default, clobbering the flag the
-    comment claimed still won.  The fix: explicit-flag markers guard the
-    re-resolve, and the auto-OMP width derives from the EFFECTIVE rank
-    count in a post-parse epilogue (inside the loop it depended on flag
-    order)."""
+    comment claimed still won.  Since 2026-10-02 the MPS flags switch the
+    daemon and nothing else -- there is no policy to fall through to -- and
+    the flag-set count is still what runs, in either order."""
 
     def test_np_flag_survives_no_mps_in_both_orders(self, tmp_path):
         wrapper = _gpu_wrapper(tmp_path, _GPU_FDF)
@@ -395,18 +390,6 @@ class TestGpuFlagPrecedence:
             assert re.search(r"mpirun -np 9\b", out), (
                 f"{order}: flag-set rank count lost:\n{out[-800:]}"
             )
-
-    def test_bare_no_mps_takes_the_no_mps_policy_count(self, tmp_path):
-        wrapper = _gpu_wrapper(tmp_path, _GPU_FDF)
-        proc = _dry(wrapper, tmp_path, "--no-mps")
-        out = proc.stdout + proc.stderr
-        assert proc.returncode == 0, out[-800:]
-        m = re.search(r"mpirun -np (\d+)\b", out)
-        assert m, out[-800:]
-        # 2 on dual-socket / >=16-core-socket boxes, 1 on small ones --
-        # never the 4-rank MPS-regime default the original R9/F6 bug
-        # kept after the regime flipped.
-        assert int(m.group(1)) in (1, 2), out[-800:]
 
     # `test_auto_omp_width_divides_by_the_effective_count` stood here.  It
     # asked for 9 MPI ranks and asserted `9 * PE <= phys_cores`, so it could
@@ -426,16 +409,23 @@ class TestGpuFlagPrecedence:
         when the header's -n would override the resolved count once
         SLURM_NTASKS exists (the header always wins inside a job)."""
         _bind_gpu()
-        (tmp_path / "molbuilder.json").write_text(json.dumps({
-            "script_generation": {"activation": "source activate"},
-            "scheduler": {"kind": "slurm",
-                          "directives": {"partition": "general",
-                                         "qos": "public"}},
-        }))
+        # A MACHINE WITH A QUEUE is a record listing one; the job names it
+        # and states every value its header carries (`architecture.md`
+        # § 5.2).
+        from molbuilder.scheduler import Domain, Environment, Topology
+        (tmp_path / "environment.json").write_text(Environment(
+            scheduler="slurm", topology=Topology(sockets=2,
+                                                 cores_per_socket=32),
+            domains=[Domain(name="general", partition="general",
+                            qos="public", max_time="1-00:00:00")],
+            script_generation={"activation": "source activate"}).to_json())
         fdf = tmp_path / "myjob.fdf"
         fdf.write_text(_GPU_FDF)
-        # one GPU, stated -- a GPU job states its count (`gpu.md` G5); -n 1
-        wrapper = write_run_wrapper(fdf, resources=Resources(gres="gpu:1"))
+        # one GPU and one rank, stated -- a GPU job states its count
+        # (`gpu.md` G5) and its ranks; -n 1
+        wrapper = write_run_wrapper(fdf, resources=Resources(
+            gres="gpu:1", mpi_np=1, cpus_per_task=1, domain="general",
+            time="0-01:00:00", mem="8G"))
         assert "#SBATCH -n 1" in (tmp_path / "myjob.sbatch").read_text()
         wrapper.write_text(_strip_preamble_activation(wrapper.read_text()))
         proc = _dry(wrapper, tmp_path, "-np", "3")
@@ -456,11 +446,10 @@ class TestGpuFlagPrecedence:
         assert '[ "$_ranks_per_gpu" -ge 2 ]' not in text
 
     def test_gpu_fdf_without_numberofatoms_still_launches(self, tmp_path):
-        """The rank-policy function must return 0: without the n_atoms
-        clamp (NumberOfAtoms is OPTIONAL in SIESTA) its body ended on a
-        failed ``[ ... ] && ...`` guard, and under ``set -e`` the first
-        bare call killed every such wrapper pre-launch (found by the F6
-        probe, 2026-08-12)."""
+        """A GPU deck with no NumberOfAtoms (it is OPTIONAL in SIESTA) runs
+        its dry run to the launch line.  Under ``set -e`` a guard that
+        fails on such a deck kills the wrapper pre-launch -- the GPU rank
+        policy's did, until the F6 probe found it (2026-08-12)."""
         wrapper = _gpu_wrapper(
             tmp_path, "SystemLabel myjob\nDiag.ELPA.GPU .true.\n")
         proc = _dry(wrapper, tmp_path)
@@ -584,7 +573,8 @@ class TestColdBehaviourSystemLabelMismatch:
         # This relied on the writer OPENING the deck to recover the name,
         # which is the re-read `gpu.md` G7 forbids.
         wrapper = write_run_wrapper(script, label=system_label,
-                                    resources=Resources())
+                                    resources=Resources(mpi_np=4,
+                                                        cpus_per_task=1))
         text = _strip_preamble_activation(wrapper.read_text())
         # Truncate AFTER the closing banner separator (which prints
         # the Mode + Constraints lines we want to observe).  The
@@ -861,7 +851,9 @@ def _usage(engine: str) -> str:
     from molbuilder.jobset.model import Resources
 
     deck = "deck.fdf" if engine == "siesta" else "deck.py"
-    text = render_run_wrapper(deck, resources=Resources(mpi_np=1), env="e")
+    text = render_run_wrapper(deck, resources=Resources(mpi_np=1,
+                                                        cpus_per_task=1),
+                              env="e")
     start = text.index("cat <<USAGE")
     return text[start:text.index("\nUSAGE\n", start)]
 
@@ -974,7 +966,7 @@ def test_warm_state_is_a_restart_file_the_engine_reads_with_content(
     deck.write_text(render_deck(spec_for(struct, cfg, calculation="optimization"),
                                 struct, cfg, verbose=False), encoding="utf-8")
     from molbuilder.resolve import Resources
-    text = write_run_wrapper(deck, resources=Resources()).read_text(encoding="utf-8")
+    text = write_run_wrapper(deck, resources=Resources(cpus_per_task=1)).read_text(encoding="utf-8")
 
     # The helper + the probe, lifted out of the rendered wrapper and run.
     fn = re.search(r"^_mb_has_state\(\) \{.*?\}$", text, re.M)

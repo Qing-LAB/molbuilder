@@ -1391,38 +1391,21 @@ def api_task_setup_prep():
     def _emitted_launch(dest, target, task, stage):
         """What the launch will actually carry, per parameter, with sources.
 
-        Resolved through the same assembly `prep` uses and the same header
-        rule the emitter uses -- A13 forbids a surface working either out
-        again.  A parameter nobody stated is reported as WHAT BLANK RESOLVES
-        TO, never as blank.
+        Resolved through the same assembly `prep` uses -- A13 forbids a
+        surface working it out again.  **Every value is a stated one or a
+        refusal** (`architecture.md` § 5.2): a parameter nobody stated is
+        shown as the refusal prep will give, never as a number worked out
+        for it -- the target's width, a rank per GPU, a queue's ceiling and
+        a config default each stood here until 2026-10-02.
         """
         from molbuilder.jobset.model import Resources
-        from molbuilder.jobset.prep_inputs import prep_run_inputs
-        from molbuilder.runwrap import auto_ranks, header_ntasks
+        from molbuilder.jobset.prep_inputs import (prep_run_inputs,
+                                                   run_uses_device)
         try:
             alloc, _pins, _chosen = prep_run_inputs(dest, target, task, stage,
                                                     Resources())
         except Exception:                                     # noqa: BLE001
             return []
-        gres = getattr(alloc, "gres", None)
-        # THE SAME QUESTION THE EMITTER ASKS.  `bool(gres)` is a different
-        # one: a GPU description that names no device count has no gres yet
-        # and would read as CPU here, so the card printed the target's full
-        # width where the header will carry one rank per device.
-        from molbuilder.jobset.prep_inputs import run_uses_device
-        gpu = bool(gres) or run_uses_device(dest, task, stage)
-        n_gpu = None
-        if gres:
-            try:
-                from molbuilder.scheduler.quantities import parse_gres
-                n_gpu = sum(parse_gres(gres).values()) or None
-            except Exception:                                 # noqa: BLE001
-                n_gpu = None
-        # THE SAME ARGUMENTS THE EMITTER PASSES, or the card reports a
-        # different number than the .sbatch will carry -- which is the one
-        # failure A13 exists to prevent.  `auto=` was omitted when this was
-        # written and the card rendered the no-record refusal while the
-        # header carried the domain's width (caught by review, 2026-09-02).
         try:
             from molbuilder.scheduler import machine_for
             # READ, never probed (`configuration.md` M-4; W52): a machine
@@ -1430,63 +1413,34 @@ def api_task_setup_prep():
             _rec = machine_for(dest, target=target)
         except Exception:                                     # noqa: BLE001
             _rec = None
-        _n_atoms = getattr(getattr(task, "structure", None), "atoms", None)
-        ntasks, why = header_ntasks(
-            getattr(alloc, "mpi_np", None), gpu=gpu, gpu_count=n_gpu,
-            auto=auto_ranks(_rec, _n_atoms, getattr(alloc, "domain", None)))
-        if ntasks is None:
-            # The producer's refusal, shown as the value it is -- a run that
-            # cannot be sized is exactly what a person must see BEFORE the
-            # second click, not after it.
-            ntasks = "\u2014 cannot size"
-        rows = [{"name": "MPI ranks", "flag": "-n", "value": ntasks,
-                 "source": why}]
-        # THE CONFIG DEFAULT IS A NUMBER THE HEADER CARRIES, so A13 forbids
-        # reporting it as blank.  `_render_sbatch_for` reads
-        # `scheduler.defaults` for BOTH of these:
-        #
-        #     cpus     = cpus_per_task if ... else defaults["cpus_per_task"]
-        #     walltime = time          if ... else defaults["time"]
-        #
-        # This modelled `-c` itself and said "unset -- the wrapper resolves
-        # OMP at run time", while the header was carrying `#SBATCH -c 8` from
-        # the config.  Caught by driving the buttons and reading the .sbatch
-        # they produced (2026-09-02) -- the same defect `-n` had, one row
-        # over, and the same rule: never blank when blank resolves to a
-        # number. 
-        _defaults = {}
-        try:
-            from molbuilder.runtime_config import get_scheduler
-            _defaults = dict((get_scheduler(dest) or {}).get("defaults") or {})
-        except Exception:                                     # noqa: BLE001
-            _defaults = {}
+        header = getattr(_rec, "scheduler", None) == "slurm"
+        pyscf = str(getattr(task, "engine", "")) == "pyscf"
+        refused = "not stated -- prep refuses it"
 
-        def _with_default(stated, key, blank_says):
-            if stated:
-                return stated, "stated"
-            fallback = _defaults.get(key)
-            if fallback:
-                return fallback, "unset -- the config default for this machine"
-            return "\u2014", blank_says
+        def _row(name, flag, value, *, asked=True):
+            if not asked:
+                return {"name": name, "flag": flag, "value": "\u2014",
+                        "source": "not asked -- the target has no scheduler"}
+            return {"name": name, "flag": flag,
+                    "value": value if value not in (None, "") else "\u2014",
+                    "source": ("stated" if value not in (None, "")
+                               else refused)}
 
-        _cpu_val, _cpu_why = _with_default(
-            getattr(alloc, "cpus_per_task", None), "cpus_per_task",
-            "unset -- the wrapper resolves OMP at run time "
-            "(OMP_NUM_THREADS > SLURM_CPUS_PER_TASK > its default)")
-        rows.append({"name": "cores per rank", "flag": "-c",
-                     "value": _cpu_val, "source": _cpu_why})
-        _t_val, _t_why = _with_default(
-            getattr(alloc, "time", None), "time",
-            "unset -- the queue's own default applies")
-        for label, flag, val, why in (
-                ("devices", "--gres", gres, None),
-                ("memory", "--mem", getattr(alloc, "mem", None), None),
-                ("wall", "-t", _t_val, _t_why),
-                ("queue", "-p", getattr(alloc, "domain", None), None)):
-            rows.append({"name": label, "flag": flag,
-                         "value": val if val else "\u2014",
-                         "source": why or ("stated" if val else
-                         "unset -- the queue's own default applies")})
+        rows = [
+            ({"name": "MPI ranks", "flag": "-n", "value": 1,
+              "source": "one process -- PySCF is OpenMP-only"} if pyscf
+             else _row("MPI ranks", "-n", getattr(alloc, "mpi_np", None))),
+            _row("cores per rank", "-c", getattr(alloc, "cpus_per_task", None)),
+        ]
+        gres = getattr(alloc, "gres", None)
+        if gres or run_uses_device(dest, task, stage):
+            rows.append(_row("devices", "--gres", gres))
+        rows += [_row("memory", "--mem", getattr(alloc, "mem", None),
+                      asked=header),
+                 _row("wall", "-t", getattr(alloc, "time", None),
+                      asked=header),
+                 _row("queue", "-p", getattr(alloc, "domain", None),
+                      asked=header)]
         return rows
 
     # ---- the PLAN: what this would do, writing nothing ----------------- #
@@ -1521,8 +1475,7 @@ def api_task_setup_prep():
             # A13 -- THE END POINT, not the inputs.  A run is hours or days
             # and a wrong width is discovered when it finishes, so the card
             # shows what the `.sbatch` will carry and where each number came
-            # from.  `header_ntasks` is the EMITTER's own rule, called here
-            # rather than repeated.
+            # from -- stated, or the refusal prep will give.
             "emitted": (_emitted_launch(dest, target, task, stage)
                         if kind == "run" else []),
             # What the description asks the scheduler for -- shown because

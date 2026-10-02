@@ -841,17 +841,11 @@ producer at its boundary. The fourth row needs no translation at all — the
 value is read where it is checked. Nobody maintains a mapping table by hand.
 
 **Walltime, memory and partition are deliberately absent from that table.** They
-are not fields of the shared schema: `running-a-job.md § 5.3` puts `time` and
-`mem` under `molbuilder.json`'s `scheduler.defaults`, and a routing `domain`
-resolves to a partition and QoS the same way. That is **the machine's knowledge**,
-and `job-system.md`'s decision 3 keeps it on the machine — a description that
-carried a walltime would stop being portable, and would be wrong the moment it
-was opened on a different cluster. A per-stage walltime is a real thing to want;
-it is part of the **allocation, an input to `prep`** on the target, where the
-machine is known (`project-layout.md § 2.3.1b`). *(Until 2026-08-12 this
-sentence sent the reader to `job-system.md § 5.1`'s `--stage-resources` — a
-flag deleted with the old describe verb, M4: it put a walltime and a queue
-inside the folder this very paragraph says must name no machine.)*
+are not fields of the shared stage schema: they are the job's **scheduler
+ask** — `allocation` (§ 6.8a), the run card's `time` and `domain` (§ 6.8e), or
+`prep`'s flags — and a named `domain` resolves to a partition and QoS on the
+target's record. Each is stated or refused; none has a default
+([`architecture.md` § 5.2](?doc=execution/architecture.md)).
 
 ### 5.1 The middle row, and what it costs
 
@@ -1407,9 +1401,9 @@ separate question and still open (`project-layout.md § 8`).
 
 | field | what it says |
 |---|---|
-| `domain` | which **queue** — the same answer `--domain` gives |
-| `time` | the **wall**. Unstated, the target queue's own ceiling is requested |
-| `mem` | the **memory ask**. Unstated, the scheduler's own default decides |
+| `domain` | which **queue** — the same answer `--domain` gives. Stated nowhere — here, the run card, `--domain` — on a target with a scheduler, prep refuses |
+| `time` | the **wall**. Stated nowhere — here, the run card, `--time` — on a target with a scheduler, prep refuses ([`architecture.md` § 5.2](?doc=execution/architecture.md)) |
+| `mem` | the **memory ask**. Stated nowhere — here, `--mem` — on a target with a scheduler, prep refuses |
 | `gpu_binding` | whether a GPU ask carries `--gres-flags=enforce-binding` — the job's cores kept beside its GPUs. Unstated, it does; `false` sends the GPU ask without it, for the benchmark and the runs alike, so a benchmark measures the layout the run will use ([`gpu.md`](?doc=execution/gpu.md) G9; user, 2026-10-01) |
 
 **Why it is here and not in `bench`.** § 6.8's rule still holds — the file
@@ -1510,12 +1504,11 @@ rung's over that — the deck, the scheduler's device ask, the wrapper and the
 Task setup tab's cards and hints alike — and a transport rung takes its run
 card as every other rung does.
 
-**Absent is a state, as everywhere here.** No block means the run is sized
-from the selected target's own width (`auto_ranks`) — or refused when that
-target has no record — which `prep` names out loud rather than implying
-([`running-a-job.md § 3.1`](?doc=execution/running-a-job.md)).  **A benchmark
-does not fill it**: it writes a report, and what the run uses is what you
-wrote here ([`architecture.md § 5.2`](?doc=execution/architecture.md)).
+**Absent is a state, as everywhere here.** A run whose launch shape is stated
+neither here nor by a `prep` flag is refused, and the refusal names both
+places ([`architecture.md § 5.2`](?doc=execution/architecture.md)).  **A
+benchmark does not fill it**: it writes a report, and what the run uses is what
+you wrote here.
 
 **Which names may appear** is the catalogue's `execution` items — the same
 membership `bench` uses — **plus `time` and `domain`**, which are not
@@ -1564,7 +1557,8 @@ start — and a benchmark is the thing you run to *save* time.
 **`allocation` is the calculation's ask and the BENCH's; `execution` is this
 RUN's.** So the scheduler ladder gains one rung, for these two names only:
 
-> unstated → `allocation` → **`execution`** → a `prep` flag
+> `allocation` → **`execution`** → a `prep` flag → a `launch` flag — and
+> stated nowhere, refused at prep on a target with a scheduler
 
 **`mem` is deliberately NOT among them.** The line is *does this differ
 between the two lanes* — and memory does not: a trial and a run compute the
@@ -2211,11 +2205,12 @@ were written for a flat directory and would silently have lost data in a tree.
   Nothing here changes any of it. To restate only what a reader of this document
   needs: molbuilder must be installed on the machine that *generates*; the
   activation form (`conda activate` / `source activate`) and any module preamble
-  come from `molbuilder.json`, have **no default**, and generation of an HPC
-  wrapper refuses without them; environment *names* are configurable per category
-  and must never be hard-coded; `.sbatch` is emitted only when a `scheduler`
-  block is configured. Everything site-specific is baked at generate/prep, and at
-  run time the wrapper reads only the allocation and the hardware.
+  come from the target machine's record, have **no default**, and generation of
+  any wrapper refuses without them; environment *names* are configurable per
+  category and must never be hard-coded; `.sbatch` is emitted unless the
+  target's record says `workstation`. Everything site-specific is baked at
+  generate/prep, and at run time the wrapper reads only the allocation and the
+  hardware.
 - **The run id, its normalisation, and the engine's identity group** —
   [`execution/run-identity.md`](?doc=execution/run-identity.md).
 - **The run directory, filenames, reserved script blocks, warm-restart files, the

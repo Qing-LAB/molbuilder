@@ -71,9 +71,12 @@ def sol_calc(tmp_path):
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, ["H"])
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
+    # The wall and memory every job sent to this scheduler states -- the
+    # trials share the calculation's (`architecture.md` § 5.2).
+    tj = dest / "task.json"
+    d = json.loads(tj.read_text())
+    d["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
+    tj.write_text(json.dumps(d, indent=2))
     env = Environment(
         scheduler="slurm",
         topology=Topology(sockets=2, cores_per_socket=64,
@@ -82,7 +85,10 @@ def sol_calc(tmp_path):
                         max_time="0-04:00:00"),
                  Domain(name="general", partition="general", qos="public",
                         max_time="7-00:00:00", max_cores=48,
-                        gpu={"a100": 4})])
+                        gpu={"a100": 4})],
+        # how a shell enters an environment there -- the record's fact
+        script_generation={"activation": "conda activate",
+                           "preamble": "true"})
     (dest / "environment.json").write_text(env.to_json() + "\n")
     return dest
 
@@ -674,9 +680,12 @@ def flat_sol_calc(tmp_path):
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, ["H"])
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
+    # The wall and memory every job sent to this scheduler states -- the
+    # trials share the calculation's (`architecture.md` § 5.2).
+    tj = dest / "task.json"
+    d = json.loads(tj.read_text())
+    d["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
+    tj.write_text(json.dumps(d, indent=2))
     env = Environment(
         scheduler="slurm",
         topology=Topology(sockets=2, cores_per_socket=64,
@@ -685,7 +694,10 @@ def flat_sol_calc(tmp_path):
                         max_time="0-04:00:00"),
                  Domain(name="general", partition="general", qos="public",
                         max_time="7-00:00:00", max_cores=48,
-                        gpu={"a100": 4})])
+                        gpu={"a100": 4})],
+        # how a shell enters an environment there -- the record's fact
+        script_generation={"activation": "conda activate",
+                           "preamble": "true"})
     (dest / "environment.json").write_text(env.to_json() + "\n")
     return dest
 

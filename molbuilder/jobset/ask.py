@@ -39,7 +39,8 @@ object it owns).
     never happens (it ignored the per-shelf split); with it went
     `bench_bound`/`bench_total` and their slack/startup constants -- TIME
     IS NEVER DERIVED (user dictation, 2026-08-24): the user states it, or
-    the target queue's own ceiling stands.
+    the launch is refused (`architecture.md` § 5.2; the target queue's own
+    ceiling stood in until 2026-10-02).
 
 A `fits(ask, rows)` sat here until it was reviewed and found to be **a third
 implementation of "does this fit"** — `admits` is the one check, placement

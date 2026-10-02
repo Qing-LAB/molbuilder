@@ -29,23 +29,24 @@ nothing was invented.
 
 Five consequences, and they are the whole contract:
 
-**S1 — Unanswered is `None`, never a default wearing a number's clothes.** A
-value the person did not give is absent. The scheduler's own default may then
-decide — a real and legitimate outcome — but the framework does not
-manufacture a number and present it as an answer.
+**S1 — Unanswered is refused, never a default wearing a number's clothes.** A
+value the person did not give is absent, and prep refuses the run, naming
+where to state it ([`architecture.md` § 5.2](?doc=execution/architecture.md),
+2026-10-02). Neither the framework nor the scheduler's own default answers it:
+both would be a number nobody chose.
 
 **S2 — Nothing is derived, for either axis** *(amended 2026-08-24; the
 first version let a stated total become a per-trial bound by arithmetic, and
 an UNSTATED total become fifteen invented minutes a trial — which sent five
-38-minute jobs to Sol for a system nobody had sized)*. **Time**: `--time` is
-the wall, at prep or at launch; unstated, the target queue's **own ceiling**
-is requested — the full amount the cluster allows there — and a queue that
-states none gets no wall at all. `--trial-timeout` exists so one hung trial
-cannot eat a group's whole wall; unstated, no per-trial bound exists.
-**Memory**: `--mem`, at prep or at launch, else the user's own config
-(`defaults.mem`), else nothing — the scheduler's default
-decides, and the plan says so before anything submits. Hitting a limit is a
-result; inventing one is not.
+38-minute jobs to Sol for a system nobody had sized)*. **Time**: the wall is
+stated — `allocation.time`, the run card's `time`, `--time` at prep or at
+launch — and on a target with a scheduler an unstated one is refused at prep
+(until 2026-10-02 the queue's own ceiling stood in for it). `--trial-timeout`
+exists so one hung trial cannot eat a group's whole wall; unstated, no
+per-trial bound exists. **Memory**: `allocation.mem`, `--mem` at prep or at
+launch — unstated, refused at prep the same way (until 2026-10-02 a
+`molbuilder.json` default, else the scheduler's, stood in). Hitting a limit is
+a result; inventing one is not.
 
 **S3 — A measurement is not portable.** Numbers taken on one kind of node do
 not describe another.
@@ -78,8 +79,8 @@ is theirs to make.
 **S4 — Nothing is submitted unseen.** The full request, before the
 irreversible step — on every door: a stage, a grouped bench, a bias chain
 *(the stage's door sent straight away until 2026-10-01, on the premise that
-`prep`'s printout had been the look; the queue and the wall are decided at
-launch, so they were never seen — ruled that day)*. `--yes` is how a person
+`prep`'s printout had been the look; a launch flag can change the queue and
+the wall after it, so the line as sent was never seen — ruled that day)*. `--yes` is how a person
 says *I have decided to trust this*; its absence is not permission. A
 question that carries a judgement only the person can make — following a run
 that was launched and never concluded — takes **no** as Enter's answer.
@@ -87,14 +88,17 @@ that was launched and never concluded — takes **no** as Enter's answer.
 **S5 — The queue is named, never inferred.** Which queue to spend a day of
 wall-clock in is a judgement about priority, contention and what else is
 running — none of it on the machine's record, all of it the person's. So the
-options are **listed** and the person names one with `--domain`. A queue that
-cannot take the job is listed too, with the reason: hiding it answers *"why is
-my queue not an option?"* with silence.
+person names one — in the description (`allocation.domain`, the run card's
+`domain`) or with `--domain` — and a run on a scheduler that names none is
+refused at prep. Where the queues are listed, a queue that cannot take the job
+is listed too, with the reason: hiding it answers *"why is my queue not an
+option?"* with silence.
 
-*`execution.domain` in the config is that answer given once for a machine
-instead of once per call — a decision, not a guess. A split sweep needs one
-per side, because a cpu-only partition cannot take a GPU group; `--gpu-domain`
-**refines** `--domain` and is needed only when the two differ.*
+*There is no queue given once for a whole machine: `execution.domain` in
+`molbuilder.json` did that until 2026-10-02, and every job there received a
+queue it never named. A split sweep needs one per side, because a cpu-only
+partition cannot take a GPU group; `--gpu-domain` **refines** `--domain` and is
+needed only when the two differ.*
 
 ---
 
@@ -157,7 +161,7 @@ about to submit:
   bench-group-cpu
     sbatch -J AuBDTAu/bench-group-cpu -p htc -q public -n 48 -c 1 -t 0-04:00:00 --mem=128G ... launch/bench-group-cpu.sbatch
   bench-group-gpu-G1K48C1
-    sbatch -J AuBDTAu/bench-group-gpu-G1K48C1 -p htc -q public -n 48 -c 1 --gres=gpu:a100:1 -t 0-04:00:00 --mem=128G ... launch/bench-group-gpu-G1K48C1.sbatch
+    sbatch -J AuBDTAu/bench-group-gpu-G1K48C1 -p htc -q public -n 48 -c 1 --gres=gpu:1 -t 0-04:00:00 --mem=128G ... launch/bench-group-gpu-G1K48C1.sbatch
   gpu share  48 rank(s) / 1 GPU(s) = 48 rank(s)/GPU
   NOTE 48 ranks/GPU; this stack's tuned point (no NCCL) is ~4 (engines/tuning.md § 2.12).
   per-trial bound: none -- each trial runs until the wall
@@ -165,16 +169,14 @@ about to submit:
 ```
 
 *Every line is read off the very `sbatch` commands about to be sent. Only
-what a queue can actually refuse appears as a bar — with no `--time` stated
-there is no walltime to fail, and `-t 0-04:00:00` above is `htc`'s own
-ceiling, requested because nothing else was said. The GPU-sharing lines say
-once per RATIO what several shelves may share, and an unstated `--mem`
-would add its own line here rather than being defaulted in silence.*
+what a queue can actually refuse appears as a bar. The `-t 0-04:00:00` is the
+wall the description states (`allocation.time`); a run stating none is refused
+at prep. The GPU-sharing lines say once per RATIO what several shelves may
+share.*
 
-*The `-t 0-04:00:00` is `htc`'s own ceiling — the full amount that queue
-allows — because no `--time` was stated. The display is the exact command,
-from the same code that submits it; a summary computed a second way is how
-"170 minutes" was once shown for five 38-minute jobs.*
+*The display is the exact command, from the same code that submits it; a
+summary computed a second way is how "170 minutes" was once shown for five
+38-minute jobs.*
 
 The listing reuses the scheduler's own admission, so it cannot say yes where
 the submission says no. *A table that disagrees with the check is worse than
@@ -201,9 +203,8 @@ the hardware:
   `scheduler.md` R11. The machine now comes from where the trial ran (R12),
   not from the domain's description of itself;*
 * **queue ceilings** — so the listing can mark what fits and say why the rest
-  does not. *They no longer pick a queue for you* (S5); the ordering machinery
-  that once did survives only where a queue is named for a machine rather than
-  for a call ([`scheduler.md`](?doc=execution/scheduler.md) § 5a).
+  does not. *They never pick a queue for you* (S5), *and never stand in for a
+  wall nobody stated* (S2).
 
 All four of those fields were declared on the record and read by nothing. That
 is now fixed, and it is worth stating as a pattern rather than as four

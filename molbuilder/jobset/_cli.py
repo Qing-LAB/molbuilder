@@ -36,6 +36,7 @@ from .runstatus import jobset_status, render_stage_status, render_status
 
 #: A11: the name comes from the module that writes the file.
 from .model import FILENAME as _JOBSET_FILE
+from ..runtime_config import ACTIVATION_FORMS as _ACTIVATION_FORMS
 
 
 def _load(bundle: str) -> tuple:
@@ -987,15 +988,16 @@ def _load_bench_set(base, stage, verb: str = "launch"):
 #: the person's business here (`engines/stages.md` § 6.8a).
 TIME_METAVAR = "DURATION"
 TIME_HELP = ("wall-clock limit -- `4h`, `90m`, `2-00:00:00`, or a bare "
-             "number of minutes.  Unstated, the target queue's own ceiling "
-             "is requested -- the full amount the cluster allows there.  "
-             "Never derived, never estimated.")
+             "number of minutes.  A run on a scheduler states one -- here, "
+             "or `allocation.time` / the run card's `time` in task.json -- "
+             "or prep refuses; on launch it overrides what prep baked.  "
+             "Never derived, never estimated (architecture.md § 5.2).")
 MEM_METAVAR = "SIZE"
 MEM_HELP = ("how much TOTAL memory this needs -- `128G`, `80GB`, `0.5T`, or "
-            "a bare number of GB.  `0` asks for all of the node's.  "
-            "Unstated, what molbuilder.json says decides -- "
-            "`scheduler.defaults.mem` -- else the scheduler's own default "
-            "(running-a-job.md § 5.3.1).")
+            "a bare number of GB.  `0` asks for all of the node's.  A run "
+            "on a scheduler states one -- here, or `allocation.mem` in "
+            "task.json -- or prep refuses; on launch it overrides what prep "
+            "baked (running-a-job.md § 5.3.1).")
 
 
 def _duration(text):
@@ -1125,9 +1127,12 @@ def _resolve_stage(js, stage, verb: str, *, base):
 @click.option("--np", "mpi_np", type=int, default=None, metavar="N",
               help="MPI ranks for this prep -- the launch shape, which "
                    "task.json's `execution` states for every prep "
-                   "(project-layout.md D2); prep renders the deck for it.")
+                   "(project-layout.md D2); prep renders the deck for it.  "
+                   "Stated nowhere, a SIESTA run is refused.")
 @click.option("--cpus-per-task", type=int, default=None, metavar="C",
-              help="cores per rank (OMP). sbatch -c.")
+              help="cores per rank (OMP threads). sbatch -c.  Stated "
+                   "nowhere -- here or the run card's `omp_threads` / "
+                   "`threads` -- a run is refused.")
 @click.option("--gpus", "gres", default=None, metavar="N",
               help="how many GPUs -- a count; which card a node carries is "
                    "the machine's business (scheduler.md R2a).")
@@ -1138,8 +1143,10 @@ def _resolve_stage(js, stage, verb: str, *, base):
               help="per-rank cap, baked into the wrapper as ulimit -v.")
 @click.option("--domain", default=None, metavar="NAME",
               help="which named domain to run in (a PROBED domain from "
-                   "environment.json -- a partition and a QOS together, "
-                   "with its own limits).")
+                   "the target's record -- a partition and a QOS together, "
+                   "with its own limits).  On a scheduler a run names one "
+                   "-- here, or `allocation.domain` in task.json -- or prep "
+                   "refuses and lists them.")
 @click.option("--target", default=None, metavar="NAME",
               help="which MACHINE this is for -- a record written by "
                    "`jobset probe --write --name NAME`, or `this` for this "
@@ -1148,8 +1155,9 @@ def _resolve_stage(js, stage, verb: str, *, base):
                    "instead of the desk.")
 @click.option("--sbatch/--no-sbatch", "emit_sbatch", default=True,
               help="emit .sbatch wrappers (default on; withheld where the "
-                   "machine it is prepped for names no queue -- "
-                   "job-system.md § 6).")
+                   "target's record says `workstation` -- job-system.md "
+                   "§ 6).  --no-sbatch writes none, and then no queue, wall "
+                   "or memory is asked for.")
 @click.option("--pipeline-log", "pipeline_log", is_flag=True, default=False,
               help="write a step-by-step record of what each step received, "
                    "decided and produced, beside this prep's STAGE-PLAN.md. "
@@ -1642,19 +1650,19 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
               default=None,
               help="HOW to launch, which is a fact about this MACHINE and not "
                    "about the layout: 'direct' = run it here with bash; "
-                   "'submit' = hand it to the scheduler molbuilder.json "
-                   "configures; **'ask' = submit NOTHING and report when it "
+                   "'submit' = hand it to this machine's scheduler; "
+                   "**'ask' = submit NOTHING and report when it "
                    "would start** (`sbatch --test-only` on the line submit "
                    "would send), so you can change the queue or the request "
                    "and ask again before committing.  'ask' needs a login "
                    "node -- there is no prediction without the cluster.  "
-                   "**Defaults to `execution.mode` in molbuilder.json** "
+                   "**Defaults to `launch.mode` in molbuilder.json** "
                    "(running-a-job.md § 5.4); pass it only to override that.")
 @click.option("--domain", default=None, metavar="NAME",
               help="the queue -- a domain of this machine's record, sent as "
                    "-p/-q (submit and ask).  Unstated: the one prep baked "
-                   "for this stage, else `execution.domain`; with neither, "
-                   "the queues are listed and nothing is sent.  A grouped "
+                   "for this stage; with none, the queues are listed and "
+                   "nothing is sent.  A grouped "
                    "bench's sides take it too; --only places one side at a "
                    "time.")
 @click.option("--dry-run", is_flag=True,
@@ -1697,36 +1705,33 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     Run ``prep`` first.  Before anything is sent the exact ``sbatch`` line is
     shown and you are asked; ``--dry-run`` shows it and sends nothing.
 
-    ``--mode`` falls back to ``execution.mode`` (`running-a-job.md` § 5.4).
+    ``--mode`` falls back to ``launch.mode`` (`running-a-job.md` § 5.4).
     """
     mode_source = "--mode flag"
     domain_source = "--domain flag" if domain else None
     # The BUNDLE's scope gates its own launches (R3, 2026-08-12): the
-    # calculation's .molbuilder.json execution block wins (running-a-job
-    # § 5.2).
-    _execn = {}
-    if mode is None or domain is None:
-        from ..runtime_config import get_execution
+    # calculation's .molbuilder.json `launch` block wins (running-a-job
+    # § 5.4).
+    if mode is None:
+        from ..runtime_config import get_launch
         try:
-            _execn = get_execution(project_dir=Path(bundle)) or {}
+            mode = get_launch(project_dir=Path(bundle)).get("mode")
         except Exception as exc:
             # A malformed config is ITS OWN error.  Swallowing it here told
             # the user to set a value they may already have set.
             raise click.ClickException(
-                f"the execution block could not be resolved from config: "
+                f"the launch block could not be resolved from config: "
                 f"{exc}\n  Fix the config (running-a-job.md § 5.4).") from exc
-    if mode is None:
-        mode = _execn.get("mode")
         if not mode:
             # Unset is a refusal, never a derivation: deciding `submit` from
             # a DETECTED scheduler would gate submission on detection, which
             # running-a-job.md § 5.4 forbids.
             raise click.ClickException(
-                "no --mode, and molbuilder.json sets no `execution.mode`.\n"
+                "no --mode, and molbuilder.json sets no `launch.mode`.\n"
                 "  'direct' runs it here with bash; 'submit' hands it to the "
-                "scheduler.  Set execution.mode once for this machine, or pass "
+                "scheduler.  Set launch.mode once for this machine, or pass "
                 "--mode for this call (running-a-job.md § 5.4).")
-        mode_source = "execution.mode (config)"
+        mode_source = "launch.mode (config)"
     _refuse_flags_without_effect(
         kind=kind, mode=mode, trial=trial, domain=domain,
         time_text=time_text, mem_text=mem_text, gpu_domain=gpu_domain,
@@ -1763,12 +1768,13 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     # NOBODY GUESSES THE QUEUE (user, 2026-08-23; `submission.md` S5).  In
     # order, most specific first: --domain on this call; the work's own
     # resources -- what prep baked for THIS stage (W52: every stage's row
-    # was read, so a queue named at one stage's prep routed another); and
-    # execution.domain, said once for this machine.  For `ask` as for
-    # `submit`, so the line asked about is the line that would be sent (W52:
-    # ask resolved no queue at all).  Reading the baked value is not
-    # inferring it -- a person put it there -- and it is ADMITTED like any
-    # other: a bundle prepped elsewhere may name a queue this machine lacks.
+    # was read, so a queue named at one stage's prep routed another).  There
+    # is no machine-wide queue: `execution.domain` in molbuilder.json stood
+    # in for one until 2026-10-02.  For `ask` as for `submit`, so the line
+    # asked about is the line that would be sent (W52: ask resolved no queue
+    # at all).  Reading the baked value is not inferring it -- a person put
+    # it there -- and it is ADMITTED like any other: a bundle prepped
+    # elsewhere may name a queue this machine lacks.
     slurm = mode in ("submit", "ask")
     if slurm and domain is None:
         _baked = {j.resources.domain for j in launching
@@ -1781,9 +1787,6 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                 "the trials being sent name more than one domain ("
                 + ", ".join(sorted(_baked)) + ").  Name the one to use with "
                 "--domain, and --gpu-domain if the GPU side differs.")
-    if slurm and domain is None and _execn.get("domain"):
-        domain = _execn["domain"]
-        domain_source = "execution.domain (config)"
     if slurm and domain is None:
         # A queue is needed unless the only side being sent is named by
         # --gpu-domain.
@@ -1818,10 +1821,9 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                 cores=_cores, gpus=_gpus))
             raise click.ClickException(
                 "no --domain, so no queue was chosen.  Name one from the "
-                "list above with `--domain`, name it in the "
+                "list above with `--domain`, or name it in the "
                 "description's `allocation.domain` and prep again so the "
-                "bundle carries it, or set `execution.domain` in "
-                "molbuilder.json to answer this once for this machine.")
+                "bundle carries it.")
     # The same provenance line prep printed, at the LAST moment before the
     # launch -- the mode above may have come from config, and this names
     # which file said so (user request 2026-08-12).
@@ -2286,8 +2288,20 @@ def cmd_machines() -> None:
               type=click.Choice(["slurm", "workstation"]),
               help="force the scheduler kind instead of detecting it "
                    "(source 'flag').")
+@click.option("--activation", default=None,
+              type=click.Choice(sorted(_ACTIVATION_FORMS)),
+              help="how a shell enters a conda environment ON THIS MACHINE. "
+                   "Recorded in its record -- the one home of this fact, "
+                   "read by every prep for this machine "
+                   "(docs/configuration.md § 5 M-1).  Omitted, an existing "
+                   "record keeps its own.")
+@click.option("--preamble", default=None, metavar="SHELL",
+              help="the shell run before the activation on this machine -- "
+                   "`module load mamba`, or sourcing conda's hook.  Recorded "
+                   "with the activation; an empty string removes it.  "
+                   "Omitted, an existing record keeps its own.")
 def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
-                        sets, scheduler_flag) -> None:
+                        sets, scheduler_flag, activation, preamble) -> None:
     """Record what a machine IS -- cores, GPUs, scheduler, and on a cluster
     every (partition, QoS) you may actually submit to, with its wall.
 
@@ -2306,8 +2320,10 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
     The unnamed form writes ``environment.json`` at the machine scope, so one
     probe serves every calculation here (`configuration.md` § 5).
 
-    **Facts only.** Which partition you want and the account stay yours, in
-    ``molbuilder.json`` -- M-1: a probe never chooses on your behalf.
+    **Facts only** -- M-1: a probe never chooses on your behalf.  Which queue
+    a job uses is that job's own statement (`allocation.domain`, --domain).
+    What the probe cannot see is declared to it: --set, --scheduler, and how
+    a shell enters an environment here (--activation, --preamble).
 
     Run it on a login node for a cluster; on a workstation it records the same
     shape with no domains (M-2), rather than refusing.
@@ -2363,9 +2379,12 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
     # its environment, which envs exist here, and what they were built
     # for.  `diagnostics.local_facts` owns them and states why; `envs
     # init-config` became the second caller 2026-09-08, which is what
-    # took them out of this function.
+    # took them out of this function.  The first is DECLARED, here, by the
+    # two flags -- the record is its one home since 2026-10-02.
+    declared = {k: v for k, v in (("activation", activation),
+                                  ("preamble", preamble)) if v is not None}
     from ..diagnostics import local_facts as _local_facts
-    env, notes_sg = _local_facts(env)
+    env, notes_sg = _local_facts(env, declared)
 
     notes = []
     # ``%m`` (memory per node, MB) added 2026-08-23 -- the ceiling
@@ -2460,29 +2479,6 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
         click.echo(f"Probed (user={user}): {len(parts)} partitions; "
                    f"allowed QoS: {', '.join(sorted(allowed)) or '(unknown)'}")
 
-    t = env.topology
-    click.echo(f"\nMachine: scheduler={env.scheduler}"
-               f"  cores/socket={t.cores_per_socket}  sockets={t.sockets}"
-               f"  gpus/node={t.gpus_per_node}  gpu={t.gpu_type or '-'}"
-               f"  mem={t.mem_total_gb or '-'} GB")
-    if env.domains:
-        click.echo("\nReachable domains (a launch names one with "
-                   "--domain):")
-        for d in env.domains:
-            click.echo(f"  {d.name:<10} <= {str(d.max_time):<12} "
-                       f"{d.partition}/{d.qos}")
-    # AFTER `derive_domains`, for the reason stated above it -- that call
-    # REASSIGNS `notes`, so anything appended earlier is dropped.  This
-    # line was composed and never shown: `notes_sg` was assigned and read
-    # by nothing, so the one machine that most needed the warning -- the
-    # one stating no script_generation -- was the one told nothing.
-    if notes_sg:
-        notes.append(notes_sg)
-    if notes:
-        click.echo("\nNotes / assumptions (read before --write):")
-        for n in notes:
-            click.echo(f"  - {n}")
-
     # A named target is a record ABOUT another machine, kept beside this
     # machine's rather than replacing it (P2): a workstation holds both its own
     # capability and the cluster's, and `prep --target NAME` says which.
@@ -2514,12 +2510,47 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
         record = Path(out) / record.name
     target = record.parent
     fname = record.name
+    # WHAT THE RECORD ALREADY SAYS about entering an environment stays, unless
+    # a flag declared it again: the activation is declared, never measured,
+    # so a probe that was not told it has nothing to say about it -- and
+    # dropping it would make every prep for this machine refuse.
+    before = read_environment(target / fname)
+    carried = {k: v for k, v in
+               ((before.script_generation if before is not None else None)
+                or {}).items() if k not in declared}
+    if carried:
+        env.script_generation = {**carried, **(env.script_generation or {})}
+        if env.script_generation.get("activation"):
+            notes_sg = None
+
+    t = env.topology
+    click.echo(f"\nMachine: scheduler={env.scheduler}"
+               f"  cores/socket={t.cores_per_socket}  sockets={t.sockets}"
+               f"  gpus/node={t.gpus_per_node}  gpu={t.gpu_type or '-'}"
+               f"  mem={t.mem_total_gb or '-'} GB")
+    if env.domains:
+        click.echo("\nReachable domains (a launch names one with "
+                   "--domain):")
+        for d in env.domains:
+            click.echo(f"  {d.name:<10} <= {str(d.max_time):<12} "
+                       f"{d.partition}/{d.qos}")
+    # AFTER `derive_domains`, for the reason stated above it -- that call
+    # REASSIGNS `notes`, so anything appended earlier is dropped.  This
+    # line was composed and never shown: `notes_sg` was assigned and read
+    # by nothing, so the one machine that most needed the warning -- the
+    # one with no activation -- was the one told nothing.
+    if notes_sg:
+        notes.append(notes_sg)
+    if notes:
+        click.echo("\nNotes / assumptions (read before --write):")
+        for n in notes:
+            click.echo(f"  - {n}")
+
     if not do_write:
         click.echo(f"\n(dry run -- nothing written. Re-run with --write to "
                    f"record this in {target / fname}.)")
         return
 
-    before = read_environment(target / fname)
     if before is None:
         # Nothing to clobber: one consent creates the record -- unless a file
         # IS there and does not read, which is said, never treated as absent

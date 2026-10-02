@@ -17,7 +17,6 @@ the same directory, and their logs must not be the same file.**
 from __future__ import annotations
 
 import dataclasses
-import json
 import re
 
 import numpy as np
@@ -79,17 +78,13 @@ def _calculation(tmp_path, engine: str, shape: str, name: str = "BDT"):
     D.write_description(D.build_description(
         BDT, cfg, stages, engine=engine, shape=shape, name=name,
         source=str(src)), dest)
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {
-            "activation": "conda activate",
-            "preamble": "source /opt/conda/etc/profile.d/conda.sh"}}))
     if engine == "siesta":
         write_pseudos(dest, ["S", "C", "H"])
     return dest, [s.name for s in stages]
 
 
 def _prep(dest, stage, *, log=True):
-    return prep_calculation(dest, stage, allocation=Resources(mpi_np=8),
+    return prep_calculation(dest, stage, allocation=Resources(mpi_np=8, cpus_per_task=1),
                             pipeline_log=log)
 
 

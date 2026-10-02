@@ -88,11 +88,13 @@ def _launched(tmp_path, monkeypatch, *, engine="pyscf", broken_member=None):
                 *(("--psml-lib", "pseudopotential") if siesta else ()))
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "optimization" / "H2"
-    (bundle / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": f"source {CONDA_SH}"}}))
+    # How a shell enters conda HERE is this machine's record's to say.
+    from conftest import write_machine_record
+    write_machine_record(script_generation={
+        "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
     r = _jobset("prep", "run", "coarse", "--bundle", bundle,
-                "--target", "this", *(("--np", 1) if siesta else ()))
+                "--target", "this", *(("--np", 1) if siesta else ()),
+                "--cpus-per-task", 1)
     assert r.exit_code == 0, r.output
     ran_in = bundle / "01_coarse" / "run-0" if siesta else bundle
 

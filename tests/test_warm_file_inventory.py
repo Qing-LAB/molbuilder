@@ -32,7 +32,6 @@ subtraction landed and removed a re-derivation on the way out.
 """
 from __future__ import annotations
 
-import json
 import re
 
 import pytest
@@ -43,18 +42,15 @@ from molbuilder.jobset.model import Resources
 
 @pytest.fixture(autouse=True)
 def _isolated(monkeypatch, tmp_path_factory):
-    """The renders resolve script_generation config from cwd + HOME/XDG
-    (B-9, 2026-08-13): unsandboxed, every wrapper here folded in the
-    developer's repo-root molbuilder.json, so the banner/mover surfaces
-    under test varied by machine.  Sandboxed, with the activation the
-    writer requires DECLARED by the test."""
+    """The renders read the machine's record (B-9, 2026-08-13: unsandboxed,
+    every wrapper here folded in the developer's own configuration, so the
+    banner/mover surfaces under test varied by machine).  Sandboxed, with
+    the activation the writer requires DECLARED by the test, in the record
+    -- its one home (`configuration.md` § 5 M-1)."""
     home = tmp_path_factory.mktemp("home")
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     cwd = tmp_path_factory.mktemp("cwd")
-    (cwd / "molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
     monkeypatch.chdir(cwd)
     # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
     # working-directory step, which is gone (configuration.md § 2.1a) --
@@ -69,7 +65,9 @@ def _isolated(monkeypatch, tmp_path_factory):
     from molbuilder.scheduler import Environment as _Env, Topology as _Topo
     (cwd / "environment.json").write_text(
         _Env(scheduler="slurm",
-             topology=_Topo(sockets=2, cores_per_socket=32)).to_json()
+             topology=_Topo(sockets=2, cores_per_socket=32),
+             script_generation={"activation": "conda activate",
+                                "preamble": "true"}).to_json()
         + "\n")
 
 
@@ -83,10 +81,13 @@ ENGINES = (
 
 
 def _wrapper(tmp_path, ext, body, **kw):
+    """The wrapper of a run that STATES its shape -- one written for an
+    unstated one is refused (`architecture.md` § 5.2)."""
     p = tmp_path / f"job{ext}"
     p.write_text(body)
-    return runwrap.render_run_wrapper(p, env="molbuilder-siesta",
-                                      resources=Resources(**kw))
+    return runwrap.render_run_wrapper(
+        p, env="molbuilder-siesta",
+        resources=Resources(**{"mpi_np": 2, "cpus_per_task": 1, **kw}))
 
 
 @pytest.mark.parametrize("engine,const,ext,body", ENGINES)

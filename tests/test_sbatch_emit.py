@@ -12,7 +12,6 @@ Authoritative design: docs/execution/job-system.md  two-layer model (header dele
 """
 from __future__ import annotations
 
-import json
 import math
 import re
 import subprocess
@@ -26,14 +25,16 @@ from molbuilder.runwrap import WrapperError, render_sbatch
 from molbuilder.jobset.model import Resources
 
 
-_SCHED = {
-    "kind": "slurm",
-    "directives": {
-        "partition": "public", "qos": "public",
-        "mail_type": "ALL", "mail_user": "%u@asu.edu", "export": "NONE",
-    },
-    "defaults": {"time": "0-04:00:00", "cpus_per_task": None, "mem": None},
-}
+def _stated(**over):
+    """Every value a header carries, as the job states them -- the queue it
+    named (bound on the record), its ranks, cores per rank, wall and memory
+    (`architecture.md` § 5.2).  A `scheduler` config block supplied the
+    queue and defaults until 2026-10-02, and mail and export lines with
+    them."""
+    out = dict(partition="public", qos="public", ntasks=8, cpus_per_task=1,
+               time="0-04:00:00", mem="8G")
+    out.update(over)
+    return out
 
 
 @pytest.fixture(autouse=True)
@@ -48,20 +49,28 @@ def _caps():
 
 @pytest.fixture
 def project(tmp_path, monkeypatch):
-    """A project dir carrying the asu-sol script_generation + scheduler
-    config (project scope), with an isolated HOME so the server-wide
-    lookup chain doesn't leak a real ~/.config file."""
+    """A project dir carrying the asu-sol record -- a scheduler, the
+    `public` queue, and how a shell enters an environment there -- with an
+    isolated HOME so the server-wide lookup chain doesn't leak a real
+    ~/.config file."""
+    from molbuilder.scheduler import (FILENAME, Domain, Environment,
+                                      Topology, write_environment)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
-    (tmp_path / ".molbuilder.json").write_text(json.dumps({
-        "script_generation": {
-            "preamble": "module load mamba/latest",
-            "activation": "source activate",
-        },
-        "scheduler": _SCHED,
-    }))
+    write_environment(Environment(
+        scheduler="slurm", topology=Topology(sockets=2, cores_per_socket=64),
+        domains=[Domain(name="public", partition="public", qos="public",
+                        max_time="7-00:00:00")],
+        script_generation={"preamble": "module load mamba/latest",
+                           "activation": "source activate"}),
+        tmp_path / FILENAME)
     return tmp_path
+
+
+#: A CPU run on the record's queue, every value stated.
+_ON_PUBLIC = dict(cpus_per_task=1, domain="public", time="0-04:00:00",
+                  mem="8G")
 
 
 # --------------------------------------------------------------------- #
@@ -72,15 +81,19 @@ def project(tmp_path, monkeypatch):
 def test_cpu_header_shape(tmp_path):
     fdf = tmp_path / "cpu-np64.fdf"
     fdf.write_text("NumberOfAtoms 444\n")
-    txt = render_sbatch(fdf, _SCHED, ntasks=64)
+    txt = render_sbatch(fdf, **_stated(ntasks=64))
     assert "#SBATCH -J cpu-np64" in txt
     assert "#SBATCH -N 1" in txt
     assert "#SBATCH -n 64" in txt
+    assert "#SBATCH -c 1" in txt
     assert "#SBATCH -p public" in txt          # NOT general (job-system.md § 6, routing domains)
     assert "#SBATCH -q public" in txt
     assert "#SBATCH -t 0-04:00:00" in txt
+    assert "#SBATCH --mem=8G" in txt
     assert "#SBATCH -o slurm.%j.out" in txt
-    assert "#SBATCH --export=NONE" in txt
+    # No site settings: the mail and export lines went with the
+    # `scheduler` block (2026-10-02).
+    assert "--export" not in txt and "--mail" not in txt
     # CPU job: no GPU lines, no exclusive.
     assert "--gres" not in txt
     assert "--exclusive" not in txt
@@ -88,60 +101,31 @@ def test_cpu_header_shape(tmp_path):
     assert 'bash cpu-np64.run.sh "$@"' in txt
 
 
-def test_mail_user_percent_pattern_is_flagged_not_dropped(tmp_path):
-    # %u doesn't expand in --mail-user (only -o/-e/-i).  We KEEP the
-    # user's value (don't twist their config) but flag it explicitly.
-    fdf = tmp_path / "j.fdf"; fdf.write_text("NumberOfAtoms 1\n")
-    txt = render_sbatch(fdf, _SCHED, ntasks=8)        # _SCHED has %u
-    assert '#SBATCH --mail-user="%u@asu.edu"' in txt   # kept verbatim
-    assert "do NOT expand in --mail-user" in txt        # but flagged
-
-
-def test_mail_user_real_address_not_flagged(tmp_path):
-    sched = json.loads(json.dumps(_SCHED))
-    sched["directives"]["mail_user"] = "me@asu.edu"
-    fdf = tmp_path / "j.fdf"; fdf.write_text("NumberOfAtoms 1\n")
-    txt = render_sbatch(fdf, sched, ntasks=8)
-    assert '#SBATCH --mail-user="me@asu.edu"' in txt
-    assert "do NOT expand" not in txt
-
-
 def test_mem_emitted_when_set(tmp_path):
     fdf = tmp_path / "m.fdf"
     fdf.write_text("x\n")
-    txt = render_sbatch(fdf, _SCHED, ntasks=8, mem="120G")
+    txt = render_sbatch(fdf, **_stated(mem="120G"))
     assert "#SBATCH --mem=120G" in txt
-
-
-def test_explicit_mem_overrides_default(tmp_path):
-    sched = dict(_SCHED)
-    sched["defaults"] = dict(_SCHED["defaults"], mem="64G")
-    fdf = tmp_path / "g.fdf"; fdf.write_text("Diag.ELPA.GPU .true.\n")
-    txt = render_sbatch(fdf, sched, ntasks=8, gpu=True, gpu_count=1,
-                        mem="120G", exclusive=False)
-    assert "#SBATCH --mem=120G" in txt and "64G" not in txt
-
-
-def test_cpus_omitted_when_unset(tmp_path):
-    fdf = tmp_path / "c.fdf"
-    fdf.write_text("x\n")
-    txt = render_sbatch(fdf, _SCHED, ntasks=20)
-    assert "#SBATCH -c " not in txt
 
 
 def test_ntasks_must_be_positive(tmp_path):
     fdf = tmp_path / "x.fdf"
     fdf.write_text("x\n")
     with pytest.raises(WrapperError, match="ntasks"):
-        render_sbatch(fdf, _SCHED, ntasks=0)
+        render_sbatch(fdf, **_stated(ntasks=0))
 
 
-def test_missing_partition_refuses(tmp_path):
+@pytest.mark.parametrize("value", ["partition", "qos", "time", "mem"])
+def test_a_value_stated_nowhere_refuses(tmp_path, value):
+    """Every value the header carries is required -- the emitter's own guard
+    for a caller that reaches it directly.  API-LEVEL because the road
+    cannot reach it: prep refuses an unstated launch value first
+    (`tests/data/launch_values.toml`).  Nothing fills one in -- not a
+    config default, not the scheduler's own (`architecture.md` § 5.2)."""
     fdf = tmp_path / "x.fdf"
     fdf.write_text("x\n")
-    bad = {"kind": "slurm", "directives": {"qos": "public"}}
-    with pytest.raises(WrapperError, match="partition"):
-        render_sbatch(fdf, bad, ntasks=4)
+    with pytest.raises(WrapperError, match=value):
+        render_sbatch(fdf, **_stated(**{value: None}))
 
 
 # How a GPU ask is spelled -- a count, never a card -- is asserted through
@@ -164,7 +148,7 @@ def test_rendered_sbatch_is_valid_bash(tmp_path):
     (``test_wrapper_emits_sbatch_when_scheduler_configured`` below)."""
     fdf = tmp_path / "gpu-2a100.fdf"
     fdf.write_text("Diag.ELPA.GPU .true.\n")
-    text = render_sbatch(fdf, _SCHED, ntasks=2, cpus_per_task=12,
+    text = render_sbatch(fdf, **_stated(ntasks=2, cpus_per_task=12),
                          gpu=True, gpu_count=2, exclusive=False)
     runwrap._validate_rendered_wrapper(text, fdf)   # raises if bash rejects it
 
@@ -177,7 +161,8 @@ def test_rendered_sbatch_is_valid_bash(tmp_path):
 def test_wrapper_emits_sbatch_when_scheduler_configured(project):
     fdf = project / "cpu-np64.fdf"
     fdf.write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .false.\n")
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=64))
+    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=64,
+                                                       **_ON_PUBLIC))
     sbatch = project / "cpu-np64.sbatch"
     assert sbatch.is_file()
     txt = sbatch.read_text()
@@ -185,34 +170,11 @@ def test_wrapper_emits_sbatch_when_scheduler_configured(project):
     assert "--gres" not in txt          # CPU .fdf -> no GPU lines
 
 
-def test_no_scheduler_no_sbatch(tmp_path, monkeypatch):
-    """`job-system.md` § 6, gate 2: with no `(partition, qos)` pair
-    resolvable, there is no queue to address and only the `.run.sh` is
-    written.  (Gate 1 -- a record saying `workstation` -- is the other
-    reason, and is not what this exercises: here there is no record at all,
-    which by itself keeps emitting.)
-
-    Isolation is HOME **and cwd**: the machine scope reads cwd-first
-    (running-a-job.md § 5.2), so without the chdir this test's verdict
-    depended on the developer's own molbuilder.json at the repo root."""
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "home").mkdir()
-    (tmp_path / ".molbuilder.json").write_text(json.dumps({
-        "script_generation": {"activation": "source activate"},
-    }))
-    fdf = tmp_path / "local.fdf"
-    fdf.write_text("NumberOfAtoms 10\n")
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=4))
-    assert (tmp_path / "local.run.sh").is_file()
-    assert not (tmp_path / "local.sbatch").exists()
-
-
 def test_emit_sbatch_false_suppresses(project):
     fdf = project / "x.fdf"
     fdf.write_text("NumberOfAtoms 10\n")
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=4), emit_sbatch=False)
+    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=4, **_ON_PUBLIC),
+                              emit_sbatch=False)
     assert (project / "x.run.sh").is_file()
     assert not (project / "x.sbatch").exists()
 
@@ -242,9 +204,8 @@ def _min_cpu_fdf(tmp_path):
 
 
 def test_explicit_mem_skips_estimate(tmp_path):
-    sched = dict(_SCHED); sched["defaults"] = dict(_SCHED["defaults"], mem=None)
     fdf = _min_cpu_fdf(tmp_path)
-    txt = render_sbatch(fdf, sched, ntasks=64, mem="120G")
+    txt = render_sbatch(fdf, **_stated(ntasks=64, mem="120G"))
     assert "#SBATCH --mem=120G" in txt
     assert "auto-estimated" not in txt
 

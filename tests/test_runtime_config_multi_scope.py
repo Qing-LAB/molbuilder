@@ -1,5 +1,5 @@
 """Tests for the unified-data-model API (docs/execution/running-a-job.md § 5):
-``read_effective_config``, ``write_config_scope``, ``get_script_generation``.
+``read_effective_config``, ``write_config_scope``.
 
 Pinned contracts:
   * server-wide lookup chain: cwd ``molbuilder.json`` first, XDG
@@ -8,11 +8,12 @@ Pinned contracts:
   * project-scope lookup: ``<project_dir>/.molbuilder.json``.
   * deep-merge rules: scalars + arrays = project replaces, objects =
     recurse; project wins on conflict.
-  * ``script_generation.preamble`` CONCATENATES server-wide ++
-    project (per § 3.6, not the generic replace rule) -- pinned in
-    ``test_preactivate_concatenates_across_scopes``.
   * ``write_config_scope`` produces files mode 0600 and preserves
     keys outside the patch.
+
+(``script_generation``'s own merge rule -- preambles concatenating across
+the two files -- went with the section on 2026-10-02: the activation and
+preamble are the machine record's, `configuration.md` § 5 M-1.)
 """
 from __future__ import annotations
 
@@ -27,7 +28,6 @@ from molbuilder.runtime_config import (
     CONFIG_FILENAME,
     PROJECT_CONFIG_FILENAME,
     RuntimeConfigError,
-    get_script_generation,
     read_effective_config,
     write_config_scope,
 )
@@ -129,39 +129,36 @@ def test_the_bare_default_read_honours_the_same_fallback(xdg_branch):
 
 
 def test_project_overlay_replaces_scalar(sandbox):
-    # `execution` here, not `envs`: the merge mechanics need a section a
-    # BUNDLE may legitimately carry, and since U7 the registry refuses
-    # machine-only sections in project scope (envs is one -- every
-    # consumer reads it through read_config()).
+    # `launch` here, not `envs`: the merge mechanics need the section a
+    # BUNDLE may carry -- the only one since 2026-10-02 -- and the registry
+    # refuses machine-only sections in project scope.
     (sandbox / "molbuilder.json").write_text(json.dumps({
-        "execution": {"mode": "submit"},
+        "launch": {"mode": "submit"},
     }))
     proj = sandbox / "myproject"
     proj.mkdir()
     (proj / PROJECT_CONFIG_FILENAME).write_text(json.dumps({
-        "execution": {"mode": "direct"},
+        "launch": {"mode": "direct"},
     }))
     cfg = read_effective_config(project_dir=proj)
-    assert cfg["execution"]["mode"] == "direct"
+    assert cfg["launch"]["mode"] == "direct"
 
 
 def test_project_overlay_deep_merges_objects(sandbox):
     (sandbox / "molbuilder.json").write_text(json.dumps({
-        "scheduler": {"kind": "slurm",
-                      "defaults": {"time": "0-01:00:00", "mem": "8G"}},
+        "launch": {"_comment": "this box runs its own jobs",
+                   "mode": "direct"},
     }))
     proj = sandbox / "myproject"
     proj.mkdir()
     (proj / PROJECT_CONFIG_FILENAME).write_text(json.dumps({
-        "scheduler": {"defaults": {"time": "0-04:00:00"}},
+        "launch": {"mode": "submit"},
     }))
     cfg = read_effective_config(project_dir=proj)
-    # mem preserved from server, time overridden -- objects recurse.
-    assert cfg["scheduler"]["kind"] == "slurm"
-    assert cfg["scheduler"]["defaults"] == {
-        "time": "0-04:00:00",
-        "mem":  "8G",
-    }
+    # the comment preserved from the server, the mode overridden -- objects
+    # recurse.
+    assert cfg["launch"] == {"_comment": "this box runs its own jobs",
+                             "mode": "submit"}
 
 
 def test_project_only_returns_project_layer(sandbox):
@@ -170,10 +167,10 @@ def test_project_only_returns_project_layer(sandbox):
     proj = sandbox / "myproject"
     proj.mkdir()
     (proj / PROJECT_CONFIG_FILENAME).write_text(json.dumps({
-        "execution": {"mode": "direct"},
+        "launch": {"mode": "direct"},
     }))
     cfg = read_effective_config(project_dir=proj)
-    assert cfg["execution"]["mode"] == "direct"
+    assert cfg["launch"]["mode"] == "direct"
 
 
 def test_project_dir_none_returns_server_layer_unchanged(sandbox):
@@ -185,127 +182,6 @@ def test_project_dir_none_returns_server_layer_unchanged(sandbox):
 
 
 # --------------------------------------------------------------------- #
-#  get_script_generation -- new v2 schema (preamble + activation)        #
-# --------------------------------------------------------------------- #
-
-
-def test_get_script_generation_defaults_when_all_empty(sandbox):
-    sg = get_script_generation()
-    assert sg["preamble"] == ""
-    assert sg["activation"] is None
-    assert sg["preamble_chunks"] == []
-
-
-def test_preamble_concatenates_across_scopes(sandbox):
-    """Per docs/execution/running-a-job.md § 5: preamble concatenates server-then-
-    project (server first, project after), joined by ``\\n``."""
-    (sandbox / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {
-            "preamble":   "module load mamba",
-            "activation": "source activate",
-        },
-    }))
-    proj = sandbox / "myproject"
-    proj.mkdir()
-    (proj / PROJECT_CONFIG_FILENAME).write_text(json.dumps({
-        "script_generation": {"preamble": "export FOO=bar"},
-    }))
-    sg = get_script_generation(project_dir=proj)
-    assert "module load mamba" in sg["preamble"]
-    assert "export FOO=bar" in sg["preamble"]
-    server_ix = sg["preamble"].find("module load mamba")
-    project_ix = sg["preamble"].find("export FOO=bar")
-    assert server_ix < project_ix
-    assert [c[0] for c in sg["preamble_chunks"]] == ["server", "project"]
-
-
-def test_activation_uses_replace_rule_project_wins(sandbox):
-    """activation: project wins; else server-wide; else None."""
-    (sandbox / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"activation": "source activate"},
-    }))
-    proj = sandbox / "myproject"
-    proj.mkdir()
-    (proj / PROJECT_CONFIG_FILENAME).write_text(json.dumps({
-        "script_generation": {"activation": "conda activate"},
-    }))
-    sg = get_script_generation(project_dir=proj)
-    assert sg["activation"] == "conda activate"
-
-
-def test_activation_falls_back_to_server_when_project_silent(sandbox):
-    (sandbox / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"activation": "source activate"},
-    }))
-    proj = sandbox / "myproject"
-    proj.mkdir()
-    (proj / PROJECT_CONFIG_FILENAME).write_text(json.dumps({
-        "script_generation": {"preamble": "export X=1"},
-    }))
-    sg = get_script_generation(project_dir=proj)
-    assert sg["activation"] == "source activate"
-
-
-def test_activation_default_is_none(sandbox):
-    """Per docs/execution/running-a-job.md § 5: activation has NO default; the generator
-    refuses to emit a wrapper when it isn't set in either scope."""
-    sg = get_script_generation()
-    assert sg["activation"] is None
-
-
-# --------------------------------------------------------------------- #
-#  Validation                                                            #
-# --------------------------------------------------------------------- #
-
-
-def test_invalid_preamble_type_rejected(sandbox):
-    (sandbox / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"preamble": 123},
-    }))
-    with pytest.raises(RuntimeConfigError, match="preamble.*string"):
-        read_effective_config()
-
-
-def test_invalid_activation_value_rejected(sandbox):
-    (sandbox / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"activation": "mamba activate"},
-    }))
-    with pytest.raises(RuntimeConfigError, match="activation"):
-        read_effective_config()
-
-
-@pytest.mark.parametrize("key", ["preactivate", "preactivate_format",
-                                  "autodetect_conda"])
-def test_a_retired_script_generation_key_is_refused_by_name(sandbox, key):
-    """`preactivate` was accepted as an alias for `preamble`, and the other
-    two warned-and-dropped, until 2026-09-14 (user: *"clean up old names, we
-    need explicit consistent setup"*).
-
-    Every other retired key in this file is refused by name -- the § 2.1a
-    rule: a key read and silently transformed, or read and dropped, looks
-    effective while nobody can tell from the file which spelling took
-    effect.  These three were the exception; they are not any more, and the
-    refusal names the key and says what to do with it.
-    """
-    (sandbox / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {key: "module load mamba"},
-    }))
-    with pytest.raises(RuntimeConfigError, match=key) as e:
-        read_effective_config()
-    assert "no longer configured" in str(e.value)
-    assert str(sandbox / "molbuilder.json") in str(e.value), \
-        "the refusal must name the file to go and edit"
-
-
-def test_the_new_spelling_is_what_works(sandbox):
-    """The other half: `preamble` is read, so the refusal above is about the
-    spelling and not about the setting."""
-    (sandbox / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"preamble": "module load mamba"},
-    }))
-    assert read_effective_config()["script_generation"]["preamble"] == \
-        "module load mamba"
-# --------------------------------------------------------------------- #
 #  write_config_scope                                                    #
 # --------------------------------------------------------------------- #
 
@@ -316,12 +192,12 @@ def test_write_server_wide_when_cwd_file_exists_writes_to_cwd(sandbox):
     EXISTING location)."""
     (sandbox / "molbuilder.json").write_text("{}\n")
     target = write_config_scope(project_dir=None, patch={
-        "script_generation": {"preamble": "module load mamba"},
+        "paths": {"projects": "/srv/projects"},
     })
     assert target == sandbox / "molbuilder.json"
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
     cfg = json.loads(target.read_text())
-    assert cfg["script_generation"]["preamble"] == "module load mamba"
+    assert cfg["paths"]["projects"] == "/srv/projects"
 
 
 def test_write_server_wide_creates_xdg_when_cwd_absent(xdg_branch):
@@ -329,12 +205,12 @@ def test_write_server_wide_creates_xdg_when_cwd_absent(xdg_branch):
     """When NO server-wide file exists, the write lands at the XDG
     path (per docs/execution/running-a-job.md § 5 last sentence)."""
     target = write_config_scope(project_dir=None, patch={
-        "script_generation": {"preamble": "module load mamba"},
+        "paths": {"projects": "/srv/projects"},
     })
     assert target == sandbox / "home" / ".config" / "molbuilder" / "molbuilder.json"
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
     cfg = json.loads(target.read_text())
-    assert cfg["script_generation"]["preamble"] == "module load mamba"
+    assert cfg["paths"]["projects"] == "/srv/projects"
 
 
 def test_write_project_scope_creates_hidden_file(sandbox):
@@ -344,12 +220,12 @@ def test_write_project_scope_creates_hidden_file(sandbox):
     # because the writer tolerated a retired key.  It is refused now, so the
     # test would have been asserting the tolerance rather than the write.
     target = write_config_scope(project_dir=proj, patch={
-        "script_generation": {"preamble": "module load mamba"},
+        "launch": {"mode": "submit"},
     })
     assert target == proj / ".molbuilder.json"
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
     cfg = json.loads(target.read_text())
-    assert cfg["script_generation"]["preamble"] == "module load mamba"
+    assert cfg["launch"]["mode"] == "submit"
 
 
 def test_write_preserves_existing_unrelated_keys(sandbox):
@@ -360,15 +236,15 @@ def test_write_preserves_existing_unrelated_keys(sandbox):
     # refusal rather than the merge (`configuration.md` § 2.1e).
     (sandbox / "molbuilder.json").write_text(json.dumps({
         "envs": {"siesta": "molbuilder-siesta"},
-        "execution": {"mode": "direct"},
+        "launch": {"mode": "direct"},
     }))
     write_config_scope(project_dir=None, patch={
-        "script_generation": {"preamble": "module load mamba"},
+        "paths": {"projects": "/srv/projects"},
     })
     cfg = json.loads((sandbox / "molbuilder.json").read_text())
     assert cfg["envs"]["siesta"] == "molbuilder-siesta"
-    assert cfg["execution"]["mode"] == "direct"
-    assert cfg["script_generation"]["preamble"] == "module load mamba"
+    assert cfg["launch"]["mode"] == "direct"
+    assert cfg["paths"]["projects"] == "/srv/projects"
 
 
 def test_a_file_that_was_already_refused_is_named_not_the_patch(sandbox):
@@ -380,7 +256,7 @@ def test_a_file_that_was_already_refused_is_named_not_the_patch(sandbox):
     (sandbox / "molbuilder.json").write_text(json.dumps({"envs": {"siesta": 5}}))
     with pytest.raises(RuntimeConfigError, match="ALREADY") as e:
         write_config_scope(project_dir=None, patch={
-            "script_generation": {"preamble": "module load mamba"},
+            "paths": {"projects": "/srv/projects"},
         })
     assert "envs" in str(e.value)
     # ...and nothing was written.
@@ -397,7 +273,7 @@ def test_a_project_write_refuses_a_machine_section_already_in_the_file(sandbox):
     before = {"tls": {"cert": "/c", "key": "/k"}}
     (proj / ".molbuilder.json").write_text(json.dumps(before))
     with pytest.raises(RuntimeConfigError, match="'tls' may not live in a PROJECT"):
-        write_config_scope(project_dir=proj, patch={"execution": {"mode": "submit"}})
+        write_config_scope(project_dir=proj, patch={"launch": {"mode": "submit"}})
     assert json.loads((proj / ".molbuilder.json").read_text()) == before
 
 
@@ -409,7 +285,7 @@ def test_a_refusal_names_the_file_once(sandbox):
     proj = sandbox / "proj"; proj.mkdir()
     target = str(proj / ".molbuilder.json")
     with pytest.raises(RuntimeConfigError) as e:
-        write_config_scope(project_dir=proj, patch={"execution": "nope"})
+        write_config_scope(project_dir=proj, patch={"launch": "nope"})
     assert str(e.value).startswith(target + ": "), str(e.value)
     assert str(e.value).count("molbuilder.json:") == 1, str(e.value)
     (proj / ".molbuilder.json").write_text(json.dumps({"paths": {"logs": "/x"}}))
@@ -418,24 +294,13 @@ def test_a_refusal_names_the_file_once(sandbox):
     assert str(e.value).startswith(target + ": 'paths.logs'"), str(e.value)
 
 
-def test_a_bad_execution_mode_names_the_file_that_set_it(sandbox):
-    """"Fix it in .molbuilder.json" sent the person to a project file that
-    need not exist for a value sitting in the machine file (review C-L4)."""
-    from molbuilder.runtime_config import get_execution, machine_config_path
-    (sandbox / "molbuilder.json").write_text(json.dumps({"execution": {"mode": "batch"}}))
-    with pytest.raises(RuntimeConfigError) as e:
-        get_execution()
-    assert str(machine_config_path()) in str(e.value), str(e.value)
-    assert ".molbuilder.json" not in str(e.value), str(e.value)
-
-
 def test_write_validates_before_writing(sandbox):
     """A patch with an invalid value is rejected -- the file is NOT
     written.  Otherwise the next read_effective_config call would fail
     even though the user thought their write succeeded."""
-    with pytest.raises(RuntimeConfigError, match="activation"):
+    with pytest.raises(RuntimeConfigError, match="launch.mode"):
         write_config_scope(project_dir=None, patch={
-            "script_generation": {"activation": "wrong-form"},
+            "launch": {"mode": "wrong-form"},
         })
     # File never created.
     assert not (sandbox / "molbuilder.json").exists()
@@ -453,30 +318,10 @@ def test_write_refuses_to_overwrite_a_corrupt_file(sandbox):
     (sandbox / "molbuilder.json").write_text("not valid json {{{")
     with pytest.raises(RuntimeConfigError, match="refusing to overwrite"):
         write_config_scope(project_dir=None, patch={
-            "script_generation": {"preamble": "module load mamba"},
+            "paths": {"projects": "/srv/projects"},
         })
     # the broken content is untouched -- nothing was destroyed
     assert (sandbox / "molbuilder.json").read_text() == "not valid json {{{"
-
-
-def test_machine_sections_are_refused_in_project_scope(sandbox):
-    """The registry's scope rule (U7): a machine-only section in a
-    bundle's .molbuilder.json is REFUSED, never silently unread -- S1c's
-    argument generalised beyond checkpoint.  `admin` in a bundle would
-    otherwise look effective while the web layer never sees it."""
-    import pytest
-    from molbuilder.runtime_config import (RuntimeConfigError,
-                                           read_effective_config)
-    proj = sandbox / "proj"
-    proj.mkdir(exist_ok=True)
-    (proj / ".molbuilder.json").write_text(json.dumps({
-        "admin": {"emails": ["x@y.edu"]},
-        "script_generation": {"activation": "conda activate"},
-    }))
-    with pytest.raises(RuntimeConfigError) as e:
-        read_effective_config(project_dir=proj)
-    assert "admin" in str(e.value)
-    assert "machine sections have one home" in str(e.value)
 
 
 def test_write_config_scope_refuses_machine_sections_for_a_bundle(sandbox):
@@ -491,5 +336,5 @@ def test_write_config_scope_refuses_machine_sections_for_a_bundle(sandbox):
         write_config_scope(proj, {"admin": {"emails": ["x@y.edu"]}})
     assert not (proj / ".molbuilder.json").exists()
     # a bundle section still writes fine
-    out = write_config_scope(proj, {"execution": {"mode": "direct"}})
+    out = write_config_scope(proj, {"launch": {"mode": "direct"}})
     assert out.is_file()

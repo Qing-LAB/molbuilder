@@ -43,14 +43,18 @@ def _runner():
 
 
 def _sweep(domain=None, domains=None):
-    """A two-point sweep.  ``domains`` gives the two jobs different ones."""
+    """A two-point sweep, its wall and memory baked as the bundle above
+    stated them.  ``domains`` gives the two jobs different queues."""
     a, b = (domains or (domain, domain))
+    said = dict(time="0-04:00:00", mem="256G")
     return JobSet(
         name="sw", engine="siesta", kind="sweep",
         jobs=[Job(name="G1K1C4", script="job.fdf",
-                  resources=Resources(mpi_np=1, cpus_per_task=4, domain=a)),
+                  resources=Resources(mpi_np=1, cpus_per_task=4, domain=a,
+                                      **said)),
               Job(name="G1K2C4", script="job.fdf",
-                  resources=Resources(mpi_np=2, cpus_per_task=4, domain=b))])
+                  resources=Resources(mpi_np=2, cpus_per_task=4, domain=b,
+                                      **said))])
 
 
 def _write_domains(where, rows):
@@ -83,12 +87,11 @@ def bundle(tmp_path, monkeypatch, isolated_projects_root):
     return b
 
 
-def _cfg(b, **execution):
-    (b / ".molbuilder.json").write_text(json.dumps({
-        "execution": {"mode": "submit", **execution},
-        "scheduler": {"kind": "slurm",
-                      "directives": {"partition": "htc", "qos": "public"}},
-    }))
+def _cfg(b):
+    """The bundle launches through the scheduler -- `launch.mode`, the one
+    setting its config holds (`configuration.md` § 4)."""
+    (b / ".molbuilder.json").write_text(json.dumps(
+        {"launch": {"mode": "submit"}}))
 
 
 class TestTheDomainTheBundleCarries:
@@ -96,7 +99,7 @@ class TestTheDomainTheBundleCarries:
     def test_prep_baked_domain_is_used_without_a_flag(self, bundle):
         """The reported failure, directly: the person chose `htc` in the
         browser, and `launch` must not ask them again."""
-        _cfg(bundle)                          # no execution.domain
+        _cfg(bundle)
         _sweep(domain="htc").write(bundle / "job-set.json")
         runner, grp = _runner()
         r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
@@ -104,17 +107,6 @@ class TestTheDomainTheBundleCarries:
         assert r.exit_code == 0, r.output
         assert "-p htc" in r.output and "-q public" in r.output
         assert "no --domain" not in r.output
-
-    def test_the_bundle_beats_the_machine_wide_default(self, bundle):
-        """Most specific wins: `execution.domain` is said once about a
-        MACHINE, the bundle's is said about THIS WORK."""
-        _cfg(bundle, domain="general")
-        _sweep(domain="htc").write(bundle / "job-set.json")
-        runner, grp = _runner()
-        r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
-                                "--dry-run", "--yes"])
-        assert r.exit_code == 0, r.output
-        assert "-p htc" in r.output, "the bundle's own domain must win"
 
     def test_an_explicit_flag_beats_the_bundle(self, bundle):
         """--domain is said about THIS launch, which is more specific
@@ -141,8 +133,9 @@ class TestTheDomainTheBundleCarries:
         assert "htc" in r.output and "general" in r.output
 
     def test_nothing_answered_still_refuses(self, bundle):
-        """The guard this must not weaken (S5): with no flag, nothing baked
-        and no config, the queue is still NOT guessed."""
+        """The guard this must not weaken (S5): with no flag and nothing
+        baked, the queue is still NOT guessed -- and no config holds one
+        (`configuration.md` § 4)."""
         _cfg(bundle)
         _sweep().write(bundle / "job-set.json")       # no baked domain
         runner, grp = _runner()

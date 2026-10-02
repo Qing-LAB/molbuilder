@@ -904,12 +904,16 @@ class TestTheContractEndpoint:
         write_machine_record()
         from test_transport_prep import (_describe_transport, _junction_struct,
                                          _write_junction)
+        from molbuilder.jobset.model import Resources
         from molbuilder.jobset.prep import prep_calculation
         from molbuilder.transport.stages import TRANSPORT_STAGES
         root, client = isolated
         _write_junction(root, _junction_struct())
         calc = _describe_transport(root)
-        prep_calculation(calc, "seed")
+        # the seed's launch shape, stated -- a run with none is refused at
+        # prep (`architecture.md` § 5.2)
+        prep_calculation(calc, "seed",
+                         allocation=Resources(mpi_np=2, cpus_per_task=1))
         body = client.get("/api/results/dir?path=" + str(calc)).get_json()
         assert body["place"]["role"] == "container" and body["status"] is None
         lad = body["ladder"]

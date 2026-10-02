@@ -127,8 +127,8 @@ calculation → target → machine, first match wins.
 
 **Everything else prep writes is machine-free.** Verified by inspection: of
 every file `prep` produces, the only lines carrying a local absolute path
-are the preamble lines, and they come from configuration, not from the
-renderer.
+are the preamble lines, and they come from the target's record, not from
+the renderer.
 
 ---
 
@@ -136,28 +136,19 @@ renderer.
 
 **How a shell enters its environment is a fact about the machine**, so it
 rides the machine's record with the core count and the queue walls:
-`Environment.script_generation` carries `{preamble, activation}`, and
-`jobset probe --write` records whatever the machine it runs on states.
-Probe Sol, copy `sol.json` here, and `prep --target sol` bakes
+`Environment.script_generation` carries `{preamble, activation}`, recorded
+on the machine itself — `envs init-config` asks for them at install, and
+`jobset probe --write --activation … --preamble …` records them on any
+machine. Probe Sol, copy `sol.json` here, and `prep --target sol` bakes
 `module load mamba` + `source activate` — Sol's answer, not this
 workstation's.
 
 The generator reads that field and nothing else. There is **one rule for
-local and remote**: the record states it, so the record is the answer. When
-a record is silent, the only legitimate substitute is the config of the very
-machine that record describes — reachable only when it is *this* one — so
-`prep` refuses a named target whose record cannot answer, and names the
-re-probe:
-
-```
-sol's machine record does not say how to enter its environment, so a wrapper
-generated here would carry THIS machine's activation -- a path that need not
-exist there.
-  Fix: on sol, run
-      molbuilder jobset probe --write --name sol
-  then copy the record it writes into ~/.config/molbuilder/environments/ here,
-  and prep again.
-```
+local and remote**: the record states it, so the record is the answer — for
+this machine too, since `molbuilder.json` holds no activation
+([`configuration.md`](?doc=configuration.md) § 4). A record that states none
+is refused at prep, and the refusal names the probe to run on that machine
+([`architecture.md`](?doc=execution/architecture.md) § 8.3).
 
 > **What this section said until 2026-08-24, and what it cost.** It said the
 > record *"does not hold `script_generation`, and it must not"* — reading

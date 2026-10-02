@@ -221,8 +221,8 @@ place for logic:
   design (§ 2).
 - **The interpreter is the node's business, not ours.** The wrapper probes
   `command -v python3 || command -v python` and carries on without one, because
-  the activation line is *declared by the operator*
-  (§ 5.2 below; `script_generation.activation` has no default) — the env a wrapper lands in
+  the activation line is *declared for that machine*
+  (§ 5.2 below; the activation has no default) — the env a wrapper lands in
   need not be one of ours at all. With no interpreter the run goes unwatched,
   with no failure hint and no warm retry, and the log says so.
 
@@ -270,8 +270,8 @@ The env **names** are overridable per category in `molbuilder.json` (`envs`,
 ## 3. Runtime resource resolution
 
 Only the **launch** is assembled at run time (from A + H); everything else is
-baked. Here is exactly how the wrapper decides ranks, threads, and GPU
-placement.
+baked — the rank and thread counts included, as the run stated them. Here is
+exactly which statement applies, and how the wrapper places a GPU run.
 
 ### 3.1 MPI ranks (SIESTA)
 
@@ -279,13 +279,16 @@ SIESTA is launched with `mpirun -np N` when the build probe reports MPI. The
 rank count `N` is resolved by precedence, **highest wins**:
 
 ```
--np / --np flag   >   MB_NP   >   SLURM_NTASKS   >   PBS_NP   >   generation default
+-np / --np flag   >   MB_NP   >   SLURM_NTASKS   >   PBS_NP   >   the stated value, baked at prep
 ```
 
-When `mpi_np` was left auto at generation, the baked default is **the selected
-target/domain's core count** — the domain row's widest node where a queue is
-chosen, else the target record's own topology, and **never the machine that
-ran `prep`** (`architecture.md` § 5.2 step 3b, which owns the rule).
+**The baked value is the one the run stated** — the run card's `mpi_np`, or
+prep's `--np`. A run that states none is **refused at prep**, which names both
+places (`architecture.md` § 5.2, which owns the rule). The wrapper has no
+default of its own and neither has the `.sbatch` header — no target width, no
+rank per GPU *(user, 2026-10-02: "explicit job config is the only way
+allowed")*. Under `sbatch`, `SLURM_NTASKS` is the header's `-n`, which is that
+same stated value, so the two agree by construction.
 
 **Nothing lowers it** *(user ruling, 2026-09-03)*. Until then the default was
 **clamped to the atom count**, and a user-set count above it was warned about,
@@ -295,43 +298,11 @@ right-sounding advice for a wrong reason where it fired, and refused perfectly
 good rank counts everywhere else. *"Whether mpi is too big for a system is
 none of your business."*
 
-**A rank count is read from a record, and nowhere else.** No probe of the box
-that happens to be running, no fallback, no floor — **nothing is guessed**
-*(user, 2026-09-02: "so we are not guess at all")*. When nothing states a rank
-count and no record answers, molbuilder **refuses and says which command
-fixes it**:
-
-```
-molbuilder jobset probe --write                 # this machine
-molbuilder jobset probe --write --name sol      # on that machine; then copy sol.json here
-```
-
-**This holds for the local machine too** *(user, 2026-09-02: "even for the
-current machine, the environment.json must be present otherwise user is
-required to run jobset probe first"; and "all environments have to be
-explicitly probed and stored. no environment json, error")*.
-
-> **Naming this machine is not a second way of finding it.** `--target this`
-> — and the task-setup tab's `(this machine)`, which is that same name wearing
-> a label — says WHICH machine, and then reads the records everything else
-> reads, **the calculation's snapshot first** (`workflow.md` § 5 step 1). It
-> took a private road that read only `~/.config/molbuilder/environment.json`,
-> so a carried bundle prepped explicitly for the box in front of you
-> **discarded its own record** while saying nothing kept it: one machine, two
-> answers, the explicit one worse. With no machine-scope file it then refused
-> in *remote* words — *"on this, run `jobset probe --write --name this`, then
-> copy the record into `~/.config/` here"* — advice with no meaning for the
-> box you are sitting at. Found by the task-setup end-to-end test on
-> 2026-09-02; the browser could only ever take that road. A workstation briefly fell back to its
-own `physical_core_count` on the reasoning that *this box IS the machine, so
-its own count is not about somewhere else*. That is true and still the wrong
-shape: the number would then come from a different source depending on how the
-bundle was set up, so *"where did 20 come from"* would have two answers. One
-source, one answer, and probing is one command.
-
-*(It read "the machine's physical core count" until 2026-09-02. That is the
-box running `prep`, which for a bundle prepped at a desk and run on a cluster
-is the wrong machine — and the number looked exactly like a right one.)*
+**The target's record checks a rank count; it never supplies one.** Until
+2026-10-02 an unstated count became the target's width — the domain row's
+widest node, else the record's topology — and before 2026-09-02 the width of
+the box running `prep`. Each was a number nobody stated for that run, and the
+second was about the wrong machine and looked exactly like a right one.
 
 ### 3.1a What the wrapper says instead — occupancy, as a notice
 
@@ -362,23 +333,15 @@ The true count needs every species' basis and is known only once SIESTA
 starts. A deck with no `NumberOfAtoms` — it is optional in SIESTA — gets **no
 notice at all** rather than one built on an invented number.
 
-> **The auto-rank `.sbatch` floor (F15, recorded 2026-08-13; corrected
-> 2026-09-02).** With no rank count stated, the header used to floor at
-> `-n 1` on a CPU job and `#SBATCH -n <gpu count>` on a GPU one — and inside
-> the job `SLURM_NTASKS` **comes from that very header**, so the floor
-> outranked everything below it in the chain above. This box called the path
-> *"unreachable in the jobset workflow (prep always resolves an explicit rank
-> count)"*, and it was not: an ordinary description that states no `mpi_np`
-> took it, and a 64-core node ran the job on **one rank**.
->
-> The CPU floor is gone — the header now asks for the selected
-> target/domain's width (`header_ntasks`, the same producer the wrapper's
-> baked default uses, so the two agree by A9). **The GPU rung remains**: with
-> a device asked for and no rank count stated, the header carries one rank
-> per device, which is the placement policy's own starting point.  The guard for the remaining case is the `--dry-run`
-> inspection: it names each value's source and warns when the sibling
-> header's `-n` disagrees with the resolved count, so the mistake cannot
-> pass the check you run before spending a queue slot.
+> **The header's `-n` is the stated rank count and nothing else** (F15,
+> 2026-08-13; 2026-09-02; 2026-10-02). With no rank count stated it floored at
+> `-n 1`, later took the target's width, and on a GPU job one rank per device
+> — and inside the job `SLURM_NTASKS` **comes from that very header**, so each
+> of those outranked everything below it in the chain above: a 64-core node
+> once ran a job on **one rank**. Prep refuses the unstated count now. The
+> `--dry-run` inspection still names each value's source and warns when the
+> sibling header's `-n` disagrees with the resolved count — the case a by-hand
+> `-np` or `MB_NP` creates.
 
 > #### What `propor: IMAX = 0` depends on — and why no rank count is refused
 >
@@ -402,13 +365,17 @@ notice at all** rather than one built on an invented number.
 ### 3.2 OMP threads and BLAS
 
 ```
--omp / -t flag   >   OMP_NUM_THREADS   >   SLURM_CPUS_PER_TASK   >   policy default
+-omp / -t flag   >   OMP_NUM_THREADS   >   SLURM_CPUS_PER_TASK   >   the stated value, baked at prep
 ```
 
-For **CPU** SIESTA the policy default is `OMP=1` (mainline SIESTA is not
-reliably OpenMP-aware, so ranks beat threads). BLAS is always pinned to a single
-thread (`MKL_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`) to keep MPI×BLAS from
-oversubscribing cores.
+The stated value is the run card's cores per rank — SIESTA's `omp_threads`,
+PySCF's `threads` — or prep's `--cpus-per-task`; a run that states none is **refused at
+prep**, like a rank count. There is no policy default: SIESTA's `OMP=1` and
+PySCF's *"the node's physical cores"* were the wrapper's own, and each was a
+thread count nobody stated. *(Mainline SIESTA is not reliably OpenMP-aware, so
+`omp_threads = 1` is the usual statement for a CPU build — a statement, made on
+the run card.)* BLAS is always pinned to a single thread (`MKL_NUM_THREADS=1`,
+`OPENBLAS_NUM_THREADS=1`) to keep MPI×BLAS from oversubscribing cores.
 
 ### 3.3 GPU mode: load-balance, MPS, and pinning
 
@@ -420,15 +387,14 @@ sources recommend, and how to design a benchmark matrix around it — is
 
 - **Load-balance.** Counts allocated GPUs (preferring `CUDA_VISIBLE_DEVICES`
   over `nvidia-smi -L`), sets `ranks_per_gpu = mpi_np / ngpu` (≥ 1), and prints a
-  `GPU load-balance` line. GPU-mode rank/thread defaults are computed at runtime
-  (rank default ≈ `physical_cores / 4`, capped at 4 with MPS — the ELPA-no-NCCL
-  sweet spot; without MPS the policy drops to 2 ranks on dual-socket or
-  ≥ 16-core-socket boxes, else 1). The auto-OMP width fills the GPU-core
-  budget **divided by the effective rank count, settled after all flags are
-  parsed** (2026-08-12): `--mps`/`--no-mps` re-derive the regime's *defaults*,
-  and an explicit `-np`/`-omp` is never clobbered by that re-derivation —
-  before this, `-np 9 --no-mps` ran 2 ranks, and the width could pair 9 ranks
-  with the 2-rank thread count.
+  `GPU load-balance` line. **The rank and thread counts are the stated ones**,
+  as on CPU (§ 3.1, § 3.2). The GPU policy that worked out its own until
+  2026-10-02 — about `physical_cores / 4` ranks with MPS, 2 or 1 without, and
+  the core budget divided among them as threads, re-derived again by
+  `--mps`/`--no-mps` — is gone with the other defaults; it overwrote even a
+  stated, baked rank count when `--mps` was given. What to state for a GPU run
+  is [`engines/tuning.md § 2.12`](?doc=engines/tuning.md)'s subject.
+  `--mps`/`--no-mps` switch the MPS daemon and nothing else.
 - **NVIDIA-MPS (Hyper-Q)** — the NVIDIA Multi-Process Service, which lets two or
   more MPI ranks share one GPU concurrently. Enabled only when (a)
   `nvidia-cuda-mps-control` is on `PATH`, (b) the user did not opt out
@@ -451,12 +417,11 @@ sources recommend, and how to design a benchmark matrix around it — is
   inside the per-rank story — the per-rank helper reads neither; the
   override's whole reach is the whole-job wrap.)*
 
-> **Override precedence, stated once:** `MOLBUILDER_MPI_NP` /
-> `MOLBUILDER_OMP_NUM_THREADS` change the GPU-mode **defaults only** — an
-> explicitly baked `mpi_np` still shadows them. The real *launch* overrides are
-> `MB_NP` / `SLURM_NTASKS` (ranks) and the `-np` / `-omp` flags. (This is the
-> distinction behind a historical "the sweep didn't sweep" bug: a batch that
-> wants to vary ranks must set `MB_NP`, not `MOLBUILDER_MPI_NP`.)
+> **Override precedence, stated once:** the `-np` / `-omp` flags, then
+> `MB_NP` / `OMP_NUM_THREADS`, then the scheduler's echo of the header
+> (`SLURM_NTASKS`, `SLURM_CPUS_PER_TASK`), then the stated value baked at prep.
+> `MOLBUILDER_MPI_NP` / `MOLBUILDER_OMP_NUM_THREADS` changed the GPU policy's
+> defaults and went with them on 2026-10-02.
 
 ### 3.4 The flags a wrapper accepts
 
@@ -802,26 +767,20 @@ is litter, not a second opinion.
 
 ## 5. Configuration — `molbuilder.json`
 
-The server reads config to bake site-specifics into wrappers. It is validated
-by `molbuilder/runtime_config.py`; every section is optional, and an **unknown
-top-level key is refused with the known sections named** — never ignored
-(the one exception: a key starting with `_` is a comment, e.g.
-`"_comment_tls"`, and is ignored by design — an explicit marker is not the
-typo class the refusal exists for).
-*(Amended 2026-08-12, U7: "unknown keys are ignored" was the documented
-behaviour, and it is exactly how `admin` and `rate_limit` — sections with
-live readers — were silently dropped before reaching the web layer: the file
-looked configured and nobody could be admin. The same hole swallows every
-typo'd section name. The section registry in `runtime_config.py` is the one
-total list of what exists, which scope each section may live in, and whose
-values provenance may print.)*
+**What `molbuilder.json` may hold, and what each key is for, is
+[`configuration.md`](?doc=configuration.md) § 4** — the one list, with the
+retired keys and what to do instead. It holds your preferences and nothing
+else: **no value of a job** (its queue, wall, memory, ranks, cores per rank and
+GPU count are the job's own — [`architecture.md`](?doc=execution/architecture.md)
+§ 5.2) and **no fact about a machine** (its queues, topology, activation and
+preamble are that machine's record — `configuration.md` § 5). An unknown
+top-level key is refused with the known sections named, never ignored; a key
+starting with `_` is a comment.
 
-> **The sections below are the four a *calculation* uses.** The same file also
-> configures the *server* — sign-in, TLS, the rate limiter, the admin list —
-> which is [`ops/deployment.md`](?doc=ops/deployment.md) § 5 and
-> [`ops/access-control.md`](?doc=ops/access-control.md). The complete map of
-> every section, who reads it, and which step of the workflow it reaches is
-> [`architecture.md`](?doc=execution/architecture.md) § 8.
+**Two parts of it reach a calculation**, both below: `launch` and `envs`. The
+same file also configures the *server* — sign-in, TLS, the rate limiter, the
+admin list ([`ops/deployment.md`](?doc=ops/deployment.md) § 5,
+[`ops/access-control.md`](?doc=ops/access-control.md)).
 
 ### 5.1 Where config lives, and merge order
 
@@ -829,86 +788,60 @@ values provenance may print.)*
   `$MOLBUILDER_CONFIG_DIR` if set, else `$XDG_CONFIG_HOME/molbuilder/`, else
   `~/.config/molbuilder/`. There is no search and no working-directory step; a
   `./molbuilder.json` is not read (`configuration.md` § 2.1a).
-- **Project** `.molbuilder.json` — in the project directory.
+- **Project** `.molbuilder.json` — in the project directory, carrying `launch`
+  alone.
 - **Merge** — objects deep-merge, scalars/arrays replace, and **project wins**.
-  (`script_generation` has a bespoke merge: preambles concatenate server-then-
-  project; activation is project-if-set-else-server.)
 
-### 5.2 `script_generation` — activation is required to emit ANY wrapper
+### 5.2 The activation — required to emit ANY wrapper, and a fact of the machine
 
-```json
-{ "script_generation": {
-    "preamble":   "module load mamba/latest",
-    "activation": "source activate"
-} }
+How a shell enters an environment on a machine — the `preamble` (e.g.
+`module load mamba/latest`, or sourcing conda's hook) and the `activation`
+(`source activate` or `conda activate`) — is **a fact of that machine**, kept in
+its record (`configuration.md` § 5 M-1). Every wrapper is rendered with the
+TARGET's two, this machine included, and the probe records them where it runs:
+
+```text
+molbuilder jobset probe --write --activation "source activate" \
+    --preamble "module load mamba/latest"
 ```
 
-Exactly two keys. `activation` must be `"source activate"` or
-`"conda activate"` and has **no default** — if it is unset in every scope,
-rendering **any** wrapper refuses with an operator message pointing here
-(`require_activation`, called from `render_run_wrapper`, which every wrapper
-goes through). On a fresh install that is the *"the `.fdf` saved but no
-`.run.sh` appeared"* symptom, and it bites a workstation first — which is why
-**`bootstrap` now seeds it**: `molbuilder envs init-config` asks how this
-machine enters a conda env and writes the answer here, at the one moment it is
-both known and being discussed ([`ops/installation.md`](?doc=ops/installation.md)
-§ 2.1). It is still *declared*, never detected; the installer asks, and prints
-what it wrote. `preamble` is arbitrary shell run before activation (the
-`module load` lines). **Three retired keys are refused by name**, each with
-its own sentence — `preactivate` (renamed to `preamble`; the same value, the
-same meaning), and `preactivate_format` / `autodetect_conda`, which have no
-replacement: the preamble is emitted verbatim, and how a machine enters a
-conda env is *declared* in `activation`, never detected. They were aliased
-and warned-about respectively until 2026-09-14; refusing them is
-[`configuration.md`](?doc=configuration.md) § 2.1a's rule — a key read and
-silently transformed looks effective while nobody can tell from the file
-which spelling won.
+`activation` must be `"source activate"` or `"conda activate"` and has **no
+default**: a target whose record carries none is refused at prep, naming that
+command. On a fresh install that would bite a workstation first — which is why
+**`envs init-config` asks** how this machine enters a conda env and writes the
+answer into this machine's record, at the one moment it is both known and being
+discussed ([`ops/installation.md`](?doc=ops/installation.md) § 2.1). It is
+declared, never detected. `preamble` is arbitrary shell run before activation,
+emitted verbatim.
 
-### 5.3 `scheduler` — the SLURM header source
+*(Both lived in `molbuilder.json`'s `script_generation` until 2026-10-02, and
+the probe copied them into the record — so editing the file did nothing until
+the next probe, and the record won. `script_generation` is refused there by
+name now.)*
 
-```json
-{ "scheduler": {
-    "kind": "slurm",
-    "directives": { "partition": "public", "qos": "public",
-                    "mail_type": "ALL", "mail_user": "you@example.edu", "export": "NONE" },
-    "defaults": { "time": "0-04:00:00", "cpus_per_task": 8, "mem": null },
-    "routing":  [ { "name": "short", "max_time": "0-04:00:00",
-                    "partition": "public", "qos": "public" } ]
-} }
-```
+### 5.3 The `.sbatch` header — every value stated
 
-- **`kind`** is `slurm` (the only supported scheduler today).
-- **`directives`** — `partition` and `qos` are **required non-empty** for a
-  SLURM site (else the `.sbatch` refuses to emit); `mail_type` / `mail_user` /
-  `export` are optional; unknown keys pass through. Use a **literal**
-  `mail_user` — SLURM's `%u` / `%j` patterns expand only in `-o` / `-e`
-  filenames, never in `--mail-user`, so `"%u@…"` is sent literally and bounces
-  (the emitter warns when it sees a `%`).
-- **No `gpu` block** — refused by name since 2026-10-01. A GPU job asks
-  `--gres=gpu:<count>`, the count its run card or `--gpus` states, and goes to
-  the partition the target's record names for GPU work (`gpu_partition`);
-  its memory is asked like any job's (§ 5.3.1)
-  ([`gpu.md`](?doc=execution/gpu.md) § 1).
-- **`defaults`** — job-agnostic `{time, cpus_per_task, mem}` fallbacks.
-- **`routing`** — a menu of named domains
-  `{name, max_time, max_mem_gb?, partition, qos, gpu_partition?}`; order is the
-  recommendation order. A domain resolves to `-p`/`-q` when a run is *submitted*
-  through it (`execution.domain` / `--domain`); the framework hard-codes no
-  names or limits.
+**There is no scheduler configuration.** `molbuilder.json` carried a
+`scheduler` block until 2026-10-02 — a queue, defaults for the wall, the cores
+per task and the memory, a queue menu, an order to place by, mail and export
+lines — and each value in it was one some job received without stating it.
+The block is refused by name (`configuration.md` § 4).
 
 **What the `.sbatch` header carries** (`render_sbatch`): a fixed `-J <basename>`,
-`-N 1`, `-n <ranks>`, `-o slurm.%j.out` / `-e slurm.%j.err`; `-c` / `-t` from
-`defaults` (or caller); `-p` / `-q` from the placement on the target's record
-(GPU work → the queue's `gpu_partition`); for GPU jobs `--gres=gpu:<count>`
-and — unless the calculation's `allocation.gpu_binding` is `false` —
-`--gres-flags=enforce-binding` ([`gpu.md`](?doc=execution/gpu.md) G9); and
-memory per § 5.3.1. The body is a single line — `bash <basename>.run.sh "$@"` —
+`-N 1`, `-o slurm.%j.out` / `-e slurm.%j.err`, and the job's own stated values —
+`-n <ranks>`, `-c <cores per rank>`, `-t <wall>`, `--mem`, and `-p` / `-q` from
+the queue it names, bound on the target's record (GPU work → that queue's
+`gpu_partition`); for GPU jobs `--gres=gpu:<count>` and — unless the
+calculation's `allocation.gpu_binding` is `false` — `--gres-flags=enforce-binding`
+([`gpu.md`](?doc=execution/gpu.md) G9). Where each value is stated is
+[`architecture.md`](?doc=execution/architecture.md) § 5.2, and prep refuses one
+stated nowhere. The body is a single line — `bash <basename>.run.sh "$@"` —
 because the inner wrapper owns activation and launch. It is withheld only where
-the machine names no queue to address — a record saying `workstation`, or no
-`(partition, qos)` pair at all ([`job-system.md`](?doc=execution/job-system.md)
-§ 6) — and then only the `.run.sh` is written.
+the target's record says `workstation`
+([`job-system.md`](?doc=execution/job-system.md) § 6), and then only the
+`.run.sh` is written.
 
-#### 5.3.1 Memory resolution — the user states it, nothing else does
+#### 5.3.1 Memory and wall — the user states them, nothing else does
 
 **No estimation exists** *(user decision, 2026-08-24)*. A per-`.fdf` memory
 model (`siesta/memory.py`, the `mem_model` coefficients, a runtime
@@ -918,34 +851,26 @@ scheduler defaults while that machinery sat unconfigured and silent, and a
 model that answers a question the user was never asked is the wrong shape
 regardless of its coefficients.
 
-What a job's `--mem` is, in order — every line a person wrote:
+**And no default exists either** *(user, 2026-10-02)*. A job's memory is, from
+strongest: `--mem` at launch, `--mem` at prep, the description's
+`allocation.mem`. Its wall is `--time` at launch, `--time` at prep, the run
+card's `time`, `allocation.time`. **Stated nowhere, prep refuses** on a target
+with a scheduler. `scheduler.defaults.mem` and the queue's own ceiling stood in
+for an unstated memory and wall until then; the scheduler's own default would
+stand in now if prep let it through, and that is a value nobody stated too.
 
-1. an explicit `--mem` (prep or launch; hard override), else
-2. `defaults.mem` if set (site-wide, `molbuilder.json`), else
-3. **nothing is emitted** — the scheduler's own default decides, and the
-   launch plan says so out loud before anything submits (Sol's is a tight
-   per-GPU or per-core rate; that is the scheduler's answer, not ours).
+`--mem 0` asks for the node's whole memory.
 
-An **exclusive** job takes the whole node (`--mem=0`) — though nothing asks
-for one since `gpu.exclusive` went (2026-10-01): `--mem 0` asks for the
-node's whole memory directly.
+### 5.4 `launch` and `envs`
 
-Wall time follows the same rule: `--time` (prep or launch), else the target
-queue's own ceiling — the full amount the cluster allows there — else
-nothing, said out loud. Nothing is derived, modelled, or assumed for either
-axis.
-
-### 5.4 `execution` and `envs`
-
-- **`execution`** — `{mode, submit_via, domain}`. `mode` is `direct` (run in
-  place) or `submit` (through the scheduler); any other value is refused by
-  name (`runtime_config.get_execution`). This, not the detected scheduler, is
-  what gates `.sbatch` submission. `domain` names one of the machine record's
-  domains (`environment.json`, written by `jobset probe`). *(This said
-  `launch` for the second mode, which the reader refuses — corrected
-  2026-09-29.)*
+- **`launch`** — `{mode}`. `mode` is `direct` (run in place) or `submit`
+  (through the scheduler); any other value, and any other key, is refused by
+  name (`runtime_config.get_launch`). This, not the detected scheduler, is what
+  gates `.sbatch` submission. *(It was spelled `execution` until 2026-10-02 —
+  the name of `task.json`'s run card, a different thing — and carried a default
+  queue, `domain`, which a job now names itself.)*
 - **`envs`** — overrides the conda env name per category
-  (`{"siesta": "my-siesta-env", …}`); unset categories use the four defaults
+  (`{"siesta": "my-siesta-env", …}`); unset categories use the defaults
   (§ 2.3).
 
 Config is written at mode `0600` by `write_config_scope` (deep-merge a patch
@@ -962,8 +887,8 @@ from:**
 
 | file | scope | found where |
 |---|---|---|
-| `molbuilder.json` (no dot) | **this machine** — activation, scheduler, `execution.mode` | the config directory: `$MOLBUILDER_CONFIG_DIR`, else `$XDG_CONFIG_HOME/molbuilder/`, else `~/.config/molbuilder/` |
-| `.molbuilder.json` (dotted) | **this calculation** — travels with the folder | inside the calculation, beside `task.json`; **wins on conflict** |
+| `molbuilder.json` (no dot) | **this machine** — `launch.mode`, the environment names | the config directory: `$MOLBUILDER_CONFIG_DIR`, else `$XDG_CONFIG_HOME/molbuilder/`, else `~/.config/molbuilder/` |
+| `.molbuilder.json` (dotted) | **this calculation** — `launch`, travelling with the folder | inside the calculation, beside `task.json`; **wins on conflict** |
 
 `prep` and `launch` print the provenance — every path consulted, found or
 absent, and each effective value tagged with its source file — and `prep`
@@ -972,17 +897,18 @@ two machines is explained by the bundle itself. Secret sections (`auth`,
 `tls`) are excluded by an allowlist, never by care.
 
 **There is ONE launch door.** `molbuilder jobset launch` resolves the mode
-(flag, else `execution.mode`, else a refusal — never the detected scheduler),
+(flag, else `launch.mode`, else a refusal — never the detected scheduler),
 decides everything before it writes anything — what the run follows, the
-deck/launch agreement check, the queue (`--domain`, else what `prep` baked for
-this stage, else `execution.domain`, else the queues are listed and nothing is
-sent) and the request admitted on it — then **shows the exact `sbatch` line
+deck/launch agreement check, the queue (`--domain`, else the one `prep` baked
+for this stage — a run on a scheduler is refused at prep when it names none)
+and the request admitted on it — then **shows the exact `sbatch` line
 and asks** ([`submission.md`](?doc=execution/submission.md) S4; `--yes` skips
 the question, never the output), records the attempt, and launches **one job
 per invocation** — a grouped bench one per resource shelf
 ([`job-system.md`](?doc=execution/job-system.md) § 7). The single-stage door
-asks too *(ruled 2026-10-01)*: the queue and the wall are decided at launch,
-after `prep`'s printout, so they are seen only here. A flag the launch would
+asks too *(ruled 2026-10-01)*: a launch flag may still change the queue, the
+wall or the memory after `prep`'s printout, so the line as sent is seen only
+here. A flag the launch would
 not read is refused by name — `--time`/`--mem`/`--domain` under
 `--mode direct`, a bench's flags on `launch run`.
 

@@ -70,14 +70,15 @@ with more than one element.** No axis is a fork.
 > spine this axis rides on: schema → template → `ParameterSet` → decks.
 
 > **Why the inner `.run.sh` really can be byte-for-byte, when the two machines
-> load software differently** *(user, 2026-08-11)*. The package manager and its
-> activation are **declared in `molbuilder.json`** — `script_generation.preamble`
-> (e.g. `module load mamba/latest`) and `activation` (`conda activate` /
-> `source activate`). A cluster names its own there; **a workstation's default
-> conda setup can be written into the same file**, and then nothing about the
-> emitted script differs. So *"what differs between a laptop and Sol"* is **the
-> config, not the code path** — which is this section's rule, applied to the one
-> place people expect an exception.
+> load software differently** *(user, 2026-08-11)*. How a shell enters an
+> environment is **a fact of each machine, in its record** — the `preamble`
+> (e.g. `module load mamba/latest`) and the `activation` (`conda activate` /
+> `source activate`), recorded by `jobset probe` on that machine
+> (`configuration.md` § 5 M-1). A cluster's record names its own; **a
+> workstation's names its conda hook**, and then nothing about the emitted
+> script differs. So *"what differs between a laptop and Sol"* is **the record,
+> not the code path** — which is this section's rule, applied to the one place
+> people expect an exception.
 >
 > The init lines a person *sees* may differ between two machines. That is the
 > **data** differing, not a second script.
@@ -504,9 +505,9 @@ the whole system is one sequence, and one rule keeps it one:
 | 6 | the **preflight** | whether this file can be read here at all | `engines/stages.md` § 6.5 |
 | 7 | **validation** | whether it may be written — errors block, per stage, on the resolved whole | `science/validation.md` |
 | 8 | the **generator** | the decks and their wrappers: the merge, the cell, the pseudopotentials, BENCH-MARKS | `engines/stages.md` § 7 |
-| 9 | the **machine's config** | the wrapper's shell — preamble and activation (§ 8.3) | `running-a-job.md` § 5.2 |
+| 9 | the **target's record** | the wrapper's shell — preamble and activation (§ 8.3) | `configuration.md` § 5 |
 | 10 | **you** | which stage to run, and when | — this is the point of the whole framework |
-| 11 | the **wrapper**, at run time | ranks, threads, GPU pinning, the run index, the restart banner | `running-a-job.md` § 3 |
+| 11 | the **wrapper**, at run time | which statement of ranks and threads applies — a flag given to it, then the scheduler's echo of the header, then the value baked at prep; GPU pinning, the run index, the restart banner | `running-a-job.md` § 3 |
 | 12 | the **engine** | whether warm files are honoured, given those parameters | `job-contracts.md` § 4 |
 
 Read it downward and the tangles disappear:
@@ -538,7 +539,7 @@ one answer only if nothing appears in two ladders.
 flowchart TB
     subgraph SURF["floor 7 · surfaces — collect what the person said, compose nothing"]
         direction LR
-        CLI["<b>CLI</b><br/>flags: --np --omp --gpus<br/>--domain --time --mem"]
+        CLI["<b>CLI</b><br/>flags: --np --cpus-per-task --gpus<br/>--domain --time --mem"]
         WEB["<b>Task-setup tab</b><br/>edits floor 2;<br/>presses prep with an EMPTY ask"]
     end
     subgraph DESC["floor 2 · description — portable, names no machine"]
@@ -547,10 +548,10 @@ flowchart TB
         TASK["<b>task.json</b><br/><code>stages[].overrides</code> · <code>bench</code><br/><code>execution</code> · <code>allocation</code>"]
     end
     subgraph MACH["floor 1 · machine — measured, never in the description"]
-        ENV["<b>environment.json</b> · <b>molbuilder.json</b>"]
+        ENV["<b>environment.json</b> — the TARGET's record<br/><i>checks the ask; never supplies a value of it</i>"]
     end
     VERD["<b>what `summarize` PRINTS</b><br/>what the machine FOUND — a REPORT.<br/>read by a person, applied by no code"]
-    ASM["<b>the assembly</b><br/>composes the declared sources in order<br/>→ (allocation, pins, chosen)"]
+    ASM["<b>the assembly</b><br/>composes the declared sources in order<br/>→ (allocation, pins, chosen)<br/><b>an unstated launch value is REFUSED here</b>"]
     RES["<b>floor 3 · resolve()</b> → ParameterSet"]
     OUT["<b>the deck</b> · <b>the wrapper</b> · <b>the .sbatch</b>"]
     WEB -->|edits| TASK
@@ -558,7 +559,7 @@ flowchart TB
     WEB --> ASM
     TASK --> ASM
     VERD --> ASM
-    ENV --> ASM
+    ENV -.->|"checks only"| ASM
     ASM --> RES
     TMPL --> RES
     TASK --> RES
@@ -590,14 +591,15 @@ flowchart TB
         B1["<b>1 · describe</b><br/>the item is written with NO value<br/><i>read_template refuses one</i>"]
         B2["<b>2 · task.json</b><br/><code>bench</code> = points to MEASURE (never an answer)<br/><code>execution</code> = the ONE value to USE"]
         B3["<b>3 · at prep</b> — <code>prep_run_inputs</code><br/><code>execution</code>, then a <code>prep</code> flag.<br/><i>no third source: a benchmark does not steer a run</i>"]
-        B4["<b>3b · nothing stated?</b> — <code>auto_ranks</code><br/>the selected DOMAIN's widest node,<br/>else the TARGET's topology<br/><b>never this box · no record ⇒ REFUSE</b>"]
-        B1 --> B2 --> B3 --> B4
+        B4["<b>3b · nothing stated?</b><br/><b>prep REFUSES</b>, naming the run card<br/>and the flag — no width, no default,<br/>no rank per GPU"]
+        B1 --> B2 --> B3
+        B3 -.->|"unstated"| B4
     end
 
     RES["<b>4 · resolve()</b> — floor 3<br/>template ⊕ overrides ⊕ pins ⊕ the rung's answers ⊕ allocation → <b>ParameterSet</b>"]
     DECK["<b>5 · the deck</b><br/>records the rank count it assumed"]
-    SB["<b>5 · the .sbatch</b><br/><code>#SBATCH -n</code> ← <code>header_ntasks</code>"]
-    WRAP["<b>5 · the wrapper</b><br/><code>_mpi_np_default=</code> ← the same two producers"]
+    SB["<b>5 · the .sbatch</b><br/><code>#SBATCH -n</code> ← the stated <code>mpi_np</code>"]
+    WRAP["<b>5 · the wrapper</b><br/><code>_mpi_np_default=</code> ← the same stated value"]
     RUN["<b>6 · run time</b>, inside the wrapper<br/><code>-np flag &gt; MB_NP &gt; SLURM_NTASKS &gt; PBS_NP &gt; the baked default</code><br/><i>and SLURM_NTASKS is what step 5's header asked for</i>"]
     CARD["<b>A13 · the run card</b><br/>shows the EMITTED value + its source,<br/>through those same producers"]
 
@@ -605,14 +607,11 @@ flowchart TB
     CAT --> B1
     A3 --> RES
     B3 --> RES
-    B4 --> SB
-    B4 --> WRAP
     RES --> DECK
     RES --> SB
     RES --> WRAP
     SB --> RUN
     WRAP --> RUN
-    B4 -.-> CARD
     SB -.-> CARD
 ```
 
@@ -621,29 +620,27 @@ flowchart TB
 - **Track A never reaches step 6.** A mesh cutoff is fixed by step 4 and
   written into the deck; no run-time chain touches it. *"What if nobody set
   it?"* cannot arise — the template holds a value for every one.
-- **Track B is the only place an unstated value exists**, and step 3b is what
-  answers it — from the **selected domain**'s widest node, else the target's
-  topology. **Nothing lowers it** — the atom-count clamp was removed on the
-  2026-09-03 ruling (`running-a-job.md` § 3 owns that rule and records why).
-  Never from the box running `prep`, and
-  **never invented**: a record that carries no core count is a refusal, not a
-  fallback, because a number taken from the wrong machine looks exactly like
-  a right one.
-- **Step 5's two artifacts share step 3b's producers**, which is why the
-  `.sbatch` header and the wrapper's baked default agree (A9). They did not
-  until 2026-09-02: the header floored at `-n 1` while the wrapper read this
-  box's core count — and since step 6 reads `SLURM_NTASKS` *from that header*,
-  a 64-core node ran the job on one rank.
+- **Track B is the only place an item has no value in the template, and an
+  unstated one has exactly one answer: prep refuses it** *(user, 2026-10-02:
+  "explicit job config is the only way allowed")*. The refusal names the two
+  places to state it — the run card (`execution` in `task.json`) and the prep
+  flag. There is no width of the target, no rank per GPU, no thread count of
+  one: each of those was a value nobody stated, and a run is hours before
+  anyone finds out which one it got.
+- **Step 5's two artifacts carry the one stated value**, which is why the
+  `.sbatch` header and the wrapper's baked value agree (A9). They did not
+  until 2026-09-02, when each worked out its own default: the header floored
+  at `-n 1` while the wrapper read this box's core count — and since step 6
+  reads `SLURM_NTASKS` *from that header*, a 64-core node ran the job on one
+  rank.
 
-> **This is why nothing at prep may invent a track-B value.** An unstated
-> `mpi_np` already has one answer and exactly one — `auto_ranks`, reading the
-> selected target's width, or a refusal. A layer that fills it in
-> *"because it must be decided"* overwrites that. That is the defect the run
-> lane had for one afternoon on 2026-09-02: routed through the sweep's
-> enumerator, `{omp_threads: 4}` came back as a **single-rank job** — the
-> enumerator's `mpi_np or [1]`, an axis a grid must have and a condition need
-> not. The fix was to stop working anything out: map the names, write the
-> values, and let steps 3 and 6 do what they already did.
+> **This is why nothing at prep may work out a track-B value.** A layer that
+> fills one in *"because it must be decided"* decides for the person. That is
+> the defect the run lane had for one afternoon on 2026-09-02: routed through
+> the sweep's enumerator, `{omp_threads: 4}` came back as a **single-rank
+> job** — the enumerator's `mpi_np or [1]`, an axis a grid must have and a
+> condition need not. The fix was to stop working anything out: map the
+> names, write the values, and refuse what was not written.
 
 #### A run shows its END POINT, never its inputs
 
@@ -673,8 +670,9 @@ B's chain (above) is correct and complete, and it is still invisible unless a
 surface reads it back out.
 
 **So the card reads the chain back**, per parameter: the value, and which rung
-of § 5.2's ladder supplied it — *you*, a flag, or the target's own width. A field left blank is not shown blank; it
-is shown as **what blank resolves to**.
+of § 5.2's ladder supplied it — the run card, `allocation`, or a flag. A field
+left blank is not shown blank; it is shown as **the refusal prep will give**,
+naming where to state it.
 
 **And it is resolved by the emitter, not re-derived.** A13 is A12 applied to
 display: a surface that computed the emitted value itself would be a second
@@ -687,13 +685,29 @@ ask in two — `mem`, which is the same in both lanes, and `time`/`domain`,
 which are not — and the row was added without the count above it being
 changed.)*
 
-| kind | example | weakest → strongest |
-|---|---|---|
-| **physics** | `mesh_cutoff` · basis · k-grid | catalogue default → **template value** → that stage's `overrides` |
-| **deck / speed** | `diag_algorithm` · `block_size` · `use_gpu` | template value → **`execution`**, the calculation's then the rung's *(a one-point `bench` pin sets only the bench's trials since 2026-09-30)* |
-| **launch shape** | `mpi_np` · `omp_threads` · `gpu_count` | `auto_ranks` (the target's width, else a refusal) → **`execution`** → a `prep` **flag** |
-| **scheduler ask** | `mem` | unstated (the queue's own ceiling) → `allocation` → a `prep` **flag** |
-| **scheduler ask, per lane** | `time` · `domain` | unstated → `allocation` *(the calculation's, and the BENCH's)* → **`execution`** *(this run's)* → a `prep` **flag** |
+**The last three are the launch values, and every one of them is stated or
+refused** *(user, 2026-10-02: "explicit job config is the only way allowed")*.
+Nothing fills one in: not this machine's config (`molbuilder.json` holds no
+job value, `configuration.md` § 4), not the target's record (it **checks** an
+ask — does the queue exist, does a node hold this many cores or GPUs, does the
+wall fit — and never supplies one), not the run script. Prep refuses before it
+writes anything, and the refusal names every place the value may be stated.
+
+| kind | example | weakest → strongest | stated nowhere |
+|---|---|---|---|
+| **physics** | `mesh_cutoff` · basis · k-grid | catalogue default → **template value** → that stage's `overrides` | cannot happen: the template holds a value |
+| **deck / speed** | `diag_algorithm` · `block_size` · `use_gpu` | template value → **`execution`**, the calculation's then the rung's *(a one-point `bench` pin sets only the bench's trials since 2026-09-30)* | cannot happen |
+| **launch shape** | SIESTA's `mpi_np` · cores per rank (`omp_threads`, PySCF's `threads`) · `gpu_count` for a GPU run | **`execution`** → a `prep` **flag** (`--np`, `--cpus-per-task`, `--gpus`) | **refused at prep**, every target |
+| **scheduler ask** | `mem` | `allocation` → a `prep` **flag** → a `launch` **flag** | **refused at prep** when the target has a scheduler |
+| **scheduler ask, per lane** | `time` · `domain` | `allocation` *(the calculation's, and the BENCH's)* → **`execution`** *(this run's)* → a `prep` **flag** → a `launch` **flag** | **refused at prep** when the target has a scheduler |
+
+**A launch flag overrides; it does not fill.** `--domain`, `--time` and `--mem`
+on `launch` win over what prep baked, on the `sbatch` line — they never stand in
+for a value prep refused, because prep refuses before there is anything to
+launch. A benchmark trial's shape is its grid point (`generator.md` § 4.3a); its
+queue, wall and memory follow these ladders like a run's. *"A target with a
+scheduler"* means a prep that writes a `.sbatch` for it: `prep --no-sbatch`
+writes none, and then nothing is asked of a queue.
 
 **Two scheduler asks take a fifth rung, and only these two.** `allocation` is
 folded by the shared prep path, so `prep bench` and `prep run` read one `time`
@@ -726,7 +740,7 @@ whether or not you ever benchmarked, and a run never requires one
 >
 > The consequence, stated because it is a real change: after a benchmark,
 > a run that does not name the winner in `execution` does **not** use the
-> winner — `auto_ranks` sizes it, or prep refuses. The measurement stops
+> winner — prep refuses it until a shape is written. The measurement stops
 > reaching the launch by itself, which is the point.
 
 **Where the UI enters, and it is only two places** — which is § 5's *"the
@@ -954,21 +968,24 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 
 ---
 
-## 8. Configuration — one file, and which floor reads each part
+## 8. Configuration — which floor reads each part
 
-**There is one config file, twelve sections, and two different audiences.** Half of it
-configures the *server* (who may sign in, what the rate limiter does). Half
-configures *running calculations* (how to activate an environment, what the
-scheduler wants). Neither half knows about the other, and no document listed
-both until now — `deployment.md` § 5 showed six and `running-a-job.md` § 5 showed four, and
-neither said it was showing a subset.
+**What `molbuilder.json` may hold, and what each key is for, is
+[`configuration.md`](?doc=configuration.md) § 4** — the one list. This section
+says only where in the stack each part is read.
+
+**Two things a calculation needs never come from this file** *(user,
+2026-10-01 and 2026-10-02)*: a **value of the job** — its queue, wall, memory,
+ranks, cores per rank, GPU count — which the job states itself (§ 5.2), and a
+**fact about the machine it runs on** — its queues, topology, activation and
+preamble — which is that machine's record (`configuration.md` § 5).
 
 ### 8.1 Where it is found, and how two files become one
 
 ```mermaid
 flowchart LR
     A["<b>server-wide</b><br/>&lt;config dir&gt;/molbuilder.json<br/><i>$MOLBUILDER_CONFIG_DIR, else XDG</i>"]
-    B["<b>this project</b><br/>&lt;project&gt;/.molbuilder.json"]
+    B["<b>this project</b><br/>&lt;project&gt;/.molbuilder.json<br/><i>`launch` only</i>"]
     M{{"merge:<br/>objects deep-merge<br/>scalars and lists replace<br/><b>the project wins</b>"}}
     R["the effective settings"]
     A --> M
@@ -982,26 +999,16 @@ not read at all, because per-directory settings are the project scope's job and
 it merges rather than shadowing. A malformed file refuses to start rather than
 half-configuring something.
 
-`script_generation` merges by its own rule, because concatenating is the useful
-answer there: **preambles join, server first, then project**; `activation` is
-the project's if set, otherwise the server's.
+### 8.2 Which floor reads each section
 
-### 8.2 The complete map — section, reader, and where it lands
-
-| section | read by | reaches | what it decides |
-|---|---|---|---|
-| `script_generation` | `get_script_generation`, `require_activation` | **floor 5**, `prep` step 4 | the lines baked into every wrapper: `preamble` (e.g. `module load mamba/latest`), then `activation` verbatim |
-| `scheduler` | `get_scheduler`, `get_routing` | **floor 5**, at `launch` | the `#SBATCH` header: `directives` (partition, qos, mail), `gpu` (partition, type, memory), `defaults` (time, cores, memory), and `routing` — the named domains |
-| `execution` | `get_execution` | **floor 5**, at `launch` | `mode` (`direct` or `submit`), and the default `domain` |
-| `envs` | `get_envs` | **floor 5**, `prep` step 4 | which conda environment each engine runs in |
-| `paths` | `get_paths` | `projects.projects_root` | where molbuilder keeps things that are not its own code.  **`projects` is the only key**: the projects tree — default `projects/` inside the checkout, `$MOLBUILDER_PROJECTS` overrides it.  `logs`, `run` and `reports` were retired on 2026-08-31 and the reader now **refuses** them — operational state follows `$XDG_STATE_HOME` and `$XDG_RUNTIME_DIR` through `config_dir` alone, because a second way to say one thing put the answer out of reach of the layer that needs it (`configuration.md` § 2.1d) |
-| `checkpoint` | `get_checkpoint`, `get_checkpoint_engines` | **outside the stack** — the file protocol | the size at which a file goes to the archive instead of git, and the per-engine hints |
-| `auth` | `get_auth`, `get_providers` | the **server** | who may sign in; the provider list is `auth.providers` (`ops/access-control.md` § 3) |
-| `notify_keys_file` | `_read_notify_retired` | nothing | **Retired 2026-08-31 and now REFUSED.** It was a path to a file molbuilder had itself written. Still in the registry, and that is the point: a retired key must be *refused by name*, not fall through as "unknown", or the person who wrote it is told the wrong thing ([`run-reports.md`](?doc=execution/run-reports.md) § 4.3) |
-| `notify_route` | `_read_notify_retired` | nothing | Retired and refused with it. It was a copy of a segment molbuilder had itself issued — and because the issuing command could not read `molbuilder.json`, a second key generated a **new** segment and pasting it moved the route out from under everyone already set up, silently. The key file carries its own route now and **is** the switch: no file, no route in it, no listener |
-| `tls` | `get_tls` | the **server** | the certificate and key for HTTPS |
-| `rate_limit` | `get_rate_limit` | the **server** | how the limiter judges traffic (§ 4 there) |
-| `admin` | `get_admin_emails` | the **server** | `admin.emails` — who may clear the block list and restart the process. **Absent means nobody**, which is the safe state you get by writing no config |
+| section | read by | reaches |
+|---|---|---|
+| `launch` | `get_launch` | **floor 7**, `jobset launch` — `mode`, when no `--mode` is given |
+| `envs` | `get_envs`, `get_env_manager` | **floor 5**, `prep` step 4 — the environment name the wrapper activates; and the `envs` verbs |
+| `paths` | `get_paths` | `projects.projects_root` — every surface |
+| `checkpoint` | `get_checkpoint`, `get_checkpoint_engines` | **outside the stack** — the file protocol |
+| `auth` · `tls` · `rate_limit` · `admin` | `get_auth`, `get_tls`, `get_rate_limit`, `get_admin_emails` | the **server** |
+| retired keys (`configuration.md` § 4) | their own refusal | nothing — each is **refused by name**, with what to do instead |
 
 ### 8.2a The section registry — the loader's one table *(U7, 2026-08-12)*
 
@@ -1027,8 +1034,8 @@ before:
 | rule | what it means for you |
 |---|---|
 | **an unknown top-level key is refused, never ignored** | a typo'd section name (`"shceduler"`) is an error naming the known sections, not a silently dead block. *Amended contract — `running-a-job.md` § 5 said "unknown keys are ignored", and that tolerance is exactly the hole that ate `admin`.* The one carve-out: a key starting with `_` (the templates' `"_comment_tls"` idiom) is a comment by design |
-| **a machine section may not live in a bundle** | `admin`, `auth`, `tls`, `envs`, `checkpoint`, `rate_limit`, `paths` in a calculation's `.molbuilder.json` are refused — at read AND at write (`write_config_scope`). A bundle may carry `execution`, `script_generation`, `scheduler`. This generalises checkpoint's S1c argument: a section that is read, validated and then silently dropped looks effective while nobody applied it |
-| **provenance prints only what its row allows** | `config_provenance` (the `config:` lines prep and submit echo and the decision ledger records) shows values only for `execution` and `script_generation` — never anything near a secret |
+| **a machine section may not live in a bundle** | `admin`, `auth`, `tls`, `envs`, `checkpoint`, `rate_limit`, `paths` in a calculation's `.molbuilder.json` are refused — at read AND at write (`write_config_scope`). A bundle may carry `launch` alone. This generalises checkpoint's S1c argument: a section that is read, validated and then silently dropped looks effective while nobody applied it |
+| **provenance prints only what its row allows** | `config_provenance` (the `config:` lines prep and submit echo and the decision ledger records) shows values only for `launch` and `paths` — never anything near a secret |
 
 *(That the § 8.2 table and the registry name the same sections was checked by
 `test_architecture_rules::test_every_config_section_is_documented_and_every_documented_one_exists`,
@@ -1036,40 +1043,43 @@ an equality both ways, reading `_SECTIONS` directly since U7. That file was
 retired in `082ba979`; the equality is now a review step, like the five rules
 in § 7.)*
 
-**Read the first four rows as one thing.** They are the whole of what a
-calculation needs from config, and they arrive at exactly two moments:
-`prep` step 4 bakes `script_generation` and `envs` into the wrapper, and
-`launch` reads `scheduler` and `execution` to build the command. **Nothing
-reads config at run time** — the wrapper is self-contained by then
-(`job-contracts.md` § 2.1).
+**What a calculation takes from config, and when.** Two moments: `prep`
+step 4 bakes the environment name (`envs`) into the wrapper, with the
+activation and preamble from the TARGET's record; `launch` reads `launch.mode`
+when no `--mode` is given. **Nothing reads config at run time** — the wrapper
+is self-contained by then (`job-contracts.md` § 2.1).
 
 ```mermaid
 flowchart TB
     C[("molbuilder.json")]
-    subgraph PREP["prep — on the machine that will run it"]
+    E[("the target's environment.json")]
+    subgraph PREP["prep"]
       S4["step 4 · Render the wrapper"]
     end
-    subgraph SUB["submit"]
-      H["build the sbatch command"]
+    subgraph SUB["launch"]
+      H["send it: bash here, or sbatch"]
     end
     W["the wrapper<br/><i>activation baked in, verbatim</i>"]
-    C -->|"script_generation · envs"| S4 --> W
-    C -->|"scheduler · execution"| H
+    C -->|"envs"| S4
+    E -->|"activation · preamble"| S4 --> W
+    C -->|"launch.mode"| H
     W -.->|"reads NOTHING at run time"| W
 ```
 
-### 8.3 The one setting that stops everything
+### 8.3 The one fact that stops everything
 
-`script_generation.activation` has **no default**, and rendering *any* wrapper
-refuses without it — not only a cluster one. On a fresh install that is the
-*"the `.fdf` saved but no `.run.sh` appeared"* symptom.
+The **activation** has **no default**, and rendering *any* wrapper refuses
+without it — not only a cluster one. It is how a shell enters an environment on
+the machine the wrapper runs on, so it is that machine's fact, in its record
+(`configuration.md` § 5 M-1): `envs init-config` asks for it at install, and on
+any machine
 
-```json
-{ "script_generation": {
-    "preamble":   "source ~/miniconda3/etc/profile.d/conda.sh",
-    "activation": "conda activate"
-} }
+```text
+molbuilder jobset probe --write --activation "conda activate" \
+    --preamble "source ~/miniconda3/etc/profile.d/conda.sh"
 ```
+
+records it. A record without one is refused at prep, naming that command.
 
 **Why no default:** the wrapper runs in a non-interactive shell that never reads
 your `~/.bashrc`, so `conda activate` is an undefined function unless something
@@ -1152,8 +1162,9 @@ flowchart LR
 
 | | **workstation** | **HPC cluster** |
 |---|---|---|
-| **floor 1 — the machine** | detected: `lscpu`, `nvidia-smi` | detected: `scontrol`, `sinfo` — plus what detection cannot know, which you declare in `scheduler` (queue, account) |
-| **config you must write** | `script_generation` only | `script_generation` **and** `scheduler` |
+| **floor 1 — the machine** | detected: `lscpu`, `nvidia-smi` | detected: `scontrol`, `sinfo`, `sacctmgr` — the queues you can reach and their limits |
+| **the record must carry** | the activation | the activation **and** the queues |
+| **what each run states** | ranks and cores per rank (and a GPU count for a GPU run) | the same, **plus** its queue, wall and memory |
 | **floor 5 — how it starts** | `--mode direct`: `bash …run.sh`, and you wait | `--mode submit`: one `sbatch`, one job |
 | **what is emitted** | `.run.sh` | `.run.sh` **and** `.sbatch` — the outer one is a header whose body is a single line calling the inner one |
 | **many jobs at once** | a sweep runs in order, locally | **never** — one job per invocation, by hand |
@@ -1163,14 +1174,16 @@ flowchart LR
 inner `.run.sh` owns activation and launch and is byte-identical whether a
 scheduler is involved or not, so a run you debugged on your laptop is the run
 the cluster performs. *(Checked — `test_jobset::test_the_inner_wrapper_is_byte_
-identical_on_both`, and its companion that a workstation gets no `.sbatch` at
-all.)*
+identical_on_both`; that a workstation gets no `.sbatch` at all is the
+`launch_values` case table's row *"a run on a machine with no scheduler is
+asked for no queue, wall or memory"*.)*
 
-**A workstation needs no `scheduler` block at all**, and with none configured no
-`.sbatch` is written — asking for one would be the nanny behaviour this project
-refuses. **A cluster needs one**, because `partition` and `qos` cannot be
-guessed and a header without them is rejected by the scheduler rather than by
-molbuilder; so molbuilder refuses first, where the message is useful.
+**A workstation's record says `workstation`**, and no `.sbatch` is written —
+asking for one would be the nanny behaviour this project refuses. **A cluster's
+record lists its queues**, and a run prepped for it names one of them, with its
+wall and memory, or prep refuses: a header without them is rejected by the
+scheduler rather than by molbuilder, so molbuilder refuses first, where the
+message is useful (§ 5.2).
 
 ### 9.2 The same two commands, on both — a worked pair
 
@@ -1182,7 +1195,7 @@ side by side, with nothing edited between them.
 checkable against that:
 
 ```bash
-molbuilder jobset prep   run coarse
+molbuilder jobset prep   run coarse --np 8 --cpus-per-task 1
 #   machine      8 cores · 1× RTX A4000 · no scheduler
 #   allocation   8 ranks
 #   01_coarse/bdt_au_01_coarse.fdf   rendered   BlockSize 32, Diag.Algorithm ScaLAPACK
@@ -1190,29 +1203,35 @@ molbuilder jobset prep   run coarse
 #   01_coarse/run-0/                 ready      (nothing carried — cold start)
 molbuilder jobset launch run coarse --mode direct     # runs here; you wait
 molbuilder jobset status                              # look before deciding
-molbuilder jobset prep   run tight --from 01_coarse/run-0
+molbuilder jobset prep   run tight --from 01_coarse/run-0 --np 8 --cpus-per-task 1
 molbuilder jobset launch run tight  --mode direct
 ```
 
-**On the cluster**, after `scp -r bdt-relax/ cluster:~/`, with a `scheduler`
-block in `molbuilder.json`:
+**On the cluster**, after `scp -r bdt-relax/ cluster:~/`, where the cluster's own
+record is the probe's:
 
 ```bash
-molbuilder jobset prep   run coarse
-#   machine      64 cores · 4× A100 · slurm (partition public, qos public)
+molbuilder jobset prep   run coarse --np 16 --cpus-per-task 1 --gpus 1 \
+                                    --domain public --time 2-00:00:00 --mem 64G
+#   machine      64 cores · 4× A100 · slurm
 #   allocation   16 ranks · 1 GPU        <- what THIS run asks for, not what the node has
 #   01_coarse/bdt_au_01_coarse.fdf   rendered   BlockSize 16, Diag.Algorithm ELPA-1STAGE
 #                                    (500 orbitals / 16 ranks = 31 -> 16)
-#   01_coarse/bdt_au_01_coarse.sbatch  written  -p public -q public -n 16 --gres=gpu:a100:1
+#   01_coarse/bdt_au_01_coarse.sbatch  written  -p public -q public -n 16 -c 1 --gres=gpu:1
 #   01_coarse/run-0/                 ready      (nothing carried — cold start)
 molbuilder jobset launch run coarse --mode submit     # Submitted job 4021
 molbuilder jobset status                              # look before deciding
-molbuilder jobset prep   run tight --from 01_coarse/run-0
+molbuilder jobset prep   run tight --from 01_coarse/run-0 --np 16 --cpus-per-task 1 --gpus 1 \
+                                    --domain public --time 2-00:00:00 --mem 64G
 molbuilder jobset launch run tight  --mode submit     # Submitted job 4022
 ```
 
-**The words you typed are the same. Four values in the printed report are not**,
-and every one of them was decided by floor 1 on the machine it was decided on:
+*(Stated once instead: the same values in the description — the ranks, cores
+and GPUs on the run card, the queue, wall and memory in `allocation` — and both
+preps take no flags.)*
+
+**The folder is the same; what you stated at prep is each machine's run**, and
+the printed report differs where floor 1 or your statement differs:
 
 | | workstation | cluster | decided by |
 |---|---|---|---|
@@ -1221,7 +1240,7 @@ and every one of them was decided by floor 1 on the machine it was decided on:
 | `BlockSize` in the deck | 32 | 16 | floor 3, at step 3 — the ceiling is *orbitals ÷ ranks*, so **more ranks means a smaller block** ([`tuning.md § 2.11`](?doc=engines/tuning.md)) |
 | `Diag.Algorithm` | ScaLAPACK | ELPA-1STAGE | you, but only the cluster has the GPU build |
 | the env the wrapper activates | `molbuilder-siesta` | `molbuilder-siesta-gpu` | floor 5, at step 4 — *derived from the **GPU request***: `use_gpu` on the allocation, else `Diag.ELPA.GPU` in the deck. **Not** from `Diag.Algorithm` — `job-contracts.md` § 6.2 owns this, and `runwrap` stopped reading the solver for it in 2026-08 |
-| `.sbatch` | not written | written | floor 5, from `scheduler` being present |
+| `.sbatch` | not written | written | floor 5, from the target's record naming a scheduler |
 | **the template, `task.json`** | **byte-identical** | **byte-identical** | — |
 
 **Read the second and fourth rows together and § 4.1's forced ordering falls

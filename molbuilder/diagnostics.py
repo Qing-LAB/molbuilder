@@ -509,11 +509,13 @@ def reset_capabilities() -> None:
 # --------------------------------------------------------------------- #
 
 
-def local_facts(env: "Any") -> "Tuple[Any, Optional[str]]":
+def local_facts(env: "Any", script_generation: "Optional[Mapping[str, str]]"
+                = None) -> "Tuple[Any, Optional[str]]":
     """Attach this machine's three portable facts to a probed record.
 
     Returns ``(environment, note)`` -- the record with the facts on it, and a
-    line to show the operator when there were none to attach.
+    line to show the operator when it says nothing about how to enter an
+    environment.
 
     **HOW THIS MACHINE ENTERS ITS ENVIRONMENT TRAVELS WITH THE RECORD**
     (2026-08-24).  A wrapper is generated on one machine and executed on
@@ -521,9 +523,14 @@ def local_facts(env: "Any") -> "Tuple[Any, Optional[str]]":
     much a fact about the target as its core count.  Probing Sol records
     ``module load mamba`` / ``source activate``; copying that record to the
     workstation is then SUFFICIENT to generate a wrapper that runs on Sol.
-    Without it, ``prep --target sol`` had Sol's queues and the workstation's
-    conda hook, and every job died sourcing a path that exists on neither the
-    cluster nor anywhere else it was sent.
+
+    **DECLARED, and handed in** *(2026-10-02)*.  ``script_generation`` is what
+    the person declared on this machine -- ``jobset probe --activation /
+    --preamble``, or the answer ``envs init-config`` asked for -- and the
+    record is its ONE home (`configuration.md` § 5 M-1).  It was copied out of
+    ``molbuilder.json`` until then, after which the record won and an edit to
+    the file did nothing until the next probe: one fact, two homes.  ``None``
+    attaches nothing, and the caller keeps what an existing record says.
 
     **WHICH ENVIRONMENTS EXIST HERE** travels too -- the other half of the
     pair.  ``conda env list`` enumerates without entering, so this is free from
@@ -533,23 +540,12 @@ def local_facts(env: "Any") -> "Tuple[Any, Optional[str]]":
     compiled/installed architecture"*).  ``platform.machine()`` -- the machine
     running this, which is the machine those envs live on.
 
-    Here rather than in ``scheduler/record.py`` because it reads live config
-    (`runtime_config`, a layer above the scheduler package) and enumerates
-    envs, and this module is where "what is true of this machine" already
-    lives.  (Until 2026-09-13 this sentence also cited a "stdlib-only,
-    ships to the target" contract of `record.py` that did not hold -- K-Y3.)  It was inline in ``jobset probe`` until
-    2026-09-08, when ``envs init-config`` became a second caller -- and a
-    second copy is a copy that drifts (`configuration.md` line 42).
+    Here rather than in ``scheduler/record.py`` because it enumerates envs, and
+    this module is where "what is true of this machine" already lives.  Two
+    callers, ``jobset probe`` and ``envs init-config``, so one copy.
     """
     import dataclasses as _dc
-    try:
-        from .runtime_config import get_script_generation
-        sg = get_script_generation(project_dir=None)
-        sg_rec = {k: v for k, v in (("preamble", sg.get("preamble")),
-                                    ("activation", sg.get("activation")))
-                  if v}
-    except Exception:      # pragma: no cover - a broken config is its own error
-        sg_rec = {}
+    sg_rec = {k: v for k, v in (script_generation or {}).items() if v}
     try:
         envs_here = sorted(get_capabilities().conda_envs or ())
     except Exception:      # pragma: no cover - enumeration is best-effort
@@ -558,20 +554,18 @@ def local_facts(env: "Any") -> "Tuple[Any, Optional[str]]":
     if envs_here:
         import platform as _pl
         env_arch = _pl.machine() or None
-    # The note is about ``script_generation`` and is gated on
-    # ``script_generation`` ALONE.  It was composed inside an ``else`` that
-    # also required the env list to be empty -- so on any machine with a conda
-    # env (which is every machine that can run anything) the warning was
-    # suppressed by a fact it has nothing to do with.  It was unreachable
-    # twice over: ``notes_sg`` was then assigned and read by nothing.
-    note = None if sg_rec else (
-        "this machine states no script_generation, so the record carries "
-        "none -- a bundle prepped ELSEWHERE for this machine will be refused "
-        "until it does")
-    if sg_rec or envs_here:
-        return _dc.replace(env, script_generation=sg_rec or {},
-                           conda_envs=envs_here, env_arch=env_arch), note
-    return env, note
+    note = None if sg_rec.get("activation") else (
+        "no activation was declared, so the record says nothing about how a "
+        "shell enters an environment here -- every prep for this machine "
+        "refuses until it does: `molbuilder jobset probe --write "
+        "--activation \"conda activate\"` (or \"source activate\"), with "
+        "--preamble for the lines to run first")
+    changes = {}
+    if sg_rec:
+        changes["script_generation"] = sg_rec
+    if envs_here:
+        changes.update(conda_envs=envs_here, env_arch=env_arch)
+    return (_dc.replace(env, **changes) if changes else env), note
 
 
 __all__ = [

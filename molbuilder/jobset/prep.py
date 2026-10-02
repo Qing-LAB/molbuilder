@@ -1068,7 +1068,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # the snapshot included, or the remedy's re-copied record would then
     # contradict it (W52, and its fix's review).
     environment = _environment_read(base, target)
-    _require_remote_activation(target, environment)
+    _require_activation(target, environment)
     resolve_target(base, target)          # step 1 proper: the snapshot
 
     # ---- 2. resolve the parameters ------------------------------------- #
@@ -1461,11 +1461,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # same field whoever it is for.
     #
     # A record that does not state it was refused at step 1, before anything
-    # was written (`_require_remote_activation`).  This is the layer that
-    # knows a remote target was named, and substituting this machine's
-    # activation for another machine's is the 2026-08-24 failure exactly: it
-    # succeeds at generate time and dies on the cluster hours later on a path
-    # that exists only here.
+    # was written (`_require_activation`) -- whichever machine it describes.
     dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
                        record_dir=record_dir, log=log,
                        machine_record=environment)
@@ -1588,45 +1584,36 @@ def _move_progress_channel_into(attempt: Path) -> None:
             seeded.replace(attempt / seeded.name)
 
 
-def _require_remote_activation(target: Optional[str], environment) -> None:
-    """A record that does not state its own activation is refused HERE
-    rather than substituted downstream.  This is the layer that knows a
-    remote target was named, and substituting this machine's activation
-    for another machine's is the 2026-08-24 failure exactly: it succeeds
-    at generate time and dies on the cluster hours later on a path that
-    exists only here.
+def _require_activation(target: Optional[str], environment) -> None:
+    """A record that does not state how a shell enters an environment there
+    is refused HERE, for every target -- this machine included.
 
-    **THE LOCAL TARGET IS EXEMPT, and every word above says why.**  `--target
-    this` names the machine the wrapper is being written ON, so "a path that
-    need not exist there" cannot arise -- there IS here, and the activation
-    comes from `molbuilder.json`'s `script_generation`
-    (`configuration.md` § 5), which is where a workstation states it.
-
-    It was not exempt until 2026-09-08, and the refusal it produced could not
-    be obeyed: it said *"on this, run `jobset probe --write --name this`, then
-    copy the record here"* -- but `this` is a RESERVED target name and that
-    probe is refused outright, there is nothing to copy from here to here, and
-    the possessive rendered as ``'this''s``.  A person following it exactly
-    would be told no by the next command.  Prepping for the box you are
-    sitting at is the most ordinary thing this tool does, and it was blocked
-    from the browser's Prep button by a check meant for a cluster."""
-    from ..scheduler import environments_dir
-    from ..scheduler.record import LOCAL_TARGET, probe_command
-    if (target and target != LOCAL_TARGET
-            and not (getattr(environment, "script_generation", None) or {}
-                     ).get("activation")):
-        raise PrepError(
-            f"{target!r}'s machine record does not say how to enter its "
-            f"environment, so a wrapper generated here would carry THIS "
-            f"machine's activation -- a path that need not exist there.\n"
-            f"  Fix: on {target}, run\n"
-            f"      {probe_command(target)}\n"
-            f"  -- taking its script_generation when it asks -- then copy "
-            f"the record it writes into\n"
-            f"      {environments_dir()}\n"
-            f"  here, and prep again.\n"
-            f"  (The probe records the machine's own script_generation "
-            f"since 2026-08-24; a record written before that carries none.)")
+    **The record is the activation's one home** *(2026-10-02,
+    `configuration.md` § 5 M-1)*.  This machine was exempt until then and took
+    its activation from `molbuilder.json`'s `script_generation` -- a second
+    home for one fact, which the probe copied into the record and after which
+    the record won.  A remote target was never allowed a substitute:
+    generating with THIS machine's activation for another machine succeeds
+    at generate time and dies on the cluster hours later, on a path that
+    exists only here (2026-08-24).
+    """
+    from ..scheduler.record import LOCAL_TARGET, probe_command, probe_steps
+    if (getattr(environment, "script_generation", None) or {}).get(
+            "activation"):
+        return
+    here = target in (None, LOCAL_TARGET)
+    whose = "this machine's record" if here else f"the record of {target!r}"
+    raise PrepError(
+        f"{whose} does not say "
+        f"how a shell enters an environment there, and nothing else may "
+        f"(docs/configuration.md § 5 M-1).  Record it -- "
+        f"{probe_steps(target)}:\n"
+        f"      {probe_command(target)} --activation \"conda activate\" "
+        f"--preamble \"source <conda root>/etc/profile.d/conda.sh\"\n"
+        f"  or, where a `module load` gives the toolchain:\n"
+        f"      {probe_command(target)} --activation \"source activate\" "
+        f"--preamble \"module load mamba\"\n"
+        f"  then prep again.")
 
 
 # --------------------------------------------------------------------- #
@@ -1931,7 +1918,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # the snapshot included, or the remedy's re-copied record would then
     # contradict it (W52, and its fix's review).
     environment = _environment_read(base, target)
-    _require_remote_activation(target, environment)
+    _require_activation(target, environment)
     resolve_target(base, target)          # step 1 proper: the snapshot
 
     # ---- 2. the description, and WHICH rung ---------------------------- #
@@ -2115,7 +2102,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # anything was written: this check stood after the per-point wrapper
     # loop until 2026-09-16, and then here -- after the decks, the compose
     # record and the pseudos -- until 2026-10-01 (W52), while its own premise
-    # (`_require_remote_activation`) is that no such file may exist.
+    # (`_require_activation`) is that no such file may exist.
 
     # Each bias point's directory gets its own wrapper, beside its own deck
     # -- the same render `prep_jobset` gives the stage directory, through
@@ -3072,6 +3059,15 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                 "(project-layout.md § 2.1); run `molbuilder jobset init` "
                 "first.  (Hand-built job-sets remain launchable: `launch` "
                 "and `status` read job-set.json directly.)")
+        # THE CALCULATION'S OWN CONFIG READS, or the prep is refused in its
+        # words -- a project `.molbuilder.json` carrying a retired section
+        # (`configuration.md` § 4) was otherwise met first at launch, after
+        # everything was written.  Both scopes, as `launch` reads them.
+        from ..runtime_config import RuntimeConfigError, read_effective_config
+        try:
+            read_effective_config(base)
+        except RuntimeConfigError as exc:
+            raise PrepError(str(exc)) from None
         if (from_attempt or cold) and kind == "bench":
             raise PrepError(
                 "--from / --cold choose what a RUN starts from; a bench "
@@ -3141,6 +3137,25 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         else:
             allocation, pins, chosen = prep_run_inputs(
                 base, target, task, stage, allocation, notes=notes)
+
+        #     ...AND EVERY LAUNCH VALUE IS STATED, OR THE PREP IS REFUSED --
+        #      here, with the whole assembly in hand, before the question and
+        #      before anything is written (`architecture.md` § 5.2; user,
+        #      2026-10-02: "explicit job config is the only way allowed").
+        #      A run states its processes; a run or a benchmark that this
+        #      prep writes a `.sbatch` for states its queue, wall and memory.
+        #      The target's record CHECKS an ask -- its queues are shown so
+        #      one can be named -- and supplies no value of it.
+        from .prep_inputs import launch_refusal
+        _rec = _environment_read(base, target)
+        why = launch_refusal(
+            (allocation if kind == "run" else _under_description(
+                allocation or Resources(), task.allocation)),
+            engine=task.engine, shape=(kind == "run"), stage=stage,
+            header=bool(emit_sbatch and _rec.scheduler == "slurm"),
+            queues=[d.name for d in (_rec.domains or ())])
+        if why:
+            raise PrepError(why)
 
         # 4a · WHAT IT CONTINUES FROM (`job-system.md` § 5.4, plan W37): which run an
         #      independent stage continues from -- the stage before it,

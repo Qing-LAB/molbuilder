@@ -265,13 +265,11 @@ def _rendered_tee(tmp_path):
     wrapper, never re-typed."""
     from molbuilder.jobset.model import Resources
     from molbuilder.runwrap import render_run_wrapper
-    import json
     deck = tmp_path / "JOB.fdf"
     deck.write_text("SystemLabel JOB\n")
-    (tmp_path / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
-    text = render_run_wrapper(deck, resources=Resources(mpi_np=1), env="e")
+    # The activation is the machine record's (conftest's autouse one).
+    text = render_run_wrapper(
+        deck, resources=Resources(mpi_np=1, cpus_per_task=1), env="e")
     start = text.index("_mb_scf_tee() {")
     return text[start:text.index("\n}\n", start) + 3]
 

@@ -20,8 +20,8 @@ Three modes: ``submit`` (``sbatch``), ``ask`` (``sbatch --test-only`` on
 the same line -- when would it start; nothing is written or recorded) and
 ``direct`` (``bash`` here, in order, waiting for each).  Every door builds
 its scheduler line through ONE request (:func:`_sbatch_request`: what prep
-baked, what was said at launch, admitted on the queue, the wall defaulted
-to its ceiling), and decides everything -- what it follows, the
+baked, what was said at launch, admitted on the queue, and every value
+stated or refused), and decides everything -- what it follows, the
 deck/launch agreement, the queue, the header -- before the first write.
 The scheduler is handed ONE job per invocation, a grouped bench one per
 shelf (:func:`_refuse_batch_submission`).  ``dry_run`` returns the exact
@@ -216,8 +216,10 @@ def _sbatch_request(base: Path, *, envelope: Resources, gpu_side: bool,
     whole of it -- wall, cores, memory, the GPU count -- on the queue
     it is sent to (`scheduler.md` R9: what was admitted when the work was
     built is re-admitted when it is sent, against what this machine says
-    now), and a wall nobody stated is that queue's own ceiling, the full
-    amount the cluster allows there (user dictation, 2026-08-24).
+    now).  **Every value is stated** (`architecture.md` § 5.2): a wall or a
+    memory stated nowhere is refused here, never the queue's ceiling or
+    the scheduler's default -- prep refuses it first, and this is the door
+    that would send it.
 
     Returns ``(envelope, placement, command)``: the envelope as sent, the
     `Placement` (``None`` on a machine with no menu -- the rendered header's
@@ -231,8 +233,8 @@ def _sbatch_request(base: Path, *, envelope: Resources, gpu_side: bool,
     if mem:
         envelope = dataclasses.replace(envelope, mem=mem)
     # What admission is asked to fit: the wall stated at launch, else the one
-    # prep baked.  Unstated is None -- an unstated limit never bars (R3), and
-    # the wall it is defaulted to below fits that queue by construction.
+    # prep baked.  Unstated is None -- an unstated limit never bars (R3) --
+    # and is refused below, once the request has a queue.
     needed_s = time_s
     if needed_s is None and envelope.time:
         try:
@@ -247,17 +249,28 @@ def _sbatch_request(base: Path, *, envelope: Resources, gpu_side: bool,
                        mem=envelope.mem,
                        gpus=_gres_count(envelope.gres or ""),
                        named=domain, label=label)
-    # THE WALL, in the order the answers rank: what was stated at launch;
-    # else what prep baked; else the target queue's own ceiling.  Never a
-    # number this framework invents.  Where the queue states no ceiling, no
-    # wall is sent and the scheduler's default stands.
+    # THE WALL: what was stated at launch, else what prep baked.  The target
+    # queue's own ceiling stood in for neither until 2026-10-02 -- a wall
+    # nobody stated -- and the scheduler's default would stand in now if
+    # this let an unstated one through.
     if time_s is not None:
         envelope = _dc_replace_time(envelope, _slurm_time(time_s))
-    elif not envelope.time and placement is not None:
-        from ..scheduler import domain_ceiling_s
-        _ceil = domain_ceiling_s(placement.domain)
-        if _ceil:
-            envelope = _dc_replace_time(envelope, _slurm_time(_ceil))
+    # EVERY VALUE IS STATED, asked of the request AS SENT by the one answer
+    # prep gives (`prep_inputs.launch_refusal`): a launch flag may state
+    # what the description did not, and a prep with `--no-sbatch` asked
+    # none of the three.  The envelope names the queue it is sent to.
+    # Asked only where the request goes to a QUEUE: a machine with no menu
+    # promised nothing (R6), and `ask` there must answer "no scheduler
+    # here", as prep asks no wall of a run that writes no header.
+    if placement is not None:
+        from .. import runtime_config as _rc
+        from .prep_inputs import launch_refusal
+        envelope = dataclasses.replace(envelope, domain=placement.domain.name)
+        why = launch_refusal(
+            envelope, engine=None, header=True, shape=False,
+            queues=[d.name for d in _rc.get_routing(project_dir=base)])
+        if why:
+            raise SubmitError(f"{label or 'this job'} {why}")
     cmd = (["sbatch", "-J", job_name]
            + _sbatch_resource_flags(envelope, placement)
            # The launch-door claim, EXPLICIT on the command line: environment
@@ -685,7 +698,7 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
     * **the allocation** -- :func:`_group_envelope`: the shelf's own ask
       (identical across its trials by construction), sent through the one
       request (:func:`_sbatch_request`) -- admitted on its queue, the wall
-      ``--time``, else what prep baked, else that queue's own ceiling;
+      ``--time``, else what prep baked, else refused;
     * **the sequencer** -- ``launch/<name>.run.sh`` in the stage's bench
       container (the parent that sees every trial), regenerated from the
       trials STILL UNLAUNCHED at this submission.  Each trial runs in its own
@@ -863,14 +876,8 @@ def _place(base: Path, *, gpu_side: bool, needed_s=None, cores=None,
     want = Request(ranks=cores, cpus_per_task=1, gpus=gpus or None,
                    mem_gb=parse_mem_gb(mem), walltime_s=needed_s)
     try:
-        # WHICH AXIS DECIDES between queues that all fit is the site's to
-        # say (`scheduler.placement_priority`, 2026-08-23).  Absent, `place`
-        # supplies its own default and the display names it as a default --
-        # the config does not pretend to have chosen.
-        _sched = _rc.get_scheduler(project_dir=base) or {}
         placed = place(_rc.get_routing(project_dir=base), want,
-                       prefer_gpu=gpu_side, named=named,
-                       priority=_sched.get("placement_priority"))
+                       prefer_gpu=gpu_side, named=named)
         # R9's SECOND record.  Routing reads the calculation scope first, so
         # a prepped bundle routes against the snapshot beside it -- which is
         # right for reproducibility and useless as a re-check, because it is
@@ -1259,8 +1266,8 @@ def _prepare_side_group(jobset: JobSet, base: Path, dirs, pending,
     ]
     script = launch_dir / f"{name}.run.sh"
     # THE ONE REQUEST (`_sbatch_request`): prep's envelope, what was said at
-    # launch, admitted on this side's queue (R9), the wall defaulted to
-    # that queue's ceiling.  The side IS the GPU answer -- partitioned by the
+    # launch, admitted on this side's queue (R9), every value stated.  The
+    # side IS the GPU answer -- partitioned by the
     # deck's own word in `submit_bench_group`, so nothing is re-derived here.
     envelope, placement, cmd = _sbatch_request(
         base, envelope=envelope, gpu_side=gpu_side, domain=domain, mem=mem,

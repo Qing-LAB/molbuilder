@@ -19,7 +19,6 @@ who can see the run directory; a token in one would be a token published.
 """
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
@@ -32,7 +31,8 @@ from molbuilder.jobset.model import Resources
 
 @pytest.fixture(autouse=True)
 def _setup(tmp_path, monkeypatch):
-    """Activation config (refuse-to-emit contract) + synthetic caps."""
+    """This machine's record (its activation: the refuse-to-emit contract)
+    + synthetic caps."""
     monkeypatch.chdir(tmp_path)
     # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
     # working-directory step, which is gone (configuration.md § 2.1a) --
@@ -42,9 +42,10 @@ def _setup(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
-    (tmp_path / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"activation": "source activate"}
-    }))
+    # The record follows the config root -- and carries the activation, its
+    # one home (`configuration.md` § 5 M-1).
+    from conftest import write_machine_record
+    write_machine_record()
     set_capabilities(Capabilities(
         runtime_config={}, conda_binary="/usr/bin/conda",
         conda_envs=frozenset({"molbuilder-siesta"}),
@@ -55,7 +56,8 @@ def _setup(tmp_path, monkeypatch):
 def _monitor_line(tmp_path: Path, **kw) -> str:
     f = tmp_path / "job.fdf"
     f.write_text("SystemLabel job\nNumberOfAtoms 8\n")
-    text = runwrap.render_run_wrapper(f, resources=Resources(mpi_np=4, **kw))
+    text = runwrap.render_run_wrapper(
+        f, resources=Resources(mpi_np=4, cpus_per_task=1, **kw))
     lines = [ln for ln in text.splitlines()
              if "mb_monitor.py" in ln and "--label" in ln]
     assert len(lines) == 1, f"expected one monitor launch, got {len(lines)}"
@@ -303,8 +305,8 @@ def test_no_destination_or_credential_is_written_into_the_wrapper(tmp_path):
     f = tmp_path / "job.fdf"
     f.write_text("SystemLabel job\nNumberOfAtoms 8\n")
     text = runwrap.render_run_wrapper(
-        f, resources=Resources(mpi_np=4, notify_on_scf=True,
-                               notify_every_hours=6))
+        f, resources=Resources(mpi_np=4, cpus_per_task=1,
+                               notify_on_scf=True, notify_every_hours=6))
     lowered = text.lower()
     for leak in ("hooks.slack.com", "discord.com/api/webhooks",
                  "authorization:", "bearer ", "--notify-url", "notify_token"):
@@ -333,7 +335,8 @@ def test_the_monitor_is_told_whether_the_run_uses_a_gpu(tmp_path, deck,
     f.write_text("SystemLabel job\nNumberOfAtoms 8\n" if deck.endswith(".fdf")
                  else 'JOB = "job"\n')
     text = runwrap.render_run_wrapper(
-        f, resources=Resources(mpi_np=4, use_gpu=use_gpu))
+        f, resources=Resources(mpi_np=4, cpus_per_task=1,
+                               use_gpu=use_gpu))
     line = next(ln for ln in text.splitlines()
                 if "mb_monitor.py" in ln and "--label" in ln)
     assert ("--gpu" in line.split()) is told, line
@@ -346,7 +349,8 @@ def test_a_deck_the_monitor_cannot_name_is_said_not_watched(tmp_path):
     wrapper says it at render, in its own log, and starts nothing."""
     f = tmp_path / "my.relaxation.fdf"
     f.write_text("SystemLabel my\nNumberOfAtoms 8\n")
-    text = runwrap.render_run_wrapper(f, resources=Resources(mpi_np=4))
+    text = runwrap.render_run_wrapper(
+        f, resources=Resources(mpi_np=4, cpus_per_task=1))
     assert not [ln for ln in text.splitlines()
                 if "mb_monitor.py" in ln and "--label" in ln], (
         "a monitor that cannot compose its own log's name was launched")

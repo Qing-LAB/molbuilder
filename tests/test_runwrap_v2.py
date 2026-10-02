@@ -5,15 +5,15 @@ The wrapper:
   * has no runtime config-file reads
   * has no env-var-driven behaviour switching (no MOLBUILDER_PREACTIVATE_CMDS)
   * has no runtime detection (no 6-path block, no autodetect)
-  * bakes ``preamble`` verbatim from molbuilder.json
+  * bakes ``preamble`` verbatim from the target machine's record
   * bakes a literal ``<activation_form> <env_name>`` line
-  * refuses to emit when ``script_generation.activation`` isn't set
+  * refuses to emit when the record states no activation (the record is
+    their one home since 2026-10-02 -- `configuration.md` § 5 M-1)
 
 These tests pin those properties on the rendered shell text.
 """
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import stat
@@ -24,10 +24,26 @@ import pytest
 
 from molbuilder.diagnostics import (Capabilities, EXTENSION_TO_CATEGORY,
                                      set_capabilities)
-from molbuilder.runtime_config import RuntimeConfigError
 from molbuilder.runwrap import (WrapperError, render_run_wrapper,
                                   write_run_wrapper)
 from molbuilder.jobset.model import Resources
+from molbuilder.scheduler import Environment, Topology
+
+
+def _record(**script_generation):
+    """A machine record stating how a shell enters an environment there --
+    the activation and preamble's one home (`configuration.md` § 5 M-1)."""
+    return Environment(scheduler="workstation", topology=Topology(),
+                       script_generation=script_generation)
+
+
+#: The canonical Sol setup, as `jobset probe --write --activation ...
+#: --preamble ...` records it.
+_SOL = _record(preamble="module load mamba\nexport FOO=bar",
+               activation="source activate")
+
+#: The launch shape every render here states (`architecture.md` § 5.2).
+_SHAPE = Resources(mpi_np=4, cpus_per_task=1)
 
 
 def _bind():
@@ -39,8 +55,9 @@ def _bind():
 
 @pytest.fixture
 def sandbox(tmp_path, monkeypatch):
-    """Server-wide molbuilder.json with the canonical Sol setup, in cwd
-    so the generator picks it up.  Also resets capabilities each test.
+    """This machine's record with the canonical Sol setup, at the config
+    root, so a deck rendered under it reads it.  Also resets capabilities
+    each test.
     """
     monkeypatch.chdir(tmp_path)
     # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
@@ -51,12 +68,7 @@ def sandbox(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
-    (tmp_path / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {
-            "preamble":   "module load mamba\nexport FOO=bar",
-            "activation": "source activate",
-        }
-    }))
+    (tmp_path / "environment.json").write_text(_SOL.to_json())
     _bind()
     yield tmp_path
     set_capabilities(None)
@@ -67,47 +79,21 @@ def sandbox(tmp_path, monkeypatch):
 # --------------------------------------------------------------------- #
 
 
-def test_render_refuses_when_no_activation_configured(tmp_path, monkeypatch):
-    """Per docs/execution/running-a-job.md § 5: missing ``activation`` -> generator
-    refuses to emit a wrapper that can't activate its env."""
-    monkeypatch.chdir(tmp_path)
-    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
-    # working-directory step, which is gone (configuration.md § 2.1a) --
-    # without naming the directory the write lands in a file nothing
-    # opens, and the test passes having configured nothing.
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "home").mkdir()
-    (tmp_path / "molbuilder.json").write_text(json.dumps({
-        # No script_generation -> no activation -> refuse-to-emit.
-    }))
+def test_render_refuses_a_record_that_states_no_activation():
+    """Per docs/execution/running-a-job.md § 5.2: a record with no
+    ``activation`` -- a preamble alone does not count -> the generator
+    refuses to emit a wrapper that can't activate its env.
+
+    API-LEVEL because the road cannot reach it: prep refuses such a target
+    first (`jobset.prep._require_activation`,
+    `tests/data/launch_values.toml`).  This is the emitter's own guard, for
+    a caller that reaches it directly."""
     _bind()
     try:
-        with pytest.raises(RuntimeConfigError, match="activation"):
-            render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
-    finally:
-        set_capabilities(None)
-
-
-def test_render_refuses_when_only_preamble_configured(tmp_path,
-                                                       monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
-    # working-directory step, which is gone (configuration.md § 2.1a) --
-    # without naming the directory the write lands in a file nothing
-    # opens, and the test passes having configured nothing.
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "home").mkdir()
-    (tmp_path / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"preamble": "module load mamba"},
-    }))
-    _bind()
-    try:
-        with pytest.raises(RuntimeConfigError, match="activation"):
-            render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
+        with pytest.raises(WrapperError, match="activation has no default"):
+            render_run_wrapper(Path("/x/JOB.fdf"), resources=_SHAPE,
+                               machine_record=_record(
+                                   preamble="module load mamba"))
     finally:
         set_capabilities(None)
 
@@ -118,7 +104,8 @@ def test_render_refuses_when_only_preamble_configured(tmp_path,
 
 
 def test_wrapper_does_not_cd(sandbox):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
+    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=_SHAPE,
+                              machine_record=_SOL)
     # No cd at the top of the wrapper.  Caller's cwd is the contract.
     assert "SLURM_SUBMIT_DIR" not in text or "cd " not in text.split(
         "SLURM_SUBMIT_DIR", 1)[0]
@@ -133,53 +120,26 @@ def test_wrapper_does_not_cd(sandbox):
 
 
 def test_preamble_baked_verbatim(sandbox):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
-    # Each preamble line from molbuilder.json appears literally.
+    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=_SHAPE,
+                              machine_record=_SOL)
+    # Each preamble line from the record appears literally.
     assert "module load mamba" in text
     assert "export FOO=bar" in text
-    # And under a sentinel naming the source scope.
-    assert "SERVER PREAMBLE (from molbuilder.json)" in text
+    # And under a sentinel naming its source -- the target's record, the
+    # one home (it read "SERVER PREAMBLE (from molbuilder.json)" until
+    # 2026-10-02).
+    assert "TARGET PREAMBLE (from the target machine's record)" in text
 
 
-def test_preamble_chunks_carry_correct_scope_labels(sandbox, tmp_path):
-    """When both server-wide and project-scope preambles exist,
-    each chunk appears under its OWN sentinel naming its scope."""
-    proj = tmp_path / "myproj"
-    proj.mkdir()
-    (proj / "JOB.fdf").write_text("# fake fdf\n")
-    (proj / ".molbuilder.json").write_text(json.dumps({
-        "script_generation": {
-            "preamble": "export PROJECT_VAR=xyz",
-        },
-    }))
-    text = render_run_wrapper(proj / "JOB.fdf", resources=Resources(mpi_np=4))
-    assert "SERVER PREAMBLE (from molbuilder.json)" in text
-    assert "PROJECT ADDITIONS (from .molbuilder.json)" in text
-    # Server preamble lines appear BEFORE project additions.
-    server_ix = text.find("module load mamba")
-    project_ix = text.find("PROJECT_VAR=xyz")
-    assert 0 < server_ix < project_ix
-
-
-def test_empty_preamble_emits_placeholder(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
-    # working-directory step, which is gone (configuration.md § 2.1a) --
-    # without naming the directory the write lands in a file nothing
-    # opens, and the test passes having configured nothing.
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "home").mkdir()
-    (tmp_path / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"activation": "source activate"},
-    }))
+def test_empty_preamble_emits_placeholder():
     _bind()
     try:
-        text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
-        # The "(none configured)" comment shows the empty case is
-        # explicit rather than silently elided.
-        assert "(none configured)" in text or "no script_generation" in text
+        text = render_run_wrapper(
+            Path("/x/JOB.fdf"), resources=_SHAPE,
+            machine_record=_record(activation="source activate"))
+        # The comment shows the empty case is explicit rather than silently
+        # elided.  (It read "(none configured)" until 2026-10-02.)
+        assert "(the target's record states no preamble)" in text
     finally:
         set_capabilities(None)
 
@@ -190,30 +150,21 @@ def test_empty_preamble_emits_placeholder(tmp_path, monkeypatch):
 
 
 def test_activation_baked_as_single_line(sandbox):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
+    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=_SHAPE,
+                              machine_record=_SOL)
     # Literal one-liner.  No conda-activate-with-fallback, no
     # source-activate-with-fallback, no 6-path detection block.
     assert "source activate molbuilder-siesta" in text
 
 
-def test_activation_form_from_config(tmp_path, monkeypatch):
+def test_activation_form_from_the_record():
     """``activation: "conda activate"`` produces a ``conda activate``
     line, not ``source activate``."""
-    monkeypatch.chdir(tmp_path)
-    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
-    # working-directory step, which is gone (configuration.md § 2.1a) --
-    # without naming the directory the write lands in a file nothing
-    # opens, and the test passes having configured nothing.
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "home").mkdir()
-    (tmp_path / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"activation": "conda activate"},
-    }))
     _bind()
     try:
-        text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
+        text = render_run_wrapper(
+            Path("/x/JOB.fdf"), resources=_SHAPE,
+            machine_record=_record(activation="conda activate"))
         assert "conda activate molbuilder-siesta" in text
         assert "source activate molbuilder-siesta" not in text
     finally:
@@ -226,7 +177,8 @@ def test_activation_form_from_config(tmp_path, monkeypatch):
 
 
 def test_no_six_path_detection_block(sandbox):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
+    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=_SHAPE,
+                              machine_record=_SOL)
     for needle in ("path 1:", "path 2:", "path 3:", "path 4:",
                     "path 5:", "path 6:",
                     "mamba info --base", "conda info --base",
@@ -238,13 +190,15 @@ def test_no_six_path_detection_block(sandbox):
 
 
 def test_no_molbuilder_preactivate_cmds_hook(sandbox):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
+    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=_SHAPE,
+                              machine_record=_SOL)
     # The runtime env-var hook is gone per docs/execution/running-a-job.md § 5
     assert "MOLBUILDER_PREACTIVATE_CMDS" not in text
 
 
 def test_no_autodetect_field(sandbox):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
+    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=_SHAPE,
+                              machine_record=_SOL)
     assert "autodetect_conda" not in text
 
 
@@ -257,7 +211,8 @@ def test_rendered_wrapper_passes_bash_n(sandbox, tmp_path):
     bash = shutil.which("bash")
     if bash is None:
         pytest.skip("bash unavailable")
-    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
+    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=_SHAPE,
+                              machine_record=_SOL)
     p = tmp_path / "JOB.run.sh"
     p.write_text(text)
     r = subprocess.run([bash, "-n", str(p)], capture_output=True, text=True)
@@ -270,7 +225,7 @@ def test_write_run_wrapper_writes_chmod_x(sandbox, tmp_path):
         pytest.skip("bash unavailable")
     fdf = tmp_path / "JOB.fdf"
     fdf.write_text("SystemLabel JOB\nNumberOfAtoms 2\n")
-    p = write_run_wrapper(fdf, resources=Resources(mpi_np=2))
+    p = write_run_wrapper(fdf, resources=Resources(mpi_np=2, cpus_per_task=1))
     assert p.stat().st_mode & stat.S_IXUSR
     r = subprocess.run([bash, "-n", str(p)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
@@ -301,7 +256,8 @@ def test_log_filename_does_not_hardcode_directory(sandbox):
     What the original test was protecting -- no generation-time directory baked
     into the text -- is what is asserted here.
     """
-    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=Resources(mpi_np=4))
+    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=_SHAPE,
+                              machine_record=_SOL)
     assert 'JOB.runwrap-$(date +%Y%m%d-%H%M%S).log' in text
     assert "/x/" not in text, "the generation-time directory must not be baked in"
     assert '_runwrap_log="/' not in text, "not a literal absolute path"

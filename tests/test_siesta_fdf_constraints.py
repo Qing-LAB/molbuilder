@@ -284,7 +284,6 @@ def test_the_wrappers_awk_reads_the_same_four_spellings(tmp_path, monkeypatch):
     """The wrapper counts constrained atoms in shell, so it cannot import
     the reader -- the PATTERN has to carry fdf's rule.  Rendered, extracted
     and run, rather than asserted from the generator's source."""
-    import json
     import re
     import subprocess
     import warnings
@@ -293,10 +292,11 @@ def test_the_wrappers_awk_reads_the_same_four_spellings(tmp_path, monkeypatch):
 
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
+    # The machine the wrapper is for, with how a shell enters an
+    # environment there -- the record is that fact's one home.
+    from conftest import write_machine_record
+    write_machine_record()
 
     deck = tmp_path / "JOB.fdf"
     deck.write_text("SystemName t\nSystemLabel t\nNumberOfAtoms 3\n")

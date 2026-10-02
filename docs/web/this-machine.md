@@ -131,7 +131,8 @@ producing.
 runs on** *(user, 2026-09-01)*. There is no mode, no probe and no branch: this
 page writes `<config dir>/secrets/notify` on this box.
 
-> **It gated on `execution.mode != "submit"` until 2026-09-01**, reading
+> **It gated on `execution.mode != "submit"` until 2026-09-01** (the setting
+> is `launch.mode` since 2026-10-02), reading
 > `submit` as *"the jobs run somewhere this server cannot reach"* and refusing
 > to save. That is not what the setting means —
 > [`running-a-job.md`](?doc=execution/running-a-job.md) § 5.4 defines it as

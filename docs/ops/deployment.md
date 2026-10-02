@@ -487,10 +487,10 @@ consults, which is what "always
 write the per-user one" would do on a machine that already has a `./` config.
 
 **These are the server's sections.** The same file also carries what
-*calculations* need — `script_generation`, `scheduler`, `execution`, `envs`,
-`checkpoint` — which are [`execution/running-a-job.md`](?doc=execution/running-a-job.md)
-§ 5. The complete map of every section, who reads it, and where it lands in the
-workflow is [`execution/architecture.md`](?doc=execution/architecture.md) § 7.
+*calculations* need — `launch`, `envs`, `checkpoint` — which are
+[`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 5. Every key
+the file may hold, what it is for and who reads it is
+[`configuration.md`](?doc=configuration.md) § 4.
 
 | Key | Controls |
 |---|---|
@@ -520,12 +520,14 @@ from the exact OOM it would let you hit.
 and `envs bootstrap` runs that at the end of a first install. It seeds every
 section that can be empty, each with a `_`-prefixed comment block saying who
 fills it in — you, a command, or a probe — and it *asks* the two values only you
-know (the activation form, and where the projects tree lives). A generated
+know: the activation form, which it writes into this machine's record, and
+where the projects tree lives. A generated
 template cannot drift from the reader, because the same package writes both.
 
-**Your site's own values come from your site.** Partition and QOS names from
-`sinfo` / `sacctmgr`, GPU types from the node definitions, queue limits from
-whoever runs the cluster — not from a preset in here. For ASU Sol specifically
+**Your site's own values come from your site** — measured by `jobset probe`
+on it into its record, never written into this file (`configuration.md` § 4):
+partitions, QOS, GPUs and queue limits are the cluster's facts, and a job states
+which queue it uses. For ASU Sol specifically
 those numbers and the reasoning behind them are in
 [`execution/asu-sol.md`](?doc=execution/asu-sol.md), which is documentation about
 a machine rather than a file you copy over your own config.

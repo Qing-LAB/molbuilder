@@ -12,7 +12,6 @@ the extracted block-emitters are the contracts; these tests pin them:
 """
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -25,7 +24,8 @@ from molbuilder.jobset.model import Resources
 
 @pytest.fixture(autouse=True)
 def _setup(tmp_path, monkeypatch):
-    """Activation config (refuse-to-emit contract) + synthetic caps."""
+    """This machine's record (its activation: the refuse-to-emit contract)
+    + synthetic caps."""
     monkeypatch.chdir(tmp_path)
     # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
     # working-directory step, which is gone (configuration.md § 2.1a) --
@@ -35,9 +35,10 @@ def _setup(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
-    (tmp_path / "molbuilder.json").write_text(json.dumps({
-        "script_generation": {"activation": "source activate"}
-    }))
+    # The record follows the config root -- and carries the activation, its
+    # one home (`configuration.md` § 5 M-1).
+    from conftest import write_machine_record
+    write_machine_record(script_generation={"activation": "source activate"})
     set_capabilities(Capabilities(
         runtime_config={}, conda_binary="/usr/bin/conda",
         conda_envs=frozenset({"molbuilder-siesta", "molbuilder-siesta-gpu"}),
@@ -48,13 +49,15 @@ def _setup(tmp_path, monkeypatch):
 def _gpu(tmp_path: Path, np: int = 4) -> str:
     f = tmp_path / "g.fdf"
     f.write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .true.\n")
-    return runwrap.render_run_wrapper(f, resources=Resources(mpi_np=np))
+    return runwrap.render_run_wrapper(
+        f, resources=Resources(mpi_np=np, cpus_per_task=1))
 
 
 def _cpu(tmp_path: Path, np: int = 20) -> str:
     f = tmp_path / "c.fdf"
     f.write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .false.\n")
-    return runwrap.render_run_wrapper(f, resources=Resources(mpi_np=np))
+    return runwrap.render_run_wrapper(
+        f, resources=Resources(mpi_np=np, cpus_per_task=1))
 
 
 # --------------------------------------------------------------------- #
@@ -196,7 +199,7 @@ def test_dry_run_present_for_cpu_without_gpu_mapping(tmp_path):
 def test_pyscf_has_dry_run(tmp_path):
     p = tmp_path / "q.py"
     p.write_text("# fake\n")
-    t = runwrap.render_run_wrapper(p, resources=Resources())
+    t = runwrap.render_run_wrapper(p, resources=Resources(cpus_per_task=1))
     assert "--dry-run|--dryrun)" in t
     assert "molbuilder DRY RUN (no PySCF launch)" in t
 
@@ -273,7 +276,7 @@ def test_pyscf_has_no_scf_timing(tmp_path):
     """
     p = tmp_path / "q.py"
     p.write_text("# fake\n")
-    t = runwrap.render_run_wrapper(p, resources=Resources())
+    t = runwrap.render_run_wrapper(p, resources=Resources(cpus_per_task=1))
     assert "_mb_scf_tee" not in t
     assert "SCF per-iteration timing instrument" not in t
     assert "_scf_timing_log=" not in t
@@ -317,12 +320,10 @@ def test_wrapper_ships_standalone_monitor(tmp_path):
     own file, runnable with the job's python -- beside every engine's job
     since 2026-09-26 (`run-reports.md` § 2.3); a PySCF job got none before,
     and until then the modules stood beside the deck as fourteen files."""
-    import json
-    (tmp_path / "molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "source activate"}}))
     fdf = tmp_path / "j.fdf"
     fdf.write_text("NumberOfAtoms 10\nDiag.ELPA.GPU .true.\n")
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=2), emit_sbatch=False)
+    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=2, cpus_per_task=1),
+                              emit_sbatch=False)
     shipped = tmp_path / runwrap.MONITOR_BUNDLE
     assert shipped.is_file()
     import zipfile
@@ -369,7 +370,8 @@ def test_wrapper_ships_standalone_monitor(tmp_path):
     # every engine -- and, one file, nothing of it can be left behind.
     py = tmp_path / "q.py"; py.write_text("# fake\n")
     shipped.unlink()
-    runwrap.write_run_wrapper(py, resources=Resources(), emit_sbatch=False)
+    runwrap.write_run_wrapper(py, resources=Resources(cpus_per_task=1),
+                              emit_sbatch=False)
     assert shipped.read_bytes() == runwrap.monitor_bundle()
 
 

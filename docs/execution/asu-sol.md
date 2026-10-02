@@ -4,8 +4,8 @@
 **Domain:** execution
 
 **Companions:**
-[`execution/architecture.md`](?doc=execution/architecture.md) § 8 — the config
-file whose `scheduler.routing` this fills in;
+[`configuration.md`](?doc=configuration.md) § 5 — Sol's machine record,
+whose queues `jobset probe` fills in on Sol;
 [`execution/generator.md`](?doc=execution/generator.md) § 4 — capability,
 allocation and sweep, and why per-domain hardware is needed;
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 5 — the config
@@ -13,8 +13,10 @@ guide a person actually edits.
 
 > **This is a snapshot of somebody else's facility, not a contract.**
 > ASU Research Computing changes Sol without telling us. **Nothing in
-> `molbuilder/` may hard-code a number from this page** — they belong in
-> `molbuilder.json`, and this document exists to say *what to put there and why*.
+> `molbuilder/` may hard-code a number from this page** — they belong in Sol's
+> record, written by `jobset probe` on Sol, and each job states its own queue,
+> wall, memory and shape ([`architecture.md`](?doc=execution/architecture.md)
+> § 5.2). This document says what Sol offers and why it matters.
 > Sources and the date it was read are at the foot; re-read before trusting it.
 
 ---
@@ -27,8 +29,8 @@ informative:**
 
 1. **A domain's limits are a property of the (partition, QOS) *pair*** — not of
    the partition. `general` is 7 days at `public` QOS and 14 at `long`.
-   `molbuilder.json`'s `routing` already models a domain as a named bundle of
-   partition + QOS + limits, which turns out to be exactly right.
+   The machine record models a domain as a named bundle of partition + QOS +
+   limits, which turns out to be exactly right.
 2. **GPU nodes have fewer cores than CPU nodes** — 48 against 128. So *"run it
    with GPUs"* and *"run it on CPU"* are not the same machine with an
    accelerator bolted on; they are different node types with different core
@@ -100,7 +102,7 @@ informative:**
 #SBATCH -c 32             # cores
 #SBATCH --mem=80GB        # memory for the whole job
 #SBATCH -N 2              # nodes -- MPI only
-#SBATCH -G a100:1         # GPUs, by type
+#SBATCH --gres=gpu:1      # GPUs -- a count (Sol also takes a type, e.g. a100:1; molbuilder names none)
 ```
 
 **Facts with consequences:**
@@ -109,7 +111,7 @@ informative:**
 |---|---|
 | **memory defaults to 2 GB per core** when unspecified | a job asking `-c 128` and no `--mem` gets 256 GB, not the node's 512. The wrapper should not rely on the default |
 | **`--mem=0` means the whole node's memory** | already the documented value of `Resources.mem` |
-| **`-G` names the GPU *type*** — `a100:1`, `a100.40gb:1`, `a100.20gb:1`, `a30:2` | the MIG slices are separate askable types, not a smaller ask of the same one. A GPU sweep axis is over *(type, count)*, not a bare count |
+| **`-G` can name the GPU *type*** — `a100:1`, `a100.40gb:1`, `a100.20gb:1`, `a30:2` | molbuilder asks a count, `--gres=gpu:N`, and names no card ([`gpu.md`](?doc=execution/gpu.md) § 1.2): which card a job lands on is Sol's to decide, and the run log records it |
 | **`-N` only helps MPI** | true for SIESTA, false for the PySCF path — so it is not a global default |
 
 ---
@@ -198,8 +200,8 @@ has the monitor record it on the node rather than inferring it from the queue.
 
 ### 5.3 Decision 38's shape, now concrete
 
-The per-domain block `scheduler.routing` is missing needs exactly the columns
-this page has:
+A queue's row in the machine record (`environment.json`'s `domains`, written by
+the probe) needs exactly the columns this page has:
 
 ```jsonc
 { "name": "bench",                  // what you type: --domain bench

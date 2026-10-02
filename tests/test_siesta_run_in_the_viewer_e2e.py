@@ -68,8 +68,11 @@ def finished(isolated_projects_root_module, tmp_path_factory):
         # and so not to a module's fixture (`conftest`).
         mp.delenv("MOLBUILDER_CONFIG_DIR", raising=False)
         mp.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("xdg")))
+        # ...the box probed, its record saying how a shell enters conda here
+        # -- the activation's one home (`configuration.md` § 5 M-1).
         from conftest import write_machine_record
-        write_machine_record()
+        write_machine_record(script_generation={
+            "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
         mp.chdir(tree.parent)
         bin_ = env_bin("molbuilder-siesta")
         assert (bin_ / "siesta").is_file(), bin_
@@ -81,11 +84,9 @@ def finished(isolated_projects_root_module, tmp_path_factory):
                     "--name", "H2", "--psml-lib", "pseudopotential")
         assert r.exit_code == 0, r.output
         bundle = tree / "P" / "opt" / "R"
-        (bundle / ".molbuilder.json").write_text(json.dumps(
-            {"script_generation": {"activation": "conda activate",
-                                   "preamble": f"source {CONDA_SH}"}}))
         task = json.loads((bundle / "task.json").read_text())
-        task["execution"] = {**task.get("execution", {}), "mpi_np": 1}
+        task["execution"] = {**task.get("execution", {}), "mpi_np": 1,
+                             "omp_threads": 1}
         (bundle / "task.json").write_text(json.dumps(task, indent=2))
         r = _jobset("prep", "run", "coarse", "--bundle", str(bundle),
                     "--target", "this")

@@ -58,9 +58,9 @@ def calc_dir(isolated_projects_root_module):
     from conftest import write_pseudos
     from molbuilder import describe as D
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.scheduler import Environment, Topology
+    from molbuilder.scheduler import Domain, Environment, Topology
     from molbuilder.structure import Structure
-    from molbuilder.task import Stage
+    from molbuilder.task import Allocation, Stage, read_task, write_task
 
     root = isolated_projects_root_module / "prep_e2e"
     src_dir = root / "structure"
@@ -98,23 +98,27 @@ def calc_dir(isolated_projects_root_module):
         # a wrapper generated here would otherwise carry THIS machine's way
         # into its environment -- a path that need not exist on the target
         # (the refusal names it, and prep is right to refuse).
+        # A SCHEDULER, or there is no `.sbatch` to read -- and the whole point
+        # of this test is the header that comes out.  A cluster is its RECORD:
+        # a scheduler and the queues it lists.
         (d / "environment.json").write_text(
             Environment(scheduler="slurm",
                         topology=Topology(sockets=2, cores_per_socket=32),
+                        domains=[Domain(name="public", partition="public",
+                                        qos="public", max_time="1-00:00:00")],
                         script_generation={"preamble": "true",
                                            "activation": "conda activate"},
                         ).to_json() + "\n", encoding="utf-8")
-        # A SCHEDULER, or there is no `.sbatch` to read: `prep_jobset` emits
-        # one only when the bundle names a queue system, and the whole point
-        # of this test is the header that comes out.
-        (d / ".molbuilder.json").write_text(json.dumps({
-            "scheduler": {
-                "kind": "slurm",
-                "directives": {"partition": "public", "qos": "public"},
-                "defaults": {"time": "0-04:00:00", "cpus_per_task": None,
-                             "mem": None},
-            },
-        }), encoding="utf-8")
+        # ...and a run on it STATES its queue, wall, memory and cores per
+        # rank (`architecture.md` § 5.2): the description says them, and the
+        # card adds the rank count the test types.
+        t = read_task(d / "task.json")
+        write_task(d / "task.json", type(t)(
+            **{**{f.name: getattr(t, f.name)
+                  for f in __import__("dataclasses").fields(t)},
+               "execution": {"omp_threads": 1},
+               "allocation": Allocation(domain="public", time="0-04:00:00",
+                                        mem="8G")}))
         yield d
     finally:
         # No rmtree: the tree lives under `tmp_path_factory`, which pytest
@@ -939,6 +943,8 @@ def two_stage_dir(isolated_projects_root):
         # exactly why every enabled stage can be measured.
         task = _json.loads((d / "task.json").read_text())
         task["bench"] = {"mpi_np": [1, 2]}
+        # ...and the run's shape, stated -- a run states it or is refused.
+        task["execution"] = {"mpi_np": 2, "omp_threads": 1}
         (d / "task.json").write_text(_json.dumps(task, indent=2),
                                      encoding="utf-8")
 
@@ -1204,7 +1210,17 @@ def test_a_bench_grid_answer_that_arrives_late_is_dropped(
         const orig = window.fetch;
         window.__grid = {calls: 0, release: null};
         window.fetch = function (url, opts) {
-            if (String(url).includes("/api/task-setup/bench-grid")) {
+            // THE BENCH CARD'S requests -- an axis of several points.  The
+            // run card asks the same door for its grid of one (one point
+            // each, `refreshRunFit`), and those pass through untouched: they
+            // are a different card's answer, and counting them would shift
+            // the order this test controls.
+            let bench = {};
+            try { bench = JSON.parse((opts && opts.body) || "{}").bench || {}; }
+            catch (e) { bench = {}; }
+            const several = Object.values(bench).some(
+                (v) => Array.isArray(v) && v.length > 1);
+            if (several && String(url).includes("/api/task-setup/bench-grid")) {
                 const idx = ++window.__grid.calls;
                 // Each answer is self-identifying, and the LATER one is
                 // deliberately the SMALLER grid: an off-by-one guard that

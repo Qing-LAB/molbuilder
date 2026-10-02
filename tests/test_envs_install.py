@@ -1565,7 +1565,8 @@ def test_bootstrap_that_could_not_seed_the_config_exits_nonzero(monkeypatch):
     report with it.  But until 2026-09-12 it was not RECORDED either: the
     except block printed a warning and the exit code came from doctor alone, so
     `bootstrap` returned 0 having created no config directory at all.  Every
-    later verb then refuses for want of `script_generation.activation`.
+    later verb then refuses for want of an activation in this machine's
+    record.
 
     The realistic trigger is the form the guide shows: `bootstrap` without
     `--yes` has two questions to ask, and with no tty on stdin (nohup, CI, a

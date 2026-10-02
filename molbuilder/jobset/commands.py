@@ -67,10 +67,10 @@ def command(verb: str, *words, base, flags=()) -> str:
 
 def configured_mode(base) -> Optional[str]:
     """The launch mode this calculation's config states, or ``None`` --
-    `runtime_config.get_execution`, the reader `launch` falls back on."""
-    from ..runtime_config import get_execution
+    `runtime_config.get_launch`, the reader `launch` falls back on."""
+    from ..runtime_config import get_launch
     try:
-        return (get_execution(project_dir=Path(base)) or {}).get("mode") or None
+        return get_launch(project_dir=Path(base)).get("mode") or None
     except Exception:                                    # noqa: BLE001
         return None          # a malformed config is `launch`'s to refuse
 

@@ -647,13 +647,14 @@ choose its environment; `run_step` had an `env` parameter no caller passed, and 
 is gone.
 
 **What this does NOT cover: a generated job script.** `runwrap.py` writes the
-activation line into a wrapper **verbatim from `script_generation.activation`**
-and must keep doing so. That script runs on a machine this process cannot probe
--- a cluster node, after `module load`, possibly minutes or days later -- so the
-only correct source is what the operator declared
-([`configuration.md`](?doc=configuration.md) § 4, `script_generation`). M1 is
-about the env manager **on this machine, now**; the wrapper's activation is a
-user-owned fact, and detecting it here would be the same error in the other
+activation line into a wrapper **verbatim from the target's record** (its
+`script_generation`, recorded by `jobset probe` on that machine) and must keep
+doing so. That script runs on a machine this process cannot probe -- a cluster
+node, after `module load`, possibly minutes or days later -- so the only
+correct source is what was declared for that machine
+([`configuration.md`](?doc=configuration.md) § 5 M-1). M1 is about the env
+manager **on this machine, now**; the wrapper's activation is a declared fact
+of the target, and detecting it here would be the same error in the other
 direction.
 
 **A prefix is asked for, never derived**, and a printed remedy names the

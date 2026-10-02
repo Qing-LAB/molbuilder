@@ -1046,15 +1046,15 @@ def write_machine_record(at=None, **over):
     """
     from molbuilder.scheduler import (Environment, Topology,
                                       machine_scope_path, write_environment)
-    # NO `script_generation` BY DEFAULT.  The record ALWAYS travels to the
-    # generator (2026-08-24), so a preamble stated here REPLACES the one a
-    # test put in its own `.molbuilder.json` -- which is how the vibration
-    # end-to-end came to bake `preamble: true` over `source .../conda.sh`,
-    # activate an env that was never initialised, and land no artifact.
-    # The record says what the MACHINE is; how to enter an environment is
-    # the test's to state, and the ones that need it pass it here.
+    # HOW A SHELL ENTERS AN ENVIRONMENT HERE, as a probed record carries it
+    # since that record became its one home (`configuration.md` § 5 M-1,
+    # 2026-10-02): `conda activate`, behind a preamble that does nothing.  A
+    # test that runs a real engine passes its own -- the real conda hook --
+    # and there is no second home left for the two to disagree in.
     fields = dict(scheduler="",          # a workstation: no queue system
-                  topology=Topology(sockets=2, cores_per_socket=8))
+                  topology=Topology(sockets=2, cores_per_socket=8),
+                  script_generation={"activation": "conda activate",
+                                     "preamble": "true"})
     fields.update(over)
     out = (Path(at) / "environment.json") if at else Path(machine_scope_path())
     out.parent.mkdir(parents=True, exist_ok=True)

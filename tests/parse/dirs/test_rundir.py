@@ -355,7 +355,6 @@ def test_a_python_file_that_names_no_job_is_nobodys_deck(
     script beside both.
 
     MUTATION THIS MUST FAIL AGAINST: take a `.py` file's stem as a label."""
-    import json
     from click.testing import CliRunner
     from molbuilder import describe as D
     from molbuilder.config.pyscf import PySCFConfig
@@ -376,16 +375,21 @@ def test_a_python_file_that_names_no_job_is_nobodys_deck(
                             shape="hierarchical", name="H2",
                             source=str(root / "in.xyz")),
         dest, struct=struct)
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
+    # The calculation's record: the machine it is prepped for, with how a
+    # shell enters an environment there -- the activation's one home
+    # (`configuration.md` § 5 M-1).
     (dest / "environment.json").write_text(
         Environment(scheduler="workstation",
-                    topology=Topology(sockets=1, cores_per_socket=4)
+                    topology=Topology(sockets=1, cores_per_socket=4),
+                    script_generation={"activation": "conda activate",
+                                       "preamble": "true"}
                     ).to_json() + "\n")
+    # ...and the run's threads, stated as every run's are
+    # (`architecture.md` § 5.2).
     r = CliRunner().invoke(jobset_group, ["prep", "run", stages[0].name,
                                           "--bundle", str(dest),
-                                          "--no-sbatch"])
+                                          "--no-sbatch",
+                                          "--cpus-per-task", "1"])
     assert r.exit_code == 0, r.output
     attempt = next(dest.glob("*_*/run-0"))
     token = attempt.parent.name

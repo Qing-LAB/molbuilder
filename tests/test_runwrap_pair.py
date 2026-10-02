@@ -16,7 +16,6 @@ overlap.
 """
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
@@ -25,15 +24,8 @@ import pytest
 from molbuilder import diagnostics
 from molbuilder.diagnostics import Capabilities
 from molbuilder.jobset.model import Resources
-from molbuilder import runwrap
 from molbuilder.runwrap import write_run_wrapper
 
-
-_SCHED = {
-    "kind": "slurm",
-    "directives": {"partition": "public", "qos": "public"},
-    "defaults": {"time": "0-04:00:00", "cpus_per_task": None, "mem": None},
-}
 
 _DECK = ("SystemLabel JOB\nNumberOfAtoms 8\nNumberOfSpecies 1\n"
          "%block ChemicalSpeciesLabel\n 1 1 H\n%endblock ChemicalSpeciesLabel\n")
@@ -50,20 +42,26 @@ def _caps():
 
 @pytest.fixture
 def project(tmp_path, monkeypatch):
-    """A bundle with a scheduler configured, and cwd + HOME isolated.
+    """A bundle prepped for a machine with a scheduler -- its record lists the
+    `public` queue and says how a shell enters an environment there -- and
+    cwd + HOME isolated.
 
     Isolated for the reason the 2026-08-12 memory records: without it these
-    read the DEVELOPER's ``molbuilder.json`` and pass off config the test
-    never wrote.
+    read the DEVELOPER's config and pass off a setup the test never wrote.
     """
+    from molbuilder.scheduler import (FILENAME, Domain, Environment,
+                                      Topology, write_environment)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
     monkeypatch.chdir(tmp_path)
-    (tmp_path / ".molbuilder.json").write_text(json.dumps({
-        "script_generation": {"preamble": "module load mamba/latest",
-                              "activation": "source activate"},
-        "scheduler": _SCHED}))
+    write_environment(Environment(
+        scheduler="slurm", topology=Topology(sockets=2, cores_per_socket=64),
+        domains=[Domain(name="public", partition="public", qos="public",
+                        max_time="7-00:00:00")],
+        script_generation={"preamble": "module load mamba/latest",
+                           "activation": "source activate"}),
+        tmp_path / FILENAME)
     return tmp_path
 
 
@@ -77,7 +75,8 @@ def _render(project: Path, resources: Resources, deck: str = _DECK):
 
 
 def _baked(run_sh: str, name: str) -> list[str]:
-    """The wrapper's generation-time defaults, both branches of the GPU case."""
+    """The wrapper's baked values -- one assignment each since 2026-10-02,
+    when the launch-time GPU/CPU branch they were chosen between went."""
     return re.findall(rf"{name}=(\S+)", run_sh)
 
 
@@ -93,16 +92,17 @@ def test_the_pair_agrees_about_ranks_and_cores(project):
     workstation target is supported — so ``SLURM_CPUS_PER_TASK`` rescuing the
     scheduled path is not the same as the pair agreeing.
     """
-    res = Resources(mpi_np=16, cpus_per_task=8)
+    res = Resources(mpi_np=16, cpus_per_task=8, domain="public",
+                    time="0-04:00:00", mem="8G")
     run_sh, sbatch = _render(project, res)
 
     assert _directive(sbatch, "-n") == "16", sbatch
     assert _directive(sbatch, "-c") == "8", (
         "the sbatch header lost the core count:\n" + sbatch)
 
-    assert _baked(run_sh, "_mpi_np_default") == ["16", "16"], (
+    assert _baked(run_sh, "_mpi_np_default") == ["16"], (
         "the launcher's baked rank count disagrees with `-n 16`")
-    assert _baked(run_sh, "_omp_threads_default") == ["8", "8"], (
+    assert _baked(run_sh, "_omp_threads_default") == ["8"], (
         "the launcher's baked OMP default disagrees with `-c 8`.  Off a "
         "scheduler this default IS the thread count, so a benchmark sweeping "
         "cores-per-rank measures one point N times.")
@@ -119,29 +119,3 @@ def test_the_door_refuses_a_loose_allocation(project):
     fdf.write_text(_DECK)
     with pytest.raises(TypeError):
         write_run_wrapper(fdf, mpi_np=16, cpus_per_task=8)
-
-
-def test_nothing_answering_the_rank_count_is_a_REFUSAL_naming_the_command(
-        project):
-    """**A rank count is read from a record and nowhere else** -- no probe of
-    the box that happens to be running, no fallback, no floor
-    (`running-a-job.md` § 3.1; user, 2026-09-02: *"even for the current
-    machine, the environment.json must be present"*, *"so we are not guess at
-    all"*).
-
-    One rule, so one test: a record that says nothing about width and no
-    record at all are the same case, and a refusal is only useful if it says
-    what to do.
-
-    A record-less render fell back to this box's `physical_core_count` for
-    part of 2026-09-02, with a test pinning the fallback -- a test asserting a
-    rule no document stated, which would have kept the guess alive through the
-    next rewrite.  Both are retired."""
-    from molbuilder.scheduler import Environment
-    fdf = project / "j.fdf"
-    fdf.write_text("SystemLabel j\nNumberOfAtoms 512\n")
-    for record in (None, Environment(scheduler="slurm")):   # absent, and silent
-        with pytest.raises(runwrap.WrapperError) as exc:
-            runwrap.render_run_wrapper(fdf, resources=Resources(),
-                                       machine_record=record)
-        assert "jobset probe --write" in str(exc.value), str(exc.value)

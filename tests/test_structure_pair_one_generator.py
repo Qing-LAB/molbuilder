@@ -49,7 +49,8 @@ def _a_clock_that_does_not_tick_mid_test(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _a_machine_config_with_an_activation(tmp_path, monkeypatch):
-    """`render_run_wrapper` refuses without `script_generation.activation`.
+    """`render_run_wrapper` refuses without an activation in the machine's
+    record (`configuration.md` § 5 M-1).
 
     These tests took it from whatever `./molbuilder.json` happened to sit in
     the repo root -- the developer's own, which no test had put under control,
@@ -59,21 +60,18 @@ def _a_machine_config_with_an_activation(tmp_path, monkeypatch):
     """
     root = tmp_path / "config-root"
     root.mkdir(parents=True, exist_ok=True)
-    (root / "molbuilder.json").write_text(json.dumps({
-        # `conda activate` with no preamble: the suite stubs `conda` to
-        # succeed silently, which is all a wrapper in a bare shell needs
-        # (conftest's `product_toolchain_is_the_suites_own`).
-        "script_generation": {"preamble": "", "activation": "conda activate"}}))
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(root))
-    # A PROBED MACHINE.  Since 2026-09-02 a rank count is read from a record
-    # and nowhere else -- no probe of the running box, no fallback
-    # (`running-a-job.md` § 3.1).  A wrapper cannot be rendered on an
-    # unprobed machine, so a fixture that renders one probes first,
-    # exactly as a person does:  molbuilder jobset probe --write
+    # A PROBED MACHINE, as a person records one: `molbuilder jobset probe
+    # --write`, the activation declared to it.  `conda activate` with no
+    # preamble: the suite stubs `conda` to succeed silently, which is all a
+    # wrapper in a bare shell needs (conftest's
+    # `product_toolchain_is_the_suites_own`).
     from molbuilder.scheduler import Environment as _Env, Topology as _Topo
     (root / "environment.json").write_text(
         _Env(scheduler="slurm",
-             topology=_Topo(sockets=2, cores_per_socket=32)).to_json()
+             topology=_Topo(sockets=2, cores_per_socket=32),
+             script_generation={"preamble": "",
+                                "activation": "conda activate"}).to_json()
         + "\n")
 
 

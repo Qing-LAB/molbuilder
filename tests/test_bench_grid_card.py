@@ -71,13 +71,14 @@ def bundle(tmp_path):
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "true"}}))
     env = Environment(scheduler="slurm",
                       topology=Topology(sockets=2, cores_per_socket=32,
                                         gpus_per_node=4),
-                      domains=[Domain.from_row(r) for r in _DOMAINS])
+                      domains=[Domain.from_row(r) for r in _DOMAINS],
+                      # how a shell enters an environment there -- the
+                      # record's fact (`configuration.md` § 5 M-1)
+                      script_generation={"activation": "conda activate",
+                                         "preamble": "true"})
     (dest / "environment.json").write_text(env.to_json() + "\n")
     # A GPU RUN STATES HOW MANY (`execution/gpu.md` G5), on the calculation's
     # run card; the bench never reads it.

@@ -9,10 +9,11 @@ person's ``molbuilder.json``; it is now ``domains`` in ``environment.json``,
 because a reachable domain is what ``sinfo``/``sacctmgr`` measured and
 `configuration.md` § 5 M-1 puts measurements in the machine record.
 
-**Corrected the same day**: the key is NOT an error.  You can only probe the
-machine you are standing on, so a workstation describing a cluster must be
-able to DECLARE its domains.  Probed wins where both exist; declared is the
-fallback, and carries the operator's own columns through whole.
+**And the record is its ONLY home** *(2026-10-02)*: a declared
+``scheduler.routing`` stood in as a fallback when nothing was probed, and it
+described a machine its author was not on.  A target's queues are probed on
+that machine and its record copied here; the whole ``scheduler`` block is
+refused by name (`configuration.md` § 4, § 5 M-1).
 """
 
 import json
@@ -24,17 +25,8 @@ from molbuilder.scheduler import (FILENAME, Domain, Environment, Site,
                                     Topology, write_environment)
 from molbuilder.runtime_config import (PROJECT_CONFIG_FILENAME,
                                        RuntimeConfigError, get_routing,
-                                       get_scheduler)
+                                       read_effective_config)
 from molbuilder.scheduler.quantities import parse_walltime
-
-
-def _write_config(tmp_path, scheduler_block):
-    (tmp_path / PROJECT_CONFIG_FILENAME).write_text(
-        json.dumps({"scheduler": scheduler_block}))
-
-
-_SCHED = {"kind": "slurm",
-          "directives": {"partition": "public", "qos": "public"}}
 
 _DOMAINS = [
     Domain(name="debug",  max_time="0-00:15:00", partition="htc", qos="debug"),
@@ -100,7 +92,6 @@ def test_get_routing_reads_the_calculations_record(tmp_path):
 
 
 def test_get_routing_is_empty_without_a_record(tmp_path):
-    _write_config(tmp_path, _SCHED)
     assert get_routing(project_dir=tmp_path) == []
 
 
@@ -127,89 +118,6 @@ def test_the_calculations_record_wins_over_the_machines(tmp_path):
         ["debug", "htc", "public"]
 
 
-# ---- the old home is DECLARED capability, not an error ---------------- #
-
-def test_declared_routing_is_read_when_nothing_was_probed(tmp_path):
-    """**You can only probe the machine you are standing on.**
-
-    N4 refused ``scheduler.routing`` outright, on the rule "domains are
-    probed, not declared".  That bricked `prep` on a workstation whose config
-    described a cluster -- not an edge case but the ordinary way this is used:
-    describe here, run there, and the cluster cannot be probed from here.  The
-    axis is fact vs preference; a fact may be declared.
-    """
-    _write_config(tmp_path, dict(_SCHED, routing=[
-        {"name": "gpu", "partition": "general", "qos": "public",
-         "max_time": "7-00:00:00"}]))
-    assert [d.name for d in get_routing(project_dir=tmp_path)] == ["gpu"]
-    assert get_scheduler(project_dir=tmp_path) is not None
-
-
-def test_declared_rows_keep_the_operators_own_columns(tmp_path):
-    """R10 (2026-08-12), which the N4 draft retired on a false premise.
-
-    I justified dropping that guard with *"nobody hand-writes a column
-    there"*.  The developer's own config hand-writes several per row --
-    ``node_types``, ``max_cores``, ``max_mem_gb``, ``default_mem_per_core_gb``,
-    ``gpu{}`` -- and the memory ones are values NO probe may invent, by the
-    prober's own note.  *(The scalar ``node_type`` was retired 2026-08-27
-    — scheduler.md R11; a declared one lands in ``extra`` uninterpreted,
-    which this now pins so the retirement cannot silently half-happen.)*
-    """
-    _write_config(tmp_path, dict(_SCHED, routing=[
-        {"name": "gpu", "partition": "general", "qos": "public",
-         "max_time": "7-00:00:00",
-         "node_types": [{"cores": 48, "nodes": 52, "mem_gb": 503.5,
-                         "gpu": {"a100": 4}}],
-         "node_type": "gpu-a100",
-         "max_cores": 48, "max_mem_gb": 512,
-         "gpu": {"type": "a100", "per_node": 4, "mem_gb": 80}}]))
-    row = get_routing(project_dir=tmp_path)[0]
-    assert row.node_types == [{"cores": 48, "nodes": 52, "mem_gb": 503.5,
-                               "gpu": {"a100": 4}}]
-    assert not hasattr(row, "node_type"), (
-        "the retired scalar grew back on the Domain type")
-    assert row.extra.get("node_type") == "gpu-a100", (
-        "an operator's declared node_type must survive in extra, "
-        "uninterpreted (R2) -- silently dropping a column is the R10 bug")
-    assert row.max_cores == 48
-    assert row.gpu == {"type": "a100", "per_node": 4, "mem_gb": 80}
-
-
-def test_one_shape_whichever_source_answered(tmp_path):
-    """**The same row in, the same row out** — from either source.
-
-    `get_routing` built a 4-key mapping by hand on the probed branch and
-    passed declared rows through whole on the other, so a caller got 4 keys or
-    6 depending on which file answered *the same function*.  That is two
-    representations of one concept, which is what `Domain.from_row` /
-    `to_row` exist to remove: both branches now build the same object.
-    """
-    row = {"name": "gpu", "partition": "general", "qos": "public",
-           "max_time": "7-00:00:00",
-           "max_cores": 48, "gpu": {"type": "a100", "mem_gb": 80}}
-
-    write_environment(
-        Environment(scheduler="slurm", topology=Topology(),
-                    domains=[Domain.from_row(row)]), tmp_path / FILENAME)
-    probed = get_routing(project_dir=tmp_path)
-
-    (tmp_path / FILENAME).unlink()
-    _write_config(tmp_path, dict(_SCHED, routing=[row]))
-    declared = get_routing(project_dir=tmp_path)
-
-    # Typed since phase 3 (2026-08-23): `get_routing` used to flatten its
-    # Domains back to dicts on the way out, which is what let a caller reach
-    # for a key nothing declared.  The claim is unchanged and now stronger --
-    # one SHAPE means one TYPE, compared as objects rather than as mappings
-    # that happen to match.
-    assert probed == declared, (
-        "one function must not return two shapes:\n"
-        f"  probed  : {probed}\n  declared: {declared}")
-    assert probed == [Domain.from_row(row)]
-    assert all(isinstance(d, Domain) for d in probed)
-
-
 def test_an_unknown_column_survives_the_type(tmp_path):
     """R10 as a property of the TYPE, not of one branch.
 
@@ -230,37 +138,14 @@ def test_an_unknown_column_survives_the_type(tmp_path):
     assert not hasattr(got, "invented_by_hand")
 
 
-def test_a_probed_record_beats_a_declared_one(tmp_path):
-    """Standing on the machine beats a hand-written note about it."""
-    _write_config(tmp_path, dict(_SCHED, routing=[
-        {"name": "declared", "partition": "p", "qos": "q",
-         "max_time": "1-00:00:00"}]))
-    _write_record(tmp_path)
-    assert [d.name for d in get_routing(project_dir=tmp_path)] == \
-        ["debug", "htc", "public"]
-
-
-def test_a_workstation_record_does_not_mask_a_declared_cluster(tmp_path):
-    """The case that broke: this box is a workstation (no domains), the config
-    describes a cluster.  An empty probed list must fall THROUGH to the
-    declaration rather than shadow it."""
-    write_environment(Environment(scheduler="workstation",
-                                  topology=Topology(cores_per_socket=10)),
-                      tmp_path / FILENAME)
-    _write_config(tmp_path, dict(_SCHED, routing=[
-        {"name": "sol-gpu", "partition": "general", "qos": "public",
-         "max_time": "7-00:00:00"}]))
-    assert [d.name for d in get_routing(project_dir=tmp_path)] == ["sol-gpu"]
-
-
 # ---- where a value came from is displayed, not inferred --------------- #
 
 @pytest.mark.parametrize("scope", ["machine", "project"])
 def test_a_refusal_names_WHICH_file_carries_the_key(tmp_path, scope):
     """A refusal must point at the file a person has to edit.
 
-    TWO files can supply a `scheduler` block -- the machine scope and the
-    project scope's `.molbuilder.json` -- so a message quoting the generic
+    TWO files can carry a section -- the machine scope and the project
+    scope's `.molbuilder.json` -- so a message quoting the generic
     ``molbuilder.json`` names both and answers neither.  This file learned
     that once (R10, 2026-08-12) and N4 reintroduced it, costing thirteen
     confusing failures whose real cause was a config two directories up.
@@ -270,24 +155,26 @@ def test_a_refusal_names_WHICH_file_carries_the_key(tmp_path, scope):
     (`configuration.md` § 2.1a) -- so the `machine-cwd` case is gone rather
     than renamed: there is no such file to name.
 
-    Checked here on ``kind``, a refusal that is still live: the routing
-    refusal it was written for is gone (routing is declared capability now),
-    but the naming rule outlived it.
+    Checked here on the ``scheduler`` block, refused by name since 2026-10-02
+    (`configuration.md` § 4), through the reader `prep` and `launch` read
+    both scopes with: the refusals this was first written for are gone, and
+    the naming rule outlived each of them.
     """
-    block = dict(_SCHED, kind="pbs")           # not a supported scheduler
+    block = {"scheduler": {"kind": "slurm"}}
     if scope == "project":
-        _write_config(tmp_path, block)
+        (tmp_path / PROJECT_CONFIG_FILENAME).write_text(json.dumps(block))
         expected = tmp_path / PROJECT_CONFIG_FILENAME
     else:
         xdg = tmp_path / "home" / ".config" / "molbuilder"
         xdg.mkdir(parents=True)
-        (xdg / "molbuilder.json").write_text(json.dumps({"scheduler": block}))
+        (xdg / "molbuilder.json").write_text(json.dumps(block))
         expected = xdg / "molbuilder.json"
 
     with pytest.raises(RuntimeConfigError) as exc:
-        get_scheduler(project_dir=tmp_path)
+        read_effective_config(project_dir=tmp_path)
     assert str(expected) in str(exc.value), (
         f"the refusal must name {expected}; got: {exc.value}")
+    assert "'scheduler' is no longer configured" in str(exc.value), exc.value
 
 
 def test_provenance_shows_which_record_supplied_the_domains(tmp_path):
@@ -350,8 +237,8 @@ def test_a_column_the_reader_does_not_understand_is_SAID(tmp_path, monkeypatch):
     """A misspelling must stop being invisible -- without being refused.
 
     An unrecognised column in a routing row is KEPT (R10, and
-    `test_declared_rows_keep_the_operators_own_columns` above pins why: a
-    retired key an operator still writes, or a column of their own, must
+    `test_an_unknown_column_survives_the_type` above pins it: a retired key
+    a record still carries, or a column of an operator's own, must
     survive).  That makes a TYPO indistinguishable from a deliberate extra:
     `gpu_parition` lands in `extra` exactly as `node_type` does, `gpu_partition`
     then reads as unstated, and `_bind` sends every GPU job to

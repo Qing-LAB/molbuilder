@@ -17,9 +17,11 @@ split this subsystem must not blur;
 ## The short version
 
 **A machine is measured into a record (`probe` → `environment.json`);
-a job states a request; admission compares them; placement picks the
-cheapest queue that fits; one placement renders both the `#SBATCH`
-header and the command-line flags.** Package: `molbuilder.scheduler`
+a job states a request, its queue included; admission compares them;
+placement binds the queue the job names; one placement renders both the
+`#SBATCH` header and the command-line flags.**  Nothing here chooses a queue
+for a job that names none: it is refused at prep
+([`architecture.md`](?doc=execution/architecture.md) § 5.2, 2026-10-02). Package: `molbuilder.scheduler`
 (`record` · `probe` · `admit` · `place` · `emit`, § 6). All built; live
 since 2026-08-23.
 
@@ -36,7 +38,7 @@ The rules, one line each — full statement in § 3:
 | **R5** | header stands alone | a header naming a queue states a wall that queue accepts |
 | **R6** | refuse early | when the record already says no, refuse before the scheduler does |
 | **R7** | ask what you know | unasked constraints are `None`, and `None` never refuses |
-| **R8** | fact vs preference | what a queue ALLOWS is the record's; which queue you WANT is yours |
+| **R8** | fact vs statement | what a queue ALLOWS is the record's; which queue a job USES is the job's own statement |
 | **R9** | re-admit on send | what was admitted at `prep` is re-checked at `launch` — the record can change under a traveling bundle |
 | **R10** | name the way out | a refusal says what WOULD fit, not only what doesn't |
 | **R11** | compare KINDS | comparability = the node's kind (cores, device model, mem ≈10 GB) — never its hostname, never the allocation |
@@ -351,11 +353,13 @@ about nothing else. An unasked constraint is `None`, and `None` is never a
 refusal. This is what lets one admission function serve every caller without
 each growing its own variant.
 
-**R8 — Measurements from the record, preferences from the config.** M-1
+**R8 — Measurements from the record, the queue from the job.** M-1
 (`configuration.md` § 5) is not relaxed here. What a queue *allows* is a
-measurement and is read from `environment.json`. Which queue you *want* is a
-preference and is read from `molbuilder.json` or `--domain`. This subsystem
-reads both and mixes neither.
+measurement and is read from `environment.json`. Which queue a job *uses* is
+the job's own statement — `allocation.domain`, the run card's `domain`,
+`--domain` — and never a default from any file: `molbuilder.json`'s
+`scheduler.directives` and `execution.domain` gave every job a queue it never
+named until 2026-10-02. This subsystem reads both and mixes neither.
 
 **R9 — What was admitted when the work was BUILT is re-admitted when it is
 SENT.** A request built under weaker knowledge must not be submitted under
@@ -594,28 +598,23 @@ flowchart TD
   START(["a request · this machine"])
   Q0{"any queues<br/>on this machine?"}
   DIRECT["run it directly<br/><i>no header at all</i>"]
-  Q1{"did the user<br/>name a queue?"}
+  Q1{"does the job<br/>name a queue?"}
+  QL{"does the record<br/>list it?"}
   Q2{"does that queue<br/>admit the request?"}
-  KIND["the queues that serve<br/>this KIND of work<br/><i>gpu · cpu</i>"]
-  Q3{"any of that kind?"}
-  ADMIT["of those, the ones that ADMIT it<br/><i>wall · cores · memory · devices</i>"]
-  Q4{"any admit it?"}
-  PLACE(["PLACE<br/><i>cheapest ceiling that fits</i>"])
+  PLACE(["PLACE<br/><i>the named queue, bound<br/>(GPU work → its gpu_partition)</i>"])
+  RU["refuse — a job names its own queue;<br/>here are the record's"]
+  RL["refuse — the record lists<br/>no such queue"]
   RN["refuse — name what is too big,<br/>and what would fit"]
-  RK["refuse — this machine has<br/>no queue of that kind"]
-  RA["refuse — name the binding limit,<br/>and the nearest request that fits"]
 
   START --> Q0
   Q0 -- no --> DIRECT
   Q0 -- yes --> Q1
-  Q1 -- "yes, by name" --> Q2
+  Q1 -- no --> RU
+  Q1 -- yes --> QL
+  QL -- no --> RL
+  QL -- yes --> Q2
   Q2 -- yes --> PLACE
   Q2 -- no --> RN
-  Q1 -- no --> KIND --> Q3
-  Q3 -- none --> RK
-  Q3 -- some --> ADMIT --> Q4
-  Q4 -- some --> PLACE
-  Q4 -- none --> RA
 ```
 
 **A named queue is checked like any other.** The `--domain` branch reaches the
@@ -624,8 +623,11 @@ to skip the check: `place(..., named=)` asks `admits` of the named domain and
 refuses it by name like any other (`scheduler/place.py`; it landed with § 8's
 placement phase, 2026-08-23 — this said "not checked at all" until 2026-09-29).
 
-**Refusals are the graph's real output.** Three of the eight leaves refuse, and
+**Refusals are the graph's real output.** Three of the five leaves refuse, and
 each refuses differently, because the reason is the useful part (R4, R10).
+*(The graph had a second road until 2026-10-02: a job naming no queue was
+given the cheapest ceiling that fits, ordered by a `placement_priority` from
+`molbuilder.json` — a queue nobody named for it.)*
 
 ### 5.1 The same walk, at two moments
 

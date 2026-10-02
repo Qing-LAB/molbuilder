@@ -69,8 +69,10 @@ def _init(root):
         "--bias", "0.0"])
     assert r.exit_code == 0, r.output
     dest = root / "J" / "transport" / "T"
-    (dest / ".molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate"}}))
+    # Every rung's run states its shape (`architecture.md` § 5.2).
+    task = json.loads((dest / "task.json").read_text())
+    task["execution"] = {"mpi_np": 1, "omp_threads": 1}
+    (dest / "task.json").write_text(json.dumps(task, indent=2))
     return dest
 
 

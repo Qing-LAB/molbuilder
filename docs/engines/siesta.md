@@ -529,8 +529,10 @@ The practical guidance:
   on the GPU's driver context. MPS auto-enables when `Diag.ELPA.GPU .true.` is emitted,
   `nvidia-cuda-mps-control` is on the host PATH (it ships with the NVIDIA driver, not
   conda), *and* the run will use ≥ 2 ranks (single-rank MPS is pure overhead). The
-  default rank count follows MPS: typically **4 with MPS** (capped by core count),
-  **2 without** (override with `MOLBUILDER_MPI_NP` / `-np`).
+  rank count is the one the run states — there is no GPU default
+  ([`running-a-job.md` § 3.3](?doc=execution/running-a-job.md)); about **4 ranks
+  per GPU with MPS** is this no-NCCL build's tuned point
+  ([`tuning.md` § 2.12](?doc=engines/tuning.md)).
 - **Numerical equivalence.** ELPA-GPU and ELPA-CPU on the same `Diag.Algorithm` give
   the same eigenvalues to ~1e-6 eV and the same converged total energy to ~1e-5 eV
   across the build matrix — so develop and test on CPU-ELPA and run production on GPU

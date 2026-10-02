@@ -289,21 +289,20 @@ class TestTheWizardWritesWhereTheReaderReads:
 
         This was asserted against the cwd branch before that branch existed
         no more, and the property is the one worth keeping: a machine with
-        `execution` or `scheduler` already set must not lose them to a
-        sign-in setup.
+        `launch` or `envs` already set must not lose them to a sign-in
+        setup.
         """
         monkeypatch.chdir(tmp_path)
         target = isolated_home / ".config" / "molbuilder" / "molbuilder.json"
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(
-            json.dumps({"script_generation": {"activation": "conda activate"}}))
+        target.write_text(json.dumps({"launch": {"mode": "direct"}}))
 
         r = self._run(("--force",))
         assert r.exit_code == 0, r.output
 
         after = json.loads(target.read_text())
         assert after["auth"]["providers"][0]["kind"] == "cas"
-        assert after["script_generation"]["activation"] == "conda activate", (
+        assert after["launch"]["mode"] == "direct", (
             "the wizard replaced the file instead of merging into it")
 
 def test_cli_asurite_defaults_to_system_user(isolated_home, monkeypatch):
@@ -361,11 +360,12 @@ def test_cli_refuses_to_clobber_without_force(isolated_home):
 def test_cli_merges_into_a_config_that_has_no_auth_block(isolated_home):
     """The other half of the same rule, and the one a fresh install takes.
 
-    A seeded molbuilder.json carries `script_generation` and no `auth`; there
-    is nothing to clobber, so the wizard writes its block and leaves the rest.
+    A seeded molbuilder.json carries the preference sections and no `auth`;
+    there is nothing to clobber, so the wizard writes its block and leaves
+    the rest.
     """
     out = _machine_file(isolated_home)
-    out.write_text('{"script_generation": {"activation": "conda activate"}}')
+    out.write_text('{"launch": {"mode": "direct"}}')
     runner = CliRunner()
     r = runner.invoke(cli, [
         "auth-setup",
@@ -375,7 +375,7 @@ def test_cli_merges_into_a_config_that_has_no_auth_block(isolated_home):
     assert r.exit_code == 0, r.output
     data = json.loads(out.read_text())
     assert data["auth"]["providers"], "the wizard wrote its block"
-    assert data["script_generation"]["activation"] == "conda activate"
+    assert data["launch"]["mode"] == "direct"
 
 
 def test_cli_force_replaces_the_providers_and_nothing_else(isolated_home):

@@ -36,6 +36,8 @@ from molbuilder.transport.record import (RecordError, collect_record,
                                          conductance_g0, iv_table_text,
                                          parse_avtrans, parse_current_a,
                                          write_record)
+# `prep_calculation` from there too: the five steps handed the run card's
+# shape, as the prep entry hands it (`architecture.md` § 5.2).
 from test_transport_prep import (_conclude, _describe_transport,
                                  _junction_struct, _write_junction)
 
@@ -104,7 +106,7 @@ def calc(tmp_path):
     root = tmp_path / "projects"
     _write_junction(root, _junction_struct())
     dest = _describe_transport(root)
-    from molbuilder.jobset.prep import prep_calculation
+    from test_transport_prep import prep_calculation
     # render the transmission stage so its v-dirs + decks exist
     prep_calculation(dest, "transmission")
     return dest
@@ -162,7 +164,7 @@ class TestTheRecord:
         assert (calc / "T.transport.json").is_file()
 
     def test_a_single_point_record_reads_the_plain_layout(self, tmp_path):
-        from molbuilder.jobset.prep import prep_calculation
+        from test_transport_prep import prep_calculation
         from molbuilder.task import read_task
         root = tmp_path / "projects"
         _write_junction(root, _junction_struct())
@@ -188,7 +190,7 @@ class TestTheTransmissionWalk:
         from click.testing import CliRunner
         from molbuilder.jobset._cli import jobset_group
         from molbuilder.jobset.model import JobSet
-        from molbuilder.jobset.prep import prep_calculation
+        from test_transport_prep import prep_calculation
         from molbuilder.projects import PROJECTS_ROOT_ENV
         from molbuilder.jobset.submit import submit_transport_chain
         from molbuilder.task import read_task

@@ -28,8 +28,8 @@ step to the document that owns its details.
 | file | machine | what it is | written by |
 |---|---|---|---|
 | the clone + conda envs | each machine | the program and its engines | you + `envs bootstrap` (§ 1) |
-| `molbuilder.json` | each machine | what **you want** from this machine: run directly or submit, default queue, where the projects tree lives | **`envs bootstrap` writes it** (§ 1); you edit it (§ 2) |
-| `~/.config/molbuilder/environment.json` | each machine | what this machine **is** — cores, GPUs, scheduler, queues | **`envs bootstrap` writes it** (§ 1); refresh with `jobset probe --write`, no `--name` (§ 3) |
+| `molbuilder.json` | each machine | what **you want** from this machine: run directly or submit, which environments to use, where the projects tree lives | **`envs bootstrap` writes it** (§ 1); you edit it (§ 2) |
+| `~/.config/molbuilder/environment.json` | each machine | what this machine **is** — cores, GPUs, scheduler, queues, and how a shell enters its environments | **`envs bootstrap` writes it** (§ 1); refresh with `jobset probe --write`, no `--name` (§ 3) |
 | `~/.config/molbuilder/environments/<name>.json` | your workstation | another machine's record, so you can describe work *for* it from here | probe there, copy here (§ 4) |
 | TLS cert/key + `auth` section | the machine that serves | HTTPS and sign-in — **only** when others reach your server | you (§ 5) |
 | `<config dir>/secrets/notify_keys` | the machine that **serves** | the signing keys and the route. **This file is the switch** — the listener exists because it does | `molbuilder notify-token` (§ 6) |
@@ -69,32 +69,32 @@ end, which creates it in the config directory —
 every section that can be empty present and empty, each carrying an
 `_`-prefixed comment block saying who fills it in: you, a command, or a probe.
 
-> **Edit it; do not replace it.** This section showed a two-key file to write
-> from scratch until 2026-09-12, and following that literally **deleted
-> `script_generation.activation`**, which `bootstrap` had just asked you for and
-> which has no default — after which every wrapper refuses to render and you get
-> the *"the `.fdf` saved but no `.run.sh` appeared"* symptom that seeding exists
-> to prevent.
+> **Edit it; do not replace it.** Its comment blocks name what fills each
+> section, and what may go in it at all is
+> [`configuration.md`](?doc=configuration.md) § 4. The activation `bootstrap`
+> asked you for is not in this file: it is a fact of this machine, in its
+> record (§ 3).
 
 **The one key you are likely to change** is how work leaves this machine. On a
 workstation, jobs run right here:
 
 ```jsonc
-"execution": { "mode": "direct" }
+"launch": { "mode": "direct" }
 ```
 
-On a cluster login node they go to the scheduler — and the queue name is your
-site's, from `sinfo` / `sacctmgr`, not a value to copy:
+On a cluster login node they go to the scheduler:
 
 ```jsonc
-"execution": { "mode": "submit", "domain": "<your-queue>" }
+"launch": { "mode": "submit" }
 ```
+
+There is no default queue: each job names its own, with its wall and memory, in
+its description or on the command line
+([`execution/architecture.md`](?doc=execution/architecture.md) § 5.2).
 
 Open the file and read the comment blocks; they name the command or the probe
 that fills each remaining section, so there is nothing to guess at.
 
-`domain` is your default queue — a *preference*, so it lives here and never
-in a probe's record ([`configuration.md` § 5](?doc=configuration.md), M-1).
 Where your calculations live is the other thing `bootstrap` **asked** you, for
 the same reason: its default is inside the clone, which is often not where you
 want it. To change it later, edit `"paths": {"projects": …}` — every surface

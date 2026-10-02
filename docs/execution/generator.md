@@ -261,8 +261,8 @@ makes the allocation an input to `prep`). **This section adds the third and the
 containment between them:**
 
 ```
-capability    what the cluster HAS            declared in molbuilder.json, per cluster,
-    ⊇                                          plus what floor 1 detects
+capability    what the cluster HAS            the target's record, probed on that
+    ⊇                                          machine (configuration.md § 5)
 allocation    what you ASK FOR, this run      your choice — and asking for less is
     ⊇                                          often the better choice (see below)
 sweep         the points a benchmark tries    must FIT INSIDE the allocation
@@ -296,7 +296,7 @@ configuration the real run asks for, knowing both the speed and the queue cost.
 
 | | stated in | shape |
 |---|---|---|
-| **capability** | `molbuilder.json` — the clusters available in this environment and **the hardware of each** — plus floor-1 detection on a workstation (M6: a workstation needs no file) | the domain menu (probed into `environment.json`; a declared `scheduler.routing` is the workstation fallback) carries **limits** (`max_time`, `max_mem_gb`, `node_types`) and the **probed GPU inventory** of each row — the facts § 4.3a's GPU family and its cell-by-cell fit check read |
+| **capability** | the target machine's record, `environment.json` — **its hardware and its queues**, probed on that machine and copied here ([`configuration.md` § 5](?doc=configuration.md)) | the domain menu (probed into `environment.json`) carries **limits** (`max_time`, `max_mem_gb`, `node_types`) and the **probed GPU inventory** of each row — the facts § 4.3a's GPU family and its cell-by-cell fit check read |
 | **allocation** | the command, at `prep` — *"the actual run would then also provide this parameter for the resources"* | ranks, cores per rank, GPUs (or none), time, and the domain |
 | **sweep** | the command, at benchmark time — *"can we speed through these different combinations … block size, CPU numbers, GPU, and how they combine, or no GPU at all"* | `{axis: [values]}`, checked against the allocation |
 
@@ -462,12 +462,11 @@ the item stays valueless. They become **the allocation for this prep**, by a
 direct map from the catalogue's name to the `Resources` field: `omp_threads`
 → `cpus_per_task`, `gpu_count` → `--gres=gpu:<count>`, the rest one to one.
 
-**Nothing is worked out, and that is the rule.** A field the condition does
-not name is not a gap to fill — `architecture.md` § 5.2's track B: it is
-answered by `auto_ranks`, reading the selected target's width, and at run
-time by the wrapper's own chain (`running-a-job.md` § 3.1: `-np` > `MB_NP` >
-`SLURM_NTASKS` > the baked default). A layer that fills it in *because it must
-be decided* overwrites both.
+**Nothing is worked out, and that is the rule.** A launch value the condition
+does not name is not a gap to fill: prep refuses the run and names where to
+state it (`architecture.md` § 5.2's track B). At run time the wrapper's chain
+(`running-a-job.md` § 3.1: `-np` > `MB_NP` > `SLURM_NTASKS` > the stated value
+baked at prep) only chooses among statements.
 
 A device ask is a **count** and names no card: which card a node carries is
 the machine's business (`scheduler.md` R2a). **Every run that uses a device
@@ -566,8 +565,7 @@ framework rule, not a script patch)*:
   use to indicate error, but present the correct outcome")*.  The queues are
   the TARGET's, which is why neither the terminal nor the card says "this
   machine": `prep --target sol` on a workstation checks against Sol's
-  record, and a declared `scheduler.routing` describes a cluster you are not
-  standing on at all.
+  record.
   The grid is a **proposal**; the machine record decides; and what reaches
   the screen is the surviving list — each cell with its shape and the
   queues it could go to — followed by the struck ones, each naming its
@@ -617,14 +615,12 @@ framework rule, not a script patch)*:
   then a shelf token (`-G2K16C1`, the same `G`/`K`/`C` spelling its
   trials carry) when a side spans several shelves.
   The CPU side's groups ask **no `gres`**, so devices are never held
-  while CPU trials run — the waste the split exists to stop.  **Routing** *(user, 2026-08-21)*:
-  a CPU group MAY run on a gpu-capable cluster, but when the menu holds a
-  cpu-only domain it is **preferred** — idle devices cost — and the GPU
-  group prefers the first gpu-capable row (its `gpu_partition` when
-  declared); the menu's own order rule applies (cheapest ceiling first).
-  `--domain` **overrides** the preference for both sides through the one
-  resolution, and `--only cpu|gpu` submits one side — so `--only` +
-  `--domain` places each side wherever the user says.  A side this
+  while CPU trials run — the waste the split exists to stop.  **Routing**: the
+  queue is named, never inferred (`submission.md` S5) — the bench's
+  `allocation.domain` or `--domain` for both sides, `--gpu-domain` for the GPU
+  side when the two differ; a GPU group goes to its queue's `gpu_partition`
+  where the record declares one.  `--only cpu|gpu` submits one side — so
+  `--only` + `--domain` places each side wherever the user says.  A side this
   machine cannot launch stays pending, and a later `submit bench`
   collects exactly the unlaunched side — which is the cross-cluster lane:
   each machine submits what it reaches, results ride the folder back.
@@ -994,7 +990,7 @@ where two things can disagree, is not this work.
 
 | # | question | why it is not decided here |
 |---|---|---|
-| **38** | ~~`scheduler.routing` has no cores, GPU count or GPU type per entry~~ **Closed 2026-08-21**: the probed domain rows carry the GPU inventory and `max_cores` (the node group's own `sinfo` row), and § 4.3a's fit check and GPU family consume them | the row stays hand-editable; a declared workstation row may state the same columns |
+| **38** | ~~`scheduler.routing` has no cores, GPU count or GPU type per entry~~ **Closed 2026-08-21**: the probed domain rows carry the GPU inventory and `max_cores` (the node group's own `sinfo` row), and § 4.3a's fit check and GPU family consume them | a target's queues come only from its own probed record (`configuration.md` § 5) |
 | ~~**G3**~~ | ~~whether `bench` keeps a positional in the grammar~~ — **CLOSED 2026-08-17.** It does: `jobset prep <run\|bench> [STAGE]`, and the same positional on `launch` and `summarize`. The `bench` command's four duplicate verbs were deleted in the 2026-08-12 fold, leaving it one unrelated subcommand (`probe-scheduler`); [`process/conventions.md`](?doc=process/conventions.md) carries the before/after. **STAGE is required for `bench`**, because a sweep belongs to one stage rather than to the calculation (§ 4.3a) | — |
 | **37** | ~~whether `transport`'s chained runs become a `ParameterSet`~~ — **decided 2026-08-11 (user): they do not.** Transport is a **separate kind — a multi-component job**: *"it involves multiple results and the transportation needs to combine all of them… a different kind of beast"* | it is not a sweep and not a ladder. **This contract covers single-parameter-set jobs** — structure, optimization, spectra — and a multi-component kind is designed on its own, not folded in here |
 
@@ -1092,20 +1088,17 @@ whole reason describe and prep are two verbs
 ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 2.3.1).
 There is no catalogue default for `mpi_np` — its item is declared **valueless**
 and marked as one the machine answers ([`template.md`](?doc=engines/template.md)
-§ 6.4) — so the default is **derived from the
-selected target and domain** (the domain row's widest node, else that
-record's topology, clamped — never the box running `prep`; see
-[`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 3.1), which
-is why it may not appear in a floor-2 template at all.
+§ 6.4) — and no other default either: the run states it, on its run card or
+with `prep --np`, or prep refuses
+([`architecture.md § 5.2`](?doc=execution/architecture.md)). That is why it may
+not appear in a floor-2 template at all.
 
-**"No default" is not "no answer".** *Read off the target* is what happens
-when nobody said; `execution` is somebody saying, and it wins over that
-reading exactly as a flag does (§ 4.3a). The item stays valueless in the
-template either way — the decision lives in the description, which is a
-different file with a different job. **And when the target's record says
-nothing either, that is a refusal**, not a third fallback: a rank count taken
-from the wrong machine looks exactly like a right one
-([`architecture.md § 5.2`](?doc=execution/architecture.md)).
+**"No default" means the run states it.** `execution` is somebody saying, and
+a flag beats it (§ 4.3a). The item stays valueless in the template either way —
+the decision lives in the description, which is a different file with a
+different job. The target's record **checks** the statement and never supplies
+one: a rank count read off a machine's width is a number nobody stated for this
+run.
 
 ### 10.4 Class 4 — runtime: the wrapper's chain, highest wins
 
@@ -1113,15 +1106,12 @@ from the wrong machine looks exactly like a right one
 full chain; it is stated once there and only summarised here:
 
 ```
-flag (-np / -omp)  >  MB_NP / OMP_NUM_THREADS  >  scheduler env  >  baked default
+flag (-np / -omp)  >  MB_NP / OMP_NUM_THREADS  >  scheduler env  >  the stated value baked at prep
 ```
 
-GPU mode adds a **regime policy** (rank count and OMP width differ with and
-without MPS): flipping the regime at launch (`--mps` / `--no-mps`) re-derives
-the *defaults* for the new regime, and the auto-OMP width divides the core
-budget by the **effective** rank count once flags are parsed — an explicit
-`-np` or `-omp` is never clobbered by the re-derivation (fixed 2026-08-12;
-the flags always win, now genuinely).
+GPU mode adds no policy of its own (since 2026-10-02): the rank and thread
+counts are the stated ones, and `--mps` / `--no-mps` switch the MPS daemon and
+nothing else (`running-a-job.md` § 3.3).
 
 ### 10.5 Reading a decision back
 

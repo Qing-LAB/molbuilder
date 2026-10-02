@@ -98,8 +98,11 @@ def stopped(isolated_projects_root_module, tmp_path_factory):
         mp.delenv("MOLBUILDER_CONFIG_DIR", raising=False)
         mp.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("xdg")))
         # ...and the box probed, as a real one is before its first prep.
+        # ...its record saying how a shell enters conda here -- the
+        # activation's one home (`configuration.md` § 5 M-1).
         from conftest import write_machine_record
-        write_machine_record()
+        write_machine_record(script_generation={
+            "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
         mp.chdir(tree.parent)
         # The wrapper finds the engine BY NAME after activating the env; the
         # env's own bin goes ahead of the suite's stub toolchain so the real
@@ -114,11 +117,9 @@ def stopped(isolated_projects_root_module, tmp_path_factory):
                     "--name", "H2", "--psml-lib", "pseudopotential")
         assert r.exit_code == 0, r.output
         bundle = tree / "P" / "opt" / "R"
-        (bundle / ".molbuilder.json").write_text(json.dumps(
-            {"script_generation": {"activation": "conda activate",
-                                   "preamble": f"source {CONDA_SH}"}}))
         task = json.loads((bundle / "task.json").read_text())
-        task["execution"] = {**task.get("execution", {}), "mpi_np": 1}
+        task["execution"] = {**task.get("execution", {}), "mpi_np": 1,
+                             "omp_threads": 1}
         assert [s["name"] for s in task["stages"]] == ["coarse"], task
         (bundle / "task.json").write_text(json.dumps(task, indent=2))
         for name, value in _CANNOT_CONVERGE.items():

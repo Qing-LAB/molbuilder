@@ -1,25 +1,22 @@
 """Seed the per-user config directory, once, at install time.
 
 **The problem this closes is named in the contract itself.**
-`execution/running-a-job.md` § 5.2, on ``script_generation.activation``:
+`execution/running-a-job.md` § 5.2, on the activation:
 
-    has **no default** -- if it is unset in every scope, rendering **any**
-    wrapper refuses with an operator message pointing here ... On a fresh
-    install that is the *"the ``.fdf`` saved but no ``.run.sh`` appeared"*
-    symptom, and it bites a workstation first.
+    has **no default**: a target whose record carries none is refused at
+    prep ... On a fresh install that would bite a workstation first.
 
-Nothing created ``molbuilder.json``, so on a fresh machine the chain ran:
-no config file -> ``activation`` unset -> ``jobset probe --write`` recorded no
-``script_generation`` (it reads the value from the config, `jobset/_cli.py`
-§ "HOW THIS MACHINE ENTERS ITS ENVIRONMENT TRAVELS WITH THE RECORD") -> every
-wrapper refused, and ``prep`` refused a target whose record could not say how
-to enter an environment.  Four surfaces reporting one absent file.
+Nothing created the config directory or this machine's record, so on a fresh
+machine every prep refused a target whose record could not say how to enter an
+environment -- and the record could not say it, because nobody had been asked.
 
 **Install time is when the answer is known and nowhere else is.**  The
 installer has just located the env manager and asked the person to confirm it;
 that is the one moment in the program's life where "how does this machine enter
 a conda env" is both known and being discussed.  Every later surface can only
-report that nobody ever said.
+report that nobody ever said.  The answer goes into this machine's RECORD,
+``environment.json`` -- its one home since 2026-10-02 (`configuration.md` § 5
+M-1); ``molbuilder.json`` is seeded with the preferences sections alone.
 
 **Asked, not sniffed.**  ``activation`` is DECLARED, never detected --
 ``detect_conda_activation`` was deleted 2026-08-13 (V22) for having zero
@@ -49,10 +46,8 @@ that true while making a stale one impossible.
 ``diagnostics.local_facts`` -> ``write_environment``, the same three steps in
 the same order ``jobset probe --write`` takes, so the two cannot disagree about
 what this machine is.  ``local_facts`` was inline in that command until this
-module became its second caller; skipping it -- which the first draft here did
--- writes a record carrying no activation, which is the refusal this module
-exists to remove, reproduced one file over.  This module contributes the
-DIRECTORY and the CONFIG; the record it delegates.
+module became its second caller.  This module contributes the DIRECTORY, the
+CONFIG and the ANSWER it asked for; the record it delegates.
 """
 from __future__ import annotations
 
@@ -145,17 +140,14 @@ def _manager_root(conda_binary: str) -> Optional[Path]:
     return Path(root) if root else None
 
 
-def seed_document(activation: str,
-                  preamble: Optional[str] = None,
-                  projects: Optional[Path] = None) -> "dict":
+def seed_document(projects: Optional[Path] = None) -> "dict":
     """The contents of a freshly seeded ``molbuilder.json``.
 
-    **Minimal on purpose.**  Only ``script_generation`` -- the one section with
-    no default, whose absence stops the program.  Notably NOT ``scheduler``:
-    partition and QOS are site facts, a wrong guess emits jobs that are
-    rejected by the queue, and the door that learns them for real is
-    ``jobset probe``, which writes them into ``environment.json`` where they
-    belong (`configuration.md` M-1, *"the split is fact vs preference"*).
+    **Your preferences, and nothing else** (`configuration.md` § 4): every
+    section a person may fill, present and empty, each with a comment saying
+    what it is for.  Neither a machine's facts -- its queues, its activation,
+    which `envs init-config` writes into this machine's RECORD -- nor a job's
+    values, which a job states itself.
 
     The ``_``-prefixed keys are comments.  `running-a-job.md` § 5 makes them
     legal by name -- *"a key starting with ``_`` is a comment ... and is
@@ -166,64 +158,38 @@ def seed_document(activation: str,
     """
     doc = {
         "_README": [
-            "molbuilder's server-wide configuration for THIS machine.",
-            "Seeded by `molbuilder envs init-config` (which `bootstrap` runs).",
+            "molbuilder's server-wide configuration for THIS machine:",
+            "your PREFERENCES, and nothing else.  Seeded by",
+            "`molbuilder envs init-config` (which `bootstrap` runs).",
             "",
             "HOW TO READ THIS FILE.  Every section is OPTIONAL and starts",
             "empty; fill in only what you need.  A key starting with `_` is a",
-            "comment and is ignored.  An UNKNOWN top-level key is REFUSED, so",
-            "a typo is named rather than silently doing nothing.",
+            "comment and is ignored.  An UNKNOWN key is REFUSED, so a typo is",
+            "named rather than silently doing nothing.",
             "",
-            "WHO FILLS WHAT.",
-            "  YOU        preferences: execution, paths, admin, rate_limit,",
-            "             tls, envs, checkpoint, scheduler.directives",
-            "  A COMMAND  `molbuilder auth-setup` writes the `auth` block",
-            "  NOT HERE   machine FACTS -- cores, GPUs, scheduler kind, the",
-            "             queues you can actually reach -- are PROBED into",
-            "             environment.json beside this file by",
-            "             `molbuilder jobset probe --write`.  Never",
-            "             hand-write them: configuration.md M-1 is the rule",
-            "             (fact vs preference).",
+            "WHAT IS NOT HERE, and where it is:",
+            "  a MACHINE's facts -- cores, GPUs, scheduler, the queues you",
+            "      can reach, how a shell enters an environment there -- are",
+            "      its RECORD, environment.json beside this file, written ON",
+            "      that machine by `molbuilder jobset probe --write`;",
+            "  a JOB's values -- queue, wall, memory, ranks, cores per rank,",
+            "      GPUs -- are stated by the job: its task.json, or the",
+            "      prep/launch flags.  Prep refuses one stated nowhere.",
             "",
             "Secrets are SEPARATE 0600 files; this file carries their PATHS,",
             "never their bytes.  See secrets/README beside this file.",
             "",
-            "Full reference: docs/configuration.md section 4.",
+            "Every key this file may hold, and what it is for:",
+            "docs/configuration.md section 4.",
         ],
-        "_script_generation": [
-            "How a generated wrapper enters its conda env.  THE ONE REQUIRED",
-            "VALUE.  `activation` is \"conda activate\" or \"source activate\"",
-            "and has NO default -- unset, EVERY wrapper refuses to render.  It",
-            "was asked at install time, which is why it is filled in below.",
-            "`preamble` is shell run BEFORE activation: the `module load`",
-            "lines on a cluster, or sourcing conda's hook on a workstation.",
-            "-> docs/execution/running-a-job.md section 5.2",
+        "_launch": [
+            "How `jobset launch` sends a job when no --mode is given:",
+            "\"direct\" runs it here with bash, \"submit\" hands it to the",
+            "scheduler.  Unset, launch asks for --mode.  Also settable per",
+            "project in a `.molbuilder.json`, which wins.",
+            "-> docs/execution/running-a-job.md section 5.4",
         ],
-        "script_generation": {"activation": activation},
-        "_execution": [
-            "Defaults every calculation on this machine inherits -- the ask,",
-            "before any per-job override.  Also settable per project in a",
-            "`.molbuilder.json`, which wins.",
-        ],
-        "execution": {},
-        "_scheduler": [
-            "WHAT YOU WANT from the scheduler -- not what it IS.",
-            "",
-            "The facts (scheduler kind, node topology, and the",
-            "(partition, qos) domains you can actually reach) are PROBED:",
-            "    molbuilder jobset probe --write",
-            "writes them to environment.json beside this file.  For a cluster",
-            "you prep FOR but are not ON, add --name <cluster> and it lands",
-            "in environments/<cluster>.json.",
-            "",
-            "What stays yours here is WHICH of the probed domains to use:",
-            "    \"scheduler\": {\"directives\": {\"partition\": \"...\",",
-            "                                  \"qos\": \"...\"}}",
-            "`scheduler.routing` is retired and REFUSED -- it was the",
-            "declarative form of what is now probed.",
-            "-> docs/execution/scheduler.md",
-        ],
-        "scheduler": {},
+        "launch": {},
         # THE USER READS THIS BLOCK, so it says what to do and not what we
         # learned.  It invited `logs`, `run` and `reports` until 2026-09-12 --
         # keys retired on 2026-08-31 and REFUSED since, so a person with a
@@ -252,7 +218,7 @@ def seed_document(activation: str,
             "SIGN-IN -- the one section you should NOT hand-write.",
             "    molbuilder auth-setup        (CAS or Google; --help for more)",
             "writes this block and preserves everything else in this file.  It",
-            "is ABSENT above on purpose: an empty `auth` is refused, because",
+            "is ABSENT here on purpose: an empty `auth` is refused, because",
             "the block must name at least one provider.  For GitHub /",
             "Microsoft / ORCID see ops/deployment.md and",
             "ops/access-control.md.",
@@ -262,35 +228,34 @@ def seed_document(activation: str,
             "    \"tls\": {\"cert\": \"...fullchain.pem\",",
             "             \"key\":  \"...privkey.pem\"}",
             "secrets/ beside this file is the suggested home for the key.",
-            "Top-level \"cert\"/\"key\" are retired and REFUSED by name.",
             "-> docs/ops/deployment.md section 5",
         ],
         "tls": {},
-        "_admin": ["Who may administer this installation.",
+        "_admin": ["Who may use the operator-only web actions: restarting",
+                   "the server, the rate limiter's block list.",
                    "-> docs/ops/access-control.md"],
         "admin": {},
         "_rate_limit": ["Request throttling for the web surface.",
                         "-> docs/ops/access-control.md"],
         "rate_limit": {},
         "_envs": [
-            "This machine's conda setup, when it is not the default:",
-            "`manager` pins the env-manager binary by absolute path when it is",
-            "not on PATH, and the per-backend env NAMES if yours differ.",
+            "Which conda environment each backend runs in, when it is not",
+            "the default name, and `manager`: the env-manager binary by",
+            "absolute path when the one on PATH is not the one to use.",
             "-> docs/ops/installation.md",
         ],
         "envs": {},
-        "_checkpoint": ["Run-checkpoint behaviour.",
+        "_checkpoint": ["Which run files are too large to save with a folder.",
                         "-> docs/execution/checkpointing.md"],
         "checkpoint": {},
         "_retired": [
             "REFUSED by name if you port an older file here, each with what",
-            "to do instead: `notify_keys_file`, `notify_route` (retired",
-            "2026-08-31), `secret_key_file`, `scheduler.routing`, and",
+            "to do instead: `scheduler`, `script_generation` and `execution`",
+            "(retired 2026-10-02 -- `execution` is now `launch`),",
+            "`notify_keys_file`, `notify_route`, `secret_key_file`, and",
             "top-level `cert`/`key`.",
         ],
     }
-    if preamble:
-        doc["script_generation"]["preamble"] = preamble
     if projects is not None:
         doc["paths"] = {"projects": str(projects)}
     return doc
@@ -497,112 +462,126 @@ def _seed_secrets_dir() -> List[Step]:
     return steps
 
 
-def seed_machine_config(activation: str,
-                        preamble: Optional[str] = None,
-                        projects: Optional[Path] = None) -> Step:
+def seed_machine_config(projects: Optional[Path] = None) -> Step:
     """Write ``molbuilder.json`` if it is absent; otherwise report it kept.
 
-    An existing file is never merged into.  Merging would mean this module
-    forming an opinion about a file a person has been editing -- and the one
-    thing worth adding, ``activation``, is exactly the thing they may have
-    deliberately left for a project-scope ``.molbuilder.json`` to supply
-    (§ 5.1: project wins).  The ``note`` says whether the kept file resolves
-    an activation, so the operator learns the one fact that matters without
-    this module touching anything.
+    An existing file is never merged into: it is a person's.  The ``note`` on
+    a kept file says whether it still READS -- a file carrying a section
+    retired since it was written is refused by every reader, and this is the
+    run of the installer most likely to be the first to say so.
     """
     from ..runtime_config import machine_config_path, write_config_scope
 
     path = machine_config_path()
     if path.exists():
-        return Step(path, "kept", _activation_note())
+        return Step(path, "kept", _config_note())
     _ensure_root()
     # THE ONE WRITER of this file (configuration.md § 2.3): its own path from
     # its own resolver, validated with the server's validator before a byte
     # lands, 0600 from the first byte.  Until 2026-09-14 this joined the
     # filename itself and wrote through `write_json` -- a second writer whose
     # seed was never validated (review C-Y1).
-    write_config_scope(None, seed_document(activation, preamble, projects))
-    note = f'script_generation.activation = "{activation}"'
-    if preamble:
-        note += f"; preamble = {preamble!r}"
-    elif activation == "conda activate":
-        # Worth saying only for THIS form.  ``conda activate`` is a shell
-        # function that a non-interactive shell has never defined, so no
-        # preamble here means a wrapper that will fail inside the job.
-        note += ("; no preamble -- `conda activate` needs conda's hook "
-                 "sourced in a non-interactive shell, and none was found")
-    else:
-        # ``source activate`` is a script on PATH.  It needs no hook, so the
-        # absence is the correct state and must not be reported as a miss --
-        # which is what it said until 2026-09-08, on every machine that HAD a
-        # hook and simply did not need it.
-        note += "; no preamble (source activate needs none)"
-    return Step(path, "created", note)
+    write_config_scope(None, seed_document(projects))
+    return Step(path, "created",
+                "your preferences -- every section empty; see its comments")
 
 
-def _activation_note() -> str:
-    """What an already-present config resolves ``activation`` to.
-
-    Read through the same door every wrapper uses, so this reports what the
-    generator will actually see rather than what the file appears to say.
-    """
+def _config_note() -> str:
+    """What an already-present config is: readable, or refused and why."""
     try:
-        from ..runtime_config import get_script_generation
-        current = get_script_generation(project_dir=None).get("activation")
-    except Exception as exc:            # a broken config is its own error
-        return f"left as it is (could not be read: {exc})"
-    if current:
-        return f'left as it is (activation = "{current}")'
-    return ("left as it is -- but script_generation.activation is UNSET, so "
-            "every wrapper will refuse to render (running-a-job.md 5.2)")
+        from ..runtime_config import read_config
+        read_config()
+    except Exception as exc:            # the refusal says what to do
+        return f"left as it is -- but it does not read: {exc}"
+    return "left as it is"
 
 
-def seed_environment_record() -> Step:
-    """This machine's own ``environment.json``, via the probe's own doors.
+def seed_environment_record(activation: Optional[str],
+                            preamble: Optional[str] = None) -> Step:
+    """This machine's own ``environment.json``, via the probe's own doors --
+    carrying how a shell enters an environment here, as just declared.
 
-    Delegated to ``resolve_environment`` + ``write_environment`` -- what
-    ``jobset probe --write`` calls -- so there is one prober and one writer,
-    and re-probing later cannot disagree with what was seeded here.
+    Delegated to ``resolve_environment`` + ``local_facts`` +
+    ``write_environment`` -- what ``jobset probe --write`` calls -- so there is
+    one prober and one writer, and re-probing later cannot disagree with what
+    was seeded here.
 
-    Ordered AFTER the config on purpose: the record carries
-    ``script_generation`` copied out of ``molbuilder.json``, so a record
-    written first would carry nothing and reproduce the very refusal this
-    module exists to remove.
+    **The activation's one home is this record** *(2026-10-02,
+    `configuration.md` § 5 M-1)*.  An existing record is kept -- re-probing is
+    `jobset probe`'s, which asks before it overwrites -- except that one
+    carrying NO activation is given the one just declared: without it every
+    prep for this machine refuses, and nothing else in it changes.
     """
     from ..diagnostics import local_facts
-    from ..scheduler import (machine_scope_path, resolve_environment,
-                             write_environment)
+    from ..scheduler import (machine_scope_path, read_environment,
+                             resolve_environment, write_environment)
+    declared = {k: v for k, v in (("activation", activation),
+                                  ("preamble", preamble)) if v}
+    # Its own directory: a public function that worked only after another one
+    # had made it is a trap (`_ensure_root`).
+    _ensure_root()
     path = machine_scope_path()
     if path.exists():
-        return Step(path, "kept", "re-probe with `molbuilder jobset probe "
-                                  "--write` when the machine changes")
+        before = read_environment(path)
+        said = ((before.script_generation if before is not None else None)
+                or {}).get("activation")
+        if before is None or said or not declared.get("activation"):
+            note = ("re-probe with `molbuilder jobset probe --write` when the "
+                    "machine changes")
+            if said:
+                note = f'activation "{said}"; ' + note
+            return Step(path, "kept", note)
+        import dataclasses as _dc
+        write_environment(_dc.replace(before, script_generation=declared),
+                          path)
+        return Step(path, "rewritten",
+                    f'it carried no activation -- now "{activation}"'
+                    + _preamble_note(activation, declared.get("preamble")))
     # THE SAME TWO STEPS ``jobset probe --write`` TAKES, in the same order:
-    # resolve, then attach the three facts that travel (`local_facts`).  A
-    # record written without the second step carries no activation, which is
-    # precisely the refusal this module exists to remove -- so seeding it that
-    # way would have shipped the bug in a new place.
-    env, _note = local_facts(resolve_environment())
+    # resolve, then attach the three facts that travel (`local_facts`).
+    env, _note = local_facts(resolve_environment(), declared)
     write_environment(env, path)
     sg = getattr(env, "script_generation", None) or {}
     note = "probed this machine"
     if sg.get("activation"):
-        note += f'; carries activation "{sg["activation"]}"'
+        note += (f'; carries activation "{sg["activation"]}"'
+                 + _preamble_note(sg["activation"], sg.get("preamble")))
     else:
         note += "; carries NO activation -- prep for this machine will refuse"
     return Step(path, "created", note)
 
 
-def init_config(activation: str,
+def _preamble_note(activation: str, preamble: Optional[str]) -> str:
+    """What the recorded preamble means for the activation beside it -- said
+    at install, where it can still be fixed, rather than by a job failing on
+    its activation line."""
+    if preamble:
+        return f"; preamble {preamble!r}"
+    if activation == "conda activate":
+        # ``conda activate`` is a shell function that a non-interactive shell
+        # has never defined, so no preamble here means a wrapper that will
+        # fail inside the job.
+        return ("; no preamble -- `conda activate` needs conda's hook "
+                "sourced in a non-interactive shell, and none was found")
+    # ``source activate`` is a script on PATH.  It needs no hook, so the
+    # absence is the correct state and must not be reported as a miss --
+    # which is what it said until 2026-09-08, on every machine that HAD a hook
+    # and simply did not need it.
+    return "; no preamble (source activate needs none)"
+
+
+def init_config(activation: Optional[str],
                 preamble: Optional[str] = None,
                 probe: bool = True,
                 projects: Optional[Path] = None) -> List[Step]:
     """Seed the whole directory.  Idempotent; returns what it did.
 
-    ``probe=False`` skips the record for the case where the machine being
-    installed on is not the machine that will run anything -- a build host, a
-    container image baked once and copied.  The config still gets seeded,
-    because ``activation`` is a property of how the image enters conda and
-    travels with it.
+    ``activation`` and ``preamble`` go into this machine's RECORD, their one
+    home (`configuration.md` § 5 M-1).  ``probe=False`` writes no record --
+    for a build host or a container image baked once, where the machine
+    installed on is not the machine that runs anything -- and then nothing is
+    asked about entering an environment: on the machine that runs jobs,
+    ``jobset probe --write --activation …`` records it.
 
     ``projects`` writes ``paths.projects``.  ``None`` leaves the section empty
     and the default applies -- which is the right answer on a workstation and
@@ -621,7 +600,7 @@ def init_config(activation: str,
         raise RuntimeError("\n".join(blockers))
 
     steps = list(ensure_dirs())
-    steps.append(seed_machine_config(activation, preamble, projects))
+    steps.append(seed_machine_config(projects))
     if probe:
-        steps.append(seed_environment_record())
+        steps.append(seed_environment_record(activation, preamble))
     return steps

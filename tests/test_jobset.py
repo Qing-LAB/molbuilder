@@ -70,9 +70,11 @@ def _ladder() -> JobSet:
         shared=["C.psml", "mb_monitor.py"],
         jobs=[
             Job(name="s1", script="demo_s1.fdf",
-                resources=Resources(domain="htc", time="0-04:00:00")),
+                resources=Resources(domain="htc", time="0-04:00:00",
+                                    mem="8G")),
             Job(name="s2", script="demo_s2.fdf",
-                resources=Resources(domain="public", exclusive=True),
+                resources=Resources(domain="public", exclusive=True,
+                                    time="0-04:00:00", mem="8G"),
                 # WHAT it would take from a run it is continued from -- never
                 # WHICH job -- that is named by a person at prep, with
                 # `--from` (project-layout.md 1.6).
@@ -330,6 +332,9 @@ def _token_ladder(*scripts, optimizers=None):
             name=name, script=script,
             traits={"optimizer": opt.get(name, "CG")},
             warm=([] if i == 0 else list(declared)),
+            # STATED, as a described ladder's run card states it -- a run
+            # script is not written for an unstated shape (2026-10-02).
+            resources=Resources(mpi_np=2, cpus_per_task=1),
         ))
     return JobSet(name="JOB", engine="siesta", kind="ladder", jobs=jobs)
 
@@ -450,10 +455,12 @@ def _sweep() -> JobSet:
         name="sw", engine="siesta", kind="sweep",
         jobs=[Job(name="G1K1C4", script="job-gpu.fdf",
                   resources=Resources(mpi_np=1, cpus_per_task=4,
-                                      gres="gpu:1")),
+                                      gres="gpu:1", time="0-01:00:00",
+                                      mem="8G")),
               Job(name="G1K2C4", script="job-gpu.fdf",
                   resources=Resources(mpi_np=2, cpus_per_task=4,
-                                      gres="gpu:1"))])
+                                      gres="gpu:1", time="0-01:00:00",
+                                      mem="8G"))])
 
 
 def _write_fdf(path):
@@ -465,13 +472,6 @@ def _write_fdf(path):
                     "DM.UseSaveDM .false.\nMD.UseSaveXV .false.\n")
 
 
-def _write_config(root):
-    # a bundle carries the script_generation block the wrapper needs.
-    (root / ".molbuilder.json").write_text(
-        '{"script_generation": {"preamble": "module load mamba", '
-        '"activation": "source activate"}}')
-
-
 def test_prep_renders_real_wrappers_into_each_job_dir(tmp_path):
     """L1+L2 (roadmap 7.10, user 2026-08-24): every trial directory holds
     its own REAL deck and wrapper, and the bundle root holds NO rendered
@@ -479,7 +479,6 @@ def test_prep_renders_real_wrappers_into_each_job_dir(tmp_path):
     render, symlinked into both dirs -- which is the mechanism that put
     50 rendered files at a real ten-trial bundle's root."""
     js = _sweep()
-    _write_config(tmp_path)
     _write_fdf(tmp_path / "job-gpu.fdf")
     prep_jobset(js, tmp_path, env="molbuilder-siesta-gpu", emit_sbatch=False)
     # the root-rendered input was ADOPTED into the first trial's dir --
@@ -508,8 +507,8 @@ def test_prep_bakes_the_warm_retry_budget_into_the_wrapper(tmp_path):
     field was where it stopped (fixed 2026-08-07, P2 unit 3)."""
     js = JobSet(name="lad", engine="siesta", kind="ladder",
                 jobs=[Job(name="tight", script="job.fdf",
-                          resources=Resources(mpi_np=1, continue_retries=3))])
-    _write_config(tmp_path)
+                          resources=Resources(mpi_np=1, cpus_per_task=1,
+                                            continue_retries=3))])
     _write_fdf(tmp_path / "job.fdf")
     prep_jobset(js, tmp_path, env="molbuilder-siesta", emit_sbatch=False)
 
@@ -524,8 +523,7 @@ def test_prep_omits_the_retry_loop_when_no_budget_is_asked_for(tmp_path):
     retry loop would re-enter SIESTA for jobs nobody asked to retry."""
     js = JobSet(name="lad", engine="siesta", kind="ladder",
                 jobs=[Job(name="tight", script="job.fdf",
-                          resources=Resources(mpi_np=1))])
-    _write_config(tmp_path)
+                          resources=Resources(mpi_np=1, cpus_per_task=1))])
     _write_fdf(tmp_path / "job.fdf")
     prep_jobset(js, tmp_path, env="molbuilder-siesta", emit_sbatch=False)
     assert "_siesta_retry_max=" not in (tmp_path / "bench-tight" / "job.run.sh").read_text()
@@ -730,7 +728,8 @@ def test_submit_exclusive_suppresses_mem(tmp_path):
     """
     js = JobSet("x", "siesta", "sweep",
                 jobs=[Job("j", "j.fdf",
-                          resources=Resources(exclusive=True, mem="120G"))])
+                          resources=Resources(exclusive=True, mem="120G",
+                                              time="0-01:00:00"))])
     cmd = submit_jobset(js, tmp_path, mode="submit", dry_run=True)[0].command
     assert "--exclusive" in cmd
     assert not any(a.startswith("--mem") for a in cmd)   # exclusive wins
@@ -785,7 +784,6 @@ def test_cli_prep_is_described_only(tmp_path):
     job-set.json directly) -- prep is what they lose."""
     js = _sweep()
     js.write(tmp_path / "job-set.json")
-    _write_config(tmp_path)
     _write_fdf(tmp_path / "job-gpu.fdf")
     runner, grp = _runner()
     r = runner.invoke(grp, ["prep", "bench", "--bundle", str(tmp_path),
@@ -824,24 +822,6 @@ def test_submit_accepts_exactly_these_options(tmp_path):
         "trial_timeout_min", "only_side"}
 
 
-def test_cli_submit_refuses_when_no_mode_is_set_anywhere(tmp_path, monkeypatch):
-    """No ``--mode`` and no ``execution.mode`` is a REFUSAL, never a
-    derivation from the detected scheduler (`running-a-job.md` § 5.4 — the
-    mode, not the scheduler, gates submission).
-
-    Isolated from this machine's own molbuilder.json: C11's fallback reads
-    it, so without the patch this test's verdict would depend on the
-    developer's config.
-    """
-    import molbuilder.runtime_config as rc
-    monkeypatch.setattr(rc, "get_execution", lambda *a, **k: {})
-    _sweep().write(tmp_path / "job-set.json")
-    runner, grp = _runner()
-    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(tmp_path), "--yes"])
-    assert r.exit_code != 0
-    assert "execution.mode" in r.output
-
-
 def test_direct_launch_carries_the_launch_door_claim(tmp_path, monkeypatch):
     """`submit --mode direct` sets MB_LAUNCHED_BY in the child env — the
     claim the wrapper's launch-door gate checks (job-contracts.md § 2.6).
@@ -857,50 +837,12 @@ def test_direct_launch_carries_the_launch_door_claim(tmp_path, monkeypatch):
                 return 0
         return _Proc()
     js = _sweep()
-    _write_config(tmp_path)
     _write_fdf(tmp_path / "job-gpu.fdf")
     prep_jobset(js, tmp_path, emit_sbatch=False)
     monkeypatch.setattr(sub.subprocess, "Popen", fake_popen)
     sub.submit_jobset(js, tmp_path, mode="direct", only=js.jobs[0].name)
     assert seen["env"]["MB_LAUNCHED_BY"] == "jobset-launch"
 
-
-def test_cli_submit_falls_back_to_the_configs_mode(tmp_path, monkeypatch):
-    """C11: with no flag, ``execution.mode`` serves.  Reaching the
-    grouped-plan path downstream is the proof the mode resolved to
-    `submit` (direct mode never groups -- it runs the set in order)."""
-    import molbuilder.runtime_config as rc
-    monkeypatch.setattr(rc, "get_execution", lambda *a, **k: {"mode": "submit"})
-    _sweep().write(tmp_path / "job-set.json")
-    runner, grp = _runner()
-    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(tmp_path),
-                            "--dry-run", "--yes"])
-    assert r.exit_code == 0, r.output
-    assert "bench-group" in r.output      # the grouped plan proves mode=submit
-
-
-def test_cli_submit_surfaces_a_broken_config_as_its_own_error(
-        tmp_path, monkeypatch):
-    """A malformed molbuilder.json is ITS OWN error.  Until 2026-08-12 it was
-    swallowed into *"set execution.mode"* -- advice to set a value the user
-    may already have set."""
-    import molbuilder.runtime_config as rc
-
-    def boom(*a, **k):
-        raise rc.RuntimeConfigError(
-            "execution.mode must be 'direct' or 'submit'")
-    monkeypatch.setattr(rc, "get_execution", boom)
-    _sweep().write(tmp_path / "job-set.json")
-    runner, grp = _runner()
-    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(tmp_path), "--yes"])
-    assert r.exit_code != 0
-    assert "could not be resolved" in r.output
-    assert "must be 'direct' or 'submit'" in r.output
-
-
-# --------------------------------------------------------------------- #
-#  runstatus (the inform layer)                                          #
-# --------------------------------------------------------------------- #
 
 def _fake_status(states):
     """A `run_status` stand-in: dir-name -> state.
@@ -1155,12 +1097,10 @@ def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
     def _blocks(txt):
         return {h.split("(")[0].strip()
                 for h in _re.findall(r"^# --- (.+?) -*$", txt, _re.M)}
-
-    _write_config(tmp_path)      # activation from the bundle, not the cwd
     (tmp_path / "JOB.fdf").write_text(
         "SystemName j\nSystemLabel JOB\nNumberOfAtoms 100\n"
         "NumberOfSpecies 1\nMeshCutoff 300 Ry\nBasis.Size DZP\n")
-    minimal = _blocks(write_run_wrapper(tmp_path / "JOB.fdf", resources=Resources(mpi_np=4), env="e").read_text())
+    minimal = _blocks(write_run_wrapper(tmp_path / "JOB.fdf", resources=Resources(mpi_np=4, cpus_per_task=1), env="e").read_text())
     # The MAXIMAL wrapper (R9, 2026-08-12): a GPU deck with an estimable
     # size and a retry budget emits the four conditional blocks the table
     # omitted -- and this guard, rendering only the minimal wrapper,
@@ -1169,7 +1109,7 @@ def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
         "SystemName g\nSystemLabel GPU\nNumberOfAtoms 100\n"
         "NumberOfSpecies 1\nMeshCutoff 300 Ry\nBasis.Size DZP\n"
         "Diag.ELPA.GPU .true.\n")
-    maximal = _blocks(write_run_wrapper(tmp_path / "GPU.fdf", resources=Resources(mpi_np=4, gres="gpu:1", continue_retries=2), env="e").read_text())
+    maximal = _blocks(write_run_wrapper(tmp_path / "GPU.fdf", resources=Resources(mpi_np=4, cpus_per_task=1, gres="gpu:1", continue_retries=2), env="e").read_text())
     # The ESTIMABLE CPU deck (D9 tightening, user decision 2026-08-13):
     # the Memory block renders only from a chemically parseable deck
     # (species + coordinates) -- which NEITHER fixture above carries, so
@@ -1184,7 +1124,7 @@ def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
         "%block AtomicCoordinatesAndAtomicSpecies\n"
         "0.0 0.0 0.0 1\n0.0 0.0 0.74 1\n"
         "%endblock AtomicCoordinatesAndAtomicSpecies\n")
-    estimable = _blocks(write_run_wrapper(tmp_path / "EST.fdf", resources=Resources(mpi_np=2), env="e").read_text())
+    estimable = _blocks(write_run_wrapper(tmp_path / "EST.fdf", resources=Resources(mpi_np=2, cpus_per_task=1), env="e").read_text())
     # A JOB WITH A FINISH (a SIESTA force-constant stage, `engines/
     # vibration.md` § 5.5): the check before the engine and the finish after
     # it render only with one -- which no fixture above carried, so both
@@ -1192,11 +1132,11 @@ def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
     (tmp_path / "FIN.fdf").write_text((tmp_path / "EST.fdf").read_text()
                                       .replace("SystemLabel EST",
                                                "SystemLabel FIN"))
-    finishing = _blocks(write_run_wrapper(tmp_path / "FIN.fdf", resources=Resources(mpi_np=2), env="e", finish="mb_vibration.pyz").read_text())
+    finishing = _blocks(write_run_wrapper(tmp_path / "FIN.fdf", resources=Resources(mpi_np=2, cpus_per_task=1), env="e", finish="mb_vibration.pyz").read_text())
     # PySCF (D9: the guard never rendered one, so its parsing header
     # matched no row and its anatomy was unguarded entirely)
     (tmp_path / "PY.py").write_text('JOB = "PY"\nimport pyscf\n')
-    pyscf = _blocks(write_run_wrapper(tmp_path / "PY.py", resources=Resources(), env="e").read_text())
+    pyscf = _blocks(write_run_wrapper(tmp_path / "PY.py", resources=Resources(cpus_per_task=1), env="e").read_text())
     union = minimal | maximal | estimable | pyscf | finishing
     assert union <= documented, (
         "the wrapper emits blocks job-contracts.md § 2.6 does not list:\n"
@@ -1215,7 +1155,6 @@ def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
 def test_prep_writes_stage_plan_md(tmp_path):
     """J1 (D3): prep emits STAGE-PLAN.md into the bundle (bench parity)."""
     js = _sweep()
-    _write_config(tmp_path)
     _write_fdf(tmp_path / "job-gpu.fdf")
     prep_jobset(js, tmp_path, emit_sbatch=False)
     plan = tmp_path / "STAGE-PLAN.md"
@@ -1379,12 +1318,8 @@ def test_prep_says_reused_only_of_an_attempt_an_earlier_prep_opened(
                                "--bundle", "P/optimization/h",
                                "--shape", "hierarchical", "--engine", "pyscf"])
     assert init.exit_code == 0, init.output
-    import json
-    (tree / "P" / "optimization" / "h" / ".molbuilder.json").write_text(
-        json.dumps({"script_generation": {"activation": "conda activate",
-                                          "preamble": "true"}}))
     prep = ["prep", "run", "coarse", "--bundle", "P/optimization/h",
-            "--no-sbatch"]
+            "--no-sbatch", "--cpus-per-task", "1"]
     first = runner.invoke(grp, prep)
     assert first.exit_code == 0, first.output
     assert "prepared coarse: " in first.output, first.output
@@ -2357,9 +2292,6 @@ def test_prep_leaves_every_job_a_readable_deck_and_wrapper(tmp_path, shape):
     for deck in ("JOB_01_coarse.fdf", "JOB_03_tight.fdf"):
         (tmp_path / deck).write_text("SystemLabel JOB\n")
     (tmp_path / "mb_monitor.py").write_text("# monitor\n")
-    (tmp_path / ".molbuilder.json").write_text(
-        '{"script_generation": {"preamble": "x", '
-        '"activation": "source activate"}}')
 
     prep_jobset(js, tmp_path, emit_sbatch=False)
 
@@ -2703,7 +2635,6 @@ def test_prep_resolves_the_machine_before_anything_else(tmp_path):
     """
     from molbuilder.jobset.prep import prep_jobset
     js = _sweep()
-    _write_config(tmp_path)
     _write_fdf(tmp_path / "job-gpu.fdf")
     assert not (tmp_path / "environment.json").exists()
 
@@ -2760,7 +2691,6 @@ def test_a_machine_WITHOUT_A_RECORD_stops_the_prep(tmp_path, monkeypatch):
     Path(machine_scope_path()).unlink(missing_ok=True)
 
     js = _sweep()
-    _write_config(tmp_path)
     _write_fdf(tmp_path / "job-gpu.fdf")
     with pytest.raises(PrepError) as exc:
         prep_jobset(js, tmp_path, emit_sbatch=False)
@@ -2778,37 +2708,35 @@ def test_a_machine_WITHOUT_A_RECORD_stops_the_prep(tmp_path, monkeypatch):
 # --------------------------------------------------------------------- #
 
 def _prep_bundle(base, *, scheduler: bool, monkeypatch):
-    """Prep the same two-stage flat calculation, with and without a cluster."""
-    import json
+    """Prep the same two-stage flat calculation, with and without a cluster.
+
+    A CLUSTER IS ITS RECORD: a scheduler and the queues it lists.  And a run
+    on it STATES its queue, wall and memory (`architecture.md` § 5.2) -- a
+    `scheduler` block in `molbuilder.json` stood in for both until
+    2026-10-02.
+    """
+    import dataclasses
     from molbuilder.jobset.prep import prep_jobset
     base.mkdir(parents=True, exist_ok=True)
     _describe(base, "flat", names=("coarse", "tight"))
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_02_tight.fdf")
     for j in js.jobs:
         (base / j.script).write_text("SystemLabel JOB\n")
-    cfg = {"script_generation": {"activation": "conda activate",
-                                 "preamble": "source /x/conda.sh"}}
-    if scheduler:
-        cfg["scheduler"] = {"kind": "slurm",
-                            "directives": {"partition": "public",
-                                           "qos": "public"},
-                            "defaults": {"time": "0-04:00:00"}}
-    (base / "molbuilder.json").write_text(json.dumps(cfg))
-    # The MACHINE, not just the config (P1, 2026-08-17).  Configuring a
-    # `scheduler` block no longer makes a cluster: M6 gave workstations config
-    # files too, so block-presence stopped discriminating and the probed
-    # record decides.  A test that wants a cluster has to say it IS one.
-    from molbuilder.scheduler import (FILENAME, Environment, Topology,
-                                        write_environment)
+        if scheduler:
+            j.resources = dataclasses.replace(
+                j.resources, domain="public", time="0-04:00:00", mem="8G")
+    from molbuilder.scheduler import (FILENAME, Domain, Environment,
+                                      Topology, write_environment)
     write_environment(
         Environment(scheduler="slurm" if scheduler else "workstation",
-                    topology=Topology(sockets=2, cores_per_socket=64)),
+                    topology=Topology(sockets=2, cores_per_socket=64),
+                    domains=([Domain(name="public", partition="public",
+                                     qos="public", max_time="1-00:00:00")]
+                             if scheduler else []),
+                    script_generation={"activation": "conda activate",
+                                       "preamble": "source /x/conda.sh"}),
         base / FILENAME)
     monkeypatch.chdir(base)
-    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
-    # working-directory step, which is gone (configuration.md § 2.1a) --
-    # without naming the directory the write lands in a file nothing
-    # opens, and the test passes having configured nothing.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(base))
     # The record follows the config root: this env var moves the
     # machine scope, and prep refuses without a record there.
@@ -2816,32 +2744,6 @@ def _prep_bundle(base, *, scheduler: bool, monkeypatch):
     write_machine_record()
     prep_jobset(js, base, env="molbuilder-siesta")
     return base
-
-
-def test_a_workstation_gets_no_sbatch_and_a_cluster_gets_both(tmp_path,
-                                                              monkeypatch):
-    """No queue on the machine -> no `.sbatch`.
-
-    Emitting one would be inventing a queue the machine does not have, which
-    is the nanny behaviour this project refuses.
-
-    **What "no queue" MEANS changed on 2026-08-17** (P1).  It used to mean *no
-    `scheduler` block is configured* (`architecture.md` § 9: "a workstation
-    needs no scheduler block").  M6 amended that premise the same day -- a
-    workstation records its capability in a config file too -- so
-    block-presence no longer discriminates, and a workstation with one config
-    got 14 `.sbatch` files for a queue it does not have.  The probed record
-    now decides, which is the fact `prep` step 1 just wrote down.
-    """
-    ws = _prep_bundle(tmp_path / "ws", scheduler=False, monkeypatch=monkeypatch)
-    assert sorted(p.name for p in ws.glob("*.run.sh")) == [
-        "JOB_01_coarse.run.sh", "JOB_02_tight.run.sh"]
-    assert list(ws.glob("*.sbatch")) == [], (
-        "a workstation with no scheduler block got a .sbatch")
-
-    hpc = _prep_bundle(tmp_path / "hpc", scheduler=True, monkeypatch=monkeypatch)
-    assert sorted(p.name for p in hpc.glob("*.sbatch")) == [
-        "JOB_01_coarse.sbatch", "JOB_02_tight.sbatch"]
 
 
 def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
@@ -2898,7 +2800,6 @@ def test_prep_resolves_the_machine_before_it_writes_anything(tmp_path,
     is `resolve_target`, step 4 is `write_run_wrapper`; if the wrapper is
     written first, the deck it accompanies was rendered against nothing.
     """
-    import json
     from molbuilder.jobset import prep as _prep
 
     base = tmp_path / "b"
@@ -2907,9 +2808,6 @@ def test_prep_resolves_the_machine_before_it_writes_anything(tmp_path,
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_02_tight.fdf")
     for j in js.jobs:
         (base / j.script).write_text("SystemLabel JOB\n")
-    (base / "molbuilder.json").write_text(json.dumps(
-        {"script_generation": {"activation": "conda activate",
-                               "preamble": "source /x/conda.sh"}}))
     monkeypatch.chdir(base)
     # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
     # working-directory step, which is gone (configuration.md § 2.1a) --
@@ -3003,51 +2901,6 @@ def _write_domains(where, rows):
         Path(where) / FILENAME)
 
 
-def test_submit_defaults_the_domain_from_the_bundles_execution_block(
-        tmp_path, monkeypatch):
-    """R3's other half: execution.domain -- documented in running-a-job
-    §§ 5.3-5.4, returned by get_execution, consulted by nothing until
-    2026-08-12 -- now serves as the default routing when --domain is
-    absent, and the sbatch line carries its -p/-q."""
-    import json as _json
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "home").mkdir()
-    # ...and the box is probed.  Moving HOME moves the machine scope out
-    # from under conftest's own record, and prep refuses without one
-    # (`running-a-job.md` § 3.1).
-    from conftest import write_machine_record
-    write_machine_record()
-    bundle = tmp_path / "b"
-    bundle.mkdir()
-    _sweep().write(bundle / "job-set.json")
-    (bundle / ".molbuilder.json").write_text(_json.dumps({
-        "execution": {"mode": "submit", "domain": "fast"},
-        "scheduler": {"kind": "slurm",
-                      "directives": {"partition": "general", "qos": "public"}},
-    }))
-    # The domain MENU is probed, not configured (N4, 2026-08-17): it was
-    # `scheduler.routing` in the file above until the prober stopped writing
-    # into a person's config.  What the bundle still chooses is WHICH domain
-    # (`execution.domain`) -- the preference half of `configuration.md` § 5 M-1.
-    # The sweep asks for GPUs, so the queue it is routed to lists them
-    # (`scheduler.md` R2a).
-    from molbuilder.scheduler import (FILENAME, Domain, Environment,
-                                      Topology, write_environment)
-    write_environment(
-        Environment(scheduler="slurm", topology=Topology(cores_per_socket=64),
-                    domains=[Domain(name="fast", partition="htc",
-                                    qos="express", max_time="0-04:00:00",
-                                    gpu={"a100": 4})]),
-        bundle / FILENAME)
-    runner, grp = _runner()
-    r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
-                            "--dry-run", "--yes"])
-    assert r.exit_code == 0, r.output
-    assert "-p htc" in r.output and "-q express" in r.output
-
-
 # --------------------------------------------------------------------- #
 #  G7 — the GPU answer travels; the deck is not re-read for it          #
 # --------------------------------------------------------------------- #
@@ -3135,7 +2988,7 @@ def test_the_progress_channel_ends_up_in_the_run_and_nowhere_else(
     from support.road import describe_h2, jobset
     bundle = describe_h2(tmp_path, monkeypatch)
     r = jobset("prep", "run", "coarse", "--bundle", bundle,
-               "--target", "this")
+               "--target", "this", "--np", "2", "--cpus-per-task", "1")
     assert r.exit_code == 0, r.output
     log = "H2_01_coarse.molwatch.log"
     attempt = bundle / "01_coarse" / "run-0"
