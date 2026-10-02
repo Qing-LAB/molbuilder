@@ -506,8 +506,11 @@ def test_each_rung_of_a_vibration_carries_and_retries_as_its_own_kind(
     (True, 0.01, (0,), "within this calculation's tolerance",
      ("taken at the geometry as given", "No relaxation record")),
     # A tolerance tighter than the relax reached: the one remedy, launch
-    # included -- a prepped continuation continues nothing until it runs.
-    (False, 0.0005, (0,), "`molbuilder jobset launch run relax`",
+    # included -- a prepped continuation continues nothing until it runs --
+    # with what the mode means beside it, as every text read later says it
+    # (`identity.launch_as_typed`; W52).
+    (False, 0.0005, (0,), "`molbuilder jobset launch run relax` (--mode "
+                          "direct runs it here",
      ("ladder relaxes it first", "untick the box")),
     # The held set changed since `relax` ran (the measured run held atom 0,
     # this description holds none): free atoms it never balanced.

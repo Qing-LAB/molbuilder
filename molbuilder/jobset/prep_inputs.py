@@ -691,16 +691,27 @@ def prep_run_inputs(base, target, task, stage, allocation=None, *,
             _rec, _resolve_failed = None, _exc
         from ..runwrap import auto_ranks
         _w = auto_ranks(_rec, None, getattr(allocation, "domain", None))
-        _where = (f"the selected target/domain"
+        _where = ("the selected target/domain"
                   + (f" ({allocation.domain})" if allocation.domain else ""))
         if _w:
+            # THE WAYS ON THAT THIS CALCULATION TAKES (W52: it offered
+            # `mpi_np`, which PySCF has no item for, and `prep bench`, which
+            # every engine but SIESTA, and transport, refuse): the engine's
+            # own launch-shape item, from the catalogue; the benchmark only
+            # where `prep bench` would take one (`bench_refusal`).
+            from ..template import catalogue, select
+            from .commands import command
+            _shape = next((i.name for i in select(
+                catalogue(), engine=getattr(task, "engine", ""))
+                if i.name in ("mpi_np", "threads")), "mpi_np")
             note(f"  no launch shape in `execution` and no rank/thread "
                  f"flags --\n"
                  f"  sizing from {_where}: {_w} core(s).\n"
                  f"  To decide it yourself:  "
-                 f'"execution": {{"mpi_np": N}} in task.json\n'
-                 f"  To measure first:       "
-                 f"molbuilder jobset prep bench {stage or '<stage>'}")
+                 f'"execution": {{"{_shape}": N}} in task.json'
+                 + ("" if bench_refusal(task) else
+                    "\n  To measure first:       "
+                    + command("prep", "bench", stage, base=base)))
         elif _ambiguous is not None:
             _opts = "\n".join(
                 f"      --target {c}" for c in _ambiguous.choices
@@ -709,16 +720,20 @@ def prep_run_inputs(base, target, task, stage, allocation=None, *,
                  "  more than one machine is on file -- so there is no\n"
                  "  target to read a core count FROM until you name one:\n"
                  + _opts +
-                 "\n      --target this   (this machine, already probed)\n"
+                 "\n      --target this   # this machine, already probed\n"
                  "  Nothing needs probing: these records exist.")
         elif _resolve_failed is not None:
             pass          # the refusal that follows names the real cause
         else:
+            # THIS MACHINE is probed with no name (`this` is reserved), a
+            # named one on itself, the note after `#` (W52).
+            from ..scheduler.record import LOCAL_TARGET
             note(f"  no launch shape in `execution`, no flags, and no "
                  f"core count for {_where} --\n"
                  f"  `prep` will refuse rather than guess.  Probe it:\n"
                  f"  molbuilder jobset probe --write"
-                 + ("" if target is None else " --name " + str(target)))
+                 + ("" if target in (None, LOCAL_TARGET) else
+                    f" --name {target}   # on that machine"))
 
     # `chosen` is returned for the PREVIEW to name; it is already folded in.
     return allocation, pins, chosen
@@ -1121,7 +1136,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
                            if "WARNING" in share[1] else
                            "  <- past the tuned point")
                 bits.append(f"G{g}K{k}: {k} rank(s)/GPU{flag}")
-            note(f"  GPU sharing in this family: " + ", ".join(bits))
+            note("  GPU sharing in this family: " + ", ".join(bits))
         if fam and not fcells:
             # every GPU cell was crossed out above, or fell to the
             # even-split rule -- both are listed by name, so this names

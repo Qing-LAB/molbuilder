@@ -71,7 +71,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:            # annotation only -- importing
     # vibration_deck at run time would cycle (it imports this).
     from .vibration_deck import VibrationConfigView
-from ..identity import command_stage
 from ..runfiles import tail as _rf_tail
 from ..structure import Structure
 
@@ -163,13 +162,16 @@ def _emit_header_docstring(struct: Structure,
     out.append(f"Atoms     : {getattr(struct, 'n_atoms', len(struct.elements))}")
     out.append(f"Job name  : {cfg.job_name}")
     out.append("")
-    out.append("Run it the way it was prepared (the described route):")
     # The stage by its NAME, through the one printer (`job-system.md` § 5.3).
-    _typed = command_stage(stage_token) if stage_token else "<stage>"
-    out.append(f"    molbuilder jobset launch run {_typed} --bundle <path from")
-    out.append("        the projects root>          # from anywhere;")
-    out.append("                                   # the wrapper beside this deck")
-    out.append("                                   # activates the env and logs the run")
+    from ..identity import LAUNCH_MODE_NOTE, deck_launch
+    _launch = deck_launch(stage_token)
+    if _launch:
+        out.append("Run it the way it was prepared (the described route), "
+                   "from the calculation's folder:")
+        out.append(f"    {_launch}")
+        out.append(f"    {LAUNCH_MODE_NOTE}")
+        out.append("    -- the wrapper beside this deck activates the env and "
+                   "logs the run.")
     out.append("A bare `python <this file>` also works from this directory for a")
     out.append("manual run -- the deck is self-contained -- but nothing records it.")
     out.append("Layout: one job per directory (docs/execution/job-contracts.md);")

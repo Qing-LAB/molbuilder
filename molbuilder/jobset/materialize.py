@@ -266,6 +266,51 @@ def sweep_set_paths(bundle) -> "List[Path]":
                   if p.is_file())
 
 
+def bench_stage_of(base, where) -> "Optional[str]":
+    """The stage a sweep measures, by its name -- read off where the sweep
+    lives: the bench container that holds ``where`` (the container itself,
+    or a trial in it), through the layout's search half
+    (`paths.bench_containers_in`), so both layouts answer.  A refusal or a
+    status names the stage's own verbs with it, never a ``<stage>``.
+    ``None`` for a sweep in no stage's container -- a hand-built one.
+
+    *(It read the folder's first part as a stage token until 2026-10-01 --
+    the hierarchy's ``01_coarse/bench`` -- and so named no flat sweep's
+    stage: flat qualifies the container's own name, ``bench_01_coarse``;
+    the W52 review.)*"""
+    from ..identity import command_stage
+    try:
+        rel = Path(where).resolve().relative_to(Path(base).resolve())
+    except (ValueError, OSError):
+        return None
+    for name, token in _bench_containers_in(base):
+        if token and (rel == Path(name) or Path(name) in rel.parents):
+            return command_stage(token)
+    return None
+
+
+def bench_owner(folder) -> "Optional[Tuple[Path, str]]":
+    """``(calculation folder, stage name)`` when ``folder`` IS a stage's
+    bench container -- the declared one of the calculation one level up
+    (flat's ``bench_<NN>_<stage>``) or two (the hierarchy's
+    ``<NN>_<stage>/bench``), through the layout's search half -- else
+    ``None``.  A sweep's own job-set names its trials from the calculation,
+    so a reader standing in its container reads them from there (W52:
+    `status` in a bench folder read every trial as never prepped, and named
+    the folder as the calculation)."""
+    from ..identity import command_stage
+    from ..task import FILENAME as _TASK
+    f = Path(folder).resolve()
+    for calc in (f.parent, f.parent.parent):
+        if not (calc / _TASK).is_file():
+            continue
+        rel = f.relative_to(calc)
+        for name, token in _bench_containers_in(calc):
+            if token and Path(name) == rel:
+                return calc, command_stage(token)
+    return None
+
+
 def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     """``{job name: directory name}`` for a whole JobSet — the naming authority.
 
@@ -1201,7 +1246,8 @@ def read_gathered_from(attempt_dir) -> List[dict]:
     return out
 
 
-__all__ = ["Attempt", "trial_dir", "trial_work_dir",
+__all__ = ["Attempt", "bench_owner", "bench_stage_of", "trial_dir",
+           "trial_work_dir",
            "TRIAL_PREFIX", "trials_in", "launched_trials",
            "materialize", "job_dir_name", "job_dir_names", "stage_refs",
            "attempts", "was_launched", "latest_attempt", "run_dir",

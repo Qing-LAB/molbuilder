@@ -715,10 +715,11 @@ def _point_table(points: List[BenchPoint]):
 
 def summary_text(res: BenchResult, out_path: Path, *,
                  report: Optional[str] = None,
-                 stage: Optional[str] = None) -> str:
+                 stage: Optional[str] = None, base=None) -> str:
     """The verb's stdout: the measurement table, the verdict, THE REPORT,
     and what to do next.  ``report`` is ``run_summarize_jobset``'s third
-    return; ``stage`` names the stage in the next-commands.
+    return; ``stage`` names the stage in the next-commands and ``base`` the
+    calculation they act on (`commands`).
     """
     lines = ["bench-summarize: measured points (fastest first)"]
     ranked = sorted(
@@ -801,12 +802,24 @@ def summary_text(res: BenchResult, out_path: Path, *,
             lines.append(report.rstrip())
             lines.append("")
         lines.append("  next:")
-        lines.append(f"    1. put the `execution` block above in task.json  "
-                     f"# stages[{stage_word}].execution, or calculation-wide")
-        lines.append(f"    2. molbuilder jobset prep run {stage_word}"
-                     f"     # uses what you wrote, and nothing else")
-        lines.append(f"    3. molbuilder jobset launch run {stage_word}"
-                     f" --mode submit|direct")
+        lines.append(f"    1. put the `execution` block above in task.json, "
+                     f"as stages[{stage_word}].execution or calculation-wide")
+        if stage:
+            # ONE COMMAND A LINE, the step's sentence above it (`commands`):
+            # the calculation named when it is known, the mode stated where
+            # its config sets none -- it printed `--mode submit|direct`,
+            # which bash runs as a pipe (W52).
+            from .commands import command, launch_lines
+            lines.append("    2. prep the stage's run -- it uses what you "
+                         "wrote, and nothing else:")
+            lines.append("         " + command("prep", "run", stage,
+                                                base=base))
+            lines.append("    3. then launch it:")
+            lines += ["         " + ln
+                      for ln in launch_lines("run", stage, base=base)]
+        else:
+            lines.append("    2. prep the stage's run, then launch it -- "
+                         "`prep run` reads what you wrote, and nothing else")
     return "\n".join(lines)
 
 

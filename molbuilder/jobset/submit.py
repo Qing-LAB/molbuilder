@@ -55,6 +55,7 @@ from .agreement import (DeckLaunchMismatch, check_launch_matches_deck,
                         check_trial_starts_cold)
 from .model import Job, JobSet, Resources
 from ..paths import attempt_dir, attempt_name
+from .commands import command as _cmd
 
 
 class SubmitError(Exception):
@@ -355,6 +356,8 @@ class _Plan:
     skip: Optional[str] = None
     command: List[str] = dataclasses.field(default_factory=list)
     placement: object = None
+    #: The calculation's folder, so what the plan says names it.
+    base: Optional[Path] = None
 
     @property
     def follows(self) -> bool:
@@ -370,8 +373,9 @@ class _Plan:
                 f"CONCLUDED -- it may still be RUNNING, or it was "
                 f"force-stopped (walltime, kill).\n"
                 f"  Continuing reads its warm files AS THEY ARE: valid after "
-                f"a forced stop, torn if it is still running.  Check "
-                f"`molbuilder jobset status` and the queue first.")
+                f"a forced stop, torn if it is still running.  Check the "
+                f"queue, and `{_cmd('status', self.job.name, base=self.base)}`, "
+                f"first.")
 
     def note(self) -> Optional[str]:
         """The line that says what this launch follows, or ``None``."""
@@ -384,8 +388,9 @@ class _Plan:
                     f"its files are")
         return (f"{how}: continuing {self.continues} -> {self.run_dir.name} "
                 f"(carrying {', '.join(self.carries)}).  A new attempt "
-                f"instead: prep run {self.job.name} first (from the stage "
-                f"before it; --cold from the structure).")
+                f"instead: `{_cmd('prep', 'run', self.job.name, base=self.base)}`"
+                f" first (from the stage before it; --cold from the "
+                f"structure).")
 
 
 def _plan_job(jobset: JobSet, base: Path, job, *, mode: str) -> _Plan:
@@ -409,9 +414,13 @@ def _plan_job(jobset: JobSet, base: Path, job, *, mode: str) -> _Plan:
     A TRIAL is immutable once launched: under direct and ask the measured
     ones are passed over by name, and a named one is refused.
     """
-    from .materialize import (attempts, conclusion_line, continuation_files,
-                              job_dir_names, launch_record_at,
-                              launch_record_path, shape_of, was_launched)
+    import functools
+    from .commands import command
+    from .materialize import (attempts, bench_stage_of, conclusion_line,
+                              continuation_files, job_dir_names,
+                              launch_record_at, launch_record_path, shape_of,
+                              was_launched)
+    _plan = functools.partial(_Plan, base=base)
     sh = shape_of(jobset, base)
     container = base / job_dir_names(jobset, sh)[job.name]
     ns = attempts(container)
@@ -421,29 +430,33 @@ def _plan_job(jobset: JobSet, base: Path, job, *, mode: str) -> _Plan:
         where, basename = launch_record_at("sweep", job, container,
                                            run if ns else None)
         if not was_launched(where, basename):
-            return _Plan(job, container, run, bool(ns), run)
+            return _plan(job, container, run, bool(ns), run)
         if mode in ("direct", "ask"):
-            return _Plan(job, container, run, bool(ns), run,
+            return _plan(job, container, run, bool(ns), run,
                          skip=("already run" if mode == "ask"
                                else "skipped -- already launched"))
+        stage = bench_stage_of(base, container)
+        read_back = (command("summarize", "bench", stage, base=base)
+                     if stage else "`summarize bench` on the sweep's stage")
         if not ns:
             raise SubmitError(
                 f"trial {job.name!r}: already launched -- "
                 f"{launch_record_path(where, basename)} records it.  A "
                 f"trial measures its point ONCE (project-layout.md § 1.5: "
                 f"immutable once it has run); read the sweep back with "
-                f"`molbuilder jobset summarize bench <stage>`.  To measure "
-                f"this point again, move the trial's directory aside "
-                f"yourself -- molbuilder never deletes results.")
+                f"{read_back}.  To measure this point again, move the "
+                f"trial's directory aside yourself -- molbuilder never "
+                f"deletes results.")
         raise SubmitError(
             f"trial {job.name!r}: {run.name} has already been launched "
             f"({launch_record_path(where, basename)}).  A measurement is "
             f"immutable once it has run.\n"
-            f"  read what it measured:  molbuilder jobset summarize "
-            f"bench <stage>\n"
-            f"  measure the point AGAIN: molbuilder jobset prep bench "
-            f"<stage>  (opens {container.name}/{attempt_name(ns[-1] + 1)}, "
-            f"leaving {run.name} untouched)")
+            f"  read what it measured:\n    {read_back}\n"
+            f"  measure the point AGAIN -- opens "
+            f"{container.name}/{attempt_name(ns[-1] + 1)}, leaving "
+            f"{run.name} untouched:\n    "
+            + (command("prep", "bench", stage, base=base) if stage else
+               "`prep bench` on the sweep's stage"))
     if not ns:
         if sh is not None and sh.keeps_attempts_as_directories:
             # A HIERARCHICAL stage with no attempt open would launch in its
@@ -453,16 +466,16 @@ def _plan_job(jobset: JobSet, base: Path, job, *, mode: str) -> _Plan:
                 f"job {job.name!r}: no attempt is open under "
                 f"{container.name}/ -- a hierarchical stage runs in run-<n>, "
                 f"never in its own container (project-layout.md § 1.5, "
-                f"1.6).  Open one:\n"
-                f"    molbuilder jobset prep run {job.name}")
+                f"1.6).  Open one:\n    "
+                + command("prep", "run", job.name, base=base))
         where, basename = launch_record_at("ladder", job, container, None)
         if not was_launched(where, basename):
-            return _Plan(job, container, container, False, container)
-        return _Plan(job, container, container, False, container, again=True,
+            return _plan(job, container, container, False, container)
+        return _plan(job, container, container, False, container, again=True,
                      concluded=conclusion_line(container, stem))
     last = attempt_dir(container, ns[-1])
     if not was_launched(last):
-        return _Plan(job, container, last, True, last)
+        return _plan(job, container, last, True, last)
     source = str(last.relative_to(base))
     try:
         carries = continuation_files(jobset, base, job.name, source,
@@ -475,11 +488,11 @@ def _plan_job(jobset: JobSet, base: Path, job, *, mode: str) -> _Plan:
         raise SubmitError(
             f"{job.name}: {source} was launched, so launching it again "
             f"continues from it -- but that is impossible here:\n  {e}\n"
-            f"  Look at that run's logs; a NEW attempt is:  molbuilder "
-            f"jobset prep run {job.name}  (from the stage before it, "
-            f"job-system.md § 5.4; --cold from the structure), then launch "
-            f"it.") from e
-    return _Plan(job, container, attempt_dir(container, ns[-1] + 1), True,
+            f"  Look at that run's logs.  A NEW attempt -- from the stage "
+            f"before it (job-system.md § 5.4), or with --cold from the "
+            f"structure -- then launch it:\n    "
+            + command("prep", "run", job.name, base=base)) from e
+    return _plan(job, container, attempt_dir(container, ns[-1] + 1), True,
                  last, continues=source, carries=carries,
                  concluded=conclusion_line(last, stem))
 
@@ -748,10 +761,13 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
                 mem=mem, time_s=time_s))
 
     if not plans:
+        from .materialize import bench_stage_of
+        stage = bench_stage_of(base, base / dirs[jobset.jobs[0].name])
         raise SubmitError(
             f"all {len(sides[only]) if only else len(jobset.jobs)} "
-            f"{only + ' ' if only else ''}trials are launched.  next: "
-            f"molbuilder jobset summarize bench <stage>")
+            f"{only + ' ' if only else ''}trials are launched.  next:\n    "
+            + (_cmd("summarize", "bench", stage, base=base) if stage else
+               "`summarize bench` on the sweep's stage"))
 
     if ask:
         # EACH SHELF, as submit would send it.  Its own header is written
@@ -1409,11 +1425,11 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
     # walk continues and the exit code reports any failure (P6).
     warm = stage == "device"
     job = next((j for j in jobset.jobs if j.name == stage), None)
+    base = Path(base_dir).resolve()
     if job is None:
         raise SubmitError(
             f"the {stage} stage is not in the plan -- run "
-            f"`molbuilder jobset prep run {stage}` first.")
-    base = Path(base_dir).resolve()
+            f"`{_cmd('prep', 'run', stage, base=base)}` first.")
     # The stage's <NN>_<name> token, read from the ordinal rule's own
     # home (identity.StageRef.ladder -- the same door token_for reads;
     # importing the conductor from floor 5 is the layering the
@@ -1436,13 +1452,13 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
             raise SubmitError(
                 f"bias point {bias_token(v)}: no attempt is open under "
                 f"{token}/{bias_token(v)}/ -- the scan launches whole, "
-                f"so every point must be prepared:\n"
-                f"    molbuilder jobset prep run {stage}")
+                f"so every point must be prepared:\n    "
+                + _cmd("prep", "run", stage, base=base))
         if was_launched(att):
             raise SubmitError(
                 f"bias point {bias_token(v)}: {att.relative_to(base)} "
                 f"has already been launched.  An attempt is immutable "
-                f"once it has run; `molbuilder jobset prep run {stage}` "
+                f"once it has run; `{_cmd('prep', 'run', stage, base=base)}` "
                 f"opens a fresh run-<n> for every point.")
         try:
             check_launch_matches_deck(att, job)
@@ -1671,6 +1687,17 @@ def _refuse_batch_submission(jobset: JobSet, base_dir: Path, *,
     # rather than a rule about queues.
     if mode == "submit" and len(jobset.jobs) > 1:
         names = ", ".join(j.name for j in jobset.jobs)
+        from .materialize import bench_stage_of, job_dir_names, shape_of
+        first = jobset.jobs[0].name
+        if jobset.kind == "sweep":
+            stage = bench_stage_of(base_dir, base_dir / job_dir_names(
+                jobset, shape_of(jobset, base_dir))[first])
+            one = (_cmd("launch", "bench", stage, first, base=base_dir,
+                        flags=("--mode", "submit")) if stage else
+                   f"`launch bench` on the sweep's stage, with {first}")
+        else:
+            one = _cmd("launch", "run", first, base=base_dir,
+                       flags=("--mode", "submit"))
         raise SubmitError(
             f"refusing to hand {len(jobset.jobs)} jobs to the scheduler at "
             f"once ({names}).\n"
@@ -1680,10 +1707,8 @@ def _refuse_batch_submission(jobset: JobSet, base_dir: Path, *,
             "wrong, because points that run concurrently contend for the "
             "same cores and interconnect, so the sweep measures contention "
             "rather than scaling.\n"
-            "  Name the one you mean:\n"
-            f"    molbuilder jobset launch "
-            f"{'bench <stage> <trial>' if jobset.kind == 'sweep' else 'run <stage>'}"
-            " --mode submit\n"
+            "  Name the one you mean -- the first, say:\n"
+            f"    {one}\n"
             "  `--mode direct` is not affected: it runs them here, in order, "
             "waiting for each.")
 
@@ -1799,13 +1824,17 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
             # The wrapper is required where it is RUN; a dry run prints the
             # command it would get (`job-system.md` § 6), as before.
             if not dry_run and not (p.read_from / run_name).exists():
+                # THE PREP THAT WRITES IT, as a command: a sweep's is its
+                # stage's `prep bench`, the stage read off where the trial
+                # lives (`materialize.bench_stage_of`).
+                from .materialize import bench_stage_of
+                again = (_cmd("prep", "bench",
+                              bench_stage_of(base, p.container), base=base)
+                         if jobset.kind == "sweep" else
+                         _cmd("prep", "run", p.job.name, base=base))
                 raise SubmitError(
                     f"job {p.job.name!r}: {run_name} is not in "
-                    f"{p.read_from} -- "
-                    + ("prep the sweep's stage again (`molbuilder jobset "
-                       "prep bench`)" if jobset.kind == "sweep" else
-                       f"prep it first:  molbuilder jobset prep run "
-                       f"{p.job.name}"))
+                    f"{p.read_from} -- prep it again:\n    {again}")
             p.command = ["bash", run_name] + _run_sh_args(p.job.resources)
             continue
         sbatch_name = _wrapper_name(p.job.script, ".sbatch")

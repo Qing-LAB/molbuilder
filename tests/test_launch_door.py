@@ -38,7 +38,7 @@ import json
 import pytest
 
 from support.road import (a_finished_run, a_queue_that_answers, calls_made,
-                          describe_h2, jobset)
+                          describe_h2, each_is_taken, jobset)
 
 
 def _queues(gpu: bool = False):
@@ -327,10 +327,12 @@ def test_a_run_that_never_concluded_is_followed_only_on_your_word(cluster):
 def test_a_relaunch_that_cannot_continue_opens_nothing(cluster):
     """Launched, and it left nothing to continue from (a run that died at
     startup): launching it again is refused with the story, and no attempt
-    is opened behind the refusal.
+    is opened behind the refusal -- and the new attempt it names is a
+    command that is taken as printed.
 
-    MUTATION THIS MUST FAIL AGAINST: the new attempt opened before the
-    continuation is checked."""
+    MUTATIONS THIS MUST FAIL AGAINST: the new attempt opened before the
+    continuation is checked; the remedy naming no calculation, a note on
+    its line (`job-system.md` § 5.3)."""
     bundle, calls = cluster
     _prep(bundle)
     assert jobset("launch", "run", "coarse", "--bundle", bundle, "--mode",
@@ -341,6 +343,7 @@ def test_a_relaunch_that_cannot_continue_opens_nothing(cluster):
     assert "impossible here" in r.output, r.output
     assert not (bundle / "01_coarse" / "run-1").exists()
     assert len(calls_made(calls)) == 1
+    assert each_is_taken(r.output) == 1, r.output
 
 
 def test_a_flat_stage_still_unconcluded_is_asked_like_an_attempt(

@@ -65,8 +65,9 @@ def test_a_stage_continues_from_the_stage_before_it_by_default(ladder):
     r = _prep(bundle, "medium")
     assert r.exit_code != 0, r.output
     assert "which has not run yet" in r.output, r.output
-    assert "molbuilder jobset prep run coarse && molbuilder jobset launch " \
-           "run coarse" in r.output, r.output
+    assert ("molbuilder jobset prep run coarse --bundle P/optimization/H2\n"
+            "    molbuilder jobset launch run coarse --mode direct --bundle "
+            "P/optimization/H2   # here") in r.output, r.output
     assert "molbuilder jobset prep run medium --cold" in r.output, r.output
     assert not (bundle / "02_medium").exists(), "a refusal wrote the stage"
 
@@ -80,7 +81,8 @@ def test_a_stage_continues_from_the_stage_before_it_by_default(ladder):
 
     _ran(bundle / "01_coarse" / "run-0")
     r = _jobset("status", "--bundle", bundle)
-    assert ("molbuilder jobset prep run medium   # continues from "
+    assert ("molbuilder jobset prep run medium --bundle P/optimization/H2"
+            "   # continues from "
             "01_coarse/run-0") in r.output, r.output
 
     r = _prep(bundle, "medium")

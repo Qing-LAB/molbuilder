@@ -9,8 +9,11 @@ same steps -- an `init` of H2, a stub `sbatch` -- and a copy is free to drift
 from the road it imitates.  The steps live here once.
 
 * :func:`jobset` -- the verbs, as a person types them;
+* :func:`each_is_taken` -- every command an output prints, typed back as
+  printed (`job-system.md` § 5.3: what molbuilder prints, you can type);
 * :func:`describe_h2` -- `jobset init` of a held H2 in a box, SIESTA, the
-  shipped `publishable` ladder (coarse, medium; tight disabled);
+  shipped `publishable` ladder (coarse, medium; tight disabled) -- or
+  PySCF's own;
 * :func:`a_queue_that_answers` -- a machine record naming queues, and an
   `sbatch` on PATH that queues nothing: it writes down every call -- where
   it was made and what it said -- answers ``--test-only`` the way Sol's
@@ -24,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 from pathlib import Path
 
@@ -46,12 +50,34 @@ def jobset(*args):
     return CliRunner().invoke(jobset_group, [str(a) for a in args])
 
 
+def printed_commands(output: str):
+    """Every ``molbuilder jobset`` command line an output prints, as a shell
+    splits it -- a ``#`` comment cut off, as bash does -- without the
+    program's two words."""
+    for line in output.splitlines():
+        line = line.strip()
+        if line.startswith("molbuilder jobset "):
+            yield shlex.split(line, comments=True)[2:]
+
+
+def each_is_taken(output: str) -> int:
+    """Type back every command ``output`` prints, from where the test
+    stands, and assert each is taken -- a launch only planned
+    (``--dry-run``), so nothing is sent.  Returns how many there were."""
+    printed = list(printed_commands(output))
+    for words in printed:
+        got = jobset(*words, *(["--dry-run"] if words[0] == "launch" else []))
+        assert got.exit_code == 0, (words, got.output)
+    return len(printed)
+
+
 def describe_h2(tmp_path, monkeypatch, *, shape: str = "hierarchical",
-                name: str = "H2",
-                calculation: str = "optimization") -> Path:
+                name: str = "H2", calculation: str = "optimization",
+                engine: str = "siesta") -> Path:
     """`jobset init` on a held H2 in a box -- the bundle, at
-    ``<projects>/P/<calculation>/<name>``: an optimization's shipped
-    `publishable` ladder, or a vibration's own (`relax`, `freq`)."""
+    ``<projects>/P/<calculation>/<name>``: a SIESTA optimization's shipped
+    `publishable` ladder, a vibration's own (`relax`, `freq`), or PySCF's
+    own ladder."""
     from conftest import write_pseudos
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.structure import Structure
@@ -69,13 +95,14 @@ def describe_h2(tmp_path, monkeypatch, *, shape: str = "hierarchical",
         tree / "P" / "structure" / "h2.xyz")
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     monkeypatch.chdir(tree.parent)
+    siesta = engine == "siesta"
     r = jobset("init", "--structure", "P/structure/h2.xyz",
-               "--bundle", f"P/{calculation}/{name}", "--engine", "siesta",
+               "--bundle", f"P/{calculation}/{name}", "--engine", engine,
                "--shape", shape, "--name", name,
                "--calculation", calculation,
                *(("--stage-strategy", "publishable")
-                 if calculation == "optimization" else ()),
-               "--psml-lib", "pseudopotential")
+                 if calculation == "optimization" and siesta else ()),
+               *(("--psml-lib", "pseudopotential") if siesta else ()))
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / calculation / name
     (bundle / ".molbuilder.json").write_text(json.dumps(

@@ -2493,9 +2493,10 @@ MIGRATED_ITEMS = {
 }
 
 #: The one sentence every refusal of a pre-M6 template ends with.
-MIGRATE_HINT = ("Run `molbuilder jobset migrate --bundle <this calculation's "
-                "folder>`: it rewrites the old items and values into the "
-                "electronic state's, keeping what the run was.")
+MIGRATE_HINT = ("Run `molbuilder jobset migrate` in this calculation's "
+                "folder (or name it with `--bundle`): it rewrites the old "
+                "items and values into the electronic state's, keeping what "
+                "the run was.")
 
 
 #: Items a schema once declared and no longer does, each with where its

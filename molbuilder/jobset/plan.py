@@ -96,11 +96,10 @@ def render_plan(jobset: JobSet) -> str:
         # not an omission -- so say what to do rather than leaving a reader to
         # infer that unrelated jobs may all be started at once.
         lines.append(f"Order: {len(js.jobs)} stage(s), run ONE AT A TIME -- "
-                     "look at each before setting up the next "
-                     "(project-layout.md § 1.6):")
-        lines.append("       molbuilder jobset prep   run <stage> "
-                     "--from <attempt>")
-        lines.append("       molbuilder jobset launch run <stage> --mode ...")
+                     "prep a stage, launch it, look at it, then the next "
+                     "(project-layout.md § 1.6); each continues from the "
+                     "stage before it by default (job-system.md § 5.4), and "
+                     "`molbuilder jobset status` names the next command.")
     else:
         lines.append(f"Order: {len(js.jobs)} independent job(s) -- no ordering "
                      "between them.  Submit one at a time; a scheduler is "

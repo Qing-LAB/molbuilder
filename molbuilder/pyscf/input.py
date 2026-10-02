@@ -32,7 +32,7 @@ from typing import List, Optional
 from ..config.pyscf import PySCFConfig
 # § 4 rule 2's reading of `restart`, shared with SIESTA -- one
 # field, one rule, one place that reads it.
-from ..identity import command_stage, continues
+from ..identity import continues
 from ..runfiles import (compose as _rf, stdout_roles as _stdout_roles,
                         tail as _rf_tail)
 from ..structure import Structure
@@ -264,12 +264,17 @@ def spec_for(struct: Structure,
             out.append(f"Solvent   : {cfg.solvent} ({cfg.solvent_method}, "
                        f"eps={_SOLVENTS.get(cfg.solvent, '?')})")
         out.append("")
-        out.append("Run with -- the managed way, and the usual one:")
         # The stage by its NAME, through the one printer (`job-system.md`
         # § 5.3): the token is a legal name of another stage.
-        _typed = command_stage(stage_token) if stage_token else "<stage>"
-        out.append(f"    molbuilder jobset launch run {_typed} "
-                   f"--mode direct|submit")
+        from ..identity import LAUNCH_MODE_NOTE, deck_launch
+        _launch = deck_launch(stage_token)
+        if _launch:
+            out.append("Run with -- the managed way, and the usual one, from "
+                       "the calculation's folder:")
+            out.append(f"    {_launch}")
+            out.append(f"    {LAUNCH_MODE_NOTE}")
+        else:
+            out.append("Run with:")
         out.append(f"    bash {_rf(label, '.run.sh', stage_token)}          "
                    f"# the same wrapper, by hand")
         out.append("")

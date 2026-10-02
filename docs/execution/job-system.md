@@ -830,6 +830,25 @@ deck's header holds only the token, so it prints the name through
 `identity.command_stage`; every other line already holds a name. A benchmark
 trial's deck names its own launch, `launch bench <stage> <trial>`.
 
+**And every printed command is composed in one place** *(W52, 2026-10-01)*:
+`jobset/commands.py` for what the verbs and their refusals print — the
+calculation named by its address from the projects root (`--bundle`, quoted
+as a shell needs it) unless the reader stands in it; a launch's mode stated
+where this calculation's config sets none, as one line per mode; a refusal
+that asks for a stage offering the stages the verb takes (`'#N'` quoted) and
+the command for the first — a bench verb's, the stages with a prepped
+benchmark, and a calculation that has no benchmark says so before it asks; one
+command a line, any prose after `#`; a name only the person knows (a machine's)
+asked for in words, never a `<placeholder>`. A text read later — a deck's
+header, a result's remedy — says a launch through `identity.launch_as_typed`,
+the same for every engine: as typed from the calculation's folder — it is read
+wherever it was copied, so it names no folder — with what the mode means
+beside it. A layer below `jobset` (a machine record's refusal, a wrapper's
+banner) cannot import the composer and prints plain text by the same rules. *(Until 2026-10-01 the same lines
+were spelled in a dozen modules: some named no calculation, so a pasted line
+acted on another; one printed `--mode submit|direct`, which bash runs as a
+pipe; others ended in a `(note)` or held a `<stage>` nobody can type.)*
+
 **`#N` is the stage's `seq`, never its row.** With stage 2 disabled the
 ladder is `01_coarse` and `03_tight`, so `#3` means *tight* and there is no `#2`
 to type — the same number you see in the directory, in the deck's filename, and
@@ -1128,7 +1147,11 @@ works; until 2026-10-01 every state was told to "re-submit")*. `status
 this same answer ([`web/results.md`](?doc=web/results.md) § 2.4) — its wire form,
 `JobSetStatus.to_dict`, the next prep's answer included. A job set with no
 description beside it — a hand-built one, a benchmark's sweep — lists its own
-jobs. A folder inside a calculation — a stage's, an attempt's — is answered with
+jobs; a benchmark's sweep is read against the calculation it measures, from
+its bench folder too, and its next step is its own verbs for that stage —
+launch the sweep, then read what it measured (§ 7) *(W52: it was read from
+the bench folder, every trial "not prepped", and told a ladder's `launch run
+<trial>`, which a sweep refuses)*. A folder inside a calculation — a stage's, an attempt's — is answered with
 the calculation it belongs to.
 
 The per-stage form answers a different question from the table. The table says
@@ -1690,6 +1713,8 @@ Where each responsibility lives, for someone extending the framework:
 | The human-readable plan table | `molbuilder/jobset/plan.py` |
 | Submit **one** job (SLURM or direct) + domain routing + the refusal to submit more than one per invocation | `molbuilder/jobset/submit.py` |
 | Per-stage status roll-up (reuses `run_status`) | `molbuilder/jobset/runstatus.py` |
+| What a stage continues from — the default, a named run, or why prep refuses (§ 5.4) | `molbuilder/jobset/continuation.py` |
+| Every command a verb or a refusal prints for a person to type; a launch as a text read later says it (a deck's header, a result's remedy) | `molbuilder/jobset/commands.py`; `molbuilder/identity.py::launch_as_typed` |
 | The sweep's reader — trials' artifacts → `bench-result.json` (the pure timing parsers are `molbuilder/bench/result.py`) | `molbuilder/jobset/summarize.py` |
 | The decision ledger (`jobset-decisions.log`, one JSON object per decision) | `molbuilder/jobset/ledger.py` |
 | The CLI verbs (`molbuilder jobset …`) | `molbuilder/jobset/_cli.py` |

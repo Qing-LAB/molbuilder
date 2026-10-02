@@ -81,7 +81,7 @@ def _load(bundle: str) -> tuple:
                     sweeps.append(str(_p.parent.relative_to(base)))
             except Exception:          # unreadable: not evidence of anything
                 pass
-        b = _bundle_hint(base)
+        from .commands import bundle_flag, command
         if described:
             # THE EXACT COMMAND, not a placeholder (user, 2026-08-20: a
             # detected problem carries the invocation that repairs it).  The
@@ -89,24 +89,26 @@ def _load(bundle: str) -> tuple:
             # `<stage>` would be this refusal declining to read a file it has
             # already found.  A benchmark prepped here is named beside it --
             # it is not the run (W52: the run was refused with a note about
-            # the sweep that named no way to prep the run).
-            _rung = "<stage>"
+            # the sweep that named no way to prep the run).  A description
+            # that does not read leaves the stage out: `prep` then says what
+            # is wrong with it, and never a `<stage>` nobody can type.
+            _rung = None
             try:
                 from ..task import read_task as _read_task
                 _t = _read_task(base / _TASK_FILE)
                 _rung = next((st.name for st in (_t.stages or ())
-                              if st.enabled is not False), "<stage>")
+                              if st.enabled is not False), None)
             except Exception:      # a description mid-edit is its own error
                 pass
-            bench = (f"  (A benchmark is prepped in "
+            bench = (f"\nA benchmark is prepped in "
                      f"{', '.join(sweeps[:3])}{'...' if len(sweeps) > 3 else ''}"
                      f" -- its own verbs are `launch bench` and `summarize "
-                     f"bench`.)" if sweeps else "")
+                     f"bench`." if sweeps else "")
             raise click.ClickException(
                 f"no {_JOBSET_FILE} in {base}: this calculation is described "
                 f"but no run is prepped yet.  `prep` derives the set from "
                 f"the description (job-system.md § 4):\n"
-                f"    molbuilder jobset prep run {_rung}{b}" + bench)
+                f"    {command('prep', 'run', _rung, base=base)}" + bench)
         if sweeps:
             where = ", ".join(sweeps[:3]) + ("..." if len(sweeps) > 3 else "")
             raise click.ClickException(
@@ -126,7 +128,7 @@ def _load(bundle: str) -> tuple:
             raise click.ClickException(
                 f"{base} is a folder of the calculation at {root}; the "
                 f"verbs work on the calculation -- name it with "
-                f"`--bundle`:{_bundle_hint(root) or ' (run it from there)'}")
+                f"`--bundle`:{bundle_flag(root) or ' (run it from there)'}")
         raise click.ClickException(
             f"no {_JOBSET_FILE} in {base} -- nothing to do.  The host "
             "describes it and `prep` derives it (job-system.md § 4); run "
@@ -220,25 +222,6 @@ def _echo_config_root() -> None:
 #: ``jobset <verb> <kind> [<stage>]``, and a positional that is sometimes a
 #: path has no place in it.  `jobset status tight` answered *"Directory 'tight'
 #: does not exist"*, which tells a user they mistyped a path they never meant.
-def _bundle_hint(base) -> str:
-    """`` --bundle <path from the projects root>``, or "" when the caller
-    is already standing in it.
-
-    A printed next-step has to be a command the user can paste.  Naming
-    the bundle is what makes it work from anywhere, and omitting it when
-    the cwd already IS the bundle keeps the common case short.
-    """
-    from ..projects import projects_root
-    try:
-        here = Path(base).resolve()
-        if here == Path.cwd().resolve():
-            return ""
-        rel = here.relative_to(Path(projects_root()).resolve())
-    except (ValueError, OSError):
-        return ""
-    return f" --bundle {rel}"
-
-
 def _resolve_bundle(ctx, param, value, *, must_exist: bool = True):
     """``--bundle`` names a calculation, and a calculation is always inside
     the projects tree (user, 2026-08-22).
@@ -518,7 +501,12 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                "and every stage follows, because there is one of it.  The "
                "structure and pseudopotentials still arrive at prep from "
                "the citation.  On the machine that will run it:")
-    click.echo(f"  cd {dest} && molbuilder jobset prep run seed")
+    # THE FIRST COMMAND A PERSON COPIES, as `init` prints it for every other
+    # calculation (W52: a `cd` to this host's path, which is not a path on
+    # the machine the text names).
+    from .commands import command, enabled_refs
+    click.echo("  " + command("prep", "run", enabled_refs(task)[0].name,
+                              base=dest))
 
 
 @jobset_group.command("init",
@@ -738,9 +726,13 @@ def init_cmd(structure, bundle: str, shape: str,
     click.echo(f"Described {desc.label!r} in {out_dir} -- {ladder}, "
                f"shape {shape}.", err=True)
     click.echo("  " + "\n  ".join(p.name for p in written), err=True)
+    # THE FIRST COMMAND A PERSON COPIES, real (W52: it printed `prep run
+    # <stage>`, which bash refuses, beside a `cd` to this host's path).
+    from .commands import command, enabled_refs
+    first = enabled_refs(desc.task)[0].name
     click.echo(
-        f"\nIt names no machine. On the machine that will run it:\n"
-        f"  cd {out_dir} && molbuilder jobset prep run <stage>", err=True)
+        "\nIt names no machine. On the machine that will run it:\n  "
+        + command("prep", "run", first, base=out_dir), err=True)
 
 
 @jobset_group.command("status", short_help="show per-stage status + resume point")
@@ -755,7 +747,8 @@ def status_cmd(stage, bundle: str) -> None:
     molbuilder informs; you decide whether to continue or switch.  Reuses
     the same directory decoder as the Results tab.
 
-    With a STAGE -- its name, or #N its number, like every other verb -- it
+    With a STAGE -- its name, or '#N' its number (quoted: bash reads a bare
+    # as a comment), like every other verb -- it
     answers the other question instead: *what this one is and what happened
     to it* -- its deck, what it carries, its resources, its attempts, its
     launch record and what it continued from.  That form is only answerable
@@ -782,6 +775,13 @@ def status_cmd(stage, bundle: str) -> None:
             raise click.ClickException(f"{_TASK_FILE}: {exc}")
     else:
         js, base = _load(bundle)
+        if js.kind == "sweep":
+            # A BENCH FOLDER is read against its calculation: its sweep names
+            # its trials from there, and what it prints names that (W52).
+            from .materialize import bench_owner
+            owner = bench_owner(base)
+            if owner is not None:
+                base = owner[0]
         name = (_resolve_stage_name(js, stage) if stage is not None
                 else None)
     try:
@@ -854,7 +854,7 @@ def _described_stage(base, stage):
         raise click.ClickException(str(e))
 
 
-def _stage_bench_dir(base, stage):
+def _stage_bench_dir(base, stage, verb: str = "launch"):
     """The stage's bench container (job-contracts.md § 6.3), resolved
     through the description — where its trials, its job-set and its verdict
     all live.  Returns ``(container_path, token)``.  ``stage`` is the
@@ -871,10 +871,28 @@ def _stage_bench_dir(base, stage):
         return None, None                    # hand-built set: no container
     task = read_task(desc)
     sh = Shape.named(task.shape)
+    # A CALCULATION THAT HAS NO BENCHMARK says so first -- `prep bench`'s own
+    # answer (`bench_refusal`) -- or the command offered next is refused in
+    # turn (W52: `launch bench` on PySCF offered `prep bench`).
+    from .prep_inputs import bench_refusal
+    why = bench_refusal(task)
+    if why:
+        raise click.ClickException(why)
     if stage is None:
+        # THE STAGES WITH A BENCHMARK TO ACT ON -- a prepped one -- or, with
+        # none, the prep that makes one (W52: every stage was offered, the
+        # disabled and the never-benched, and the first was then refused).
+        from .commands import command, enabled_refs, name_a_stage
+        refs = enabled_refs(task)
+        benched = [r for r in refs if (Path(base) / bench_container(
+            sh, token_for(task, r.name)) / _JOBSET_FILE).is_file()]
+        if not benched:
+            raise click.ClickException(
+                "no stage has a prepped benchmark yet -- prep one first:\n"
+                "    " + command("prep", "bench", refs[0].name, base=base))
         raise click.ClickException(
-            "which stage's benchmark? name it: "
-            f"{', '.join(s.name for s in task.stages)}.")
+            "which stage's benchmark? "
+            + name_a_stage(verb, "bench", benched, base=base))
     token = token_for(task, stage)
     return Path(base) / bench_container(sh, token), token
 
@@ -909,22 +927,19 @@ def _pick_trial(js, base, trial):
                       # upstream and never reaches here)
 
 
-def _load_bench_set(base, stage):
+def _load_bench_set(base, stage, verb: str = "launch"):
     """The stage's OWN sweep record, from its container — or the root
     job-set for a hand-built (description-less) sweep."""
-    container, _ = _stage_bench_dir(base, stage)
+    container, _ = _stage_bench_dir(base, stage, verb)
     if container is None:
         return _load(str(base))              # legacy/hand-built library sets
     jpath = container / _JOBSET_FILE
     if not jpath.is_file():
-        # the bare form is the stageless spelling -- interpolating a None
-        # here told the user to run "prep bench None" (2026-08-12 plan A4)
-        verb = ("molbuilder jobset prep bench"
-                + (f" {stage}" if stage is not None else ""))
+        from .commands import command
         raise click.ClickException(
-            f"no {jpath.relative_to(Path(base))} -- "
-            f"{'this stage has' if stage is not None else 'this calculation has'} "
-            f"no prepped benchmark.  Run `{verb}` first.")
+            f"no {jpath.relative_to(Path(base))} -- this stage has no "
+            f"prepped benchmark.  Prep it first:\n    "
+            + command("prep", "bench", stage, base=base))
     try:
         return JobSet.load(jpath), Path(base)
     except ValueError as e:
@@ -1029,7 +1044,7 @@ def _resolve_stage_name(js, stage: str) -> str:
 # than no helper.
 
 
-def _resolve_stage(js, stage, verb: str):
+def _resolve_stage(js, stage, verb: str, *, base):
     """Which jobs a verb acts on, and the refusal when that is ambiguous.
 
     A LADDER is a sequence you look at between steps, so acting on all of it is
@@ -1055,7 +1070,7 @@ def _resolve_stage(js, stage, verb: str):
     own lookup, its own refusal wording and its own listing format, so a user
     could be shown two vocabularies for one question.
     """
-    from ..identity import render_stage_choices
+    from .commands import name_a_stage
     from .materialize import stage_refs
     if stage is not None:
         return _resolve_stage_name(js, stage)
@@ -1065,9 +1080,8 @@ def _resolve_stage(js, stage, verb: str):
         raise click.ClickException(
             # WHAT YOU CAN TYPE, never the token (`job-system.md` § 5.3):
             # `01_coarse` listed here was refused when typed back, until K12.
-            f"this is a ladder, so `{verb}` acts on ONE stage: "
-            f"{render_stage_choices(ordered)}.\n"
-            f"  molbuilder jobset {verb} run <stage>\n"
+            f"this is a ladder, so `{verb} run` acts on ONE stage; "
+            + name_a_stage(verb, "run", ordered, base=base) + "\n"
             "Stages do not chain, and there is no flag that makes them: a "
             "run that continues on its own can spend a week refining a "
             "geometry you would have rejected in a minute "
@@ -1138,10 +1152,9 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     **Prep printing what it resolved is what makes submit a plain yes** -- it is
     the only place the chosen geometry and the rendered deck appear together.
 
-    A STAGE is required on a ladder — bare ``prep run`` is refused by
-    resolve with the ladder listed by name (`engines/stages.md` § 6.5;
-    until 2026-08-21 the stage-less form died earlier, on the BENCHMARK's
-    "which stage's benchmark?" question — review B1).
+    A STAGE is required on a ladder — bare ``prep run`` is refused before
+    anything is read of the machine or written, offering the stages by name
+    and the command for the first (`engines/stages.md` § 6.5; W52).
     """
     # THE ONE ENTRY (`job-system.md` § 5.3, plan W38 F7): the Task setup
     # tab's Prep buttons call it too.  This verb collects what the person
@@ -1260,7 +1273,7 @@ def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
         # the terminal is gone when a job misbehaves hours later.
         click.echo(format_provenance(ans.provenance))
     stage = ans.stage
-    b = _bundle_hint(base)
+    from .commands import block, command, launch_lines
     if ans.kind == "bench":
         where = f" for stage {stage!r}" if stage else ""
         click.echo(f"prepped {len(ans.dirs)} trial dir(s){where} under "
@@ -1271,17 +1284,19 @@ def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
             # 2026-08-28)
             click.echo(f"  {_rel(base, d)}")
         _echo_pipeline_log(ans, base)
-        say_next(f"next: molbuilder jobset launch bench "
-                 f"{stage or '<stage>'}{b}   (grouped: one job per "
-                 f"resource shelf)")
-        say_next(f"then: molbuilder jobset summarize bench "
-                 f"{stage or '<stage>'}{b}"
-                 f"  -- writes the record + a report to read "
-                 f"(the editable proposal `prep run` applies)")
+        # ONE COMMAND A LINE, prose after `#` (W52: a `(note)` after the
+        # command, which bash cannot parse; and the report described as a
+        # proposal `prep run` applies -- nothing applies it, the person
+        # copies its `execution` block into task.json, job-system.md § 7).
+        say_next("next -- launch the sweep (to the queue it goes as one "
+                 "job per resource shelf):\n"
+                 + block(launch_lines("bench", stage, base=base)))
+        say_next("then -- a report to read; its `execution` block is "
+                 "yours to copy into task.json:\n"
+                 + block([command("summarize", "bench", stage,
+                                  base=base)]))
         return
-    next_line = ("next: molbuilder jobset launch run "
-                 + (f"{stage} " if stage is not None else "")
-                 + f"--mode submit|direct{b}")
+    next_line = "next:\n" + block(launch_lines("run", stage, base=base))
     if ans.flat:
         click.echo(f"prepped {len(ans.dirs)} job dir(s) under {base}  "
                    "(flat: no attempt to open; runs are told apart by "
@@ -1299,8 +1314,8 @@ def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
             for src, fn in got:
                 click.echo(f"  gathered: {fn} <- {src}")
         _echo_pipeline_log(ans, base)
-        say_next(next_line + "   (one job: the chain walks the points in "
-                 "order)")
+        say_next("next -- one job walks the points in order:\n"
+                 + block(launch_lines("run", stage, base=base)))
         return
     rep = ans.attempt
     if rep is None:
@@ -1347,7 +1362,7 @@ def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
         click.echo(click.style(
             f"  {ans.deck}: rendered for mpi_np {a.rendered_text}, but this "
             f"launch asks {a.launch_text}\n"
-            f"    submit WILL REFUSE this -- " + disagreement_note(a),
+            f"    launch WILL REFUSE this -- " + disagreement_note(a),
             fg="yellow"), err=True)
     _echo_pipeline_log(ans, base)
     say_next(next_line)
@@ -1475,25 +1490,28 @@ def summarize_cmd(kind: str, stage, bundle: str,
             "vibration's force-constant stages compared "
             "(engines/vibration.md 5.9)")
     stage = _described_stage(bundle, stage)
-    js, base = _load_bench_set(bundle, stage)
+    js, base = _load_bench_set(bundle, stage, "summarize")
     _check_kind(kind, js)
     from .summarize import (run_summarize_jobset,
                                    summary_text, utc_now_iso)
-    container, _ = _stage_bench_dir(base, stage)
+    container, _ = _stage_bench_dir(base, stage, "summarize")
     # The container's job-set holds ONLY this stage's trials (U1), so the
     # SET is the scope and the verdict goes back where they live -- there
     # is no name filter anywhere (U12).  A description-less sweep has no
     # stages to name at all:
     if container is None and stage is not None:
+        from .commands import command
         raise click.ClickException(
             f"this sweep carries no description, so it has no stage named "
-            f"{stage!r} -- run `molbuilder jobset summarize bench` bare.")
+            f"{stage!r} -- run it bare:\n    "
+            + command("summarize", "bench", base=base))
     res, out_path, report = run_summarize_jobset(
         js, base,
         out=(container / "bench-result.json") if container is not None
             else None,
         now_iso=utc_now_iso(), stage=stage)
-    click.echo(summary_text(res, out_path, report=report, stage=stage))
+    click.echo(summary_text(res, out_path, report=report, stage=stage,
+                            base=base))
     _ledger(base, "summarize", "verdict-written", stage=stage,
             out=str(out_path), points=len(res.points),
             choice=(res.choice or None),
@@ -1703,7 +1721,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     if kind == "bench":
         # the stage's own sweep record, from its bench container (§ 6.3)
         stage = _described_stage(bundle, stage)
-        js, base = _load_bench_set(bundle, stage)
+        js, base = _load_bench_set(bundle, stage, "launch")
     else:
         if trial is not None:
             raise click.ClickException(
@@ -1716,7 +1734,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     else:
         # The description's spelling from here on -- what the ledger
         # records and every line prints (plan § 5w K12).
-        only = stage = _resolve_stage(js, stage, "launch")
+        only = stage = _resolve_stage(js, stage, "launch", base=base)
     launching = [j for j in js.jobs if only is None or j.name == only]
     grouped = kind == "bench" and trial is None and mode in ("submit", "ask")
     mem = _memory(mem_text)
@@ -1905,7 +1923,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             provenance=prov,
             jobs=[{"job": r.name, "status": r.status, "job_id": r.job_id,
                    "returncode": r.returncode} for r in results])
-    b = _bundle_hint(base)
+    from .commands import command
     if mode == "ask":
         # NOTHING WAS SUBMITTED.  The line the scheduler was asked about is
         # the line that WOULD be sent -- same flags, plus --test-only -- so
@@ -1938,8 +1956,8 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
         if not preds:
             click.echo("\n  nothing left to ask about here.")
             if ran:
-                click.echo(f"  read what they measured:  molbuilder jobset "
-                           f"summarize bench {stage}{b}")
+                click.echo("  read what they measured:\n    "
+                           + command("summarize", "bench", stage, base=base))
             return
         asked = next((r for r in results if r.prediction is not None), None)
         click.echo("")
@@ -1983,11 +2001,12 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
         click.echo("  Re-run this launch after fixing the ask; the groups "
                    "already queued are skipped.")
     if not dry_run:
-        click.echo(f"next: molbuilder jobset summarize bench {stage}{b}   "
-                   f"(read the measurements once they have run)"
+        # ONE COMMAND A LINE, the sentence above it (`commands`).
+        click.echo("next -- read the measurements once they have run:\n    "
+                   + command("summarize", "bench", stage, base=base)
                    if kind == "bench" else
-                   f"next: molbuilder jobset status{b}   (look before the "
-                   f"next stage)")
+                   "next -- look before the next stage:\n    "
+                   + command("status", base=base))
 
 
 # --------------------------------------------------------------------- #
@@ -2174,10 +2193,12 @@ def cmd_machines() -> None:
     named = [m for m in machines if m["kind"] == "target"]
     click.echo("")
     if not named:
+        # THE NAME IS THE PERSON'S, so it is asked for in words -- a
+        # `<name>` in a command is a redirect to bash (W52).
         click.echo("No named targets yet.  To prepare for another machine, "
-                   "run this on THAT machine:")
-        click.echo("    molbuilder jobset probe --write --name <name>")
-        click.echo(f"then copy the file it writes into:\n    "
+                   "run `molbuilder jobset probe --write --name` on THAT "
+                   "machine with the name you will prep it by (`--target`), "
+                   "then copy the file it writes into:\n    "
                    f"{environments_dir()}/")
     elif choice_required(machines):
         # NAME THE LOCAL SPELLING HERE TOO.  The listing above shows
@@ -2482,8 +2503,8 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
     path = write_environment(env, target / fname)
     if name:
         click.echo(f"wrote {path}\n"
-                   f"  use it with `molbuilder jobset prep run <stage> "
-                   f"--target {name}`.")
+                   f"  prep for that machine with `--target {name}`, "
+                   f"wherever this record is copied.")
     else:
         click.echo(f"wrote {path}\n"
                    f"  `prep` snapshots it into each calculation; what you "

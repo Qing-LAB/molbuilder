@@ -2608,8 +2608,10 @@ def render_run_wrapper(script_path: Path, *,
                   "--np N on the prep -- or record the machine's topology:\n"
                 + ("    molbuilder jobset probe --write\n"
                    if _local else
-                   "    molbuilder jobset probe --write --name NAME"
-                   "   (on that machine)\n")
+                   # THE NAME IS THE PERSON'S, asked for in words: a `NAME`
+                   # to fill in, and a `(note)` bash cannot parse (W52).
+                   "    on that machine, `molbuilder jobset probe --write "
+                   "--name` with the name you prep it by\n")
                 + "  A rank count is read from a record and nowhere else, so "
                   "that a number is never about the wrong machine."
             )
@@ -3415,7 +3417,7 @@ def render_run_wrapper(script_path: Path, *,
                 # run on.  The override knobs stay; the guess is gone.
                 'echo "                # tune: MOLBUILDER_MPI_NP / '
                 'MOLBUILDER_OMP_NUM_THREADS / -np / -omp / --mps / --no-mps "'
-                '"(measure instead: molbuilder jobset prep bench <stage>)"\n'
+                '"(or measure it: prep bench, for this stage)"\n'
                 # IMPORTANT: keep the command on its own line so the
                 # user can copy-paste it directly into a shell.  An
                 # earlier banner shape put ``(sm%, mem%, ...)`` after

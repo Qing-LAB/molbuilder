@@ -113,12 +113,14 @@ def disagreement_note(a: LaunchAgreement) -> str:
     """The ONE wording of why a mismatch matters and what to do — embedded
     by the `prep` warning and the `launch` refusal alike, so the two
     surfaces cannot drift into explaining one fact two ways."""
-    return (f"a deck derives values from the rank count -- BlockSize above "
-            f"all -- so one rendered for a different launch is wrong for "
-            f"this one (project-layout.md § 2.3.1: a parameter that depends "
-            f"on the launch cannot be decided before the launch is known).  "
-            f"Re-render the deck for this launch, or launch it at "
-            f"{a.rendered_text}.")
+    return ("a deck derives values from the rank count -- BlockSize above "
+            "all -- so one rendered for a different launch is wrong for "
+            "this one (project-layout.md § 2.3.1: a parameter that depends "
+            "on the launch cannot be decided before the launch is known).  "
+            f"Prep the stage again for the width it will launch at "
+            f"({a.launch_text}) -- `prep` renders the deck and the launch "
+            f"together (`--np`, or the run card's `mpi_np`); `launch` takes "
+            f"no width of its own.")
 
 
 class DeckLaunchMismatch(Exception):

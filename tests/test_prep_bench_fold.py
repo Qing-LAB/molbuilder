@@ -227,7 +227,7 @@ def test_cli_prep_bench_requires_a_stage(calc):
     r = CliRunner().invoke(jobset_group,
                            ["prep", "bench", "--bundle", str(calc)])
     assert r.exit_code != 0
-    assert "name it" in r.output
+    assert "name one" in r.output
 
 
 def test_cli_prep_bench_end_to_end_lists_trials_not_attempts(calc):
@@ -373,8 +373,8 @@ def test_a_trials_deck_prints_the_launch_of_that_trial(calc):
                     .read_text())
     trial = js["jobs"][0]["name"]
     deck = (_artifacts(calc, trial) / f"JOB-{trial}_01_coarse.fdf").read_text()
-    line = re.search(r"molbuilder jobset launch (\S+ \S+(?: \S+)?) --mode",
-                     deck).group(1).split()
+    line = re.search(r"molbuilder jobset launch (bench \S+ \S+)$",
+                     deck, re.M).group(1).split()
     assert line == ["bench", "coarse", trial], line
     r = CliRunner().invoke(jobset_group, ["launch", *line,
                                           "--bundle", str(calc),
@@ -420,7 +420,7 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     runner = CliRunner()
     r = runner.invoke(jobset_group, ["launch", "bench", "--bundle", str(calc),
                                      "--mode", "submit", "--dry-run", "--yes"])
-    assert r.exit_code != 0 and "name it" in r.output
+    assert r.exit_code != 0 and "name one" in r.output
     r = runner.invoke(jobset_group, ["launch", "bench", "coarse",
                                      "--bundle", str(calc),
                                      "--mode", "submit", "--dry-run", "--yes"])
@@ -1687,7 +1687,7 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
     # and a bare bench owes a name here exactly as it does on three rungs
     res = r.invoke(jobset_group, ["prep", "bench", "--bundle", str(dest),
                                   "--no-sbatch"])
-    assert res.exit_code != 0 and "name it" in res.output
+    assert res.exit_code != 0 and "name one" in res.output
     # the same on a longer ladder -- one rule, not a per-length one
     ladder = tmp_path / "laddered"
     D.write_description(
@@ -1702,7 +1702,7 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
     res = r.invoke(jobset_group, ["prep", "bench", "--bundle", str(ladder),
                                   "--no-sbatch"])
     assert res.exit_code != 0
-    assert "name it" in res.output
+    assert "name one" in res.output
 
 
 def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):

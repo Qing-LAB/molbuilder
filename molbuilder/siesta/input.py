@@ -1140,16 +1140,19 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             # refused it on every staged deck until K12 (`job-system.md`
             # § 5.3; the M11 review's SS-C11).  A trial's deck names its own
             # launch -- `launch run` would launch the stage's run.
-            _typed = command_stage(stage_token) if stage_token else "<stage>"
-            if trial:
-                out.append("# The managed way -- this trial alone "
-                           f"(`launch bench {_typed}` sends the whole sweep):")
-                out.append(f"#     molbuilder jobset launch bench {_typed} "
-                           f"{trial} --mode direct|submit")
-            else:
-                out.append("# The managed way, and the usual one:")
-                out.append(f"#     molbuilder jobset launch run {_typed} "
-                           "--mode direct|submit")
+            from ..identity import LAUNCH_MODE_NOTE, deck_launch
+            _launch = deck_launch(stage_token, trial)
+            if _launch and trial:
+                out.append("# The managed way -- this trial alone, from the "
+                           "calculation's folder (`launch bench "
+                           f"{command_stage(stage_token)}` sends the whole "
+                           "sweep):")
+            elif _launch:
+                out.append("# The managed way, and the usual one -- from the "
+                           "calculation's folder:")
+            if _launch:
+                out.append(f"#     {_launch}")
+                out.append(f"#     {LAUNCH_MODE_NOTE}")
             out.append(f"#     bash "
                        f"{_rf(cfg.system_label, '.run.sh', stage_token or None)}"
                        "          # the same wrapper, by hand")

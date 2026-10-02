@@ -175,11 +175,16 @@ def resolve_target(base_dir, target: Optional[str] = None) -> Path:
     # prep stops.
     env = machine_for(target=target)
     if env is None:
+        # THIS MACHINE is probed with no name -- `this` is reserved and the
+        # probe refuses it -- and a note goes after `#`, where a shell reads
+        # none (W52: `--name this   (on that machine)`, refused twice over).
+        from ..scheduler.record import LOCAL_TARGET
+        here = target in (None, LOCAL_TARGET)
         raise PrepError(_NO_RECORD.format(
-            which=("this machine" if target is None else repr(target)),
-            cmd=("molbuilder jobset probe --write" if target is None
+            which=("this machine" if here else repr(target)),
+            cmd=("molbuilder jobset probe --write" if here
                  else f"molbuilder jobset probe --write --name {target}"
-                      "   (on that machine)")))
+                      "   # on that machine")))
     return write_environment(env, out)
 
 
@@ -846,8 +851,10 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
     token = token_for(task, relax.name)
     container = base / Shape.named(task.shape).stage_dir(token)
     stem = _rf_stem(task.label, token)
-    run_first = (f"molbuilder jobset prep run {relax.name} && "
-                 f"molbuilder jobset launch run {relax.name}")
+    # THE COMMANDS, from the one composer: the calculation named, the mode
+    # stated where its config sets none (`commands.run_first`).
+    from .commands import block, command, run_first as _run_first
+    run_first = block(_run_first(relax.name, base=base))
     # THE NEWEST ATTEMPT, and it must have concluded: a `relax` re-launched
     # to tighten is the geometry the person means, so an older concluded
     # attempt never stands in for one still running.
@@ -857,14 +864,15 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
             f"the `{pset.stage}` stage takes its geometry from the "
             f"`{relax.name}` stage, whose newest attempt has not concluded -- "
             f"it was never launched, is still running, or was force-stopped "
-            f"(the last two look identical on disk; project-layout.md 1.6).  "
-            f"Let it finish, or run it first --\n    {run_first}")
+            f"-- `{command('status', relax.name, base=base)}` says which "
+            f"(project-layout.md 1.6).  Let it finish, or run it first --\n"
+            f"{run_first}")
     out = stage_stdout(attempt, task.label, token, str(task.engine))
     if out is None:
         raise PrepError(
             f"{attempt.relative_to(base)} concluded without the engine's "
             f"output for `{relax.name}`; there is no geometry to read.  "
-            f"Re-run it --\n    {run_first}")
+            f"Re-run it --\n{run_first}")
     from ..parse.engines.siesta import SiestaParser
     from ..parse.errors import ParseError
     try:
@@ -872,20 +880,20 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
     except ParseError as e:
         raise PrepError(
             f"{out.relative_to(base)} could not be read as a SIESTA run: {e}.  "
-            f"Re-run the `{relax.name}` stage --\n    {run_first}") from e
+            f"Re-run the `{relax.name}` stage --\n{run_first}") from e
     frames = [fr for fr in traj.frames if fr.structure is not None]
     if not frames:
         raise PrepError(
             f"{out.name} holds no coordinate block: the `{relax.name}` "
             f"run never reached its first geometry.  Re-run it --\n"
-            f"    {run_first}")
+            f"{run_first}")
     last = frames[-1]
     if list(last.structure.elements) != list(struct.elements):
         raise PrepError(
             f"{out.name} describes {last.structure.formula} in an order "
             f"that is not this calculation's sorted copy ({struct.formula}): "
             f"the `{relax.name}` stage ran a different structure.  Re-run "
-            f"it --\n    {run_first}")
+            f"it --\n{run_first}")
     cell = last.lattice if last.lattice is not None else traj.lattice
     if log is not None:
         log.step(f"the geometry the `{pset.stage}` stage measures at")
@@ -1890,7 +1898,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                                      write_compose_record)
     from ..atom_permutation import PermutationError
     from ..transport.sort import SortError
-    from ..transport.stages import TRANSPORT_STAGES, warm_declaration
+    from ..transport.stages import warm_declaration
     from ..runwrap import write_run_wrapper
     from ..paths import Shape
 
@@ -1926,11 +1934,11 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # ---- 2. the description, and WHICH rung ---------------------------- #
     task = read_task(desc)
     if not stage:
+        from .commands import enabled_refs, name_a_stage
         raise PrepError(
-            f"a transport prep names its rung: the composite's stages "
-            f"render separately, in dependency order -- "
-            f"{', '.join(TRANSPORT_STAGES)} (transport-design.md 4.2).  "
-            f"Start with `molbuilder jobset prep run seed`.")
+            "a transport prep names its rung: the composite's stages render "
+            "separately, in dependency order (engines/transport.md); "
+            + name_a_stage("prep", "run", enabled_refs(task), base=base))
     token = token_for(task, stage)          # refuses an unknown stage by name
 
     # THE PIPELINE LOG (TR4).  This arm printed "not wired for the transport
@@ -2216,11 +2224,11 @@ def gather_transport_inputs(base_dir, task, stage: str,
         up_dir = rung_container(base, task, upstream, bias)
         stem = _rf_stem(task.label, token)
         current_deck = up_dir / _rf(task.label, ".fdf", token)
-        run_first = (f"run it first --\n"
-                     f"    molbuilder jobset prep run {upstream} && "
-                     f"molbuilder jobset launch run {upstream}\n"
-                     f"  (strict composition, ruling Q2: transport never "
-                     f"runs its pieces for you.)")
+        from .commands import block, command, run_first as _run_first
+        run_first = ("run it first --\n"
+                     + block(_run_first(upstream, base=base))
+                     + "\n  (strict composition, ruling Q2: transport never "
+                       "runs its pieces for you.)")
         if not current_deck.is_file():
             raise PrepError(
                 f"the {stage} stage consumes {filename} from {upstream}, "
@@ -2238,9 +2246,9 @@ def gather_transport_inputs(base_dir, task, stage: str,
             raise PrepError(
                 f"the {stage} stage consumes {filename} from {upstream}, "
                 f"and {upstream} has no CONCLUDED attempt -- it was never "
-                f"launched, is still running, or was force-stopped (the "
-                f"last two look identical on disk; project-layout.md "
-                f"1.6).  Let it finish, or {run_first}")
+                f"launched, is still running, or was force-stopped -- "
+                f"`{command('status', upstream, base=base)}` says which "
+                f"(project-layout.md 1.6).  Let it finish, or {run_first}")
         # THE SAME CALCULATION, not the same bytes.  A deck that renders
         # through the framework carries a generated-at timestamp and the
         # generator's git sha, and neither says anything about what the
@@ -3058,17 +3066,23 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                 "--from / --cold choose what a RUN starts from; a bench "
                 "trial measures its point from the structure, always "
                 "(job-system.md § 7).")
-        if (from_attempt or cold) and stage is None:
-            raise PrepError(
-                "--from / --cold describe ONE stage's attempt; name the "
-                "stage:\n"
-                "    molbuilder jobset prep run <stage> --from "
-                "01_coarse/run-0")
         task = read_task(desc)
         if kind == "bench":
+            # A CALCULATION THAT HAS NO BENCHMARK says so before it is asked
+            # which stage's -- or the stage offered is refused next (W52).
             why = bench_refusal(task)
             if why:
                 raise PrepError(why)
+        if stage is None:
+            # ONE STAGE, named -- before anything is read of the machine or
+            # written (W52: a bare `prep run` was refused by `resolve` after
+            # the machine record had been snapshotted).
+            from .commands import enabled_refs, name_a_stage
+            raise PrepError(
+                (f"`prep {kind}` acts on ONE stage" + (
+                    " -- --from / --cold describe its attempt" if
+                    (from_attempt or cold) else "") + "; ")
+                + name_a_stage("prep", kind, enabled_refs(task), base=base))
 
         # 2 · THE STAGE GRAMMAR (user-settled 2026-08-21): a ladder stage is
         #     named by its NAME, or by `#N` -- the NN of its directory --
@@ -3108,10 +3122,6 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         chosen: dict = {}
         container = None
         if kind == "bench":
-            if stage is None:
-                raise PrepError(
-                    "prep bench measures ONE stage's configuration; name "
-                    "it:\n    molbuilder jobset prep bench <stage>")
             from ..paths import Shape
             from .materialize import bench_container
             sweep, pins, translation = bench_inputs(base, target, notes=notes)

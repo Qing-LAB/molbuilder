@@ -97,7 +97,8 @@ def test_status_lists_every_stage_from_the_description(tmp_path, monkeypatch):
         assert _row(r.output, s["name"])[:4] == [
             str(n), s["name"], "-", "not-started"], r.output
     assert "disabled" in " ".join(_row(r.output, off)), r.output
-    assert f"molbuilder jobset prep run {first}\n" in r.output, r.output
+    assert (f"molbuilder jobset prep run {first} --bundle "
+            f"P/optimization/H2\n") in r.output, r.output
 
     # THE FIRST STAGE PREPPED AND CONCLUDED: the next names its source
     r = _jobset("prep", "run", first, "--bundle", bundle, "--target", "this")
@@ -107,7 +108,8 @@ def test_status_lists_every_stage_from_the_description(tmp_path, monkeypatch):
     assert r.exit_code == 0, r.output
     assert _row(r.output, first)[3] == "finished", r.output
     assert _row(r.output, second)[3] == "not-started", r.output
-    assert (f"molbuilder jobset prep run {second}   # continues from "
+    assert (f"molbuilder jobset prep run {second} --bundle P/optimization/H2"
+            f"   # continues from "
             f"01_{first}/run-0" in r.output), r.output
 
     # ONE STAGE IN FULL: what it is, then what happened to it
@@ -120,7 +122,8 @@ def test_status_lists_every_stage_from_the_description(tmp_path, monkeypatch):
     assert lines["resources"] != "-", r.output
     r = _jobset("status", "#2", "--bundle", bundle)
     assert r.exit_code == 0, r.output
-    assert (f"molbuilder jobset prep run {second}   # continues from "
+    assert (f"molbuilder jobset prep run {second} --bundle P/optimization/H2"
+            f"   # continues from "
             f"01_{first}/run-0" in r.output), r.output
     r = _jobset("status", off, "--bundle", bundle)
     assert r.exit_code == 0, r.output

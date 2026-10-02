@@ -243,16 +243,19 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool
     container = base if sd == "." else base / sd
     flat = not sh.keeps_attempts_as_directories
 
-    run_prev = (f"    molbuilder jobset prep run {prev} && "
-                f"molbuilder jobset launch run {prev}")
-    launch_prev = f"    molbuilder jobset launch run {prev}"
+    # THE COMMANDS, from the one composer (`commands`): each names the
+    # calculation and states the mode where its config sets none.
+    from .commands import block, command, launch_lines, run_first
+    run_prev = block(run_first(prev, base=base))
+    launch_prev = block(launch_lines("run", prev, base=base))
     # THE WAY OUT THAT WORKS HERE (the W37 review's first finding): `--cold`
     # names an attempt-less start, which the flat layout -- one folder, no
     # attempts -- refuses; there a stage starts clean by its run card.
     clean = (f"or start `{stage}` clean: set its run card's `restart` to "
              f"`clean` (Task setup, or task.json)" if flat else
              f"or start `{stage}` from the calculation's structure --\n"
-             f"    molbuilder jobset prep run {stage} --cold")
+             + block([command("prep", "run", stage, base=base,
+                              flags=("--cold",))]))
     rule = "(job-system.md § 5.4)"
 
     if flat:
@@ -304,7 +307,8 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool
                 other = str(a.relative_to(base))
                 break
     alt = (f"or continue from an earlier run of `{prev}` that concluded --\n"
-           f"    molbuilder jobset prep run {stage} --from {other}\n"
+           + block([command("prep", "run", stage, base=base,
+                            flags=("--from", other))]) + "\n"
            if other else "")
     return None, (f"`{stage}` continues from {what} {why}.  {first}\n"
                   f"{alt}{clean}\n{rule}")

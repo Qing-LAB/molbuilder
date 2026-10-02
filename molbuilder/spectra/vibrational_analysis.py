@@ -268,12 +268,17 @@ def nonstationary_remedy(relaxation_stage: Optional[str],
     told a laddered run to untick ``already_relaxed``, which the ladder had
     already done (the M11 review, plan § 5w K6)."""
     if relaxation_stage:
+        # THE LAUNCH AS A TEXT READ LATER SAYS IT (`identity.launch_as_typed`,
+        # the decks' own wording): this remedy is written into a result and
+        # read wherever it was copied, so it names no folder, and says what
+        # the mode means rather than leaving a line `launch` refuses (W52).
+        from ..identity import LAUNCH_MODE_NOTE, launch_as_typed
         s = str(relaxation_stage)
-        return (f"Continue the `{s}` stage from its newest attempt -- "
-                f"`molbuilder jobset prep run {s} --from <that attempt>` "
-                f"starts from the geometry it stopped at, then `molbuilder "
-                f"jobset launch run {s}` -- and prep this stage again once "
-                f"it has concluded.")
+        return (f"Launch the `{s}` stage again from the calculation's "
+                f"folder -- `{launch_as_typed(s)}` {LAUNCH_MODE_NOTE} -- it "
+                f"continues from its newest attempt, at the geometry it "
+                f"stopped at; then prep this stage again once it has "
+                f"concluded.")
     first = ("untick `already_relaxed` and add the `relax` stage before "
              "this one (Task setup, or task.json)"
              if str(engine).lower() == "siesta" else

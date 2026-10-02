@@ -1323,7 +1323,7 @@ def test_prepare_attempt_takes_the_same_two_spellings_as_every_surface():
             assert rep.stage == "tight"           # the NAME, always
             assert rep.dir.parent.name == "03_tight"
         for retired in ("3", "03", "03_tight"):
-            with _pt.raises(ValueError, match="coarse \\(#1\\)"):
+            with _pt.raises(ValueError, match="coarse \\('#1'\\)"):
                 prepare_attempt(js, td, retired)
 
 
@@ -1338,7 +1338,7 @@ def test_prepare_attempt_refuses_with_the_one_listing_that_carries_ordinals():
     with tempfile.TemporaryDirectory() as td:
         with pytest.raises(ValueError) as e:
             prepare_attempt(js, td, "bogus")
-    assert "coarse (#1), tight (#3)" in str(e.value)
+    assert "coarse ('#1'), tight ('#3')" in str(e.value)
 
 
 def test_an_unlaunched_attempt_is_reused_and_a_launched_one_is_never_touched():
@@ -1692,7 +1692,7 @@ def test_a_ladder_refuses_to_act_on_all_of_itself(tmp_path):
     assert "acts on ONE stage" in r.output
     # what you can TYPE, ordinals beside -- the token is refused when typed
     # back (`job-system.md` § 5.3, plan § 5w K12)
-    assert "coarse (#1), tight (#3)" in r.output
+    assert "coarse ('#1'), tight ('#3')" in r.output
     # Every piece of advice it prints must be a command that works -- the
     # option set is pinned by test_submit_accepts_exactly_these_options.
     # Scanned over the whole output, not per line: option tokens are single
@@ -2128,7 +2128,7 @@ def test_submit_only_takes_the_same_two_spellings_as_every_surface(tmp_path):
 
     with pytest.raises(SubmitError) as e:
         submit_jobset(js, tmp_path, mode="direct", dry_run=True, only="bogus")
-    assert "coarse (#1), tight (#3)" in str(e.value)
+    assert "coarse ('#1'), tight ('#3')" in str(e.value)
 
 
 def test_a_number_resolves_to_the_seq_and_never_to_the_row():

@@ -60,8 +60,10 @@ def test_the_run_with_block_names_the_wrapper_and_the_real_filename(h2o):
                          stage_token="02_medium")
     # The stage by its NAME, as `launch` takes it (`job-system.md` § 5.3):
     # the token printed here until K12 is a legal name of another stage.
-    assert "molbuilder jobset launch run medium " in text, (
+    assert "molbuilder jobset launch run medium\n" in text, (
         "the header does not offer the managed path, by the stage's name")
+    assert "direct|submit" not in text, (
+        "the header offers `--mode direct|submit`, which bash runs as a pipe")
     assert "bash my-job_02_medium.run.sh" in text, (
         "the header does not name the wrapper that runs this deck")
     # The direct line is still here, and names the file that EXISTS.

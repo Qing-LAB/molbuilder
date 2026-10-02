@@ -29,6 +29,7 @@ from .materialize import (attempts, job_dir_names, launch_record_at,
                           read_run_launch,
                           latest_attempt, run_dir, shape_of,
                           stage_refs)
+from .commands import block, command, launch_lines
 from .model import JobSet
 from .plan import resources_text
 
@@ -157,6 +158,13 @@ class JobSetStatus:
     #: commands it names (`job-system.md` § 5.3: what molbuilder prints, you
     #: can type).
     resume_refused: Optional[str] = None
+    #: The calculation's folder, so the commands the renderers print name it
+    #: (`commands.command`).  Not part of the wire form.
+    base: Optional[str] = None
+    #: The stage a benchmark's sweep measures (`materialize.bench_stage_of`):
+    #: its rows are trials, and its next step is its own verbs.  ``None``
+    #: for a ladder.  Not part of the wire form.
+    bench_of: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """THE WIRE FORM -- the Results tab's ladder is this (`web/results.md`
@@ -425,12 +433,23 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
                   for job in jobset.jobs]
     first = next((s for s in stages if s.state != _DONE and s.enabled),
                  None)
+    # A BENCHMARK'S SWEEP is read against the calculation it measures, as
+    # its job-set names its trials (`materialize.bench_owner` re-bases a
+    # reader standing in the container); its stage is read off where its
+    # trials live, so its next step is its own verbs (W52: it was told a
+    # ladder's `launch run <trial>`, which a sweep refuses).
+    bench_of = None
+    if sweep and jobset.jobs:
+        from .materialize import bench_stage_of
+        bench_of = bench_stage_of(base, base / kw["dirs"][jobset.jobs[0].name])
     return JobSetStatus(
         name=(jobset.name if jobset is not None else task.label),
         engine=(jobset.engine if jobset is not None else str(task.engine)),
         stages=stages,
         first_incomplete=(first.name if first is not None else None),
         complete=(first is None),
+        base=str(base),
+        bench_of=bench_of,
         **_next_continuation(base, task, first),
     )
 
@@ -494,6 +513,9 @@ def render_status(status: JobSetStatus) -> str:
     lines.append("  " + "  ".join("-" * n for n in w))
     lines += ["  " + fmt(r) for r in rows]
     lines.append("")
+    if status.bench_of is not None:
+        lines.append(_sweep_next(status))
+        return "\n".join(lines)
     if status.complete:
         lines.append("All stages finished. Nothing to resume."
                      if all(s.enabled for s in status.stages) else
@@ -512,16 +534,37 @@ def render_status(status: JobSetStatus) -> str:
                     + textwrap.indent(status.resume_refused, "    "))
                 return "\n".join(lines)
             lines.append(
-                f"First incomplete stage: {first.name}, not prepped yet:\n"
-                f"    molbuilder jobset prep run {first.name}"
+                f"First incomplete stage: {first.name}, not prepped yet:\n    "
+                + command("prep", "run", first.name, base=status.base)
                 + (f"   # continues from {status.resume_from}"
                    if status.resume_from else ""))
             return "\n".join(lines)
-        lines.append(next_step(first, status.first_incomplete))
+        lines.append(next_step(first, status.first_incomplete,
+                               base=status.base))
     return "\n".join(lines)
 
 
-def next_step(s: Optional[StageStatus], name: str) -> str:
+def _sweep_next(status: JobSetStatus) -> str:
+    """A benchmark's next step: its own verbs, for the stage it measures, on
+    the calculation (`job-system.md` § 7) -- the trials launch together, the
+    ones already launched passed over, and what they measured is read back
+    once they have run (W52: worded as a ladder's)."""
+    stage, base = status.bench_of, status.base
+    read = block([command("summarize", "bench", stage, base=base)])
+    states = {s.state for s in status.stages}
+    if "pending" in states:
+        return ("Trials not launched yet -- launch the sweep (the ones "
+                "launched are passed over):\n"
+                + block(launch_lines("bench", stage, base=base))
+                + "\nthen, once they have run, read what they measured:\n"
+                + read)
+    if states & {"queued", "running"}:
+        return ("Trials queued or running -- let them finish, then read "
+                "what they measured:\n" + read)
+    return "Every trial has ended -- read what they measured:\n" + read
+
+
+def next_step(s: Optional[StageStatus], name: str, *, base) -> str:
     """What to do about a PREPPED stage that has not finished, by its state
     -- each a command that works (W52: every state was told to "re-submit
     that stage (the engine warm-starts from its own restart files)", a
@@ -531,17 +574,18 @@ def next_step(s: Optional[StageStatus], name: str) -> str:
     state = s.state if s is not None else "stopped"
     if state == "pending":
         return (f"First incomplete stage: {name}, prepped and not "
-                f"launched:\n    molbuilder jobset launch run {name}")
+                f"launched:\n" + block(launch_lines("run", name, base=base)))
     if state in ("queued", "running"):
         return (f"First incomplete stage: {name}, {state} -- let it "
-                f"finish; `molbuilder jobset status {name}` shows its run.")
+                f"finish; `{command('status', name, base=base)}` shows its "
+                f"run.")
     if s is not None and s.resumes and s.carries:
         how = ("launch it again -- it continues from its own latest run:\n"
-               f"    molbuilder jobset launch run {name}")
+               + block(launch_lines("run", name, base=base)))
     else:
         how = ("prep it again for a fresh attempt -- it does not continue "
-               f"from a run of its own:\n    molbuilder jobset prep run "
-               f"{name}")
+               "from a run of its own:\n"
+               + block([command("prep", "run", name, base=base)]))
     return (f"First incomplete stage: {name}, {state}.  molbuilder does NOT "
             f"auto-resume -- you decide: {how}\n  or change its parameters "
             f"first (engines/stages.md).")
@@ -580,7 +624,8 @@ def render_stage_status(status: JobSetStatus, stage_name: str,
                "Its prep refuses for now:\n"
                + textwrap.indent(cont["resume_refused"], "    ")
                if cont.get("resume_refused") else
-               f"Prep it:  molbuilder jobset prep run {s.name}"
+               "Prep it:\n    "
+               + command("prep", "run", s.name, base=status.base)
                + (f"   # continues from {cont['resume_from']}"
                   if cont.get("resume_from") else ""))
         return "\n".join([f"STAGE {s.ref.label} -- {s.state}", "",

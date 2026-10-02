@@ -271,6 +271,36 @@ def command_stage(token: str) -> str:
     return m.group(1)
 
 
+#: What the mode means, beside a launch line a text read LATER carries -- a
+#: deck's header, a result's remedy -- every engine's.
+LAUNCH_MODE_NOTE = ("(--mode direct runs it here, --mode submit sends it to "
+                    "the queue; unsaid, molbuilder.json's execution.mode "
+                    "decides)")
+
+
+def launch_as_typed(stage: str, trial: Optional[str] = None) -> str:
+    """A stage's launch -- its run, or THIS trial alone -- as typed from the
+    calculation's folder: what a text read LATER says, wherever it was
+    copied (a deck's header, a result's remedy), so it names no folder and
+    no mode; :data:`LAUNCH_MODE_NOTE` says what the mode means.  ONE wording
+    (W52: three engines' decks printed three forms, two of them with
+    ``--mode direct|submit``, which bash reads as a pipe, and the vibration
+    remedy a fourth).  ``stage`` is the stage's NAME -- never its token, a
+    legal name of another stage (`job-system.md` § 5.3)."""
+    return ("molbuilder jobset launch "
+            + (f"bench {stage} {trial}" if trial else f"run {stage}"))
+
+
+def deck_launch(stage_token: Optional[str],
+                trial: Optional[str] = None) -> Optional[str]:
+    """How a deck names its own managed launch -- :func:`launch_as_typed`,
+    for the stage its token names; ``None`` for a deck written outside a
+    ladder: it has no stage to name."""
+    if not stage_token:
+        return None
+    return launch_as_typed(command_stage(stage_token), trial)
+
+
 def parse_stage_token(filename: str,
                       label: str = "") -> Optional[Tuple[int, str]]:
     """The ``(seq, name)`` a filename's stage token carries, or ``None``.
@@ -403,7 +433,7 @@ def resolve_stage_ref(refs: Sequence["StageRef"], text: str) -> "StageRef":
     want = str(text).strip()
     if not want:
         raise ValueError(
-            "no stage named; pass its name, or #N for its number")
+            "no stage named; pass its name, or '#N' for its number")
     if want.startswith("#"):
         num = want[1:]
         if num.isdigit():
@@ -427,8 +457,10 @@ def resolve_stage_ref(refs: Sequence["StageRef"], text: str) -> "StageRef":
 
 
 def render_stage_choices(refs: Sequence["StageRef"]) -> str:
-    """What a refusal offers — the TYPEABLE spellings: ``coarse (#1),
-    tight (#3)``; bare names where there are no ordinals.
+    """What a refusal offers — the TYPEABLE spellings: ``coarse ('#1'),
+    tight ('#3')``; bare names where there are no ordinals.  ``#N`` is QUOTED,
+    because bash reads an unquoted ``#`` as the start of a comment
+    (`job-system.md` § 5.3) -- it was offered bare until 2026-10-01 (W52).
 
     A sibling of :func:`render_stage_refs`, split on purpose: the table
     format shows what is ON DISK (the token, ``03_tight``), this shows
@@ -436,7 +468,7 @@ def render_stage_choices(refs: Sequence["StageRef"]) -> str:
     and printing the on-disk form in a refusal would offer a spelling
     that no longer resolves.
     """
-    return ", ".join(f"{r.name} (#{r.seq})" if r.seq is not None else r.name
+    return ", ".join(f"{r.name} ('#{r.seq}')" if r.seq is not None else r.name
                      for r in refs)
 
 
@@ -597,8 +629,9 @@ def run_id(label: str, formula: str = "", *,
     return f"{stem}_{normalise_id(formula, what='formula')}"
 
 
-__all__ = ["MAX_LABEL_BYTES", "OUR_FILE_PATTERNS", "RestartGroup", "StageRef",
-           "command_stage", "continues", "is_ours", "normalise_id",
+__all__ = ["LAUNCH_MODE_NOTE", "MAX_LABEL_BYTES", "OUR_FILE_PATTERNS",
+           "RestartGroup", "StageRef", "command_stage", "continues",
+           "deck_launch", "is_ours", "launch_as_typed", "normalise_id",
            "parse_stage_token", "render_stage_choices", "render_stage_refs",
            "resolve_stage_ref", "run_id", "seq_text", "stage_key",
            "stage_token"]

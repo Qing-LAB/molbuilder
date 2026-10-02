@@ -614,7 +614,7 @@ def test_gpu_resources_summary_unified_in_launch_banner(
     # command guessed what `jobset prep bench` measures, and probed whichever
     # host it ran on rather than the compute node the job lands on.
     assert "MOLBUILDER_MPI_NP" in wrapper_text
-    assert "jobset prep bench" in wrapper_text
+    assert "measure it: prep bench" in wrapper_text
     assert "envs advise" not in wrapper_text, (
         "the deleted advisor must not be suggested to a person mid-run")
     # the contradictory pre-resolution probe advisory is GONE

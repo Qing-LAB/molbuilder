@@ -362,7 +362,7 @@ So the entry point is:
 
 ```bash
 molbuilder jobset prep   run tight --from 01_coarse/run-0   # or --cold
-molbuilder jobset launch run tight --mode direct|submit
+molbuilder jobset launch run tight --mode direct            # or --mode submit
 ```
 
 `job-system.md` § 5.3 is now the authority for the commands, and the ordering

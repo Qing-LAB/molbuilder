@@ -303,11 +303,11 @@ def collect_record(base_dir, task) -> Dict:
             "current_a": current,
         })
     if not points_out:
+        from ..jobset.commands import block, run_first
         raise RecordError(
             "no transmission point has produced output yet -- run the "
             "transmission stage first:\n"
-            "    molbuilder jobset prep run transmission && "
-            "molbuilder jobset launch run transmission\n"
+            + block(run_first("transmission", base=base_dir)) + "\n"
             + ("  (pending: "
                + "; ".join(f"{p['bias_v']:g} V ({p['why']})"
                            for p in pending) + ")" if pending else ""))
