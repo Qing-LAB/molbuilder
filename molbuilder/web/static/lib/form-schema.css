@@ -57,16 +57,6 @@ fieldset label > .schema-field-text {
     line-height: var(--line-snug);
 }
 
-/* Optional per-section description (`{"description": "..."}` on a
- * schema section).  Renders as a small paragraph between the
- * legend and the first field. */
-fieldset .schema-section-desc {
-    margin: 0 0 var(--space-sm);
-    padding: 0 2px;
-    font-size: var(--text-xs);
-    line-height: 1.45;
-    color: var(--text-secondary);
-}
 
 fieldset label > input,
 fieldset label > select {
@@ -261,8 +251,7 @@ details.workflow-group > .workflow-group-body > fieldset.schema-section {
     gap: 0 var(--space-md);
     align-content: start;
 }
-details.workflow-group > .workflow-group-body > fieldset.schema-section > legend,
-details.workflow-group > .workflow-group-body > fieldset.schema-section > .schema-section-desc {
+details.workflow-group > .workflow-group-body > fieldset.schema-section > legend {
     grid-column: 1 / -1;
 }
 details.workflow-group > summary.workflow-group-header {
@@ -304,8 +293,7 @@ details.workflow-group[open] > summary.workflow-group-header::before {
     gap: 0 var(--space-md);
     align-content: start;
 }
-.workflow-group > fieldset.schema-section > legend,
-.workflow-group > fieldset.schema-section > .schema-section-desc {
+.workflow-group > fieldset.schema-section > legend {
     grid-column: 1 / -1;
 }
 
@@ -519,13 +507,6 @@ details.workflow-group[open] > summary.workflow-group-header::before {
 }
 .schema-help-refs a { color: var(--accent); }
 
-/* A numeric field that accepts a comma-separated list (a k-grid, a set of
- * radii).  Tabular figures so the columns of digits line up as they are
- * typed, which is the whole reason the field takes a list. */
-.schema-input-comma-floats {
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-}
 
 .schema-help-body {
     margin-top: var(--space-xs);
@@ -760,9 +741,8 @@ details.workflow-group[open] > summary.workflow-group-header::before {
 .param-grid > .workflow-group {
     align-items: stretch;
 }
-/* Prose obeys the measure: a description ran the full content column, about
+/* Prose obeys the measure: a subtitle ran the full content column, about
  * 150 characters a line. */
-fieldset .schema-section-desc,
 .workflow-group-subtitle {
     max-width: var(--measure-prose);
 }

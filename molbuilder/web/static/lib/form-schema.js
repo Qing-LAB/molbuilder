@@ -35,8 +35,7 @@
  *     GET /api/build/schema/<engine> that throws on error and
  *     returns the schema body.
  *
- * Kinds handled (the server's are `_shared.py::_control_for`'s;
- * `comma-floats` has had no emitter since 2026-10-02 -- plan D3):
+ * Kinds handled (the server's are `_shared.py::_control_for`'s):
  *
  *   checkbox    : <input type=checkbox>
  *   int         : <input type=number step=1>          (with null option if optional)
@@ -48,9 +47,9 @@
  *   int-triple  : three <input type=number step=1>    (Tuple[int,int,int], e.g. kgrid)
  *   float-triple : three <input type=number step=any> (Tuple[float,float,float],
  *                  e.g. kgrid_displacement — 0.5 must survive)
- *                  (List[<dataclass>], e.g. PySCFConfig.stages)
- *   comma-floats : comma-separated list of floats
- *                  (List[float], e.g. bias voltages)
+ *
+ * A list is a `text` box holding a comma-separated value, which the
+ * server parses back.
  *
  * The renderer never invents a kind; if the server adds a new
  * one we fall through to a plain text input and log a warning so
@@ -486,19 +485,6 @@
             case "tri-select": input = makeTriSelect(f, st); break;
             case "int-triple":   input = makeTriple(f, true, st);  break;
             case "float-triple": input = makeTriple(f, false, st); break;
-            case "comma-floats":
-                // Variable-length List[float] field (Transport's
-                // bias_voltages_v).  Render as a plain text input with
-                // a placeholder hinting the comma-separated format;
-                // the server-side coercer (``coerce_to_field_type``'s
-                // ``Sequence[float]`` branch in _shared.py) parses the
-                // string back into a list before the dataclass sees it.
-                input = makeText(f, st);
-                if (!input.placeholder) {
-                    input.setAttribute("placeholder", "0.0, 0.5, 1.0");
-                }
-                input.classList.add("schema-input-comma-floats");
-                break;
             default:
                 // Unknown kind: log + fallback to text so the form
                 // still renders and the missing case is visible.
@@ -711,15 +697,8 @@
             tagged[role] = new Map();
         }
         const untagged = [];
-        // A section's DESCRIPTION, and how many fields the section has
-        // in total -- the two facts PASS 2 needs to decide whether a
-        // card may show that description.  See the note where it does.
-        const sectionDesc  = new Map();
-        const sectionTotal = new Map();
 
         for (const sect of schema.sections) {
-            sectionDesc.set(sect.name, sect.description);
-            sectionTotal.set(sect.name, sect.fields.length);
             const remainingFields = [];
             for (const f of sect.fields) {
                 const role = f.workflow_group;
@@ -733,12 +712,10 @@
                 }
             }
             if (remainingFields.length > 0) {
-                // Carry the section metadata + the leftover untagged
-                // fields so we can render the section bare with its
-                // original description.
+                // The leftover untagged fields, rendered bare in their
+                // own section.
                 untagged.push({
                     name:        sect.name,
-                    description: sect.description,
                     fields:      remainingFields,
                 });
             }
@@ -787,29 +764,6 @@
             for (const [sectName, fields] of sectMap.entries()) {
                 const fs = el("fieldset", { class: "schema-section" });
                 fs.appendChild(el("legend", null, sectName));
-                // THE SECTION'S OWN EXPLANATION, which reached the
-                // screen on the bare path only until 2026-09-15.  Every
-                // field on the transport tab is workflow-group tagged,
-                // so every section rendered inside a card -- and all
-                // ten paragraphs of `_form_section_descriptions` were
-                // written, tested for presence, and displayed NOWHERE.
-                //
-                // Shown only when this card holds the WHOLE section.  A
-                // section split across cards is a SUBSET here, and a
-                // paragraph about the whole section is then partly
-                // false: "Runtime ... memory budget, CPU thread count,
-                // log verbosity" over a card holding only verbosity.
-                // Repeating it in each card would say it twice and be
-                // wrong twice, so a split section keeps its bare legend
-                // and the fix is to stop splitting it.
-                const desc = sectionDesc.get(sectName);
-                if (desc && fields.length === sectionTotal.get(sectName)) {
-                    fs.appendChild(el(
-                        "p",
-                        { class: "schema-section-desc" },
-                        desc,
-                    ));
-                }
                 for (const f of fields) {
                     fs.appendChild(renderField(f, ctx));
                 }
@@ -837,13 +791,6 @@
         for (const sect of untagged) {
             const fs = el("fieldset", { class: "schema-section" });
             fs.appendChild(el("legend", null, sect.name));
-            if (sect.description) {
-                fs.appendChild(el(
-                    "p",
-                    { class: "schema-section-desc" },
-                    sect.description,
-                ));
-            }
             for (const f of sect.fields) {
                 fs.appendChild(renderField(f, ctx));
             }
@@ -915,9 +862,8 @@
                 return v === "true";
             }
             default: {
-                // text, and comma-floats -- sent as typed; the server's
-                // coercer (_shared.py) reads the list and names the field
-                // if it cannot.
+                // text -- sent as typed; the server's coercer (_shared.py)
+                // reads a list and names the field if it cannot.
                 const v = String(elx.value).trim();
                 return v === "" ? null : v;
             }

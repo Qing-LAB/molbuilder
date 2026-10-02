@@ -408,20 +408,19 @@ arrived with an older session, and both live in the same form.
 
 ## 4. What each field type becomes
 
-The server tags each field with a *kind*, and this module draws the matching
-control. The nine kinds:
+The server tags each field with a *kind* (`_shared.py::_control_for`), and this
+module draws the matching control. The eight kinds:
 
-| The config field | The control you get |
+| The item | The control you get |
 |---|---|
 | `bool` | a checkbox |
 | `int` | a whole-number input |
 | `float` | a number input |
-| `str` | a text box |
+| `str`, and a list | a text box — a list typed comma-separated, which the server reads back |
 | a fixed set of choices | a dropdown — and a choice is read back as **the member itself, with its own type**: `unpaired_electrons`' `2` comes back the number 2 and `free` the word, never the text `"2"` ([`engines/template.md`](?doc=engines/template.md) § 5); its blank reads back `null`, not chosen (§ 1.1) |
 | `Optional[bool]` | a three-way select (yes / no / leave default) |
 | three integers (e.g. a k-grid) | three linked integer inputs |
-| a list of numbers | a comma-separated number box |
-| a list of sub-configs (the relaxation **stages**) | a table with one row per stage |
+| three numbers (e.g. the k-grid's offset) | three linked number inputs — `0.5` survives |
 
 Anything the server doesn't recognize falls back to a plain text box, so an
 un-mapped item never disappears.
