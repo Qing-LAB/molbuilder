@@ -200,8 +200,8 @@ _NO_SBATCH = (
     "{what}: there is no scheduler header ({name}) -- prep writes one only "
     "where the machine it prepped for names a queue (job-system.md § 6: a "
     "record saying `workstation`, or no (partition, qos) pair to name).  Run "
-    "it here with --mode direct, or prep it for the machine with the queue "
-    "(--target <name>).")
+    "it here with --mode direct, or prep it for the machine with the queue, "
+    "naming its record with --target.")
 
 
 def _sbatch_request(base: Path, *, envelope: Resources, gpu_side: bool,
@@ -676,7 +676,7 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
     applies to both sides through `scheduler.place` (a GPU side
     prefers the domain's ``gpu_partition``); ``only`` (``"cpu"``/``"gpu"``)
     submits one side -- and a side this machine cannot launch simply stays
-    pending for a later `launch bench``, which is the cross-cluster lane.
+    pending for a later `launch bench`, which is the cross-cluster lane.
 
     The per-group pieces:
 
@@ -894,7 +894,8 @@ def _place(base: Path, *, gpu_side: bool, needed_s=None, cores=None,
             + "\n    ".join(r.message for r in exc.reasons)
             + "\n  Nothing was submitted -- the scheduler would refuse it.  "
               "Change what is asked for (--time, --mem; the ranks and cores "
-              "at prep), or name another queue with --domain <name>.") from None
+              "at prep), or name another of the record's queues with "
+              "--domain.") from None
 
 
 def _reject_if_this_machine_says_no(placed, want, gpu_side: bool,
@@ -1343,7 +1344,8 @@ def _launch_prepared(base: Path, dirs, prep: "_Prepared") -> List[JobResult]:
             if able:
                 hint = (f"\n  The GPU group used the header's default "
                         f"directives; gpu-capable domains reachable here: "
-                        f"{', '.join(able)} -- retry with --domain <name>.  "
+                        f"{', '.join(able)} -- retry naming one with "
+                        f"--domain.  "
                         f"The other side's launch stands; this side stays "
                         f"pending.")
         # Every shelf was rendered before any was sent, so the scripts a
@@ -1380,7 +1382,7 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
                            time_s: Optional[int] = None
                            ) -> List[JobResult]:
     """ONE submission that walks a transport bias scan's points in
-    order (`transport-design.md` § 4.3; layout ruled 2026-08-29: plain
+    order (`archive/2026-09-01-transport-design.md` § 4.3; layout ruled 2026-08-29: plain
     v-dirs, one attempt ladder per point).
 
     The walker is the launcher layer only, exactly like the bench
@@ -1471,7 +1473,7 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
         "#!/usr/bin/env bash",
         f"# {name}.run.sh -- the bias chain: this scan's points in",
         "# sequence, each warm-started from the previous point's .TSDE",
-        "# (transport-design.md 4.3).  Regenerated at each launch.",
+        "# (archive/2026-09-01-transport-design.md 4.3).  Regenerated at each launch.",
         "# STOPS on a failed point: later points chain their density",
         "# from this one, so walking on would converge from a state the",
         "# failure poisoned (a benchmark's points are independent; a",

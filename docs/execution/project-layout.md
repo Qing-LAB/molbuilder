@@ -46,7 +46,7 @@ refuses a hierarchical stage with no attempt open — § 1.6.2.)*
     run-0/  run-1/                      <- attempts: PREP opens each and copies its inputs in;
                                            launch runs it and writes run.json
       *-run0.out  *-run0.concluded      the output + the conclusion marker (rc inside)
-  bench-K2C1/run-0/                     <- a benchmark trial is its own attempt
+  bench-K2C1/run-0/                     <- a benchmark trial keeps attempts as a stage does (§ 1.5a)
   (the report is PRINTED by `summarize`, not written -- § 7.1 of job-system.md)
 ```
 
@@ -831,9 +831,12 @@ Two small files answer the two questions *(the second decided by the user,
   times: prepare refuses to reuse a launched attempt; status says *queued as job
   481923* ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2); and
   `continued_from` is the run's provenance (`checkpointing.md` **S3**). A
-  benchmark **trial directory is its own attempt** and gets the same file,
-  which is how `submit bench <stage>` picks the next *unlaunched* trial
-  (`job-contracts.md` § 6.1).
+  benchmark trial keeps attempts as a stage does (§ 1.5a), and each attempt
+  gets the same file — which is how `launch bench <stage>` passes over the
+  trials already launched (`job-contracts.md` § 6.1). *(This said a trial
+  directory "is its own attempt", and named a `submit bench` that picked the
+  next unlaunched trial, until 2026-10-01: § 1.5a gave trials attempts, the
+  verb is `launch`, and the picker was retired; the W52 review.)*
   **A flat stage writes its own**, `<basename>.run.json` beside its deck
   (`jobset.materialize.launch_record_path`): there is no attempt directory,
   and every stage shares the calculation's one, so the record is named by
@@ -1088,7 +1091,7 @@ flowchart LR
 
     UI --> P
     P -->|"prep bench"| B
-    B -->|"the measured answer"| P
+    B -->|"a report you read, and write into task.json"| UI
     P -->|"a run directory"| R
     R -->|"its results, and what you learned"| P
 ```
@@ -1100,9 +1103,9 @@ machine's parameters*:
 | You are doing | You give `prep` |
 |---|---|
 | measuring, before committing | the stage, and *benchmark this* |
-| the real run, using what you measured | the stage, and the benchmark result |
-| a redo of that run | the stage, and `run-0` to continue from |
-| the next stage | that stage, and the previous stage's run to continue from |
+| the real run, using what you measured | the stage — and what you wrote into `task.json` from the benchmark's report (§ 2.3.3: `prep` never reads a verdict) |
+| a redo of that run | the stage, and one of its own runs to continue from — or `launch` it again, which continues from its newest by itself |
+| the next stage | that stage — it continues from the previous stage's newest run by default (`job-system.md` § 5.4) |
 
 **Nothing distinguishes those four in the machinery.** "Continue from `run-0`"
 and "continue from `01_coarse/run-0`" are the same instruction pointing at
@@ -1331,10 +1334,11 @@ trial rides with its **own explicit `-np/-omp`** — enforced at generation —
 because inside the allocation the `SLURM_*` variables describe the
 envelope, and a flag-less wrapper falling back to them would silently
 measure the widest point instead of its own. Naming a
-trial (`jobset launch bench tight G1K8C2`) still submits that one alone —
-how a single point is **re-measured, after moving the old trial's
-directory aside** (§ 1.5: a trial measures its point once; molbuilder
-never deletes results).
+trial (`jobset launch bench tight G1K8C2`) still launches that one alone.
+A point is **re-measured** by `prep bench <stage>`, which opens its next
+attempt beside the measured one (§ 1.5a: a trial keeps attempts as a stage
+does; molbuilder never deletes results). *(This said "after moving the old
+trial's directory aside" until 2026-10-01 — the answer from before § 1.5a.)*
 
 > *This amends the 2026-08-12 decision by keeping what it protected: **few
 > launch acts, never a queue flood**. The earlier form — one trial per
@@ -1576,8 +1580,8 @@ to copy, and `materialize` skips a file that is not there.
 ```mermaid
 flowchart LR
     A["01_coarse/run-0/<br/>bdt_au.XV<br/>bdt_au.DM"]
-    P{"prep tight<br/>--from 01_coarse/run-0"}
-    B["02_tight/run-0/<br/><b>bdt_au.XV</b> (a real copy)<br/><b>bdt_au.DM</b> (a real copy)<br/>bdt_au.fdf → ../bdt_au.fdf"]
+    P{"prep run tight<br/>(from 01_coarse/run-0)"}
+    B["02_tight/run-0/<br/><b>bdt_au.XV</b> (a real copy)<br/><b>bdt_au.DM</b> (a real copy)<br/>bdt_au.fdf (its own copy)"]
     A -->|"copied, at prep time"| P --> B
 ```
 
@@ -1608,11 +1612,14 @@ what the engine does when it finds state under the name it was given.* All
 molbuilder contributes is putting the right file in the right place under the
 right name.
 
-> **A redo is the same instruction.** `--from run-0` inside the *same* stage
-> re-runs it starting from where the last attempt reached — the coordinates it
-> got to, not the ones it started from. `prep` cannot tell that apart from
-> continuing to the next stage, and does not need to: both are *"copy this
-> finished run's warm files into a new attempt"*.
+> **A redo is the same instruction.** `--from 02_tight/run-0` — a run of the
+> *same* stage, named by its address like any other — re-runs it starting from
+> where that attempt reached: the coordinates it got to, not the ones it started
+> from. `prep` cannot tell that apart from continuing to the next stage, and
+> does not need to: both are *"copy this finished run's warm files into a new
+> attempt"*. A stage that continues from its own runs needs no prep for it:
+> `launch` it again (`job-system.md` § 5.4). *(This wrote `--from run-0`,
+> which `prep` refuses — a run is named by its address — until 2026-10-01.)*
 
 #### 2.3.5 What goes in, what comes out
 
@@ -1621,7 +1628,7 @@ right name.
 | the description (`task.json`) | the browser, or a terminal | which stages exist, their overrides, the shape |
 | the template | the browser | everything about the system that does not depend on the machine |
 | **which stage** | you, on the command line | which overrides apply |
-| **the machine** | detected, here, now | ranks, GPUs, scheduler, activation → `environment.json` |
+| **the machine** | its record, read — `jobset probe` wrote it; `prep` never probes (§ 2.3.1) | ranks, GPUs, scheduler, activation → snapshotted as `environment.json` |
 | a benchmark verdict *(optional)* | `jobset summarize bench <stage>` | **nothing, on its own** — it is a REPORT you read, and `prep run` never opens it (§ 2.3.3). What it tells you about rank count, eigensolver, GPU and memory reaches the deck only once YOU write it into `execution`. *This row sent the verdict straight to the deck until 2026-09-05, contradicting §§ 2.3.3 and 1.1 and this file's own opening.* |
 | a finished run *(optional)* | `prep` takes the stage before it's newest, or the one you name (`job-system.md` § 5.4) | which coordinates and density matrix the run starts from |
 
@@ -1707,7 +1714,7 @@ on the science.
 | ④ **stage** | `<seq>_<name>` (§ 4) | **`prep`** — the rendered deck and wrapper land here | its deck, its wrapper, its attempts — **a container** |
 | ⑤ **attempt** | `run-<n>`, unpadded (§ 4.3) | **`prep`** creates and arranges it; the engine then fills it | everything one invocation produced — **a run, immutable** |
 | — **benchmark** | `bench`, inside the stage it measures | `prep bench <stage>` | its trials, the sweep's own `job-set.json`, and `bench-result.json` — a **container** |
-| — **trial** | `bench-<knobs>` (§ 4.4) | `prep bench` (its deck + wrapper), then the engine when submitted | one throwaway **run** — its own attempt, carrying its `run.json` |
+| — **trial** | `bench-<knobs>` (§ 4.4) | `prep bench` (its deck + wrapper), then the engine when launched | one measured point — its attempts kept as a stage's are (§ 1.5a), each carrying its `run.json` |
 
 *(Numbering note, 2026-08-12: this table is the authority, and it gives the
 benchmark and trial rows **no circled number** — they are nested containers

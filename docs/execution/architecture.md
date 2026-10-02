@@ -218,7 +218,7 @@ note records the deletion.)*
 | **4** | **layout** | where every file sits | `jobset/materialize` | `materialize` · `job_dir_names` · `stage_refs` · `shape_of` · `Shape.named` · `prepare_attempt` · `attempts` · `latest_attempt` · `relink` | the folder tree; `run-<n>/` | know about a queue |
 | **5** | **launch** | start one program | `jobset/agreement` · `jobset/submit` | `launch_agreement` · `check_launch_matches_deck` · `submit_jobset` | `run.json` | decide physics |
 | **6** | **observe** | what happened | `jobset/runstatus` · `jobset/summarize` · `parse/dirs` | `jobset_status` · `render_status` · `render_stage_status` · `run_status` | — | write anything |
-| **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `web` | `molbuilder jobset {init,prep,plan,launch,summarize,status}` · the web blueprints — each appending its verb's decisions to the ledger, except `prep`'s, which its one entry appends | — | work out a name, a folder, or a launch — **or assemble what a route receives** (A12) |
+| **7** | **surfaces** | asking, and showing | `cli` · `jobset/_cli` · `web` | `molbuilder jobset {init,prep,launch,summarize,status,probe,machines,migrate}` · the web blueprints — each appending its verb's decisions to the ledger, except `prep`'s, which its one entry appends | — | work out a name, a folder, or a launch — **or assemble what a route receives** (A12) |
 
 **The rule that makes it a layering:** *a floor may call down and return up; it
 may never reach across.* Floor 5 deciding a rank count that floor 3 already

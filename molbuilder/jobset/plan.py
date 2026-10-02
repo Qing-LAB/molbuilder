@@ -1,5 +1,5 @@
 """Plan engine — render a human-readable table from a :class:`JobSet`
-(docs/execution/job-system.md § 8).
+(docs/execution/job-system.md § 5.3: ``STAGE-PLAN.md``, and `status <stage>`).
 
 Pure formatting: it knows nothing but the data model.  The one basis for
 ``STAGE-PLAN.md`` — per-job resources, visible before anything is

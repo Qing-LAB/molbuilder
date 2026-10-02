@@ -245,12 +245,13 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
          overrides per job via CLI flags, so the defaults never decide the
          answer.  A job that SHARES another's script gets a real copy, not a
          reference: a run directory holds real files.
-      2. ``materialize`` — the shared package and the warm carry, as real
-         copies into each job directory.
+      2. ``materialize`` — the shared package, as real copies into each job
+         directory (what a stage continues from is copied when its attempt
+         is opened: ``materialize.prepare_attempt``).
       3. emit ``STAGE-PLAN.md`` beside the job-set it describes.
 
     Returns the per-job directories.  Raises :class:`PrepError` on an
-    invalid JobSet or a script that isn't in the bundle root.
+    invalid JobSet or a script that is not in its job's directory.
 
     **This list said something else until 2026-09-16** — wrappers rendered at
     the bundle root and symlinked into a ``point-<name>/`` dir — which is the
@@ -368,9 +369,9 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 # .molbuilder.json / environment.json (roadmap 7.10 M1).
                 project_dir=base,
                 # WHICH MACHINE THIS IS FOR, carried rather than re-derived
-                # (2026-08-24).  Set only when the caller NAMED a target, so
-                # the wrapper reads that machine's own activation off its
-                # probed record instead of this machine's config.  It is the
+                # (2026-08-24).  The record always travels, so the wrapper
+                # reads that machine's own activation off it instead of this
+                # machine's config.  It is the
                 # same lesson as the paragraph above: a fact the conductor
                 # already resolved, handed over whole, cannot be forgotten
                 # or answered a second way further down.
@@ -398,7 +399,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                              + ("(emit_sbatch off)" if not emit_sbatch
                                 else "(no scheduler configured)"))
 
-    # ---- 2. data symlinks ---------------------------------------------- #
+    # ---- 2. the shared package, copied --------------------------------- #
     dirs = materialize(jobset, base)
     if log is not None:
         log.phase("STEP 5 · RUN DIRECTORY — where each job will be launched")
@@ -1068,9 +1069,8 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     from ..template import template_path as _template_path
     # The container spelling is materialize's (the naming authority): ONE
     # function places the sweep's record and the trials' directories, so the
-    # two can never disagree (A-1/A-2).  Imported once for the whole function
-    # -- the log's own home is the same container, and a second import site
-    # would be a second chance to spell it differently.
+    # two can never disagree (A-1/A-2).  The log's own home is the same
+    # container, spelled by the same function.
     from .materialize import bench_container
     from ..paths import Shape
 
@@ -1648,13 +1648,13 @@ def _require_remote_activation(target: Optional[str], environment) -> None:
 
 
 # --------------------------------------------------------------------- #
-#  The transport arm — the composite's prep (transport-design.md § 4.2)  #
+#  The transport arm — the composite's prep (archive/2026-09-01-transport-design.md § 4.2)  #
 # --------------------------------------------------------------------- #
 
 def _transport_provide_pseudos(struct, cfg, base: Path,
                                citation: str) -> None:
     """The pseudopotentials arrive FROM THE CITATION
-    (transport-design.md § 4.1: structure, pseudos and electronic
+    (archive/2026-09-01-transport-design.md § 4.1: structure, pseudos and electronic
     template all come with the cited junction — one template governs).
 
     Idempotent, and the folder wins, exactly like the SIESTA arm: what
@@ -1693,7 +1693,7 @@ def _transport_provide_pseudos(struct, cfg, base: Path,
                 f"{', '.join(f'{m}.psml' for m in missing)} and there is "
                 f"none in {base.name}/pseudos/ or in the cited "
                 f"directory ({citation}).  The pseudopotentials travel "
-                f"with the citation (transport-design.md 4.1) -- the "
+                f"with the citation (archive/2026-09-01-transport-design.md 4.1) -- the "
                 f"junction ran with them, so its calculation folder "
                 f"should hold them; prep the junction there, or put the "
                 f"files in {base.name}/pseudos/ yourself.")
@@ -1769,7 +1769,7 @@ def _resolve_transport(base, task, stage: str, allocation,
         raise PrepError(str(exc)) from exc
     # ONE ELEMENT.  A transport rung is a production run; its one axis is the
     # bias, and that is the device's own directory level rather than a sweep
-    # (`transport-design.md` § 4.3).  `resolve` still returns a list, because
+    # (`archive/2026-09-01-transport-design.md` § 4.3).  `resolve` still returns a list, because
     # the length is the whole of the difference between a run and a sweep and
     # no reader below floor 7 may branch on which.
     element = ps.elements[0]
@@ -1983,7 +1983,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
         raise PrepError(
             f"stage {stage!r} is disabled in this description "
             f"(enabled: false in task.json).  The seed is skippable by "
-            f"design (transport-design.md, ruling Q4) -- re-enable it "
+            f"design (archive/2026-09-01-transport-design.md, ruling Q4) -- re-enable it "
             f"there, or prep the next stage.")
 
     # ---- 3a. compose the junction (or load the travelled copy) --------- #
@@ -2017,7 +2017,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                     f"citation {citation!r} cannot be resolved to compose "
                     f"afresh.  Prep once inside the tree that holds the "
                     f"cited junction -- the record then travels with the "
-                    f"folder (transport-design.md 4.1).")
+                    f"folder (archive/2026-09-01-transport-design.md 4.1).")
             composed = compose_junction(citation, tree_root=root)
             write_compose_record(base, composed)
             # RENDER FROM THE RECORD, on this prep as on every later one.  The
@@ -2179,9 +2179,9 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # committing cluster time"), and nineteen tests in `test_transport_prep`
     # read a device deck without running a lead.  They are right to.
     #
-    # It is a step of its own, `prep.gather_for_stage`, and BOTH surfaces take
-    # it: the CLI after this returns, and `web/blueprints/build.py` at the same
-    # point.  It ran on the CLI road alone until 2026-09-16, which was
+    # It is a step of its own, `prep.gather_for_stage`, taken by the one
+    # entry (`prep_stage`) after this returns -- so both doors take it.  It
+    # ran on the CLI road alone until 2026-09-16, which was
     # survivable only while this arm opened no attempt -- `launch` refused the
     # folder by name and that refusal was accidentally the guard.  Opening the
     # attempt (above, the same day) removed the symptom and left the gap, so a
@@ -2238,7 +2238,7 @@ def gather_transport_inputs(base_dir, task, stage: str,
         token = token_for(task, upstream)
         # A bias scan keeps a per-point rung's products PER POINT -- the
         # transmission at v reads the device at v, never another point's
-        # converged state (transport-design.md 4.3); a lead is every
+        # converged state (archive/2026-09-01-transport-design.md 4.3); a lead is every
         # point's.  The one door says which folder (`rung_container`).
         up_dir = rung_container(base, task, upstream, bias)
         stem = _rf_stem(task.label, token)
@@ -2985,7 +2985,8 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
     tab's Prep buttons both call (`job-system.md` § 5.3).
 
     In order: the description is refused unless it is one (a ``task.json``
-    and its template; transport has no template); the stage is resolved
+    and its template -- a transport description from before 2026-09-16
+    carries none, and its own door says how to add one); the stage is resolved
     through the one grammar (a name, or ``#N``); the description's preflight
     runs -- an error refuses, the notes come back as ``findings``; the inputs
     are assembled (`prep_inputs`, A12); then, when the folder shows a run
@@ -3052,9 +3053,11 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
     try:
         # 1 · A DESCRIBED CALCULATION is "a template PLUS task.json"
         #     (project-layout.md § 2.1), and prep builds everything else from
-        #     the two.  The TRANSPORT composite has no template
-        #     (transport-design.md § 4.1: its electronic contract arrives
-        #     from the citation), so for it the pair is task.json alone.
+        #     the two.  A TRANSPORT description passes on task.json alone,
+        #     so that one written before its template existed (2026-09-16,
+        #     TR1) is refused by the transport door in its own words -- how
+        #     to add the template -- rather than told to `init` again.  It has
+        #     carried a template since (`engines/transport.md` § 2a).
         is_transport = False
         if desc.is_file():
             try:

@@ -1,7 +1,7 @@
 """What a stage continues from -- which run, and what that run was
 (`execution/job-system.md` § 5.4, plan W37).
 
-**Module:** L3 (jobset).  ONE answer, asked by `prep` before it writes a stage
+**Module:** L2 (jobset).  ONE answer, asked by `prep` before it writes a stage
 -- the default, or what a run named by ``--from`` is -- and by `status` for the
 stage it names next, so the two never say different things about the same run.
 `status` answered by a rule of its own until the W37 review found it telling a

@@ -261,7 +261,7 @@ def test_the_table_still_refuses_to_choose():
     what fits, and the person picks.* More detail must not become a
     recommendation."""
     out = queue_table(list(_domains().values()), Ask(), cores=64)
-    assert "choose one with --domain" in out
+    assert "name one of them with --domain" in out
     for word in ("recommended", "best", "fastest", "you should"):
         assert word not in out.lower()
 

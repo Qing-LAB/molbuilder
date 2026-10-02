@@ -909,7 +909,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
 
     # ``container`` overrides WHERE the run-<n> opens -- the transport
     # composite's bias scan keeps one attempt ladder PER POINT
-    # (``04_device/v0.2/run-<n>``; transport-design.md § 4.3, layout
+    # (``04_device/v0.2/run-<n>``; archive/2026-09-01-transport-design.md § 4.3, layout
     # ruled 2026-08-29), and the point's directory already holds its own
     # deck + wrapper, so everything below reads it exactly like the
     # stage's own directory.  Default: the job's own, as ever.

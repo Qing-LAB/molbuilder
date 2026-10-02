@@ -754,9 +754,9 @@ def bench_refusal(task):
     only where `prep bench` would take it (`job-system.md` § 5.3)."""
     if task.calculation == "transport":
         return ("a transport calculation has no benchmark sweep: its "
-                "parameters arrive whole from the citation, and its one "
-                "sweep axis is the bias list in task.json "
-                "(transport-design.md 4.3).")
+                "parameters come from its own template and each rung's run "
+                "card, and its one axis is the bias list in task.json "
+                "(engines/transport.md 2a.10).")
     # THE SEAM REFUSAL, BY NAME (E-J1, restored 2026-08-21).  The bench
     # lane speaks SIESTA's vocabulary today: the measurement pins name
     # SiestaConfig fields (`max_scf_iter`, `restart`, ...), and the GPU

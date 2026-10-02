@@ -2045,12 +2045,16 @@ def get_execution(
                           # detected scheduler -- § 5.4: the mode, not the
                           # scheduler, gates submission
             "submit_via": "slurm",                       # backend when submit
+            "domain":     str | None,  # the queue a launch names when it
+                          # names none -- a domain of the machine record's
+                          # menu (`scheduler.record.Domain`)
         }
 
-    ``mode`` is the source of truth for HOW a benchmark point is launched,
-    decoupled from the DETECTED scheduler (which still drives topology
-    detection): you can be *on* slurm yet launch ``direct``, or force
-    ``launch`` from an interactive shell.  A malformed ``mode`` raises.
+    ``mode`` is the source of truth for HOW a job is launched -- `launch`
+    reads it when ``--mode`` is not given -- decoupled from the machine
+    record's scheduler: you can be *on* slurm yet launch ``direct``, or
+    ``submit`` from an interactive shell.  A malformed ``mode`` or
+    ``domain`` raises.
     """
     # THROUGH THE ONE DOOR.  This spelled the two-scope merge itself -- read
     # server, read project, `_deep_merge` -- which is `read_effective_config`
@@ -2085,7 +2089,8 @@ def get_execution(
     domain = merged.get("domain")
     if domain is not None and not isinstance(domain, str):
         raise RuntimeConfigError(
-            f"execution.domain must be a string (a scheduler.routing name); "
+            f"execution.domain must be a string (a queue of the machine "
+            f"record's menu); "
             f"got {type(domain).__name__} (running-a-job.md § 5.4).")
     return {"mode": mode, "submit_via": submit_via, "domain": domain}
 

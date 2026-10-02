@@ -571,8 +571,9 @@ def derive_domains(
     notes.append(
         "ASSUMPTION: a QoS allowed to your account is valid on any reachable "
         "partition (preferred 'public'). sinfo/assoc do not give the "
-        "per-partition QoS list -- confirm with `scontrol show partition "
-        "<name>` (AllowQos) and drop any domain you cannot actually submit "
+        "per-partition QoS list -- confirm each with `scontrol show "
+        "partition` and its name (AllowQos), and drop any domain you cannot "
+        "actually submit "
         "to (e.g. a privately-owned partition).")
     return uniq, notes
 

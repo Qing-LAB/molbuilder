@@ -3,10 +3,12 @@
 
 The resume contract is: **the modeling software resumes; molbuilder informs
 and the user decides** (never auto-recovers — redoing a long run unknowingly
-is a heavy penalty).  This module is the *inform* half: for a prepped/running
-JobSet it answers, per stage, *did it finish? is it running? did it fail? are
-the warm-restart files there?* and *which is the first incomplete stage* (the
-one to resume from) — so the manual continue is a one-glance decision.
+is a heavy penalty).  This module is the *inform* half: for a calculation --
+its description's every stage, prepped or not -- it answers, per stage, *did
+it finish? is it running? did it fail? are the warm-restart files there?* and
+*which is the first incomplete stage* (the one to resume from), with the
+command each state calls for -- so the manual continue is a one-glance
+decision.
 
 REUSE, not reinvention: per-stage run state comes from
 ``parse.dirs.job.run_status`` (the directory-level status verb behind the Results

@@ -56,7 +56,7 @@ This said the crossing was "refused, not warned about", and named a refusal
 its only caller was a test, so a green suite proved a rule the product did
 not apply. The refusal is deleted rather than wired, because the route it
 guarded is gone: since 2026-09-02 no verdict reaches a launch by itself
-(`_cli.py`, *"THERE IS NO SECOND RUNG"*), so there is no boundary left to
+(`prep_inputs.prep_run_inputs`, *"THERE IS NO SECOND RUNG"*), so there is no boundary left to
 cross. What a run uses is what a person wrote in `execution` — and a person
 reading a report about another machine's node is making a judgement, which
 is theirs to make.

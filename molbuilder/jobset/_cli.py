@@ -3,8 +3,9 @@
 
 ``init`` writes the portable folder (floor 2); on the machine that runs
 it, ``prep`` derives floor 3 and everything below (the five steps of
-project-layout.md § 2.3.1), ``launch`` launches ONE job per invocation, and
-``summarize`` reads a sweep's results back.  Nothing is produced on a host
+project-layout.md § 2.3.1), ``launch`` launches ONE stage's run -- or a
+benchmark's trials, one job per resource shelf to the queue, each in turn
+here -- and ``summarize`` reads a sweep's results back.  Nothing is produced on a host
 and shipped — a bundle carrying a pre-made ``job-set.json`` is the legacy
 route, and it narrows with every fold.
 
@@ -150,9 +151,9 @@ def _load(bundle: str) -> tuple:
 def jobset_group() -> None:
     """The calculation's verbs, one grammar (job-system.md § 5.3):
     ``init`` writes the portable folder; on the machine that runs it,
-    ``prep`` derives everything else and ``launch`` launches one job per
-    invocation.  Floor 3 (``job-set.json``) is DERIVED at prep, on the
-    target -- nothing is produced on a host and shipped.
+    ``prep`` derives everything else and ``launch`` launches one stage's run,
+    or a benchmark's trials.  Floor 3 (``job-set.json``) is DERIVED at prep,
+    on the target -- nothing is produced on a host and shipped.
 
     ``probe`` measures a machine and ``machines`` lists the records that
     measuring produced, which is how a calculation is prepared for a
@@ -397,7 +398,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
                 f"--slot {entry!r}: spell it NAME=DIRECTORY, e.g. "
                 f"--slot junction=<project>/<topic>/<calc>/<stage>/run-N "
                 f"-- any directory whose files satisfy the citation "
-                f"condition (transport-design.md 4.1b).")
+                f"condition (archive/2026-09-01-transport-design.md 4.1b).")
         slots[name_] = cite
     if set(slots) != {"junction"}:
         raise click.ClickException(
@@ -562,7 +563,7 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
 @click.option("--slot", "slots_opt", multiple=True, metavar="NAME=CITATION",
               help="a composite input (transport only): "
                    "--slot junction=<dir> (a directory whose files "
-                   "satisfy transport-design.md 4.1b).  The "
+                   "satisfy archive/2026-09-01-transport-design.md 4.1b).  The "
                    "attempt is named explicitly, never picked "
                    "(archive/2026-09-01-transport-design.md, ruling Q1).")
 @click.option("--bias", "bias_opt", default=None, metavar="V0,V1,...",
@@ -800,7 +801,7 @@ def status_cmd(stage, bundle: str) -> None:
 
 
 # --------------------------------------------------------------------- #
-#  prep / submit -- the execution loop (job-system.md § 5.3)             #
+#  prep / launch -- the execution loop (job-system.md § 5.3)             #
 #                                                                       #
 #  One grammar: ``jobset <verb> <kind> [<stage>]``.  The KIND is a       #
 #  positional and not a ``--bench`` flag because ``prep bench`` and      #
@@ -815,8 +816,8 @@ def _check_kind(kind: str, js=None) -> None:
     """The KIND positional against the bundle's actual kind.
 
     ``bench`` stopped refusing on 2026-08-12 (plan step 6, u2): ``prep
-    bench`` enumerates the grid on this machine and ``launch bench` <trial>``
-    launches ONE trial per invocation through the same resolver as
+    bench`` enumerates the grid on this machine and ``launch bench <stage>``
+    launches its trials -- or the one named -- through the same resolver as
     everything else.  What remains checkable is AGREEMENT: a kind that
     contradicts the bundle's own is a typo about to act on the wrong thing.
     """
@@ -955,8 +956,8 @@ def _load_bench_set(base, stage, verb: str = "launch"):
 # 2026-09-04.  They read `bench-result.json` to refuse applying a verdict
 # measured on a different machine kind (`submission.md` S3).  Nothing in
 # production ever called them -- the only caller was a test -- because the
-# premise died on 2026-09-02: see step 2 of `_run_shape_for`, THERE IS NO
-# SECOND RUNG.  No verdict reaches a launch on its own any more, so there
+# premise died on 2026-09-02: see step 2 of `prep_inputs.prep_run_inputs`,
+# THERE IS NO SECOND RUNG.  No verdict reaches a launch on its own any more, so there
 # is no boundary left to cross, and a guard against a route that does not
 # exist is a guard nobody can trip.
 
@@ -1021,8 +1022,9 @@ def _resolve_stage_name(js, stage: str) -> str:
 
     Split out from :func:`_resolve_stage` because two different questions were
     living in one function: *which job did the user name* (every verb that takes
-    a STAGE asks this) and *may this verb act on the whole set* (only ``prep``
-    and ``launch`` ask, and ``status`` legitimately may). Keeping them together
+    a STAGE asks this) and *may this verb act on the whole set* (only
+    ``launch`` asks -- `prep` takes its stage through the prep entry -- and
+    ``status`` legitimately may). Keeping them together
     would have made ``status <stage>`` either refuse a whole-ladder status or
     grow a second lookup -- and a second lookup is the thing § 8f is about.
     """
@@ -1106,13 +1108,14 @@ def _resolve_stage(js, stage, verb: str, *, base):
                    "nothing is copied in.  On the flat layout a stage starts "
                    "clean by its run card's `restart: clean` instead.")
 @click.option("--env", default=None,
-              help="force one conda env for every job (default: auto-route "
-                   "per script from the .fdf -- correct for a mixed CPU/GPU "
-                   "ladder).")
+              help="force one conda env for every job (default: each job's "
+                   "env by what it asks for -- the GPU env for a GPU job, "
+                   "the CPU env otherwise -- which a mixed CPU/GPU ladder "
+                   "needs).")
 @click.option("--np", "mpi_np", type=int, default=None, metavar="N",
-              help="MPI ranks to ASK FOR. Part of the allocation, not of the "
-                   "description -- how a job is scheduled depends on how much "
-                   "you ask for, so this is yours to choose per run.")
+              help="MPI ranks for this prep -- the launch shape, which "
+                   "task.json's `execution` states for every prep "
+                   "(project-layout.md D2); prep renders the deck for it.")
 @click.option("--cpus-per-task", type=int, default=None, metavar="C",
               help="cores per rank (OMP). sbatch -c.")
 @click.option("--gpus", "gres", default=None, metavar="TYPE:N",
@@ -1130,12 +1133,14 @@ def _resolve_stage(js, stage, verb: str, *, base):
                    "with its own limits).")
 @click.option("--target", default=None, metavar="NAME",
               help="which MACHINE this is for -- a record written by "
-                   "`jobset probe --write --name NAME`.  Omit when there is "
-                   "one; naming it is how a bench prepped on a workstation "
-                   "measures the cluster instead of the desk.")
+                   "`jobset probe --write --name NAME`, or `this` for this "
+                   "machine's own.  Omit when there is one; naming it is how "
+                   "a bench prepped on a workstation measures the cluster "
+                   "instead of the desk.")
 @click.option("--sbatch/--no-sbatch", "emit_sbatch", default=True,
-              help="emit .sbatch wrappers (default on; auto-skipped when no "
-                   "scheduler is configured).")
+              help="emit .sbatch wrappers (default on; withheld where the "
+                   "machine it is prepped for names no queue -- "
+                   "job-system.md § 6).")
 @click.option("--pipeline-log", "pipeline_log", is_flag=True, default=False,
               help="write a step-by-step record of what each step received, "
                    "decided and produced, beside this prep's STAGE-PLAN.md. "
@@ -1147,10 +1152,11 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
              domain, target, emit_sbatch: bool, pipeline_log: bool) -> None:
     """Set a stage up to run, and report what was done.
 
-    Renders the wrappers, then makes that stage's next ``run-<n>``, links the
-    deck and shared package in, and copies in whatever it continues from.
-    **Prep printing what it resolved is what makes submit a plain yes** -- it is
-    the only place the chosen geometry and the rendered deck appear together.
+    Renders the deck and its wrappers, makes that stage's next ``run-<n>``,
+    copies the deck and the shared package in, and copies in what it
+    continues from.  **Prep printing what it resolved is what makes the launch
+    a plain yes** -- it is the only place the chosen geometry and the rendered
+    deck appear together.
 
     A STAGE is required on a ladder — bare ``prep run`` is refused before
     anything is read of the machine or written, offering the stages by name
@@ -1393,6 +1399,7 @@ def summarize_cmd(kind: str, stage, bundle: str,
     (`job-system.md` § 5, the verb table).  Three summaries, by what was
     described:
 
+    \b
     * ``summarize bench`` reads a benchmark's trials and writes
       ``bench-result.json`` -- a recommendation, not a decision
       (`project-layout.md` § 2.3.2): you read it, you decide;
@@ -1413,7 +1420,7 @@ def summarize_cmd(kind: str, stage, bundle: str,
     directory names back (`job-contracts.md` § 6.3).
     """
     if kind != "bench":
-        # THE TRANSPORT COMPOSITE'S DELIVERABLE (transport-design.md
+        # THE TRANSPORT COMPOSITE'S DELIVERABLE (archive/2026-09-01-transport-design.md
         # § 7 P6): `summarize run` on a transport calculation reads the
         # transmission attempts back into <label>.transport.json and
         # prints the I-V table.  Asynchronous like the bench reader: a
@@ -1794,8 +1801,8 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                 _rows, Ask(time_s=time_s, mem_gb=parse_mem_gb(mem)),
                 cores=_cores, gpu=_gpu))
             raise click.ClickException(
-                "no --domain, so no queue was chosen.  Pick one from the "
-                "list above with `--domain <name>`, name it in the "
+                "no --domain, so no queue was chosen.  Name one from the "
+                "list above with `--domain`, name it in the "
                 "description's `allocation.domain` and prep again so the "
                 "bundle carries it, or set `execution.domain` in "
                 "molbuilder.json to answer this once for this machine.")
@@ -1850,7 +1857,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                     results = _group(dry_run=False)
         else:
             # A TRANSPORT BIAS SCAN launches as ONE job walking the points
-            # (transport-design.md 4.3) -- the chain's own door.
+            # (archive/2026-09-01-transport-design.md 4.3) -- the chain's own door.
             _chain_task = None
             if kind == "run":
                 from ..task import FILENAME as _TASKF
@@ -2235,8 +2242,9 @@ def cmd_machines() -> None:
                                 "prep FOR)")
 @click.option("--out", default=None,
               type=click.Path(file_okay=False, resolve_path=True),
-              help="directory to write environment.json into with --write "
-                   "(default: the per-user machine scope).")
+              help="directory to write the record into with --write -- "
+                   "environment.json, or <name>.json with --name (default: "
+                   "the per-user machine scope).")
 @click.option("--write", "do_write", is_flag=True, default=False,
               help="write the probed record (shows a diff + confirms).")
 @click.option("--name", default=None, metavar="NAME",
@@ -2284,9 +2292,7 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
 
     **Facts only.** Which partition you want, the account, and the policy no
     probe can invent (``gpu.exclusive``, ``gpu.mem``) stay yours, in
-    ``molbuilder.json`` -- M-1.  Until 2026-08-17 this verb proposed a whole
-    ``scheduler`` config block and defaulted your partition to the cheapest one
-    it found; a probe choosing on your behalf is what that rule removed.
+    ``molbuilder.json`` -- M-1: a probe never chooses on your behalf.
 
     Run it on a login node for a cluster; on a workstation it records the same
     shape with no domains (M-2), rather than refusing.
@@ -2361,9 +2367,10 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
             # from here, and saying "workstation record" would contradict
             # the scheduler the user just declared.
             notes.append("no sinfo reachable from here, so no domains "
-                         "were probed -- run `jobset probe` on the "
-                         "cluster's login node to fill them, or the "
-                         "record rides with none.")
+                         "were probed -- on the cluster's login node, "
+                         "`molbuilder jobset probe --write --name` with "
+                         "this record's name fills them; or the record "
+                         "rides with none.")
         else:
             notes.append("no sinfo, so no scheduler domains -- this is a "
                          "workstation record (topology only).")
@@ -2443,7 +2450,8 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
                f"  gpus/node={t.gpus_per_node}  gpu={t.gpu_type or '-'}"
                f"  mem={t.mem_total_gb or '-'} GB")
     if env.domains:
-        click.echo("\nReachable domains (submit with --domain <name>):")
+        click.echo("\nReachable domains (a launch names one with "
+                   "--domain):")
         for d in env.domains:
             click.echo(f"  {d.name:<10} <= {str(d.max_time):<12} "
                        f"{d.partition}/{d.qos}")

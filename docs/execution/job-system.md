@@ -374,7 +374,7 @@ actual two-stage ladder for benzene-dithiol on gold, with every field annotated:
                                       // "seven" while its own § 4.1 named
                                       // the eighth),
         "domain":        null,        // nulls included — see the note below
-        "time":          "04:00:00",
+        "time":          "0-04:00:00",
         "exclusive":     null,
         "mem":           null,
         "gres":          null,
@@ -391,7 +391,7 @@ actual two-stage ladder for benzene-dithiol on gold, with every field annotated:
       "script": "bdt_au_02_tight.fdf",
       "resources": {
         "domain":        null,
-        "time":          "24:00:00",
+        "time":          "1-00:00:00",
         "exclusive":     null,
         "mem":           null,
         "gres":          "gpu:a100:1",
@@ -411,8 +411,11 @@ actual two-stage ladder for benzene-dithiol on gold, with every field annotated:
 }
 ```
 
-*(Produced by building that `JobSet` and dumping `to_dict()`, so the shape and
-the key order are the real ones, not a sketch.)*
+*(Abridged from a dump of that `JobSet`'s `to_dict()`: the key order and the
+value forms are the real ones — a time is SLURM's `D-HH:MM:SS` — and a real dump
+writes every `Resources` field, null or not; job-contracts § 6.2 counts them.
+It claimed to be the dump itself until 2026-10-01, beside seven of fifteen
+fields and a time in a form the model never stores.)*
 
 > **`null` is a value here, and it does not mean "zero" or "off".** It means
 > **"not decided yet — resolve it at submit"**. A `mem` of `null` lets the
@@ -438,17 +441,20 @@ Every job's folder holds **real copies** of its inputs, never links.
 > writes today. *Corrected 2026-08-11.*
 
 
-**Nothing in `02_tight/` exists until you ask for it.** `prep` with no stage
-lays out the stage folders and the wrappers; the `run-<n>` attempt inside one is
-made by `prep run <stage>`, and that is the command where you name what it
-continues from. So tight's `run-0/` appears in a ladder's tree
+**Nothing in `02_tight/` exists until you ask for it.** `prep run <stage>`
+lays out that stage's folder, its wrappers and its `run-<n>` attempt, and copies
+in what it continues from — by default the newest run of the stage before it,
+which must have concluded, or the run `--from` names (§ 5.4). So tight's
+`run-0/` appears in a ladder's tree
 ([`project-layout.md § 1.1`](?doc=execution/project-layout.md)) only **after**
 you have run coarse, looked at it, and set tight up.
 
 > **A SWEEP's tree differs in two ways**: its folders are named by their
 > **settings** rather than by a position (its points have no order, so no
-> ordinal), and there is no attempt layer — a point is prepped and run in its own
-> folder. Nothing is copied between points.
+> ordinal), and a point's attempt is a measurement, made once — measuring it
+> again opens the next `run-<n>`, the measured one untouched
+> ([`project-layout.md § 1.5`](?doc=execution/project-layout.md)). Nothing is
+> copied between points.
 >
 > ```text
 > bench-G1K2C4/        ← G<gpus>K<ranks-per-gpu>C<cores-per-rank>,
@@ -468,9 +474,9 @@ you have run coarse, looked at it, and set tight up.
 **Nothing dangles, because nothing points anywhere**: every file in a job's
 folder is its own. **No job's directory reaches into another's.**
 
-What a stage continues from is copied by `prep run tight --from
-01_coarse/run-0`, out of an attempt that has already finished and that you have
-already looked at:
+What a stage continues from is copied by `prep run tight` — by default out of
+the newest attempt of the stage before it, which must have concluded and which
+you have already looked at, or out of the one `--from` names (§ 5.4):
 
 ```mermaid
 sequenceDiagram
@@ -478,13 +484,13 @@ sequenceDiagram
     participant P as jobset prep
     participant S as the scheduler
     P->>P: prep run coarse — lay out 01_coarse/run-0
-    U->>S: submit run coarse
+    U->>S: launch run coarse
     Note over S: coarse runs, writes bdt_au.XV / .DM
     Note over U: YOU LOOK AT IT
-    U->>P: prep run tight --from 01_coarse/run-0
-    P->>P: COPY .XV and .DM into 02_tight/run-0
+    U->>P: prep run tight
+    P->>P: COPY .XV and .DM from 01_coarse/run-0 into 02_tight/run-0
     Note over P: a real file, from a finished run.<br/>Writing it cannot reach back into 01_coarse.
-    U->>S: submit run tight
+    U->>S: launch run tight
 ```
 
 **The copy is the thing a person can check** — it is a real file, present
@@ -675,7 +681,7 @@ nothing else, and scheduler contact happens only at `launch`.
 
 | where | verb | what it does |
 |---|---|---|
-| **host** | `describe` | write the portable description — § 5.1 |
+| **host** | `init` | write the portable description — § 5.1 |
 | target | `prep` | resolve this machine, render the deck and wrapper, build the run directory |
 | target | `launch` | start **one** job — `--mode direct` or `--mode submit` |
 | target | `summarize` | summarize results that exist: a benchmark's trials into a verdict; a transport calculation's bias points into its I–V record; a SIESTA vibration's force-constant stages into its displacement sweep (`engines/vibration.md` § 5.9). Never a run's own result — every run writes that itself (§ 5.5 there) |
@@ -683,7 +689,7 @@ nothing else, and scheduler contact happens only at `launch`.
 
 > **This section's title and its count were both stale** *(corrected
 > 2026-08-11)*. It read *"produce, prep, plan, submit, watch"* over *"four verbs
-> on the target"* — the set from before `describe` and `summarize` joined the
+> on the target"* — the set from before `describe` (now `init`) and `summarize` joined the
 > grammar in § 5.3, and *produce* is the undefined noun
 > [`architecture.md`](?doc=execution/architecture.md) § 4 retired in favour of
 > the verb people actually type. A section that names its own verbs is the last
@@ -692,12 +698,12 @@ nothing else, and scheduler contact happens only at `launch`.
 ```mermaid
 flowchart LR
     subgraph host["HOST — laptop or login node"]
-      P["<b>describe</b><br/>→ the template · task.json<br/>· the data files"]
+      P["<b>init</b><br/>→ the template · task.json<br/>· the data files"]
     end
     subgraph target["TARGET — the run loop (summarize joins it for a benchmark, § 5.3)"]
       direction LR
-      PR["prep<br/>lay out the stage/point folders<br/>+ their wrappers"]
-      SU["launch<br/>--mode submit | direct"]
+      PR["prep &lt;stage&gt;<br/>lay out one stage's folder<br/>(or a bench's points) + wrappers"]
+      SU["launch &lt;stage&gt;<br/>--mode direct, or submit"]
       ST["status<br/>per-stage roll-up"]
       PR --> SU --> ST
     end
@@ -712,11 +718,16 @@ names a machine, so it means the same thing wherever you copy it
 ([`project-layout.md § 2.1`](?doc=execution/project-layout.md)).
 
 ```bash
-molbuilder jobset init bdt.xyz projects/BDT-Au/optimization/bdt-relax \
-    --stage-strategy publishable \
-    --shape hierarchical \
-    --psml-lib ~/pseudos
+molbuilder jobset init --structure BDT-Au/structure/bdt.xyz \
+    --bundle BDT-Au/optimization/bdt-relax --engine siesta \
+    --stage-strategy publishable --shape hierarchical \
+    --psml-lib pseudopotential
 ```
+
+Every path is an address from the projects root, so the line works from
+anywhere (`job-contracts.md` § 2.5b) — the pseudopotential library too, which
+lives in the tree. *(The example passed the structure and the folder as
+positionals and the library from `~` until 2026-10-01; `init` takes neither.)*
 
 Names and values are validated **here, on your laptop, not on the cluster**
 (design decision #4): a stage name outside `[A-Za-z0-9_]+`, a duplicate stage, an
@@ -724,7 +735,7 @@ Names and values are validated **here, on your laptop, not on the cluster**
 refused with the field named ([`stages.md § 6.6`](?doc=engines/stages.md)).
 
 > ✅ **This verb LANDED 2026-08-11** (`b7ca09d7`, plan step 2) — `jobset
-> describe` writes the template + `task.json` + data files, floor 2 only.
+> describe`, since renamed `init`, writes the template + `task.json` + data files, floor 2 only.
 > What it replaces —
 > `molbuilder fdf … --jobset`, which wrote a finished flat bundle of decks — is
 > **gone** *(decided 2026-08-11, user: "obsolete residue from the flat-dir
@@ -742,22 +753,23 @@ refused with the field named ([`stages.md § 6.6`](?doc=engines/stages.md)).
 > **The tree below is a ladder's.** A **sweep** differs in two ways: its trials
 > live in the measured stage's container as `<NN>_<stage>/bench/bench-<point>/`
 > — named by their **settings**, because points have no order — and a trial
-> directory **is its own attempt**: a launched trial carries its `run.json`
-> directly, with no `run-<n>` layer inside
-> ([`job-contracts.md § 6.3`](?doc=execution/job-contracts.md)). Nothing is
-> copied between points; they are independent. *(Amended 2026-08-12: this note
-> still named `point-<name>` folders — a prefix retired 2026-08-07 — and said
-> "there is no attempt layer", which the fold's `run.json`-in-the-trial
-> arrangement made half-wrong: the layer exists, collapsed onto the trial
-> directory itself.)*
+> keeps attempts as a stage does: `bench-<point>/run-<n>/` in the hierarchy, the
+> filename index in flat ([`project-layout.md § 1.5a`](?doc=execution/project-layout.md)),
+> each launched one carrying its `run.json`. Nothing is copied between points;
+> they are independent. *(Amended 2026-08-12, when it still named `point-<name>`
+> folders; and 2026-10-01, when it still said a trial directory "is its own
+> attempt, with no `run-<n>` layer inside" — § 1.5a gave trials attempts on
+> 2026-08-27; the W52 review.)*
 
 `prep` turns the portable bundle into a tree you can run. Two ideas make it
 safe and small:
 
-- **Wrappers are written once, from the real input file.** Each distinct
-  `script` gets its `.run.sh` / `.sbatch` built one time in the bundle root, by
+- **Wrappers are written from the real input file, beside it.** Each job's
+  `script` gets its `.run.sh` / `.sbatch` built in that job's own folder, by
   the *same* single-job wrapper builder — so a batch job's wrapper is
-  byte-identical to a hand-run one.
+  byte-identical to a hand-run one. *(This said "one time in the bundle root"
+  until 2026-10-01; wrappers have rendered in the job's folder since
+  2026-09-16 — `prep.prep_jobset`.)*
 - **Shared files are copied in, never linked** (user, 2026-08-24): a job's
   folder holds everything it runs from, so a copied tree still runs; the
   price is one copy of the pseudopotentials per folder.
@@ -780,7 +792,7 @@ not exist yet.
 ```mermaid
 flowchart LR
     A["01_coarse/run-0/<br/>bdt.XV · bdt.DM<br/><i>finished, and you read it</i>"]
-    P["prep run tight<br/>--from 01_coarse/run-0"]
+    P["prep run tight<br/>(continues from 01_coarse/run-0,<br/>the stage before it's newest)"]
     B["02_tight/run-0/<br/>bdt.XV · bdt.DM<br/><i>real files, copied</i>"]
     A --> P --> B
 ```
@@ -860,7 +872,7 @@ A **sweep** has no ordinals — its points are independent and have no order —
 its points resolve by name, and a refusal there does not offer you numbers it
 does not have.
 
-`describe` and `status` take no *kind* — they are about the calculation,
+`init` and `status` take no *kind* — they are about the calculation,
 not about one run of it. **The kind is a positional, not a `--bench` flag**, because
 `prep bench` and `prep run` are peers: measuring and running are the same act
 over different parameters (`project-layout.md § 2.3.1a`).
@@ -872,9 +884,9 @@ over different parameters (`project-layout.md § 2.3.1a`).
 > | | `run` | `bench` | no kind |
 > |---|:--:|:--:|:--:|
 > | `prep` | ✅ `prep run <stage>` — the stage is **required** ([`engines/stages.md`](?doc=engines/stages.md) § 6.5); with no stage it lists the ladder and refuses | ✅ **LANDED 2026-08-12** (step 6) — `prep bench <stage>`: probe the machine, enumerate the grid, render the trials into the stage's `bench/` | — the kind is required |
-> | `launch` | ✅ | ✅ **LANDED 2026-08-12** (step 6) — `submit bench <stage> [<trial>]`: the whole sweep as one grouped job per resource shelf (2026-08-21, `generator.md § 4.3a`); a named trial submits alone | — |
+> | `launch` | ✅ | ✅ **LANDED 2026-08-12** (step 6) — `launch bench <stage> [<trial>]`: under `submit`, the whole sweep as one grouped job per resource shelf (2026-08-21, `generator.md § 4.3a`), under `direct` each trial here in turn; a named trial launches alone | — |
 > | `summarize` | ✅ a transport calculation's bias points into `<label>.transport.json` ([`engines/transport.md`](?doc=engines/transport.md) § 2a.12), and a SIESTA vibration's force-constant stages compared into `<label>.fc-sweep.json` ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.9); any other calculation is refused, naming those two — its outputs *are* the results, read by `status` and the Results tab *(this cell said only "refuses" until 2026-09-29)* | ✅ **LANDED 2026-08-12** (step 6 u4) — discovery keyed by `job-set.json`, results through the ordinary artifacts, async | — |
-> | `describe` | — | — | ✅ **LANDED 2026-08-11** (plan step 2). Its predecessor `molbuilder fdf … --jobset` is **deleted** (§ 5.1) — it wrote a finished flat bundle and emitted *both* directory shapes at once |
+> | `init` | — | — | ✅ **LANDED 2026-08-11** as `describe` (plan step 2). Its predecessor `molbuilder fdf … --jobset` is **deleted** (§ 5.1) — it wrote a finished flat bundle and emitted *both* directory shapes at once |
 > | `status` | — | — | ✅ whole calculation · ✅ per-stage (`status <stage>`) |
 > | ~~`plan`~~ | — | — | folded into `status <stage>` 2026-10-01 |
 >
@@ -907,7 +919,7 @@ over different parameters (`project-layout.md § 2.3.1a`).
 #### Three ideas, in plain language
 
 **1. A stage at a time.** A ladder is not a pipeline. You run `coarse`, you
-*look* at what it produced, and only then do you set up `tight`. `submit run`
+*look* at what it produced, and only then do you set up `tight`. `launch run`
 names **one** stage.
 
 **Why there is no flag for the whole ladder, not even an opt-in one.** The cost
@@ -947,9 +959,9 @@ meaning.
 > emitted `job-cpu.sbatch` and told you to `sbatch` it yourself — so the rule
 > made the framework agree with the workflow it already recommended. *(That
 > verb is gone — 2026-08-12, step 6 u5 — and what survives of its manner is
-> the deliberate hand-over: `submit bench` groups the unlaunched trials by
-> resource shelf and hands each group over as one job; a named trial still
-> submits alone.)*
+> the deliberate hand-over: `launch bench` under `submit` groups the
+> unlaunched trials by resource shelf and hands each group over as one job; a
+> named trial still goes alone.)*
 
 **2. What a stage continues from is the stage before it, or what you say.**
 By default `prep` takes the newest attempt of the stage before it, which must
@@ -998,15 +1010,15 @@ other.
 
 ```mermaid
 flowchart TD
-    D["<b>describe</b><br/>the portable package:<br/>template · task.json · shape"]
+    D["<b>init</b><br/>the portable package:<br/>template · task.json · shape"]
     PB["<b>prep bench</b> &lt;stage&gt;<br/>build the measurement"]
-    SB["<b>submit bench</b> &lt;stage&gt;<br/>measure this machine"]
-    SM["<b>summarize bench</b> &lt;stage&gt;<br/>write the verdict"]
-    PR["<b>prep run</b> &lt;stage&gt; --from &lt;attempt&gt;<br/>render the deck · make run-n<br/>· COPY the warm files in"]
-    SR["<b>submit run</b> &lt;stage&gt;<br/>--mode direct | submit"]
+    SB["<b>launch bench</b> &lt;stage&gt;<br/>measure the target"]
+    SM["<b>summarize bench</b> &lt;stage&gt;<br/>a report: its execution block<br/>is yours to copy into task.json"]
+    PR["<b>prep run</b> &lt;stage&gt;<br/>render the deck · make run-n<br/>· COPY what it continues from"]
+    SR["<b>launch run</b> &lt;stage&gt;<br/>--mode direct, or submit"]
     L["<b>look</b><br/>status · the trajectory · the forces"]
     D --> PR
-    D -.optional.-> PB --> SB --> SM -.verdict.-> PR
+    D -.optional.-> PB --> SB --> SM -.you write task.json.-> PR
     PR --> SR --> L
     L -->|"good — next stage"| PR
     L -->|"not good — retry differently"| PR
@@ -1121,7 +1133,7 @@ either has run.
 #### The read-only verb
 
 ```bash
-molbuilder jobset status --bundle ./bundle   # every stage, where it stands, which is next
+molbuilder jobset status --bundle BDT-Au/optimization/bdt-relax   # every stage, where it stands, which is next
 molbuilder jobset status                     # the same, from inside the folder
 
 molbuilder jobset status tight               # ...and ONE stage in full
@@ -1504,11 +1516,12 @@ flowchart LR
   2026-08-24. Both are DELETED: the iteration count was a default in a function
   signature, `summarize` wrote them into `run-config.toml`, and `prep` folded
   them into an allocation that reached `sbatch`. The wall and the memory are
-  the person's to state, `submission.md` S1/S2.)* The recorded choice is
-  **portable** — `prep run` finds the verdict,
-  **asks**, and re-resolves the concrete rank and core counts for whatever
-  machine it is later run on *(the asker was named `prep-run`, a baked bundle
-  executable, until the fold retired it)*.
+  the person's to state, `submission.md` S1/S2.)* The recorded choice is a
+  **report, applied by nobody**: its `execution` block is yours to copy into
+  `task.json`, and the next `prep run` reads what you wrote, and nothing else
+  (§ 7.1 — there is no second rung). *(Until 2026-10-01 this said "`prep run`
+  finds the verdict, asks, and re-resolves" — the asker retired with the fold,
+  and the reading of a verdict at prep on 2026-09-02; the W52 review.)*
 
 `molbuilder jobset probe` is the companion that asks a live cluster
 (`sinfo`/`sacctmgr`) what it is — the GPU type, the partitions and QoS you can
@@ -1569,7 +1582,7 @@ which a snapshot cannot. `run_summarize_jobset` writes `bench-result.json`
 | reader | how it gets the summary | writes a file? |
 |---|---|---|
 | the Results panel | `/api/bench/summary?path=<job-set.json>` → `sweep_view` → `bench_record` | **no** |
-| the terminal | `jobset summarize <dir>` → `run_summarize_jobset` → `bench_record` | **`bench-result.json`**, then prints the report |
+| the terminal | `jobset summarize bench <stage>` → `run_summarize_jobset` → `bench_record` | **`bench-result.json`**, then prints the report |
 
 > *This section named `sweep_view` as the composer for BOTH readers and said
 > "it writes nothing", until 2026-09-05. `jobset summarize` has never called
@@ -1606,8 +1619,8 @@ test — so a green suite proved a rule the product never applied.
 `submission.md` § S3 documented that refusal as active. Both functions and
 the test are deleted (2026-09-04) and § S3 now says so.
 
-The premise it guarded is gone, and the code says where: `_cli.py`'s
-step 2, *"THERE IS NO SECOND RUNG. A benchmark's verdict was folded in here
+The premise it guarded is gone, and the code says where:
+`prep_inputs.prep_run_inputs`' step 2, *"THERE IS NO SECOND RUNG. A benchmark's verdict was folded in here
 until 2026-09-02… what the run uses is what that person then wrote in
 `execution`."* Nothing carries a verdict into a launch any more, so there is
 no boundary left to cross.
@@ -1711,7 +1724,7 @@ Where each responsibility lives, for someone extending the framework:
 | The prep verb's one entry (`prep_stage` → `PrepAnswer`, § 5.3), which the command line and the Task setup tab both call; the five steps (`prep_calculation`) — resolve, render decks + wrappers, carry-in, `STAGE-PLAN.md` — and the engine seam | `molbuilder/jobset/prep.py` |
 | What a prep receives, assembled once (A12) — the run's `(allocation, pins, chosen)` and the bench's `(points, pins, translation)`, the bench grid's cell checks, and the notes a person is told; the conductor's own assembly, beside it | `molbuilder/jobset/prep_inputs.py` |
 | The human-readable plan table | `molbuilder/jobset/plan.py` |
-| Submit **one** job (SLURM or direct) + domain routing + the refusal to submit more than one per invocation | `molbuilder/jobset/submit.py` |
+| Launch a prepped stage — or a sweep's trials, one job per resource shelf to the queue — here or to SLURM, the one launch request (`_sbatch_request`) + domain routing + the refusal to hand the scheduler more than one at a time | `molbuilder/jobset/submit.py` |
 | Per-stage status roll-up (reuses `run_status`) | `molbuilder/jobset/runstatus.py` |
 | What a stage continues from — the default, a named run, or why prep refuses (§ 5.4) | `molbuilder/jobset/continuation.py` |
 | Every command a verb or a refusal prints for a person to type; a launch as a text read later says it (a deck's header, a result's remedy) | `molbuilder/jobset/commands.py`; `molbuilder/identity.py::launch_as_typed` |

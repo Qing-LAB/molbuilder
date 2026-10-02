@@ -47,8 +47,8 @@ uses it, and `queue_table` renders it per queue.  It was documented as *"the
 whole point"* and called by nobody.  A check designed and not wired is the
 defect this file exists to remove, one layer up.
 
-The CLI and the browser call the same four.  Two surfaces asking one question
-two ways is how they come to disagree about what was asked.
+The command line asks through these four.  *(This said the browser called
+them too until 2026-10-01; no web module imports this one -- the W52 review.)*
 """
 from __future__ import annotations
 
@@ -149,7 +149,7 @@ def queue_table(rows: Sequence, ask: Ask, *, cores: Optional[int] = None,
         if why:
             lines.append(f"     -> {'; '.join(r.message for r in why)}")
     lines.append("")
-    lines.append("  choose one with --domain <name>.  Nothing is submitted "
+    lines.append("  name one of them with --domain.  Nothing is submitted "
                  "until you do.")
     return "\n".join(lines)
 
@@ -288,9 +288,9 @@ def gpu_share_notes(gpu_count: Optional[int], mpi_np: Optional[int], *,
     4. a node-fit check, ``K * C <= cores / G`` (`engines/tuning.md` § 2.12's
        own arithmetic, rearranged: ``G*K*C <= node_cores``) -- only when the
        caller has both ``cores_per_rank`` and ``node_cores`` to check it
-       with.  The bench-grid enumeration already enforces this one as a HARD
-       drop (`jobset/prep_inputs.py`'s per-family core cap); it is repeated here so
-       a caller with a single, non-swept request gets the same protection.
+       with.  The bench grid crosses out what no queue of the machine admits
+       (`jobset/prep_inputs._cells_this_machine_holds`); this states it for a
+       caller with a single, non-swept request.
 
     ``gpu_count`` falsy/``None`` returns no lines -- a CPU-family request,
     nothing here applies.  ``mpi_np`` falsy/``None`` the same -- there is no

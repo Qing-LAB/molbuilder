@@ -465,8 +465,8 @@ sources recommend, and how to design a benchmark matrix around it — is
 | `--continue` / `-c` | both | advance the run index and warm-restart from `.DM`/`.CG`/`.XV` (SIESTA) or `.chk` (PySCF) |
 | `--force` / `-f` | both | reset the run index to `-run0` (overwrite it); does **not** touch warm-start files. Also what says *yes, overwrite* to `--cold`'s refusal |
 | `--cold` / `--from-scratch` | both | start the engine from the deck alone, **overwriting** the prior state it names (§ `job-contracts § 4`). Names the files and **refuses**; `--force` proceeds |
-| `-np` / `--np N` | SIESTA | override MPI ranks |
-| `-omp` / `--omp` / `-t` / `--threads N` | SIESTA | override OMP threads |
+| `-np` / `--np N` | both | SIESTA: override MPI ranks. PySCF: accepted, and anything but 1 is said to be ignored — PySCF is OpenMP-only |
+| `-omp` / `--omp N` | both | override OMP threads (SIESTA also takes `-t` / `--threads N`) |
 | `--mps` / `--no-mps` | SIESTA (GPU) | force MPS on / off |
 | `--dry-run` | both | print the resolved launch command + rank→GPU/NUMA map, then exit 0 |
 | `-h` / `--help` | both | usage |
@@ -1023,10 +1023,10 @@ not read is refused by name — `--time`/`--mem`/`--domain` under
 > nothing is opened by asking. The number of queries is capped for politeness, and
 > anything past the cap is **named as unasked** — a partial answer that does
 > not say it is partial reads as a complete one. When it launches, it stamps the claim
-`MB_LAUNCHED_BY=jobset-submit` — into the child environment for a direct
+`MB_LAUNCHED_BY=jobset-launch` — into the child environment for a direct
 run (inheritance survives `nohup` and backgrounding), and **explicitly on
 the command line** for a scheduler run (`sbatch
---export=ALL,MB_LAUNCHED_BY=jobset-submit`, which beats any site export
+--export=ALL,MB_LAUNCHED_BY=jobset-launch`, which beats any site export
 policy).
 
 **Every `.run.sh` gates on that claim** before doing any work
@@ -1035,7 +1035,7 @@ policy).
 ```mermaid
 flowchart TD
     A[".run.sh starts"] --> B{"MB_LAUNCHED_BY set?"}
-    B -- "yes (jobset-submit · manual · bench-runner)" --> C["log: launched-by: &lt;value&gt;<br/>proceed"]
+    B -- "yes (jobset-launch · manual · bench-runner)" --> C["log: launched-by: &lt;value&gt;<br/>proceed"]
     B -- no --> D{"interactive terminal?"}
     D -- yes --> E["warn, ask y/N"]
     E -- y --> C2["log: launched-by: manual<br/>proceed"]

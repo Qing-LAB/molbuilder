@@ -3,9 +3,10 @@
 Moved ``bench/summarize.py`` → ``jobset/summarize.py`` 2026-08-12
 (follow-up to the U-program): everything it reads is the JOB SET's —
 `job-set.json` for discovery, `materialize` for the trial directories,
-the winner's own deck for the mechanism — and its verdict feeds
-`jobset prep run`.  A jobset reader living in `bench/` made the package
-boundary lie about the dependency direction.
+the winner's own deck for the mechanism — and its verdict is a report a
+person reads, and writes into `task.json` (nothing applies it: there is no
+second rung, `job-system.md` § 7.1).  A jobset reader living in `bench/` made
+the package boundary lie about the dependency direction.
 
 Serves ``molbuilder jobset summarize bench`` (step 6 u4): discovery keyed
 by ``job-set.json``'s own data, each trial parsed with the pure parsers in
@@ -104,7 +105,7 @@ def deck_value(deck: Path, keyword: str) -> Optional[str]:
     returned the first match while ``_winner_mechanism`` looped to the
     end and kept the LAST, so on a deck with a duplicated keyword the
     verdict named an algorithm SIESTA had not used -- and that verdict is
-    what `prep run` offers to apply to the production calculation.
+    what a person copies into the production calculation's `execution`.
     Comparison is through ``_norm``, so ``Diag.Algorithm`` /
     ``diag_algorithm`` / ``DIAGALGORITHM`` are one keyword.
     """
@@ -423,7 +424,7 @@ def _winner_mechanism(bundle, jobset, label: str) -> Dict:
     # Through the ONE deck reader.  This loop kept the LAST match while
     # `deck_value` takes the first -- two readers of one file, disagreeing
     # on a deck that names the keyword twice, and this is the copy whose
-    # answer `prep run` offers to apply to the production calculation.
+    # answer a person copies into the production calculation's `execution`.
     alg = deck_value(deck, "Diag.Algorithm")
     if alg is not None:
         mech["diag_algorithm"] = alg
@@ -476,9 +477,10 @@ def run_summarize_jobset(jobset, bundle, *,
 
     The record stays because it is the sweep's ARCHIVAL trace: the trials,
     their numbers, the machine each ran on, and the verdict, surviving the
-    trials' artifacts being archived.  Note that nothing reads it back --
-    the panel recomputes through ``sweep_view`` -- so if archiving a sweep
-    is not a use anybody has, this write is the next thing to retire.
+    trials' artifacts being archived.  Nothing reads it back -- the panel
+    recomputes through ``sweep_view`` -- and it is kept for that archival
+    reason alone (settled 2026-09-06, user: *"keep it -- archiving a sweep
+    IS a use"*, `job-system.md` § 7.1).
     """
     res = bench_record(jobset, bundle, now_iso=now_iso)
     out_path = Path(out) if out else Path(bundle) / "bench-result.json"
@@ -526,7 +528,7 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
     """The benchmark's REPORT, printed by ``jobset summarize``, or ``None``
     when the result concludes nothing.
 
-    **Nothing reads this file.**  It is what the sweep found, said in
+    **Nothing applies it.**  It is what the sweep found, said in
     sentences, for a person to read and act on -- and the action is writing
     an ``execution`` block in ``task.json``, which is the only thing
     ``prep run`` consults (`architecture.md` § 5.2).
@@ -592,7 +594,7 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
     # something nobody benchmarked.  (Caught by `test_value_axes.py`, which
     # is the file that exists for exactly this axis, 2026-09-02.)
     # `res.system["engine"]` -- the description's own answer, put there by
-    # `_system_block` from `read_task`.  This read `getattr(res, "engine")`
+    # `_read_system` from `read_task`.  This read `getattr(res, "engine")`
     # until 2026-09-04, and `BenchResult` has no such attribute: measured
     # `hasattr(...) is False`, so the `or "siesta"` fired every time and a
     # `getattr` was doing the work of a hardcoded literal while looking
@@ -778,7 +780,7 @@ def summary_text(res: BenchResult, out_path: Path, *,
             by_state[p_.state] = by_state.get(p_.state, 0) + 1
         census = ", ".join(f"{n} {s}" for s, n in sorted(by_state.items()))
         lines.append(f"  NO VERDICT: no completed, timed trial to rank "
-                     f"({census}).  Submit trials and summarize again.")
+                     f"({census}).  Launch the trials and summarize again.")
     # The coverage clause (honesty on a partial sweep): a verdict drawn
     # from three of eleven prepped points says so on its face.
     if res.choice:
@@ -989,8 +991,8 @@ def swept_coordinates(points: List[BenchPoint]) -> List[str]:
 
 def utc_now_iso() -> str:
     """UTC timestamp ``YYYY-MM-DDThh:mm:ssZ`` (moved from the deleted
-    ``bench/prep.py`` at u5 -- its one surviving caller is the summarize
-    verb's stamp)."""
+    ``bench/prep.py`` at u5) -- the summarize verb's stamp, and
+    :func:`sweep_view`'s."""
     return datetime.datetime.now(datetime.timezone.utc).strftime(
         "%Y-%m-%dT%H:%M:%SZ")
 
