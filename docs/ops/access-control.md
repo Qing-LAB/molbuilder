@@ -343,7 +343,8 @@ before it exists at all.
 > subsystem asked. It was also reached through the rate limiter's own object, so
 > **turning the limiter off silently changed who was an admin** — a connection
 > nothing in the names would suggest. The old key is gone, not aliased: a config
-> that still sets it names nobody, and the server says nobody.
+> that still sets it is refused by name, pointing here (since 2026-10-02 — until
+> then it was read as naming nobody).
 
 ## 6. Stopping the process — absent, not refused
 
@@ -352,19 +353,24 @@ for, so a fresh child starts with every Python module imported again. The design
 of that mechanism is [`server-reload-plan.md`](?doc=archive/2026-08-19-server-reload-plan.md);
 what belongs here is who may press it.
 
-`POST /api/admin/reload` **is not registered at all** unless both hold:
+`POST /api/admin/reload` **is registered only when a supervisor is running.** The
+default since 2026-08-04, so this normally holds; `--no-supervise` and `--debug`
+take it away. Without one nothing brings the server back, and an endpoint that
+stops an unsupervised server leaves a dead site with no way back from a browser —
+so without one the route does not exist: **404**, and the button is missing,
+which is what it is.
 
-1. **A supervisor is running.** The default since 2026-08-04, so this normally
-   holds; `--no-supervise` and `--debug` take it away. Without one nothing brings
-   the server back, and an endpoint that stops an unsupervised server leaves a
-   dead site with no way back from a browser.
-2. **The `admin` section names somebody.** Restarting the process everyone shares is
-   not something to inherit by omission.
+**With one, it answers an admin, by § 5's rule** — the one the block list asks:
+anyone who can sign in, unless the `admin` section names addresses, which
+narrows it. Anyone else gets **403**, in the one sentence `web/admin.py` owns,
+and anonymous is never an admin.
 
-**404, not 403, and the difference is the point.** A misconfiguration then reads
-as *the button is missing* — which is what it is — and never as *anyone can
-restart the server*. There is no state of the config in which forgetting
-something grants the capability.
+*(This section said until 2026-10-02 that the route is not registered unless the
+`admin` section names somebody, and that no state of the config grants the
+capability by forgetting something. The rule changed when § 5 gave the list one
+meaning — `tests/test_admin_reload.py`'s
+`test_naming_nobody_means_anyone_who_signed_in` records it — and these
+paragraphs went on describing the old one.)*
 
 Two smaller decisions follow the same grain:
 
@@ -489,7 +495,7 @@ The transferable part. A new gate should be able to point at one of these.
 | Auth config validation + provider entries | `tests/test_auth_config.py`, `tests/test_auth_setup.py` |
 | `--no-auth` refused off loopback | `tests/test_cli.py::test_serve_no_auth_refuses_non_loopback_host` |
 | TLS cert/key resolution (flags vs `molbuilder.json`, incomplete pairs fall back to HTTP) | `tests/test_cli_tls.py` |
-| The reload gate — **404 not 403** on either missing condition; the availability answer in four configurations; the respawn loop; the supervisor never importing the app; a reload refused, 409, while `molbuilder.json` cannot be read (`deployment.md` § 1.0b) | `tests/test_admin_reload.py` |
+| The reload gate — **404** with no supervisor, **403** for a session that is not an admin's; the availability answer in four configurations; the respawn loop; the supervisor never importing the app; a reload refused, 409, while `molbuilder.json` cannot be read (`deployment.md` § 1.0b) | `tests/test_admin_reload.py` |
 | Revalidation staying invisible to the limiter (the § 4.3 assumption) | `tests/test_static_revalidates.py` |
 | No inline `<script>` anywhere (the CSP's `script-src 'self'` would break silently otherwise) | `tests/test_no_inline_scripts.py` |
 | The header values themselves — the CSP's directives, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin` on a page and on an API answer; HSTS over HTTPS (direct or `X-Forwarded-Proto`) and never over plain HTTP | `tests/test_security_headers.py` *(since 2026-09-29; a known gap until then)* |

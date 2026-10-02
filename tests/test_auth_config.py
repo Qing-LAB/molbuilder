@@ -28,15 +28,18 @@ Coverage:
   * unsupported ``kind`` is rejected
   * OAuth kinds (google/github/microsoft/orcid):
       - client_id required
-      - EXACTLY one of client_secret / client_secret_file
+      - client_secret_file required; a literal client_secret refused by
+        name (molbuilder.json carries paths only)
       - kind-specific extras validated (hosted_domain, allowed_organizations,
         tenant_id)
   * CAS kind:
-      - login_url + service_validate_url required
+      - login_url required; service_validate_url refused by name
       - version must be 1, 2, or 3
       - at least one of email_attribute / email_domain (for allowlist match)
       - optional string fields validated when set
   * allowed_users must be list of strings (empty list = no one, valid)
+  * a key a provider's kind does not hold, or `auth` does not hold, is
+    refused (`configuration.md` § 4)
   * a config still naming `secret_key_file` is REFUSED, with its one home named
 
 Does NOT test the runtime auth flow itself (Authlib OAuth + python-cas
@@ -81,7 +84,6 @@ def _cas_entry(**overrides):
         "kind":                 "cas",
         "allowed_users":        ["user@example.com"],
         "login_url":            "https://cas.example.com/cas/login",
-        "service_validate_url": "https://cas.example.com/cas/serviceValidate",
         "email_domain":         "example.com",
     }
     base.update(overrides)
@@ -171,7 +173,14 @@ MALFORMED_AUTH = [
     # person hunting for a file when either spelling would do.
     ("oauth-no-secret",       _wrap(_without(_google_entry(), "client_secret_file")),
                                               ["client_secret", "client_secret_file"]),
-    ("oauth-both-secrets",    _wrap(_google_entry(client_secret="literal")),  "EITHER"),
+    # The bytes never sit in molbuilder.json -- refused by name, beside a
+    # file or alone, saying where the secret goes (`deployment.md` § 5).
+    ("oauth-literal-secret",  _wrap(_google_entry(client_secret="literal")),
+                                              ["'client_secret' is refused", "paths only"]),
+    # A key the kind does not hold: a typo in `hosted_domain` dropped that
+    # restriction in silence until 2026-10-02.
+    ("provider-unknown-key",  _wrap(_google_entry(hosted_domains=["asu.edu"])),
+                                              "got 'hosted_domains'"),
 
     # ---- per-kind fields -- `access-control.md` § 3.1, `deployment.md` § 3.4
     # KEEP: the routing of `hosted_domain` through the str-list helper is not
@@ -189,6 +198,9 @@ MALFORMED_AUTH = [
     # one.  `login_url` IS required and still checked here.
     *[(f"cas-missing-{k}", _wrap(_without(_cas_entry(), k)), k)
       for k in ("login_url",)],
+    ("cas-service_validate_url-retired",
+     _wrap(_cas_entry(service_validate_url="https://cas.example.com/cas/serviceValidate")),
+                                              "'service_validate_url' is no longer configured"),
     *[(f"cas-version-{b!r}", _wrap(_cas_entry(version=b)), "version")
       for b in (0, 4, "3", 3.0, None)],
     # An OPTIONAL key present but empty is a hand edit half-undone: the key is
@@ -203,6 +215,13 @@ MALFORMED_AUTH = [
     # person who wrote this wrote a file that WORKED, so they are owed the
     # new spelling rather than "unknown top-level key".
     ("secret_key_file-retired", {"secret_key_file": "~/.mb/key"},  "no longer configured"),
+    # ...and inside `auth`, where the wizard wrote it before 2026-08-31.
+    ("auth-secret_key_file-retired", {"auth": {"providers": [_google_entry()],
+                                               "secret_key_file": "~/.mb/key"}},
+                                              "no longer configured"),
+    ("auth-unknown-key",      {"auth": {"providers": [_google_entry()],
+                                       "trusted_proxy": True}},
+                                              "got 'trusted_proxy'"),
 
     # ---- trust_proxy -- it decides whether forwarded client IPs are believed
     *[(f"trust_proxy-{b!r}", {"auth": {"providers": [_google_entry()],
@@ -421,21 +440,9 @@ class TestOAuthSharedFields:
 
 
 
-    @pytest.mark.parametrize("kind", ["google", "github", "microsoft", "orcid"])
-    def test_literal_secret_accepted(self, kind):
-        """The literal form being refused because the file form is preferred: a
-        valid config stops loading, and the literal is the only form available
-        when the secret comes from a secret manager rather than a file.
-
-        `deployment.md` § 5.1.
-        """
-        entry = _google_entry(kind=kind, id=kind)
-        del entry["client_secret_file"]
-        entry["client_secret"] = "GOCSPX-literal"
-        cfg = _normalise(_wrap(entry))
-        p = get_providers(cfg)[0]
-        assert p["client_secret"] == "GOCSPX-literal"
-        assert "client_secret_file" not in p
+    # `test_literal_secret_accepted` retired 2026-10-02: a literal
+    # `client_secret` is refused by name (MALFORMED_AUTH's
+    # `oauth-literal-secret`) -- `deployment.md` § 5, paths only.
 
     @pytest.mark.parametrize("kind", ["google", "github", "microsoft", "orcid"])
     def test_secret_file_accepted(self, kind):
@@ -622,33 +629,8 @@ class TestSecretFileMtimeReload:
         # catches + logs; the previously-loaded secret stays.
         assert client.client_secret == "GOCSPX-original"
 
-    def test_literal_secret_entries_skip_mtime_tracking(self):
-        """When the entry uses ``client_secret`` (literal) instead of
-        ``client_secret_file`` (path), there is no file to watch.
-        ``_secret_file_mtime`` returns None; the mtime-change branch
-        in ``_ensure_client`` is never taken; the literal secret is
-        used verbatim across all calls."""
-        from molbuilder.web.auth_providers.oauth import (
-            _ensure_client, _OAUTH_CLIENTS_EXT_KEY,
-        )
-        app = self._app()
-        entry = {
-            "id":            "google",
-            "label":         "Sign in with Google",
-            "kind":          "google",
-            "client_id":     "test.apps.googleusercontent.com",
-            "client_secret": "GOCSPX-literal-not-a-file",
-            "hosted_domain": [],
-            "allowed_users": ["user@example.com"],
-        }
-        with app.app_context():
-            c1 = _ensure_client(app, entry)
-            c2 = _ensure_client(app, entry)
-        assert c1 is c2
-        assert c1.client_secret == "GOCSPX-literal-not-a-file"
-        # Nothing recorded for the mtime watcher.
-        ext = app.extensions[_OAUTH_CLIENTS_EXT_KEY]
-        assert ext["secret_mtime"]["mb_google"] is None
+    # `test_literal_secret_entries_skip_mtime_tracking` retired 2026-10-02: an
+    # entry always names its secret file, so there is no literal to track.
 
 
 class TestSetupSessionSecurity:

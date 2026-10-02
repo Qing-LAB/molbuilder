@@ -23,8 +23,9 @@ The runtime contract between ``auth.py`` and a backend module:
   session cookie and returns the post-login redirect.
 
 Adding a new kind = drop a sibling module here with the same two
-entry points, and add the kind to ``runtime_config._SUPPORTED_KINDS``
-+ ``_KIND_VALIDATORS`` so the JSON schema accepts it.
+entry points, and add the kind's row to ``runtime_config._PROVIDER_KINDS``
+-- its validator and the keys its entry holds -- so the JSON schema accepts
+it.
 """
 from __future__ import annotations
 

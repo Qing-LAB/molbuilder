@@ -1,7 +1,8 @@
 """The admin Reload route, and the two locks on it.
 
-Contract: `ops/access-control.md` -- *"`POST /api/admin/reload` is not
-registered at all unless both hold"*.  *(How the mechanism was designed:
+Contract: `ops/access-control.md` § 6 -- *"`POST /api/admin/reload` is
+registered only when a supervisor is running"*, and answers an admin, by § 5's
+rule.  *(How the mechanism was designed:
 `archive/2026-08-19-server-reload-plan.md` § 3.3 and § 4.)*
 
 WHAT THIS ROUTE DOES: exits the process with a code the supervisor is waiting
@@ -15,15 +16,14 @@ OAuth, so a Reload button beside the user's email must not be reachable by
 everyone who can authenticate -- pressing it disconnects them all mid-calculation
 and loses workspace writes still in flight.
 
-The admin list therefore means NOBODY when it is absent or empty, and it says
-that to every subsystem that asks (web/admin.py).  It lived inside `rate_limit`
-until 2026-08-03, where empty meant "anyone signed in" and this route inverted
-it for itself -- one value, two opposite readings.
+The admin list has ONE meaning for every subsystem that asks (web/admin.py):
+absent or empty means anyone who can sign in -- a provider's REQUIRED
+``allowed_users`` already named them -- and naming addresses narrows it.
 
-The tests below pin both halves of the gate: with no supervisor, or with no
-named admins, **the route does not exist** -- 404, not 403.  A misconfiguration
-then reads as "the button is missing", never as "anyone can restart the server",
-and the safe state is the one you get by doing nothing.
+The tests below pin both halves of the gate: with no supervisor **the route
+does not exist** -- 404 -- and with one, a session that is not an admin's gets
+403.  *(This header said until 2026-10-02 that naming nobody also removes the
+route; the rule changed, as the second test's docstring records.)*
 """
 from __future__ import annotations
 

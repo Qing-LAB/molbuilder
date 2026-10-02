@@ -331,21 +331,10 @@ class TestAllowlist:
         r = client.get("/?<script>x</script>")
         assert r.status_code == 429
 
-    def test_malformed_allowlist_entries_logged_and_skipped(self, caplog):
-        """A typo in an allowlist entry is logged and skipped -- it neither stops the
-        server nor swallows the valid entries beside it.
-
-        The allowlist is hand-written in `molbuilder.json` (`deployment.md` section
-        5). If one bad entry raised, a typo would stop the server starting; if it were
-        skipped in silence, the operator's intended exemption is missing with no way
-        to find out. The WARNING record is the only thing that says which happened.
-        """
-        with caplog.at_level("WARNING"):
-            _app, _client = _build_client(
-                {"allowlist": ["10.0.0.0/24", "not-an-ip", ""]}
-            )
-        assert any("malformed allowlist entry" in r.message
-                   for r in caplog.records)
+    # `test_malformed_allowlist_entries_logged_and_skipped` retired 2026-10-02:
+    # a malformed entry is refused where the config is read, naming it, before
+    # a server starts on it (`tests/data/molbuilder_json.toml`; configuration.md
+    # § 4) -- no document stated the skip it pinned.
 
 
 # --------------------------------------------------------------------- #

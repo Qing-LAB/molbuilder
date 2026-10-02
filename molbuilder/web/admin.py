@@ -67,13 +67,28 @@ def named_admins(app=None) -> frozenset:
     """The configured set, or empty when nobody was named.
 
     Empty is the honest answer for "no `admin` section", "an empty list", and
-    "this app never installed one" alike -- all three mean nobody is an admin.
+    "this app never installed one" alike -- all three mean nobody is NAMED,
+    which :func:`is_admin_request` reads as anyone who signed in.
     """
     target = app if app is not None else current_app
     try:
         return target.extensions.get(_EXT_KEY) or frozenset()
     except Exception:  # noqa: BLE001 -- outside an app context
         return frozenset()
+
+
+#: What a request that is not an admin's is told.  ONE sentence for both
+#: routes that ask -- the restart and the rate limiter's block list; they said
+#: two different things until 2026-10-02, one of them the reverse of the rule.
+NOT_AN_ADMIN = ("admin auth required: sign in first -- or, if an `admin` "
+                "section in molbuilder.json names specific addresses, sign "
+                "in as one of them")
+
+
+def not_an_admin():
+    """The 403 every operator-only route answers a non-admin with."""
+    from flask import jsonify
+    return jsonify({"ok": False, "error": NOT_AN_ADMIN}), 403
 
 
 def is_admin_request() -> bool:

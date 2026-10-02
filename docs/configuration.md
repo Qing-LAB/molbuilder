@@ -535,7 +535,7 @@ tracebacks and responses. The value doors are:
 | credential | door | hands back |
 |---|---|---|
 | session key | `config_dir.read_session_key()` | bytes, or `None` when not yet made |
-| an OAuth client secret | `runtime_config.provider_client_secret(entry)` | the string, whether the operator gave a literal or named a file |
+| an OAuth client secret | `runtime_config.provider_client_secret(entry)` | the string, read from the file the entry names — `molbuilder.json` carries paths only |
 | notify channels | `monitor.load_channels()` | the channels, already judged |
 | run-report signing keys | `monitor.read_notify_keys()` | `(route, {user: key})` |
 
@@ -831,7 +831,9 @@ record. A copy that is wrong for the machine it describes is edited by hand, in
 that record.
 
 **Every key the file may hold.** A key not in this table is refused, never
-ignored, and a key starting with `_` is a comment. What a key may be set *to*
+ignored — inside a section as at the top level, one sentence naming what the
+section holds (`runtime_config._refuse_unknown`) — and a key starting with `_`
+is a comment. What a key may be set *to*
 belongs to the contract in the last column; the table says what each key is for
 and which code reads it, so *"is this setting doing anything?"* has an answer.
 The registry `runtime_config._SECTIONS` holds the provenance flag, which is why
@@ -860,7 +862,10 @@ make the same file fail as an unknown key, which tells the person nothing.
 | `script_generation` | 2026-10-02 | Renamed `env_init`, for what it holds: how a shell on this machine enters an environment — the same two keys |
 | `execution` | 2026-10-02 | Renamed `launch`. `execution` is the run card in `task.json`, and means only that |
 | `notify_keys_file` · `notify_route` | 2026-08-31 | The key file carries its own route ([`run-reports.md`](?doc=execution/run-reports.md) § 4.3) |
-| `secret_key_file` | 2026-08-31 | The session key has one home, `secrets/secret_key` (§ 2.1e) |
+| `secret_key_file`, at the top level or inside `auth` | 2026-08-31 | The session key has one home, `secrets/secret_key` (§ 2.1e) |
+| `auth.providers[].client_secret` | 2026-10-02 | The secret's bytes never sit here: put it in a `0600` file under `secrets/` and name the file with `client_secret_file` ([`ops/deployment.md`](?doc=ops/deployment.md) § 5) |
+| `auth.providers[].service_validate_url` | 2026-10-02 | Delete it: python-cas derives the validate endpoint from `login_url`, and nothing ever read this key (accepted and ignored from 2026-09-12) |
+| `rate_limit.admin_emails` | 2026-08-03 | The top-level `admin` section — one list for the block list and the restart ([`ops/access-control.md`](?doc=ops/access-control.md) § 5) |
 | top-level `cert` · `key` | 2026-09-02 | The `tls` section |
 | `paths.logs` · `paths.run` · `paths.reports` | 2026-08-31 | `XDG_STATE_HOME` / `XDG_RUNTIME_DIR` (§ 2.1d) |
 

@@ -38,7 +38,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 
-from ..diagnostics import DEFAULT_ENV_NAMES, Capabilities
+from ..diagnostics import DEFAULT_ENV_NAMES, HOST_CATEGORY, Capabilities
 from . import hints as _hints
 from typing import Any, Optional, Tuple
 
@@ -2820,10 +2820,9 @@ def recipe_for_category(category: str) -> Optional[Recipe]:
 #: spelling lives in exactly these two files and the shim's help documents it.
 HOST_ENV_ENV = "MOLBUILDER_HOST_ENV"
 
-#: The host recipe carries no `category` (it is not routed to by a tool), so
-#: this is the key its name lives under in `molbuilder.json`'s `envs` block --
-#: the persistent home the variable above only overrides.
-HOST_CATEGORY = "host"
+# The host recipe carries no `category` (it is not routed to by a tool), so
+# its name lives under `diagnostics.HOST_CATEGORY` in `molbuilder.json`'s
+# `envs` block -- the persistent home the variable above only overrides.
 
 
 def effective_name(recipe: Recipe, caps: Capabilities) -> str:

@@ -98,9 +98,9 @@ machine_config = { execution = { mode = "submit", domain = "cpu" } }
 refused = "'domain' has no replacement: a job names its own queue"
 
 [[case]]
-name = "an unknown section is refused, naming the ones there are"
+name = "an unknown section is refused, naming the live ones and no retired one"
 machine_config = { queue = "cpu" }
-refused = "unknown top-level key(s) 'queue'"
+refused = "key(s) 'queue'.  Known sections: tls, envs, auth, launch, env_init, checkpoint, admin, rate_limit, paths."
 
 [[case]]
 name = "env_init's activation is one of the two forms -- no default, no third"
@@ -111,3 +111,48 @@ refused = "'env_init.activation' must be one of 'source activate', 'conda activa
 name = "env_init holds the activation and the preamble, and nothing else"
 machine_config = { env_init = { activation = "conda activate", shell = "bash" } }
 refused = "'env_init' holds 'activation' and 'preamble'; got 'shell'"
+
+# ===================================================================== #
+#  Inside every section, a key the contract does not list is refused    #
+#  (`configuration.md` § 4) -- one sentence, `_refuse_unknown`           #
+# ===================================================================== #
+
+[[case]]
+name = "a misspelled admin key is refused -- it read as nobody named, so everyone signed in was an admin"
+machine_config = { admin = { email = ["operator@example.edu"] } }
+refused = "'admin' holds one key, 'emails'; got 'email'"
+
+[[case]]
+name = "an envs key that is no category is refused"
+machine_config = { envs = { siseta = "molbuilder-siesta" } }
+refused = "got 'siseta'"
+
+[[case]]
+name = "a checkpoint key it does not hold is refused"
+machine_config = { checkpoint = { size_limit = 1000000 } }
+refused = "'checkpoint' holds 'size_limit_bytes' and 'engines'; got 'size_limit'"
+
+# ===================================================================== #
+#  rate_limit -- read typed where the config is read, before a server   #
+#  starts on it                                                          #
+# ===================================================================== #
+
+[[case]]
+name = "rate_limit's off switch is a JSON boolean -- the text false read as on"
+machine_config = { rate_limit = { enabled = "false" } }
+refused = "'rate_limit.enabled' must be a JSON boolean (true / false)"
+
+[[case]]
+name = "a cooldown that is not a whole number of seconds is refused before a restart can die on it"
+machine_config = { rate_limit = { cooldown_s = "1h" } }
+refused = "'rate_limit.cooldown_s' must be a whole number of seconds above 0"
+
+[[case]]
+name = "an allowlist entry that is no address is refused, naming it"
+machine_config = { rate_limit = { allowlist = ["127.0.0.1", "localhost"] } }
+refused = "'rate_limit.allowlist' entry 'localhost' is not an IP address or network"
+
+[[case]]
+name = "rate_limit.admin_emails is refused by name, pointing at the admin section"
+machine_config = { rate_limit = { admin_emails = ["operator@example.edu"] } }
+refused = "'rate_limit.admin_emails' moved to the top-level 'admin' section"

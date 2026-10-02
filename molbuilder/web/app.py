@@ -85,8 +85,8 @@ def _install_admins(app, cfg) -> None:
 
     ONE LIST, TWO CONSUMERS, ONE MEANING: the rate limiter's block-list routes
     and the reload route both ask ``admin.is_admin_request()``.  Absent or empty
-    means NOBODY -- writing no config leaves both capabilities off, which is the
-    safe direction for each of them.
+    means anyone who can sign in -- a provider's ``allowed_users`` already named
+    them -- and naming addresses narrows it (`access-control.md` § 5).
 
     Installed independently of the rate limiter.  It used to live inside that
     limiter's config and be reached through its object, so disabling the limiter
@@ -697,6 +697,7 @@ def create_app(*, config=None) -> Flask:
     #   admin.  Both of those were the real defect and both are gone.  The
     #   default is not a defect, and it lives in one place now (web/admin.py).
     from .admin import is_admin_request as _is_admin
+    from .admin import not_an_admin as _not_an_admin
     _supervised = os.environ.get(SUPERVISED_ENV) == "1"
 
     if _supervised:
@@ -709,12 +710,7 @@ def create_app(*, config=None) -> Flask:
             that died mid-response would look identical to one that crashed.
             """
             if not _is_admin():
-                return jsonify({
-                    "ok": False,
-                    "error": ("admin auth required: sign in first — or, if an "
-                              "`admin` section in molbuilder.json names "
-                              "specific addresses, sign in as one of them"),
-                }), 403
+                return _not_an_admin()
             # THE FILE THE FRESH SERVER WILL READ, read first -- as `serve
             # restart` does (`deployment.md` § 1.0b): a child that cannot
             # read it exits nonzero, the supervisor does not respawn it

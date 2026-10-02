@@ -52,7 +52,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
 
 from .config_dir import PRIVATE_FILE_MODE, config_dir
 
@@ -201,14 +201,12 @@ def read_config(path: Optional[Path] = None) -> Dict[str, Any]:
 # raise :class:`RuntimeConfigError` for any malformed entry; that
 # error bubbles up through ``_normalise`` to the CLI / web layer.
 #
-# Adding a new backend = add a kind to ``_SUPPORTED_KINDS`` + a
-# validator function + a registration handler in
+# Adding a new backend = a row in ``_PROVIDER_KINDS`` (its validator and
+# the keys its entry holds) + a registration handler in
 # ``molbuilder/web/auth_providers/``.  The schema layer here knows
 # nothing about HTTP, authlib, or python-cas -- only the contract of
 # the JSON payload.
 
-
-_SUPPORTED_KINDS = ("google", "github", "microsoft", "orcid", "cas")
 
 # id must be a URL-safe slug because it appears in route paths
 # ``/login/<id>`` and ``/oauth-callback/<id>``.  Restricting to
@@ -256,22 +254,32 @@ def _require_str_list(entry: Mapping[str, Any], key: str, idx: int,
     return list(val)
 
 
-def _validate_secret_pair(entry: Mapping[str, Any], idx: int) -> None:
-    """Enforce 'exactly one of client_secret / client_secret_file'."""
-    has_literal = isinstance(entry.get("client_secret"), str)
-    has_file    = isinstance(entry.get("client_secret_file"), str)
-    if has_literal and has_file:
+#: What a literal secret in `molbuilder.json` is told (`ops/deployment.md`
+#: § 5: the file carries paths only, never a secret's bytes).
+_LITERAL_SECRET_REFUSED = (
+    "{path}: auth.providers[{idx}]: 'client_secret' is refused -- "
+    "molbuilder.json carries paths only, never a secret's bytes "
+    "(docs/ops/deployment.md § 5).  Put the secret in a 0600 file under the "
+    "config directory's secrets/ and name it with 'client_secret_file'.")
+
+
+def _validate_secret_file(entry: Mapping[str, Any], idx: int) -> None:
+    """The provider's secret is a FILE the entry names -- never the bytes.
+
+    A literal ``client_secret`` was accepted beside the file until 2026-10-02,
+    which let `molbuilder.json` hold a secret.  Nothing molbuilder writes
+    produces one (`auth_setup.py` writes the path), so a literal is a hand
+    edit, and it is refused by name, saying where the secret goes."""
+    if "client_secret" in entry:
+        raise RuntimeConfigError(_LITERAL_SECRET_REFUSED.format(
+            path=CONFIG_FILENAME, idx=idx))
+    named = entry.get("client_secret_file")
+    if not isinstance(named, str) or not named:
         raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: auth.providers[{idx}]: set EITHER "
-            f"'client_secret' OR 'client_secret_file', not both."
-        )
-    if not has_literal and not has_file:
-        raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: auth.providers[{idx}]: one of "
-            f"'client_secret' (literal) or 'client_secret_file' "
-            f"(path to a 0600 file) is required.  client_secret_file "
-            f"is preferred so the config itself stays safe to share."
-        )
+            f"{CONFIG_FILENAME}: auth.providers[{idx}].client_secret_file is "
+            f"required: the path of a 0600 file holding the provider's "
+            f"client secret (`molbuilder auth-setup` writes one); got "
+            f"{named!r}.")
 
 
 def provider_client_secret(entry: Mapping[str, Any]) -> str:
@@ -286,8 +294,8 @@ def provider_client_secret(entry: Mapping[str, Any]) -> str:
     file, strip it and decide what an empty one meant: five decisions about
     what a secret IS, in a module about OAuth.  Worse, it had to know WHICH
     shape the operator chose.  Both belong here, because this module owns the
-    provider entry's schema -- `_validate_secret_pair` above already enforces
-    that exactly one of the two is set, so this reads what that guaranteed.
+    provider entry's schema -- `_validate_secret_file` above already enforces
+    that the entry names a file, so this reads what that guaranteed.
 
     **The operator still names the file.**  Sites and providers differ, so
     `client_secret_file` stays theirs to choose; what is concealed is that
@@ -318,21 +326,17 @@ def provider_client_secret(entry: Mapping[str, Any]) -> str:
             )
         return text
 
-    literal = entry.get("client_secret")
-    if isinstance(literal, str) and literal:
-        return literal
-
     raise RuntimeConfigError(
-        f"{CONFIG_FILENAME}: auth.providers[id={pid!r}]: neither "
-        f"'client_secret' nor 'client_secret_file' is set "
-        f"(_validate_secret_pair should have caught this)."
+        f"{CONFIG_FILENAME}: auth.providers[id={pid!r}]: "
+        f"'client_secret_file' is not set (_validate_secret_file should have "
+        f"caught this)."
     )
 
 
 def _validate_oauth_common(entry: Dict[str, Any], idx: int) -> None:
     """Mutate ``entry`` in place: validate OAuth shared fields."""
     _require_str(entry, "client_id", idx)
-    _validate_secret_pair(entry, idx)
+    _validate_secret_file(entry, idx)
 
 
 def _validate_google(entry: Dict[str, Any], idx: int) -> Dict[str, Any]:
@@ -371,28 +375,27 @@ def _validate_orcid(entry: Dict[str, Any], idx: int) -> Dict[str, Any]:
     return entry
 
 
+#: A key molbuilder's own wizard wrote until 2026-09-12 and nothing read.
+_CAS_VALIDATE_URL_RETIRED = (
+    "{path}: auth.providers[{idx}]: 'service_validate_url' is no longer "
+    "configured -- delete it.  Nothing ever read it: python-cas derives the "
+    "validate endpoint from 'login_url' (its root, then p3/serviceValidate "
+    "for CAS v3) and takes no parameter for another one.  `molbuilder "
+    "auth-setup` stopped writing it on 2026-09-12; it was accepted and "
+    "ignored until 2026-10-02, and a key nothing reads looks effective.")
+
+
 def _validate_cas(entry: Dict[str, Any], idx: int) -> Dict[str, Any]:
     _require_str(entry, "login_url", idx)
-    # `service_validate_url` IS NO LONGER REQUIRED, and was never read
-    # (2026-09-12).  `web/auth_providers/cas.py` builds the client from
-    # `login_url` alone -- `_server_root_from_login_url` strips the trailing
-    # `/login` to get the CAS root -- and python-cas appends its own suffix
-    # (`p3/serviceValidate` for v3).  Its `CASClientBase` takes no parameter for
-    # an explicit validate endpoint at all, so there was nothing to pass it to:
-    # the schema demanded a value, `auth-setup` wrote one, and the client
-    # ignored it.  Repo-wide grep found two writers and zero readers.
-    #
-    # ACCEPTED AND IGNORED rather than refused, which is the opposite of this
-    # file's usual answer to a retired key -- because this one was written into
-    # working configs BY OUR OWN WIZARD, and refusing it would break sign-in on
-    # every machine that ran `auth-setup`, to no benefit.  The "silently
-    # dropped looks effective" objection is answered by it no longer being
-    # required and no longer being written: new configs will not carry it.
-    #
-    # The real limitation this exposes is worth stating plainly: a CAS site
-    # whose validate endpoint is NOT `<login root>/p3/serviceValidate` is not
-    # supported today.  Honouring one means overriding python-cas's `url_suffix`,
-    # which is a change to the sign-in path and wants a live CAS to test against.
+    # The validate endpoint is python-cas's own, from `login_url`'s root
+    # (`web/auth_providers/cas.py`); a key naming another one is refused by
+    # name.  A CAS site whose validate endpoint is NOT
+    # `<login root>/p3/serviceValidate` is not supported today: honouring one
+    # means overriding python-cas's `url_suffix`, a change to the sign-in path
+    # that wants a live CAS to test against.
+    if "service_validate_url" in entry:
+        raise RuntimeConfigError(_CAS_VALIDATE_URL_RETIRED.format(
+            path=CONFIG_FILENAME, idx=idx))
 
     version = entry.get("version", 3)
     # ``type(version) is int`` excludes bool (subclass of int) and
@@ -432,12 +435,23 @@ def _validate_cas(entry: Dict[str, Any], idx: int) -> Dict[str, Any]:
     return entry
 
 
-_KIND_VALIDATORS = {
-    "google":    _validate_google,
-    "github":    _validate_github,
-    "microsoft": _validate_microsoft,
-    "orcid":     _validate_orcid,
-    "cas":       _validate_cas,
+#: The keys every provider entry holds, whatever its kind.
+_PROVIDER_COMMON_KEYS = ("id", "label", "kind", "allowed_users")
+_OAUTH_KEYS = ("client_id", "client_secret_file")
+
+#: Every kind molbuilder signs in with: its validator, and the keys its entry
+#: holds beyond the common four (`ops/deployment.md` § 3).  ONE row per kind,
+#: so a kind cannot be validated without its keys being listed -- a key not
+#: listed is refused (`configuration.md` § 4), which is what stops a typo in
+#: `hosted_domain` from dropping that restriction in silence.
+_PROVIDER_KINDS: Dict[str, Tuple[Any, Tuple[str, ...]]] = {
+    "google":    (_validate_google,    _OAUTH_KEYS + ("hosted_domain",)),
+    "github":    (_validate_github,    _OAUTH_KEYS + ("allowed_organizations",)),
+    "microsoft": (_validate_microsoft, _OAUTH_KEYS + ("tenant_id",)),
+    "orcid":     (_validate_orcid,     _OAUTH_KEYS),
+    "cas":       (_validate_cas,       ("login_url", "version", "service_url",
+                                        "ca_certs", "email_attribute",
+                                        "email_domain")),
 }
 
 
@@ -461,10 +475,10 @@ def _validate_provider(entry: Any, idx: int) -> Dict[str, Any]:
     _require_str(out, "label", idx)
 
     kind = _require_str(out, "kind", idx)
-    if kind not in _SUPPORTED_KINDS:
+    if kind not in _PROVIDER_KINDS:
         raise RuntimeConfigError(
             f"{CONFIG_FILENAME}: auth.providers[{idx}].kind {kind!r} "
-            f"is not supported.  Supported: {', '.join(_SUPPORTED_KINDS)}."
+            f"is not supported.  Supported: {', '.join(_PROVIDER_KINDS)}."
         )
 
     # allowed_users is required so the operator must explicitly think
@@ -473,8 +487,15 @@ def _validate_provider(entry: Any, idx: int) -> Dict[str, Any]:
     # for temporarily locking out a backend).
     out["allowed_users"] = _require_str_list(out, "allowed_users", idx)
 
-    # --- kind-specific dispatch ------------------------------------- #
-    return _KIND_VALIDATORS[kind](out, idx)
+    # --- kind-specific dispatch, then every other key refused -------- #
+    # The kind's validator runs first, so a retired key it names gets its
+    # own sentence rather than the generic list.
+    validate, keys = _PROVIDER_KINDS[kind]
+    out = validate(out, idx)
+    _refuse_unknown(out, _PROVIDER_COMMON_KEYS + keys,
+                    f"auth.providers[{idx}]",
+                    hint=f"(kind {kind!r}: docs/ops/deployment.md § 3)")
+    return out
 
 
 # --------------------------------------------------------------------- #
@@ -508,6 +529,7 @@ def _read_tls(raw: Mapping[str, Any]):
     flat keys by name and says what to write instead.
     """
     tls = _require_object_section(raw, "tls") or {}
+    _refuse_unknown(tls, ("cert", "key"), "tls")
     for k, v in tls.items():
         if not isinstance(v, str):
             raise RuntimeConfigError(
@@ -518,8 +540,18 @@ def _read_tls(raw: Mapping[str, Any]):
 
 
 def _read_envs(raw: Mapping[str, Any]):
+    """``envs`` -- the conda environment each category runs in when it is not
+    the default name, the host env's name, and the conda-compatible command
+    (`configuration.md` § 4).  The categories are `diagnostics`'s own table,
+    asked rather than re-listed; another key is refused (``envs.siseta`` was
+    accepted and read by nothing until 2026-10-02)."""
     envs = _require_object_section(raw, "envs") or {}
+    from .diagnostics import DEFAULT_ENV_NAMES, HOST_CATEGORY
+    _refuse_unknown(envs, (*DEFAULT_ENV_NAMES, HOST_CATEGORY, "manager"),
+                    "envs")
     for k, v in envs.items():
+        if str(k).startswith("_"):
+            continue
         if not isinstance(k, str) or not isinstance(v, str):
             raise RuntimeConfigError(
                 f"{CONFIG_FILENAME}: 'envs' entries must be string -> "
@@ -548,6 +580,12 @@ def _read_auth(raw: Mapping[str, Any]):
     if "auth" not in raw:
         return None
     auth = _require_object_section(raw, "auth") or {}
+    # The wizard wrote the session key's path INSIDE `auth` until 2026-08-31
+    # (`build_auth_block`); its one home is `secrets/secret_key` (§ 2.1e).
+    if "secret_key_file" in auth:
+        raise RuntimeConfigError(
+            _SECRET_KEY_MOVED.format(path=CONFIG_FILENAME))
+    _refuse_unknown(auth, ("providers", "trust_proxy"), "auth")
     providers = auth.get("providers")
     if not isinstance(providers, list) or not providers:
         raise RuntimeConfigError(
@@ -630,14 +668,9 @@ def _read_launch(raw: Mapping[str, Any]):
     section = _require_object_section(raw, "launch")
     if section is None:
         return None
-    unknown = sorted(k for k in section
-                     if k != "mode" and not str(k).startswith("_"))
-    if unknown:
-        raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: 'launch' holds one key, 'mode'; got "
-            f"{', '.join(map(repr, unknown))}.  A job's queue, wall and "
-            f"shape are the job's own (docs/execution/architecture.md "
-            f"§ 5.2).")
+    _refuse_unknown(section, ("mode",), "launch",
+                    hint="A job's queue, wall and shape are the job's own "
+                         "(docs/execution/architecture.md § 5.2).")
     mode = section.get("mode")
     if mode is not None and mode not in _LAUNCH_MODES:
         raise RuntimeConfigError(
@@ -666,12 +699,7 @@ def _read_env_init(raw: Mapping[str, Any]):
     section = _require_object_section(raw, "env_init")
     if section is None:
         return None
-    unknown = sorted(k for k in section
-                     if k not in _ENV_INIT_KEYS and not str(k).startswith("_"))
-    if unknown:
-        raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: 'env_init' holds 'activation' and "
-            f"'preamble'; got {', '.join(map(repr, unknown))}.")
+    _refuse_unknown(section, _ENV_INIT_KEYS, "env_init")
     activation = section.get("activation")
     if activation is not None and activation not in ACTIVATION_FORMS:
         raise RuntimeConfigError(
@@ -720,8 +748,9 @@ def _read_execution_renamed(raw: Mapping[str, Any]):
 
 def _require_object_section(raw: Mapping[str, Any], name: str):
     """A section that must be an object: keep the key alive and reject a
-    non-object early.  ``rate_limit`` is validated by its consumer; the
-    other callers check their own keys after this."""
+    non-object early.  Every caller then refuses the keys its section does
+    not hold (:func:`_refuse_unknown`) and checks the types of those it
+    does."""
     if name not in raw:
         return None
     section = raw[name]
@@ -733,11 +762,34 @@ def _require_object_section(raw: Mapping[str, Any], name: str):
     return dict(section)
 
 
+def _refuse_unknown(section: Mapping[str, Any], allowed, where: str,
+                    hint: str = "") -> None:
+    """Refuse, by name, every key of *section* that *allowed* does not list.
+
+    `configuration.md` § 4: *"a key not in this table is refused, never
+    ignored"* -- inside a section as at the top level, because a key nothing
+    reads looks effective and is not: a misspelled ``admin.emails`` made every
+    signed-in user an admin, and ``rate_limit``'s typos were dropped.  A
+    ``_``-prefixed key is a comment, as at the top level.  ONE sentence for
+    every section; it was written by hand three times, each worded apart.
+    """
+    unknown = sorted(str(k) for k in section
+                     if k not in allowed and not str(k).startswith("_"))
+    if not unknown:
+        return
+    keys = [repr(k) for k in allowed]
+    holds = (f"one key, {keys[0]}" if len(keys) == 1
+             else f"{', '.join(keys[:-1])} and {keys[-1]}")
+    raise RuntimeConfigError(
+        f"{CONFIG_FILENAME}: '{where}' holds {holds}; got "
+        f"{', '.join(map(repr, unknown))}." + (f"  {hint}" if hint else ""))
+
+
 def _read_admin(raw: Mapping[str, Any]):
-    # Who may do the things only an operator should do (ops/deployment.md;
-    # read back by get_admin_emails -- absent or empty means NOBODY).
-    # Eagerly shape-checked: a mistyped emails list would otherwise fail
-    # silently into the safe-but-wrong "nobody".
+    # Who may do the things only an operator should do (ops/access-control.md
+    # § 5; read back by get_admin_emails).  Absent or empty means ANYONE WHO
+    # CAN SIGN IN, so a misspelled key is the dangerous typo here: it read as
+    # "nobody named" and made every signed-in user an admin -- refused.
     if "admin" not in raw:
         return None
     section = raw["admin"]
@@ -747,6 +799,7 @@ def _read_admin(raw: Mapping[str, Any]):
             f'{{"emails": ["operator@example.edu"]}}; got '
             f"{type(section).__name__}."
         )
+    _refuse_unknown(section, ("emails",), "admin")
     emails = section.get("emails", [])
     if (not isinstance(emails, (list, tuple))
             or not all(isinstance(e, str) for e in emails)):
@@ -757,10 +810,12 @@ def _read_admin(raw: Mapping[str, Any]):
     return dict(section)
 
 
-#: name -> how it is read · whether provenance may print its values.  Every
-#: section lives in THIS machine's molbuilder.json, the one config file.
-#: ``provenance_safe`` gates `config_provenance`: True only where every value
-#: is printable in logs (no secrets, no paths to secrets).
+#: name -> how it is read · whether provenance may print its values · whether
+#: it is retired.  Every section lives in THIS machine's molbuilder.json, the
+#: one config file.  ``provenance_safe`` gates `config_provenance`: True only
+#: where every value is printable in logs (no secrets, no paths to secrets).
+#: A ``retired`` row exists only to refuse its section by name, so the
+#: unknown-key refusal never offers it as a known one.
 #: Every directory ``paths`` may name.  A closed set: a key nothing reads
 #: would look effective and do nothing, which is the argument behind every
 #: refusal in `configuration.md`.
@@ -830,13 +885,8 @@ def _read_paths(raw: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
         raise RuntimeConfigError(
             _OPERATIONAL_PATHS_MOVED.format(path=CONFIG_FILENAME,
                                             key=retired[0]))
-    unknown = set(section) - set(_PATH_KEYS)
-    if unknown:
-        raise RuntimeConfigError(
-            f"molbuilder.json: unknown key(s) in `paths`: "
-            f"{', '.join(sorted(unknown))}.  The keys are "
-            f"{', '.join(_PATH_KEYS)} (architecture.md § 8.2, "
-            f"archive/2026-09-01-config-access-plan.md § 3.2).")
+    _refuse_unknown(section, _PATH_KEYS, "paths",
+                    hint="(docs/configuration.md § 2.1d)")
     for key in _PATH_KEYS:
         val = section.get(key)
         if val is None:
@@ -848,6 +898,75 @@ def _read_paths(raw: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     return section
 
 
+#: Every key ``rate_limit`` holds, and its type (`configuration.md` § 4;
+#: the defaults are `web/rate_limit.DEFAULTS`).  ``bool`` keys are JSON
+#: booleans; ``secs`` and ``count`` whole numbers, ``secs`` above 0 and a
+#: ``count`` of 0 switching its signal off (`ops/deployment.md` § 4);
+#: ``allowlist`` addresses or networks.
+_RATE_LIMIT_KEYS = {
+    "enabled": "bool", "trust_proxy": "bool",
+    "window_404_s": "secs", "window_total_s": "secs", "cooldown_s": "secs",
+    "threshold_404": "count", "threshold_total": "count",
+    "max_tracked_ips": "positive",
+    "allowlist": "nets",
+}
+
+
+def _read_rate_limit(raw: Mapping[str, Any]):
+    """``rate_limit`` -- the web server's request limiter, every key typed.
+
+    It was validated by its consumer until 2026-10-02, which coerced:
+    ``"enabled": "false"`` read as on, and ``"cooldown_s": "1h"`` passed the
+    config read that `serve restart` and the browser's Reload make first, so
+    the fresh server died in `RateLimiter` and the supervisor did not respawn
+    it.  Read here, a wrong value is refused before any server is touched.
+    """
+    import ipaddress
+    section = _require_object_section(raw, "rate_limit")
+    if section is None:
+        return None
+    if "admin_emails" in section:
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'rate_limit.admin_emails' moved to the "
+            f"top-level 'admin' section on 2026-08-03 -- write "
+            f'"admin": {{"emails": [...]}} instead: one list answers who may '
+            f"clear the block list and who may restart the server "
+            f"(docs/ops/access-control.md § 5).")
+    _refuse_unknown(section, tuple(_RATE_LIMIT_KEYS), "rate_limit",
+                    hint="(docs/ops/deployment.md § 4)")
+    for key, kind in _RATE_LIMIT_KEYS.items():
+        if key not in section:
+            continue
+        v = section[key]
+        where = f"{CONFIG_FILENAME}: 'rate_limit.{key}'"
+        if kind == "bool":
+            if not isinstance(v, bool):
+                raise RuntimeConfigError(
+                    f"{where} must be a JSON boolean (true / false); got "
+                    f"{v!r}.")
+        elif kind == "nets":
+            if not isinstance(v, list):
+                raise RuntimeConfigError(
+                    f"{where} must be a list of addresses or networks "
+                    f'("127.0.0.1", "10.0.0.0/8"); got {v!r}.')
+            for entry in v:
+                try:
+                    ipaddress.ip_network(str(entry).strip(), strict=False)
+                except ValueError:
+                    raise RuntimeConfigError(
+                        f"{where} entry {entry!r} is not an IP address or "
+                        f"network.") from None
+        else:
+            least = 0 if kind == "count" else 1
+            # bool is an int subclass and is never a count.
+            if isinstance(v, bool) or not isinstance(v, int) or v < least:
+                what = ("a whole number of seconds above 0" if kind == "secs"
+                        else "a whole number, 0 to switch the signal off"
+                        if kind == "count" else "a whole number above 0")
+                raise RuntimeConfigError(f"{where} must be {what}; got {v!r}.")
+    return section
+
+
 _SECTIONS: Dict[str, Dict[str, Any]] = {
     "tls":               {"read": _read_tls,
                           "provenance_safe": False},
@@ -856,9 +975,9 @@ _SECTIONS: Dict[str, Dict[str, Any]] = {
     "auth":              {"read": _read_auth,
                           "provenance_safe": False},
     "notify_keys_file":  {"read": _read_notify_retired("notify_keys_file"),
-                          "provenance_safe": False},
+                          "provenance_safe": False, "retired": True},
     "notify_route":      {"read": _read_notify_retired("notify_route"),
-                          "provenance_safe": False},
+                          "provenance_safe": False, "retired": True},
     "launch":            {"read": _read_launch,
                           "provenance_safe": True},
     "env_init":          {"read": _read_env_init,
@@ -866,19 +985,18 @@ _SECTIONS: Dict[str, Dict[str, Any]] = {
     # RETIRED 2026-10-02 -- refused by name, each with what to do instead
     # (`configuration.md` § 4).
     "execution":         {"read": _read_execution_renamed,
-                          "provenance_safe": False},
+                          "provenance_safe": False, "retired": True},
     "script_generation": {"read": _read_script_generation_renamed,
-                          "provenance_safe": False},
+                          "provenance_safe": False, "retired": True},
     "scheduler":         {"read": _read_scheduler_retired,
-                          "provenance_safe": False},
+                          "provenance_safe": False, "retired": True},
     "checkpoint":        {"read": lambda raw: (
                               _validate_checkpoint(raw["checkpoint"])
                               if "checkpoint" in raw else None),
                           "provenance_safe": False},
     "admin":             {"read": _read_admin,
                           "provenance_safe": False},
-    "rate_limit":        {"read": lambda raw: _require_object_section(
-                              raw, "rate_limit"),
+    "rate_limit":        {"read": _read_rate_limit,
                           "provenance_safe": False},
     "paths":             {"read": _read_paths,
                           "provenance_safe": True},
@@ -940,7 +1058,8 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
         raise RuntimeConfigError(
             f"{CONFIG_FILENAME}: unknown top-level "
             f"key(s) {', '.join(map(repr, unknown))}.  Known sections: "
-            f"{', '.join(_SECTIONS)}.  A key this loader does not "
+            f"{', '.join(n for n, s in _SECTIONS.items() if not s.get('retired'))}"
+            f".  A key this loader does not "
             f"know would be silently ineffective -- refused instead, so a "
             f"typo cannot masquerade as configuration "
             f"(running-a-job.md § 5).  A key starting with '_' is a "
@@ -1017,27 +1136,19 @@ def get_admin_emails(cfg: Mapping[str, Any]) -> frozenset:
 
         "admin": { "emails": ["operator@asu.edu"] }
 
-    **Absent or empty means NOBODY IS NAMED HERE** -- which is not the same as
-    nobody being an admin, and this docstring said the second thing until
-    2026-09-12.  What the two subsystems do with an empty set is
-    `access-control.md` § 5's decision, not this function's:
+    **Absent or empty means NOBODY IS NAMED HERE**, and what that means is
+    one rule, `web/admin.is_admin_request`'s, for both subsystems that ask --
+    the rate limiter's block list and the server restart
+    (`access-control.md` § 5): **anyone who can sign in**.  That is not an
+    open door, because reaching a session at all requires being in a
+    provider's ``allowed_users``, a REQUIRED field -- an operator has already
+    written every person down by hand.  Naming addresses here narrows it.
+    Anonymous is never an admin.
 
-    * the rate limiter's block list treats *named nobody* as **anyone who can
-      sign in** (`web/admin.is_admin_request`, whose last line is
-      ``email in admins if admins else True``).  That is not an open door,
-      because reaching a session at all requires being in a provider's
-      ``allowed_users``, which is a REQUIRED field -- an operator has already
-      written every person down by hand.
-    * restarting the server requires a name: ``POST /api/admin/reload`` is **not
-      registered at all** unless this set is non-empty (§ 6), so the capability
-      is missing rather than inherited by omission, and a misconfiguration reads
-      as *the button is absent* instead of *anyone can restart it*.
-
-    So both subsystems get the same SET and apply it differently, on purpose.
-    The claim this docstring used to make -- one answer, empty means nobody
-    everywhere -- describes a design that was considered and is not what
-    shipped.  It was also the more reassuring of the two readings, which is the
-    wrong direction for a comment about a privilege to be wrong in.
+    *(Until 2026-10-02 this said the restart route is not registered unless
+    this set is non-empty.  It is registered whenever the server is
+    supervised, and asks the same rule -- the docstring described a design
+    that was considered and is not what shipped.)*
 
     IT LIVED UNDER ``rate_limit.admin_emails`` UNTIL 2026-08-03.  What moved was
     the key's HOME, and one real defect travelled with it: the value was reached
@@ -1119,6 +1230,8 @@ def _validate_checkpoint(raw: Mapping[str, Any]) -> Dict[str, Any]:
             f"{CONFIG_FILENAME}: 'checkpoint' must be an object; got "
             f"{type(raw).__name__}."
         )
+    _refuse_unknown(raw, ("size_limit_bytes", "engines"), "checkpoint",
+                    hint="(docs/execution/checkpointing.md § 4)")
     out: Dict[str, Any] = {
         "size_limit_bytes": _CHECKPOINT_DEFAULTS["size_limit_bytes"],
         "engines": {k: list(v)

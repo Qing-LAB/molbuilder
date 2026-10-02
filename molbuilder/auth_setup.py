@@ -21,14 +21,10 @@ Privacy contract:
     nothing THIS MODULE writes into molbuilder.json is a secret literal --
     it emits ``client_secret_file``, a path, every time.
 
-    That is a property of the wizard and not of the file format, which the
-    sentence here claimed until 2026-09-12.  ``molbuilder.json`` *may*
-    legally carry a literal ``client_secret``: ``runtime_config``'s
-    ``_validate_secret_pair`` accepts exactly one of the two and says
-    ``client_secret_file`` is merely *preferred*, and
-    ``web/auth_providers/oauth.py`` reads a literal when it is there.  A
-    reader who took this bullet as a guarantee about the file would be
-    wrong about a config somebody hand-wrote.
+    It is a property of the file format too, since 2026-10-02:
+    ``runtime_config._validate_secret_file`` refuses a literal
+    ``client_secret`` by name, so ``molbuilder.json`` carries paths only
+    (`ops/deployment.md` § 5).
   * The system user account name -- ``getpass.getuser()`` -- is the
     single source of identity.  No other identifier is hardcoded
     anywhere in molbuilder; the wizard derives the ASU CAS

@@ -186,19 +186,20 @@ class RateLimiter:
     """
 
     def __init__(self, cfg: Mapping[str, Any]) -> None:
-        # Resolve config with defaults.  Unknown keys are ignored
-        # (forward-compat: a future cfg may carry extra knobs).
-        self.enabled         = bool(cfg.get("enabled",         DEFAULTS["enabled"]))
-        self.window_404_s    = int (cfg.get("window_404_s",    DEFAULTS["window_404_s"]))
-        self.threshold_404   = int (cfg.get("threshold_404",   DEFAULTS["threshold_404"]))
-        self.window_total_s  = int (cfg.get("window_total_s",  DEFAULTS["window_total_s"]))
-        self.threshold_total = int (cfg.get("threshold_total", DEFAULTS["threshold_total"]))
-        self.cooldown_s      = int (cfg.get("cooldown_s",      DEFAULTS["cooldown_s"]))
-        self.trust_proxy     = bool(cfg.get("trust_proxy",     DEFAULTS["trust_proxy"]))
-        self.max_tracked_ips = int (cfg.get("max_tracked_ips", DEFAULTS["max_tracked_ips"]))
-        self.allowlist_nets  = _parse_allowlist(
-            cfg.get("allowlist", DEFAULTS["allowlist"]),
-        )
+        # The section's keys and types were checked where the config was
+        # read (`runtime_config._read_rate_limit`) -- nothing is coerced
+        # here, because `bool("false")` is True: an unset key takes its
+        # default.
+        c = {**DEFAULTS, **cfg}
+        self.enabled         = c["enabled"]
+        self.window_404_s    = c["window_404_s"]
+        self.threshold_404   = c["threshold_404"]
+        self.window_total_s  = c["window_total_s"]
+        self.threshold_total = c["threshold_total"]
+        self.cooldown_s      = c["cooldown_s"]
+        self.trust_proxy     = c["trust_proxy"]
+        self.max_tracked_ips = c["max_tracked_ips"]
+        self.allowlist_nets  = _parse_allowlist(c["allowlist"])
         # Who may reach /api/admin/rate_limit/* is NOT held here: it is the
         # top-level `admin` section, read through web/admin.py, because the
         # same list answers "who may restart the server" (§ 5).
@@ -403,26 +404,16 @@ class RateLimiter:
 
 
 def _parse_allowlist(entries: Any) -> List[ipaddress._BaseNetwork]:
-    """Convert config entries to ``ip_network`` objects.
+    """Config entries -> ``ip_network`` objects.
 
-    Accepts a list of strings, each ``"ip"`` or ``"ip/prefix"``.
-    Bare IPs become /32 (v4) or /128 (v6) networks.  Malformed
-    entries log a warning and are skipped — startup never fails
-    because of an allowlist typo.
+    Each entry is ``"ip"`` or ``"ip/prefix"``, checked where the config was
+    read (`runtime_config._read_rate_limit`): a malformed one is refused
+    there, naming it, before any server starts.  It was skipped here with a
+    warning until 2026-10-02, and a non-list dropped the loopback default.
+    Bare IPs become /32 (v4) or /128 (v6) networks.
     """
-    nets: List[ipaddress._BaseNetwork] = []
-    if not isinstance(entries, (list, tuple)):
-        return nets
-    for raw in entries:
-        if not isinstance(raw, str) or not raw.strip():
-            continue
-        try:
-            nets.append(ipaddress.ip_network(raw.strip(), strict=False))
-        except ValueError:
-            logger.warning(
-                "rate_limit: ignoring malformed allowlist entry %r", raw,
-            )
-    return nets
+    return [ipaddress.ip_network(str(e).strip(), strict=False)
+            for e in entries]
 
 
 def _matches_signature(path_with_query: str) -> bool:
@@ -568,24 +559,14 @@ def _register_admin_routes(app: Flask, rl: RateLimiter) -> None:
        HTTP 401.  Without auth installed, this layer is a no-op —
        the deployment is expected to be loopback-only, gated by the
        bind guard in ``cli.py::_refuse_remote_bind_without_tls``.
-    2. ``admin.is_admin_request()`` then refuses a session nobody named,
-       with HTTP 403.  The set is the top-level ``admin`` section
-       (web/admin.py), which also answers "who may restart the server":
-       **absent or empty means nobody**, so the state you get by writing
-       no config is the safe one.
+    2. ``admin.is_admin_request()`` then refuses a session that is not an
+       admin's, with HTTP 403 and the one sentence `web/admin.py` owns.  The
+       set is the top-level ``admin`` section, which also answers "who may
+       restart the server": absent or empty means anyone who can sign in
+       (a provider's ``allowed_users`` already named them --
+       `access-control.md` § 5), and naming addresses narrows it.
     """
-    from .admin import is_admin_request
-
-    def _refuse_non_admin():
-        return jsonify({
-            "ok": False,
-            "error": (
-                "admin auth required to access "
-                "/api/admin/rate_limit/*: this session is not one of the "
-                "emails named in the `admin` section of molbuilder.json "
-                "(an absent or empty list means nobody is an admin)"
-            ),
-        }), 403
+    from .admin import is_admin_request, not_an_admin as _refuse_non_admin
 
     @app.route("/api/admin/rate_limit/status", methods=["GET"])
     def _rl_status():

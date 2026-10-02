@@ -68,8 +68,7 @@ def _get_oauth(app):
             "oauth":      OAuth(app),
             "registered": set(),    # authlib-internal names already registered
             # authlib-internal name -> mtime of client_secret_file at the
-            # last successful read.  ``None`` for literal-secret providers
-            # (no file to watch).  Used by _ensure_client to detect
+            # last successful read.  Used by _ensure_client to detect
             # operator-initiated secret rotations and hot-reload them
             # without bouncing the server.
             "secret_mtime": {},
@@ -79,8 +78,8 @@ def _get_oauth(app):
 
 def _secret_file_mtime(entry: Mapping):
     """Return ``st_mtime`` of the provider's secret file, or ``None`` if
-    the entry doesn't have one (literal ``client_secret``) or the file
-    can't be stat'd (deleted between reads, permission denied, etc.).
+    the file can't be stat'd (deleted between reads, permission denied,
+    etc.).
     Defensively returns ``None`` rather than raising -- the caller
     treats ``None`` as "no change to detect", which fails closed
     (keeps the previously-loaded secret in memory)."""
@@ -140,9 +139,8 @@ def _ensure_client(app, entry: Mapping):
         client = getattr(oauth, authlib_name)
         current_mtime = _secret_file_mtime(entry)
         cached_mtime  = mtimes.get(authlib_name)
-        # current_mtime is None for literal-client_secret entries
-        # (no file to watch) or when the file is gone -- both cases
-        # mean "no change we can detect"; the cached secret stands.
+        # current_mtime is None when the file is gone -- "no change we
+        # can detect"; the cached secret stands.
         if current_mtime is not None and current_mtime != cached_mtime:
             try:
                 new_secret = _read_secret(entry)

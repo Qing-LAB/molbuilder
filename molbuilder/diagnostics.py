@@ -73,6 +73,11 @@ DEFAULT_ENV_NAMES: Mapping[str, str] = {
     "jupyter":    "molbuilder-jupyternb",
 }
 
+#: The host env carries no category (no tool is routed to it), so this is the
+#: key its name lives under in `molbuilder.json`'s ``envs`` block -- beside the
+#: categories above, the keys that block holds (`configuration.md` § 4).
+HOST_CATEGORY = "host"
+
 # Executable name -> category.  Drives ``env_for_tool``.  Tools not
 # listed here are not routed: the caller falls through to host PATH.
 # ``playwright`` is intentionally NOT routed: browser E2E runs under the
@@ -569,7 +574,7 @@ def local_facts(env: "Any", env_init: "Optional[Mapping[str, str]]"
 
 
 __all__ = [
-    "DEFAULT_ENV_NAMES", "TOOL_TO_CATEGORY", "EXTENSION_TO_CATEGORY",
+    "DEFAULT_ENV_NAMES", "HOST_CATEGORY", "TOOL_TO_CATEGORY", "EXTENSION_TO_CATEGORY",
     "Capabilities",
     "detect", "initialize", "local_facts",
     "get_capabilities", "set_capabilities", "reset_capabilities",
