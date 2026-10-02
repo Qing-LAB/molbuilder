@@ -284,7 +284,8 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # `probe` -- the record made as a person makes it instead, by `jobset probe
 # --write --yes`, once per list of flags, in order, after `machine_config`
 # and over `record` when the row gives them; a `--name` among the flags names
-# the target.
+# the target; `calculation_record` -- the calculation's own copy of its
+# machine's record, there before prep (a table, or text for a broken file).
 
 
 def _road_target(table, case, tmp_path, monkeypatch) -> str:
@@ -438,6 +439,11 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
     if "given_gpus" in case:
         gpus_given(tmp_path, monkeypatch, case["given_gpus"])
     bundle = _road_describe(table, case, tmp_path, monkeypatch)
+    if "calculation_record" in case:
+        from molbuilder.scheduler.record import calculation_record
+        given = case["calculation_record"]
+        calculation_record(bundle).write_text(
+            given if isinstance(given, str) else json.dumps(given))
     kind = "bench" if "bench" in case else "run"
     r = jobset("prep", kind, "coarse", "--bundle", bundle,
                "--target", target, *case.get("prep", []))

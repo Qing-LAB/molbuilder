@@ -126,6 +126,18 @@ named_record = { env_init = {} }
 refused = "on that machine, then copy the sol.json it writes into"
 
 [[case]]
+name = "a calculation's own copy of its record is named when it states no activation -- no probe reaches it"
+machine = "workstation"
+calculation_record = { schema = "molbuilder/environment@2", scheduler = "workstation", script_generation = { activation = "conda activate" } }
+refused = "this calculation's record of its machine"
+
+[[case]]
+name = "...and one that does not read is refused by name -- never another machine's record answering"
+machine = "workstation"
+calculation_record = "{ not json"
+refused = "this calculation's record of its machine cannot be read"
+
+[[case]]
 name = "the probe copies this machine's env_init into the record it writes"
 machine = "workstation"
 machine_config = { env_init = { activation = "source activate", preamble = "module load mamba/latest" } }
@@ -138,6 +150,15 @@ machine = "workstation"
 machine_config = { env_init = { activation = "source activate", preamble = "module load mamba/latest" } }
 probe = [["--scheduler", "workstation", "--name", "sol"]]
 run_sh = ["module load mamba/latest", "source activate"]
+
+[[case]]
+name = "...whole: a preamble dropped from molbuilder.json leaves the record"
+machine = "workstation"
+machine_config = { env_init = { activation = "source activate" } }
+record = { env_init = { activation = "source activate", preamble = "module load mamba/latest" } }
+probe = [["--scheduler", "workstation"]]
+run_sh = ["source activate"]
+run_sh_lacks = ["module load mamba/latest"]
 
 [[case]]
 name = "...and with nothing to copy, the record keeps its own -- a hand edit stays"

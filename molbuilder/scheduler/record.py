@@ -1084,6 +1084,25 @@ class UnknownTarget(Exception):
         return exc
 
     @classmethod
+    def unreadable_copy(cls, bundle_dir) -> "UnknownTarget":
+        """This calculation's own record is there and does not read.
+
+        Skipped, it handed the calculation the next scope's record -- another
+        machine's, silently -- which breaks what the copy is for
+        (`configuration.md` § 5 M-3): two stages of one calculation cannot
+        disagree about their own target.
+        """
+        exc = cls.__new__(cls)
+        exc.name, exc.known = None, []
+        Exception.__init__(exc, (
+            f"this calculation's record of its machine cannot be read: "
+            f"{calculation_record(bundle_dir)}.\n"
+            f"  Fix it by hand, or delete it and prep again so the machine's "
+            f"current record is copied in (--target NAME to name the "
+            f"machine)."))
+        return exc
+
+    @classmethod
     def conflict(cls, name: str, bundle_dir) -> "UnknownTarget":
         """This calculation already carries a DIFFERENT machine's record.
 
@@ -1309,6 +1328,10 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
     for label, path in record_scopes(bundle_dir, target):
         env = read_environment(path)
         if env is None:
+            # THE CALCULATION'S OWN COPY, there and unreadable, is an error,
+            # not a miss: the next scope is another machine's answer.
+            if label == "calculation" and Path(path).is_file():
+                raise UnknownTarget.unreadable_copy(bundle_dir)
             continue
         if label == "calculation" and _by_name:
             # A NAMED target that contradicts the snapshot is a question

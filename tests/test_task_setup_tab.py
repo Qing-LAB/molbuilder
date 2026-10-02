@@ -1142,6 +1142,15 @@ class TestTheTabShowsWhatAPrepWouldResolve:
         # prep refuses without a record (`running-a-job.md` § 3.1).
         from conftest import write_machine_record
         write_machine_record()
+        # ...and a NAMED record beside it, so which machine a fresh folder is
+        # for is not decided yet: the card shows no queues, and is not hidden
+        # (W54 C10 -- it answered `ok: false` here).
+        from molbuilder.scheduler import (Environment,
+                                          named_environment_path,
+                                          write_environment)
+        named = named_environment_path("sol")
+        named.parent.mkdir(parents=True, exist_ok=True)
+        write_environment(Environment(scheduler="workstation"), named)
         (tmp_path / "molbuilder.json").write_text(_json.dumps(
             {"launch": {"mode": "direct"}}))
         return b

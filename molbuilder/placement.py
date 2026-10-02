@@ -340,4 +340,4 @@ def machine_config_warnings() -> List[str]:
     """
     from .runtime_config import machine_config_shadow
     shadow = machine_config_shadow()
-    return ([shadow] if shadow else []) + misplaced() + findings()
+    return ([shadow] if shadow else []) + findings()

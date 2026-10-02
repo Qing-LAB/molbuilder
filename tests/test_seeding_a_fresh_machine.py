@@ -131,6 +131,24 @@ def test_an_existing_config_is_left_exactly_as_it_is(fresh):
     assert "does not read" in step.note, step.note
     assert "'execution' is now 'launch'" in step.note, step.note
 
+def test_a_config_without_env_init_gets_the_one_asked_and_nothing_else(fresh):
+    """``init-config`` asks how this machine enters an environment, so the
+    answer is written -- into a file that already exists and declares none,
+    that section alone; what the person wrote stays as it was.  It asked and
+    dropped the answer until 2026-10-02 (W54 R17)."""
+    from click.testing import CliRunner
+    from molbuilder.envs._cli import envs_group
+    fresh.mkdir(parents=True)
+    (fresh / CONFIG_FILENAME).write_text('{"launch": {"mode": "direct"}}')
+    result = CliRunner().invoke(
+        envs_group, ["init-config", "--activation", "source activate",
+                     "--no-probe", "--yes"])
+    assert result.exit_code == 0, result.output
+    doc = json.loads((fresh / CONFIG_FILENAME).read_text())
+    assert doc["env_init"] == {"activation": "source activate"}, doc
+    assert doc["launch"] == {"mode": "direct"}, doc
+
+
 def test_a_seed_the_loader_would_refuse_is_not_written(fresh, monkeypatch):
     """The seed goes through the one writer of molbuilder.json, which
     validates before a byte lands.  `init-config` had a writer of its own,

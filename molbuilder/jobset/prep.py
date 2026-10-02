@@ -1068,7 +1068,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # the snapshot included, or the remedy's re-copied record would then
     # contradict it (W52, and its fix's review).
     environment = _environment_read(base, target)
-    _require_activation(target, environment)
+    _require_activation(target, environment, base=base)
     resolve_target(base, target)          # step 1 proper: the snapshot
 
     # ---- 2. resolve the parameters ------------------------------------- #
@@ -1584,7 +1584,8 @@ def _move_progress_channel_into(attempt: Path) -> None:
             seeded.replace(attempt / seeded.name)
 
 
-def _require_activation(target: Optional[str], environment) -> None:
+def _require_activation(target: Optional[str], environment,
+                        base=None) -> None:
     """A record that does not state how a shell enters an environment there
     is refused HERE, for every target -- this machine included.
 
@@ -1595,10 +1596,24 @@ def _require_activation(target: Optional[str], environment) -> None:
     machine succeeds at generate time and dies on the cluster hours later, on
     a path that exists only here (2026-08-24).
     """
-    from ..scheduler.record import LOCAL_TARGET, probe_command, probe_steps
+    from ..scheduler.record import (LOCAL_TARGET, calculation_record,
+                                    probe_command, probe_steps)
     if (getattr(environment, "env_init", None) or {}).get("activation"):
         return
     here = target in (None, LOCAL_TARGET)
+    own = calculation_record(base) if base is not None else None
+    if own is not None and own.is_file():
+        # THE CALCULATION'S OWN COPY ANSWERED (`configuration.md` § 5 M-3):
+        # taken at its first prep and never replaced, so no probe reaches it.
+        raise PrepError(
+            f"this calculation's record of its machine, {own}, does not say "
+            f"how a shell enters an environment there -- it was copied at the "
+            f"calculation's first prep and is never replaced, so a probe does "
+            f"not reach it (a copy taken before 2026-10-02 names it "
+            f"`script_generation`).  Rename that key to `env_init` in it, or "
+            f"delete the file and prep again"
+            + ("" if here else f" with --target {target}")
+            + " so the machine's current record is copied in.")
     whose = "this machine's record" if here else f"the record of {target!r}"
     raise PrepError(
         f"{whose} does not say "
@@ -1916,7 +1931,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # the snapshot included, or the remedy's re-copied record would then
     # contradict it (W52, and its fix's review).
     environment = _environment_read(base, target)
-    _require_activation(target, environment)
+    _require_activation(target, environment, base=base)
     resolve_target(base, target)          # step 1 proper: the snapshot
 
     # ---- 2. the description, and WHICH rung ---------------------------- #

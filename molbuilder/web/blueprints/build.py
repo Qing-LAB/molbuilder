@@ -1334,31 +1334,22 @@ def api_task_setup_prep():
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    # WHICH MACHINE, answered by the same rule the terminal refuses on, so
-    # the browser cannot offer a silent default the CLI would reject (C1).
-    from molbuilder.scheduler import choice_required, named_environments
-    from molbuilder.scheduler.record import LOCAL_TARGET
+    # WHICH MACHINE, asked of the one door every prep asks
+    # (`scheduler.machine_for`), so the browser and the terminal refuse the
+    # same things in the same words -- a calculation that already holds its
+    # machine's record is not asked again (C1).
+    from molbuilder.scheduler import machine_for
+    from molbuilder.scheduler.record import (LOCAL_TARGET, AmbiguousTarget,
+                                             UnknownTarget)
     # The tab labels the local machine `(this machine)`, which is a label
     # and not a name; `LOCAL_TARGET` is the name.  Translated here so the
     # browser sends what it shows and the server speaks one vocabulary.
     if target in ("(this machine)", LOCAL_TARGET):
         target = LOCAL_TARGET
-    elif target is None and choice_required():
-        # THE REFUSAL'S OWN WORDS, not a second set.  This composed its own
-        # sentence for a question `AmbiguousTarget` already answers -- two
-        # texts for one rule, and the browser's would have drifted from the
-        # terminal's the first time either was edited.  Raised and caught so
-        # the wording has exactly one home.
-        from molbuilder.scheduler.record import AmbiguousTarget
-        exc = AmbiguousTarget(list(named_environments())
-                              + ["(this machine)"])
+    try:
+        machine_for(dest, target=target)
+    except (AmbiguousTarget, UnknownTarget) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    if (target is not None and target != LOCAL_TARGET
-            and target not in named_environments()):
-        from molbuilder.scheduler.record import UnknownTarget
-        return jsonify({"ok": False,
-                        "error": str(UnknownTarget(
-                            target, named_environments()))}), 400
 
     stages = [s.name for s in (task.stages or ())]
     if stage is None:

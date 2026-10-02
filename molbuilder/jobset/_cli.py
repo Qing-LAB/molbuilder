@@ -2492,16 +2492,18 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
         record = Path(out) / record.name
     target = record.parent
     fname = record.name
-    # WHAT THE RECORD ALREADY SAYS about entering an environment stays where
+    # WHAT THE RECORD ALREADY SAYS about entering an environment stays when
     # this machine's `env_init` declares nothing: the activation is declared,
     # never measured, so a probe with nothing to copy has nothing to say
-    # about it -- and a hand edit of a copied record survives it.
+    # about it -- and a hand edit of a copied record survives it.  When it
+    # declares one, the copy is WHOLE (user, 2026-10-02: "simply a copy"): a
+    # preamble removed from molbuilder.json leaves the record too, asked about
+    # like every other difference.
     before = read_environment(target / fname)
-    carried = {k: v for k, v in
-               ((before.env_init if before is not None else None)
-                or {}).items() if k not in declared}
+    carried = (dict((before.env_init if before is not None else None) or {})
+               if not declared else {})
     if carried:
-        env.env_init = {**carried, **(env.env_init or {})}
+        env.env_init = carried
         if env.env_init.get("activation"):
             notes_sg = None
 

@@ -3309,12 +3309,12 @@ def render_run_wrapper(script_path: Path, *,
                     f"    _log ERROR 'It was baked verbatim from the "
                     f"preamble of the record prep read, and this machine "
                     f"is not the one that record describes.'",
-                    f"    _log ERROR 'Fix: give the record of this machine "
-                    f"its own preamble -- env_init.preamble in its "
-                    f"molbuilder.json (for example: module load mamba), then "
-                    f"molbuilder jobset probe --write, or edit the record by "
-                    f"hand -- and prep again; or edit the source line "
-                    f"below.'",
+                    f"    _log ERROR 'Fix: environment.json beside task.json, "
+                    f"the record this calculation was prepped with, carries "
+                    f"this preamble -- edit its env_init.preamble (for "
+                    f"example: module load mamba), or correct the record of "
+                    f"that machine and delete this copy, then prep again; or "
+                    f"edit the source line below.'",
                     f'    exit 78',           # EX_CONFIG
                     "fi",
                 ]

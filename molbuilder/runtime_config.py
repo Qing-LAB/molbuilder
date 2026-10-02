@@ -1431,10 +1431,11 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     # config declared two -- a display whose whole job is to say where a value
     # came from, disagreeing with the reader that actually answers it.  One
     # question, one function.
+    from .scheduler.record import AmbiguousTarget, UnknownTarget
     try:
         domains = [d.name for d in get_routing(project_dir=project_dir)]
-    except RuntimeConfigError:
-        domains = []               # a malformed block is the caller's to raise
+    except (AmbiguousTarget, UnknownTarget):
+        domains = []               # which machine is not decided yet: no queues
     return {"sources": sources, "effective": effective, "domains": domains,
             "shadow": shadow, "mode_warning": mode_warning}
 

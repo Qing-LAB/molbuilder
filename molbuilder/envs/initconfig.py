@@ -493,7 +493,18 @@ def seed_machine_config(activation: str, preamble: Optional[str] = None,
 
     path = machine_config_path()
     if path.exists():
-        return Step(path, "kept", _config_note())
+        note = _config_note()
+        if "declares no env_init.activation" not in note:
+            return Step(path, "kept", note)
+        # ASKED, SO WRITTEN: a file with no `env_init` gets the answer just
+        # given -- that section alone, through the one writer; nothing the
+        # person wrote is touched.
+        write_config_scope(
+            {"_env_init": seed_document(activation)["_env_init"],
+             "env_init": seed_document(activation, preamble)["env_init"]})
+        return Step(path, "rewritten",
+                    f'added env_init.activation = "{activation}"'
+                    + _preamble_note(activation, preamble))
     _ensure_root()
     # THE ONE WRITER of this file (configuration.md § 2.3): its own path from
     # its own resolver, validated with the server's validator before a byte

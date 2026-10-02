@@ -103,12 +103,12 @@ class TestTheGeneratedScriptRefusesActionably:
         assert "/opt/definitely-not-here/conda.sh" in out
         assert "does not exist on this machine" in out
         # the message must be COMPLETE -- no empty command substitutions --
-        # and name the fix: this machine's `env_init.preamble`, copied into
-        # its record by the probe
+        # and name the fix: the env_init.preamble of the record this
+        # calculation was prepped with -- its own copy, beside task.json
         assert "the record prep read" in out
         assert "module load mamba" in out
         assert "env_init.preamble" in out
-        assert "molbuilder jobset probe --write" in out
+        assert "environment.json beside task.json" in out
 
     def test_a_preamble_with_no_absolute_source_gets_no_guard(
             self, tmp_path, monkeypatch):
