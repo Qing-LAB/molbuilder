@@ -30,8 +30,8 @@ The rules, one line each — full statement in § 3:
 | **R0** | queue ≠ machine | a partition is a QUEUE holding many machine kinds; `node_types` lists them, any single figure over them is an opinion |
 | **R1** | one placement | header and flags are two renderings of ONE decision |
 | **R2** | total admission | every limit the record declares is compared — a declared field nobody checks is the defect |
-| **R2a** | which card | the gres TYPE is a declared limit and is compared; `a100` and `a100.40gb` are different hardware, not one name with a suffix |
-| **R3** | silence permits | an unstated limit never bars; the core/device ceiling is the WIDEST machine that offers what was asked — that card included |
+| **R2a** | GPUs: there, and enough | a GPU job goes only to a queue whose record lists GPUs, where one node holds at least the number asked; molbuilder names no card — the ask is `gpu:N`, and which card a node carries is that machine's business |
+| **R3** | silence permits | an unstated limit never bars; the core/device ceiling is the WIDEST machine that offers what was asked — for a GPU job, the widest that has GPUs |
 | **R4** | numbers, not "no" | a refusal names the numbers ("38 min > debug's 00:15:00") |
 | **R5** | header stands alone | a header naming a queue states a wall that queue accepts |
 | **R6** | refuse early | when the record already says no, refuse before the scheduler does |
@@ -73,10 +73,10 @@ and the directives that placement produces. The vocabulary below (*machine*,
 
 **Owns only what the SCHEDULER would refuse.** Admission exists to catch, from
 the record, the asks `sbatch` will bounce — a wall past the queue's limit, more
-cores than any machine there has, a gres type the partition does not stock, more
-devices than a node offers, a policy cap. It does **not** model whether the
+cores than any machine there has, GPUs on a queue that has none, more devices
+than a node offers, a policy cap. It does **not** model whether the
 *calculation* will fit once it lands: a job whose system is too large for the
-card it asked for is a runtime failure the person deals with, and pulling it in
+GPU it landed on is a runtime failure the person deals with, and pulling it in
 here would make submission answer a question it cannot answer and cannot own.
 *(User, 2026-08-30: "what i care most is if the sbatch schedule goes through —
 those are road blockers.")* `Device.mem_gb` accordingly stays an **explicitly
@@ -293,48 +293,38 @@ partially-probed cluster unusable.
 > device, and stands aside — never bars — when the machine list does not say
 > which nodes hold them.
 >
-> **And a third half, 2026-08-30: *which* device.** "A node that has one" is a
-> statement about a **type**. `general` holds a 128-core node with an h200 and
-> four 64-core nodes with a100.40gb; a 128-rank a100.40gb trial admitted
-> against *the widest machine with a device* would have to land on the h200
-> node, which carries no a100.40gb at all. So when the request names a card,
-> the ceiling is the widest machine carrying **that card** — and a queue whose
-> machine list names devices but not this one states **no** core ceiling for
-> it, because the honest refusal is *this queue does not stock it*, not a
-> sentence about a machine that does not exist.
->
 > **Silence still wins over the narrowing, and that is not a detail.** A queue
 > that never said *which* of its machines hold devices has said nothing, so the
 > wider ceiling stands — the widest listed machine, else `max_cores`. Reading
-> the empty list as *no machine carries that card* would make naming a card
+> the empty list as *no machine carries a device* would make asking for a GPU
 > **loosen** the ceiling instead of tightening it, and every record written
-> before `node_types` existed (2026-08-27) carries only `max_cores`. Caught in
-> review of the change that introduced this rule: a 4096-rank trial was
-> admitted on a 48-core queue because the request named its GPU.
+> before `node_types` existed (2026-08-27) carries only `max_cores`.
+>
+> *(A third half narrowed the ceiling to the machines carrying one named
+> CARD, 2026-08-30 to 2026-10-01. It is gone with R2a's card comparison:
+> molbuilder names no card.)*
 
-**R2a — The device TYPE is a declared limit, so it is compared.** A domain's
-`gpu` column names the gres types its nodes register; `--gres=gpu:<type>:N`
-names one, and SLURM matches that token literally. A queue with no node
-registering the name answers *Requested node configuration is not available* —
-so refusing it here is R6, exercised on a fact already on disk.
+**R2a — GPUs: the queue has them, and enough of them.** *(User, 2026-10-01:
+"the only thing you check is the gpu dependent task is scheduled to the
+group/domain that actually claimed to have it, and has the capacity as
+requested (gpu_number). that's it"; "we never claimed any card type".)* A GPU
+job goes only to a queue whose record lists GPUs — the `gpu` column the probe
+writes from what the scheduler reports — and is admitted there only when one
+node offers at least the number asked: the most any node of that queue holds,
+whatever its card. That is the whole of the GPU check.
 
-**The types are not interchangeable, and a suffix is not a memory annotation.**
-Sol registers `a100` on 48-core nodes (52 of them in `public`) and `a100.40gb`
-on 64-core nodes (four, in `htc`/`debug`/`general`, and none in `public`). No
-node group lists both; they are disjoint hardware. `--gpus`' own help says the
-MIG slices *"are separate askable types, not a smaller ask of the same one"*.
-So the comparison matches the whole token — never a prefix, never a
-normalisation — and the **count** compared is the count of *that* type.
+**molbuilder names no card.** A GPU ask is `--gres=gpu:N`; which card a node
+carries is the machine's business, and its scheduler places the job on one that
+has GPUs. The card the probe records stays a fact on the record — `jobset
+machines` shows it — and nothing compares it.
 
-> **What its absence cost, 2026-08-30.** A bench baked
-> `--gres=gpu:a100.40gb:4` from `topology.gpu_type` — the card on whatever node
-> the probe had run on — and placement sent it to `public`, which stocks
-> a100, a100.20gb and a30. The count fit (16 MIG slices answered a 4-device
-> ask) and the card did not exist. Every declared limit but this one was
-> compared. § 7 of this document had shown `Request(..., gpu_type="a100")` in
-> the caller's view since the contract was written; the field was simply never
-> built. **A contract that states a field is not a field, until something
-> compares it.**
+> *(Until 2026-10-01 molbuilder wrote a card into every GPU ask — from
+> `scheduler.gpu.default_type`, else the card of the node the probe ran on,
+> else the queue's — and, after such an invented `a100.40gb` was sent to a
+> queue that does not stock it (2026-08-30), compared the card at admission
+> and narrowed the core ceiling to that card's machines. The fault was the
+> invented card, not a missing comparison; both are gone, `default_type`
+> with them — `configuration.md` § 5, M-1.)*
 
 **R4 — A refusal names the numbers.** *"needs 38 min but debug allows
 00:15:00"*, not *"does not fit"*. We hold the record; sending a user to read
@@ -690,7 +680,7 @@ and be wrong the first time anything else appears.
 ## 7. What a caller sees
 
 ```python
-req = Request(ranks=64, cpus_per_task=1, gpus=2, gpu_type="a100",
+req = Request(ranks=64, cpus_per_task=1, gpus=2,
               mem_gb=390, walltime_s=38 * 60)
 
 placement = place(machine, req, prefer_gpu=True)

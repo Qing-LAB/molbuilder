@@ -54,7 +54,7 @@ class Unplaceable(Exception):
 
     def __init__(self, reasons: "Sequence[Refusal]", *, gpu_side: bool):
         # FINDINGS, not prose (2026-09-09).  Each carries `where` --
-        # `admit.cores`, `admit.gpu_type` -- so a caller can say WHICH limit
+        # `admit.cores`, `admit.gpus` -- so a caller can say WHICH limit
         # bit without parsing the sentence, which is what the scheduler tests
         # were doing with `"64" in why[0]`.
         self.reasons = list(reasons)

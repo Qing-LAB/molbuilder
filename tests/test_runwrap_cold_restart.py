@@ -460,8 +460,7 @@ class TestGpuFlagPrecedence:
             "script_generation": {"activation": "source activate"},
             "scheduler": {"kind": "slurm",
                           "directives": {"partition": "general",
-                                         "qos": "public"},
-                          "gpu": {"default_type": "a100"}},
+                                         "qos": "public"}},
         }))
         fdf = tmp_path / "myjob.fdf"
         fdf.write_text(_GPU_FDF)

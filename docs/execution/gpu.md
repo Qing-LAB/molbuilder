@@ -57,13 +57,13 @@ request fits a queue ([`scheduler.md`](?doc=execution/scheduler.md) § 3).
 | **`use_gpu`** | **the person** | catalogue · `staging` · `read_by=[wrapper]` | run the solve on a GPU or not |
 | `diag_algorithm` | **the person** | catalogue · `budget` · SIESTA only | the eigensolver — **and nothing else** |
 | `gpu_count` | **the machine** | catalogue · `allocation` · `staging` | how many devices this trial **asks** for |
-| `gres` | **derived at prep** | `Resources` | the `--gres=gpu:<type>:<n>` string |
+| `gres` | **derived at prep** | `Resources` | the `--gres=gpu:<n>` string — a count; molbuilder names no card (`scheduler.md` R2a) |
 | `Diag.ELPA.GPU` | *(rendered)* | the SIESTA deck | the keyword `use_gpu` becomes |
 | `gpu4pyscf` / `to_gpu()` | *(rendered)* | the PySCF deck | the same, for PySCF |
 | `Device(type, per_node, mem_gb)` | **the probe, or the operator** | `environment.json` · `Domain.gpu` | what one node of a queue **offers** — the ceiling |
 | `Domain.gpu_partition` | **the probe, or the operator** | `environment.json` | where GPU work lands when that differs |
 | `topology.gpus_per_node` · `gpu_type` | **the probe** | `environment.json` | what *this* machine has |
-| `scheduler.gpu.{partition,default_type,exclusive,mem}` | **the person's config** | `molbuilder.json` | site policy for GPU jobs |
+| `scheduler.gpu.{partition,exclusive,mem}` | **the person's config** | `molbuilder.json` | site policy for GPU jobs *(`default_type`, a card, was here until 2026-10-01: a card is a machine's fact, and no GPU ask names one)* |
 
 > **The ask and the ceiling are different variables, and the names hide it.**
 > `gpu_count` is what a trial asks for. The ceiling is `Device.per_node`, which
@@ -160,10 +160,10 @@ flowchart TB
     ENV -->|yes| RT["<b>the GPU runtime</b><br/>gres · MPS · NUMA pin · rank/thread budget<br/>--mem = what the person stated"]
 
     COUNT --> RT
-    TOPO -.->|"type, when config states none"| RT
-    RT --> REQ["<b>Request</b> gpus = gpu_count"]
+    TOPO -.->|"GPUs per node, when no queue lists them"| RT
+    RT --> REQ["<b>Request</b> gpus = gpu_count<br/><i>gres gpu:N — no card</i>"]
 
-    REQ --> ADMIT{"admission<br/>gpus ≤ Device.per_node?<br/><i>(scheduler.md R2)</i>"}
+    REQ --> ADMIT{"admission<br/>the queue lists GPUs, and<br/>gpus ≤ the most one node holds?<br/><i>(scheduler.md R2a)</i>"}
     DEV -.-> ADMIT
     ADMIT -->|no| REFUSE3["<b>refused locally</b><br/>names the number that would fit"]
     ADMIT -->|yes| PLACE["placement — one decision"]
@@ -242,7 +242,7 @@ leaves the reader unable to recognise the wrong version.
 | **C2** | `config/siesta.py` card comment | `use_gpu` on the **Budget card** | `group = "staging"` — the field's own metadata, 1 230 lines below, and the catalogue |
 | **C3** | `runwrap.render_sbatch` | absent `gpu_count` ⇒ `ntasks` (*"one GPU per rank"*) | 1 device (G5). `_render_sbatch_for` already defaults to 1, so the two disagree one function apart |
 | **C4** | `tests/test_sbatch_emit.py` | pins the `ntasks` default as *"1 rank/GPU default"* | that model was retired 2026-08-13; the test is the only thing keeping it alive |
-| **C5** | `runwrap._render_sbatch_for`, the no-config branch | a machine with **probed** domains and a **probed** `topology.gpu_type` cannot emit a GPU header at all — *"no gpu type resolved"* | the type is on disk and one path cannot see it |
+| **C5** | `runwrap._render_sbatch_for`, the no-config branch | a machine with **probed** domains and a **probed** `topology.gpu_type` cannot emit a GPU header at all — *"no gpu type resolved"* | gone 2026-10-01 with the card itself: a GPU header asks `gpu:N` and needs no type |
 
 > **C5 was found by writing C4's replacement test**, which is the argument for
 > the test rather than a note about it. When a machine states no `scheduler`

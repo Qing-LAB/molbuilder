@@ -32,7 +32,7 @@ _SCHED = {
         "partition": "public", "qos": "public",
         "mail_type": "ALL", "mail_user": "%u@asu.edu", "export": "NONE",
     },
-    "gpu": {"partition": "public", "default_type": "a100", "exclusive": True},
+    "gpu": {"partition": "public", "exclusive": True},
     "defaults": {"time": "0-04:00:00", "cpus_per_task": None, "mem": None},
 }
 
@@ -114,7 +114,7 @@ def test_gpu_header_shape(tmp_path):
                         gpu=True, gpu_count=2, exclusive=False)
     assert "#SBATCH -n 2" in txt
     assert "#SBATCH -c 12" in txt
-    assert "#SBATCH --gres=gpu:a100:2" in txt
+    assert "#SBATCH --gres=gpu:2" in txt
     assert "#SBATCH --gres-flags=enforce-binding" in txt   # § 7.5.1
     # exclusive=False override honoured (benchmark sweep, § 11.2 / D9).
     assert "--exclusive" not in txt
@@ -143,7 +143,7 @@ def test_an_absent_gpu_count_defaults_to_one_device(tmp_path):
     fdf = tmp_path / "g.fdf"
     fdf.write_text("Diag.ELPA.GPU .true.\n")
     txt = render_sbatch(fdf, _SCHED, ntasks=3, gpu=True)
-    assert "#SBATCH --gres=gpu:a100:1" in txt, (
+    assert "#SBATCH --gres=gpu:1" in txt, (
         "an absent gpu_count must ask for ONE device; deriving it from the "
         "rank count is the retired 1-rank-per-GPU model (gpu.md G5)")
     # ...and the rank count is untouched by the device default.
@@ -159,7 +159,7 @@ def test_gpu_ranks_independent_of_gpu_count(tmp_path):
                         gpu=True, gpu_count=1)        # 8 ranks, 1 GPU
     assert "#SBATCH -n 8" in txt                       # ranks, NOT 1
     assert "#SBATCH -c 3" in txt
-    assert "#SBATCH --gres=gpu:a100:1" in txt
+    assert "#SBATCH --gres=gpu:1" in txt
 
 
 def test_mem_emitted_when_set(tmp_path):
@@ -265,23 +265,9 @@ def test_missing_partition_refuses(tmp_path):
         render_sbatch(fdf, bad, ntasks=4)
 
 
-def test_bad_gres_rejected(tmp_path):
-    from molbuilder.scheduler.quantities import parse_gres_flag
-    with pytest.raises(ValueError, match="not a GPU ask"):
-        parse_gres_flag("a100x2")
-
-
-@pytest.mark.parametrize("spec,expect", [
-    ("gpu:a100:2", ("a100", 2)),
-    ("a100:4", ("a100", 4)),
-    ("2", (None, 2)),
-    # SLURM's untyped form: the GRES name and a count, no type -- it was
-    # read as type "gpu" and rendered `--gres=gpu:gpu:2` (2026-09-30).
-    ("gpu:2", (None, 2)),
-])
-def test_parse_gres_forms(spec, expect):
-    from molbuilder.scheduler.quantities import parse_gres_flag
-    assert parse_gres_flag(spec) == expect
+# How a GPU ask is spelled -- a count, never a card -- is asserted through
+# the road, `test_launch_door.py`
+# (`test_a_gpu_ask_is_a_count_and_reaches_sbatch_in_slurms_spelling`).
 
 
 # --------------------------------------------------------------------- #
@@ -323,9 +309,9 @@ def test_wrapper_emits_sbatch_when_scheduler_configured(project):
 def test_wrapper_gpu_fdf_emits_gres(project):
     fdf = project / "gpu.fdf"
     fdf.write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .true.\n")
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=2, gres="gpu:a100:2", cpus_per_task=12, exclusive=False))
+    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=2, gres="gpu:2", cpus_per_task=12, exclusive=False))
     txt = (project / "gpu.sbatch").read_text()
-    assert "#SBATCH --gres=gpu:a100:2" in txt
+    assert "#SBATCH --gres=gpu:2" in txt
     assert "#SBATCH -c 12" in txt
     assert "#SBATCH --gres-flags=enforce-binding" in txt
 
@@ -337,7 +323,7 @@ def test_wrapper_gpu_has_socket_affinity_block(project):
     # the rendered wrapper, so reaching here = it parses.
     fdf = project / "g.fdf"
     fdf.write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .true.\n")
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=4, gres="gpu:a100:1", cpus_per_task=6))
+    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=4, gres="gpu:1", cpus_per_task=6))
     runsh = (project / "g.run.sh").read_text()
     assert "socket co-location" in runsh
     assert "socket-pin -> GPU socket" in runsh        # the pin branch
@@ -362,11 +348,11 @@ def test_wrapper_gpu_K_ranks_share_one_gpu(project):
     -n must be the rank count (8), --gres the GPU count (1)."""
     fdf = project / "gpu-k8.fdf"
     fdf.write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .true.\n")
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=8, gres="gpu:a100:1", cpus_per_task=3, exclusive=False))
+    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=8, gres="gpu:1", cpus_per_task=3, exclusive=False))
     txt = (project / "gpu-k8.sbatch").read_text()
     assert "#SBATCH -n 8" in txt                  # ranks (was wrongly 1)
     assert "#SBATCH -c 3" in txt
-    assert "#SBATCH --gres=gpu:a100:1" in txt     # one GPU, shared
+    assert "#SBATCH --gres=gpu:1" in txt     # one GPU, shared
 
 
 def test_gpu_fdf_auto_gres_without_cli(project):
@@ -377,7 +363,7 @@ def test_gpu_fdf_auto_gres_without_cli(project):
     fdf.write_text("Diag.ELPA.GPU .true.\n")
     runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=2))
     txt = (project / "auto.sbatch").read_text()
-    assert "#SBATCH --gres=gpu:a100:1" in txt      # default 1 GPU
+    assert "#SBATCH --gres=gpu:1" in txt      # default 1 GPU
     assert "#SBATCH -n 2" in txt                    # ranks share it
 
 
@@ -413,7 +399,7 @@ def test_workstation_gpu_knobs_match_launcher_contract(project):
 
     fdf = project / "g.fdf"
     fdf.write_text(_PARSEABLE_FDF + "Diag.ELPA.GPU .true.\n")
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=4, gres="gpu:a100:1", cpus_per_task=6))
+    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=4, gres="gpu:1", cpus_per_task=6))
     launcher = (project / "g.run.sh").read_text()
     # The launcher's LAUNCH honours MB_NP / OMP_NUM_THREADS (`_mpi_np` reads
     # MB_NP/SLURM_NTASKS; `_omp_threads` reads OMP_NUM_THREADS).  NOTE: a baked
@@ -436,7 +422,7 @@ def test_wrapper_gpu_has_no_mem_audit(project):
     # the header mem; GPU jobs use gpu.mem rather than the CPU estimator).
     fdf = project / "job.fdf"
     fdf.write_text(_PARSEABLE_FDF + "Diag.ELPA.GPU .true.\n")
-    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=4, gres="gpu:a100:1", cpus_per_task=6))
+    runwrap.write_run_wrapper(fdf, resources=Resources(mpi_np=4, gres="gpu:1", cpus_per_task=6))
     runsh = (project / "job.run.sh").read_text()
     assert "_mb_mem_est=$(awk" not in runsh
 

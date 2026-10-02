@@ -182,8 +182,9 @@ def test_the_pins_land_as_rendered_schema_values_not_splices(calc):
 
 
 def test_each_trials_resources_carry_its_own_coordinate(calc):
-    """G·K ranks, C cores, the machine's GPU type in gres — translated once,
-    per element, never re-derived downstream (generator.md § 5)."""
+    """G·K ranks, C cores, G GPUs in gres -- a count, no card (scheduler.md
+    R2a) -- translated once, per element, never re-derived downstream
+    (generator.md § 5)."""
     js = _prep_bench(calc)
     for job in js["jobs"]:
         g = int(job["name"][1])
@@ -192,7 +193,7 @@ def test_each_trials_resources_carry_its_own_coordinate(calc):
         r = job["resources"]
         assert r["mpi_np"] == g * k
         assert r["cpus_per_task"] == c
-        assert r["gres"] == f"gpu:a100:{g}"
+        assert r["gres"] == f"gpu:{g}"
 
 
 def test_trials_nest_inside_the_stage_they_measure(calc):
@@ -972,8 +973,8 @@ class TestTheRunsOwnCondition:
         job = self._run(calc)
         r = job["resources"]
         assert (r["mpi_np"], r["cpus_per_task"]) == (2, 2)
-        # TYPED, from the machine's record -- never named by the description
-        assert r["gres"] == "gpu:a100:1", r["gres"]
+        # a COUNT -- no card is named (`scheduler.md` R2a)
+        assert r["gres"] == "gpu:1", r["gres"]
         deck = next((calc / "01_coarse").glob("*.fdf")).read_text()
         assert "Diag.Algorithm     ELPA-2STAGE" in deck
 
@@ -996,7 +997,7 @@ class TestTheRunsOwnCondition:
         t = read_task(calc / "task.json")
         assert run_uses_device(calc, t, "coarse") is True
         r = self._run(calc)["resources"]
-        assert r["gres"] == "gpu:a100:1", (
+        assert r["gres"] == "gpu:1", (
             "a typed device count was dropped: " + repr(r.get("gres")))
 
     def test_a_CPU_condition_gets_no_device_ask(self, calc):
@@ -1115,7 +1116,7 @@ class TestTheRunsOwnCondition:
                                      "gpu_count": 1, "use_gpu": True})
         r = self._run(calc, "coarse", "--cpus-per-task", "16")["resources"]
         assert r["cpus_per_task"] == 16, "the flag lost to the description"
-        assert r["gres"] == "gpu:a100:1", "the flag erased the device ask"
+        assert r["gres"] == "gpu:1", "the flag erased the device ask"
 
     def test_prep_writes_a_big_ask_and_does_not_second_guess_it(self, calc):
         """`generator.md` § 4.3a: an over-large condition is refused where

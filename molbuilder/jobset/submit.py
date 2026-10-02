@@ -213,7 +213,7 @@ def _sbatch_request(base: Path, *, envelope: Resources, gpu_side: bool,
 
     ``envelope`` is what `prep` baked; ``mem`` and ``time_s`` are what the
     person said at launch, and win.  The request is ADMITTED against the
-    whole of it -- wall, cores, memory, GPUs and their type -- on the queue
+    whole of it -- wall, cores, memory, the GPU count -- on the queue
     it is sent to (`scheduler.md` R9: what was admitted when the work was
     built is re-admitted when it is sent, against what this machine says
     now), and a wall nobody stated is that queue's own ceiling, the full
@@ -246,7 +246,6 @@ def _sbatch_request(base: Path, *, envelope: Resources, gpu_side: bool,
                              * max(envelope.cpus_per_task or 1, 1) or None,
                        mem=envelope.mem,
                        gpus=_gres_count(envelope.gres or ""),
-                       gpu_type=_gres_type(envelope.gres or ""),
                        named=domain, label=label)
     # THE WALL, in the order the answers rank: what was stated at launch;
     # else what prep baked; else the target queue's own ceiling.  Never a
@@ -836,8 +835,7 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
 
 
 def _place(base: Path, *, gpu_side: bool, needed_s=None, cores=None,
-           mem=None, gpus=None, gpu_type=None, named=None,
-           label: str = ""):
+           mem=None, gpus=None, named=None, label: str = ""):
     """This side's placement — `scheduler.place`, walked with THIS machine's
     menu (`execution/scheduler.md` § 5).
 
@@ -857,14 +855,9 @@ def _place(base: Path, *, gpu_side: bool, needed_s=None, cores=None,
     from .. import runtime_config as _rc
     from ..scheduler import Request, parse_mem_gb
     from ..scheduler.place import place, Unplaceable
-    # ``gpu_type`` rides the request because a queue's inventory is a
-    # limit it DECLARES (R2) and `--gres=gpu:<type>:N` is matched by SLURM
-    # on that token.  Passing only the COUNT is what routed an
-    # ``a100.40gb`` bench into Sol's `public` -- which offers a100,
-    # a100.20gb and a30 -- where the count fit (16 MIG slices) and the
-    # card did not exist.
+    # THE GPU COUNT, and no card (`scheduler.md` R2a): a GPU job goes to
+    # a queue that has GPUs, where a node holds as many as were asked.
     want = Request(ranks=cores, cpus_per_task=1, gpus=gpus or None,
-                   gpu_type=gpu_type,
                    mem_gb=parse_mem_gb(mem), walltime_s=needed_s)
     try:
         # WHICH AXIS DECIDES between queues that all fit is the site's to
@@ -960,19 +953,6 @@ def _gres_count(gres: str) -> int:
     """
     from ..scheduler.quantities import parse_gres
     return max(parse_gres(gres).values(), default=0)
-
-
-def _gres_type(gres: str) -> Optional[str]:
-    """WHICH device a ``--gres`` string names, or ``None`` when it names
-    none -- the token admission compares against a queue's inventory.
-
-    Where a string names several types the largest ask wins, matching
-    `_gres_count`: the two describe one device ask and must not disagree
-    about which one it is.
-    """
-    from ..scheduler.quantities import parse_gres
-    got = parse_gres(gres)
-    return max(got, key=lambda t: got[t]) if got else None
 
 
 def _shelf_width(key) -> tuple:

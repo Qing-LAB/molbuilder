@@ -871,8 +871,7 @@ which spelling won.
     "kind": "slurm",
     "directives": { "partition": "public", "qos": "public",
                     "mail_type": "ALL", "mail_user": "you@example.edu", "export": "NONE" },
-    "gpu":      { "partition": "public", "default_type": "a100", "exclusive": false,
-                  "mem": "64G" },
+    "gpu":      { "partition": "public", "exclusive": false, "mem": "64G" },
     "defaults": { "time": "0-04:00:00", "cpus_per_task": 8, "mem": null },
     "routing":  [ { "name": "short", "max_time": "0-04:00:00",
                     "partition": "public", "qos": "public" } ]
@@ -886,9 +885,11 @@ which spelling won.
   `mail_user` — SLURM's `%u` / `%j` patterns expand only in `-o` / `-e`
   filenames, never in `--mail-user`, so `"%u@…"` is sent literally and bounces
   (the emitter warns when it sees a `%`).
-- **`gpu`** — `{partition, default_type, exclusive, mem}`. A
-  GPU job routes its `-p` to `gpu.partition` and takes
-  `--gres=gpu:<default_type>:<count>`. `mem` is the `--mem` a GPU job gets
+- **`gpu`** — `{partition, exclusive, mem}`. A GPU job routes its `-p` to
+  `gpu.partition` and asks `--gres=gpu:<count>` — a count: molbuilder names no
+  card, and which card a node carries is the machine's business
+  ([`scheduler.md`](?doc=execution/scheduler.md) R2a; `default_type`, a card,
+  was here until 2026-10-01). `mem` is the `--mem` a GPU job gets
   when nothing else states one — a value **you** wrote, once, for this
   machine (§ 5.3.1). `exclusive: false` is the recommended HPC default: GPU
   nodes are shared multi-GPU boxes, and a job kept inside its proportional
@@ -905,7 +906,7 @@ which spelling won.
 **What the `.sbatch` header carries** (`render_sbatch`): a fixed `-J <basename>`,
 `-N 1`, `-n <ranks>`, `-o slurm.%j.out` / `-e slurm.%j.err`; `-c` / `-t` from
 `defaults` (or caller); `-p` / `-q` from `directives` (GPU → `gpu.partition`);
-for GPU jobs `--gres=gpu:<type>:<count>` + `--gres-flags=enforce-binding`; and
+for GPU jobs `--gres=gpu:<count>` + `--gres-flags=enforce-binding`; and
 memory per § 5.3.1. The body is a single line — `bash <basename>.run.sh "$@"` —
 because the inner wrapper owns activation and launch. It is withheld only where
 the machine names no queue to address — a record saying `workstation`, or no

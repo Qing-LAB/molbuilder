@@ -133,13 +133,14 @@ def test_the_users_matrix_enumerates_both_families(sol_calc):
 
 def test_the_gpu_family_answers_from_the_domain_inventory(sol_calc):
     """The fixture's TOPOLOGY has no GPU (a login node) — the family's
-    device count and gres type come from the menu's recorded inventory,
-    which is what lets a login node enumerate for the cluster behind it."""
+    device count comes from the menu's recorded inventory, which is what
+    lets a login node enumerate for the cluster behind it; the ask is a
+    count, and names no card (`scheduler.md` R2a)."""
     _declare(sol_calc, USERS_MATRIX)
     points, _pins, tr = bench_inputs(sol_calc, None)
     g2 = next(p for p in points if p["G"] == 2)
     res = tr.to_resources(g2, None)
-    assert res["gres"] == "gpu:a100:2"
+    assert res["gres"] == "gpu:2"
     assert res["mpi_np"] == 2 * g2["K"]
     # and a CPU point of the SAME translation asks for no device at all
     c = next(p for p in points if not p["G"])
@@ -147,54 +148,20 @@ def test_the_gpu_family_answers_from_the_domain_inventory(sol_calc):
     assert "gres" not in res_c and res_c["mpi_np"] == c["K"]
 
 
-def test_two_inventory_types_refuse_with_the_curation_remedy(sol_calc):
-    """Choosing between recorded GPU types would be a ranking — the probe
-    buried ``best_gpu_type`` for exactly that.  Refused, with the row
-    named."""
+def test_a_queue_listing_several_cards_answers_the_most_gpus_a_node_holds(
+        sol_calc):
+    """A queue whose record lists two cards is no question to refuse: the
+    GPU count a node can hold is the most any of its nodes holds -- here
+    the 16 of the second -- and no card is chosen (`scheduler.md` R2a).
+    It refused, asking the person to curate the record, until 2026-10-01."""
     env = json.loads((sol_calc / "environment.json").read_text())
     env["domains"][1]["gpu"] = {"a100": 4, "a100.20gb": 16}
     (sol_calc / "environment.json").write_text(json.dumps(env))
-    _declare(sol_calc, USERS_MATRIX)
-    with pytest.raises(PrepError) as e:
-        bench_inputs(sol_calc, None)
-    assert "several GPU types" in str(e.value)
-    assert "a100.20gb" in str(e.value)
-
-
-def test_a_stated_card_is_the_one_measured(sol_calc):
-    """The card stated in molbuilder.json (`scheduler.gpu.default_type`) is
-    the one the bench measures, as it is the one the run asks for -- the
-    card stated, else probed, else the row's -- and with ITS count: that of
-    the queue that holds it, wherever in the menu, never a node's own count
-    for another card (`_gpu_type_for_bench`, `_gpu_inventory(card=)`).
-
-    PREVENTS (the W52 review, P2a-09, and its fix's review): on a login
-    node the row's card replaced the stated one; a row of two types refused
-    a choice already stated; a stated card was refused because the FIRST
-    GPU queue did not hold it while another did; a node carrying four of
-    another card capped the stated card at four.
-
-    MUTATIONS THIS MUST FAIL AGAINST: the row's card taken over a stated
-    one; only the first GPU queue asked; the node's own count kept."""
-    env = json.loads((sol_calc / "environment.json").read_text())
-    env["domains"].append({"name": "mig", "partition": "mig",
-                           "qos": "public", "max_time": "1-00:00:00",
-                           "max_cores": 48,
-                           "gpu": {"a100.20gb": 16, "a30": 2}})
-    env["topology"]["gpus_per_node"] = 4         # the node's own card is
-    env["topology"]["gpu_type"] = "a100.40gb"    # another one
-    (sol_calc / "environment.json").write_text(json.dumps(env))
-    cfg = json.loads((sol_calc / ".molbuilder.json").read_text())
-    cfg["scheduler"] = {"kind": "slurm",
-                        "directives": {"partition": "general",
-                                       "qos": "public"},
-                        "gpu": {"default_type": "a100.20gb"}}
-    (sol_calc / ".molbuilder.json").write_text(json.dumps(cfg))
     _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1],
                         "use_gpu": [True], "gpu_count": [8]})
     points, _pins, tr = bench_inputs(sol_calc, None)
     assert [p["G"] for p in points] == [8], points
-    assert tr.to_resources(points[0], None)["gres"] == "gpu:a100.20gb:8"
+    assert tr.to_resources(points[0], None)["gres"] == "gpu:8"
 
 
 def test_a_hand_declared_device_row_enumerates_like_a_probed_one(sol_calc):
@@ -216,7 +183,7 @@ def test_a_hand_declared_device_row_enumerates_like_a_probed_one(sol_calc):
 
     points, _pins, tr = bench_inputs(sol_calc, None)
     g2 = next(p for p in points if p["G"] == 2)
-    assert tr.to_resources(g2, None)["gres"] == "gpu:a100:2"
+    assert tr.to_resources(g2, None)["gres"] == "gpu:2"
     # ...and the cap still applies: the row's 48 cores are unchanged by the
     # spelling, so the same trials survive as in the probed case.
     assert len([p for p in points if p["G"]]) == 18
@@ -235,7 +202,7 @@ def test_no_gpu_anywhere_refuses_with_both_remedies(sol_calc):
     with pytest.raises(PrepError) as e:
         bench_inputs(sol_calc, None)
     said = str(e.value)
-    assert "no queue with a recorded GPU inventory" in said, said
+    assert "no queue with recorded GPUs" in said, said
     # the record that answered is the calculation's own snapshot, named as
     # such whatever the flag said (the fix-6 review), with its two steps
     assert "this calculation's environment.json" in said, said
@@ -348,7 +315,7 @@ def test_split_submission_one_group_per_side_and_shelf(sol_calc):
     for g in (1, 2, 4):
         tok = f"G{g}K{4 // g}C1"
         line = next(l for l in plans if f"bench-group-gpu-{tok}" in l)
-        assert "-p general" in line and f"--gres=gpu:a100:{g}" in line
+        assert "-p general" in line and f"--gres=gpu:{g}" in line
     # widest first ACROSS shelves: the G4 group precedes G2 precedes G1
     order = [l for l in plans if "bench-group-gpu-" in l]
     assert ["G4" in order[0], "G2" in order[1], "G1" in order[2]] == \

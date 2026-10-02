@@ -460,7 +460,7 @@ by no code.
 `template.md` § 7's refusal of a hand-written `mpi_np` **is untouched**, and
 the item stays valueless. They become **the allocation for this prep**, by a
 direct map from the catalogue's name to the `Resources` field: `omp_threads`
-→ `cpus_per_task`, `gpu_count` → a typed `--gres`, the rest one to one.
+→ `cpus_per_task`, `gpu_count` → `--gres=gpu:<count>`, the rest one to one.
 
 **Nothing is worked out, and that is the rule.** A field the condition does
 not name is not a gap to fill — `architecture.md` § 5.2's track B: it is
@@ -469,16 +469,15 @@ time by the wrapper's own chain (`running-a-job.md` § 3.1: `-np` > `MB_NP` >
 `SLURM_NTASKS` > the baked default). A layer that fills it in *because it must
 be decided* overwrites both.
 
-The one fact the map cannot hold is **which card** a device ask names — a
-description may not name a machine (`template.md` § 7) — so the count is the
-person's and the type is the target's, read from its own record by the same
-producers the sweep uses, in its order: the stated type or the target's
-probe, else the queue menu's GPU inventory. **Every run that uses a device
+A device ask is a **count** and names no card: which card a node carries is
+the machine's business (`scheduler.md` R2a). **Every run that uses a device
 gets its ask here**, a count stated or not (`gpu.md` G5: an absent
 `gpu_count` is one device) and on every engine — PySCF carries no
 `gpu_count`, so before 2026-09-30, when the header asked a SIESTA deck
 alone, a PySCF run whose card said `use_gpu` reached the queue with no
-device.
+device. *(Until 2026-10-01 a card was looked up here — a stated
+`scheduler.gpu.default_type`, else the target's probe, else its queues — and
+written into the ask.)*
 
 > **It went through the grid enumerator for one afternoon** (2026-09-02) on
 > the argument that a run is a sweep of length one. It is — *below*
@@ -553,16 +552,14 @@ framework rule, not a script patch)*:
   count's divisors, and the flag rides each point as an ordinary value
   coordinate — so the deck's answer and the point's family agree by
   construction, and `launch`'s placement (below) needs no new declaration.
-  The GPU family's card is the run's: the one stated
-  (`scheduler.gpu.default_type`), else the target's probed one, else the
-  **domain menu's GPU inventory** (`jobset probe` records each partition's
-  `gres` types on its domain row) — a login node can therefore enumerate the
-  GPU family for the cluster behind it.  Its device count is the node's own
-  only when the node carries that card; else it is the count of the queue
-  that holds it.  With no card chosen, several inventory types on the row is
-  a question the machine may not answer: refused by name, with the remedy of
-  curating the row *(W52, 2026-10-01: the row's card replaced a stated one,
-  and a node's own count stood in for a card it does not carry)*.
+  The GPU family's device count is the target's GPUs per node: the probed
+  node's own, else the most a node of a GPU queue holds — the **domain menu's
+  GPU inventory** (`jobset probe` records each partition's `gres` on its
+  domain row) — so a login node can enumerate the GPU family for the cluster
+  behind it.  A trial asks `gpu:G`, a count, and no card: which card a node
+  carries is the machine's business (`scheduler.md` R2a).  *(Until
+  2026-10-01 the family carried a card — `scheduler.gpu.default_type`, else
+  the probed node's, else the row's — and a row listing several refused.)*
 - **Enumerate every combination, cross out what no queue can hold, show what
   is left** *(user, 2026-08-30: "we don't have to fight with what language we
   use to indicate error, but present the correct outcome")*.  The queues are

@@ -1129,10 +1129,9 @@ def _resolve_stage(js, stage, verb: str, *, base):
                    "(project-layout.md D2); prep renders the deck for it.")
 @click.option("--cpus-per-task", type=int, default=None, metavar="C",
               help="cores per rank (OMP). sbatch -c.")
-@click.option("--gpus", "gres", default=None, metavar="TYPE:N",
-              help="GPUs, by type -- e.g. a100:1, a100.40gb:1, a30:2. The MIG "
-                   "slices are separate askable types, not a smaller ask of "
-                   "the same one.")
+@click.option("--gpus", "gres", default=None, metavar="N",
+              help="how many GPUs -- a count; which card a node carries is "
+                   "the machine's business (scheduler.md R2a).")
 @click.option("--time", "time_", default=None, metavar=TIME_METAVAR,
               help=TIME_HELP)
 @click.option("--mem", default=None, metavar=MEM_METAVAR, help=MEM_HELP)
@@ -1177,8 +1176,8 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     # tab's Prep buttons call it too.  This verb collects what the person
     # said -- the flags -- asks the one question when there is one, and
     # prints the answer; the act itself is `prep.prep_stage`'s.
-    from ..scheduler.quantities import (canonical_gres, canonical_mem,
-                                        canonical_time)
+    from ..scheduler.quantities import (canonical_mem, canonical_time,
+                                        parse_gres_flag)
     from .model import Resources as _Alloc
     from .prep import prep_stage
     base = Path(bundle).resolve()
@@ -1187,7 +1186,8 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     # raised it as a traceback until 2026-10-01 (W52).
     for _flag, _said, _read in (("--time", time_, canonical_time),
                                 ("--mem", mem, canonical_mem),
-                                ("--gpus", gres, canonical_gres)):
+                                ("--gpus", gres,
+                                 lambda g: g and parse_gres_flag(g))):
         try:
             _read(_said)
         except ValueError as e:
@@ -2274,7 +2274,7 @@ def cmd_machines() -> None:
 @click.option("--set", "sets", multiple=True, metavar="KEY=VALUE",
               help="declare a topology fact the probe cannot see from here "
                    "(M-1's declared door -- e.g. describing a cluster from a "
-                   "workstation): --set gpus_per_node=4 --set gpu_type=a100. "
+                   "workstation): --set gpus_per_node=4. "
                    "Repeatable; wins over detection; the record's source "
                    "says 'flag'.")
 @click.option("--scheduler", "scheduler_flag", default=None,

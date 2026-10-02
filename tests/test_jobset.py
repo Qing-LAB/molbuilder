@@ -450,10 +450,10 @@ def _sweep() -> JobSet:
         name="sw", engine="siesta", kind="sweep",
         jobs=[Job(name="G1K1C4", script="job-gpu.fdf",
                   resources=Resources(mpi_np=1, cpus_per_task=4,
-                                      gres="gpu:a100:1")),
+                                      gres="gpu:1")),
               Job(name="G1K2C4", script="job-gpu.fdf",
                   resources=Resources(mpi_np=2, cpus_per_task=4,
-                                      gres="gpu:a100:1"))])
+                                      gres="gpu:1"))])
 
 
 def _write_fdf(path):
@@ -557,7 +557,7 @@ def test_render_plan_surfaces_per_job_ranks_and_cores():
     # the plan MUST show the -n/-c variation -- that IS the sweep.
     txt = render_plan(_sweep())
     assert "n=1" in txt and "n=2" in txt
-    assert "c=4" in txt and "gpu:a100:1" in txt
+    assert "c=4" in txt and "gpu:1" in txt
 
 
 # --------------------------------------------------------------------- #
@@ -580,7 +580,7 @@ def test_submit_dry_run_sweep_per_job_flags_vary(tmp_path):
         assert len(res) == 1
         cmds[name] = res[0].command
         assert not any(a.startswith("--dependency=") for a in res[0].command)
-        assert "--gres=gpu:a100:1" in res[0].command
+        assert "--gres=gpu:1" in res[0].command
         assert res[0].command[res[0].command.index("-n") + 1] == want
     assert cmds["G1K1C4"] != cmds["G1K2C4"], "per-job flags did not vary"
 
@@ -1169,7 +1169,7 @@ def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
         "SystemName g\nSystemLabel GPU\nNumberOfAtoms 100\n"
         "NumberOfSpecies 1\nMeshCutoff 300 Ry\nBasis.Size DZP\n"
         "Diag.ELPA.GPU .true.\n")
-    maximal = _blocks(write_run_wrapper(tmp_path / "GPU.fdf", resources=Resources(mpi_np=4, gres="gpu:a100:1", continue_retries=2), env="e").read_text())
+    maximal = _blocks(write_run_wrapper(tmp_path / "GPU.fdf", resources=Resources(mpi_np=4, gres="gpu:1", continue_retries=2), env="e").read_text())
     # The ESTIMABLE CPU deck (D9 tightening, user decision 2026-08-13):
     # the Memory block renders only from a chemically parseable deck
     # (species + coordinates) -- which NEITHER fixture above carries, so
@@ -1564,7 +1564,7 @@ def test_a_gpu_stage_is_routed_by_its_DECK_not_by_an_unset_gres(tmp_path):
     # sweeps a GPU count, which is not a property of one deck
     pt = tmp_path / "bench-G1K1C4"; pt.mkdir()
     assert _job_wants_gpu(pt, Job(name="p", script="job-gpu.fdf",
-                                  resources=Resources(gres="gpu:a100:1"))) is True
+                                  resources=Resources(gres="gpu:1"))) is True
 
 
 def test_status_takes_a_stage_and_answers_the_other_question(tmp_path):

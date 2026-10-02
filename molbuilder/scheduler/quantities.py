@@ -327,52 +327,47 @@ def canonical_time(text) -> Optional[str]:
 
 
 #: A typed GPU ask: ``[gpu:]<type>:<count>``.
-_GRES_FLAG_RE = re.compile(
-    r"^(?:gpu:)?(?P<type>[A-Za-z0-9_.]+):(?P<count>\d+)$")
+def parse_gres_flag(text) -> int:
+    """A GPU ask as a PERSON types it -> the COUNT.
 
-
-def parse_gres_flag(text) -> "tuple":
-    """A GPU ask as a PERSON types it -> ``(gpu_type, count)``.
-
-    The HUMAN dialect, apart from :func:`parse_gres`, which reads what SLURM
-    emits and returns every type it finds; this reads what a person typed
-    and RAISES on a typo, so the mistake surfaces when it is said rather
-    than after a queue wait.  Accepts ``gpu:a100:2``, ``a100:2``, or a count
-    with no type -- bare ``2`` or SLURM's ``gpu:2`` (type unspecified; the
-    caller falls back to ``scheduler.gpu.default_type``).  *(It was
-    `runwrap._parse_gres_flag` until 2026-10-01, the header's own, while the
-    record kept whatever was typed; W52.)*
+    A GPU ask is a number: ``2``, or SLURM's untyped ``gpu:2``.  molbuilder
+    names no card -- which card a node carries is that machine's business
+    (`execution/scheduler.md` R2a; user, 2026-10-01: *"we never claimed any
+    card type"*) -- so a card in the ask is refused, by name, where it is
+    said.  The HUMAN dialect, apart from :func:`parse_gres`, which reads what
+    SLURM reports.  *(It read ``<type>:<count>`` too until 2026-10-01, and a
+    card typed here went to ``sbatch`` as typed.)*
     """
     g = str(text).strip()
-    if g.isdigit():
-        return None, int(g)
-    # ``gpu:<count>`` is SLURM's UNTYPED form -- the GRES name and a count.
-    # Read as ``<type>:<count>`` it rendered ``--gres=gpu:gpu:2``.
-    if g.startswith("gpu:") and g[4:].isdigit():
-        return None, int(g[4:])
-    m = _GRES_FLAG_RE.fullmatch(g)
-    if not m:
-        raise ValueError(
-            f"{text!r} is not a GPU ask; expected ``[gpu:]<type>:<count>`` "
-            f"(e.g. ``a100:2``) or a bare count.")
-    return m.group("type"), int(m.group("count"))
+    if g.startswith("gpu:"):
+        g = g[4:]
+    if g.isdigit() and int(g) > 0:
+        return int(g)
+    raise ValueError(
+        f"{text!r} is not a GPU ask: it is a count of GPUs (e.g. ``2``), "
+        f"and names no card -- which card a node carries is the machine's "
+        f"business (docs/execution/scheduler.md R2a).")
 
 
 def canonical_gres(text) -> Optional[str]:
-    """A stated GPU ask, in whatever dialect, -> SLURM's own:
-    ``gpu:<type>:<count>``, or ``gpu:<count>`` untyped.  ``None`` when
-    nothing was stated.
+    """A stated GPU ask -> what reaches ``sbatch``: ``gpu:<count>``.
+    ``None`` when nothing was stated.
 
-    WHAT REACHES ``sbatch``.  ``--gpus a100:1`` -- the help's own example --
-    was stored as typed and sent as ``--gres=a100:1``, a resource called
-    ``a100``, overriding a header that had spelled it right; and
-    :func:`parse_gres`, which reads only ``gpu:`` tokens, counted no device
-    in it, so admission and the bench's grouping read the run as CPU-only
-    (W52)."""
+    Reads the person's count (:func:`parse_gres_flag`) and SLURM's own
+    spelling as a ``job-set.json`` written before 2026-10-01 stored it
+    (``gpu:a100:1``) -- reduced to its COUNT, because no GPU ask names a
+    card (`execution/scheduler.md` R2a).  Anything else is refused: a text
+    that is no GPU ask must not reach ``--gres``."""
     if text is None or str(text).strip() == "":
         return None
-    gtype, count = parse_gres_flag(text)
-    return f"gpu:{gtype}:{count}" if gtype else f"gpu:{count}"
+    g = str(text).strip()
+    try:
+        return f"gpu:{parse_gres_flag(g)}"
+    except ValueError:
+        got = parse_gres(g)
+        if got and max(got.values()) > 0:
+            return f"gpu:{max(got.values())}"
+        raise
 
 
 def canonical_mem(text) -> Optional[str]:

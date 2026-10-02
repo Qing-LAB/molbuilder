@@ -23,7 +23,9 @@ PREVENTS, each read in the code before 2026-10-01 (the W52 review):
 * `--mode ask` asking about a line with no queue on it, while `submit` would
   have sent the baked one;
 * `launch --mem 0` refused, though the help it shares with prep offers it;
-* `--gpus a100:1` sent as `--gres=a100:1`, a resource called `a100`;
+* a GPU ask sent as typed (`--gres=a100:1`, a resource called `a100`), and
+  a card in the ask sent to the queue at all (`scheduler.md` R2a:
+  molbuilder names no card);
 * a re-launch that could not continue leaving a fresh attempt behind, and a
   flat stage still in the queue launched again without a word.
 
@@ -210,22 +212,40 @@ def test_memory_is_sent_as_said_and_zero_is_the_whole_node(cluster):
     assert r.exit_code != 0 and "--mem:" in r.output, r.output
 
 
-def test_a_gpu_ask_reaches_sbatch_in_slurms_spelling(tmp_path, monkeypatch):
-    """`prep run coarse --gpus a100:1` -- the help's own example -- is
-    recorded and sent as `gpu:a100:1`, the spelling `--gres` reads.
+@pytest.mark.parametrize("said,sent", [
+    ("2", "gpu:2"),
+    # SLURM's untyped form, the GRES name and a count -- it was read as a
+    # card called `gpu` and sent `--gres=gpu:gpu:2` (2026-09-30).
+    ("gpu:2", "gpu:2"),
+    # A count, and no card: refused where it is said, naming the flag.
+    ("a100:1", None), ("gpu:a100:2", None), ("0", None),
+])
+def test_a_gpu_ask_is_a_count_and_reaches_sbatch_in_slurms_spelling(
+        tmp_path, monkeypatch, said, sent):
+    """`prep run coarse --gpus 2` is recorded and sent as `gpu:2`, the
+    spelling `--gres` reads.  A card in the ask, or no count, is refused
+    at prep (`scheduler.md` R2a).
 
     MUTATION THIS MUST FAIL AGAINST: the record keeping the ask as typed
-    (`--gres=a100:1`, a resource called `a100`)."""
+    (`--gres=2`, a resource called `2`)."""
     calls = a_queue_that_answers(tmp_path, monkeypatch, _queues(gpu=True))
     bundle = describe_h2(tmp_path, monkeypatch)
-    _prep(bundle, "coarse", "--gpus", "a100:1")
+    if sent is None:
+        r = jobset("prep", "run", "coarse", "--bundle", bundle,
+                   "--target", "this", "--gpus", said)
+        assert r.exit_code != 0, r.output
+        assert "--gpus:" in r.output and "names no card" in r.output, \
+            r.output
+        assert not (bundle / "job-set.json").exists()
+        return
+    _prep(bundle, "coarse", "--gpus", said)
     js = json.loads((bundle / "job-set.json").read_text())
     coarse = next(j for j in js["jobs"] if j["name"] == "coarse")
-    assert coarse["resources"]["gres"] == "gpu:a100:1", coarse
+    assert coarse["resources"]["gres"] == sent, coarse
     r = jobset("launch", "run", "coarse", "--bundle", bundle,
                "--mode", "submit", "--domain", "gpu", "--dry-run")
     assert r.exit_code == 0, r.output
-    assert "--gres=gpu:a100:1" in _line(r.output), r.output
+    assert f"--gres={sent}" in _line(r.output), r.output
     assert calls_made(calls) == []
 
 

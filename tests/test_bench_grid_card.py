@@ -29,8 +29,8 @@ REPO = Path(__file__).resolve().parents[1]
 
 #: A small Sol-SHAPED menu, written by hand so the fits list is a fact about
 #: this fixture rather than about whatever the developer's cluster last
-#: probed.  `public` deliberately stocks a100 and NOT a100.40gb -- the very
-#: asymmetry that made a real submission unrunnable.
+#: probed.  `short`'s GPU nodes are 48 and 64 cores wide and `public`'s 48,
+#: so the widest a GPU job can be anywhere here is 64 cores.
 _DOMAINS = [
     {"name": "short", "partition": "short", "qos": "public",
      "max_time": "04:00:00", "max_cores": 128,
@@ -76,8 +76,7 @@ def bundle(tmp_path):
                                "preamble": "true"}}))
     env = Environment(scheduler="slurm",
                       topology=Topology(sockets=2, cores_per_socket=32,
-                                        gpus_per_node=4,
-                                        gpu_type="a100.40gb"),
+                                        gpus_per_node=4),
                       domains=[Domain.from_row(r) for r in _DOMAINS])
     (dest / "environment.json").write_text(env.to_json() + "\n")
     return dest
@@ -118,7 +117,7 @@ class TestTheDoorServesTheOneEnumerator:
         assert d["cells"], "a resolvable grid must answer its cells"
         one = d["cells"][0]
         assert set(one) >= {"label", "shape", "family", "ranks",
-                            "cores_each", "gpus", "gpu_type", "fits", "why"}
+                            "cores_each", "gpus", "fits", "why"}
         assert set(one["fits"]) == {"short", "public"}, (
             f"both queues hold a 48-rank CPU cell; got {one['fits']}")
 
@@ -151,12 +150,11 @@ class TestTheDoorServesTheOneEnumerator:
                                    "use_gpu": [True], "gpu_count": [4]})
         kept = {c["label"] for c in d["cells"] if not c["why"]}
         struck = [c for c in d["cells"] if c["why"]]
-        assert "G4K12C1" in kept, f"48 ranks x 4 a100.40gb fits `short`: {d}"
-        assert struck, "a 128-rank a100.40gb cell fits no queue here"
-        # R4 -- the struck row names the number to change, and the card it
-        # could not get: only `short` stocks a100.40gb, on 64-core nodes.
-        assert "64" in struck[0]["why"][0], struck[0]["why"]
-        assert "a100.40gb" in struck[0]["why"][0], struck[0]["why"]
+        assert "G4K12C1" in kept, f"48 ranks x 4 GPUs fits a GPU node: {d}"
+        assert struck, "a 128-rank GPU cell fits no queue here"
+        # R4 -- the struck row names the number to change: the widest node
+        # with GPUs here is `short`'s 64 cores.
+        assert any("64" in w for w in struck[0]["why"]), struck[0]["why"]
 
     def test_nothing_surviving_is_a_result_not_an_error(self, client, bundle):
         """*Nothing here fits* is the answer, and the crossed-out rows are
@@ -221,16 +219,19 @@ class TestPickingThisMachineIsAnAnswer:
         cfg = tmp_path / "cfg"
         (cfg / "environments").mkdir(parents=True)
         monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cfg))
-        # A DIFFERENT GPU FROM THE BUNDLE'S, deliberately.  The bundle
-        # snapshot says `a100.40gb`; these say plain `a100`.  Writing the
-        # same topology in both places makes every "which record answered?"
-        # assertion pass whichever one did -- which is how a first draft of
-        # these tests let the 2026-09-02 regression through untouched.
+        # QUEUES NAMED APART FROM THE BUNDLE'S, deliberately.  The bundle
+        # snapshot's are `short` and `public`; these are `sol-short` and
+        # `sol-public`.  Writing the same menu in both places makes every
+        # "which record answered?" assertion pass whichever one did -- which
+        # is how a first draft of these tests let the 2026-09-02 regression
+        # through untouched.  (The two differed by GPU card until
+        # 2026-10-01; molbuilder names no card, `scheduler.md` R2a.)
         env = Environment(scheduler="slurm",
                           topology=Topology(sockets=2, cores_per_socket=32,
-                                            gpus_per_node=4,
-                                            gpu_type="a100"),
-                          domains=[Domain.from_row(r) for r in _DOMAINS])
+                                            gpus_per_node=4),
+                          domains=[Domain.from_row(
+                              dict(r, name="sol-" + r["name"]))
+                              for r in _DOMAINS])
         (cfg / "environment.json").write_text(env.to_json() + "\n")
         (cfg / "environments" / "sol.json").write_text(env.to_json() + "\n")
         return cfg
@@ -258,7 +259,8 @@ class TestPickingThisMachineIsAnAnswer:
             # machines on file and nothing snapshotted, the folder names no
             # menu, and every cell was checked against none (the W52 fix-6
             # review: the card's "fits" came back empty)
-            assert set(d["cells"][0]["fits"]) == {"short", "public"}, (
+            assert set(d["cells"][0]["fits"]) == {"sol-short",
+                                                  "sol-public"}, (
                 target, d["cells"][0])
             assert not (bundle / "environment.json").exists(), (
                 "the card snapshotted the machine into the calculation")
@@ -276,14 +278,16 @@ class TestPickingThisMachineIsAnAnswer:
             self, client, bundle, machine_with_named_records):
         """What the `None` is FOR, and the reason this is not fixed by
         mapping the label to `LOCAL_TARGET`: the bundle here carries a
-        record with a100.40gb, and that is the machine the grid is measured
-        against even though a named record and a local one both exist."""
+        record whose queues are `short` and `public`, and those are the
+        queues the grid is measured against even though a named record and
+        a local one both exist."""
         d = _post(client, bundle,
                   {"mpi_np": [4], "omp_threads": [1], "use_gpu": [True],
                    "gpu_count": [1]},
                   target="(this machine)")
         assert d["ok"] is True, d
-        assert d["cells"][0]["gpu_type"] == "a100.40gb", d["cells"][0]
+        assert set(d["cells"][0]["fits"]) == {"short", "public"}, (
+            d["cells"][0])
 
 
 # --------------------------------------------------------------------- #
@@ -583,7 +587,7 @@ def test_a_cell_this_box_cannot_hold_says_why_on_a_machine_with_no_queues():
     """
     from molbuilder.jobset.prep_inputs import _local_refusals
 
-    why = _local_refusals((0, 8, 2), fam=False, gtype=None,
+    why = _local_refusals((0, 8, 2), fam=False,
                           cores_total=4, gpus_per_node=0)
     assert why, "8 ranks x 2 cores does not fit 4 cores; that is a refusal"
     r = why[0]

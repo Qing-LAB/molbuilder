@@ -312,24 +312,23 @@ def test_provenance_shows_which_record_supplied_the_domains(tmp_path):
     assert str(machine) in format_provenance(prov)
 
 
-# ---- gpu.default_type: probed is the default, configured is the override #
+# ---- no card in the person's config (`scheduler.md` R2a) ----------------- #
 
-def test_gpu_default_type_falls_back_to_the_probed_card(tmp_path):
-    """M-1's payoff.  Two files each held a probed GPU type — the record's
-    ``topology.gpu_type`` and ``scheduler.gpu.default_type`` — and only the
-    first reached the code that sizes a run."""
+def test_no_card_is_configured_or_filled_in(tmp_path):
+    """A GPU ask names no card (`scheduler.md` R2a; user, 2026-10-01), so
+    none is filled in from the probed node -- and a config still naming one
+    is refused, by name, saying to delete it.
+
+    PREVENTS: `scheduler.gpu.default_type` filled in from the probed node's
+    card, so every GPU ask carried it, and read as an override of it."""
     _write_config(tmp_path, dict(_SCHED, gpu={"partition": "public"}))
     _write_record(tmp_path, gpu_type="a100")
-    assert get_scheduler(project_dir=tmp_path)["gpu"]["default_type"] == "a100"
-
-
-def test_a_configured_gpu_type_still_wins(tmp_path):
-    """Which card you WANT stays a choice: a site that wants the a30 says so."""
-    _write_config(tmp_path, dict(_SCHED,
-                                 gpu={"partition": "public",
-                                      "default_type": "a30"}))
-    _write_record(tmp_path, gpu_type="a100")
-    assert get_scheduler(project_dir=tmp_path)["gpu"]["default_type"] == "a30"
+    assert "default_type" not in get_scheduler(project_dir=tmp_path)["gpu"]
+    _write_config(tmp_path, dict(_SCHED, gpu={"partition": "public",
+                                              "default_type": "a30"}))
+    with pytest.raises(RuntimeConfigError,
+                       match="default_type' is no longer configured"):
+        get_scheduler(project_dir=tmp_path)
 
 
 # ---- the gpu column: two spellings, ONE reading ------------------------- #

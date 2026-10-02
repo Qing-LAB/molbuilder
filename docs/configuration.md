@@ -886,6 +886,9 @@ registry answer two questions.)*
 `environment.json` recorded `topology.gpu_type`, probed from `scontrol`.
 `molbuilder.json`'s `scheduler.gpu.default_type` recorded the same physical
 fact, probed from `sinfo`. Only the first reached the code that builds the ask.
+*(`default_type` is gone since 2026-10-01: a card is a machine's fact, and no
+GPU ask names one — `execution/scheduler.md` R2a. A `molbuilder.json` still
+carrying it is refused by name.)*
 
 The disagreement went deeper than a duplicated value. `scheduler/record.py`'s
 `detect_site` leaves `qos` and `account` unset and says why: *"they are site

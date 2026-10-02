@@ -5087,12 +5087,13 @@ def _render_sbatch_for(script_path: Path, *,
     # path lives in its one env.
     gpu = bool((env is None or not is_siesta)
                and _wants_gpu(script_path, resources))
-    gpu_type: Optional[str] = None
     gpu_count: Optional[int] = None
     if gres is not None:
-        from .scheduler.quantities import parse_gres_flag
+        # A COUNT, never a card (`scheduler.md` R2a): `Resources` stores the
+        # ask as `gpu:N`, and an older stored `gpu:<card>:N` reads as its N.
+        from .scheduler.quantities import canonical_gres, parse_gres_flag
         try:
-            gpu_type, gpu_count = parse_gres_flag(gres)
+            gpu_count = parse_gres_flag(canonical_gres(gres))
         except ValueError as e:
             raise WrapperError(f"invalid --gres: {e}") from None
         gpu = True  # an explicit --gres forces a GPU header
@@ -5151,7 +5152,6 @@ def _render_sbatch_for(script_path: Path, *,
         time=time,
         gpu=gpu,
         gpu_count=gpu_count,
-        gpu_type=gpu_type,
         mem=mem,
         exclusive=exclusive,
     )
@@ -5162,9 +5162,8 @@ def _render_sbatch_for(script_path: Path, *,
 # --------------------------------------------------------------------- #
 
 
-# The typed GPU ask is read by `scheduler.quantities.parse_gres_flag`, the
-# one reader of the human dialect -- `_parse_gres_flag` stood here until
-# 2026-10-01 while the record kept the ask as typed (W52).
+# The GPU ask is read by `scheduler.quantities.parse_gres_flag` -- a count,
+# never a card (`scheduler.md` R2a).
 
 
 # `_mem_to_mb` and its `_MEM_RE` were DELETED 2026-08-24: defined once,
@@ -5183,7 +5182,6 @@ def render_sbatch(script_path: Path,
                   time: Optional[str] = None,
                   gpu: bool = False,
                   gpu_count: Optional[int] = None,
-                  gpu_type: Optional[str] = None,
                   mem: Optional[str] = None,
                   exclusive: Optional[bool] = None) -> str:
     """Render the ``<basename>.sbatch`` submission script.
@@ -5197,7 +5195,7 @@ def render_sbatch(script_path: Path,
 
     Value sourcing (§ 6): stable site directives come from ``scheduler``;
     per-job values (``ntasks``/``cpus_per_task``/``time``/``mem``/GPU
-    type+count/``exclusive``) arrive already resolved from the JOB'S OWN
+    count/``exclusive``) arrive already resolved from the JOB'S OWN
     RESOURCES -- floor 3 resolved them per element, ``prep`` passes them
     through ``render_wrappers`` -> ``_render_sbatch_for``.  *(This
     said "CLI flag -> .fdf -> config default" until the follow-up sweep,
@@ -5251,13 +5249,10 @@ def render_sbatch(script_path: Path,
         # GPU jobs route to gpu.partition when set; else the same
         # partition, from the scheduler config (running-a-job.md § 5.3).
         partition = gpu_cfg.get("partition") or partition
-        gpu_type  = gpu_type or gpu_cfg.get("default_type")
-        if not gpu_type:
-            raise WrapperError(
-                "render_sbatch: GPU job but no gpu type resolved; set "
-                "scheduler.gpu.default_type or pass --gres <type>:<n> "
-                "(running-a-job.md § 3.1)."
-            )
+        # NO CARD: the ask is a count, and which card a node carries is the
+        # machine's business (`scheduler.md` R2a).  This filled in
+        # `scheduler.gpu.default_type` and refused without one until
+        # 2026-10-01.
         if gpu_count is None:
             # ONE DEFAULT FOR AN ABSENT ASK: 1 device (`execution/gpu.md` G5).
             #
@@ -5334,7 +5329,7 @@ def render_sbatch(script_path: Path,
     from .scheduler.emit import Directives
     _d = Directives(partition=partition, qos=qos, walltime=walltime,
                     ntasks=ntasks, cpus_per_task=cpus,
-                    gres=(f"gpu:{gpu_type}:{gpu_count}" if gpu else None),
+                    gres=(f"gpu:{gpu_count}" if gpu else None),
                     mem=(memory or None), exclusive=bool(exclusive))
     if exclusive:
         # The ignored value, said out loud so it is never a silent surprise

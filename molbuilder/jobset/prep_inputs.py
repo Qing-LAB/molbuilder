@@ -135,112 +135,28 @@ _MEASUREMENT_PINS = {"max_scf_iter": 3, "relax_steps": 0, "restart": "clean",
                      "continue_retries": 0, "scf_must_converge": False}
 
 
-def _gpu_inventory(base, routing=None, *, card=None):
-    """The cluster's GPU ``(per-node count, type)`` from THE gpu domain
-    row (`scheduler.place.candidates` -- one walk, shared with the cap and
-    the routing, so the grid's device count, the cap and the submission
-    can never read three different rows) -- § 4.3a's fallback when THIS
-    node's probe has none (a login node).  ``routing`` is the target's own
-    menu when the caller holds its record (a run prepped with ``--target``,
-    before the folder has snapshotted it); else the folder's.
+def _gpus_per_node(base, routing=None) -> "int | None":
+    """The most GPUs one node of the target's GPU queues holds, or ``None``
+    when no queue lists any -- § 4.3a's fallback when the probed node itself
+    has none (a login node).  ``routing`` is the target's own menu when the
+    caller holds its record; else the folder's.
 
-    ``(None, None)`` when that row records no inventory.  Refuses when it
-    records SEVERAL types: choosing one would be a ranking, and the probe
-    buried ``best_gpu_type`` for exactly that (scheduler/probe.py, N3) --
-    the remedy is curating the row down to the type this bench measures.
-    A ``card`` already chosen -- stated, or the target's probed one
-    (:func:`_gpu_type_for_bench`) -- is no ranking: the first GPU queue that
-    holds it answers its count, as `launch` would place the run's
-    ``gpu:<card>:N``, and only none holding it refuses (W52: the row's card
-    replaced a stated one, so the bench measured a card the run does not
-    ask for).
+    A COUNT, and no card: which card a node carries is the machine's
+    business (`scheduler.md` R2a; user, 2026-10-01).  This returned a card
+    beside the count until then, refused a queue listing several, and took
+    a card stated in `molbuilder.json` over the queue's own.
     """
     from ..runtime_config import get_routing
     from ..scheduler.place import candidates
-    # CAPABILITY, not duration: `prep` asks which nodes have devices, not how
-    # long a job may run, so it passes no wall and the answer is the menu's
-    # own recommendation -- the first gpu-capable row (R7).
     rows = candidates(routing if routing is not None
                       else get_routing(project_dir=Path(base)),
                       prefer_gpu=True)
-    row = rows[0] if rows else None
-    # `Domain.devices`, never `row.gpu`: the column has two spellings and this
-    # read the map one only, so the documented hand-declared row
-    # (`{type, per_node, mem_gb}`) refused below naming its own KEYS as GPU
-    # types.  One reader, in the record (`scheduler/record._read_devices`).
-    inv = row.devices if row is not None else ()
-    if not inv:
-        return None, None
-    if card:
-        for r in rows:
-            held = [d for d in r.devices if d.type == card]
-            if held:
-                return (held[0].per_node or None), card
-        recorded = sorted({d.type for r in rows for d in r.devices})
-        raise PrepError(
-            f"the machine's queues record GPU types {', '.join(recorded)}, "
-            f"and not the card this calculation measures ({card}: "
-            f"scheduler.gpu.default_type, else the machine's probe).")
-    if len(inv) > 1:
-        raise PrepError(
-            f"domain {row.name!r} records several GPU types "
-            f"({', '.join(sorted(d.type for d in inv))}), and choosing one "
-            f"is not the machine's call.  Edit that row in environment.json "
-            f"to keep the one type this calculation's GPU work uses.")
-    dev = inv[0]
-    return (dev.per_node or None), dev.type
+    counts = [d.per_node for r in rows for d in r.devices
+              if d.per_node is not None]
+    return max(counts) if counts else None
 
 
-def _gpu_type_for_bench(base, topo):
-    """WHICH card this sweep measures: the person's stated choice, else the
-    target's probed one.
-
-    M-1's fact/preference split, applied to the bench (2026-08-30).  *Which
-    card exists here* is a measurement (`topology.gpu_type`); *which card
-    you want to measure* is a choice, and `scheduler.gpu.default_type` is
-    where it is stated -- the override `runtime_config` has honoured since
-    N4 (2026-08-17) and `runwrap` reads at run time.  The bench read the
-    measurement directly, so the run path and the prep path answered one
-    question two ways, and there was no way at all to say *benchmark the
-    a100, not the a100.40gb*.
-
-    That mattered on Sol, where the probe lands on a 64-core node carrying
-    `a100.40gb` -- four such nodes cluster-wide -- while `a100` sits on 52
-    nodes of `public` alone.  The measurement picked the rarer card, and
-    nothing the person could write would change it.
-
-    The stated value is recognised by DIFFERING from this machine's probed
-    one: `get_scheduler` back-fills the probed answer when nothing is
-    stated, so an equal value is either "stated the same" or "not stated"
-    -- and both mean the same string.  A different value was written by
-    hand, and it wins.  Where nothing is stated, the TARGET's topology
-    answers, which is what keeps a `--target` prep measuring the target.
-    """
-    probed_here = None
-    stated = None
-    try:
-        from ..runtime_config import get_scheduler
-        stated = ((get_scheduler(project_dir=Path(base)) or {})
-                  .get("gpu") or {}).get("default_type")
-    except Exception:                                       # noqa: BLE001
-        stated = None
-    try:
-        # SEPARATELY, because this one raises on its own account: on a
-        # workstation carrying named targets `machine_for` asks "which
-        # machine did you mean" (`submit._reject_if_this_machine_says_no`
-        # records the same trap).  Losing the answer to *which card* over
-        # that would discard a preference the person did state.
-        from ..scheduler import machine_for
-        probed_here = getattr(getattr(machine_for(Path(base)), "topology",
-                                      None), "gpu_type", None)
-    except Exception:                                       # noqa: BLE001
-        probed_here = None
-    if stated and stated != probed_here:
-        return stated
-    return getattr(topo, "gpu_type", None)
-
-
-def _cells_this_machine_holds(base, plan, gtype, *,
+def _cells_this_machine_holds(base, plan, *,
                               local_cores=None, local_gpus=None,
                               routing=None):
     """Every enumerated bench cell, checked one by one against THIS
@@ -290,7 +206,7 @@ def _cells_this_machine_holds(base, plan, gtype, *,
             routing = []
 
     if not routing:
-        return [(fam, cell, (), _local_refusals(cell, fam, gtype,
+        return [(fam, cell, (), _local_refusals(cell, fam,
                                                 local_cores, local_gpus))
                 for fam, cell in plan]
 
@@ -298,8 +214,7 @@ def _cells_this_machine_holds(base, plan, gtype, *,
     for fam, (g, k, c) in plan:
         want_gpu = bool(fam and g)
         req = Request(ranks=_cell_ranks(want_gpu, g, k), cpus_per_task=c,
-                      gpus=g if want_gpu else None,
-                      gpu_type=gtype if want_gpu else None)
+                      gpus=g if want_gpu else None)
         # THE POOL IS THE FIT QUESTION'S, NOT THE PREFERENCE'S.  For a
         # device cell it is `candidates` -- gpu-capability is a filter,
         # since a cpu-only row states no inventory and R3 would read that
@@ -335,28 +250,21 @@ def _cells_this_machine_holds(base, plan, gtype, *,
 def _rank_reasons(reasons):
     """The refusals worth showing, most actionable first.
 
-    A cell no queue takes collects one reason per queue, and they are not
-    equally useful: *"needs a100.40gb but gaudi offers hl225"* says only
-    that the wrong queue was asked, while *"largest machine with
-    a100.40gb has 64"* names the number to change.  So the
-    wrong-card reasons sort last, and duplicates -- Sol repeats the same
-    node groups across debug/htc/general -- collapse.
+    A cell no queue takes collects one reason per queue; duplicates -- Sol
+    repeats the same node groups across debug/htc/general -- collapse, and
+    the shortest come first.
     """
-    # Findings since 2026-09-09, so "which refusal is this" is a FIELD.
-    # The demotion rule used to read `" offers " in r and " at most " not in r`
-    # -- a substring standing in for `where == "admit.gpu_type"`, which the
-    # comparison knew by name and threw into prose.
     seen, ranked = set(), []
     for r in reasons:
         key = (r.limit, r.message)
         if key not in seen:
             seen.add(key)
             ranked.append(r)
-    ranked.sort(key=lambda r: (r.limit == "gpu_type", len(r.message)))
+    ranked.sort(key=lambda r: len(r.message))
     return tuple(ranked)
 
 
-def _local_refusals(cell, fam, gtype, cores_total, gpus_per_node):
+def _local_refusals(cell, fam, cores_total, gpus_per_node):
     """Why THIS BOX cannot hold a cell -- the no-scheduler answer.
 
     Empty means it fits, or that the probe measured nothing to compare
@@ -365,9 +273,9 @@ def _local_refusals(cell, fam, gtype, cores_total, gpus_per_node):
     """
     # FINDINGS, NOT SENTENCES -- the same conversion `admits` had on
     # 2026-09-09 and this function did not get.  Everything downstream reads
-    # the FIELDS: `_rank_reasons` dedups on `(limit, message)` and demotes
-    # `limit == "gpu_type"`, and the task-setup card renders `.message` per
-    # cell.  Handed strings, all three raise -- and the browser showed the
+    # the FIELDS: `_rank_reasons` dedups on `(limit, message)`, and the
+    # task-setup card renders `.message` per cell.  Handed strings, both
+    # raise -- and the browser showed the
     # raise: `'str' object has no attribute 'message'` in the machine-fit
     # panel, on the ONE path that reaches here, a box with no scheduler
     # (found 2026-09-11 by walking the UI).  The numbers stay numbers; the
@@ -382,8 +290,7 @@ def _local_refusals(cell, fam, gtype, cores_total, gpus_per_node):
                            unit="cores"))
     if fam and g and gpus_per_node and g > gpus_per_node:
         why.append(Refusal("gpus", "this machine",
-                           asked=g, allowed=gpus_per_node,
-                           unit=(gtype or "gpu")))
+                           asked=g, allowed=gpus_per_node, unit="GPUs"))
     return tuple(why)
 
 
@@ -407,10 +314,10 @@ def _cell_label(g, k, c, *, machine_axes) -> str:
     return (f"G{g}K{k}C{c}" if "G" in machine_axes else f"K{k}C{c}")
 
 
-def _cell_shape(g, k, c, gtype) -> str:
-    """What a cell ASKS FOR, in words -- ranks, cores each, and the card."""
+def _cell_shape(g, k, c) -> str:
+    """What a cell ASKS FOR, in words -- ranks, cores each, and GPUs."""
     bit = f"{_cell_ranks(bool(g), g, k)} rank(s) x {c} core(s)"
-    return bit + (f" + {g} x {gtype or 'gpu'}" if g else "")
+    return bit + (f" + {g} GPU(s)" if g else "")
 
 
 #: The catalogue's words for a launch field, and `Resources`' own.  Most
@@ -485,16 +392,14 @@ def declared_run_shape(base, target, task, stage=None):
     > know. Reusing a wheel is right; reusing the wrong wheel invents the
     > problem it then solves.
 
-    The device ask is the one field needing a fact this block may not hold:
-    WHICH card. That comes from the target's own record through
-    `_gpu_type_for_bench`, the same producer the sweep uses — a description
-    may not name a machine (`template.md` § 7).  And it is decided HERE for
-    every run that uses a device, stated count or not (`execution/gpu.md`
-    G5: an absent ``gpu_count`` is one device, in one place): until
-    2026-09-30 a run whose card said ``use_gpu`` without a count reached the
-    header with no ask, which then looked for the type in a config key alone
-    and refused a target whose own record names its card -- and a PySCF run,
-    which carries no ``gpu_count`` at all, could take no other road.
+    The device ask is a COUNT -- ``gpu:N`` -- and names no card: which card
+    a node carries is the machine's business (`scheduler.md` R2a; a card was
+    looked up here, 2026-09-30 to 2026-10-01).  It is decided HERE for every
+    run that uses a device, stated count or not (`execution/gpu.md` G5: an
+    absent ``gpu_count`` is one device, in one place): until 2026-09-30 a
+    run whose card said ``use_gpu`` without a count reached the header with
+    no ask, and a PySCF run, which carries no ``gpu_count`` at all, could
+    take no other road.
     """
     cond = task.run_condition(stage)
     from ..template import catalogue, select
@@ -521,31 +426,20 @@ def declared_run_shape(base, target, task, stage=None):
             continue                    # a parameter -- pins, never the launch
         field = _AS_RESOURCE.get(name, name)
         if field == "gres":
-            out["gres"] = int(val)      # resolved below, once the type is known
+            out["gres"] = int(val)      # spelled below, as the count it is
         elif field in known:
             out[field] = val
     # WHETHER there is a device is the run's answer (the card's `use_gpu`
     # over the template's); HOW MANY is this block's `gpu_count`, else one
-    # (G5); WHICH KIND is the machine's.  A count without a device run is not
-    # an ask: it is dropped here, and `prep_run_inputs` says so.
+    # (G5); which card is the machine's business, never asked (R2a).  A
+    # count without a device run is not an ask: it is dropped here, and
+    # `prep_run_inputs` says so.
     if want_devices is None:
         want_devices = run_uses_device(base, task, stage)
     if not want_devices:
         out.pop("gres", None)
         return out
-    from ..runtime_config import routing_of
-    from ..scheduler import machine_for
-    rec = machine_for(Path(base), target=target)
-    topo = getattr(rec, "topology", None)
-    # WHICH CARD, by the bench's own two producers in its order: the stated
-    # choice or the target's probe, else the queue menu's GPU inventory --
-    # a login node's probe sees no card, and the cluster behind it does.
-    # The TARGET's menu, from the record in hand: the folder's would be this
-    # machine's on a fresh `prep --target` (the K5 review's B2).
-    gtype = (_gpu_type_for_bench(base, topo)
-             or _gpu_inventory(base, routing_of(rec, Path(base)))[1])
-    n = out.get("gres", 1)
-    out["gres"] = f"gpu:{gtype}:{n}" if gtype else f"gpu:{n}"
+    out["gres"] = f"gpu:{out.get('gres', 1)}"
     return out
 
 
@@ -867,7 +761,6 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     topo = getattr(environment, "topology", None)
     gpn = getattr(topo, "gpus_per_node", None) or 0
     cps = getattr(topo, "cores_per_socket", None)
-    gtype = _gpu_type_for_bench(base, topo)
 
     tmpl = read_template(
         template_path(Path(base), task.label).read_text(encoding="utf-8"))
@@ -935,21 +828,13 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
             f"would render identical decks under different labels.  Drop "
             f"the entry.")
 
-    # THE NODE'S OWN COUNT ONLY FOR THE NODE'S OWN CARD.  A login node
-    # probes none, and a node carrying another card than the one measured
-    # counts the wrong device -- either way the queue that holds the card
-    # answers (§ 4.3a: the probe records each partition's gres inventory on
-    # its domain row).  The run's order, from the TARGET's menu in hand: the
-    # card stated, else probed, else the row's; the count the card's queue's
-    # (W52: the row's card replaced a stated one, and a node's own count
-    # stood in for a stated card it does not carry).
-    _own = bool(gpn) and gtype is not None and \
-        gtype == getattr(topo, "gpu_type", None)
-    if any(families) and not _own:
-        _gpn, _gtype = _gpu_inventory(base, menu, card=gtype)
-        if _gpn:
-            gpn, gtype = _gpn, gtype or _gtype
-        else:
+    # GPUs PER NODE, a count: the probed node's own, else the most a node of
+    # the target's GPU queues holds -- a login node probes none, and the
+    # cluster behind it has them (§ 4.3a: the probe records each partition's
+    # gres on its domain row).  No card (`scheduler.md` R2a).
+    if any(families) and not gpn:
+        gpn = _gpus_per_node(base, menu) or 0
+        if not gpn:
             # TWO STEPS, both said (W52: "delete environment.json to
             # re-probe" -- prep never probes, and deleting re-reads the same
             # record): re-probe the record, then let the calculation follow.
@@ -978,8 +863,8 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
                 f"{'a cpu-vs-gpu axis' if mixed else 'true'}), so the "
                 f"benchmark enumerates a GPU grid (G × ranks-per-GPU × "
                 f"cores) -- and the record it reads ({_which}) states no "
-                f"GPU (gpus_per_node={gpn!r}, gpu_type={gtype!r}) and no "
-                f"queue with a recorded GPU inventory.  If that machine has "
+                f"GPU on the node (gpus_per_node={gpn!r}) and no queue with "
+                f"recorded GPUs.  If that machine has "
                 f"one, its record is out of date: {_redo}.  Or prep for the "
                 f"machine that has the GPU (`--target`): the comparison is "
                 f"by node type (asu-sol.md § 5.2).")
@@ -1106,7 +991,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # all -- the old cap applied to GPU cells only -- so a rank count no
     # queue here can hold was carried all the way to `launch`.
     plan = [(fam, cell) for fam in families for cell in _family_cells(fam)]
-    checked = _cells_this_machine_holds(base, plan, gtype,
+    checked = _cells_this_machine_holds(base, plan,
                                         local_cores=cores_total,
                                         local_gpus=gpn, routing=menu)
     _axes = ("G", "K", "C") if (mixed or on_gpu) else ("K", "C")
@@ -1122,10 +1007,10 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     if report is not None:
         report.extend(
             {"label": _cell_label(g, k, c, machine_axes=_axes),
-             "shape": _cell_shape(g, k, c, gtype),
+             "shape": _cell_shape(g, k, c),
              "family": "gpu" if fam else "cpu",
              "ranks": _cell_ranks(fam, g, k), "cores_each": c,
-             "gpus": (g if (fam and g) else 0), "gpu_type": gtype if g else None,
+             "gpus": (g if (fam and g) else 0),
              # The wire carries the SENTENCES; the finding's `where` is for
              # callers inside the process (`_rank_reasons` ranks on it).  The
              # browser renders prose, so it gets prose.
@@ -1146,7 +1031,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
         # see whether a cell has real room or is riding one queue.
         where = ", ".join(doms[:4]) + (" ..." if len(doms) > 4 else "")
         note(f"    {_cell_label(g, k, c, machine_axes=_axes):<11} "
-             f"{_cell_shape(g, k, c, gtype):<37}"
+             f"{_cell_shape(g, k, c):<37}"
              + (f"  fits: {where}" if where else ""))
     if crossed:
         note(f"  crossed out ({len(crossed)}) -- no queue takes "
@@ -1161,7 +1046,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
             # The numbers are fields so callers can read them; the SENTENCE is
             # what a person is shown.
             note(f"    {_cell_label(g, k, c, machine_axes=_axes):<11} "
-                 f"{_cell_shape(g, k, c, gtype):<37}  "
+                 f"{_cell_shape(g, k, c):<37}  "
                  f"{why[0].message if hasattr(why[0], 'message') else why[0]}")
 
     cells = []
@@ -1236,14 +1121,14 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
             axes=("G", "K", "C"),
             to_resources=lambda p, _env: (
                 {"mpi_np": p["G"] * p["K"], "cpus_per_task": p["C"],
-                 "gres": f"gpu:{gtype}:{p['G']}"} if p["G"] else
+                 "gres": f"gpu:{p['G']}"} if p["G"] else
                 {"mpi_np": p["K"], "cpus_per_task": p["C"]}))
     elif on_gpu:
         translation = MachineTranslation(
             axes=("G", "K", "C"),
             to_resources=lambda p, _env: {
                 "mpi_np": p["G"] * p["K"], "cpus_per_task": p["C"],
-                "gres": f"gpu:{gtype}:{p['G']}"})
+                "gres": f"gpu:{p['G']}"})
     else:
         translation = MachineTranslation(
             axes=("K", "C"),

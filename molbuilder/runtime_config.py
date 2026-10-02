@@ -87,6 +87,18 @@ _ROUTING_MOVED = (
     "'scheduler.directives.partition' and '.qos'.")
 
 
+#: Same shape as `_ROUTING_MOVED`: a retired key gets its own sentence.  A
+#: GPU ask names no card -- `--gres=gpu:N` -- and which card a node carries
+#: is that machine's business (`execution/scheduler.md` R2a, user
+#: 2026-10-01: "we never claimed any card type").  This key put a card into
+#: every GPU ask, from a person's config, against M-1.
+_GPU_CARD_RETIRED = (
+    "{path}: 'scheduler.gpu.default_type' is no longer configured.  A GPU "
+    "job asks for a NUMBER of GPUs -- `--gres=gpu:N` -- and which card a "
+    "node carries is that machine's business (docs/execution/scheduler.md "
+    "R2a).  Delete the line.")
+
+
 #: Same shape as `_ROUTING_MOVED`: a retired key gets its own sentence, not
 #: the generic "unknown top-level key".
 _SECRET_KEY_MOVED = (
@@ -1802,8 +1814,11 @@ def _validate_scheduler(raw: Mapping[str, Any]) -> Dict[str, Any]:
                 f"string; got {type(directives[k]).__name__}."
             )
 
-    # gpu block: partition/default_type strings, exclusive bool.
-    for k in ("partition", "default_type"):
+    # gpu block: partition string, exclusive bool -- and no card.
+    if "default_type" in gpu:
+        raise RuntimeConfigError(_GPU_CARD_RETIRED.format(
+            path=CONFIG_FILENAME))
+    for k in ("partition",):
         if k in gpu and gpu[k] is not None and not isinstance(gpu[k], str):
             raise RuntimeConfigError(
                 f"{CONFIG_FILENAME}: 'scheduler.gpu.{k}' must be a string; "
@@ -1946,7 +1961,7 @@ def get_scheduler(
         {
             "kind":       "slurm",
             "directives": {partition, qos, mail_type, mail_user, export, ...},
-            "gpu":        {partition, default_type, exclusive, ...},
+            "gpu":        {partition, exclusive, mem},
             "defaults":   {time, cpus_per_task, mem},
         }
         or None.
@@ -2010,19 +2025,9 @@ def get_scheduler(
             raise RuntimeConfigError(f"{where}: {msg}") from None
         raise
 
-    # gpu.default_type: the PROBED answer is the default, the configured one is
-    # an override (N4, 2026-08-17).  Which card exists here is a measurement
-    # (`topology.gpu_type`); which card you want is a choice, and a site that
-    # wants the a30 rather than the a100 still says so in this file.  Before
-    # this, two files each held a probed GPU type -- `topology.gpu_type` and
-    # `scheduler.gpu.default_type` -- and only the first reached the code that
-    # sizes a run (`configuration.md` § 5, M-1).
-    if not (out.get("gpu") or {}).get("default_type"):
-        from .scheduler import machine_for
-        env = machine_for(project_dir)
-        probed = getattr(getattr(env, "topology", None), "gpu_type", None)
-        if probed:
-            out.setdefault("gpu", {})["default_type"] = probed
+    # NO CARD IS FILLED IN.  This copied the probed node's card into
+    # `gpu.default_type` until 2026-10-01, so every GPU ask carried a card
+    # nobody asked for (`execution/scheduler.md` R2a).
     return out
 
 

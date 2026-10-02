@@ -72,8 +72,8 @@ class Resources:
     ``exclusive`` (NOT ``omp`` / ``walltime``).  ``domain`` is a
     probed domain name (`configuration.md` § 5 -- it was
     ``scheduler.routing`` until 2026-08-17) the submit engine
-    resolves to ``-p``/``-q``; ``gres`` is a raw SLURM gres string (e.g.
-    ``"gpu:a100:1"``) or None.
+    resolves to ``-p``/``-q``; ``gres`` is SLURM's GPU ask, a count
+    (``"gpu:1"``; no card -- `scheduler.md` R2a) or None.
 
     **One field here becomes no scheduler flag at all, and that is not an
     oversight.**  ``continue_retries`` is the warm-retry budget baked into
@@ -91,7 +91,7 @@ class Resources:
     time:          Optional[str]   = None    # SLURM -t (D-HH:MM:SS); == scheduler defaults.time
     exclusive:     Optional[bool]  = None
     mem:           Optional[str]   = None    # SLURM --mem (e.g. "120G", "0")
-    gres:          Optional[str]   = None    # SLURM --gres (e.g. "gpu:a100:1")
+    gres:          Optional[str]   = None    # SLURM --gres, a count: "gpu:1"
     #: Whether this run uses a GPU -- the ANSWER, carried rather than
     #: re-derived.  `read_by = ["wrapper"]` on the catalogue item says the
     #: wrapper depends on it (`engines/template.md` § 6.1), and until
@@ -176,8 +176,9 @@ class Resources:
             self.time = canonical_time(self.time)
         if self.mem:
             self.mem = canonical_mem(self.mem)
-        # AND A GPU ASK, which reaches `sbatch --gres` as it stands here:
-        # `--gpus a100:1` went out as `--gres=a100:1` (W52).
+        # AND A GPU ASK, which reaches `sbatch --gres` as it stands here: a
+        # count, `gpu:N` -- an older stored `gpu:<card>:N` reads as its N
+        # (`scheduler.md` R2a).
         if self.gres:
             self.gres = canonical_gres(self.gres)
         # A TUPLE OUT, A TUPLE BACK.  `to_dict` is `asdict`, so a job-set

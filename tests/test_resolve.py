@@ -276,20 +276,20 @@ def test_the_translation_reaches_the_elements_resources(template):
 
 def test_the_environment_reaches_the_translation(template):
     """`generator.md` § 6.1: the Environment is one of floor 3's inputs, and
-    the translation is where it is consumed — a machine fact like the GPU
-    type is read there, not re-detected downstream."""
+    the translation is where it is consumed — a machine fact is read there,
+    not re-detected downstream."""
     seen = {}
 
-    def _with_gpu_type(p, env):
+    def _reads_the_machine(p, env):
         seen["env"] = env
-        return {"gres": f"gpu:{env['gpu_type']}:{p['G']}"}
+        return {"gres": f"gpu:{min(p['G'], env['gpus_per_node'])}"}
 
-    tr = MachineTranslation(axes=("G",), to_resources=_with_gpu_type)
+    tr = MachineTranslation(axes=("G",), to_resources=_reads_the_machine)
     ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
                  sweep=[{"G": 2}], translation=tr,
-                 environment={"gpu_type": "a100"}, stage=STAGE)
-    assert seen["env"] == {"gpu_type": "a100"}
-    assert ps[0].resources.gres == "gpu:a100:2"
+                 environment={"gpus_per_node": 4}, stage=STAGE)
+    assert seen["env"] == {"gpus_per_node": 4}
+    assert ps[0].resources.gres == "gpu:2"
 
 
 def test_a_translated_ask_is_bounded_by_the_allocation_too(template):

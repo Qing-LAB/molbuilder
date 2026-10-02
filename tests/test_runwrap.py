@@ -1577,8 +1577,8 @@ class TestOneDefaultForAnAbsentGpuCount:
     """
 
     def _machine(self, tmp_path, monkeypatch):
-        """An ordinary configured cluster: preferences name the queue and the
-        device type, so the header path has everything but the COUNT."""
+        """An ordinary configured cluster: preferences name the queue, so the
+        header path has everything but the COUNT."""
         import json
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
@@ -1588,8 +1588,7 @@ class TestOneDefaultForAnAbsentGpuCount:
             "script_generation": {"preamble": "module load mamba",
                                   "activation": "source activate"},
             "scheduler": {"kind": "slurm",
-                          "directives": {"partition": "htc", "qos": "public"},
-                          "gpu": {"default_type": "a100"}},
+                          "directives": {"partition": "htc", "qos": "public"}},
         }))
         deck = tmp_path / "j.fdf"
         deck.write_text("SystemLabel j\nDiag.ELPA.GPU .true.\n")
@@ -1612,8 +1611,7 @@ class TestOneDefaultForAnAbsentGpuCount:
             "a GPU deck produced no gres line; the premise changed")
         inner = render_sbatch(
             deck, {"kind": "slurm",
-                   "directives": {"partition": "htc", "qos": "public"},
-                   "gpu": {"default_type": "a100"}},
+                   "directives": {"partition": "htc", "qos": "public"}},
             ntasks=3, gpu=True)
 
         assert self._gres_count(outer) == self._gres_count(inner) == "1", (

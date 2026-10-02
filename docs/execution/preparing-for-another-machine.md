@@ -73,7 +73,7 @@ measured instead of guessing later:
 
 ```
 molbuilder jobset probe --write --name sol \
-    --scheduler slurm --set gpus_per_node=4 --set gpu_type=a100
+    --scheduler slurm --set gpus_per_node=4
 ```
 
 A declared fact wins over detection and the record says `source: flag`, so a

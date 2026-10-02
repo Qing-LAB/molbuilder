@@ -70,8 +70,7 @@ _A_SLURM_CONFIG = {
             "partition": "public", "qos": "public",
             "mail_type": "ALL", "mail_user": "%u@asu.edu", "export": "NONE",
         },
-        "gpu": {"partition": "public", "default_type": "a100",
-                "exclusive": True},
+        "gpu": {"partition": "public", "exclusive": True},
         "defaults": {"time": "0-04:00:00", "cpus_per_task": 12, "mem": None},
     }
 }
@@ -99,7 +98,7 @@ def test_a_full_slurm_block_resolves(sandbox):
     assert sched["directives"]["partition"] == "public"
     assert sched["directives"]["qos"] == "public"
     assert sched["directives"]["export"] == "NONE"
-    assert sched["gpu"]["default_type"] == "a100"
+    assert sched["gpu"]["partition"] == "public"
     assert sched["gpu"]["exclusive"] is True
     assert sched["defaults"]["cpus_per_task"] == 12
     assert sched["defaults"]["mem"] is None
@@ -128,7 +127,7 @@ def test_project_overrides_server(sandbox):
     assert sched["defaults"]["time"] == "0-00:30:00"
     # ... but server-wide keys survive the deep-merge.
     assert sched["directives"]["qos"] == "public"
-    assert sched["gpu"]["default_type"] == "a100"
+    assert sched["gpu"]["exclusive"] is True
     assert sched["defaults"]["cpus_per_task"] == 12
 
 

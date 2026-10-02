@@ -192,11 +192,11 @@ class MachineTranslation:
     and this is the specialisation's half stated as data: **which axes are
     ours** (``axes``) and **what machine ask each point implies**
     (``to_resources``).  The benchmark's is ``("G", "K", "C")`` with
-    ``mpi_np = G·K, cpus_per_task = C`` and a ``gres`` read off the
-    environment's GPU type — which is why ``to_resources`` receives the
+    ``mpi_np = G·K, cpus_per_task = C`` and ``gres = gpu:G`` -- a count, no
+    card (`scheduler.md` R2a).  ``to_resources`` receives the
     ``Environment`` as well as the point (`generator.md` § 6.1: the
-    environment is one of floor 3's inputs, and the translation is where it
-    is consumed).
+    environment is one of floor 3's inputs); none of the benchmark's
+    translations reads it.
 
     **The axes are declared, not inferred**, so the resolver can refuse an
     axis nobody owns by name: a bare callable cannot be asked what it

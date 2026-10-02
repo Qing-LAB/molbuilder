@@ -32,7 +32,7 @@ from molbuilder.runwrap import write_run_wrapper
 _SCHED = {
     "kind": "slurm",
     "directives": {"partition": "public", "qos": "public"},
-    "gpu": {"partition": "public", "default_type": "a100", "exclusive": True},
+    "gpu": {"partition": "public", "exclusive": True},
     "defaults": {"time": "0-04:00:00", "cpus_per_task": None, "mem": None},
 }
 
@@ -127,9 +127,9 @@ def test_the_pair_agrees_about_the_gpu_when_one_is_asked_for(project):
     """And the other direction, so the test above cannot pass by never
     emitting a GPU header at all."""
     deck = _DECK + "Diag.Algorithm ELPA-1STAGE\nDiag.ELPA.GPU .true.\n"
-    res = Resources(mpi_np=4, cpus_per_task=2, gres="gpu:a100:1")
+    res = Resources(mpi_np=4, cpus_per_task=2, gres="gpu:1")
     run_sh, sbatch = _render(project, res, deck=deck)
-    assert _directive(sbatch, "--gres") == "gpu:a100:1", sbatch
+    assert _directive(sbatch, "--gres") == "gpu:1", sbatch
     assert "molbuilder-siesta-gpu" in run_sh, (
         "the deck asks for the GPU and the launcher activates the CPU env")
 

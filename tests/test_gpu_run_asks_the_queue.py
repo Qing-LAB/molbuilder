@@ -28,7 +28,7 @@ def _prepped(tmp_path, monkeypatch, *, card=None, template_use_gpu=False,
              engine="pyscf", named_target=False):
     """A flat H2 calculation on ``engine``, its rung's card ``card``, prepped for a
     record whose GPU queue is ``public`` with ``gpu_partition = gpu`` and
-    a100 cards: ``(the prep's result, the .sbatch text)``."""
+    four GPUs a node: ``(the prep's result, the .sbatch text)``."""
     from pathlib import Path
 
     from conftest import write_machine_record
@@ -41,8 +41,8 @@ def _prepped(tmp_path, monkeypatch, *, card=None, template_use_gpu=False,
                     gpu={"type": "a100", "per_node": 4})]
     if named_target:
         # THIS machine is a workstation with no queue; the cluster is a
-        # NAMED record whose probe saw no card (a login node) -- its queue
-        # menu is where the card type lives.
+        # NAMED record whose probe saw no GPU (a login node) -- its queue
+        # menu is where its GPUs are recorded.
         write_machine_record()
         named = Path(machine_scope_path()).parent / "environments"
         named.mkdir(parents=True, exist_ok=True)
@@ -101,11 +101,12 @@ def test_a_pyscf_run_whose_card_says_gpu_asks_the_queue_for_one(
 
     CONTRACT (`gpu.md` G1, G5, G7; `stages.md` § 6.8d): the rung's run card
     is the one place its ``use_gpu`` is said, and the run's ``.sbatch`` then
-    asks for ``--gres=gpu:<the record's type>:1`` on the partition the
-    record names for GPU work (`scheduler.md` § 4, ``gpu_partition``).
+    asks for ``--gres=gpu:1`` -- a count, no card (`scheduler.md` R2a) -- on
+    the partition the record names for GPU work (`scheduler.md` § 4,
+    ``gpu_partition``).
     """
     _r, header = _prepped(tmp_path, monkeypatch, card={"use_gpu": True})
-    assert "#SBATCH --gres=gpu:a100:1" in header, header
+    assert "#SBATCH --gres=gpu:1" in header, header
     assert "#SBATCH -p gpu" in header, header
 
 
@@ -119,7 +120,7 @@ def test_a_template_that_says_gpu_asks_with_an_empty_card(tmp_path,
     It returned before the ask until the K5 review (B1, 2026-09-30).
     """
     _r, header = _prepped(tmp_path, monkeypatch, template_use_gpu=True)
-    assert "#SBATCH --gres=gpu:a100:1" in header, header
+    assert "#SBATCH --gres=gpu:1" in header, header
 
 
 def test_a_count_without_the_gpu_asks_nothing_and_says_so(tmp_path,
@@ -141,14 +142,16 @@ def test_a_count_without_the_gpu_asks_nothing_and_says_so(tmp_path,
 
 def test_a_prep_for_another_machine_reads_that_machines_queues(
         tmp_path, monkeypatch):
-    """GOAL: the card type comes from the machine the run is prepped FOR.
+    """GOAL: a run prepped for another machine asks THAT machine's GPU queue.
 
-    CONTRACT (`generator.md` § 4.3a: the type is the target's, read from
-    its own record): prepped here with ``--target sol``, a run whose card
-    says ``use_gpu`` takes its type from Sol's queue menu -- Sol's probe saw
-    no card, as a login node's does.  The menu was read from the folder,
-    which on a fresh prep is this machine's (the K5 review's B2).
+    CONTRACT (`configuration.md` M-3: a prep reads the target's record):
+    prepped here with ``--target sol``, a run whose card says ``use_gpu`` is
+    placed on the partition Sol's record names for GPU work -- this machine
+    is a workstation with no queue at all, and Sol's probe saw no GPU, as a
+    login node's does.  (This pinned the card read from Sol's queue menu
+    until 2026-10-01; no ask names a card now, `scheduler.md` R2a.)
     """
     _r, header = _prepped(tmp_path, monkeypatch, card={"use_gpu": True},
                           named_target=True)
-    assert "#SBATCH --gres=gpu:a100:1" in header, header
+    assert "#SBATCH --gres=gpu:1" in header, header
+    assert "#SBATCH -p gpu" in header, header
