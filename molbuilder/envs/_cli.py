@@ -2252,13 +2252,11 @@ def _seed_config(activation: "Optional[str]", auto_yes: bool,
                  projects: "Optional[str]" = None) -> None:
     """Ask (unless told), seed, report.  Shared by the command and bootstrap.
 
-    The activation is asked only when this machine's record is written
-    (``probe``): the record is its one home (`configuration.md` § 5 M-1), and
-    an answer with nowhere to go would be a question for nothing."""
+    The activation goes into ``molbuilder.json``'s ``env_init`` -- where this
+    machine declares how a shell enters an environment here -- and the probe
+    copies it into the record (`configuration.md` § 4)."""
     recommended, preamble = _recommended_activation(conda_binary)
-    if not probe:
-        activation = preamble = None
-    elif activation is None:
+    if activation is None:
         if auto_yes:
             activation = recommended
         else:
@@ -2340,14 +2338,13 @@ def _ask_projects_root(auto_yes: bool,
 @click.option("--activation", type=click.Choice(sorted(ACTIVATION_FORMS)),
               default=None,
               help="declare how this machine enters a conda env, instead of "
-                   "being asked.  Written into this machine's record "
-                   "(environment.json) -- the activation has no default, and "
-                   "without it every prep for this machine refuses "
-                   "(docs execution/running-a-job.md 5.2).")
+                   "being asked.  Written into molbuilder.json as `env_init` "
+                   "-- the activation has no default; `jobset probe` copies "
+                   "it into the record, and without it every prep for this "
+                   "machine refuses (docs execution/running-a-job.md 5.2).")
 @click.option("--no-probe", "probe", flag_value=False, default=True,
-              help="do not write environment.json.  For a build host or a "
-                   "container image baked once and copied, where the machine "
-                   "installed on is not the machine that runs anything.")
+              help="do not write environment.json; `molbuilder jobset probe "
+                   "--write` makes it later, copying `env_init` into it.")
 @click.option("--yes", "-y", "auto_yes", is_flag=True,
               help="take the recommended activation without asking.  The "
                    "value chosen is printed either way.")
@@ -2359,14 +2356,16 @@ def cmd_init_config(activation: "Optional[str]", probe: bool,
       <config dir>/                  0700 -- it holds secrets
       <config dir>/molbuilder.json   0600 -- your preferences: every
                                      section present and empty, each with a
-                                     comment saying what it is for
+                                     comment saying what it is for -- and
+                                     `env_init`: how a shell enters a conda
+                                     env here, which has no default and is
+                                     asked
       <config dir>/secrets/          0700 + a README: the mode rule, what
                                      belongs here, and the three secrets that
                                      cannot (they have one fixed home each)
       <config dir>/environments/     0700 -- records for machines you prep FOR
-      <config dir>/environment.json  this machine, probed -- with how a
-                                     shell enters a conda env here, which
-                                     has no default and is asked
+      <config dir>/environment.json  this machine, probed -- carrying a
+                                     copy of `env_init`
 
     Two things are ASKED, never detected, because install time is the one
     moment the answer is known: how this machine enters a conda env, and where

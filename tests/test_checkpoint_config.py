@@ -29,10 +29,8 @@ import pytest
 
 from molbuilder.runtime_config import (
     CONFIG_FILENAME,
-    PROJECT_CONFIG_FILENAME,
     RuntimeConfigError,
     get_checkpoint,
-    read_effective_config,
 )
 
 
@@ -157,31 +155,6 @@ def test_a_malformed_section_is_refused_and_says_why(section, why):
 # ------------------------------------------------------------------ #
 #  S1c — one home, and the other doors are shut                       #
 # ------------------------------------------------------------------ #
-
-
-def test_a_classification_beside_a_calculation_is_refused(tmp_path):
-    """S1c, asserted where it can actually fail.
-
-    A project-scope file is read for other subsystems, and it deep-merges with
-    the project winning.  So a `checkpoint` section dropped into a calculation
-    folder was not merely tolerated -- it *won*, and set the size limit that
-    decided where every file in that folder was stored.  That is the per-folder
-    classification S1c forbids, wearing the project scope's filename.
-
-    Refused rather than ignored: a section that is read and silently dropped
-    looks effective, and the folder is then saved under rules nobody applied.
-    """
-    calc = tmp_path / "BDT_Au_relax"
-    calc.mkdir()
-    (calc / PROJECT_CONFIG_FILENAME).write_text(json.dumps(
-        {"checkpoint": {"size_limit_bytes": 1}}), encoding="utf-8")
-
-    with pytest.raises(RuntimeConfigError) as exc:
-        read_effective_config(calc)
-    message = str(exc.value)
-    assert "checkpoint" in message and "S1c" in message, (
-        "the refusal must name the section and the rule, or the person "
-        "holding the file cannot tell why it is not allowed")
 
 
 def test_the_classification_is_read_from_one_scope_only(tmp_path):

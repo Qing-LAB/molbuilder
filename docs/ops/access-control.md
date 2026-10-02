@@ -244,11 +244,8 @@ Asking the reader where it reads is what keeps the two from disagreeing. Pass
 `--output` to name a path outright; that answers the question and nothing
 overrides it.
 
-> **Both files are gitignored, and neither has ever been committed.**
-> `molbuilder.json` (machine scope — `auth`, `tls`) and
-> `.molbuilder.json` (project scope — no credentials, the registry refuses them
-> there). They are separate patterns because gitignore matches whole basenames
-> and the leading dot makes them different names.
+> **The file is gitignored, and has never been committed** —
+> `molbuilder.json`, which holds `auth` and `tls`.
 
 ---
 

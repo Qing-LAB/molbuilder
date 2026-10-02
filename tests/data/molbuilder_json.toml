@@ -8,7 +8,7 @@
 # `tests/test_molbuilder_json.py` runs every case down the road a person
 # runs, through the one runner every contract table shares
 # (`tests/support/road.py`, `run_road_case`, whose header names each key):
-# `machine_config` is this machine's file, `config` a calculation's own.
+# `machine_config` is this machine's file -- the one there is.
 #
 # A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
 
@@ -42,14 +42,6 @@ launch = []
 line = ["-p cpu", "-q public"]
 
 [[case]]
-name = "a calculation's own launch.mode wins over this machine's"
-machine_config = { launch = { mode = "direct" } }
-config = { launch = { mode = "submit" } }
-launch_mode = ""
-launch = []
-line = ["-p cpu"]
-
-[[case]]
 name = "no --mode and no launch.mode is refused, naming the key"
 launch_mode = ""
 launch = []
@@ -78,7 +70,7 @@ line = ["-p cpu"]
 
 [[case]]
 name = "every preference section, together, reads"
-machine_config = { launch = { mode = "submit" }, envs = { siesta = "molbuilder-siesta" }, checkpoint = { size_limit_bytes = 1000000 }, rate_limit = { enabled = false }, admin = { emails = ["someone@example.edu"] }, tls = { cert = "/srv/cert.pem", key = "/srv/key.pem" } }
+machine_config = { launch = { mode = "submit" }, env_init = { activation = "conda activate" }, envs = { siesta = "molbuilder-siesta" }, checkpoint = { size_limit_bytes = 1000000 }, rate_limit = { enabled = false }, admin = { emails = ["someone@example.edu"] }, tls = { cert = "/srv/cert.pem", key = "/srv/key.pem" } }
 header = ["#SBATCH -p cpu"]
 
 # ===================================================================== #
@@ -91,9 +83,9 @@ machine_config = { scheduler = { kind = "slurm", directives = { partition = "cpu
 refused = "'scheduler' is no longer configured (retired 2026-10-02) -- delete the block"
 
 [[case]]
-name = "script_generation is refused with the probe line that records its values"
+name = "script_generation is refused, showing the env_init block its values go in"
 machine_config = { script_generation = { activation = "source activate", preamble = "module load mamba" } }
-refused = "molbuilder jobset probe --write --activation 'source activate' --preamble 'module load mamba'"
+refused = '"env_init": {"activation": "source activate", "preamble": "module load mamba"}'
 
 [[case]]
 name = "execution is refused, showing the launch block to write instead"
@@ -111,6 +103,11 @@ machine_config = { queue = "cpu" }
 refused = "unknown top-level key(s) 'queue'"
 
 [[case]]
-name = "a section of this machine's only, in a calculation's own file, is refused"
-config = { envs = { siesta = "molbuilder-siesta" } }
-refused = "may not live in a PROJECT-scope file"
+name = "env_init's activation is one of the two forms -- no default, no third"
+machine_config = { env_init = { activation = "mamba activate" } }
+refused = "'env_init.activation' must be one of 'source activate', 'conda activate'"
+
+[[case]]
+name = "env_init holds the activation and the preamble, and nothing else"
+machine_config = { env_init = { activation = "conda activate", shell = "bash" } }
+refused = "'env_init' holds 'activation' and 'preamble'; got 'shell'"

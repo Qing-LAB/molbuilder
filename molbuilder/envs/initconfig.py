@@ -14,9 +14,10 @@ environment -- and the record could not say it, because nobody had been asked.
 installer has just located the env manager and asked the person to confirm it;
 that is the one moment in the program's life where "how does this machine enter
 a conda env" is both known and being discussed.  Every later surface can only
-report that nobody ever said.  The answer goes into this machine's RECORD,
-``environment.json`` -- its one home since 2026-10-02 (`configuration.md` § 5
-M-1); ``molbuilder.json`` is seeded with the preferences sections alone.
+report that nobody ever said.  The answer goes into ``molbuilder.json``'s
+``env_init`` -- where a machine molbuilder is installed on declares how a shell
+enters an environment there -- and the probe copies it into this machine's
+record, which is what every prep reads (`configuration.md` § 4).
 
 **Asked, not sniffed.**  ``activation`` is DECLARED, never detected --
 ``detect_conda_activation`` was deleted 2026-08-13 (V22) for having zero
@@ -140,14 +141,16 @@ def _manager_root(conda_binary: str) -> Optional[Path]:
     return Path(root) if root else None
 
 
-def seed_document(projects: Optional[Path] = None) -> "dict":
+def seed_document(activation: str, preamble: Optional[str] = None,
+                  projects: Optional[Path] = None) -> "dict":
     """The contents of a freshly seeded ``molbuilder.json``.
 
-    **Your preferences, and nothing else** (`configuration.md` § 4): every
-    section a person may fill, present and empty, each with a comment saying
-    what it is for.  Neither a machine's facts -- its queues, its activation,
-    which `envs init-config` writes into this machine's RECORD -- nor a job's
-    values, which a job states itself.
+    **Your preferences, and how a shell enters an environment on this
+    machine** (`configuration.md` § 4): ``env_init`` holds the answer just
+    asked for, and every other section a person may fill is present and
+    empty, each with a comment saying what it is for.  Neither a machine's
+    measured facts -- its queues, its cores -- nor a job's values, which a job
+    states itself.
 
     The ``_``-prefixed keys are comments.  `running-a-job.md` § 5 makes them
     legal by name -- *"a key starting with ``_`` is a comment ... and is
@@ -159,8 +162,9 @@ def seed_document(projects: Optional[Path] = None) -> "dict":
     doc = {
         "_README": [
             "molbuilder's server-wide configuration for THIS machine:",
-            "your PREFERENCES, and nothing else.  Seeded by",
-            "`molbuilder envs init-config` (which `bootstrap` runs).",
+            "your PREFERENCES, and how a shell enters an environment here",
+            "(`env_init`).  Seeded by `molbuilder envs init-config` (which",
+            "`bootstrap` runs).",
             "",
             "HOW TO READ THIS FILE.  Every section is OPTIONAL and starts",
             "empty; fill in only what you need.  A key starting with `_` is a",
@@ -169,9 +173,9 @@ def seed_document(projects: Optional[Path] = None) -> "dict":
             "",
             "WHAT IS NOT HERE, and where it is:",
             "  a MACHINE's facts -- cores, GPUs, scheduler, the queues you",
-            "      can reach, how a shell enters an environment there -- are",
-            "      its RECORD, environment.json beside this file, written ON",
-            "      that machine by `molbuilder jobset probe --write`;",
+            "      can reach -- are its RECORD, environment.json beside this",
+            "      file, written ON that machine by `molbuilder jobset probe",
+            "      --write`, which also copies `env_init` into it;",
             "  a JOB's values -- queue, wall, memory, ranks, cores per rank,",
             "      GPUs -- are stated by the job: its task.json, or the",
             "      prep/launch flags.  Prep refuses one stated nowhere.",
@@ -185,11 +189,21 @@ def seed_document(projects: Optional[Path] = None) -> "dict":
         "_launch": [
             "How `jobset launch` sends a job when no --mode is given:",
             "\"direct\" runs it here with bash, \"submit\" hands it to the",
-            "scheduler.  Unset, launch asks for --mode.  Also settable per",
-            "project in a `.molbuilder.json`, which wins.",
+            "scheduler.  Unset, launch asks for --mode.",
             "-> docs/execution/running-a-job.md section 5.4",
         ],
         "launch": {},
+        "_env_init": [
+            "How a shell on THIS machine enters a conda environment -- asked",
+            "at install, which is why it is filled in below.  `activation` is",
+            "\"conda activate\" or \"source activate\" and has NO default.",
+            "`preamble` is shell run BEFORE it: the `module load` lines on a",
+            "cluster, or sourcing conda's hook on a workstation.",
+            "`molbuilder jobset probe --write` copies both into every record",
+            "it writes; prep reads them from the target's record.",
+            "-> docs/execution/running-a-job.md section 5.2",
+        ],
+        "env_init": {"activation": activation},
         # THE USER READS THIS BLOCK, so it says what to do and not what we
         # learned.  It invited `logs`, `run` and `reports` until 2026-09-12 --
         # keys retired on 2026-08-31 and REFUSED since, so a person with a
@@ -251,11 +265,14 @@ def seed_document(projects: Optional[Path] = None) -> "dict":
         "_retired": [
             "REFUSED by name if you port an older file here, each with what",
             "to do instead: `scheduler`, `script_generation` and `execution`",
-            "(retired 2026-10-02 -- `execution` is now `launch`),",
+            "(retired 2026-10-02 -- `script_generation` is now `env_init`,",
+            "`execution` is now `launch`),",
             "`notify_keys_file`, `notify_route`, `secret_key_file`, and",
             "top-level `cert`/`key`.",
         ],
     }
+    if preamble:
+        doc["env_init"]["preamble"] = preamble
     if projects is not None:
         doc["paths"] = {"projects": str(projects)}
     return doc
@@ -375,7 +392,7 @@ def ensure_dirs() -> List[Step]:
 #: What ``environments/README`` says.  A FILE, for the same reason the secrets
 #: one is: the person who needs it is looking at the directory, and a
 #: conda-only install has no checkout to read docs from.
-_ENVIRONMENTS_README = 'molbuilder — environments\n=========================\n\nOne file per MACHINE YOU PREPARE FOR BUT ARE NOT ON: `<name>.json`, where the\nname is yours and becomes `--target <name>`.\n\nTHIS MACHINE\'S OWN RECORD IS NOT IN HERE.  It is `../environment.json`, one\nlevel up.  The two are different scopes, not copies — `record_scopes()` walks\ncalculation → target → machine and takes the first match.\n\nTHE PROBE RUNS ON THE TARGET, NOT HERE\n    This is the part that catches people.  A record describes cores, GPUs, the\n    scheduler and the queues you can actually reach; none of that is knowable\n    from your laptop, and a probe run here would faithfully measure YOUR box\n    and label it with the cluster\'s name.  So:\n\n    1. ON THE TARGET -- a login node is fine, the scheduler is read from\n       `sinfo` rather than from being on a compute node:\n\n           molbuilder jobset probe --write --name sol\n           # -> wrote ~/.config/molbuilder/environments/sol.json\n\n       `--write` shows what it measured and asks before overwriting an\n       existing record, difference by difference.  Silence keeps the record;\n       `--yes` takes every probed value.\n\n    2. COPY IT HERE:\n\n           scp cluster:~/.config/molbuilder/environments/sol.json \\\n               ~/.config/molbuilder/environments/\n\n    3. CONFIRM IT LANDED AND PARSES:\n\n           molbuilder jobset machines\n\n       This prints every record, its path and when it was measured.  It is the\n       only step that answers "did the copy work?" -- a record that is present\n       but corrupt is LISTED AND MARKED, never skipped, because a silently\n       dropped record looks exactly like one that was never copied.\n\n    Then `prep --target sol` sizes for Sol from anywhere.\n\nIF MOLBUILDER CANNOT BE INSTALLED ON THE TARGET\n    Declare what the probe would have measured, rather than guessing later:\n\n        molbuilder jobset probe --write --name sol \\\n            --scheduler slurm --set gpus_per_node=4\n\n    A declared fact beats detection and the record stores `source: flag`, so a\n    reader can always see which numbers were measured and which were asserted.\n\nWHAT DOES NOT BELONG HERE\n    Nothing you write by hand.  These are records of measurement; if you find\n    yourself editing one, what you want is `--set` on the probe (which records\n    that you asserted it) or a preference in `molbuilder.json` (which is where\n    what-you-WANT lives, as opposed to what-the-machine-IS).\n\n    An empty directory is the normal state if you only ever run locally.\n\nReference: docs/execution/preparing-for-another-machine.md § 1a (these commands,\nverified end to end), docs/configuration.md § 5 (the record\'s schema and the\nfact-vs-preference rule).\n'
+_ENVIRONMENTS_README = 'molbuilder — environments\n=========================\n\nOne file per MACHINE YOU PREPARE FOR BUT ARE NOT ON: `<name>.json`, where the\nname is yours and becomes `--target <name>`.\n\nTHIS MACHINE\'S OWN RECORD IS NOT IN HERE.  It is `../environment.json`, one\nlevel up.  The two are different scopes, not copies — `record_scopes()` walks\ncalculation → target → machine and takes the first match.\n\nTHE PROBE RUNS ON THE TARGET, NOT HERE\n    This is the part that catches people.  A record describes cores, GPUs, the\n    scheduler and the queues you can actually reach; none of that is knowable\n    from your laptop, and a probe run here would faithfully measure YOUR box\n    and label it with the cluster\'s name.  So:\n\n    1. ON THE TARGET -- a login node is fine, the scheduler is read from\n       `sinfo` rather than from being on a compute node:\n\n           molbuilder jobset probe --write --name sol\n           # -> wrote ~/.config/molbuilder/environments/sol.json\n\n       `--write` shows what it measured and asks before overwriting an\n       existing record, difference by difference.  Silence keeps the record;\n       `--yes` takes every probed value.  The record carries a copy of that\n       machine\'s `env_init` -- how a shell enters an environment there, from\n       ITS molbuilder.json.\n\n    2. COPY IT HERE:\n\n           scp cluster:~/.config/molbuilder/environments/sol.json \\\n               ~/.config/molbuilder/environments/\n\n    3. CONFIRM IT LANDED AND PARSES:\n\n           molbuilder jobset machines\n\n       This prints every record, its path and when it was measured.  It is the\n       only step that answers "did the copy work?" -- a record that is present\n       but corrupt is LISTED AND MARKED, never skipped, because a silently\n       dropped record looks exactly like one that was never copied.\n\n    Then `prep --target sol` sizes for Sol from anywhere.\n\nWHAT DOES NOT BELONG HERE\n    A record written from scratch.  These are records of measurement; a\n    copied `env_init` that is wrong for its machine is the one thing edited\n    here by hand.  A fact the probe cannot see is `--set` on the probe, run on\n    that machine (the record says you asserted it); what you WANT is a\n    preference in `molbuilder.json`.\n\n    An empty directory is the normal state if you only ever run locally.\n\nReference: docs/execution/preparing-for-another-machine.md § 1a (these commands,\nverified end to end), docs/configuration.md § 5 (the record\'s schema and the\nfact-vs-preference rule).\n'
 
 
 def _readme(directory: Path, text: str, note: str) -> List[Step]:
@@ -462,13 +479,15 @@ def _seed_secrets_dir() -> List[Step]:
     return steps
 
 
-def seed_machine_config(projects: Optional[Path] = None) -> Step:
+def seed_machine_config(activation: str, preamble: Optional[str] = None,
+                        projects: Optional[Path] = None) -> Step:
     """Write ``molbuilder.json`` if it is absent; otherwise report it kept.
 
     An existing file is never merged into: it is a person's.  The ``note`` on
     a kept file says whether it still READS -- a file carrying a section
     retired since it was written is refused by every reader, and this is the
-    run of the installer most likely to be the first to say so.
+    run of the installer most likely to be the first to say so -- and whether
+    it declares the activation the probe copies.
     """
     from ..runtime_config import machine_config_path, write_config_scope
 
@@ -481,71 +500,63 @@ def seed_machine_config(projects: Optional[Path] = None) -> Step:
     # lands, 0600 from the first byte.  Until 2026-09-14 this joined the
     # filename itself and wrote through `write_json` -- a second writer whose
     # seed was never validated (review C-Y1).
-    write_config_scope(None, seed_document(projects))
-    return Step(path, "created",
-                "your preferences -- every section empty; see its comments")
+    write_config_scope(seed_document(activation, preamble, projects))
+    return Step(path, "created", f'env_init.activation = "{activation}"'
+                + _preamble_note(activation, preamble))
 
 
 def _config_note() -> str:
-    """What an already-present config is: readable, or refused and why."""
+    """What an already-present config is: readable or refused and why, and
+    the activation it declares."""
     try:
-        from ..runtime_config import read_config
-        read_config()
+        from ..runtime_config import get_env_init
+        said = get_env_init().get("activation")
     except Exception as exc:            # the refusal says what to do
         return f"left as it is -- but it does not read: {exc}"
-    return "left as it is"
+    if said:
+        return f'left as it is (env_init.activation = "{said}")'
+    return ("left as it is -- but it declares no env_init.activation, so the "
+            "probe has nothing to copy and every prep for this machine "
+            "refuses (running-a-job.md 5.2)")
 
 
-def seed_environment_record(activation: Optional[str],
-                            preamble: Optional[str] = None) -> Step:
+def seed_environment_record() -> Step:
     """This machine's own ``environment.json``, via the probe's own doors --
-    carrying how a shell enters an environment here, as just declared.
+    carrying the copy of ``env_init`` the probe makes.
 
     Delegated to ``resolve_environment`` + ``local_facts`` +
     ``write_environment`` -- what ``jobset probe --write`` calls -- so there is
     one prober and one writer, and re-probing later cannot disagree with what
-    was seeded here.
-
-    **The activation's one home is this record** *(2026-10-02,
-    `configuration.md` § 5 M-1)*.  An existing record is kept -- re-probing is
-    `jobset probe`'s, which asks before it overwrites -- except that one
-    carrying NO activation is given the one just declared: without it every
-    prep for this machine refuses, and nothing else in it changes.
+    was seeded here.  Ordered AFTER the config: the record copies its
+    ``env_init``, so a record written first would carry nothing.  An existing
+    record is kept -- re-probing is `jobset probe`'s, which asks before it
+    overwrites.
     """
     from ..diagnostics import local_facts
+    from ..runtime_config import get_env_init
     from ..scheduler import (machine_scope_path, read_environment,
                              resolve_environment, write_environment)
-    declared = {k: v for k, v in (("activation", activation),
-                                  ("preamble", preamble)) if v}
     # Its own directory: a public function that worked only after another one
     # had made it is a trap (`_ensure_root`).
     _ensure_root()
     path = machine_scope_path()
     if path.exists():
         before = read_environment(path)
-        said = ((before.script_generation if before is not None else None)
+        said = ((before.env_init if before is not None else None)
                 or {}).get("activation")
-        if before is None or said or not declared.get("activation"):
-            note = ("re-probe with `molbuilder jobset probe --write` when the "
-                    "machine changes")
-            if said:
-                note = f'activation "{said}"; ' + note
-            return Step(path, "kept", note)
-        import dataclasses as _dc
-        write_environment(_dc.replace(before, script_generation=declared),
-                          path)
-        return Step(path, "rewritten",
-                    f'it carried no activation -- now "{activation}"'
-                    + _preamble_note(activation, declared.get("preamble")))
+        return Step(path, "kept", (
+            f'activation "{said}"; re-probe with `molbuilder jobset probe '
+            f'--write` when the machine changes' if said else
+            "carries NO activation -- `molbuilder jobset probe --write` "
+            "copies env_init into it"))
     # THE SAME TWO STEPS ``jobset probe --write`` TAKES, in the same order:
     # resolve, then attach the three facts that travel (`local_facts`).
-    env, _note = local_facts(resolve_environment(), declared)
+    env, _note = local_facts(resolve_environment(), get_env_init())
     write_environment(env, path)
-    sg = getattr(env, "script_generation", None) or {}
+    sg = getattr(env, "env_init", None) or {}
     note = "probed this machine"
     if sg.get("activation"):
-        note += (f'; carries activation "{sg["activation"]}"'
-                 + _preamble_note(sg["activation"], sg.get("preamble")))
+        note += f'; carries activation "{sg["activation"]}"'
     else:
         note += "; carries NO activation -- prep for this machine will refuse"
     return Step(path, "created", note)
@@ -570,18 +581,16 @@ def _preamble_note(activation: str, preamble: Optional[str]) -> str:
     return "; no preamble (source activate needs none)"
 
 
-def init_config(activation: Optional[str],
+def init_config(activation: str,
                 preamble: Optional[str] = None,
                 probe: bool = True,
                 projects: Optional[Path] = None) -> List[Step]:
     """Seed the whole directory.  Idempotent; returns what it did.
 
-    ``activation`` and ``preamble`` go into this machine's RECORD, their one
-    home (`configuration.md` § 5 M-1).  ``probe=False`` writes no record --
-    for a build host or a container image baked once, where the machine
-    installed on is not the machine that runs anything -- and then nothing is
-    asked about entering an environment: on the machine that runs jobs,
-    ``jobset probe --write --activation …`` records it.
+    ``activation`` and ``preamble`` go into ``molbuilder.json``'s
+    ``env_init``, and the record the probe writes carries a copy
+    (`configuration.md` § 4).  ``probe=False`` writes no record: `jobset probe
+    --write` makes it later, copying the same answer.
 
     ``projects`` writes ``paths.projects``.  ``None`` leaves the section empty
     and the default applies -- which is the right answer on a workstation and
@@ -600,7 +609,7 @@ def init_config(activation: Optional[str],
         raise RuntimeError("\n".join(blockers))
 
     steps = list(ensure_dirs())
-    steps.append(seed_machine_config(projects))
+    steps.append(seed_machine_config(activation, preamble, projects))
     if probe:
-        steps.append(seed_environment_record(activation, preamble))
+        steps.append(seed_environment_record())
     return steps

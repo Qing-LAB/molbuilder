@@ -77,7 +77,7 @@ def bundle(tmp_path):
                       domains=[Domain.from_row(r) for r in _DOMAINS],
                       # how a shell enters an environment there -- the
                       # record's fact (`configuration.md` § 5 M-1)
-                      script_generation={"activation": "conda activate",
+                      env_init={"activation": "conda activate",
                                          "preamble": "true"})
     (dest / "environment.json").write_text(env.to_json() + "\n")
     # A GPU RUN STATES HOW MANY (`execution/gpu.md` G5), on the calculation's

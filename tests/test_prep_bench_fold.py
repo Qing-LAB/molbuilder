@@ -144,7 +144,7 @@ def calc(tmp_path):
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
                                       gpu_type="a100"),
-                    script_generation=_ENTERS).to_json() + "\n")
+                    env_init=_ENTERS).to_json() + "\n")
     # A RUN STATES ITS LAUNCH SHAPE (`architecture.md` § 5.2), and a GPU run
     # how many GPUs (`execution/gpu.md` G5): the calculation's run card says
     # it once, for every rung that does not say otherwise.  The bench never
@@ -1167,7 +1167,7 @@ def test_stage_plan_records_the_config_provenance(calc):
     _prep_bench(calc)
     plan = (calc / "01_coarse" / "bench" / "STAGE-PLAN.md").read_text()
     assert "config:" in plan
-    assert ".molbuilder.json" in plan
+    assert "molbuilder.json" in plan
 
 
 def test_the_two_stage_sequence_carries_the_geometry_forward(calc):
@@ -1537,7 +1537,7 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
                                       gpu_type="a100"),
-                    script_generation=_ENTERS).to_json() + "\n")
+                    env_init=_ENTERS).to_json() + "\n")
     r = CliRunner()
     res = r.invoke(jobset_group, ["prep", "bench", "coarse", "--bundle",
                                   str(dest), "--no-sbatch"])
@@ -1623,7 +1623,7 @@ def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
                                       gpu_type="a100"),
-                    script_generation=_ENTERS).to_json() + "\n")
+                    env_init=_ENTERS).to_json() + "\n")
     sweep, pins, translation = bench_inputs(dest, None)
     prep_calculation(dest, "coarse",
                      allocation=Resources(mpi_np=8, cpus_per_task=8),
@@ -1718,10 +1718,10 @@ def test_a_config_refusal_is_a_refusal_not_a_traceback(tmp_path, monkeypatch):
     # THE BOX IS PROBED, AND STATES NO ACTIVATION -- which is the condition
     # under test.  Moving HOME moves the machine scope out from under
     # conftest's own record, and prep refuses without one at all; the default
-    # record carries a `script_generation`, which would supply the very field
+    # record carries an `env_init`, which would supply the very field
     # this test removes and the refusal would never fire.
     from conftest import write_machine_record
-    write_machine_record(script_generation={})
+    write_machine_record(env_init={})
     struct = Structure(elements=["H", "H"],
                        positions=np.array([[0.0, 0.0, 0.0],
                                            [0.0, 0.0, 0.74]]),
@@ -1736,7 +1736,6 @@ def test_a_config_refusal_is_a_refusal_not_a_traceback(tmp_path, monkeypatch):
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
-    (dest / ".molbuilder.json").write_text("{}")   # no activation anywhere
     _state_the_run(dest)
     res = CliRunner().invoke(jobset_group,
                              ["prep", "run", "coarse", "--bundle", str(dest),
@@ -2390,7 +2389,7 @@ def test_a_pyscf_runs_threads_reach_the_launch_shape(tmp_path):
     (dest / "environment.json").write_text(
         Environment(scheduler="workstation",
                     topology=Topology(sockets=1, cores_per_socket=4),
-                    script_generation=_ENTERS).to_json() + "\n")
+                    env_init=_ENTERS).to_json() + "\n")
     r = CliRunner().invoke(jobset_group, ["prep", "run", "only", "--bundle",
                                           str(dest), "--no-sbatch"])
     assert r.exit_code == 0, r.output

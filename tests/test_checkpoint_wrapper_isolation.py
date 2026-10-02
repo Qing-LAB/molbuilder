@@ -59,7 +59,7 @@ def _isolated(monkeypatch, tmp_path_factory):
              topology=_Topo(sockets=2, cores_per_socket=32),
              domains=[_Domain(name="public", partition="public",
                               qos="public", max_time="1-00:00:00")],
-             script_generation={"activation": "conda activate",
+             env_init={"activation": "conda activate",
                                 "preamble": "true"}).to_json()
         + "\n")
 

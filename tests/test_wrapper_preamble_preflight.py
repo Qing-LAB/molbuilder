@@ -55,7 +55,7 @@ def _render(tmp_path: Path, preamble: str, monkeypatch=None) -> Path:
             env="some-env", project_dir=tmp_path,
             machine_record=Environment(
                 scheduler="workstation", topology=Topology(),
-                script_generation={"preamble": preamble,
+                env_init={"preamble": preamble,
                                    "activation": "conda activate"}))
     sh = tmp_path / "JOB.run.sh"
     sh.write_text(text)
@@ -103,12 +103,12 @@ class TestTheGeneratedScriptRefusesActionably:
         assert "/opt/definitely-not-here/conda.sh" in out
         assert "does not exist on this machine" in out
         # the message must be COMPLETE -- no empty command substitutions --
-        # and name the fix: the record's preamble, recorded on this machine
-        # (it named molbuilder.json's `script_generation.preamble` until
-        # 2026-10-02, when the record became the preamble's one home)
+        # and name the fix: this machine's `env_init.preamble`, copied into
+        # its record by the probe
         assert "the record prep read" in out
         assert "module load mamba" in out
-        assert "molbuilder jobset probe --write --preamble" in out
+        assert "env_init.preamble" in out
+        assert "molbuilder jobset probe --write" in out
 
     def test_a_preamble_with_no_absolute_source_gets_no_guard(
             self, tmp_path, monkeypatch):
@@ -154,7 +154,7 @@ class TestActivationComesFromTheMachineRecord:
         from molbuilder.scheduler import Environment, Topology
         return Environment(
             scheduler="slurm", topology=Topology(),
-            script_generation={"preamble": "module load mamba",
+            env_init={"preamble": "module load mamba",
                                "activation": "source activate"})
 
     def test_the_targets_activation_is_what_gets_baked(self, tmp_path):
@@ -199,13 +199,13 @@ class TestActivationComesFromTheMachineRecord:
         from molbuilder.scheduler import Environment
         rec = Environment.from_dict({
             "schema": "molbuilder/environment@2", "scheduler": "slurm",
-            "script_generation": {"preamble": "module load mamba",
+            "env_init": {"preamble": "module load mamba",
                                   "activation": "source activate"}})
-        assert rec.script_generation["activation"] == "source activate"
+        assert rec.env_init["activation"] == "source activate"
         # and a record written before the field still loads
         old = Environment.from_dict({"schema": "molbuilder/environment@2",
                                      "scheduler": "slurm"})
-        assert old.script_generation == {}
+        assert old.env_init == {}
 
 
 class TestTheEnvGateAsksTheTargetMachine:
@@ -229,7 +229,7 @@ class TestTheEnvGateAsksTheTargetMachine:
         from molbuilder.scheduler import Environment, Topology
         return Environment(
             scheduler="slurm", topology=Topology(),
-            script_generation={"preamble": "module load mamba",
+            env_init={"preamble": "module load mamba",
                                "activation": "source activate"},
             conda_envs=envs)
 
@@ -308,7 +308,7 @@ class TestTheHeaderNamesTheQueueTheAllocationAsKED:
                                           write_environment, FILENAME)
         env = Environment(
             scheduler="slurm", topology=Topology(),
-            script_generation={"preamble": "module load mamba",
+            env_init={"preamble": "module load mamba",
                                "activation": "source activate"},
             domains=[Domain(name="debug", partition="htc", qos="debug",
                             max_time="00:15:00"),

@@ -45,7 +45,7 @@ def _a_machine_record_with_an_activation(tmp_path, monkeypatch):
     # silently, which is all a wrapper in a bare shell needs (conftest's
     # `product_toolchain_is_the_suites_own`).
     write_machine_record(at=root,
-                         script_generation={"activation": "conda activate"})
+                         env_init={"activation": "conda activate"})
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(root))
 
 

@@ -65,22 +65,22 @@ def command(verb: str, *words, base, flags=()) -> str:
     return " ".join(parts) + (bundle_flag(base) if base is not None else "")
 
 
-def configured_mode(base) -> Optional[str]:
-    """The launch mode this calculation's config states, or ``None`` --
+def configured_mode() -> Optional[str]:
+    """The launch mode this machine's config states, or ``None`` --
     `runtime_config.get_launch`, the reader `launch` falls back on."""
     from ..runtime_config import get_launch
     try:
-        return get_launch(project_dir=Path(base)).get("mode") or None
+        return get_launch().get("mode") or None
     except Exception:                                    # noqa: BLE001
         return None          # a malformed config is `launch`'s to refuse
 
 
 def launch_lines(kind: str, *words, base) -> List[str]:
     """The launch of ``words`` as a person types it: the bare line where this
-    calculation's config names a mode -- `launch` takes it -- else one line
-    per mode, each a command (never ``--mode submit|direct``, which bash
-    reads as a pipe)."""
-    if configured_mode(base):
+    machine's config names a mode -- `launch` takes it -- else one line per
+    mode, each a command (never ``--mode submit|direct``, which bash reads as
+    a pipe)."""
+    if configured_mode():
         return [command("launch", kind, *words, base=base)]
     return [command("launch", kind, *words, base=base,
                     flags=("--mode", "direct")) + "   # here",

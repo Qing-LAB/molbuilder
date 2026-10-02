@@ -95,7 +95,7 @@ def _describe(tree, monkeypatch, positions, shape="hierarchical"):
     # How a shell enters conda HERE is this machine's record's to say -- the
     # activation's one home (`configuration.md` § 5 M-1).
     from conftest import write_machine_record
-    write_machine_record(script_generation={
+    write_machine_record(env_init={
         "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
     task = json.loads((bundle / "task.json").read_text())
     # Two atoms, two ranks, one thread: the run states its shape

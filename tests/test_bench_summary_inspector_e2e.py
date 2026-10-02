@@ -74,7 +74,7 @@ def sweep(tmp_path, monkeypatch):
                     topology=Topology(sockets=1, cores_per_socket=4,
                                       gpus_per_node=1,
                                       gpu_type="a100"),
-                    script_generation={"activation": "conda activate",
+                    env_init={"activation": "conda activate",
                                        "preamble": "true"}).to_json() + "\n")
 
     sweep_spec, pins, translation = bench_inputs(calc, None)

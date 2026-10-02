@@ -38,7 +38,7 @@ def _wrapper(tmp_path):
     (tmp_path / "environment.json").write_text(
         _Env(scheduler="slurm",
              topology=_Topo(sockets=2, cores_per_socket=32),
-             script_generation={"activation": "conda activate",
+             env_init={"activation": "conda activate",
                                 "preamble": "true"}).to_json()
         + "\n")
     return write_run_wrapper(tmp_path / "JOB.fdf", env="e",
@@ -89,21 +89,13 @@ def test_provenance_names_each_values_source(tmp_path, machine_config):
          "launch": {"mode": "direct"}})
     bundle = tmp_path / "calc"
     bundle.mkdir()
-    (bundle / ".molbuilder.json").write_text(json.dumps(
-        {"launch": {"mode": "submit"}}))
     prov = config_provenance(project_dir=bundle)
     assert prov["effective"]["paths.projects"] == {
         "value": "/srv/projects", "from": "machine"}
-    # the project file wins where both speak
     assert prov["effective"]["launch.mode"] == {
-        "value": "submit", "from": "project"}
+        "value": "direct", "from": "machine"}
     scopes = {s["scope"]: s for s in prov["sources"]}
     assert scopes["machine"]["found"] and scopes["machine"]["via"] == "config-dir"
-    # `project`, ONE name for this scope (2026-08-23).  It answered to
-    # "bundle" here and "project" in the registry -- and `bundle` already
-    # names the portable prepped directory the JobSet framework's
-    # --bundle points at.
-    assert scopes["project"]["found"]
 
 
 def test_provenance_never_carries_secret_material(tmp_path, machine_config):

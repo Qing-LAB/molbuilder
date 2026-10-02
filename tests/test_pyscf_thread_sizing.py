@@ -95,7 +95,7 @@ def _pyscf_wrapper(tmp_path, monkeypatch):
     # (`configuration.md` § 5 M-1).
     (tmp_path / "environment.json").write_text(Environment(
         scheduler="workstation", topology=Topology(),
-        script_generation={"preamble": "true",
+        env_init={"preamble": "true",
                            "activation": "source activate"}).to_json())
     (tmp_path / "job.py").write_text("print('hi')\n")
     return runwrap.render_run_wrapper(tmp_path / "job.py",

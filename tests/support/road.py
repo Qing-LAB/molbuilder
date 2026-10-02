@@ -272,8 +272,8 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # machine has a scheduler; `run_unset` / `allocation_unset` -- base keys a row
 # takes away; `template` -- values in the template (SIESTA's over the
 # table's `siesta_template`); `bench` -- task.json `bench`, then `prep bench`;
-# `config` -- the calculation's `.molbuilder.json`; `machine_config` -- THIS
-# machine's `molbuilder.json`; `prep` / `launch` -- the flags typed (launch
+# `machine_config` -- THIS machine's `molbuilder.json`; `prep` / `launch` --
+# the flags typed (launch
 # with `--mode submit`, unless `launch_mode` names another -- "" for none, so
 # the config's `launch.mode` decides); `machine` -- "this" (this machine IS
 # the target, its record
@@ -281,8 +281,10 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # record named `sol` listing `queues`) or "workstation" (no queues at all);
 # `record` -- more fields of THIS machine's record; `named_record` -- more
 # fields of the named target's; `queues` -- replaces the table's menu;
-# `probe` -- THIS machine's record made as a person makes it instead, by
-# `jobset probe --write --yes`, once per list of flags, in order.
+# `probe` -- the record made as a person makes it instead, by `jobset probe
+# --write --yes`, once per list of flags, in order, after `machine_config`
+# and over `record` when the row gives them; a `--name` among the flags names
+# the target.
 
 
 def _road_target(table, case, tmp_path, monkeypatch) -> str:
@@ -291,11 +293,16 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
     from conftest import write_machine_record
     from molbuilder.scheduler import (Domain, Environment, Topology,
                                       machine_scope_path, write_environment)
-    for flags in case.get("probe", []):
-        r = jobset("probe", "--write", "--yes", *flags)
-        assert r.exit_code == 0, _one_line(r)
     if "probe" in case:
-        return "this"
+        _write_machine_config(case)
+        if "record" in case:
+            write_machine_record(**case["record"])
+        for flags in case["probe"]:
+            r = jobset("probe", "--write", "--yes", *flags)
+            assert r.exit_code == 0, _one_line(r)
+        named = [f[f.index("--name") + 1] for f in case["probe"]
+                 if "--name" in f]
+        return named[-1] if named else "this"
     queues = [Domain.from_row(q)
               for q in case.get("queues", table.get("queues", []))]
     record = dict(case.get("record", {}))
@@ -310,8 +317,8 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
     named.mkdir(parents=True, exist_ok=True)
     fields = dict(scheduler="slurm", domains=queues,
                   topology=Topology(sockets=2, cores_per_socket=24),
-                  script_generation={"activation": "conda activate",
-                                     "preamble": "true"})
+                  env_init={"activation": "conda activate",
+                            "preamble": "true"})
     fields.update(case.get("named_record", {}))
     write_environment(Environment(**fields), named / "sol.json")
     return "sol"
@@ -328,7 +335,7 @@ def _over_base(base, mine, unset):
 
 def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
     """`jobset init` of H2, then the case's template values, description
-    blocks and `.molbuilder.json`."""
+    blocks and this machine's `molbuilder.json`."""
     import dataclasses
     import json
     engine = case.get("engine", "siesta")
@@ -364,14 +371,20 @@ def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
         else:
             task.pop(block, None)      # the row states none of it
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
-    if "config" in case:
-        (bundle / ".molbuilder.json").write_text(json.dumps(case["config"]))
+    if "probe" not in case:
+        _write_machine_config(case)
+    return bundle
+
+
+def _write_machine_config(case) -> None:
+    """THIS machine's `molbuilder.json`, as the row gives it -- written as
+    it stands, so a row may hand it a section the reader refuses."""
     if "machine_config" in case:
+        import json
         from molbuilder.runtime_config import machine_config_path
         mine = machine_config_path()
         mine.parent.mkdir(parents=True, exist_ok=True)
         mine.write_text(json.dumps(case["machine_config"]))
-    return bundle
 
 
 def _road_lines(case, key, text):

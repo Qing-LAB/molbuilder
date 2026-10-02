@@ -59,7 +59,7 @@ def project(tmp_path, monkeypatch):
         scheduler="slurm", topology=Topology(sockets=2, cores_per_socket=64),
         domains=[Domain(name="public", partition="public", qos="public",
                         max_time="7-00:00:00")],
-        script_generation={"preamble": "module load mamba/latest",
+        env_init={"preamble": "module load mamba/latest",
                            "activation": "source activate"}),
         tmp_path / FILENAME)
     return tmp_path

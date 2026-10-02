@@ -73,11 +73,8 @@ def checkpoint_config(tmp_path, monkeypatch):
     """Set the checkpoint classification for one test, where it really lives.
 
     **S1c: the classification has one home, and it is not beside the folder
-    being saved.**  A test cannot set it by dropping a config into the
-    calculation directory -- ``_read_project`` refuses a ``checkpoint`` section
-    there outright, which is the rule, not a limitation to work around.
-
-    The one home is the server-wide scope, and since 2026-08-31 it has ONE
+    being saved.**  The one home is this machine's molbuilder.json, and since
+    2026-08-31 it has ONE
     location -- the config directory, with no working-directory step
     (`configuration.md` § 2.1a).  So this points ``MOLBUILDER_CONFIG_DIR`` at
     the test's own sandbox and writes the real file there: the same resolution
@@ -1053,7 +1050,7 @@ def write_machine_record(at=None, **over):
     # and there is no second home left for the two to disagree in.
     fields = dict(scheduler="",          # a workstation: no queue system
                   topology=Topology(sockets=2, cores_per_socket=8),
-                  script_generation={"activation": "conda activate",
+                  env_init={"activation": "conda activate",
                                      "preamble": "true"})
     fields.update(over)
     out = (Path(at) / "environment.json") if at else Path(machine_scope_path())

@@ -381,7 +381,7 @@ def test_a_python_file_that_names_no_job_is_nobodys_deck(
     (dest / "environment.json").write_text(
         Environment(scheduler="workstation",
                     topology=Topology(sockets=1, cores_per_socket=4),
-                    script_generation={"activation": "conda activate",
+                    env_init={"activation": "conda activate",
                                        "preamble": "true"}
                     ).to_json() + "\n")
     # ...and the run's threads, stated as every run's are

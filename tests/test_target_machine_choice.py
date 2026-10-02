@@ -37,7 +37,7 @@ _REC = {"schema": "molbuilder/environment@2",
         "domains": [{"name": "q", "partition": "q", "qos": "normal",
                      "max_time": "1-00:00:00"}],
         "topology": {}, "site": {}, "source": {},
-        "script_generation": {"preamble": "module load mamba",
+        "env_init": {"preamble": "module load mamba",
                               "activation": "source activate"}}
 
 
@@ -354,7 +354,7 @@ class TestTheCasesReadingFoundThatPokingDidNot:
         MUTATION THIS MUST FAIL AGAINST: the snapshot written before the
         check."""
         machines.write("sol", json.dumps({
-            **{k: v for k, v in _REC.items() if k != "script_generation"},
+            **{k: v for k, v in _REC.items() if k != "env_init"},
             "scheduler": "slurm"}))
         machines.this_machine()
         res = _prep("P/optimization/w", "--target", "sol")

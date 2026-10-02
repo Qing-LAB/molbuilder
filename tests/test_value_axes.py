@@ -87,7 +87,7 @@ def sol_calc(tmp_path):
                         max_time="7-00:00:00", max_cores=48,
                         gpu={"a100": 4})],
         # how a shell enters an environment there -- the record's fact
-        script_generation={"activation": "conda activate",
+        env_init={"activation": "conda activate",
                            "preamble": "true"})
     (dest / "environment.json").write_text(env.to_json() + "\n")
     return dest
@@ -696,7 +696,7 @@ def flat_sol_calc(tmp_path):
                         max_time="7-00:00:00", max_cores=48,
                         gpu={"a100": 4})],
         # how a shell enters an environment there -- the record's fact
-        script_generation={"activation": "conda activate",
+        env_init={"activation": "conda activate",
                            "preamble": "true"})
     (dest / "environment.json").write_text(env.to_json() + "\n")
     return dest

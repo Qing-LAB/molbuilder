@@ -30,15 +30,15 @@ from molbuilder.jobset.model import Resources
 from molbuilder.scheduler import Environment, Topology
 
 
-def _record(**script_generation):
+def _record(**env_init):
     """A machine record stating how a shell enters an environment there --
-    the activation and preamble's one home (`configuration.md` § 5 M-1)."""
+    the copy of that machine's `env_init` the probe makes."""
     return Environment(scheduler="workstation", topology=Topology(),
-                       script_generation=script_generation)
+                       env_init=env_init)
 
 
-#: The canonical Sol setup, as `jobset probe --write --activation ...
-#: --preamble ...` records it.
+#: The canonical Sol setup, as `jobset probe --write` copies Sol's `env_init`
+#: into its record.
 _SOL = _record(preamble="module load mamba\nexport FOO=bar",
                activation="source activate")
 

@@ -80,15 +80,6 @@ class TestWhenItSpeaks:
         (work / "molbuilder.json").write_text("{}")
         assert "no file there yet" in _shadow()
 
-    def test_it_points_at_the_project_scope_for_per_directory_settings(
-            self, isolated):
-        """Telling someone to move a file without saying what replaces it
-        leaves the need that put it there unmet.  The project scope is the
-        answer, and it merges."""
-        work, _home = isolated
-        (work / "molbuilder.json").write_text("{}")
-        assert ".molbuilder.json" in _shadow()
-
 
 class TestItIsAWarningAndNotARefusal:
 

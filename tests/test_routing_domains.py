@@ -23,9 +23,8 @@ import pytest
 
 from molbuilder.scheduler import (FILENAME, Domain, Environment, Site,
                                     Topology, write_environment)
-from molbuilder.runtime_config import (PROJECT_CONFIG_FILENAME,
-                                       RuntimeConfigError, get_routing,
-                                       read_effective_config)
+from molbuilder.runtime_config import (RuntimeConfigError, get_routing,
+                                       read_config)
 from molbuilder.scheduler.quantities import parse_walltime
 
 _DOMAINS = [
@@ -140,38 +139,21 @@ def test_an_unknown_column_survives_the_type(tmp_path):
 
 # ---- where a value came from is displayed, not inferred --------------- #
 
-@pytest.mark.parametrize("scope", ["machine", "project"])
-def test_a_refusal_names_WHICH_file_carries_the_key(tmp_path, scope):
-    """A refusal must point at the file a person has to edit.
-
-    TWO files can carry a section -- the machine scope and the project
-    scope's `.molbuilder.json` -- so a message quoting the generic
-    ``molbuilder.json`` names both and answers neither.  This file learned
-    that once (R10, 2026-08-12) and N4 reintroduced it, costing thirteen
-    confusing failures whose real cause was a config two directories up.
-
-    It was THREE until 2026-08-31, when the working-directory step was
-    deleted and the machine scope became one location
-    (`configuration.md` § 2.1a) -- so the `machine-cwd` case is gone rather
-    than renamed: there is no such file to name.
-
-    Checked here on the ``scheduler`` block, refused by name since 2026-10-02
-    (`configuration.md` § 4), through the reader `prep` and `launch` read
-    both scopes with: the refusals this was first written for are gone, and
-    the naming rule outlived each of them.
+def test_a_refusal_names_WHICH_file_carries_the_key(tmp_path):
+    """A refusal must point at the file a person has to edit, by its path
+    -- not the generic ``molbuilder.json`` (R10, 2026-08-12; N4 reintroduced
+    it, costing thirteen confusing failures whose real cause was a config two
+    directories up).  Checked on the ``scheduler`` block, refused by name
+    since 2026-10-02 (`configuration.md` § 4).
     """
     block = {"scheduler": {"kind": "slurm"}}
-    if scope == "project":
-        (tmp_path / PROJECT_CONFIG_FILENAME).write_text(json.dumps(block))
-        expected = tmp_path / PROJECT_CONFIG_FILENAME
-    else:
-        xdg = tmp_path / "home" / ".config" / "molbuilder"
-        xdg.mkdir(parents=True)
-        (xdg / "molbuilder.json").write_text(json.dumps(block))
-        expected = xdg / "molbuilder.json"
+    xdg = tmp_path / "home" / ".config" / "molbuilder"
+    xdg.mkdir(parents=True)
+    (xdg / "molbuilder.json").write_text(json.dumps(block))
+    expected = xdg / "molbuilder.json"
 
     with pytest.raises(RuntimeConfigError) as exc:
-        read_effective_config(project_dir=tmp_path)
+        read_config()
     assert str(expected) in str(exc.value), (
         f"the refusal must name {expected}; got: {exc.value}")
     assert "'scheduler' is no longer configured" in str(exc.value), exc.value

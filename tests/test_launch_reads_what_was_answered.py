@@ -88,10 +88,10 @@ def bundle(tmp_path, monkeypatch, isolated_projects_root):
 
 
 def _cfg(b):
-    """The bundle launches through the scheduler -- `launch.mode`, the one
-    setting its config holds (`configuration.md` § 4)."""
-    (b / ".molbuilder.json").write_text(json.dumps(
-        {"launch": {"mode": "submit"}}))
+    """Launches go through the scheduler -- this machine's `launch.mode`
+    (`configuration.md` § 4), written through the one writer."""
+    from molbuilder.runtime_config import write_config_scope
+    write_config_scope({"launch": {"mode": "submit"}})
 
 
 class TestTheDomainTheBundleCarries:

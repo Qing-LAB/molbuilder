@@ -75,7 +75,7 @@ def _autosetup_minimal_config(tmp_path, monkeypatch):
     (tmp_path / "environment.json").write_text(
         _Env(scheduler="workstation",
              topology=_Topo(sockets=2, cores_per_socket=32),
-             script_generation={"preamble": "module load mamba",
+             env_init={"preamble": "module load mamba",
                                 "activation": "source activate"}).to_json()
         + "\n")
     yield tmp_path
@@ -418,7 +418,7 @@ class TestGpuFlagPrecedence:
                                                  cores_per_socket=32),
             domains=[Domain(name="general", partition="general",
                             qos="public", max_time="1-00:00:00")],
-            script_generation={"activation": "source activate"}).to_json())
+            env_init={"activation": "source activate"}).to_json())
         fdf = tmp_path / "myjob.fdf"
         fdf.write_text(_GPU_FDF)
         # one GPU and one rank, stated -- a GPU job states its count

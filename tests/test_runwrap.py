@@ -23,14 +23,13 @@ from molbuilder.jobset.model import Resources
 
 from molbuilder.scheduler import Environment as _Env, Topology as _Topo
 
-#: THIS MACHINE'S RECORD, as `jobset probe --write --activation ...
-#: --preamble ...` writes it: how a shell enters an environment here is its
-#: fact, and every wrapper reads it off the record (`configuration.md` § 5
-#: M-1).  A render of a deck in a folder that does not exist names it, as
+#: THIS MACHINE'S RECORD, as `jobset probe --write` writes it, carrying the
+#: copy of this machine's `env_init`: every wrapper reads how a shell enters
+#: an environment off the record (`configuration.md` § 4).  A render of a deck in a folder that does not exist names it, as
 #: prep names the target's.
 _MACHINE = _Env(scheduler="workstation",
                 topology=_Topo(sockets=2, cores_per_socket=32),
-                script_generation={"preamble": "module load mamba",
+                env_init={"preamble": "module load mamba",
                                    "activation": "source activate"})
 
 
@@ -983,7 +982,7 @@ def test_help_flag_lists_continue_and_force(tmp_path, _autosetup_minimal_config)
     (_autosetup_minimal_config / "environment.json").write_text(
         _Env(scheduler="workstation",
              topology=_Topo(sockets=2, cores_per_socket=32),
-             script_generation={"activation": "conda activate"}).to_json())
+             env_init={"activation": "conda activate"}).to_json())
     _bind()
     script = tmp_path / "myjob.fdf"
     script.write_text("# fake\n")

@@ -36,7 +36,6 @@ from .runstatus import jobset_status, render_stage_status, render_status
 
 #: A11: the name comes from the module that writes the file.
 from .model import FILENAME as _JOBSET_FILE
-from ..runtime_config import ACTIVATION_FORMS as _ACTIVATION_FORMS
 
 
 def _load(bundle: str) -> tuple:
@@ -183,7 +182,7 @@ def _echo_config_root() -> None:
     answers a bigger question, *what took effect*, for the commands that need
     it.  This answers a narrower one that every verb needs even when it never
     reads a `molbuilder.json` section: *which file is the starting point*.  A
-    person hitting the ``script_generation.activation`` refusal should not
+    person hitting the activation refusal should not
     have to already know that the config directory is the
     file to edit -- the first line of output says so.
 
@@ -1709,13 +1708,12 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     """
     mode_source = "--mode flag"
     domain_source = "--domain flag" if domain else None
-    # The BUNDLE's scope gates its own launches (R3, 2026-08-12): the
-    # calculation's .molbuilder.json `launch` block wins (running-a-job
+    # This machine's `launch.mode` when no --mode is given (running-a-job
     # § 5.4).
     if mode is None:
         from ..runtime_config import get_launch
         try:
-            mode = get_launch(project_dir=Path(bundle)).get("mode")
+            mode = get_launch().get("mode")
         except Exception as exc:
             # A malformed config is ITS OWN error.  Swallowing it here told
             # the user to set a value they may already have set.
@@ -2123,11 +2121,10 @@ def _probe_consent_merge(before, probed, *, yes: bool):
                                       before.site.partition)))
     # THE THREE FACTS THAT TRAVEL WITH A RECORD (`diagnostics.local_facts`:
     # how the machine enters its environment, which envs it holds, what they
-    # were built for) are asked about like every other difference.  They were
-    # replaced unasked, so a probe over Sol's record from a workstation put
-    # the workstation's activation into it whatever was answered, and every
-    # job then died sourcing a path Sol does not have (W52).
-    for _f in ("script_generation", "conda_envs", "env_arch"):
+    # were built for) are asked about like every other difference: a record
+    # edited by hand is a person's answer, and a probe replaced it unasked
+    # whatever was answered (W52).
+    for _f in ("env_init", "conda_envs", "env_arch"):
         b, pv = getattr(before, _f), getattr(probed, _f)
         if b != pv:
             diffs.append((_f, b, pv,
@@ -2279,29 +2276,17 @@ def cmd_machines() -> None:
                    "existing record is asked about, and silence keeps the "
                    "record.")
 @click.option("--set", "sets", multiple=True, metavar="KEY=VALUE",
-              help="declare a topology fact the probe cannot see from here "
-                   "(M-1's declared door -- e.g. describing a cluster from a "
-                   "workstation): --set gpus_per_node=4. "
+              help="declare a topology fact the probe cannot see where it "
+                   "runs (M-1's declared door -- e.g. a login node whose "
+                   "compute nodes hold the GPUs): --set gpus_per_node=4. "
                    "Repeatable; wins over detection; the record's source "
                    "says 'flag'.")
 @click.option("--scheduler", "scheduler_flag", default=None,
               type=click.Choice(["slurm", "workstation"]),
               help="force the scheduler kind instead of detecting it "
                    "(source 'flag').")
-@click.option("--activation", default=None,
-              type=click.Choice(sorted(_ACTIVATION_FORMS)),
-              help="how a shell enters a conda environment ON THIS MACHINE. "
-                   "Recorded in its record -- the one home of this fact, "
-                   "read by every prep for this machine "
-                   "(docs/configuration.md § 5 M-1).  Omitted, an existing "
-                   "record keeps its own.")
-@click.option("--preamble", default=None, metavar="SHELL",
-              help="the shell run before the activation on this machine -- "
-                   "`module load mamba`, or sourcing conda's hook.  Recorded "
-                   "with the activation; an empty string removes it.  "
-                   "Omitted, an existing record keeps its own.")
 def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
-                        sets, scheduler_flag, activation, preamble) -> None:
+                        sets, scheduler_flag) -> None:
     """Record what a machine IS -- cores, GPUs, scheduler, and on a cluster
     every (partition, QoS) you may actually submit to, with its wall.
 
@@ -2322,8 +2307,9 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
 
     **Facts only** -- M-1: a probe never chooses on your behalf.  Which queue
     a job uses is that job's own statement (`allocation.domain`, --domain).
-    What the probe cannot see is declared to it: --set, --scheduler, and how
-    a shell enters an environment here (--activation, --preamble).
+    What the probe cannot see is declared to it: --set, --scheduler.  How a
+    shell enters an environment here is copied from this machine's
+    molbuilder.json (`env_init`), into whichever record it writes.
 
     Run it on a login node for a cluster; on a workstation it records the same
     shape with no domains (M-2), rather than refusing.
@@ -2345,9 +2331,9 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
     user = getpass.getuser()
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
-    # The DECLARED half of M-1, typed by the schema itself: a fact you
-    # cannot probe from here (the ordinary case is describing a cluster
-    # from a workstation) arrives by flag and wins over detection, and the
+    # The DECLARED half of M-1, typed by the schema itself: a fact the probe
+    # cannot see where it runs (the ordinary case: a login node whose compute
+    # nodes hold the GPUs) arrives by flag and wins over detection, and the
     # record's source says so.  An unknown key or a mistyped value is
     # refused by name -- a silently-dropped declaration is a decision the
     # user wrote down and nobody obeyed.
@@ -2379,10 +2365,11 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
     # its environment, which envs exist here, and what they were built
     # for.  `diagnostics.local_facts` owns them and states why; `envs
     # init-config` became the second caller 2026-09-08, which is what
-    # took them out of this function.  The first is DECLARED, here, by the
-    # two flags -- the record is its one home since 2026-10-02.
-    declared = {k: v for k, v in (("activation", activation),
-                                  ("preamble", preamble)) if v is not None}
+    # took them out of this function.  The first is THIS machine's
+    # `env_init`, declared in its molbuilder.json and copied into whichever
+    # record this writes, this machine's or a named one (user, 2026-10-02).
+    from ..runtime_config import get_env_init
+    declared = get_env_init()
     from ..diagnostics import local_facts as _local_facts
     env, notes_sg = _local_facts(env, declared)
 
@@ -2396,16 +2383,11 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
         # shape a cluster does.  This verb used to exit 2 here, which left the
         # one machine that most needs a stated ceiling with no record at all.
         if env.scheduler == "slurm":
-            # Declared-slurm from a machine without sinfo (describing a
-            # cluster from a workstation): the domains are not probeable
-            # from here, and saying "workstation record" would contradict
-            # the scheduler the user just declared.
-            from ..scheduler.record import probe_command, probe_steps
-            notes.append("no sinfo reachable from here, so no domains "
-                         f"were probed -- `{probe_command(name)}` "
-                         + (probe_steps(name) if name else
-                            "on the cluster's login node")
-                         + " fills them; or the record rides with none.")
+            # Slurm, and no `sinfo` here to read its queues from: saying
+            # "workstation record" would contradict the scheduler declared.
+            notes.append("no sinfo reachable here, so no queues were "
+                         "probed -- run the probe where `sinfo` answers "
+                         "(a login node).")
         else:
             notes.append("no sinfo, so no scheduler domains -- this is a "
                          "workstation record (topology only).")
@@ -2510,17 +2492,17 @@ def cmd_probe_scheduler(out, do_write: bool, name, yes: bool,
         record = Path(out) / record.name
     target = record.parent
     fname = record.name
-    # WHAT THE RECORD ALREADY SAYS about entering an environment stays, unless
-    # a flag declared it again: the activation is declared, never measured,
-    # so a probe that was not told it has nothing to say about it -- and
-    # dropping it would make every prep for this machine refuse.
+    # WHAT THE RECORD ALREADY SAYS about entering an environment stays where
+    # this machine's `env_init` declares nothing: the activation is declared,
+    # never measured, so a probe with nothing to copy has nothing to say
+    # about it -- and a hand edit of a copied record survives it.
     before = read_environment(target / fname)
     carried = {k: v for k, v in
-               ((before.script_generation if before is not None else None)
+               ((before.env_init if before is not None else None)
                 or {}).items() if k not in declared}
     if carried:
-        env.script_generation = {**carried, **(env.script_generation or {})}
-        if env.script_generation.get("activation"):
+        env.env_init = {**carried, **(env.env_init or {})}
+        if env.env_init.get("activation"):
             notes_sg = None
 
     t = env.topology

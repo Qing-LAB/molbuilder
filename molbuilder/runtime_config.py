@@ -72,9 +72,6 @@ if TYPE_CHECKING:                      # pragma: no cover - typing only
 #: too, once, in :func:`_machine_config_file`.  Everything else asks
 #: :func:`machine_config_path`.
 CONFIG_FILENAME = "molbuilder.json"
-# Per-project config sidecar.  Per docs/execution/running-a-job.md § 5: hidden file in
-# the project directory, same schema as the server-wide molbuilder.json.
-PROJECT_CONFIG_FILENAME = ".molbuilder.json"
 
 #: THREE SECTIONS RETIRED ON 2026-10-02, each refused by name with what to do
 #: instead (`configuration.md` § 4) -- the file holds a person's preferences and
@@ -96,17 +93,15 @@ _SCHEDULER_RETIRED = (
     "probe --write` on that machine, the record copied here.\n"
     "(docs/configuration.md § 4; docs/execution/architecture.md § 5.2)")
 
-#: How a shell enters an environment is a FACT of the machine the job runs on
-#: (`configuration.md` § 5 M-1), so it lives in that machine's record.  It
-#: lived here too, and `jobset probe` copied it across -- after which the
-#: record won, and an edit to this file did nothing until the next probe.
-_SCRIPT_GENERATION_MOVED = (
-    "{path}: 'script_generation' is no longer configured here (moved "
-    "2026-10-02).  How a shell enters an environment on a machine is a fact "
-    "of that machine, kept in its record -- on the machine the jobs run on, "
-    "record the values this file holds:\n"
-    "    {command}\n"
-    "then delete the section (docs/configuration.md § 4, § 5 M-1).")
+#: The section is named for what it holds -- how a shell on THIS machine
+#: initialises a conda environment -- since 2026-10-02 (user: the old name was
+#: "deceiving").  The machine record carries it under the same name.
+_SCRIPT_GENERATION_RENAMED = (
+    "{path}: 'script_generation' is now 'env_init' (renamed 2026-10-02) -- "
+    "how a shell on this machine enters a conda environment, the same two "
+    "keys.  Write\n"
+    "    \"env_init\": {env_init}\n"
+    "instead.  (docs/configuration.md § 4)")
 
 #: `execution` is the RUN CARD in task.json -- ranks, threads, GPUs, wall,
 #: queue.  This file used the same name for how a launch is sent, and carried a
@@ -144,12 +139,11 @@ def _naming(path: Path, exc: Exception) -> str:
 
     The validators speak in terms of the schema and spell the generic
     ``molbuilder.json``; the reader and the writer know which file refused.
-    A malformed project ``.molbuilder.json`` used to refuse naming
-    'molbuilder.json' with no path (R10, 2026-08-12) -- and, after the path
-    was put in front, a retired-key refusal read
-    "/p/.molbuilder.json: molbuilder.json: 'paths.logs' ..." (two names,
-    the second wrong; review C-L6, 2026-09-14).  The generic name is dropped
-    when the real one is supplied.
+    A malformed file used to refuse naming 'molbuilder.json' with no path
+    (R10, 2026-08-12) -- and, after the path was put in front, a retired-key
+    refusal read "<path>: molbuilder.json: 'paths.logs' ..." (two names;
+    review C-L6, 2026-09-14).  The generic name is dropped when the real one
+    is supplied.
     """
     msg = str(exc)
     if str(path) in msg:
@@ -158,32 +152,6 @@ def _naming(path: Path, exc: Exception) -> str:
     if msg.startswith(generic):
         msg = msg[len(generic):]
     return f"{path}: {msg}"
-
-
-def _refuse_misplaced(scope: Mapping[str, Any], path: Path) -> None:
-    """A machine-only section in a PROJECT file is refused, by name.
-
-    The reader's rule since the registry; the WRITER applies it to the merged
-    file too since 2026-09-14 -- it checked the patch only, so a project file
-    already carrying ``tls`` was written and then refused by every read
-    (review C-L2).
-    """
-    misplaced = sorted(
-        k for k in scope
-        if k in _SECTIONS and "project" not in _SECTIONS[k]["scopes"])
-    if misplaced:
-        allowed = ", ".join(n for n, spec in _SECTIONS.items()
-                            if "project" in spec["scopes"])
-        raise RuntimeConfigError(
-            f"{path}: "
-            f"{', '.join(map(repr, misplaced))} may not live in a "
-            f"PROJECT-scope file ({PROJECT_CONFIG_FILENAME}, in a project "
-            f"or calculation folder) -- machine sections have one home, the "
-            f"server-wide {CONFIG_FILENAME}.  A project file may carry: "
-            f"{allowed}.  (Refused rather than ignored: a section that is "
-            f"read, validated and then silently dropped looks effective "
-            f"while nobody applied it.)"
-        )
 
 
 def read_config(path: Optional[Path] = None) -> Dict[str, Any]:
@@ -517,9 +485,8 @@ def _validate_provider(entry: Any, idx: int) -> Dict[str, Any]:
 # --------------------------------------------------------------------- #
 #  The SECTION REGISTRY -- one row per top-level section (U7,           #
 #  2026-08-12).  Everything the loader knows about a section is in its  #
-#  row: how it is read (its validator), which SCOPES it may live in,    #
-#  and whether provenance may print its VALUES.  `_normalise`,          #
-#  `_read_project`'s scope refusal, `config_provenance` and             #
+#  row: how it is read (its validator) and whether provenance may      #
+#  print its VALUES.  `_normalise`, `config_provenance` and             #
 #  `write_config_scope` all consult THIS table and nothing else.        #
 #                                                                       #
 #  Why a table: until it existed each of those four sites kept its own  #
@@ -686,22 +653,50 @@ def _read_scheduler_retired(raw: Mapping[str, Any]):
     raise RuntimeConfigError(_SCHEDULER_RETIRED.format(path=CONFIG_FILENAME))
 
 
-def _read_script_generation_moved(raw: Mapping[str, Any]):
-    """``script_generation`` is refused by name, with the probe line that
-    records THIS file's values in the machine's record -- so following the
-    message moves the values rather than retyping them."""
+_ENV_INIT_KEYS = ("activation", "preamble")
+
+
+def _read_env_init(raw: Mapping[str, Any]):
+    """``env_init`` -- how a shell on THIS machine enters a conda environment
+    (`configuration.md` § 4): ``activation``, one of :data:`ACTIVATION_FORMS`
+    with no default, and ``preamble``, the shell run before it, verbatim.
+    `jobset probe` copies both into every record it writes, and prep reads
+    them from the target's record.  Another key is refused by name; a ``_``
+    key is a comment."""
+    section = _require_object_section(raw, "env_init")
+    if section is None:
+        return None
+    unknown = sorted(k for k in section
+                     if k not in _ENV_INIT_KEYS and not str(k).startswith("_"))
+    if unknown:
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'env_init' holds 'activation' and "
+            f"'preamble'; got {', '.join(map(repr, unknown))}.")
+    activation = section.get("activation")
+    if activation is not None and activation not in ACTIVATION_FORMS:
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'env_init.activation' must be one of "
+            f"{', '.join(map(repr, ACTIVATION_FORMS))}; got {activation!r}.")
+    preamble = section.get("preamble")
+    if preamble is not None and not isinstance(preamble, str):
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: 'env_init.preamble' must be a string -- the "
+            f"shell run before the activation; got "
+            f"{type(preamble).__name__}.")
+    return section
+
+
+def _read_script_generation_renamed(raw: Mapping[str, Any]):
+    """``script_generation`` is refused by name, with the ``env_init`` block
+    to write in its place -- its own values, so the message moves them."""
     if raw.get("script_generation") is None:
         return None
-    import shlex
     section = raw["script_generation"]
     section = section if isinstance(section, Mapping) else {}
-    command = "molbuilder jobset probe --write"
-    for key in ("activation", "preamble"):
-        value = section.get(key)
-        if isinstance(value, str) and value.strip():
-            command += f" --{key} {shlex.quote(value)}"
-    raise RuntimeConfigError(_SCRIPT_GENERATION_MOVED.format(
-        path=CONFIG_FILENAME, command=command))
+    block = {k: section[k] for k in _ENV_INIT_KEYS
+             if isinstance(section.get(k), str) and section[k].strip()}
+    raise RuntimeConfigError(_SCRIPT_GENERATION_RENAMED.format(
+        path=CONFIG_FILENAME, env_init=json.dumps(block)))
 
 
 def _read_execution_renamed(raw: Mapping[str, Any]):
@@ -762,16 +757,10 @@ def _read_admin(raw: Mapping[str, Any]):
     return dict(section)
 
 
-#: name -> how it is read · where it may live · whether provenance may
-#: print its values.  ``scopes``: "machine" = molbuilder.json (the config dir),
-#: "project" = the .molbuilder.json in a project or calculation folder
-#: -- ONE name for that scope, everywhere (2026-08-23; it answered to
-#: "bundle" in provenance output until then).  A section absent from a
-#: scope's tuple is REFUSED there, never silently ignored -- S1c's
-#: argument, generalised: a section that is read, validated and then
-#: dropped looks effective while nobody applied it.  ``provenance_safe``
-#: gates `config_provenance`: True only where every value is printable
-#: in logs (no secrets, no paths to secrets).
+#: name -> how it is read · whether provenance may print its values.  Every
+#: section lives in THIS machine's molbuilder.json, the one config file.
+#: ``provenance_safe`` gates `config_provenance`: True only where every value
+#: is printable in logs (no secrets, no paths to secrets).
 #: Every directory ``paths`` may name.  A closed set: a key nothing reads
 #: would look effective and do nothing, which is the argument behind every
 #: refusal in `configuration.md`.
@@ -861,40 +850,38 @@ def _read_paths(raw: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
 
 _SECTIONS: Dict[str, Dict[str, Any]] = {
     "tls":               {"read": _read_tls,
-                          "scopes": ("machine",), "provenance_safe": False},
-    "envs":              {"read": _read_envs,
-                          "scopes": ("machine",), "provenance_safe": False},
-    "auth":              {"read": _read_auth,
-                          "scopes": ("machine",), "provenance_safe": False},
-    "notify_keys_file":  {"read": _read_notify_retired("notify_keys_file"),
-                          "scopes": ("machine",), "provenance_safe": False},
-    "notify_route":      {"read": _read_notify_retired("notify_route"),
-                          "scopes": ("machine",), "provenance_safe": False},
-    "launch":            {"read": _read_launch,
-                          "scopes": ("machine", "project"),
-                          "provenance_safe": True},
-    # RETIRED 2026-10-02 -- refused by name in either scope, each with what to
-    # do instead (`configuration.md` § 4).
-    "execution":         {"read": _read_execution_renamed,
-                          "scopes": ("machine", "project"),
                           "provenance_safe": False},
-    "script_generation": {"read": _read_script_generation_moved,
-                          "scopes": ("machine", "project"),
+    "envs":              {"read": _read_envs,
+                          "provenance_safe": False},
+    "auth":              {"read": _read_auth,
+                          "provenance_safe": False},
+    "notify_keys_file":  {"read": _read_notify_retired("notify_keys_file"),
+                          "provenance_safe": False},
+    "notify_route":      {"read": _read_notify_retired("notify_route"),
+                          "provenance_safe": False},
+    "launch":            {"read": _read_launch,
+                          "provenance_safe": True},
+    "env_init":          {"read": _read_env_init,
+                          "provenance_safe": False},
+    # RETIRED 2026-10-02 -- refused by name, each with what to do instead
+    # (`configuration.md` § 4).
+    "execution":         {"read": _read_execution_renamed,
+                          "provenance_safe": False},
+    "script_generation": {"read": _read_script_generation_renamed,
                           "provenance_safe": False},
     "scheduler":         {"read": _read_scheduler_retired,
-                          "scopes": ("machine", "project"),
                           "provenance_safe": False},
     "checkpoint":        {"read": lambda raw: (
                               _validate_checkpoint(raw["checkpoint"])
                               if "checkpoint" in raw else None),
-                          "scopes": ("machine",), "provenance_safe": False},
+                          "provenance_safe": False},
     "admin":             {"read": _read_admin,
-                          "scopes": ("machine",), "provenance_safe": False},
+                          "provenance_safe": False},
     "rate_limit":        {"read": lambda raw: _require_object_section(
                               raw, "rate_limit"),
-                          "scopes": ("machine",), "provenance_safe": False},
+                          "provenance_safe": False},
     "paths":             {"read": _read_paths,
-                          "scopes": ("machine",), "provenance_safe": True},
+                          "provenance_safe": True},
 }
 
 #: The flat spelling of ``tls`` that this loader used to accept.  Kept ONLY
@@ -1209,8 +1196,7 @@ def get_checkpoint(engine: Optional[str] = None) -> Dict[str, Any]:
     There is deliberately no ``project_dir`` parameter: reading a scope beside
     the folder being saved is exactly the per-folder classification S1c
     forbids, and it is what would let somebody change where files are stored
-    between a save and a restore (I2c).  :func:`_read_project` refuses such a
-    section outright, so there is no quiet second home either.
+    between a save and a restore (I2c).
 
     ``engine`` is a **hint** and may be omitted or unknown: an engine nobody
     configured resolves to ``generic``, which names no always-large families and
@@ -1231,11 +1217,9 @@ def get_checkpoint(engine: Optional[str] = None) -> Dict[str, Any]:
     }
 
 
-#: The activation's two legal values, in ONE home.  It is a fact of the
-#: machine a job runs on and lives in that machine's record
-#: (`configuration.md` § 5 M-1); `envs init-config` and `jobset probe
-#: --activation` offer these as the choices.  Presentation order is the
-#: caller's business.
+#: The activation's two legal values, in ONE home: `env_init` is checked
+#: against them, and `envs init-config` offers them as the choices.
+#: Presentation order is the caller's business.
 ACTIVATION_FORMS: tuple = ("source activate", "conda activate")
 
 
@@ -1258,18 +1242,6 @@ def _machine_config_file() -> Path:
     something untrue about the only location there is.
     """
     return config_dir() / CONFIG_FILENAME
-
-
-def _project_config_file(project_dir) -> Path:
-    """The project scope's file, inside the project directory.
-
-    Its sibling above had a door and this scope did not, so
-    ``Path(project_dir) / PROJECT_CONFIG_FILENAME`` was written out at seven
-    call sites -- including inside two refusal messages, where a join that
-    drifted would print a path the reader cannot find.  One home, so the
-    spelling cannot differ between the reader and the message about it.
-    """
-    return Path(project_dir) / PROJECT_CONFIG_FILENAME
 
 
 #: The sections :func:`config_provenance` reports.  A deliberate ALLOWLIST:
@@ -1295,10 +1267,9 @@ def machine_config_path() -> Path:
     """
     # ONE LOCATION (`archive/2026-09-01-config-access-plan.md` § 3.3).  A working-directory
     # `molbuilder.json` was step 1 of a first-found-wins search until
-    # 2026-08-31, and it is gone: it was redundant with the project scope --
-    # `.molbuilder.json`, which MERGES rather than replaces -- and it was the
-    # entire source of one setting living in two files with nothing saying
-    # which won.  Nothing stops now, because there is nothing to stop at.
+    # 2026-08-31, and it is gone: it was the entire source of one setting
+    # living in two files with nothing saying which won.  Nothing stops now,
+    # because there is nothing to stop at.
     return _machine_config_file().resolve()
 
 
@@ -1335,9 +1306,7 @@ def machine_config_shadow() -> Optional[str]:
         f"{CONFIG_FILENAME} in the working directory is NOT READ: {here}",
         f"  The machine config has one location, and this is not it: {home}"
         + ("" if home.is_file() else "  (no file there yet)"),
-        "  Move it there, or delete it.  For settings that should apply to "
-        "one project only, use that project's .molbuilder.json, which merges "
-        "(configuration.md § 2.1a).",
+        "  Move it there, or delete it (configuration.md § 2.1a).",
     ])
 
 
@@ -1397,17 +1366,10 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     domain names — never the file contents (see the allowlist note above).
 
     Returns ``{"sources": [...], "effective": {...}, "domains": [...]}``:
-    ``sources`` lists each scope as ``{scope, path, found}`` in precedence
-    order (project last = wins); ``effective`` maps ``section.key`` to
-    ``{"value": ..., "from": "machine"|"project"}``.
-
-    **The scope is called ``project`` everywhere** -- the registry's
-    ``_SECTIONS[...]["scopes"]``, this output, and the refusals below.  It
-    was ``"bundle"`` here and ``"project"`` in the registry until
-    2026-08-23, three names for one thing counting the refusals' prose
-    (`configuration.md` § 8).  ``bundle`` was the one that had to go: it
-    already names a different artifact -- the portable prepped directory
-    the JobSet framework's ``--bundle`` points at.
+    ``sources`` lists each file consulted as ``{scope, path, found}`` -- this
+    machine's molbuilder.json, then the machine records; ``effective`` maps
+    ``section.key`` to ``{"value": ..., "from": "machine"}``.  ``project_dir``
+    names the calculation whose own machine record is listed.
     """
     machine_path = machine_config_path()
     sources = [{"scope": "machine", "path": str(machine_path.resolve()),
@@ -1421,10 +1383,6 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     # it holds.  Asked of the one place that phrases each, never re-worded.
     mode_warning = machine_config_mode_warning()
 
-    if project_dir is not None:
-        project_path = _project_config_file(project_dir)
-        sources.append({"scope": "project", "path": str(project_path),
-                        "found": project_path.is_file(), "via": "project"})
 
     # RAW file bytes decide what a file "supplied" (R10, 2026-08-12: the
     # normalized scopes injected validator defaults, and provenance then
@@ -1439,19 +1397,14 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
             return {}
 
     machine_file = _raw_file(machine_path)
-    project_file = (_raw_file(_project_config_file(project_dir))
-                    if project_dir is not None else {})
     effective: Dict[str, Dict[str, Any]] = {}
     for section in _PROVENANCE_SECTIONS:
-        for scope_name, raw in (("machine", machine_file),
-                                ("project", project_file)):
-            block = raw.get(section)
-            if not isinstance(block, Mapping):
-                continue
-            for key, value in block.items():
-                # later scope overwrites: project wins, mirroring _deep_merge
-                effective[f"{section}.{key}"] = {"value": value,
-                                                 "from": scope_name}
+        block = machine_file.get(section)
+        if not isinstance(block, Mapping):
+            continue
+        for key, value in block.items():
+            effective[f"{section}.{key}"] = {"value": value,
+                                             "from": "machine"}
     # Domains come from the MACHINE RECORD since N4, not from these files, so
     # provenance follows them there -- a display that kept reporting the old
     # home would say "(none)" on a correctly-probed cluster.  The record's own
@@ -1497,7 +1450,7 @@ def format_provenance(prov: Mapping[str, Any]) -> str:
     width = max([len(s["scope"]) for s in prov["sources"]] + [8]) + 1
     for s in prov["sources"]:
         state = "found" if s["found"] else "absent"
-        via = f", via {s['via']}" if s["found"] and s["via"] != "project" else ""
+        via = f", via {s['via']}" if s["found"] else ""
         lines.append(f"  {s['scope']:<{width}}{s['path']}  ({state}{via})")
     for key in sorted(prov["effective"]):
         e = prov["effective"][key]
@@ -1509,38 +1462,6 @@ def format_provenance(prov: Mapping[str, Any]) -> str:
         lines.append(f"  environment.domains: "
                      f"{', '.join(prov['domains'])}")
     return "\n".join(lines)
-
-
-def _read_project(project_dir: Path) -> Dict[str, Any]:
-    """One project-scope file, refusing the one section that may not live here.
-
-    S1c: the checkpoint classification has ONE home, and it is the server-wide
-    config.  A project-scope copy is a file somebody can edit between a save and
-    a restore, and it makes two folders behave differently with nothing on disk
-    explaining why (checkpointing.md § 4, I2c).
-
-    Refused rather than ignored: a section that is read, validated and then
-    silently dropped is worse than one that was never allowed -- it looks
-    effective, and the folder is saved under rules nobody applied.
-    """
-    scope = read_config(_project_config_file(project_dir))
-    if "checkpoint" in scope:
-        # The registry says machine-only too, but checkpoint keeps its own
-        # message: S1c is the section-specific WHY, and the operator
-        # reading this refusal is mid-mistake about exactly that.
-        raise RuntimeConfigError(
-            f"{_project_config_file(project_dir)}: a 'checkpoint' "
-            f"section may not live in a PROJECT-scope file "
-            f"({PROJECT_CONFIG_FILENAME}, in a project or calculation "
-            f"folder).  The "
-            f"classification has one home -- the server-wide "
-            f"{CONFIG_FILENAME} -- so that two folders cannot behave "
-            f"differently for no recorded reason, and so that nobody can "
-            f"change where files are stored between a save and a restore "
-            f"(docs/execution/checkpointing.md S1c, I2c)."
-        )
-    _refuse_misplaced(scope, _project_config_file(project_dir))
-    return scope
 
 
 def _deep_merge(base: Dict[str, Any],
@@ -1562,38 +1483,28 @@ def _deep_merge(base: Dict[str, Any],
     return out
 
 
-def read_effective_config(
-    project_dir: Optional[Path] = None,
-) -> Dict[str, Any]:
-    """Return the merged effective configuration.
-
-    When ``project_dir`` is None: returns the server-wide layer alone.
-    When provided: deep-merges server-wide ← project (project wins per
-    the rules in :func:`_deep_merge`).  The one merge there is: no section
-    has a rule of its own since `script_generation` left this file
-    (2026-10-02).
-    """
-    server = read_config()
-    if project_dir is None:
-        return server
-    project = _read_project(Path(project_dir))
-    return _deep_merge(server, project)
-
-
 def get_paths() -> Dict[str, Any]:
     """The effective ``paths`` block, or ``{}``.  See :func:`_read_paths`."""
     return dict(read_config().get("paths") or {})
 
 
-def get_launch(project_dir: Optional[Path] = None) -> Dict[str, Any]:
-    """The effective ``launch`` block -- ``{"mode": "direct" | "submit" |
-    None}`` -- the machine's, with a project's over it (`running-a-job.md`
-    § 5.4).  ``None`` is UNSET, and `launch` then refuses rather than
-    derive one: deciding ``submit`` from a DETECTED scheduler would gate
-    submission on detection.  Both scopes arrive validated
+def get_launch() -> Dict[str, Any]:
+    """This machine's ``launch`` block -- ``{"mode": "direct" | "submit" |
+    None}`` (`running-a-job.md` § 5.4).  ``None`` is UNSET, and `launch` then
+    refuses rather than derive one: deciding ``submit`` from a DETECTED
+    scheduler would gate submission on detection.  It arrives validated
     (:func:`_read_launch`), so nothing is checked here."""
-    merged = read_effective_config(project_dir).get("launch") or {}
-    return {"mode": merged.get("mode")}
+    return {"mode": (read_config().get("launch") or {}).get("mode")}
+
+
+def get_env_init() -> Dict[str, str]:
+    """THIS machine's ``env_init`` -- ``activation`` and ``preamble``, each
+    only when stated -- from this machine's own ``molbuilder.json``
+    (`configuration.md` § 4).  What `jobset probe` copies into the record it
+    writes."""
+    section = read_config().get("env_init") or {}
+    return {k: section[k] for k in _ENV_INIT_KEYS
+            if isinstance(section.get(k), str) and section[k].strip()}
 
 
 def get_routing(
@@ -1650,16 +1561,10 @@ def routing_of(env) -> List["Domain"]:
     return list(env.domains) if env is not None else []
 
 
-def write_config_scope(
-    project_dir: Optional[Path],
-    patch: Mapping[str, Any],
-) -> Path:
-    """Write a partial config patch into one scope.
-
-    ``project_dir`` selects:
-      * ``None``: the machine config, which has one location and is
-        created there when absent (`configuration.md` § 2.1c).
-      * a path: ``<project_dir>/.molbuilder.json``.
+def write_config_scope(patch: Mapping[str, Any]) -> Path:
+    """Write a partial config patch into this machine's ``molbuilder.json``,
+    which has one location and is created there when absent
+    (`configuration.md` § 2.1c).
 
     The patch is deep-merged ONTO the existing file's contents (per
     :func:`_deep_merge`), preserving keys outside the patch.  A corrupt
@@ -1673,24 +1578,10 @@ def write_config_scope(
 
     Returns the resolved target path.
     """
-    if project_dir is None:
-        # THE SAME DOOR THE READER USES.  A writer with its own idea of where
-        # the machine file lives writes one nothing reads, which is the whole
-        # failure this change removes.
-        target = machine_config_path()
-    else:
-        # The same scope rule reads enforce (the registry): refusing at
-        # WRITE time beats producing a file every later read refuses.
-        misplaced = sorted(
-            k for k in patch
-            if k in _SECTIONS and "project" not in _SECTIONS[k]["scopes"])
-        if misplaced:
-            raise RuntimeConfigError(
-                f"{', '.join(map(repr, misplaced))} may not be written into "
-                f"a project-scope {PROJECT_CONFIG_FILENAME}: machine "
-                f"sections have one home, the server-wide {CONFIG_FILENAME}."
-            )
-        target = _project_config_file(project_dir)
+    # THE SAME DOOR THE READER USES.  A writer with its own idea of where the
+    # machine file lives writes one nothing reads, which is the whole failure
+    # this change removes.
+    target = machine_config_path()
 
     existing: Dict[str, Any] = {}
     if target.is_file():
@@ -1712,11 +1603,6 @@ def write_config_scope(
                 f"and retry.") from exc
 
     merged = _deep_merge(existing, dict(patch))
-    if project_dir is not None:
-        # The reader's scope rule on the WHOLE file, not just the patch: a
-        # project file that already carried a machine section was written
-        # and then refused by every read (review C-L2, 2026-09-14).
-        _refuse_misplaced(merged, target)
     # Round-trip through the validator BEFORE writing so we never
     # produce a file that ``read_config`` would reject.
     try:
@@ -1762,10 +1648,8 @@ def write_config_scope(
 
 __all__ = [
     "CONFIG_FILENAME",
-    "PROJECT_CONFIG_FILENAME",
     "RuntimeConfigError",
     "read_config",
-    "read_effective_config",
     "write_config_scope",
     "get_tls",
     "get_envs",
@@ -1773,5 +1657,6 @@ __all__ = [
     "get_providers",
     "get_rate_limit",
     "get_launch",
+    "get_env_init",
     "ACTIVATION_FORMS",
 ]

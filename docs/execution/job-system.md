@@ -1518,7 +1518,7 @@ with `--write`, so every calculation on this machine reads one probed answer
 instead of each re-probing its own.
 
 It writes **facts only** — what it measured, and the activation and preamble
-you declare to it there (`--activation`, `--preamble`). Which queue a job uses
+that machine's `molbuilder.json` declares, copied in. Which queue a job uses
 is that job's own statement ([`architecture.md` § 5.2](?doc=execution/architecture.md));
 `molbuilder.json` holds no scheduler settings — the split is
 [`configuration.md` § 4–5](?doc=configuration.md) M-1.

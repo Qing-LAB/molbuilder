@@ -788,36 +788,37 @@ admin list ([`ops/deployment.md`](?doc=ops/deployment.md) § 5,
   `$MOLBUILDER_CONFIG_DIR` if set, else `$XDG_CONFIG_HOME/molbuilder/`, else
   `~/.config/molbuilder/`. There is no search and no working-directory step; a
   `./molbuilder.json` is not read (`configuration.md` § 2.1a).
-- **Project** `.molbuilder.json` — in the project directory, carrying `launch`
-  alone.
-- **Merge** — objects deep-merge, scalars/arrays replace, and **project wins**.
 
 ### 5.2 The activation — required to emit ANY wrapper, and a fact of the machine
 
 How a shell enters an environment on a machine — the `preamble` (e.g.
 `module load mamba/latest`, or sourcing conda's hook) and the `activation`
-(`source activate` or `conda activate`) — is **a fact of that machine**, kept in
-its record (`configuration.md` § 5 M-1). Every wrapper is rendered with the
-TARGET's two, this machine included, and the probe records them where it runs:
+(`source activate` or `conda activate`) — is **a fact of that machine**, carried
+by its record (`configuration.md` § 5 M-1). Every wrapper is rendered with the
+TARGET's two, this machine included.
 
-```text
-molbuilder jobset probe --write --activation "source activate" \
-    --preamble "module load mamba/latest"
+**They are declared once on each machine molbuilder is installed on**, in that
+machine's own `molbuilder.json` — molbuilder needs them there before any record
+exists *(user, 2026-10-02)*:
+
+```json
+"env_init": {"activation": "source activate",
+                      "preamble": "module load mamba/latest"}
 ```
 
+and **`jobset probe --write` copies them into every record it writes** — this
+machine's `environment.json`, or a named `<name>.json` to carry to where you
+prep. A copy that is wrong for the machine it describes is edited by hand, in
+that record; an edit to `molbuilder.json` reaches a record at its next probe.
+
 `activation` must be `"source activate"` or `"conda activate"` and has **no
-default**: a target whose record carries none is refused at prep, naming that
-command. On a fresh install that would bite a workstation first — which is why
-**`envs init-config` asks** how this machine enters a conda env and writes the
-answer into this machine's record, at the one moment it is both known and being
+default**: a target whose record carries none is refused at prep, saying where
+to declare it. On a fresh install that would bite a workstation first — which
+is why **`envs init-config` asks** how this machine enters a conda env and writes
+the answer into `molbuilder.json`, at the one moment it is both known and being
 discussed ([`ops/installation.md`](?doc=ops/installation.md) § 2.1). It is
 declared, never detected. `preamble` is arbitrary shell run before activation,
 emitted verbatim.
-
-*(Both lived in `molbuilder.json`'s `script_generation` until 2026-10-02, and
-the probe copied them into the record — so editing the file did nothing until
-the next probe, and the record won. `script_generation` is refused there by
-name now.)*
 
 ### 5.3 The `.sbatch` header — every value stated
 
@@ -887,8 +888,7 @@ from:**
 
 | file | scope | found where |
 |---|---|---|
-| `molbuilder.json` (no dot) | **this machine** — `launch.mode`, the environment names | the config directory: `$MOLBUILDER_CONFIG_DIR`, else `$XDG_CONFIG_HOME/molbuilder/`, else `~/.config/molbuilder/` |
-| `.molbuilder.json` (dotted) | **this calculation** — `launch`, travelling with the folder | inside the calculation, beside `task.json`; **wins on conflict** |
+| `molbuilder.json` | **this machine** — `launch.mode`, the environment names, `env_init` | the config directory: `$MOLBUILDER_CONFIG_DIR`, else `$XDG_CONFIG_HOME/molbuilder/`, else `~/.config/molbuilder/` |
 
 `prep` and `launch` print the provenance — every path consulted, found or
 absent, and each effective value tagged with its source file — and `prep`

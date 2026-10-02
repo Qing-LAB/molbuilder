@@ -509,7 +509,7 @@ def reset_capabilities() -> None:
 # --------------------------------------------------------------------- #
 
 
-def local_facts(env: "Any", script_generation: "Optional[Mapping[str, str]]"
+def local_facts(env: "Any", env_init: "Optional[Mapping[str, str]]"
                 = None) -> "Tuple[Any, Optional[str]]":
     """Attach this machine's three portable facts to a probed record.
 
@@ -524,13 +524,13 @@ def local_facts(env: "Any", script_generation: "Optional[Mapping[str, str]]"
     ``module load mamba`` / ``source activate``; copying that record to the
     workstation is then SUFFICIENT to generate a wrapper that runs on Sol.
 
-    **DECLARED, and handed in** *(2026-10-02)*.  ``script_generation`` is what
-    the person declared on this machine -- ``jobset probe --activation /
-    --preamble``, or the answer ``envs init-config`` asked for -- and the
-    record is its ONE home (`configuration.md` § 5 M-1).  It was copied out of
-    ``molbuilder.json`` until then, after which the record won and an edit to
-    the file did nothing until the next probe: one fact, two homes.  ``None``
-    attaches nothing, and the caller keeps what an existing record says.
+    **DECLARED where molbuilder is installed, and copied** *(user,
+    2026-10-02)*.  ``env_init`` is THIS machine's, from its
+    own ``molbuilder.json`` -- `jobset probe` hands in
+    ``runtime_config.get_env_init()``, `envs init-config` the answer it just
+    asked for -- and the record carries the copy, which is what every prep
+    reads (`configuration.md` § 4).  ``None`` attaches nothing, and the caller
+    keeps what an existing record says.
 
     **WHICH ENVIRONMENTS EXIST HERE** travels too -- the other half of the
     pair.  ``conda env list`` enumerates without entering, so this is free from
@@ -545,7 +545,7 @@ def local_facts(env: "Any", script_generation: "Optional[Mapping[str, str]]"
     callers, ``jobset probe`` and ``envs init-config``, so one copy.
     """
     import dataclasses as _dc
-    sg_rec = {k: v for k, v in (script_generation or {}).items() if v}
+    sg_rec = {k: v for k, v in (env_init or {}).items() if v}
     try:
         envs_here = sorted(get_capabilities().conda_envs or ())
     except Exception:      # pragma: no cover - enumeration is best-effort
@@ -555,14 +555,14 @@ def local_facts(env: "Any", script_generation: "Optional[Mapping[str, str]]"
         import platform as _pl
         env_arch = _pl.machine() or None
     note = None if sg_rec.get("activation") else (
-        "no activation was declared, so the record says nothing about how a "
-        "shell enters an environment here -- every prep for this machine "
-        "refuses until it does: `molbuilder jobset probe --write "
-        "--activation \"conda activate\"` (or \"source activate\"), with "
-        "--preamble for the lines to run first")
+        "this machine's molbuilder.json declares no `env_init.activation`, so "
+        "the record says nothing about how a shell enters an environment "
+        "here -- every prep for this machine refuses until it does: declare "
+        "it there (`molbuilder envs init-config` asks for it) and probe "
+        "again, or edit the record by hand")
     changes = {}
     if sg_rec:
-        changes["script_generation"] = sg_rec
+        changes["env_init"] = sg_rec
     if envs_here:
         changes.update(conda_envs=envs_here, env_arch=env_arch)
     return (_dc.replace(env, **changes) if changes else env), note

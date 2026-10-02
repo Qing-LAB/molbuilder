@@ -980,30 +980,20 @@ ranks, cores per rank, GPU count — which the job states itself (§ 5.2), and a
 **fact about the machine it runs on** — its queues, topology, activation and
 preamble — which is that machine's record (`configuration.md` § 5).
 
-### 8.1 Where it is found, and how two files become one
+### 8.1 Where it is found
 
-```mermaid
-flowchart LR
-    A["<b>server-wide</b><br/>&lt;config dir&gt;/molbuilder.json<br/><i>$MOLBUILDER_CONFIG_DIR, else XDG</i>"]
-    B["<b>this project</b><br/>&lt;project&gt;/.molbuilder.json<br/><i>`launch` only</i>"]
-    M{{"merge:<br/>objects deep-merge<br/>scalars and lists replace<br/><b>the project wins</b>"}}
-    R["the effective settings"]
-    A --> M
-    B --> M --> R
-```
-
-**The server-wide file has one location** — the config directory
-(`configuration.md` § 2.1c). It was a first-found-wins search across the working
-directory and two XDG locations until 2026-08-31; a `./molbuilder.json` is now
-not read at all, because per-directory settings are the project scope's job and
-it merges rather than shadowing. A malformed file refuses to start rather than
-half-configuring something.
+**The file has one location** — the config directory (`configuration.md`
+§ 2.1c), `$MOLBUILDER_CONFIG_DIR`, else XDG. It was a first-found-wins search
+across the working directory and two XDG locations until 2026-08-31; a
+`./molbuilder.json` is now not read at all. A malformed file refuses to start
+rather than half-configuring something.
 
 ### 8.2 Which floor reads each section
 
 | section | read by | reaches |
 |---|---|---|
 | `launch` | `get_launch` | **floor 7**, `jobset launch` — `mode`, when no `--mode` is given |
+| `env_init` | `get_env_init` | `jobset probe`, which copies it into the record it writes — what prep then reads (§ 8.3) |
 | `envs` | `get_envs`, `get_env_manager` | **floor 5**, `prep` step 4 — the environment name the wrapper activates; and the `envs` verbs |
 | `paths` | `get_paths` | `projects.projects_root` — every surface |
 | `checkpoint` | `get_checkpoint`, `get_checkpoint_engines` | **outside the stack** — the file protocol |
@@ -1013,10 +1003,10 @@ half-configuring something.
 ### 8.2a The section registry — the loader's one table *(U7, 2026-08-12)*
 
 **Everything the loader knows about a section is one row of one table** —
-`_SECTIONS` in `runtime_config.py`: the section's validator, the scopes it
-may live in, and whether provenance may print its values. `_normalise` (the
-loader), the project-scope refusal, `config_provenance`'s safe list and
-`write_config_scope` all consult that table and nothing else.
+`_SECTIONS` in `runtime_config.py`: the section's validator and whether
+provenance may print its values. `_normalise` (the loader),
+`config_provenance`'s safe list and `write_config_scope` all consult that table
+and nothing else.
 
 **Why it exists — the defect it ended.** Until 2026-08-12 each of those four
 sites kept its own partial list. The loader's list had never learned `admin`
@@ -1028,13 +1018,12 @@ refused — worth knowing before you debug why an admin list appears to do
 nothing"*) — a sentence that should have been a bug report. Every section is
 now validated when the file is read; a malformed one refuses to start.
 
-Three rules fall out of the table, and each was a scattered special case
+Two rules fall out of the table, and each was a scattered special case
 before:
 
 | rule | what it means for you |
 |---|---|
 | **an unknown top-level key is refused, never ignored** | a typo'd section name (`"shceduler"`) is an error naming the known sections, not a silently dead block. *Amended contract — `running-a-job.md` § 5 said "unknown keys are ignored", and that tolerance is exactly the hole that ate `admin`.* The one carve-out: a key starting with `_` (the templates' `"_comment_tls"` idiom) is a comment by design |
-| **a machine section may not live in a bundle** | `admin`, `auth`, `tls`, `envs`, `checkpoint`, `rate_limit`, `paths` in a calculation's `.molbuilder.json` are refused — at read AND at write (`write_config_scope`). A bundle may carry `launch` alone. This generalises checkpoint's S1c argument: a section that is read, validated and then silently dropped looks effective while nobody applied it |
 | **provenance prints only what its row allows** | `config_provenance` (the `config:` lines prep and submit echo and the decision ledger records) shows values only for `launch` and `paths` — never anything near a secret |
 
 *(That the § 8.2 table and the registry name the same sections was checked by
@@ -1061,6 +1050,7 @@ flowchart TB
     end
     W["the wrapper<br/><i>activation baked in, verbatim</i>"]
     C -->|"envs"| S4
+    C -.->|"env_init —<br/>copied by jobset probe"| E
     E -->|"activation · preamble"| S4 --> W
     C -->|"launch.mode"| H
     W -.->|"reads NOTHING at run time"| W
@@ -1070,16 +1060,19 @@ flowchart TB
 
 The **activation** has **no default**, and rendering *any* wrapper refuses
 without it — not only a cluster one. It is how a shell enters an environment on
-the machine the wrapper runs on, so it is that machine's fact, in its record
-(`configuration.md` § 5 M-1): `envs init-config` asks for it at install, and on
-any machine
+the machine the wrapper runs on, so it is that machine's fact, carried by its
+record (`configuration.md` § 5 M-1). It is declared once on each machine
+molbuilder is installed on, in that machine's own `molbuilder.json` — `envs
+init-config` asks for it at install —
 
-```text
-molbuilder jobset probe --write --activation "conda activate" \
-    --preamble "source ~/miniconda3/etc/profile.d/conda.sh"
+```json
+"env_init": {"activation": "conda activate",
+                      "preamble": "source ~/miniconda3/etc/profile.d/conda.sh"}
 ```
 
-records it. A record without one is refused at prep, naming that command.
+and `jobset probe --write` copies it into the record it writes. A record without
+one is refused at prep, saying where to declare it; a copy that is wrong for its
+machine is edited by hand, in that record.
 
 **Why no default:** the wrapper runs in a non-interactive shell that never reads
 your `~/.bashrc`, so `conda activate` is an undefined function unless something

@@ -270,7 +270,7 @@ class TestTheWizardWritesWhereTheReaderReads:
         run_dir.mkdir()
         stray = run_dir / "molbuilder.json"
         stray.write_text(
-            json.dumps({"script_generation": {"activation": "conda activate"}}))
+            json.dumps({"env_init": {"activation": "conda activate"}}))
         monkeypatch.chdir(run_dir)
 
         r = self._run(("--force",))
@@ -280,7 +280,7 @@ class TestTheWizardWritesWhereTheReaderReads:
         assert json.loads(xdg.read_text())["auth"]["providers"][0]["kind"] == "cas", (
             "the auth block did not land in the one file the reader opens")
         assert json.loads(stray.read_text()) == {
-            "script_generation": {"activation": "conda activate"}}, (
+            "env_init": {"activation": "conda activate"}}, (
             "the wizard edited a file the program does not read")
 
     def test_it_merges_into_what_is_already_at_the_one_location(

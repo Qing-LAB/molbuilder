@@ -117,7 +117,7 @@ def test_a_tree_this_program_creates_is_never_loose(isolated_tree):
     from molbuilder.serve_daemon import LogRoll
 
     initconfig.init_config("conda activate", probe=False)
-    write_config_scope(None, {"envs": {"siesta": "molbuilder-siesta"}})
+    write_config_scope({"envs": {"siesta": "molbuilder-siesta"}})
     roll = LogRoll(CD.serve_log(9999), max_bytes=10_000, keep=1)
     roll.write(b"a line\n")
     roll.close()
@@ -183,7 +183,7 @@ def test_the_config_write_is_private_when_it_is_the_first_writer(isolated_tree):
     """
     from molbuilder.runtime_config import write_config_scope
 
-    target = write_config_scope(None, {"envs": {"siesta": "molbuilder-siesta"}})
+    target = write_config_scope({"envs": {"siesta": "molbuilder-siesta"}})
 
     assert stat.S_IMODE(target.stat().st_mode) == 0o600, (
         "the machine config was written world-readable by its own writer")

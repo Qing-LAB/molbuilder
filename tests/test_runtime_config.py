@@ -71,7 +71,7 @@ def test_the_config_molbuilder_SEEDS_reads(monkeypatch, tmp_path):
 
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     (tmp_path / CONFIG_FILENAME).write_text(
-        json.dumps(seed_document(None), indent=2))
+        json.dumps(seed_document("conda activate"), indent=2))
     read_config()
 
 

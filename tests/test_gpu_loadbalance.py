@@ -38,7 +38,7 @@ def _setup(tmp_path, monkeypatch):
     # The record follows the config root -- and carries the activation, its
     # one home (`configuration.md` § 5 M-1).
     from conftest import write_machine_record
-    write_machine_record(script_generation={"activation": "source activate"})
+    write_machine_record(env_init={"activation": "source activate"})
     set_capabilities(Capabilities(
         runtime_config={}, conda_binary="/usr/bin/conda",
         conda_envs=frozenset({"molbuilder-siesta", "molbuilder-siesta-gpu"}),

@@ -648,7 +648,8 @@ is gone.
 
 **What this does NOT cover: a generated job script.** `runwrap.py` writes the
 activation line into a wrapper **verbatim from the target's record** (its
-`script_generation`, recorded by `jobset probe` on that machine) and must keep
+`env_init`, copied by `jobset probe` on that machine from its
+`molbuilder.json`) and must keep
 doing so. That script runs on a machine this process cannot probe -- a cluster
 node, after `module load`, possibly minutes or days later -- so the only
 correct source is what was declared for that machine

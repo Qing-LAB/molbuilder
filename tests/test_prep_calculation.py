@@ -27,10 +27,8 @@ from molbuilder.structure import Structure
 
 @pytest.fixture(autouse=True)
 def _isolated(monkeypatch, tmp_path_factory):
-    """The rest of the sandbox (B-9, 2026-08-13): the calc fixture's
-    dotted .molbuilder.json fixed the bundle scope, but the file still
-    ran with cwd = repo root, so the repo's SERVER-scope molbuilder.json
-    (preamble concatenation, scheduler) kept folding into every wrapper
+    """The rest of the sandbox (B-9, 2026-08-13): the file ran with cwd =
+    repo root, so the repo's molbuilder.json kept folding into every wrapper
     under test."""
     home = tmp_path_factory.mktemp("home")
     monkeypatch.setenv("HOME", str(home))
@@ -47,11 +45,9 @@ def _isolated(monkeypatch, tmp_path_factory):
 def calc(tmp_path):
     """A described calculation, exactly as `jobset init` leaves it.
 
-    How a shell enters an environment is the MACHINE RECORD's
-    (`configuration.md` § 5 M-1) -- conftest's probed record carries it, so
-    the calculation needs no config of its own.  (It wrote a
-    ``.molbuilder.json`` `script_generation` until 2026-10-02, when that
-    section left the file.)
+    How a shell enters an environment is read off the MACHINE RECORD --
+    conftest's probed record carries it, so the calculation needs no config
+    of its own.
     """
     struct = Structure(elements=["S", "C", "C", "H"],
                        positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.78],

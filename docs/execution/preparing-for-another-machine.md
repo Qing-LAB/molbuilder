@@ -68,17 +68,6 @@ say. `--write` shows what it measured and asks before overwriting an existing
 record, difference by difference — silence keeps the record, `--yes` takes
 every probed value.
 
-**If molbuilder cannot be installed there**, declare what the probe would have
-measured instead of guessing later:
-
-```
-molbuilder jobset probe --write --name sol \
-    --scheduler slurm --set gpus_per_node=4
-```
-
-A declared fact wins over detection and the record says `source: flag`, so a
-reader can always see which numbers were measured and which were asserted.
-
 **On your machine**, copy the file into this directory and confirm:
 
 ```
@@ -122,7 +111,7 @@ calculation → target → machine, first match wins.
 | the pseudopotentials | ✅ copied in at `prep` | the files are the same everywhere; the library path is not (`project-layout.md` § 2.6) |
 | the structure pair | ✅ copied in | same reason |
 | `environment.json` | ✅ snapshotted beside the bundle | so the target's capability is a fact of the calculation, not of whoever prepped it |
-| **`script_generation` — the preamble and activation** | ✅ **on the target's own record**, since 2026-08-24 | how a shell enters an environment there is a fact about that machine (`configuration.md` § 5 M-1) — see § 3 |
+| **`env_init` — the preamble and activation** | ✅ **on the target's own record**, since 2026-08-24 — copied there by the probe from that machine's `molbuilder.json` | how a shell enters an environment there is a fact about that machine (`configuration.md` § 5 M-1) — see § 3 |
 | the target's **env inventory** | ✅ same | whether `molbuilder-siesta-gpu` exists there is a fact; *which* env you want is a preference and stays in `molbuilder.json` |
 
 **Everything else prep writes is machine-free.** Verified by inspection: of
@@ -136,18 +125,21 @@ the renderer.
 
 **How a shell enters its environment is a fact about the machine**, so it
 rides the machine's record with the core count and the queue walls:
-`Environment.script_generation` carries `{preamble, activation}`, recorded
-on the machine itself — `envs init-config` asks for them at install, and
-`jobset probe --write --activation … --preamble …` records them on any
-machine. Probe Sol, copy `sol.json` here, and `prep --target sol` bakes
-`module load mamba` + `source activate` — Sol's answer, not this
-workstation's.
+`Environment.env_init` carries `{preamble, activation}`. It is
+**declared once, where molbuilder is installed** — in that machine's own
+`molbuilder.json`, which `envs init-config` asks for at install, because
+molbuilder needs it there before any record exists — and **`jobset probe
+--write` copies it into every record it writes**, this machine's or a named
+one *(user, 2026-10-02)*. Probe Sol on Sol, copy `sol.json` here, and `prep
+--target sol` bakes `module load mamba` + `source activate` — Sol's answer,
+not this workstation's. A copy that is wrong for the machine it describes is
+edited by hand, in that record.
 
 The generator reads that field and nothing else. There is **one rule for
 local and remote**: the record states it, so the record is the answer — for
-this machine too, since `molbuilder.json` holds no activation
+this machine too, whose record carries the copy of its own `molbuilder.json`
 ([`configuration.md`](?doc=configuration.md) § 4). A record that states none
-is refused at prep, and the refusal names the probe to run on that machine
+is refused at prep, and the refusal says where to declare it
 ([`architecture.md`](?doc=execution/architecture.md) § 8.3).
 
 > **What this section said until 2026-08-24, and what it cost.** It said the
@@ -161,11 +153,7 @@ is refused at prep, and the refusal names the probe to run on that machine
 > ```
 >
 > That is exactly what a browser-prepped bundle carried to Sol, and every
-> trial died on it after a queue wait. The remedy on offer was the bundle's
-> own `.molbuilder.json`, and the section admitted it *"half-exists"*:
-> `activation` overrides cleanly, but preambles **concatenate**, so the
-> local machine's line is emitted *even when the bundle supplies its own*.
-> A per-calculation file cannot subtract what the join already added.
+> trial died on it after a queue wait.
 >
 > The misclassification was the defect, not the merge rule. Put a preamble
 > to M-1's own question — *what is this machine* versus *what do I want from

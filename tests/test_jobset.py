@@ -2733,7 +2733,7 @@ def _prep_bundle(base, *, scheduler: bool, monkeypatch):
                     domains=([Domain(name="public", partition="public",
                                      qos="public", max_time="1-00:00:00")]
                              if scheduler else []),
-                    script_generation={"activation": "conda activate",
+                    env_init={"activation": "conda activate",
                                        "preamble": "source /x/conda.sh"}),
         base / FILENAME)
     monkeypatch.chdir(base)

@@ -66,7 +66,7 @@ def _isolated(monkeypatch, tmp_path_factory):
     (cwd / "environment.json").write_text(
         _Env(scheduler="slurm",
              topology=_Topo(sockets=2, cores_per_socket=32),
-             script_generation={"activation": "conda activate",
+             env_init={"activation": "conda activate",
                                 "preamble": "true"}).to_json()
         + "\n")
 

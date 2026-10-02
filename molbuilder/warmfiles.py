@@ -124,7 +124,7 @@ def load_warm_files(engine: str, base_dir=None) -> WarmFilesDoc:
     carrying its own ``warm-files.toml`` beside ``task.json`` is the
     fine-tuned state and answers for that calculation; without one, the
     engine's own file answers -- the default state, which is almost
-    every calculation.  Same precedence idea as ``.molbuilder.json``.
+    every calculation.
 
     File order is load-bearing both ways: :func:`rules_for` hands the
     declaration builder its rows in it (so ``Job.warm`` is stable), and

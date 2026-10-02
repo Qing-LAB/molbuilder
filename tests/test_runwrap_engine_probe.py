@@ -91,13 +91,13 @@ def _trimmed(tmp_path, monkeypatch):
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
     # A PROBED MACHINE, as a person records one -- `molbuilder jobset probe
-    # --write --activation "source activate" --preamble "module load mamba"`:
-    # the record is the activation's one home (`configuration.md` § 5 M-1).
+    # --write`, which copies the machine's `env_init` into the record that
+    # prep reads (`configuration.md` § 4).
     from molbuilder.scheduler import Environment as _Env, Topology as _Topo
     (tmp_path / "environment.json").write_text(
         _Env(scheduler="workstation",
              topology=_Topo(sockets=2, cores_per_socket=32),
-             script_generation={"preamble": "module load mamba",
+             env_init={"preamble": "module load mamba",
                                 "activation": "source activate"}).to_json()
         + "\n")
     set_capabilities(Capabilities(

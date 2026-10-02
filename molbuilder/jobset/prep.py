@@ -82,7 +82,7 @@ def _user_error_as_prep():
     :class:`PrepError`, so every caller of the two prep entries has ONE class
     to catch.  Without this the described route's two most likely
     first-contact failures -- missing pseudos (``ValidationError`` out of the
-    deck render) and an unset ``script_generation.activation``
+    deck render) and an unset activation
     (``RuntimeConfigError`` out of the wrapper render) -- escaped the CLI as
     raw tracebacks (2026-08-12 plan A8).  Only the NAMED classes translate: a
     ``TypeError`` here is a bug and should look like one.
@@ -366,8 +366,8 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 emit_sbatch=emit_sbatch,
                 # The BUNDLE'S scope, explicitly: the script is born in its
                 # job directory now, and the renderer's parent-derived
-                # fallback would read config one level below the bundle's
-                # .molbuilder.json / environment.json (roadmap 7.10 M1).
+                # fallback would read the record one level below the
+                # bundle's environment.json (roadmap 7.10 M1).
                 project_dir=base,
                 # WHICH MACHINE THIS IS FOR, carried rather than re-derived
                 # (2026-08-24).  The record always travels, so the wrapper
@@ -1588,32 +1588,30 @@ def _require_activation(target: Optional[str], environment) -> None:
     """A record that does not state how a shell enters an environment there
     is refused HERE, for every target -- this machine included.
 
-    **The record is the activation's one home** *(2026-10-02,
-    `configuration.md` § 5 M-1)*.  This machine was exempt until then and took
-    its activation from `molbuilder.json`'s `script_generation` -- a second
-    home for one fact, which the probe copied into the record and after which
-    the record won.  A remote target was never allowed a substitute:
-    generating with THIS machine's activation for another machine succeeds
-    at generate time and dies on the cluster hours later, on a path that
-    exists only here (2026-08-24).
+    **Prep reads the TARGET's record, and only it** (`configuration.md` § 4):
+    each machine declares its ``env_init`` in its own ``molbuilder.json`` and
+    `jobset probe` copies it into the record it writes.  No target is allowed
+    a substitute: generating with THIS machine's activation for another
+    machine succeeds at generate time and dies on the cluster hours later, on
+    a path that exists only here (2026-08-24).
     """
     from ..scheduler.record import LOCAL_TARGET, probe_command, probe_steps
-    if (getattr(environment, "script_generation", None) or {}).get(
-            "activation"):
+    if (getattr(environment, "env_init", None) or {}).get("activation"):
         return
     here = target in (None, LOCAL_TARGET)
     whose = "this machine's record" if here else f"the record of {target!r}"
     raise PrepError(
         f"{whose} does not say "
         f"how a shell enters an environment there, and nothing else may "
-        f"(docs/configuration.md § 5 M-1).  Record it -- "
-        f"{probe_steps(target)}:\n"
-        f"      {probe_command(target)} --activation \"conda activate\" "
-        f"--preamble \"source <conda root>/etc/profile.d/conda.sh\"\n"
-        f"  or, where a `module load` gives the toolchain:\n"
-        f"      {probe_command(target)} --activation \"source activate\" "
-        f"--preamble \"module load mamba\"\n"
-        f"  then prep again.")
+        f"(docs/configuration.md § 4).  Declare it in that machine's "
+        f"molbuilder.json --\n"
+        f"      \"env_init\": {{\"activation\": \"conda activate\", "
+        f"\"preamble\": \"source <conda root>/etc/profile.d/conda.sh\"}}\n"
+        f"  or \"source activate\" after \"module load mamba\" where a "
+        f"module gives the toolchain -- then probe {probe_steps(target)}:\n"
+        f"      {probe_command(target)}\n"
+        f"  and prep again.  A copied record that is wrong for its machine "
+        f"is edited by hand.")
 
 
 # --------------------------------------------------------------------- #
@@ -3059,15 +3057,6 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                 "(project-layout.md § 2.1); run `molbuilder jobset init` "
                 "first.  (Hand-built job-sets remain launchable: `launch` "
                 "and `status` read job-set.json directly.)")
-        # THE CALCULATION'S OWN CONFIG READS, or the prep is refused in its
-        # words -- a project `.molbuilder.json` carrying a retired section
-        # (`configuration.md` § 4) was otherwise met first at launch, after
-        # everything was written.  Both scopes, as `launch` reads them.
-        from ..runtime_config import RuntimeConfigError, read_effective_config
-        try:
-            read_effective_config(base)
-        except RuntimeConfigError as exc:
-            raise PrepError(str(exc)) from None
         if (from_attempt or cold) and kind == "bench":
             raise PrepError(
                 "--from / --cold choose what a RUN starts from; a bench "

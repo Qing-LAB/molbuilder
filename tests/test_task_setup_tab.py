@@ -1125,7 +1125,7 @@ class TestTheTabShowsWhatAPrepWouldResolve:
     hand-written notice, which would be a second account of the same facts,
     free to drift from the one the terminal prints."""
 
-    def _folder(self, tmp_path, monkeypatch, bundle_cfg=None):
+    def _folder(self, tmp_path, monkeypatch):
         import json as _json
         from molbuilder.projects import PROJECTS_ROOT_ENV
         tree = tmp_path / "projects"
@@ -1144,8 +1144,6 @@ class TestTheTabShowsWhatAPrepWouldResolve:
         write_machine_record()
         (tmp_path / "molbuilder.json").write_text(_json.dumps(
             {"launch": {"mode": "direct"}}))
-        if bundle_cfg:
-            (b / ".molbuilder.json").write_text(_json.dumps(bundle_cfg))
         return b
 
     def test_it_serves_the_same_facts_prep_prints(
@@ -1155,7 +1153,7 @@ class TestTheTabShowsWhatAPrepWouldResolve:
                            query_string={"dest": str(b)}).get_json()
         assert r["ok"], r
         # the shape config_provenance produces, not a re-description of it
-        assert {s["scope"] for s in r["sources"]} >= {"machine", "project"}
+        assert {s["scope"] for s in r["sources"]} >= {"machine", "environment"}
         assert "launch.mode" in r["effective"]
         assert "from" in r["effective"]["launch.mode"]
 

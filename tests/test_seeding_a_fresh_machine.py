@@ -68,7 +68,7 @@ def test_a_fresh_machine_refuses_to_render_any_wrapper(fresh):
     from molbuilder.jobset.prep import PrepError
     with pytest.raises(PrepError) as exc:
         _the_gate()
-    assert "--activation" in str(exc.value)
+    assert "env_init" in str(exc.value)
 
 
 @pytest.mark.parametrize("activation", sorted(ACTIVATION_FORMS))
@@ -78,7 +78,7 @@ def test_seeding_removes_the_refusal(fresh, activation):
     pass here is a wrapper rendering, not a file merely existing on disk.
     """
     initconfig.init_config(activation, probe=True)
-    assert _the_gate().script_generation["activation"] == activation
+    assert _the_gate().env_init["activation"] == activation
 
 
 def test_the_seeded_file_is_read_by_the_real_reader(fresh):
@@ -93,7 +93,7 @@ def test_the_seeded_file_is_read_by_the_real_reader(fresh):
     initconfig.init_config("conda activate", preamble="module load mamba",
                            probe=True)
     read_config(fresh / CONFIG_FILENAME)            # refuses -> raises
-    assert _the_gate().script_generation == {
+    assert _the_gate().env_init == {
         "activation": "conda activate", "preamble": "module load mamba"}
 
 
@@ -124,7 +124,7 @@ def test_an_existing_config_is_left_exactly_as_it_is(fresh):
     mine.write_text('{"execution": {"mode": "direct"}}')
     original = mine.read_bytes()
 
-    step = initconfig.seed_machine_config()
+    step = initconfig.seed_machine_config("conda activate")
 
     assert step.action == "kept"
     assert mine.read_bytes() == original
@@ -140,36 +140,16 @@ def test_a_seed_the_loader_would_refuse_is_not_written(fresh, monkeypatch):
     monkeypatch.setattr(initconfig, "seed_document",
                         lambda *a, **k: {"bogus": {"x": 1}})
     with pytest.raises(RuntimeConfigError, match="unknown top-level"):
-        initconfig.seed_machine_config()
+        initconfig.seed_machine_config("conda activate")
     assert not machine_config_path().exists()
 
-
-
-def test_a_kept_record_that_states_no_activation_is_given_the_one_asked(
-        fresh):
-    """Keeping the record is not leaving the machine in the state the
-    contract calls a refusal: a record carrying NO activation is given the
-    one just asked, and nothing else in it changes."""
-    from conftest import write_machine_record
-    from molbuilder.scheduler import machine_for
-    fresh.mkdir(parents=True)
-    write_machine_record(at=fresh, script_generation={})
-
-    step = initconfig.seed_environment_record("source activate")
-
-    assert step.action == "rewritten", step
-    assert '"source activate"' in step.note, step.note
-    record = machine_for()
-    assert record.script_generation == {"activation": "source activate"}
-    assert record.topology.cores_per_socket == 8, "nothing else changed"
 
 
 # ══ WHAT IT WRITES, AND WHAT IT REFUSES TO WRITE ═══════════════════════════
 
 def test_no_probe_seeds_the_config_without_a_record(fresh):
-    """For a build host or an image baked once and copied -- and so no
-    activation is recorded anywhere: the machine that runs the work records
-    its own."""
+    """``--no-probe`` writes the config and no record: `jobset probe --write`
+    makes the record later, copying the activation the config declares."""
     initconfig.init_config("conda activate", probe=False)
     assert (fresh / CONFIG_FILENAME).is_file()
     from molbuilder.scheduler import machine_scope_path, environments_dir
@@ -286,7 +266,7 @@ def test_source_activate_carries_no_conda_hook_preamble(fresh):
                      "--yes"])
 
     assert result.exit_code == 0, result.output
-    assert _the_gate().script_generation == {"activation": "source activate"}
+    assert _the_gate().env_init == {"activation": "source activate"}
 
 
 # ══ THE WARNING THAT COULD NOT FIRE ════════════════════════════════════════
@@ -312,7 +292,7 @@ def test_a_machine_declaring_no_activation_is_warned(fresh, monkeypatch):
     env, note = diagnostics.local_facts(resolve_environment())
 
     assert env.conda_envs == ["molbuilder"], "the envs still travel"
-    assert note and "no activation was declared" in note
+    assert note and "declares no `env_init.activation`" in note
 
 
 def test_source_activate_is_not_reported_as_a_missing_hook(fresh):
@@ -321,10 +301,10 @@ def test_source_activate_is_not_reported_as_a_missing_hook(fresh):
     It was reported as *"no conda.sh hook found to source"* -- on machines
     that had one and simply did not need it.  A note that states a false
     reason is worse than no note: it sends someone to look for a file that is
-    already there.  Said on the step that records the activation, the
-    machine's record (`configuration.md` § 5 M-1).
+    already there.  Said on the step that declares the activation, this
+    machine's molbuilder.json (`configuration.md` § 4).
     """
-    step = _the_record_step(initconfig.init_config("source activate"))
+    step = _the_config_step(initconfig.init_config("source activate"))
     assert '"source activate"' in step.note, step.note
     assert "found" not in step.note and "hook" not in step.note, step.note
 
@@ -333,15 +313,15 @@ def test_conda_activate_without_a_hook_says_what_will_break(fresh):
     """The same absence IS worth flagging for the other form: `conda
     activate` is a shell function a non-interactive shell has never
     defined, so no preamble means a wrapper that fails inside the job."""
-    step = _the_record_step(initconfig.init_config("conda activate"))
+    step = _the_config_step(initconfig.init_config("conda activate"))
     assert "needs conda's hook" in step.note, step.note
 
 
-def _the_record_step(steps):
-    """The step that wrote this machine's record -- where the activation is
-    recorded, so where what is said about it is said."""
-    from molbuilder.scheduler import machine_scope_path
-    return next(s for s in steps if s.path == machine_scope_path())
+def _the_config_step(steps):
+    """The step that wrote this machine's molbuilder.json -- where the
+    activation is declared, so where what is said about it is said."""
+    from molbuilder.runtime_config import machine_config_path
+    return next(s for s in steps if s.path == machine_config_path())
 
 
 # ══ THE SEEDED FILE MUST NOT BLOCK THE SIGN-IN WIZARD ══════════════════════
@@ -517,7 +497,7 @@ def test_the_sign_in_wizard_runs_on_a_seeded_config(fresh):
     # 2026-09-12 -- the subject was always "the wizard preserves what the
     # seed wrote", so assert that: every key the seed wrote, the `_`-prefixed
     # guidance and the sections alike, is still there.
-    seeded = set(initconfig.seed_document())
+    seeded = set(initconfig.seed_document("conda activate"))
     assert {k for k in seeded if k.startswith("_")}, (
         "the seed writes guidance keys")
     assert seeded <= set(doc), (

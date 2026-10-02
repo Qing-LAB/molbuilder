@@ -94,7 +94,7 @@ def calc_dir(isolated_projects_root_module):
         # The probe's answer, pre-seeded: a rank count is read from a machine
         # record and nowhere else since 2026-09-02, so a folder without one
         # cannot be prepped at all (`running-a-job.md` § 3.1).
-        # `script_generation` rides ON THE RECORD, not in the local config:
+        # `env_init` rides ON THE RECORD -- the probe's copy of it:
         # a wrapper generated here would otherwise carry THIS machine's way
         # into its environment -- a path that need not exist on the target
         # (the refusal names it, and prep is right to refuse).
@@ -106,7 +106,7 @@ def calc_dir(isolated_projects_root_module):
                         topology=Topology(sockets=2, cores_per_socket=32),
                         domains=[Domain(name="public", partition="public",
                                         qos="public", max_time="1-00:00:00")],
-                        script_generation={"preamble": "true",
+                        env_init={"preamble": "true",
                                            "activation": "conda activate"},
                         ).to_json() + "\n", encoding="utf-8")
         # ...and a run on it STATES its queue, wall, memory and cores per
@@ -433,7 +433,7 @@ def filled_dir(isolated_projects_root_module):
         (d / "environment.json").write_text(
             Environment(scheduler="slurm",
                         topology=Topology(sockets=2, cores_per_socket=32),
-                        script_generation={"preamble": "true",
+                        env_init={"preamble": "true",
                                            "activation": "conda activate"},
                         ).to_json() + "\n", encoding="utf-8")
 
@@ -495,7 +495,7 @@ def binding_dir(isolated_projects_root_module):
     (d / "environment.json").write_text(
         Environment(scheduler="slurm",
                     topology=Topology(sockets=2, cores_per_socket=32),
-                    script_generation={"preamble": "true",
+                    env_init={"preamble": "true",
                                        "activation": "conda activate"},
                     ).to_json() + "\n", encoding="utf-8")
     return d
@@ -951,7 +951,7 @@ def two_stage_dir(isolated_projects_root):
         (d / "environment.json").write_text(
             Environment(scheduler="",
                         topology=Topology(sockets=2, cores_per_socket=32),
-                        script_generation={"preamble": "true",
+                        env_init={"preamble": "true",
                                            "activation": "conda activate"},
                         ).to_json() + "\n", encoding="utf-8")
         yield d
@@ -1075,7 +1075,7 @@ def a_named_machine(two_stage_dir):
     write_environment(
         Environment(scheduler="slurm",
                     topology=Topology(sockets=2, cores_per_socket=64),
-                    script_generation={"preamble": "true",
+                    env_init={"preamble": "true",
                                        "activation": "conda activate"}),
         d / "sol.json")
     return "sol"

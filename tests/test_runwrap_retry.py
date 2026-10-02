@@ -71,7 +71,7 @@ def _machine():
     the activation's one home (`configuration.md` § 5 M-1)."""
     from molbuilder.scheduler import Environment, Topology
     return Environment(scheduler="workstation", topology=Topology(),
-                       script_generation={"preamble": "module load mamba",
+                       env_init={"preamble": "module load mamba",
                                           "activation": "source activate"})
 
 

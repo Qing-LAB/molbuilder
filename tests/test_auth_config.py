@@ -257,9 +257,9 @@ class TestTheConfigFileIsRefusedAtTheDoor:
     The tests here used to call `_normalise` with a hand-built dict, which is
     the middle step only -- so three things the door does were untested, and
     one of them is a RECORDED DEFECT.  `runtime_config.py:133` exists because
-    *"a malformed project `.molbuilder.json` or XDG file used to refuse naming
-    `molbuilder.json` with no path (R10, 2026-08-12)"*: an operator with three
-    config files got an error that did not say which was broken.  A dict-level
+    *"a malformed file used to refuse naming 'molbuilder.json' with no path
+    (R10, 2026-08-12)"*: an operator got an error that did not say which file
+    was broken.  A dict-level
     test sits below that layer and cannot see it come back.
 
     Contract: `deployment.md` § 3 (what `auth` must contain) and § 7 (this file

@@ -1706,7 +1706,7 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
     # 6. Merge the auth block into the machine config ------------------
     auth_block = _as.build_auth_block(providers=providers)
     try:
-        write_config_scope(None, {"auth": auth_block})
+        write_config_scope({"auth": auth_block})
     except RuntimeConfigError as exc:
         click.echo(f"Error: not written -- {exc}", err=True)
         sys.exit(2)

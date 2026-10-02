@@ -1284,8 +1284,8 @@ def _prepare_side_group(jobset: JobSet, base: Path, dirs, pending,
     from ..runwrap import _render_sbatch_for
     # Rendered at the BUNDLE's scope, not the container's (review
     # 2026-08-21): the render derives its config/environment scope from
-    # the script path's parent, and the calculation's .molbuilder.json +
-    # environment.json live at the bundle root.  The pair this submission
+    # the script path's parent, and the calculation's environment.json
+    # lives at the bundle root.  The pair this submission
     # is ALREADY routing to is handed to the header emitter, so the .sbatch
     # and the `sbatch -p/-q` on the command line cannot name different
     # queues.  The stem alone names the delegated run script, so the

@@ -109,43 +109,41 @@ launch = []
 launch_refused = "states no wall (time), memory (mem)"
 
 [[case]]
-name = "the scheduler block in a calculation's own config is refused at prep"
-config = { scheduler = { defaults = { cpus_per_task = 8 } } }
-refused = "'scheduler' is no longer configured"
-
-[[case]]
-name = "execution in a calculation's own config is refused, naming launch"
-config = { execution = { mode = "submit", domain = "cpu" } }
-refused = "'execution' is now 'launch'"
-
-[[case]]
-name = "script_generation in a calculation's own config is refused, naming the probe"
-config = { script_generation = { activation = "conda activate" } }
-refused = "molbuilder jobset probe --write --activation 'conda activate'"
-
-[[case]]
 name = "a target whose record says nothing of its activation is refused"
-record = { script_generation = {} }
+record = { env_init = {} }
 refused = "this machine's record does not say how a shell enters an environment there"
 
 [[case]]
 name = "...a named target too -- recorded on that machine, its record copied here"
 machine = "named"
-named_record = { script_generation = {} }
+named_record = { env_init = {} }
 refused = "the record of 'sol' does not say how a shell enters an environment there"
 
 [[case]]
 name = "...and the refusal says the copy back"
 machine = "named"
-named_record = { script_generation = {} }
+named_record = { env_init = {} }
 refused = "on that machine, then copy the sol.json it writes into"
 
 [[case]]
-name = "a probe not told the activation keeps the one its record holds"
+name = "the probe copies this machine's env_init into the record it writes"
 machine = "workstation"
-probe = [["--scheduler", "workstation", "--activation", "source activate",
-          "--preamble", "module load mamba/latest"],
-         ["--scheduler", "workstation"]]
+machine_config = { env_init = { activation = "source activate", preamble = "module load mamba/latest" } }
+probe = [["--scheduler", "workstation"]]
+run_sh = ["module load mamba/latest", "source activate"]
+
+[[case]]
+name = "...into a named record too, carried to wherever it is prepped for"
+machine = "workstation"
+machine_config = { env_init = { activation = "source activate", preamble = "module load mamba/latest" } }
+probe = [["--scheduler", "workstation", "--name", "sol"]]
+run_sh = ["module load mamba/latest", "source activate"]
+
+[[case]]
+name = "...and with nothing to copy, the record keeps its own -- a hand edit stays"
+machine = "workstation"
+record = { env_init = { activation = "source activate", preamble = "module load mamba/latest" } }
+probe = [["--scheduler", "workstation"]]
 run_sh = ["module load mamba/latest", "source activate"]
 
 # ===================================================================== #

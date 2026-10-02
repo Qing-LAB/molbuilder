@@ -385,10 +385,12 @@ Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
                   TEMPLATE (every section present and empty, each commented
                   with who fills it), secrets/ + its README, environments/,
                   and this machine's environment.json.  ASKS two things --
-                  how this machine enters a conda env, and where the project
-                  tree lives -- because install time is the one moment the
-                  answer is known.  --yes takes both defaults and prints
-                  them; --projects PATH declares the tree.  Run
+                  how this machine enters a conda env (written to
+                  molbuilder.json as `env_init`, which `jobset probe` copies
+                  into the record) and where the project tree lives --
+                  because install time is the one moment the answer is
+                  known.  --activation states the first, --projects PATH the
+                  second; --yes takes both defaults and prints them.  Run
                   automatically at the end of bootstrap, never
                   overwrites.  See docs/ops/installation.md section 2.1
   install <recipe>   create the env and run its whole plan.  On an env

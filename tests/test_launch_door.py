@@ -251,8 +251,8 @@ def test_direct_runs_what_was_typed_and_refuses_what_it_would_not_read(
                    "--mode", "direct", flag, value)
         assert r.exit_code != 0 and flag in r.output, (flag, r.output)
 
-    (bundle / ".molbuilder.json").write_text(
-        json.dumps({"launch": {"mode": "submit"}}))
+    from molbuilder.runtime_config import write_config_scope
+    write_config_scope({"launch": {"mode": "submit"}})
     r = jobset("launch", "run", "coarse", "--bundle", bundle, "--dry-run")
     assert r.exit_code == 0, r.output
     assert _flag(_line(r.output), "-q") == "public", r.output

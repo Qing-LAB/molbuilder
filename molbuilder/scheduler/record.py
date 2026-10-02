@@ -337,7 +337,8 @@ class Environment:
     domains:   List["Domain"] = field(default_factory=list)
     #: HOW A SHELL ON THIS MACHINE ENTERS THE ENVIRONMENT -- the preamble
     #: to run and the activation form to use, as that machine states them
-    #: in its own ``molbuilder.json``.
+    #: in its own ``molbuilder.json`` (``env_init``, the same name there),
+    #: copied in by `jobset probe`.
     #:
     #: **It is a fact about the TARGET, so it travels on the target's
     #: record.**  A wrapper is generated on a workstation and executed on a
@@ -355,7 +356,7 @@ class Environment:
     #: generating for a named target REFUSES and asks for a re-probe.
     #:
     #: Shape: ``{"preamble": str, "activation": str}``, both optional.
-    script_generation: Dict[str, str] = field(default_factory=dict)
+    env_init: Dict[str, str] = field(default_factory=dict)
     #: WHICH ENVIRONMENTS EXIST ON THIS MACHINE, by name.
     #:
     #: A FACT, and the other half of the pair above: *which* env you want
@@ -412,8 +413,8 @@ class Environment:
             # Absent, not empty, when the probe could read no config: a key
             # that is missing and a key that is {} are different claims to
             # anything testing for it.
-            **({"script_generation": dict(self.script_generation)}
-               if self.script_generation else {}),
+            **({"env_init": dict(self.env_init)}
+               if self.env_init else {}),
             **({"conda_envs": sorted(self.conda_envs)}
                if self.conda_envs else {}),
             **({"env_arch": self.env_arch} if self.env_arch else {}),
@@ -442,9 +443,9 @@ class Environment:
         return cls(
             scheduler=str(d.get("scheduler", "workstation")),
             topology=topo, site=site, domains=domains,
-            script_generation={
+            env_init={
                 k: str(v) for k, v in
-                (d.get("script_generation") or {}).items()
+                (d.get("env_init") or {}).items()
                 if k in ("preamble", "activation") and v is not None},
             conda_envs=[str(e) for e in (d.get("conda_envs") or [])],
             env_arch=(str(d["env_arch"]) if d.get("env_arch") else None),

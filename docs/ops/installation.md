@@ -258,9 +258,9 @@ work out for itself:
 | what | why it is seeded here |
 |---|---|
 | `<config dir>/` | mode `0700` — the session key, the OAuth client secret and the notify tokens live in it. Matches what `auth-setup` already creates it as; the files inside are `0600` (`configuration.md` § 2.1b) |
-| `<config dir>/molbuilder.json` | the template — each section empty, with `_`-prefixed comment keys naming the command and the document that own it — and `paths.projects` when you declared one; mode `0600`. What may go in it is [`configuration.md`](?doc=configuration.md) § 4 |
+| `<config dir>/molbuilder.json` | the template — each section empty, with `_`-prefixed comment keys naming the command and the document that own it — the activation and preamble you answered (`env_init`), and `paths.projects` when you declared one; mode `0600`. What may go in it is [`configuration.md`](?doc=configuration.md) § 4 |
 | `<config dir>/environments/` | where a record for a machine you prep **for** but are not **on** goes — `jobset probe --write --name sol` writes one, you copy it here |
-| `<config dir>/environment.json` | this machine, probed, through the same doors `jobset probe --write` uses — carrying the activation and preamble |
+| `<config dir>/environment.json` | this machine, probed, through the same doors `jobset probe --write` uses — carrying a copy of the activation and preamble |
 
 The config directory is `$MOLBUILDER_CONFIG_DIR` if set, else
 `$XDG_CONFIG_HOME/molbuilder`, else `~/.config/molbuilder`
@@ -277,7 +277,8 @@ confirmed it. Every later surface can only report that nobody ever said.
 **It is asked, never sniffed.** Activation is *declared*
 (`running-a-job.md` § 5; `detect_conda_activation` was deleted 2026-08-13 for
 having zero callers). `bootstrap` puts the question to you and writes your
-answer into this machine's record; `--yes` takes the recommendation — `conda activate` when conda's
+answer into `molbuilder.json`, and the probe copies it into this machine's
+record; `--yes` takes the recommendation — `conda activate` when conda's
 `etc/profile.d/conda.sh` hook is on disk, `source activate` otherwise — and
 **prints the line it wrote** either way, so a wrong default is visible rather
 than silent. Override it without being asked:
@@ -295,15 +296,11 @@ editing is never merged into. Re-run it any time:
 bash scripts/install-env.sh init-config     # idempotent; asks about activation
 ```
 
-`--no-probe` seeds the config but writes no `environment.json` — for a build
-host, or an image baked once and copied, where the machine installed on is not
-the machine that runs anything. It therefore records no activation either: the
-machine that runs the work records its own, with `jobset probe --write
---activation … --preamble …`.
+`--no-probe` seeds the config and writes no `environment.json`; `jobset probe
+--write` makes it later, copying the activation from `molbuilder.json`.
 
-**What it deliberately does not seed**: `scheduler` and `script_generation`,
-both refused in `molbuilder.json` ([`configuration.md`](?doc=configuration.md)
-§ 4). The queues and node topology are *facts about a machine*, which `jobset
+**What it deliberately does not seed**: `scheduler`, refused in
+`molbuilder.json` ([`configuration.md`](?doc=configuration.md) § 4). The queues and node topology are *facts about a machine*, which `jobset
 probe` measures into `environment.json`; a job states its own queue, wall and
 memory ([`architecture.md`](?doc=execution/architecture.md) § 5.2).
 

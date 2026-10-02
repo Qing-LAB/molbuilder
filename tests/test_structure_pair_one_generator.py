@@ -70,7 +70,7 @@ def _a_machine_config_with_an_activation(tmp_path, monkeypatch):
     (root / "environment.json").write_text(
         _Env(scheduler="slurm",
              topology=_Topo(sockets=2, cores_per_socket=32),
-             script_generation={"preamble": "",
+             env_init={"preamble": "",
                                 "activation": "conda activate"}).to_json()
         + "\n")
 

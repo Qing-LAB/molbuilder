@@ -90,7 +90,7 @@ def _launched(tmp_path, monkeypatch, *, engine="pyscf", broken_member=None):
     bundle = tree / "P" / "optimization" / "H2"
     # How a shell enters conda HERE is this machine's record's to say.
     from conftest import write_machine_record
-    write_machine_record(script_generation={
+    write_machine_record(env_init={
         "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
     r = _jobset("prep", "run", "coarse", "--bundle", bundle,
                 "--target", "this", *(("--np", 1) if siesta else ()),

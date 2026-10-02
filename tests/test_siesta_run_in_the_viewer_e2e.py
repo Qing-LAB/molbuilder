@@ -71,7 +71,7 @@ def finished(isolated_projects_root_module, tmp_path_factory):
         # ...the box probed, its record saying how a shell enters conda here
         # -- the activation's one home (`configuration.md` § 5 M-1).
         from conftest import write_machine_record
-        write_machine_record(script_generation={
+        write_machine_record(env_init={
             "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
         mp.chdir(tree.parent)
         bin_ = env_bin("molbuilder-siesta")

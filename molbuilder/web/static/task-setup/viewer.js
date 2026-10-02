@@ -1161,9 +1161,9 @@ async function loadFolder(projects, dir, opts) {
      * `calcdir.json`'s rule (project-layout.md § 1.4a) on the wire. */
     if (!said || said.dir !== _dir) return;
 
-    // The resolved-config view is per FOLDER (the bundle's own
-    // `.molbuilder.json` is one of its scopes), so it paints from this
-    // folder's answer like everything else.
+    // The resolved-config view is per FOLDER (the folder's own machine
+    // record is one of its sources), so it paints from this folder's answer
+    // like everything else.
     renderResolved(said.provenance);
 
     const taskText = said.description === null

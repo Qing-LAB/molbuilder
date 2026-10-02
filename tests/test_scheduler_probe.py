@@ -398,11 +398,11 @@ def _two_envs():
     from molbuilder.scheduler import Domain, Environment, Topology
     before = Environment(scheduler="workstation",
                          topology=Topology(gpus_per_node=4, gpu_type="a100"),
-                         script_generation=dict(_SOL_ENTERS),
+                         env_init=dict(_SOL_ENTERS),
                          detected_at="2026-08-01T00:00:00+00:00")
     probed = Environment(scheduler="workstation",
                          topology=Topology(gpus_per_node=1, gpu_type="rtx"),
-                         script_generation=dict(_DESK_ENTERS),
+                         env_init=dict(_DESK_ENTERS),
                          detected_at="2026-08-19T00:00:00+00:00")
     return before, probed
 
@@ -418,14 +418,14 @@ def test_consent_no_keeps_the_record_yes_takes_the_probe(monkeypatch,
     monkeypatch.setattr(click, "confirm", lambda *a, **k: False)
     out = _probe_consent_merge(before, probed, yes=False)
     assert out.topology.gpus_per_node == 4 and out.topology.gpu_type == "a100"
-    assert out.script_generation == _SOL_ENTERS
+    assert out.env_init == _SOL_ENTERS
     assert out.detected_at == "2026-08-19T00:00:00+00:00"   # stamp follows
     assert "kept recorded" in capsys.readouterr().out
     before, probed = _two_envs()
     monkeypatch.setattr(click, "confirm", lambda *a, **k: True)
     out = _probe_consent_merge(before, probed, yes=False)
     assert out.topology.gpus_per_node == 1 and out.topology.gpu_type == "rtx"
-    assert out.script_generation == _DESK_ENTERS
+    assert out.env_init == _DESK_ENTERS
 
 
 def test_consent_eof_keeps_everything_silence_is_no(monkeypatch, capsys):
@@ -472,7 +472,7 @@ def test_domains_diff_as_one_fact(monkeypatch, capsys):
     from molbuilder.jobset._cli import _probe_consent_merge
     before, probed = _two_envs()
     probed.topology = before.topology            # isolate the domains diff
-    probed.script_generation = before.script_generation
+    probed.env_init = before.env_init
     probed.domains = [Domain(name="short", partition="p", qos="q",
                              max_time="1:00:00")]
     asked = []

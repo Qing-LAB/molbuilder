@@ -81,7 +81,7 @@ refused = "--gpus:"
 [[case]]
 name = "molbuilder.json's scheduler block -- its gpu block too -- is refused by name"
 run = { mpi_np = 4 }
-config = { scheduler = { directives = { partition = "cpu", qos = "public" }, gpu = { mem = "64G" } } }
+machine_config = { scheduler = { directives = { partition = "cpu", qos = "public" }, gpu = { mem = "64G" } } }
 refused = "'scheduler' is no longer configured"
 
 [[case]]

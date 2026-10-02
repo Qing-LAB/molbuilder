@@ -49,7 +49,7 @@ def _a_machine_record_with_an_activation(tmp_path, monkeypatch):
     root = tmp_path / "config-root"
     root.mkdir(parents=True, exist_ok=True)
     write_machine_record(at=root,
-                         script_generation={"activation": "conda activate"})
+                         env_init={"activation": "conda activate"})
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(root))
 
 

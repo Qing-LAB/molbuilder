@@ -13,9 +13,7 @@ NO partition names or limits -- everything here comes from the live system
 
 Pure parsing + derivation lives here (testable on captured text); the CLI
 runs the subprocesses and optionally writes the result to ``environment.json``
-through ``write_environment``.  *(It said ``.molbuilder.json`` via
-``write_config_scope`` until 2026-09-20 -- N4 moved the output to the machine
-record and this line never followed.)*
+through ``write_environment``.
 
 Moved ``bench/probe.py`` -> ``molbuilder/scheduler_probe.py`` 2026-08-12,
 and into the scheduler subsystem as ``scheduler/probe.py`` 2026-08-23

@@ -69,7 +69,7 @@ def _describe(tmp_path, monkeypatch, *, frozen=()):
     # How a shell enters conda HERE is this machine's record's to say -- and
     # the run states its threads (`architecture.md` § 5.2).
     from conftest import write_machine_record
-    write_machine_record(script_generation={
+    write_machine_record(env_init={
         "activation": "conda activate", "preamble": f"source {CONDA_SH}"})
     task = json.loads((bundle / "task.json").read_text())
     task["execution"] = {**task.get("execution", {}), "threads": 1}

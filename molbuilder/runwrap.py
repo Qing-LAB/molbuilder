@@ -3214,8 +3214,8 @@ def render_run_wrapper(script_path: Path, *,
     # one, no wrapper.
     # The BUNDLE'S scope, stated by the caller since the layout repair
     # (roadmap 7.10 M1): the script is born in its job directory now, and
-    # a scope derived from its parent would look for .molbuilder.json and
-    # environment.json in the job dir -- one level below the files.  The
+    # a scope derived from its parent would look for environment.json in
+    # the job dir -- one level below the file.  The
     # parent stays as the fallback for a caller that points at a script
     # sitting wherever its bundle root is (the web build route, tests).
     _project_dir = project_dir if project_dir is not None else (
@@ -3233,34 +3233,34 @@ def render_run_wrapper(script_path: Path, *,
     # differently: `module load mamba` + `source activate` on ASU Sol, a
     # `conda.sh` hook on the workstation.  So when the caller names a
     # TARGET, the answer comes off THE TARGET'S RECORD, which is the thing
-    # that travels (`scheduler.record.Environment.script_generation`).
+    # that travels (`scheduler.record.Environment.env_init`).
     #
     # Reading the local config for a remote target is the 2026-08-24
     # failure: `prep --target sol` took Sol's queues and topology from its
     # record and the WORKSTATION's preamble from `molbuilder.json`, so every
     # job on Sol died on `source /home/.../conda.sh`.  Two doors for one
     # fact -- which machine is this for -- answered out of two files.
-    # THE RECORD IS THE ONE HOME (`configuration.md` § 5 M-1, 2026-10-02) --
-    # this machine's too.  `molbuilder.json`'s `script_generation` stood in
-    # for a record that stated none until then: one fact, two homes, and the
-    # probe copied the file into the record, after which the record won.
+    # THE RECORD IS WHAT THIS READS -- this machine's too (`configuration.md`
+    # § 4): a machine declares its `env_init` in its own `molbuilder.json`,
+    # and `jobset probe` copies it into the record it writes.
     _rec_sg = machine_record
     if _rec_sg is None and _project_dir is not None:
         from .scheduler import machine_for
         _rec_sg = machine_for(_project_dir)
-    _tsg = dict(getattr(_rec_sg, "script_generation", None) or {})
+    _tsg = dict(getattr(_rec_sg, "env_init", None) or {})
     if not _tsg.get("activation"):
         from .scheduler.record import probe_command
         raise WrapperError(
             "no record says how a shell enters an environment on the machine "
             "this script is for, so no wrapper can be written -- the "
-            "activation has no default (docs/configuration.md § 5 M-1).  On "
-            "that machine:\n"
-            f"    {probe_command(None)} --activation \"conda activate\" "
-            f"--preamble \"source <conda root>/etc/profile.d/conda.sh\"\n"
-            "  (or --activation \"source activate\" --preamble \"module "
-            "load mamba\" where a module gives the toolchain), and its "
-            "record copied here when that machine is not this one.")
+            "activation has no default (docs/configuration.md § 4).  On "
+            "that machine, declare it in molbuilder.json --\n"
+            "    \"env_init\": {\"activation\": \"conda activate\", "
+            "\"preamble\": \"source <conda root>/etc/profile.d/conda.sh\"}\n"
+            "  (or \"source activate\" after \"module load mamba\" where a "
+            "module gives the toolchain) -- then "
+            f"`{probe_command(None)}`, and copy its record here when that "
+            "machine is not this one.")
     _preamble_chunks = ([("target", _tsg["preamble"].rstrip("\n"))]
                         if _tsg.get("preamble") else [])
     _activation_form = _tsg["activation"]
@@ -3309,10 +3309,12 @@ def render_run_wrapper(script_path: Path, *,
                     f"    _log ERROR 'It was baked verbatim from the "
                     f"preamble of the record prep read, and this machine "
                     f"is not the one that record describes.'",
-                    f"    _log ERROR 'Fix: on this machine, record its "
-                    f"preamble -- molbuilder jobset probe --write --preamble "
-                    f"(for example: module load mamba) -- and re-run prep "
-                    f"here, or edit the source line below.'",
+                    f"    _log ERROR 'Fix: give the record of this machine "
+                    f"its own preamble -- env_init.preamble in its "
+                    f"molbuilder.json (for example: module load mamba), then "
+                    f"molbuilder jobset probe --write, or edit the record by "
+                    f"hand -- and prep again; or edit the source line "
+                    f"below.'",
                     f'    exit 78',           # EX_CONFIG
                     "fi",
                 ]

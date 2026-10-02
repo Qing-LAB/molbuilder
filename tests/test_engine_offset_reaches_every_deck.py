@@ -98,7 +98,7 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
     (dest / "environment.json").write_text(
         Environment(scheduler="workstation",
                     topology=Topology(sockets=1, cores_per_socket=4),
-                    script_generation={"activation": "conda activate",
+                    env_init={"activation": "conda activate",
                                        "preamble": "true"}
                     ).to_json() + "\n")
     if before_prep is not None:

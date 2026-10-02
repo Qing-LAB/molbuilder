@@ -11,8 +11,8 @@ artifact registry — every file's schema string and authoritative module) ·
 template) · [`engines/stages.md`](?doc=engines/stages.md) (`task.json`) ·
 [`execution/project-layout.md`](?doc=execution/project-layout.md) § 2.3.1 (the
 capability/allocation model these files serve) ·
-[`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 5 (how the
-`molbuilder.json` scopes merge) · [`workflow.md`](?doc=workflow.md) (what flows
+[`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 5 (what of
+`molbuilder.json` reaches a calculation) · [`workflow.md`](?doc=workflow.md) (what flows
 into what).
 
 ## 0. What this document owns
@@ -29,7 +29,7 @@ writes this file?"* was answered in five documents and completely in none.
 | **which files are configuration**, and the one name each is called by | the keys inside any one of them |
 | **who writes each file** — a person, a probe, a producing verb, or the engine's own package | what the writer does internally, beyond the two properties in the next row |
 | **the mode and the durability of every file listed here** — `0600`/`0700`, and that a write is atomic (§ 2.1b, § 2.3). The modes are `placement.py`'s table since 2026-09-13, one row per file, and a file with no mode requirement says so there (`mode=None`) rather than being silently absent — which is what made this row an overstatement | the bytes, the order of keys, the error text |
-| **the scopes**, and which file wins when two of them speak | the merge algorithm, which is `running-a-job.md` § 5 |
+| **where each file is looked for**, and which one answers when several could | how a reader parses it |
 | **the machine-facts rules** (§ 5) — the split between what is probed and what is chosen | the topology fields themselves, which are `scheduler/record.py`'s |
 | **what is refused where**, and why refusal beats silence | the error text, which belongs to the validator |
 
@@ -58,7 +58,7 @@ the whole taxonomy, and it is what § 3's table is sorted by.
 
 | writer | means | files |
 |---|---|---|
-| **a person** | somebody decided it. Nothing in the program may overwrite it | `molbuilder.json`, `.molbuilder.json` |
+| **a person** | somebody decided it. Nothing in the program may overwrite it | `molbuilder.json` |
 | **a probe** | a machine was asked, and it answered | `environment.json` |
 | **a producing verb** | `describe` (or the web's Task-setup tab) wrote down what a calculation *is* | `<label>.template.toml`, `task.json`, `task.1st.json` |
 | **the engine's package** | it ships with the code, as data rather than as Python | `catalogue.template.toml`, `<engine>/warm-files.toml` |
@@ -77,41 +77,21 @@ both already exist in code:
 
 ## 2. The scopes, and who wins
 
-Three scopes exist. They are read in this order, and **later wins**:
+Two scopes exist:
 
 | # | scope | where | what may live here |
 |---|---|---|---|
-| 1 | **machine** | `molbuilder.json` — **one file**, in the config directory named by `$MOLBUILDER_CONFIG_DIR` or the XDG default. A copy in the working directory is **not read**, and you are told so (§ 2.1a) | every section |
-| 2 | **project** | `.molbuilder.json` in a project or calculation folder | `launch` — **and nothing else** (§ 4) |
-| 3 | **calculation** | the folder itself: `task.json`, `<label>.template.toml`, `environment.json`, an optional `warm-files.toml` | what this one calculation is |
-
-**A section that may not live in a scope is refused there, never ignored.**
-`runtime_config._read_project` states the reason, and it is the argument behind
-every refusal in this document: *"a section that is read, validated and then
-silently dropped is worse than one that was never allowed — it looks effective,
-and the folder is saved under rules nobody applied."*
-
-`checkpoint` carries its own refusal message on top of the general one, because
-the operator meeting it is mid-mistake about that specific thing: a
-project-scope copy is a file somebody can edit *between a save and a restore*.
-
-> **One name for scope 2: `project`** — the section registry, the provenance
-> output and the refusals, since 2026-08-23 (`runtime_config._SECTIONS`,
-> `config_provenance`). It answered to `"bundle"` in the provenance output until
-> then, and `bundle` was the one that had to go: it names a different artifact,
-> the portable prepped directory `--bundle` points at.
+| 1 | **machine** | `molbuilder.json` — **one file**, in the config directory named by `$MOLBUILDER_CONFIG_DIR` or the XDG default. A copy in the working directory is **not read**, and you are told so (§ 2.1a) | every section of it (§ 4) |
+| 2 | **calculation** | the folder itself: `task.json`, `<label>.template.toml`, `environment.json`, an optional `warm-files.toml` | what this one calculation is |
 
 ### 2.1 Where each file is looked for, in order
 
-**Every lookup is stated here, and every one of them is a *first-found-wins*
-fallback except where the table says merge.** Two different combining rules for
-two files would be two things to remember, so there is one exception and it is
-named.
+**Every lookup is stated here, and every one of them is *first-found-wins*.**
+No file is merged with another.
 
 | file | looked for, in order | combining rule |
 |---|---|---|
 | `molbuilder.json` (machine) | 1. `$MOLBUILDER_CONFIG_DIR/molbuilder.json` if that variable is set — **the root, exactly as given** (§ 2.1c)<br>2. `$XDG_CONFIG_HOME/molbuilder/molbuilder.json` if that variable is set<br>3. `~/.config/molbuilder/molbuilder.json` | **one file.** There is no search: the branches above choose a DIRECTORY, and the file is the one in it. A `./molbuilder.json` in the working directory is not read (§ 2.1a) |
-| `.molbuilder.json` (project) | `<project-dir>/.molbuilder.json` | **deep-merged** over the machine file, project wins — *the one merge in this document*. Objects recurse, scalars and arrays replace |
 | `environment.json` | 1. `<calculation>/environment.json`<br>2. a **named target**, when one was asked for: `<config dir>/environments/<name>.json`<br>3. `<config dir>/environment.json` — the config directory is § 2.1c's three branches, **`MOLBUILDER_CONFIG_DIR` included**; this row stated only the last two until 2026-09-12 — and when none answers, nothing: **no reader probes** (M-4; until 2026-10-01 a fourth row read *a fresh probe, only when the caller asked*) | **whole record**, first found wins (M-3). No field merge |
 | `catalogue.template.toml` | `molbuilder/data/` inside the installed package | one file; it ships with the code |
 | `<engine>/warm-files.toml` | 1. `<calculation>/warm-files.toml`<br>2. `molbuilder/<engine>/warm-files.toml` in the package | first found wins — a calculation's tuned copy replaces the shipped one |
@@ -121,13 +101,10 @@ named.
 calculation folder is very often the working directory, so a cwd step would make
 the machine scope and the calculation scope the *same file* whenever you ran
 from inside a bundle — and M-3's precedence would be comparing a record against
-itself. `molbuilder.json` has no working-directory step because its calculation-scope
-counterpart has a different name (`.molbuilder.json`, with the dot).
+itself.
 
 > **A search order is not a merge order.** `molbuilder.json`'s three locations
-> are alternatives — finding one *stops the search*, so a cwd file with only a
-> `tls` block does not inherit the XDG file's `launch`. Only the machine ←
-> project pair merges, and only after each has been resolved to one file.
+> are alternatives: the first that applies is the one file there is.
 
 ### 2.1a The machine scope has ONE home, and a cwd file is warned about
 
@@ -148,20 +125,13 @@ to end: a working-directory file stood silently in front of the per-user one —
 not merged, not consulted, not mentioned — so two files held configuration, one
 took effect, and nothing said which.
 
-It was also redundant. Per-directory configuration already has a scope of its
-own, `.molbuilder.json`, which *merges* properly and is documented as the one
-merge in this document. Anything a cwd `molbuilder.json` could express, the
-project scope expresses better and without shadowing anything.
-
 So the rule is:
 
 1. **A machine-scope file belongs in the config directory** — the one named by
    `$MOLBUILDER_CONFIG_DIR` (§ 2.1c), else `$XDG_CONFIG_HOME/molbuilder/`, else
    `~/.config/molbuilder/`. `machine_config_path()` has one branch and no
    search; there is nowhere else for it to stop.
-2. **Per-directory configuration is the project scope's job** —
-   `<project-dir>/.molbuilder.json`, which merges rather than replaces.
-3. **A `./molbuilder.json` is reported, not obeyed.** Leaving it silently
+2. **A `./molbuilder.json` is reported, not obeyed.** Leaving it silently
    ignored would recreate the confusion in the other direction — a file you
    edited that does nothing. So `runtime_config.machine_config_shadow()` says
    it is **not read** and names the file that is. That phrasing lives in one
@@ -390,7 +360,6 @@ and frequent diagnosis. Two rules make it a readable one:
 ```text
 config:
   machine     /home/you/.config/molbuilder/molbuilder.json  (found, via config-dir)
-  project     /work/calc/.molbuilder.json  (absent)
   environment /work/calc/environment.json  (found, via calculation)
   environment /home/you/.config/molbuilder/environment.json  (found, via machine)
   launch.mode = 'submit'   <- machine
@@ -467,7 +436,7 @@ door for the kind of file it has, and the door knows:
 |---|---|---|
 | a secret, whole | `auth_setup.write_secret_file(path, text)` | parent at `0700`, then `write_bytes(…, mode=0o600)` |
 | a secret that must **never be replaced** once it exists — the session key | `write_bytes(…, mode=0o600, exclusive=True)`, catching `FileExistsError` | creates the name or fails; the caller then reads the existing secret back and signs with **that**, so losing the race costs nothing |
-| `molbuilder.json` / `.molbuilder.json` | `runtime_config.write_config_scope(patch, …)` | merge over what is there, validate the merge, `write_bytes`, then `0600` — and the auth wizard's writer since 2026-09-13; it had one of its own |
+| `molbuilder.json` | `runtime_config.write_config_scope(patch)` | merge over what is there, validate the merge, `write_bytes`, then `0600` — and the auth wizard's writer since 2026-09-13; it had one of its own |
 | anything else, whole | `persist.write_json` / `write_bytes` | the shared-artifact mode |
 | a log, **appended** | `serve_daemon.open_private` | the one case temp-and-rename cannot serve |
 | anything written BY THE MONITOR on a compute node | `pathlib`, deliberately | it ships beside the job, where the only module of ours it can reach is one that travels with it — see below |
@@ -604,7 +573,6 @@ deliberately absent**: that is § 6.1's registry, and R-C1 forbids the copy.
 | file | writer | scope | what it answers |
 |---|---|---|---|
 | `molbuilder.json` | a person | machine | **what you want from this installation** — the server's own settings, which environments to use, how a launch is sent. No fact about a machine and no value of a job (§ 4) |
-| `.molbuilder.json` | a person | project | `launch`, for one project or folder |
 | `environment.json` | a probe | machine *and* calculation (§ 5 M-3) | **what the target machine is** — cores, GPUs, scheduler, the queues you can actually reach, and how a shell enters an environment there |
 | `<label>.template.toml` | `describe` / the Task-setup tab | calculation | **every parameter of this calculation**, with the value in force |
 | `task.json` | `describe` / the Task-setup tab | calculation | **what changes** — the ladder, what varies, the structure reference |
@@ -612,7 +580,7 @@ deliberately absent**: that is § 6.1's registry, and R-C1 forbids the copy.
 | `catalogue.template.toml` | shipped with the code | the package | **the master list** — every parameter both engines know, with its metadata. `<label>.template.toml` is made from it |
 | `<engine>/warm-files.toml` | shipped with the code | the engine's package | which files a warm restart carries. A calculation may carry its own tuned copy, and that copy wins |
 | `secrets/README` | `envs init-config` | machine | **how to treat the credentials this directory holds** — the `0700`/`0600` rule, the two kinds in it (fixed-home, which `molbuilder.json` cannot name, and operator-named), the **function each is reached through**, and mock `notify` channel examples for all three kinds |
-| `environments/README` | `envs init-config` | machine | **that the probe runs on the TARGET, not here** — the three commands (probe there, copy here, `jobset machines` to confirm), the `--set` fallback when molbuilder cannot be installed there, and that this machine's own record is `../environment.json` and not in that directory |
+| `environments/README` | `envs init-config` | machine | **that the probe runs on the TARGET, not here** — the three commands (probe there, copy here, `jobset machines` to confirm), and that this machine's own record is `../environment.json` and not in that directory |
 
 ### 3.1 The tree — where all of it actually sits
 
@@ -803,11 +771,12 @@ every section that can be empty present and empty, each with a `_`-prefixed
 comment saying who fills it (you, a command, or a probe) — plus `secrets/` and
 `environments/` at `0700`, and `environment.json` from the probe. Two values are
 **asked**, never detected, because install time is the one moment the answer is
-known: the **activation** (it has no default), which is written into this
-machine's record beside the preamble found from the conda installation — how a
-shell enters an environment here is a fact of this machine (§ 5 M-1) — and
-`paths.projects` (its default is inside the checkout, which is often not where
-you want it), which is written into `molbuilder.json`. `--yes` takes both
+known: the **activation** (it has no default), written into `molbuilder.json`
+as `env_init` beside the preamble found from the conda installation —
+molbuilder needs it on this machine before any record exists, and `jobset
+probe` copies it into every record it writes (§ 4) — and `paths.projects` (its
+default is inside the checkout, which is often not where you want it), written
+there too. `--yes` takes both
 defaults **and prints them**.
 
 **Seeding runs at the END of `bootstrap`, and its preconditions are checked at
@@ -838,38 +807,48 @@ bytes as the CLI"* a checkable claim rather than an intention — the same shape
 
 ## 4. `molbuilder.json` — what you want
 
-**This file holds your preferences about this installation, and nothing else**
-*(user, 2026-10-01 and 2026-10-02)*. Two kinds of value are refused in it:
+**This file holds your preferences about this installation, and how a shell
+enters an environment on this machine** *(user, 2026-10-01 and 2026-10-02)*.
+Two kinds of value are refused in it:
 
-- **A fact about a machine** — its cores, GPUs, scheduler, queues, and how a
-  shell enters an environment there. That is the machine's record,
-  `environment.json`, written ON that machine by `jobset probe` (§ 5 M-1) and
-  copied to where you prep. One fact in two files is two answers, and the
-  record is the one every prep reads.
+- **A fact about a machine** — its cores, GPUs, scheduler and queues. That is
+  the machine's record, `environment.json`, written ON that machine by `jobset
+  probe` (§ 5 M-1) and copied to where you prep. One fact in two files is two
+  answers, and the record is the one every prep reads.
 - **A value of a job** — its queue, wall, memory, rank count, cores per rank and
   GPU count. A job states each one itself, in its description or on the command
   line, or prep refuses it and names where to state it
   ([`execution/architecture.md`](?doc=execution/architecture.md) § 5.2). A
   machine-wide default would be a value nobody stated for the job it lands on.
 
+**How a shell enters an environment on THIS machine is the one fact kept
+here** — `env_init` *(user, 2026-10-02)*. molbuilder runs on this
+machine and needs it before any record exists, so it is declared here once, at
+install. `jobset probe --write` copies it into every record it writes — this
+machine's `environment.json`, or a named `<name>.json` written on the machine it
+names and copied to where you prep — and every prep reads it from the TARGET's
+record. A copy that is wrong for the machine it describes is edited by hand, in
+that record.
+
 **Every key the file may hold.** A key not in this table is refused, never
 ignored, and a key starting with `_` is a comment. What a key may be set *to*
 belongs to the contract in the last column; the table says what each key is for
 and which code reads it, so *"is this setting doing anything?"* has an answer.
-The registry `runtime_config._SECTIONS` holds the scopes and the provenance flag,
-which is why those two columns cannot disagree with the code.
+The registry `runtime_config._SECTIONS` holds the provenance flag, which is why
+that column cannot disagree with the code.
 
-| key | what it is for | read by | scopes | printed in provenance logs | owner |
-|---|---|---|---|---|---|
-| `launch.mode` | how `jobset launch` sends a job when no `--mode` is given: `direct` runs it here with bash, `submit` hands it to the scheduler. Unset, launch refuses and asks for `--mode` | `runtime_config.get_launch` ← `jobset launch` | machine · project | yes | [`running-a-job.md`](?doc=execution/running-a-job.md) § 5.4 |
-| `envs.<category>` | which conda environment a backend's work runs in, when it is not the default name. Categories: `siesta`, `siesta-gpu`, `pyscf`, `mdtools`, `jupyter`, `host` | `diagnostics.Capabilities.env_for_category` ← the run script, the `envs` verbs | machine | no | [`ops/installation.md`](?doc=ops/installation.md) |
-| `envs.manager` | the absolute path of the conda-compatible command (`mamba`, `micromamba`, `conda`) when the one on PATH is not the one to use | `runtime_config.get_env_manager` ← the `envs` verbs | machine | no | [`ops/installation.md`](?doc=ops/installation.md) |
-| `paths.projects` | where the project tree is | `projects.projects_root` ← every surface | machine | yes | § 2.1d |
-| `tls.cert` · `tls.key` | the paths of the server's HTTPS certificate and key | `serve` | machine | no | [`ops/deployment.md`](?doc=ops/deployment.md) § 5 |
-| `auth.providers` · `auth.trust_proxy` | who may sign in and how; whether a proxy's forwarded headers are honoured. Written by `molbuilder auth-setup` | `web/auth.py` | machine | no | [`ops/deployment.md`](?doc=ops/deployment.md) · [`ops/access-control.md`](?doc=ops/access-control.md) |
-| `admin.emails` | who may use the operator-only web actions: restarting the server, the rate limiter's block list | `runtime_config.get_admin_emails` ← `web/admin.py` | machine | no | [`ops/access-control.md`](?doc=ops/access-control.md) § 5–6 |
-| `rate_limit.enabled` · `.window_404_s` · `.threshold_404` · `.window_total_s` · `.threshold_total` · `.cooldown_s` · `.trust_proxy` · `.max_tracked_ips` · `.allowlist` | the web server's request limiter: on or off, its thresholds, who it never blocks | `web/rate_limit.py` | machine | no | [`ops/deployment.md`](?doc=ops/deployment.md) |
-| `checkpoint.size_limit_bytes` · `checkpoint.engines.<engine>` | which run files are too large to save with a folder | `runtime_config.get_checkpoint` ← `checkpoint.py` | machine | no | [`execution/checkpointing.md`](?doc=execution/checkpointing.md) § 4 |
+| key | what it is for | read by | printed in provenance logs | owner |
+|---|---|---|---|---|
+| `launch.mode` | how `jobset launch` sends a job when no `--mode` is given: `direct` runs it here with bash, `submit` hands it to the scheduler. Unset, launch refuses and asks for `--mode` | `runtime_config.get_launch` ← `jobset launch` | yes | [`running-a-job.md`](?doc=execution/running-a-job.md) § 5.4 |
+| `envs.<category>` | which conda environment a backend's work runs in, when it is not the default name. Categories: `siesta`, `siesta-gpu`, `pyscf`, `mdtools`, `jupyter`, `host` | `diagnostics.Capabilities.env_for_category` ← the run script, the `envs` verbs | no | [`ops/installation.md`](?doc=ops/installation.md) |
+| `envs.manager` | the absolute path of the conda-compatible command (`mamba`, `micromamba`, `conda`) when the one on PATH is not the one to use | `runtime_config.get_env_manager` ← the `envs` verbs | no | [`ops/installation.md`](?doc=ops/installation.md) |
+| `env_init.activation` · `env_init.preamble` | how a shell on THIS machine enters a conda environment — `conda activate` or `source activate`, with no default — and the shell run before it (`module load mamba`, or sourcing conda's hook). Asked by `envs init-config`; `jobset probe --write` copies both into every record it writes, and prep reads them from the target's record | `runtime_config.get_env_init` ← `jobset probe` | no | [`running-a-job.md`](?doc=execution/running-a-job.md) § 5.2 |
+| `paths.projects` | where the project tree is | `projects.projects_root` ← every surface | yes | § 2.1d |
+| `tls.cert` · `tls.key` | the paths of the server's HTTPS certificate and key | `serve` | no | [`ops/deployment.md`](?doc=ops/deployment.md) § 5 |
+| `auth.providers` · `auth.trust_proxy` | who may sign in and how; whether a proxy's forwarded headers are honoured. Written by `molbuilder auth-setup` | `web/auth.py` | no | [`ops/deployment.md`](?doc=ops/deployment.md) · [`ops/access-control.md`](?doc=ops/access-control.md) |
+| `admin.emails` | who may use the operator-only web actions: restarting the server, the rate limiter's block list | `runtime_config.get_admin_emails` ← `web/admin.py` | no | [`ops/access-control.md`](?doc=ops/access-control.md) § 5–6 |
+| `rate_limit.enabled` · `.window_404_s` · `.threshold_404` · `.window_total_s` · `.threshold_total` · `.cooldown_s` · `.trust_proxy` · `.max_tracked_ips` · `.allowlist` | the web server's request limiter: on or off, its thresholds, who it never blocks | `web/rate_limit.py` | no | [`ops/deployment.md`](?doc=ops/deployment.md) |
+| `checkpoint.size_limit_bytes` · `checkpoint.engines.<engine>` | which run files are too large to save with a folder | `runtime_config.get_checkpoint` ← `checkpoint.py` | no | [`execution/checkpointing.md`](?doc=execution/checkpointing.md) § 4 |
 
 **Refused by name**, each with what to do instead. A file ported from an older
 install is answered, not merely rejected; dropping these from the registry would
@@ -878,7 +857,7 @@ make the same file fail as an unknown key, which tells the person nothing.
 | key | since | what to do instead |
 |---|---|---|
 | `scheduler` — every key in it: `kind`, `directives` (partition, QoS, account, mail, export), `defaults` (time, cores per task, memory), `placement_priority`, `routing`, `gpu` | 2026-10-02 | A target's queues are its record's: `jobset probe --write` ON that machine, the record copied here (§ 5). A job's queue, wall, memory and shape are the job's own (`execution/architecture.md` § 5.2) |
-| `script_generation` (`activation`, `preamble`) | 2026-10-02 | How a shell enters an environment is a fact of the machine, in its record. `envs init-config` asks for it at install; `jobset probe --write --activation … --preamble …` records it |
+| `script_generation` | 2026-10-02 | Renamed `env_init`, for what it holds: how a shell on this machine enters an environment — the same two keys |
 | `execution` | 2026-10-02 | Renamed `launch`. `execution` is the run card in `task.json`, and means only that |
 | `notify_keys_file` · `notify_route` | 2026-08-31 | The key file carries its own route ([`run-reports.md`](?doc=execution/run-reports.md) § 4.3) |
 | `secret_key_file` | 2026-08-31 | The session key has one home, `secrets/secret_key` (§ 2.1e) |
@@ -892,12 +871,6 @@ safe to log **by construction**: it prints only the sections flagged safe, plus
 the names of the record's queues. A section holding a secret, or a path to one,
 is never printed, so the flag is a security boundary rather than a verbosity
 preference.
-
-**Why only `launch` reaches the project scope.** It is the one setting a folder
-can legitimately differ on: a folder whose jobs are always submitted, on a
-machine where you otherwise run directly. Everything else is a property of the
-installation — two folders differing on `auth` or `checkpoint` would be two
-behaviours with nothing on disk explaining the difference.
 
 ---
 
@@ -937,7 +910,7 @@ is the clearest statement of the rule.)*
 |---|---|---|
 | answers | *what is this machine* | *what do I want from it* |
 | file | `environment.json` | `molbuilder.json` |
-| arrives by | **`jobset probe`, run on that machine** — measuring what it can, and recording what it cannot see as you declare it there (`--set`, `--scheduler`, `--activation`, `--preamble`) | always a person |
+| arrives by | **`jobset probe`, run on that machine** — measuring what it can, recording what it cannot see as you declare it there (`--set`, `--scheduler`), and copying how a shell enters an environment there from that machine's `molbuilder.json` (§ 4) | always a person |
 | examples | cores, GPUs and their type, memory, scheduler kind, the partitions and QoS you can reach and their walls, **how a shell enters an environment there** (activation and preamble), **which environments exist there** | how a launch is sent (`launch.mode`), **which environment to use** (`envs`), where the project tree is, the server's own settings. **Never a value of a job** — no queue, wall, memory, rank count or core count (§ 4) |
 
 > **The bootstrap is a fact, and it took a wasted afternoon to place it
@@ -967,8 +940,9 @@ is the clearest statement of the rule.)*
 > `Environment.source`'s vocabulary is `scontrol` / `lscpu` / **`flag`**, and
 > `flag` *is* the declared case; `resolve_environment(overrides=…)` is its
 > door, fed by `jobset probe --set key=value` (typed by the `Topology` schema
-> itself, unknown keys refused by name), `--scheduler`, `--activation` and
-> `--preamble`.
+> itself, unknown keys refused by name) and `--scheduler`.  The activation is
+> declared once, in that machine's own `molbuilder.json`, and the probe copies
+> it into the record (§ 4).
 
 **A target's queues are its record's and nothing else's** *(user,
 2026-10-02)*: probed on that machine, the record copied here. A queue list
@@ -1181,4 +1155,4 @@ document that owns each.
 | One scope, three names — `"project"` · `"bundle"` · *"a project or calculation folder"* | `job-contracts.md` § 6.3 (identifier conventions) | **closed 2026-08-23** — `project` everywhere (`runtime_config._SECTIONS`, `config_provenance`); marked here 2026-09-29 |
 | ~~`verbose_comments` and `write_molwatch_log` are items in the catalogue for neither engine~~ — **withdrawn 2026-08-17: this was my misreading.** All three (`max_memory_mb` too) *are* catalogue items; they declare **no `engines` list**, so a per-engine query misses them while a plain lookup finds them. That is correct for what they are — a machine fact and two emitter switches, none of them engine-specific | — | **closed.** The rule they follow is *an item with no `engines` applies to every engine*, and [`engines/template.md`](?doc=engines/template.md) states it twice — in § 5's key table and in § 6.3's writer rule. This row claimed no document said it, which was the second half of the same misreading |
 | `resolve_environment(overrides=…)` — **`jobset probe` is the caller** (`jobset/_cli.py`) and passes no `overrides`, so a machine fact cannot be declared through the verb yet. The missing sliver is the flag surface (`--set key=value`, a scheduler override), not the door or its caller — misread once (2026-08-19) as "the function has no caller" | this document, § 5 M-5 | **CLOSED — re-measured 2026-09-20.** Both flags exist: `jobset probe --help` lists `--set KEY=VALUE` (*"declare a topology fact the probe cannot see"*) and `--scheduler [slurm\|workstation]`. The row said *"the flags are not built"* long after they were |
-| **One fact, two keys:** *is a proxy in front of this server?* is `auth.trust_proxy` (read by the sign-in layer) AND `rate_limit.trust_proxy` (read by the request limiter). Set one and not the other behind a proxy, and the limiter counts every client as the proxy's address while sign-in honours the forwarded one | this document, § 4 | **OPEN — found 2026-10-02**, both `false` on the machine it was found on. One key read by both is the fix; which section holds it is the user's call |
+| **One fact, two keys:** *is a proxy in front of this server?* is `auth.trust_proxy` — which installs werkzeug's `ProxyFix` for one hop, so sign-in builds the public URL and the client address the WHOLE server reads, the limiter's included, becomes the one the proxy added — AND `rate_limit.trust_proxy`, with which the limiter alone takes the FIRST `X-Forwarded-For` entry: the one a visitor can write when the proxy appends to the header, as nginx's usual setting does. With the first on, the second adds only that forgeable reading; and the first cannot be set without sign-in (`auth` requires providers), so a server with no sign-in behind a proxy has only the forgeable one | this document, § 4 | **OPEN — found 2026-10-02**, both `false` on the machine it was found on. One key, read once by the server and installing `ProxyFix` for everything, is the fix; which section holds it is the user's call. *(This row first said the limiter would count every client as the proxy with only the sign-in key on — wrong: `ProxyFix` rewrites the address the limiter reads.)* |
