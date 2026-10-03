@@ -199,11 +199,11 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | C6 | the Google secret's home had two answers | Q2c 5, `749716f4` |
 | C7 | `oauth.py` worked out the secret's path itself | Q2c 5, `749716f4` |
 | C8 | two mode checks, two rules, two sentences | Q2c 8, `615858f6` |
-| C9 | `placement`'s `*` row polices operator-named files in `secrets/`; its README says `chmod 600 secrets/*` | **to do** — the row's pattern `README` (each fixed home has its own row); the README's line reworded (§ 3.1: a file you name is yours) |
+| C9 | `placement`'s `*` row polices operator-named files in `secrets/`; its README says `chmod 600 secrets/*` | **fixed** — the row is the README's (each fixed home has its own); the README says a file you name is yours, and points at `envs doctor` |
 | C10 | `config_provenance` missed the error that happens (the card vanished with a named record) | fixed `92e84cc8` |
 | C11 | the registry did not mark retired rows | fixed `7dd8940f` |
 | C12 | a misplaced-credential warning said twice | fixed `92e84cc8` |
-| C13 | README seeding written in place | § 2.3's row and `--help` fixed `0a7ea0e4`; **to do** — four `initconfig` docstrings still say "never touched" / "if absent" / "nothing else" |
+| C13 | README seeding written in place | § 2.3's row and `--help` fixed `0a7ea0e4`; the four docstrings **fixed** |
 | C14 | multi-scope config leftovers taught | fixed `0a7ea0e4` |
 | C15 | retired `scheduler` / `script_generation` leftovers in code | fixed `0a7ea0e4` |
 | C16 | texts a person reads stating false facts | fixed `0a7ea0e4` |
@@ -221,7 +221,7 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | R3 | `--target this` takes another machine's snapshot unasked — and the tab sends `this` on every prep once "(this machine)" is picked | **your word** — below |
 | R4 | `envs init-config` is a second, partial prober: on a cluster it seeds `slurm` with no queues and no `detected_at` | **fixed `5157ae90`** — `record.probe_queues`, run by both (and the submit-cap note it carried, dropped since it was written, now shown) |
 | R5 | "lists no queues" prints the bare probe command, whatever the target or snapshot | **fixed `4d5b28f8`** — `record.record_and_renewal(base, target)`, the one spelling, shared with the GPU-bench refusal; two `launch_values.toml` rows |
-| R6 | the launch re-check's remedy (re-run `prep`) cannot work — prep keeps the snapshot — and names a queue as the machine | **fixed** — the ask, another queue, or the snapshot deleted; a `launch_values.toml` row |
+| R6 | the launch re-check's remedy (re-run `prep`) cannot work — prep keeps the snapshot — and names a queue as the machine | **fixed `d04d830c`, `2979e2c1`** — the ask, another queue, or the snapshot deleted; a `launch_values.toml` row |
 | R7 | the preamble guard's remedy | fixed `92e84cc8` |
 | R8 | the provenance card vanished with a named record | fixed `92e84cc8` (C10) |
 | R9 | the web prep route's own copy of the target checks | fixed `92e84cc8` |

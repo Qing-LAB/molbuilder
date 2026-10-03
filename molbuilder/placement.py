@@ -135,15 +135,15 @@ def places() -> Tuple[Place, ...]:
               "fixed home.  A file molbuilder.json merely NAMES is the "
               "operator's and the system's; `secrets/` is offered as a home "
               "for it, never policed as one"),
-        # EVERY FILE IN `secrets/`, whatever the operator called it.  The
-        # README tells them to put a TLS key here and nothing checked it: a
-        # key at 0644 was invisible until 2026-09-20.  `pattern` already
-        # existed for the port-carrying serve logs; the easy, high-value use
-        # of it was the one missing.  It catches molbuilder's own slip too --
-        # `initconfig` wrote this directory's README at 0664.
-        Place("a file in secrets/", secrets_dir, False, PRIVATE_FILE_MODE,
-              "everything in this directory is a credential or names one",
-              "*"),
+        # THE DIRECTORY'S OWN NOTE.  Each credential molbuilder keeps here
+        # has its own row above, so this row is the README molbuilder writes
+        # beside them (`initconfig` once wrote it 0664).  It covered EVERY
+        # file here, `*`, until 2026-10-02 -- and so told an operator to
+        # chmod a TLS key they had named, which `configuration.md` § 3.1
+        # says is theirs and the system's (W54 C9).
+        Place("the secrets README", secrets_dir, False, PRIVATE_FILE_MODE,
+              "molbuilder writes it beside the credentials, at their mode",
+              "README"),
         Place("the state directory", state_dir, True, None,
               "logs and measurements; the modes that matter are below it"),
         Place("logs/", logs_dir, True, PRIVATE_DIR_MODE,

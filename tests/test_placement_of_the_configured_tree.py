@@ -159,6 +159,12 @@ def test_what_arrives_loose_is_reported_with_its_chmod(isolated_tree):
     from molbuilder.envs import initconfig
 
     initconfig.init_config("conda activate", probe=False)
+    # A KEY YOU NAMED AND KEEP HERE is yours and the system's
+    # (`configuration.md` § 3.1): a letsencrypt key at its own 0640 is not a
+    # finding.  The audit told the operator to chmod it until 2026-10-02
+    # (W54 C9).
+    (CD.secrets_dir() / "privkey.pem").write_text("k")
+    os.chmod(CD.secrets_dir() / "privkey.pem", 0o640)
     assert P.findings() == []
 
     os.chmod(CD.secrets_dir(), 0o755)
