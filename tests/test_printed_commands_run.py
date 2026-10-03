@@ -84,6 +84,50 @@ def test_every_command_a_refusal_or_a_next_step_prints_is_taken(
     assert each_is_taken(r.output), r.output
 
 
+def test_the_lines_task_setup_shows_are_the_terminals_and_are_taken(
+        tmp_path, monkeypatch):
+    """W55 B4 / D11 / D12: Task setup's command lines are the terminal's own
+    (`/api/task-setup/commands`, `jobset/commands.stage_lines`) -- the
+    calculation named, a launch line per mode where this machine's config
+    sets none -- and each, typed back from outside the calculation, is
+    taken.  Prepped, the folder answer names the machine the calculation is
+    set to and the stage prepped, in the prep entry's own sentence; the
+    stage's lines are its launch alone -- a prep of it is refused -- and the
+    next stage's line needs no `--target`: the calculation's copy answers.
+
+    API-LEVEL for the page's two doors, which no `jobset` verb reaches; the
+    lines themselves are typed down the road.
+
+    MUTATIONS THIS MUST FAIL AGAINST: a launch line with no mode (the page's
+    own, until 2026-10-03); a folder answer without the set machine; a
+    prepped stage still offered its prep."""
+    from molbuilder.web.app import create_app
+    bundle = _described(tmp_path, monkeypatch)
+    client = create_app(config={}).test_client()
+
+    def lines(stage, **choice):
+        r = client.post("/api/task-setup/commands", json=dict(
+            dest=str(bundle), kind="run", stage=stage, target="this",
+            **choice))
+        assert r.status_code == 200, r.get_json()
+        return r.get_json()["lines"]
+
+    coarse = lines("coarse")
+    assert [l for l in coarse if " launch " in l] and all(
+        "--mode " in l for l in coarse if " launch " in l), coarse
+    assert each_is_taken("\n".join(coarse)) == len(coarse), coarse
+
+    folder = client.get("/api/task-setup/folder?dir=" + str(bundle)).get_json()
+    assert (folder["set_to"], list(folder["prepped"]["run"])) == (
+        "(this machine)", ["coarse"]), folder
+    assert "already prepped" in folder["prepped"]["run"]["coarse"], folder
+    again = lines("coarse")
+    assert again and all(" launch " in l for l in again), again
+    medium = lines("medium", cold=True)
+    assert medium[0].split(" --bundle ")[0] == \
+        "molbuilder jobset prep run medium --cold", medium
+
+
 @pytest.mark.parametrize("shape, container", [
     ("hierarchical", "02_medium/bench"),
     ("flat", "bench_02_medium"),

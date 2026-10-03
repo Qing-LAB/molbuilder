@@ -412,14 +412,18 @@ function freshFolderState() {
         continueFrom: {},         // stage -> what it can continue from (W37)
         continueChoice: {},       // stage -> the person's choice: "", a run, "--cold"
         answers:      {},         // "<kind>:<stage>" -> the last prep answer shown
+        setTo:        null,       // the machine its first prep set, or null (M-3)
+        prepped:      { run: {}, bench: {} },  // kind -> stage -> prep's own sentence
     };
 }
 
 let _fs = freshFolderState();
 
 //: Set while this page announces its OWN write (`publishFolderChanged` runs
-//: its subscribers synchronously), so the re-read it triggers is told from
-//: another writer's -- a restore -- which retires the prep answers.
+//: its subscribers synchronously).  The writer re-reads the folder itself,
+//: once -- a Save inside its fence -- so this page's own subscriber skips
+//: the announcement: it is for the other views, and only another writer's
+//: (a restore) re-reads this page.
 let _ownPublish = false;
 
 
@@ -1340,6 +1344,12 @@ async function loadFolder(projects, dir, opts) {
      * its default, the runs of the stage before it, `--cold` where it is a
      * choice.  The same answer prep acts on, served before it does. */
     _fs.continueFrom = said.continue_from || {};
+    /* THE MACHINE IT IS SET TO, and the stages prepped -- the folder's own
+     * answer (W55 B4): a calculation's machine is its first prep's and does
+     * not change (`configuration.md` M-3), so the card shows it fixed. */
+    _fs.setTo = said.set_to || null;
+    _fs.prepped = said.prepped || { run: {}, bench: {} };
+    applySetMachine();
     _shape = String(task.shape || "");
     $("ts-shape-card").hidden = false;
     setShape(_shape);                            // shows which one it carries
@@ -2213,44 +2223,6 @@ function renderNext(task) {
     // writes bench-result.json (the record); the report is PRINTED
     // (a REPORT nothing reads but you); `prep run` uses `execution` --
     // template < the calculation's execution < the rung's < flags.
-    /* `--bundle <path from the projects root>` for every command this
-     * tab teaches.  Naming the bundle is what lets the line be pasted
-     * from anywhere; the sidebar already knows the folder, so the user
-     * never types it.
-     *
-     * Built from what already exists -- the sidebar's `getCurrentDir` +
-     * `getProjectsRoot`, and `path.relativeFromDir` to subtract one from
-     * the other.  That last one had had NO caller since `d1c8a871` took
-     * deck-rendering out of the browser; this is the job it was written
-     * for.  Empty when the folder is not under the tree, where the verb's
-     * own refusal says more than a truncated command could. */
-    /* `--target <machine>` for every prep command taught, once a machine is
-     * chosen.  A remote machine is named; this machine is `this` -- the
-     * CLI's own name for it -- and ONLY when the choice was required: with
-     * several records `prep` refuses to guess between them (measured on the
-     * 2026-09-23 UI walk: the card said "Prepared for (this machine)" and
-     * the printed line, lacking the flag, was refused as printed).  With one
-     * record there is no question and no flag, the same shape as `--bundle`,
-     * which is omitted when the cwd already is it.  `launch` never carries
-     * it: launching happens on the machine. */
-    function _targetArg() {
-        if (!_machine) return "";
-        if (_machine === "(this machine)") return _choiceRequired ? " --target this" : "";
-        return " --target " + _machine;
-    }
-
-    function _bundleArg() {
-        const mb = window.molbuilder || {};
-        const proj = mb.projects, pathUtil = mb.path;
-        if (!proj || !pathUtil || !pathUtil.relativeFromDir) return "";
-        const dir  = proj.getCurrentDir && proj.getCurrentDir();
-        const root = proj.getProjectsRoot && proj.getProjectsRoot();
-        if (!dir || !root) return "";
-        const rel = pathUtil.relativeFromDir(dir, root);
-        if (!rel || rel === "." || rel.indexOf("..") === 0) return "";
-        return " --bundle " + rel;
-    }
-
     /* ONE BLOCK PER ENABLED STAGE, and both things you can do with it
      * (`task-setup.md` § 11).  A stage is either something to MEASURE or
      * something to RUN, and which one is a decision only the user has.
@@ -2327,12 +2299,11 @@ function renderNext(task) {
                 + "Worth doing on the cheapest rung that still has the "
                 + "expensive stage's shape; the verdict is reported, and you "
                 + "write it into the card below."));
-            block.appendChild(el("pre", { class: "ts-cmd" },
-                "molbuilder jobset prep bench " + name + _bundleArg() + _targetArg() + "\n"
-                + "molbuilder jobset launch bench " + name + _bundleArg()
-                + "      # one job per resource shelf; wait for the queue\n"
-                + "molbuilder jobset summarize bench " + name + _bundleArg()
-                + "   # writes the record + a report for you to read"));
+            block.appendChild(el("p", { class: "hint" },
+                "Then launch it — one job per resource shelf; wait for the "
+                + "queue — and summarize it, which writes the record and a "
+                + "report for you to read."));
+            block.appendChild(commandsFor("bench", name));
             block.appendChild(prepButton("bench", name));
         }
 
@@ -2356,16 +2327,11 @@ function renderNext(task) {
          * follow it. */
         const cf = _fs.continueFrom[name];
         if (cf && !cf.error) block.appendChild(continueFromChoice(task, name, cf));
-        block.appendChild(el("pre", { class: "ts-cmd" },
-            // The bundle is NAMED, from the projects root, so the line
-            // works from wherever the user is standing
-            // (job-contracts.md 2.5b).
-            "molbuilder jobset prep run " + name + continueFlags(name)
-            + _bundleArg() + _targetArg() + "\n"
-            // The launch is the LAST line for every kind: a run writes its
-            // own result -- a SIESTA vibration's job derives its modes after
-            // the force-constant run (engines/vibration.md 5.5).
-            + "molbuilder jobset launch run " + name + _bundleArg()));
+        // THE LINES THE TERMINAL WOULD PRINT, from its own composer
+        // (`jobset/commands.stage_lines`, W55 B4): the calculation named
+        // from the projects root, what it continues from and the machine as
+        // chosen, and a launch line per mode where the config sets none.
+        block.appendChild(commandsFor("run", name));
         /* THE BUTTON WRITES WHAT THE COMMAND DOES: the same prep, with the
          * same choice. */
         block.appendChild(prepButton("run", name));
@@ -2412,10 +2378,27 @@ function continueFromChoice(task, name, cf) {
     return wrap;
 }
 
-/** The choice as the command's flags: none for the default. */
-function continueFlags(name) {
-    const c = _fs.continueChoice[name] || "";
-    return c === "--cold" ? " --cold" : c ? " --from " + c : "";
+/** One stage's command lines -- the server's, from the terminal's own
+ *  composer (`/api/task-setup/commands`, W55 B4): its prep as chosen (what
+ *  it continues from, the machine), its launch, a benchmark's summarize.
+ *  The block is filled when the answer lands; a block rebuilt since is no
+ *  longer on the page, and its late answer fills nothing anyone sees. */
+function commandsFor(kind, stage) {
+    const pre = el("pre", { class: "ts-cmd", "data-state": "loading" }, "…");
+    const body = Object.assign({ dest: _dir, kind, stage,
+                                 target: _machine || null },
+                               kind === "run" ? continueBody(stage) : {});
+    fetch("/api/task-setup/commands", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    }).then((r) => r.json()).catch(() => null).then((j) => {
+        pre.textContent = (j && j.ok)
+            ? j.lines.join("\n")
+            : "(" + ((j && j.error) || "the commands could not be read") + ")";
+        pre.removeAttribute("data-state");
+    });
+    return pre;
 }
 
 /** The choice as the prep door's fields -- the CLI's two flags. */
@@ -2539,14 +2522,17 @@ function prepButton(kind, stage) {
                     : "no axes declared — the target proposes the grid");
             }
             if (chosen.length) bits.push("at " + chosen.join(", "));
+            /* WHAT IS STATED, and nothing for what is not: a run handed to a
+             * scheduler states its queue, wall and memory or prep refuses
+             * it, and one on a machine without a scheduler is asked for none
+             * (`architecture.md` § 5.2).  This said "the scheduler's own
+             * default decides" until 2026-10-03, a rule retired (W55 D2). */
             const a = r.allocation || {};
-            bits.push(a.domain ? "queue " + a.domain : "NO QUEUE STATED");
-            bits.push(a.mem ? "memory " + a.mem
-                            : "NO MEMORY STATED — the scheduler's own "
-                              + "default decides");
-            bits.push(a.time ? "time " + a.time : "no time stated");
+            if (a.domain) bits.push("queue " + a.domain);
+            if (a.mem) bits.push("memory " + a.mem);
+            if (a.time) bits.push("time " + a.time);
             say.textContent = bits.join(" · ") + ".";
-            say.setAttribute("data-state", (a.mem && a.domain) ? "ok" : "warn");
+            say.setAttribute("data-state", "ok");
             /* A STAGE ALREADY PREPPED is refused before anything else
              * (`job-system.md` § 5.0): the entry's own sentence, the way
              * back in it, and no Prep offered. */
@@ -2607,18 +2593,20 @@ function prepButton(kind, stage) {
             const r = await _prepCall(kind, stage, false);
             _showPrepAnswer(wrap, say, r);
             if (r.ok) {
-                // KEPT, for the re-read the announcement below triggers: it
-                // rebuilds this panel, and the new one shows it again.
+                // KEPT, for the re-read below: it rebuilds this panel, and
+                // the new one shows it again.
                 _fs.answers[kind + ":" + stage] = r;
                 // The folder now holds decks and wrappers it did not before --
-                // the same announcement a restore makes, so every open view
-                // re-reads rather than showing the folder as it was.
+                // the same announcement a restore makes, so every other open
+                // view re-reads rather than showing the folder as it was;
+                // this page re-reads it here, keeping the answer.
                 const p = window.molbuilder && window.molbuilder.projects;
                 if (p && typeof p.publishFolderChanged === "function") {
                     _ownPublish = true;
                     try { p.publishFolderChanged(_dir); }
                     finally { _ownPublish = false; }
                 }
+                if (p) await loadFolder(p, _dir, { retire: false });
             }
         } finally {
             btnPreview.disabled = false;
@@ -2636,6 +2624,16 @@ function prepButton(kind, stage) {
     });
 
     wrap.append(btnPreview, btnWrite, say);
+    /* PREPPED ALREADY (W55 B4): the prep entry's own sentence, from the
+     * folder's answer, the way back in it -- and neither button, since a
+     * prepped stage is not prepped again (`job-system.md` § 5.0).  Its lines
+     * above are its launch. */
+    const prepped = (_fs.prepped[kind] || {})[stage];
+    if (prepped) {
+        btnPreview.disabled = true;
+        say.textContent = String(prepped);
+        say.setAttribute("data-state", "warn");
+    }
     /* THE ANSWER THIS PANEL LAST GAVE, again: a write's own announcement
      * re-reads the folder and rebuilds the panel, and so does every repaint
      * -- the answer stays until a new preview, a Save or a restore retires
@@ -2647,7 +2645,7 @@ function prepButton(kind, stage) {
      * write button would hand its enabled-ness a SECOND owner, and picking a
      * machine would enable a write nobody had previewed.  The machine gate
      * still applies to it, through `blocked()`, which both buttons ask. */
-    _PREP_WIDGETS.push({ btn: btnPreview, say, kind });
+    if (!prepped) _PREP_WIDGETS.push({ btn: btnPreview, say, kind });
     _syncPrepButtons();
     return wrap;
 }
@@ -2923,9 +2921,31 @@ function proposedFromHandover(over, shape, varies, bench) {
 
 let _machine = "";          // the chosen record's name, "" until chosen
 let _machines = [];         // what /api/task-setup/machines answered
-let _choiceRequired = false; // the CLI's own rule: with several records it
-                             // refuses to guess, and `--target this` names
-                             // this machine (preparing-for-another-machine.md § 4)
+
+/** The machine the calculation is set to, shown fixed (W55 D12): its
+ *  first prep's, which does not change (`configuration.md` M-3) -- the
+ *  other machines are not offered, and a line says why.  Before the first
+ *  prep the card is the choice it always was. */
+function applySetMachine() {
+    const card = $("ts-target-card");
+    if (!card) return;
+    let line = $("ts-target-set");
+    if (!line) {
+        line = el("p", { class: "hint", id: "ts-target-set" });
+        card.appendChild(line);
+    }
+    for (const b of document.querySelectorAll("#ts-target-choice .opt")) {
+        b.disabled = !!_fs.setTo
+            && b.getAttribute("data-machine") !== _fs.setTo;
+    }
+    line.hidden = !_fs.setTo;
+    if (!_fs.setTo) return;
+    line.textContent = "Set to " + _fs.setTo + " — the machine of this "
+        + "calculation's first prep, which does not change. To prepare it "
+        + "for another, go back to the state saved before its first prep "
+        + "and prep anew.";
+    if (_machine !== _fs.setTo) setMachine(_fs.setTo);
+}
 
 function setMachine(name) {
     _machine = name;
@@ -2950,9 +2970,10 @@ function setMachine(name) {
      * and the route takes no `target` to make it depend on one.  The
      * `target` it once sent fed only the bootstrap warning, retired
      * 2026-08-25, and the comment outlived it. */
-    /* AND THE COMMANDS THEMSELVES.  `_targetArg()` is read at RENDER time,
-     * and `renderNext` runs from `loadFolder` -- which finishes before
-     * anyone can click a machine.  Without this line the card said "sol"
+    /* AND THE COMMANDS THEMSELVES.  The machine reaches each stage's
+     * lines at RENDER time (`commandsFor` asks the server with it), and
+     * `renderNext` runs from `loadFolder` -- which finishes before anyone
+     * can click a machine.  Without this line the card said "sol"
      * while the line a person copied said `prep bench coarse --bundle ...`
      * with no `--target`, and prepping it would have baked THIS machine's
      * width into a bundle bound for a cluster: invariant C1 in
@@ -3661,7 +3682,6 @@ async function loadMachines() {
     } catch (e) { data = null; }
     if (!data || !data.ok) { card.hidden = true; return; }
     _machines = data.machines || [];
-    _choiceRequired = !!data.choice_required;
     const host = $("ts-target-choice");
     if (!host) return;
     host.textContent = "";
@@ -3678,7 +3698,9 @@ async function loadMachines() {
     /* One machine is not a question.  Choosing it silently is the same
      * rule the CLI applies: there is no ambiguity, so nothing is asked. */
     card.hidden = false;
-    if (!data.choice_required && _machines.length === 1) {
+    if (_fs.setTo) {
+        applySetMachine();               // a folder set to one: shown fixed
+    } else if (!data.choice_required && _machines.length === 1) {
         setMachine(_machines[0].name);
     } else {
         setMachine("");
@@ -3977,9 +3999,15 @@ function start(projects) {
      * displaying a description the folder no longer had (2026-08-24). */
     if (typeof projects.onFolderChanged === "function") {
         projects.onFolderChanged((ev) => {
+            /* THIS PAGE'S OWN WRITE re-reads where it is made, once.  A
+             * second read from here escaped a Save's fence and, landing
+             * after the next edit, replaced it with the disk's (found
+             * 2026-10-03: the GPU binding box ticked again after a Save). */
+            if (_ownPublish) return;
             const changed = (ev && ev.dir) || "";
             if (changed && _dir && changed !== _dir) return;   // not ours
-            loadFolder(projects, _dir, { retire: !_ownPublish });
+            // Another writer's change retires the prep answers.
+            loadFolder(projects, _dir, { retire: true });
         });
     }
     /* THE SELECTION MOVING replaces the folder (`task-setup.md` § 2.1) --

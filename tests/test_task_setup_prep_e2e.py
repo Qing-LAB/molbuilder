@@ -161,6 +161,18 @@ def _open(page, base, calc):
         " return !!(n && n.CodeMirror); }", timeout=20000)
 
 
+def _commands_shown(page):
+    """Every stage's command lines, once each block has filled -- the
+    server composes them (`/api/task-setup/commands`, W55 B4), so a block
+    is on the page before its lines are."""
+    page.wait_for_selector("pre.ts-cmd", state="attached", timeout=20000)
+    page.wait_for_function(
+        "() => Array.from(document.querySelectorAll('pre.ts-cmd'))"
+        "        .every(e => !e.hasAttribute('data-state'))", timeout=20000)
+    return page.eval_on_selector_all(
+        "pre.ts-cmd", "els => els.map(e => e.textContent)")
+
+
 def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
         page, flask_server, calc_dir):
     """Type · Save · Preview · Prep — then read the `.sbatch`."""
@@ -279,8 +291,9 @@ def test_the_tab_saves_the_folder_first_and_says_so(
     the folder's state before it writes -- always, the note led by the time
     it was taken -- and the answer says so.  An unsaved edit is not in the
     task.json prep reads, so Prep refuses it first (§ 7a).  The stage,
-    prepped, is not prepped again: the preview says so and offers no Prep
-    (`job-system.md` § 5.0).  (It replaced the save the tab offered,
+    prepped, is not prepped again (`job-system.md` § 5.0): opened again, it
+    shows the prep entry's own sentence, offers neither button, and its
+    lines are its launch (W55 B4).  (It replaced the save the tab offered,
     2026-10-03, which replaced its *already under way* Confirm, 2026-10-02.)"""
     import re
     from molbuilder.checkpoint import Repo
@@ -335,14 +348,19 @@ def test_the_tab_saves_the_folder_first_and_says_so(
                     r"prep run coarse$", notes[0]), notes
     assert (calc / "01_coarse" / "run-0").is_dir()
 
-    # PREPPED, AND NOT PREPPED AGAIN: the preview says so, no Prep offered
-    page.locator(preview).first.click()
+    # PREPPED, AND NOT PREPPED AGAIN: the folder opened again says so in
+    # the entry's own words, offers neither button, and gives its launch
+    _open(page, flask_server, calc)
     page.wait_for_function(
         "(sel) => Array.from(document.querySelectorAll(sel)).some("
         "n => /already prepped/.test(n.textContent))",
         arg=f"{panel} .ts-prep-say", timeout=30000)
-    assert page.locator(prep_sel).first.is_disabled(), (
-        "the preview offered a Prep the entry refuses")
+    assert page.locator(preview).first.is_disabled(), (
+        "a prepped stage was offered a Preview of a prep the entry refuses")
+    assert page.locator(prep_sel).first.is_disabled()
+    lines = [ln for b in _commands_shown(page) for ln in b.splitlines()]
+    assert not [ln for ln in lines if " prep run coarse" in ln], lines
+    assert [ln for ln in lines if " launch run coarse" in ln], lines
 
 
 def test_a_stage_with_no_axes_offers_the_machines_proposal(
@@ -524,6 +542,15 @@ def _saved_allocation(where, ok, timeout=20.0):
         time.sleep(0.1)
 
 
+def _page_free(page, timeout=20000):
+    """Wait as a person waits: until the busy cover is gone.  A Save
+    re-reads the folder under it, and a box the re-read repaints from the
+    file reads ticked midway -- reset, then painted -- so `check` finds it
+    ticked, clicks nothing, and the paint unticks it."""
+    page.wait_for_selector(".page-busy-cover", state="hidden",
+                           timeout=timeout)
+
+
 def test_the_gpu_binding_box_writes_the_switch(page, flask_server,
                                                binding_dir):
     """`execution/gpu.md` G9, from the page's side: the queue card's GPU
@@ -549,6 +576,7 @@ def test_the_gpu_binding_box_writes_the_switch(page, flask_server,
                               lambda a: a.get("gpu_binding") is False)
     assert alloc.get("gpu_binding") is False, alloc
 
+    _page_free(page)
     page.check(box)
     page.click("#ts-save")
     alloc = _saved_allocation(binding_dir, lambda a: "gpu_binding" not in a)
@@ -923,7 +951,8 @@ def two_stage_dir(isolated_projects_root):
     from conftest import write_pseudos
     from molbuilder import describe as D
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.scheduler import Environment, Topology
+    from molbuilder.scheduler import (Environment, Topology,
+                                      machine_scope_path, write_environment)
     from molbuilder.structure import Structure
     from molbuilder.task import Stage
 
@@ -958,12 +987,16 @@ def two_stage_dir(isolated_projects_root):
         (d / "task.json").write_text(_json.dumps(task, indent=2),
                                      encoding="utf-8")
 
-        (d / "environment.json").write_text(
+        # THIS MACHINE'S record, where `jobset probe --write` puts it -- not
+        # a copy in the calculation, which only its first prep writes
+        # (`configuration.md` M-3): a copy here reads as a calculation
+        # already set to its machine, and the choice below would be none.
+        write_environment(
             Environment(scheduler="",
                         topology=Topology(sockets=2, cores_per_socket=32),
                         env_init={"preamble": "true",
-                                           "activation": "conda activate"},
-                        ).to_json() + "\n", encoding="utf-8")
+                                           "activation": "conda activate"}),
+            machine_scope_path())
         yield d
     finally:
         pass          # tmp_path is removed by pytest
@@ -993,10 +1026,7 @@ def test_the_commands_the_card_hands_over(page, flask_server, two_stage_dir):
     # `state="attached"`: the stage blocks are TABS -- every stage renders
     # its own and all but the selected one carry `hidden`, so waiting for a
     # VISIBLE one would wait for the tab a person has not clicked.
-    page.wait_for_selector("pre.ts-cmd", state="attached", timeout=20000)
-
-    blocks = page.eval_on_selector_all(
-        "pre.ts-cmd", "els => els.map(e => e.textContent)")
+    blocks = _commands_shown(page)
     joined = "\n".join(blocks)
 
     # ── every stage, not only the first ────────────────────────────────
@@ -1119,9 +1149,7 @@ def test_choosing_a_machine_puts_it_in_the_command_you_copy(
         "() => document.querySelector('#ts-target-choice "
         ".opt[aria-pressed=\"true\"]')", timeout=5000)
 
-    page.wait_for_selector("pre.ts-cmd", state="attached", timeout=20000)
-    blocks = page.eval_on_selector_all(
-        "pre.ts-cmd", "els => els.map(e => e.textContent)")
+    blocks = _commands_shown(page)
 
     for stage in ("coarse", "tight"):
         for verb in ("bench", "run"):
@@ -1139,6 +1167,39 @@ def test_choosing_a_machine_puts_it_in_the_command_you_copy(
                 assert "--target" not in line, (
                     f"launch carries a target: {line.strip()!r} -- launching "
                     f"happens ON the machine, so there is nothing to target")
+
+
+def test_a_calculation_set_to_its_machine_is_shown_so(
+        page, flask_server, two_stage_dir, a_named_machine):
+    """W55 D12, the page's half: a calculation is set to the machine of its
+    first prep, which does not change (`configuration.md` M-3), so once a
+    stage is prepped the card shows that machine chosen, offers no other,
+    and says why -- the folder's own answer, `set_to`.  It offered every
+    machine until 2026-10-03, and Prep refused all but one.  The answer's
+    half is `test_printed_commands_run.py`'s."""
+    _open(page, flask_server, two_stage_dir)
+    this = page.locator('#ts-target-choice .opt[data-machine="(this machine)"]')
+    this.wait_for(state="visible", timeout=20000)
+    this.click()
+    panel = "[id^=ts-steppanel]"
+    page.locator(f"{panel} .ts-prep button:has-text('Preview run')") \
+        .first.click()
+    page.wait_for_function(
+        "(sel) => Array.from(document.querySelectorAll(sel)).some("
+        "b => /Prep run here/.test(b.textContent) && !b.disabled)",
+        arg=f"{panel} .ts-prep button", timeout=30000)
+    page.locator(f"{panel} .ts-prep button:has-text('Prep run here')") \
+        .first.click()
+
+    page.wait_for_selector("#ts-target-set:not([hidden])", timeout=60000)
+    assert page.inner_text("#ts-target-set").startswith(
+        "Set to (this machine)"), page.inner_text("#ts-target-set")
+    assert this.get_attribute("aria-pressed") == "true"
+    assert page.locator(f'#ts-target-choice .opt[data-machine='
+                        f'"{a_named_machine}"]').is_disabled(), (
+        "a calculation set to this machine was offered another")
+
+
 def test_the_notify_card_offers_this_machines_channels(
         page, flask_server, two_stage_dir):
     """A channel configured on this machine appears as a tick you can see.
@@ -1305,13 +1366,7 @@ def test_no_rung_is_taught_a_from_by_default(
     for n in (0, 1):
         (two_stage_dir / "01_coarse" / f"run-{n}").mkdir(parents=True)
     _open(page, flask_server, two_stage_dir)
-    page.wait_for_selector("pre.ts-cmd", state="attached", timeout=20000)
-    page.wait_for_function(
-        "() => Array.from(document.querySelectorAll('pre.ts-cmd'))"
-        "        .some(e => e.textContent.includes('jobset prep run'))",
-        timeout=20000)
-    cmds = page.eval_on_selector_all(
-        "pre.ts-cmd", "els => els.map(e => e.textContent)")
+    cmds = _commands_shown(page)
     assert cmds, "the page taught no commands at all"
     assert not any("--from" in c for c in cmds), (
         "a rung whose card states nothing was taught a --from: "
@@ -1411,13 +1466,7 @@ def test_a_FLAT_bundle_is_taught_no_from_at_all(
     tj.write_text(_json.dumps(doc, indent=2))
 
     _open(page, flask_server, two_stage_dir)
-    page.wait_for_selector("pre.ts-cmd", state="attached", timeout=20000)
-    page.wait_for_function(
-        "() => Array.from(document.querySelectorAll('pre.ts-cmd'))"
-        "        .some(e => e.textContent.includes('jobset prep run'))",
-        timeout=20000)
-    cmds = page.eval_on_selector_all(
-        "pre.ts-cmd", "els => els.map(e => e.textContent)")
+    cmds = _commands_shown(page)
     assert cmds, "the page taught no commands at all"
     assert not any("--from" in c for c in cmds), (
         "a flat bundle has no attempt directory to continue from: "

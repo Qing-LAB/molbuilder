@@ -154,6 +154,44 @@ def rollback(what: str, *, base) -> str:
               f"the one you pick.")
 
 
+def target_flags(base, target: Optional[str]) -> tuple:
+    """``--target <name>`` where a prep needs one
+    (`preparing-for-another-machine.md` § 4): none for a calculation already
+    set to its machine -- its copy of the record answers, and the machine
+    does not change (`configuration.md` M-3); none for this machine when it
+    is the only one on file; the name otherwise."""
+    from ..scheduler import choice_required, known_machines
+    from ..scheduler.record import LOCAL_TARGET, calculation_record
+    if not target or calculation_record(base).is_file():
+        return ()
+    if target == LOCAL_TARGET:
+        return (("--target", LOCAL_TARGET)
+                if choice_required(known_machines()) else ())
+    return ("--target", target)
+
+
+def stage_lines(kind: str, stage: str, *, base, from_attempt=None,
+                cold: bool = False, target: Optional[str] = None,
+                prepped: bool = False) -> List[str]:
+    """What a person types next for ``stage``: its prep -- what it continues
+    from and the machine, as chosen -- unless it is ``prepped`` already,
+    which prep would refuse (`job-system.md` § 5.0); then its launch, and for
+    a benchmark the verdict's read.  The lines Task setup shows beside each
+    stage, composed here as the terminal composes its own (`task-setup.md`
+    § 11; W55 B4: the page composes none)."""
+    out = []
+    if not prepped:
+        flags = ((("--from", from_attempt) if from_attempt else ())
+                 + (("--cold",) if cold else ())
+                 + target_flags(base, target))
+        out.append(command("prep", kind, stage, base=base, flags=flags))
+    out += launch_lines(kind, stage, base=base)
+    if kind == "bench":
+        out.append(command("summarize", "bench", stage, base=base))
+    return out
+
+
 __all__ = ["PROG", "bundle_flag", "command", "configured_mode",
            "launch_lines", "lines", "run_first", "name_a_stage",
-           "enabled_refs", "block", "rollback"]
+           "enabled_refs", "block", "rollback", "stage_lines",
+           "target_flags"]

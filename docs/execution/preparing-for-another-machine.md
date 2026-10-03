@@ -260,11 +260,17 @@ not get its own rules: it surfaces the ones above.
   would then be maintained twice.
 - An **unreadable** record is listed and marked, not hidden. The user wrote
   it; hiding it leaves them waiting for something that cannot happen.
-- The commands the tab teaches carry `--target` whenever the choice was
-  required — the record's name for a remote machine, **`this` for the box
-  you are on** (the CLI's own name for it, since with several records `prep`
-  refuses to guess) — and **`launch` does not**, because launching happens
-  on the machine.
+- The commands the tab teaches are the terminal's own
+  (`jobset/commands.stage_lines`, served by `/api/task-setup/commands`), and
+  carry `--target` whenever the choice was required — the record's name for a
+  remote machine, **`this` for the box you are on** (the CLI's own name for
+  it, since with several records `prep` refuses to guess) — and **`launch`
+  does not**, because launching happens on the machine.
+- **A calculation already set to its machine is shown so** — its first
+  prep's, which does not change ([`configuration.md`](?doc=configuration.md)
+  M-3): the folder answer names it (`set_to`), the tab shows it chosen and
+  offers no other, and its commands carry no `--target`, since the
+  calculation's copy of the record answers (§ 4).
 
 - **It shows what a `prep` would resolve, and from which file** —
   the folder answer's `provenance` (`GET /api/task-setup/folder`) serves

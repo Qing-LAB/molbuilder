@@ -110,7 +110,7 @@ order, and each tier is answered on its own terms:
 |---|---|---|
 | the **folder** | one door — `/api/task-setup/folder?dir=` | the selection moves; **replaced whole** |
 | the **engine** | `columns` · `presets` · `sweepable`, keyed on the engine | the engine does — shared across folders |
-| the **pair** | `bench-grid{dest, target}` and the fit answers | *either* the folder or the machine moves |
+| the **pair** | `bench-grid{dest, target}`, each stage's command lines (`commands{dest, kind, stage, target, …}`, § 11) and the fit answers | *either* the folder or the machine moves |
 
 Naming the tiers is what keeps the rule precise: "no state of its own" forbids
 remembering a *folder's* facts, not caching the engine's vocabulary, and the
@@ -990,6 +990,14 @@ that resolves to nothing is silent by design.
   `task.json` or the template, so the written description still names no
   machine. See [`preparing-for-another-machine.md
   § 5`](?doc=execution/preparing-for-another-machine.md).)*
+  **Once a stage is prepped, the calculation is set to that machine**, and
+  that does not change ([`configuration.md`](?doc=configuration.md) M-3): the
+  folder's answer names it (`set_to`), and the card shows it chosen, offers
+  no other and says why — the way to another machine is the state saved
+  before the first prep, and a prep anew. Its commands carry no `--target`
+  then: the calculation's copy of the record answers *(W55 D12,
+  2026-10-03 — the card offered every machine, and Prep refused all but
+  one)*.
 
 ---
 
@@ -1069,6 +1077,19 @@ Skipping the middle step is no longer silent: the rows are right there, filled
 or blank, above the command that consumes them — and a blank launch row
 reads as *prep will refuse this* rather than as nothing.
 
+**The command lines are the terminal's own** *(W55 B4, 2026-10-03)*. Each
+tab's lines come from the server — `/api/task-setup/commands`, composed by
+`jobset/commands.stage_lines`, the composer every printed command shares
+([`job-system.md`](?doc=execution/job-system.md) § 5.3, *what molbuilder
+prints, you can type*): the calculation named from the projects root, what the
+rung continues from and the machine as chosen, and a launch line per mode
+where this machine's `molbuilder.json` sets no `launch.mode`. The page composed
+them itself until 2026-10-03, and its one launch line, with no mode, was
+refused when typed (D11). **A stage already prepped** shows the prep entry's
+own sentence in place of its two buttons — the way back in it — and its lines
+are its launch, as `jobset status` prints them; a prep of it would be refused
+([`job-system.md`](?doc=execution/job-system.md) § 5.0).
+
 **The directory names come from the producer.** Flat and hierarchical name
 things differently (§ 4), and a page that composed them itself would be a
 second answer free to disagree with `prep` — the same rule § 6.2a states for
@@ -1081,9 +1102,10 @@ that wants a shorter wall states it at its own `prep bench --time`, where it
 applies to that prep and no other. A thirty-second measurement queued behind a
 two-day reservation is the cost of forgetting that, not a missing field.
 
-**It works the same on a workstation and against a cluster.** Nothing here
-reads `launch.mode`: the commands are the commands, the admission check is
-the target's, and *which* machine is § 6's question, answered once above.
+**It works the same on a workstation and against a cluster.** The admission
+check is the target's, *which* machine is § 6's question, answered once above,
+and the launch line is the terminal's: one, in this machine's `launch.mode`, or
+one per mode where it sets none.
 
 ### 11.1 What a Prep button shows — the command line's answer, whole
 
@@ -1091,8 +1113,9 @@ the target's, and *which* machine is § 6's question, answered once above.
 (`jobset/prep_inputs.py`, [`architecture.md`](?doc=execution/architecture.md)
 A12) — and writes nothing; for a continuing rung it says what the rung will
 continue from, with the run's verdict — or, when the choice is the default and
-prep would refuse it, why, and Prep is not offered. A stage already prepped is
-said the same way, the way back in the sentence, and Prep is not offered
+prep would refuse it, why, and Prep is not offered. A stage already prepped
+says so before any click — the folder's answer carries the prep entry's own
+sentence, the way back in it — and neither button is offered
 ([`job-system.md`](?doc=execution/job-system.md) § 5.0). **Prep run here** / **Prep bench here** reach the
 one prep entry the command line calls
 ([`job-system.md`](?doc=execution/job-system.md) § 5.3), so the tab shows what

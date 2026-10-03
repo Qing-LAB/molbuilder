@@ -2349,7 +2349,90 @@ def api_task_setup_folder():
         # answer (`prep_inputs.bench_refusal`), so the page offers the
         # Measure step exactly where `prep bench` would take it.
         "bench_refusal": _folder_bench_refusal(folder, described),
+        # THE MACHINE IT IS SET TO -- its first prep's, read from its copy
+        # of the record, or null before that (`configuration.md` M-3): the
+        # page shows it fixed rather than offering a choice that can only be
+        # refused (W55 B4, D12).
+        "set_to": _folder_set_to(folder),
+        # WHICH STAGES ARE PREPPED, as a run and as a benchmark -- each with
+        # the prep entry's own sentence (`prep.prepped_already`), which the
+        # page shows in place of a Prep it would refuse.
+        "prepped": (_folder_prepped(folder) if described is not None
+                    else {"run": {}, "bench": {}}),
     })
+
+
+def _folder_set_to(folder):
+    """The machine the calculation is set to, or ``None`` before its first
+    prep -- the name its copy of the record carries, in the tab's words:
+    this machine is `(this machine)` there, as every answer here says it."""
+    from molbuilder.scheduler import read_environment
+    from molbuilder.scheduler.record import LOCAL_TARGET, calculation_record
+    try:
+        env = read_environment(calculation_record(folder))
+    except Exception:                             # noqa: BLE001
+        return None
+    name = getattr(env, "machine", None) if env is not None else None
+    return "(this machine)" if name == LOCAL_TARGET else name
+
+
+def _folder_prepped(folder) -> dict:
+    """``{"run": {stage: why}, "bench": {stage: why}}``: the stages prepped
+    as each, and the prep entry's own sentence for each -- what a prep of it
+    would answer, the way back in it (`job-system.md` § 5.0).  Fail-soft,
+    like the folder's other parts."""
+    from molbuilder.jobset.prep import prepped_already
+    from molbuilder.task import FILENAME as TASK_FILENAME
+    from molbuilder.task import read_task
+    try:
+        task = read_task(folder / TASK_FILENAME)
+        out = {"run": {}, "bench": {}}
+        for kind, said in out.items():
+            for st in task.stages:
+                why = prepped_already(folder, task, kind, st.name)
+                if why:
+                    said[st.name] = why
+        return out
+    except Exception as exc:                      # noqa: BLE001
+        return {"error": str(exc), "run": {}, "bench": {}}
+
+
+@bp.route("/api/task-setup/commands", methods=["POST"])
+def api_task_setup_commands():
+    """**What a person types for one stage** -- its prep, as chosen (what it
+    continues from, the machine), its launch, and a benchmark's verdict
+    read: the lines the tab shows, composed by the terminal's own composer
+    (`jobset/commands.stage_lines`), so a line on the page is one the
+    terminal would print and `launch` would take (`job-system.md` § 5.3,
+    *what molbuilder prints, you can type*; W55 B4).  The page composed
+    them itself until 2026-10-03, and its launch line carried no `--mode`
+    where this machine's config sets none (D11).
+
+    POST ``{dest, kind, stage, from?, cold?, target?}`` -> ``{ok, lines}``.
+    A stage prepped already has no prep line -- prep would refuse it -- as
+    `jobset status` prints it.  Writes nothing.
+    """
+    from molbuilder.jobset.commands import stage_lines
+    from molbuilder.scheduler.record import LOCAL_TARGET
+    body = request.get_json(silent=True) or {}
+    dest_raw = str(body.get("dest") or "")
+    kind = str(body.get("kind") or "run")
+    stage = str(body.get("stage") or "")
+    if not dest_raw or not stage or kind not in ("run", "bench"):
+        return jsonify({"ok": False,
+                        "error": "dest, kind (run|bench) and stage are "
+                                 "required"}), 400
+    try:
+        dest = _resolve_within_roots(dest_raw)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    target = body.get("target") or None
+    if target == "(this machine)":
+        target = LOCAL_TARGET
+    prepped = stage in _folder_prepped(dest).get(kind, {})
+    return jsonify({"ok": True, "lines": stage_lines(
+        kind, stage, base=dest, from_attempt=(body.get("from") or None),
+        cold=bool(body.get("cold")), target=target, prepped=prepped)})
 
 
 def _folder_bench_refusal(folder, described):
