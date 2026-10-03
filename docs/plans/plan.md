@@ -251,15 +251,15 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | T15 | per-file isolation duplicating conftest's | **own unit** — `_isolated_machine_scope` first, then about 48 files' blocks |
 | T16 | "a cwd molbuilder.json is not read" asserted five times | partly fixed `6401abfb`; **fixed `54156262`** the rest — said once, by `test_and_its_contents_do_not_leak_in`, with a section a server starts on |
 | T19 | tests that monkeypatch a door to prove a caller asks it | **fixed `02f67712`** — the two retired (review holds that class); the remedy test says why it stays API-level |
-| T21 | probable subsumptions | **to do, a mutant first** (`tools/verify_subsumption.py`) |
+| T21 | probable subsumptions | **verified** — `test_the_config_molbuilder_SEEDS_reads` CONFIRMED subsumed (12/12 mutants), retired; the two exact-mode seeding tests NOT subsumed (the placement test survived 4/12, `config_dir.py:125`), kept |
 | T22 | `_the_gate()` pins a refusal the road never gives | **fixed `02f67712`** — the baseline is the road's own fact (a fresh machine has no record); the call-site test retired; a docstring's unasserted promise trimmed |
 | T24 | the mode warning asserted twice | Q2c 8, `615858f6` |
 | T25 | `env_arch` is omitted when unknown; M-2 says null, never omitted | **your word** — below |
 | T27 | four tests asserting strings no code has | **fixed `02f67712`** — retired, with the estimator test's helper |
-| T28 | hand-built records and paths where a door exists | **fixed** — the fixtures ask `environments_dir`, `named_environment_path`, `machine_scope_path` and the record's `FILENAME`, and create through `ensure_private_dir` |
-| T29 | five tests drive the private `_probe_consent_merge` | **to do** — `probe` road rows, which also take over what Q2c 7's three retired tests exercised |
+| T28 | hand-built records and paths where a door exists | **fixed `70fa5038`** — the fixtures ask `environments_dir`, `named_environment_path`, `machine_scope_path` and the record's `FILENAME`, and create through `ensure_private_dir` |
+| T29 | five tests drive the private `_probe_consent_merge` | **own unit** — the road runs the probe with `--yes` only; it needs a probe row that answers the questions and a check of the written record, and then the five retire. The same rows give back what Q2c 7's three retired tests covered: `--set`'s typed facts and `flag` source, `--scheduler`, the unreadable-record line |
 | T30 | table hygiene | partly fixed `6401abfb`; **your word** — below |
-| S12 | the form's `engine_key` test covers optimization only | **to do** — over engine × calculation (20 transport-only, 13 vibration-only items unchecked) |
+| S12 | the form's `engine_key` test covers optimization only | **fixed** — one test over engine × calculation (five forms); red on a transport-only gap the old two could not see |
 | M5 step 3 | its milestone review | every finding fixed `325cb1d4`; its three questions were Q2c 1–3 |
 
 **Your word, four questions** *(asked 2026-10-02)*:

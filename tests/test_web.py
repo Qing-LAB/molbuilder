@@ -1468,30 +1468,27 @@ def _flatten_schema_fields(sch):
     return [f for s in sch["sections"] for f in s["fields"]]
 
 
-def test_engine_key_present_on_every_siesta_form_field():
-    """Every SIESTA item the form renders MUST carry an
-    ``engine_key``.  Without it the UI's
-    source-of-truth badge is silently missing for that field."""
+@pytest.mark.parametrize("engine,calculation", [
+    ("siesta", "optimization"), ("siesta", "vibration"),
+    ("siesta", "transport"),
+    ("pyscf", "optimization"), ("pyscf", "vibration"),
+])
+def test_engine_key_present_on_every_form_field(engine, calculation):
+    """Every item a form renders MUST carry an ``engine_key``
+    (`web/form-schema.md` § 1a, rule 4).  Without it the UI's
+    source-of-truth badge is silently missing for that field.
+
+    EVERY CALCULATION, not the default one: the two tests this replaced built
+    the optimization form only, which leaves out the 20 transport-only and 13
+    vibration-only items (W54 S12)."""
     from molbuilder.web.blueprints._shared import catalogue_to_form_schema
-    from molbuilder.config.siesta import SiestaConfig
-    sch = catalogue_to_form_schema("siesta", "p")
-    missing = [f["name"] for f in _flatten_schema_fields(sch)
-               if "engine_key" not in f]
+    sch = catalogue_to_form_schema(engine, "p", calculation=calculation)
+    fields = _flatten_schema_fields(sch)
+    assert fields, f"no {engine} {calculation} form was built at all"
+    missing = [f["name"] for f in fields if "engine_key" not in f]
     assert not missing, (
-        f"SiestaConfig fields without engine_key (would render no "
+        f"{engine} {calculation} fields without engine_key (would render no "
         f"keyword badge in the form): {missing}"
-    )
-
-
-def test_engine_key_present_on_every_pyscf_form_field():
-    """Same contract for PySCF."""
-    from molbuilder.web.blueprints._shared import catalogue_to_form_schema
-    from molbuilder.config.pyscf import PySCFConfig
-    sch = catalogue_to_form_schema("pyscf", "py")
-    missing = [f["name"] for f in _flatten_schema_fields(sch)
-               if "engine_key" not in f]
-    assert not missing, (
-        f"PySCFConfig fields without engine_key: {missing}"
     )
 
 

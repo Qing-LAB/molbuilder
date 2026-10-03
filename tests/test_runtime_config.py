@@ -55,22 +55,10 @@ def _tmp_path_is_the_config_root(monkeypatch, tmp_path, tmp_path_factory):
 # --------------------------------------------------------------------- #
 
 
-def test_the_config_molbuilder_SEEDS_reads(monkeypatch, tmp_path):
-    """A fresh `molbuilder.json` must read: `envs init-config` seeds every
-    section a person may fill, present and empty (`configuration.md` § 3.2),
-    and none of them may be one the reader refuses.  It seeded an empty
-    `scheduler` block until 2026-10-02, which the reader then had to treat as
-    unset -- the section is retired now, and refused by name.
-
-    Fed the REAL seeded document rather than a hand-written one, so the test
-    tracks what the seeder actually emits.
-    """
-    from molbuilder.envs.initconfig import seed_document
-
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    (tmp_path / CONFIG_FILENAME).write_text(
-        json.dumps(seed_document("conda activate"), indent=2))
-    read_config()
+# `test_the_config_molbuilder_SEEDS_reads` retired 2026-10-02 (W54 T21): the
+# seeding file's `test_the_seeded_template_loads_and_names_every_section` reads
+# the same seeded document through the same reader, and died on every one of the
+# 12 informative mutants that killed this (`tools/verify_subsumption.py`).
 
 
 # `test_missing_file_returns_empty_dict` retired 2026-10-02 (W54): it equals `test_machine_config_file.py::test_no_config_files_returns_empty`.
