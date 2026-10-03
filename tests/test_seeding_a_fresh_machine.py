@@ -305,7 +305,7 @@ def test_a_machine_declaring_no_activation_is_warned(fresh, monkeypatch):
     env, note = diagnostics.local_facts(resolve_environment())
 
     assert env.conda_envs == ["molbuilder"], "the envs still travel"
-    assert note and "declares no `env_init.activation`" in note
+    assert note and "states no `env_init.activation`" in note
 
 
 def test_source_activate_is_not_reported_as_a_missing_hook(fresh):

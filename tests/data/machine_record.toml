@@ -62,6 +62,14 @@ record_says = { topology = { gpus_per_node = 1, gpu_type = "rtx" } }
 # record whose copy was corrected by hand (`configuration.md` § 4) holds a
 # person's answer.
 [[case]]
+name = "with no env_init in this machine's molbuilder.json the probe writes nothing -- it is required, and a record never keeps one from before"
+ends_at = "probe"
+machine_config = {}
+record = { env_init = { activation = "source activate", preamble = "module load mamba" } }
+probe = [["--scheduler", "workstation"]]
+probe_refused = ["states no `env_init.activation`", "molbuilder envs init-config"]
+
+[[case]]
 name = "a record's env_init corrected by hand survives a probe nobody answers -- and the stamp follows the probe"
 ends_at = "probe"
 machine_config = { env_init = { activation = "conda activate", preamble = "source /home/u/miniconda3/etc/profile.d/conda.sh" } }

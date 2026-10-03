@@ -2391,6 +2391,33 @@ def cmd_probe(do_write: bool, name, yes: bool,
         except ValueError:
             raise click.ClickException(
                 f"--set {key}: {raw!r} is not {types[key].__name__}")
+    from ..scheduler.record import LOCAL_TARGET
+    if name == LOCAL_TARGET:
+        # RESERVED: `--target this` means the box you are on, so a record by
+        # that name would make the flag ambiguous -- and it is the one name
+        # whose meaning nothing can override.  Refused with what else was
+        # typed, before anything is probed.
+        raise click.ClickException(
+            f"{LOCAL_TARGET!r} is reserved: `--target {LOCAL_TARGET}` "
+            f"already means this machine, so a record called that could "
+            f"never be prepped for.  Give it the machine's own name (`--name "
+            f"sol`); this machine's own record needs no --name at all.")
+
+    # HOW A SHELL ENTERS AN ENVIRONMENT HERE IS REQUIRED, stated in this
+    # machine's molbuilder.json (`configuration.md` § 4; user, 2026-10-03:
+    # "error when no env_init is present. this is required explicitly").
+    # Every record carries the copy and every prep for the machine reads it,
+    # so a record is never written without one -- nor keeps one from before.
+    from ..runtime_config import get_env_init, machine_config_path
+    declared = get_env_init()
+    if do_write and not declared.get("activation"):
+        raise click.ClickException(
+            f"this machine's molbuilder.json ({machine_config_path()}) states "
+            f"no `env_init.activation` -- how a shell enters an environment "
+            f"here, which every record this probe writes carries and every "
+            f"prep for this machine reads (configuration.md § 4).  It is "
+            f"required: `molbuilder envs init-config` asks for it, or state "
+            f"it in that file; then probe again.")
 
     # The NODE probe first -- scheduler, topology, default partition: the one
     # node prober, the one `envs init-config` seeds this machine's record
@@ -2404,9 +2431,8 @@ def cmd_probe(do_write: bool, name, yes: bool,
     # init-config` became the second caller 2026-09-08, which is what
     # took them out of this function.  The first is THIS machine's
     # `env_init`, declared in its molbuilder.json and copied into whichever
-    # record this writes, this machine's or a named one (user, 2026-10-02).
-    from ..runtime_config import get_env_init
-    declared = get_env_init()
+    # record this writes, this machine's or a named one (user, 2026-10-02) --
+    # required, and checked above.
     from ..diagnostics import local_facts as _local_facts
     env, notes_sg = _local_facts(env, declared)
 
@@ -2429,36 +2455,15 @@ def cmd_probe(do_write: bool, name, yes: bool,
     # either file would have moved the reader and left this writer behind.
     if name:
         from ..scheduler import named_environment_path
-        from ..scheduler.record import LOCAL_TARGET
-        if name == LOCAL_TARGET:
-            # RESERVED: `--target this` means the box you are on, so a
-            # record by that name would make the flag ambiguous -- and it
-            # is the one name whose meaning nothing can override.
-            raise click.ClickException(
-                f"{LOCAL_TARGET!r} is reserved: `--target {LOCAL_TARGET}` "
-                f"already means this machine, so a record called that "
-                f"could never be prepped for.  Give it the machine's own "
-                f"name (`--name sol`); this machine's own record needs no "
-                f"--name at all.")
         record = named_environment_path(name)
     else:
         record = machine_scope_path()
     target = record.parent
     fname = record.name
-    # WHAT THE RECORD ALREADY SAYS about entering an environment stays when
-    # this machine's `env_init` declares nothing: the activation is declared,
-    # never measured, so a probe with nothing to copy has nothing to say
-    # about it -- and a hand edit of a copied record survives it.  When it
-    # declares one, the copy is WHOLE (user, 2026-10-02: "simply a copy"): a
-    # preamble removed from molbuilder.json leaves the record too, asked about
-    # like every other difference.
+    # THE COPY IS WHOLE (user, 2026-10-02: "simply a copy"): a preamble
+    # removed from molbuilder.json leaves the record too, asked about like
+    # every other difference.
     before = read_environment(target / fname)
-    carried = (dict((before.env_init if before is not None else None) or {})
-               if not declared else {})
-    if carried:
-        env.env_init = carried
-        if env.env_init.get("activation"):
-            notes_sg = None
 
     t = env.topology
     click.echo(f"\nMachine: scheduler={env.scheduler}"

@@ -130,25 +130,14 @@ def test_a_tree_this_program_creates_is_never_loose(isolated_tree):
     assert CD.serve_log(9999).is_file()
 
 
-def test_the_probe_makes_the_config_directory_private(isolated_tree):
-    """A4, and it is the FIRST command a person runs on a target: the seeded
-    `environments/README` tells them to.  `jobset probe --write` made the
-    directory every later secret lands in with a bare `mkdir` and no mode, and
-    a later `envs init-config` reported it *"kept"* -- so `secret_key`,
-    `google_client_secret`, `notify_keys` and the TLS key the `secrets/README`
-    invites all sat 0600 inside a directory anyone on a shared login node could
-    list and traverse."""
-    from click.testing import CliRunner
-
-    from molbuilder.jobset._cli import jobset_group
-
-    result = CliRunner().invoke(jobset_group, ["probe", "--write", "--yes"])
-
-    assert result.exit_code == 0, result.output
-    from molbuilder.scheduler import machine_scope_path
-    assert machine_scope_path().is_file(), result.output
-    assert stat.S_IMODE(CD.config_dir().stat().st_mode) == 0o700
-    assert P.findings() == [], "\n".join(P.findings())
+# `test_the_probe_makes_the_config_directory_private` retired 2026-10-03: it
+# ran `jobset probe --write` as the first command on a machine, which made the
+# config directory.  The probe requires the `env_init` this machine's
+# molbuilder.json states (`configuration.md` § 4; user: "error when no
+# env_init is present"), so `envs init-config` -- which makes the config
+# directory and `environments/` -- has always run first, and the test above
+# checks the tree it makes.  The refusal is a row of
+# `tests/data/machine_record.toml`.
 
 
 def test_what_arrives_loose_is_reported_with_its_chmod(isolated_tree):

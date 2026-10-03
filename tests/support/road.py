@@ -291,7 +291,10 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # the target.  A probe given as a table, `{flags = [...], answers = "n\n"}`,
 # runs WITHOUT `--yes` and is typed `answers` at its questions ("" is EOF);
 # `record_text` -- a file already at the path the first probe writes, as
-# text (a record that does not read);
+# text (a record that does not read); `probe_refused` -- the last probe is
+# refused, saying each of these, and the row ends there.  A probe row's
+# machine holds the `molbuilder.json` `envs init-config` leaves -- its
+# `env_init` -- unless `machine_config` gives the file;
 # `calculation_record` -- the calculation's own copy of its
 # machine's record, there before prep (a table, or text for a broken file);
 # `saved_first` -- the folder's state saved before anything else, as a person
@@ -327,7 +330,11 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
     from molbuilder.scheduler import (Domain, Environment, Topology,
                                       write_environment)
     if "probe" in case:
-        _write_machine_config(case)
+        # A MACHINE SET UP THE WAY MOLBUILDER SETS ONE UP: `envs init-config`
+        # leaves `env_init` in its molbuilder.json, which the probe requires
+        # (`configuration.md` § 4) -- unless the row gives the file itself.
+        _write_machine_config({"machine_config": {"env_init": {
+            "activation": "conda activate", "preamble": "true"}}, **case})
         if "record" in case:
             write_machine_record(**case["record"])
         if "record_text" in case:
@@ -350,6 +357,11 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
             r = jobset("probe", "--write",
                        *(["--yes"] if answers is None else []), *flags,
                        input=answers)
+            if "probe_refused" in case and step is case["probe"][-1]:
+                assert r.exit_code != 0, _one_line(r)
+                for words in case["probe_refused"]:
+                    assert words in r.output, _one_line(r)
+                return "this"
             assert r.exit_code == 0, _one_line(r)
             said.append(r.output)
             if "--name" in flags:

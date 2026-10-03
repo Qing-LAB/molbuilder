@@ -529,8 +529,9 @@ def local_facts(env: "Any", env_init: "Optional[Mapping[str, str]]"
     own ``molbuilder.json`` -- `jobset probe` hands in
     ``runtime_config.get_env_init()``, `envs init-config` the answer it just
     asked for -- and the record carries the copy, which is what every prep
-    reads (`configuration.md` § 4).  ``None`` attaches nothing, and the caller
-    keeps what an existing record says.
+    reads (`configuration.md` § 4).  It is required to WRITE a record
+    (`jobset probe --write` refuses without it); ``None`` attaches nothing,
+    for a probe that only shows what it found.
 
     **WHICH ENVIRONMENTS EXIST HERE** travels too -- the other half of the
     pair.  ``conda env list`` enumerates without entering, so this is free from
@@ -555,11 +556,9 @@ def local_facts(env: "Any", env_init: "Optional[Mapping[str, str]]"
         import platform as _pl
         env_arch = _pl.machine() or None
     note = None if sg_rec.get("activation") else (
-        "this machine's molbuilder.json declares no `env_init.activation`, so "
-        "the record says nothing about how a shell enters an environment "
-        "here -- every prep for this machine refuses until it does: declare "
-        "it there (`molbuilder envs init-config` asks for it) and probe "
-        "again, or edit the record by hand")
+        "this machine's molbuilder.json states no `env_init.activation` -- "
+        "how a shell enters an environment here -- so `--write` refuses "
+        "until it does: `molbuilder envs init-config` asks for it")
     changes = {}
     if sg_rec:
         changes["env_init"] = sg_rec

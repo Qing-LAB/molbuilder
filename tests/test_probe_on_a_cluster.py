@@ -42,8 +42,11 @@ _ASSOC = "public,debug\n"
 
 @pytest.fixture
 def cluster(tmp_path, monkeypatch):
-    """This box, answering as a login node would."""
+    """This box, answering as a login node would -- set up the way molbuilder
+    sets one up, its molbuilder.json stating `env_init` (`configuration.md`
+    § 4: the probe requires it)."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
+    _states_its_env_init()
 
     from molbuilder.scheduler import record
 
@@ -61,6 +64,13 @@ def cluster(tmp_path, monkeypatch):
 
     monkeypatch.setattr(record, "_run", _fake)
     return tmp_path
+
+
+def _states_its_env_init():
+    """This machine's molbuilder.json, as `envs init-config` leaves it."""
+    from molbuilder.runtime_config import write_config_scope
+    write_config_scope({"env_init": {"activation": "source activate",
+                                     "preamble": "module load mamba"}})
 
 
 def _probe(*args):
@@ -155,6 +165,7 @@ def test_a_measurement_that_did_not_happen_is_said(tmp_path, monkeypatch,
 
     monkeypatch.setattr(record, "_run", _fake)
     if writer == "probe":
+        _states_its_env_init()
         r = _probe("--write", "--yes")
     else:
         from molbuilder.envs._cli import envs_group

@@ -305,6 +305,11 @@ while answering the first four)*:
    (b) The printed figure, labelled per spin channel. **Proposed (a).** K21
    waits on it — both change that column.
 
+**Answered 2026-10-03** (§ 0c, *the user's word*): 2 — (a); 3 — (b), and the
+probe says what it leaves out and why; 4 — neither: the probe refuses without
+`env_init`; 5 — (a), every surface saying what is what. Built as § 0c's work
+order units 1–3 and 7.
+
 ### 0c. W55 — the prep and jobset review *(2026-10-03)*
 
 Four reviewers read the full code and contract text of `prep` and the rest of
@@ -377,7 +382,7 @@ mutations; the framework rounds' design written into the contracts first:
 
 | # | unit | what it is | state |
 |---|---|---|---|
-| 1 | Q4 | `jobset probe --write` refuses when this machine's `molbuilder.json` states no `env_init` — the record's copy is required, never kept from before | open |
+| 1 | Q4 | `jobset probe --write` refuses when this machine's `molbuilder.json` states no `env_init` — the record's copy is required, never kept from before | **done** — refused before anything is probed, after what was typed (`--set`, the reserved name); the keep-the-old-copy case is gone; `configuration.md` § 4 and its table row say so; probe rows of the road stand on the `molbuilder.json` `init-config` leaves; one row (`probe_refused`), the retired keep-row, one test retired (the probe can no longer be the config directory's first writer); one mutation, red; 195 targeted green |
 | 2 | Q2 | a declared value kept at a re-probe keeps `flag` in its `source` | open |
 | 3 | Q3 | M-2: `env_init`, `conda_envs`, `env_arch` are left out when empty, and the probe says which it left out and why | open |
 | 4 | B1's save · B10 | the folder's state is saved before every prep and every Task setup Save — always, through checkpoint, the note led by its timestamp, the person told; one server function for both; the offer, its question and the page's box retire | open |

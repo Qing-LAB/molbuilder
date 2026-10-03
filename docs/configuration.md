@@ -842,8 +842,12 @@ machine and needs it before any record exists, so it is declared here once, at
 install. `jobset probe --write` copies it into every record it writes — this
 machine's `environment.json`, or a named `<name>.json` written on the machine it
 names and copied to where you prep — and every prep reads it from the TARGET's
-record. A copy that is wrong for the machine it describes is edited by hand, in
-that record.
+record. **It is required** *(user, 2026-10-03: "this is required explicitly")*:
+`jobset probe --write` refuses on a machine whose `molbuilder.json` states no
+`env_init.activation`, naming `molbuilder envs init-config`, so a record is
+never written without the copy and never keeps one from an earlier probe. A
+copy that is wrong for the machine it describes is edited by hand, in that
+record.
 
 **Every key the file may hold.** A key not in this table is refused, never
 ignored — inside a section as at the top level, one sentence naming what the
@@ -859,7 +863,7 @@ that column cannot disagree with the code.
 | `launch.mode` | how `jobset launch` sends a job when no `--mode` is given: `direct` runs it here with bash, `submit` hands it to the scheduler. Unset, launch refuses and asks for `--mode` | `runtime_config.get_launch_mode` ← `jobset launch` | yes | [`running-a-job.md`](?doc=execution/running-a-job.md) § 5.4 |
 | `envs.<category>` | which conda environment a backend's work runs in, when it is not the default name. Categories: `siesta`, `siesta-gpu`, `pyscf`, `mdtools`, `jupyter` — the host env is always `molbuilder` (§ 2.1c) | `diagnostics.Capabilities.env_for_category` ← the run script, the `envs` verbs | no | [`ops/installation.md`](?doc=ops/installation.md) |
 | `envs.manager` | the absolute path of the conda-compatible command (`mamba`, `micromamba`, `conda`) when the one on PATH is not the one to use | `runtime_config.get_env_manager` ← the `envs` verbs | no | [`ops/installation.md`](?doc=ops/installation.md) |
-| `env_init.activation` · `env_init.preamble` | how a shell on THIS machine enters a conda environment — `conda activate` or `source activate`, with no default — and the shell run before it (`module load mamba`, or sourcing conda's hook). Asked by `envs init-config`; `jobset probe --write` copies both into every record it writes, and prep reads them from the target's record | `runtime_config.get_env_init` ← `jobset probe` | no | [`running-a-job.md`](?doc=execution/running-a-job.md) § 5.2 |
+| `env_init.activation` · `env_init.preamble` | how a shell on THIS machine enters a conda environment — `conda activate` or `source activate`, with no default — and the shell run before it (`module load mamba`, or sourcing conda's hook). Asked by `envs init-config`; `jobset probe --write` copies both into every record it writes, and refuses without the activation; prep reads them from the target's record | `runtime_config.get_env_init` ← `jobset probe` | no | [`running-a-job.md`](?doc=execution/running-a-job.md) § 5.2 |
 | `paths.projects` | where the project tree is | `projects.projects_root` ← every surface | yes | § 2.1d |
 | `tls.cert` · `tls.key` | the paths of the server's HTTPS certificate and key | `serve` | no | [`ops/deployment.md`](?doc=ops/deployment.md) § 5 |
 | `auth.providers` · `auth.trust_proxy` | who may sign in and how; whether a proxy's forwarded headers are honoured. `providers` is written by `molbuilder auth-setup`, which leaves `trust_proxy` as it is | `web/auth.py` | no | [`ops/deployment.md`](?doc=ops/deployment.md) · [`ops/access-control.md`](?doc=ops/access-control.md) |

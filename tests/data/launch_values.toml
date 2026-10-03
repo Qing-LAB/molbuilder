@@ -186,13 +186,6 @@ probe = [["--scheduler", "workstation"]]
 run_sh = ["source activate"]
 run_sh_lacks = ["module load mamba/latest"]
 
-[[case]]
-name = "...and with nothing to copy, the record keeps its own -- a hand edit stays"
-machine = "workstation"
-record = { env_init = { activation = "source activate", preamble = "module load mamba/latest" } }
-probe = [["--scheduler", "workstation"]]
-run_sh = ["module load mamba/latest", "source activate"]
-
 # ===================================================================== #
 #  2 · WHAT IS PRODUCED -- the stated values, and nothing else          #
 # ===================================================================== #
