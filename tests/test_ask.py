@@ -73,8 +73,8 @@ def test_unanswered_is_None_and_never_zero():
 
 def test_without_yes_the_answer_is_the_persons():
     said = []
-    assert confirm("x", echo=said.append, prompt=lambda: False) is False
-    assert confirm("x", echo=said.append, prompt=lambda: True) is True
+    assert confirm("x", echo=said.append, prompt=lambda: False).yes is False
+    assert confirm("x", echo=said.append, prompt=lambda: True).yes is True
     assert said[0] == "x", "the request must be shown before it is answered"
 
 

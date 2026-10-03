@@ -332,8 +332,20 @@ def gpu_share_notes(gpu_count: Optional[int], mpi_np: Optional[int], *,
     return lines
 
 
+@dataclass(frozen=True)
+class Said:
+    """A question's answer: whether to go, and the words the ledger keeps --
+    each question and its answer is written down, a *no* too (`job-system.md`
+    § 5.0, agreement 6).  True when the answer is yes."""
+    yes: bool
+    words: str
+
+    def __bool__(self) -> bool:
+        return self.yes
+
+
 def confirm(text: str, *, auto_yes: bool = False, echo=None,
-            prompt=None, default: bool = True) -> bool:
+            prompt=None, default: bool = True) -> Said:
     """**The one interface** — show it, then act on the answer.
 
     ``auto_yes`` is how a person says *I have decided to trust this*; its
@@ -356,7 +368,7 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
     echo(text)
     if auto_yes:
         echo("  (--yes)")
-        return True
+        return Said(True, "yes (--yes)")
     if prompt is None and not stdin_can_answer():
         # NO TERMINAL TO ASK.  S4 says the absence of `--yes` is not
         # permission, so this declines -- but it declines by SAYING WHY and
@@ -364,10 +376,11 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
         # explanation is a worse failure than the one the gate prevents.
         echo("  not a terminal, so there is nobody to ask -- pass --yes to "
              "submit what is printed above without confirming.")
-        return False
+        return Said(False, "no answer (not a terminal): nothing sent")
     prompt = prompt or (lambda: click.confirm("  submit this?",
                                               default=default))
-    return bool(prompt())
+    yes = bool(prompt())
+    return Said(yes, "yes" if yes else "no")
 
 
 # --------------------------------------------------------------------- #

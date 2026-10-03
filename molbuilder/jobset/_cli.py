@@ -1607,7 +1607,7 @@ def _refuse_flags_without_effect(*, kind: str, mode: str, trial,
 
 
 def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
-                  footer=()) -> bool:
+                  footer=()):
     """**Nothing is submitted unseen** (`submission.md` S4): the exact
     ``sbatch`` line of every job about to be sent -- by the code that sends
     it -- what each follows, what only the person can judge, and what the
@@ -1616,7 +1616,8 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
     Every door asks it, the stage's included (user, 2026-10-01: the queue and
     the wall are decided at launch, after prep's printout, so they were never
     seen).  Under ``--dry-run`` the commands are printed by the results that
-    follow, so only what the plan alone carries is said here.  ``--yes``
+    follow, so only what the plan alone carries is said here, and nothing
+    is asked: ``None``.  Otherwise the answer (`ask.Said`).  ``--yes``
     skips the question, never the output."""
     from .ask import confirm, gpu_share_notes
     from .submit import _gres_count
@@ -1655,7 +1656,7 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
     if dry_run:
         for line in warn + list(footer) + ["  " + j for j in judged]:
             click.echo(line)
-        return True
+        return None
     # A JUDGEMENT ONLY THE PERSON CAN MAKE is not made by Enter.
     return confirm("\n".join(lines), auto_yes=auto_yes,
                    default=not judged)
@@ -1854,6 +1855,15 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     click.echo(format_provenance(prov))
     from .ask import confirm
     from .submit import submit_bench_group, submit_transport_chain
+
+    def _answered(said, about: str) -> bool:
+        # EACH QUESTION AND ITS ANSWER IS WRITTEN DOWN, a *no* too
+        # (`job-system.md` § 5.0, agreement 6) -- a declined launch left no
+        # line until W55 D6.
+        _ledger(base, "launch", "question", kind=kind, stage=stage,
+                about=about, answer=said.words)
+        return bool(said)
+
     try:
         if grouped:
             # ONE grouped job per resource shelf (§ 2.3.2, user 2026-08-20;
@@ -1876,12 +1886,12 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                 results = _group(ask=True)
             else:
                 plan = _group(dry_run=True)
-                if not _show_and_ask(
-                        plan, dry_run=dry_run, auto_yes=auto_yes,
-                        footer=["  per-trial bound: "
-                                + (f"{_bound_s // 60} min" if _bound_s else
-                                   "none -- each trial runs until the "
-                                   "wall")]):
+                said = _show_and_ask(
+                    plan, dry_run=dry_run, auto_yes=auto_yes,
+                    footer=["  per-trial bound: "
+                            + (f"{_bound_s // 60} min" if _bound_s else
+                               "none -- each trial runs until the wall")])
+                if said is not None and not _answered(said, "send"):
                     click.echo("nothing submitted.")
                     return
                 if dry_run:
@@ -1929,8 +1939,8 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                 if dry_run and mode != "ask":
                     _show_and_ask(plan, dry_run=True, auto_yes=auto_yes)
             elif mode == "submit":
-                if not _show_and_ask(plan, dry_run=False,
-                                     auto_yes=auto_yes):
+                if not _answered(_show_and_ask(plan, dry_run=False,
+                                               auto_yes=auto_yes), "send"):
                     click.echo("nothing submitted.")
                     return
                 if _chain_scan:
@@ -1944,9 +1954,10 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                 # DIRECT runs what was typed, here -- the question S4 puts is
                 # the scheduler's.  What only the person can judge is still
                 # asked: following a run that may still be running.
-                if judged and not confirm(
+                if judged and not _answered(confirm(
                         "\n".join(r.judgement for r in plan if r.judgement),
-                        auto_yes=auto_yes, default=False):
+                        auto_yes=auto_yes, default=False),
+                        "follow a run that never concluded"):
                     click.echo("nothing launched.")
                     return
                 if _chain_scan:

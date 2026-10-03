@@ -110,9 +110,13 @@ def test_a_stage_is_shown_asked_and_sent_with_its_own_queues_wall(cluster):
     that prep named; the wall is the stated hour on either queue, never
     one queue's ceiling.
 
+    The question and its answer are written down, a *no* included
+    (`job-system.md` § 5.0, agreement 6).
+
     MUTATIONS THIS MUST FAIL AGAINST: the stage's door putting a queue's
     ceiling in place of the stated wall; sending without asking; the ledger
-    calling a declined or a dry run a launch."""
+    calling a declined or a dry run a launch; a declined launch leaving no
+    line (W55 D6)."""
     bundle, calls = cluster
     r = jobset("launch", "run", "coarse", "--bundle", bundle,
                "--mode", "submit", "--domain", "htc")
@@ -136,6 +140,9 @@ def test_a_stage_is_shown_asked_and_sent_with_its_own_queues_wall(cluster):
     assert "nothing submitted" in r.output, r.output
     assert calls_made(calls) == [], "sent without the person's yes"
     assert not (attempt / "run.json").exists()
+    asked = _ledger(bundle)[-1]
+    assert (asked["decision"], asked["answer"]) == (
+        "question", "no answer (not a terminal): nothing sent"), asked
 
     r = jobset("launch", "run", "coarse", "--bundle", bundle,
                "--mode", "submit", "--domain", "htc", "--dry-run")
@@ -150,7 +157,9 @@ def test_a_stage_is_shown_asked_and_sent_with_its_own_queues_wall(cluster):
     assert where == attempt and argv == shown[1:], (where, argv, shown)
     record = json.loads((attempt / "run.json").read_text())
     assert record["job_id"] == "4242", record
-    assert _ledger(bundle)[-1]["decision"] == "launched"
+    asked, sent = _ledger(bundle)[-2:]
+    assert (asked["decision"], asked["answer"], sent["decision"]) == (
+        "question", "yes (--yes)", "launched"), (asked, sent)
 
 
 def test_the_queue_prep_baked_belongs_to_its_own_stage(cluster):
