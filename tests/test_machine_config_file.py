@@ -4,8 +4,8 @@
 
 Pinned contracts:
   * one file, in the config directory: ``$MOLBUILDER_CONFIG_DIR``, else
-    ``$XDG_CONFIG_HOME/molbuilder/``, else ``~/.config/molbuilder/``; a
-    working-directory copy is not read.
+    ``$XDG_CONFIG_HOME/molbuilder/``, else ``~/.config/molbuilder/`` (that a
+    working-directory copy is not read is `test_config_warnings.py`'s).
   * ``write_config_scope`` produces the file mode 0600, preserves keys
     outside the patch, validates before writing, and never overwrites a
     corrupt file.
@@ -13,14 +13,11 @@ Pinned contracts:
 from __future__ import annotations
 
 import json
-import os
 import stat
-from pathlib import Path
 
 import pytest
 
 from molbuilder.runtime_config import (
-    CONFIG_FILENAME,
     RuntimeConfigError,
     read_config,
     write_config_scope,
@@ -29,14 +26,12 @@ from molbuilder.runtime_config import (
 
 @pytest.fixture
 def sandbox(tmp_path, monkeypatch):
-    """A clean cwd + isolated $HOME + cleared XDG_CONFIG_HOME so
-    read_config + write_config_scope land in tmp_path.
+    """An isolated $HOME + cleared XDG_CONFIG_HOME, and tmp_path named as
+    the config root, so read_config + write_config_scope land there.
 
-    Yields the tmp_path (which becomes the cwd and the config root)."""
-    monkeypatch.chdir(tmp_path)
-    # THE SANDBOX IS THE CONFIG ROOT (§ 2.1c).  The cwd step these
-    # tests were written against is gone, so without this every
-    # config they write is a file nothing reads.
+    Yields the tmp_path."""
+    # THE SANDBOX IS THE CONFIG ROOT (§ 2.1c).  (It was the working directory
+    # too, for a cwd step retired 2026-08-31; W54 T7.)
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
@@ -79,18 +74,6 @@ def test_xdg_fallback_is_read_when_cwd_absent(xdg_branch, monkeypatch):
     assert cfg.get("envs") == {"pyscf": "alt-pyscf"}
 
 
-def test_explicit_xdg_config_home_is_honored(xdg_branch, monkeypatch):
-    sandbox = xdg_branch
-    xdg_dir = sandbox / "elsewhere"
-    (xdg_dir / "molbuilder").mkdir(parents=True)
-    (xdg_dir / "molbuilder" / "molbuilder.json").write_text(json.dumps({
-        "envs": {"pyscf": "elsewhere-pyscf"},
-    }))
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
-    cfg = read_config()
-    assert cfg["envs"]["pyscf"] == "elsewhere-pyscf"
-
-
 def test_the_bare_default_read_honours_the_same_fallback(xdg_branch):
     """A-7 (final review, 2026-08-13): the bare ``read_config()`` was
     cwd-only while the section getters honoured the XDG file too, so an
@@ -107,12 +90,6 @@ def test_the_bare_default_read_honours_the_same_fallback(xdg_branch):
     (xdg_dir / "molbuilder.json").write_text(json.dumps({
         "tls": {"cert": "c.pem", "key": "k.pem"}}))
     assert get_tls(read_config()) == {"cert": "c.pem", "key": "k.pem"}
-    # A file in the working directory changes NOTHING -- it is not read
-    # (§ 2.1a), which is the half of this that inverted.
-    (sandbox / "molbuilder.json").write_text(json.dumps({
-        "tls": {"cert": "cwd.pem", "key": "cwd-k.pem"}}))
-    assert read_config()["tls"]["cert"] == "c.pem", (
-        "a working-directory file reached the reader")
 
 
 # --------------------------------------------------------------------- #
@@ -120,24 +97,12 @@ def test_the_bare_default_read_honours_the_same_fallback(xdg_branch):
 # --------------------------------------------------------------------- #
 
 
-def test_write_server_wide_when_cwd_file_exists_writes_to_cwd(sandbox):
-    """When the cwd molbuilder.json exists, a server-wide write lands
-    there (per docs/execution/running-a-job.md § 5: writes to the highest-precedence
-    EXISTING location)."""
-    (sandbox / "molbuilder.json").write_text("{}\n")
-    target = write_config_scope({
-        "paths": {"projects": "/srv/projects"},
-    })
-    assert target == sandbox / "molbuilder.json"
-    assert stat.S_IMODE(target.stat().st_mode) == 0o600
-    cfg = json.loads(target.read_text())
-    assert cfg["paths"]["projects"] == "/srv/projects"
-
-
-def test_write_server_wide_creates_xdg_when_cwd_absent(xdg_branch):
+def test_the_write_lands_in_the_one_location_private(xdg_branch):
+    """With no file yet, the one writer creates it where the reader looks --
+    here the XDG branch of the one location -- at 0600 (`configuration.md`
+    § 2.1b, § 2.3).  *(This read "the highest-precedence existing location",
+    from when there were several; W54 T7.)*"""
     sandbox = xdg_branch
-    """When NO server-wide file exists, the write lands at the XDG
-    path (per docs/execution/running-a-job.md § 5 last sentence)."""
     target = write_config_scope({
         "paths": {"projects": "/srv/projects"},
     })

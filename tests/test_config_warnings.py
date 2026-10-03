@@ -21,9 +21,6 @@ stop the program, and a loose mode does not either.
 """
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 import pytest
 
 
@@ -96,19 +93,15 @@ class TestItIsAWarningAndNotARefusal:
         monkeypatch.chdir(home.parent)
         assert machine_config_shadow() is None
 
-    def test_the_cwd_file_is_not_read(self, isolated):
-        from molbuilder.runtime_config import machine_config_path
-        work, home = isolated
-        (work / "molbuilder.json").write_text('{"execution": {"mode": "local"}}')
-        assert machine_config_path() == home.resolve(), (
-            "one location -- and it is not the working directory")
-
     def test_and_its_contents_do_not_leak_in(self, isolated):
         """The sharp end: not merely 'a different path' but 'that file's
         settings are not applied'."""
         from molbuilder.runtime_config import read_config
         work, _home = isolated
-        (work / "molbuilder.json").write_text('{"execution": {"mode": "local"}}')
+        # A section a server would start on, so a regression shows as the
+        # setting leaking in -- `execution` here was refused, and a cwd read
+        # would have raised instead of leaking (W54 T16).
+        (work / "molbuilder.json").write_text('{"launch": {"mode": "direct"}}')
         assert read_config() == {}
 
 

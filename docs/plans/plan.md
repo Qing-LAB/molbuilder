@@ -237,7 +237,7 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | R19 | dead browser code | fixed `0a7ea0e4` |
 | R20 | comments describing the removed `scheduler` block | fixed `0a7ea0e4` |
 | R21 | record docs that were false | fixed `0a7ea0e4` |
-| R22 | fields with no writer or no reader | `gpu_partition` Q2c 10a, `31ca9957`; `Site.qos` kept by the contract; **fixed** — the hand-declared device spelling and `Device.mem_gb` (no writer; a record is a measurement — the environments README), `Site.account`; the arch fields kept (asked for, 2026-08-26) and their notes no longer describe a check that does not exist; routing's getters stay in `runtime_config`, which `architecture.md` names as the door to a record's queues |
+| R22 | fields with no writer or no reader | `gpu_partition` Q2c 10a, `31ca9957`; `Site.qos` kept by the contract; **fixed `39ae603a`** — the hand-declared device spelling and `Device.mem_gb` (no writer; a record is a measurement — the environments README), `Site.account`; the arch fields kept (asked for, 2026-08-26) and their notes no longer describe a check that does not exist; routing's getters stay in `runtime_config`, which `architecture.md` names as the door to a record's queues |
 | R23 | `probe --out` | Q2c 7, `71e70dcd` |
 | R24 | contract restatements against the design | fixed `0a7ea0e4` |
 | D1–D20, D22–D30 | documents teaching removed designs | fixed `0a7ea0e4` (D24: `envs.manager` is a preference) |
@@ -245,11 +245,11 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | T1, T2 | two tests that could not fail | fixed `6401abfb` |
 | T3–T6, T9–T12, T17, T18, T20, T23, T26 | tests of refused behaviour, or repeats | retired `6401abfb` (T4 written through its door) |
 | T8 | retired keys only partly rows | fixed `6401abfb` |
-| T7 | `test_machine_config_file` cites a precedence no document states; one test cannot fail | **to do** — retire `:123` and `:82`, fix `:137`'s docstring, drop the `chdir` |
+| T7 | `test_machine_config_file` cites a precedence no document states; one test cannot fail | **fixed** — the two retired, the write test's docstring in its place and true, the sandbox no longer a working directory |
 | T13 | test texts still placing the activation in `script_generation` or the record alone | partly fixed; **to do** — seeding `:10`, `:379`; record_architecture `:122`; target_machine_choice `:24`, `:221`; preamble_preflight `:3`; about 14 files' "one home (§ 5 M-1)" |
 | T14 | test docstrings teaching a cwd or cascade read | partly fixed; **to do** — nine files |
 | T15 | per-file isolation duplicating conftest's | **own unit** — `_isolated_machine_scope` first, then about 48 files' blocks |
-| T16 | "a cwd molbuilder.json is not read" asserted five times | partly fixed `6401abfb`; **to do** — config_warnings `:99` retires, `:106` takes a `launch` block, machine_config_file `:110` trimmed |
+| T16 | "a cwd molbuilder.json is not read" asserted five times | partly fixed `6401abfb`; **fixed** the rest — said once, by `test_and_its_contents_do_not_leak_in`, with a section a server starts on |
 | T19 | tests that monkeypatch a door to prove a caller asks it | **to do** — retire config_dir_has_one_home `:267`, `:285`; `:311` says why it stays API-level |
 | T21 | probable subsumptions | **to do, a mutant first** (`tools/verify_subsumption.py`) |
 | T22 | `_the_gate()` pins a refusal the road never gives | **to do** — `:65` through `jobset prep` or retired; `:168` trimmed; `:152` retired |
