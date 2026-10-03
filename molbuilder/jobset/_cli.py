@@ -1711,9 +1711,9 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     # This machine's `launch.mode` when no --mode is given (running-a-job
     # § 5.4).
     if mode is None:
-        from ..runtime_config import get_launch
+        from ..runtime_config import get_launch_mode
         try:
-            mode = get_launch().get("mode")
+            mode = get_launch_mode()
         except Exception as exc:
             # A malformed config is ITS OWN error.  Swallowing it here told
             # the user to set a value they may already have set.

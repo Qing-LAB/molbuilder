@@ -2330,9 +2330,9 @@ def cmd_serve(host, port, debug, cert, key, allow_insecure_binding, no_auth,
 
     if no_auth:
         # create_app(config={}) is the supported no-auth seam (see
-        # web/app.py:create_app); it ignores molbuilder.json entirely (no
-        # providers -> no login), and the projects root still resolves from
-        # the CWD.
+        # web/app.py:create_app): the app's sections -- auth, admin,
+        # rate_limit -- come from `{}` (no providers -> no login); the
+        # projects root and the env names are still the machine config's.
         app = create_app(config={})
         # THIS PROCESS'S PORT, on the Flask app rather than through
         # `create_app(config=)` -- that argument is the RUNTIME config

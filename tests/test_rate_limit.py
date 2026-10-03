@@ -691,14 +691,14 @@ class TestTheSignInCheckIsNotEvidence:
     def app_with_auth(self, tmp_path):
         pytest.importorskip("flask")
         from molbuilder.web.app import create_app
-        secret = tmp_path / "key"
-        secret.write_text("x" * 40)
+        # A config a server would start on: `create_app` validates a given
+        # one since 2026-10-02 (W54 C17).  This held a literal
+        # `client_secret`, a `secret_key_file` and an `enabled` key -- each
+        # refused by the reader.
         return create_app(config={
             "auth": {"providers": [{
-                "id": "g", "kind": "google", "client_id": "x",
-                "client_secret": "y", "allowed_users": ["a@b.c"],
-                "enabled": True}]},
-            "secret_key_file": str(secret),
+                "id": "g", "label": "Google", "kind": "google",
+                "client_id": "x", "allowed_users": ["a@b.c"]}]},
             "rate_limit": {"enabled": True, "threshold_404": 5,
                            "window_404_s": 30, "allowlist": [],
                            "cooldown_s": 3600},

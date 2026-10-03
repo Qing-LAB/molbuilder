@@ -992,7 +992,7 @@ rather than half-configuring something.
 
 | section | read by | reaches |
 |---|---|---|
-| `launch` | `get_launch` | **floor 7**, `jobset launch` — `mode`, when no `--mode` is given |
+| `launch` | `get_launch_mode` | **floor 7**, `jobset launch` — `mode`, when no `--mode` is given |
 | `env_init` | `get_env_init` | `jobset probe`, which copies it into the record it writes — what prep then reads (§ 8.3) |
 | `envs` | `get_envs`, `get_env_manager` | **floor 5**, `prep` step 4 — the environment name the wrapper activates; and the `envs` verbs |
 | `paths` | `get_paths` | `projects.projects_root` — every surface |

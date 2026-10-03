@@ -1574,13 +1574,15 @@ def get_paths() -> Dict[str, Any]:
     return dict(read_config().get("paths") or {})
 
 
-def get_launch() -> Dict[str, Any]:
-    """This machine's ``launch`` block -- ``{"mode": "direct" | "submit" |
-    None}`` (`running-a-job.md` § 5.4).  ``None`` is UNSET, and `launch` then
-    refuses rather than derive one: deciding ``submit`` from a DETECTED
-    scheduler would gate submission on detection.  It arrives validated
-    (:func:`_read_launch`), so nothing is checked here."""
-    return {"mode": (read_config().get("launch") or {}).get("mode")}
+def get_launch_mode() -> Optional[str]:
+    """This machine's ``launch.mode`` -- ``"direct"``, ``"submit"`` or ``None``
+    (`running-a-job.md` § 5.4).  ``None`` is UNSET, and `launch` then refuses
+    rather than derive one: deciding ``submit`` from a DETECTED scheduler
+    would gate submission on detection.  It arrives validated
+    (:func:`_read_launch`), so nothing is checked here.  *(It was
+    ``get_launch()``, handing back ``{"mode": ...}`` for both callers to
+    index, until 2026-10-02 -- W54 C17.)*"""
+    return (read_config().get("launch") or {}).get("mode")
 
 
 def get_env_init() -> Dict[str, str]:
@@ -1742,7 +1744,7 @@ __all__ = [
     "get_auth",
     "get_providers",
     "get_rate_limit",
-    "get_launch",
+    "get_launch_mode",
     "get_env_init",
     "ACTIVATION_FORMS",
 ]

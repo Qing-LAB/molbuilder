@@ -871,7 +871,7 @@ stand in now if prep let it through, and that is a value nobody stated too.
 
 - **`launch`** — `{mode}`. `mode` is `direct` (run in place) or `submit`
   (through the scheduler); any other value, and any other key, is refused by
-  name (`runtime_config.get_launch`). This, not the detected scheduler, is what
+  name (`runtime_config.get_launch_mode`). This, not the detected scheduler, is what
   gates `.sbatch` submission. *(It was spelled `execution` until 2026-10-02 —
   the name of `task.json`'s run card, a different thing — and carried a default
   queue, `domain`, which a job now names itself.)*

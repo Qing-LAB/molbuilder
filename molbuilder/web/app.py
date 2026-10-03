@@ -258,18 +258,23 @@ def create_app(*, config=None) -> Flask:
     """Build the molbuilder Flask app.
 
     Parameters:
-        config: optional pre-loaded ``runtime_config`` dict.  When
+        config: optional ``molbuilder.json`` contents, as a dict.  When
                 ``None`` (production default), the config is read
                 from the machine config (one location,
                 `configuration.md` § 2.1a) via
-                :func:`molbuilder.runtime_config.read_config`.  Tests
-                pass an explicit dict (often ``{}`` for the no-auth
-                / no-TLS default) so they never touch the developer's
-                per-machine config file -- removing a hidden coupling
-                between CWD state and what the test client sees.
+                :func:`molbuilder.runtime_config.read_config`.  Given
+                (often ``{}``: no sign-in, no TLS), it is VALIDATED by the
+                same reader -- a section the file would be refused for is
+                refused here too (W54 C17: it was taken as given, so a
+                test could build an app from a config no server would
+                start on).
 
-                This parameter is the supported injection seam; do NOT
-                add other CWD-reading side effects without honouring it.
+                It supplies the sections the app reads at start -- `auth`,
+                `admin`, `rate_limit`.  What other doors read through the
+                config file itself (the diagnostics snapshot's `envs`, the
+                projects root, the checkpoint settings) still comes from
+                the machine config, which the test suite points at a
+                temporary directory (conftest's config root).
     """
     # Configure the root logger so warnings from L1 modules (e.g.
     # ``molbuilder.projects.list_projects`` skipping invalid directory
@@ -311,8 +316,12 @@ def create_app(*, config=None) -> Flask:
     from ..envs.recipes import builtin_recipes
     builtin_recipes()
 
-    # Load config from disk only when the caller didn't pass one.
-    if config is None:
+    # Load config from disk only when the caller didn't pass one -- and a
+    # given one through the same validator the file meets.
+    if config is not None:
+        from ..runtime_config import _normalise
+        config = _normalise(config)
+    else:
         try:
             from ..runtime_config import read_config
             config = read_config()
