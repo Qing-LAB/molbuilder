@@ -270,7 +270,8 @@ def test_a_printed_remedy_names_the_resolved_directory(monkeypatch, tmp_path):
     day; the sweep missed this site.
 
     API-LEVEL, and why: the road reaches this refusal (`launch_values.toml`'s
-    "a calculation's own copy ... names it" rows), but a row asserts fixed
+    "...a named target too -- ... the refusal says the copy back"), but a row
+    asserts fixed
     text, and what this pins is the RESOLVED directory -- a per-test root a
     row cannot spell.
     """

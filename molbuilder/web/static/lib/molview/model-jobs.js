@@ -84,10 +84,10 @@ export const FROZEN_LABEL = "frozen_atoms";
  * structure carries, naming the SMILES / sequence / lookup text that built it
  * (`CCO#`, `AG#`). These six are the opposite: names offered TO a person to
  * assign by hand. The marker exists because region labels are one namespace
- * with meaning in part of it -- any label ending `-electrode` IS a lead -- and
- * the name generator takes whatever gets typed into it, so a search for
- * `gold-electrode` would otherwise have labelled a whole molecule a TranSIESTA
- * electrode. See `model/structure-annotations.md` § 5.1. */
+ * with meaning in part of it -- `L-electrode` and `R-electrode` ARE the leads
+ * -- and the name generator takes whatever gets typed into it; with the `#`
+ * after it a generated label is never one of those names. See
+ * `model/structure-annotations.md` § 5.1. */
 /* THE RESERVED TRANSPORT LABELS.  Descriptions say what each is FOR and
  * when to use it, because a transport calculation reads them as physics
  * (archive/2026-09-01-transport-design.md § 4.1a): the electrode blocks are extracted

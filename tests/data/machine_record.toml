@@ -17,12 +17,14 @@ name = "a fact the probe cannot see is declared to it, and lands typed"
 ends_at = "probe"
 probe = [["--set", "gpus_per_node=4", "--set", "gpu_type=a100", "--set", "mem_total_gb=1536.5"]]
 record_says = { topology = { gpus_per_node = 4, gpu_type = "a100", mem_total_gb = 1536.5 } }
+record_declared = ["topology"]
 
 [[case]]
 name = "--scheduler declares the kind, and --name files the record under the name a machine preps it by"
 ends_at = "probe"
 probe = [["--name", "sol-x", "--scheduler", "slurm", "--set", "cores_per_socket=64"]]
 record_says = { scheduler = "slurm", topology = { cores_per_socket = 64 } }
+record_declared = ["scheduler", "topology"]
 probe_said = ["--target sol-x"]
 
 [[case]]
@@ -54,6 +56,27 @@ ends_at = "probe"
 probe = [["--set", "gpus_per_node=4", "--set", "gpu_type=a100"],
          ["--set", "gpus_per_node=1", "--set", "gpu_type=rtx"]]
 record_says = { topology = { gpus_per_node = 1, gpu_type = "rtx" } }
+
+# HOW A SHELL ENTERS AN ENVIRONMENT is asked about like every other
+# difference: the probe copies it from this machine's molbuilder.json, and a
+# record whose copy was corrected by hand (`configuration.md` § 4) holds a
+# person's answer.
+[[case]]
+name = "a record's env_init corrected by hand survives a probe nobody answers -- and the stamp follows the probe"
+ends_at = "probe"
+machine_config = { env_init = { activation = "conda activate", preamble = "source /home/u/miniconda3/etc/profile.d/conda.sh" } }
+record = { env_init = { activation = "source activate", preamble = "module load mamba" }, detected_at = "2026-08-01T00:00:00+00:00" }
+probe = [{ flags = [], answers = "" }]
+record_says = { env_init = { activation = "source activate", preamble = "module load mamba" } }
+record_stamped = true
+
+[[case]]
+name = "...and --yes takes molbuilder.json's copy over it"
+ends_at = "probe"
+machine_config = { env_init = { activation = "conda activate", preamble = "source /home/u/miniconda3/etc/profile.d/conda.sh" } }
+record = { env_init = { activation = "source activate", preamble = "module load mamba" } }
+probe = [[]]
+record_says = { env_init = { activation = "conda activate", preamble = "source /home/u/miniconda3/etc/profile.d/conda.sh" } }
 
 [[case]]
 name = "a record that already says what the probe found is told so, and asked nothing"

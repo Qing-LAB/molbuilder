@@ -29,7 +29,7 @@ server, draws the form, and reads the filled-in values back.
 > allowed to vary. That is the whole reason a stage can vary four values today.
 >
 > **An engine config carries no stage list**, so the generator never meets a
-> stage and the `stage-table` field kind is not reachable from an engine schema.
+> stage, and no field kind renders one.
 > The per-stage grid is the shared Task Setup tab's
 > ([`task-setup.md`](?doc=web/task-setup.md) § 5), fed by two inputs
 > from two sources: the **catalogue** from here, the **selection** from

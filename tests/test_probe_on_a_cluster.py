@@ -44,7 +44,6 @@ _ASSOC = "public,debug\n"
 def cluster(tmp_path, monkeypatch):
     """This box, answering as a login node would."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
-    (tmp_path / "home").mkdir(exist_ok=True)
 
     from molbuilder.scheduler import record
 
@@ -123,21 +122,22 @@ def test_the_written_record_reads_back_as_objects(cluster, writer):
     assert got.get("htc") == pytest.approx(2.0)
 
 
+@pytest.mark.parametrize("writer", ["probe", "init-config"])
 @pytest.mark.parametrize("unanswered,said", [
     ("scontrol", "scontrol was not reachable"),
     ("MaxSubmitJobsPerUser", "did not accept MaxSubmitJobsPerUser"),
 ])
 def test_a_measurement_that_did_not_happen_is_said(tmp_path, monkeypatch,
-                                                   unanswered, said):
+                                                   unanswered, said, writer):
     """`sinfo` has no format code for the per-core default, so it is a second
     command; `sacctmgr` rejects a whole query over one unknown column, so the
     submit cap is asked with a fall-back.  When either goes unanswered the
     record simply does not say -- never zero -- and the verb SAYS so, because
     a measurement that quietly did not happen is the thing this whole round
     was about.  (The submit-cap line was appended before `derive_domains`
-    reassigned the notes, and was never shown, until 2026-10-02.)"""
+    reassigned the notes, and was never shown, until 2026-10-02 -- and `envs
+    init-config`, seeding through the same queue probe, dropped every note.)"""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
-    (tmp_path / "home").mkdir(exist_ok=True)
     from molbuilder.scheduler import record
 
     def _fake(cmd, timeout=10.0):
@@ -154,12 +154,17 @@ def test_a_measurement_that_did_not_happen_is_said(tmp_path, monkeypatch,
         return None
 
     monkeypatch.setattr(record, "_run", _fake)
-    r = _probe("--write", "--yes", "--name", "sol")
+    if writer == "probe":
+        r = _probe("--write", "--yes")
+    else:
+        from molbuilder.envs._cli import envs_group
+        r = CliRunner().invoke(envs_group, [
+            "init-config", "--activation", "source activate", "--yes"])
     assert r.exit_code == 0, r.output + str(r.exception)
-    assert said in r.output, "the probe measured nothing there and did not say so"
+    assert said in r.output, f"{writer} measured nothing there and did not say so"
     if unanswered == "scontrol":
-        from molbuilder.scheduler import named_environments
-        body = json.loads(named_environments()["sol"].read_text())
+        from molbuilder.scheduler import machine_scope_path
+        body = json.loads(machine_scope_path().read_text())
         for d in body["domains"]:
             assert "default_mem_per_core_gb" not in d, (
                 "an unmeasured default was written as a number anyway")

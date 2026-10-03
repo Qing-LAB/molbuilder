@@ -418,11 +418,12 @@ def _readme(directory: Path, text: str, note: str) -> List[Step]:
 
     **Written 0600 when it lands in `secrets/`** *(2026-09-20)*.  A plain
     `write_text` takes the umask, which here meant 0664 -- inside a directory
-    whose own README says *"everything in it is 0600"*, and which the
-    placement audit checks (its row for this README).  So `envs init-config`
-    seeded a file that `envs doctor` would immediately report.  It is only a
-    README, but a seeder that trips its own audit teaches an operator to
-    ignore the audit, which is the expensive part.  `environments/README`
+    whose own README says every file molbuilder keeps there is 0600, and
+    which the placement audit checks (its row for this README).  So `envs
+    init-config` seeded a file that `envs doctor` would immediately report.
+    It is only a README, but a seeder that trips its own audit teaches an
+    operator to ignore the audit, which is the expensive part.
+    `environments/README`
     keeps the umask: that directory holds machine records, not credentials.
     """
     path = directory / "README"
@@ -580,12 +581,17 @@ def seed_environment_record() -> Step:
     # stamp too -- `detected_at` was null in every record seeded here.
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     env, _note = local_facts(resolve_environment(now_iso=now), get_env_init())
-    probe_queues(env, getpass.getuser())
+    queue_notes, _summary = probe_queues(env, getpass.getuser())
     write_environment(env, path)
     sg = getattr(env, "env_init", None) or {}
     note = "probed this machine"
     if env.domains:
         note += f"; {len(env.domains)} queue(s)"
+    # WHAT THE QUEUE PROBE COULD NOT MEASURE is said here as `jobset probe`
+    # says it -- a measurement that quietly did not happen is the defect
+    # those notes exist for (W54 review: this dropped them).
+    for n in queue_notes:
+        note += f"; {n.rstrip('.')}"
     if sg.get("activation"):
         note += f'; carries activation "{sg["activation"]}"'
     else:

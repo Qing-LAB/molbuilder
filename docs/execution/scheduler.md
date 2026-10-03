@@ -60,10 +60,9 @@ between them. This document says what that subsystem *is*, so the pieces have
 one home and one set of rules instead of one treatment per place someone
 noticed a problem.
 
-> **`Domain.gpu` has two shapes, deliberately** — probed rows map
-> type→count, hand-declared rows describe one device with named keys —
-> and admission reads both through one door (§ 4, *Device*), because
-> both are in live records.
+> **`Domain.gpu` has one shape, the probe's** — gres type → per-node count —
+> read through one door (§ 4, *Device*). *(Hand-declared rows describing one
+> device with named keys were read too until 2026-10-02.)*
 
 ---
 

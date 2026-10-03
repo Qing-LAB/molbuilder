@@ -297,8 +297,11 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # 0 · WHAT THE PROBE RECORDS, checked before anything else: what it says
 # (`probe_said`, lines any of the probes printed) and what the record it
 # wrote holds (`record_says`, a table of the record's fields, nested as the
-# file nests them).  A row about the record alone ends there: `ends_at =
-# "probe"`.
+# file nests them; `record_declared`, the facts its `source` says were
+# declared -- `flag` among the note's parts, `configuration.md` M-1;
+# `record_stamped`, its `detected_at` is the last probe's own -- M-6: the
+# stamp follows the probe whatever survives).  A row about the record alone
+# ends there: `ends_at = "probe"`.
 
 
 def _road_target(table, case, tmp_path, monkeypatch) -> str:
@@ -321,10 +324,13 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
                      if "--name" in first else machine_scope_path())
             ensure_private_dir(there.parent)
             there.write_text(case["record_text"])
+        from datetime import datetime, timezone
         said, named = [], []
         for step in case["probe"]:
             flags, answers = ((step["flags"], step.get("answers", ""))
                               if isinstance(step, dict) else (step, None))
+            # The stamp is to the second, as the probe writes it.
+            began = datetime.now(timezone.utc).replace(microsecond=0)
             r = jobset("probe", "--write",
                        *(["--yes"] if answers is None else []), *flags,
                        input=answers)
@@ -333,7 +339,7 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
             if "--name" in flags:
                 named.append(flags[flags.index("--name") + 1])
         target = named[-1] if named else "this"
-        _road_probe_layer(case, said, target)
+        _road_probe_layer(case, said, target, began)
         return target
     queues = [Domain.from_row(q)
               for q in case.get("queues", table.get("queues", []))]
@@ -357,19 +363,28 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
     return "sol"
 
 
-def _road_probe_layer(case, said, target) -> None:
-    """0 · what the probe said, and what the record it wrote holds."""
+def _road_probe_layer(case, said, target, began) -> None:
+    """0 · what the probe said, and what the record it wrote holds --
+    ``began``, when its last probe started."""
     import json
+    from datetime import datetime
     for words in case.get("probe_said", []):
         assert any(words in out for out in said), \
             f"probe_said: {words!r} in none of: {_one_line(said[-1])}"
+    from molbuilder.scheduler import machine_scope_path, named_environment_path
+    path = (machine_scope_path() if target == "this"
+            else named_environment_path(target))
+    record = json.loads(path.read_text())
     if "record_says" in case:
-        from molbuilder.scheduler import (machine_scope_path,
-                                          named_environment_path)
-        path = (machine_scope_path() if target == "this"
-                else named_environment_path(target))
-        _road_holds(json.loads(path.read_text()), case["record_says"],
-                    "record")
+        _road_holds(record, case["record_says"], "record")
+    for fact in case.get("record_declared", []):
+        note = record["source"].get(fact, "")
+        assert "flag" in note.split("+"), \
+            f"record.source.{fact} is {note!r}: it does not say declared"
+    if case.get("record_stamped"):
+        stamp = record["detected_at"]
+        assert stamp and datetime.fromisoformat(stamp) >= began, \
+            f"record.detected_at is {stamp!r}, older than its probe ({began})"
 
 
 def _road_holds(got, want, where) -> None:

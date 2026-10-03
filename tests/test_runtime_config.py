@@ -36,9 +36,9 @@ def _tmp_path_is_the_config_root(monkeypatch, tmp_path, tmp_path_factory):
     """``tmp_path`` holds this test's machine config, and the reader knows it.
 
     ONE variable answers for the whole lookup (`configuration.md` § 2.1c), so
-    this replaces the HOME/XDG sandboxing that used to guard the fallback --
-    which is kept anyway, because a test that reads ``$HOME`` for some other
-    reason should still not find the developer's.
+    this replaces the HOME/XDG sandboxing that used to guard the fallback;
+    conftest's root fixture redirects HOME as well, so a test that reads
+    ``$HOME`` for another reason still does not find the developer's.
 
     `conftest.config_root` is the general form of this fixture and is what new
     tests should ask for; this one exists because every test in this file

@@ -218,10 +218,10 @@ discover:
                                    reached through, and mock notify channels
 
 The session key, the notify channels file, the run-report signing keys and
-Google's client secret all live in `secrets/`, and `molbuilder.json` carries
-paths to credentials, never the bytes. *(Until 2026-09-20 those four sat beside
-`molbuilder.json` and this tree said the README documented "the THREE secrets
-that cannot live here" — the opposite of what is now true.
+Google's client secret all live in `secrets/`, and `molbuilder.json` names no
+secret but the cert files (`configuration.md` § 3.1). *(Until 2026-09-20 those
+four sat beside `molbuilder.json` and this tree said the README documented "the
+THREE secrets that cannot live here" — the opposite of what is now true.
 `configuration.md` § 3.1 owns the rule.)*
 ```
 

@@ -223,9 +223,11 @@ class TestPickingThisMachineIsAnAnswer:
     def machine_with_named_records(self, tmp_path, monkeypatch):
         """A workstation that also holds a cluster's record — the setup that
         makes the question real (`choice_required`: any named record does)."""
-        cfg = tmp_path / "cfg"
-        (cfg / "environments").mkdir(parents=True)
-        monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cfg))
+        from molbuilder.config_dir import config_dir, ensure_private_dir
+        from molbuilder.scheduler import (environments_dir, machine_scope_path,
+                                          named_environment_path)
+        monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
+        ensure_private_dir(environments_dir())
         # QUEUES NAMED APART FROM THE BUNDLE'S, deliberately.  The bundle
         # snapshot's are `short` and `public`; these are `sol-short` and
         # `sol-public`.  Writing the same menu in both places makes every
@@ -239,9 +241,9 @@ class TestPickingThisMachineIsAnAnswer:
                           domains=[Domain.from_row(
                               dict(r, name="sol-" + r["name"]))
                               for r in _DOMAINS])
-        (cfg / "environment.json").write_text(env.to_json() + "\n")
-        (cfg / "environments" / "sol.json").write_text(env.to_json() + "\n")
-        return cfg
+        machine_scope_path().write_text(env.to_json() + "\n")
+        named_environment_path("sol").write_text(env.to_json() + "\n")
+        return config_dir()
 
     @staticmethod
     def _unprepped(bundle):

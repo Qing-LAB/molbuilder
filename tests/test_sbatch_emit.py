@@ -50,8 +50,8 @@ def _caps():
 @pytest.fixture
 def project(tmp_path, monkeypatch):
     """A project dir carrying the asu-sol record -- a scheduler, the
-    `public` queue, and how a shell enters an environment there -- with an
-    the config root conftest's, so no real ~/.config file leaks in."""
+    `public` queue, and how a shell enters an environment there.  The config
+    root is conftest's, so no real ~/.config file leaks in."""
     from molbuilder.scheduler import (FILENAME, Domain, Environment,
                                       Topology, write_environment)
     write_environment(Environment(

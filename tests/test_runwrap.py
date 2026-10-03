@@ -1427,7 +1427,6 @@ class TestTheHeaderReadsTheProbedRecord:
         only because it was reading the repo's own molbuilder.json."""
         import json
         monkeypatch.chdir(tmp_path)
-        (tmp_path / "home").mkdir(exist_ok=True)
         (tmp_path / "environment.json").write_text(json.dumps({
             "schema": "molbuilder/environment@2",
             "scheduler": "slurm",

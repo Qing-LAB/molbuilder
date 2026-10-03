@@ -2419,8 +2419,8 @@ def cmd_probe(do_write: bool, name, yes: bool,
         for d in env.domains:
             click.echo(f"  {d.name:<10} <= {str(d.max_time):<12} "
                        f"{d.partition}/{d.qos}")
-    # AFTER `derive_domains`, for the reason stated above it -- that call
-    # REASSIGNS `notes`, so anything appended earlier is dropped.  This
+    # AFTER the queue probe, whose notes this extends (`record.probe_queues`
+    # builds them after `derive_domains`, which reassigns its list).  This
     # line was composed and never shown: `notes_sg` was assigned and read
     # by nothing, so the one machine that most needed the warning -- the
     # one with no activation -- was the one told nothing.

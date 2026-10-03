@@ -277,8 +277,8 @@ class Domain:
         """What this domain's ``gpu`` column says the nodes offer.
 
         Empty when it says nothing.  **Every reader of the GPU inventory goes
-        through here** -- the column has two spellings, and reading it at the
-        call site is what let two of them disagree (:func:`_read_devices`).
+        through here** -- reading the column at the call site is what let two
+        readers disagree about it (:func:`_read_devices`).
         """
         return _read_devices(self.gpu)
 
@@ -674,8 +674,8 @@ def detect_site(scheduler: str) -> Tuple[Site, str]:
     """SLURM **default partition** from ``sinfo`` (the one ``%P`` marks
     with ``*``); empty on a workstation.
 
-    ``qos``/``account`` are left ``None`` **here** because ``sinfo`` cannot
-    answer them -- not because nothing can.  This docstring claimed they were
+    ``qos`` is left ``None`` **here** because ``sinfo`` cannot answer it --
+    not because nothing can.  This docstring claimed they were
     "site policy, not reliably derivable", and `probe` disproves it
     in the same tree: ``parse_allowed_qos`` reads exactly your QoS from
     ``sacctmgr -nP show assoc user=$USER``.  Two modules disagreeing about
@@ -1305,9 +1305,10 @@ def record_and_renewal(bundle_dir=None, target: Optional[str] = None
         if target in (None, LOCAL_TARGET):
             # WHICH machine the snapshot describes, a record does not say
             # (plan § 0b, R3): named in words, not guessed.
-            probe = (f"`{probe_command(None)}` on the machine it describes, "
-                     f"with --name and its name for a named target, then its "
-                     f"record copied here")
+            probe = (f"`{probe_command(None)}` on the machine it describes "
+                     f"(with --name and its name when that is not this one, "
+                     f"and the file it writes copied into "
+                     f"{environments_dir()}/ here)")
         else:
             probe = f"`{probe_command(target)}` {probe_steps(target)}"
         return ("this calculation's environment.json, snapshotted at its "

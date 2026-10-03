@@ -63,7 +63,7 @@ def xdg_branch(sandbox, monkeypatch):
     return sandbox
 
 
-def test_xdg_fallback_is_read_when_cwd_absent(xdg_branch, monkeypatch):
+def test_the_xdg_branch_is_read(xdg_branch, monkeypatch):
     sandbox = xdg_branch
     xdg_dir = sandbox / "home" / ".config" / "molbuilder"
     xdg_dir.mkdir(parents=True)

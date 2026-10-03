@@ -545,11 +545,12 @@ def config_root_is_never_the_developers(tmp_path_factory, monkeypatch):
     # (2026-09-11).  `config_dir()` resolves $MOLBUILDER_CONFIG_DIR, then
     # $XDG_CONFIG_HOME/molbuilder, then ~/.config/molbuilder.  Clearing the
     # first and redirecting the second left the THIRD pointing at the
-    # developer -- and 36 test files delete or override XDG in a fixture of
-    # their own, which runs after this one.  Every one of them also sets
-    # HOME today, so nothing leaked; but that is 36 places each remembering
-    # a rule, and the one that forgets writes into somebody's real
-    # ~/.config/molbuilder.  Which is not hypothetical: a test doing exactly
+    # developer -- and 36 test files then deleted or overrode XDG in a
+    # fixture of their own, each also setting HOME: 36 places each
+    # remembering a rule, where the one that forgets writes into somebody's
+    # real ~/.config/molbuilder.  (Since 2026-10-02 only the files that test
+    # those variables, or hand a child process its environment, move them;
+    # W54 T15.)  Which is not hypothetical: a test doing exactly
     # that REPLACED this developer's `molbuilder.json` (retired 2026-09-11,
     # `test_task_setup_prep_e2e.py`), and the value then travelled into
     # `environment.json` through `jobset probe --write` and baked a
@@ -999,12 +1000,12 @@ def _this_machine_has_been_probed(config_root_is_never_the_developers):
 def write_machine_record(at=None, **over):
     """Write the machine-scope record, wherever the scope currently resolves.
 
-    Exposed because **42 test files re-isolate ``HOME`` or ``XDG_CONFIG_HOME``
-    in a fixture of their own**, which runs after this file's and moves the
-    scope out from under it.  A file that does that and then preps calls this
-    at the end of its own fixture -- one line, and it says out loud that the
-    machine has been probed, which since 2026-09-02 is a precondition rather
-    than something prep arranges.
+    Exposed for the files that move the config root themselves -- the ones
+    that test those variables, or point a child process at a directory of its
+    own (``at``) -- since the move takes the scope out from under this file's
+    record.  Such a file calls this at the end of its own fixture -- one line,
+    and it says out loud that the machine has been probed, which since
+    2026-09-02 is a precondition rather than something prep arranges.
 
     ``over`` replaces fields on the modest default -- ``topology=`` for a
     machine with more cores, ``scheduler="slurm"`` for a queue system.

@@ -597,9 +597,11 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   machine with no queue, the run script's own dry run), checking three
   layers: **allowed or refused**, with the words; **what is produced** — the
   header, the `sbatch` line, the deck, the run script; **what the run script
-  does here**. A stand-in plays what the box cannot be (`sbatch` that queues
-  nothing, `nvidia-smi` that reports the GPUs a row gives), from
-  `tests/support/road.py`. A rule changes; its rows change — never a function
+  does here** — and, before them, **what the probe records** when a row runs
+  the probe itself: what it said and what the record holds
+  (`tests/data/machine_record.toml`, whose rows end there). A stand-in plays
+  what the box cannot be (`sbatch` that queues nothing, `nvidia-smi` that
+  reports the GPUs a row gives), from `tests/support/road.py`. A rule changes; its rows change — never a function
   per case, and never a test of an internal step a row already reaches. The
   first is the GPU contract's (`tests/data/gpu_contract.toml`,
   `tests/test_gpu_contract.py`; `execution/gpu.md` § 7).

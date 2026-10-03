@@ -82,7 +82,6 @@ def _pyscf_wrapper(tmp_path, monkeypatch):
     count stated (4) as every run's is (`architecture.md` § 5.2)."""
     from molbuilder import runwrap
     from molbuilder.scheduler import Environment, Topology
-    home = tmp_path / "home"; home.mkdir()
     monkeypatch.chdir(tmp_path)
     # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
     # working-directory step, which is gone (configuration.md § 2.1a) --

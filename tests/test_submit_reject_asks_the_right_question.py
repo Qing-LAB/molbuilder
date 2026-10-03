@@ -49,8 +49,8 @@ _SOL = {
 @pytest.fixture
 def workstation_with_a_named_target(tmp_path, monkeypatch):
     """Exactly the reported shape: a named target exists, this machine has
-    no probe of its own.  (`_isolated_machine_scope`, autouse in this suite
-    since 2026-08-23, gives this test its own XDG_CONFIG_HOME.)
+    no probe of its own.  (conftest's `config_root_is_never_the_developers`
+    gives this test its own config root.)
 
     **A second isolation gap, found writing this test (2026-08-23).**  That
     fixture never touched cwd, and ``molbuilder.json``'s lookup then tried
@@ -65,15 +65,16 @@ def workstation_with_a_named_target(tmp_path, monkeypatch):
     look before it becomes automatic for every test in the suite.
     """
     monkeypatch.chdir(tmp_path)
-    from molbuilder.scheduler import environments_dir, machine_scope_path
+    from molbuilder.config_dir import ensure_private_dir
+    from molbuilder.scheduler import (environments_dir, machine_scope_path,
+                                      named_environment_path)
     # THIS MACHINE HAS NO PROBE OF ITS OWN -- which is the whole subject.
     # The suite writes one for every test (a probed box is prep's
     # precondition since 2026-09-02), so this fixture takes it away again
     # rather than test a shape that is not the reported one.
     machine_scope_path().unlink(missing_ok=True)
-    d = environments_dir()
-    d.mkdir(parents=True, exist_ok=True)
-    (d / "sol.json").write_text(json.dumps(_SOL))
+    d = ensure_private_dir(environments_dir())
+    named_environment_path("sol").write_text(json.dumps(_SOL))
     return d
 
 

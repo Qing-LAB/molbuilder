@@ -146,15 +146,16 @@ Retiring the step took **no migration and no compatibility layer** (user,
 > `archive/2026-09-01-config-access-plan.md` holds the reasoning and the order it was taken
 > in; **this document describes what is.**
 
-### 2.1b It holds secrets, so it is `0600` — checked, not just written
+### 2.1b It names a private key, so it is `0600` — checked, not just written
 
 *(User, 2026-08-31: "we should constrain its chmod in contract and in
 practice?")*
 
 `molbuilder.json` is not ordinary configuration. It carries `tls.cert` and
-`tls.key`, and the `auth.providers` block — paths to private
-keys, and provider credentials. A world-readable copy on a shared login node is
-a real exposure, not a tidiness question.
+`tls.key` — where the server's private key is — and the `auth.providers` block,
+who may sign in and with which client. A world-readable copy on a shared login
+node is a real exposure, not a tidiness question. *(It also named the
+providers' client-secret files until 2026-10-02; § 3.1.)*
 
 **The rule, for the file and its directory:**
 
@@ -916,8 +917,8 @@ policy, not reliably derivable from `sinfo`, so they come from the user's
 config, not detection."* In the same tree, `scheduler/probe.py::parse_allowed_qos`
 derives exactly that from `sacctmgr -nP show assoc user=$USER format=QOS`. Two
 modules disagreed about whether a fact is detectable — one probed it, the other
-declared it unprobeable — and `Site.qos` / `Site.account` have been dataclass
-fields that **nothing has ever written**.
+declared it unprobeable — and `Site.qos` has been a dataclass field that
+**nothing has ever written** (as was `Site.account`, removed 2026-10-02).
 
 ### M-1 — the split is **fact vs preference**, not probed vs declared
 

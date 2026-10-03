@@ -209,20 +209,15 @@ class TestNamingADomainDoesNotSkipTheCheck:
         assert "htc" in exc.value.reasons[0].note
 
 
-class TestTheGpuColumnHasTwoShapes:
-    """`Domain.gpu` is written two ways and nothing declares which.
-
-    Probed rows map TYPE to COUNT (one entry per gres type `sinfo` reported);
-    hand-declared rows describe ONE device with named keys.  Both are in live
-    records, so both are read -- a reader that understands only the shape it
-    happened to meet is how a hand-declared cluster stops being usable.
-
-    Found 2026-08-23, when admission started reading the column and crashed
-    with `int('a100')` on the second shape.
+class TestTheGpuColumn:
+    """`Domain.gpu` maps a gres TYPE to its per-node COUNT, as the probe
+    writes it (`scheduler.md` § 4, *Device*).  (A second, hand-declared
+    shape was read too until 2026-10-02; found 2026-08-23, when admission
+    started reading the column and crashed with `int('a100')` on it.)
     """
 
-    def test_a_label_in_the_column_is_skipped_not_raised(self):
+    def test_an_unreadable_count_is_skipped_not_raised(self):
         """An unreadable value is not a small one (R3) -- and it must not
         take the whole submission down with a ValueError."""
-        d = _dom(name="odd", gpu={"type": "a100"})
+        d = _dom(name="odd", gpu={"a100": "four"})
         assert admits(d, Request(gpus=2)) == []
