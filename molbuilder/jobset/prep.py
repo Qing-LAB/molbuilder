@@ -3142,7 +3142,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                                                token_for(task, stage))
         else:
             allocation, pins, chosen = prep_run_inputs(
-                base, target, task, stage, allocation, notes=notes)
+                base, task, stage, allocation, notes=notes)
 
         #     ...AND EVERY LAUNCH VALUE IS STATED, OR THE PREP IS REFUSED --
         #      here, with the whole assembly in hand, before the question and

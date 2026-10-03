@@ -1367,7 +1367,7 @@ def api_task_setup_prep():
         from molbuilder.jobset.model import Resources
         from molbuilder.jobset.prep_inputs import prep_run_inputs
         try:
-            _alloc, _pins, chosen = prep_run_inputs(dest, target, task, stage,
+            _alloc, _pins, chosen = prep_run_inputs(dest, task, stage,
                                                     Resources())
             return chosen
         except Exception:                                     # noqa: BLE001
@@ -1387,7 +1387,7 @@ def api_task_setup_prep():
         from molbuilder.jobset.prep_inputs import (prep_run_inputs,
                                                    run_uses_device)
         try:
-            alloc, _pins, _chosen = prep_run_inputs(dest, target, task, stage,
+            alloc, _pins, _chosen = prep_run_inputs(dest, task, stage,
                                                     Resources())
         except Exception:                                     # noqa: BLE001
             return []

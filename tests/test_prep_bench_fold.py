@@ -1041,7 +1041,7 @@ class TestTheRunsOwnCondition:
         task = read_task(calc / "task.json")
         for ask in (None, Resources()):
             alloc, _pins, chosen = prep_run_inputs(
-                calc, None, task, "coarse", ask)
+                calc, task, "coarse", ask)
             assert isinstance(alloc, Resources), ask
             assert alloc.mpi_np == 2 and alloc.cpus_per_task == 2
             assert chosen["mpi_np"] == 2
@@ -1077,13 +1077,13 @@ class TestTheRunsOwnCondition:
         (calc / "task.json").write_text(json.dumps(d, indent=2))
         t = read_task(calc / "task.json")
 
-        run, _pins, _chosen = prep_run_inputs(calc, None, t, "coarse",
+        run, _pins, _chosen = prep_run_inputs(calc, t, "coarse",
                                               allocation=Resources())
         assert run.time == "2-00:00:00", f"the run lost its wall: {run.time}"
         assert run.domain == "public", f"the run lost its queue: {run.domain}"
         assert run.mem == "256G", "mem does not ride `execution`"
 
-        other, _p, _c = prep_run_inputs(calc, None, t, "medium",
+        other, _p, _c = prep_run_inputs(calc, t, "medium",
                                         allocation=Resources())
         assert other.time == "0-04:00:00", "a rung with no `execution` of its "\
             "own must keep the calculation's"

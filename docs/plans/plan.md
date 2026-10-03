@@ -225,15 +225,15 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | R7 | the preamble guard's remedy | fixed `92e84cc8` |
 | R8 | the provenance card vanished with a named record | fixed `92e84cc8` (C10) |
 | R9 | the web prep route's own copy of the target checks | fixed `92e84cc8` |
-| R10 | the record read 3–4 times per prep | the reads go through one door and agree — one source, read again, is not a defect (`One source, not one place`), left; **fixed** — `_no_record`'s unreachable named-target branch |
-| R11 | a second road into the wrapper that only tests use | launch's `machine_for` fallback is used, kept; **to do** — the test-only fallbacks (`runwrap.py:3247`, `:2219`, `prep.py:287`) |
+| R10 | the record read 3–4 times per prep | the reads go through one door and agree — one source, read again, is not a defect (`One source, not one place`), left; **fixed `1b9ceeea`** — `_no_record`'s unreachable named-target branch |
+| R11 | a second road into the wrapper that only tests use | launch's `machine_for` fallback is used, kept; the test-only fallbacks **parked** — every production caller passes the record, so D1's risk (a production default choosing the machine) does not arise; what they serve is 57 direct renderer calls in 13 test files, which move to the road with T15 / T29, and requiring the record first would edit those calls twice |
 | R12 | paths and probe commands written by hand | **fixed `4d5b28f8`** (the rest, with R5) — `calculation_record` at prep and summarize; the probe commands through `probe_command` / `record_and_renewal` (the retired-`scheduler` message also said "copied here" for a named target's record, which would have overwritten this machine's) |
 | R13 | every record says prep wrote it | **fixed `5157ae90`** — the field's default is `jobset-probe@1` |
 | R14 | a value the probe keeps loses its `source` | **your word** — below |
 | R15 | `env_init` carried key by key | fixed `92e84cc8` |
 | R16 | `UnknownTarget` invited a hand-written record | fixed `0a7ea0e4` |
 | R17 | the no-activation notes sent to a command that would not ask | fixed `92e84cc8` |
-| R18 | unused parameters | **to do** — `n_atoms` of `_render_sbatch_for`; `target` of `declared_run_shape`, `run_inputs`, `prep_run_inputs` |
+| R18 | unused parameters | **fixed** — `n_atoms` of `_render_sbatch_for`; `target` of `declared_run_shape`, and of the two that only passed it down |
 | R19 | dead browser code | fixed `0a7ea0e4` |
 | R20 | comments describing the removed `scheduler` block | fixed `0a7ea0e4` |
 | R21 | record docs that were false | fixed `0a7ea0e4` |

@@ -367,7 +367,7 @@ def run_uses_device(base, task, stage=None):
         return False
 
 
-def declared_run_shape(base, target, task, stage=None):
+def declared_run_shape(base, task, stage=None):
     """The run's LAUNCH SHAPE — the condition's machine items, as `Resources`
     fields.  ``{}`` when the condition states none.
 
@@ -443,7 +443,7 @@ def declared_run_shape(base, target, task, stage=None):
     return out
 
 
-def run_inputs(base, target, task, stage=None):
+def run_inputs(base, task, stage=None):
     """The run's two halves from its condition — ``(chosen, pins)``.
 
     One block, two destinations, split by the catalogue's own answer: a
@@ -462,10 +462,10 @@ def run_inputs(base, target, task, stage=None):
     # like any other's (`gpu.md` G5 -- refused, unstated, by
     # `prep_run_inputs`).  It returned before this, so that run reached the
     # header with no ask (the K5 review's B1).
-    return declared_run_shape(base, target, task, stage), dict(pins or {})
+    return declared_run_shape(base, task, stage), dict(pins or {})
 
 
-def prep_run_inputs(base, target, task, stage, allocation=None, *,
+def prep_run_inputs(base, task, stage, allocation=None, *,
                     notes=None):
     """Everything ``prep run`` needs, assembled ONCE -- ``(allocation, pins,
     chosen)``.
@@ -514,7 +514,7 @@ def prep_run_inputs(base, target, task, stage, allocation=None, *,
 
     # 1 · THE CONDITION -- the run card, the launch-shape ladder's first rung,
     #     under a flag (`architecture.md` § 5.2).
-    chosen, cond_pins = run_inputs(base, target, task, stage)
+    chosen, cond_pins = run_inputs(base, task, stage)
     if ("gpu_count" in task.run_condition(stage)
             and not run_uses_device(base, task, stage)):
         # A COUNT WITHOUT A DEVICE RUN asks for nothing (`gpu.md` G4/G5),

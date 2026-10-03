@@ -4301,7 +4301,6 @@ def render_wrappers(script_path: Path, *,
     # invocation's overrides.
     if emit_sbatch:
         sbatch = _render_sbatch_for(script_path, resources=r, env=env,
-                                    n_atoms=n_atoms,
                                     project_dir=project_dir,
                                     machine_record=machine_record)
         if sbatch is not None:
@@ -4425,7 +4424,6 @@ def _render_sbatch_for(script_path: Path, *,
                        env: Optional[str],
                        domain_pq: Optional[Tuple[str, str]] = None,
                        machine_record=None,
-                       n_atoms: Optional[int] = None,
                        ) -> Optional[str]:
     """The ``.sbatch`` text for this job when its target has a scheduler;
     ``None`` when it does not.
@@ -4443,8 +4441,6 @@ def _render_sbatch_for(script_path: Path, *,
     _sbatch_request`).  Nothing is filled in: not the target's width, not a
     rank per GPU, not a queue's ceiling, not a default from any config.
 
-    ``n_atoms`` stays in the signature for its callers; nothing here reads
-    it since the atom-count clamp went (2026-09-03).
     """
     r = resources
     if project_dir is None:
