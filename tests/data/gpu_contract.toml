@@ -32,7 +32,7 @@ diag_algorithm = "ELPA-1STAGE"
 
 # The menu every case gets unless it says otherwise: shaped like ASU Sol --
 # a CPU queue, and a queue of 128-core nodes beside 48-core nodes with four
-# GPUs each, whose GPU work goes to its own partition.
+# GPUs each.
 [[queues]]
 name = "cpu"
 partition = "cpu"
@@ -43,9 +43,8 @@ node_types = [{ cores = 128, nodes = 10 }]
 
 [[queues]]
 name = "gpu"
-partition = "general"
+partition = "gpu"
 qos = "public"
-gpu_partition = "gpu"
 max_time = "1-00:00:00"
 max_cores = 128
 gpu = { a100 = 4 }
@@ -119,16 +118,12 @@ launch_refused = "needs 64 cores but gpu allows 48 cores"
 name = "a CPU job on the same queue keeps its 128-core nodes"
 run = { use_gpu = false, mpi_np = 64 }
 launch = ["--domain", "gpu"]
-line = ["-n 64", "-p general"]
+line = ["-n 64", "-p gpu"]
 line_lacks = ["--gres"]
 
-[[case]]
-name = "a queue that marks GPUs without a count is not refused on the number"
-queues = [{ name = "terse", partition = "t", qos = "public", gpu_partition = "tgpu", max_time = "1-00:00:00" }]
-allocation = { domain = "terse" }
-run = { use_gpu = true, gpu_count = 8, mpi_np = 8 }
-launch = ["--domain", "terse"]
-line = ["--gres=gpu:8", "-p tgpu"]
+# ("a queue that marks GPUs without a count is not refused on the number"
+# stood here: its queue marked GPUs by `gpu_partition` alone, a column
+# removed 2026-10-02 -- `scheduler.md` § 4.)
 
 [[case]]
 name = "a record silent about which nodes hold the GPUs keeps its whole ceiling"

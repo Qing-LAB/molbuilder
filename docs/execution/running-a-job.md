@@ -836,8 +836,8 @@ The block is refused by name (`configuration.md` § 4).
 **What the `.sbatch` header carries** (`render_sbatch`): a fixed `-J <basename>`,
 `-N 1`, `-o slurm.%j.out` / `-e slurm.%j.err`, and the job's own stated values —
 `-n <ranks>`, `-c <cores per rank>`, `-t <wall>`, `--mem`, and `-p` / `-q` from
-the queue it names, bound on the target's record (GPU work → that queue's
-`gpu_partition`); for GPU jobs `--gres=gpu:<count>` and — unless the
+the queue it names, bound on the target's record; for GPU jobs
+`--gres=gpu:<count>` and — unless the
 calculation's `allocation.gpu_binding` is `false` — `--gres-flags=enforce-binding`
 ([`gpu.md`](?doc=execution/gpu.md) G9). Where each value is stated is
 [`architecture.md`](?doc=execution/architecture.md) § 5.2, and prep refuses one

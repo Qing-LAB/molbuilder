@@ -1610,8 +1610,8 @@ def get_routing(
     always built them and then flattened them with ``to_row()`` on its last
     line, so every caller reached for ``row.max_time`` against a plain
     dict and nothing could tell a real column from a typo.  That is how
-    ``gpu_partition`` came to redirect GPU work from inside ``extra``, the bag
-    the record documents as uninterpreted.
+    ``gpu_partition`` (removed 2026-10-02) came to redirect GPU work from
+    inside ``extra``, the bag the record documents as uninterpreted.
 
     Returns ``[]`` when there is no record, or on a workstation: no queue to
     name.  Order is the record's; nothing here chooses among them -- a job

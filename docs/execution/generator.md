@@ -618,8 +618,7 @@ framework rule, not a script patch)*:
   while CPU trials run — the waste the split exists to stop.  **Routing**: the
   queue is named, never inferred (`submission.md` S5) — the bench's
   `allocation.domain` or `--domain` for both sides, `--gpu-domain` for the GPU
-  side when the two differ; a GPU group goes to its queue's `gpu_partition`
-  where the record declares one.  `--only cpu|gpu` submits one side — so
+  side when the two differ.  `--only cpu|gpu` submits one side — so
   `--only` + `--domain` places each side wherever the user says.  A side this
   machine cannot launch stays pending, and a later `submit bench`
   collects exactly the unlaunched side — which is the cross-cluster lane:

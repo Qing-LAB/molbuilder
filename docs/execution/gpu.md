@@ -62,7 +62,7 @@ accurate/accommodating" — "and which part is none of your business".)*
 | **Does this run use a GPU?** | the person — `use_gpu` on the run card (`execution`), over the template's value; an axis of a bench | renders each engine's keyword (`Diag.ELPA.GPU`, gpu4pyscf), takes SIESTA to its GPU build, asks the scheduler for GPUs. Not said, no GPU is asked for |
 | **How many GPUs?** | the person — `gpu_count` on the run card, both engines, or `--gpus N` on the prep | asks `--gres=gpu:N`. **No default:** a run that uses a GPU and states no count is refused at prep, naming where to write it (G5). A bench that names no `gpu_count` measures each count that divides its rank counts, up to the most one node holds (§ 3.1) |
 | **Which queue may take it?** | the target's record, written by `jobset probe` | only a queue whose record lists GPUs, where one node holds at least N — the queue the job names (`allocation.domain`, the run card, `--domain`). That is the whole of the GPU check ([`scheduler.md`](?doc=execution/scheduler.md) R2a). A GPU job's cores are checked against the widest node that HAS GPUs (R3) |
-| **Where is GPU work submitted?** | the target's record — a queue's `gpu_partition` column, where the record carries one (the probe does not write it) | `-p` names it when the record does, else the queue's own partition |
+| **Where is GPU work submitted?** | the job — the queue it names | `-p` is that queue's own partition, as for any job. *(A record column, `gpu_partition`, could send GPU work elsewhere until 2026-10-02; the probe never wrote it, and it was removed — user: "gpu detection is done independently from this".)* |
 | **Are the job's cores bound to its GPUs?** | molbuilder: yes — and the person may turn it off, `"gpu_binding": false` in `task.json`'s `allocation` | sends `--gres-flags=enforce-binding` with every GPU ask, unless turned off (G9) |
 | **How do the ranks share the GPUs?** | molbuilder's launch script, at run time | spreads the ranks over the GPUs the scheduler GAVE the job (counted from `CUDA_VISIBLE_DEVICES`), starts MPS when ranks outnumber GPUs, pins each rank to its GPU's NUMA node ([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.3). The rank and thread counts are the stated ones — a GPU job that states none is refused at prep, like any job ([`architecture.md`](?doc=execution/architecture.md) § 5.2) |
 | **Can the deck run on a GPU there?** | the target's record — which environments exist | SIESTA: refused at prep when the target has no GPU build of SIESTA; PySCF: checked at run start, because a login node cannot see a device (G6, G8) |
@@ -80,9 +80,8 @@ in both of the record's spellings — the probe's `{"a100": 4}` and a
 hand-written `{"type": "a100", "per_node": 4}` (`scheduler.md` § 4,
 *Device*); any card name, MIG slices included, counts as GPUs; a record
 whose probe ran on a login node that sees none gives the count from its
-queues; and a queue whose record marks GPUs — a `gpu` column or a
-`gpu_partition` — without saying how many is never refused on the number
-(R3: silence never bars).
+queues; and a queue whose `gpu` column marks GPUs without saying how many
+is never refused on the number (R3: silence never bars).
 
 ### 1.2 The machine's — never asked, compared, chosen or configured
 
@@ -104,7 +103,7 @@ queues; and a queue whose record marks GPUs — a `gpu` column or a
 name — with the rest of the `scheduler` block since 2026-10-02
 ([`configuration.md`](?doc=configuration.md) § 4). Its `default_type` named a card, and its `partition`, `exclusive` and
 `mem` wrote this machine's settings into every GPU job — `partition`
-overriding the target's own `gpu_partition`. A GPU job's memory is asked
+overriding the queue the job named. A GPU job's memory is asked
 exactly as a CPU job's (`running-a-job.md` § 5.3.1), and nothing asks for a
 whole node.
 
@@ -120,7 +119,6 @@ whole node.
 | `Diag.ELPA.GPU` | *(rendered)* | the SIESTA deck | the keyword `use_gpu` becomes |
 | `gpu4pyscf` / `to_gpu()` | *(rendered)* | the PySCF deck | the same, for PySCF |
 | `Device(type, per_node, mem_gb)` | **the probe, or the operator** | `environment.json` · `Domain.gpu` | what one node of a queue **offers** — the ceiling; its `type` is shown, never compared |
-| `Domain.gpu_partition` | **the record** — the probe does not write it; honoured where a record carries it | `environment.json` | where GPU work lands when that differs |
 | `topology.gpus_per_node` · `gpu_type` | **the probe** | `environment.json` | what the probed node has — the count bounds a bench's GPU counts; the card is shown, never compared |
 
 > **The ask and the ceiling are different variables, and the names hide it.**
@@ -218,7 +216,6 @@ flowchart TB
     subgraph MACH["the machine record — what is offered"]
         DEV["<b>Device</b> type · per_node · mem_gb<br/><i>the CEILING</i>"]
         TOPO["topology.gpus_per_node · gpu_type"]
-        PART["Domain.gpu_partition"]
     end
 
     WANT --> Q1{"use_gpu?"}
@@ -242,7 +239,6 @@ flowchart TB
     DEV -.-> ADMIT
     ADMIT -->|no| REFUSE3["<b>refused locally</b><br/>names the number that would fit"]
     ADMIT -->|yes| PLACE["placement — one decision"]
-    PART -.->|"GPU work lands here"| PLACE
     PLACE --> OUT["#SBATCH header + sbatch flags<br/><i>two renderings, one placement</i>"]
 
     CPU --> OUT

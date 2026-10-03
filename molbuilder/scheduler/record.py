@@ -212,13 +212,11 @@ class Domain:
     #: the record positively rules out) and this is what a person reads to
     #: choose.  Empty means the record does not say, never *no machines*.
     node_types: Optional[List[Dict[str, Any]]] = None
-    #: Where a GPU job goes when that differs from ``partition``.  DECLARED
-    #: since 2026-08-23 (scheduler.md § 4): it redirects real work, and until
-    #: then it rode in ``extra`` -- the bag this reader documents as
-    #: uninterpreted -- read by two call sites in routing that reached past
-    #: the type to a raw key.  A value that changes where a job lands is a
-    #: field or it is a bug waiting.
-    gpu_partition: Optional[str] = None
+    # `gpu_partition` -- where a GPU job went when that differed from
+    # ``partition`` -- was a field here from 2026-08-23 until 2026-10-02: the
+    # probe never wrote it, and a GPU job goes to the queue it names
+    # (`scheduler.md` § 4).  A record still carrying one keeps it in
+    # ``extra``, and the machine list says so.
     #: Columns this reader does not check, kept verbatim.
     extra:     Dict[str, Any] = field(default_factory=dict)
 
@@ -231,7 +229,7 @@ class Domain:
     _KNOWN = ("name", "partition", "qos", "max_time",
               "max_cores", "max_mem_gb", "default_mem_per_core_gb",
               "max_cpus_per_job", "max_cpus_per_node", "max_submit_jobs",
-              "gpu", "gpu_partition", "node_types")
+              "gpu", "node_types")
 
     #: The tri-state policy columns (see their field note): ``None`` is a
     #: real answer here and lands as ``null``; only ``UNSET`` stays off
@@ -917,12 +915,11 @@ def known_machines() -> List[Dict[str, object]]:
         # dropping a column is the bug" -- and a retired key an operator
         # still writes, or a column of their own, must survive.  But that
         # makes a MISSPELLING indistinguishable from a deliberate extra:
-        # `gpu_parition` lands in `extra` exactly like `node_type` does,
-        # and `gpu_partition` then reads as unstated, so every GPU job goes
-        # to the ordinary partition (`_bind` takes `gpu_partition or
-        # partition`).  `scheduler.md` § 4 predicted it -- "a value that
-        # changes where a job lands is a field, or it is a bug waiting for
-        # someone to misspell it".
+        # `max_tme` lands in `extra` exactly like `node_type` does, and
+        # `max_time` then reads as unstated, so a job asking more wall than
+        # the queue allows is admitted (R3).  `scheduler.md` § 4 predicted
+        # it -- "a value that changes where a job lands is a field, or it is
+        # a bug waiting for someone to misspell it".
         #
         # Neither refusing nor dropping is available, so the answer is to
         # SAY SO.  Nothing is rejected and nothing is lost; a typo simply

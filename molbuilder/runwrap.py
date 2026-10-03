@@ -4363,8 +4363,7 @@ def _bound_queue(resources, domain_pq, env_rec, *, prefer_gpu=False):
 
     ``Placement`` is R1's "ONE decision" -- the header and the `sbatch`
     command line are two renderings of it -- so this returns one rather than
-    a bare ``(partition, qos)``: `_bind` sends GPU work to the queue's
-    ``gpu_partition`` where the record carries one.
+    a bare ``(partition, qos)``.
 
     Who names it, in order:
 

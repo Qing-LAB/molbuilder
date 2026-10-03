@@ -112,7 +112,10 @@ def place(routing, request: Request, *, prefer_gpu: bool,
             why = admits(d, request)
             if why:
                 raise Unplaceable(why, gpu_side=prefer_gpu)
-            return _bind(d, prefer_gpu)
+            # The queue's own partition, GPU work included (a record's
+            # `gpu_partition` could send GPU work elsewhere until 2026-10-02,
+            # `scheduler.md` § 4).
+            return Placement(domain=d, partition=d.partition, qos=d.qos)
     # A finding like every other refusal (`admit._refusal`), so
     # `Unplaceable` carries ONE shape rather than two.
     raise Unplaceable(
@@ -121,14 +124,3 @@ def place(routing, request: Request, *, prefer_gpu: bool,
                       f"{', '.join(d.name for d in rows)}")],
         gpu_side=prefer_gpu)
 
-
-def _bind(domain, prefer_gpu: bool) -> Placement:
-    """A domain plus the partition this KIND of work actually goes to.
-
-    ``gpu_partition`` is where a GPU job goes when that differs from the
-    domain's ordinary partition — a declared field since phase 3, and read
-    here rather than by each caller.
-    """
-    part = (domain.gpu_partition or domain.partition) if prefer_gpu \
-        else domain.partition
-    return Placement(domain=domain, partition=part, qos=domain.qos)

@@ -34,11 +34,11 @@ def domain_serves_gpu(row: Mapping[str, Any]) -> bool:
     cell check and `launch`'s side routing, `generator.md` § 4.3a): half of
     the GPU check (`scheduler.md` R2a), the count being the other.
 
-    True when the row records a GPU inventory (the probe writes each
-    partition's gres types onto its row) or declares a ``gpu_partition``
-    (the hand-curated column `_resolve_domain` already honours).
+    True when the row records a GPU inventory -- the probe writes each
+    partition's gres types onto its row.  (A hand-curated ``gpu_partition``
+    counted too until 2026-10-02, when the column was removed.)
     """
-    return bool(row.gpu) or bool(row.gpu_partition)
+    return bool(row.gpu)
 
 
 @dataclass(frozen=True)
@@ -186,8 +186,8 @@ def _compare(row, *, cores: Optional[int] = None,
         # THE ONE GPU CHECK (`scheduler.md` R2a; user, 2026-10-01: "the only
         # thing you check is the gpu dependent task is scheduled to the
         # group/domain that actually claimed to have it, and has the capacity
-        # as requested"): the queue's record CLAIMS GPUs -- a `gpu` column or
-        # a `gpu_partition` (`domain_serves_gpu`) -- and a node there holds
+        # as requested"): the queue's record CLAIMS GPUs -- its `gpu` column
+        # (`domain_serves_gpu`) -- and a node there holds
         # as many as were asked.  Both halves here, so a queue NAMED with
         # `--domain` meets the check a queue `place.candidates` picked does:
         # the named path skipped the first half until 2026-10-01.  No card
@@ -198,11 +198,10 @@ def _compare(row, *, cores: Optional[int] = None,
                                allowed=0, note="its record lists no GPUs"))
         else:
             # R3 FOR THE COUNT.  A queue that claims GPUs without saying how
-            # many is silent about the number, not claiming none -- records
-            # describe a GPU queue by its `gpu_partition` alone, and refusing
-            # on that silence made an explicitly named domain unusable the
-            # moment its record was terse (caught 2026-08-23, when R9 started
-            # admitting the named path).
+            # many is silent about the number, not claiming none -- and
+            # refusing on that silence made an explicitly named domain
+            # unusable the moment its record was terse (caught 2026-08-23,
+            # when R9 started admitting the named path).
             most = _devices_offered(row)
             if most is not None and most < gpus:
                 why.append(Refusal("gpus", row.name, unit="GPUs", asked=gpus,

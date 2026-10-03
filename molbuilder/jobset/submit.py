@@ -688,8 +688,7 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
     group's envelope asks no ``gres`` and devices are never held while CPU
     trials run.  The names come from the SET's composition, not from what
     is pending, so a side keeps its name across resubmissions.  ``domain``
-    applies to both sides through `scheduler.place` (a GPU side
-    prefers the domain's ``gpu_partition``); ``only`` (``"cpu"``/``"gpu"``)
+    applies to both sides through `scheduler.place`; ``only`` (``"cpu"``/``"gpu"``)
     submits one side -- and a side this machine cannot launch simply stays
     pending for a later `launch bench`, which is the cross-cluster lane.
 

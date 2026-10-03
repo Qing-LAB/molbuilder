@@ -237,12 +237,12 @@ difference is whether the field has a name in the type.
 column is right and refusing it is not available — a retired key an operator
 still writes, or a column of their own, must survive (R10; pinned by
 `test_declared_rows_keep_the_operators_own_columns`). But that leaves a
-**misspelling indistinguishable from a deliberate extra**: `gpu_parition`
-lands in `extra` exactly as `node_type` does, `gpu_partition` then reads as
-unstated, and a GPU job goes to `domain.gpu_partition or domain.partition` —
-the ordinary queue, silently. This section predicts it below: *"a value that
-changes where a job lands is a field, or it is a bug waiting for someone to
-misspell it."*
+**misspelling indistinguishable from a deliberate extra**: `max_tme` lands in
+`extra` exactly as `node_type` does, `max_time` then reads as unstated, and
+a job asking more wall than the queue allows is admitted — R3, silence never
+bars — and the scheduler, not molbuilder, is the one that finds out. This section predicts
+it below: *"a value that changes where a job lands is a field, or it is a bug
+waiting for someone to misspell it."*
 
 So `known_machines()` names them — `?? not understood: <columns>` in the
 machine's summary line:
@@ -311,7 +311,7 @@ partially-probed cluster unusable.
 group/domain that actually claimed to have it, and has the capacity as
 requested (gpu_number). that's it"; "we never claimed any card type".)* A GPU
 job goes only to a queue whose record lists GPUs — the `gpu` column the probe
-writes from what the scheduler reports, or a `gpu_partition` — and is admitted
+writes from what the scheduler reports — and is admitted
 there only when one node offers at least the number asked: the most any node
 of that queue holds, whatever its card. That is the whole of the GPU check,
 and it is made in `admits`, so a queue named with `--domain` meets it as a
@@ -569,12 +569,13 @@ already running where the answer is.
   type)"* — a reader that knew only the map, naming the descriptor's own keys
   as devices. *A count the record does not state is `None`, never zero: R3
   applies to devices too.*
-- **`gpu_partition`** — where a GPU job goes when that differs from the
-  domain's ordinary partition. **A declared field since phase 3**, and so
-  subject to R2. Until then it rode in `extra` — the bag documented as
-  uninterpreted — and was read by two call sites in routing that reached past
-  the type to a raw key. A value that changes where a job lands is a field, or
-  it is a bug waiting for someone to misspell it.
+- *(`gpu_partition` — where a GPU job went when that differed from the
+  queue's partition — was a declared field from phase 3 until 2026-10-02,
+  when it was removed: the probe never wrote it, a GPU job goes to the queue
+  it names, and which queues have GPUs is the `gpu` column's (user: "gpu
+  detection is done independently from this"). Its lesson stands: a value
+  that changes where a job lands is a field, or it is a bug waiting for
+  someone to misspell it.)*
 - **Request** — what one job asks for: ranks, cpus-per-task, GPUs, memory,
   wall, exclusivity. Fields the caller does not know are `None` (R7).
 - **Placement** — a request bound to a domain, with the reasoning that chose
@@ -601,7 +602,7 @@ flowchart TD
   Q1{"does the job<br/>name a queue?"}
   QL{"does the record<br/>list it?"}
   Q2{"does that queue<br/>admit the request?"}
-  PLACE(["PLACE<br/><i>the named queue, bound<br/>(GPU work → its gpu_partition)</i>"])
+  PLACE(["PLACE<br/><i>the named queue, bound</i>"])
   RU["refuse — a job names its own queue;<br/>here are the record's"]
   RL["refuse — the record lists<br/>no such queue"]
   RN["refuse — name what is too big,<br/>and what would fit"]
@@ -718,7 +719,7 @@ The schedule is `plans/plan.md` § 5f, **S6**, not here (R3).
    a dataclass, but the queue menu was handed out as `List[Dict[str, Any]]` —
    `get_routing` built `Domain`s and then threw the type away on its last line
    with `to_row()`, so every placement function poked at a plain dict with
-   `row.get("max_time")` and nothing could tell a real column from a typo. That is *how* `gpu_partition` came to
+   `row.get("max_time")` and nothing could tell a real column from a typo. That is *how* `gpu_partition` (removed 2026-10-02) came to
    redirect real work from inside the unexamined bag (§ 4): nothing checks a
    dictionary key against a declared field. Steps 4 and 5 both assume typed
    rows, and R2's memory comparison needs the unit conversion this step gives
