@@ -1111,7 +1111,21 @@ records and adds the science:
 | seed | the converged energy and E_F of the periodic junction | as any SCF |
 | electrode_L · electrode_R | each lead's E_F — the reference for T(E), and the two must agree | as any SCF |
 | device | the **NEGF** phase's energy, E_F and iterations — never the periodic initialization's; the charge distribution (device · electrodes · couplings) and the molecule's change against the periodic start; the contour and pole count TranSIESTA used | the device symptoms (`model/parse.md` § 5d.6) |
-| transmission | T(E_F) and the conductance — G = G₀·T(E_F), or (e²/h)·(T↑ + T↓) per spin channel when polarized — with the E_F reference **checked** rather than assumed; T(E) per spin channel; the window, points and TBT k-grid; the eigenchannels and the DOS; the I–V with its treatment named (§ 2a.10) | the run's end, and the channels it wrote |
+| transmission | T(E_F) and the conductance — G = G₀·T(E_F), or (e²/h)·(T↑ + T↓) per spin channel when polarized — with the E_F reference **checked** rather than assumed; T(E) per spin channel; the window, points and TBT k-grid; the eigenchannels and the DOS; the I–V with its treatment named (§ 2a.10), its current **the junction's total** — see below | the run's end, and the channels it wrote |
+
+**The current is the junction's total, and says so** *(user, 2026-10-03, Q5:
+"make sure the result presentation, data record and the summary/comments
+clearly explain what is what")*. TBtrans prints one spin channel's current —
+its Landauer integral is I = (e/h)∫T, with no factor 2 for spin
+(`m_tbt_save.F90`) — while the conductance beside it is in G₀ = 2e²/h, both
+channels. So the record's `current_a` is the total: **twice the printed figure
+for a non-polarized calculation**, and the sum of the two channels for a
+polarized one (read once both channels are, plan K21 — until then a polarized
+point's total is left empty). The figure TBtrans printed stays beside it
+(`current_a_printed`), the spin each point ran with is the one its own deck
+states (`spin`), and the record says in words what each number is
+(`current_means`) — and so do the table `summarize` prints and the Results
+tab, under the I–V.
 
 **Shown, not listed**: each rung's convergence is drawn by the SCF plots the
 trajectory viewer uses, and T(E) per bias point and channel, the I–V, the

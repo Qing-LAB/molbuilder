@@ -115,16 +115,84 @@ class TestTheRecord:
         assert [p["bias_v"] for p in rec["points"]] == [0.0, 0.2]
         assert rec["points"][0]["conductance_g0"] == pytest.approx(
             2.0, abs=0.01)
-        assert rec["iv"]["current_a"][1] == pytest.approx(3.09835e-05)
+        # THE TOTAL, beside the figure TBtrans printed -- one spin channel's
+        # -- and what each is, in words (`engines/transport.md` § 2a.4; user,
+        # Q5): this junction is non-polarized, its deck says so.
+        assert rec["points"][1]["spin"] == "non-polarized"
+        assert rec["iv"]["current_a_printed"][1] == pytest.approx(3.09835e-05)
+        assert rec["iv"]["current_a"][1] == pytest.approx(2 * 3.09835e-05)
+        assert "twice the printed figure" in \
+            rec["current_means"]["non-polarized"]
         assert rec["provenance"]["slot"]["citation"].endswith("run-0")
         assert rec["provenance"]["atom_permutation"] == \
             "atom-permutation.json"
         out = write_record(calc, rec)
         assert out.name == "T.transport.json"
         back = json.loads(out.read_text())
-        assert back["schema"] == "molbuilder/transport-result@1"
+        assert back["schema"] == "molbuilder/transport-result@2"
         text = iv_table_text(rec)
-        assert "1.9997" in text and "3.0983e-05" in text
+        assert "1.9997" in text and "6.1967e-05" in text \
+            and "3.0983e-05" in text and "twice the printed figure" in text
+
+        # A POLARIZED point's total is its two channels' sum (plan K21):
+        # empty until both are read, its printed channel kept and said.
+        import re
+        deck = next((calc / "05_transmission" / "v0.2" / "run-0")
+                    .glob("*.fdf"))
+        said, n = re.subn(r"(?m)^Spin\s+non-polarized", "Spin polarized",
+                          deck.read_text())
+        assert n == 1, "the run's deck must state its spin, or this proves nothing"
+        deck.write_text(said)
+        p = collect_record(calc, task)["points"][1]
+        assert (p["spin"], p["current_a"]) == ("polarized", None), p
+        assert p["current_a_printed"] == pytest.approx(3.09835e-05)
+
+    def test_the_results_tab_says_what_the_current_is(self, calc):
+        """Q5 (user, 2026-10-03: "make sure the result presentation, data
+        record and the summary/comments clearly explain what is what"): the
+        Results tab's transport view, run in node on the record
+        `collect_record` builds, shows the total and TBtrans's printed figure
+        under their own headings, and the record's words for each.
+
+        API-LEVEL: the view's render, which no `jobset` verb reaches.
+
+        MUTATION THIS MUST FAIL AGAINST: the view without the record's words."""
+        from _node_esm import run_node
+        from molbuilder.task import read_task
+        _ran_transmission(calc, "v0")
+        rec = collect_record(calc, read_task(calc / "task.json"))
+        static = (Path(__file__).resolve().parents[1] / "molbuilder" / "web"
+                  / "static")
+        stub = (
+            "class El { constructor(t) { this.tag = t; this.kids = [];"
+            "  this.own = ''; this.className = ''; this.attrs = {}; }"
+            " appendChild(c) { this.kids.push(c); return c; }"
+            " setAttribute(k, v) { this.attrs[k] = String(v); }"
+            " querySelector() { return null; } addEventListener() {}"
+            " set textContent(v) { this.own = String(v); this.kids = []; }"
+            " get textContent() { return [this.own, ...this.kids.map("
+            "  (c) => c.textContent)].filter(Boolean).join(' | '); }"
+            " set innerHTML(v) { this.own = ''; this.kids = []; }"
+            " get classList() { const e = this; return {"
+            "  add: (c) => { e.className += ' ' + c; }, remove() {},"
+            "  toggle() {}, contains: () => false }; } }\n"
+            "globalThis.window = globalThis;\n"
+            "globalThis.document = { createElement: (t) => new El(t),"
+            " dispatchEvent: () => true };\n"
+            "globalThis.CustomEvent = class { constructor(n, o) {"
+            " this.type = n; this.detail = (o || {}).detail; } };\n")
+        shown = run_node(
+            [static / "lib" / "dom.js",
+             static / "lib" / "inspectors" / "transport.js"],
+            "const host = document.createElement('div');\n"
+            "window.molbuilder.inspectors.transportInspector.mount(host,"
+            " 'T.transport.json', { readFile: async () => ({ ok: true,"
+            f" text: {json.dumps(json.dumps(rec))} }}) }});\n"
+            "await new Promise((r) => setTimeout(r, 50));\n"
+            "console.log(JSON.stringify(host.textContent));",
+            globals_js=stub)
+        assert "Current, total [A]" in shown and "TBtrans printed [A]" in shown
+        assert rec["current_means"]["non-polarized"] in shown, shown
 
     def test_a_point_not_yet_run_reads_as_pending(self, calc):
         from molbuilder.task import read_task

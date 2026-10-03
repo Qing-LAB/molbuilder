@@ -27,7 +27,7 @@ register(FcSweepRecordFileParser)
 # `schema_version` -- and no molbuilder version has ever written that shape:
 # `sidecars.transport.dump_transport_json` had zero production callers in
 # every revision since 2026-06-11.  The composite's record
-# (`transport/record.py`, `schema: molbuilder/transport-result@1`) is what
+# (`transport/record.py`, `schema: molbuilder/transport-result@2`) is what
 # lands on disk, and that parser was written to decline exactly that.
 #
 # The new one reads the LIVE shape, checks that discriminator in `can_parse`,

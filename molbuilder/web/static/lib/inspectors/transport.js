@@ -52,7 +52,12 @@
 
         const table = _el("table", "transport-iv");
         const head = _el("tr");
-        ["Bias [V]", "G(E_F) [G0]", "Current [A]"].forEach((h) => {
+        /* THE CURRENT IS THE JUNCTION'S TOTAL, both spin channels, beside
+         * the figure TBtrans printed -- one channel's -- and the record says
+         * which is which under the table (`engines/transport.md` § 2a.4;
+         * `transport/record.py`'s CURRENT_MEANS). */
+        ["Bias [V]", "G(E_F) [G0]", "Current, total [A]",
+         "TBtrans printed [A]"].forEach((h) => {
             head.appendChild(_el("th", null, h));
         });
         table.appendChild(head);
@@ -62,6 +67,7 @@
             tr.appendChild(_el("td", null, _fmt(p.bias_v, 3, false)));
             tr.appendChild(_el("td", null, _fmt(p.conductance_g0, 4, false)));
             tr.appendChild(_el("td", null, _fmt(p.current_a, 4, true)));
+            tr.appendChild(_el("td", null, _fmt(p.current_a_printed, 4, true)));
             table.appendChild(tr);
         });
         /* A pending point is a point that has not RUN, not a failure: the
@@ -71,10 +77,17 @@
             const tr = _el("tr", "transport-pending");
             tr.appendChild(_el("td", null, _fmt(p.bias_v, 3, false)));
             tr.appendChild(_el("td", null, "pending"));
-            tr.appendChild(_el("td", null, p.why || ""));
+            const why = _el("td", null, p.why || "");
+            why.setAttribute("colspan", "2");
+            tr.appendChild(why);
             table.appendChild(tr);
         });
         wrap.appendChild(table);
+        const means = rec.current_means || {};
+        Object.keys(means).sort().forEach((spin) => {
+            wrap.appendChild(_el("p", "transport-note",
+                                 spin + ": " + means[spin]));
+        });
 
         /* THE LADDER, in order.  A transport result is FIVE calculations and
          * the record now says so (`transport/record.py::_stage_facts`); this

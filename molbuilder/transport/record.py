@@ -9,9 +9,10 @@ a REAL 5.4.2 run (the carbon-chain live walk, 2026-08-29; the frozen
 fixtures in ``tests/data/`` are that run's files).
 
 What lands on disk is ONE file at the calculation root,
-``<label>.transport.json`` (``molbuilder/transport-result@1``): T(E)
-per bias point, the I–V table, and the provenance that says which
-junction built it — the citation (from ``slot-provenance.json``) and
+``<label>.transport.json`` (``molbuilder/transport-result@2``): T(E)
+per bias point, the I–V table -- the junction's TOTAL current, with the
+figure TBtrans printed and the factor between them (:data:`CURRENT_MEANS`)
+-- and the provenance that says which junction built it — the citation (from ``slot-provenance.json``) and
 the atom-permutation reference, so every downstream index can be
 mapped back to the relaxation's identities.
 
@@ -29,7 +30,33 @@ from typing import Dict, List, Optional, Tuple
 
 from ..atom_permutation import PERMUTATION_FILE
 
-TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@1"
+#: ``@2`` since 2026-10-03: ``current_a`` became the junction's TOTAL current
+#: -- both spin channels -- with TBtrans's printed figure beside it
+#: (``current_a_printed``).  A MAJOR bump because an ``@1`` record's
+#: ``current_a`` IS the printed figure, one spin channel's, and a reader of
+#: the new meaning must not read it as the total: an old record is refused by
+#: its version, and `summarize run` writes it again.
+TRANSPORT_RESULT_SCHEMA = "molbuilder/transport-result@2"
+
+#: What the record's current IS, said in the record (`engines/transport.md`
+#: § 2a.4; user, 2026-10-03, Q5: "make sure the result presentation, data
+#: record and the summary/comments clearly explain what is what").  TBtrans's
+#: Landauer integral is one spin channel's -- I = (e/h)∫T, no factor 2 for
+#: spin (`m_tbt_save.F90`) -- while the conductance beside it is in
+#: G0 = 2e²/h, both channels.
+CURRENT_MEANS = {
+    "non-polarized": (
+        "current_a is the junction's total current, both spin channels: "
+        "TBtrans prints one spin channel's (its Landauer integral has no "
+        "factor 2 for spin), and the two channels of a non-polarized "
+        "calculation carry the same current, so the total is twice the "
+        "printed figure (current_a_printed, as TBtrans printed it)."),
+    "polarized": (
+        "a spin-polarized junction's total current is the sum of its two "
+        "channels, which this record reads once both are (plan K21); until "
+        "then current_a is empty and current_a_printed is the one channel "
+        "TBtrans printed first."),
+}
 
 #: TBtrans prints the Landauer current as its own integral -- one line
 #: per electrode pair.  Matched loosely on the unit scaffold so custom
@@ -98,6 +125,31 @@ def parse_avtrans(text: str) -> Tuple[List[float], List[float]]:
         raise RecordError("no transmission rows parsed -- not an "
                           "AVTRANS file?")
     return energies, trans
+
+
+def deck_spin(run_dir) -> str:
+    """The spin the run's own deck states -- ``non-polarized`` or
+    ``polarized`` -- read from the deck in its run directory, the input the
+    run used (every SIESTA deck molbuilder writes states ``Spin``, since
+    2026-09-28).  No ``Spin`` line is SIESTA's own default, non-polarized."""
+    from ..parse.fdf import _parse_fdf
+    for deck in sorted(Path(run_dir).glob("*.fdf")):
+        scalars, _blocks = _parse_fdf(deck.read_text(encoding="utf-8",
+                                                     errors="replace"))
+        said = (scalars.get("spin") or [None])[0]
+        if said:
+            return ("polarized" if str(said).strip().lower() == "polarized"
+                    else "non-polarized")
+    return "non-polarized"
+
+
+def total_current(printed: Optional[float], spin: str) -> Optional[float]:
+    """The junction's total current from TBtrans's printed one-channel
+    figure (:data:`CURRENT_MEANS`): twice it, non-polarized; a polarized
+    junction's total is its two channels' sum (plan K21), so ``None`` here."""
+    if printed is None or spin != "non-polarized":
+        return None
+    return 2.0 * printed
 
 
 def parse_current_a(out_text: str) -> Optional[float]:
@@ -284,6 +336,7 @@ def collect_record(base_dir, task) -> Dict:
                              f"{att.relative_to(base)}")})
             continue
         energies, trans = parse_avtrans(avtrans[0].read_text())
+        spin = deck_spin(where)
         current = None
         # `.out` IS the catalogue's role, so the catalogue finds it; the
         # newest-first order is this caller's own question and stays here.
@@ -300,7 +353,10 @@ def collect_record(base_dir, task) -> Dict:
             "energy_ev": energies,
             "transmission": trans,
             "conductance_g0": conductance_g0(energies, trans),
-            "current_a": current,
+            # THE TOTAL, and the figure it came from (`CURRENT_MEANS`).
+            "current_a": total_current(current, spin),
+            "current_a_printed": current,
+            "spin": spin,
         })
     if not points_out:
         from ..jobset.commands import block, run_first
@@ -340,7 +396,12 @@ def collect_record(base_dir, task) -> Dict:
         "iv": {
             "voltages_v": [p["bias_v"] for p in points_out],
             "current_a": [p["current_a"] for p in points_out],
+            "current_a_printed": [p["current_a_printed"] for p in points_out],
         },
+        # WHAT THE CURRENT IS, in the record's own words -- for each spin the
+        # points were run with (one, for a junction decided once).
+        "current_means": {s: CURRENT_MEANS[s]
+                          for s in sorted({p["spin"] for p in points_out})},
         "provenance": {
             "slot": provenance,
             "atom_permutation": PERMUTATION_FILE,
@@ -359,22 +420,28 @@ def write_record(base_dir, record: Dict) -> Path:
 
 
 def iv_table_text(record: Dict) -> str:
-    """The printed deliverable: one row per point — G(E_F) and the
-    engine's own current."""
+    """The printed deliverable: one row per point — G(E_F), the junction's
+    total current, and the figure TBtrans printed -- then what the current
+    is, in the record's words (:data:`CURRENT_MEANS`)."""
     lines = [f"transport record — {record['label']}: "
              f"{len(record['points'])} point(s)"
              + (f", {len(record['pending'])} pending"
                 if record.get("pending") else "")]
-    lines.append(f"  {'V [V]':>8}  {'G(E_F) [G0]':>12}  {'I [A]':>12}")
+    lines.append(f"  {'V [V]':>8}  {'G(E_F) [G0]':>12}  "
+                 f"{'I total [A]':>12}  {'I printed [A]':>13}")
     for p in record["points"]:
         g = p["conductance_g0"]
-        i = p["current_a"]
+        i, i0 = p["current_a"], p.get("current_a_printed")
         lines.append(
             f"  {p['bias_v']:>8.3f}  "
             + (f"{g:>12.4f}" if g is not None else f"{'--':>12}")
             + "  "
-            + (f"{i:>12.4e}" if i is not None else f"{'--':>12}"))
+            + (f"{i:>12.4e}" if i is not None else f"{'--':>12}")
+            + "  "
+            + (f"{i0:>13.4e}" if i0 is not None else f"{'--':>13}"))
     for p in record.get("pending", ()):
         lines.append(f"  {p['bias_v']:>8.3f}  {'pending':>12}  "
                      f"{'':>12}  ({p['why']})")
+    for spin, means in sorted((record.get("current_means") or {}).items()):
+        lines.append(f"  {spin}: {means}")
     return "\n".join(lines)
