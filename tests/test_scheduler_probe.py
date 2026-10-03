@@ -327,20 +327,11 @@ def _cli(args, **kw):
     return CliRunner().invoke(jobset_group, ["probe", *args], **kw)
 
 
-def test_set_declares_typed_facts_and_the_source_says_flag(tmp_path):
-    """M-1's declared door: a fact the probe cannot see from here arrives
-    by --set, typed by the schema itself, and the record's source admits
-    it (`flag`)."""
-    import json
-    r = _cli(["--set", "gpus_per_node=4", "--set", "gpu_type=a100",
-              "--set", "mem_total_gb=1536.5",
-              "--write", "--yes", "--out", str(tmp_path)])
-    assert r.exit_code == 0, r.output
-    d = json.loads((tmp_path / "environment.json").read_text())
-    assert d["topology"]["gpus_per_node"] == 4
-    assert d["topology"]["gpu_type"] == "a100"
-    assert d["topology"]["mem_total_gb"] == 1536.5
-    assert d["source"]["topology"].endswith("flag")
+# `test_set_declares_typed_facts_and_the_source_says_flag`,
+# `test_scheduler_flag_forces_the_kind_and_names_the_named_file` and
+# `test_a_record_that_does_not_read_is_said_before_it_is_replaced` retired
+# 2026-10-02 with `probe --out`, which each wrote through (user: "retire the
+# test with that retired --out flag").
 
 
 def test_set_refuses_unknown_keys_and_mistyped_values_by_name(tmp_path):
@@ -354,44 +345,11 @@ def test_set_refuses_unknown_keys_and_mistyped_values_by_name(tmp_path):
     assert r.exit_code != 0 and "KEY=VALUE" in r.output
 
 
-def test_scheduler_flag_forces_the_kind_and_names_the_named_file(tmp_path):
-    """--scheduler declares the kind (source `flag`); --name lands the
-    record in <out>/<name>.json — how a workstation holds a cluster."""
-    import json
-    r = _cli(["--name", "sol-x", "--scheduler", "slurm",
-              "--set", "cores_per_socket=64",
-              "--write", "--yes", "--out", str(tmp_path)])
-    assert r.exit_code == 0, r.output
-    d = json.loads((tmp_path / "sol-x.json").read_text())
-    assert d["scheduler"] == "slurm"
-    assert d["source"]["scheduler"] == "flag"
-    assert d["topology"]["cores_per_socket"] == 64
-    assert "--target sol-x" in r.output
-
-
 #: How each machine enters its environment -- a fact the record carries,
 #: asked about like the rest (W52: replaced unasked, so a probe over Sol's
 #: record from a workstation put the workstation's hook into it).
 _SOL_ENTERS = {"activation": "source activate"}
 _DESK_ENTERS = {"activation": "conda activate"}
-
-
-def test_a_record_that_does_not_read_is_said_before_it_is_replaced(
-        tmp_path):
-    """A file at the record's path that does not read -- a newer schema, a
-    hand edit gone wrong -- is said to be there, never written over as if
-    absent; `--yes` skips the question, never the line (W52: `read_environment`
-    answers absent and unreadable alike, and the probe took the one for the
-    other).
-
-    MUTATION THIS MUST FAIL AGAINST: the write path asking only whether a
-    record READ."""
-    (tmp_path / "sol-x.json").write_text("{ not a record")
-    r = _cli(["--name", "sol-x", "--scheduler", "slurm",
-              "--set", "cores_per_socket=64",
-              "--write", "--yes", "--out", str(tmp_path)])
-    assert r.exit_code == 0, r.output
-    assert "is there and does not read" in r.output, r.output
 
 
 def _two_envs():

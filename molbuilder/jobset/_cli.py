@@ -2253,11 +2253,6 @@ def cmd_machines() -> None:
                      short_help="record a machine's capability -> "
                                 "environment.json (--name for a cluster you "
                                 "prep FOR)")
-@click.option("--out", default=None,
-              type=click.Path(file_okay=False, resolve_path=True),
-              help="directory to write the record into with --write -- "
-                   "environment.json, or <name>.json with --name (default: "
-                   "the per-user machine scope).")
 @click.option("--write", "do_write", is_flag=True, default=False,
               help="write the probed record (shows a diff + confirms).")
 @click.option("--name", default=None, metavar="NAME",
@@ -2283,7 +2278,7 @@ def cmd_machines() -> None:
               type=click.Choice(["slurm", "workstation"]),
               help="force the scheduler kind instead of detecting it "
                    "(source 'flag').")
-def cmd_probe(out, do_write: bool, name, yes: bool,
+def cmd_probe(do_write: bool, name, yes: bool,
                         sets, scheduler_flag) -> None:
     """Record what a machine IS -- cores, GPUs, scheduler, and on a cluster
     every (partition, QoS) you may actually submit to, with its wall.
@@ -2314,7 +2309,6 @@ def cmd_probe(out, do_write: bool, name, yes: bool,
     """
     import getpass
     from datetime import datetime, timezone
-    from pathlib import Path
 
     from ..scheduler import (machine_scope_path, read_environment,
                              resolve_environment, write_environment)
@@ -2484,10 +2478,6 @@ def cmd_probe(out, do_write: bool, name, yes: bool,
         record = named_environment_path(name)
     else:
         record = machine_scope_path()
-    if out:
-        # `--out DIR` is the one case a caller names the directory, so the
-        # filename still comes from the resolver rather than from here.
-        record = Path(out) / record.name
     target = record.parent
     fname = record.name
     # WHAT THE RECORD ALREADY SAYS about entering an environment stays when

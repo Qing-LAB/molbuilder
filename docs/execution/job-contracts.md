@@ -855,7 +855,11 @@ the string*.
 | `init` | `--structure` | **tree address** — a structure lives in `<project>/structure/` |
 | `prep` | `--from STAGE/run-N` | inside-bundle |
 | `init` | `--psml-lib` | § 2.5a's rule — a path inside the tree, measured from its root |
-| `probe` | `--out` | a machine record, not tree content |
+
+*(`probe --out DIR` stood here — a directory for the record — until
+2026-10-02, when it was removed (user: "probe --out goes away"): the record's
+place is its resolver's, `machine_scope_path` or `named_environment_path`,
+and a probe run elsewhere is copied there, never written beside it.)*
 
 **Every verb names a calculation the same way, through one declaration.**
 `--bundle` is a single `click.option` shared by all six; the rule, the
