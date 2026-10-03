@@ -263,7 +263,8 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | M5 step 3 | its milestone review | every finding fixed `325cb1d4`; its three questions were Q2c 1–3 |
 | Q2c + W54 | their review — a fresh agent over `e1d88b22..d470bff2` (31 commits), the full code text | **fixed 2026-10-02** — `envs init-config` says what its queue probe could not measure, as `jobset probe` does (pinned for both writers); the re-probe remedy for a calculation's own copy says where a named record's file goes; T29's rows give back what the retired tests held — `--set` and `--scheduler` mark their facts `flag` (M-1), an `env_init` corrected by hand survives an unanswered probe and `--yes` takes `molbuilder.json`'s copy, the stamp follows the probe (M-6) — through two runner keys, `record_declared` and `record_stamped`; six mutations, each red. Stale text fixed in five documents, five code comments and seven test files; two fixtures moved to the doors; four leftover home directories gone; this ledger's Q2c, A1.20 and TR6 rows brought up to date. **Dropped:** two providers of one kind sharing one secret file — only a hand-written config makes two (`auth-setup` writes one of each kind) |
 
-**Your word, four questions** *(asked 2026-10-02)*:
+**Your word, five questions** *(asked 2026-10-02; the fifth found while
+answering the first four)*:
 
 - **R3.** A record names no machine, so "is this snapshot this machine's?" can
   only be asked by comparing whole records — which is what `--target sol`
@@ -280,6 +281,14 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 - **T30.** "With nothing to copy, the record keeps its own `env_init`" is
   stated only in code (`jobset/_cli.py`) and pinned by a row: state it in
   `configuration.md` § 4, or retire the row.
+- **The I–V current of an unpolarized junction.** TBtrans prints its current
+  per spin channel (its source: *"no spin degeneracy"*, `m_tbt_save.F90`),
+  so an unpolarized run's printed figure is half the physical current — while
+  the conductance column is in G₀ = 2e²/h (`engines/transport.md`'s opening).
+  The record keeps the current as *"TBtrans's own printed integral, parsed,
+  never recomputed"* (`job-contracts.md` § 6.1). Proposed: the total
+  (×2 unpolarized, the channels' sum polarized), the printed figure kept
+  beside it, the factor stated. K21 waits on it — both change that column.
 
 ### Unscheduled — open work no milestone carries *(listed 2026-09-29)*
 
