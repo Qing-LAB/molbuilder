@@ -211,11 +211,11 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | C18 | one notify-user rule written as two regexes | **fixed `96f71a7c`** — `monitor.is_notify_user`, beside `is_route_segment`; the issuer and the listener ask it |
 | C19 | `molbuilder.json` parsed three times, three error policies | **fixed `fca87a39`** — `_load_raw(path)`, the one parse: a broken file is refused in the path's words by every reader (the provenance display showed it found with no values); the writer adds that nothing was written |
 | C20 | constants spelled again outside their owner | partly fixed `7dd8940f`; **fixed `eb212aea`** the rest — the machine config's constant `via` gone (the banner, its source row, the card, which shows a `via` only where it varies); `CONFIG_FILENAME` and `PRIVATE_FILE_MODE` at their sites |
-| C21 | redundant validation and normalisation | **fixed** — the admin set normalised once (`get_admin_emails`, trusting `_read_admin`'s shape); `auth-setup` validates once, through `write_config_scope`, and writes Google's secret after it; the Microsoft tenant's default is the validator's alone |
+| C21 | redundant validation and normalisation | **fixed `8f3d450c`** — the admin set normalised once (`get_admin_emails`, trusting `_read_admin`'s shape); `auth-setup` validates once, through `write_config_scope`, and writes Google's secret after it; the Microsoft tenant's default is the validator's alone |
 | C22 | stranded comments | fixed `0a7ea0e4` |
 | C23 | the envs report named the wrong source for the host env | Q2c 6, `311ab27e` |
-| C24 | conftest re-derives the config-directory rule by hand | **to do** — `_REAL_CONFIG_DIR = config_dir()` |
-| C25 | a second reader of the notify file's format | `_document` not real (§ 2.3's management carve-out); **to do** — `_write` re-spells `persist.json_text` |
+| C24 | conftest re-derives the config-directory rule by hand | **fixed** — `_REAL_CONFIG_DIR` asks `config_dir()` at import |
+| C25 | a second reader of the notify file's format | `_document` not real (§ 2.3's management carve-out); **fixed** — `_write` writes `persist.json_text`'s bytes |
 | R1 | the activation refusal named the wrong record | fixed `92e84cc8` |
 | R2 | an unreadable snapshot skipped silently | fixed `92e84cc8` |
 | R3 | `--target this` takes another machine's snapshot unasked — and the tab sends `this` on every prep once "(this machine)" is picked | **your word** — below |

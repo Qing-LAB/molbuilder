@@ -126,9 +126,12 @@ def _write(doc: Dict[str, Any]) -> None:
     """Through `auth_setup.write_secret_file`, which creates the parent at
     0700 and writes a temp file that is owner-only from the moment it exists,
     then renames it over the target — so the secret is never on disk at a
-    looser mode, and an interrupted write leaves the previous file whole."""
+    looser mode, and an interrupted write leaves the previous file whole.
+    The bytes are `persist.json_text`'s, every JSON artifact's one shape (it
+    was spelled here until 2026-10-02, W54 C25)."""
     from ...auth_setup import write_secret_file
-    write_secret_file(_dest_path(), json.dumps(doc, indent=2) + "\n")
+    from ...persist import json_text
+    write_secret_file(_dest_path(), json_text(doc))
 
 
 def _mask(url: str) -> str:

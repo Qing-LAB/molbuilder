@@ -262,13 +262,13 @@ def _product_toolchain_stubs(tmp_path_factory) -> Path:
 
 
 #: The developer's REAL config directory, resolved once at import -- before
-#: any fixture redirects anything.  `config_dir()` is useless for this: it is
-#: what the redirects move.
-_REAL_CONFIG_DIR = pathlib.Path(
-    os.environ.get("MOLBUILDER_CONFIG_DIR")
-    or os.path.join(os.environ.get("XDG_CONFIG_HOME")
-                    or os.path.join(os.path.expanduser("~"), ".config"),
-                    "molbuilder"))
+#: any fixture redirects anything -- by the rule's one home.  `config_dir()`
+#: reads the variables at CALL time, so asked here it answers for the shell
+#: the suite was started from; the redirects move it only later.  This
+#: re-derived the three branches by hand until 2026-10-02 (W54 C24;
+#: `configuration.md` § 2.1c: no other module reads the variables itself).
+from molbuilder.config_dir import config_dir as _config_dir  # noqa: E402
+_REAL_CONFIG_DIR = pathlib.Path(_config_dir())
 
 
 def _config_fingerprint():
