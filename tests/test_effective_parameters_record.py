@@ -27,28 +27,9 @@ from molbuilder.script_emit import parameter
 from molbuilder.structure import Structure
 
 
-@pytest.fixture(autouse=True)
-def _a_machine_record_with_an_activation(tmp_path, monkeypatch):
-    """`render_run_wrapper` refuses without an activation in the machine's
-    record -- the probe's copy of that machine's `env_init`, which the
-    generator reads (`configuration.md` § 4).
-
-    These tests took it from whatever `./molbuilder.json` happened to sit in
-    the repo root -- the developer's own, which no test had put under control,
-    and which vanished when the machine scope stopped being looked for in the
-    working directory (`configuration.md` § 2.1a).  Supplying it here is what
-    makes the render depend on the test rather than on the checkout.
-    """
-    from conftest import write_machine_record
-    root = tmp_path / "config-root"
-    root.mkdir(parents=True, exist_ok=True)
-    # `conda activate` with no preamble: the suite stubs `conda` to succeed
-    # silently, which is all a wrapper in a bare shell needs (conftest's
-    # `product_toolchain_is_the_suites_own`).
-    write_machine_record(at=root,
-                         env_init={"activation": "conda activate"})
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(root))
-
+# A per-file fixture writing a machine record with an activation stood here
+# until 2026-10-02 (W54 T15): conftest's `_this_machine_has_been_probed`
+# writes one for every test.
 
 
 @pytest.fixture

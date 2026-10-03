@@ -47,34 +47,9 @@ def _a_clock_that_does_not_tick_mid_test(monkeypatch):
                         lambda: "2026-09-05T00:00:00Z")
 
 
-@pytest.fixture(autouse=True)
-def _a_machine_config_with_an_activation(tmp_path, monkeypatch):
-    """`render_run_wrapper` refuses without an activation in the machine's
-    record (`configuration.md` § 5 M-1).
-
-    These tests took it from whatever `./molbuilder.json` happened to sit in
-    the repo root -- the developer's own, which no test had put under control,
-    and which vanished when the machine scope stopped being looked for in the
-    working directory (`configuration.md` § 2.1a).  Supplying it here is what
-    makes the render depend on the test rather than on the checkout.
-    """
-    root = tmp_path / "config-root"
-    root.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(root))
-    # A PROBED MACHINE, as a person records one: `molbuilder jobset probe
-    # --write`, the activation declared to it.  `conda activate` with no
-    # preamble: the suite stubs `conda` to succeed silently, which is all a
-    # wrapper in a bare shell needs (conftest's
-    # `product_toolchain_is_the_suites_own`).
-    from molbuilder.scheduler import Environment as _Env, Topology as _Topo
-    (root / "environment.json").write_text(
-        _Env(scheduler="slurm",
-             topology=_Topo(sockets=2, cores_per_socket=32),
-             env_init={"preamble": "",
-                                "activation": "conda activate"}).to_json()
-        + "\n")
-
-
+# A per-file fixture writing a machine record with an activation stood here
+# until 2026-10-02 (W54 T15): conftest's `_this_machine_has_been_probed`
+# writes one for every test.
 
 
 def _with_metadata() -> Structure:

@@ -532,8 +532,7 @@ def config_root_is_never_the_developers(tmp_path_factory, monkeypatch):
     fallback lands in a temporary directory rather than ``~/.config``.
     """
     monkeypatch.delenv("MOLBUILDER_CONFIG_DIR", raising=False)
-    # `tmp_path_factory`, NOT `tmp_path` -- the same lesson
-    # `_isolated_machine_scope` states below: a config root inside the
+    # `tmp_path_factory`, NOT `tmp_path`: a config root inside the
     # directory a test builds and then WALKS shows up in that test's own
     # listing.  It did not matter while the variable was only set and the
     # directory never created; it does now that the machine record is
@@ -965,39 +964,16 @@ def write_pseudos(dest, elements) -> None:
             _PSML_FIXTURE.format(el=el, z=atomic_number(el)))
 
 
-@pytest.fixture(autouse=True)
-def _isolated_machine_scope(tmp_path_factory, monkeypatch):
-    """Every test reads its OWN machine record, never the developer's.
-
-    ``machine_scope_path()`` resolves ``$XDG_CONFIG_HOME/molbuilder/`` (else
-    ``~/.config/molbuilder/``), and ``environments_dir()`` is the
-    ``environments/`` beside it -- the USER's real probed machines.  Nothing
-    isolated them, so the suite has been reading whatever this box happens to
-    have, and passing because most boxes have nothing.
-
-    **How it surfaced.**  On 2026-08-23 a real ``sol.json`` was probed on Sol
-    and saved to ``~/.config/molbuilder/environments/``.  Two tests in
-    ``test_cheapest_ceiling_that_fits`` went red at once -- not wrongly: with a
-    named target present, `resolve` is RIGHT to refuse and ask which machine is
-    meant (C1).  The tests were asserting placement against found state, and
-    the found state changed.  **A suite whose colour depends on the developer's
-    home directory is not a suite** -- and the failure lands on whoever did the
-    correct thing, which is the worst possible messenger.
-
-    Sibling of :func:`_isolated_workspace_store` and for the same reason: a
-    per-user store that production reads by default needs a test-time home, or
-    the tests and the user share one.
-
-    ``tmp_path_factory`` rather than ``tmp_path`` so the directory does not
-    appear inside the tree a test builds and then walks.
-    """
-    monkeypatch.setenv("XDG_CONFIG_HOME",
-                       str(tmp_path_factory.mktemp("machine-scope")))
+# `_isolated_machine_scope` -- a second autouse fixture setting
+# `XDG_CONFIG_HOME`, to a temp directory of its own -- retired 2026-10-02 (W54
+# T15): `config_root_is_never_the_developers` above isolates the config root
+# whole (the variable, its XDG branch, HOME's fallback), and with two of them
+# which won was fixture order.  Its story -- a real `sol.json` probed on Sol
+# turned two tests red on 2026-08-23 -- is why the root fixture exists.
 
 
 @pytest.fixture(autouse=True)
-def _this_machine_has_been_probed(_isolated_machine_scope,
-                                  config_root_is_never_the_developers):
+def _this_machine_has_been_probed(config_root_is_never_the_developers):
     """**The box has a machine record**, as a real one does after one
     ``jobset probe --write``.
 
@@ -1010,10 +986,8 @@ def _this_machine_has_been_probed(_isolated_machine_scope,
     itself, so every test got a machine for free.
 
     **It asks `machine_scope_path()` where to write** rather than composing
-    the path: TWO autouse fixtures set ``XDG_CONFIG_HOME`` -- this file's
-    machine-scope one and `config_root_is_never_the_developers` -- and which
-    of them wins is fixture-ordering, not something to encode here.  Both are
-    depended on above so this runs after whichever that is.
+    the path, and runs after `config_root_is_never_the_developers`, which
+    decides where that is.
 
     Deliberately MODEST -- two sockets, eight cores each, no scheduler -- so
     nothing passes by accident on a generous fixture: a test that needs a
