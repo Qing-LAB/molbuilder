@@ -777,7 +777,7 @@ looks.
 
 | step | reads | must say, when it fails |
 |---|---|---|
-| **1 checkpoint** | the tick and its note | *"No state was saved, so nothing was written"* — and it **stops**: a checkpoint that was asked for and did not happen must not be silently skipped |
+| **1 checkpoint** | — the server's, always (§ 8) | *"No state was saved, so nothing was written"* — and it **stops**: the state is the one a redo restores |
 | **2 write** | the **buffer**, not the model | *"NOT written — ⟨the server's words⟩"* |
 | **3 confirm** | — | **always**, beside the button, naming the file. A clean save is the ordinary one, and it is the one that used to say nothing |
 | **4 re-open** | the folder, again | its own message. The file **is** written; a reload that throws must not swallow step 3 |
@@ -811,14 +811,15 @@ looks.
 | **1 · save the folder's current state** | a first state if the folder has none, otherwise a state of what is there right now — so whatever you are about to change can be brought back |
 | **2 · write the description** | `task.json` and the template, together |
 
-**The checkpoint is offered and never taken silently**
-([`checkpointing.md § 9`](?doc=execution/checkpointing.md)), and **the offer
-starts unticked**.
-
-**A note is required, not optional** — `Repo.save` refuses an empty one
-(`checkpointing.md` **L3**: *"a state needs a note saying what happened and
-what you were about to do"*). So Save is disabled while a TICKED checkpoint
-has no note, and that is honest.
+**The checkpoint is always taken, by the server, and said**
+([`checkpointing.md § 9`](?doc=execution/checkpointing.md); user, 2026-10-03,
+B10: "make this consistent with B1"): the save route calls the one function
+prep calls, `checkpoint.save_before`, before it writes; the state's note is the
+time it was taken and what Save is about to change —
+`2026-10-03 14:05:12 · before saving the description` — which is the note L3
+asks for (*"what you were about to do"*), and the confirmation beside the
+button names the state. *(Until 2026-10-03 it was offered: a box that started
+unticked, with a note you typed, run step by step by the page.)*
 
 *(This paragraph said the opposite until 2026-09-02 — "a timestamp is added
 either way, so every state is identifiable even when you type nothing" — and
@@ -1099,16 +1100,15 @@ the terminal prints, from the same answer:
 
 * **the description's preflight notes**, each with its severity — an error
   refuses, in its own words, and nothing is written;
-* **what the inputs said** — the run's sizing when nothing stated it, a
+* **what the inputs said** — a run card's value the run does not use, a
   bench's grid: enumerated, crossed out, kept;
-* **the save, offered** — when the folder's state is not saved
-  ([`checkpointing.md`](?doc=execution/checkpointing.md) § 9): what is not
-  saved, a box to save it first — unticked — the note prep drafted, yours to
-  confirm or edit, and a button to go on. Nothing is written until it is
-  pressed, and the answer is recorded in the calculation's ledger as this
-  tab's. It first asks what Prep asks: unsaved edits are not in the
-  `task.json` prep reads (§ 7a). A stage already prepped is refused instead,
-  naming the way back ([`job-system.md`](?doc=execution/job-system.md) § 5.0);
+* **the state saved first** — prep saves the folder's state once its checks
+  have passed and before it writes, always
+  ([`checkpointing.md`](?doc=execution/checkpointing.md) § 9): the state and
+  its note, led by the time it was taken. Unsaved edits are not in the
+  `task.json` prep reads, so the tab asks what Prep asks first (§ 7a). A stage
+  already prepped is refused instead, naming the way back
+  ([`job-system.md`](?doc=execution/job-system.md) § 5.0);
 * **the folders written**, **what each deck's checks said**, and **the
   attempt** — opened, what was brought in, what it starts from (the
   run it continues from, a cold start you asked for, a linked stage's input

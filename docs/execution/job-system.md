@@ -747,8 +747,9 @@ A calculation is described **once**, and prep only ever reads that description.
    M-3). Prep never measures a machine: its record is there, or prep refuses
    and prints the probe that writes it.
 3. **What can be checked before writing is checked before writing.**
-   Checkpoints 1–5 below write nothing in the calculation, so a refusal there
-   leaves it as it was. A refusal after them puts back what says what the
+   Checkpoints 1–4a below write nothing, so a refusal there leaves the
+   calculation as it was; checkpoint 5 saves its state and changes none of
+   its files. A refusal after them puts back what says what the
    calculation is — its plan (`job-set.json`, and the `STAGE-PLAN.md` that
    reads it) and, at its first prep, its copy of the machine's record — so the
    stage is not counted as prepped, the calculation is not set to a machine it
@@ -758,8 +759,10 @@ A calculation is described **once**, and prep only ever reads that description.
    2026-10-02: "refuse it, redo via rollback")*: go back to the state saved
    before the stage's prep and prep it anew
    ([`checkpointing.md`](?doc=execution/checkpointing.md) § 7). So that the
-   state is there, prep offers to save the folder before it writes anything
-   (checkpoint 5).
+   state is there, prep saves the folder's state before it writes anything —
+   always, once its checks have passed, the note led by the time it was taken
+   — and tells you (checkpoint 5; user, 2026-10-03: "always save through
+   checkpoint, notify user").
 5. **You advance it, one stage at a time.** Prep prepares one stage; `launch`
    starts one job and shows it before sending it; nothing starts a stage but
    you (§ 5.3, *Three ideas*).
@@ -777,7 +780,7 @@ A calculation is described **once**, and prep only ever reads that description.
 | 3 | **the description's own checks** — the preflight ([`engines/stages.md`](?doc=engines/stages.md) § 6.6) | no error | refused, with the errors; warnings are shown and carried in the answer |
 | 4 | **the machine, and every launch value stated** | the calculation's own copy of its machine's record answers — or, at its first prep, the record of the machine you named (`--target`; the machine you are on when none other is on file); the name typed is the machine the calculation is set to; and every launch value is stated | refused, naming what is missing: which machine, when several are on file and none is named; the probe that writes a record; the machine the calculation is set to; the file and key where each value is stated |
 | 4a | **what the stage continues from** (§ 5.4) | the stage before it — its newest attempt, concluded — or the run you name with `--from`, or none with `--cold`. A first stage, or one whose run card says `restart: clean`, starts from the structure; a linked stage's input is fixed by its kind | refused, naming what to do: launch it, let it finish, or name another run |
-| 5 | **the save, offered** ([`checkpointing.md`](?doc=execution/checkpointing.md) § 9) | the folder's state is saved: it stands at a saved state, and nothing has changed since | **offered** — what is not saved is shown, with the note prep drafts (`before prep run tight`), yours to confirm or edit: *yes* saves the folder first — its first state, when it has none — and *no* preps without saving. Nothing is written until you answer. At a terminal the answer defaults to no; with no terminal to ask, prep goes on without saving and says so |
+| 5 | **the save** ([`checkpointing.md`](?doc=execution/checkpointing.md) § 9) | the folder's state is saved, always, after every check above has passed: a new state when anything changed since the one it stands at — its first when it has none — its note led by the time it was taken (`2026-10-03 14:05:12 · before prep run tight`); nothing new when nothing changed, and the state it stands at is named. Both doors say which | refused when the state cannot be saved: that state is the one a redo restores |
 | 6 | **the five steps** — machine, parameters, decks, wrappers, directory ([`script-preparation.md`](?doc=execution/script-preparation.md) § 3) | every deck passes its two gates: **validate** the resolved values before a line is written, and **check** the written file the engine will open | refused: a deck that fails a gate, or a machine record that does not say how a shell enters an environment there. At this step the calculation's first prep copies the machine's record into it, naming the machine — after that check |
 | 7 | **the attempt** ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6) | the stage's attempt is opened, with what step 4a decided copied in, never linked. A later attempt is `launch`'s: launching the stage again opens the next, continuing from its own latest run | — (a flat calculation keeps no attempt folders: its run is the calculation's folder) |
 | 8 | **the agreement** | the rendered deck agrees with the resources it will launch with | shown in the answer; `launch` refuses a deck rendered for another width |
@@ -1128,7 +1131,7 @@ route — is this, for the whole verb.
 |---|---|
 | `findings` | the description's preflight notes (`engines/stages.md` § 6.6); an error refuses instead |
 | `notes` | what the inputs said: a run card's value the run does not use (`gpu_count` with `use_gpu` off), a bench's grid — enumerated, crossed out, kept |
-| `offer` | the save, offered (§ 5.0, checkpoint 5): the `note` prep drafted, what is `unsaved`, and the state the folder `standing_at` — when its state is not saved and no answer was given; **nothing is written** until it is answered |
+| `saved` | the folder's state, saved before the five steps wrote (§ 5.0, checkpoint 5): the state saved now, or the one it already stood at, and its note |
 | `dirs` | the job folders the five steps wrote |
 | `provenance` | which configuration file supplied each setting (`configuration.md` § 2.2) |
 | `deck_findings` | what each deck's checks said, one of each (a sweep's trials repeat them) |
@@ -1140,22 +1143,21 @@ route — is this, for the whole verb.
 | `resources` · `deck` · `agreement` | what the stage will launch with, its deck, and whether that deck agrees (`launch` refuses a deck rendered for another width); no agreement when the deck makes no claim |
 | `pipeline_log` | the step-by-step record, when one was written |
 
-**The offer is answered by calling again with the answer** (`Answer`: save
-or not, and the note). *Yes* saves the folder's state before the five steps
-write anything — its first state when it has none — and a save that fails
-refuses the prep, since that state is the one a redo restores. The ledger
-records the answer in its words (`save-offer`). What the inputs read of the
-target — a bench's grid, and the type of the devices a run's condition
-counts — is read before the offer, so a refusal about that machine comes
-first; the rest of a run's machine is resolved by the five steps, after the
-answer. The command line asks at the terminal (no by default, then the note
-to confirm or edit; with no terminal to ask it preps without saving and says
-so); the tab shows a box, unticked, and the note. Every decision the entry
-makes lands in `jobset-decisions.log` whichever door called it — the
-preflight's notes first, on the pass that acts or refuses and never on one
-that only asks. *(Until 2026-10-02 the one question was *already under way
-here — re-render?*, asked over a stage that had run; a prepped stage is now
-refused, § 5.0.)*
+**The save is the entry's own, and it asks nothing** — the one function every
+act that changes the folder calls first (`checkpoint.save_before`,
+[`checkpointing.md`](?doc=execution/checkpointing.md) § 9). It runs once every
+check before it has passed and before the five steps write anything; a save
+that fails refuses the prep, since that state is the one a redo restores. The
+terminal prints the state and its note, the tab shows them, and the ledger
+records it (`saved`). What the inputs read of the target — a bench's grid, and
+the type of the devices a run's condition counts — is read before the save, so
+a refusal about that machine comes first; the rest of a run's machine is
+resolved by the five steps, after it. Every decision the entry makes lands in
+`jobset-decisions.log` whichever door called it — the preflight's notes first.
+*(Until 2026-10-03 the save was offered and answered — no by default at the
+terminal, an unticked box on the tab; until 2026-10-02 the one question was
+*already under way here — re-render?*; user, 2026-10-03: "always save through
+checkpoint".)*
 
 **A refusal carries what the entry had found** (`PrepError`'s `findings`,
 `notes` and `partial`): the preflight's notes, what the inputs said — a bench

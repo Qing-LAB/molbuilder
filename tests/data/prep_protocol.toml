@@ -2,11 +2,12 @@
 #
 # A prepped stage is not prepped again: a redo is a rollback -- the state
 # saved before its prep, restored -- and a prep anew (user, 2026-10-02:
-# "refuse it, redo via rollback").  Before prep writes, it offers to save a
-# folder whose state is not saved, its note drafted (`checkpointing.md` § 9;
-# "yes, offer save").  A prep refused after it began writing puts back what
-# says what the calculation is: the stage is not counted prepped, the
-# calculation is not set to the machine, the prep is not recorded as prepped.
+# "refuse it, redo via rollback").  Before prep writes, it saves the folder's
+# state -- always, the note led by the time it was taken -- and says so
+# (`checkpointing.md` § 9; user, 2026-10-03).  A prep refused after it began
+# writing puts back what says what the calculation is: the stage is not
+# counted prepped, the calculation is not set to the machine, the prep is not
+# recorded as prepped.
 #
 # `tests/test_prep_protocol.py` runs every case down the road a person runs,
 # through the one runner every contract table shares (`tests/support/road.py`,
@@ -94,28 +95,25 @@ saved = { shape = "flat" }
 save_refused = ["shape is fixed once it has produced", "coarse is prepped"]
 
 # ===================================================================== #
-#  THE SAVE, OFFERED BEFORE PREP WRITES                                 #
+#  THE SAVE, BEFORE PREP WRITES -- ALWAYS, AND SAID                     #
+#  (`checkpointing.md` § 9; user, 2026-10-03: "always save through      #
+#  checkpoint, notify user, ... name of the checkpoint clearly shows   #
+#  timestamp")                                                          #
 # ===================================================================== #
 
 [[case]]
-name = "before it writes, prep offers to save a folder whose state is not saved -- with no terminal to ask, it preps without saving, and says so"
-said = ["this folder has no saved state yet", "no answer (non-interactive): prepping without saving"]
-saved_states = []
+name = "before it writes, prep saves the folder's state -- its first, when it has none -- the note led by the time it was taken, and says so"
+said = ["the folder's state was saved first:", "before prep run coarse"]
+saved_states = ["{stamp} · before prep run coarse"]
 
 [[case]]
-name = "...answered yes, it saves the folder first, with the note it drafted"
-answers = "y\n\n"
-said = ["the folder's state was saved as"]
-saved_states = ["before prep run coarse"]
+name = "...a new state when the folder changed since the one it stands at"
+before = [["prep", "run", "medium", "--cold"]]
+said = ["the folder's state was saved first:"]
+saved_states = ["{stamp} · before prep run coarse", "{stamp} · before prep run medium"]
 
 [[case]]
-name = "...answered no, it preps without saving"
-answers = "n\n"
-said_lacks = ["was saved as"]
-saved_states = []
-
-[[case]]
-name = "a folder whose state is saved is asked nothing"
+name = "...and none when nothing changed: the state it stands at is named"
 saved_first = true
-said_lacks = ["save it first", "no saved state"]
+said = ["the folder's state was already saved:", "set up", "nothing changed since"]
 saved_states = ["set up"]

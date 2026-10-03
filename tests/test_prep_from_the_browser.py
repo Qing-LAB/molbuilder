@@ -148,7 +148,7 @@ def test_a_prep_from_here_is_recorded_in_the_bundle(web_client, described):
 
     _make_preppable(Path(described))
     st, j = _post(web_client, dest=described, kind="run", stage="coarse",
-                  target=LOCAL_TARGET, save=False)
+                  target=LOCAL_TARGET)
     assert st == 200, j
 
     log = Path(described) / LEDGER_FILE
@@ -251,8 +251,7 @@ def test_two_preps_at_once_leave_the_servers_stderr_as_they_found_it(
 
     def prep(calc):
         try:
-            P.prep_stage(calc, "run", "coarse", target=LOCAL_TARGET,
-                         answer=P.Answer(False, "no"))
+            P.prep_stage(calc, "run", "coarse", target=LOCAL_TARGET)
         except Exception as exc:          # said below, with the rest
             failed.append(exc)
 
@@ -311,7 +310,7 @@ def test_both_doors_give_the_same_answer_and_record_the_same_decisions(
 
     # the save, answered up front: no, as the terminal's silence is
     st, j = _post(web_client, dest=str(calc), kind="run", stage="coarse",
-                  target=LOCAL_TARGET, save=False)
+                  target=LOCAL_TARGET)
     assert st == 200, j
     r = _cli("prep", "run", "coarse", "--bundle", str(twin),
              "--target", LOCAL_TARGET)
@@ -340,44 +339,50 @@ def test_both_doors_give_the_same_answer_and_record_the_same_decisions(
         r.output.index(f["message"]) for f in j["deck_findings"]), r.output
 
 
-def test_the_save_is_offered_on_both_doors_and_nothing_is_written_first(
+def test_every_door_that_changes_the_folder_saves_its_state_first_and_says_so(
         web_client, described):
-    """`checkpointing.md` § 9: before prep writes into a folder whose state
-    is not saved, it offers the save, its note drafted.  The tab gets the
-    offer with nothing written, and its answer saves the folder with the
-    note it sent; the terminal asks, and a yes saves it with the draft --
-    each recorded in its calculation's ledger.  (It replaced the tests of
-    *already under way here*, 2026-10-02: a prepped stage is refused now,
-    `job-system.md` § 5.0.)"""
+    """`checkpointing.md` § 9 (user, 2026-10-03: "always save through
+    checkpoint, notify user, and make sure name of the checkpoint clearly
+    shows timestamp"): prep, at both its doors, and Task setup's Save each
+    save the folder's state before they write -- its first, here -- the note
+    led by the time it was taken, and say so; prep records it in the
+    calculation's ledger.
+
+    API-LEVEL for the tab's two doors, which no `jobset` verb reaches; the
+    terminal's prep is the road's.
+
+    MUTATIONS THIS MUST FAIL AGAINST: a door that writes without saving; a
+    note without its time."""
+    import re
     from molbuilder.checkpoint import Repo
+    stamped = r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} · before "
     calc = Path(described)
     _make_preppable(calc)
-    twin = _twin(calc, "calc-cli")
+    twin, kept = _twin(calc, "calc-cli"), _twin(calc, "calc-save")
 
     st, j = _post(web_client, dest=str(calc), kind="run", stage="coarse",
                   target=LOCAL_TARGET)
-    assert st == 200 and j["offer"] is not None, j
-    assert j["offer"]["note"] == "before prep run coarse", j["offer"]
-    assert j["offer"]["standing_at"] is None, j["offer"]   # none saved yet
-    assert j["dirs"] == [] and not (calc / "01_coarse").exists(), (
-        "an offer unanswered wrote something")
-    st, j = _post(web_client, dest=str(calc), kind="run", stage="coarse",
-                  target=LOCAL_TARGET, save=True, note="before coarse, here")
-    assert st == 200 and j["offer"] is None and j["dirs"], j
-    assert [x.note for x in Repo(str(calc)).states()] == [
-        "before coarse, here"]
-
+    assert st == 200 and j["dirs"], j
+    assert j["saved"].startswith("the folder's state was saved first:"), j
     r = _cli("prep", "run", "coarse", "--bundle", str(twin),
-             "--target", LOCAL_TARGET, input="y\n\n")
+             "--target", LOCAL_TARGET)
     assert r.exit_code == 0, r.output
-    assert [x.note for x in Repo(str(twin)).states()] == [
-        "before prep run coarse"]
+    assert "the folder's state was saved first:" in r.output, r.output
+    for d in (calc, twin):
+        notes = [x.note for x in Repo(str(d)).states()]
+        assert len(notes) == 1 and re.match(
+            stamped + "prep run coarse$", notes[0]), notes
+        assert ('"decision": "saved"'
+                in (d / "jobset-decisions.log").read_text()), d
 
-    answers = [json.loads(x)["answer"] for d in (calc, twin)
-               for x in (d / "jobset-decisions.log").read_text().splitlines()
-               if '"save-offer"' in x]
-    assert [a.startswith("saved as ") for a in answers] == [True, True], (
-        answers)
+    r = web_client.post("/api/task-setup/save", json={
+        "dest": str(kept), "text": (kept / "task.json").read_text()})
+    body = r.get_json()
+    assert r.status_code == 200, body
+    assert body["saved"].startswith("the folder's state was saved first:")
+    notes = [x.note for x in Repo(str(kept)).states()]
+    assert len(notes) == 1 and re.match(
+        stamped + "saving the description$", notes[0]), notes
 
 
 def test_a_bench_with_no_axes_is_the_machines_proposal_on_both_doors(
@@ -389,7 +394,7 @@ def test_a_bench_with_no_axes_is_the_machines_proposal_on_both_doors(
     _make_preppable(calc)
     twin = _twin(calc, "calc-cli")
     st, j = _post(web_client, dest=str(calc), kind="bench", stage="coarse",
-                  target=LOCAL_TARGET, save=False)
+                  target=LOCAL_TARGET)
     assert st == 200, j
     r = _cli("prep", "bench", "coarse", "--bundle", str(twin),
              "--target", LOCAL_TARGET)
@@ -461,7 +466,7 @@ def test_a_deck_that_makes_no_claim_gets_no_agreement_on_either_door(
     web = _pyscf_calc(isolated_projects_root, "py-web")
     cli = _pyscf_calc(isolated_projects_root, "py-cli")
     st, j = _post(web_client, dest=str(web), kind="run", stage="coarse",
-                  target=LOCAL_TARGET, save=False)
+                  target=LOCAL_TARGET)
     assert st == 200, j
     assert j["agreement"] is None and j["attempt"], j
     r = _cli("prep", "run", "coarse", "--bundle", str(cli),

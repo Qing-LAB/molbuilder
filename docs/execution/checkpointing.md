@@ -667,10 +667,11 @@ Two consequences worth saying out loud:
 
 ---
 
-## 9. Who decides to save, and when you are asked
+## 9. Who decides to save, and when
 
-> **A save is always an explicit act. Checkpointing never initiates one.**
-> It takes a snapshot when told to, and that is the whole of its part.
+> **A save is always an explicit act, and always said. Checkpointing never
+> initiates one.** It takes a snapshot when told to, and that is the whole of
+> its part.
 
 **The decision belongs to whatever is about to change the folder.** A script
 setting up a run knows what it is about to overwrite, whether the run will start
@@ -679,20 +680,28 @@ is worth a state you could come back to. **Checkpointing knows none of that and
 should not** — to it a folder is files, and *cold* and *warm* are the run layer's
 words for how a deck is written, not properties of a snapshot.
 
-So the caller owns three things: **noticing** the moment, **asking** you, and
-**drafting the note** — it knows what it is about to change, so it can propose a
-sentence rather than leaving you to invent one. You confirm or edit it. Nothing
-is saved until you say so.
+So the caller owns three things: **noticing** the moment, **saving** before it
+changes anything, and **saying so** — it knows what it is about to change, so
+the note names it, after the time the state was taken:
+`2026-10-03 14:05:12 · before prep run tight`. A state is then found by when
+and by what.
 
-**The moment is `prep`, because prep is the change.** Before prep writes
-anything into a calculation whose state is not saved — it has changed since the
-state it stands at, or it has none yet — it says what is not saved and offers
-to save first, with a note it drafts (`before prep run tight`). You answer.
-*(It offered only where the folder already held results until 2026-10-02.
-That day a prepped stage stopped being prepped again — a redo restores a state
-saved before the stage's prep — so every prep is a moment worth one: user,
-"refuse it, redo via rollback"; "yes, offer save";
-[`job-system.md`](?doc=execution/job-system.md) § 5.0.)*
+**The moments are `prep` and Task setup's Save, because each is a change** —
+and each saves first, always *(user, 2026-10-03: "always save through
+checkpoint, notify user, and make sure name of the checkpoint clearly shows
+timestamp. the checkpoint save is notified after the build is decided and
+checked")*. Prep saves once every check has passed — what it will build is
+decided — and before it writes anything; Task setup's Save before it writes the
+description. Both call one function, `checkpoint.save_before`. A folder with
+no history gets its first state; one whose state is saved and unchanged keeps
+standing where it stands, and that state is named. A save that fails stops the
+act: that state is the one a redo restores.
+*(Until 2026-10-03 prep offered the save and you answered — the terminal's
+answer defaulted to no, the tab's box started unticked — and Task setup's Save
+had a box of its own. A prepped stage is not prepped again since 2026-10-02 —
+a redo restores a state saved before the stage's prep
+([`job-system.md`](?doc=execution/job-system.md) § 5.0) — so an offer you
+could decline was a restore point you might not have.)*
 
 > **What the confirmation buys you** is the promise in § 1: this state is one you
 > can return to, retune, and run again from — and save *that* as a new state if
@@ -700,10 +709,10 @@ saved before the stage's prep — so every prep is a moment worth one: user,
 
 | | |
 |---|---|
-| **Where it asks** | `prep`, at both its doors — the terminal and Task setup's Prep buttons — when the folder's state is not saved |
-| **Who decides** | you, every time: the terminal's answer defaults to no, and the tab's box starts unticked |
-| **The note** | drafted by prep, which knows what it is about to change; you confirm or edit it |
-| **Non-interactive** (a script, no terminal to ask) | proceeds **without** saving and **says so** — it may not silently pick either way |
+| **Where it saves** | `prep`, at both its doors — the terminal and Task setup's Prep buttons — after its checks and before it writes; Task setup's Save, before it writes the description |
+| **Who decides** | the act that changes the folder: it always saves, and says so — the terminal prints the state and its note, the tab shows them |
+| **The note** | the time the state was taken, then what the act is about to change: `2026-10-03 14:05:12 · before prep run tight` |
+| **Nothing changed** | no new state: the one the folder stands at is named |
 | **The last stage** | nothing asks, because nothing follows. A surface showing a finished, unsaved run should say it is unsaved |
 
 **Never at run or submit time**, which may be a queued job — a prompt would block

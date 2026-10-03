@@ -2801,50 +2801,19 @@ def _shared_for(base: Path, seam: "EngineSeam" = None, *, engine: str = "",
 # found and decided as data for each door to show in its own way.
 
 
-@dataclass(frozen=True)
-class Answer:
-    """A person's answer to the one question prep asks -- *save the folder's
-    state first?* (`checkpointing.md` § 9) -- and the words the ledger
-    records it in: ``yes``, ``no``, the command line's *no answer
-    (non-interactive)*, the Task setup tab's.
-
-    ``note`` is the saved state's note when ``save`` -- the one prep drafted,
-    as the person left it; ``None`` keeps the draft.  *(Until 2026-10-02 the
-    one question was "already under way here -- re-render?"; a prepped stage
-    is refused now, `job-system.md` § 5.0.)*"""
-    save: bool
-    said: str
-    note: Optional[str] = None
-
-
-@dataclass(frozen=True)
-class SaveOffer:
-    """The save, offered before prep writes (`checkpointing.md` § 9;
-    `job-system.md` § 5.0, checkpoint 5): the note prep drafts, what is not
-    saved, and the state the folder stands at -- ``None`` when it has no
-    saved state yet.  A redo is a rollback to a state saved before a prep,
-    so this is the moment one is made."""
-    note: str
-    unsaved: Tuple[str, ...]
-    standing_at: Optional[str]
-
-
 @dataclass
 class PrepAnswer:
     """What one prep found and decided -- the whole of what either door shows
-    (`job-system.md` § 5.3's table).  With ``offer`` set nothing was written
-    and ``dirs`` is empty: the caller asks, then calls again with the
-    :class:`Answer`."""
+    (`job-system.md` § 5.3's table)."""
     kind: str
     stage: Optional[str]
     #: The description's preflight notes (an error refuses instead).
     findings: list = dataclasses.field(default_factory=list)
-    #: What the inputs said: the run's sizing when nothing stated it, a
+    #: What the inputs said: a run card's value the run does not use, a
     #: bench's grid -- enumerated, crossed out, kept (`prep_inputs`).
     notes: List[str] = dataclasses.field(default_factory=list)
-    offer: Optional[SaveOffer] = None
-    #: What the save did when it was offered and answered -- the ledger's
-    #: words (``saved as 4f9ca71: before prep run tight``, ``no``, ...).
+    #: The folder's state saved before the five steps wrote, or the one it
+    #: stood at -- `checkpoint.Kept.said` (`checkpointing.md` § 9).
     saved: Optional[str] = None
     dirs: List[Path] = dataclasses.field(default_factory=list)
     provenance: Optional[dict] = None
@@ -2893,15 +2862,13 @@ class PrepAnswer:
         def carried(pairs):
             return [{"file": fn, "from": src} for src, fn in pairs]
 
-        o, a, g = self.offer, self.attempt, self.agreement
+        a, g = self.attempt, self.agreement
         return {
             "kind": self.kind, "stage": self.stage,
             # THE ONE WIRE FORM of a finding (`Issue.to_json`).
             "findings": [i.to_json() for i in self.findings],
             "deck_findings": [i.to_json() for i in self.deck_findings],
             "notes": list(self.notes),
-            "offer": ({"note": o.note, "unsaved": list(o.unsaved),
-                       "standing_at": o.standing_at} if o else None),
             "saved": self.saved,
             "dirs": [rel(d) for d in self.dirs],
             "provenance": self.provenance,
@@ -2984,52 +2951,6 @@ def prepped_stages(base, task) -> List[str]:
                    for kind in ("run", "bench"))]
 
 
-def save_offer(base, kind: str, stage: str,
-               notes: Optional[List[str]] = None) -> Optional[SaveOffer]:
-    """The save prep offers before it writes (`checkpointing.md` § 9), or
-    ``None`` when the folder's state is saved -- it stands at a saved state
-    and nothing has changed since.  A folder with no saved state yet is
-    offered its first.  What is not saved is the checkpoint door's own
-    cheap read (`Repo.status`); when that cannot be read, nothing is offered,
-    and ``notes`` says why."""
-    from ..checkpoint import CheckpointError, Repo
-    draft = f"before prep {kind} {stage}"
-    repo = Repo(str(base))
-    if not repo.initialized:
-        return SaveOffer(draft, (), None)
-    try:
-        st = repo.status()
-    except CheckpointError as exc:
-        if notes is not None:
-            notes.append(f"no save offered -- the folder's state could not "
-                         f"be read: {exc}")
-        return None
-    if st.clean:
-        return None
-    at = st.standing_at
-    return SaveOffer(draft, st.unsaved(),
-                     f"{at.short} ({at.note})" if at is not None else None)
-
-
-def _take_the_offer(base, task, offer: SaveOffer, answer: Answer) -> str:
-    """Save the folder as the person answered, before anything is written,
-    and return what the ledger records.  A save asked for and not made
-    refuses the prep: that state is the one a redo restores."""
-    if not answer.save:
-        return answer.said
-    from ..checkpoint import CheckpointError, Repo
-    note = (answer.note or "").strip() or offer.note
-    repo = Repo(str(base))
-    try:
-        state = (repo.save(note) if repo.initialized
-                 else repo.init(engine=task.engine, note=note))
-    except CheckpointError as exc:
-        raise PrepError(f"the folder's state could not be saved, so nothing "
-                        f"was prepped: {exc}")
-    return (f"saved as {state.short}: {note}" if state is not None
-            else f"nothing to save: {note}")
-
-
 def _as_it_was(base: Path, *homes) -> dict:
     """What a refused prep puts back, as it is before the five steps write
     (:func:`prep_stage`): the plan -- ``job-set.json`` and the
@@ -3062,7 +2983,6 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                from_attempt: Optional[str] = None, cold: bool = False,
                env: Optional[str] = None, emit_sbatch: bool = True,
                pipeline_log: bool = False,
-               answer: Optional[Answer] = None,
                on_found=None) -> PrepAnswer:
     """**`prep`, the verb** -- what `molbuilder jobset prep` and the Task setup
     tab's Prep buttons both call (`job-system.md` § 5.3).
@@ -3074,14 +2994,13 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
     (a name, or ``#N``), and refused when it is already prepped -- a redo is
     a rollback; the description's preflight runs -- an error refuses, the
     notes come back as ``findings``; the inputs are assembled (`prep_inputs`,
-    A12).  Then, when the folder's state is not saved and no ``answer`` was
-    given, the answer comes back with ``offer`` set and NOTHING WRITTEN.
-    Answered -- or with nothing to offer -- it saves as answered, runs the
-    five steps (:func:`prep_calculation`), opens the attempt, carries a
-    transport rung's inputs, and compares the rendered deck with the launch
-    it will get.  A refusal after the five steps began puts the plan
-    (``job-set.json``) back, so the stage is not counted prepped.  Every
-    decision lands in ``jobset-decisions.log``, whichever door called.
+    A12).  Then it saves the folder's state -- always, asking nothing
+    (`checkpoint.save_before`) -- runs the five steps
+    (:func:`prep_calculation`), opens the attempt, carries a transport rung's
+    inputs, and compares the rendered deck with the launch it will get.  A
+    refusal after the five steps began puts back what says what the
+    calculation is, so the stage is not counted prepped.  Every decision
+    lands in ``jobset-decisions.log``, whichever door called.
 
     ``allocation`` is what the person asks for on THIS prep -- the
     command line's flags, an empty ``Resources()`` from a surface with none
@@ -3090,8 +3009,8 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
     ``findings``, ``notes`` and the ``partial`` answer.
 
     ``on_found``, when given, is called with ``(findings, notes)`` as soon
-    as the inputs are assembled -- before the question, and before anything
-    is rendered -- so a terminal prints them ahead of what the decks say
+    as the inputs are assembled -- before the save, and before anything is
+    rendered -- so a terminal prints them ahead of what the decks say
     while they are written; the answer carries them either way.
     """
     from ..scheduler import AmbiguousTarget, UnknownTarget
@@ -3310,20 +3229,25 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         if on_found is not None:
             on_found(findings, notes)
 
-        # 5 · THE SAVE, OFFERED (`checkpointing.md` § 9; user, 2026-10-02:
-        #     "yes, offer save").  Nothing is written before this point, and a
-        #     redo is a rollback (2a) -- so a folder whose state is not saved
-        #     is offered a save first, its note drafted.  Asked, never
-        #     assumed: the door asks and calls again with the answer.
-        offer = save_offer(base, kind, stage, notes=notes)
-        if offer is not None and answer is None:
-            return PrepAnswer(kind, stage, findings=findings, notes=notes,
-                              offer=offer)
+        # 5 · THE SAVE -- always, once every check above has passed and
+        #     before anything is written (`checkpointing.md` § 9; user,
+        #     2026-10-03: "always save through checkpoint, notify user").  A
+        #     redo is a rollback (2a), and this is the state it restores, so
+        #     a save that fails refuses the prep.
         _record_preflight()
-        saved = None
-        if offer is not None:
-            saved = _take_the_offer(base, task, offer, answer)
-            ledger(base, "prep", "save-offer", stage=stage, answer=saved)
+        from ..checkpoint import CheckpointError, save_before
+        try:
+            # A molbuilder.json that does not read is the person's to fix,
+            # said in its own words -- the save is the first to read it.
+            with _user_error_as_prep():
+                kept = save_before(base, f"prep {kind} {stage}",
+                                   engine=str(task.engine))
+        except CheckpointError as exc:
+            raise PrepError(f"the folder's state could not be saved, so "
+                            f"nothing was prepped: {exc}")
+        saved = kept.said()
+        ledger(base, "prep", "saved", stage=stage, state=kept.state.short,
+               note=kept.state.note, new=kept.new)
 
         # 6 · THE FIVE STEPS -- what a refusal puts back, kept first.
         plans.update(_as_it_was(base, container))
@@ -3430,11 +3354,11 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         raise _refused(PrepError(str(exc))) from exc
     finally:
         # A REFUSAL -- or a bug -- AFTER THE FIVE STEPS BEGAN puts the plan
-        # back; an offer returned before them took nothing (`plans` empty).
+        # back; one before them took nothing (`plans` empty).
         if not finished:
             _put_back(plans)
 
 
 __all__ = ["prep_calculation", "prep_jobset", "prep_stage", "PrepAnswer",
-           "Answer", "SaveOffer", "PrepError", "resolve_target",
+           "PrepError", "resolve_target",
            "prepped_already", "prepped_stages"]

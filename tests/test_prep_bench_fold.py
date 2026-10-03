@@ -721,12 +721,13 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
     got = [(e["verb"], e["decision"]) for e in lines]
     # A DRY RUN IS RECORDED AS WHAT IT IS -- planned, nothing sent (W52: it
     # was ledgered as a grouped launch and a launch until 2026-10-01).  The
-    # save prep offered comes first: no terminal answered, so none was made.
-    assert got == [("prep", "save-offer"),
+    # state prep saved first comes first (`checkpointing.md` § 9).
+    assert got == [("prep", "saved"),
                    ("prep", "prepped"),
                    ("launch", "planned"),
                    ("summarize", "verdict-written")]
-    assert lines[0]["answer"].startswith("no answer (non-interactive)")
+    assert lines[0]["new"] is True and " · before prep bench coarse" in \
+        lines[0]["note"], lines[0]
     prep = lines[1]
     assert prep["kind"] == "bench" and prep["stage"] == "coarse"
     assert "provenance" in prep            # WHERE each setting came from

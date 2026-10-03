@@ -1489,23 +1489,15 @@ def api_task_setup_prep():
     # for them, and an axis-less bench refused that the command line preps
     # as the machine's proposal (plan W38 F7).
     #
-    # THE SAVE COMES BACK UNANSWERED, with nothing written (`checkpointing.md`
-    # § 9); the page shows what is not saved, a box -- unticked -- and the
-    # note prep drafted, and sends `save` with the `note` as the person left
-    # it; the ledger records it as this tab's answer.  (Until 2026-10-02 the
-    # question was *already under way here*, answered with `confirm` and the
-    # evidence it showed; a prepped stage is refused now.)
+    # THE SAVE IS THE ENTRY'S OWN, and asks nothing (`checkpointing.md` § 9):
+    # the answer names the state saved before prep wrote.  (Until 2026-10-03
+    # it came back as an offer the page answered; until 2026-10-02 the
+    # question was *already under way here*.)
     from molbuilder.jobset.model import Resources
-    from molbuilder.jobset.prep import Answer, PrepError, prep_stage
-    answer = None
-    if "save" in body:
-        keep = bool(body.get("save"))
-        answer = Answer(keep, ("saved on the Task setup tab" if keep
-                               else "not saved, on the Task setup tab"),
-                        note=(str(body.get("note") or "") or None))
+    from molbuilder.jobset.prep import PrepError, prep_stage
     try:
         ans = prep_stage(dest, kind, stage, target=target,
-                         allocation=Resources(), answer=answer,
+                         allocation=Resources(),
                          from_attempt=from_attempt, cold=cold)
     except PrepError as exc:
         # Refused, not repaired -- the reader's own words, as the terminal
@@ -1663,6 +1655,20 @@ def api_task_setup_save():
                                                           base=dest),
                 }), 409
 
+    # THE FOLDER'S STATE, SAVED FIRST -- always, by the one function prep
+    # calls (`checkpointing.md` § 9; user, 2026-10-03, B10: "make this
+    # consistent with B1").  A state that cannot be saved stops the write:
+    # it is the one a redo restores.
+    from molbuilder.checkpoint import CheckpointError, save_before
+    from molbuilder.runtime_config import RuntimeConfigError
+    try:
+        kept = save_before(dest, "saving the description",
+                           engine=task.engine)
+    except (CheckpointError, RuntimeConfigError) as exc:
+        return jsonify({"ok": False,
+                        "error": f"No state was saved, so nothing was "
+                                 f"written: {exc}"}), 409
+
     try:
         write_task(dest / TASK_FILENAME, task)      # atomic (persist.write_json)
     except OSError as exc:
@@ -1674,6 +1680,7 @@ def api_task_setup_save():
     # sidebar re-list.  Reported so the caller knows whether to.
     return jsonify({
         "ok":            True,
+        "saved":         kept.said(),
         "wrote":         TASK_FILENAME,
         "handover_name": TASK_HANDOVER_NAME,
         "handover_here": (dest / TASK_HANDOVER_NAME).is_file(),

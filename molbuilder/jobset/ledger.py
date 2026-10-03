@@ -15,7 +15,7 @@ VERB that acted on it appends the line — policy stays at the verb, the
 ledger only records.  A verb with one door appends at that surface; a verb
 whose doors share ONE ENTRY appends in the entry, once, whichever door
 called — `prep`'s, `jobset/prep.prep_stage` (`job-system.md` § 5.3), writes
-its lines (`preflight-report`, `save-offer`, `prepped`, `continues` or
+its lines (`preflight-report`, `saved`, `prepped`, `continues` or
 `starts-cold`, `launch-agreement`, and `refused`) for the command line and
 the Task setup tab alike.  `launch` writes each question it asks and its
 answer (`question`, a *no* too) before what it did.

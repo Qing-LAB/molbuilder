@@ -910,6 +910,15 @@ export function initCheckpointPanel() {
             const dir = info && info.dir || null;
             onDirectoryChange(dir);
         });
+        /* A FOLDER CHANGED BY ANOTHER SURFACE -- a prep, a Task setup save,
+         * each of which saves a state first (`checkpointing.md` § 9) -- is
+         * re-read when it is the one shown, so the history stays truthful. */
+        if (typeof window.molbuilder.projects.onFolderChanged === "function") {
+            window.molbuilder.projects.onFolderChanged((info) => {
+                const dir = info && info.dir || null;
+                if (dir && dir === _state.currentDir && _state.open) _refresh();
+            });
+        }
         // Also seed from the current state if a dir is already
         // selected when this module loads (slow page, deferred
         // script, etc.).

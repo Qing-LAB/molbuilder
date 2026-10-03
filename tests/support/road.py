@@ -304,7 +304,8 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # the person types at the row's prep's question ("" is EOF, no terminal).
 #
 # AFTER PREP, whatever it answered: the folder's saved states, newest first
-# (`saved_states`, their notes), what `status` says of the calculation
+# (`saved_states`, their notes -- `{stamp}` standing for the time a note
+# leads with, `2026-10-03 14:05:12`), what `status` says of the calculation
 # (`status_says`), and the decisions its ledger does not hold
 # (`ledger_lacks`); a prep that was not refused says nothing of `said_lacks`.
 # THEN, refused or not: the description saved through Task setup's Save with
@@ -456,10 +457,16 @@ def _road_after_prep(case, bundle) -> None:
     (`status_says`), and the decisions its ledger does not hold
     (`ledger_lacks`)."""
     if "saved_states" in case:
+        import re
         from molbuilder.checkpoint import Repo
         repo = Repo(str(bundle))
         got = [st.note for st in repo.states()] if repo.initialized else []
-        assert got == case["saved_states"], f"saved states: {got}"
+        want = [re.compile(re.escape(w).replace(
+                    re.escape("{stamp}"),
+                    r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}") + "$")
+                for w in case["saved_states"]]
+        assert len(got) == len(want) and all(
+            w.match(g) for w, g in zip(want, got)), f"saved states: {got}"
     if "status_says" in case:
         st = jobset("status", "--bundle", bundle)
         assert st.exit_code == 0, _one_line(st)

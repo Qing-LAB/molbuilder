@@ -1892,3 +1892,58 @@ def _describe(status: "FolderStatus") -> str:
         for name in names:
             parts.append(f"  {label:>7}  {name}")
     return "\n".join(parts)
+
+
+# --------------------------------------------------------------------- #
+#  The state saved before an act changes the folder (§ 9)               #
+# --------------------------------------------------------------------- #
+
+@dataclass(frozen=True)
+class Kept:
+    """The state a folder was left at before an act changed it -- saved now
+    (``new``), or the one it already stood at when nothing had changed."""
+    state: "State"
+    new: bool
+
+    def said(self) -> str:
+        """The line both doors show and the ledger records."""
+        return (f"the folder's state was saved first: {self.state.short} "
+                f"-- {self.state.note}" if self.new else
+                f"the folder's state was already saved: {self.state.short} "
+                f"-- {self.state.note} (nothing changed since)")
+
+
+def save_before(path, what: str, *, engine: Optional[str] = None,
+                now: Optional[datetime] = None) -> Kept:
+    """**Save the folder's state before** ``what`` **changes it** -- always,
+    and said (§ 9; user, 2026-10-03: *"always save through checkpoint, notify
+    user, and make sure name of the checkpoint clearly shows timestamp"*).
+
+    The ONE door every act that changes a calculation's folder calls first --
+    `prep`, at both its doors, once its checks have passed; Task setup's
+    Save, before it writes the description.  The note is the time the state
+    was taken, then what the act is about to change
+    (``2026-10-03 14:05:12 · before prep run tight``), so a state is found by
+    when and by what.  A folder with no history gets its first state; one
+    whose state is saved and unchanged keeps standing where it stands, and
+    that state is returned.  Raises :class:`CheckpointError` when the state
+    cannot be saved -- the caller stops: that state is the one a redo
+    restores."""
+    stamp = (now or datetime.now().astimezone()).strftime("%Y-%m-%d %H:%M:%S")
+    note = f"{stamp} · before {what}"
+    repo = Repo(str(path))
+    if not repo.initialized:
+        state = repo.init(engine=engine, note=note)
+        if state is None:
+            raise CheckpointError(f"{path}: its first state was not saved")
+        return Kept(state, True)
+    if repo.status().clean:
+        here = repo.standing_at()
+        if here is None:
+            raise CheckpointError(f"{path}: where the folder stands cannot "
+                                  f"be read")
+        return Kept(here, False)
+    state = repo.save(note)
+    if state is None:                       # changed back in the meantime
+        return Kept(repo.standing_at(), False)
+    return Kept(state, True)

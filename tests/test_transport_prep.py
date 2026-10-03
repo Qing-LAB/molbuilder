@@ -1663,10 +1663,9 @@ class TestTheBrowserRoute:
         # door's own path fence refuses anything outside it -- correctly.
         monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
         client = create_app(config={}).test_client()
-        # the save prep offers, answered: no
         return client.post("/api/task-setup/prep", json={
             "dest": str(calc), "kind": "run", "stage": stage,
-            "target": LOCAL_TARGET, "save": False})
+            "target": LOCAL_TARGET})
 
     def test_the_browser_gathers_what_the_device_consumes(
             self, calc, tmp_path, monkeypatch):

@@ -283,8 +283,8 @@ def _foreign_state(directory, run_id: str, engine: str) -> List[str]:
 # refuse"), which is why it had zero callers: the design had moved and the
 # function pinned the old one.  § 6 then asked before re-rendering over a
 # run that had happened, with :func:`warm_files_present` as evidence, until
-# 2026-10-02: a prepped stage is refused now, a redo is a rollback, and the
-# one question prep asks is the save (`jobset/prep.save_offer`).
+# 2026-10-02: a prepped stage is refused now, and a redo is a rollback to the
+# state prep saves first, always (`checkpoint.save_before`).
 
 
 

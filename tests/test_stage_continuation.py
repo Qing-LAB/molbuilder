@@ -147,8 +147,8 @@ def test_a_choice_is_taken_as_said_and_a_failed_run_is_refused(
             in r.output), r.output
     assert not (bundle / "02_medium").exists(), "a refusal wrote the stage"
 
-    # the save prep offers, taken: the state a redo goes back to
-    r = _prep(bundle, "medium", "--from", "01_coarse/run-1", input="y\n\n")
+    # prep saves the folder's state first: the state a redo goes back to
+    r = _prep(bundle, "medium", "--from", "01_coarse/run-1")
     assert r.exit_code == 0, r.output
     assert "continues from 01_coarse/run-1 (named; concluded rc=1" in r.output
     assert "FAILED" in r.output, r.output
@@ -159,7 +159,7 @@ def test_a_choice_is_taken_as_said_and_a_failed_run_is_refused(
     from molbuilder.checkpoint import Repo
     from molbuilder.cli import cli
     before = Repo(str(bundle)).states()[0]
-    assert before.note == "before prep run medium", before
+    assert before.note.endswith(" · before prep run medium"), before
     back = CliRunner().invoke(cli, ["checkpoint", "restore", before.id,
                                     "-p", str(bundle), "--force"])
     assert back.exit_code == 0, back.output
@@ -296,10 +296,9 @@ def test_the_browser_prep_continues_as_the_terminal_does(ladder):
     client = create_app(config={}).test_client()
 
     def prep(stage):
-        # the save prep offers, answered: no
         return client.post("/api/task-setup/prep", json={
             "dest": str(bundle), "kind": "run", "stage": stage,
-            "target": "this", "save": False})
+            "target": "this"})
 
     assert prep("coarse").status_code == 200
     r = prep("medium")
@@ -356,10 +355,8 @@ def test_the_browser_doors_offer_the_choice_and_take_it(ladder):
     client = create_app(config={}).test_client()
 
     def post(**body):
-        # the save prep offers, answered: no
         return client.post("/api/task-setup/prep", json=dict(
-            {"dest": str(bundle), "kind": "run", "target": "this",
-             "save": False}, **body))
+            {"dest": str(bundle), "kind": "run", "target": "this"}, **body))
 
     assert post(stage="coarse").status_code == 200
     _ran(bundle / "01_coarse" / "run-0")

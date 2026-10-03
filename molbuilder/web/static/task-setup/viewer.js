@@ -7,9 +7,8 @@
  *   3. Show what the description says — its stages, and the machine settings
  *      you either chose or asked to have measured.
  *   4. Let you read and edit the file itself in the vendored CodeMirror.
- *   5. WRITE IT — POST /api/task-setup/save, which puts `task.json` into the
- *      folder.  An offered checkpoint runs first (`checkpointing.md` § 9):
- *      the tick is the offer and clearing it is a real answer.
+ *   5. WRITE IT — POST /api/task-setup/save, which saves the folder's state
+ *      first, always (`checkpointing.md` § 9), and puts `task.json` into it.
  *   6. Read what the page cannot derive: the sweepable set
  *      (`/api/task-setup/sweepable`), the picker columns (`…/columns`),
  *      the tier presets (`…/presets`) and the folder's own template
@@ -2597,25 +2596,17 @@ function prepButton(kind, stage) {
     });
 
     /* THE ONE ENTRY'S ANSWER, WHOLE (`task-setup.md` § 11.1): the same
-     * answer `molbuilder jobset prep` prints.  The save it offers comes back
-     * with nothing written; the person's answer -- save or not, and the
-     * note -- is this tab's, and the prep runs again with it. */
-    async function write(saveAnswer) {
+     * answer `molbuilder jobset prep` prints -- the state it saved first
+     * among it (`checkpointing.md` § 9). */
+    async function write() {
         btnWrite.disabled = true;
         btnPreview.disabled = true;
         try {
             say.textContent = "Preparing…";
             say.setAttribute("data-state", "ok");
-            const r = await _prepCall(kind, stage, false, saveAnswer);
-            /* GOING ON IS A WRITE TOO, so it asks what every write asks
-             * first -- an unsaved edit is not in the task.json prep reads
-             * (`task-setup.md` § 7a). */
-            _showPrepAnswer(wrap, say, r, (answer) => {
-                const no = blocked();
-                if (no) return refuse(no);
-                write(answer);
-            });
-            if (r.ok && !r.offer) {
+            const r = await _prepCall(kind, stage, false);
+            _showPrepAnswer(wrap, say, r);
+            if (r.ok) {
                 // KEPT, for the re-read the announcement below triggers: it
                 // rebuilds this panel, and the new one shows it again.
                 _fs.answers[kind + ":" + stage] = r;
@@ -2641,7 +2632,7 @@ function prepButton(kind, stage) {
     btnWrite.addEventListener("click", () => {
         const no = blocked();
         if (no) return refuse(no);
-        write(null);
+        write();
     });
 
     wrap.append(btnPreview, btnWrite, say);
@@ -2650,7 +2641,7 @@ function prepButton(kind, stage) {
      * -- the answer stays until a new preview, a Save or a restore retires
      * it, or another folder is opened (`_resetPerFolderState`). */
     const kept = _fs.answers[kind + ":" + stage];
-    if (kept) _showPrepAnswer(wrap, say, kept, () => {});
+    if (kept) _showPrepAnswer(wrap, say, kept);
     /* ONLY THE PREVIEW IS REGISTERED.  `_syncPrepButtons` sets
      * `disabled = !machine` on everything it holds -- so registering the
      * write button would hand its enabled-ness a SECOND owner, and picking a
@@ -2693,17 +2684,10 @@ function _syncPrepButtons() {
     }
 }
 
-async function _prepCall(kind, stage, plan, saveAnswer) {
+async function _prepCall(kind, stage, plan) {
     const body = { dest: _dir, kind, stage, plan };
     // WHAT IT CONTINUES FROM, as chosen (plan W37) -- a run's only.
     if (kind === "run") Object.assign(body, continueBody(stage));
-    // THE PERSON'S ANSWER to the save prep offers (`checkpointing.md` § 9)
-    // -- sent only once it was offered and they went on: whether to save,
-    // and the note as they left it.  Its absence is no answer at all.
-    if (saveAnswer) {
-        body.save = !!saveAnswer.save;
-        body.note = saveAnswer.note || "";
-    }
     // The local machine has a NAME, not just a label: the server maps
     // `(this machine)` to it, so sending the label is enough and the two
     // surfaces keep one vocabulary.
@@ -2723,13 +2707,8 @@ async function _prepCall(kind, stage, plan, saveAnswer) {
 }
 
 /** Show one prep answer under its buttons -- the command line's report,
- *  from the same data (`job-system.md` § 5.3, `task-setup.md` § 11.1).
- *
- *  ``onAnswer`` answers the one question the entry asks: *save the folder's
- *  state first?* (`checkpointing.md` § 9) -- the box starts unticked, and
- *  the note is prep's draft, to confirm or edit.  Nothing was written when
- *  it is asked, and leaving it writes nothing. */
-function _showPrepAnswer(wrap, say, r, onAnswer) {
+ *  from the same data (`job-system.md` § 5.3, `task-setup.md` § 11.1). */
+function _showPrepAnswer(wrap, say, r) {
     const old = wrap.querySelector(".ts-prep-answer");
     if (old) old.remove();
     const box = el("div", { class: "ts-prep-answer" });
@@ -2768,41 +2747,10 @@ function _showPrepAnswer(wrap, say, r, onAnswer) {
         if (box.childNodes.length) wrap.appendChild(box);
         return;
     }
-    if (r.offer) {
-        const o = r.offer;
-        say.textContent = (o.standing_at
-            ? "This folder has changed since its saved state "
-              + o.standing_at + " — nothing was written yet."
-            : "This folder has no saved state yet — nothing was written "
-              + "yet.");
-        say.setAttribute("data-state", "warn");
-        const n = (o.unsaved || []).length;
-        if (n) {
-            line(n + " file" + (n === 1 ? "" : "s") + " not saved: "
-                 + o.unsaved.slice(0, 5).join(", ") + (n > 5 ? ", …" : ""));
-        }
-        line("A prepped stage is not prepped again: a redo goes back to the "
-             + "state saved before its prep (job-system.md § 5.0).");
-        const keep = el("input", { type: "checkbox" });
-        const note = el("input", { type: "text", class: "ts-save-note",
-                                   value: o.note });
-        box.appendChild(el("label", { class: "ts-save-offer" }, keep,
-                           " Save the folder's state first, as: "));
-        box.appendChild(note);
-        const go = el("button", { type: "button", class: "btn" }, "Prep");
-        go.addEventListener("click", () => {
-            go.disabled = true;
-            onAnswer({ save: keep.checked, note: note.value });
-        });
-        box.appendChild(go);
-        wrap.appendChild(box);
-        return;
-    }
     findingLines(r.deck_findings);
-    // THE STATE A REDO RESTORES, named where the person reads it.
-    if (r.saved && r.saved.indexOf("saved") === 0) {
-        line("The folder's state was " + r.saved);
-    }
+    // THE STATE A REDO RESTORES, named where the person reads it -- saved
+    // now, or the one the folder already stood at (`checkpointing.md` § 9).
+    if (r.saved) line(r.saved);
     const dirs = r.dirs || [];
     say.textContent = "Prepared for " + r.machine + " — "
         + dirs.length + " director" + (dirs.length === 1 ? "y" : "ies")
@@ -3806,31 +3754,6 @@ function setShape(shape) {
     refreshSave();
 }
 
-/** Save is enabled only when it could actually succeed. */
-/** Is a state being kept before this write? */
-function wantsCheckpoint() {
-    const box = $("ts-ckpt");
-    return !!(box && box.checked);
-}
-
-/** The note that state would carry, trimmed. */
-function checkpointNote() {
-    const el = $("ts-ckpt-note");
-    return ((el && el.value) || "").trim();
-}
-
-/* The button's answer depends on these two, so it is recomputed when they
- * change -- otherwise it is only ever right at the moment the page loaded. */
-function watchCheckpointControls() {
-    for (const id of ["ts-ckpt", "ts-ckpt-note"]) {
-        const el = $(id);
-        if (!el || el.dataset.mbWatched) continue;
-        el.dataset.mbWatched = "1";
-        el.addEventListener("input", refreshSave);
-        el.addEventListener("change", refreshSave);
-    }
-}
-
 /* The two asks validate as they are typed: "more than htc allows" is
  * worth knowing at the keystroke, not after a queue wait. */
 function watchAskControls() {
@@ -3872,8 +3795,8 @@ function watchAskControls() {
     }
 }
 
+/** Save is enabled only when it could actually succeed. */
 function refreshSave() {
-    watchCheckpointControls();
     watchAskControls();
     const btn = $("ts-save");
     const why = $("ts-save-why");
@@ -3882,13 +3805,6 @@ function refreshSave() {
     if (!_dir)                                    blocked = "Pick a folder first.";
     else if (_mode === "empty")                   blocked = "Nothing to save — this folder carries no description and no hand-over.";
     else if (_mode === "handover" && !_shape)     blocked = "Choose how the files are kept apart, above.";
-    /* A ticked checkpoint with no note cannot succeed: `saveState` requires
-     * one (`checkpointing.md` L4 -- nothing writes a message on your behalf),
-     * and the save aborts rather than writing without the state it was asked
-     * to keep.  Leaving the button live meant you found that out by pressing
-     * it and reading a refusal.  The condition was always knowable here. */
-    else if (wantsCheckpoint() && !checkpointNote())
-        blocked = "The checkpoint needs a note — say what this state is, or untick it.";
     btn.disabled = !!blocked;
     if (why) {
         why.textContent = blocked
@@ -3934,62 +3850,10 @@ async function _save() {
     const btn = $("ts-save");
     if (btn) btn.disabled = true;
 
-    /* STEP 1 — the folder's current state (`task-setup.md` § 8).
-     *
-     * OFFERED, NEVER TAKEN SILENTLY (`checkpointing.md` § 9): the tick is the
-     * offer, and clearing it is a real answer.  Through the public API
-     * (`projects.md` § 5), not a fetch of our own — the panel showing this
-     * folder's history is refreshed by the same call.
-     *
-     * A refusal here STOPS the save.  The step exists so what you are about to
-     * change can be brought back; writing anyway would silently spend the
-     * safety net you asked for. */
-    const projects0 = window.molbuilder && window.molbuilder.projects;
-    const wantCkpt = wantsCheckpoint();
-    // DECLARED HERE because the confirmation at the end names it too.  It
-    // was block-scoped to the checkpoint branch, and the success message
-    // read it anyway -- so the write succeeded and then `save` threw on a
-    // name that did not exist, which is why a successful save said nothing
-    // at all.  Found by reading the function end to end (2026-09-02).
-    const ckptNote = wantCkpt ? checkpointNote() : "";
-    if (wantCkpt && projects0 && projects0.checkpoint) {
-        /* `status` answers `ok:false` for a folder that simply has no history
-         * yet -- `ok` there means "this folder is under checkpointing", not
-         * "the query worked".  Reading it as the latter skipped `init` for
-         * exactly the folders that need it, and the save then died on
-         * `saveState`'s "not a checkpoint folder; run init first" -- a message
-         * about a step the page had decided to skip.  What this branch needs
-         * is the question `initialized` already answers; `error` separates a
-         * real failure from a fine answer. */
-        const st = await projects0.checkpoint.status(_dir).catch(() => null);
-        if (st && !st.error && !st.initialized) {
-            const started = await projects0.checkpoint
-                .init(_dir, { engine: (_task && _task.engine
-                                       && _task.engine.name) || undefined })
-                .catch(() => null);
-            if (!started || !started.ok) {
-                saidSave("No state was saved, so nothing was written.", "bad");
-                setState("refuse", "No state was saved, so nothing was written",
-                         "Could not start a history here: "
-                         + ((started && started.error) || "unknown reason")
-                         + ". Untick the box to write without one.");
-                refreshSave();
-                return;
-            }
-        }
-        const kept = await projects0.checkpoint.saveState(_dir, ckptNote)
-            .catch((e) => ({ ok: false, error: String(e && e.message || e) }));
-        if (!kept || !kept.ok) {
-            saidSave("No state was saved, so nothing was written.", "bad");
-            setState("refuse", "No state was saved, so nothing was written",
-                     (kept && kept.error) || "the checkpoint failed");
-            refreshSave();
-            return;
-        }
-        // `changed: false` is honest, not a failure — nothing differed from
-        // the state the folder already stands at.
-    }
-
+    /* STEP 1 — the folder's current state is the SERVER's (`task-setup.md`
+     * § 8): the save route saves it first, always, through the function prep
+     * calls, and refuses the write when it cannot (`checkpointing.md` § 9).
+     * The page asked for it with a box of its own until 2026-10-03. */
     setState(_mode === "handover" ? "handover" : "loaded", "Saving…", "");
     let body;
     try {
@@ -4047,9 +3911,16 @@ async function _save() {
      * by it.  Removed rather than corrected: there is no second file. */
     const wrote = ["task.json"];
     saidSave("Saved " + wrote.join(" + ") + " into this folder"
-             + (ckptNote ? " · state kept: \u201c" + ckptNote + "\u201d" : "")
+             + (body.saved ? " · " + body.saved : "")
              + ".  `prep` reads this file, so it will use what you just "
              + "wrote.", "ok");
+    /* THE FOLDER CHANGED, said as a prep says it, so the history panel
+     * shows the state just saved; this page re-reads below on its own. */
+    if (projects && typeof projects.publishFolderChanged === "function") {
+        _ownPublish = true;
+        try { projects.publishFolderChanged(_dir); }
+        finally { _ownPublish = false; }
+    }
 
     // Re-open the folder: it is now a description.
     try {

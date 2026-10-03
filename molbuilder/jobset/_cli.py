@@ -978,7 +978,8 @@ def _load_bench_set(base, stage, verb: str = "launch"):
 
 # `_ask_if_underway` stood here until 2026-09-29, and its successors
 # `prep.underway_evidence` and `_ask_underway` until 2026-10-02: a prepped
-# stage is refused now, and the one question is the save (`_ask_save`).
+# stage is refused now.  `_ask_save`, the question that followed, went
+# 2026-10-03: prep saves the folder's state always, and says so.
 
 
 # `_refuse_if_measured_elsewhere` and `_measured_on` stood here until
@@ -1235,62 +1236,17 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         for line in notes:
             click.echo(line)
 
-    def _prep(answer=None):
-        try:
-            return prep_stage(base, kind, stage, target=target,
-                              allocation=allocation,
-                              from_attempt=from_attempt, cold=cold, env=env,
-                              emit_sbatch=emit_sbatch,
-                              pipeline_log=pipeline_log, answer=answer,
-                              on_found=_show)
-        except PrepError as e:
-            _show(e.findings, e.notes)
-            if e.partial is not None:
-                _echo_prep_answer(e.partial, base, refused=True)
-            raise click.ClickException(str(e))
-
-    ans = _prep()
-    if ans.offer is not None:
-        ans = _prep(_ask_save(ans.offer))
+    try:
+        ans = prep_stage(base, kind, stage, target=target,
+                         allocation=allocation, from_attempt=from_attempt,
+                         cold=cold, env=env, emit_sbatch=emit_sbatch,
+                         pipeline_log=pipeline_log, on_found=_show)
+    except PrepError as e:
+        _show(e.findings, e.notes)
+        if e.partial is not None:
+            _echo_prep_answer(e.partial, base, refused=True)
+        raise click.ClickException(str(e))
     _echo_prep_answer(ans, base)
-
-
-def _ask_save(offer):
-    """The one question, at a terminal: *save the folder's state first?*
-    (`checkpointing.md` § 9; `job-system.md` § 5.0, checkpoint 5).
-
-    No by default, then the note prep drafted, to confirm or edit: the person
-    decides, every time.  With no terminal to ask, prep goes on WITHOUT
-    saving and says so -- § 9: it may not silently pick either way.  The
-    answer's words are what the ledger records.  *(It asked "already under
-    way here -- re-render?" until 2026-10-02, when a prepped stage stopped
-    being prepped again.)*"""
-    from .prep import Answer
-    if offer.standing_at is None:
-        click.echo("this folder has no saved state yet -- a prepped stage is "
-                   "not prepped again, and a redo goes back to a state saved "
-                   "before its prep (job-system.md § 5.0).")
-    else:
-        n = len(offer.unsaved)
-        shown = ", ".join(offer.unsaved[:5]) + (", ..." if n > 5 else "")
-        click.echo(f"this folder has changed since its saved state "
-                   f"{offer.standing_at}: {n} file(s) not saved"
-                   + (f" -- {shown}" if n else "") + ".")
-    try:
-        ok = click.confirm("  save it first, so this prep can be rolled "
-                           "back?", default=False)
-    except click.exceptions.Abort:
-        click.echo("")
-        click.echo("  no answer (non-interactive): prepping without saving.")
-        return Answer(False, "no answer (non-interactive) -> prepped "
-                             "without saving")
-    if not ok:
-        return Answer(False, "no")
-    try:
-        note = click.prompt("  note", default=offer.note)
-    except click.exceptions.Abort:
-        note = offer.note
-    return Answer(True, "yes", note=note)
 
 
 def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
@@ -1310,9 +1266,10 @@ def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
 
     from ..runtime_config import format_provenance
     from .ledger import rel_to as _rel
-    if ans.saved and ans.saved.startswith("saved"):
-        # THE STATE A REDO RESTORES, named where the person reads it.
-        click.echo(f"the folder's state was {ans.saved}")
+    if ans.saved:
+        # THE STATE A REDO RESTORES, named where the person reads it --
+        # saved now, or the one the folder already stood at.
+        click.echo(ans.saved)
     if ans.provenance is not None:
         # WHERE the effective config came from (user request 2026-08-12;
         # secrets excluded by design) -- also in the bundle's ledger, since
