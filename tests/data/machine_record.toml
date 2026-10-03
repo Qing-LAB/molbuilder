@@ -44,6 +44,14 @@ record_says = { topology = { mem_total_gb = 1536.5 } }
 record_declared = ["topology"]
 
 [[case]]
+name = "with no environment manager answering, the record leaves out which environments exist -- and the probe says what it left out, and why"
+ends_at = "probe"
+machine_config = { env_init = { activation = "conda activate", preamble = "true" }, envs = { manager = "/nonexistent/bin/conda" } }
+probe = [[]]
+record_lacks = ["conda_envs", "env_arch"]
+probe_said = ["`conda_envs` and `env_arch` are left out of the record", "/nonexistent/bin/conda"]
+
+[[case]]
 name = "...and Yes takes the probed value"
 ends_at = "probe"
 probe = [["--set", "gpus_per_node=4", "--set", "gpu_type=a100"],

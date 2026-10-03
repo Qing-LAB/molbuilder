@@ -316,8 +316,9 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # 0 · WHAT THE PROBE RECORDS, checked before anything else: what it says
 # (`probe_said`, lines any of the probes printed) and what the record it
 # wrote holds (`record_says`, a table of the record's fields, nested as the
-# file nests them; `record_declared`, the facts its `source` says were
-# declared -- `flag` among the note's parts, `configuration.md` M-1;
+# file nests them; `record_lacks`, the fields it leaves out;
+# `record_declared`, the facts its `source` says were declared -- `flag`
+# among the note's parts, `configuration.md` M-1;
 # `record_stamped`, its `detected_at` is the last probe's own -- M-6: the
 # stamp follows the probe whatever survives).  A row about the record alone
 # ends there: `ends_at = "probe"`.
@@ -405,6 +406,8 @@ def _road_probe_layer(case, said, target, began) -> None:
     record = json.loads(path.read_text())
     if "record_says" in case:
         _road_holds(record, case["record_says"], "record")
+    for key in case.get("record_lacks", []):
+        assert key not in record, f"record.{key} is {record[key]!r}"
     for fact in case.get("record_declared", []):
         note = record["source"].get(fact, "")
         assert "flag" in note.split("+"), \

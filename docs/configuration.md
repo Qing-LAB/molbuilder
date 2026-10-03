@@ -986,7 +986,12 @@ statement (`allocation.domain`, `--domain`), never a default anywhere.
 
 `environment.json` carries `scheduler: "slurm" | "workstation"` and the same
 fields either way; a field that could not be detected is `null`, kept and never
-omitted, so a consumer can tell *absent* from *unknown*.
+omitted, so a consumer can tell *absent* from *unknown* — **but for the three
+facts that travel with the record**, `env_init`, `conda_envs` and `env_arch`,
+which are left out when empty *(user, 2026-10-03)*, and the probe says in its
+notes which it left out and why (no environment manager answered, or it listed
+none). Left out reads as unknown, and nothing is checked against an unknown
+inventory.
 
 `molbuilder.json` held a SLURM-shaped `scheduler` block until 2026-10-02 and
 could never serve this role; the record is the one place a machine's kind is

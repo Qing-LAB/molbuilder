@@ -580,7 +580,8 @@ def seed_environment_record() -> Step:
     # node, the three facts that travel (`local_facts`), the queues.  The
     # stamp too -- `detected_at` was null in every record seeded here.
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    env, _note = local_facts(resolve_environment(now_iso=now), get_env_init())
+    env, facts_notes = local_facts(resolve_environment(now_iso=now),
+                                   get_env_init())
     queue_notes, _summary = probe_queues(env, getpass.getuser())
     write_environment(env, path)
     sg = getattr(env, "env_init", None) or {}
@@ -590,7 +591,7 @@ def seed_environment_record() -> Step:
     # WHAT THE QUEUE PROBE COULD NOT MEASURE is said here as `jobset probe`
     # says it -- a measurement that quietly did not happen is the defect
     # those notes exist for (W54 review: this dropped them).
-    for n in queue_notes:
+    for n in [*queue_notes, *facts_notes]:
         note += f"; {n.rstrip('.')}"
     if sg.get("activation"):
         note += f'; carries activation "{sg["activation"]}"'

@@ -2445,7 +2445,7 @@ def cmd_probe(do_write: bool, name, yes: bool,
     # record this writes, this machine's or a named one (user, 2026-10-02) --
     # required, and checked above.
     from ..diagnostics import local_facts as _local_facts
-    env, notes_sg = _local_facts(env, declared)
+    env, facts_notes = _local_facts(env, declared)
 
     # THE QUEUES -- `record.probe_queues`, the one queue probe; `envs
     # init-config` seeds this machine's record through it too (M-3).  It was
@@ -2492,8 +2492,7 @@ def cmd_probe(do_write: bool, name, yes: bool,
     # line was composed and never shown: `notes_sg` was assigned and read
     # by nothing, so the one machine that most needed the warning -- the
     # one with no activation -- was the one told nothing.
-    if notes_sg:
-        notes.append(notes_sg)
+    notes.extend(facts_notes)
     if notes:
         click.echo("\nNotes / assumptions (read before --write):")
         for n in notes:

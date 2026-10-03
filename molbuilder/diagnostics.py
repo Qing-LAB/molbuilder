@@ -42,7 +42,7 @@ import subprocess
 import collections.abc as _abc
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from .runtime_config import get_envs, read_config
 from .projects import projects_root
@@ -510,12 +510,14 @@ def reset_capabilities() -> None:
 
 
 def local_facts(env: "Any", env_init: "Optional[Mapping[str, str]]"
-                = None) -> "Tuple[Any, Optional[str]]":
+                = None) -> "Tuple[Any, List[str]]":
     """Attach this machine's three portable facts to a probed record.
 
-    Returns ``(environment, note)`` -- the record with the facts on it, and a
-    line to show the operator when it says nothing about how to enter an
-    environment.
+    Returns ``(environment, notes)`` -- the record with the facts on it, and
+    the lines to show the operator: when it says nothing about how to enter
+    an environment, and when it leaves out which environments exist here
+    and why (`configuration.md` M-2: the three are left out when empty, and
+    the probe says so -- user, 2026-10-03).
 
     **HOW THIS MACHINE ENTERS ITS ENVIRONMENT TRAVELS WITH THE RECORD**
     (2026-08-24).  A wrapper is generated on one machine and executed on
@@ -547,24 +549,40 @@ def local_facts(env: "Any", env_init: "Optional[Mapping[str, str]]"
     """
     import dataclasses as _dc
     sg_rec = {k: v for k, v in (env_init or {}).items() if v}
+    why_none = None
     try:
-        envs_here = sorted(get_capabilities().conda_envs or ())
-    except Exception:      # pragma: no cover - enumeration is best-effort
-        envs_here = []
+        caps = get_capabilities()
+        envs_here = sorted(caps.conda_envs or ())
+        if not envs_here:
+            why_none = (f"no environment manager answers here "
+                        f"({caps.conda_binary_source or 'none on PATH'})"
+                        if caps.conda_binary is None else
+                        f"{caps.conda_binary} lists no environments")
+    except Exception as exc:  # pragma: no cover - enumeration is best-effort
+        envs_here, why_none = [], f"listing them failed ({exc})"
     env_arch = None
     if envs_here:
         import platform as _pl
         env_arch = _pl.machine() or None
-    note = None if sg_rec.get("activation") else (
-        "this machine's molbuilder.json states no `env_init.activation` -- "
-        "how a shell enters an environment here -- so `--write` refuses "
-        "until it does: `molbuilder envs init-config` asks for it")
+    notes: List[str] = []
+    if not sg_rec.get("activation"):
+        notes.append(
+            "this machine's molbuilder.json states no `env_init.activation` "
+            "-- how a shell enters an environment here -- so `--write` "
+            "refuses until it does: `molbuilder envs init-config` asks for it")
+    if why_none:
+        # WHAT IS LEFT OUT, AND WHY (M-2): an empty inventory is unknown,
+        # never none, so nothing is checked against it.
+        notes.append(
+            f"`conda_envs` and `env_arch` are left out of the record: "
+            f"{why_none} -- so which environments exist here, and what they "
+            f"were built for, is unknown, and nothing is checked against it")
     changes = {}
     if sg_rec:
         changes["env_init"] = sg_rec
     if envs_here:
         changes.update(conda_envs=envs_here, env_arch=env_arch)
-    return (_dc.replace(env, **changes) if changes else env), note
+    return (_dc.replace(env, **changes) if changes else env), notes
 
 
 __all__ = [
