@@ -4,8 +4,9 @@
 # saved before its prep, restored -- and a prep anew (user, 2026-10-02:
 # "refuse it, redo via rollback").  Before prep writes, it offers to save a
 # folder whose state is not saved, its note drafted (`checkpointing.md` § 9;
-# "yes, offer save").  A prep refused after it began writing puts the plan
-# back, so the stage is not counted prepped.
+# "yes, offer save").  A prep refused after it began writing puts back what
+# says what the calculation is: the stage is not counted prepped, the
+# calculation is not set to the machine, the prep is not recorded as prepped.
 #
 # `tests/test_prep_protocol.py` runs every case down the road a person runs,
 # through the one runner every contract table shares (`tests/support/road.py`,
@@ -55,13 +56,15 @@ before = [["prep", "bench", "coarse"]]
 refused = ["the benchmark of stage 'coarse' is already prepped", "molbuilder checkpoint list"]
 
 [[case]]
-name = "a prep refused after it began writing puts the plan back -- the stage is not counted prepped"
+name = "a first prep refused after it began writing puts back what it wrote -- not counted prepped, not set to the machine, not recorded as prepped: the build installed and the machine re-probed, as the refusal says, the prep is taken"
 template = { diag_algorithm = "ELPA-1STAGE" }
 run = { use_gpu = true, gpu_count = 1 }
 allocation = { domain = "gpu" }
 record = { conda_envs = ["molbuilder-siesta"] }
-refused = "env is not installed"
+refused = ["env is not installed", "re-probe that machine"]
 status_says = ["First incomplete stage: coarse, not prepped yet"]
+ledger_lacks = ["prepped"]
+reprobed = { conda_envs = ["molbuilder-siesta", "molbuilder-siesta-gpu"] }
 
 # ===================================================================== #
 #  THE SAVE, OFFERED BEFORE PREP WRITES                                 #

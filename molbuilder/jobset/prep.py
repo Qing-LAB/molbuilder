@@ -3015,27 +3015,31 @@ def _take_the_offer(base, task, offer: SaveOffer, answer: Answer) -> str:
             else f"nothing to save: {note}")
 
 
-def _plans_as_they_are(base: Path, *homes) -> dict:
-    """The calculation's plan -- ``job-set.json``, the run's at the root and
-    a bench's in its folder -- as it is before the five steps write, so a
-    refusal after them can put it back (:func:`prep_stage`)."""
-    out = {}
+def _as_it_was(base: Path, *homes) -> dict:
+    """What a refused prep puts back, as it is before the five steps write
+    (:func:`prep_stage`): the plan -- ``job-set.json`` and the
+    ``STAGE-PLAN.md`` that reads it, the run's at the root and a bench's in
+    its folder -- and the calculation's copy of its machine's record, which
+    the first prep writes and which SETS the calculation's machine
+    (`configuration.md` M-3).  A first prep refused after it is written must
+    not leave the calculation set to a machine it never prepped for."""
+    from ..scheduler.record import calculation_record
+    files = [calculation_record(base)]
     for home in (base, *homes):
-        if home is None:
-            continue
-        f = Path(home) / JOBSET_FILENAME
-        out[f] = f.read_bytes() if f.is_file() else None
-    return out
+        if home is not None:
+            files += [Path(home) / JOBSET_FILENAME, Path(home) / _PLAN_FILE]
+    return {f: (f.read_bytes() if f.is_file() else None) for f in files}
 
 
-def _put_back(plans: dict) -> None:
-    """Each plan as it was: a stage a refused prep had added is not counted
-    prepped (`job-system.md` § 5.0)."""
-    for f, was in plans.items():
-        if was is None:
+def _put_back(was: dict) -> None:
+    """Each file as it was: a stage a refused prep had added is not counted
+    prepped, and a calculation it had set to a machine is not (`job-system.md`
+    § 5.0)."""
+    for f, before in was.items():
+        if before is None:
             f.unlink(missing_ok=True)
         else:
-            f.write_bytes(was)
+            f.write_bytes(before)
 
 
 def prep_stage(base, kind: str, stage: Optional[str] = None, *,
@@ -3089,11 +3093,20 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
     deck_findings: list = []
     out: Optional[PrepAnswer] = None
     recorded: List[bool] = []
-    # THE PLAN AS IT WAS, taken before the five steps write and put back
-    # unless the prep finishes: a stage is counted prepped only by a prep that
-    # finished (`job-system.md` § 5.0).
+    # WHAT A REFUSED PREP PUTS BACK, taken before the five steps write: a
+    # stage is counted prepped, and a calculation set to a machine, only by a
+    # prep that finished (`job-system.md` § 5.0).
     plans: dict = {}
     finished: List[bool] = []
+
+    def _finish(answer: PrepAnswer) -> PrepAnswer:
+        # THE PREP IS RECORDED WHEN IT HAS FINISHED: a rung's gather can still
+        # refuse after the answer is built, and a refused prep is recorded as
+        # refused, never as prepped (`job-system.md` § 5.0, rule 3).
+        answer.provenance = ledger_prepped(base, kind=kind, stage=stage,
+                                           dirs=answer.dirs)
+        finished.append(True)
+        return answer
 
     def _record_preflight():
         # The preflight's notes land in the ledger on the pass that ACTS or
@@ -3297,8 +3310,8 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             saved = _take_the_offer(base, task, offer, answer)
             ledger(base, "prep", "save-offer", stage=stage, answer=saved)
 
-        # 6 · THE FIVE STEPS -- the plan as it was kept first.
-        plans.update(_plans_as_they_are(base, container))
+        # 6 · THE FIVE STEPS -- what a refusal puts back, kept first.
+        plans.update(_as_it_was(base, container))
         opened: list = []
         dirs = prep_calculation(base, stage, allocation=allocation, env=env,
                                 emit_sbatch=emit_sbatch, sweep=sweep,
@@ -3316,7 +3329,6 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         out = PrepAnswer(
             kind, stage, findings=findings, notes=notes, dirs=list(dirs),
             saved=saved,
-            provenance=ledger_prepped(base, kind=kind, stage=stage, dirs=dirs),
             # ONE OF EACH: a sweep's trials repeat one finding per deck, and
             # the terminal said each once (`prep_calculation`).
             deck_findings=[i for i in deck_findings
@@ -3328,8 +3340,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                 task.label, token_for(task, stage) or "", task.engine,
                 task.shape)
         if kind == "bench":
-            finished.append(True)
-            return out
+            return _finish(out)
 
         # 7 · THE ATTEMPT -- opened by the five steps, ONCE, with what it
         #     continues from (`_open_attempts`; until 2026-10-01 it was opened
@@ -3355,8 +3366,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             from ..transport.stages import scan_points
             if is_transport and scan_points(task, stage):
                 out.points = gather_for_stage(base, task, stage)
-                finished.append(True)
-                return out
+                return _finish(out)
             rep = opened[0]
             out.attempt = rep
             run_dir, rep_stage, copied = rep.dir, rep.stage, list(rep.copied)
@@ -3390,8 +3400,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                        verdict=agreement.verdict,
                        rendered_for=agreement.rendered_text,
                        launching_at=agreement.launch_text)
-        finished.append(True)
-        return out
+        return _finish(out)
     except PrepError as exc:
         raise _refused(exc)
     except (UnknownTarget, AmbiguousTarget, ValueError, KeyError) as exc:

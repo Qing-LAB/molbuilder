@@ -746,9 +746,12 @@ A calculation is described **once**, and prep only ever reads that description.
    and prints the probe that writes it.
 3. **What can be checked before writing is checked before writing.**
    Checkpoints 1–5 below write nothing in the calculation, so a refusal there
-   leaves it as it was; a refusal after them puts its plan, `job-set.json`,
-   back as it was, so the stage is not counted as prepped. Every refusal says
-   why in your words and names what to do.
+   leaves it as it was. A refusal after them puts back what says what the
+   calculation is — its plan (`job-set.json`, and the `STAGE-PLAN.md` that
+   reads it) and, at its first prep, its copy of the machine's record — so the
+   stage is not counted as prepped, the calculation is not set to a machine it
+   was never prepped for, and the prep is recorded as refused, never as
+   prepped. Every refusal says why in your words and names what to do.
 4. **A prepped stage is not prepped again — a redo is a rollback** *(user,
    2026-10-02: "refuse it, redo via rollback")*: go back to the state saved
    before the stage's prep and prep it anew

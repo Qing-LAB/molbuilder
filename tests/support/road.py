@@ -300,8 +300,11 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # the person types at the row's prep's question ("" is EOF, no terminal).
 #
 # AFTER PREP, whatever it answered: the folder's saved states, newest first
-# (`saved_states`, their notes), and what `status` says of the calculation
-# (`status_says`); a prep that was not refused says nothing of `said_lacks`.
+# (`saved_states`, their notes), what `status` says of the calculation
+# (`status_says`), and the decisions its ledger does not hold
+# (`ledger_lacks`); a prep that was not refused says nothing of `said_lacks`.
+# A REFUSED prep, its remedy done: this machine re-probed holding `reprobed`
+# (its record's fields), the same prep is typed again and taken.
 #
 # 0 · WHAT THE PROBE RECORDS, checked before anything else: what it says
 # (`probe_said`, lines any of the probes printed) and what the record it
@@ -396,10 +399,21 @@ def _road_probe_layer(case, said, target, began) -> None:
             f"record.detected_at is {stamp!r}, older than its probe ({began})"
 
 
+def _reprobed(fields) -> None:
+    """This machine's record written anew, with ``fields`` -- what `jobset
+    probe --write` writes once the machine has changed."""
+    import dataclasses
+    from molbuilder.scheduler import (machine_scope_path, read_environment,
+                                      write_environment)
+    at = machine_scope_path()
+    write_environment(dataclasses.replace(read_environment(at), **fields), at)
+
+
 def _road_after_prep(case, bundle) -> None:
     """What the row's prep left, refused or not: the folder's saved states,
-    newest first (`saved_states`), and what `status` says of the
-    calculation (`status_says`)."""
+    newest first (`saved_states`), what `status` says of the calculation
+    (`status_says`), and the decisions its ledger does not hold
+    (`ledger_lacks`)."""
     if "saved_states" in case:
         from molbuilder.checkpoint import Repo
         repo = Repo(str(bundle))
@@ -410,6 +424,15 @@ def _road_after_prep(case, bundle) -> None:
         assert st.exit_code == 0, _one_line(st)
         for words in case["status_says"]:
             assert words in st.output, _one_line(st)
+    if "ledger_lacks" in case:
+        import json
+        from molbuilder.jobset.ledger import LEDGER_FILE
+        log = bundle / LEDGER_FILE
+        decided = [json.loads(x)["decision"] for x in
+                   (log.read_text().splitlines() if log.is_file() else [])
+                   if x.strip()]
+        for decision in case["ledger_lacks"]:
+            assert decision not in decided, f"the ledger holds: {decided}"
 
 
 def _road_holds(got, want, where) -> None:
@@ -569,6 +592,13 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         for words in ([said] if isinstance(said, str) else said):
             assert words in r.output, _one_line(r)
         _road_after_prep(case, bundle)
+        if "reprobed" in case:
+            # WHAT THE REFUSAL SAYS TO DO, DONE -- the machine probed again,
+            # holding what it lacked -- and the same prep is taken.
+            _reprobed(case["reprobed"])
+            r = jobset("prep", kind, "coarse", "--bundle", bundle,
+                       "--target", target, *case.get("prep", []))
+            assert r.exit_code == 0, _one_line(r)
         return
     assert r.exit_code == 0, _one_line(r)
     for words in case.get("said", []):

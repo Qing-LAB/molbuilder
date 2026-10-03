@@ -78,6 +78,7 @@ re-ordered without saying who ruled it.
 | **Q1** | **W53's follow-up — `env_init` and one config file** *(user, 2026-10-02)*: this machine's activation and preamble in `molbuilder.json` (`env_init`, asked by `envs init-config`), copied by `jobset probe --write` into every record it writes, the record field `env_init`; the per-calculation `.molbuilder.json` removed — code, contract, tests | **done `05c6bb99`** — 99 targeted files (3870 tests) and 20 browser files (167) green; 10 mutations, 9 red (the 10th found prep's own config read redundant, removed); your config files moved to `env_init` (backed up); the dev server restarted | — |
 | **Q2** | **W54 — the config review** *(user: "do a agent scan focusing on config file including molbuilder.json, environment, secret etc")*: four reviewers in parallel — `molbuilder.json` and secrets code (C), the record and probe code (R), the documents (D), the tests (T) | **Q2a done `92e84cc8`; Q2b part 1 done `7dd8940f`, part 2 `0a7ea0e4`, part 3's first half `6401abfb`** — every finding's state is **§ 0b's ledger**, each re-read in the code before it is acted on *(user, 2026-10-02: "make sure ... all the review results is validated and fix of those are also considered - the review was done in parallel i don't want you to miss those")* | after Q2c: the ledger's open rows, then T15 as its own unit |
 | **Q2c** | **The ten decisions of 2026-10-02** — W54's open words and step 3's D2–D4, answered one by one *(user: "go ahead")* | **done 2026-10-02** — items 1–3, 5–8 and 10a built (`e1d88b22` … `31ca9957`), 4 and 9 settled, 10b done | § 0b |
+| **Q2d** | **W55 — the prep and jobset review** *(user, 2026-10-02: "use agent to read the full code and contract text of prep and other jobset, to make sure a logical workflow is designed with no redundancy, duplicated work, no handcraft, but with a good organized data structure, unified api design and good connection between operations")*: four reviewers in parallel — prep; launch, attempts and status; the two doors and the contract; data structures and APIs | **reviewed 2026-10-03; every finding re-read in the code** — § 0c's ledger: the defects fixed first, the structure proposed for the user's word | § 0c |
 | **Q3** | **M5 step 3 — `TransportConfig` retires** (TD4) | **done `325cb1d4`** — the class and its module gone, the region labels in `transport/sort.py`; `config_for`, the sealed sets and the dataclass form builder deleted, and with the builder the field keys nothing read once it was gone (`section`, `id_suffix`, `step`; `skip_cli` and `optional` unread before — 136 declarations, `web/form-schema.md` § 1a); compose writes the permutation through `write_permutation`, its key stamped; `spec_for`'s transport arm refuses the render arguments it does not read; the kind-narrowing found built by K4 (2026-09-30) and § 8 row 4 fixed since `6822f639`. Targeted files green, 4 mutations red; the documents swept (`engines/transport.md` § 3.6–§ 3.8, § 4; `web/form-schema.md` § 1a; `template.md` § 2.1a; `structure-annotations.md` § 5). **Reviewed** by a fresh agent, full code text: every done-when clause met but D2; its residue and false documents fixed (a dead coercion branch, compose's snapshot lines, four module headers, the blueprint's route list, § 1a's readers) | — (D2, D3 and D4 decided 2026-10-02: Q2c's items 1–3) |
 | **Q4** | **TD9 — M5 step 5 against M2** | **decided 2026-10-02** *(user: "#9 ok")*: M2f, M2g, M2i, M2k, then step 5 | after Q5 |
 | **Q5** | **M5 steps 6, 7 and 10, and K21** — the transport work that does not wait on TD9 | after Q3 | each step's *done when*; K21 is § 5w's |
@@ -303,6 +304,45 @@ while answering the first four)*:
    sum polarized — with the printed figure beside it and the factor stated.
    (b) The printed figure, labelled per spin channel. **Proposed (a).** K21
    waits on it — both change that column.
+
+### 0c. W55 — the prep and jobset review *(2026-10-03)*
+
+Four reviewers read the full code and contract text of `prep` and the rest of
+`jobset` at `1b1d1d65`, each claim re-read in the code before it is listed
+here. **D** — a defect against a written rule, fixed without asking; **B** —
+structure, proposed and waiting for the user's word; **Q** — a rule only the
+user can make.
+
+| # | what | found by | state |
+|---|---|---|---|
+| D1 | a prep refused after it began writing leaves the calculation set to its machine (`environment.json` is not put back), `STAGE-PLAN.md` describing a stage the plan does not hold, and a `prepped` ledger line before the refusal — so a retry naming another machine is refused as *set to* the first | prep #1, #2 | **done 2026-10-03** — a refused prep puts back the plan, its `STAGE-PLAN.md` and the calculation's copy of the record (`prep._as_it_was`), and records *prepped* only when it finished; § 5.0 rule 3 says so. The GPU-build refusal's remedy (install, re-probe, prep again) is taken now — before, the stale copy refused it again; it no longer sends a first prep to a rollback. Row in `prep_protocol.toml` (`reprobed`, `ledger_lacks`); two mutations, each red |
+| D2 | texts sending a person to steps now refused or retired: the re-launch note's `prep run … first`, *re-prep the bench* / *prep the stage again* (`agreement.py`), `_NO_SBATCH`'s *prep it for the machine with the queue*, a flat trial's *move the directory aside*, the deck header's `execution.mode` (renamed `launch.mode`), and the page's and the CLI's *sized from the target's own width* / *the scheduler's own default decides* / `auto` / *inherit defaults* | doors #2, launch #1, structure #11 | open |
+| D3 | the Task setup editor can change the shape of a calculation that has prepped stages; `task-setup.md` § 4 and `job-system.md` § 5.0 say it is fixed once produced | doors #4 | open |
+| D4 | `launch run <stage>` on a stage described and not prepped says *no stage named … in this job-set*; `status` says to prep it | doors #7 | open |
+| D5 | a flat stage launched again records the stage before it as what it continued from (prep's marker, not its own run) | launch #2 | open |
+| D6 | launch's question and its answer are not in the ledger — a *no* leaves no line (§ 5.0 agreement 6) | launch #3 | open |
+| D7 | launch's queue table is built from the launch flags alone, while the door reads the wall and memory prep baked too — a queue shown as fitting is refused | launch #5 | open |
+| D8 | prep swaps the process-wide `sys.stderr` while it renders decks; two Task setup preps at once leave the server's stderr de-duplicating | prep #9 | open |
+| D9 | documents stating retired rules: `workflow.md` § 5 (step 5 *links*), `project-layout.md` (*delete it and re-prep*; re-prep as the way to regenerate), `preparing-for-another-machine.md` (*delete the environment.json*; *no machine name anywhere in the record*), `running-a-job.md` (the web generating decks), `job-system.md` § 5.3's stale lines, `docs/architecture.md`'s jobset row (`plan`, no `prep_stage`), `execution/architecture.md` § 2.1 (`relink`) | doors #12, prep, structure #12 | open |
+| D10 | refusals that need no write come after the save offer: the activation, the structure witness, the flat sweep, the vibration rung's relax checks, transport's disabled rung, `--from` on a stage with nothing to carry — against § 5.0 rule 3 | prep #1, #6 | with B1 |
+| B1 | **prep in two halves**: checkpoints 1–5 build one plan that writes nothing — the description, the stage, the shape, the machine record, the resolved ladder, the structure, the continuation and what it carries, the folded allocation — and the writing half takes it and decides nothing; each file read once, the allocation folded once, one `Continuation` from 4a to the attempt | prep #1, #4–#7, structure #2–#5 | proposed |
+| B2 | **one transport arm**: the transport rungs share the five steps' prologue and epilogue (machine, log, allocation, the job, merge, wrappers, attempts) and supply only compose and their per-rung structure | prep #3 | proposed |
+| B3 | **the preview is the entry**: `prep_stage(…, preview=True)` answers at checkpoint 5, and the route's own assembly (`_plan_chosen`, `_emitted_launch`, `_plan_continuation`, `_plan_prepped`) and the run card's fit check through the bench grid go | doors #1, #10, structure #8, prep #8 | proposed |
+| B4 | **the page composes nothing**: the folder answer carries the calculation's machine, its prepped stages and the commands; the prep answer carries the machine, what the stage starts from and the next lines | doors #3, #5, #8 | proposed |
+| B5 | **one launch entry like prep's**: a typed launch plan, shown then sent; one `sbatch` call and one sequencer; a re-launch's continuation as a `Continuation`, ledgered | launch #3, #6, #7, structure #6 | proposed |
+| B6 | **one opener for attempts**, trials included, stamping `calcdir.json` and seeding the progress channel | launch #4 | proposed |
+| B7 | **layering**: an empty `jobset/__init__`; `token_for` to the description; the engine seam, `PrepError` and the record read to modules of their own — nothing below the conductor imports it | prep #10, launch #9, structure #1 | proposed |
+| B8 | **one door per fact**: prepped, launched, concluded, the warm files, the GPU side, `job-set.json`'s reader, `run.json` through `persist`, a stage's home | structure #7, #10, launch #8, doors #8a | proposed |
+| B9 | **dead code**: routes no page calls (`/resolved`, `/attempts`, `/template-values`), what only re-prep reached (root-deck adoption, the merge's replace arms, attempt reuse), `materialize`'s re-exports | doors #11, prep, structure #12 | proposed |
+| B10 | **one save offer** for Task setup's Save and for prep | doors #6 | proposed |
+| Q1 | a disabled stage named at prep: the ladder's arm preps it, transport's refuses it | prep #13 | the user's word |
+
+*Checked and not kept:* a flat stage's `run.json` missed by transport's
+compose (structure #7) — a transport calculation is hierarchical by rule.
+*Checked, and part of B1:* the vibration rung takes a failed `relax` that
+concluded and left coordinates — `engines/vibration.md` § 5.2a asks only
+*concluded*, while an independent ladder refuses a failed run (`job-system.md`
+§ 5.4); one `Continuation` gives both kinds one rule for a usable run.
 
 ### Unscheduled — open work no milestone carries *(listed 2026-09-29)*
 
