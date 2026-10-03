@@ -463,6 +463,28 @@ def _write_fdf(path):
                     "DM.UseSaveDM .false.\nMD.UseSaveXV .false.\n")
 
 
+def _decks_where_prep_writes_them(base, js, write=_write_fdf):
+    """Each distinct deck written where `prep_calculation` writes it -- its
+    first job's own directory, a trial's attempt where the shape keeps one
+    (`project-layout.md` § 1.0) -- the place `prep_jobset` reads it from.  A
+    deck left at the root was adopted until 2026-10-03; nothing writes one
+    there."""
+    from molbuilder.jobset.materialize import (job_dir_names, shape_of,
+                                               trial_work_dir)
+    sh = shape_of(js, base)
+    dirs = job_dir_names(js, sh)
+    done = set()
+    for j in js.jobs:
+        if j.script in done:
+            continue
+        d = base / dirs[j.name]
+        if js.kind == "sweep":
+            d = trial_work_dir(d, sh)
+        d.mkdir(parents=True, exist_ok=True)
+        write(d / j.script)
+        done.add(j.script)
+
+
 def test_prep_renders_real_wrappers_into_each_job_dir(tmp_path):
     """L1+L2 (roadmap 7.10, user 2026-08-24): every trial directory holds
     its own REAL deck and wrapper, and the bundle root holds NO rendered
@@ -470,10 +492,9 @@ def test_prep_renders_real_wrappers_into_each_job_dir(tmp_path):
     render, symlinked into both dirs -- which is the mechanism that put
     50 rendered files at a real ten-trial bundle's root."""
     js = _sweep()
-    _write_fdf(tmp_path / "job-gpu.fdf")
+    _decks_where_prep_writes_them(tmp_path, js)
     prep_jobset(js, tmp_path, env="molbuilder-siesta-gpu", emit_sbatch=False)
-    # the root-rendered input was ADOPTED into the first trial's dir --
-    # nothing rendered remains at the root.
+    # nothing rendered is at the root
     assert not (tmp_path / "job-gpu.run.sh").exists()
     assert not (tmp_path / "job-gpu.fdf").exists()
     for name in ("bench-G1K1C4", "bench-G1K2C4"):
@@ -500,7 +521,7 @@ def test_prep_bakes_the_warm_retry_budget_into_the_wrapper(tmp_path):
                 jobs=[Job(name="tight", script="job.fdf",
                           resources=Resources(mpi_np=1, cpus_per_task=1,
                                             continue_retries=3))])
-    _write_fdf(tmp_path / "job.fdf")
+    _decks_where_prep_writes_them(tmp_path, js)
     prep_jobset(js, tmp_path, env="molbuilder-siesta", emit_sbatch=False)
 
     wrapper = (tmp_path / "bench-tight" / "job.run.sh").read_text()
@@ -515,7 +536,7 @@ def test_prep_omits_the_retry_loop_when_no_budget_is_asked_for(tmp_path):
     js = JobSet(name="lad", engine="siesta", kind="ladder",
                 jobs=[Job(name="tight", script="job.fdf",
                           resources=Resources(mpi_np=1, cpus_per_task=1))])
-    _write_fdf(tmp_path / "job.fdf")
+    _decks_where_prep_writes_them(tmp_path, js)
     prep_jobset(js, tmp_path, env="molbuilder-siesta", emit_sbatch=False)
     assert "_siesta_retry_max=" not in (tmp_path / "bench-tight" / "job.run.sh").read_text()
 
@@ -828,7 +849,7 @@ def test_direct_launch_carries_the_launch_door_claim(tmp_path, monkeypatch):
                 return 0
         return _Proc()
     js = _sweep()
-    _write_fdf(tmp_path / "job-gpu.fdf")
+    _decks_where_prep_writes_them(tmp_path, js)
     prep_jobset(js, tmp_path, emit_sbatch=False)
     monkeypatch.setattr(sub.subprocess, "Popen", fake_popen)
     sub.submit_jobset(js, tmp_path, mode="direct", only=js.jobs[0].name)
@@ -1146,7 +1167,7 @@ def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
 def test_prep_writes_stage_plan_md(tmp_path):
     """J1 (D3): prep emits STAGE-PLAN.md into the bundle (bench parity)."""
     js = _sweep()
-    _write_fdf(tmp_path / "job-gpu.fdf")
+    _decks_where_prep_writes_them(tmp_path, js)
     prep_jobset(js, tmp_path, emit_sbatch=False)
     plan = tmp_path / "STAGE-PLAN.md"
     assert plan.is_file()
@@ -2279,8 +2300,8 @@ def test_prep_leaves_every_job_a_readable_deck_and_wrapper(tmp_path, shape):
     from molbuilder.jobset.prep import prep_jobset
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
     _describe(tmp_path, shape, names=("coarse", "tight"))
-    for deck in ("JOB_01_coarse.fdf", "JOB_03_tight.fdf"):
-        (tmp_path / deck).write_text("SystemLabel JOB\n")
+    _decks_where_prep_writes_them(
+        tmp_path, js, write=lambda p: p.write_text("SystemLabel JOB\n"))
     (tmp_path / "mb_monitor.py").write_text("# monitor\n")
 
     prep_jobset(js, tmp_path, emit_sbatch=False)
@@ -2626,7 +2647,7 @@ def test_prep_resolves_the_machine_before_anything_else(tmp_path):
     """
     from molbuilder.jobset.prep import prep_jobset
     js = _sweep()
-    _write_fdf(tmp_path / "job-gpu.fdf")
+    _decks_where_prep_writes_them(tmp_path, js)
     assert not (tmp_path / "environment.json").exists()
 
     prep_jobset(js, tmp_path, emit_sbatch=False)

@@ -119,27 +119,6 @@ def trials_in(container) -> "List[Path]":
     return [c / _paths_trial_name(pt) for pt in _paths_trials_in(c)]
 
 
-def launched_trials(container, shape: "Shape") -> "List[str]":
-    """The names of the trials in *container* that ``launch`` has started.
-
-    THE SHAPE DECIDES WHERE THE RECORD SITS, which is why this takes one
-    rather than globbing across the difference: a trial keeps attempts since
-    § 1.5a, so its ``run.json`` is at ``bench-<point>/run-<n>/`` in the
-    hierarchy and at ``bench-<point>/`` in flat.  The caller that asked used
-    ``glob("bench-*/**/run.json")`` -- one pattern for both depths -- and then
-    walked the path parts backwards looking for the ``bench-`` component,
-    because taking the parent would have named the ATTEMPT in the layout that
-    has one.  Both halves of that are this module's knowledge.
-    """
-    out: "List[str]" = []
-    for trial in trials_in(container):
-        places = ([attempt_dir(trial, n) for n in attempts(trial)]
-                  if shape.keeps_attempts_as_directories else [trial])
-        if any(was_launched(p) for p in places):
-            out.append(trial.name)
-    return out
-
-
 def trial_work_dir(container, shape) -> Path:
     """Where a trial's files GO, given the directory it lives in.
 
@@ -1248,7 +1227,7 @@ def read_gathered_from(attempt_dir) -> List[dict]:
 
 __all__ = ["Attempt", "bench_owner", "bench_stage_of", "trial_dir",
            "trial_work_dir",
-           "TRIAL_PREFIX", "trials_in", "launched_trials",
+           "TRIAL_PREFIX", "trials_in",
            "materialize", "job_dir_name", "job_dir_names", "stage_refs",
            "attempts", "was_launched", "latest_attempt", "run_dir",
            "resolve_attempt",

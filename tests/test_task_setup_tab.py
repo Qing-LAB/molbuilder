@@ -106,6 +106,12 @@ import json as _json
 import shutil as _shutil
 
 
+def _folder(client, d):
+    """The folder answer -- the one door Task setup reads a folder through
+    (`web/web-api.md`, `/api/task-setup/folder`)."""
+    return client.get("/api/task-setup/folder?dir=" + str(d)).get_json()
+
+
 def _fresh_calc_dir(root):
     """A directory inside the configured root — the picker refuses anything
     outside it, which is the guard working, not a test problem.
@@ -463,8 +469,7 @@ def test_the_folder_template_is_what_an_empty_cell_names(web_client, isolated_pr
                     "mesh_cutoff": 450.0})).get_json()
         (d / rendered["template_name"]).write_text(rendered["template_text"])
 
-        j = web_client.get("/api/task-setup/template-values?dir="
-                           + str(d)).get_json()
+        j = _folder(web_client, d)["template"]
         assert j["ok"], j
         assert j["name"] == rendered["template_name"]
         assert j["values"]["mesh_cutoff"] == 450.0, (
@@ -502,8 +507,7 @@ def test_each_template_value_says_whose_it_is(web_client, isolated_projects_root
     assert one(tmpl, "basis_size").source == "default"
 
     (d / rendered["template_name"]).write_text(rendered["template_text"])
-    said = web_client.get("/api/task-setup/template-values?dir="
-                          + str(d)).get_json()["said"]
+    said = _folder(web_client, d)["template"]["said"]
     assert said["mesh_cutoff"] == "you set this", said["mesh_cutoff"]
     assert said["relax_force_tol"] == "not chosen", said["relax_force_tol"]
 
@@ -513,8 +517,7 @@ def test_a_folder_with_no_template_is_not_an_error(web_client, isolated_projects
     back to the catalogue, which is exactly right when nothing was sent."""
     d = _fresh_calc_dir(isolated_projects_root)
     try:
-        j = web_client.get("/api/task-setup/template-values?dir="
-                           + str(d)).get_json()
+        j = _folder(web_client, d)["template"]
         assert j["ok"] and j["name"] is None and j["values"] == {}
     finally:
         pass    # tmp_path removes the tree
@@ -1158,8 +1161,7 @@ class TestTheTabShowsWhatAPrepWouldResolve:
     def test_it_serves_the_same_facts_prep_prints(
             self, web_client, tmp_path, monkeypatch):
         b = self._folder(tmp_path, monkeypatch)
-        r = web_client.get("/api/task-setup/resolved",
-                           query_string={"dest": str(b)}).get_json()
+        r = _folder(web_client, b)["provenance"]
         assert r["ok"], r
         # the shape config_provenance produces, not a re-description of it
         assert {s["scope"] for s in r["sources"]} >= {"machine", "environment"}
@@ -1707,30 +1709,10 @@ class TestTheFolderDoor:
         from molbuilder.web.app import create_app
         return dest, create_app(config={}).test_client()
 
-    def test_the_door_answers_what_the_four_calls_answer(self, described):
-        """Composed, never recomputed — so they cannot come to disagree.
-
-        Each part calls the same helper its own route calls.  This asserts
-        the equality end to end, so an edit that gives one of them a second
-        reading is caught here rather than by a person noticing two cards
-        disagree.
-        """
-        dest, client = described
-        one = client.get("/api/task-setup/folder?dir=" + str(dest)).get_json()
-        assert one["ok"] is True
-
-        tmpl = client.get(
-            "/api/task-setup/template-values?dir=" + str(dest)).get_json()
-        prov = client.get(
-            "/api/task-setup/resolved?dest=" + str(dest)).get_json()
-        att = client.post("/api/task-setup/attempts",
-                          json={"dest": str(dest)}).get_json()
-
-        assert one["template"] == tmpl
-        assert one["provenance"] == prov
-        assert one["attempts"] == att
-        assert tmpl["values"], "the fixture must carry template values"
-        assert att["stages"], "the fixture must carry stages"
+    # `test_the_door_answers_what_the_four_calls_answer` retired 2026-10-03
+    # with the three routes it compared the folder answer to
+    # (`/template-values`, `/resolved`, `/attempts`): no page called them,
+    # and the folder answer is the one door left.
 
     def test_the_answer_names_the_folder_it_is_about(self, described):
         """The half a reset list cannot cover.

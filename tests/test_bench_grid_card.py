@@ -484,8 +484,10 @@ class TestThePlanComesFromTheProducer:
 # --------------------------------------------------------------------- #
 
 def _attempts(client, dest):
-    return client.post("/api/task-setup/attempts",
-                       json={"dest": str(dest)}).get_json()
+    """The folder answer's attempts -- the one door (`/api/task-setup/folder`;
+    `/attempts` was retired 2026-10-03, no page calling it)."""
+    return client.get("/api/task-setup/folder?dir=" + str(dest)).get_json()[
+        "attempts"]
 
 
 def test_the_attempts_door_answers_from_the_DECLARED_shape(client, bundle):

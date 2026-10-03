@@ -85,8 +85,11 @@ def _a_prepared_calculation(tmp_path: Path, engine: str = _ENGINE) -> Path:
     # The activation the wrapper needs is the machine record's -- the
     # conftest's autouse `write_machine_record`, since 2026-09-02 a
     # precondition rather than something prep arranges, and what the
-    # generator reads the activation from.
-    (root / f"{LABEL}.fdf").write_text(
+    # generator reads the activation from.  The deck is where
+    # `prep_calculation` writes it, in the stage's own folder
+    # (`project-layout.md` § 1.0) -- `prep_jobset` reads it there.
+    (root / STAGE_DIR).mkdir()
+    (root / STAGE_DIR / f"{LABEL}.fdf").write_text(
         "SystemName test\nSystemLabel J\nNumberOfAtoms 2\n"
         "DM.UseSaveDM .false.\nMD.UseSaveXV .false.\n")
 

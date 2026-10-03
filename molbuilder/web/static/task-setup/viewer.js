@@ -9,11 +9,11 @@
  *   4. Let you read and edit the file itself in the vendored CodeMirror.
  *   5. WRITE IT — POST /api/task-setup/save, which saves the folder's state
  *      first, always (`checkpointing.md` § 9), and puts `task.json` into it.
- *   6. Read what the page cannot derive: the sweepable set
- *      (`/api/task-setup/sweepable`), the picker columns (`…/columns`),
- *      the tier presets (`…/presets`) and the folder's own template
- *      values (`…/template-values`); write through the save door and the
- *      launcher door (`…/launcher`).
+ *   6. Read what the page cannot derive: the folder's own answer
+ *      (`/api/task-setup/folder` -- its template values, provenance and
+ *      attempts among it), the sweepable set (`…/sweepable`), the picker
+ *      columns (`…/columns`) and the tier presets (`…/presets`); write
+ *      through the save door and the prep door (`…/save`, `…/prep`).
  *
  * The contract is `docs/web/task-setup.md`; where this disagrees, that wins.
  *

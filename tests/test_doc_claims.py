@@ -708,12 +708,10 @@ def test_a_folder_holding_two_templates_is_refused_by_the_tab_not_picked(
     assert own.is_file(), sorted(p.name for p in calc.iterdir())
     (calc / "x.template.toml").write_text(own.read_text())
 
-    resp = web_client.get(f"/api/task-setup/template-values?dir={calc}")
-    body = resp.get_json()
-    assert resp.status_code == 400, (
-        f"a folder holding two templates was answered {resp.status_code}: "
-        f"{body}")
-    assert body["ok"] is False
+    resp = web_client.get(f"/api/task-setup/folder?dir={calc}")
+    body = resp.get_json()["template"]
+    assert body["ok"] is False, (
+        f"a folder holding two templates was answered: {body}")
     assert own.name in body["error"] and "x.template.toml" in body["error"], (
         f"the refusal must name BOTH templates so the person can remove the "
         f"leftover: {body['error']!r}")

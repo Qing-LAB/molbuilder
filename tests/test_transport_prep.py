@@ -2029,8 +2029,8 @@ class TestTheBiasScan:
                                 "J/transport/T"])
         assert r.exit_code != 0, r.output
         assert "stage 'device' is already prepped" in r.output, r.output
-        att = client.post(
-            "/api/task-setup/attempts", json={"dest": str(calc)}).get_json()
+        att = client.get(
+            "/api/task-setup/folder?dir=" + str(calc)).get_json()["attempts"]
         assert att["stages"]["device"]["attempts"] == 2, (
             f"each point's open attempt is the device's: {att}")
         assert device_row() == ["v0/run-0", "queued"], (

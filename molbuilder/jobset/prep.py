@@ -297,10 +297,8 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     # ---- 1. render wrappers once per distinct script, IN THE JOB DIR --- #
     # Nothing rendered lives at the bundle root (user, 2026-08-24;
     # `project-layout.md` § 1.0).  The deck was born in its directory by
-    # `prep_calculation`; a deck a caller rendered at the root (hand-built
-    # JobSets, pre-2026-08-24 bundles) is ADOPTED -- moved in, once --
-    # so the root ends clean either way and the wrapper is written beside
-    # the deck it launches.
+    # `prep_calculation`, and the wrapper is written beside the deck it
+    # launches.
     if log is not None:
         log.phase("STEP 4 · WRAPPERS — how each deck is launched")
     _sh = shape_of(jobset, base_dir)
@@ -339,13 +337,9 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
             continue
         script_path = _jd / job.script
         if not script_path.is_file():
-            _root_copy = base / job.script
-            if _root_copy.is_file() and _root_copy != script_path:
-                _root_copy.replace(script_path)      # adoption, not a copy
-            else:
-                raise PrepError(
-                    f"job {job.name!r}: script {job.script!r} not in "
-                    f"{_jd} (render the inputs before prep).")
+            raise PrepError(
+                f"job {job.name!r}: script {job.script!r} not in "
+                f"{_jd} (render the inputs before prep).")
         with _user_error_as_prep():
             # The ALLOCATION, whole (architecture.md § 3.1, rule A8).  This
             # call listed nine of the wrapper's eleven keyword arguments until
@@ -2153,8 +2147,8 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # a stage up to run: `_launch_dir` refuses a hierarchical stage with no
     # attempt open precisely because opening one is not `launch`'s job, and
     # this arm ended at `prep_jobset` until 2026-09-16 -- so a transport prep
-    # from the browser (`web/blueprints/build.py` calls `prep_calculation`
-    # directly) reported success and handed back a folder the launcher would
+    # from the browser (`web/blueprints/build.py` called `prep_calculation`
+    # directly then; it calls `prep_stage` now) reported success and handed back a folder the launcher would
     # not take, naming the command that had just run.  The CLI compensated
     # and no other caller could.
     #
@@ -2419,20 +2413,17 @@ def _merge_run_jobset(path: Path, new: JobSet,
     ``ladder`` is the CURRENT task's stage-name set, and it bounds what is
     kept (2026-08-12): a row is standing only while its stage is still
     on the ladder — a stage removed from ``task.json`` used to stay in the
-    plan forever, its deck gone.  A set whose NAME differs is a different
-    calculation's plan and is replaced outright, same as the legacy cases.
+    plan forever, its deck gone.  *(Three arms replaced the plan outright
+    until 2026-10-03 -- one that did not read, a pre-container sweep's, one
+    under another name: the prep entry reads the plan first, and molbuilder
+    writes neither of the others.)*
     """
     if not path.is_file():
         return new
-    try:
-        old = JobSet.load(path)
-    except ValueError:
-        return new              # unreadable or legacy: replaced outright
-    if old.kind != "ladder":
-        return new              # a pre-container sweep leftover: replaced
-    if old.name != new.name:
-        return new              # a renamed calculation: the old plan is
-                                # another name's plan, not rows to keep
+    old = JobSet.load(path)
+    # A STAGE IS PREPPED ONCE (`job-system.md` § 5.0), so its row is new;
+    # one already here is replaced rather than doubled, should two preps of
+    # one stage ever race past the entry's gate together.
     fresh = {j.name for j in new.jobs}
     kept = [j for j in old.jobs if j.name not in fresh
             and (ladder is None or j.name in ladder)]
@@ -2440,8 +2431,8 @@ def _merge_run_jobset(path: Path, new: JobSet,
         new, jobs=kept + list(new.jobs),
         shared=sorted(set(old.shared) | set(new.shared)))
     # The plan's order is the LADDER's, not the order stages were prepped
-    # in: re-prepping `coarse` must not move it below `medium`.  The seq
-    # token is zero-padded (§ 6.3) so it sorts as it reads.
+    # in: `medium` prepped before `coarse` (`--cold`) is still listed after
+    # it.  The seq token is zero-padded (§ 6.3) so it sorts as it reads.
     from .materialize import stage_refs
     refs = stage_refs(merged)
     return dataclasses.replace(

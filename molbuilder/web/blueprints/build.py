@@ -10,8 +10,8 @@ Routes (registered with no url_prefix; each carries its own full path):
                                     pyscf}; ?calculation=vibration narrows to
                                     the kind's items)
     POST /api/structure/{analyze,periodicity}
-    POST /api/task-setup/{handover,save,launcher} · GET .../{sweepable,
-                                    columns,template-values,presets}
+    POST /api/task-setup/{handover,prep,save,bench-grid,prep-plan}
+    GET  /api/task-setup/{folder,machines,sweepable,columns,presets}
 
 (The render doors POST /api/build/fdf and /api/build/pyscf were DELETED
 2026-08-17 -- a browser renders no deck; their tombstone is below.  The
@@ -1873,33 +1873,9 @@ def api_task_setup_columns():
                     "roles": _T.stage_role_rule(engine, _calc_kind)})
 
 
-@bp.route("/api/task-setup/template-values", methods=["GET"])
-def api_task_setup_template_values():
-    """What the folder's own template answers -- the baseline a stage inherits.
-
-    `engines/stages.md` § 6.2: a stage that sets nothing "uses the template's
-    value".  THE TEMPLATE'S -- not the catalogue's.  A tab that shows a
-    catalogue default in an empty cell is naming a number the job will not run
-    whenever the sender changed that parameter, which is the whole point of the
-    hand-over: the k-grid a person chose in a parameter tab lands HERE.
-
-    The server reads it because TOML is a format, and `projects.md` § 3 keeps a
-    format's correctness on this side of the wire -- `read_template` is the
-    same parser `prep` opens the file with, so the browser cannot become a
-    second reader that disagrees about what a value is.
-    """
-    dir_raw = str(request.args.get("dir") or "")
-    if not dir_raw:
-        return jsonify({"ok": False, "error": "no folder given"}), 400
-    try:
-        folder = _resolve_within_roots(dir_raw)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
-    if not folder.is_dir():
-        return jsonify({"ok": False, "error": f"not a directory: {dir_raw}"}), 400
-
-    out = _folder_template(folder)
-    return (jsonify(out), 200) if out["ok"] else (jsonify(out), 400)
+# `/api/task-setup/template-values`, `/resolved` and `/attempts` stood here
+# until 2026-10-03: no page called them -- the folder answer serves each
+# part (`template`, `provenance`, `attempts`) from the same helper.
 
 
 def _folder_template(folder) -> dict:
@@ -1942,37 +1918,6 @@ def _folder_template(folder) -> dict:
     said = {it.name: SOURCE_WORDS[it.source or "unrecorded"]
             for it in select(tmpl) if it.is_set}
     return {"ok": True, "name": found.name, "values": values, "said": said}
-
-
-@bp.route("/api/task-setup/resolved", methods=["GET"])
-def api_task_setup_resolved():
-    """What a `prep` would resolve for this folder, and from which file.
-
-    The same block `prep` prints -- `runtime_config.config_provenance`,
-    which answers *"where did that setting come from?"* at the moment it
-    takes effect.  Served rather than restated: a hand-written notice in
-    the browser would be a second account of the same facts, free to drift
-    from the one the terminal shows.
-
-    Safe for the browser by construction: provenance carries paths,
-    presence, and the effective values of an allowlisted set of sections --
-    never file contents, so a `tls` key or an OAuth secret cannot reach a
-    page through it.
-
-    Query: ``dest`` (the folder), ``target`` (optional machine name).
-    """
-    dest_raw = str(request.args.get("dest") or "")
-    if not dest_raw:
-        return jsonify({"ok": False, "error": "no folder given"}), 400
-    try:
-        dest = _resolve_within_roots(dest_raw)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
-    if not dest.is_dir():
-        return jsonify({"ok": False, "error": f"not a directory: {dest_raw}"}), 400
-
-    out = _folder_provenance(dest)
-    return (jsonify(out), 200) if out["ok"] else (jsonify(out), 400)
 
 
 def _folder_provenance(dest) -> dict:
@@ -2219,37 +2164,6 @@ def api_task_setup_prep_plan():
                     ("prep", "run", "summarize"), task.calculation)
     return jsonify({"ok": True, "shape": shape.name, "stages": rows,
                     "bench": bench, "bundle": bundle, "once": once})
-
-
-@bp.route("/api/task-setup/attempts", methods=["POST"])
-def api_task_setup_attempts():
-    r"""How many attempts each stage has on disk — `project-layout.md` § 4.5.
-
-    **The browser worked this out itself**, and needed four of our rules to do
-    it: it composed the stage token, listed the folder, matched
-    ``/^run-\d+$/`` for the attempts, and fell back to counting
-    ``_<token>-run`` in filenames when no stage directory was there.  That
-    last branch is the one that matters — it **inferred the shape from what
-    it saw**, which § 4.5 forbids by name, so a hierarchical calculation
-    prepped-but-not-yet-run read as flat and was counted the flat way.
-
-    The shape is DECLARED (`engines/stages.md` § 6.7), the token comes from
-    `prep.token_for` and the attempts from `paths.attempts_in` — none of
-    which a browser can reach.  So it asks.
-
-    POST ``{dest}`` — a folder, because this is a question about what is on
-    disk, unlike `prep-plan` which reads only the document.
-    """
-    body = request.get_json(silent=True) or {}
-    dest_raw = str(body.get("dest") or "")
-    if not dest_raw:
-        return jsonify({"ok": False, "error": "no folder given"}), 400
-    try:
-        dest = _resolve_within_roots(dest_raw)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
-    out = _folder_attempts(dest)
-    return (jsonify(out), 200) if out["ok"] else (jsonify(out), 400)
 
 
 def _plan_prepped(dest, task, kind, stage) -> dict:

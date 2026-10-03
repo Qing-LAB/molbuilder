@@ -1057,7 +1057,7 @@ def template_path(base, label: str) -> "_Path":
     derived the name from ``task.json``'s label, and two globbed
     ``*.template.toml`` and took the first hit.  A folder holding two templates
     therefore had the web tab and ``prep`` reading DIFFERENT FILES -- and
-    ``/api/task-setup/template-values``'s own docstring argues, correctly, that
+    the folder answer's template reader (`_folder_template`) argues, correctly, that
     the browser must not become "a second reader that disagrees about what a
     value is".  It shared `prep`'s parser and not `prep`'s path.
     """

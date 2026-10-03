@@ -260,7 +260,7 @@ and it is one way round:
 | the folder's template value | the template answers this parameter |
 | the catalogue's `default` | it does not — nothing was sent, or the sender left it alone |
 
-`GET /api/task-setup/template-values?dir=` reads it, because TOML is a format and
+The folder answer (`GET /api/task-setup/folder`, its `template`) reads it, because TOML is a format and
 [`projects.md § 3`](?doc=web/projects.md) keeps a format's correctness on the
 server. It parses with `read_template` — the same reader `prep` opens the file
 with — so the browser cannot become a second reader that disagrees.

@@ -267,8 +267,8 @@ not get its own rules: it surfaces the ones above.
   on the machine.
 
 - **It shows what a `prep` would resolve, and from which file** —
-  `GET /api/task-setup/resolved` serves `config_provenance`, the same block
-  `prep` prints. Served rather than restated: a hand-written notice in the
+  the folder answer's `provenance` (`GET /api/task-setup/folder`) serves
+  `config_provenance`, the same block `prep` prints. Served rather than restated: a hand-written notice in the
   browser would be a second account of the same facts, free to drift from
   the one the terminal shows. Safe for a page by construction — provenance
   carries paths, presence and an allowlisted set of effective values, never
