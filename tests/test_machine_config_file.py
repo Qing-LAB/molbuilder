@@ -205,7 +205,7 @@ def test_write_refuses_to_overwrite_a_corrupt_file(sandbox):
     import pytest
     from molbuilder.runtime_config import RuntimeConfigError
     (sandbox / "molbuilder.json").write_text("not valid json {{{")
-    with pytest.raises(RuntimeConfigError, match="refusing to overwrite"):
+    with pytest.raises(RuntimeConfigError, match="refused, never overwritten"):
         write_config_scope({
             "paths": {"projects": "/srv/projects"},
         })

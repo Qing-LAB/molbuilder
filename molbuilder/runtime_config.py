@@ -176,21 +176,39 @@ def read_config(path: Optional[Path] = None) -> Dict[str, Any]:
     cfg_path = path if path is not None else machine_config_path()
     if not cfg_path.is_file():
         return {}
-    try:
-        raw = json.loads(cfg_path.read_text())
-    except json.JSONDecodeError as exc:
-        raise RuntimeConfigError(
-            f"{cfg_path}: invalid JSON ({exc.msg} at line {exc.lineno})"
-        ) from None
-    if not isinstance(raw, dict):
-        raise RuntimeConfigError(
-            f"{cfg_path}: top-level value must be an object, "
-            f"got {type(raw).__name__}"
-        )
+    raw = _load_raw(cfg_path)
     try:
         return _normalise(raw)
     except RuntimeConfigError as exc:
         raise RuntimeConfigError(_naming(cfg_path, exc)) from None
+
+
+def _load_raw(path: Path) -> Dict[str, Any]:
+    """The file's JSON object, unvalidated -- ``{}`` when there is no file.
+
+    THE ONE PARSE of ``molbuilder.json`` (W54 C19).  `read_config`, the
+    provenance display and the one writer each parsed it, with three error
+    policies: a refusal naming the path, an ``OSError`` escaping raw, a
+    silent ``{}`` that showed a broken file as found with no values, and a
+    third wording in the writer.  `configuration.md` § 2.2: a malformed file
+    is refused by the command that reads it, in the resolved path's words --
+    once, here."""
+    if not path.is_file():
+        return {}
+    try:
+        raw = json.loads(path.read_text())
+    except OSError as exc:
+        raise RuntimeConfigError(
+            f"{path}: cannot be read ({exc.strerror})") from None
+    except json.JSONDecodeError as exc:
+        raise RuntimeConfigError(
+            f"{path}: invalid JSON ({exc.msg} at line {exc.lineno})"
+        ) from None
+    if not isinstance(raw, dict):
+        raise RuntimeConfigError(
+            f"{path}: top-level value must be an object, "
+            f"got {type(raw).__name__}")
+    return raw
 
 
 # --------------------------------------------------------------------- #
@@ -1475,14 +1493,7 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     # showed them as file-supplied values -- the display existing to
     # answer "which file said this" answered it about keys no file
     # said).
-    def _raw_file(path: Path) -> Dict[str, Any]:
-        try:
-            obj = json.loads(path.read_text())
-            return obj if isinstance(obj, dict) else {}
-        except (OSError, ValueError):
-            return {}
-
-    machine_file = _raw_file(machine_path)
+    machine_file = _load_raw(machine_path)
     effective: Dict[str, Dict[str, Any]] = {}
     for section in _PROVENANCE_SECTIONS:
         block = machine_file.get(section)
@@ -1671,24 +1682,16 @@ def write_config_scope(patch: Mapping[str, Any]) -> Path:
     # this change removes.
     target = machine_config_path()
 
-    existing: Dict[str, Any] = {}
-    if target.is_file():
-        try:
-            existing = json.loads(target.read_text())
-            if not isinstance(existing, dict):
-                raise RuntimeConfigError(
-                    f"{target}: exists but is not a JSON object -- refusing "
-                    f"to merge a patch over it.  Fix or remove the file "
-                    f"first.")
-        except (OSError, json.JSONDecodeError) as exc:
-            # REFUSED, not overwritten (R10, 2026-08-12: 'log nothing,
-            # overwrite' silently destroyed whatever a hand-edit broke --
-            # a config carrying auth providers and TLS paths is exactly
-            # the file a user cannot afford to lose to a typo).
-            raise RuntimeConfigError(
-                f"{target}: unreadable ({exc}) -- refusing to overwrite a "
-                f"corrupt config.  Fix the JSON (or move the file aside) "
-                f"and retry.") from exc
+    try:
+        existing = _load_raw(target)
+    except RuntimeConfigError as exc:
+        # REFUSED, not overwritten (R10, 2026-08-12: 'log nothing,
+        # overwrite' silently destroyed whatever a hand-edit broke -- a
+        # config carrying auth providers and TLS paths is exactly the file a
+        # user cannot afford to lose to a typo).
+        raise RuntimeConfigError(
+            f"{exc}  Nothing was written: a corrupt config is refused, never "
+            f"overwritten -- fix it (or move it aside) and retry.") from None
 
     merged = _deep_merge(existing, dict(patch))
     # Round-trip through the validator BEFORE writing so we never

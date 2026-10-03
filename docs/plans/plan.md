@@ -208,8 +208,8 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | C15 | retired `scheduler` / `script_generation` leftovers in code | fixed `0a7ea0e4` |
 | C16 | texts a person reads stating false facts | fixed `0a7ea0e4` |
 | C17 | getters in two shapes; `create_app(config=)` neither validates nor isolates | **fixed `90ff8120`** — a given config is `_normalise`d; `create_app`'s docstring and `serve --no-auth`'s comment say what comes from it; `test_rate_limit`'s fixture is a config a server starts on; `get_launch()` → `get_launch_mode()`, the mode itself |
-| C18 | one notify-user rule written as two regexes | **fixed** — `monitor.is_notify_user`, beside `is_route_segment`; the issuer and the listener ask it |
-| C19 | `molbuilder.json` parsed three times, three error policies | **to do** — one `_load_raw(path)` for `read_config`, `_raw_file`, `write_config_scope` |
+| C18 | one notify-user rule written as two regexes | **fixed `96f71a7c`** — `monitor.is_notify_user`, beside `is_route_segment`; the issuer and the listener ask it |
+| C19 | `molbuilder.json` parsed three times, three error policies | **fixed** — `_load_raw(path)`, the one parse: a broken file is refused in the path's words by every reader (the provenance display showed it found with no values); the writer adds that nothing was written |
 | C20 | constants spelled again outside their owner | partly fixed `7dd8940f`; **to do** — `"via": "config-dir"` (a constant now), a literal `"molbuilder.json: paths.…"`, three `0o600` literals |
 | C21 | redundant validation and normalisation | **to do** — `admin.install_admins` re-normalises; `auth-setup` imports the private `_validate_provider` and writes Google's secret before either check; `"common"` twice |
 | C22 | stranded comments | fixed `0a7ea0e4` |
