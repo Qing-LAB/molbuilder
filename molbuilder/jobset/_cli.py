@@ -2312,13 +2312,6 @@ def cmd_probe(do_write: bool, name, yes: bool,
 
     from ..scheduler import (machine_scope_path, read_environment,
                              resolve_environment, write_environment)
-    # `_run` is PRIVATE to the record module and the package does not
-    # re-export it -- a private name comes from the module that defines it,
-    # or it is not private.  (The blanket rename of 2026-08-23 pointed this
-    # at the package, where it correctly did not exist.)
-    from ..scheduler.record import _run
-    from ..scheduler.probe import (derive_domains, parse_allowed_qos,
-                                    parse_qos, parse_sinfo)
 
     user = getpass.getuser()
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -2365,93 +2358,13 @@ def cmd_probe(do_write: bool, name, yes: bool,
     from ..diagnostics import local_facts as _local_facts
     env, notes_sg = _local_facts(env, declared)
 
-    notes = []
-    # ``%m`` (memory per node, MB) added 2026-08-23 -- the ceiling
-    # `Domain.max_mem_gb` has wanted since the row was designed
-    # (`execution/scheduler.md` § 2).
-    sinfo_txt = _run(["sinfo", "-h", "-o", "%P|%30l|%D|%40G|%c|%m"])
-    if sinfo_txt is None:
-        # NOT a refusal.  M-2: a workstation records its capability in the same
-        # shape a cluster does.  This verb used to exit 2 here, which left the
-        # one machine that most needs a stated ceiling with no record at all.
-        if env.scheduler == "slurm":
-            # Slurm, and no `sinfo` here to read its queues from: saying
-            # "workstation record" would contradict the scheduler declared.
-            notes.append("no sinfo reachable here, so no queues were "
-                         "probed -- run the probe where `sinfo` answers "
-                         "(a login node).")
-        else:
-            notes.append("no sinfo, so no scheduler domains -- this is a "
-                         "workstation record (topology only).")
-    else:
-        parts = parse_sinfo(sinfo_txt)
-        # MaxTRES added 2026-08-27 (R13): the QoS's per-job cpu cap was
-        # in this very table all along, and the format list never asked
-        # for it -- a field you did not request is not an absence the
-        # record may report as silence.
-        #
-        # MaxSubmitJobsPerUser added 2026-08-30 (R14) -- the SAME rule, the
-        # next column over.  Sol's `debug` caps a user at 2 submitted jobs;
-        # a bench sweep sent six, two landed, four came back
-        # QOSMaxSubmitJobPerUserLimit, and no record could have said so.
-        #
-        # APPENDED, never inserted: `sacctmgr -nP` prints no header, so
-        # these rows are positional and a column in the middle would shift
-        # every reader after it.
-        #
-        # AND ASKED SEPARATELY, with a fall-back.  `sacctmgr` rejects the
-        # WHOLE query on one unknown format field, and `_run` reports any
-        # failure as None -- so on a cluster whose Slurm spells this column
-        # differently, a single combined query would lose MaxWall and
-        # MaxTRES as well, and every domain would silently go back to
-        # having no QoS facts at all.  One new question cannot be allowed
-        # to cost the answers we already had.
-        _QOS_FMT_FULL = "format=Name,MaxWall,MaxTRES,Flags,MaxSubmitJobsPerUser"
-        _QOS_FMT_BASE = "format=Name,MaxWall,MaxTRES,Flags"
-        _qos_txt = _run(["sacctmgr", "-nP", "show", "qos", _QOS_FMT_FULL])
-        if _qos_txt is None:
-            _qos_txt = _run(["sacctmgr", "-nP", "show", "qos", _QOS_FMT_BASE])
-            if _qos_txt is not None:
-                notes.append(
-                    "this Slurm did not accept MaxSubmitJobsPerUser in the "
-                    "QoS format list, so no domain records a submitted-job "
-                    "cap -- the wall and core caps were read as usual.  A "
-                    "sweep will find that limit at sbatch time instead of "
-                    "before it (scheduler.md R14).")
-        qos = parse_qos(_qos_txt or "")
-        allowed = parse_allowed_qos(
-            _run(["sacctmgr", "-nP", "show", "assoc", f"user={user}",
-                  "format=QOS"]) or "")
-        # THE SECOND COMMAND, and it needs one: `sinfo` has no format code
-        # for DefMemPerCPU, and that is the number SLURM grants per core when
-        # a job states no --mem -- the one that turned 64 cores into a 128 G
-        # ask nobody made.  Absent scontrol, the rows simply carry no
-        # per-core default, which reads as "this machine does not say"
-        # rather than as zero (R3).
-        from ..scheduler.probe import parse_scontrol_partitions
-        policy = parse_scontrol_partitions(
-            _run(["scontrol", "show", "partition"]) or "")
-        for _p in parts:
-            _pol = policy.get(_p.name)
-            if _pol is not None:
-                _p.def_mem_per_cpu_mb = _pol.def_mem_per_cpu_mb
-                _p.max_cpus_per_node = _pol.max_cpus_per_node
-                # the record writes null-when-asked vs absent-when-not
-                # (probe.py's absent-vs-null note, 2026-08-28)
-                _p.policy_queried = True
-        rows, notes = derive_domains(parts, qos, allowed)
-        # AFTER `derive_domains`, which REASSIGNS `notes` -- appending before
-        # it silently dropped this line, which is the class of bug the note
-        # itself is about: a measurement that quietly did not happen.
-        if not policy:
-            notes.append("scontrol was not reachable, so no per-core memory "
-                         "default was measured -- a job that states no --mem "
-                         "will get whatever SLURM decides and molbuilder "
-                         "cannot show you the number in advance.")
-        env.domains = rows          # already Domain objects (probe.py)
-        env.source["domains"] = "sinfo+sacctmgr"
-        click.echo(f"Probed (user={user}): {len(parts)} partitions; "
-                   f"allowed QoS: {', '.join(sorted(allowed)) or '(unknown)'}")
+    # THE QUEUES -- `record.probe_queues`, the one queue probe; `envs
+    # init-config` seeds this machine's record through it too (M-3).  It was
+    # inline here until 2026-10-02, and init-config seeded a cluster with none.
+    from ..scheduler.record import probe_queues
+    notes, summary = probe_queues(env, user)
+    if summary:
+        click.echo(summary)
 
     # A named target is a record ABOUT another machine, kept beside this
     # machine's rather than replacing it (P2): a workstation holds both its own

@@ -397,10 +397,11 @@ class Environment:
     env_arch:   Optional[str] = None
     source:    Dict[str, str] = field(default_factory=dict)
     detected_at: Optional[str] = None
-    # the LIVE writer (resolve_target, prep step 1); "prep-bench@1" -- the
-    # deleted verb -- stamped every fresh record until R10, 2026-08-12
-    # (U19 fixed only from_dict's re-read default)
-    tool:      str = "jobset-prep@1"
+    #: Who wrote it: the probe -- `jobset probe`, or `envs init-config`
+    #: through it.  It said ``jobset-prep@1``, from when prep probed, on every
+    #: record until 2026-10-02 (R13); ``prep-bench@1``, the deleted verb,
+    #: before R10 (2026-08-12).
+    tool:      str = "jobset-probe@1"
 
     # ----- JSON round-trip (the persisted contract) ----------------- #
 
@@ -456,7 +457,7 @@ class Environment:
             # the default names the LIVE writer; "prep-bench@1" (the deleted
             # verb) stood here until U19, stamping every re-read record
             # with a tool that no longer exists
-            tool=str(d.get("tool", "jobset-prep@1")),
+            tool=str(d.get("tool", "jobset-probe@1")),
         )
 
 
@@ -753,6 +754,106 @@ def resolve_environment(*, overrides: Optional[dict] = None,
         source={"scheduler": sch_src, "topology": topo_src, "site": site_src},
         detected_at=now_iso,
     )
+
+
+def probe_queues(env: Environment, user: str) -> Tuple[List[str], Optional[str]]:
+    """Read this machine's queues into ``env.domains`` -- what ``sinfo``,
+    ``sacctmgr`` and ``scontrol`` say -- and return ``(notes, summary)``:
+    what a person should read before the record is written, and the one
+    line that says what was read (``None`` when no ``sinfo`` answered).
+
+    **THE ONE QUEUE PROBE** (`configuration.md` M-3: a machine is measured
+    by `jobset probe`, or by `envs init-config` seeding its own record
+    "through the same prober").  It was inline in `jobset probe` until
+    2026-10-02, so init-config seeded a cluster's record as ``slurm`` with no
+    queues, and the first prep that named one was refused (R4).
+
+    Not a refusal when there is no ``sinfo`` -- M-2: a workstation records
+    its capability in the same shape a cluster does, with no domains.
+    """
+    from .probe import (derive_domains, parse_allowed_qos, parse_qos,
+                        parse_scontrol_partitions, parse_sinfo)
+    notes: List[str] = []
+    # ``%m`` (memory per node, MB) added 2026-08-23 -- the ceiling
+    # `Domain.max_mem_gb` has wanted since the row was designed
+    # (`execution/scheduler.md` § 2).
+    sinfo_txt = _run(["sinfo", "-h", "-o", "%P|%30l|%D|%40G|%c|%m"])
+    if sinfo_txt is None:
+        if env.scheduler == "slurm":
+            # Slurm, and no `sinfo` here to read its queues from: saying
+            # "workstation record" would contradict the scheduler declared.
+            notes.append("no sinfo reachable here, so no queues were "
+                         "probed -- run the probe where `sinfo` answers "
+                         "(a login node).")
+        else:
+            notes.append("no sinfo, so no scheduler domains -- this is a "
+                         "workstation record (topology only).")
+        return notes, None
+    parts = parse_sinfo(sinfo_txt)
+    # MaxTRES added 2026-08-27 (R13): the QoS's per-job cpu cap was in this
+    # very table all along, and the format list never asked for it -- a field
+    # you did not request is not an absence the record may report as silence.
+    #
+    # MaxSubmitJobsPerUser added 2026-08-30 (R14) -- the SAME rule, the next
+    # column over.  Sol's `debug` caps a user at 2 submitted jobs; a bench
+    # sweep sent six, two landed, four came back QOSMaxSubmitJobPerUserLimit,
+    # and no record could have said so.
+    #
+    # APPENDED, never inserted: `sacctmgr -nP` prints no header, so these rows
+    # are positional and a column in the middle would shift every reader
+    # after it.
+    #
+    # AND ASKED SEPARATELY, with a fall-back.  `sacctmgr` rejects the WHOLE
+    # query on one unknown format field, and `_run` reports any failure as
+    # None -- so on a cluster whose Slurm spells this column differently, a
+    # single combined query would lose MaxWall and MaxTRES as well, and every
+    # domain would silently go back to having no QoS facts at all.  One new
+    # question cannot be allowed to cost the answers we already had.
+    qos_txt = _run(["sacctmgr", "-nP", "show", "qos",
+                    "format=Name,MaxWall,MaxTRES,Flags,MaxSubmitJobsPerUser"])
+    no_submit_cap = qos_txt is None
+    if no_submit_cap:
+        qos_txt = _run(["sacctmgr", "-nP", "show", "qos",
+                        "format=Name,MaxWall,MaxTRES,Flags"])
+    qos = parse_qos(qos_txt or "")
+    allowed = parse_allowed_qos(
+        _run(["sacctmgr", "-nP", "show", "assoc", f"user={user}",
+              "format=QOS"]) or "")
+    # THE SECOND COMMAND, and it needs one: `sinfo` has no format code for
+    # DefMemPerCPU, and that is the number SLURM grants per core when a job
+    # states no --mem -- the one that turned 64 cores into a 128 G ask nobody
+    # made.  Absent scontrol, the rows simply carry no per-core default, which
+    # reads as "this machine does not say" rather than as zero (R3).
+    policy = parse_scontrol_partitions(
+        _run(["scontrol", "show", "partition"]) or "")
+    for p in parts:
+        pol = policy.get(p.name)
+        if pol is not None:
+            p.def_mem_per_cpu_mb = pol.def_mem_per_cpu_mb
+            p.max_cpus_per_node = pol.max_cpus_per_node
+            # the record writes null-when-asked vs absent-when-not
+            # (probe.py's absent-vs-null note, 2026-08-28)
+            p.policy_queried = True
+    rows, notes = derive_domains(parts, qos, allowed)
+    # EVERY NOTE AFTER `derive_domains`, which REASSIGNS `notes`.  The
+    # submit-cap note below was appended BEFORE it until 2026-10-02, and so
+    # was never shown -- the class of bug the scontrol note is about: a
+    # measurement that quietly did not happen.
+    if no_submit_cap and qos_txt is not None:
+        notes.append(
+            "this Slurm did not accept MaxSubmitJobsPerUser in the QoS format "
+            "list, so no domain records a submitted-job cap -- the wall and "
+            "core caps were read as usual.  A sweep will find that limit at "
+            "sbatch time instead of before it (scheduler.md R14).")
+    if not policy:
+        notes.append("scontrol was not reachable, so no per-core memory "
+                     "default was measured -- a job that states no --mem "
+                     "will get whatever SLURM decides and molbuilder cannot "
+                     "show you the number in advance.")
+    env.domains = rows          # already Domain objects (probe.py)
+    env.source["domains"] = "sinfo+sacctmgr"
+    return notes, (f"Probed (user={user}): {len(parts)} partitions; allowed "
+                   f"QoS: {', '.join(sorted(allowed)) or '(unknown)'}")
 
 
 # --------------------------------------------------------------------- #

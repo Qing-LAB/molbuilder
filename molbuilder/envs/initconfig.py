@@ -44,11 +44,13 @@ re-running is still a no-op -- the CONTENT is compared, which is what keeps
 that true while making a stale one impossible.
 
 **No new writer.**  The record goes through ``resolve_environment`` ->
-``diagnostics.local_facts`` -> ``write_environment``, the same three steps in
-the same order ``jobset probe --write`` takes, so the two cannot disagree about
-what this machine is.  ``local_facts`` was inline in that command until this
-module became its second caller.  This module contributes the DIRECTORY, the
-CONFIG and the ANSWER it asked for; the record it delegates.
+``diagnostics.local_facts`` -> ``record.probe_queues`` -> ``write_environment``,
+the same steps in the same order ``jobset probe --write`` takes, so the two
+cannot disagree about what this machine is.  ``local_facts`` and the queue
+probe were inline in that command until this module became their second
+caller -- the queues not until 2026-10-02, so a cluster was seeded with none
+(R4).  This module contributes the DIRECTORY, the CONFIG and the ANSWER it
+asked for; the record it delegates.
 """
 from __future__ import annotations
 
@@ -537,18 +539,22 @@ def seed_environment_record() -> Step:
     """This machine's own ``environment.json``, via the probe's own doors --
     carrying the copy of ``env_init`` the probe makes.
 
-    Delegated to ``resolve_environment`` + ``local_facts`` +
-    ``write_environment`` -- what ``jobset probe --write`` calls -- so there is
-    one prober and one writer, and re-probing later cannot disagree with what
-    was seeded here.  Ordered AFTER the config: the record copies its
+    Delegated to ``resolve_environment`` + ``local_facts`` + ``probe_queues``
+    + ``write_environment`` -- what ``jobset probe --write`` calls -- so there
+    is one prober and one writer, and re-probing later cannot disagree with
+    what was seeded here.  Ordered AFTER the config: the record copies its
     ``env_init``, so a record written first would carry nothing.  An existing
     record is kept -- re-probing is `jobset probe`'s, which asks before it
     overwrites.
     """
+    import getpass
+    from datetime import datetime, timezone
+
     from ..diagnostics import local_facts
     from ..runtime_config import get_env_init
     from ..scheduler import (machine_scope_path, read_environment,
                              resolve_environment, write_environment)
+    from ..scheduler.record import probe_queues
     # Its own directory: a public function that worked only after another one
     # had made it is a trap (`_ensure_root`).
     _ensure_root()
@@ -562,12 +568,17 @@ def seed_environment_record() -> Step:
             f'--write` when the machine changes' if said else
             "carries NO activation -- `molbuilder jobset probe --write` "
             "copies env_init into it"))
-    # THE SAME TWO STEPS ``jobset probe --write`` TAKES, in the same order:
-    # resolve, then attach the three facts that travel (`local_facts`).
-    env, _note = local_facts(resolve_environment(), get_env_init())
+    # THE SAME STEPS ``jobset probe --write`` TAKES, in the same order: the
+    # node, the three facts that travel (`local_facts`), the queues.  The
+    # stamp too -- `detected_at` was null in every record seeded here.
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    env, _note = local_facts(resolve_environment(now_iso=now), get_env_init())
+    probe_queues(env, getpass.getuser())
     write_environment(env, path)
     sg = getattr(env, "env_init", None) or {}
     note = "probed this machine"
+    if env.domains:
+        note += f"; {len(env.domains)} queue(s)"
     if sg.get("activation"):
         note += f'; carries activation "{sg["activation"]}"'
     else:

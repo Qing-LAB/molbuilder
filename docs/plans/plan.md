@@ -219,7 +219,7 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | R1 | the activation refusal named the wrong record | fixed `92e84cc8` |
 | R2 | an unreadable snapshot skipped silently | fixed `92e84cc8` |
 | R3 | `--target this` takes another machine's snapshot unasked — and the tab sends `this` on every prep once "(this machine)" is picked | **your word** — below |
-| R4 | `envs init-config` is a second, partial prober: on a cluster it seeds `slurm` with no queues and no `detected_at` | **to do** — one queue probe that `jobset probe` and init-config both run (M-3: "through the same prober") |
+| R4 | `envs init-config` is a second, partial prober: on a cluster it seeds `slurm` with no queues and no `detected_at` | **fixed** — `record.probe_queues`, run by both (and the submit-cap note it carried, dropped since it was written, now shown) |
 | R5 | "lists no queues" prints the bare probe command, whatever the target or snapshot | **to do** — `probe_line(target)` and the snapshot's two steps, one helper shared with the GPU-bench refusal |
 | R6 | the launch re-check's remedy (re-run `prep`) cannot work — prep keeps the snapshot — and names a queue as the machine | **to do** — ask within the limits (`--time`, `--mem`, the shape, `--domain`), or delete the snapshot and prep again |
 | R7 | the preamble guard's remedy | fixed `92e84cc8` |
@@ -228,7 +228,7 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | R10 | the record read 3–4 times per prep | **to do** — read once in `prep_stage` and handed down; `_no_record`'s unreachable named branch |
 | R11 | a second road into the wrapper that only tests use | launch's `machine_for` fallback is used, kept; **to do** — the test-only fallbacks (`runwrap.py:3247`, `:2219`, `prep.py:287`) |
 | R12 | paths and probe commands written by hand | partly fixed `92e84cc8`, `0a7ea0e4`; **to do** — `Path(base) / FILENAME` (`prep.py:166`, `summarize.py:279`) → `calculation_record`; spelled probe commands (`prep_inputs.py:879`, `runtime_config.py:92`, `initconfig.py:560`) → `probe_line` |
-| R13 | every record says prep wrote it | **to do** — `resolve_environment` stamps `jobset-probe@1` |
+| R13 | every record says prep wrote it | **fixed** with R4 — the field's default is `jobset-probe@1` |
 | R14 | a value the probe keeps loses its `source` | **your word** — below |
 | R15 | `env_init` carried key by key | fixed `92e84cc8` |
 | R16 | `UnknownTarget` invited a hand-written record | fixed `0a7ea0e4` |
