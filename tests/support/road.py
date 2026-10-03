@@ -46,12 +46,14 @@ SOL_PREDICTION = ("sbatch: Job 62266174 to start at 2026-08-27T11:22:03 a "
                   "using 4 processors on nodes sc078 in partition htc")
 
 
-def jobset(*args):
-    """`molbuilder jobset <args>`, as typed."""
+def jobset(*args, input=None):
+    """`molbuilder jobset <args>`, as typed -- with ``input`` as what the
+    person types at its questions, when it asks any."""
     from click.testing import CliRunner
 
     from molbuilder.jobset._cli import jobset_group
-    return CliRunner().invoke(jobset_group, [str(a) for a in args])
+    return CliRunner().invoke(jobset_group, [str(a) for a in args],
+                              input=input)
 
 
 def printed_commands(output: str):
@@ -285,8 +287,18 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # `probe` -- the record made as a person makes it instead, by `jobset probe
 # --write --yes`, once per list of flags, in order, after `machine_config`
 # and over `record` when the row gives them; a `--name` among the flags names
-# the target; `calculation_record` -- the calculation's own copy of its
+# the target.  A probe given as a table, `{flags = [...], answers = "n\n"}`,
+# runs WITHOUT `--yes` and is typed `answers` at its questions ("" is EOF);
+# `record_text` -- a file already at the path the first probe writes, as
+# text (a record that does not read);
+# `calculation_record` -- the calculation's own copy of its
 # machine's record, there before prep (a table, or text for a broken file).
+#
+# 0 · WHAT THE PROBE RECORDS, checked before anything else: what it says
+# (`probe_said`, lines any of the probes printed) and what the record it
+# wrote holds (`record_says`, a table of the record's fields, nested as the
+# file nests them).  A row about the record alone ends there: `ends_at =
+# "probe"`.
 
 
 def _road_target(table, case, tmp_path, monkeypatch) -> str:
@@ -299,12 +311,30 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
         _write_machine_config(case)
         if "record" in case:
             write_machine_record(**case["record"])
-        for flags in case["probe"]:
-            r = jobset("probe", "--write", "--yes", *flags)
+        if "record_text" in case:
+            from molbuilder.config_dir import ensure_private_dir
+            from molbuilder.scheduler import (machine_scope_path,
+                                              named_environment_path)
+            first = case["probe"][0]
+            first = first["flags"] if isinstance(first, dict) else first
+            there = (named_environment_path(first[first.index("--name") + 1])
+                     if "--name" in first else machine_scope_path())
+            ensure_private_dir(there.parent)
+            there.write_text(case["record_text"])
+        said, named = [], []
+        for step in case["probe"]:
+            flags, answers = ((step["flags"], step.get("answers", ""))
+                              if isinstance(step, dict) else (step, None))
+            r = jobset("probe", "--write",
+                       *(["--yes"] if answers is None else []), *flags,
+                       input=answers)
             assert r.exit_code == 0, _one_line(r)
-        named = [f[f.index("--name") + 1] for f in case["probe"]
-                 if "--name" in f]
-        return named[-1] if named else "this"
+            said.append(r.output)
+            if "--name" in flags:
+                named.append(flags[flags.index("--name") + 1])
+        target = named[-1] if named else "this"
+        _road_probe_layer(case, said, target)
+        return target
     queues = [Domain.from_row(q)
               for q in case.get("queues", table.get("queues", []))]
     record = dict(case.get("record", {}))
@@ -325,6 +355,33 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
     fields.update(case.get("named_record", {}))
     write_environment(Environment(**fields), named_environment_path("sol"))
     return "sol"
+
+
+def _road_probe_layer(case, said, target) -> None:
+    """0 · what the probe said, and what the record it wrote holds."""
+    import json
+    for words in case.get("probe_said", []):
+        assert any(words in out for out in said), \
+            f"probe_said: {words!r} in none of: {_one_line(said[-1])}"
+    if "record_says" in case:
+        from molbuilder.scheduler import (machine_scope_path,
+                                          named_environment_path)
+        path = (machine_scope_path() if target == "this"
+                else named_environment_path(target))
+        _road_holds(json.loads(path.read_text()), case["record_says"],
+                    "record")
+
+
+def _road_holds(got, want, where) -> None:
+    """``want`` -- a table -- is in ``got``, key by key, nested."""
+    for key, value in want.items():
+        assert isinstance(got, dict) and key in got, \
+            f"{where}.{key} missing from {got!r}"
+        if isinstance(value, dict):
+            _road_holds(got[key], value, f"{where}.{key}")
+        else:
+            assert got[key] == value, \
+                f"{where}.{key} is {got[key]!r}, not {value!r}"
 
 
 def _over_base(base, mine, unset):
@@ -439,6 +496,8 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
     import json
     import subprocess
     target = _road_target(table, case, tmp_path, monkeypatch)
+    if case.get("ends_at") == "probe":
+        return
     if "given_gpus" in case:
         gpus_given(tmp_path, monkeypatch, case["given_gpus"])
     bundle = _road_describe(table, case, tmp_path, monkeypatch)

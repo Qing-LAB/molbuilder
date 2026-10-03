@@ -365,66 +365,19 @@ def _two_envs():
     return before, probed
 
 
-def test_consent_no_keeps_the_record_yes_takes_the_probe(monkeypatch,
-                                                         capsys):
-    """Per difference the user picks which value survives; No (the
-    default) keeps the record, so a weaker probe cannot erase a declared
-    fact."""
-    import click
-    from molbuilder.jobset._cli import _probe_consent_merge
-    before, probed = _two_envs()
-    monkeypatch.setattr(click, "confirm", lambda *a, **k: False)
-    out = _probe_consent_merge(before, probed, yes=False)
-    assert out.topology.gpus_per_node == 4 and out.topology.gpu_type == "a100"
-    assert out.env_init == _SOL_ENTERS
-    assert out.detected_at == "2026-08-19T00:00:00+00:00"   # stamp follows
-    assert "kept recorded" in capsys.readouterr().out
-    before, probed = _two_envs()
-    monkeypatch.setattr(click, "confirm", lambda *a, **k: True)
-    out = _probe_consent_merge(before, probed, yes=False)
-    assert out.topology.gpus_per_node == 1 and out.topology.gpu_type == "rtx"
-    assert out.env_init == _DESK_ENTERS
-
-
-def test_consent_eof_keeps_everything_silence_is_no(monkeypatch, capsys):
-    """A scripted probe without --yes gets EOF at the first question and
-    the record survives whole — an unanswered question declines."""
-    import click
-    from molbuilder.jobset._cli import _probe_consent_merge
-    before, probed = _two_envs()
-
-    def _abort(*a, **k):
-        raise click.exceptions.Abort()
-    monkeypatch.setattr(click, "confirm", _abort)
-    out = _probe_consent_merge(before, probed, yes=False)
-    assert out.topology.gpus_per_node == 4 and out.topology.gpu_type == "a100"
-    text = capsys.readouterr().out
-    assert "silence is no" in text
-
-
-def test_consent_yes_flag_asks_nothing(monkeypatch):
-    import click
-    from molbuilder.jobset._cli import _probe_consent_merge
-
-    def _explode(*a, **k):
-        raise AssertionError("--yes must not ask")
-    monkeypatch.setattr(click, "confirm", _explode)
-    before, probed = _two_envs()
-    out = _probe_consent_merge(before, probed, yes=True)
-    assert out.topology.gpus_per_node == 1
-
-
-def test_an_unchanged_record_is_said_not_reasked(capsys):
-    from molbuilder.jobset._cli import _probe_consent_merge
-    before, _ = _two_envs()
-    before2, _ = _two_envs()
-    out = _probe_consent_merge(before, before2, yes=False)
-    assert out.topology.gpus_per_node == 4
-    assert "already says this" in capsys.readouterr().out
+# The consent tests -- No keeps the record, Yes takes the probe, EOF declines,
+# `--yes` asks nothing, an unchanged record is told so -- are rows of
+# `tests/data/machine_record.toml` since 2026-10-02, down the road (W54 T29);
+# they called the private `_probe_consent_merge` with `click.confirm` patched.
 
 
 def test_domains_diff_as_one_fact(monkeypatch, capsys):
-    """The reachable-domain SET is one question, not one per row."""
+    """The reachable-domain SET is one question, not one per row
+    (`configuration.md` M-6).
+
+    API-LEVEL, and why: a domains difference needs a cluster's `sinfo`, and
+    the road's probe runs on this box, which has none -- the rest of M-6 is
+    rows of `tests/data/machine_record.toml`."""
     import click
     from molbuilder.scheduler import Domain
     from molbuilder.jobset._cli import _probe_consent_merge

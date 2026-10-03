@@ -1,0 +1,71 @@
+# THE RECORD THE PROBE WRITES -- `docs/configuration.md` § 5 (M-1, M-6).
+#
+# A machine's facts are measured by `jobset probe` on that machine; what the
+# probe cannot see there is declared to it (`--set`, `--scheduler`), and over
+# an existing record it asks, per difference, which value survives -- No, the
+# default, keeps the record; silence is no; `--yes` takes the probe.
+#
+# `tests/test_machine_record.py` runs every case down the road a person runs,
+# through the one runner every contract table shares (`tests/support/road.py`,
+# `run_road_case`, whose header names each key).  A row about the record
+# alone ends after the probe (`ends_at = "probe"`).
+#
+# A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
+
+[[case]]
+name = "a fact the probe cannot see is declared to it, and lands typed"
+ends_at = "probe"
+probe = [["--set", "gpus_per_node=4", "--set", "gpu_type=a100", "--set", "mem_total_gb=1536.5"]]
+record_says = { topology = { gpus_per_node = 4, gpu_type = "a100", mem_total_gb = 1536.5 } }
+
+[[case]]
+name = "--scheduler declares the kind, and --name files the record under the name a machine preps it by"
+ends_at = "probe"
+probe = [["--name", "sol-x", "--scheduler", "slurm", "--set", "cores_per_socket=64"]]
+record_says = { scheduler = "slurm", topology = { cores_per_socket = 64 } }
+probe_said = ["--target sol-x"]
+
+[[case]]
+name = "over a record, each difference is asked, and No -- the default -- keeps what the record says"
+ends_at = "probe"
+probe = [["--set", "gpus_per_node=4", "--set", "gpu_type=a100"],
+         { flags = ["--set", "gpus_per_node=1", "--set", "gpu_type=rtx"], answers = "n\nn\nn\nn\nn\n" }]
+record_says = { topology = { gpus_per_node = 4, gpu_type = "a100" } }
+probe_said = ["kept recorded"]
+
+[[case]]
+name = "...and Yes takes the probed value"
+ends_at = "probe"
+probe = [["--set", "gpus_per_node=4", "--set", "gpu_type=a100"],
+         { flags = ["--set", "gpus_per_node=1", "--set", "gpu_type=rtx"], answers = "y\ny\ny\ny\ny\n" }]
+record_says = { topology = { gpus_per_node = 1, gpu_type = "rtx" } }
+
+[[case]]
+name = "an unanswered question declines: a scripted probe without --yes changes nothing"
+ends_at = "probe"
+probe = [["--set", "gpus_per_node=4", "--set", "gpu_type=a100"],
+         { flags = ["--set", "gpus_per_node=1", "--set", "gpu_type=rtx"], answers = "" }]
+record_says = { topology = { gpus_per_node = 4, gpu_type = "a100" } }
+probe_said = ["silence is no"]
+
+[[case]]
+name = "--yes takes every probed value, asking nothing"
+ends_at = "probe"
+probe = [["--set", "gpus_per_node=4", "--set", "gpu_type=a100"],
+         ["--set", "gpus_per_node=1", "--set", "gpu_type=rtx"]]
+record_says = { topology = { gpus_per_node = 1, gpu_type = "rtx" } }
+
+[[case]]
+name = "a record that already says what the probe found is told so, and asked nothing"
+ends_at = "probe"
+probe = [["--set", "gpus_per_node=4"], { flags = ["--set", "gpus_per_node=4"], answers = "" }]
+record_says = { topology = { gpus_per_node = 4 } }
+probe_said = ["already says this"]
+
+[[case]]
+name = "a file at the record's path that does not read is said to be there -- --yes replaces it, and still says so"
+ends_at = "probe"
+record_text = "{ not a record"
+probe = [["--name", "sol-x", "--scheduler", "slurm"]]
+record_says = { scheduler = "slurm" }
+probe_said = ["is there and does not read"]

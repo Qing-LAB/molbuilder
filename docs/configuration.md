@@ -1101,7 +1101,13 @@ either way: the kept values were re-confirmed now, and the stamp says when
 the record was last looked at.
 
 Creating a record where none exists is one consent — there is nothing to
-clobber.
+clobber. **A file at the record's path that does not read** — a newer schema, a
+hand edit gone wrong — is not "none": the probe says it is there and that
+writing replaces it, and replaces it only with that one consent (`--yes` gives
+it, and the line is still said) *(W52, 2026-10-01: the reader answers absent
+and unreadable alike, and the probe took the one for the other)*.
+
+These are rows of `tests/data/machine_record.toml`, run down the road.
 
 ### The schema is `molbuilder/environment@2`
 
