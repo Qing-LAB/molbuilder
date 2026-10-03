@@ -885,7 +885,8 @@ def _place(base: Path, *, gpu_side: bool, needed_s=None, cores=None,
         # reads that one.  When the two agree this costs a read; when they
         # disagree it is the whole point of the rule.
         if placed is not None:
-            _reject_if_this_machine_says_no(placed, want, gpu_side, label)
+            _reject_if_this_machine_says_no(placed, want, gpu_side, label,
+                                            base)
         return placed
     except Unplaceable as exc:
         raise SubmitError(
@@ -901,7 +902,7 @@ def _place(base: Path, *, gpu_side: bool, needed_s=None, cores=None,
 
 
 def _reject_if_this_machine_says_no(placed, want, gpu_side: bool,
-                                    label: str) -> None:
+                                    label: str, base) -> None:
     """R9 -- the machine's OWN record has the last word.
 
     A bundle carries the record it was prepared against.  If it travelled, or
@@ -933,13 +934,24 @@ def _reject_if_this_machine_says_no(placed, want, gpu_side: bool,
         return                       # this machine does not know that queue
     why = admits(mine[0], want)
     if why:
+        # THE REMEDY IS THE ASK OR THE SNAPSHOT.  It said "re-run `prep` here
+        # so the trials are sized against what this machine offers" until
+        # 2026-10-02 (W54 R6): prep keeps the calculation's snapshot (M-3)
+        # and sizes nothing -- the record checks an ask and supplies none of
+        # it (`architecture.md` § 5.2) -- so the same refusal came back.
+        from ..scheduler.record import calculation_record
+        snap = calculation_record(base)
         raise SubmitError(
             f"{label or 'this group'} was prepared against a record that "
             f"allowed it, but THIS machine does not:\n    "
             + "\n    ".join(i.message for i in why)
-            + f"\n  The bundle's snapshot and {mine[0].name}'s current record "
-              f"disagree -- re-run `prep` here so the trials are sized "
-              f"against what this machine actually offers.")
+            + f"\n  This machine's record of the queue {mine[0].name!r} "
+              f"differs from the one the calculation was prepared against, "
+              f"and its limits are the ones enforced here.  Change what is "
+              f"asked for (--time, --mem; the ranks and cores at prep), or "
+              f"name another of the record's queues with --domain -- or, to "
+              f"prepare against this machine's record, delete {snap} and "
+              f"prep again (configuration.md M-3).")
 
 
 def _shelf_key(job: "Job"):

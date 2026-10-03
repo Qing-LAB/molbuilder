@@ -218,6 +218,13 @@ allocation = { domain = "debug" }
 launch = []
 launch_refused = "debug allows"
 
+[[case]]
+name = "this machine's record has the last word at launch, and the refusal says how to follow it -- the ask, or the snapshot deleted"
+calculation_record = { schema = "molbuilder/environment@2", scheduler = "slurm", env_init = { activation = "conda activate", preamble = "true" }, domains = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 128 }] }
+run = { mpi_np = 96 }
+launch = []
+launch_refused = "to prepare against this machine's record, delete "
+
 # ===================================================================== #
 #  3 · WHAT THE RUN SCRIPT DOES HERE                                    #
 # ===================================================================== #

@@ -220,14 +220,14 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | R2 | an unreadable snapshot skipped silently | fixed `92e84cc8` |
 | R3 | `--target this` takes another machine's snapshot unasked — and the tab sends `this` on every prep once "(this machine)" is picked | **your word** — below |
 | R4 | `envs init-config` is a second, partial prober: on a cluster it seeds `slurm` with no queues and no `detected_at` | **fixed `5157ae90`** — `record.probe_queues`, run by both (and the submit-cap note it carried, dropped since it was written, now shown) |
-| R5 | "lists no queues" prints the bare probe command, whatever the target or snapshot | **fixed** — `record.record_and_renewal(base, target)`, the one spelling, shared with the GPU-bench refusal; two `launch_values.toml` rows |
-| R6 | the launch re-check's remedy (re-run `prep`) cannot work — prep keeps the snapshot — and names a queue as the machine | **to do** — ask within the limits (`--time`, `--mem`, the shape, `--domain`), or delete the snapshot and prep again |
+| R5 | "lists no queues" prints the bare probe command, whatever the target or snapshot | **fixed `4d5b28f8`** — `record.record_and_renewal(base, target)`, the one spelling, shared with the GPU-bench refusal; two `launch_values.toml` rows |
+| R6 | the launch re-check's remedy (re-run `prep`) cannot work — prep keeps the snapshot — and names a queue as the machine | **fixed** — the ask, another queue, or the snapshot deleted; a `launch_values.toml` row |
 | R7 | the preamble guard's remedy | fixed `92e84cc8` |
 | R8 | the provenance card vanished with a named record | fixed `92e84cc8` (C10) |
 | R9 | the web prep route's own copy of the target checks | fixed `92e84cc8` |
 | R10 | the record read 3–4 times per prep | **to do** — read once in `prep_stage` and handed down; `_no_record`'s unreachable named branch |
 | R11 | a second road into the wrapper that only tests use | launch's `machine_for` fallback is used, kept; **to do** — the test-only fallbacks (`runwrap.py:3247`, `:2219`, `prep.py:287`) |
-| R12 | paths and probe commands written by hand | **fixed** (the rest, with R5) — `calculation_record` at prep and summarize; the probe commands through `probe_command` / `record_and_renewal` (the retired-`scheduler` message also said "copied here" for a named target's record, which would have overwritten this machine's) |
+| R12 | paths and probe commands written by hand | **fixed `4d5b28f8`** (the rest, with R5) — `calculation_record` at prep and summarize; the probe commands through `probe_command` / `record_and_renewal` (the retired-`scheduler` message also said "copied here" for a named target's record, which would have overwritten this machine's) |
 | R13 | every record says prep wrote it | **fixed `5157ae90`** — the field's default is `jobset-probe@1` |
 | R14 | a value the probe keeps loses its `source` | **your word** — below |
 | R15 | `env_init` carried key by key | fixed `92e84cc8` |
