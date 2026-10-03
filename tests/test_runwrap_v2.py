@@ -171,35 +171,10 @@ def test_activation_form_from_the_record():
         set_capabilities(None)
 
 
-# --------------------------------------------------------------------- #
-#  Removed runtime behaviours -- pin that they're GONE                 #
-# --------------------------------------------------------------------- #
-
-
-def test_no_six_path_detection_block(sandbox):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=_SHAPE,
-                              machine_record=_SOL)
-    for needle in ("path 1:", "path 2:", "path 3:", "path 4:",
-                    "path 5:", "path 6:",
-                    "mamba info --base", "conda info --base",
-                    "module load mamba miniforge3",
-                    "$HOME/miniforge3"):
-        assert needle not in text, (
-            f"runtime detection block leftover -- found {needle!r}"
-        )
-
-
-def test_no_molbuilder_preactivate_cmds_hook(sandbox):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=_SHAPE,
-                              machine_record=_SOL)
-    # The runtime env-var hook is gone per docs/execution/running-a-job.md § 5
-    assert "MOLBUILDER_PREACTIVATE_CMDS" not in text
-
-
-def test_no_autodetect_field(sandbox):
-    text = render_run_wrapper(Path("/x/JOB.fdf"), resources=_SHAPE,
-                              machine_record=_SOL)
-    assert "autodetect_conda" not in text
+# The "removed runtime behaviours" -- three tests asserting that strings of
+# deleted code (the six-path conda detection, the MOLBUILDER_PREACTIVATE_CMDS
+# hook, `autodetect_conda`) stay absent -- retired 2026-10-02 (W54 T27):
+# `testing.md` § 3b names the class, one grep from being retired.
 
 
 # --------------------------------------------------------------------- #

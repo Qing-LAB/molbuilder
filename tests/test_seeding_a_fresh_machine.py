@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import os
 import stat
 
 import pytest
@@ -63,13 +62,16 @@ def fresh(tmp_path, monkeypatch):
 
 # ══ THE SYMPTOM THE CONTRACT NAMES ═════════════════════════════════════════
 
-def test_a_fresh_machine_refuses_to_render_any_wrapper(fresh):
-    """The baseline.  Without this failing first, nothing below means anything.
-    """
-    from molbuilder.jobset.prep import PrepError
-    with pytest.raises(PrepError) as exc:
-        _the_gate()
-    assert "env_init" in str(exc.value)
+def test_a_fresh_machine_has_no_record_to_prep_against(fresh):
+    """The baseline.  Without this failing first, nothing below means anything:
+    a machine that never ran molbuilder has no record, so every prep refuses
+    at its first step, naming the probe (`jobset/prep.py::_no_record`).
+
+    *(This asserted the activation refusal, through `_require_activation`
+    called on no record -- a refusal the road never gives a fresh machine,
+    which stops one step earlier; W54 T22.)*"""
+    from molbuilder.scheduler import machine_for
+    assert machine_for() is None
 
 
 @pytest.mark.parametrize("activation", sorted(ACTIVATION_FORMS))
@@ -150,25 +152,17 @@ def test_a_config_without_env_init_gets_the_one_asked_and_nothing_else(fresh):
     assert doc["launch"] == {"mode": "direct"}, doc
 
 
-def test_a_seed_the_loader_would_refuse_is_not_written(fresh, monkeypatch):
-    """The seed goes through the one writer of molbuilder.json, which
-    validates before a byte lands.  `init-config` had a writer of its own,
-    so a seed the loader refused would have been written, reported
-    "created", and refused by every later read (review C-Y1)."""
-    from molbuilder.runtime_config import RuntimeConfigError, machine_config_path
-    monkeypatch.setattr(initconfig, "seed_document",
-                        lambda *a, **k: {"bogus": {"x": 1}})
-    with pytest.raises(RuntimeConfigError, match="unknown top-level"):
-        initconfig.seed_machine_config("conda activate")
-    assert not machine_config_path().exists()
+# `test_a_seed_the_loader_would_refuse_is_not_written` retired 2026-10-02 (W54
+# T22): it monkeypatched `seed_document` to prove the seed goes through the one
+# writer -- a test of a call site, which review holds.
 
 
 
 # ══ WHAT IT WRITES, AND WHAT IT REFUSES TO WRITE ═══════════════════════════
 
 def test_no_probe_seeds_the_config_without_a_record(fresh):
-    """``--no-probe`` writes the config and no record: `jobset probe --write`
-    makes the record later, copying the activation the config declares."""
+    """``--no-probe`` writes the config and no record (`jobset probe --write`
+    makes it later)."""
     initconfig.init_config("conda activate", probe=False)
     assert (fresh / CONFIG_FILENAME).is_file()
     from molbuilder.scheduler import machine_scope_path, environments_dir

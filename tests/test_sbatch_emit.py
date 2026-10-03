@@ -179,33 +179,8 @@ def test_emit_sbatch_false_suppresses(project):
     assert not (project / "x.sbatch").exists()
 
 
-def _min_cpu_fdf(tmp_path):
-    """Minimal SIESTA .fdf carrying the fields the mem estimator reads."""
-    fdf = tmp_path / "job.fdf"
-    fdf.write_text(
-        "SystemName test\n"
-        "NumberOfAtoms 100\n"
-        "NumberOfSpecies 1\n"
-        "PAO.BasisSize DZP\n"
-        "MeshCutoff 300 Ry\n"
-        "LatticeConstant 1.0 Ang\n"
-        "%block LatticeVectors\n"
-        "20.0 0.0 0.0\n0.0 20.0 0.0\n0.0 0.0 20.0\n"
-        "%endblock LatticeVectors\n"
-        "%block kgrid_Monkhorst_Pack\n"
-        "2 0 0 0.0\n0 2 0 0.0\n0 0 1 0.0\n"
-        "%endblock kgrid_Monkhorst_Pack\n"
-        "%block ChemicalSpeciesLabel\n1 6 C\n%endblock ChemicalSpeciesLabel\n"
-        "%block AtomicCoordinatesAndAtomicSpecies\n"
-        + "".join(f"{i*0.1} 0.0 0.0 1\n" for i in range(100))
-        + "%endblock AtomicCoordinatesAndAtomicSpecies\n"
-    )
-    return fdf
-
-
-def test_explicit_mem_skips_estimate(tmp_path):
-    fdf = _min_cpu_fdf(tmp_path)
-    txt = render_sbatch(fdf, **_stated(ntasks=64, mem="120G"))
-    assert "#SBATCH --mem=120G" in txt
-    assert "auto-estimated" not in txt
+# `test_explicit_mem_skips_estimate` and its fdf helper retired 2026-10-02
+# (W54 T27): it asserted "auto-estimated" absent -- a string from the memory
+# estimator deleted 2026-08-24, in no code since -- and its stated --mem is
+# asserted above.
 

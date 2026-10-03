@@ -246,16 +246,16 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | T3–T6, T9–T12, T17, T18, T20, T23, T26 | tests of refused behaviour, or repeats | retired `6401abfb` (T4 written through its door) |
 | T8 | retired keys only partly rows | fixed `6401abfb` |
 | T7 | `test_machine_config_file` cites a precedence no document states; one test cannot fail | **fixed `54156262`** — the two retired, the write test's docstring in its place and true, the sandbox no longer a working directory |
-| T13 | test texts still placing the activation in `script_generation` or the record alone | **fixed** — 22 comments and docstrings: the record carries the probe's copy of `env_init`, which the generator reads (`configuration.md` § 4) |
-| T14 | test docstrings teaching a cwd or cascade read | **fixed** — nine files say what is read; their cwd changes stay as plain isolation (a relative write must not land in the checkout) |
+| T13 | test texts still placing the activation in `script_generation` or the record alone | **fixed `876f96e4`** — 22 comments and docstrings: the record carries the probe's copy of `env_init`, which the generator reads (`configuration.md` § 4) |
+| T14 | test docstrings teaching a cwd or cascade read | **fixed `876f96e4`** — nine files say what is read; their cwd changes stay as plain isolation (a relative write must not land in the checkout) |
 | T15 | per-file isolation duplicating conftest's | **own unit** — `_isolated_machine_scope` first, then about 48 files' blocks |
 | T16 | "a cwd molbuilder.json is not read" asserted five times | partly fixed `6401abfb`; **fixed `54156262`** the rest — said once, by `test_and_its_contents_do_not_leak_in`, with a section a server starts on |
-| T19 | tests that monkeypatch a door to prove a caller asks it | **to do** — retire config_dir_has_one_home `:267`, `:285`; `:311` says why it stays API-level |
+| T19 | tests that monkeypatch a door to prove a caller asks it | **fixed** — the two retired (review holds that class); the remedy test says why it stays API-level |
 | T21 | probable subsumptions | **to do, a mutant first** (`tools/verify_subsumption.py`) |
-| T22 | `_the_gate()` pins a refusal the road never gives | **to do** — `:65` through `jobset prep` or retired; `:168` trimmed; `:152` retired |
+| T22 | `_the_gate()` pins a refusal the road never gives | **fixed** — the baseline is the road's own fact (a fresh machine has no record); the call-site test retired; a docstring's unasserted promise trimmed |
 | T24 | the mode warning asserted twice | Q2c 8, `615858f6` |
 | T25 | `env_arch` is omitted when unknown; M-2 says null, never omitted | **your word** — below |
-| T27 | four tests asserting strings no code has | **to do** — retire test_sbatch_emit `:206`, test_runwrap_v2 `:179`–`:202` |
+| T27 | four tests asserting strings no code has | **fixed** — retired, with the estimator test's helper |
 | T28 | hand-built records and paths where a door exists | partly real; **to do** — four sites to the doors; two bare `mkdir`s to `ensure_private_dir` |
 | T29 | five tests drive the private `_probe_consent_merge` | **to do** — `probe` road rows, which also take over what Q2c 7's three retired tests exercised |
 | T30 | table hygiene | partly fixed `6401abfb`; **your word** — below |
