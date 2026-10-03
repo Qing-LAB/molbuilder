@@ -195,7 +195,7 @@ and one of those I had first written up as broken.
 | # | situation | today | required |
 |---|---|---|---|
 | **C1** | several records reachable, no `--target` | ❌ silently uses **this** machine — two cluster records present, a workstation chosen, exit 0 | refuse, and name the choices — **done**: `AmbiguousTarget`, naming every record and *(this machine)* |
-| **C2** | `--target` given, but the bundle already carries a different machine's record | ✅ **already refuses** — `UnknownTarget.conflict`, naming both ways out ("delete the snapshot and re-prep" / "drop `--target`") | *(correct today)* |
+| **C2** | `--target` given, but the bundle already carries a different machine's record | ✅ **refuses** — `UnknownTarget.conflict`, by the name the copy carries since 2026-10-02 (`configuration.md` M-3: a calculation is set to the machine of its first prep; `this` is checked like any name, and a re-probe of its own machine is no conflict) — its way out the machine it is set to, or a new prep from a saved state (`checkpoint restore`) | *(correct today)* |
 | **C3** | `--target sol` where `sol.json` exists but is malformed or a future schema | ❌ falls through to **this** machine, exit 0 | refuse: the user named it, so an unreadable record is an error, not a miss — **done**: `UnknownTarget.unreadable`, the named target validated whole before any scope is walked |
 | **C4** | `--target` names a record that does not exist | ✅ raises `UnknownTarget`, listing the known ones and how to write the missing one | *(correct today)* |
 

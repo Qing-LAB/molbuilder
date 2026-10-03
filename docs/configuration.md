@@ -994,8 +994,10 @@ the artifact that satisfies it.
 ### M-3 — two scopes, precedence and not merge
 
 1. **the calculation** — `<calculation>/environment.json`, snapshotted by `prep`
-   step 1 and, once written, never overwritten; a preview reads the record it
-   would snapshot and writes nothing (`web/task-setup.md` § 11.1);
+   step 1 and, once written, never overwritten; it names the machine it was
+   taken for (`machine`: that prep's `--target`, `this` for the machine it was
+   prepped on). A preview reads the record it would snapshot and writes
+   nothing (`web/task-setup.md` § 11.1);
 2. **the machine** — written by `jobset probe`, shared by every calculation here.
 
 When neither answers, nothing does: **no reader probes** (M-4). A machine is
@@ -1013,18 +1015,28 @@ sol` asks for it by name. That is how you prep for a cluster from a workstation
 — the machine you are describing is not the machine you are on, so *which
 record* stops being answerable by location alone.
 
-Naming one is **refused when it is not there**, and refused again when it
-contradicts a snapshot the calculation already carries. Both refusals are the
-same rule: a target the user typed is an instruction, and silently ignoring an
+**A calculation is set to the machine of its first prep, and that does not
+change** *(user, 2026-10-02: "when a machine is set for a job, it is set, no
+changing")*. A later prep's `--target` is checked against the name its copy
+carries: the same name passes, whatever has been re-probed since — the
+calculation reads its copy — and any other, `this` included, is refused.
+Naming a target is also **refused when it is not there**. Both refusals are
+one rule: a target the user typed is an instruction, and silently ignoring an
 instruction is worse than stopping. A typo'd `--target` on an already-prepped
 folder used to prep happily against whatever was snapshotted, which is exactly
 the mistake the flag exists to catch.
 
+**Preparing a calculation for another machine — or for a re-probed record of
+its own — is a new prep**, from a saved state before its first: `molbuilder
+checkpoint restore` ([`execution/checkpointing.md`](?doc=execution/checkpointing.md)
+§ 7), then `prep` *(user: "we have persistency to roll back and start for a
+new prep if we need to")*. Every refusal whose way out is another record says
+so.
+
 The first one found is the whole answer. **There is no field-level merge.** Two
 partial records blended at read time would describe a machine that exists in no
 file — and it would silently defeat `resolve_target`'s standing guarantee that
-two stages of one calculation cannot disagree about their own target. A
-calculation that should follow a re-probed machine deletes its file.
+two stages of one calculation cannot disagree about their own target.
 
 The order matches § 2's, deliberately: a second precedence rule with different
 edges is a second thing to remember.
@@ -1044,7 +1056,7 @@ second read returning a plain `dict`.
 | `record_scopes(bundle_dir, target)` | the precedence as **data** — `[(label, path), …]`, in order |
 | `machine_for(bundle_dir, *, target=)` | M-3's precedence, entire — the one function a caller asks |
 | `probe_command(name)` · `probe_line(name)` | the command that writes a machine's record — bare for this machine (`this` is reserved, and `probe` refuses it), `--name` for a named target, run on that machine; every refusal that asks for a record prints it, a line of its own with the note after `#` *(W52: four spellings, one of them a command `probe` refuses)* |
-| `UnknownTarget` | a named target that does not exist, or one that contradicts the calculation's snapshot |
+| `UnknownTarget` | a named target that does not exist, or one other than the machine the calculation is set to |
 
 **No consumer reads either file directly.**
 

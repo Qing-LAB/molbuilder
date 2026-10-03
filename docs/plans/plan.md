@@ -263,24 +263,19 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | M5 step 3 | its milestone review | every finding fixed `325cb1d4`; its three questions were Q2c 1–3 |
 | Q2c + W54 | their review — a fresh agent over `e1d88b22..d470bff2` (31 commits), the full code text | **fixed 2026-10-02** — `envs init-config` says what its queue probe could not measure, as `jobset probe` does (pinned for both writers); the re-probe remedy for a calculation's own copy says where a named record's file goes; T29's rows give back what the retired tests held — `--set` and `--scheduler` mark their facts `flag` (M-1), an `env_init` corrected by hand survives an unanswered probe and `--yes` takes `molbuilder.json`'s copy, the stamp follows the probe (M-6) — through two runner keys, `record_declared` and `record_stamped`; six mutations, each red. Stale text fixed in five documents, five code comments and seven test files; two fixtures moved to the doors; four leftover home directories gone; this ledger's Q2c, A1.20 and TR6 rows brought up to date. **Dropped:** two providers of one kind sharing one secret file — only a hand-written config makes two (`auth-setup` writes one of each kind) |
 
-**Your word, five questions** *(asked 2026-10-02, re-asked in plain words the
-same day with the options below; the fifth found while answering the first
-four)*:
+**Your word — four questions open, one settled** *(asked 2026-10-02,
+re-asked in plain words the same day with the options below; the fifth found
+while answering the first four)*:
 
-1. **R3 — "this machine" is never checked against a calculation's copy.** A
-   calculation copied Sol's record at its first prep; a later prep with
-   `--target this` (what the tab sends once picked) silently uses Sol's copy.
-   `--target sol` is checked, but against the whole record, the probe's stamp
-   included (`machine_for`: `to_dict() !=`), so a mere re-probe of Sol refuses
-   every calculation prepped for it. (a) Check `this` the same way — every
-   re-probe here then refuses every prepped calculation's next stage. (b) A
-   machine name in each record, compared by name — this machine's own record
-   needs one found unaided (its host name), and Sol's own record would not be
-   named `sol`. (c) Compare what the record says about the machine, leaving
-   out when and how it was probed (`detected_at`, `source`, `tool`), for `this`
-   and named targets alike — a re-probe that finds the same machine refuses
-   nothing; one that finds a change (an environment, a queue) asks for the
-   copy to be deleted. **Proposed (c).**
+1. **R3 — settled by the user's rule, built 2026-10-02.** *"when a machine
+   is set for a job, it is set, no changing. we have ... persistence designed
+   to roll back"*; *"we never ... prep something that has been prepped"*;
+   *"consistency check refuse[s] the ... mental problem"*. The calculation's
+   copy names its machine (`machine`, written at its first prep); a later
+   `--target` is checked by that name — `this` like any other, a re-probe no
+   conflict; every remedy that said "delete the copy" says a new prep from a
+   saved state (`molbuilder checkpoint restore`). `configuration.md` M-3; two
+   `launch_values.toml` rows, three mutations red, 54 targeted files green.
 2. **R14 — a kept declared value loses its `flag`.** M-5: `source: flag` admits
    a declared fact; M-6: `source` follows the new probe, so after No keeps a
    `--set` value the note no longer says `flag`. Nothing reads `source`. (a)

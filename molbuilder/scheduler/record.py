@@ -382,6 +382,13 @@ class Environment:
     #: record until 2026-10-02 (R13); ``prep-bench@1``, the deleted verb,
     #: before R10 (2026-08-12).
     tool:      str = "jobset-probe@1"
+    #: THE MACHINE A CALCULATION IS SET TO -- the ``--target`` of its first
+    #: prep, ``this`` for the machine it was prepped on -- written by that
+    #: prep into the calculation's copy and nowhere else; a probe's record
+    #: names none (``None``).  A later prep's ``--target`` is checked against
+    #: it (`configuration.md` M-3; user, 2026-10-02: *"when a machine is set
+    #: for a job, it is set, no changing"*).
+    machine:   Optional[str] = None
 
     # ----- JSON round-trip (the persisted contract) ----------------- #
 
@@ -403,6 +410,7 @@ class Environment:
             **({"env_arch": self.env_arch} if self.env_arch else {}),
             "source": dict(self.source),
             "tool": self.tool,
+            "machine": self.machine,
         }
 
     def to_json(self, *, indent: int = 2) -> str:
@@ -438,6 +446,7 @@ class Environment:
             # verb) stood here until U19, stamping every re-read record
             # with a tool that no longer exists
             tool=str(d.get("tool", "jobset-probe@1")),
+            machine=(str(d["machine"]) if d.get("machine") else None),
         )
 
 
@@ -1177,25 +1186,30 @@ class UnknownTarget(Exception):
         return exc
 
     @classmethod
-    def conflict(cls, name: str, bundle_dir) -> "UnknownTarget":
-        """This calculation already carries a DIFFERENT machine's record.
+    def conflict(cls, name: str, set_to: str) -> "UnknownTarget":
+        """This calculation is set to ANOTHER machine -- the one its first
+        prep named, which does not change (`configuration.md` M-3).
 
         Silently keeping the snapshot would make ``--target`` a no-op on every
         folder after the first prep -- the flag would appear to work and
         change nothing.  Silently re-snapshotting would let stage 2 of a
         ladder resolve against a different machine than stage 1, which is the
         exact disagreement the once-per-bundle rule exists to prevent.  So
-        neither: say so, and let the person choose.
+        neither: say which machine it is set to, and the way to another --
+        a new prep from a saved state.  (It said "to move it: delete the
+        snapshot" until 2026-10-02 -- user: *"we have persistency to roll
+        back and start for a new prep if we need to"*.)
         """
         exc = cls.__new__(cls)
         exc.name, exc.known = name, []
         Exception.__init__(exc, (
-            f"--target {name!r} does not match the machine this calculation "
-            f"was already prepped for.  A calculation is snapshotted once so "
-            f"two stages cannot resolve against different machines.\n"
-            f"  To move it: delete {calculation_record(bundle_dir)} and prep "
-            f"again with --target {name}.\n"
-            f"  To keep it: drop --target."))
+            f"this calculation is set to {set_to!r}, the machine of its first "
+            f"prep, and that does not change -- --target {name} names "
+            f"another.\n"
+            f"  To go on with it: --target {set_to}.\n"
+            f"  To prepare it for {name}: go back to a state saved before its "
+            f"first prep (molbuilder checkpoint restore <state>) and prep "
+            f"again with --target {name}."))
         return exc
 
 
@@ -1295,26 +1309,25 @@ def record_and_renewal(bundle_dir=None, target: Optional[str] = None
     calculation prepped for Sol was told to probe "this machine").
 
     The calculation's own snapshot answers first, whatever the flag says
-    (M-3), so a calculation that holds one follows a re-probed machine only
-    once the snapshot is deleted -- TWO steps, both said (W52: deleting alone
-    re-reads the same record).  One that holds none reads the target's
-    record, and its probe line is the whole remedy."""
+    (M-3): a calculation that holds one is set to that record, and a
+    re-probed one reaches it only through a new prep, from a state saved
+    before its first -- TWO steps, both said (W52: one alone re-reads the
+    same record).  One that holds none reads the target's record, and its
+    probe line is the whole remedy."""
     snap = (calculation_record(Path(bundle_dir))
             if bundle_dir is not None else None)
     if snap is not None and snap.is_file():
-        if target in (None, LOCAL_TARGET):
-            # WHICH machine the snapshot describes, a record does not say
-            # (plan § 0b, R3): named in words, not guessed.
-            probe = (f"`{probe_command(None)}` on the machine it describes "
-                     f"(with --name and its name when that is not this one, "
-                     f"and the file it writes copied into "
-                     f"{environments_dir()}/ here)")
-        else:
-            probe = f"`{probe_command(target)}` {probe_steps(target)}"
+        # WHICH machine: the one the copy names (M-3), else the one asked for.
+        held = read_environment(snap)
+        name = (held.machine if held is not None else None) or target
+        probe = (f"`{probe_command(None)}` here" if name in (None, LOCAL_TARGET)
+                 else f"`{probe_command(name)}` {probe_steps(name)}")
         return ("this calculation's environment.json, snapshotted at its "
                 "first prep",
-                f"re-probe it -- {probe} -- and delete {snap}, so the next "
-                f"prep snapshots the new record (configuration.md M-3)")
+                f"re-probe it -- {probe} -- then prep it anew from a state "
+                f"saved before its first prep (molbuilder checkpoint restore "
+                f"<state>): a calculation is set to the record it was first "
+                f"prepped with (configuration.md M-3)")
     return ("this machine's" if target in (None, LOCAL_TARGET)
             else f"{target}'s",
             f"re-probe it --\n    {probe_line(target)}\n ")
@@ -1329,8 +1342,9 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
     that is the rule rather than an omission.  Two partial records blended at
     read time would describe a machine that exists in no file, and it would
     defeat the standing guarantee that two stages of one calculation cannot
-    disagree about their own target.  A calculation that should follow a
-    re-probed machine deletes its file.
+    disagree about their own target.  A calculation is set to the machine of
+    its first prep; another record reaches it only through a new prep, from a
+    state saved before that one (M-3).
 
     **It never probes** (`configuration.md` M-4): when no scope answers it
     answers ``None``, and the caller refuses with :func:`probe_command`.  A
@@ -1440,12 +1454,17 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
             if label == "calculation" and Path(path).is_file():
                 raise UnknownTarget.unreadable_copy(bundle_dir)
             continue
-        if label == "calculation" and _by_name:
-            # A NAMED target that contradicts the snapshot is a question
-            # nobody can answer for the user: refuse rather than silently
-            # keeping the old one or silently replacing it.
-            if _want.to_dict() != env.to_dict():
-                raise UnknownTarget.conflict(target, bundle_dir)
+        if label == "calculation" and target is not None \
+                and env.machine is not None and env.machine != target:
+            # SET AT ITS FIRST PREP, AND IT DOES NOT CHANGE (M-3; user,
+            # 2026-10-02).  The copy names its machine, so the check is a
+            # name: `this` is checked like any other, and a re-probe of the
+            # calculation's own machine is no conflict.  It compared whole
+            # records until 2026-10-02 -- the probe's stamp included, so a
+            # re-probe of Sol refused every calculation set to it -- and
+            # skipped `this` (W54 R3).  A copy written before then names no
+            # machine, and is read as it is.
+            raise UnknownTarget.conflict(target, env.machine)
         return env
     return None
 

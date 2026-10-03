@@ -96,9 +96,9 @@ queues = []
 refused = ["(sol's) lists no queues at all", "molbuilder jobset probe --write --name sol", "copy the sol.json it writes"]
 
 [[case]]
-name = "...and a calculation whose own copy lists none is told to delete that copy as well -- a re-probe alone changes nothing"
+name = "...and a calculation whose own copy lists none is told it takes a new prep from a saved state as well -- a re-probe alone changes nothing"
 calculation_record = { schema = "molbuilder/environment@2", scheduler = "slurm", env_init = { activation = "conda activate", preamble = "true" } }
-refused = ["(this calculation's environment.json, snapshotted at its first prep) lists no queues at all", "and delete "]
+refused = ["(this calculation's environment.json, snapshotted at its first prep) lists no queues at all", "then prep it anew from a state saved before its first prep (molbuilder checkpoint restore"]
 
 [[case]]
 name = "a run on a machine with no scheduler is asked for no queue, wall or memory"
@@ -147,6 +147,21 @@ name = "...and one that does not read is refused by name -- never another machin
 machine = "workstation"
 calculation_record = "{ not json"
 refused = "this calculation's record of its machine cannot be read"
+
+# A CALCULATION IS SET TO THE MACHINE OF ITS FIRST PREP, and that does not
+# change (`configuration.md` M-3): its copy names the machine, a later
+# `--target` is checked against the name, and another record reaches it only
+# through a new prep from a saved state.
+[[case]]
+name = "a calculation set to a machine takes --target naming it again, whatever was re-probed since"
+machine = "named"
+calculation_record = { schema = "molbuilder/environment@2", detected_at = "2026-08-01T00:00:00+00:00", scheduler = "slurm", env_init = { activation = "conda activate", preamble = "true" }, domains = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64 }], machine = "sol" }
+
+[[case]]
+name = "...and is refused any other, this machine too -- naming the one it is set to, and a new prep from a saved state"
+machine = "workstation"
+calculation_record = { schema = "molbuilder/environment@2", scheduler = "slurm", env_init = { activation = "conda activate", preamble = "true" }, domains = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64 }], machine = "sol" }
+refused = ["this calculation is set to 'sol'", "To go on with it: --target sol", "molbuilder checkpoint restore <state>) and prep again with --target this"]
 
 [[case]]
 name = "the probe copies this machine's env_init into the record it writes"
@@ -219,11 +234,11 @@ launch = []
 launch_refused = "debug allows"
 
 [[case]]
-name = "this machine's record has the last word at launch, and the refusal says how to follow it -- the ask, or the snapshot deleted"
+name = "this machine's record has the last word at launch, and the refusal says how to follow it -- the ask, or a new prep from a saved state"
 calculation_record = { schema = "molbuilder/environment@2", scheduler = "slurm", env_init = { activation = "conda activate", preamble = "true" }, domains = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 128 }] }
 run = { mpi_np = 96 }
 launch = []
-launch_refused = "to prepare against this machine's record, delete "
+launch_refused = "to prepare against this machine's record, prep anew from a state saved before its first prep"
 
 # ===================================================================== #
 #  3 · WHAT THE RUN SCRIPT DOES HERE                                    #

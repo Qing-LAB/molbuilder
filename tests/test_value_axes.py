@@ -178,9 +178,9 @@ def test_a_queue_listing_several_cards_answers_the_most_gpus_a_node_holds(
 def test_no_gpu_anywhere_refuses_with_both_remedies(sol_calc):
     """No local GPU and no recorded inventory: the family cannot be
     enumerated, and the refusal names the probe AND the menu -- and the
-    two steps that make a calculation follow a re-probed machine
-    (`configuration.md` M-3: prep never probes, so deleting the snapshot
-    alone re-reads the same record; W52)."""
+    two steps a re-probed record takes to reach a calculation
+    (`configuration.md` M-3: it is set to the record of its first prep, so
+    a re-probe alone re-reads the same copy; W52)."""
     env = json.loads((sol_calc / "environment.json").read_text())
     del env["domains"][1]["gpu"]
     (sol_calc / "environment.json").write_text(json.dumps(env))
@@ -192,9 +192,8 @@ def test_no_gpu_anywhere_refuses_with_both_remedies(sol_calc):
     # the record that answered is the calculation's own snapshot, named as
     # such whatever the flag said (the fix-6 review), with its two steps
     assert "this calculation's environment.json" in said, said
-    assert "`molbuilder jobset probe --write` on the machine it describes" \
-        in said, said
-    assert "environment.json, so the next prep snapshots the new record" \
+    assert "`molbuilder jobset probe --write` here" in said, said
+    assert "then prep it anew from a state saved before its first prep" \
         in said, said
 
 

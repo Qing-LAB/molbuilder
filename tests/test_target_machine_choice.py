@@ -213,7 +213,8 @@ class TestTheUserChoosesTheMachine:
             "prep", "run", "coarse", "--bundle", "P/optimization/z",
             "--target", "sol"])
         assert res.exit_code != 0, res.output
-        assert "does not match the machine" in res.output
+        # set to the machine its first prep named -- the copy says which
+        assert "this calculation is set to 'agave'" in res.output
         # and the snapshot is NOT quietly rewritten to the new target
         rec = json.loads(
             (machines.tree / "P" / "optimization" / "z" / "environment.json"

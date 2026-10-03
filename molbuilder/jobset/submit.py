@@ -934,13 +934,13 @@ def _reject_if_this_machine_says_no(placed, want, gpu_side: bool,
         return                       # this machine does not know that queue
     why = admits(mine[0], want)
     if why:
-        # THE REMEDY IS THE ASK OR THE SNAPSHOT.  It said "re-run `prep` here
+        # THE REMEDY IS THE ASK, OR A NEW PREP.  It said "re-run `prep` here
         # so the trials are sized against what this machine offers" until
         # 2026-10-02 (W54 R6): prep keeps the calculation's snapshot (M-3)
         # and sizes nothing -- the record checks an ask and supplies none of
-        # it (`architecture.md` § 5.2) -- so the same refusal came back.
-        from ..scheduler.record import calculation_record
-        snap = calculation_record(base)
+        # it (`architecture.md` § 5.2) -- so the same refusal came back.  A
+        # calculation is set to the record of its first prep (M-3), so this
+        # machine's reaches it through a new prep from a saved state.
         raise SubmitError(
             f"{label or 'this group'} was prepared against a record that "
             f"allowed it, but THIS machine does not:\n    "
@@ -950,8 +950,9 @@ def _reject_if_this_machine_says_no(placed, want, gpu_side: bool,
               f"and its limits are the ones enforced here.  Change what is "
               f"asked for (--time, --mem; the ranks and cores at prep), or "
               f"name another of the record's queues with --domain -- or, to "
-              f"prepare against this machine's record, delete {snap} and "
-              f"prep again (configuration.md M-3).")
+              f"prepare against this machine's record, prep anew from a "
+              f"state saved before its first prep (molbuilder checkpoint "
+              f"restore <state>; configuration.md M-3).")
 
 
 def _shelf_key(job: "Job"):

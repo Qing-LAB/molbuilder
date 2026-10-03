@@ -143,9 +143,10 @@ def resolve_target(base_dir, target: Optional[str] = None) -> Path:
     Written once per bundle and **not** overwritten on a later prep: the file
     records what this machine is, and re-reading on every stage would make two
     stages of one calculation disagree about their own target for no reason a
-    user asked for.  A calculation that should follow a re-probed machine
-    deletes its file, and the next prep snapshots the new record
-    (`configuration.md` M-3).  A preview reads without writing
+    user asked for.  It names the machine the calculation is set to -- this
+    prep's ``--target`` -- and that does not change: another record reaches
+    the calculation only through a new prep, from a state saved before this
+    one (`configuration.md` M-3).  A preview reads without writing
     (:func:`_environment_read`).
 
     **IT DOES NOT PROBE.  A machine that has no record is a REFUSAL**
@@ -182,7 +183,13 @@ def resolve_target(base_dir, target: Optional[str] = None) -> Path:
     env = machine_for(target=target)
     if env is None:
         raise _no_record()
-    return write_environment(env, out)
+    # THE MACHINE IT IS SET TO, named in the copy (M-3): a later prep's
+    # `--target` is checked against it.  No target is this machine --
+    # `machine_for` refuses the question when another is on file.
+    from dataclasses import replace
+    from ..scheduler.record import LOCAL_TARGET
+    return write_environment(replace(env, machine=target or LOCAL_TARGET),
+                             out)
 
 
 def _no_record() -> PrepError:
