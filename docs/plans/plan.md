@@ -346,6 +346,50 @@ concluded and left coordinates — `engines/vibration.md` § 5.2a asks only
 *concluded*, while an independent ladder refuses a failed run (`job-system.md`
 § 5.4); one `Continuation` gives both kinds one rule for a usable run.
 
+#### The user's word on § 0c *(2026-10-03, verbatim)*
+
+> **B1**: always save through checkpoint, notify user, and make sure name of
+> the checkpoint clearly shows timestamp. the checkpoint save is notified after
+> the build is decided and checked. **B2** - we need a framework and template
+> (or config data/instruction) driven approach such that the current prep can
+> be used for the transport preparation too. the added transport steps can be
+> designed as an optional step for transport operation but it would be in the
+> same framework of prep. **B3**. agree, same suggestion as B2. **B4**: agree
+> to your suggestion. **B5**. agree. **B6**: i like that idea, this gives a
+> bird's eye of one parent task dir that can have different run results in one
+> place such that result tab would be able to show them (don't have to get
+> into individual run dir to probe, and rather result can display the result
+> by simply select which run to pick. **B7**: agree, but make sure this is a
+> framework level unification and contract/design document is updated.
+> **B8**: agree. unification at api and framework is the goal. **B9**: agree.
+> dead code will confuse review and distract/drift code from correct
+> direction. **B10**: make this consistent with B1,B2 and B3. for **Q1**: (a),
+> i don't quite understand why we allow off instead of delete, but i figure it
+> could be some changing design and left some dead dir. in that case, mark the
+> dir as disabled and never allow use would be the correct way. **Q2**: a,
+> **Q3**: b, and write into log what is dropped for what reason, **Q4**: error
+> when no env_init is present. this is required explicitly. **Q5**: a, but
+> make sure the result presentation, data record and the summary/comments
+> clearly explain what is what.
+
+**The work order** — one unit per commit, each with its contract text, rows and
+mutations; the framework rounds' design written into the contracts first:
+
+| # | unit | what it is | state |
+|---|---|---|---|
+| 1 | Q4 | `jobset probe --write` refuses when this machine's `molbuilder.json` states no `env_init` — the record's copy is required, never kept from before | open |
+| 2 | Q2 | a declared value kept at a re-probe keeps `flag` in its `source` | open |
+| 3 | Q3 | M-2: `env_init`, `conda_envs`, `env_arch` are left out when empty, and the probe says which it left out and why | open |
+| 4 | B1's save · B10 | the folder's state is saved before every prep and every Task setup Save — always, through checkpoint, the note led by its timestamp, the person told; one server function for both; the offer, its question and the page's box retire | open |
+| 5 | Q1 | a stage turned off is refused everywhere — prep, launch, what continues from it — and its folder, where one was left, is shown disabled and never used | open |
+| 6 | B9 | dead code deleted (§ 0c's row) | open |
+| 7 | Q5 | a junction's current is the total — ×2 unpolarized, the channels' sum polarized — with TBtrans's printed figure and the factor beside it, said plainly in the record, the Results tab and the summary | open |
+| 8 | B4 · D11 · D12 | the folder answer carries the machine the calculation is set to, its prepped stages and the command lines; the page shows them and composes none | open |
+| 9 | B7 · B8 | the framework's layering and one door per fact — designed in `execution/architecture.md` first | design first |
+| 10 | B1 · B2 · B3 · D10 | prep as one framework: every check before the save, the save, then the writing; steps declared as data, transport's own as optional steps of the same framework; the preview the same run stopping before the save — designed in `job-system.md` § 5 and `script-preparation.md` first | design first |
+| 11 | B5 | one launch entry — designed in `job-system.md` / `submission.md` first | design first |
+| 12 | B6 | one opener for every run folder, each folder marked; the calculation's folder shows all its runs and the Results tab picks one — designed in `project-layout.md` and `web/results.md` first | design first |
+
 ### Unscheduled — open work no milestone carries *(listed 2026-09-29)*
 
 R3 says every open item lives in this plan; it does not say every one is
