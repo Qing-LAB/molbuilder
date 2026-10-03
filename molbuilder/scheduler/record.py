@@ -91,9 +91,10 @@ class Topology:
     #: same menu as eight x86 ones, and nothing here could tell them apart:
     #: an x86 conda env does not activate usefully on aarch64 and an
     #: AVX-512 binary does not run there at all, so the failure is total
-    #: rather than slow.  ``None`` keeps its usual meaning (R3, *an unstated
-    #: limit never bars*), which is what leaves every record written before
-    #: this field filtering nothing.
+    #: rather than slow.  Recorded with ``env_arch`` -- the two numbers a
+    #: wrong-architecture refusal would compare; nothing compares them yet
+    #: (W54 R22: this said records "filter" on it).  ``None`` is a record
+    #: written before the field.
     arch:             Optional[str] = None
 
 
@@ -102,7 +103,8 @@ class Site:
     """Scheduler-specific submission facts (empty on a workstation)."""
     partition: Optional[str] = None
     qos:       Optional[str] = None
-    account:   Optional[str] = None
+    # `account` -- neither written nor read -- went 2026-10-02 (W54 R22); a
+    # record carrying one still reads, `from_dict` keeping known keys only.
 
 
 @dataclass(frozen=True)
@@ -110,12 +112,10 @@ class Device:
     """One kind of accelerator the nodes of a domain offer.
 
     The **interpreted** form of a domain's ``gpu`` column -- see
-    :func:`_read_devices` for the two spellings that column arrives in and why
-    both are read here rather than at each call site.
+    :func:`_read_devices`, the one reader.
     """
     type:     str
     per_node: Optional[int] = None
-    mem_gb:   Optional[float] = None
 
 
 class _Unset:
@@ -283,43 +283,23 @@ class Domain:
         return _read_devices(self.gpu)
 
 
-#: The keys that mark a ``gpu`` column as ONE device spelled out rather than a
-#: map of types.  None of the three is a GPU gres type, so their presence is
-#: unambiguous -- which is what makes the two spellings safe to accept.
-_DEVICE_DESCRIPTOR_KEYS = ("type", "per_node", "mem_gb")
-
-
 def _read_devices(gpu: Any) -> Tuple[Device, ...]:
     """A domain's ``gpu`` column -> the devices it names.  **The one reader.**
 
-    The column arrives in two spellings, because two things write it:
-
-      * a **probe** maps gres TYPE to per-node COUNT, ``{"a100": 4,
-        "a100.20gb": 16}`` -- one entry per type ``sinfo`` reported, and no
-        memory, because ``sinfo`` does not report it;
-      * a person **declares** one device and describes it,
-        ``{"type": "a100", "per_node": 4, "mem_gb": 80}`` -- the shape
-        `execution/asu-sol.md` § 5.3 tells them to write.
-
-    Both are one fact -- *what the nodes of this domain offer* -- so both parse
-    to the same type here, and no caller re-decides.  That they were read at
-    two call sites instead is how, until 2026-08-23, a hand-declared row made
-    `prep bench` refuse with *"records several GPU types (mem_gb, per_node,
-    type)"*: one reader knew only the map, and read the descriptor's key names
-    as device names.
+    The probe writes the column as gres TYPE to per-node COUNT, ``{"a100": 4,
+    "a100.20gb": 16}`` -- one entry per type ``sinfo`` reported.  *(A second
+    spelling, one device described by hand, ``{"type": "a100", "per_node": 4,
+    "mem_gb": 80}``, was read too until 2026-10-02 -- no writer, and a record
+    is a measurement, not a hand-written file; W54 R22,
+    `execution/scheduler.md` § 4.)*
 
     An unreadable count is ``None``, never a raise and never a zero -- a column
     we cannot read is not a domain with no devices (R3), and admission must be
-    able to tell those apart.  The user's own spelling is never rewritten: this
-    interprets the column, `to_row` still returns what was written.
+    able to tell those apart.  This interprets the column; `to_row` still
+    returns what was written.
     """
     if not isinstance(gpu, dict) or not gpu:
         return ()
-    if any(k in gpu for k in _DEVICE_DESCRIPTOR_KEYS):
-        gtype = gpu.get("type")
-        return (Device(type=str(gtype) if gtype else "gpu",
-                       per_node=_to_int(gpu.get("per_node")),
-                       mem_gb=_to_float(gpu.get("mem_gb"))),)
     return tuple(Device(type=str(name), per_node=_to_int(count))
                  for name, count in gpu.items())
 
@@ -387,11 +367,11 @@ class Environment:
     #: built for aarch64 under the one string.
     #:
     #: A mismatch is what fails, so a check needs BOTH numbers -- this one
-    #: and ``topology.arch``.  Without it a wrong-architecture failure
-    #: arrives disguised: `envs/builds.py` looks for
-    #: ``x86_64-conda-linux-gnu-gcc`` by name, so on aarch64 it simply finds
-    #: nothing and reports an unknown compiler version rather than the
-    #: actual cause.
+    #: and ``topology.arch``; both are recorded, and nothing compares them
+    #: yet (W54 R22).  The failure that check would catch arrives disguised:
+    #: `envs/builds.py` looks for ``x86_64-conda-linux-gnu-gcc`` by name, so on
+    #: aarch64 it simply finds nothing and reports an unknown compiler
+    #: version rather than the actual cause.
     #:
     #: ``None`` means a record written before this field (R3).
     env_arch:   Optional[str] = None
@@ -469,13 +449,6 @@ class Environment:
 def _to_int(s) -> Optional[int]:
     try:
         return int(str(s).strip())
-    except (ValueError, TypeError):
-        return None
-
-
-def _to_float(s) -> Optional[float]:
-    try:
-        return float(str(s).strip())
     except (ValueError, TypeError):
         return None
 

@@ -233,11 +233,11 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | R15 | `env_init` carried key by key | fixed `92e84cc8` |
 | R16 | `UnknownTarget` invited a hand-written record | fixed `0a7ea0e4` |
 | R17 | the no-activation notes sent to a command that would not ask | fixed `92e84cc8` |
-| R18 | unused parameters | **fixed** — `n_atoms` of `_render_sbatch_for`; `target` of `declared_run_shape`, and of the two that only passed it down |
+| R18 | unused parameters | **fixed `1fc16ce4`** — `n_atoms` of `_render_sbatch_for`; `target` of `declared_run_shape`, and of the two that only passed it down |
 | R19 | dead browser code | fixed `0a7ea0e4` |
 | R20 | comments describing the removed `scheduler` block | fixed `0a7ea0e4` |
 | R21 | record docs that were false | fixed `0a7ea0e4` |
-| R22 | fields with no writer or no reader | `gpu_partition` Q2c 10a, `31ca9957`; `Site.qos` kept by the contract; **to do** — `_read_devices`' descriptor branch (no writer), `Device.mem_gb` (unread), `Site.account` (neither), the arch-mismatch check `env_arch` / `topology.arch` describe (absent), routing's getters beside `machine_for` |
+| R22 | fields with no writer or no reader | `gpu_partition` Q2c 10a, `31ca9957`; `Site.qos` kept by the contract; **fixed** — the hand-declared device spelling and `Device.mem_gb` (no writer; a record is a measurement — the environments README), `Site.account`; the arch fields kept (asked for, 2026-08-26) and their notes no longer describe a check that does not exist; routing's getters stay in `runtime_config`, which `architecture.md` names as the door to a record's queues |
 | R23 | `probe --out` | Q2c 7, `71e70dcd` |
 | R24 | contract restatements against the design | fixed `0a7ea0e4` |
 | D1–D20, D22–D30 | documents teaching removed designs | fixed `0a7ea0e4` (D24: `envs.manager` is a preference) |

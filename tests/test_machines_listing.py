@@ -55,7 +55,7 @@ def _write_record(home, name, *, valid=True):
     env = Environment(
         scheduler="slurm",
         topology=Topology(sockets=2, cores_per_socket=64),
-        site=Site(partition="general", qos="public", account=None),
+        site=Site(partition="general", qos="public"),
         domains=[],
         source={"scheduler": "flag"},
         detected_at="2026-08-22T00:00:00+00:00",

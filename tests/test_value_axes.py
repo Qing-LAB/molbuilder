@@ -170,29 +170,9 @@ def test_a_queue_listing_several_cards_answers_the_most_gpus_a_node_holds(
     assert tr.to_resources(points[0], None)["gres"] == "gpu:8"
 
 
-def test_a_hand_declared_device_row_enumerates_like_a_probed_one(sol_calc):
-    """The documented hand-declared spelling — `asu-sol.md` § 5.3's
-    ``{"type": "a100", "per_node": 4, "mem_gb": 80}`` — is the SAME fact as
-    the probe's ``{"a100": 4}``, and enumerates identically.
-
-    It did not, until 2026-08-23: `_gpu_inventory` read the column as a
-    type→count map, so the descriptor's three keys counted as three GPU types
-    and `prep bench` refused a correctly-written row with *"records several
-    GPU types (mem_gb, per_node, type)"* — naming its own key names as
-    devices.  The remedy it offered (curate the row down to one type) could
-    not be followed, because the row already named one.
-    """
-    env = json.loads((sol_calc / "environment.json").read_text())
-    env["domains"][1]["gpu"] = {"type": "a100", "per_node": 4, "mem_gb": 80}
-    (sol_calc / "environment.json").write_text(json.dumps(env))
-    _declare(sol_calc, USERS_MATRIX)
-
-    points, _pins, tr = bench_inputs(sol_calc, None)
-    g2 = next(p for p in points if p["G"] == 2)
-    assert tr.to_resources(g2, None)["gres"] == "gpu:2"
-    # ...and the cap still applies: the row's 48 cores are unchanged by the
-    # spelling, so the same trials survive as in the probed case.
-    assert len([p for p in points if p["G"]]) == 18
+# `test_a_hand_declared_device_row_enumerates_like_a_probed_one` retired
+# 2026-10-02 with the hand-declared device spelling it read (W54 R22,
+# `execution/scheduler.md` § 4: the probe's map is the one spelling).
 
 
 def test_no_gpu_anywhere_refuses_with_both_remedies(sol_calc):
@@ -212,8 +192,10 @@ def test_no_gpu_anywhere_refuses_with_both_remedies(sol_calc):
     # the record that answered is the calculation's own snapshot, named as
     # such whatever the flag said (the fix-6 review), with its two steps
     assert "this calculation's environment.json" in said, said
-    assert "`molbuilder jobset probe --write` on it" in said, said
-    assert "delete this calculation's environment.json" in said, said
+    assert "`molbuilder jobset probe --write` on the machine it describes" \
+        in said, said
+    assert "environment.json, so the next prep snapshots the new record" \
+        in said, said
 
 
 # --------------------------------------------------------------------- #

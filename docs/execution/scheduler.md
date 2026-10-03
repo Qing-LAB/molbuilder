@@ -81,9 +81,10 @@ than a node offers, a policy cap. It does **not** model whether the
 GPU it landed on is a runtime failure the person deals with, and pulling it in
 here would make submission answer a question it cannot answer and cannot own.
 *(User, 2026-08-30: "what i care most is if the sbatch schedule goes through —
-those are road blockers.")* `Device.mem_gb` accordingly stays an **explicitly
-declared** column, never inferred from a gres name or a node feature, and
-nothing admits against it.
+those are road blockers.")* A device's memory is accordingly no column at
+all: the probe cannot read it (`sinfo` reports none), and nothing would admit
+against it. *(`Device.mem_gb`, declarable by hand, stood until 2026-10-02 —
+W54 R22.)*
 
 **Does not own:** the meaning of an individual `#SBATCH` line
 (`running-a-job.md` § 5.3), the on-disk shape of `environment.json`
@@ -555,20 +556,15 @@ already running where the answer is.
   > It said a queue had one machine type, which R0 measured to be false; a
   > cluster that genuinely is uniform declares one entry in `node_types` and
   > needs no second spelling of it.
-- **Device** — one kind of accelerator the nodes of a domain offer: a type, a
-  per-node count, and a memory size when the record states one. The
-  **interpreted** form of the `gpu` column, and the only form any caller sees.
-  The column itself arrives in two spellings, because two things write it — a
-  probe maps gres type to count (`{"a100": 4}`; `sinfo` reports no memory), and
-  a person describes one device (`{"type": "a100", "per_node": 4, "mem_gb":
-  80}`, the shape [`asu-sol.md`](?doc=execution/asu-sol.md) § 5.3 tells them to
-  write). **Two spellings of one fact are allowed; two readings of it are not.**
-  The record reads the column once, behind `Domain.devices`, and hands out
-  devices. Reading it at the call site instead is what made a hand-declared row
-  refuse `prep bench` with *"records several GPU types (mem_gb, per_node,
-  type)"* — a reader that knew only the map, naming the descriptor's own keys
-  as devices. *A count the record does not state is `None`, never zero: R3
-  applies to devices too.*
+- **Device** — one kind of accelerator the nodes of a domain offer: a type and
+  a per-node count. The **interpreted** form of the `gpu` column, which the
+  probe writes as gres type to count (`{"a100": 4}`), and the only form any
+  caller sees: the record reads the column once, behind `Domain.devices`, and
+  hands out devices. *A count the record does not state is `None`, never zero:
+  R3 applies to devices too.* *(A second spelling, one device described by
+  hand — `{"type": "a100", "per_node": 4, "mem_gb": 80}` — was read too until
+  2026-10-02. Nothing molbuilder writes produces it, and a record is a
+  measurement, not a hand-written file (`configuration.md` § 5); W54 R22.)*
 - *(`gpu_partition` — where a GPU job went when that differed from the
   queue's partition — was a declared field from phase 3 until 2026-10-02,
   when it was removed: the probe never wrote it, a GPU job goes to the queue

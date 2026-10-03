@@ -189,12 +189,13 @@ def test_a_silent_or_unreadable_column_states_no_count():
 
 
 def test_the_users_own_spelling_survives_the_round_trip():
-    """`devices` INTERPRETS the column; it never rewrites it.  The row stays
-    the operator's to edit, in the words they wrote it in."""
-    written = {"type": "a100", "per_node": 4, "mem_gb": 80}
+    """`devices` INTERPRETS the column; it never rewrites it -- the record
+    keeps the words the probe wrote, every type in the order written."""
+    written = {"a100": 4, "a100.20gb": 16}
     row = Domain.from_row({"name": "g", "partition": "general",
                            "qos": "public", "gpu": written})
-    assert row.devices[0].type == "a100"
+    assert [(d.type, d.per_node) for d in row.devices] == [
+        ("a100", 4), ("a100.20gb", 16)]
     assert row.to_row()["gpu"] == written
 
 

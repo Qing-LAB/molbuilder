@@ -39,7 +39,7 @@ _SOL = {
     "topology": {"sockets": 2, "cores_per_socket": 32, "threads_per_core": 1,
                  "numa_per_socket": None, "gpus_per_node": 4,
                  "gpu_type": "a100", "mem_total_gb": 503.5},
-    "site": {"partition": "htc", "qos": None, "account": None},
+    "site": {"partition": "htc", "qos": None},
     "domains": [{"name": "htc", "partition": "htc", "qos": "public",
                  "max_cores": 48, "max_mem_gb": 501.0,
                  "default_mem_per_core_gb": 2.0}],

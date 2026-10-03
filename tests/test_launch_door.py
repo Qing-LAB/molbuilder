@@ -54,7 +54,7 @@ def _queues(gpu: bool = False):
     if gpu:
         rows.append(Domain(name="gpu", partition="gpu", qos="public",
                            max_time="0-04:00:00",
-                           gpu={"type": "a100", "per_node": 4}))
+                           gpu={"a100": 4}))
     return rows
 
 

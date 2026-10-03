@@ -76,9 +76,8 @@ target, this machine included ([`configuration.md`](?doc=configuration.md)
 § 5, M-1, M-3).
 
 **What a record says is taken as it says it.** The GPUs of a queue are read
-in both of the record's spellings — the probe's `{"a100": 4}` and a
-hand-written `{"type": "a100", "per_node": 4}` (`scheduler.md` § 4,
-*Device*); any card name, MIG slices included, counts as GPUs; a record
+from the probe's `{"a100": 4}` (`scheduler.md` § 4, *Device*); any card name,
+MIG slices included, counts as GPUs; a record
 whose probe ran on a login node that sees none gives the count from its
 queues; and a queue whose `gpu` column marks GPUs without saying how many
 is never refused on the number (R3: silence never bars).
@@ -118,7 +117,7 @@ whole node.
 | `gpu_binding` | **the person**, to turn it off | `task.json` · `allocation` → `Resources` | whether the ask carries `--gres-flags=enforce-binding` (G9) |
 | `Diag.ELPA.GPU` | *(rendered)* | the SIESTA deck | the keyword `use_gpu` becomes |
 | `gpu4pyscf` / `to_gpu()` | *(rendered)* | the PySCF deck | the same, for PySCF |
-| `Device(type, per_node, mem_gb)` | **the probe, or the operator** | `environment.json` · `Domain.gpu` | what one node of a queue **offers** — the ceiling; its `type` is shown, never compared |
+| `Device(type, per_node)` | **the probe** | `environment.json` · `Domain.gpu` | what one node of a queue **offers** — the ceiling; its `type` is shown, never compared |
 | `topology.gpus_per_node` · `gpu_type` | **the probe** | `environment.json` | what the probed node has — the count bounds a bench's GPU counts; the card is shown, never compared |
 
 > **The ask and the ceiling are different variables, and the names hide it.**

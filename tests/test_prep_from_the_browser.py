@@ -62,7 +62,7 @@ def described(isolated_projects_root, web_client):
                      "threads_per_core": 1, "numa_per_socket": None,
                      "gpus_per_node": 0, "gpu_type": None,
                      "mem_total_gb": 500.0},
-        "site": {"partition": "htc", "qos": "public", "account": None},
+        "site": {"partition": "htc", "qos": "public"},
         "domains": [],
     }))
     return str(calc)
