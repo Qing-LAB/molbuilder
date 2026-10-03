@@ -1113,9 +1113,11 @@ declared fact: a login node that sees no GPUs probes `null`, and keeping the
 recorded `4` is one keystroke. EOF keeps everything — a scripted probe
 without `--yes` changes nothing (silence is no, the standing doctrine) —
 and `--yes` takes every probed value. The reachable-domain **set** is one
-question, not one per row. `detected_at`/`source` follow the new probe
-either way: the kept values were re-confirmed now, and the stamp says when
-the record was last looked at.
+question, not one per row. `detected_at`/`source` follow the new probe: the
+kept values were re-confirmed now, and the stamp says when the record was last
+looked at — but **a declared fact kept stays declared** *(user, 2026-10-03)*:
+`source` is noted per section, and a section whose kept value was declared
+keeps `flag` in its note (`lscpu+flag`), as M-5 says it admits.
 
 Creating a record where none exists is one consent — there is nothing to
 clobber. **A file at the record's path that does not read** — a newer schema, a

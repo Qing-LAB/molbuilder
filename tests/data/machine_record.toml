@@ -36,6 +36,14 @@ record_says = { topology = { gpus_per_node = 4, gpu_type = "a100" } }
 probe_said = ["kept recorded"]
 
 [[case]]
+name = "a declared fact kept over a probe that cannot see it stays declared -- its section's source keeps flag"
+ends_at = "probe"
+probe = [["--set", "mem_total_gb=1536.5"],
+         { flags = [], answers = "" }]
+record_says = { topology = { mem_total_gb = 1536.5 } }
+record_declared = ["topology"]
+
+[[case]]
 name = "...and Yes takes the probed value"
 ends_at = "probe"
 probe = [["--set", "gpus_per_node=4", "--set", "gpu_type=a100"],

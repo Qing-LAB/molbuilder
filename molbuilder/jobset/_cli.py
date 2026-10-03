@@ -2145,8 +2145,10 @@ def _probe_consent_merge(before, probed, *, yes: bool):
     doctrine.  The record's declared facts survive a weaker probe the
     same way (a login node that cannot see GPUs probes ``None``, and No
     keeps your declared 4).  ``detected_at``/``source`` follow the new
-    probe either way: the kept values were re-CONFIRMED now, and the
-    stamp says when the record was last looked at.
+    probe: the kept values were re-CONFIRMED now, and the stamp says when
+    the record was last looked at -- but a DECLARED fact kept stays
+    declared, its section's ``source`` keeping ``flag`` (user, 2026-10-03,
+    `configuration.md` M-6).
 
     Returns the record to write.
     """
@@ -2215,6 +2217,15 @@ def _probe_consent_merge(before, probed, *, yes: bool):
         (took if take else kept).append(fname_)
         if not take:
             keep()
+    # A DECLARED FACT KEPT STAYS DECLARED.  `source` is noted per section
+    # (`scheduler`, `topology`, `site`, `domains`); where a kept value's
+    # section was declared in the record, the new note keeps `flag`.
+    for section in {name.split(".")[0] for name in kept} & set(before.source):
+        was = before.source.get(section, "").split("+")
+        now = probed.source.get(section) or "unknown"
+        if "flag" in was and "flag" not in now.split("+"):
+            probed.source[section] = ("flag" if now == "unknown"
+                                      else f"{now}+flag")
     click.echo("  " + "; ".join(filter(None, [
         f"took probed: {', '.join(took)}" if took else "",
         f"kept recorded: {', '.join(kept)}" if kept else ""])))

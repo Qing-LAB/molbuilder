@@ -383,7 +383,7 @@ mutations; the framework rounds' design written into the contracts first:
 | # | unit | what it is | state |
 |---|---|---|---|
 | 1 | Q4 | `jobset probe --write` refuses when this machine's `molbuilder.json` states no `env_init` — the record's copy is required, never kept from before | **done** — refused before anything is probed, after what was typed (`--set`, the reserved name); the keep-the-old-copy case is gone; `configuration.md` § 4 and its table row say so; probe rows of the road stand on the `molbuilder.json` `init-config` leaves; one row (`probe_refused`), the retired keep-row, one test retired (the probe can no longer be the config directory's first writer); one mutation, red; 195 targeted green |
-| 2 | Q2 | a declared value kept at a re-probe keeps `flag` in its `source` | open |
+| 2 | Q2 | a declared value kept at a re-probe keeps `flag` in its `source` | **done** — `source` is noted per section, and a section whose kept value was declared keeps `flag` (`_probe_consent_merge`); M-6 says so; one row; one mutation, red |
 | 3 | Q3 | M-2: `env_init`, `conda_envs`, `env_arch` are left out when empty, and the probe says which it left out and why | open |
 | 4 | B1's save · B10 | the folder's state is saved before every prep and every Task setup Save — always, through checkpoint, the note led by its timestamp, the person told; one server function for both; the offer, its question and the page's box retire | open |
 | 5 | Q1 | a stage turned off is refused everywhere — prep, launch, what continues from it — and its folder, where one was left, is shown disabled and never used | open |
