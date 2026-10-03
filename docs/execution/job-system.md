@@ -787,8 +787,10 @@ A calculation is described **once**, and prep only ever reads that description.
 
 #### After prep
 
-`launch` shows the exact command it will send — for `submit`, the `sbatch`
-line with the queue, wall and memory as sent — and asks before sending it
+`launch` acts on a prepped stage — one described and not prepped is refused by
+name, with its prep and its launch, as `status` says of it. It shows the exact
+command it will send — for `submit`, the `sbatch` line with the queue, wall and
+memory as sent — and asks before sending it
 ([`submission.md`](?doc=execution/submission.md) S4); `--yes` skips the
 question, never the output. One job per invocation (§ 5.3). Then you look —
 `status`, the Results tab — and decide what to prep next.

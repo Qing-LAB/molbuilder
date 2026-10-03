@@ -68,6 +68,16 @@ saved = { shape = "flat" }
 reprobed = { conda_envs = ["molbuilder-siesta", "molbuilder-siesta-gpu"] }
 
 # ===================================================================== #
+#  LAUNCH ACTS ON A PREPPED STAGE                                       #
+# ===================================================================== #
+
+[[case]]
+name = "a stage described and not prepped is refused at launch by name, with its prep and its launch -- as status says"
+launch = []
+launch_stage = "medium"
+launch_refused = ["stage 'medium' is not prepped yet", "molbuilder jobset prep run medium"]
+
+# ===================================================================== #
 #  A CALCULATION THAT HAS PRODUCED KEEPS ITS SHAPE                      #
 #  (`web/task-setup.md` § 4; § 5.0's "changing it later")               #
 # ===================================================================== #

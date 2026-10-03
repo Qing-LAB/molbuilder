@@ -260,7 +260,7 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 #
 #   1. ALLOWED OR REFUSED, in its words -- at prep (`refused`, a sentence or a
 #      list of them; `said`) or at
-#      launch (`launch_refused`, `listing`);
+#      launch (`launch_refused`, the same; `listing`);
 #   2. WHAT IS PRODUCED -- the `.sbatch` header (`header`, or
 #      `header_absent`), the deck (`deck`), the run script (`run_sh`), each
 #      with a `_lacks` twin; the `sbatch` line launch shows (`line`,
@@ -278,7 +278,8 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # `machine_config` -- THIS machine's `molbuilder.json`; `prep` / `launch` --
 # the flags typed (launch
 # with `--mode submit`, unless `launch_mode` names another -- "" for none, so
-# the config's `launch.mode` decides); `machine` -- "this" (this machine IS
+# the config's `launch.mode` decides; of the stage `launch_stage` names,
+# `coarse` unless it names another); `machine` -- "this" (this machine IS
 # the target, its record
 # listing `queues`), "named" (this machine is a workstation; the target is a
 # record named `sol` listing `queues`) or "workstation" (no queues at all);
@@ -657,12 +658,14 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
     # benchmark -- or its refusal
     if "launch" in case:
         mode = case.get("launch_mode", "submit")
-        r = jobset("launch", kind, "coarse", "--bundle", bundle,
-                   *(("--mode", mode) if mode else ()),
+        r = jobset("launch", kind, case.get("launch_stage", "coarse"),
+                   "--bundle", bundle, *(("--mode", mode) if mode else ()),
                    "--dry-run", "--yes", *case["launch"])
         if "launch_refused" in case:
-            assert r.exit_code != 0 and case["launch_refused"] in r.output, \
-                _one_line(r)
+            said = case["launch_refused"]
+            assert r.exit_code != 0, _one_line(r)
+            for words in ([said] if isinstance(said, str) else said):
+                assert words in r.output, _one_line(r)
         else:
             assert r.exit_code == 0, _one_line(r)
             sent = [ln for ln in r.output.splitlines() if "sbatch" in ln.split()]

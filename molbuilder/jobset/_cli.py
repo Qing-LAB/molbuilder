@@ -866,6 +866,24 @@ def _described_stage(base, stage):
         raise click.ClickException(str(e))
 
 
+def _refuse_unprepped(base, stage) -> None:
+    """A stage the description holds and no prep has prepared is refused by
+    NAME, with its prep and its launch -- what `status` says of it.  It read
+    *no stage named ... in this job-set* (W55 D4): the job-set holds the
+    prepped stages, and the description all of them.  Prepped is the prep
+    entry's own answer (`prep.prepped_already`)."""
+    from ..task import FILENAME, read_task
+    from .commands import block, run_first
+    from .prep import prepped_already
+    desc = Path(base) / FILENAME
+    if stage is None or not desc.is_file():
+        return
+    if prepped_already(base, read_task(desc), "run", stage) is None:
+        raise click.ClickException(
+            f"stage {stage!r} is not prepped yet -- prep it, then launch "
+            f"it:\n" + block(run_first(stage, base=base)))
+
+
 def _stage_bench_dir(base, stage, verb: str = "launch"):
     """The stage's bench container (job-contracts.md § 6.3), resolved
     through the description — where its trials, its job-set and its verdict
@@ -1756,7 +1774,10 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
         only = _pick_trial(js, base, trial)      # None: every trial
     else:
         # The description's spelling from here on -- what the ledger
-        # records and every line prints (plan § 5w K12).
+        # records and every line prints (plan § 5w K12) -- and a stage it
+        # holds that is not prepped, said so (W55 D4).
+        stage = _described_stage(bundle, stage)
+        _refuse_unprepped(base, stage)
         only = stage = _resolve_stage(js, stage, "launch", base=base)
     launching = [j for j in js.jobs if only is None or j.name == only]
     grouped = kind == "bench" and trial is None and mode in ("submit", "ask")
