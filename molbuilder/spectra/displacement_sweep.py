@@ -126,6 +126,7 @@ def collect_sweep(base_dir, task, *,
     from ..chemistry import atomic_mass
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE
     from ..engine_atom_index import from_engine_index
+    from ..jobset.commands import rollback
     from ..jobset.materialize import latest_attempt, read_run_launch
     from ..jobset.prep import token_for
     from ..parse.dirs import run_status
@@ -277,8 +278,10 @@ def collect_sweep(base_dir, task, *,
                 f"constants, and this would report the geometry's change as "
                 f"the displacement's.  Each force-constant stage takes the "
                 f"relax stage's newest attempt when it is prepped "
-                f"(engines/vibration.md 5.2a) -- prep and launch them again "
-                f"after the relaxation they should share (5.9)")
+                f"(engines/vibration.md 5.2a), and a prepped stage is not "
+                f"prepped again (job-system.md 5.0): to measure them at the "
+                f"relaxation they should share, "
+                + rollback("their prep", base=base))
 
     # WHICH MODE IS WHICH, by shape, against the first stage with a result.
     masses = [atomic_mass(ref.equilibrium_elements[i])

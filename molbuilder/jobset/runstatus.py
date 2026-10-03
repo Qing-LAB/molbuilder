@@ -31,7 +31,7 @@ from .materialize import (attempts, job_dir_names, launch_record_at,
                           read_run_launch,
                           latest_attempt, run_dir, shape_of,
                           stage_refs)
-from .commands import block, command, launch_lines
+from .commands import block, command, launch_lines, rollback
 from .model import JobSet
 from .plan import resources_text
 
@@ -581,16 +581,20 @@ def next_step(s: Optional[StageStatus], name: str, *, base) -> str:
         return (f"First incomplete stage: {name}, {state} -- let it "
                 f"finish; `{command('status', name, base=base)}` shows its "
                 f"run.")
+    # A PREPPED STAGE IS NOT PREPPED AGAIN (user, 2026-10-02): what it
+    # said here until then -- "prep it again for a fresh attempt", and
+    # "or change its parameters first" -- is a rollback now.
     if s is not None and s.resumes and s.carries:
         how = ("launch it again -- it continues from its own latest run:\n"
-               + block(launch_lines("run", name, base=base)))
+               + block(launch_lines("run", name, base=base))
+               + "\n  or, to change it first, " + rollback("its prep",
+                                                          base=base))
     else:
-        how = ("prep it again for a fresh attempt -- it does not continue "
-               "from a run of its own:\n"
-               + block([command("prep", "run", name, base=base)]))
+        how = ("it does not continue from a run of its own, and a prepped "
+               "stage is not prepped again -- " + rollback("its prep",
+                                                           base=base))
     return (f"First incomplete stage: {name}, {state}.  molbuilder does NOT "
-            f"auto-resume -- you decide: {how}\n  or change its parameters "
-            f"first (engines/stages.md).")
+            f"auto-resume -- you decide: {how}")
 
 
 def render_stage_status(status: JobSetStatus, stage_name: str,

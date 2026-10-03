@@ -1663,9 +1663,10 @@ class TestTheBrowserRoute:
         # door's own path fence refuses anything outside it -- correctly.
         monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
         client = create_app(config={}).test_client()
+        # the save prep offers, answered: no
         return client.post("/api/task-setup/prep", json={
             "dest": str(calc), "kind": "run", "stage": stage,
-            "target": LOCAL_TARGET})
+            "target": LOCAL_TARGET, "save": False})
 
     def test_the_browser_gathers_what_the_device_consumes(
             self, calc, tmp_path, monkeypatch):
@@ -1952,7 +1953,8 @@ class TestTheBiasScan:
     def test_an_unprepped_point_refuses_the_chain(self, calc, tmp_path,
                                                   monkeypatch):
         """A chain launch with one point unprepped is refused, naming the point and the
-        command that fixes it.
+        way back -- a rollback, since a prepped stage is not prepped again
+        (`job-system.md` § 5.0; it named `prep run device` until 2026-10-02).
 
         Catches the chain launching a partial scan. The submission walks every point
         in one job; a missing attempt directory discovered mid-walk would mean the
@@ -1965,7 +1967,8 @@ class TestTheBiasScan:
         shutil.rmtree(calc / "04_device" / "v0.2" / "run-0")
         r = self._launch(calc)
         assert r.exit_code != 0, r.output
-        assert "v0.2" in r.output and "prep run device" in r.output, r.output
+        assert ("v0.2" in r.output
+                and "molbuilder checkpoint list" in r.output), r.output
 
     def test_a_launched_point_refuses_relaunch(self, calc, tmp_path,
                                                monkeypatch):
@@ -2014,9 +2017,10 @@ class TestTheBiasScan:
         plan § 5w K10).  Four looked in the stage folder alone (the M11
         review's T-F13, and the K10 review): prep's *already under way*
         question, so a re-prep re-rendered over a launched point without
-        asking; Task setup's attempt count, which showed the scan's device
-        as never attempted; and `jobset status` with the Results tab's
-        ladder, which read a running scan as *prepped, not launched*.
+        asking -- a prepped rung is refused now, its plan read, 2026-10-02;
+        Task setup's attempt count, which showed the scan's device as never
+        attempted; and `jobset status` with the Results tab's ladder, which
+        read a running scan as *prepped, not launched*.
 
         The launch is `write_run_launch` and a run's end its conclusion
         marker (`_conclude`) -- the records a launch and a finished run
@@ -2042,10 +2046,9 @@ class TestTheBiasScan:
                          mode="direct", command=["bash", "x"])
         r = CliRunner().invoke(jobset_group,
                                ["prep", "run", "device", "--bundle",
-                                "J/transport/T"], input="n\n")
+                                "J/transport/T"])
         assert r.exit_code != 0, r.output
-        assert "already under way" in r.output, r.output
-        assert "04_device/v0/run-0/ was launched" in r.output, r.output
+        assert "stage 'device' is already prepped" in r.output, r.output
         att = client.post(
             "/api/task-setup/attempts", json={"dest": str(calc)}).get_json()
         assert att["stages"]["device"]["attempts"] == 2, (
@@ -2468,17 +2471,30 @@ class TestEachDeckCarriesWhatItsProgramReads(_LadderThroughTheCli):
         for deck in (device, transmission):
             assert "TS.Elecs.Bulk          .false." in self._settings(deck)
 
-        # ...and one rung's own value is refused rather than taken
+        # ...and one rung's own value is refused rather than taken -- on a
+        # calculation of its own, the value in its description before its
+        # first prep: a prepped rung is not prepped again (`job-system.md`
+        # § 5.0).  Prepped rung by rung, the first refusal names it.
         from molbuilder.task import read_task, write_task
-        calc = tmp_path / "projects" / "J" / "transport" / "T"
+        root = tmp_path / "second" / "projects"
+        _write_junction(root, _junction_struct())
+        calc = _describe_transport(root, bias=(0.0,))
         task = read_task(calc / "task.json")
         write_task(calc / "task.json", dataclasses.replace(
             task, varies=("electrodes_bulk",),
             stages=tuple(dataclasses.replace(
                 s, overrides={"electrodes_bulk": True})
                 if s.name == "device" else s for s in task.stages)))
-        r = self._cli(["prep", "run", "device", "--bundle", "J/transport/T"],
-                      tmp_path / "projects", monkeypatch)
+        products = {"seed": ["T.DM"],
+                    "electrode_L": ["T_L-electrode.TSHS"],
+                    "electrode_R": ["T_R-electrode.TSHS"]}
+        for stage in _STAGES:
+            r = self._cli(["prep", "run", stage, "--bundle", "J/transport/T"],
+                          root, monkeypatch)
+            if r.exit_code != 0:
+                break
+            if stage in products:
+                _conclude(calc, stage, products[stage])
         assert r.exit_code != 0 and "electrodes_bulk" in r.output, r.output
 
     def test_a_template_naming_the_old_spelling_is_told_the_new_one(

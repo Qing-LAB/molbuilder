@@ -801,11 +801,15 @@ belongs to prepare rather than submit: preparing is still design, and the split
 gives you somewhere to look; submitting is then a plain "yes, that one"
 (`jobset/materialize.py::prepare_attempt`).
 
-**Preparing again is safe until the run has been launched.** Otherwise splitting
-the two steps leaks directories — prepare, change your mind, prepare again, and
-an empty `run-3` sits there forever. Until launch the last attempt is reused and
-its inputs refreshed; once launched it is untouchable (§ 1.5), and the next prep
-opens a new one.
+**A stage is prepared once** *(user, 2026-10-02: "refuse it, redo via
+rollback")*. `prep` opens its attempt; a stage the calculation's plan already
+holds is refused, and a redo goes back to the state saved before its prep and
+prepares it anew ([`job-system.md`](?doc=execution/job-system.md) § 5.0).
+**The next attempt is `launch`'s**: launching a stage whose attempt has run
+opens `run-<n+1>`, continuing from its own latest run, so a launched attempt is
+untouchable (§ 1.5). *(Until 2026-10-02 preparing again was allowed: until
+launch the last attempt was reused and its inputs refreshed, and after it the
+next prep opened a new one.)*
 
 #### 1.6.3 The launch record and the conclusion marker — `run.json`, and the other file
 
@@ -820,7 +824,7 @@ Two small files answer the two questions *(the second decided by the user,
 
 | file | written by | when | it says | absent means |
 |---|---|---|---|---|
-| `run.json` (`molbuilder/run-launch@1`) — a flat stage's `<basename>.run.json` | `launch`, into the attempt — or, for a flat stage, beside its deck | when the launch succeeds: `sbatch` accepted it, or the direct process started | *launched* — the mode, the exact command, the scheduler's job id, when, where it was sent, and **what it continued from** | not launched: prep may reuse the attempt |
+| `run.json` (`molbuilder/run-launch@1`) — a flat stage's `<basename>.run.json` | `launch`, into the attempt — or, for a flat stage, beside its deck | when the launch succeeds: `sbatch` accepted it, or the direct process started | *launched* — the mode, the exact command, the scheduler's job id, when, where it was sent, and **what it continued from** | not launched: `launch` runs in this attempt |
 | `<basename>-run<N>.concluded` | the wrapper, on its main line | its last act, after the engine returns — and after the job's finish, when it has one (`engines/vibration.md` § 5.5) — and before it stops the monitor | *the process ended on its own* — the exit code and the time; **when the finish failed, its exit code and the words `finish failed (<bundle>)`** (`parse/dirs/job.FINISH_FAILED`) | still running, or force-stopped: the files cannot tell which |
 | `.continued-from` — a flat stage's `<basename>.continued-from` | `prep` | when it copies warm files in — on the flat layout, when the stage continues from the run before it, whose files lie in the folder | which attempt they came from, for `launch` to write into `run.json` — on the flat layout the run's own name, `<label>_<NN>_<stage>-run<N>`, which every file of it carries (ruled 2026-10-01) | the run starts from the structure |
 
@@ -828,7 +832,7 @@ Two small files answer the two questions *(the second decided by the user,
   job finished, it would leave a running direct attempt reading as never
   launched, a double-submit window — and a failed *start* records nothing, so a
   refused launch leaves the attempt as prepare left it. It earns its place three
-  times: prepare refuses to reuse a launched attempt; status says *queued as job
+  times: a launched attempt is never run in again — `launch` opens the next; status says *queued as job
   481923* ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2); and
   `continued_from` is the run's provenance (`checkpointing.md` **S3**). A
   benchmark trial keeps attempts as a stage does (§ 1.5a), and each attempt
@@ -867,7 +871,7 @@ What an attempt holds, moment by moment (`running-a-job.md` § 4.2 reads each):
 
 #### 1.6.4 What reads them
 
-`prep` reads `run.json` to never reuse a launched attempt (§ 1.6.2);
+`launch` reads `run.json` to open the next attempt rather than run in a launched one (§ 1.6.2);
 `run_status` reads both after the output's own ending — except for a job
 with a finish, whose marker, or its session log's *finish started* line,
 decides after an ended output — and the monitor's closing record after the

@@ -1180,9 +1180,10 @@ class UnknownTarget(Exception):
         Exception.__init__(exc, (
             f"this calculation's record of its machine cannot be read: "
             f"{calculation_record(bundle_dir)}.\n"
-            f"  Fix it by hand, or delete it and prep again so the machine's "
-            f"current record is copied in (--target NAME to name the "
-            f"machine)."))
+            f"  Fix it by hand -- or go back to the state saved before the "
+            f"calculation's first prep (`molbuilder checkpoint list` shows "
+            f"the folder's states, `molbuilder checkpoint restore` takes "
+            f"the one you pick) and prep anew."))
         return exc
 
     @classmethod
@@ -1207,9 +1208,10 @@ class UnknownTarget(Exception):
             f"prep, and that does not change -- --target {name} names "
             f"another.\n"
             f"  To go on with it: --target {set_to}.\n"
-            f"  To prepare it for {name}: go back to a state saved before its "
-            f"first prep (molbuilder checkpoint restore <state>) and prep "
-            f"again with --target {name}."))
+            f"  To prepare it for {name}: go back to the state saved before "
+            f"its first prep (`molbuilder checkpoint list` shows the "
+            f"folder's states, `molbuilder checkpoint restore` takes the one "
+            f"you pick) and prep again with --target {name}."))
         return exc
 
 
@@ -1324,10 +1326,12 @@ def record_and_renewal(bundle_dir=None, target: Optional[str] = None
                  else f"`{probe_command(name)}` {probe_steps(name)}")
         return ("this calculation's environment.json, snapshotted at its "
                 "first prep",
-                f"re-probe it -- {probe} -- then prep it anew from a state "
-                f"saved before its first prep (molbuilder checkpoint restore "
-                f"<state>): a calculation is set to the record it was first "
-                f"prepped with (configuration.md M-3)")
+                f"re-probe it -- {probe} -- then go back to the state saved "
+                f"before its first prep (`molbuilder checkpoint list` shows "
+                f"the folder's states, `molbuilder checkpoint restore` takes "
+                f"the one you pick) and prep anew: a calculation is set to "
+                f"the record it was first prepped with (configuration.md "
+                f"M-3)")
     return ("this machine's" if target in (None, LOCAL_TARGET)
             else f"{target}'s",
             f"re-probe it --\n    {probe_line(target)}\n ")

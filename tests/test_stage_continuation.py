@@ -46,9 +46,33 @@ def _ran(where: Path, *, rc: int = 0, tolerance: str = "0.0100"):
     a_finished_run(where, rc=rc, tolerance=tolerance)
 
 
-def _prep(bundle, stage, *more):
+def _prep(bundle, stage, *more, input=None):
     return _jobset("prep", "run", stage, "--bundle", bundle,
-                   "--target", "this", *more)
+                   "--target", "this", *more, input=input)
+
+
+def _ladder_on_a_queue(tmp_path, monkeypatch):
+    """The ladder on a machine whose queue takes it -- `support.road`'s
+    stand-in `sbatch`, which queues nothing -- so a stage can be LAUNCHED
+    again: a stage's next attempt is `launch`'s, never a re-prep
+    (`job-system.md` § 5.0; it was a re-prep here until 2026-10-02)."""
+    from molbuilder.scheduler import Domain
+    from support.road import a_queue_that_answers
+    a_queue_that_answers(tmp_path, monkeypatch, [
+        Domain(name="htc", partition="htc", qos="public",
+               max_time="0-04:00:00")])
+    bundle = describe_h2(tmp_path, monkeypatch)
+    tj = bundle / "task.json"
+    d = json.loads(tj.read_text())
+    d["allocation"] = {"domain": "htc", "time": "0-01:00:00", "mem": "8G"}
+    tj.write_text(json.dumps(d, indent=2))
+    return bundle
+
+
+def _launch(bundle, stage):
+    r = _jobset("launch", "run", stage, "--bundle", bundle, "--mode",
+                "submit", "--domain", "htc", "--yes")
+    assert r.exit_code == 0, r.output
 
 
 def test_a_stage_continues_from_the_stage_before_it_by_default(ladder):
@@ -101,20 +125,19 @@ def test_a_stage_continues_from_the_stage_before_it_by_default(ladder):
     assert said[-1]["copied"] == ["H2.XV"], said
 
 
-def test_a_choice_is_taken_as_said_and_a_failed_run_is_refused(ladder):
+def test_a_choice_is_taken_as_said_and_a_failed_run_is_refused(
+        tmp_path, monkeypatch):
     """The newest coarse attempt failed: refused, naming the earlier one that
     concluded.  Named by `--from`, a run is taken as said, with what it is;
-    `--cold` takes none.
+    and redone by going back -- the state saved before medium's prep,
+    restored -- `--cold` takes none.
 
     MUTATION THIS MUST FAIL AGAINST: a failed run taken as the default."""
-    from molbuilder.jobset.materialize import write_run_launch
-    bundle = ladder()
+    bundle = _ladder_on_a_queue(tmp_path, monkeypatch)
     assert _prep(bundle, "coarse").exit_code == 0
+    _launch(bundle, "coarse")
     _ran(bundle / "01_coarse" / "run-0")
-    write_run_launch(bundle / "01_coarse" / "run-0", mode="direct",
-                     command=["bash", "x"])
-    r = _prep(bundle, "coarse", "--from", "01_coarse/run-0")
-    assert r.exit_code == 0, r.output
+    _launch(bundle, "coarse")                 # again: run-1, from run-0
     _ran(bundle / "01_coarse" / "run-1", rc=1)
 
     r = _prep(bundle, "medium")
@@ -124,11 +147,22 @@ def test_a_choice_is_taken_as_said_and_a_failed_run_is_refused(ladder):
             in r.output), r.output
     assert not (bundle / "02_medium").exists(), "a refusal wrote the stage"
 
-    r = _prep(bundle, "medium", "--from", "01_coarse/run-1")
+    # the save prep offers, taken: the state a redo goes back to
+    r = _prep(bundle, "medium", "--from", "01_coarse/run-1", input="y\n\n")
     assert r.exit_code == 0, r.output
     assert "continues from 01_coarse/run-1 (named; concluded rc=1" in r.output
     assert "FAILED" in r.output, r.output
 
+    # REDONE BY GOING BACK (`job-system.md` § 5.0): restored to the state
+    # saved before medium's prep, medium is not prepped -- and preps anew.
+    from click.testing import CliRunner
+    from molbuilder.checkpoint import Repo
+    from molbuilder.cli import cli
+    before = Repo(str(bundle)).states()[0]
+    assert before.note == "before prep run medium", before
+    back = CliRunner().invoke(cli, ["checkpoint", "restore", before.id,
+                                    "-p", str(bundle), "--force"])
+    assert back.exit_code == 0, back.output
     r = _prep(bundle, "medium", "--cold")
     assert r.exit_code == 0, r.output
     assert "cold start -- nothing copied in" in r.output, r.output
@@ -213,7 +247,8 @@ def test_a_linked_stage_says_its_input_is_preps_own(tmp_path, monkeypatch):
     assert "nothing carried in" not in r.output, r.output
 
 
-def test_a_newer_run_is_never_passed_over_and_a_verdict_is_said(ladder):
+def test_a_newer_run_is_never_passed_over_and_a_verdict_is_said(
+        tmp_path, monkeypatch):
     """Coarse ran once and did not converge, then was launched again: the
     newer run has not concluded, so medium's prep refuses -- the older run
     never stands in by default -- and names it as a choice; named, it is
@@ -221,15 +256,11 @@ def test_a_newer_run_is_never_passed_over_and_a_verdict_is_said(ladder):
 
     MUTATIONS THIS MUST FAIL AGAINST: an older concluded attempt taken by
     default; the verdict not said."""
-    from molbuilder.jobset.materialize import write_run_launch
-    bundle = ladder()
+    bundle = _ladder_on_a_queue(tmp_path, monkeypatch)
     assert _prep(bundle, "coarse").exit_code == 0
+    _launch(bundle, "coarse")
     _ran(bundle / "01_coarse" / "run-0", tolerance="0.0001")
-    write_run_launch(bundle / "01_coarse" / "run-0", mode="direct",
-                     command=["bash", "x"])
-    assert _prep(bundle, "coarse", "--from", "01_coarse/run-0").exit_code == 0
-    write_run_launch(bundle / "01_coarse" / "run-1", mode="direct",
-                     command=["bash", "x"])
+    _launch(bundle, "coarse")                 # again: run-1, queued
 
     r = _prep(bundle, "medium")
     assert r.exit_code != 0, r.output
@@ -255,9 +286,10 @@ def test_the_browser_prep_continues_as_the_terminal_does(ladder):
     client = create_app(config={}).test_client()
 
     def prep(stage):
+        # the save prep offers, answered: no
         return client.post("/api/task-setup/prep", json={
             "dest": str(bundle), "kind": "run", "stage": stage,
-            "target": "this"})
+            "target": "this", "save": False})
 
     assert prep("coarse").status_code == 200
     r = prep("medium")
@@ -314,8 +346,10 @@ def test_the_browser_doors_offer_the_choice_and_take_it(ladder):
     client = create_app(config={}).test_client()
 
     def post(**body):
+        # the save prep offers, answered: no
         return client.post("/api/task-setup/prep", json=dict(
-            {"dest": str(bundle), "kind": "run", "target": "this"}, **body))
+            {"dest": str(bundle), "kind": "run", "target": "this",
+             "save": False}, **body))
 
     assert post(stage="coarse").status_code == 200
     _ran(bundle / "01_coarse" / "run-0")
@@ -332,19 +366,19 @@ def test_the_browser_doors_offer_the_choice_and_take_it(ladder):
     r = post(stage="medium", plan=True).get_json()
     assert r["continuation"]["line"].startswith(
         "continues from 01_coarse/run-0 (the stage before it;"), r
-    r = post(stage="medium", cold=True)
-    assert r.status_code == 200, r.get_json()
-    assert r.get_json()["continuation"] is None, r.get_json()
-    assert r.get_json()["attempt"]["cold"] is True, r.get_json()
-    r = post(stage="medium", **{"from": "01_coarse/run-0"})
-    assert r.status_code == 200, r.get_json()
-    assert r.get_json()["continuation"]["by_default"] is False, r.get_json()
+    # COLD, as the preview takes it -- a prepped stage is not prepped again
+    # (`job-system.md` § 5.0), so one medium prep is the run named below.
+    r = post(stage="medium", plan=True, cold=True).get_json()
+    assert r.get("continuation") is None, r
     # A PATH OUT OF THE CALCULATION, refused by its own rule -- `..` leads
     # to a folder that exists, so nothing else can be what refused it.
     (bundle.parent / "elsewhere").mkdir()
     r = post(stage="medium", **{"from": "../elsewhere"})
     assert r.status_code == 400, r.get_json()
     assert "--from names a run of this calculation" in r.get_json()["error"]
+    r = post(stage="medium", **{"from": "01_coarse/run-0"})
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["continuation"]["by_default"] is False, r.get_json()
 
 
 def test_the_run_panel_says_what_a_run_continued_from(ladder):

@@ -610,7 +610,10 @@ gold electrodes, starting from a finished relaxation that ran at DZP.
 > **Checked against real decks, 2026-09-16** — this was written before any of
 > it was built, so it was re-run afterwards rather than left as an
 > illustration. Editing the shared panel's `basis_size`, `mesh_cutoff` and
-> `max_scf_iter` and re-preparing gives every rung the new values:
+> `max_scf_iter` and preparing the rungs — anew, from a state saved before
+> their preparation, since 2026-10-02
+> ([`execution/job-system.md`](?doc=execution/job-system.md) § 5.0) — gives
+> every rung the new values:
 >
 > | rung | `PAO.BasisSize` | `MeshCutoff` | `MaxSCFIterations` |
 > |---|---|---|---|
@@ -1041,15 +1044,18 @@ multi-frame pair (§ 2a.9).
 
 #### Attempts, and what is never overwritten
 
-An attempt that has been **launched is never rewritten**. Re-preparing after a
-launch opens the next `run-<n>`; re-preparing before one refreshes the attempt
-in place, so changing your mind twice does not leave empty directories behind.
-Every `run-<n>` on disk was therefore actually started, which is what makes the
-numbering mean something.
+An attempt that has been **launched is never rewritten**, and **a prepared rung
+is not prepared again** *(user, 2026-10-02)*: launching a rung whose attempt has
+run opens its next `run-<n>`, and a redo goes back to the state saved before
+the rung's preparation and prepares it anew
+([`execution/job-system.md`](?doc=execution/job-system.md) § 5.0).
 
-The consequence for the workflow: **change a parameter, re-prepare, and the
-previous result stays** — its deck, its outputs and its provenance intact,
-beside the new one. Comparing two settings is reading two directories.
+The consequence for the workflow: **change a parameter by going back** — save
+the folder, restore the state saved before the rungs the change reaches, edit,
+prepare — and the previous result stays in the folder's history, a state to
+restore and compare ([`execution/checkpointing.md`](?doc=execution/checkpointing.md)
+§ 7.1). *(Until 2026-10-02 re-preparing opened the next `run-<n>` beside the
+previous one, and comparing two settings was reading two directories.)*
 
 #### How results move between stages
 

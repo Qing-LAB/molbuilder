@@ -1473,28 +1473,36 @@ def api_task_setup_prep():
             # would refuse -- for the choice as it stands.
             **(_plan_continuation(dest, task, stage, from_attempt, cold)
                if kind == "run" and stage else {}),
+            # ...AND A STAGE ALREADY PREPPED, which prep refuses first
+            # (`job-system.md` § 5.0, 2a): the entry's own sentence, so the
+            # preview cannot offer a Prep the entry will refuse.
+            **_plan_prepped(dest, task, kind, stage),
         })
 
     # ---- the real thing: THE ONE ENTRY (`job-system.md` § 5.3) --------- #
-    # The command line's own prep, called whole -- the preflight, the
-    # *already under way* question, the five steps, the attempt, the
-    # transport carry, the launch agreement and their ledger lines -- and its
-    # answer returned whole, for the tab to show (`task-setup.md` § 11.1).
+    # The command line's own prep, called whole -- the preflight, the save
+    # it offers, the five steps, the attempt, the transport carry, the launch
+    # agreement and their ledger lines -- and its answer returned whole, for
+    # the tab to show (`task-setup.md` § 11.1).
     # Until 2026-09-29 this door called the five steps alone and showed only
     # the folders: no preflight, no question, no agreement, no ledger lines
     # for them, and an axis-less bench refused that the command line preps
     # as the machine's proposal (plan W38 F7).
     #
-    # A QUESTION COMES BACK UNANSWERED, with nothing rendered; the page shows
-    # the evidence, and pressing Confirm sends `confirm: true` WITH the
-    # evidence it showed -- the answer counts for that evidence only, and
-    # the ledger records it as this tab's.
+    # THE SAVE COMES BACK UNANSWERED, with nothing written (`checkpointing.md`
+    # § 9); the page shows what is not saved, a box -- unticked -- and the
+    # note prep drafted, and sends `save` with the `note` as the person left
+    # it; the ledger records it as this tab's answer.  (Until 2026-10-02 the
+    # question was *already under way here*, answered with `confirm` and the
+    # evidence it showed; a prepped stage is refused now.)
     from molbuilder.jobset.model import Resources
     from molbuilder.jobset.prep import Answer, PrepError, prep_stage
-    answer = (Answer(True, "confirmed on the Task setup tab",
-                     evidence=tuple(str(e) for e in
-                                    (body.get("evidence") or ())))
-              if body.get("confirm") else None)
+    answer = None
+    if "save" in body:
+        keep = bool(body.get("save"))
+        answer = Answer(keep, ("saved on the Task setup tab" if keep
+                               else "not saved, on the Task setup tab"),
+                        note=(str(body.get("note") or "") or None))
     try:
         ans = prep_stage(dest, kind, stage, target=target,
                          allocation=Resources(), answer=answer,
@@ -2213,6 +2221,14 @@ def api_task_setup_attempts():
         return jsonify({"ok": False, "error": exc.message}), exc.status
     out = _folder_attempts(dest)
     return (jsonify(out), 200) if out["ok"] else (jsonify(out), 400)
+
+
+def _plan_prepped(dest, task, kind, stage) -> dict:
+    """``{"prepped": why}`` when ``stage`` is already prepped -- the prep
+    entry's own refusal (`prep.prepped_already`) -- else ``{}``."""
+    from molbuilder.jobset.prep import prepped_already
+    why = prepped_already(dest, task, kind, stage) if stage else None
+    return {"prepped": why} if why else {}
 
 
 def _plan_continuation(dest, task, stage, from_attempt, cold) -> dict:

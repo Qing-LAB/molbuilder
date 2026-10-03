@@ -1607,6 +1607,7 @@ def _require_activation(target: Optional[str], environment,
     """
     from ..scheduler.record import (LOCAL_TARGET, calculation_record,
                                     probe_command, probe_steps)
+    from .commands import rollback
     if (getattr(environment, "env_init", None) or {}).get("activation"):
         return
     here = target in (None, LOCAL_TARGET)
@@ -1620,9 +1621,8 @@ def _require_activation(target: Optional[str], environment,
             f"calculation's first prep and is never replaced, so a probe does "
             f"not reach it (a copy taken before 2026-10-02 names it "
             f"`script_generation`).  Rename that key to `env_init` in it, or "
-            f"delete the file and prep again"
-            + ("" if here else f" with --target {target}")
-            + " so the machine's current record is copied in.")
+            + rollback("the calculation's first prep", base=base)
+            + ("" if here else f"  Name the machine again: --target {target}."))
     whose = "this machine's record" if here else f"the record of {target!r}"
     raise PrepError(
         f"{whose} does not say "
@@ -2799,36 +2799,38 @@ def _shared_for(base: Path, seam: "EngineSeam" = None, *, engine: str = "",
 
 @dataclass(frozen=True)
 class Answer:
-    """A person's answer to the one question prep asks -- *this calculation
-    is already under way here: re-render its decks?* -- and the words the
-    ledger records it in: ``yes``, ``no``, the command line's *no answer
-    (non-interactive) -> proceed*, the Task setup tab's confirm.
+    """A person's answer to the one question prep asks -- *save the folder's
+    state first?* (`checkpointing.md` § 9) -- and the words the ledger
+    records it in: ``yes``, ``no``, the command line's *no answer
+    (non-interactive)*, the Task setup tab's.
 
-    ``evidence`` is the evidence the person was SHOWN.  The answer is to
-    that question and no other: if the folder shows something else by the
-    time it arrives -- a trial launched while the tab sat on its Confirm --
-    the entry asks again, rather than re-rendering over what nobody saw and
-    recording that they agreed to it.  ``None`` answers whatever the folder
-    shows (a caller that asked nothing, a script)."""
-    proceed: bool
+    ``note`` is the saved state's note when ``save`` -- the one prep drafted,
+    as the person left it; ``None`` keeps the draft.  *(Until 2026-10-02 the
+    one question was "already under way here -- re-render?"; a prepped stage
+    is refused now, `job-system.md` § 5.0.)*"""
+    save: bool
     said: str
-    evidence: Optional[Tuple[str, ...]] = None
+    note: Optional[str] = None
 
 
 @dataclass(frozen=True)
-class UnderwayQuestion:
-    """*Already under way here* (`run-identity.md` § 6): what the folder
-    shows, and what re-rendering over it does and does not touch."""
-    evidence: Tuple[str, ...]
-    advice: Tuple[str, ...]
+class SaveOffer:
+    """The save, offered before prep writes (`checkpointing.md` § 9;
+    `job-system.md` § 5.0, checkpoint 5): the note prep drafts, what is not
+    saved, and the state the folder stands at -- ``None`` when it has no
+    saved state yet.  A redo is a rollback to a state saved before a prep,
+    so this is the moment one is made."""
+    note: str
+    unsaved: Tuple[str, ...]
+    standing_at: Optional[str]
 
 
 @dataclass
 class PrepAnswer:
     """What one prep found and decided -- the whole of what either door shows
-    (`job-system.md` § 5.3's table).  With ``question`` set nothing was
-    rendered and ``dirs`` is empty: the caller asks, then calls again with
-    the :class:`Answer`."""
+    (`job-system.md` § 5.3's table).  With ``offer`` set nothing was written
+    and ``dirs`` is empty: the caller asks, then calls again with the
+    :class:`Answer`."""
     kind: str
     stage: Optional[str]
     #: The description's preflight notes (an error refuses instead).
@@ -2836,7 +2838,10 @@ class PrepAnswer:
     #: What the inputs said: the run's sizing when nothing stated it, a
     #: bench's grid -- enumerated, crossed out, kept (`prep_inputs`).
     notes: List[str] = dataclasses.field(default_factory=list)
-    question: Optional[UnderwayQuestion] = None
+    offer: Optional[SaveOffer] = None
+    #: What the save did when it was offered and answered -- the ledger's
+    #: words (``saved as 4f9ca71: before prep run tight``, ``no``, ...).
+    saved: Optional[str] = None
     dirs: List[Path] = dataclasses.field(default_factory=list)
     provenance: Optional[dict] = None
     #: A flat run: its wrappers are rendered and there is no attempt to open.
@@ -2884,15 +2889,16 @@ class PrepAnswer:
         def carried(pairs):
             return [{"file": fn, "from": src} for src, fn in pairs]
 
-        q, a, g = self.question, self.attempt, self.agreement
+        o, a, g = self.offer, self.attempt, self.agreement
         return {
             "kind": self.kind, "stage": self.stage,
             # THE ONE WIRE FORM of a finding (`Issue.to_json`).
             "findings": [i.to_json() for i in self.findings],
             "deck_findings": [i.to_json() for i in self.deck_findings],
             "notes": list(self.notes),
-            "question": ({"evidence": list(q.evidence),
-                          "advice": list(q.advice)} if q else None),
+            "offer": ({"note": o.note, "unsaved": list(o.unsaved),
+                       "standing_at": o.standing_at} if o else None),
+            "saved": self.saved,
             "dirs": [rel(d) for d in self.dirs],
             "provenance": self.provenance,
             "flat": self.flat,
@@ -2922,54 +2928,114 @@ class PrepAnswer:
         }
 
 
-def underway_evidence(base, task, stage, *, bench_container=None) -> List[str]:
-    """§ 6's moment (run-identity.md, softened 2026-08-08): what in the folder
-    says a run already HAPPENED -- a launched attempt's ``run.json``, warm
-    files at the root -- so prep can ask before re-rendering over it
-    (2026-08-12 plan A3/U14).  ``[]`` when nothing does.
+def prepped_already(base, task, kind: str, stage: str) -> Optional[str]:
+    """Why ``stage`` is not prepped -- it already is -- or ``None``
+    (`job-system.md` § 5.0, checkpoint 2a; user, 2026-10-02: *"refuse it,
+    redo via rollback"*).
 
-    ``bench_container`` NARROWS the evidence to a sweep's launched trials
-    (2026-08-12 plan A7; narrowed 2026-08-21, user: "bench always starts cold
-    -- there is no point of asking"): `prep bench` re-renders the very decks a
-    QUEUED trial's symlinks point at, so THAT is worth a question -- while the
-    run's launched attempts and the root's warm files cannot be touched by
-    re-rendering relabelled cold trial decks and are not asked about.
-
-    (It was the first half of the command line's `_ask_if_underway` until
-    2026-09-29; the asking is each door's.)
-    """
-    from ..paths import Shape, attempt_dir
-    from ..transport.stages import rung_containers
-    from .materialize import attempts, launched_trials, was_launched
+    PREPPED IS WHAT `status` READS: the stage's job in the calculation's
+    plan, ``job-set.json``, matched as `status` matches it
+    (`identity.stage_key`) -- for a bench, the sweep its bench folder holds.
+    A prep refused after it began writing puts the plan back
+    (:func:`prep_stage`), so a stage is counted prepped only by a prep that
+    finished."""
+    from ..identity import stage_key
+    from ..paths import Shape
+    from .commands import rollback
+    from .materialize import bench_container, job_dir_names, shape_of
     base = Path(base)
-    evidence: List[str] = []
-    if bench_container is None and stage is not None:
-        try:
-            # WHERE THIS RUNG'S ATTEMPTS ARE -- a bias scan's in its point
-            # folders, which a look in the stage folder alone never saw
-            # (the one door, plan § 5w K10; the M11 review's T-F13).
-            homes = [d for d, _v in rung_containers(base, task, stage)]
-        except StopIteration:                 # not a stage of this ladder
-            homes = []
-        for d in homes:
-            for n in attempts(d):
-                a = attempt_dir(d, n)
-                if was_launched(a):
-                    evidence.append(
-                        f"{a.relative_to(base)}/ was launched (its run.json)")
-    if bench_container is not None:
-        launched = launched_trials(bench_container, Shape.named(task.shape))
-        if launched:
-            evidence.append(
-                f"launched trial(s) in "
-                f"{Path(bench_container).relative_to(base)}/: "
-                + ", ".join(launched))
-    if bench_container is None:
-        from ..validation.identity import warm_files_present
-        warm = warm_files_present(base, task.label, task.engine)
-        if warm:
-            evidence.append("warm files at the root: " + ", ".join(warm))
-    return evidence
+    if kind == "bench":
+        home = base / bench_container(Shape.named(task.shape),
+                                      token_for(task, stage))
+        if not (home / JOBSET_FILENAME).is_file():
+            return None
+        what, where = (f"the benchmark of stage {stage!r}",
+                       f"{home.relative_to(base)}/")
+    else:
+        plan = base / JOBSET_FILENAME
+        if not plan.is_file():
+            return None
+        js = JobSet.load(plan)
+        job = next((j for j in js.jobs
+                    if stage_key(j.name) == stage_key(stage)), None)
+        if job is None:
+            return None
+        home = job_dir_names(js, shape_of(js, base)).get(job.name, "")
+        what = f"stage {stage!r}"
+        where = (f"{home}/" if home not in ("", ".")
+                 else "in this calculation's folder")
+    return (f"{what} is already prepped ({where}) -- a prepped stage is not "
+            f"prepped again (job-system.md § 5.0).  To redo it, "
+            + rollback("its prep", base=base))
+
+
+def save_offer(base, kind: str, stage: str,
+               notes: Optional[List[str]] = None) -> Optional[SaveOffer]:
+    """The save prep offers before it writes (`checkpointing.md` § 9), or
+    ``None`` when the folder's state is saved -- it stands at a saved state
+    and nothing has changed since.  A folder with no saved state yet is
+    offered its first.  What is not saved is the checkpoint door's own
+    cheap read (`Repo.status`); when that cannot be read, nothing is offered,
+    and ``notes`` says why."""
+    from ..checkpoint import CheckpointError, Repo
+    draft = f"before prep {kind} {stage}"
+    repo = Repo(str(base))
+    if not repo.initialized:
+        return SaveOffer(draft, (), None)
+    try:
+        st = repo.status()
+    except CheckpointError as exc:
+        if notes is not None:
+            notes.append(f"no save offered -- the folder's state could not "
+                         f"be read: {exc}")
+        return None
+    if st.clean:
+        return None
+    at = st.standing_at
+    return SaveOffer(draft, st.unsaved(),
+                     f"{at.short} ({at.note})" if at is not None else None)
+
+
+def _take_the_offer(base, task, offer: SaveOffer, answer: Answer) -> str:
+    """Save the folder as the person answered, before anything is written,
+    and return what the ledger records.  A save asked for and not made
+    refuses the prep: that state is the one a redo restores."""
+    if not answer.save:
+        return answer.said
+    from ..checkpoint import CheckpointError, Repo
+    note = (answer.note or "").strip() or offer.note
+    repo = Repo(str(base))
+    try:
+        state = (repo.save(note) if repo.initialized
+                 else repo.init(engine=task.engine, note=note))
+    except CheckpointError as exc:
+        raise PrepError(f"the folder's state could not be saved, so nothing "
+                        f"was prepped: {exc}")
+    return (f"saved as {state.short}: {note}" if state is not None
+            else f"nothing to save: {note}")
+
+
+def _plans_as_they_are(base: Path, *homes) -> dict:
+    """The calculation's plan -- ``job-set.json``, the run's at the root and
+    a bench's in its folder -- as it is before the five steps write, so a
+    refusal after them can put it back (:func:`prep_stage`)."""
+    out = {}
+    for home in (base, *homes):
+        if home is None:
+            continue
+        f = Path(home) / JOBSET_FILENAME
+        out[f] = f.read_bytes() if f.is_file() else None
+    return out
+
+
+def _put_back(plans: dict) -> None:
+    """Each plan as it was: a stage a refused prep had added is not counted
+    prepped (`job-system.md` § 5.0)."""
+    for f, was in plans.items():
+        if was is None:
+            f.unlink(missing_ok=True)
+        else:
+            f.write_bytes(was)
 
 
 def prep_stage(base, kind: str, stage: Optional[str] = None, *,
@@ -2982,22 +3048,23 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
     """**`prep`, the verb** -- what `molbuilder jobset prep` and the Task setup
     tab's Prep buttons both call (`job-system.md` § 5.3).
 
-    In order: the description is refused unless it is one (a ``task.json``
-    and its template -- a transport description from before 2026-09-16
-    carries none, and its own door says how to add one); the stage is resolved
-    through the one grammar (a name, or ``#N``); the description's preflight
-    runs -- an error refuses, the notes come back as ``findings``; the inputs
-    are assembled (`prep_inputs`, A12); then, when the folder shows a run
-    already under way and no ``answer`` was given, the answer comes back
-    with ``question`` set and NOTHING RENDERED.  Answered -- or with nothing
-    to ask -- it runs the five steps (:func:`prep_calculation`), opens or
-    reuses the attempt, carries a transport rung's inputs, and compares the
-    rendered deck with the launch it will get.  Every decision lands in
-    ``jobset-decisions.log``, whichever door called.
+    In order -- `job-system.md` § 5.0's checkpoints: the description is
+    refused unless it is one (a ``task.json`` and its template -- a
+    transport description from before 2026-09-16 carries none, and its own
+    door says how to add one); the stage is resolved through the one grammar
+    (a name, or ``#N``), and refused when it is already prepped -- a redo is
+    a rollback; the description's preflight runs -- an error refuses, the
+    notes come back as ``findings``; the inputs are assembled (`prep_inputs`,
+    A12).  Then, when the folder's state is not saved and no ``answer`` was
+    given, the answer comes back with ``offer`` set and NOTHING WRITTEN.
+    Answered -- or with nothing to offer -- it saves as answered, runs the
+    five steps (:func:`prep_calculation`), opens the attempt, carries a
+    transport rung's inputs, and compares the rendered deck with the launch
+    it will get.  A refusal after the five steps began puts the plan
+    (``job-set.json``) back, so the stage is not counted prepped.  Every
+    decision lands in ``jobset-decisions.log``, whichever door called.
 
-    ``answer`` counts for the evidence it names (:class:`Answer`): if the
-    folder shows something else when it arrives, the question comes back
-    instead.  ``allocation`` is what the person asks for on THIS prep -- the
+    ``allocation`` is what the person asks for on THIS prep -- the
     command line's flags, an empty ``Resources()`` from a surface with none
     (A12: never ``None``).  Every refusal is a :class:`PrepError` in the
     reader's own words, carrying what the entry had found by then --
@@ -3022,6 +3089,11 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
     deck_findings: list = []
     out: Optional[PrepAnswer] = None
     recorded: List[bool] = []
+    # THE PLAN AS IT WAS, taken before the five steps write and put back
+    # unless the prep finishes: a stage is counted prepped only by a prep that
+    # finished (`job-system.md` § 5.0).
+    plans: dict = {}
+    finished: List[bool] = []
 
     def _record_preflight():
         # The preflight's notes land in the ledger on the pass that ACTS or
@@ -3096,13 +3168,18 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         if stage is None:
             # ONE STAGE, named -- before anything is read of the machine or
             # written (W52: a bare `prep run` was refused by `resolve` after
-            # the machine record had been snapshotted).
+            # the machine record had been snapshotted).  THE STAGES THE VERB
+            # TAKES are offered: a prepped one is not (2a).
             from .commands import enabled_refs, name_a_stage
+            takes = [r for r in enabled_refs(task)
+                     if not prepped_already(base, task, kind, r.name)]
             raise PrepError(
                 (f"`prep {kind}` acts on ONE stage" + (
                     " -- --from / --cold describe its attempt" if
                     (from_attempt or cold) else "") + "; ")
-                + name_a_stage("prep", kind, enabled_refs(task), base=base))
+                + (name_a_stage("prep", kind, takes, base=base) if takes
+                   else "every stage is prepped already, and a prepped stage "
+                        "is not prepped again (job-system.md § 5.0)."))
 
         # 2 · THE STAGE GRAMMAR (user-settled 2026-08-21): a ladder stage is
         #     named by its NAME, or by `#N` -- the NN of its directory --
@@ -3113,6 +3190,17 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             from ..identity import StageRef, resolve_stage_ref
             refs = StageRef.ladder([s.name for s in task.stages])
             stage = resolve_stage_ref(refs, stage).name
+
+        # 2a · NOT PREPPED BEFORE (user, 2026-10-02: "refuse it, redo via
+        #      rollback").  Asked before anything is read of the machine or
+        #      written; the refusal names the way back.  Until that day a
+        #      prepped stage was re-rendered -- its attempt reused until
+        #      launched, after a launch a new one -- once asked
+        #      ("already under way here", run-identity.md § 6).
+        if stage is not None:
+            why = prepped_already(base, task, kind, stage)
+            if why:
+                raise PrepError(why)
 
         # 3 · § 6.6's PREFLIGHT, at its live moment (R5, 2026-08-12): prep
         #     on a machine whose molbuilder differs from the description's
@@ -3194,34 +3282,23 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         if on_found is not None:
             on_found(findings, notes)
 
-        # 5 · ALREADY UNDER WAY HERE.  Asked, never assumed: the default is
-        #     to proceed -- re-rendering replaces decks, touches no warm file
-        #     and renames nothing -- but the person hears it first, and the
-        #     answer counts only for the evidence they were shown.
-        evidence = underway_evidence(base, task, stage,
-                                     bench_container=container)
-        if evidence and (answer is None or (
-                answer.evidence is not None
-                and tuple(answer.evidence) != tuple(evidence))):
-            advice = ["re-rendering replaces the DECKS only: the warm files "
-                      "are NOT touched and nothing is renamed "
-                      "(run-identity.md § 6)."]
-            if (base / ".git").is_dir():
-                advice.append("(a checkpoint repo exists -- `molbuilder "
-                              "checkpoint save` first records the current "
-                              "state)")
+        # 5 · THE SAVE, OFFERED (`checkpointing.md` § 9; user, 2026-10-02:
+        #     "yes, offer save").  Nothing is written before this point, and a
+        #     redo is a rollback (2a) -- so a folder whose state is not saved
+        #     is offered a save first, its note drafted.  Asked, never
+        #     assumed: the door asks and calls again with the answer.
+        offer = save_offer(base, kind, stage, notes=notes)
+        if offer is not None and answer is None:
             return PrepAnswer(kind, stage, findings=findings, notes=notes,
-                              question=UnderwayQuestion(tuple(evidence),
-                                                        tuple(advice)))
+                              offer=offer)
         _record_preflight()
-        if evidence:
-            ledger(base, "prep", "underway-ask", stage=stage,
-                   evidence=evidence, answer=answer.said)
-            if not answer.proceed:
-                raise PrepError(
-                    "stopped at your request -- nothing was re-rendered.")
+        saved = None
+        if offer is not None:
+            saved = _take_the_offer(base, task, offer, answer)
+            ledger(base, "prep", "save-offer", stage=stage, answer=saved)
 
-        # 6 · THE FIVE STEPS.
+        # 6 · THE FIVE STEPS -- the plan as it was kept first.
+        plans.update(_plans_as_they_are(base, container))
         opened: list = []
         dirs = prep_calculation(base, stage, allocation=allocation, env=env,
                                 emit_sbatch=emit_sbatch, sweep=sweep,
@@ -3238,6 +3315,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         dirs = list(dict.fromkeys(dirs))
         out = PrepAnswer(
             kind, stage, findings=findings, notes=notes, dirs=list(dirs),
+            saved=saved,
             provenance=ledger_prepped(base, kind=kind, stage=stage, dirs=dirs),
             # ONE OF EACH: a sweep's trials repeat one finding per deck, and
             # the terminal said each once (`prep_calculation`).
@@ -3250,13 +3328,15 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                 task.label, token_for(task, stage) or "", task.engine,
                 task.shape)
         if kind == "bench":
+            finished.append(True)
             return out
 
         # 7 · THE ATTEMPT -- opened by the five steps, ONCE, with what it
         #     continues from (`_open_attempts`; until 2026-10-01 it was opened
         #     a second time here, and a refusal between the two left an
-        #     earlier carry undone -- W52).  Flat keeps no attempt
-        #     directories: the run is the calculation's folder.
+        #     earlier carry undone -- W52).  A later attempt is `launch`'s.
+        #     Flat keeps no attempt directories: the run is the calculation's
+        #     folder.
         from ..template import KIND_ROLES
         out.linked = (getattr(task, "calculation", None)
                       or "optimization") in KIND_ROLES
@@ -3275,6 +3355,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             from ..transport.stages import scan_points
             if is_transport and scan_points(task, stage):
                 out.points = gather_for_stage(base, task, stage)
+                finished.append(True)
                 return out
             rep = opened[0]
             out.attempt = rep
@@ -3309,6 +3390,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                        verdict=agreement.verdict,
                        rendered_for=agreement.rendered_text,
                        launching_at=agreement.launch_text)
+        finished.append(True)
         return out
     except PrepError as exc:
         raise _refused(exc)
@@ -3322,7 +3404,12 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         # traceback.  A `TypeError` is not translated: it is a bug, and
         # should look like one.
         raise _refused(PrepError(str(exc))) from exc
+    finally:
+        # A REFUSAL -- or a bug -- AFTER THE FIVE STEPS BEGAN puts the plan
+        # back; an offer returned before them took nothing (`plans` empty).
+        if not finished:
+            _put_back(plans)
 
 
 __all__ = ["prep_calculation", "prep_jobset", "prep_stage", "PrepAnswer",
-           "Answer", "PrepError", "resolve_target"]
+           "Answer", "SaveOffer", "PrepError", "resolve_target"]

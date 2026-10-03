@@ -42,7 +42,7 @@ import json
 import pytest
 
 from support.road import (a_finished_run, a_queue_that_answers, calls_made,
-                          describe_h2, each_is_taken, jobset)
+                          describe_h2, jobset)
 
 
 def _queues(gpu: bool = False):
@@ -264,7 +264,11 @@ def test_direct_runs_what_was_typed_and_refuses_what_it_would_not_read(
 def test_a_stage_launched_before_continues_from_its_own_latest_run(cluster):
     """Launched and concluded, coarse launched again continues from its
     latest attempt: the plan says so and writes nothing; sent, `run-1` opens
-    with the geometry carried and the job goes from there.
+    with the geometry carried -- and the optimizer's history, which a stage
+    continuing from ITS OWN attempt is always handed: the one pair that
+    cannot disagree with itself (A-3, final review 2026-08-13; pinned on a
+    re-prep until 2026-10-02, when a prepped stage stopped being prepped
+    again and this became the road to it).
 
     MUTATION THIS MUST FAIL AGAINST: a planned re-launch opening its
     attempt (a dry run that writes)."""
@@ -275,6 +279,7 @@ def test_a_stage_launched_before_continues_from_its_own_latest_run(cluster):
                "--mode", "submit", "--domain", "htc", "--yes")
     assert r.exit_code == 0, r.output
     a_finished_run(run0)
+    (run0 / "H2.CG").write_text("cg history")
 
     r = jobset("launch", "run", "coarse", "--bundle", bundle,
                "--mode", "submit", "--domain", "htc", "--dry-run")
@@ -287,6 +292,8 @@ def test_a_stage_launched_before_continues_from_its_own_latest_run(cluster):
     assert r.exit_code == 0, r.output
     run1 = bundle / "01_coarse" / "run-1"
     assert (run1 / "H2.XV").read_bytes() == (run0 / "H2.XV").read_bytes()
+    assert (run1 / "H2.CG").read_text() == "cg history", (
+        "continuing from its own attempt withheld the optimizer history")
     assert [w for w, _a in calls_made(calls)] == [run0, run1]
     record = json.loads((run1 / "run.json").read_text())
     assert record["continued_from"] == "01_coarse/run-0", record
@@ -322,12 +329,12 @@ def test_a_run_that_never_concluded_is_followed_only_on_your_word(cluster):
 def test_a_relaunch_that_cannot_continue_opens_nothing(cluster):
     """Launched, and it left nothing to continue from (a run that died at
     startup): launching it again is refused with the story, and no attempt
-    is opened behind the refusal -- and the new attempt it names is a
-    command that is taken as printed.
+    is opened behind the refusal -- and the way on it names is the rollback:
+    a prepped stage is not prepped again (2026-10-02; it named a fresh `prep
+    run` until then).
 
-    MUTATIONS THIS MUST FAIL AGAINST: the new attempt opened before the
-    continuation is checked; the remedy naming no calculation, a note on
-    its line (`job-system.md` § 5.3)."""
+    MUTATION THIS MUST FAIL AGAINST: the new attempt opened before the
+    continuation is checked."""
     bundle, calls = cluster
     # The QUEUE IN THE DESCRIPTION: the remedy is typed back as printed, a
     # bare `prep run`, so the stage's queue is the file's, not a flag's.
@@ -341,7 +348,7 @@ def test_a_relaunch_that_cannot_continue_opens_nothing(cluster):
     assert "impossible here" in r.output, r.output
     assert not (bundle / "01_coarse" / "run-1").exists()
     assert len(calls_made(calls)) == 1
-    assert each_is_taken(r.output) == 1, r.output
+    assert "molbuilder checkpoint list" in r.output, r.output
 
 
 def test_a_flat_stage_still_unconcluded_is_asked_like_an_attempt(

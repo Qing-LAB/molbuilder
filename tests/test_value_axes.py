@@ -193,7 +193,7 @@ def test_no_gpu_anywhere_refuses_with_both_remedies(sol_calc):
     # such whatever the flag said (the fix-6 review), with its two steps
     assert "this calculation's environment.json" in said, said
     assert "`molbuilder jobset probe --write` here" in said, said
-    assert "then prep it anew from a state saved before its first prep" \
+    assert "then go back to the state saved before its first prep" \
         in said, said
 
 

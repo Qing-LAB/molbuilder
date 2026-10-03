@@ -671,12 +671,8 @@ def test_prep_run_of_a_second_stage_merges_the_root_plan(calc):
     js = json.loads((calc / "job-set.json").read_text())
     assert js["kind"] == "ladder"
     assert [j["name"] for j in js["jobs"]] == ["coarse", "medium"]
-    # and re-prepping a stage REPLACES its own entry, never duplicates it
-    res = r.invoke(jobset_group, ["prep", "run", "coarse",
-                                  "--bundle", str(calc), "--no-sbatch"])
-    assert res.exit_code == 0, res.output
-    js = json.loads((calc / "job-set.json").read_text())
-    assert [j["name"] for j in js["jobs"]] == ["coarse", "medium"]
+    # (A re-prep replaced a stage's own entry until 2026-10-02; a prepped
+    # stage is refused now -- `tests/data/prep_protocol.toml`.)
 
 
 def test_a_sweeps_record_never_touches_the_root_plan(calc):
@@ -724,14 +720,17 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
              (calc / LEDGER_FILE).read_text().splitlines()]
     got = [(e["verb"], e["decision"]) for e in lines]
     # A DRY RUN IS RECORDED AS WHAT IT IS -- planned, nothing sent (W52: it
-    # was ledgered as a grouped launch and a launch until 2026-10-01).
-    assert got == [("prep", "prepped"),
+    # was ledgered as a grouped launch and a launch until 2026-10-01).  The
+    # save prep offered comes first: no terminal answered, so none was made.
+    assert got == [("prep", "save-offer"),
+                   ("prep", "prepped"),
                    ("launch", "planned"),
                    ("summarize", "verdict-written")]
-    prep = lines[0]
+    assert lines[0]["answer"].startswith("no answer (non-interactive)")
+    prep = lines[1]
     assert prep["kind"] == "bench" and prep["stage"] == "coarse"
     assert "provenance" in prep            # WHERE each setting came from
-    launch = lines[1]
+    launch = lines[2]
     assert launch["mode"] == "submit"
     assert launch["mode_source"] == "--mode flag"
     assert launch["jobs"][0]["status"] == "planned"
@@ -758,60 +757,10 @@ def test_the_choice_names_its_winner_and_its_mechanism(calc):
     assert res["generated_at"]                  # the offer reads this key
 
 
-def test_prep_over_a_launched_attempt_asks_and_no_stops_it(calc):
-    """U14/A3: a re-prep where a run already HAPPENED (a launched
-    attempt's run.json) says what is there and ASKS.  'n' stops before
-    anything is written; 'y' proceeds; § 6's floor holds either way --
-    warm files untouched, nothing renamed."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    from molbuilder.jobset.materialize import write_run_launch
-    r = CliRunner()
-    res = r.invoke(jobset_group, ["prep", "run", "coarse",
-                                  "--bundle", str(calc), "--no-sbatch"])
-    assert res.exit_code == 0, res.output
-    attempt = calc / "01_coarse" / "run-0"
-    assert attempt.is_dir()
-    write_run_launch(attempt, mode="direct", command=["bash", "x"])
-    res = r.invoke(jobset_group, ["prep", "run", "coarse",
-                                  "--bundle", str(calc), "--no-sbatch"],
-                   input="n\n")
-    assert res.exit_code != 0
-    assert "already under way" in res.output
-    assert "run-0/ was launched" in res.output
-    assert "NOT touched" in res.output
-    assert "stopped at your request" in res.output
-    res = r.invoke(jobset_group, ["prep", "run", "coarse",
-                                  "--bundle", str(calc), "--no-sbatch"],
-                   input="y\n")
-    assert res.exit_code == 0, res.output
-
-
-def test_prep_underway_with_no_answer_proceeds_and_says_so(calc):
-    """§ 6 warns, it does not refuse: non-interactively (EOF at the
-    prompt) the re-prep PROCEEDS and says so -- the inverse of the
-    verdict offer's silence-is-no, deliberately: no one else's numbers
-    are being applied, and a scripted re-prep must not die on a question
-    it cannot hear."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    from molbuilder.jobset.materialize import write_run_launch
-    r = CliRunner()
-    res = r.invoke(jobset_group, ["prep", "run", "coarse",
-                                  "--bundle", str(calc), "--no-sbatch"])
-    assert res.exit_code == 0, res.output
-    write_run_launch(calc / "01_coarse" / "run-0",
-                     mode="direct", command=["bash", "x"])
-    res = r.invoke(jobset_group, ["prep", "run", "coarse",
-                                  "--bundle", str(calc), "--no-sbatch"])
-    assert res.exit_code == 0, res.output
-    assert "no answer (non-interactive): proceeding" in res.output
-    # and the decision is in the ledger
-    from molbuilder.jobset.ledger import LEDGER_FILE
-    lines = [json.loads(l) for l in
-             (calc / LEDGER_FILE).read_text().splitlines()]
-    asks = [e for e in lines if e["decision"] == "underway-ask"]
-    assert asks and asks[-1]["answer"].startswith("no answer")
+# `test_prep_over_a_launched_attempt_asks_and_no_stops_it` and
+# `test_prep_underway_with_no_answer_proceeds_and_says_so` retired 2026-10-02
+# with the question they pinned: a prepped stage is refused now, and the one
+# question is the save (`tests/data/prep_protocol.toml`; `job-system.md` § 5.0).
 
 
 def test_a_trial_is_cold_by_construction(calc):
@@ -1390,63 +1339,10 @@ def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
     assert job_dir_names(sweep)["G1K1C4"] == "bench/bench-G1K1C4"
 
 
-def test_a_one_stage_calculation_continues_from_its_own_attempt(tmp_path):
-    """A-3 (final review, 2026-08-13), rewritten 2026-08-16: a job
-    continuing from its OWN attempt is the one pair that cannot disagree
-    with itself, so `warm_carry` must hand it the conditional ``.CG``.
-    The original bug needed the stage-less root directory ``.`` to bite (a
-    head-component match could never equal it) and § 6.5 has since deleted
-    that shape -- but the invariant is about the self-pair, not the
-    spelling, so it is re-pinned here on the one-stage form."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    from molbuilder.jobset.materialize import write_run_launch
-    struct = Structure(elements=["H", "H"],
-                       positions=np.array([[0.0, 0.0, 0.0],
-                                           [0.0, 0.0, 0.74]]),
-                       vacuum=(10.0, 10.0, 10.0))
-    (tmp_path / "h2.xyz").write_text(struct.to_xyz())
-    dest = tmp_path / "calc"
-    D.write_description(
-        D.build_description(struct, SiestaConfig(system_label="JOB"),
-                            _one_stage(),
-                            engine="siesta", shape="hierarchical",
-                            name="JOB", source=str(tmp_path / "h2.xyz")),
-        dest)
-    from conftest import write_pseudos
-    write_pseudos(dest, sorted(set(struct.elements)))
-    _state_the_run(dest)
-    # A calculation that CONTINUES -- which is what a described calculation
-    # does by default since 2026-08-18 (`run-identity.md` § 4 rule 3): a run
-    # started in a folder that already holds a result was started after
-    # somebody read that result.  The template is checked rather than edited,
-    # because the value being the default is the thing this depends on.
-    tpl = dest / "JOB.template.toml"
-    head, sep, tail = tpl.read_text().partition("[item.restart]")
-    assert sep, "the template lost its restart item"
-    assert 'value = "continue"' in tail, (
-        "the described default is no longer `continue`, so this test is no "
-        "longer setting up the case it was written for")
-    r = CliRunner()
-    res = r.invoke(jobset_group, ["prep", "run", "coarse", "--bundle",
-                                  str(dest), "--no-sbatch"])
-    assert res.exit_code == 0, res.output
-    # the attempt ran (hit its step cap, say): warm files in it, launch on
-    # record
-    rung = dest / "01_coarse"
-    (rung / "run-0" / "JOB.XV").write_text("relaxed coords")
-    (rung / "run-0" / "JOB.CG").write_text("cg history")
-    write_run_launch(rung / "run-0", mode="direct", command=["bash"])
-    res = r.invoke(jobset_group, ["prep", "run", "coarse", "--bundle",
-                                  str(dest), "--no-sbatch",
-                                  "--from", "01_coarse/run-0"])
-    assert res.exit_code == 0, res.output
-    carried = {p.name for p in (rung / "run-1").glob("JOB.*")
-               if not p.is_symlink()}
-    assert "JOB.XV" in carried
-    assert "JOB.CG" in carried, (
-        "continuing from its own attempt withheld the optimizer history "
-        "-- the self-pair read as unverified (A-3)")
+# `test_a_one_stage_calculation_continues_from_its_own_attempt` retired
+# 2026-10-02: a stage continues from its own attempt by being launched again,
+# never re-prepped, and that road -- the optimizer history carried -- is
+# `test_launch_door.py::test_a_stage_launched_before_continues_from_its_own_latest_run`.
 
 
 def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
@@ -1532,6 +1428,10 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
                                       gpu_type="a100"),
                     env_init=_ENTERS).to_json() + "\n")
     r = CliRunner()
+    # a bare bench owes a name here exactly as it does on three rungs
+    res = r.invoke(jobset_group, ["prep", "bench", "--bundle", str(dest),
+                                  "--no-sbatch"])
+    assert res.exit_code != 0 and "name one" in res.output
     res = r.invoke(jobset_group, ["prep", "bench", "coarse", "--bundle",
                                   str(dest), "--no-sbatch"])
     assert res.exit_code == 0, res.output
@@ -1572,10 +1472,12 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
     res = r.invoke(jobset_group, ["summarize", "bench", "not-a-stage",
                                   "--bundle", str(dest)])
     assert res.exit_code != 0 and "not-a-stage" in res.output
-    # and a bare bench owes a name here exactly as it does on three rungs
+    # ...and with its one stage's bench prepped, there is none to offer
+    # (a prepped stage is not prepped again, `job-system.md` § 5.0)
     res = r.invoke(jobset_group, ["prep", "bench", "--bundle", str(dest),
                                   "--no-sbatch"])
-    assert res.exit_code != 0 and "name one" in res.output
+    assert res.exit_code != 0, res.output
+    assert "every stage is prepped already" in res.output, res.output
     # the same on a longer ladder -- one rule, not a per-length one
     ladder = tmp_path / "laddered"
     D.write_description(
@@ -1692,33 +1594,18 @@ def test_a_flat_one_stage_calculation_preps_to_completion(tmp_path):
 # `test_a_config_refusal_is_a_refusal_not_a_traceback` retired 2026-10-02 (W54): its setup is the record gate, which `tests/data/launch_values.toml` drives down the road (a record that states no activation is refused).
 
 
-def test_prep_bench_asks_when_a_trial_is_already_launched(calc):
-    """A7 (redo 2026-08-12): `prep bench` re-renders the very decks a
-    QUEUED trial's symlinks point at, and the underway-ask ran for
-    `prep run` only -- so that re-render was silent.  The ask now sees
-    launched trials; unanswerable, it proceeds saying so (§ 6 warns, it
-    does not refuse)."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    from molbuilder.jobset.materialize import write_run_launch
-    js = _prep_bench(calc)
-    first = js["jobs"][0]["name"]
-    write_run_launch(_artifacts(calc, first),
-                     mode="submit", command=["sbatch", "x"], job_id="7")
-    res = CliRunner().invoke(jobset_group,
-                             ["prep", "bench", "coarse",
-                              "--bundle", str(calc), "--no-sbatch"])
-    assert res.exit_code == 0, res.output
-    assert "under way" in res.output
-    assert "launched trial(s)" in res.output and first in res.output
+# `test_prep_bench_asks_when_a_trial_is_already_launched` retired 2026-10-02:
+# a prepped benchmark is refused now (`job-system.md` § 5.0).
 
 
 def test_a_stage_without_an_open_attempt_refuses_to_launch(calc):
     """C5 (redo 2026-08-12, R2's missing half): a hierarchical stage
     prepped without `prep run` -- decks and wrappers in place, no run-<n>
     -- used to launch IN ITS OWN CONTAINER: no run.json, silently
-    relaunchable, everything § 1.5/1.6 exist to prevent.  It refuses now
-    and names the verb that opens the attempt."""
+    relaunchable, everything § 1.5/1.6 exist to prevent.  It refuses now,
+    and names the way back: a prepped stage is not prepped again, so it is
+    the state saved before its prep (2026-10-02; it named `prep run`
+    until then)."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     import shutil
@@ -1740,7 +1627,8 @@ def test_a_stage_without_an_open_attempt_refuses_to_launch(calc):
                               "--mode", "direct", "--yes"])
     assert res.exit_code != 0
     assert "no attempt is open" in res.output
-    assert "prep run coarse" in res.output
+    # a prepped stage is not prepped again: the way back is a rollback
+    assert "molbuilder checkpoint list" in res.output, res.output
     assert not (calc / "01_coarse" / "run.json").exists()
 
 
@@ -1906,42 +1794,8 @@ def test_a_declared_point_over_capability_is_crossed_out_by_name(calc):
         f"allowed; it said: {shown!r}")
 
 
-def test_prep_bench_asks_only_about_launched_trials(calc):
-    """User, 2026-08-21: "bench always starts cold -- there is no point of
-    asking."  A bench prep weighs ONE kind of evidence: launched trials in
-    its own container (their decks may be read by a queued job, A7).  The
-    run's launched attempts and the root's warm files cannot be touched by
-    re-rendering relabelled cold trial decks -- so beside them the bench
-    re-prep asks NOTHING, while the run-side ask still weighs both."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    from molbuilder.jobset.materialize import write_run_launch
-
-    js = _prep_bench(calc)
-    # a launched RUN attempt + a warm file at the root: run-side evidence
-    run_attempt = calc / "01_coarse" / "run-0"
-    run_attempt.mkdir(parents=True)
-    write_run_launch(run_attempt, mode="direct", command=["bash", "x"])
-    (calc / "JOB.DM").write_text("warm\n")
-
-    r = CliRunner().invoke(jobset_group,
-                           ["prep", "bench", "coarse", "--bundle", str(calc),
-                            "--np", "8", "--cpus-per-task", "8",
-                            "--no-sbatch"])
-    assert r.exit_code == 0, r.output
-    assert "already under way" not in r.output, \
-        "a bench prep beside a launched RUN must not ask"
-
-    # a launched TRIAL is the one evidence that still asks
-    first = js["jobs"][0]["name"]
-    write_run_launch(_artifacts(calc, first),
-                     mode="direct", command=["bash", "x"])
-    r = CliRunner().invoke(jobset_group,
-                           ["prep", "bench", "coarse", "--bundle", str(calc),
-                            "--np", "8", "--cpus-per-task", "8",
-                            "--no-sbatch"], input="y\n")
-    assert r.exit_code == 0, r.output
-    assert "already under way" in r.output and first in r.output
+# `test_prep_bench_asks_only_about_launched_trials` retired 2026-10-02 with the
+# question it pinned (`job-system.md` § 5.0).
 
 
 def test_a_multi_point_value_entry_is_a_value_axis(calc):

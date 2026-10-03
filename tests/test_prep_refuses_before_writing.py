@@ -10,10 +10,9 @@ refuse through the one entry); plan W52.
 
 PREVENTS, each read in the code before 2026-10-01 (the W52 review):
 
-* a re-prep with a mistyped `--from` refused only after the five steps had
-  re-rendered -- and after they had opened the attempt with nothing and
-  undone what an earlier prep had carried into it, so the next launch
-  started from the deck's own coordinates with nothing saying so;
+* a mistyped `--from` refused only after the five steps had rendered --
+  and, on a re-prep, after they had undone what an earlier prep had carried
+  in (re-preps are refused since 2026-10-02, `job-system.md` § 5.0);
 * `--cold` on the flat layout, and `--from` / `--cold` on a bench, refused
   (or ignored) only after the decks were written;
 * `--from` with `--cold` silently taking `--cold`, and a path out of the
@@ -42,42 +41,17 @@ def _ledger(bundle):
             (bundle / LEDGER_FILE).read_text().splitlines()]
 
 
-def test_a_mistyped_from_leaves_the_prepared_attempt_as_it_was(
-        tmp_path, monkeypatch):
-    """Medium prepared, continuing from coarse's finished run: its attempt
-    holds the carried geometry and says where it came from.  A re-prep
-    naming a run that does not exist is refused -- and the attempt is
-    exactly as it was, its carry in place; the refusal is in the ledger.
-
-    MUTATION THIS MUST FAIL AGAINST: the refusal reached only after the
-    attempt was opened afresh with nothing (the earlier carry undone)."""
-    bundle = describe_h2(tmp_path, monkeypatch)
-    assert _prep(bundle, "coarse").exit_code == 0
-    a_finished_run(bundle / "01_coarse" / "run-0")
-    r = _prep(bundle, "medium")
-    assert r.exit_code == 0, r.output
-    attempt = bundle / "02_medium" / "run-0"
-    carried = (attempt / "H2.XV").read_bytes()
-    assert (attempt / ".continued-from").read_text().strip() == \
-        "01_coarse/run-0"
-
-    r = _prep(bundle, "medium", "--from", "01_coarse/run-9")
-    assert r.exit_code != 0, r.output
-    assert "no such attempt" in r.output, r.output
-    assert (attempt / "H2.XV").read_bytes() == carried, (
-        "a refused re-prep took away what the attempt continues from")
-    assert (attempt / ".continued-from").read_text().strip() == \
-        "01_coarse/run-0"
-    last = _ledger(bundle)[-1]
-    assert (last["verb"], last["decision"], last["stage"]) == (
-        "prep", "refused", "medium"), last
-    assert "no such attempt" in last["reason"], last
+# `test_a_mistyped_from_leaves_the_prepared_attempt_as_it_was` retired
+# 2026-10-02 with re-preps: a prepped stage is refused before anything is
+# read (`job-system.md` § 5.0), so a mistyped `--from` is a FIRST prep's,
+# below.
 
 
 def test_what_cannot_be_named_is_refused_before_anything_is_written(
         tmp_path, monkeypatch):
     """Each before a single file of the stage is written: `--from` with
-    `--cold`, and a path out of the calculation, at the terminal as in the
+    `--cold`, a path out of the calculation, and a run that does not exist
+    -- refused in its words and in the ledger -- at the terminal as in the
     browser; `--cold` on a bench; `--cold` on the flat layout, which says
     how a flat stage starts clean.
 
@@ -89,10 +63,14 @@ def test_what_cannot_be_named_is_refused_before_anything_is_written(
     for more, said in ((("--from", "01_coarse/run-0", "--cold"),
                         "two answers to one question"),
                        (("--from", "../elsewhere"),
-                        "names a run of this calculation")):
+                        "names a run of this calculation"),
+                       (("--from", "01_coarse/run-9"), "no such attempt")):
         r = _prep(bundle, "medium", *more)
         assert r.exit_code != 0 and said in r.output, (more, r.output)
         assert not (bundle / "02_medium").exists(), (more, "written")
+        last = _ledger(bundle)[-1]
+        assert (last["verb"], last["decision"], last["stage"]) == (
+            "prep", "refused", "medium") and said in last["reason"], last
     r = jobset("prep", "bench", "coarse", "--bundle", bundle,
                "--target", "this", "--cold")
     assert r.exit_code != 0 and "a bench trial" in r.output, r.output

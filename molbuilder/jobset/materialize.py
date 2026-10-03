@@ -1076,8 +1076,8 @@ def continuation_files(jobset: JobSet, base_dir, stage_name: str,
             f"none of the group -- its deck omits MD.UseSaveXV / "
             f"DM.UseSaveDM / MD.UseSaveCG, so files copied in would sit "
             f"there unread (run-identity.md § 4, *present but not "
-            f"honoured*).  Set this stage's `restart` to `continue` in "
-            f"task.json and prep it again, or start it cold.")
+            f"honoured*).  A stage continues when its `restart` is "
+            f"`continue` in task.json at its prep; or start it cold.")
     if not any((src / name).is_file() for name in names):
         raise ValueError(
             f"{said}: that attempt holds none "

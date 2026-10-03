@@ -2547,6 +2547,15 @@ function prepButton(kind, stage) {
             bits.push(a.time ? "time " + a.time : "no time stated");
             say.textContent = bits.join(" · ") + ".";
             say.setAttribute("data-state", (a.mem && a.domain) ? "ok" : "warn");
+            /* A STAGE ALREADY PREPPED is refused before anything else
+             * (`job-system.md` § 5.0): the entry's own sentence, the way
+             * back in it, and no Prep offered. */
+            if (r.prepped) {
+                say.textContent = String(r.prepped);
+                say.setAttribute("data-state", "warn");
+                btnWrite.disabled = true;
+                return;
+            }
             /* WHAT IT WILL CONTINUE FROM, before anything is written (plan
              * W37) -- or why prep will refuse it, whole, with the commands
              * it names; Write is not offered for a plan prep refuses. */
@@ -2587,25 +2596,25 @@ function prepButton(kind, stage) {
     });
 
     /* THE ONE ENTRY'S ANSWER, WHOLE (`task-setup.md` § 11.1): the same
-     * answer `molbuilder jobset prep` prints.  A question comes back with
-     * nothing rendered; its Confirm is this tab's answer, and the prep runs
-     * again with it. */
-    async function write(evidence) {
+     * answer `molbuilder jobset prep` prints.  The save it offers comes back
+     * with nothing written; the person's answer -- save or not, and the
+     * note -- is this tab's, and the prep runs again with it. */
+    async function write(saveAnswer) {
         btnWrite.disabled = true;
         btnPreview.disabled = true;
         try {
             say.textContent = "Preparing…";
             say.setAttribute("data-state", "ok");
-            const r = await _prepCall(kind, stage, false, evidence);
-            /* CONFIRM IS A WRITE TOO, so it asks what every write asks
+            const r = await _prepCall(kind, stage, false, saveAnswer);
+            /* GOING ON IS A WRITE TOO, so it asks what every write asks
              * first -- an unsaved edit is not in the task.json prep reads
              * (`task-setup.md` § 7a). */
-            _showPrepAnswer(wrap, say, r, (shown) => {
+            _showPrepAnswer(wrap, say, r, (answer) => {
                 const no = blocked();
                 if (no) return refuse(no);
-                write(shown);
+                write(answer);
             });
-            if (r.ok && !r.question) {
+            if (r.ok && !r.offer) {
                 // KEPT, for the re-read the announcement below triggers: it
                 // rebuilds this panel, and the new one shows it again.
                 _fs.answers[kind + ":" + stage] = r;
@@ -2683,14 +2692,17 @@ function _syncPrepButtons() {
     }
 }
 
-async function _prepCall(kind, stage, plan, evidence) {
+async function _prepCall(kind, stage, plan, saveAnswer) {
     const body = { dest: _dir, kind, stage, plan };
     // WHAT IT CONTINUES FROM, as chosen (plan W37) -- a run's only.
     if (kind === "run") Object.assign(body, continueBody(stage));
-    // THE PERSON'S ANSWER to "already under way here" -- sent only when
-    // they pressed Confirm, WITH the evidence they were shown: the answer
-    // counts for that evidence and no other.  Its absence is not a yes.
-    if (evidence) { body.confirm = true; body.evidence = evidence; }
+    // THE PERSON'S ANSWER to the save prep offers (`checkpointing.md` § 9)
+    // -- sent only once it was offered and they went on: whether to save,
+    // and the note as they left it.  Its absence is no answer at all.
+    if (saveAnswer) {
+        body.save = !!saveAnswer.save;
+        body.note = saveAnswer.note || "";
+    }
     // The local machine has a NAME, not just a label: the server maps
     // `(this machine)` to it, so sending the label is enough and the two
     // surfaces keep one vocabulary.
@@ -2712,10 +2724,11 @@ async function _prepCall(kind, stage, plan, evidence) {
 /** Show one prep answer under its buttons -- the command line's report,
  *  from the same data (`job-system.md` § 5.3, `task-setup.md` § 11.1).
  *
- *  ``onConfirm`` answers the one question the entry asks: *this calculation
- *  is already under way here -- re-render its decks?*  Nothing was written
- *  when it is asked, and leaving it writes nothing. */
-function _showPrepAnswer(wrap, say, r, onConfirm) {
+ *  ``onAnswer`` answers the one question the entry asks: *save the folder's
+ *  state first?* (`checkpointing.md` § 9) -- the box starts unticked, and
+ *  the note is prep's draft, to confirm or edit.  Nothing was written when
+ *  it is asked, and leaving it writes nothing. */
+function _showPrepAnswer(wrap, say, r, onAnswer) {
     const old = wrap.querySelector(".ts-prep-answer");
     if (old) old.remove();
     const box = el("div", { class: "ts-prep-answer" });
@@ -2754,23 +2767,41 @@ function _showPrepAnswer(wrap, say, r, onConfirm) {
         if (box.childNodes.length) wrap.appendChild(box);
         return;
     }
-    if (r.question) {
-        say.textContent = "This calculation is already under way here — "
-            + "no deck was rendered.";
+    if (r.offer) {
+        const o = r.offer;
+        say.textContent = (o.standing_at
+            ? "This folder has changed since its saved state "
+              + o.standing_at + " — nothing was written yet."
+            : "This folder has no saved state yet — nothing was written "
+              + "yet.");
         say.setAttribute("data-state", "warn");
-        for (const e of r.question.evidence) line(e, "warn");
-        for (const a of r.question.advice) line(a);
-        const ok = el("button", { type: "button", class: "btn" },
-                      "Confirm — re-render the decks");
-        ok.addEventListener("click", () => {
-            ok.disabled = true;
-            onConfirm(r.question.evidence);
+        const n = (o.unsaved || []).length;
+        if (n) {
+            line(n + " file" + (n === 1 ? "" : "s") + " not saved: "
+                 + o.unsaved.slice(0, 5).join(", ") + (n > 5 ? ", …" : ""));
+        }
+        line("A prepped stage is not prepped again: a redo goes back to the "
+             + "state saved before its prep (job-system.md § 5.0).");
+        const keep = el("input", { type: "checkbox" });
+        const note = el("input", { type: "text", class: "ts-save-note",
+                                   value: o.note });
+        box.appendChild(el("label", { class: "ts-save-offer" }, keep,
+                           " Save the folder's state first, as: "));
+        box.appendChild(note);
+        const go = el("button", { type: "button", class: "btn" }, "Prep");
+        go.addEventListener("click", () => {
+            go.disabled = true;
+            onAnswer({ save: keep.checked, note: note.value });
         });
-        box.appendChild(ok);
+        box.appendChild(go);
         wrap.appendChild(box);
         return;
     }
     findingLines(r.deck_findings);
+    // THE STATE A REDO RESTORES, named where the person reads it.
+    if (r.saved && r.saved.indexOf("saved") === 0) {
+        line("The folder's state was " + r.saved);
+    }
     const dirs = r.dirs || [];
     say.textContent = "Prepared for " + r.machine + " — "
         + dirs.length + " director" + (dirs.length === 1 ? "y" : "ies")

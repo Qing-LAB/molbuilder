@@ -292,7 +292,16 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # `record_text` -- a file already at the path the first probe writes, as
 # text (a record that does not read);
 # `calculation_record` -- the calculation's own copy of its
-# machine's record, there before prep (a table, or text for a broken file).
+# machine's record, there before prep (a table, or text for a broken file);
+# `saved_first` -- the folder's state saved before anything else, as a person
+# saves it (`molbuilder checkpoint init`); `before` -- the verbs a person typed
+# first, each a list of words (`["prep", "run", "coarse"]`), the calculation
+# and the target named as the row's own prep names them; `answers` -- what
+# the person types at the row's prep's question ("" is EOF, no terminal).
+#
+# AFTER PREP, whatever it answered: the folder's saved states, newest first
+# (`saved_states`, their notes), and what `status` says of the calculation
+# (`status_says`); a prep that was not refused says nothing of `said_lacks`.
 #
 # 0 · WHAT THE PROBE RECORDS, checked before anything else: what it says
 # (`probe_said`, lines any of the probes printed) and what the record it
@@ -385,6 +394,22 @@ def _road_probe_layer(case, said, target, began) -> None:
         stamp = record["detected_at"]
         assert stamp and datetime.fromisoformat(stamp) >= began, \
             f"record.detected_at is {stamp!r}, older than its probe ({began})"
+
+
+def _road_after_prep(case, bundle) -> None:
+    """What the row's prep left, refused or not: the folder's saved states,
+    newest first (`saved_states`), and what `status` says of the
+    calculation (`status_says`)."""
+    if "saved_states" in case:
+        from molbuilder.checkpoint import Repo
+        repo = Repo(str(bundle))
+        got = [st.note for st in repo.states()] if repo.initialized else []
+        assert got == case["saved_states"], f"saved states: {got}"
+    if "status_says" in case:
+        st = jobset("status", "--bundle", bundle)
+        assert st.exit_code == 0, _one_line(st)
+        for words in case["status_says"]:
+            assert words in st.output, _one_line(st)
 
 
 def _road_holds(got, want, where) -> None:
@@ -521,9 +546,19 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         given = case["calculation_record"]
         calculation_record(bundle).write_text(
             given if isinstance(given, str) else json.dumps(given))
+    if case.get("saved_first"):
+        from click.testing import CliRunner
+        from molbuilder.cli import cli
+        got = CliRunner().invoke(cli, ["checkpoint", "init", "-p",
+                                       str(bundle), "-m", "set up"])
+        assert got.exit_code == 0, _one_line(got)
+    for words in case.get("before", []):
+        got = jobset(*words, "--bundle", bundle, "--target", target)
+        assert got.exit_code == 0, f"{words}: {_one_line(got)}"
     kind = "bench" if "bench" in case else "run"
     r = jobset("prep", kind, "coarse", "--bundle", bundle,
-               "--target", target, *case.get("prep", []))
+               "--target", target, *case.get("prep", []),
+               input=case.get("answers"))
 
     # 1 · ALLOWED OR REFUSED -- at prep, in its words
     if "refused" in case:
@@ -533,10 +568,14 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         assert r.exit_code != 0, _one_line(r)
         for words in ([said] if isinstance(said, str) else said):
             assert words in r.output, _one_line(r)
+        _road_after_prep(case, bundle)
         return
     assert r.exit_code == 0, _one_line(r)
     for words in case.get("said", []):
         assert words in r.output, _one_line(r)
+    for words in case.get("said_lacks", []):
+        assert words not in r.output, _one_line(r)
+    _road_after_prep(case, bundle)
 
     # 2 · WHAT IS PRODUCED -- the run's header, deck and run script
     if case.get("header_absent"):

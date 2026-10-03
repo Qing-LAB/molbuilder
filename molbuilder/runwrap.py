@@ -2240,8 +2240,10 @@ def render_run_wrapper(script_path: Path, *,
             f"not installed "
             + ("on the machine this bundle is being prepared FOR (read "
                "from its probed record: if you installed the env since, "
-               "re-probe that machine and delete this calculation's "
-               "environment.json, so the next prep reads the new record).  "
+               "re-probe that machine, then go back to the state saved "
+               "before this calculation's first prep and prep anew -- "
+               "`molbuilder checkpoint list` shows the folder's states -- "
+               "so the prep reads the new record).  "
                if _rec_envs else "on this machine.  ")
             + f"GPU support is the one thing the packaged "
             f"SIESTA does not have -- its ELPA is built without the GPU "
@@ -2517,8 +2519,10 @@ def render_run_wrapper(script_path: Path, *,
                 f"                   (DM.UseSaveDM .false.), so SIESTA will\n"
                 f"                   NOT read prior .DM/.XV/.CG: the run\n"
                 f"                   index advances and the calculation\n"
-                f"                   starts cold.  Change 'restart' in the\n"
-                f"                   description and prep again to resume.\n"
+                f"                   starts cold.  To resume: go back to the\n"
+                f"                   state saved before this stage's prep,\n"
+                f"                   change 'restart' in the description,\n"
+                f"                   and prep it anew.\n"
                 if _restart_honoured is False else
                 f"                   Whether the engine also reads prior\n"
                 f"                   state is the deck's to say.\n"
@@ -3313,8 +3317,9 @@ def render_run_wrapper(script_path: Path, *,
                     f"the record this calculation was prepped with, carries "
                     f"this preamble -- edit its env_init.preamble (for "
                     f"example: module load mamba), or correct the record of "
-                    f"that machine and delete this copy, then prep again; or "
-                    f"edit the source line below.'",
+                    f"that machine and prep the calculation anew, from the "
+                    f"state saved before its first prep; or edit the source "
+                    f"line below.'",
                     f'    exit 78',           # EX_CONFIG
                     "fi",
                 ]
@@ -3821,13 +3826,15 @@ def render_run_wrapper(script_path: Path, *,
             if _restart_honoured else
             f"#  * SIESTA: this deck sets ``DM.UseSaveDM`` .false., so\n"
             f"#    SIESTA does NOT load prior .DM/.XV/.CG -- the run starts\n"
-            f"#    from the coordinates in the deck.  Change `restart` in\n"
-            f"#    the description and prep again to continue instead.\n"
+            f"#    from the coordinates in the deck.  To continue instead,\n"
+            f"#    go back to the state saved before this stage's prep,\n"
+            f"#    change `restart` in the description, and prep it anew.\n"
             if _restart_honoured is False else
             f"#  * SIESTA: this deck's restart keywords could not be read;\n"
             f"#    whether prior .DM/.XV/.CG are loaded is the deck's to\n"
-            f"#    say.  Re-prep (`molbuilder jobset prep`) to restore the\n"
-            f"#    restart group the generator writes.\n"
+            f"#    say.  Prep the stage anew, from the state saved before\n"
+            f"#    its prep, to restore the restart group the generator\n"
+            f"#    writes.\n"
         )
         + f"#\n"
         f"# IMPORTANT: this wrapper does NOT change cwd (see\n"

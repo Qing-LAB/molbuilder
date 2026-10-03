@@ -15,8 +15,9 @@ VERB that acted on it appends the line — policy stays at the verb, the
 ledger only records.  A verb with one door appends at that surface; a verb
 whose doors share ONE ENTRY appends in the entry, once, whichever door
 called — `prep`'s, `jobset/prep.prep_stage` (`job-system.md` § 5.3), writes
-all four of its lines (`preflight-report`, `underway-ask`, `prepped`,
-`launch-agreement`) for the command line and the Task setup tab alike.
+its lines (`preflight-report`, `save-offer`, `prepped`, `continues` or
+`starts-cold`, `launch-agreement`, and `refused`) for the command line and
+the Task setup tab alike.
 What a line consists of, where more than one caller records the same
 decision, lives here as a named function (:func:`prepped`), so the recipe
 is never something each caller has to remember.  Per-job launch provenance already

@@ -81,7 +81,8 @@ def _prep(bundle: str, *extra):
     r = CliRunner()
     init = r.invoke(jobset_group, [
         "init", "--structure", "P/structure/h2.xyz", "--bundle", bundle,
-        "--shape", "flat", "--engine", "pyscf"])
+        "--shape", "flat", "--engine", "pyscf",
+        "--stage-strategy", "publishable"])
     assert init.exit_code == 0, init.output
     # EVERY LAUNCH VALUE IS STATED (`architecture.md` § 5.2): the run card's
     # threads, and the queue, wall and memory a cluster's header carries --
@@ -91,9 +92,25 @@ def _prep(bundle: str, *extra):
     d = json.loads(tj.read_text())
     d["execution"] = {"threads": 1}
     d["allocation"] = {"domain": "q", "time": "01:00:00", "mem": "1G"}
+    # THE NEXT STAGE STARTS CLEAN, so a test can prep it without a run of
+    # `coarse` to continue from -- a prepped stage is not prepped again
+    # (`job-system.md` § 5.0), so what these tests ask of a calculation that
+    # is already prepped, they ask of its next stage (`_prep_next`).
+    for st in d["stages"]:
+        if st["name"] == "medium":
+            st["execution"] = {"restart": "clean"}
     tj.write_text(json.dumps(d, indent=2))
     return r.invoke(jobset_group,
                     ["prep", "run", "coarse", "--bundle", bundle, *extra])
+
+
+def _prep_next(bundle: str, *extra):
+    """The calculation's NEXT stage, `medium`, prepped after `coarse` was --
+    starting clean (`_prep` set its run card)."""
+    from click.testing import CliRunner
+    from molbuilder.jobset._cli import jobset_group
+    return CliRunner().invoke(jobset_group, [
+        "prep", "run", "medium", "--bundle", bundle, *extra])
 
 
 class TestTheUserChoosesTheMachine:
@@ -163,17 +180,14 @@ class TestTheUserChoosesTheMachine:
         res = _prep("P/optimization/w")
         assert res.exit_code == 0, res.output
 
-    def test_c1_asks_nothing_of_a_reprep(self, machines):
+    def test_c1_asks_nothing_of_a_later_stage(self, machines):
         """A calculation that already carries a snapshot HAS its answer --
-        asking again would make every second `prep` need a flag."""
+        asking again would make every later stage's `prep` need a flag."""
         machines.write("sol")
         machines.this_machine()
         first = _prep("P/optimization/w", "--target", "sol")
         assert first.exit_code == 0, first.output
-        from click.testing import CliRunner
-        from molbuilder.jobset._cli import jobset_group
-        again = CliRunner().invoke(jobset_group, [
-            "prep", "run", "coarse", "--bundle", "P/optimization/w"])
+        again = _prep_next("P/optimization/w")
         assert again.exit_code == 0, again.output
 
     def test_c3_a_named_record_that_will_not_read_is_an_error(self, machines):
@@ -207,11 +221,7 @@ class TestTheUserChoosesTheMachine:
         # Prepped for one machine -- named, because two exist (C1).
         first = _prep("P/optimization/z", "--target", "agave")
         assert first.exit_code == 0, first.output
-        from click.testing import CliRunner
-        from molbuilder.jobset._cli import jobset_group
-        res = CliRunner().invoke(jobset_group, [
-            "prep", "run", "coarse", "--bundle", "P/optimization/z",
-            "--target", "sol"])
+        res = _prep_next("P/optimization/z", "--target", "sol")
         assert res.exit_code != 0, res.output
         # set to the machine its first prep named -- the copy says which
         assert "this calculation is set to 'agave'" in res.output
@@ -273,11 +283,7 @@ class TestTheCasesReadingFoundThatPokingDidNot:
         assert first.exit_code == 0, first.output
         # sol's record goes bad AFTER the bundle was prepped
         machines.write("sol", '{"schema": "molbuilder/environment@99"}')
-        from click.testing import CliRunner
-        from molbuilder.jobset._cli import jobset_group
-        res = CliRunner().invoke(jobset_group, [
-            "prep", "run", "coarse", "--bundle", "P/optimization/w",
-            "--target", "sol"])
+        res = _prep_next("P/optimization/w", "--target", "sol")
         assert res.exit_code != 0, res.output
         assert "cannot be read" in res.output
 
@@ -330,11 +336,7 @@ class TestTheCasesReadingFoundThatPokingDidNot:
         from molbuilder.scheduler import machine_scope_path
         machine_scope_path().unlink()
 
-        from click.testing import CliRunner
-        from molbuilder.jobset._cli import jobset_group
-        res = CliRunner().invoke(jobset_group, [
-            "prep", "run", "coarse", "--bundle", "P/optimization/w",
-            "--target", "this"])
+        res = _prep_next("P/optimization/w", "--target", "this")
         assert res.exit_code == 0, (
             "naming this machine refused a bundle carrying its own record:\n"
             + res.output)

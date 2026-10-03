@@ -1230,8 +1230,8 @@ which `prep` copies onto the stage's job (`Job.finish`).
 ordinary relaxation deck (§ 5.2a), so it starts as a relaxation does by
 default — it continues from what its folder holds (`restart`'s default,
 `continue`, which this kind does not offer to change), and a relaxation
-re-prepared from its own earlier attempt (`prep --from`) picks up where that
-one stopped; its deck names the field, and no longer says the description
+launched again picks up where its latest attempt stopped; its deck names the
+field, and no longer says the description
 holds it *(plan § 5w K10, the M11 review's SS-C14)*. **A force-constant run**
 has no optimiser history to
 resume. The density is read when present — the reference step's
@@ -1335,7 +1335,9 @@ constants. The finish can also be run by hand in the failed attempt, with the
 job's env active — `python mb_vibration.pyz <deck> <output>` — which writes
 the spectrum in seconds; the attempt still reads failed, because its launch
 did. An attempt prepared before 2026-09-28 carries neither the bundle nor
-the deck's `vibration` block: re-prepare and launch the stage. **A benchmark
+the deck's `vibration` block: prepare the stage anew from the state saved
+before its preparation ([`execution/job-system.md`](?doc=execution/job-system.md)
+§ 5.0), and launch it. **A benchmark
 trial of a force-constant stage is not finished**: it measures how long a
 setting takes under capped SCFs, and modes derived from those would be a
 spectrum of nothing, so its job carries no finish and its deck no `vibration`
@@ -1383,7 +1385,7 @@ a `.FC` whose row count is not `6·N·n_free`, a range whose length disagrees
 with the free set, a permutation whose two directions are not inverse
 bijections, a deck whose free atoms are not one trailing run, a `vibration`
 block that states no `temperature_K` (format v1, prepared before 2026-09-28 —
-re-prep the stage), and an output whose reference step describes other
+prepare the stage anew from the state saved before its preparation), and an output whose reference step describes other
 atoms. The modes are at **Γ** (R3) — the
 centre of the Brillouin zone, `q = 0`, where every cell moves in phase: a
 force-constant run over the cell as given is the Γ matrix; a phonon

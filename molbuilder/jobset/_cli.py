@@ -958,9 +958,9 @@ def _load_bench_set(base, stage, verb: str = "launch"):
         raise click.ClickException(str(e))
 
 
-# `_ask_if_underway` stood here until 2026-09-29: its evidence half is
-# `prep.underway_evidence`, asked by the one prep entry for both doors, and
-# its asking half is `_ask_underway` beside the prep verb.
+# `_ask_if_underway` stood here until 2026-09-29, and its successors
+# `prep.underway_evidence` and `_ask_underway` until 2026-10-02: a prepped
+# stage is refused now, and the one question is the save (`_ask_save`).
 
 
 # `_refuse_if_measured_elsewhere` and `_measured_on` stood here until
@@ -1232,45 +1232,47 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
             raise click.ClickException(str(e))
 
     ans = _prep()
-    asked = False
-    while ans.question is not None:
-        # AN ANSWER COUNTS FOR THE EVIDENCE IT WAS GIVEN TO: a folder that
-        # changed while the prompt waited -- a trial launched from another
-        # shell -- sends the question back, and nothing was rendered.
-        if asked:
-            click.echo("the folder changed while you answered -- nothing "
-                       "was re-rendered; asked again:")
-        ans = _prep(_ask_underway(ans.question))
-        asked = True
+    if ans.offer is not None:
+        ans = _prep(_ask_save(ans.offer))
     _echo_prep_answer(ans, base)
 
 
-def _ask_underway(question):
-    """The one question, at a terminal: *already under way here -- re-render?*
-    (`run-identity.md` § 6; 2026-08-12 plan A3/U14).
+def _ask_save(offer):
+    """The one question, at a terminal: *save the folder's state first?*
+    (`checkpointing.md` § 9; `job-system.md` § 5.0, checkpoint 5).
 
-    The default is YES and an unanswerable prompt PROCEEDS, saying so -- the
-    inverse of the verdict offer, deliberately: re-rendering decks is § 6's
-    "ordinary thing to do" (warm files are never touched, nothing is
-    renamed), so a scripted re-prep must not hang or die on a question it
-    cannot hear.  The answer's words are what the ledger records.
-    """
+    No by default, then the note prep drafted, to confirm or edit: the person
+    decides, every time.  With no terminal to ask, prep goes on WITHOUT
+    saving and says so -- § 9: it may not silently pick either way.  The
+    answer's words are what the ledger records.  *(It asked "already under
+    way here -- re-render?" until 2026-10-02, when a prepped stage stopped
+    being prepped again.)*"""
     from .prep import Answer
-    click.echo("this calculation is already under way here:")
-    for e in question.evidence:
-        click.echo(f"    {e}")
-    for a in question.advice:
-        click.echo(f"  {a}")
-    seen = tuple(question.evidence)      # the answer is to THIS evidence
+    if offer.standing_at is None:
+        click.echo("this folder has no saved state yet -- a prepped stage is "
+                   "not prepped again, and a redo goes back to a state saved "
+                   "before its prep (job-system.md § 5.0).")
+    else:
+        n = len(offer.unsaved)
+        shown = ", ".join(offer.unsaved[:5]) + (", ..." if n > 5 else "")
+        click.echo(f"this folder has changed since its saved state "
+                   f"{offer.standing_at}: {n} file(s) not saved"
+                   + (f" -- {shown}" if n else "") + ".")
     try:
-        ok = click.confirm("  proceed (re-render the decks)?", default=True)
-        return Answer(ok, "yes" if ok else "no", evidence=seen)
+        ok = click.confirm("  save it first, so this prep can be rolled "
+                           "back?", default=False)
     except click.exceptions.Abort:
         click.echo("")
-        click.echo("  no answer (non-interactive): proceeding -- § 6 warns, "
-                   "it does not refuse.")
-        return Answer(True, "no answer (non-interactive) -> proceed",
-                      evidence=seen)
+        click.echo("  no answer (non-interactive): prepping without saving.")
+        return Answer(False, "no answer (non-interactive) -> prepped "
+                             "without saving")
+    if not ok:
+        return Answer(False, "no")
+    try:
+        note = click.prompt("  note", default=offer.note)
+    except click.exceptions.Abort:
+        note = offer.note
+    return Answer(True, "yes", note=note)
 
 
 def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
@@ -1290,6 +1292,9 @@ def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
 
     from ..runtime_config import format_provenance
     from .ledger import rel_to as _rel
+    if ans.saved and ans.saved.startswith("saved"):
+        # THE STATE A REDO RESTORES, named where the person reads it.
+        click.echo(f"the folder's state was {ans.saved}")
     if ans.provenance is not None:
         # WHERE the effective config came from (user request 2026-08-12;
         # secrets excluded by design) -- also in the bundle's ledger, since
@@ -1819,9 +1824,9 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
                 cores=_cores, gpus=_gpus))
             raise click.ClickException(
                 "no --domain, so no queue was chosen.  Name one from the "
-                "list above with `--domain`, or name it in the "
-                "description's `allocation.domain` and prep again so the "
-                "bundle carries it.")
+                "list above with `--domain` -- a queue named in the "
+                "description's `allocation.domain` reaches a stage at its "
+                "prep.")
     # The same provenance line prep printed, at the LAST moment before the
     # launch -- the mode above may have come from config, and this names
     # which file said so (user request 2026-08-12).

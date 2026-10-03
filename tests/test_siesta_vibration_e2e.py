@@ -346,13 +346,17 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
     `summarize run` compares them into `<label>.fc-sweep.json` at the root,
     naming each stage's files rather than copying them (I25).  Before
     `freq_half` is launched the record lists it as pending, in its attempt's
-    own words; after a relaxation re-run between the two stages the sweep is
-    refused -- the geometry's change would be reported as the displacement's.
+    own words.  (A sweep across two relaxed geometries -- which `summarize`
+    refuses -- was driven here by re-prepping `relax` tighter between the
+    two stages, until 2026-10-02: a prepped stage is not prepped again now
+    (`job-system.md` § 5.0), a redo rolls `freq` back with it, and a stage
+    measured at a capped relaxation fails its own finish -- so no road of
+    molbuilder's reaches two results at two geometries, and the refusal is
+    not driven.)
 
-    MUTATIONS THIS MUST FAIL AGAINST: only the stage named `freq` taking the
+    MUTATION THIS MUST FAIL AGAINST: only the stage named `freq` taking the
     relaxed geometry -- `freq_half` then measures the unrelaxed input bond,
-    which is how it ran until 2026-09-28; a sweep across two geometries
-    summarized as one (the review of 51590fa6).
+    which is how it ran until 2026-09-28.
     """
     tree = tmp_path / "projects"
     bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.741], [5.0, 5.0, 5.0]])
@@ -445,20 +449,6 @@ def test_a_displacement_sweep_measures_every_stage_at_the_relaxed_bond(
     assert r.exit_code == 0, r.output
     rec2 = json.loads((bundle / "H2.fc-sweep.json").read_text())
     assert rec2["modes"][0]["flagged"] is True and rec2["tolerance_cm1"] == 1e-6
-
-    # A RELAXATION RE-RUN BETWEEN THE STAGES: relax again, tighter, and
-    # re-launch only `freq_half` -- which takes the relax stage's NEWEST
-    # attempt (§ 5.2a), so the two stages now measure two geometries.
-    task = json.loads((bundle / "task.json").read_text())
-    task["varies"] = sorted(set(task["varies"]) | {"relax_force_tol"})
-    for st in task["stages"]:
-        if st["name"] == "relax":
-            st["overrides"] = {"relax_force_tol": 0.001}
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
-    _prep_and_launch("relax")
-    _prep_and_launch("freq_half")
-    r = _jobset("summarize", "run", "--bundle", str(bundle))
-    assert r.exit_code != 0 and "different geometries" in r.output, r.output
 
 
 def test_a_flat_calculation_refuses_a_second_force_constant_stage(

@@ -684,9 +684,15 @@ So the caller owns three things: **noticing** the moment, **asking** you, and
 sentence rather than leaving you to invent one. You confirm or edit it. Nothing
 is saved until you say so.
 
-**The moment is `prep`, because prep is the change.** When prep is about to
-rewrite a folder that already holds results, it says what will change and offers
-to save first. You answer.
+**The moment is `prep`, because prep is the change.** Before prep writes
+anything into a calculation whose state is not saved — it has changed since the
+state it stands at, or it has none yet — it says what is not saved and offers
+to save first, with a note it drafts (`before prep run tight`). You answer.
+*(It offered only where the folder already held results until 2026-10-02.
+That day a prepped stage stopped being prepped again — a redo restores a state
+saved before the stage's prep — so every prep is a moment worth one: user,
+"refuse it, redo via rollback"; "yes, offer save";
+[`job-system.md`](?doc=execution/job-system.md) § 5.0.)*
 
 > **What the confirmation buys you** is the promise in § 1: this state is one you
 > can return to, retune, and run again from — and save *that* as a new state if
@@ -694,9 +700,10 @@ to save first. You answer.
 
 | | |
 |---|---|
-| **Where it asks** | interactive `prep`, when the target already holds results |
-| **Who decides** | you, every time |
-| **Non-interactive** (`--yes`, a script) | proceeds **without** saving and **says so** — it may not silently pick either way |
+| **Where it asks** | `prep`, at both its doors — the terminal and Task setup's Prep buttons — when the folder's state is not saved |
+| **Who decides** | you, every time: the terminal's answer defaults to no, and the tab's box starts unticked |
+| **The note** | drafted by prep, which knows what it is about to change; you confirm or edit it |
+| **Non-interactive** (a script, no terminal to ask) | proceeds **without** saving and **says so** — it may not silently pick either way |
 | **The last stage** | nothing asks, because nothing follows. A surface showing a finished, unsaved run should say it is unsaved |
 
 **Never at run or submit time**, which may be a queued job — a prompt would block

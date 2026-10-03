@@ -1086,7 +1086,9 @@ the target's, and *which* machine is § 6's question, answered once above.
 (`jobset/prep_inputs.py`, [`architecture.md`](?doc=execution/architecture.md)
 A12) — and writes nothing; for a continuing rung it says what the rung will
 continue from, with the run's verdict — or, when the choice is the default and
-prep would refuse it, why, and Prep is not offered. **Prep run here** / **Prep bench here** reach the
+prep would refuse it, why, and Prep is not offered. A stage already prepped is
+said the same way, the way back in the sentence, and Prep is not offered
+([`job-system.md`](?doc=execution/job-system.md) § 5.0). **Prep run here** / **Prep bench here** reach the
 one prep entry the command line calls
 ([`job-system.md`](?doc=execution/job-system.md) § 5.3), so the tab shows what
 the terminal prints, from the same answer:
@@ -1095,21 +1097,23 @@ the terminal prints, from the same answer:
   refuses, in its own words, and nothing is written;
 * **what the inputs said** — the run's sizing when nothing stated it, a
   bench's grid: enumerated, crossed out, kept;
-* **already under way here** — a launched attempt, warm files at the root, a
-  queued trial: the evidence, and a **Confirm** button. No deck is rendered
-  until it is pressed; pressing it answers THAT evidence — if the folder shows
-  something else by then, the question comes back — and is recorded in the
-  calculation's ledger as this tab's answer. Confirm first asks what Prep asks:
-  unsaved edits are not in the `task.json` prep reads (§ 7a);
+* **the save, offered** — when the folder's state is not saved
+  ([`checkpointing.md`](?doc=execution/checkpointing.md) § 9): what is not
+  saved, a box to save it first — unticked — the note prep drafted, yours to
+  confirm or edit, and a button to go on. Nothing is written until it is
+  pressed, and the answer is recorded in the calculation's ledger as this
+  tab's. It first asks what Prep asks: unsaved edits are not in the
+  `task.json` prep reads (§ 7a). A stage already prepped is refused instead,
+  naming the way back ([`job-system.md`](?doc=execution/job-system.md) § 5.0);
 * **the folders written**, **what each deck's checks said**, and **the
-  attempt** — opened or reused, what was brought in, what it starts from (the
+  attempt** — opened, what was brought in, what it starts from (the
   run it continues from, a cold start you asked for, a linked stage's input
   that prep takes from the stages before it, or nothing), what was copied from which
   attempt — or, on a transport bias scan, one attempt per point;
 * **what a transport rung gathered** from the concluded rungs upstream;
 * **the resources** the stage will launch with, and **whether the deck
-  agrees**: a deck rendered for another width is said here, where it can
-  still be re-prepped, not at `launch`, which refuses it.
+  agrees**: a deck rendered for another width is said here, before `launch`
+  refuses it — and redone by going back to the state saved before this prep.
 
 **A refusal shows what it had found** — the preflight's notes, what the inputs
 said, and what was already written — beside its own sentence: a bench refused

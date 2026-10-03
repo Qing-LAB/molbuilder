@@ -281,11 +281,10 @@ def _foreign_state(directory, run_id: str, engine: str) -> List[str]:
 # rehomed.  It implemented "§ 6 -- refuse unless the user says overwrite",
 # a rule run-identity.md softened away on 2026-08-08 ("Warn, do not
 # refuse"), which is why it had zero callers: the design had moved and the
-# function pinned the old one.  What § 6 still requires -- before writing,
-# SAY what is in the folder -- is served by :func:`warm_files_present`
-# (the evidence, through `jobset/prep.underway_evidence`) and asked by
-# each door of the one prep entry -- the terminal's prompt, the Task setup
-# tab's Confirm -- where a question belongs.
+# function pinned the old one.  § 6 then asked before re-rendering over a
+# run that had happened, with :func:`warm_files_present` as evidence, until
+# 2026-10-02: a prepped stage is refused now, a redo is a rollback, and the
+# one question prep asks is the save (`jobset/prep.save_offer`).
 
 
 

@@ -76,7 +76,14 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
     # default box -- a different structure from the one described.
     from molbuilder.workingcopy_structure import StructureCodec
     StructureCodec().write(struct, root / "in.xyz")
-    dest = root / "t" / "calc"
+    # ONE CALCULATION PER FOLDER: each call describes a new one, so each has
+    # a folder of its own -- a prepped stage is not prepped again
+    # (`job-system.md` § 5.0), and a second call into the first's folder was
+    # a re-prep of it until 2026-10-02.
+    dest, n = root / "t" / "calc", 1
+    while dest.exists():
+        n += 1
+        dest = root / "t" / f"calc{n}"
     D.write_description(
         D.build_description(struct, cfg, stages, engine=engine,
                             shape="hierarchical", name=name,

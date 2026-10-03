@@ -173,12 +173,13 @@ class TestTheRecord:
 
 class TestTheTransmissionWalk:
 
-    def test_the_walk_continues_past_a_failed_point(self, calc,
-                                                    tmp_path,
+    def test_the_walk_continues_past_a_failed_point(self, tmp_path,
                                                     monkeypatch):
         """Independent points: unlike the device chain, a failed
         transmission point must not stop the rest -- and the exit code
-        still reports it."""
+        still reports it.  Its own calculation, the transmission not yet
+        prepped: the file's `calc` preps it, and a prepped stage is not
+        prepped again (`job-system.md` § 5.0)."""
         from click.testing import CliRunner
         from molbuilder.jobset._cli import jobset_group
         from molbuilder.jobset.model import JobSet
@@ -186,6 +187,9 @@ class TestTheTransmissionWalk:
         from molbuilder.projects import PROJECTS_ROOT_ENV
         from molbuilder.jobset.submit import submit_transport_chain
         from molbuilder.task import read_task
+        root = tmp_path / "projects"
+        _write_junction(root, _junction_struct())
+        calc = _describe_transport(root)
         # upstream: concluded device points so the gather is satisfied
         for st in ("seed", "electrode_L", "electrode_R"):
             prep_calculation(calc, st)

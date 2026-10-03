@@ -53,6 +53,21 @@ def calc_dir(isolated_projects_root_module):
     The record is not scenery: since 2026-09-02 a rank count is read from one
     and nowhere else, so a folder without it cannot be prepped at all
     (`running-a-job.md` § 3.1)."""
+    yield _a_described_probe(isolated_projects_root_module / "prep_e2e")
+
+
+@pytest.fixture
+def unprepped_dir(isolated_projects_root_module):
+    """`calc_dir`'s calculation, a fresh one for a test that preps it from
+    the start: the module's own is prepped by the first test, and a prepped
+    stage is not prepped again (`job-system.md` § 5.0).  Its rank count is
+    stated -- the first test types `calc_dir`'s into the card."""
+    yield _a_described_probe(isolated_projects_root_module / "prep_e2e_offer",
+                             execution={"omp_threads": 1, "mpi_np": 2})
+
+
+def _a_described_probe(root, execution=None):
+    """The calculation `calc_dir` describes, under ``root``."""
     import numpy as np
 
     from conftest import write_pseudos
@@ -62,7 +77,6 @@ def calc_dir(isolated_projects_root_module):
     from molbuilder.structure import Structure
     from molbuilder.task import Allocation, Stage, read_task, write_task
 
-    root = isolated_projects_root_module / "prep_e2e"
     src_dir = root / "structure"
     src_dir.mkdir(parents=True)
     d = root / "optimization" / "probe"
@@ -116,10 +130,10 @@ def calc_dir(isolated_projects_root_module):
         write_task(d / "task.json", type(t)(
             **{**{f.name: getattr(t, f.name)
                   for f in __import__("dataclasses").fields(t)},
-               "execution": {"omp_threads": 1},
+               "execution": execution or {"omp_threads": 1},
                "allocation": Allocation(domain="public", time="0-04:00:00",
                                         mem="8G")}))
-        yield d
+        return d
     finally:
         # No rmtree: the tree lives under `tmp_path_factory`, which pytest
         # removes.  It used to sit in the developer's real `projects/`, so a
@@ -145,6 +159,19 @@ def _open(page, base, calc):
     page.wait_for_function(
         "() => { const n = document.querySelector('.CodeMirror');"
         " return !!(n && n.CodeMirror); }", timeout=20000)
+
+
+def _answer_the_save(page, panel, *, save=False, note=None):
+    """The save prep offers before it writes (`checkpointing.md` § 9), as a
+    person answers it: the box as asked, the note as given, then Prep."""
+    box = f"{panel} .ts-prep-answer"
+    go = f"{box} button:has-text('Prep')"
+    page.wait_for_selector(go, timeout=60000)
+    if save:
+        page.locator(f"{box} .ts-save-offer input[type=checkbox]").first.check()
+    if note is not None:
+        page.locator(f"{box} .ts-save-note").first.fill(note)
+    page.locator(go).first.click()
 
 
 def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
@@ -226,6 +253,7 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
 
     # ── PREP, and read what it produced ────────────────────────────────
     page.locator(prep_sel).first.click()
+    _answer_the_save(page, panel)
     page.wait_for_function(
         "() => Array.from(document.querySelectorAll('.ts-prep-say'))"
         " .some(n => /Prepared for/.test(n.textContent))", timeout=60000)
@@ -259,80 +287,82 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
     assert list(d.glob("*.run.sh")), "no wrapper"
 
 
-def test_the_tab_asks_before_re_rendering_a_run_already_under_way(
-        page, flask_server, calc_dir):
-    """`task-setup.md` § 11.1: the one prep entry's question, on the page.
-
-    A launched attempt is evidence the run is under way.  Prep run here
-    shows it, with a Confirm button, and renders nothing; Confirm is the
-    answer, and the answer box then names the attempt it opened.  The
-    launched attempt is set up through the entry itself -- this test is
-    about what the page does with its answer.
-    """
-    from molbuilder.jobset.materialize import RUN_LAUNCH_FILE, attempts
-    from molbuilder.jobset.prep import Answer, prep_stage
-    from molbuilder.scheduler.record import LOCAL_TARGET
-    done = prep_stage(calc_dir, "run", "coarse", target=LOCAL_TARGET,
-                      answer=Answer(True, "the test's setup"))
-    (done.attempt.dir / RUN_LAUNCH_FILE).write_text("{}")
-    launched = attempts(calc_dir / "01_coarse")
-
-    _open(page, flask_server, calc_dir)
+def test_the_tab_offers_the_save_before_prep_writes(
+        page, flask_server, unprepped_dir):
+    """`task-setup.md` § 11.1, `checkpointing.md` § 9: Prep run here on a
+    folder whose state is not saved writes nothing and offers the save -- its
+    box unticked, the note prep drafted.  Going on is a write too, so an
+    unsaved edit refuses it first; ticked, the folder is saved with the note
+    as edited, then prepped.  The stage, prepped, is not prepped again: the
+    preview says so and offers no Prep (`job-system.md` § 5.0).  (It replaced
+    the tab's *already under way* Confirm, 2026-10-02.)"""
+    from molbuilder.checkpoint import Repo
+    calc = unprepped_dir
+    _open(page, flask_server, calc)
     page.wait_for_selector("#ts-target-card button", timeout=20000)
     page.evaluate(
         "() => { for (const b of document.querySelectorAll('button'))"
         "  if ((b.textContent||'').trim().startsWith('(this machine)'))"
         "    { b.click(); return; } }")
     panel = "[id^=ts-steppanel]"
-    page.locator(f"{panel} .ts-prep button:has-text('Preview run')") \
-        .first.click()
+    preview = f"{panel} .ts-prep button:has-text('Preview run')"
     prep_sel = f"{panel} .ts-prep button:has-text('Prep run here')"
-    page.wait_for_function(
-        "(sel) => Array.from(document.querySelectorAll(sel)).some("
-        "b => /Prep run here/.test(b.textContent) && !b.disabled)",
-        arg=f"{panel} .ts-prep button", timeout=30000)
+
+    def ready():
+        page.locator(preview).first.click()
+        page.wait_for_function(
+            "(sel) => Array.from(document.querySelectorAll(sel)).some("
+            "b => /Prep run here/.test(b.textContent) && !b.disabled)",
+            arg=f"{panel} .ts-prep button", timeout=30000)
+
+    ready()
     page.locator(prep_sel).first.click()
+    box = f"{panel} .ts-prep-answer"
+    go = f"{box} button:has-text('Prep')"
+    page.wait_for_selector(go, timeout=60000)
+    assert not (calc / "01_coarse").exists(), "the offer wrote something"
+    assert not page.locator(
+        f"{box} .ts-save-offer input[type=checkbox]").first.is_checked()
+    assert page.locator(f"{box} .ts-save-note").first.input_value() == \
+        "before prep run coarse"
 
-    confirm = f"{panel} .ts-prep-answer button:has-text('Confirm')"
-    page.wait_for_selector(confirm, timeout=60000)
-    said = page.locator(f"{panel} .ts-prep-answer").first.inner_text()
-    assert "was launched" in said, said
-    assert attempts(calc_dir / "01_coarse") == launched, (
-        "the question was asked after a deck was re-rendered")
-
-    # CONFIRM IS A WRITE: an unsaved edit is not in the task.json prep
-    # reads, so it is refused exactly as Prep is, and nothing renders.
+    # GOING ON IS A WRITE: an unsaved edit is not in the task.json prep
+    # reads, so it is refused as Prep is, and nothing renders.
     original = page.evaluate(
         "() => document.querySelector('.CodeMirror').CodeMirror.getValue()")
     page.evaluate(
         "() => { const cm = document.querySelector('.CodeMirror').CodeMirror;"
         " cm.setValue(cm.getValue() + ' '); }")
-    page.locator(confirm).first.click()
+    page.locator(go).first.click()
     page.wait_for_function(
         "() => Array.from(document.querySelectorAll('.ts-prep-say'))"
         " .some(n => /Save first/.test(n.textContent))", timeout=20000)
-    assert attempts(calc_dir / "01_coarse") == launched, (
-        "Confirm rendered a deck over an unsaved edit")
+    assert not (calc / "01_coarse").exists(), (
+        "going on rendered a deck over an unsaved edit")
     page.evaluate(
         "(v) => document.querySelector('.CodeMirror').CodeMirror.setValue(v)",
         original)
-    page.locator(f"{panel} .ts-prep button:has-text('Preview run')") \
-        .first.click()
-    page.wait_for_function(
-        "(sel) => Array.from(document.querySelectorAll(sel)).some("
-        "b => /Prep run here/.test(b.textContent) && !b.disabled)",
-        arg=f"{panel} .ts-prep button", timeout=30000)
-    page.locator(prep_sel).first.click()
-    page.wait_for_selector(confirm, timeout=60000)
 
-    page.locator(confirm).first.click()
+    # TICKED, the note as edited: the folder saved, then prepped
+    ready()
+    page.locator(prep_sel).first.click()
+    _answer_the_save(page, panel, save=True,
+                     note="before coarse, from the tab")
     page.wait_for_function(
         "() => Array.from(document.querySelectorAll('.ts-prep-say'))"
         " .some(n => /Prepared for/.test(n.textContent))", timeout=60000)
-    opened = f"01_coarse/run-{launched[-1] + 1}"
-    said = page.locator(f"{panel} .ts-prep-answer").first.inner_text()
-    assert f"Attempt {opened}" in said, said
-    assert (calc_dir / opened).is_dir()
+    assert [x.note for x in Repo(str(calc)).states()] == [
+        "before coarse, from the tab"]
+    assert (calc / "01_coarse" / "run-0").is_dir()
+
+    # PREPPED, AND NOT PREPPED AGAIN: the preview says so, no Prep offered
+    page.locator(preview).first.click()
+    page.wait_for_function(
+        "(sel) => Array.from(document.querySelectorAll(sel)).some("
+        "n => /already prepped/.test(n.textContent))",
+        arg=f"{panel} .ts-prep-say", timeout=30000)
+    assert page.locator(prep_sel).first.is_disabled(), (
+        "the preview offered a Prep the entry refuses")
 
 
 def test_a_stage_with_no_axes_offers_the_machines_proposal(
@@ -1365,6 +1395,7 @@ def test_a_rung_chooses_what_it_continues_from_and_prep_takes_it(
         arg=f"{panel} .ts-prep button", timeout=30000)
     page.locator(f"{panel} .ts-prep button:has-text('Prep run here')") \
         .first.click()
+    _answer_the_save(page, panel)
     # THE RE-READ HAS HAPPENED when the tab counts the attempt prep wrote --
     # the count is the folder's answer, read again after the write.
     page.wait_for_selector("button.ts-steptab:has-text('tight') .ts-ran",

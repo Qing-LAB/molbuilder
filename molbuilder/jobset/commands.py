@@ -132,6 +132,28 @@ def block(text_lines, pad: str = "    ") -> str:
     return "\n".join(pad + ln for ln in text_lines)
 
 
+def rollback(what: str, *, base) -> str:
+    """How ``what`` is redone: the state saved before it, restored, and a
+    prep anew -- a prepped stage is not prepped again (user, 2026-10-02:
+    *"refuse it, redo via rollback"*; `job-system.md` § 5.0).
+
+    WHICH STATE is the person's to pick, so it is asked for in words, never
+    a ``<state>``; the list that shows them is a command, and both verbs
+    name the folder -- by its path, `checkpoint`'s ``-p`` -- unless the
+    reader stands in it."""
+    here = Path(base).resolve()
+    try:
+        standing = here == Path.cwd().resolve()
+    except OSError:
+        standing = False
+    p = "" if standing else f" -p {shlex.quote(str(here))}"
+    return (f"go back to the state saved before {what}, and prep anew -- "
+            f"the folder's saved states:\n"
+            + block([f"molbuilder checkpoint list{p}"])
+            + f"\n  then `molbuilder checkpoint restore{p}` with the id of "
+              f"the one you pick.")
+
+
 __all__ = ["PROG", "bundle_flag", "command", "configured_mode",
            "launch_lines", "lines", "run_first", "name_a_stage",
-           "enabled_refs", "block"]
+           "enabled_refs", "block", "rollback"]

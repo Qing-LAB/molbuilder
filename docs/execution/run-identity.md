@@ -630,34 +630,27 @@ closes that.
 
 A second generate targets **the directory it is pointed at** — since 2026-08-07
 that is the level-③ name the user typed, not a location the id derives (§ 3.0).
-**Say what is already there, and never rename.**
 
-> **Warn, do not refuse.** *Decided 2026-08-08 (user), softening what this
-> section used to require.* It read *refuse unless the user says overwrite*, and
-> that is one rule too many for a program that does not manage the user's
-> folders. Regenerating decks into a folder you are working in is an ordinary
-> thing to do — after fixing a typo in a basis, or widening a mesh — and a
-> refusal turns it into a flag to look up, which trains people to pass
-> `--overwrite` reflexively and stop reading.
->
-> The rule that survives is the one carrying the information: **before writing,
-> say what is in the folder.** § 5's rows already do that, and this is the
-> moment they are for.
->
-> *One sharpening (U14, 2026-08-12): when what is in the folder says a run
-> already **happened** — a launched attempt's `run.json`, warm files at the
-> root — `prep` says so and **asks** before re-rendering, default yes; a
-> prompt that cannot be answered proceeds and says so, because this section
-> warns, it does not refuse. The library refusal shape this section used to
-> require (`check_overwrite`) retired with the rule it implemented;
-> `warm_files_present` remains as the evidence, and the question lives at
-> the surface. The ask and its answer land in the bundle's decision
-> ledger.*
+**A prepped stage is not prepped again** *(user, 2026-10-02: "refuse it, redo
+via rollback")*. `prep` refuses a stage the calculation's plan already holds
+and names the way back: the state saved before that prep, restored with
+`molbuilder checkpoint restore`
+([`checkpointing.md`](?doc=execution/checkpointing.md) § 7), and a prep
+anew — and before it writes, prep offers to save that state (§ 9 there).
+Its place among prep's checks is
+[`job-system.md`](?doc=execution/job-system.md) § 5.0.
+
+> *Until 2026-10-02 this section said **warn, do not refuse** (user,
+> 2026-08-08): regenerating decks into a folder you were working in was "an
+> ordinary thing to do — after fixing a typo in a basis, or widening a mesh",
+> and from 2026-08-12 (U14) `prep` asked before re-rendering over a run that
+> had happened, default yes. A redo is a rollback now, so nothing is rendered
+> over a prepped stage, and nothing is left to ask before it.*
 
 **"Never rename" is the part that is not negotiable.** The warm files are what
 the next run continues from, so making a name unique to avoid a clash would
-throw away the geometry the user is trying to keep. Rewriting decks does not
-touch them, and nothing in this document ever moves a file to make room.
+throw away the geometry the user is trying to keep. Nothing in this document
+ever moves a file to make room.
 
 *(This paragraph cited the handoff writer's own refusal as the contrasting
 case. That writer retired 2026-08-29 with the bundle machinery — citations

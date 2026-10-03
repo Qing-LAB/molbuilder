@@ -1,0 +1,91 @@
+# THE PREP PROTOCOL -- `docs/execution/job-system.md` § 5.0.
+#
+# A prepped stage is not prepped again: a redo is a rollback -- the state
+# saved before its prep, restored -- and a prep anew (user, 2026-10-02:
+# "refuse it, redo via rollback").  Before prep writes, it offers to save a
+# folder whose state is not saved, its note drafted (`checkpointing.md` § 9;
+# "yes, offer save").  A prep refused after it began writing puts the plan
+# back, so the stage is not counted prepped.
+#
+# `tests/test_prep_protocol.py` runs every case down the road a person runs,
+# through the one runner every contract table shares (`tests/support/road.py`,
+# `run_road_case`, whose header names each key).
+#
+# A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
+
+[run_base.siesta]
+mpi_np = 2
+omp_threads = 1
+
+[allocation_base]
+domain = "cpu"
+time = "01:00:00"
+mem = "8G"
+
+[[queues]]
+name = "cpu"
+partition = "cpu"
+qos = "public"
+max_time = "1-00:00:00"
+max_cores = 64
+node_types = [{ cores = 64, nodes = 10 }]
+
+[[queues]]
+name = "gpu"
+partition = "gpu"
+qos = "public"
+max_time = "1-00:00:00"
+max_cores = 128
+gpu = { a100 = 4 }
+node_types = [{ cores = 48, nodes = 5, gpu = { a100 = 4 } }]
+
+# ===================================================================== #
+#  A PREPPED STAGE IS NOT PREPPED AGAIN                                 #
+# ===================================================================== #
+
+[[case]]
+name = "a prepped stage is not prepped again -- the refusal names the way back, a rollback"
+before = [["prep", "run", "coarse"]]
+refused = ["stage 'coarse' is already prepped", "a prepped stage is not prepped again", "molbuilder checkpoint list"]
+
+[[case]]
+name = "...a prepped benchmark too"
+bench = { mpi_np = [2] }
+before = [["prep", "bench", "coarse"]]
+refused = ["the benchmark of stage 'coarse' is already prepped", "molbuilder checkpoint list"]
+
+[[case]]
+name = "a prep refused after it began writing puts the plan back -- the stage is not counted prepped"
+template = { diag_algorithm = "ELPA-1STAGE" }
+run = { use_gpu = true, gpu_count = 1 }
+allocation = { domain = "gpu" }
+record = { conda_envs = ["molbuilder-siesta"] }
+refused = "env is not installed"
+status_says = ["First incomplete stage: coarse, not prepped yet"]
+
+# ===================================================================== #
+#  THE SAVE, OFFERED BEFORE PREP WRITES                                 #
+# ===================================================================== #
+
+[[case]]
+name = "before it writes, prep offers to save a folder whose state is not saved -- with no terminal to ask, it preps without saving, and says so"
+said = ["this folder has no saved state yet", "no answer (non-interactive): prepping without saving"]
+saved_states = []
+
+[[case]]
+name = "...answered yes, it saves the folder first, with the note it drafted"
+answers = "y\n\n"
+said = ["the folder's state was saved as"]
+saved_states = ["before prep run coarse"]
+
+[[case]]
+name = "...answered no, it preps without saving"
+answers = "n\n"
+said_lacks = ["was saved as"]
+saved_states = []
+
+[[case]]
+name = "a folder whose state is saved is asked nothing"
+saved_first = true
+said_lacks = ["save it first", "no saved state"]
+saved_states = ["set up"]

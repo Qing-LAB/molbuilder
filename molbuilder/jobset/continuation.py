@@ -204,8 +204,7 @@ def _cannot_be_named(base: Path, task, stage: str, from_attempt,
     if scan_points(task, stage):
         return ("--from / --cold name ONE attempt, and a bias scan keeps one "
                 "per point -- per-point continuation is not named yet "
-                "(engines/transport.md; re-prep opens fresh attempts for "
-                "every point).")
+                "(engines/transport.md).")
     if from_attempt:
         p = PurePosixPath(str(from_attempt))
         if p.is_absolute() or ".." in p.parts:
@@ -283,8 +282,11 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool
     what = (f"the newest attempt of `{prev}`, {source}," if source
             else f"`{prev}`'s latest run,")
     if concluded is not None:
+        # A FAILED RUN IS LAUNCHED AGAIN -- a prepped stage is not prepped
+        # again (`job-system.md` § 5.0); its re-prep was offered here until
+        # 2026-10-02.
         why, first = (f"which failed ({concluded})",
-                      f"Run it again --\n{run_prev}")
+                      f"Launch it again --\n{launch_prev}")
     elif state == "pending":
         why, first = "which has not been launched", f"Launch it --\n{launch_prev}"
     elif state in ("queued", "running"):

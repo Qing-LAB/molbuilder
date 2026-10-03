@@ -1298,7 +1298,9 @@ def test_prep_says_reused_only_of_an_attempt_an_earlier_prep_opened(
     opens the attempt, and the CLI opened it again for its report and found it
     unlaunched.  CONTRACT: `Attempt.fresh` (`jobset/materialize.py`) is False
     only when an unlaunched attempt was REUSED rather than opened
-    (`project-layout.md` § 1.6).
+    (`project-layout.md` § 1.6).  (Its second half -- a re-prep saying
+    "reused" -- retired 2026-10-02 with re-preps: a prepped stage is refused
+    now, `job-system.md` § 5.0.)
     """
     tree = isolated_projects_root
     (tree / "P" / "structure").mkdir(parents=True)
@@ -1315,9 +1317,6 @@ def test_prep_says_reused_only_of_an_attempt_an_earlier_prep_opened(
     assert first.exit_code == 0, first.output
     assert "prepared coarse: " in first.output, first.output
     assert "(reused" not in first.output, first.output
-    again = runner.invoke(grp, prep)
-    assert again.exit_code == 0, again.output
-    assert "(reused -- not launched yet)" in again.output, again.output
 
 
 # --------------------------------------------------------------------- #
