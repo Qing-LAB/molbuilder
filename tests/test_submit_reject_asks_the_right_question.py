@@ -121,7 +121,7 @@ def test_local_only_reads_a_real_local_probe_when_one_exists():
 
 
 def test_the_full_readmission_check_no_longer_raises(
-        workstation_with_a_named_target):
+        workstation_with_a_named_target, tmp_path):
     """End to end through the real function the user's traceback named:
     `_reject_if_this_machine_says_no`, given a placement whose queue this
     (target-less) local machine simply has no opinion about."""
@@ -135,4 +135,5 @@ def test_the_full_readmission_check_no_longer_raises(
 
     want = Request(ranks=48, cpus_per_task=1, gpus=None,
                    mem_gb=None, walltime_s=3600)
-    _reject_if_this_machine_says_no(_Placed(), want, False, "bench")
+    _reject_if_this_machine_says_no(_Placed(), want, False, "bench",
+                                    tmp_path)
