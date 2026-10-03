@@ -21,13 +21,9 @@ from molbuilder.jobset.model import Resources
 
 @pytest.fixture(autouse=True)
 def _sandbox(tmp_path, monkeypatch):
-    """Isolated cwd + HOME so nothing here reads the developer's config."""
+    """An isolated cwd; conftest isolates the config root, so nothing here
+    reads the developer's config."""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "home").mkdir()
-
-
 def _wrapper(tmp_path):
     (tmp_path / "JOB.fdf").write_text("SystemLabel JOB\n")
     # A PROBED MACHINE, its record saying how a shell enters an environment

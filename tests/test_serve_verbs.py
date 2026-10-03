@@ -87,7 +87,6 @@ def test_signalling_a_stale_pidfile_reports_and_cleans_never_signals(
     # (/run/user/$UID) exists -- so without naming a temporary root this test
     # tried to create a directory that was already there, and would have been
     # writing a pidfile into the live location if it had not.
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "runtime"))
     # The pidfile's one door is `config_dir.serve_pidfile` -- the daemon asks
     # it directly since 2026-09-13, and so does this test.
@@ -288,7 +287,6 @@ def test_status_writes_its_detection_into_the_log(tmp_path, monkeypatch):
     # In-process, so the roots are monkeypatched rather than passed in a child
     # environment.  HOME no longer decides where the log goes -- the state
     # directory does (`configuration.md` § 2.1d).
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     monkeypatch.setattr(sd, "read_pid", lambda port: os.getpid())
     monkeypatch.setattr(sd, "pid_state",

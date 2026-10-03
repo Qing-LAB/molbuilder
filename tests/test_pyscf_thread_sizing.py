@@ -78,7 +78,7 @@ def test_a_garbage_allocation_variable_falls_through():
 
 
 def _pyscf_wrapper(tmp_path, monkeypatch):
-    """Render a PySCF run-wrapper in an isolated cwd + HOME, its thread
+    """Render a PySCF run-wrapper in an isolated cwd (conftest isolates the config root), its thread
     count stated (4) as every run's is (`architecture.md` § 5.2)."""
     from molbuilder import runwrap
     from molbuilder.scheduler import Environment, Topology
@@ -89,8 +89,6 @@ def _pyscf_wrapper(tmp_path, monkeypatch):
     # without naming the directory the write lands in a file nothing
     # opens, and the test passes having configured nothing.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     # This machine's record, carrying the activation the generator reads
     # (`configuration.md` § 4).
     (tmp_path / "environment.json").write_text(Environment(

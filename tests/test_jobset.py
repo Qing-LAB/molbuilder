@@ -16,23 +16,14 @@ from molbuilder.jobset.model import Job, JobSet, Resources, SCHEMA, WarmFile
 
 @pytest.fixture(autouse=True)
 def _sandbox(tmp_path_factory, monkeypatch):
-    """cwd + HOME isolation for EVERY test here (I6, 2026-08-13): the
-    prep/submit tests read this machine's config and record, and without
-    this they read the DEVELOPER's -- found state, the contamination class
-    the 2026-08-12 isolation memory records.  (It named a cwd
-    molbuilder.json and ~/.molbuilder, both retired 2026-08-31.)  Tests that need their own cwd/HOME
-    (monkeypatch.chdir / setenv) still win: their monkeypatching applies
-    after this fixture's."""
+    """cwd isolation for EVERY test here (I6, 2026-08-13): the prep/submit
+    tests read this machine's config and record, which conftest isolates;
+    this keeps their working directory out of the checkout.  (It moved HOME
+    too, and named a cwd molbuilder.json and ~/.molbuilder, all retired.)
+    Tests that need their own cwd (monkeypatch.chdir) still win: their
+    monkeypatching applies after this fixture's."""
     box = tmp_path_factory.mktemp("sandbox")
     monkeypatch.chdir(box)
-    monkeypatch.setenv("HOME", str(box / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (box / "home").mkdir()
-    # ...and the box is probed.  Moving HOME moves the machine scope out
-    # from under conftest's own record, and prep refuses without one
-    # (`running-a-job.md` § 3.1).
-    from conftest import write_machine_record
-    write_machine_record()
 from molbuilder.jobset.materialize import job_dir_name, materialize
 from molbuilder.jobset.plan import render_plan
 from molbuilder.jobset import submit as _submit

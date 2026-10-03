@@ -33,9 +33,6 @@ def _isolated(monkeypatch, tmp_path_factory):
     resolve config from cwd + HOME/XDG (H-8, 2026-08-13): unsandboxed,
     the file ran against the repo root's molbuilder.json, so the emitted
     text under test varied with the developer's config."""
-    home = tmp_path_factory.mktemp("home")
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     cwd = tmp_path_factory.mktemp("cwd")
     monkeypatch.chdir(cwd)
     # THE SANDBOX IS THE CONFIG ROOT -- and holds no config: how a shell

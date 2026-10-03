@@ -86,9 +86,6 @@ def test_prep_writes_where_job_dir_names_will_look(tmp_path, monkeypatch):
     from molbuilder.jobset.prep import prep_calculation
     from molbuilder.siesta.stages import default_siesta_stages
     from molbuilder.structure import Structure
-
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.chdir(tmp_path)
     write_machine_record()
 

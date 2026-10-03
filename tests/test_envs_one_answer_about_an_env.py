@@ -186,7 +186,6 @@ def test_the_install_probes_this_env_once_not_three_times(monkeypatch, tmp_path)
                         lambda name, binary: str(tmp_path / "prefix"))
 
     from click.testing import CliRunner
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     result = CliRunner().invoke(
         _cli.envs_group, ["install", "molbuilder-pySCF", "--yes"])
 

@@ -894,14 +894,9 @@ class TestTheContractEndpoint:
         the page can draw which rung is outstanding instead of *pick a
         file*.  Driven the way a person gets there: describe, prep the
         seed, ask.  A rung's own directory answers no ladder."""
-        # prep wants the machine record in an isolated HOME -- the transport
-        # prep tests' own sandbox, made here for this one test
-        home = tmp_path_factory.mktemp("home")
-        monkeypatch.setenv("HOME", str(home))
-        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+        # The transport prep tests' cwd sandbox, made here for this one test
+        # (conftest isolates the config root and writes the machine record).
         monkeypatch.chdir(tmp_path_factory.mktemp("cwd"))
-        from conftest import write_machine_record
-        write_machine_record()
         from test_transport_prep import (_describe_transport, _junction_struct,
                                          _write_junction)
         from molbuilder.jobset.model import Resources

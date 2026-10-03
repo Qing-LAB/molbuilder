@@ -74,7 +74,6 @@ def store(tmp_path, monkeypatch):
     ``~/.molbuilder`` because that path was built from the home directory, and
     the state directory is named by its own variable.
     """
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     # THE KEY FILE IS THE SWITCH (2026-08-31): it lives at the one known
     # place and carries its own route, so there is no config to set.
@@ -125,7 +124,6 @@ def test_a_half_written_key_file_opens_no_door(
         tmp_path, monkeypatch, doc, why):
     """`access-control.md` § 8 rule 1: *the safe state is the one you get by
     doing nothing.* The file is the switch, so half a file is still off."""
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
     (tmp_path / "cfg").mkdir(parents=True, exist_ok=True)
     if doc is not None:
@@ -315,7 +313,6 @@ def test_a_wrong_signature_answers_EXACTLY_like_an_unconfigured_server(
     # A SERVER WITH NO KEY FILE.  `HOME` alone left MOLBUILDER_CONFIG_DIR
     # pointing at the configured fixture's own `cfg/`, so the "off" server was
     # the same configured server (review D, 2026-09-14).
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "empty-cfg"))
     off = create_app(config={"rate_limit": {"enabled": False}}).test_client()
     absent = off.post(PATH, data="{}",
@@ -444,7 +441,6 @@ def test_a_failure_is_counted_by_the_limiter(tmp_path, monkeypatch):
     the one the route could set -- and then grepped the blueprint's source
     (review D, 2026-09-14).  Here the limiter is switched on with a
     threshold of three, and the fourth bad probe is refused by IT."""
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     cfg = tmp_path / "cfg"
     cfg.mkdir(parents=True, exist_ok=True)
@@ -666,7 +662,6 @@ def _app_with_key_file(tmp_path, monkeypatch, text):
     that was never registered and would have been the same for a server that
     accepted everything (review D).
     """
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     cfg = tmp_path / "cfg"
     cfg.mkdir(parents=True, exist_ok=True)

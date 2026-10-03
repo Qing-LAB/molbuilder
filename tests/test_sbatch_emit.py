@@ -51,13 +51,9 @@ def _caps():
 def project(tmp_path, monkeypatch):
     """A project dir carrying the asu-sol record -- a scheduler, the
     `public` queue, and how a shell enters an environment there -- with an
-    isolated HOME so the server-wide lookup chain doesn't leak a real
-    ~/.config file."""
+    the config root conftest's, so no real ~/.config file leaks in."""
     from molbuilder.scheduler import (FILENAME, Domain, Environment,
                                       Topology, write_environment)
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "home").mkdir()
     write_environment(Environment(
         scheduler="slurm", topology=Topology(sockets=2, cores_per_socket=64),
         domains=[Domain(name="public", partition="public", qos="public",

@@ -37,7 +37,6 @@ def isolated_tree(tmp_path, monkeypatch):
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     return tmp_path
 
 

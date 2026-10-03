@@ -289,9 +289,6 @@ def test_the_wrappers_awk_reads_the_same_four_spellings(tmp_path, monkeypatch):
     import warnings
     from molbuilder.jobset.model import Resources
     from molbuilder.runwrap import render_wrappers
-
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     # The machine the wrapper is for, with how a shell enters an
     # environment there -- the record carries it for the generator

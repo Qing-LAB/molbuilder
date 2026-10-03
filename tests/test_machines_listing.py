@@ -18,8 +18,8 @@ Two things are pinned here:
   * the terminal and the browser read the SAME function, so they cannot
     disagree about which machines exist or when a choice is required.
 
-Every test runs against an isolated ``HOME`` — the developer's own
-`~/.config/molbuilder` must never decide whether these pass.
+Every test runs against conftest's isolated config root — the developer's
+own `~/.config/molbuilder` must never decide whether these pass.
 """
 from __future__ import annotations
 
@@ -33,9 +33,7 @@ from molbuilder.jobset._cli import jobset_group
 
 @pytest.fixture
 def home(tmp_path, monkeypatch):
-    """A HOME with no machine records at all."""
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    """A config root with no named records -- this machine's is conftest's."""
     from molbuilder.config_dir import ensure_private_dir
     from molbuilder.scheduler import environments_dir
     ensure_private_dir(environments_dir())

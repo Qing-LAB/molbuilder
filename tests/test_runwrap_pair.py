@@ -44,16 +44,13 @@ def _caps():
 def project(tmp_path, monkeypatch):
     """A bundle prepped for a machine with a scheduler -- its record lists the
     `public` queue and says how a shell enters an environment there -- and
-    cwd + HOME isolated.
+    cwd isolated (conftest isolates the config root).
 
     Isolated for the reason the 2026-08-12 memory records: without it these
     read the DEVELOPER's config and pass off a setup the test never wrote.
     """
     from molbuilder.scheduler import (FILENAME, Domain, Environment,
                                       Topology, write_environment)
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "home").mkdir()
     monkeypatch.chdir(tmp_path)
     write_environment(Environment(
         scheduler="slurm", topology=Topology(sockets=2, cores_per_socket=64),

@@ -62,9 +62,6 @@ def _autosetup_minimal_config(tmp_path, monkeypatch):
     # without naming the directory the write lands in a file nothing
     # opens, and the test passes having configured nothing.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "home").mkdir()
     # A PROBED MACHINE.  Since 2026-09-02 a rank count is read from a record
     # and nowhere else -- no probe of the box that happens to be running, no
     # fallback (`running-a-job.md` § 3.1, user: "so we are not guess at

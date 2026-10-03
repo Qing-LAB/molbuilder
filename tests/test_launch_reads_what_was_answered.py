@@ -77,9 +77,6 @@ def bundle(tmp_path, monkeypatch, isolated_projects_root):
     developer's real one.
     """
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "home").mkdir()
     b = isolated_projects_root / "proj" / "topic" / "calc"
     b.mkdir(parents=True)
     _write_domains(b, [("htc", "htc", "public", "0-04:00:00"),

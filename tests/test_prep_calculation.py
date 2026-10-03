@@ -30,15 +30,7 @@ def _isolated(monkeypatch, tmp_path_factory):
     """The rest of the sandbox (B-9, 2026-08-13): the file ran with cwd =
     repo root, so the repo's molbuilder.json kept folding into every wrapper
     under test."""
-    home = tmp_path_factory.mktemp("home")
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.chdir(tmp_path_factory.mktemp("cwd"))
-    # ...and the box is probed.  Moving HOME moves the machine scope out
-    # from under conftest's own record, and prep refuses without one
-    # (`running-a-job.md` § 3.1).
-    from conftest import write_machine_record
-    write_machine_record()
 
 
 @pytest.fixture

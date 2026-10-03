@@ -42,14 +42,16 @@ _REC = {"schema": "molbuilder/environment@2",
 
 @pytest.fixture
 def machines(tmp_path, monkeypatch):
-    """A home with named target records, and a bundle to prep."""
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    # THE DOORS, asked after the root is set -- never the path spelled here
-    # (`configuration.md` § 3.1; W54 T28).
+    """A home with named target records, and a bundle to prep -- and NO
+    record of this machine until a test writes one (`this_machine`): the
+    conftest's probed record is removed, as its own docstring says a test
+    wanting that refusal does.  (Moving HOME did this until 2026-10-02.)"""
+    # THE DOORS -- never the path spelled here (`configuration.md` § 3.1;
+    # W54 T28).
     from molbuilder.config_dir import ensure_private_dir
     from molbuilder.scheduler import (environments_dir, machine_scope_path,
                                       named_environment_path)
+    machine_scope_path().unlink(missing_ok=True)
     ensure_private_dir(environments_dir())
 
     tree = tmp_path / "projects"

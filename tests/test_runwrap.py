@@ -43,9 +43,6 @@ def _autosetup_minimal_config(tmp_path, monkeypatch):
     # THE SANDBOX IS THE CONFIG ROOT -- and so the machine scope, where the
     # record a deck under it is rendered with lives.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "home").mkdir()
     (tmp_path / "environment.json").write_text(_MACHINE.to_json() + "\n")
     yield tmp_path
 
@@ -1425,13 +1422,11 @@ class TestTheHeaderReadsTheProbedRecord:
 
     def _sol_shaped(self, tmp_path, monkeypatch):
         """A bundle with no scheduler block and a probed record that has
-        domains.  cwd and HOME are moved so no real config leaks in --
-        the first version of this check passed only because it was
-        reading the repo's own molbuilder.json."""
+        domains.  The cwd is moved and conftest isolates the config root, so
+        no real config leaks in -- the first version of this check passed
+        only because it was reading the repo's own molbuilder.json."""
         import json
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("HOME", str(tmp_path / "home"))
-        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
         (tmp_path / "home").mkdir(exist_ok=True)
         (tmp_path / "environment.json").write_text(json.dumps({
             "schema": "molbuilder/environment@2",

@@ -65,10 +65,6 @@ def test_a_public_bind_without_tls_is_refused(tmp_path, monkeypatch):
 
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "config"))
     (tmp_path / "config").mkdir()
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    (tmp_path / "home").mkdir()
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-
     started = []
 
     class _App:

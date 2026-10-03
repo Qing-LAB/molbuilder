@@ -87,9 +87,6 @@ def _trimmed(tmp_path, monkeypatch):
     # without naming the directory the write lands in a file nothing
     # opens, and the test passes having configured nothing.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "home").mkdir()
     # A PROBED MACHINE, as a person records one -- `molbuilder jobset probe
     # --write`, which copies the machine's `env_init` into the record that
     # prep reads (`configuration.md` § 4).

@@ -90,25 +90,18 @@ def _state_the_run(dest, **card):
 
 @pytest.fixture(autouse=True)
 def _sandbox(tmp_path_factory, monkeypatch):
-    """cwd + HOME isolation for EVERY test here (I6, 2026-08-13).
+    """cwd isolation for EVERY test here (I6, 2026-08-13); conftest isolates
+    the config root.
 
-    The `calc` fixture and its users read runtime config through the
-    cascade, and without this they read the DEVELOPER's cwd
-    molbuilder.json and ~/.molbuilder -- the contamination that made a
+    The `calc` fixture and its users once read runtime config through a
+    cascade, and then read the DEVELOPER's cwd molbuilder.json and
+    ~/.molbuilder -- the contamination that made a
     prep test pass GREEN off a config the test never wrote (the A8 pin's
     own first version, and the 14-of-24 failure the 2026-08-12 isolation
     memory records).  The correct pattern the newer tests already use,
     applied to the whole file."""
     box = tmp_path_factory.mktemp("sandbox")
     monkeypatch.chdir(box)
-    monkeypatch.setenv("HOME", str(box / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (box / "home").mkdir()
-    # ...and the box is probed.  Moving HOME moves the machine scope out
-    # from under conftest's own record, and prep refuses without one
-    # (`running-a-job.md` § 3.1).
-    from conftest import write_machine_record
-    write_machine_record()
 
 
 @pytest.fixture

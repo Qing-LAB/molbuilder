@@ -65,9 +65,6 @@ def sandbox(tmp_path, monkeypatch):
     # without naming the directory the write lands in a file nothing
     # opens, and the test passes having configured nothing.
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    (tmp_path / "home").mkdir()
     (tmp_path / "environment.json").write_text(_SOL.to_json())
     _bind()
     yield tmp_path

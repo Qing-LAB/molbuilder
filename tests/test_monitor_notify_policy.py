@@ -624,9 +624,6 @@ def test_the_monitors_path_and_molbuilders_own_are_one_function(
     restating it.
     """
     from molbuilder.config_dir import secrets_dir
-
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    monkeypatch.setenv("HOME", str(tmp_path))
     assert M.default_notify_path() == secrets_dir() / M.NOTIFY_FILENAME
 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "scratch"))

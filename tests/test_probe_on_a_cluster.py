@@ -43,7 +43,6 @@ _ASSOC = "public,debug\n"
 @pytest.fixture
 def cluster(tmp_path, monkeypatch):
     """This box, answering as a login node would."""
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
     (tmp_path / "home").mkdir(exist_ok=True)
 
@@ -137,7 +136,6 @@ def test_a_measurement_that_did_not_happen_is_said(tmp_path, monkeypatch,
     a measurement that quietly did not happen is the thing this whole round
     was about.  (The submit-cap line was appended before `derive_domains`
     reassigned the notes, and was never shown, until 2026-10-02.)"""
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
     (tmp_path / "home").mkdir(exist_ok=True)
     from molbuilder.scheduler import record

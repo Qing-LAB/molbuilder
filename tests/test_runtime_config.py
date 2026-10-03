@@ -45,11 +45,6 @@ def _tmp_path_is_the_config_root(monkeypatch, tmp_path, tmp_path_factory):
     already writes to ``tmp_path`` by name.
     """
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
-    home = tmp_path_factory.mktemp("home")
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-
-
 # --------------------------------------------------------------------- #
 #  Existence / shape gates                                              #
 # --------------------------------------------------------------------- #

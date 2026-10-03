@@ -30,7 +30,6 @@ CH = "/api/notify/channels"
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
     app = create_app(config={"rate_limit": {"enabled": False}})
     # ASK THE DOOR for the path.  This built ".config/molbuilder/notify" by
@@ -434,7 +433,6 @@ def test_the_launch_mode_does_not_gate_the_write(tmp_path, monkeypatch):
     **Every config file molbuilder manages is saved on the machine molbuilder
     runs on** (user, 2026-09-01).  Nothing about the launch mode changes that.
     """
-    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
     cfgdir = tmp_path / ".config/molbuilder"
     cfgdir.mkdir(parents=True)
