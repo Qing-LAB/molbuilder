@@ -627,7 +627,7 @@ _LAUNCH_WORDS = {
 
 
 def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
-                   stage=None, queues=()):
+                   stage=None, queues=(), base=None, target=None):
     """**Why this launch cannot be written** -- ``None`` when every value it
     needs is stated (`execution/architecture.md` § 5.2; user, 2026-10-02:
     *"explicit job config is the only way allowed"*).
@@ -651,7 +651,8 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
     scheduler's default memory.  Each was a value nobody stated for that run,
     and a run is hours before anyone learns which one it got.  ``queues`` --
     the target's own, by name -- is the record's fact, shown so the person
-    can choose one.
+    can choose one; ``base`` and ``target`` say which record that was, for
+    the refusal that finds it lists none.
     """
     from ..template import catalogue, select
     missing = []
@@ -671,13 +672,20 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
             # sent to -- the header fell back to the menu's first row,
             # silently, until 2026-10-02.  A record that lists none at all
             # was probed off its scheduler, or not probed there.
-            return (f"{'stage ' + repr(stage) + ' ' if stage else ''}names "
-                    f"the queue {named!r}, which the target's record "
-                    + (f"does not list -- it lists: {', '.join(queues)}."
-                       if queues else
-                       "does not list: it lists no queues at all.  Probe "
-                       "that machine on its login node (`molbuilder jobset "
-                       "probe --write`) and copy its record here."))
+            said = f"{'stage ' + repr(stage) + ' ' if stage else ''}names "
+            if queues:
+                return (f"{said}the queue {named!r}, which the target's "
+                        f"record does not list -- it lists: "
+                        f"{', '.join(queues)}.")
+            # NONE AT ALL: probed off its scheduler, or not probed there --
+            # renewed by the record that answered's own steps (W54 R5: this
+            # printed the bare probe command whatever the target, and
+            # nothing about a snapshot).
+            from ..scheduler.record import record_and_renewal
+            which, renew = record_and_renewal(base, target)
+            return (f"{said}the queue {named!r}, and the record it reads "
+                    f"({which}) lists no queues at all.  If that machine has "
+                    f"queues, its record is out of date: {renew}.")
     if not missing:
         return None
     where = []
@@ -863,29 +871,10 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     if any(families) and not gpn:
         gpn = _gpus_per_node(base, menu) or 0
         if not gpn:
-            # TWO STEPS, both said (W52: "delete environment.json to
-            # re-probe" -- prep never probes, and deleting re-reads the same
-            # record): re-probe the record, then let the calculation follow.
-            # NAMED BY THE RECORD THAT ANSWERED: the calculation's own
-            # snapshot is read first, whatever the flag says (W52, the
-            # fix-6 review: a calculation prepped for Sol was told to probe
-            # "this machine").
-            from ..scheduler.record import (LOCAL_TARGET, calculation_record,
-                                            probe_line)
-            _snap = calculation_record(Path(base))
-            if _snap is not None and _snap.is_file():
-                _which = ("this calculation's environment.json, snapshotted "
-                          "at its first prep")
-                _redo = ("re-probe the machine it describes -- `molbuilder "
-                         "jobset probe --write` on it, with --name and its "
-                         "name for a named target, then its record copied "
-                         "here -- and delete this calculation's "
-                         "environment.json, so the next prep snapshots the "
-                         "new record (configuration.md M-3)")
-            else:
-                _which = ("this machine's" if target in (None, LOCAL_TARGET)
-                          else f"{target!r}'s")
-                _redo = f"re-probe it --\n    {probe_line(target)}\n "
+            # NAMED BY THE RECORD THAT ANSWERED, renewed in its own two
+            # steps -- `record_and_renewal`, the one spelling.
+            from ..scheduler.record import record_and_renewal
+            _which, _redo = record_and_renewal(base, target)
             raise PrepError(
                 f"this description asks for the GPU (use_gpu = "
                 f"{'a cpu-vs-gpu axis' if mixed else 'true'}), so the "

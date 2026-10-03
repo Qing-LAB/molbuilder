@@ -90,6 +90,17 @@ allocation = { domain = "nowhere" }
 refused = "names the queue 'nowhere', which the target's record does not list -- it lists: cpu, debug"
 
 [[case]]
+name = "a named target whose record lists no queues is renewed by ITS probe, on that machine, the file copied here"
+machine = "named"
+queues = []
+refused = ["(sol's) lists no queues at all", "molbuilder jobset probe --write --name sol", "copy the sol.json it writes"]
+
+[[case]]
+name = "...and a calculation whose own copy lists none is told to delete that copy as well -- a re-probe alone changes nothing"
+calculation_record = { schema = "molbuilder/environment@2", scheduler = "slurm", env_init = { activation = "conda activate", preamble = "true" } }
+refused = ["(this calculation's environment.json, snapshotted at its first prep) lists no queues at all", "and delete "]
+
+[[case]]
 name = "a run on a machine with no scheduler is asked for no queue, wall or memory"
 machine = "workstation"
 header_absent = true

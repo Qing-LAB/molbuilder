@@ -1314,6 +1314,38 @@ def probe_line(name: Optional[str] = None) -> str:
         "" if name in (None, LOCAL_TARGET) else f"   # {probe_steps(name)}")
 
 
+def record_and_renewal(bundle_dir=None, target: Optional[str] = None
+                       ) -> Tuple[str, str]:
+    """The record a calculation reads, in words, and how it comes to read a
+    re-probed one -- ``(which, renew)``, the ONE spelling for every refusal
+    whose fix is a re-probe (`configuration.md` M-4; W52's fix-6 review: a
+    calculation prepped for Sol was told to probe "this machine").
+
+    The calculation's own snapshot answers first, whatever the flag says
+    (M-3), so a calculation that holds one follows a re-probed machine only
+    once the snapshot is deleted -- TWO steps, both said (W52: deleting alone
+    re-reads the same record).  One that holds none reads the target's
+    record, and its probe line is the whole remedy."""
+    snap = (calculation_record(Path(bundle_dir))
+            if bundle_dir is not None else None)
+    if snap is not None and snap.is_file():
+        if target in (None, LOCAL_TARGET):
+            # WHICH machine the snapshot describes, a record does not say
+            # (plan § 0b, R3): named in words, not guessed.
+            probe = (f"`{probe_command(None)}` on the machine it describes, "
+                     f"with --name and its name for a named target, then its "
+                     f"record copied here")
+        else:
+            probe = f"`{probe_command(target)}` {probe_steps(target)}"
+        return ("this calculation's environment.json, snapshotted at its "
+                "first prep",
+                f"re-probe it -- {probe} -- and delete {snap}, so the next "
+                f"prep snapshots the new record (configuration.md M-3)")
+    return ("this machine's" if target in (None, LOCAL_TARGET)
+            else f"{target}'s",
+            f"re-probe it --\n    {probe_line(target)}\n ")
+
+
 def machine_for(bundle_dir=None, *, target: Optional[str] = None,
                 local_only: bool = False) -> Optional["Environment"]:
     """**The precedence, entire** — the one function a caller asks.
@@ -1450,6 +1482,7 @@ __all__ = [
     "resolve_environment",
     "machine_scope_path", "environments_dir", "named_environments",
     "LOCAL_TARGET", "probe_command", "probe_line", "probe_steps",
+    "record_and_renewal",
     "record_scopes",
     "topology_field_types",
     "read_environment", "write_environment", "machine_for", "UnknownTarget",

@@ -554,7 +554,7 @@ def seed_environment_record() -> Step:
     from ..runtime_config import get_env_init
     from ..scheduler import (machine_scope_path, read_environment,
                              resolve_environment, write_environment)
-    from ..scheduler.record import probe_queues
+    from ..scheduler.record import probe_command, probe_queues
     # Its own directory: a public function that worked only after another one
     # had made it is a trap (`_ensure_root`).
     _ensure_root()
@@ -564,10 +564,10 @@ def seed_environment_record() -> Step:
         said = ((before.env_init if before is not None else None)
                 or {}).get("activation")
         return Step(path, "kept", (
-            f'activation "{said}"; re-probe with `molbuilder jobset probe '
-            f'--write` when the machine changes' if said else
-            "carries NO activation -- `molbuilder jobset probe --write` "
-            "copies env_init into it"))
+            f'activation "{said}"; re-probe with `{probe_command()}` when '
+            f'the machine changes' if said else
+            f"carries NO activation -- `{probe_command()}` copies env_init "
+            f"into it"))
     # THE SAME STEPS ``jobset probe --write`` TAKES, in the same order: the
     # node, the three facts that travel (`local_facts`), the queues.  The
     # stamp too -- `detected_at` was null in every record seeded here.

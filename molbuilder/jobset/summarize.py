@@ -276,8 +276,9 @@ def _read_environment(bundle: Path) -> Dict:
     object now and asks it for its own dict, so the shape a result records is
     the shape the record has.
     """
-    from ..scheduler import FILENAME, read_environment
-    env = read_environment(Path(bundle) / FILENAME)
+    from ..scheduler import read_environment
+    from ..scheduler.record import calculation_record
+    env = read_environment(calculation_record(bundle))
     return env.to_dict() if env is not None else {}
 
 

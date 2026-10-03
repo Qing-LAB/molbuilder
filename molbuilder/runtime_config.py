@@ -89,8 +89,9 @@ _SCHEDULER_RETIRED = (
     "own: its description (`allocation`, or the run card `execution` in "
     "task.json) or the prep/launch flags (--domain, --time, --mem, --np, "
     "--cpus-per-task, --gpus) -- prep refuses one stated nowhere;\n"
-    "  * a machine's scheduler and queues are its RECORD's: `molbuilder jobset "
-    "probe --write` on that machine, the record copied here.\n"
+    "  * a machine's scheduler and queues are its RECORD's: `{probe}` ON that "
+    "machine -- with --name and the name you prep it by when it is not this "
+    "one, and the file it writes copied into environments/ here.\n"
     "(docs/configuration.md § 4; docs/execution/architecture.md § 5.2)")
 
 #: The section is named for what it holds -- how a shell on THIS machine
@@ -694,7 +695,9 @@ def _read_scheduler_retired(raw: Mapping[str, Any]):
     """``scheduler`` is refused by name (:data:`_SCHEDULER_RETIRED`)."""
     if raw.get("scheduler") is None:
         return None
-    raise RuntimeConfigError(_SCHEDULER_RETIRED.format(path=CONFIG_FILENAME))
+    from .scheduler.record import probe_command
+    raise RuntimeConfigError(_SCHEDULER_RETIRED.format(
+        path=CONFIG_FILENAME, probe=probe_command()))
 
 
 _ENV_INIT_KEYS = ("activation", "preamble")

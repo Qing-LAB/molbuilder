@@ -163,8 +163,9 @@ def resolve_target(base_dir, target: Optional[str] = None) -> Path:
 
     Returns the path to ``environment.json``.
     """
-    from ..scheduler import FILENAME, machine_for, write_environment
-    out = Path(base_dir) / FILENAME
+    from ..scheduler import machine_for, write_environment
+    from ..scheduler.record import calculation_record
+    out = calculation_record(base_dir)
     if out.is_file():
         return out
     # `machine_for()` WITHOUT a bundle: the calculation has no record yet (we
@@ -3158,7 +3159,8 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                 allocation or Resources(), task.allocation)),
             engine=task.engine, shape=(kind == "run"), stage=stage,
             header=bool(emit_sbatch and _rec.scheduler == "slurm"),
-            queues=[d.name for d in (_rec.domains or ())])
+            queues=[d.name for d in (_rec.domains or ())],
+            base=base, target=target)
         if why:
             raise PrepError(why)
 
