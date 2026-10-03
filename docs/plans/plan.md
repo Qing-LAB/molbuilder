@@ -263,32 +263,49 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | M5 step 3 | its milestone review | every finding fixed `325cb1d4`; its three questions were Q2c 1–3 |
 | Q2c + W54 | their review — a fresh agent over `e1d88b22..d470bff2` (31 commits), the full code text | **fixed 2026-10-02** — `envs init-config` says what its queue probe could not measure, as `jobset probe` does (pinned for both writers); the re-probe remedy for a calculation's own copy says where a named record's file goes; T29's rows give back what the retired tests held — `--set` and `--scheduler` mark their facts `flag` (M-1), an `env_init` corrected by hand survives an unanswered probe and `--yes` takes `molbuilder.json`'s copy, the stamp follows the probe (M-6) — through two runner keys, `record_declared` and `record_stamped`; six mutations, each red. Stale text fixed in five documents, five code comments and seven test files; two fixtures moved to the doors; four leftover home directories gone; this ledger's Q2c, A1.20 and TR6 rows brought up to date. **Dropped:** two providers of one kind sharing one secret file — only a hand-written config makes two (`auth-setup` writes one of each kind) |
 
-**Your word, five questions** *(asked 2026-10-02; the fifth found while
-answering the first four)*:
+**Your word, five questions** *(asked 2026-10-02, re-asked in plain words the
+same day with the options below; the fifth found while answering the first
+four)*:
 
-- **R3.** A record names no machine, so "is this snapshot this machine's?" can
-  only be asked by comparing whole records — which is what `--target sol`
-  does. (a) Ask it the same way for `this`: a re-probe of this machine then
-  makes the next prep of an already-prepped calculation refuse until its
-  snapshot is deleted, and the tab sends `this` on every prep once picked.
-  (b) The probe writes the machine's name into the record (`--name sol` →
-  `sol`, this machine's → its host name), and a snapshot is compared by
-  name: Sol's snapshot is refused for `this`, a re-probe is not.
-- **R14.** M-5 says `source: flag` admits a declared fact; M-6 says a kept
-  value's `source` follows the new probe. Nothing reads `source`.
-- **T25.** M-2 says an undetected field is `null`, never omitted; the record
-  omits `env_init`, `conda_envs` and `env_arch` when empty.
-- **T30.** "With nothing to copy, the record keeps its own `env_init`" is
-  stated only in code (`jobset/_cli.py`) and pinned by a row: state it in
-  `configuration.md` § 4, or retire the row.
-- **The I–V current of an unpolarized junction.** TBtrans prints its current
-  per spin channel (its source: *"no spin degeneracy"*, `m_tbt_save.F90`),
-  so an unpolarized run's printed figure is half the physical current — while
-  the conductance column is in G₀ = 2e²/h (`engines/transport.md`'s opening).
-  The record keeps the current as *"TBtrans's own printed integral, parsed,
-  never recomputed"* (`job-contracts.md` § 6.1). Proposed: the total
-  (×2 unpolarized, the channels' sum polarized), the printed figure kept
-  beside it, the factor stated. K21 waits on it — both change that column.
+1. **R3 — "this machine" is never checked against a calculation's copy.** A
+   calculation copied Sol's record at its first prep; a later prep with
+   `--target this` (what the tab sends once picked) silently uses Sol's copy.
+   `--target sol` is checked, but against the whole record, the probe's stamp
+   included (`machine_for`: `to_dict() !=`), so a mere re-probe of Sol refuses
+   every calculation prepped for it. (a) Check `this` the same way — every
+   re-probe here then refuses every prepped calculation's next stage. (b) A
+   machine name in each record, compared by name — this machine's own record
+   needs one found unaided (its host name), and Sol's own record would not be
+   named `sol`. (c) Compare what the record says about the machine, leaving
+   out when and how it was probed (`detected_at`, `source`, `tool`), for `this`
+   and named targets alike — a re-probe that finds the same machine refuses
+   nothing; one that finds a change (an environment, a queue) asks for the
+   copy to be deleted. **Proposed (c).**
+2. **R14 — a kept declared value loses its `flag`.** M-5: `source: flag` admits
+   a declared fact; M-6: `source` follows the new probe, so after No keeps a
+   `--set` value the note no longer says `flag`. Nothing reads `source`. (a)
+   Keep `flag` when a declared value is kept. (b) The note is the latest
+   probe's; M-5 reworded. (c) Remove the note. **Proposed (a).**
+3. **T25 — `null` or left out.** M-2: an undetected field is `null`, never
+   omitted; `to_dict` omits `env_init`, `conda_envs` and `env_arch` when empty
+   (the reader takes both alike). (a) Write `null`. (b) Change M-2.
+   **Proposed (a).**
+4. **T30 — "with nothing to copy, the record keeps its own `env_init`".** Code
+   only (`jobset/_cli.py`, `carried`), pinned by a `launch_values.toml` row; it
+   arises only when `molbuilder.json` has no `env_init`, which `envs
+   init-config` never leaves (`seed_machine_config` adds one). (a) State it in
+   `configuration.md` § 4. (b) Drop it: the record's `env_init` is always the
+   copy (*"simply a copy"*), and with none to copy the difference is asked
+   like any other. **Proposed (b).**
+5. **The I–V current of an unpolarized junction.** TBtrans prints its current
+   per spin channel (*"no spin degeneracy"*, `m_tbt_save.F90`: I = (e/h)∫T),
+   so an unpolarized run's figure is half the physical current — while the
+   conductance column is in G₀ = 2e²/h (`engines/transport.md`'s opening).
+   The record keeps the printed figure, *"parsed, never recomputed"*
+   (`job-contracts.md` § 6.1). (a) The total — ×2 unpolarized, the channels'
+   sum polarized — with the printed figure beside it and the factor stated.
+   (b) The printed figure, labelled per spin channel. **Proposed (a).** K21
+   waits on it — both change that column.
 
 ### Unscheduled — open work no milestone carries *(listed 2026-09-29)*
 
