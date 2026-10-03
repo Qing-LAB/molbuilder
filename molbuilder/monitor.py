@@ -1268,6 +1268,21 @@ def is_route_segment(route) -> bool:
     return bool(isinstance(route, str) and _ROUTE_RE.fullmatch(route))
 
 
+#: A run-report user id: it becomes a log FILENAME on the listener, so it is
+#: what is safe as one -- no path separator, nothing a shell reads.
+_USER_RE = re.compile(r"^[A-Za-z0-9._@+-]{1,128}$")
+
+
+def is_notify_user(user) -> bool:
+    """Is this a usable run-report user id?  One home for the rule, asked at
+    both ends: when a key is issued (`auth_setup.issue_notify_key` -- a key
+    that authenticates and then cannot be recorded is worse than none) and
+    when a report arrives (`web/blueprints/notify.py`, which writes the log
+    file it names).  The pattern stood in both modules until 2026-10-02
+    (W54 C18)."""
+    return bool(isinstance(user, str) and _USER_RE.fullmatch(user))
+
+
 #: What molbuilder calls itself on the wire.  **Not decoration**: Discord's
 #: edge answers a default ``Python-urllib/3.x`` with ``403`` and Cloudflare
 #: code 1010 -- before the request reaches Discord, so a live webhook and a

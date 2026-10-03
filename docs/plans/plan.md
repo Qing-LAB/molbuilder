@@ -199,16 +199,16 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | C6 | the Google secret's home had two answers | Q2c 5, `749716f4` |
 | C7 | `oauth.py` worked out the secret's path itself | Q2c 5, `749716f4` |
 | C8 | two mode checks, two rules, two sentences | Q2c 8, `615858f6` |
-| C9 | `placement`'s `*` row polices operator-named files in `secrets/`; its README says `chmod 600 secrets/*` | **fixed** — the row is the README's (each fixed home has its own); the README says a file you name is yours, and points at `envs doctor` |
+| C9 | `placement`'s `*` row polices operator-named files in `secrets/`; its README says `chmod 600 secrets/*` | **fixed `b31f2068`** — the row is the README's (each fixed home has its own); the README says a file you name is yours, and points at `envs doctor` |
 | C10 | `config_provenance` missed the error that happens (the card vanished with a named record) | fixed `92e84cc8` |
 | C11 | the registry did not mark retired rows | fixed `7dd8940f` |
 | C12 | a misplaced-credential warning said twice | fixed `92e84cc8` |
-| C13 | README seeding written in place | § 2.3's row and `--help` fixed `0a7ea0e4`; the four docstrings **fixed** |
+| C13 | README seeding written in place | § 2.3's row and `--help` fixed `0a7ea0e4`; the four docstrings **fixed `b31f2068`** |
 | C14 | multi-scope config leftovers taught | fixed `0a7ea0e4` |
 | C15 | retired `scheduler` / `script_generation` leftovers in code | fixed `0a7ea0e4` |
 | C16 | texts a person reads stating false facts | fixed `0a7ea0e4` |
-| C17 | getters in two shapes; `create_app(config=)` neither validates nor isolates | **fixed** — a given config is `_normalise`d; `create_app`'s docstring and `serve --no-auth`'s comment say what comes from it; `test_rate_limit`'s fixture is a config a server starts on; `get_launch()` → `get_launch_mode()`, the mode itself |
-| C18 | one notify-user rule written as two regexes | **to do** — one predicate, both callers ask it |
+| C17 | getters in two shapes; `create_app(config=)` neither validates nor isolates | **fixed `90ff8120`** — a given config is `_normalise`d; `create_app`'s docstring and `serve --no-auth`'s comment say what comes from it; `test_rate_limit`'s fixture is a config a server starts on; `get_launch()` → `get_launch_mode()`, the mode itself |
+| C18 | one notify-user rule written as two regexes | **fixed** — `monitor.is_notify_user`, beside `is_route_segment`; the issuer and the listener ask it |
 | C19 | `molbuilder.json` parsed three times, three error policies | **to do** — one `_load_raw(path)` for `read_config`, `_raw_file`, `write_config_scope` |
 | C20 | constants spelled again outside their owner | partly fixed `7dd8940f`; **to do** — `"via": "config-dir"` (a constant now), a literal `"molbuilder.json: paths.…"`, three `0o600` literals |
 | C21 | redundant validation and normalisation | **to do** — `admin.install_admins` re-normalises; `auth-setup` imports the private `_validate_provider` and writes Google's secret before either check; `"common"` twice |

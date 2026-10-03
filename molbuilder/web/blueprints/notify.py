@@ -76,7 +76,6 @@ import hmac
 import json
 import logging
 import logging.handlers
-import re
 import time
 from collections import deque
 from typing import Any, Dict, NoReturn, Optional
@@ -116,11 +115,11 @@ _FIELDS = ("run", "job", "array", "host", "sent_at",
 LOG_BYTES = 1 * 1024 * 1024
 LOG_KEEP = 5
 
-#: A user id becomes a FILENAME, so it is constrained to what is safe as
-#: one.  The ids come from the key file, which is the operator's own --
-#: but a path separator in one would write outside the log directory, and
-#: "the operator would not do that" is not a mechanism.
-_SAFE_USER = re.compile(r"^[A-Za-z0-9._@+-]{1,128}$")
+# A user id becomes a FILENAME, so it is constrained to what is safe as one
+# -- `monitor.is_notify_user`, the rule's one home, which the key issuer asks
+# too.  The ids come from the key file, which is the operator's own -- but a
+# path separator in one would write outside the log directory, and "the
+# operator would not do that" is not a mechanism.
 
 #: A VOLUME CAP, per key, on reports that pass every gate (user,
 #: 2026-08-27: *we should have a rate-limit on the notify port too*).
@@ -335,7 +334,8 @@ def api_notify(route: str):
 
     keys = read_keys()
     user = _resolve_user(sig, ts, body, keys)
-    if user is None or not _SAFE_USER.fullmatch(user):
+    from ...monitor import is_notify_user
+    if user is None or not is_notify_user(user):
         # NOT marked as an auth challenge: see the module docstring.  A bad
         # signature is a probe and the limiter should hear about it.
         _deny()

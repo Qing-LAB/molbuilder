@@ -37,7 +37,6 @@ Privacy contract:
 """
 from __future__ import annotations
 
-import re
 import secrets
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -126,13 +125,6 @@ def write_secret_file(path: Path, contents: str) -> None:
     write_bytes(path, contents.encode("utf-8"), mode=0o600)
 
 
-#: A user id, as the LISTENER will accept it.  It becomes a log filename on
-#: the server, so it is limited to what `notify.py` enforces when it writes.
-#: Refusing at issue time is cheaper than a key that authenticates and then
-#: cannot be recorded.
-NOTIFY_USER_RE = re.compile(r"^[A-Za-z0-9._@+-]{1,128}$")
-
-
 class NotifyKeyError(ValueError):
     """A key could not be issued, with a reason a person can act on."""
 
@@ -160,9 +152,12 @@ def issue_notify_key(user: str, *,
     the file in a form anyone can use, and that is deliberate
     (`this-machine.md` § 2).
     """
-    from .monitor import (is_route_segment, notify_keys_document,
-                          notify_keys_path, read_notify_keys)
-    if not NOTIFY_USER_RE.fullmatch(user or ""):
+    # THE LISTENER'S RULE, asked of its one home: refusing at issue time is
+    # cheaper than a key that authenticates and then cannot be recorded.
+    from .monitor import (is_notify_user, is_route_segment,
+                          notify_keys_document, notify_keys_path,
+                          read_notify_keys)
+    if not is_notify_user(user):
         raise NotifyKeyError(
             f"{user!r} is not usable as a user id here. It becomes a log "
             f"FILENAME on the server, so it is limited to letters, digits "
