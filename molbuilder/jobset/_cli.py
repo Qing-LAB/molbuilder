@@ -1839,9 +1839,26 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             _gpus = (max((_gres_count(j.resources.gres or "")
                           for j in launching), default=0) or None
                      if _gpu else None)
-            click.echo(queue_table(
-                _rows, Ask(time_s=time_s, mem_gb=parse_mem_gb(mem)),
-                cores=_cores, gpus=_gpus))
+            # ...and the WALL AND MEMORY the door admits: what launch
+            # states, else what prep baked (`submit._sbatch_request`) -- the
+            # flags alone showed a queue as fitting that the door then
+            # refused (W55 D7).  The most any job being sent asks.
+            from ..scheduler.quantities import parse_walltime
+
+            def _most(read, field):
+                got = []
+                for j in launching:
+                    v = getattr(j.resources, field, None)
+                    try:
+                        got.append(read(str(v)) if v else None)
+                    except ValueError:        # the door refuses it, by name
+                        got.append(None)
+                return max((g for g in got if g is not None), default=None)
+            _wall = (time_s if time_s is not None
+                     else _most(parse_walltime, "time"))
+            _mem = parse_mem_gb(mem) if mem else _most(parse_mem_gb, "mem")
+            click.echo(queue_table(_rows, Ask(time_s=_wall, mem_gb=_mem),
+                                   cores=_cores, gpus=_gpus))
             raise click.ClickException(
                 "no --domain, so no queue was chosen.  Name one from the "
                 "list above with `--domain` -- a queue named in the "
