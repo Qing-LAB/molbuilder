@@ -567,6 +567,18 @@ def _send(jobset: JobSet, base: Path, p: _Plan, *, mode: str) -> List[JobResult]
         out.append(JobResult(p.job.name, [], p.note()))
     where, basename = launch_record_at(jobset.kind, p.job, p.container,
                                        run if p.has_attempt else None)
+    if p.again:
+        # A FLAT STAGE LAUNCHED AGAIN continues from its own latest run,
+        # where its files are (`job-system.md` § 5.0, row 7), and its record
+        # says so -- as the hierarchy's next attempt names its own.  The
+        # marker prep left names what the stage's FIRST launch continued
+        # from, the stage before it, and was recorded again (W55 D5).
+        from ..runfiles import latest_run, run_name
+        from .materialize import continued_from_marker
+        n = latest_run(where, basename)
+        if n is not None:
+            continued_from_marker(where, basename).write_text(
+                run_name(basename, None, n) + "\n", encoding="utf-8")
     domain = getattr(getattr(p.placement, "domain", None), "name", None)
     if mode == "direct":
         # The launch-door claim rides the child ENV here: inheritance

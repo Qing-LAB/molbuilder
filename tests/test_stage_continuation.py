@@ -199,10 +199,13 @@ def test_a_flat_stage_records_the_run_it_continued_from(tmp_path,
     2026-10-01): coarse sent and finished in the one folder, medium prepped
     -- continuing from it -- and sent; medium's own launch record names
     coarse's run by what every file of it carries, `H2_01_coarse-run0`,
-    which is what the Run panel reads.
+    which is what the Run panel reads.  Finished and launched again, medium
+    continues from its own latest run, and its record names that one
+    (`job-system.md` § 5.0, row 7).
 
-    MUTATION THIS MUST FAIL AGAINST: prep leaving no record of the run on
-    the flat layout (the launch record without `continued_from`)."""
+    MUTATIONS THIS MUST FAIL AGAINST: prep leaving no record of the run on
+    the flat layout (the launch record without `continued_from`); a flat
+    stage launched again recording the stage before it (W55 D5)."""
     from molbuilder.jobset.materialize import read_run_launch
     from molbuilder.scheduler import Domain
     from support.road import a_queue_that_answers
@@ -228,6 +231,13 @@ def test_a_flat_stage_records_the_run_it_continued_from(tmp_path,
     assert r.exit_code == 0, r.output
     record = read_run_launch(bundle, basename="H2_02_medium")
     assert record["continued_from"] == "H2_01_coarse-run0", record
+
+    a_finished_run(bundle, stem="H2_02_medium")
+    r = _jobset("launch", "run", "medium", "--bundle", bundle, "--mode",
+                "submit", "--domain", "htc", "--yes")
+    assert r.exit_code == 0, r.output
+    record = read_run_launch(bundle, basename="H2_02_medium")
+    assert record["continued_from"] == "H2_02_medium-run0", record
 
 
 def test_a_linked_stage_says_its_input_is_preps_own(tmp_path, monkeypatch):
