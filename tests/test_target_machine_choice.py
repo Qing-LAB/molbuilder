@@ -45,8 +45,12 @@ def machines(tmp_path, monkeypatch):
     """A home with named target records, and a bundle to prep."""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    cfg = tmp_path / "home" / ".config" / "molbuilder"
-    (cfg / "environments").mkdir(parents=True)
+    # THE DOORS, asked after the root is set -- never the path spelled here
+    # (`configuration.md` § 3.1; W54 T28).
+    from molbuilder.config_dir import ensure_private_dir
+    from molbuilder.scheduler import (environments_dir, machine_scope_path,
+                                      named_environment_path)
+    ensure_private_dir(environments_dir())
 
     tree = tmp_path / "projects"
     (tree / "P" / "structure").mkdir(parents=True)
@@ -55,18 +59,18 @@ def machines(tmp_path, monkeypatch):
     monkeypatch.setenv("MOLBUILDER_PROJECTS", str(tree))
 
     def _write(name: str, body=None, *, scheduler="slurm"):
-        p = cfg / "environments" / f"{name}.json"
+        p = named_environment_path(name)
         p.write_text(body if body is not None
                      else json.dumps({**_REC, "scheduler": scheduler}))
         return p
 
     def _this_machine(scheduler="workstation"):
-        (cfg / "environment.json").write_text(
+        machine_scope_path().write_text(
             json.dumps({**_REC, "scheduler": scheduler}))
 
     return type("M", (), {"write": staticmethod(_write),
                           "this_machine": staticmethod(_this_machine),
-                          "tree": tree, "cfg": cfg})
+                          "tree": tree})
 
 
 def _prep(bundle: str, *extra):
@@ -320,7 +324,8 @@ class TestTheCasesReadingFoundThatPokingDidNot:
 
         # The machine scope goes away; only the calculation's own record is
         # left, which is exactly what a carried bundle has.
-        (machines.cfg / "environment.json").unlink()
+        from molbuilder.scheduler import machine_scope_path
+        machine_scope_path().unlink()
 
         from click.testing import CliRunner
         from molbuilder.jobset._cli import jobset_group

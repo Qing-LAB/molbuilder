@@ -1043,16 +1043,21 @@ def write_machine_record(at=None, **over):
     from molbuilder.scheduler import (Environment, Topology,
                                       machine_scope_path, write_environment)
     # HOW A SHELL ENTERS AN ENVIRONMENT HERE, as a probed record carries it
-    # -- the probe's copy of `env_init` (`configuration.md` § 4): `conda activate`, behind a preamble that does nothing.  A
-    # test that runs a real engine passes its own -- the real conda hook --
-    # and there is no second home left for the two to disagree in.
+    # -- the probe's copy of `env_init` (`configuration.md` § 4): `conda
+    # activate`, behind a preamble that does nothing.  A test that runs a
+    # real engine passes its own -- the real conda hook.
     fields = dict(scheduler="",          # a workstation: no queue system
                   topology=Topology(sockets=2, cores_per_socket=8),
                   env_init={"activation": "conda activate",
                                      "preamble": "true"})
     fields.update(over)
-    out = (Path(at) / "environment.json") if at else Path(machine_scope_path())
-    out.parent.mkdir(parents=True, exist_ok=True)
+    # THE NAME AND THE CREATOR FROM THEIR OWNERS (`configuration.md` § 3.1;
+    # W54 T28) -- `at` is another process's config directory, so the file is
+    # that directory joined with the record's own filename.
+    from molbuilder.config_dir import ensure_private_dir
+    from molbuilder.scheduler.record import FILENAME
+    out = (Path(at) / FILENAME) if at else Path(machine_scope_path())
+    ensure_private_dir(out.parent)
     return write_environment(Environment(**fields), out)
 
 

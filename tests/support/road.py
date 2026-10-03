@@ -294,7 +294,7 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
     and the name `--target` takes for it."""
     from conftest import write_machine_record
     from molbuilder.scheduler import (Domain, Environment, Topology,
-                                      machine_scope_path, write_environment)
+                                      write_environment)
     if "probe" in case:
         _write_machine_config(case)
         if "record" in case:
@@ -315,14 +315,15 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
     write_machine_record(**record)          # this machine: no queue at all
     if where == "workstation":
         return "this"
-    named = Path(machine_scope_path()).parent / "environments"
-    named.mkdir(parents=True, exist_ok=True)
+    from molbuilder.config_dir import ensure_private_dir
+    from molbuilder.scheduler import environments_dir, named_environment_path
+    ensure_private_dir(environments_dir())
     fields = dict(scheduler="slurm", domains=queues,
                   topology=Topology(sockets=2, cores_per_socket=24),
                   env_init={"activation": "conda activate",
                             "preamble": "true"})
     fields.update(case.get("named_record", {}))
-    write_environment(Environment(**fields), named / "sol.json")
+    write_environment(Environment(**fields), named_environment_path("sol"))
     return "sol"
 
 
@@ -384,8 +385,9 @@ def _write_machine_config(case) -> None:
     if "machine_config" in case:
         import json
         from molbuilder.runtime_config import machine_config_path
+        from molbuilder.config_dir import ensure_private_dir
         mine = machine_config_path()
-        mine.parent.mkdir(parents=True, exist_ok=True)
+        ensure_private_dir(mine.parent)
         mine.write_text(json.dumps(case["machine_config"]))
 
 

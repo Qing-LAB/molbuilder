@@ -223,15 +223,16 @@ def test_a_column_the_reader_does_not_understand_is_SAID(tmp_path, monkeypatch):
     from molbuilder.scheduler.record import (Domain, Environment, Topology,
                                              known_machines)
 
-    cfg = tmp_path / "molbuilder"
-    (cfg / "environments").mkdir(parents=True)
+    from molbuilder.config_dir import ensure_private_dir
+    from molbuilder.scheduler import environments_dir, named_environment_path
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "molbuilder"))
+    ensure_private_dir(environments_dir())
     env = Environment(
         scheduler="slurm", topology=Topology(sockets=2, cores_per_socket=24),
         domains=[Domain.from_row({"name": "gpu", "partition": "gpu",
                                   "qos": "public",
                                   "max_tme": "1-00:00:00"})])
-    (cfg / "environments" / "sol.json").write_text(env.to_json())
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cfg))
+    named_environment_path("sol").write_text(env.to_json())
 
     sol = next(m for m in known_machines() if m["name"] == "sol")
     assert "max_tme" in sol["summary"], (
@@ -248,15 +249,16 @@ def test_a_record_the_reader_fully_understands_says_nothing_extra(tmp_path,
     from molbuilder.scheduler.record import (Domain, Environment, Topology,
                                              known_machines)
 
-    cfg = tmp_path / "molbuilder"
-    (cfg / "environments").mkdir(parents=True)
+    from molbuilder.config_dir import ensure_private_dir
+    from molbuilder.scheduler import environments_dir, named_environment_path
+    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "molbuilder"))
+    ensure_private_dir(environments_dir())
     env = Environment(
         scheduler="slurm", topology=Topology(sockets=2, cores_per_socket=24),
         domains=[Domain.from_row({"name": "gpu", "partition": "gpu",
                                   "qos": "public",
                                   "max_time": "1-00:00:00"})])
-    (cfg / "environments" / "sol.json").write_text(env.to_json())
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(cfg))
+    named_environment_path("sol").write_text(env.to_json())
 
     sol = next(m for m in known_machines() if m["name"] == "sol")
     assert "??" not in sol["summary"], (

@@ -250,13 +250,13 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | T14 | test docstrings teaching a cwd or cascade read | **fixed `876f96e4`** — nine files say what is read; their cwd changes stay as plain isolation (a relative write must not land in the checkout) |
 | T15 | per-file isolation duplicating conftest's | **own unit** — `_isolated_machine_scope` first, then about 48 files' blocks |
 | T16 | "a cwd molbuilder.json is not read" asserted five times | partly fixed `6401abfb`; **fixed `54156262`** the rest — said once, by `test_and_its_contents_do_not_leak_in`, with a section a server starts on |
-| T19 | tests that monkeypatch a door to prove a caller asks it | **fixed** — the two retired (review holds that class); the remedy test says why it stays API-level |
+| T19 | tests that monkeypatch a door to prove a caller asks it | **fixed `02f67712`** — the two retired (review holds that class); the remedy test says why it stays API-level |
 | T21 | probable subsumptions | **to do, a mutant first** (`tools/verify_subsumption.py`) |
-| T22 | `_the_gate()` pins a refusal the road never gives | **fixed** — the baseline is the road's own fact (a fresh machine has no record); the call-site test retired; a docstring's unasserted promise trimmed |
+| T22 | `_the_gate()` pins a refusal the road never gives | **fixed `02f67712`** — the baseline is the road's own fact (a fresh machine has no record); the call-site test retired; a docstring's unasserted promise trimmed |
 | T24 | the mode warning asserted twice | Q2c 8, `615858f6` |
 | T25 | `env_arch` is omitted when unknown; M-2 says null, never omitted | **your word** — below |
-| T27 | four tests asserting strings no code has | **fixed** — retired, with the estimator test's helper |
-| T28 | hand-built records and paths where a door exists | partly real; **to do** — four sites to the doors; two bare `mkdir`s to `ensure_private_dir` |
+| T27 | four tests asserting strings no code has | **fixed `02f67712`** — retired, with the estimator test's helper |
+| T28 | hand-built records and paths where a door exists | **fixed** — the fixtures ask `environments_dir`, `named_environment_path`, `machine_scope_path` and the record's `FILENAME`, and create through `ensure_private_dir` |
 | T29 | five tests drive the private `_probe_consent_merge` | **to do** — `probe` road rows, which also take over what Q2c 7's three retired tests exercised |
 | T30 | table hygiene | partly fixed `6401abfb`; **your word** — below |
 | S12 | the form's `engine_key` test covers optimization only | **to do** — over engine × calculation (20 transport-only, 13 vibration-only items unchecked) |

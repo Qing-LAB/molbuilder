@@ -36,13 +36,15 @@ def home(tmp_path, monkeypatch):
     """A HOME with no machine records at all."""
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    d = tmp_path / ".config" / "molbuilder" / "environments"
-    d.mkdir(parents=True)
+    from molbuilder.config_dir import ensure_private_dir
+    from molbuilder.scheduler import environments_dir
+    ensure_private_dir(environments_dir())
     return tmp_path
 
 
 def _write_record(home, name, *, valid=True):
-    p = (home / ".config" / "molbuilder" / "environments" / f"{name}.json")
+    from molbuilder.scheduler import named_environment_path
+    p = named_environment_path(name)
     if not valid:
         p.write_text("{ truncated")
         return p
@@ -76,7 +78,8 @@ class TestTheListingAnswersTheCopyQuestion:
         assert r.exit_code == 0, r.output
         assert "sol" in r.output
         # ...and the path is shown, because that path IS the copy destination
-        assert str(home / ".config" / "molbuilder" / "environments") in r.output
+        from molbuilder.scheduler import environments_dir
+        assert str(environments_dir()) in r.output
 
     def test_an_unreadable_record_is_shown_and_marked(self, home):
         """Not hidden.  The user wrote it; hiding it leaves them waiting for
