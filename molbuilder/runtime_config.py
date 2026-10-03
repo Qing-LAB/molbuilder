@@ -254,32 +254,30 @@ def _require_str_list(entry: Mapping[str, Any], key: str, idx: int,
     return list(val)
 
 
-#: What a literal secret in `molbuilder.json` is told (`ops/deployment.md`
-#: § 5: the file carries paths only, never a secret's bytes).
-_LITERAL_SECRET_REFUSED = (
-    "{path}: auth.providers[{idx}]: 'client_secret' is refused -- "
-    "molbuilder.json carries paths only, never a secret's bytes "
-    "(docs/ops/deployment.md § 5).  Put the secret in a 0600 file under the "
-    "config directory's secrets/ and name it with 'client_secret_file'.")
+#: What a provider entry carrying its secret, or a path to it, is told
+#: (`configuration.md` § 3.1; user, 2026-10-02: "no secret in
+#: molbuilder.json except the cert files").
+_NAMED_SECRET_REFUSED = (
+    "{path}: auth.providers[{idx}]: '{key}' is refused -- molbuilder.json "
+    "names no secret but the cert files (docs/configuration.md § 3.1).  "
+    "The {kind} client secret's home is {home}: write it there, mode 0600 "
+    "(`molbuilder auth-setup` does it for Google), and delete '{key}'.")
 
 
-def _validate_secret_file(entry: Mapping[str, Any], idx: int) -> None:
-    """The provider's secret is a FILE the entry names -- never the bytes.
+def _refuse_a_named_secret(entry: Mapping[str, Any], idx: int) -> None:
+    """The entry names no secret -- neither its bytes nor its file.
 
-    A literal ``client_secret`` was accepted beside the file until 2026-10-02,
-    which let `molbuilder.json` hold a secret.  Nothing molbuilder writes
-    produces one (`auth_setup.py` writes the path), so a literal is a hand
-    edit, and it is refused by name, saying where the secret goes."""
-    if "client_secret" in entry:
-        raise RuntimeConfigError(_LITERAL_SECRET_REFUSED.format(
-            path=CONFIG_FILENAME, idx=idx))
-    named = entry.get("client_secret_file")
-    if not isinstance(named, str) or not named:
-        raise RuntimeConfigError(
-            f"{CONFIG_FILENAME}: auth.providers[{idx}].client_secret_file is "
-            f"required: the path of a 0600 file holding the provider's "
-            f"client secret (`molbuilder auth-setup` writes one); got "
-            f"{named!r}.")
+    The secret's home is its kind's, :func:`config_dir.client_secret`.  The
+    bytes (``client_secret``) and the path (``client_secret_file``) are both
+    refused by name since 2026-10-02, when the kind took over naming the
+    file, each saying where the secret goes."""
+    from .config_dir import client_secret, relative_home
+    for key in ("client_secret", "client_secret_file"):
+        if key in entry:
+            kind = entry["kind"]
+            raise RuntimeConfigError(_NAMED_SECRET_REFUSED.format(
+                path=CONFIG_FILENAME, idx=idx, key=key, kind=kind,
+                home=relative_home(lambda: client_secret(kind))))
 
 
 def provider_client_secret(entry: Mapping[str, Any]) -> str:
@@ -294,49 +292,45 @@ def provider_client_secret(entry: Mapping[str, Any]) -> str:
     file, strip it and decide what an empty one meant: five decisions about
     what a secret IS, in a module about OAuth.  Worse, it had to know WHICH
     shape the operator chose.  Both belong here, because this module owns the
-    provider entry's schema -- `_validate_secret_file` above already enforces
-    that the entry names a file, so this reads what that guaranteed.
+    provider entry's schema.
 
-    **The operator still names the file.**  Sites and providers differ, so
-    `client_secret_file` stays theirs to choose; what is concealed is that
-    anyone downstream ever learns the name.  Adding a third shape later -- an
-    env var, a keyring -- changes this function and nothing that calls it.
+    **The kind names the file** *(user, 2026-10-02)*: the secret is read from
+    :func:`config_dir.client_secret`, and the entry names no path
+    (`_refuse_a_named_secret`).  What is concealed is that anyone downstream
+    ever learns where it is.  Adding another source later -- an env var, a
+    keyring -- changes this function and nothing that calls it.
 
     Raises :class:`RuntimeConfigError` naming the provider, because every
     failure here is a configuration mistake and the id is what makes it
     actionable.  The message never contains the secret.
     """
+    from .config_dir import client_secret, relative_home
     pid = entry.get("id", "?")
-    named = entry.get("client_secret_file")
-    if isinstance(named, str) and named:
-        path = Path(named).expanduser()
-        try:
-            text = path.read_text().strip()
-        except OSError as exc:
-            raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: auth.providers[id={pid!r}]: "
-                f"client_secret_file could not be read ({exc.strerror}).  "
-                f"Check it exists and is readable by the server."
-            ) from exc
-        if not text:
-            raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: auth.providers[id={pid!r}]: "
-                f"client_secret_file is empty (or only whitespace).  Write "
-                f"the provider's client secret into it and restart."
-            )
-        return text
-
-    raise RuntimeConfigError(
-        f"{CONFIG_FILENAME}: auth.providers[id={pid!r}]: "
-        f"'client_secret_file' is not set (_validate_secret_file should have "
-        f"caught this)."
-    )
+    kind = entry.get("kind", "")
+    home = client_secret(kind)
+    where = relative_home(lambda: home)
+    try:
+        text = home.read_text().strip()
+    except OSError as exc:
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: auth.providers[id={pid!r}]: the {kind} "
+            f"client secret, {where}, could not be read ({exc.strerror}).  "
+            f"Write it there, mode 0600 (`molbuilder auth-setup` does it "
+            f"for Google), readable by the server."
+        ) from exc
+    if not text:
+        raise RuntimeConfigError(
+            f"{CONFIG_FILENAME}: auth.providers[id={pid!r}]: the {kind} "
+            f"client secret, {where}, is empty (or only whitespace).  Write "
+            f"the provider's client secret into it and restart."
+        )
+    return text
 
 
 def _validate_oauth_common(entry: Dict[str, Any], idx: int) -> None:
     """Mutate ``entry`` in place: validate OAuth shared fields."""
     _require_str(entry, "client_id", idx)
-    _validate_secret_file(entry, idx)
+    _refuse_a_named_secret(entry, idx)
 
 
 def _validate_google(entry: Dict[str, Any], idx: int) -> Dict[str, Any]:
@@ -437,7 +431,9 @@ def _validate_cas(entry: Dict[str, Any], idx: int) -> Dict[str, Any]:
 
 #: The keys every provider entry holds, whatever its kind.
 _PROVIDER_COMMON_KEYS = ("id", "label", "kind", "allowed_users")
-_OAUTH_KEYS = ("client_id", "client_secret_file")
+#: An OAuth entry names its client, never its secret: that is at
+#: `config_dir.client_secret(kind)`.
+_OAUTH_KEYS = ("client_id",)
 
 #: Every kind molbuilder signs in with: its validator, and the keys its entry
 #: holds beyond the common four (`ops/deployment.md` § 3).  ONE row per kind,
@@ -453,6 +449,13 @@ _PROVIDER_KINDS: Dict[str, Tuple[Any, Tuple[str, ...]]] = {
                                         "ca_certs", "email_attribute",
                                         "email_domain")),
 }
+
+
+#: The kinds that sign in with an OAuth client, and so keep a client secret
+#: at `config_dir.client_secret(kind)` -- read off the table above, never
+#: listed again.
+OAUTH_KINDS = tuple(kind for kind, (_validate, keys) in _PROVIDER_KINDS.items()
+                    if "client_id" in keys)
 
 
 def _validate_provider(entry: Any, idx: int) -> Dict[str, Any]:
@@ -1685,7 +1688,7 @@ def write_config_scope(patch: Mapping[str, Any]) -> Path:
     2026-08-12 -- the documented 'log nothing, overwrite' destroyed
     whatever a hand-edit broke).  Files are written atomically
     (persist.write_bytes) at mode 0600 -- a config file may carry
-    secret-file PATHS, deploy context, or per-cluster setup commands
+    the TLS key's path, deploy context, or per-cluster setup commands
     that aren't meant for casual inspection.  THE ONE WRITER of this
     file: the auth wizard had its own until 2026-09-13.
 

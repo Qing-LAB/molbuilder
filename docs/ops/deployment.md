@@ -357,8 +357,9 @@ ASURITE; add lab members by editing `allowed_users` in
   non-loopback host.
 - Google and ASURITE CAS come through the wizard; other OAuth/OIDC
   providers (GitHub, Microsoft, ORCID) take the same `auth`-section
-  shape, written by hand
-  ([`configuration.md`](?doc=configuration.md)).
+  shape, written by hand, with the secret at
+  `<config dir>/secrets/<kind>_client_secret`
+  ([`configuration.md`](?doc=configuration.md) § 3.1).
 
 ## 4. Security posture
 
@@ -548,10 +549,12 @@ a machine rather than a file you copy over your own config.
 
 ### 5.1 The config directory — secrets live outside the repo
 
-The design rule: **`molbuilder.json` carries *paths only*, never secret
-bytes.** The config file gets copied, backed up, and diffed as you tune a
-deployment — secrets must not travel with it. Every secret lives in
-molbuilder's config directory, and the config references it by path.
+The design rule: **no secret in `molbuilder.json` except the cert files**
+*(user, 2026-10-02)*. The config file gets copied, backed up, and diffed as you
+tune a deployment — secrets must not travel with it, and neither must their
+whereabouts. Every secret molbuilder keeps lives in its config directory's
+`secrets/`, each at a home molbuilder names; the config names only the TLS
+certificate and key, and a CAS server's `ca_certs`.
 
 **That directory is `$MOLBUILDER_CONFIG_DIR`, else `$XDG_CONFIG_HOME/molbuilder`,
 else `~/.config/molbuilder`** (`molbuilder.config_dir.config_dir`,
@@ -590,8 +593,9 @@ mkdir -p -m 700 "$cfg/secrets"
 python -c "import secrets; print(secrets.token_hex(32))" > "$cfg/secrets/secret_key"
 chmod 600 "$cfg/secrets/secret_key"
 
-# One file per OAuth provider (referenced by each provider's
-# "client_secret_file").  Content = exactly the client-secret string
+# One file per OAuth provider KIND, at the name molbuilder reads it from:
+# secrets/<kind>_client_secret -- google, github, microsoft, orcid.  The
+# provider entry names no path.  Content = exactly the client-secret string
 # from that provider's developer console, nothing else:
 printf '%s' 'GOCSPX-…' > "$cfg/secrets/google_client_secret"
 chmod 600 "$cfg/secrets/google_client_secret"
@@ -607,8 +611,8 @@ Notes:
 - The same directory holds `molbuilder.json` itself — its one home: a file in
   the launch directory is not read (`configuration.md` § 2.1a).
   Config and secrets sharing a directory is fine and is what the code does:
-  the rule that protects you is *paths, never literals* — the config may be
-  copied and diffed; the `0600` files beside it may not.
+  the rule that protects you is *no secret in the config* — the config may be
+  copied and diffed; the `0600` files in `secrets/` may not.
 
 ## 6. What's on disk at runtime
 

@@ -538,12 +538,12 @@ tracebacks and responses. The value doors are:
 | credential | door | hands back |
 |---|---|---|
 | session key | `config_dir.read_session_key()` | bytes, or `None` when not yet made |
-| an OAuth client secret | `runtime_config.provider_client_secret(entry)` | the string, read from the file the entry names — `molbuilder.json` carries paths only |
+| an OAuth client secret | `runtime_config.provider_client_secret(entry)` | the string, read from its kind's fixed home, `config_dir.client_secret(kind)` — `molbuilder.json` names no secret |
 | notify channels | `monitor.load_channels()` | the channels, already judged |
 | run-report signing keys | `monitor.read_notify_keys()` | `(route, {user: key})` |
 
 The path resolvers — `config_dir.session_key()`,
-`config_dir.google_client_secret()`, `monitor.default_notify_path()`,
+`config_dir.client_secret(kind)`, `monitor.default_notify_path()`,
 `monitor.notify_keys_path()` (§ 3.1 lists every file's) — survive for
 **management** only: creating the file, auditing its mode, and showing an
 operator their own file. **TLS is the exception**: `get_tls` returns paths
@@ -605,12 +605,11 @@ $MOLBUILDER_CONFIG_DIR, else $XDG_CONFIG_HOME/molbuilder, else ~/.config/molbuil
 └── secrets/               EVERY credential                     0700   config_dir.secrets_dir()
     ├── README                  written by `envs init-config`
     ├── secret_key         the session key            0600   config_dir.session_key()
-    ├── google_client_secret  Google's OAuth secret   0600   config_dir.google_client_secret()
+    ├── <kind>_client_secret  an OAuth provider's secret  0600   config_dir.client_secret(kind)
     ├── notify             run-report channels        0600   monitor.default_notify_path()
     ├── notify_keys        run-report signing keys    0600   monitor.notify_keys_path()
-    └── …                       a TLS key/cert, another provider's client
-                                secret — your names, because your config
-                                names them
+    └── …                       a TLS key/cert, if you keep it here —
+                                your name, because your config names it
 
 $XDG_STATE_HOME/molbuilder, else ~/.local/state/molbuilder
 │                                             config_dir.state_dir()
@@ -669,13 +668,21 @@ where it sits:
 
 | | named by | molbuilder's part | examples |
 |---|---|---|---|
-| **fixed home** | molbuilder, one function each; `molbuilder.json` **cannot** name them | creates them, and polices their mode | `secret_key`, `notify`, `notify_keys`, `google_client_secret` |
-| **operator-named** | you, via a path in `molbuilder.json` | reads the path and hands it on — nothing else | a TLS key, another provider's `client_secret_file` |
+| **fixed home** | molbuilder, one function each; `molbuilder.json` **cannot** name them | creates the ones it writes, and polices the mode of all of them | `secret_key`, `notify`, `notify_keys`, and each OAuth kind's `<kind>_client_secret` (`google_client_secret`, `github_client_secret`, …) |
+| **operator-named** | you, via a path in `molbuilder.json` | reads the path and hands it on — nothing else | the cert files only: `tls.cert` and `tls.key`, a CAS provider's `ca_certs` |
+
+**No secret in `molbuilder.json` except the cert files** *(user, 2026-10-02)*.
+A provider's client secret was operator-named until that day — the entry's
+`client_secret_file` — and the wizard wrote the fixed home's own path into it,
+so the server read whatever the file named while the mode audit looked at the
+fixed home: one credential, two answers, and moving the config directory would
+have split them. Now the kind names the file, `config_dir.client_secret(kind)`
+resolves it, and a `client_secret_file` is refused by name (§ 4).
 
 **molbuilder is not a security manager** *(user, 2026-09-20: "we don't operate
 any TLS files — we just expose this information for any call that needs them.
 File mode or access control is the system's business")*. It polices the mode of
-what it CREATES — the first row, its own logs, and `secrets/` itself. A file you
+what it NAMES — the first row, its own logs, and `secrets/` itself. A file you
 name is yours and the operating system's: molbuilder reads it, passes it on, and
 says nothing about its permissions.
 
@@ -731,7 +738,7 @@ Caveat recorded there too: `runtime_dir()` falls back inside the state root when
 is bounded because a token to a dead server authenticates nothing.
 
 **Nothing builds these paths by hand.** Each is asked of its owner —
-`config_dir.session_key()`, `config_dir.google_client_secret()`,
+`config_dir.session_key()`, `config_dir.client_secret(kind)`,
 `monitor.default_notify_path()`, `monitor.notify_keys_path()`, and
 `config_dir.secrets_dir()` for the directory itself. The fifth credential, the
 notebook token, is the same: `config_dir.jupyter_runtime()` owns its path, and a
@@ -866,7 +873,7 @@ make the same file fail as an unknown key, which tells the person nothing.
 | `execution` | 2026-10-02 | Renamed `launch`. `execution` is the run card in `task.json`, and means only that |
 | `notify_keys_file` · `notify_route` | 2026-08-31 | The key file carries its own route ([`run-reports.md`](?doc=execution/run-reports.md) § 4.3) |
 | `secret_key_file`, at the top level or inside `auth` | 2026-08-31 | The session key has one home, `secrets/secret_key` (§ 2.1e) |
-| `auth.providers[].client_secret` | 2026-10-02 | The secret's bytes never sit here: put it in a `0600` file under `secrets/` and name the file with `client_secret_file` ([`ops/deployment.md`](?doc=ops/deployment.md) § 5) |
+| `auth.providers[].client_secret` · `auth.providers[].client_secret_file` | 2026-10-02 | Neither the secret nor its path sits here: write the secret to its kind's home, `secrets/<kind>_client_secret` (§ 3.1; `molbuilder auth-setup` writes Google's) |
 | `auth.providers[].service_validate_url` | 2026-10-02 | Delete it: python-cas derives the validate endpoint from `login_url`, and nothing ever read this key (accepted and ignored from 2026-09-12) |
 | `rate_limit.admin_emails` | 2026-08-03 | The top-level `admin` section — one list for the block list and the restart ([`ops/access-control.md`](?doc=ops/access-control.md) § 5) |
 | top-level `cert` · `key` | 2026-09-02 | The `tls` section |

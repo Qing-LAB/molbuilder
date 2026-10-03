@@ -71,7 +71,7 @@ line = ["-p cpu"]
 [[case]]
 name = "every preference section, together, reads"
 # (`paths` is left out: it would move the project tree this road runs in.)
-machine_config = { launch = { mode = "submit" }, env_init = { activation = "conda activate" }, envs = { siesta = "molbuilder-siesta" }, checkpoint = { size_limit_bytes = 1000000 }, rate_limit = { enabled = false }, admin = { emails = ["someone@example.edu"] }, tls = { cert = "/srv/cert.pem", key = "/srv/key.pem" }, auth = { providers = [{ id = "google", label = "Google", kind = "google", allowed_users = ["someone@example.edu"], client_id = "x.apps.googleusercontent.com", client_secret_file = "/srv/google.secret" }] } }
+machine_config = { launch = { mode = "submit" }, env_init = { activation = "conda activate" }, envs = { siesta = "molbuilder-siesta" }, checkpoint = { size_limit_bytes = 1000000 }, rate_limit = { enabled = false }, admin = { emails = ["someone@example.edu"] }, tls = { cert = "/srv/cert.pem", key = "/srv/key.pem" }, auth = { providers = [{ id = "google", label = "Google", kind = "google", allowed_users = ["someone@example.edu"], client_id = "x.apps.googleusercontent.com" }] } }
 header = ["#SBATCH -p cpu"]
 
 # ===================================================================== #

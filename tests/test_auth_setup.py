@@ -132,30 +132,22 @@ def test_asu_cas_rejects_empty_asurite():
         _as.build_asu_cas_entry("")
 
 
-def test_google_entry_shape_round_trips_validator(tmp_path):
-    secret_file = tmp_path / "google_secret"
-    secret_file.write_text("dummy")
-    os.chmod(secret_file, 0o600)
+def test_google_entry_shape_round_trips_validator():
     entry = _as.build_google_entry(
         client_id="client-id-123",
-        client_secret_file=secret_file,
         allowed_users=["alice@gmail.com", "bob@asu.edu"],
     )
     _validate_provider(entry, idx=0)
     assert entry["kind"] == "google"
-    assert "client_secret" not in entry, (
-        "secret literal must NOT appear in the entry; only the path"
+    assert "client_secret" not in entry and "client_secret_file" not in entry, (
+        "the entry names no secret and no path to one (configuration.md 3.1)"
     )
-    assert entry["client_secret_file"] == str(secret_file)
     assert entry["allowed_users"] == ["alice@gmail.com", "bob@asu.edu"]
 
 
-def test_google_entry_rejects_empty_allowlist(tmp_path):
+def test_google_entry_rejects_empty_allowlist():
     with pytest.raises(ValueError, match="at least one email"):
-        _as.build_google_entry(
-            client_id="c", client_secret_file=tmp_path / "x",
-            allowed_users=[],
-        )
+        _as.build_google_entry(client_id="c", allowed_users=[])
 
 
 # --------------------------------------------------------------------- #
@@ -391,11 +383,14 @@ def test_cli_secrets_never_appear_in_emitted_json(isolated_home,
     assert sentinel_secret not in rendered, (
         "client_secret leaked into molbuilder.json"
     )
-    # Sanity: the secret IS in the secret file, intact.  ASK THE RESOLVER --
+    # Sanity: the secret IS at its kind's home, intact.  ASK THE RESOLVER --
     # this spelled ".config/molbuilder/google_client_secret" by hand until
     # 2026-09-20 and broke the day every credential moved into `secrets/`.
-    from molbuilder.config_dir import google_client_secret as _google_sk
-    google_sk = _google_sk()
+    from molbuilder.config_dir import client_secret
+    google_sk = client_secret("google")
+    # And the file names no path to it either (configuration.md 3.1, user
+    # 2026-10-02: "no secret in molbuilder.json except the cert files").
+    assert "client_secret_file" not in rendered and str(google_sk) not in rendered
     assert google_sk.read_text() == sentinel_secret
     assert stat.S_IMODE(google_sk.stat().st_mode) == 0o600
 

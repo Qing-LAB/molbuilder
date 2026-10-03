@@ -1,8 +1,8 @@
 """Auth-setup wizard helpers.
 
 Pure functions for building molbuilder.json's ``auth`` block, and the
-one secret writer (`write_secret_file`) for the files that block names by
-path.  The Click-driven CLI wrapper lives in ``molbuilder.cli`` as
+one secret writer (`write_secret_file`) for the secrets that block does not
+name.  The Click-driven CLI wrapper lives in ``molbuilder.cli`` as
 ``cmd_auth_setup``; everything personal-data-handling lives here so
 it's testable without prompting.  The FILE is written by
 `runtime_config.write_config_scope`, the one door for it -- this module
@@ -18,13 +18,14 @@ Privacy contract:
     ``$HOME/.config`` (``MOLBUILDER_CONFIG_DIR`` and ``XDG_CONFIG_HOME``
     both move it, which is how a person keeps secrets off an NFS $HOME).
     Their contents are NEVER printed, NEVER returned through the API, and
-    nothing THIS MODULE writes into molbuilder.json is a secret literal --
-    it emits ``client_secret_file``, a path, every time.
+    nothing THIS MODULE writes into molbuilder.json is a secret or a path to
+    one: Google's secret goes to its fixed home,
+    :func:`molbuilder.config_dir.client_secret`.
 
     It is a property of the file format too, since 2026-10-02:
-    ``runtime_config._validate_secret_file`` refuses a literal
-    ``client_secret`` by name, so ``molbuilder.json`` carries paths only
-    (`ops/deployment.md` § 5).
+    ``runtime_config._refuse_a_named_secret`` refuses ``client_secret`` and
+    ``client_secret_file`` by name (user: "no secret in molbuilder.json
+    except the cert files", `configuration.md` § 3.1).
   * The system user account name -- ``getpass.getuser()`` -- is the
     single source of identity.  No other identifier is hardcoded
     anywhere in molbuilder; the wizard derives the ASU CAS
@@ -32,8 +33,7 @@ Privacy contract:
     ``allowed_users`` entry from an interactive prompt (no assumption
     that the Google account == system user).
   * molbuilder.json itself is written mode 0600 too (by its door): it
-    carries no secret literals, but it carries the secret-file PATHS,
-    which is enough for an attacker with read-only access to those paths.
+    carries no secret, but it carries the TLS key's path.
 """
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ from .config_dir import ensure_private_dir
 # NO PATH HELPERS HERE, and that is the change (I8, 2026-09-13).  Three stood
 # here -- `default_secret_dir()` returning `config_dir()`, `secret_key_path()`
 # returning `config_dir.session_key()`, `google_client_secret_path()`
-# returning `config_dir.google_client_secret()`.  Each was a one-line
+# returning what is now `config_dir.client_secret("google")`.  Each was a one-line
 # pass-through, and each was a SECOND PUBLIC NAME for a door `config_dir`
 # already owns: § 3.1 spelled one and § 2.1e the other for the same file.
 # `default_secret_dir` had no production caller at all, only tests.
@@ -257,7 +257,6 @@ def build_asu_cas_entry(asurite: str,
 
 
 def build_google_entry(client_id: str,
-                        client_secret_file: Path,
                         allowed_users: List[str],
                         *,
                         provider_id: str = "google",
@@ -266,9 +265,8 @@ def build_google_entry(client_id: str,
                         ) -> Dict[str, Any]:
     """Return a validated Google OAuth provider entry.
 
-    ``client_secret_file`` is a Path to a 0600 file the wizard has
-    already written; the secret literal stays out of molbuilder.json
-    (which is the whole point of the file-pointer indirection).
+    It names no secret: the wizard writes the client secret to its fixed
+    home, ``config_dir.client_secret("google")``, where the server reads it.
 
     ``allowed_users`` is the list of Google-account emails that are
     permitted to sign in.  The wizard prompts for these separately
@@ -299,7 +297,6 @@ def build_google_entry(client_id: str,
         "kind":                "google",
         "label":                label,
         "client_id":            client_id,
-        "client_secret_file":   str(client_secret_file),
         "allowed_users":        cleaned_users,
         "hosted_domain":        list(hosted_domain or []),
     }
@@ -314,8 +311,8 @@ def build_auth_block(providers: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Return the ``auth`` block as a dict ready for json.dumps.
 
     The block carries ``providers`` -- a list, in render order on the sign-in
-    page.  No secret literals: ``client_secret_file`` points at an out-of-band
-    file.
+    page.  No secret, and no path to one: each kind's secret is at its fixed
+    home in ``secrets/``.
 
     **It carried ``secret_key_file`` until 2026-08-31**, and writing that key
     is what made the session key configurable.  It now has one home,

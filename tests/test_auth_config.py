@@ -28,8 +28,8 @@ Coverage:
   * unsupported ``kind`` is rejected
   * OAuth kinds (google/github/microsoft/orcid):
       - client_id required
-      - client_secret_file required; a literal client_secret refused by
-        name (molbuilder.json carries paths only)
+      - the entry names no secret: `client_secret` and `client_secret_file`
+        are refused by name, saying the kind's home in `secrets/`
       - kind-specific extras validated (hosted_domain, allowed_organizations,
         tenant_id)
   * CAS kind:
@@ -70,7 +70,6 @@ def _google_entry(**overrides):
         "kind":               "google",
         "allowed_users":      ["user@example.com"],
         "client_id":          "1234.apps.googleusercontent.com",
-        "client_secret_file": "/etc/molbuilder/google.secret",
     }
     base.update(overrides)
     return base
@@ -167,16 +166,17 @@ MALFORMED_AUTH = [
     ("allowed_users-mixed",   _wrap(_google_entry(allowed_users=["u@e.com", 42])),
                                                                             "list of strings"),
 
-    # ---- the OAuth secret pair -- `deployment.md` § 3 --------------------
+    # ---- the OAuth client -- `deployment.md` § 3 -------------------------
     ("oauth-no-client_id",    _wrap(_without(_google_entry(), "client_id")),  "client_id"),
-    # It must name BOTH forms: a message saying only "client_secret" sends the
-    # person hunting for a file when either spelling would do.
-    ("oauth-no-secret",       _wrap(_without(_google_entry(), "client_secret_file")),
-                                              ["client_secret", "client_secret_file"]),
-    # The bytes never sit in molbuilder.json -- refused by name, beside a
-    # file or alone, saying where the secret goes (`deployment.md` § 5).
+    # No secret and no path to one in molbuilder.json (`configuration.md`
+    # § 3.1, user 2026-10-02) -- each refused by name, saying the KIND's home,
+    # which is why the second row is another kind.
     ("oauth-literal-secret",  _wrap(_google_entry(client_secret="literal")),
-                                              ["'client_secret' is refused", "paths only"]),
+                                              ["'client_secret' is refused",
+                                               "secrets/google_client_secret"]),
+    ("oauth-secret-file",     _wrap(_gh(client_secret_file="/etc/gh.secret")),
+                                              ["'client_secret_file' is refused",
+                                               "secrets/github_client_secret"]),
     # A key the kind does not hold: a typo in `hosted_domain` dropped that
     # restriction in silence until 2026-10-02.
     ("provider-unknown-key",  _wrap(_google_entry(hosted_domains=["asu.edu"])),
@@ -438,53 +438,58 @@ class TestOAuthSharedFields:
 
     # `test_literal_secret_accepted` retired 2026-10-02: a literal
     # `client_secret` is refused by name (MALFORMED_AUTH's
-    # `oauth-literal-secret`) -- `deployment.md` § 5, paths only.
+    # `oauth-literal-secret`).
 
     @pytest.mark.parametrize("kind", ["google", "github", "microsoft", "orcid"])
-    def test_secret_file_accepted(self, kind):
-        """The preferred form failing to round-trip -- and, in the second
-        assertion, a `client_secret` key being SYNTHESISED into the entry from
-        the file's contents, which would put secret bytes into anything that
-        echoes the parsed config.
+    def test_an_entry_naming_no_secret_is_accepted(self, kind):
+        """Every OAuth kind is accepted with no secret key at all -- and no
+        `client_secret` is SYNTHESISED into the entry from its home's
+        contents, which would put secret bytes into anything that echoes the
+        parsed config.
 
-        `deployment.md` § 5.1: `molbuilder.json` carries paths only, never
-        secret bytes.
+        `configuration.md` § 3.1: no secret in `molbuilder.json` except the
+        cert files; the secret is at `secrets/<kind>_client_secret`.
         """
         cfg = _normalise(_wrap(_google_entry(kind=kind, id=kind)))
         p = get_providers(cfg)[0]
-        assert p["client_secret_file"] == "/etc/molbuilder/google.secret"
-        assert "client_secret" not in p
+        assert "client_secret" not in p and "client_secret_file" not in p
 
 
-class TestSecretFileMtimeReload:
-    """``_ensure_client`` in molbuilder/web/auth_providers/oauth.py
-    watches the OAuth provider's ``client_secret_file`` for mtime
-    changes and re-reads + applies the new secret in-place when the
-    file is rotated.  Operator can fix a wrong GOCSPX value WITHOUT
-    restarting the server (task #100).
+class TestARotatedSecretIsTakenUp:
+    """``_ensure_client`` in molbuilder/web/auth_providers/oauth.py reads the
+    provider's client secret again, through the one door, on every call after
+    the first, and applies a changed one in place.  An operator can fix a
+    wrong GOCSPX value WITHOUT restarting the server (task #100).
 
     These tests pin:
-      * Second call after rotation picks up the new secret value.
-      * The SAME authlib client object is mutated (cache identity
-        preserved -- otherwise concurrent in-flight callbacks would
-        see different clients).
-      * Failed re-read (file deleted / emptied) falls back to keeping
-        the previously-loaded secret rather than crashing or
-        zeroing-out the client.
-      * Literal-secret entries (no client_secret_file) skip the
-        mtime check entirely (no file to stat).
+      * A rotated secret is picked up, on the SAME authlib client object
+        (cache identity preserved -- otherwise concurrent in-flight callbacks
+        would see different clients).
+      * A failed re-read (file deleted / emptied) keeps the previously-loaded
+        secret rather than crashing or zeroing-out the client.
+
+    (It watched the file's mtime until 2026-10-02, through a path computed
+    beside the door; two tests of that mechanism -- the mtime recorded, a
+    preserved mtime ignored -- retired with it.)
     """
 
-    def _entry(self, secret_file_path):
+    def _entry(self, kind="google"):
         return {
-            "id":                 "google",
-            "label":              "Sign in with Google",
-            "kind":               "google",
+            "id":                 kind,
+            "label":              f"Sign in with {kind}",
+            "kind":               kind,
             "client_id":          "test.apps.googleusercontent.com",
-            "client_secret_file": secret_file_path,
-            "hosted_domain":      [],
             "allowed_users":      ["user@example.com"],
         }
+
+    def _home(self, text, kind="google"):
+        """The kind's secret at its one home, written by the wizard's own
+        writer."""
+        from molbuilder.auth_setup import write_secret_file
+        from molbuilder.config_dir import client_secret
+        home = client_secret(kind)
+        write_secret_file(home, text)
+        return home
 
     def _app(self):
         from flask import Flask
@@ -493,58 +498,22 @@ class TestSecretFileMtimeReload:
         app.config["SECRET_KEY"] = b"x" * 32
         return app
 
-    def _bump_mtime(self, path, seconds_ahead=2):
-        """Move the file's mtime forward.  ``Path.write_text`` already
-        bumps mtime on most filesystems, but second-granular FSes
-        (ext4 sometimes, FAT always) can collapse two writes within
-        the same second to the same mtime -- which would defeat the
-        change-detection.  Explicit utime forces a detectable jump."""
-        import os, time
-        future = time.time() + seconds_ahead
-        os.utime(str(path), (future, future))
-
-    def test_first_call_reads_secret_and_records_mtime(self, tmp_path):
-        """No mtime recorded on the first call means the rotation watcher has
-        no baseline: every later call sees 'unchanged', so a rotated secret
-        never takes effect without a restart -- exactly the failure task #100
-        exists to remove.
-
-        `deployment.md` § 3.3 (rotate the secret; a restart is not required).
-        The rotation itself is pinned by the siblings below.
-        """
-        from molbuilder.web.auth_providers.oauth import (
-            _ensure_client, _OAUTH_CLIENTS_EXT_KEY,
-        )
-        secret_file = tmp_path / "client_secret"
-        secret_file.write_text("GOCSPX-original")
-        app   = self._app()
-        entry = self._entry(str(secret_file))
-
-        with app.app_context():
-            client = _ensure_client(app, entry)
-        # The client carries the secret literally; authlib clients
-        # expose it as a plain attribute.
-        assert client.client_secret == "GOCSPX-original"
-        # mtime recorded for change-detection on the next call.
-        ext = app.extensions[_OAUTH_CLIENTS_EXT_KEY]
-        assert ext["secret_mtime"]["mb_google"] is not None
-
-    def test_secret_change_is_picked_up_without_restart(self, tmp_path):
-        """The whole point of task #100: edit the file, hit a callback,
+    @pytest.mark.parametrize("kind", ["google", "github"])
+    def test_secret_change_is_picked_up_without_restart(self, kind):
+        """The whole point of task #100: replace the secret, hit a callback,
         new secret is in effect.  Verifies (a) the value updates AND
-        (b) the same client object is reused (cache identity)."""
+        (b) the same client object is reused (cache identity).  Two kinds,
+        because each reads ITS OWN home (`configuration.md` § 3.1)."""
         from molbuilder.web.auth_providers.oauth import _ensure_client
-        secret_file = tmp_path / "client_secret"
-        secret_file.write_text("GOCSPX-original")
+        self._home("GOCSPX-original", kind)
         app   = self._app()
-        entry = self._entry(str(secret_file))
+        entry = self._entry(kind)
 
         with app.app_context():
             client_first  = _ensure_client(app, entry)
             assert client_first.client_secret == "GOCSPX-original"
 
-            secret_file.write_text("GOCSPX-rotated")
-            self._bump_mtime(secret_file)
+            self._home("GOCSPX-rotated", kind)
 
             client_second = _ensure_client(app, entry)
 
@@ -555,55 +524,22 @@ class TestSecretFileMtimeReload:
         assert client_second is client_first
         assert client_second.client_secret == "GOCSPX-rotated"
 
-    def test_unchanged_mtime_keeps_cached_secret(self, tmp_path):
-        """Second call with the SAME mtime MUST NOT re-read.  The
-        detection signal is mtime, not content hash -- if a tool
-        rewrites the file while preserving the original mtime (rsync
-        ``--archive``, a same-second overwrite on a low-granularity
-        FS, etc.), we don't pick up the change.  Documented contract:
-        the mtime check is the fast-path; operators MUST cause an
-        mtime advance for the hot-reload to fire."""
-        from molbuilder.web.auth_providers.oauth import _ensure_client
-        secret_file = tmp_path / "client_secret"
-        secret_file.write_text("GOCSPX-original")
-        app   = self._app()
-        entry = self._entry(str(secret_file))
-
-        with app.app_context():
-            _ensure_client(app, entry)
-            # Capture the post-registration mtime, mutate content,
-            # then RESTORE the original mtime.  Models a tool that
-            # writes-with-preserved-timestamps (cp -p, rsync --times).
-            orig_stat = secret_file.stat()
-            secret_file.write_text("GOCSPX-this-shouldnt-be-picked-up")
-            import os
-            os.utime(str(secret_file),
-                      (orig_stat.st_atime, orig_stat.st_mtime))
-
-            client = _ensure_client(app, entry)
-        # mtime unchanged -> change-detection skipped -> cached
-        # secret in memory stands.
-        assert client.client_secret == "GOCSPX-original"
-
-    def test_file_deleted_keeps_previously_loaded_secret(self, tmp_path):
+    def test_file_deleted_keeps_previously_loaded_secret(self):
         """If the operator deletes / moves the secret file between
         calls, the running app must NOT crash; it keeps the secret
         already in memory (the active OAuth flow is non-fatal)."""
         from molbuilder.web.auth_providers.oauth import _ensure_client
-        secret_file = tmp_path / "client_secret"
-        secret_file.write_text("GOCSPX-original")
+        home  = self._home("GOCSPX-original")
         app   = self._app()
-        entry = self._entry(str(secret_file))
+        entry = self._entry()
 
         with app.app_context():
             _ensure_client(app, entry)
-            secret_file.unlink()
-            # _secret_file_mtime returns None now; that's treated as
-            # "no detectable change", so the cached secret stands.
+            home.unlink()
             client = _ensure_client(app, entry)
         assert client.client_secret == "GOCSPX-original"
 
-    def test_empty_file_after_rotation_keeps_previous_secret(self, tmp_path):
+    def test_empty_file_after_rotation_keeps_previous_secret(self):
         """If the operator's rotation script writes an empty file
         (clobbered + not-yet-rewritten state, or a tool that truncates
         before writing), molbuilder must NOT zero out the active
@@ -611,22 +547,17 @@ class TestSecretFileMtimeReload:
         at all and Google would return invalid_client.  Keep the
         previously-loaded secret and log a warning."""
         from molbuilder.web.auth_providers.oauth import _ensure_client
-        secret_file = tmp_path / "client_secret"
-        secret_file.write_text("GOCSPX-original")
+        home  = self._home("GOCSPX-original")
         app   = self._app()
-        entry = self._entry(str(secret_file))
+        entry = self._entry()
 
         with app.app_context():
             _ensure_client(app, entry)
-            secret_file.write_text("")    # empty -- mid-rotation
-            self._bump_mtime(secret_file)
+            home.write_text("")    # empty -- mid-rotation
             client = _ensure_client(app, entry)
-        # _read_secret raises RuntimeError on empty file; the helper
-        # catches + logs; the previously-loaded secret stays.
+        # The door refuses an empty secret; the helper catches + logs;
+        # the previously-loaded secret stays.
         assert client.client_secret == "GOCSPX-original"
-
-    # `test_literal_secret_entries_skip_mtime_tracking` retired 2026-10-02: an
-    # entry always names its secret file, so there is no literal to track.
 
 
 class TestSetupSessionSecurity:

@@ -56,7 +56,7 @@ __all__ = [
     # own filename; nobody else joins at all.
     "config_dir", "state_dir", "runtime_dir", "logs_dir", "reports_dir",
     # The files with no format to own them -- spelled here and nowhere else.
-    "session_key", "google_client_secret", "secrets_dir",
+    "session_key", "client_secret", "secrets_dir",
     "relative_home",
     "serve_pidfile", "serve_log", "serve_stacks_log",
     "ports_with_pidfile",
@@ -213,11 +213,13 @@ def runtime_dir() -> Path:
 #: `retrieve_secret(name)` door is the same proposal and meets the same
 #: refusal.)
 SESSION_KEY_FILENAME = "secret_key"
-GOOGLE_CLIENT_SECRET_FILENAME = "google_client_secret"
+#: An OAuth provider's client secret is ``<kind>`` + this: Google's is
+#: ``google_client_secret``.
+CLIENT_SECRET_SUFFIX = "_client_secret"
 
 #: The directory every credential lives in -- the ones with a fixed home
-#: (`secret_key`, `notify`, `notify_keys`) and the ones `molbuilder.json`
-#: names by path (a TLS key, a provider's client secret).
+#: (`secret_key`, `notify`, `notify_keys`, each OAuth kind's client secret)
+#: and the cert files `molbuilder.json` names by path, when kept here.
 SECRETS_DIRNAME = "secrets"
 
 
@@ -237,16 +239,19 @@ def session_key() -> Path:
     return secrets_dir() / SESSION_KEY_FILENAME
 
 
-def google_client_secret() -> Path:
-    """The DEFAULT home for Google's OAuth client secret.
+def client_secret(kind: str) -> Path:
+    """The home of an OAuth provider kind's client secret --
+    ``<config dir>/secrets/<kind>_client_secret``.
 
-    A default, not a fixed home: a provider entry may set
-    ``auth.providers[].client_secret_file`` and `oauth.py` reads whatever the
-    config names.  It moved into `secrets/` with the three fixed-home files
-    on 2026-09-20 so that every credential molbuilder writes lands in one
-    directory, whether or not the config could have named it.
+    A FIXED home, one per kind, and `molbuilder.json` cannot name it
+    *(user, 2026-10-02: "no secret in molbuilder.json except the cert
+    files")*.  Until that day a provider entry named its file with
+    ``client_secret_file`` and this was Google's default; the wizard wrote
+    this path into the entry, so the server read what the config named while
+    the mode audit looked here -- one credential, two answers
+    (`configuration.md` § 3.1).
     """
-    return secrets_dir() / GOOGLE_CLIENT_SECRET_FILENAME
+    return secrets_dir() / f"{kind}{CLIENT_SECRET_SUFFIX}"
 
 
 def read_session_key() -> "bytes | None":
@@ -313,11 +318,12 @@ def secrets_dir() -> Path:
     Two kinds live here and they differ in who names them, not in where they
     sit *(2026-09-20)*:
 
-    * **fixed home** -- `secret_key`, `notify`, `notify_keys`.  Resolved by one
-      function each and NOT nameable in `molbuilder.json`, which refuses
-      `secret_key_file` / `notify_keys_file` outright.  That is what keeps a
-      reader and a writer from meaning different files (2.1e).
-    * **operator-named** -- a TLS key, a provider's `client_secret_file`.  The
+    * **fixed home** -- `secret_key`, `notify`, `notify_keys`, each OAuth
+      kind's `<kind>_client_secret`.  Resolved by one function each and NOT
+      nameable in `molbuilder.json`, which refuses `secret_key_file` /
+      `notify_keys_file` / `client_secret_file` outright.  That is what keeps
+      a reader and a writer from meaning different files (2.1e).
+    * **operator-named** -- the cert files: a TLS key or certificate.  The
       config names these by path, so this is their suggested home and the name
       is yours.
 

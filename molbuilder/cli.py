@@ -1524,9 +1524,9 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
         you log in to the server with is the username CAS will
         authenticate against.
       * The Google OAuth client secret is prompted via ``getpass``
-        (hidden input, no echo, no shell history) and written to
-        ``<config dir>/secrets/google_client_secret`` with mode 0600;
-        molbuilder.json names that file by PATH, never the literal.
+        (hidden input, no echo, no shell history) and written to its
+        fixed home, ``<config dir>/secrets/google_client_secret``, with
+        mode 0600; molbuilder.json does not name it.
       * molbuilder.json itself is written mode 0600.
 
     The session key is NOT this wizard's.  The server creates
@@ -1556,8 +1556,8 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
     #
     # BEFORE THE WIZARD ASKS ANYTHING, because all three warnings are about
     # the file it is about to write into and the directory it will write it
-    # in.  This command is the one that puts provider credentials and
-    # `client_secret_file` paths into `molbuilder.json`, and it printed
+    # in.  This command is the one that puts provider entries into
+    # `molbuilder.json` and a client secret into `secrets/`, and it printed
     # `(mode 0600)` about its own write while saying nothing about a file that
     # ARRIVED `0644` or a `./molbuilder.json` it is documented to leave alone
     # (D12).  `serve` and the jobset verbs already call this; the function's
@@ -1593,8 +1593,8 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
     # until 2026-08-30: the git root, for anyone inside a checkout.)
     from .runtime_config import machine_config_path, write_config_scope
     output_path = machine_config_path()
-    from .config_dir import google_client_secret
-    google_secret_file = google_client_secret()
+    from .config_dir import client_secret as _secret_home
+    google_secret_file = _secret_home("google")
 
     # 3. Bail early on clobber unless --force --------------------------
     #
@@ -1687,12 +1687,10 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
                         continue
                     break
                 emails.append(e)
-        # Save the secret out-of-band BEFORE building the entry so we
-        # have a clean file path to reference in molbuilder.json.
+        # The secret goes to its fixed home; the entry names nothing.
         _as.write_secret_file(google_secret_file, client_secret.strip())
         entry = _as.build_google_entry(
             client_id=client_id,
-            client_secret_file=google_secret_file,
             allowed_users=emails,
             hosted_domain=list(hosted_domain) if hosted_domain else None,
         )

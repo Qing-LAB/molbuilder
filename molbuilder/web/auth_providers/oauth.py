@@ -11,14 +11,13 @@ GitHub) and the OIDC discovery URL (when applicable).
 We keep all four in one module rather than splitting per-kind because
 the per-kind code is small (~20 lines each) and centralizing the
 Authlib registration ergonomics (one ``OAuth()`` instance per app,
-deferred import, secret-file reading) avoids duplicating that boilerplate.
+deferred import, the secret's re-read) avoids duplicating that boilerplate.
 
 The CAS protocol is a different beast (it's not OAuth) and lives in
 ``cas.py``.
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Mapping, Optional, Tuple
 
@@ -67,29 +66,8 @@ def _get_oauth(app):
         app.extensions[_OAUTH_CLIENTS_EXT_KEY] = {
             "oauth":      OAuth(app),
             "registered": set(),    # authlib-internal names already registered
-            # authlib-internal name -> mtime of client_secret_file at the
-            # last successful read.  Used by _ensure_client to detect
-            # operator-initiated secret rotations and hot-reload them
-            # without bouncing the server.
-            "secret_mtime": {},
         }
     return app.extensions[_OAUTH_CLIENTS_EXT_KEY]
-
-
-def _secret_file_mtime(entry: Mapping):
-    """Return ``st_mtime`` of the provider's secret file, or ``None`` if
-    the file can't be stat'd (deleted between reads, permission denied,
-    etc.).
-    Defensively returns ``None`` rather than raising -- the caller
-    treats ``None`` as "no change to detect", which fails closed
-    (keeps the previously-loaded secret in memory)."""
-    path_spec = entry.get("client_secret_file")
-    if not path_spec:
-        return None
-    try:
-        return os.stat(os.path.expanduser(path_spec)).st_mtime
-    except OSError:
-        return None
 
 
 def _read_secret(entry: Mapping) -> str:
@@ -98,7 +76,8 @@ def _read_secret(entry: Mapping) -> str:
     This branched on `client_secret_file` vs `client_secret`, expanded ``~``,
     opened the file, stripped it and judged an empty one -- five decisions
     about what a secret IS, inside a module about OAuth, and it had to know
-    which shape the operator had chosen.  `runtime_config` owns the provider
+    which shape the operator had chosen.  (Both keys are refused now; the
+    secret's home is its kind's, 2026-10-02.)  `runtime_config` owns the provider
     entry's schema and now answers the only question this module actually
     has: *what is the secret for this provider*.  Nothing here learns whether
     a file was involved (`configuration.md` § 2.3).
@@ -115,52 +94,49 @@ def _ensure_client(app, entry: Mapping):
     ``mb_`` prefix so that operator-chosen ids (``"register"``,
     ``"cache"``, ...) can never shadow Authlib's own attributes.
 
-    Hot-reload of ``client_secret_file`` (added 2026-05-18, task #100):
-    on every call AFTER the first registration, this function stats
-    the secret file's mtime and compares against the value cached at
-    last read.  When the mtime differs, it re-reads the file and
-    assigns ``client.client_secret`` in place so the next token
-    exchange uses the new value -- the operator can rotate the
-    ``GOCSPX-`` secret WITHOUT bouncing molbuilder.  If the re-read
-    fails (file deleted, empty, permission denied), the helper logs
-    and keeps the previously-loaded secret so an unrelated edit
+    A rotated secret is taken up without a restart (added 2026-05-18, task
+    #100): on every call AFTER the first registration the secret is read
+    again, through the one door, and when it differs it is assigned to
+    ``client.client_secret`` in place so the next token exchange uses it --
+    the operator can rotate the ``GOCSPX-`` secret WITHOUT bouncing
+    molbuilder.  If the read fails (file deleted, empty, permission denied),
+    this logs and keeps the previously-loaded secret so an unrelated edit
     doesn't break sign-in mid-session.
+
+    *(It compared the file's mtime until 2026-10-02, which meant computing
+    the secret's path here -- a second resolver beside the door, reading
+    ``client_secret_file`` itself.  A sign-in is rare enough that reading a
+    one-line file is the cheaper rule.)*
     """
     import logging
 
     ext = _get_oauth(app)
     oauth      = ext["oauth"]
     registered = ext["registered"]
-    mtimes     = ext["secret_mtime"]
 
     authlib_name = _authlib_name(entry["id"])
 
     if authlib_name in registered:
         client = getattr(oauth, authlib_name)
-        current_mtime = _secret_file_mtime(entry)
-        cached_mtime  = mtimes.get(authlib_name)
-        # current_mtime is None when the file is gone -- "no change we
-        # can detect"; the cached secret stands.
-        if current_mtime is not None and current_mtime != cached_mtime:
-            try:
-                new_secret = _read_secret(entry)
-            except Exception as exc:
-                logging.warning(
-                    "molbuilder auth: client_secret_file for provider "
-                    "%r changed but re-read failed (%s: %s); keeping "
-                    "the previously-loaded secret in memory.",
-                    entry["id"], type(exc).__name__, exc,
-                )
-            else:
+        try:
+            current = _read_secret(entry)
+        except Exception as exc:
+            logging.warning(
+                "molbuilder auth: the client secret for provider %r could "
+                "not be read again (%s: %s); keeping the previously-loaded "
+                "secret in memory.",
+                entry["id"], type(exc).__name__, exc,
+            )
+        else:
+            if current != client.client_secret:
                 # In-place update on the cached authlib client.
                 # Mutating ``client_secret`` is safe: authlib reads
                 # it at token-exchange time, not at register time.
-                client.client_secret = new_secret
-                mtimes[authlib_name] = current_mtime
+                client.client_secret = current
                 logging.info(
-                    "molbuilder auth: client_secret_file for provider "
-                    "%r changed on disk; re-read + updated the "
-                    "authlib client without server restart.",
+                    "molbuilder auth: the client secret for provider %r "
+                    "changed on disk; updated the authlib client without "
+                    "a server restart.",
                     entry["id"],
                 )
         return client
@@ -174,7 +150,6 @@ def _ensure_client(app, entry: Mapping):
         **register_kwargs,
     )
     registered.add(authlib_name)
-    mtimes[authlib_name] = _secret_file_mtime(entry)
     return getattr(oauth, authlib_name)
 
 

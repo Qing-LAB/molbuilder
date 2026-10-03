@@ -214,7 +214,7 @@ class TestEveryFileHasADoor:
         """The property the whole change exists for: name one directory and
         every configuration file is under it — the format owners' doors
         included, since they ask this module for the directory."""
-        from molbuilder.config_dir import (config_dir, google_client_secret,
+        from molbuilder.config_dir import (client_secret, config_dir,
                                            session_key)
         from molbuilder.monitor import default_notify_path, notify_keys_path
         from molbuilder.runtime_config import machine_config_path
@@ -224,7 +224,7 @@ class TestEveryFileHasADoor:
         monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(root))
         doors = {
             "session_key": session_key(),
-            "google_client_secret": google_client_secret(),
+            "google_client_secret": client_secret("google"),
             "machine config": machine_config_path(),
             "environment record": machine_scope_path(),
             "environments/": environments_dir(),

@@ -31,12 +31,13 @@ from __future__ import annotations
 
 import stat
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
 from .config_dir import (PRIVATE_FILE_MODE, PRIVATE_DIR_MODE, SECRETS_DIRNAME,
-                         config_dir,
-                         google_client_secret, jupyter_lab_home, logs_dir,
+                         client_secret, config_dir,
+                         jupyter_lab_home, logs_dir,
                          reports_dir, runtime_dir, secrets_dir, session_key,
                          state_dir)
 
@@ -93,7 +94,7 @@ def places() -> Tuple[Place, ...]:
     path, which is the point of the table.
     """
     from .monitor import default_notify_path, notify_keys_path
-    from .runtime_config import machine_config_path
+    from .runtime_config import OAUTH_KINDS, machine_config_path
     from .scheduler.record import (FILENAME as ENVIRONMENT_FILENAME,
                                    environments_dir, machine_scope_path)
 
@@ -113,9 +114,12 @@ def places() -> Tuple[Place, ...]:
         Place("the session key", session_key, False, PRIVATE_FILE_MODE,
               "anyone who can read it can forge a session",
               credential_store=True),
-        Place("the Google client secret", google_client_secret, False,
-              PRIVATE_FILE_MODE, "a provider credential",
-              credential_store=True),
+        # One per OAuth kind: each has a fixed home (`configuration.md`
+        # § 3.1), whether `auth-setup` writes it (Google) or a person does.
+        *(Place(f"the {kind} client secret", partial(client_secret, kind),
+                False, PRIVATE_FILE_MODE, "a provider credential",
+                credential_store=True)
+          for kind in OAUTH_KINDS),
         Place("the notify channels file", default_notify_path, False,
               PRIVATE_FILE_MODE,
               "for Slack and Discord the URL IS the credential, so this file "
@@ -127,7 +131,7 @@ def places() -> Tuple[Place, ...]:
         Place("environments/", environments_dir, True, PRIVATE_DIR_MODE,
               "it sits inside the config root and inherits its discipline"),
         Place("secrets/", secrets_dir, True, PRIVATE_DIR_MODE,
-              "EVERY credential molbuilder keeps is in it -- the four with a "
+              "EVERY credential molbuilder keeps is in it -- the ones with a "
               "fixed home.  A file molbuilder.json merely NAMES is the "
               "operator's and the system's; `secrets/` is offered as a home "
               "for it, never policed as one"),
