@@ -171,7 +171,7 @@ contract text first and its own commit; a row moves to *done* with its commit.
 | 7 | `jobset probe --out` (R23) | *"i thought we agreed probe --out goes away"*; *"retire the test with that retired --out flag"* | the flag and its `job-contracts.md` row go; its three tests retire | **done `71e70dcd`** — the option, its branch and the import it alone used are gone; the row is a note saying why the record's place is its resolver's; the three tests retired (their `--set`, `--scheduler` and unreadable-record behaviours are T29's to give road rows); 361 targeted tests green |
 | 8 | the file-mode warning said twice (T24, C8) | *"#8 ok"* | one sentence and one rule — the one with the fix, the terminal's: the placement table's `molbuilder.json` row (`configuration.md` § 2.1b). *(This cell named `machine_config_mode_warning` as the survivor until it was built — the reverse of the answer given.)* | **done `615858f6`** — `placement.machine_config_finding()` hands the card that row's sentence, `runtime_config.machine_config_mode_warning` deleted, § 2.1b says so; a `0700` file is now a finding on both surfaces (the table's rule); the two tests of the deleted sentence's rule and wording retired, a third (provenance has its own sentence) with its premise; 480 targeted tests green, the card's sentence re-worded goes red |
 | 9 | M5 step 5's order (TD9) | *"#9 ok"* | M2f, M2g, M2i, M2k, then step 5 — Q4 | settled |
-| 10 | `gpu_partition`, and the old config backup (Q11) | *"ok to let gpu_partition to go since gpu detection is done independently from this"*; *"for b, remove that old file/dir"* | the field goes from the record and placement; `~/.config/molbuilder.backup/` | **10a built** — `Domain.gpu_partition` and its `_KNOWN` column gone (a record still carrying one keeps it in `extra`, and `jobset machines` says `?? not understood`; none of yours does); placement binds every job to the queue's own partition (`_bind` inlined); `domain_serves_gpu` reads the `gpu` column alone; `gpu.md`, `scheduler.md`, `generator.md`, `running-a-job.md`; the GPU case table's `gpu` queue is partition `gpu`, the `terse` row retired; the misspelling example is `max_tme` now; 674 targeted tests green. **10b done** 2026-10-02 (the live config holds its own copy of each file) |
+| 10 | `gpu_partition`, and the old config backup (Q11) | *"ok to let gpu_partition to go since gpu detection is done independently from this"*; *"for b, remove that old file/dir"* | the field goes from the record and placement; `~/.config/molbuilder.backup/` | **10a done `31ca9957`** — `Domain.gpu_partition` and its `_KNOWN` column gone (a record still carrying one keeps it in `extra`, and `jobset machines` says `?? not understood`; none of yours does); placement binds every job to the queue's own partition (`_bind` inlined); `domain_serves_gpu` reads the `gpu` column alone; `gpu.md`, `scheduler.md`, `generator.md`, `running-a-job.md`; the GPU case table's `gpu` queue is partition `gpu`, the `terse` row retired; the misspelling example is `max_tme` now; 674 targeted tests green. **10b done** 2026-10-02 (the live config holds its own copy of each file) |
 
 **The order of the queue after it**: Q2c, then the ledger's open rows below,
 then Q5 (transport steps 6, 7 and 10, and K21), then Q4 (M2f, M2g, M2i, M2k,
@@ -183,8 +183,102 @@ The four W54 reviewers (C1–C25, R1–R24, D1–D30, T1–T30; reports saved
 verbatim with the session) and M5 step 3's milestone review. **A row is
 re-read in the code before it is acted on** — a reviewer's line is a lead.
 
-*(Re-validation of every row not yet fixed is in hand, 2026-10-02; this
-table is completed from it.)*
+Every row not fixed by then was re-validated against the tree on 2026-10-02
+(a read-only agent, 183 reads; its account spot-checked in the code, and the
+four rows it called workflow-breaking — R3–R6 — re-read whole). **State
+words:** *fixed* (with its commit); *to do* (a validated defect against a
+written rule — fixed without asking); *your word* (a decision); *own unit*.
+
+| row | finding | state |
+|---|---|---|
+| C1 | a misspelled `admin` key made every signed-in user an admin | fixed `7dd8940f` |
+| C2 | `rate_limit` read unvalidated, the limiter coerced types | fixed `7dd8940f` |
+| C3 | the empty-`admin` rule stated backwards in six texts | fixed `7dd8940f` (texts to the code); who may: decision 4, no change |
+| C4 | unknown keys inside sections accepted | fixed `7dd8940f` |
+| C5 | `molbuilder.json` could hold a secret's bytes | fixed `7dd8940f`; its path too, Q2c 5 `749716f4` |
+| C6 | the Google secret's home had two answers | Q2c 5, `749716f4` |
+| C7 | `oauth.py` worked out the secret's path itself | Q2c 5, `749716f4` |
+| C8 | two mode checks, two rules, two sentences | Q2c 8, `615858f6` |
+| C9 | `placement`'s `*` row polices operator-named files in `secrets/`; its README says `chmod 600 secrets/*` | **to do** — the row's pattern `README` (each fixed home has its own row); the README's line reworded (§ 3.1: a file you name is yours) |
+| C10 | `config_provenance` missed the error that happens (the card vanished with a named record) | fixed `92e84cc8` |
+| C11 | the registry did not mark retired rows | fixed `7dd8940f` |
+| C12 | a misplaced-credential warning said twice | fixed `92e84cc8` |
+| C13 | README seeding written in place | § 2.3's row and `--help` fixed `0a7ea0e4`; **to do** — four `initconfig` docstrings still say "never touched" / "if absent" / "nothing else" |
+| C14 | multi-scope config leftovers taught | fixed `0a7ea0e4` |
+| C15 | retired `scheduler` / `script_generation` leftovers in code | fixed `0a7ea0e4` |
+| C16 | texts a person reads stating false facts | fixed `0a7ea0e4` |
+| C17 | getters in two shapes; `create_app(config=)` neither validates nor isolates | **to do** — a given config is `_normalise`d; `cli.py:2334` / `app.py:266` say what runs; `test_rate_limit`'s fixture (a literal secret, `secret_key_file`, `enabled`) made valid; `get_launch()` answers the mode |
+| C18 | one notify-user rule written as two regexes | **to do** — one predicate, both callers ask it |
+| C19 | `molbuilder.json` parsed three times, three error policies | **to do** — one `_load_raw(path)` for `read_config`, `_raw_file`, `write_config_scope` |
+| C20 | constants spelled again outside their owner | partly fixed `7dd8940f`; **to do** — `"via": "config-dir"` (a constant now), a literal `"molbuilder.json: paths.…"`, three `0o600` literals |
+| C21 | redundant validation and normalisation | **to do** — `admin.install_admins` re-normalises; `auth-setup` imports the private `_validate_provider` and writes Google's secret before either check; `"common"` twice |
+| C22 | stranded comments | fixed `0a7ea0e4` |
+| C23 | the envs report named the wrong source for the host env | Q2c 6, `311ab27e` |
+| C24 | conftest re-derives the config-directory rule by hand | **to do** — `_REAL_CONFIG_DIR = config_dir()` |
+| C25 | a second reader of the notify file's format | `_document` not real (§ 2.3's management carve-out); **to do** — `_write` re-spells `persist.json_text` |
+| R1 | the activation refusal named the wrong record | fixed `92e84cc8` |
+| R2 | an unreadable snapshot skipped silently | fixed `92e84cc8` |
+| R3 | `--target this` takes another machine's snapshot unasked — and the tab sends `this` on every prep once "(this machine)" is picked | **your word** — below |
+| R4 | `envs init-config` is a second, partial prober: on a cluster it seeds `slurm` with no queues and no `detected_at` | **to do** — one queue probe that `jobset probe` and init-config both run (M-3: "through the same prober") |
+| R5 | "lists no queues" prints the bare probe command, whatever the target or snapshot | **to do** — `probe_line(target)` and the snapshot's two steps, one helper shared with the GPU-bench refusal |
+| R6 | the launch re-check's remedy (re-run `prep`) cannot work — prep keeps the snapshot — and names a queue as the machine | **to do** — ask within the limits (`--time`, `--mem`, the shape, `--domain`), or delete the snapshot and prep again |
+| R7 | the preamble guard's remedy | fixed `92e84cc8` |
+| R8 | the provenance card vanished with a named record | fixed `92e84cc8` (C10) |
+| R9 | the web prep route's own copy of the target checks | fixed `92e84cc8` |
+| R10 | the record read 3–4 times per prep | **to do** — read once in `prep_stage` and handed down; `_no_record`'s unreachable named branch |
+| R11 | a second road into the wrapper that only tests use | launch's `machine_for` fallback is used, kept; **to do** — the test-only fallbacks (`runwrap.py:3247`, `:2219`, `prep.py:287`) |
+| R12 | paths and probe commands written by hand | partly fixed `92e84cc8`, `0a7ea0e4`; **to do** — `Path(base) / FILENAME` (`prep.py:166`, `summarize.py:279`) → `calculation_record`; spelled probe commands (`prep_inputs.py:879`, `runtime_config.py:92`, `initconfig.py:560`) → `probe_line` |
+| R13 | every record says prep wrote it | **to do** — `resolve_environment` stamps `jobset-probe@1` |
+| R14 | a value the probe keeps loses its `source` | **your word** — below |
+| R15 | `env_init` carried key by key | fixed `92e84cc8` |
+| R16 | `UnknownTarget` invited a hand-written record | fixed `0a7ea0e4` |
+| R17 | the no-activation notes sent to a command that would not ask | fixed `92e84cc8` |
+| R18 | unused parameters | **to do** — `n_atoms` of `_render_sbatch_for`; `target` of `declared_run_shape`, `run_inputs`, `prep_run_inputs` |
+| R19 | dead browser code | fixed `0a7ea0e4` |
+| R20 | comments describing the removed `scheduler` block | fixed `0a7ea0e4` |
+| R21 | record docs that were false | fixed `0a7ea0e4` |
+| R22 | fields with no writer or no reader | `gpu_partition` Q2c 10a, `31ca9957`; `Site.qos` kept by the contract; **to do** — `_read_devices`' descriptor branch (no writer), `Device.mem_gb` (unread), `Site.account` (neither), the arch-mismatch check `env_arch` / `topology.arch` describe (absent), routing's getters beside `machine_for` |
+| R23 | `probe --out` | Q2c 7, `71e70dcd` |
+| R24 | contract restatements against the design | fixed `0a7ea0e4` |
+| D1–D20, D22–D30 | documents teaching removed designs | fixed `0a7ea0e4` (D24: `envs.manager` is a preference) |
+| D21 | `envs.host` | Q2c 6, `311ab27e` |
+| T1, T2 | two tests that could not fail | fixed `6401abfb` |
+| T3–T6, T9–T12, T17, T18, T20, T23, T26 | tests of refused behaviour, or repeats | retired `6401abfb` (T4 written through its door) |
+| T8 | retired keys only partly rows | fixed `6401abfb` |
+| T7 | `test_machine_config_file` cites a precedence no document states; one test cannot fail | **to do** — retire `:123` and `:82`, fix `:137`'s docstring, drop the `chdir` |
+| T13 | test texts still placing the activation in `script_generation` or the record alone | partly fixed; **to do** — seeding `:10`, `:379`; record_architecture `:122`; target_machine_choice `:24`, `:221`; preamble_preflight `:3`; about 14 files' "one home (§ 5 M-1)" |
+| T14 | test docstrings teaching a cwd or cascade read | partly fixed; **to do** — nine files |
+| T15 | per-file isolation duplicating conftest's | **own unit** — `_isolated_machine_scope` first, then about 48 files' blocks |
+| T16 | "a cwd molbuilder.json is not read" asserted five times | partly fixed `6401abfb`; **to do** — config_warnings `:99` retires, `:106` takes a `launch` block, machine_config_file `:110` trimmed |
+| T19 | tests that monkeypatch a door to prove a caller asks it | **to do** — retire config_dir_has_one_home `:267`, `:285`; `:311` says why it stays API-level |
+| T21 | probable subsumptions | **to do, a mutant first** (`tools/verify_subsumption.py`) |
+| T22 | `_the_gate()` pins a refusal the road never gives | **to do** — `:65` through `jobset prep` or retired; `:168` trimmed; `:152` retired |
+| T24 | the mode warning asserted twice | Q2c 8, `615858f6` |
+| T25 | `env_arch` is omitted when unknown; M-2 says null, never omitted | **your word** — below |
+| T27 | four tests asserting strings no code has | **to do** — retire test_sbatch_emit `:206`, test_runwrap_v2 `:179`–`:202` |
+| T28 | hand-built records and paths where a door exists | partly real; **to do** — four sites to the doors; two bare `mkdir`s to `ensure_private_dir` |
+| T29 | five tests drive the private `_probe_consent_merge` | **to do** — `probe` road rows, which also take over what Q2c 7's three retired tests exercised |
+| T30 | table hygiene | partly fixed `6401abfb`; **your word** — below |
+| S12 | the form's `engine_key` test covers optimization only | **to do** — over engine × calculation (20 transport-only, 13 vibration-only items unchecked) |
+| M5 step 3 | its milestone review | every finding fixed `325cb1d4`; its three questions were Q2c 1–3 |
+
+**Your word, four questions** *(asked 2026-10-02)*:
+
+- **R3.** A record names no machine, so "is this snapshot this machine's?" can
+  only be asked by comparing whole records — which is what `--target sol`
+  does. (a) Ask it the same way for `this`: a re-probe of this machine then
+  makes the next prep of an already-prepped calculation refuse until its
+  snapshot is deleted, and the tab sends `this` on every prep once picked.
+  (b) The probe writes the machine's name into the record (`--name sol` →
+  `sol`, this machine's → its host name), and a snapshot is compared by
+  name: Sol's snapshot is refused for `this`, a re-probe is not.
+- **R14.** M-5 says `source: flag` admits a declared fact; M-6 says a kept
+  value's `source` follows the new probe. Nothing reads `source`.
+- **T25.** M-2 says an undetected field is `null`, never omitted; the record
+  omits `env_init`, `conda_envs` and `env_arch` when empty.
+- **T30.** "With nothing to copy, the record keeps its own `env_init`" is
+  stated only in code (`jobset/_cli.py`) and pinned by a row: state it in
+  `configuration.md` § 4, or retire the row.
 
 ### Unscheduled — open work no milestone carries *(listed 2026-09-29)*
 
