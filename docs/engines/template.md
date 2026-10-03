@@ -2297,9 +2297,9 @@ independent reasons:
 - `prep` renders **one deck per stage**, so *"the target"* names nothing.
 - **`prep` must be reproducible.** Harvesting from whatever happens to be on disk
   would make the same template, on the same machine, produce different decks —
-  and [`project-layout.md`](?doc=execution/project-layout.md) says of a deck
-  *"written by `prep`; delete it and re-prep"*, which is only true if re-prep
-  reproduces it.
+  and a stage is redone by a new prep from the state saved before its first
+  ([`job-system.md`](?doc=execution/job-system.md) § 5.0), which gives the deck
+  back only if prep reproduces it.
 
 So the text is carried in the template as an ordinary item, `kind="deck"` and
 `type="text"` (§ 4.2 shows it). **Three things follow, and each is free rather
@@ -2814,8 +2814,8 @@ that one, and renders — [`stages.md`](?doc=engines/stages.md) § 4's
 `effective config = template ⊕ overrides`, seen on disk.
 
 **The item is not edited and the template is not rewritten.** A stage is a lens
-over the description, not a mutation of it, which is what lets you re-prep any
-stage at any time and get the same deck.
+over the description, not a mutation of it, which is what lets a stage prepped
+anew — from the state saved before its prep — get the same deck.
 
 > **This is also why D4 matters.** A stage overriding `relax_type` from `CG` to
 > `Verlet` moves the step budget from `MD.Steps` to `MD.FinalTimeStep` —

@@ -265,11 +265,11 @@ produced.**
 
 ```mermaid
 flowchart TB
-    S1["<b>1 · settle which machine this is for</b><br/><i>READ the record — the calculation's, else this machine's.<br/>Neither? prep refuses and names <code>jobset probe --write</code></i><br/>→ snapshot <code>environment.json</code>"]
+    S1["<b>1 · settle which machine this is for</b><br/><i>READ the record — the calculation's, else this machine's.<br/>Neither? prep refuses and names <code>jobset probe --write</code></i><br/>→ the first prep copies it in, <code>environment.json</code>"]
     S2["<b>2 · settle the numbers</b><br/><i>template + description + machine + your ask</i><br/>→ the configuration(s), in memory. <b>Writes nothing.</b>"]
-    S3["<b>3 · write the engine's input</b><br/>→ <code>&lt;label&gt;_01_coarse.fdf</code>"]
+    S3["<b>3 · write the engine's input</b><br/>→ <code>01_coarse/&lt;label&gt;_01_coarse.fdf</code>"]
     S4["<b>4 · write the wrapper and the submission</b><br/><i>reads the deck just written</i>"]
-    S5["<b>5 · build the directories</b><br/><i>links what steps 3 and 4 wrote</i>"]
+    S5["<b>5 · open the attempt</b><br/><i>copies what steps 3 and 4 wrote, and what it continues from</i>"]
     S1 --> S2 --> S3 --> S4 --> S5
 ```
 
@@ -281,10 +281,13 @@ processors). A wrapper written first would quietly pick the CPU environment and
 skip the cap — **and both wrong answers look exactly like the defaults**, so
 nothing would appear broken.
 
-**Why step 5 only makes links.** The deck and the wrapper are written once, at
-the top of the folder; each attempt and each benchmark point holds a *link* to
-them. So re-writing the deck updates every attempt pointing at it, with nothing
-to keep in step.
+**Why step 5 copies, and renders nothing.** The deck and the wrapper are written
+once, in the stage's own folder; the attempt — the run directory, `run-0/` —
+receives copies of them and of the warm files it continues from. A copy because
+the engine writes to those very filenames, and a run directory hands the engine
+everything it needs and holds everything it produces
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.0, § 1.6.5): a link
+would let a run reach back into what it started from.
 
 The step table with what each step may and may not do is
 [`script-preparation.md § 5`](?doc=execution/script-preparation.md); the

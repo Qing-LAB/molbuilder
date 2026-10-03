@@ -175,9 +175,10 @@ its partitions, its node mix, or its installed environments since the probe
 will be prepped against the old answer. `environment.json` carries
 `detected_at`, so the age is knowable; surfacing it is left to the surfaces
 rather than made a refusal, because a six-month-old record is often still
-exactly right. Re-probe when the machine changed — and delete the
-`environment.json` of each calculation that should follow it: a calculation
-keeps the record it was first prepped with (`configuration.md` M-3).
+exactly right. Re-probe when the machine changed. A calculation keeps the
+record it was first prepped with (`configuration.md` M-3), so one already
+prepped follows the new record only through a new prep, from the state saved
+before its first (`molbuilder checkpoint restore`; `job-system.md` § 5.0).
 
 ---
 
@@ -234,19 +235,11 @@ on a workstation was measured against the desk.
 **One record and no `--target` still proceeds silently.** There is no
 ambiguity to resolve, so there is no question to ask.
 
-**What a bundle cannot currently answer: *which machine am I for?*** The
-snapshot beside a bundle carries capability — scheduler, topology, site,
-domains — and `source` records *how* each part was measured (`scontrol`,
-`lscpu`, `flag`), never *whose* machine it is. `Site` is
-`partition`/`qos`/`account`; there is no machine name anywhere in the
-record. So C2's refusal compares the two records' **content**, which is
-sound (identical records make the question moot) but leaves a person
-holding an rsync'd bundle unable to confirm what it was prepared for.
-
-`source` is a free-form `Dict[str, str]` that round-trips, so recording
-`source["target"] = "sol"` when `--target` was used costs no schema change
-and makes the bundle self-describing. Worth doing; not required by the
-rules above, so it is named here rather than folded in silently.
+**A bundle says which machine it is for.** The calculation's copy of the
+record names the machine of its first prep — `machine`, the `--target` name or
+`this` — and only the copy carries it (`configuration.md` M-3). C2's refusal
+compares that name with the one typed, and a person holding an rsync'd bundle
+reads what it was prepared for in its `environment.json`.
 
 ---
 

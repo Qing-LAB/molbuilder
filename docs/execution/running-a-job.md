@@ -29,17 +29,17 @@ described here, and is documented in `execution/job-system.md`.
 
 ```mermaid
 flowchart LR
-    G["Generate<br/>(host / web / CLI)<br/>.fdf or .py + wrapper"]
-    C["Copy<br/>scp the run dir<br/>to the target"]
-    P["Prep / doctor<br/>(target)<br/>bake activation, verify env"]
-    R["Run<br/>(compute node)<br/>bash .run.sh / sbatch .sbatch"]
+    P["Prep<br/>(Task setup or the CLI, for its machine)<br/>.fdf or .py + wrapper, activation baked"]
+    C["Copy<br/>scp the calculation to that machine,<br/>when it was prepped elsewhere"]
+    R["Launch<br/>(on that machine)<br/>bash .run.sh / sbatch .sbatch"]
     W["Watch<br/>the Results tab: viewer + Run panel<br/>or molbuilder watch"]
-    G --> C --> P --> R --> W
+    P --> C --> R --> W
 ```
 
-The **host** where you generate need not be where you run: a run directory is
-self-contained, so `scp -r my-job/` to a cluster and it still works. That
-self-containment is a deliberate contract (§ 2).
+The **host** where you prep need not be where you run: prep reads the target's
+record ([`preparing-for-another-machine.md`](?doc=execution/preparing-for-another-machine.md)),
+and a run directory is self-contained, so `scp -r my-job/` to a cluster and it
+still works. That self-containment is a deliberate contract (§ 2).
 
 ---
 

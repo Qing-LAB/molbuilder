@@ -911,11 +911,11 @@ The rule that binds the two axes:
 
 | step | floor | writes |
 |---|---|---|
-| 1 · resolve the machine | **1** · names & plain facts | `environment.json` |
+| 1 · resolve the machine | **1** · names & plain facts | `environment.json`, at the calculation's first prep |
 | 2 · resolve the parameters | **2** → **3** | nothing — a `ParameterSet`, in memory |
-| 3 · render the decks | **3** · plan & render | the decks, at the calculation root |
+| 3 · render the decks | **3** · plan & render | the decks, in the stage's own folder |
 | 4 · render the wrappers | **3** · plan & render | `.run.sh` · `.sbatch`, beside them |
-| 5 · build the run directory | **4** · layout | the tree, and the links into it |
+| 5 · build the run directory | **4** · layout | the attempt, and the copies in it |
 | *(submit — not a `prep` step)* | **5** · launch | `run.json` |
 
 Two rules make that table readable.
@@ -941,16 +941,19 @@ Two rules make that table readable.
   posture to its rendering half. That is what makes a benchmark the same code as
   a run: nothing has been committed to disk when the list turns out to have nine
   elements instead of one.
-- **Step 5 links; it never renders.** Everything under the tree points at what
-  steps 3 and 4 wrote at the root. One home for a file, references everywhere
-  else — `project-layout.md`'s rule.
+- **Step 5 copies; it never renders.** The attempt receives copies of what
+  steps 3 and 4 wrote in the stage's folder, and of the warm files it continues
+  from — the engine writes to those filenames, and a run directory holds
+  everything it needs (`project-layout.md` § 1.0, § 1.6.5).
 
 ## 6. A worked example
 
 A real calculation in this tree: **BDT, 14 atoms, hierarchical, two stages.**
 
-**Step 1** probes the workstation and writes `environment.json`. It is written
-once and not overwritten, so both stages resolve against one answer.
+**Step 1** reads the workstation's record — `jobset probe --write` made it — and,
+at the calculation's first prep, copies it in as `environment.json`, naming the
+machine. It is not overwritten, so every stage resolves against one answer
+([`configuration.md`](?doc=configuration.md) M-3).
 
 **Step 2** reads `task.json` — engine `siesta`, shape `hierarchical`, stages
 `coarse` then `tight` — and resolves the template against each stage. Two sets of
@@ -1027,19 +1030,19 @@ MD.MaxForceTol    0.01 eV/Ang      MD.UseSaveXV      .true.
 ```
 
 **Step 4** renders `bdt-e2e_01_coarse.run.sh` from the *finished* deck, reading it
-for which environment to activate and how many ranks to ask for. **Step 5** builds
-the tree and links into it:
+for which environment to activate and how many ranks to ask for. **Step 5** opens
+the attempt and copies into it what the run needs:
 
 ```
 bdt-e2e/
-  bdt-e2e_01_coarse.fdf      ← the one home, written at step 3
-  bdt-e2e_01_coarse.run.sh   ← written at step 4
-  C.psml  H.psml  S.psml     ← copied by the data-files step
+  environment.json           ← the machine's record, copied in at step 1
+  pseudos/                   ← the data-files step: one folder for the calculation
   01_coarse/
-    bdt-e2e_01_coarse.fdf -> ../bdt-e2e_01_coarse.fdf
-    C.psml -> ../C.psml    …
-    run-0/
-  02_tight/ …
+    bdt-e2e_01_coarse.fdf    ← born here, at step 3
+    bdt-e2e_01_coarse.run.sh ← written at step 4, beside it
+    C.psml  H.psml  S.psml  mb_monitor.pyz
+    run-0/                   ← step 5: copies of all of the above
+  02_tight/ …                ← tight's own prep, once coarse has run
 ```
 
 **Where a second engine differs, and where it does not.** PySCF answers *nothing*
