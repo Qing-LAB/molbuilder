@@ -258,8 +258,8 @@ generate time (`molbuilder/diagnostics.py`, `molbuilder/runwrap.py`):
 
 The env **names** are overridable per category in `molbuilder.json` (`envs`,
 § 5.4); the categories and their defaults are
-[`configuration.md`](?doc=configuration.md) § 4's — `diagnostics.DEFAULT_ENV_NAMES`,
-and `envs.host` for the host env.
+[`configuration.md`](?doc=configuration.md) § 4's — `diagnostics.DEFAULT_ENV_NAMES`.
+The host env is always `molbuilder` (§ 2.1c there).
 
 > The wrapper file shapes (`.run.sh` inner + `.sbatch` outer), the run-indexed
 > output names, and warm/cold restart are defined in

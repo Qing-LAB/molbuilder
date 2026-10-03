@@ -542,16 +542,25 @@ def _read_tls(raw: Mapping[str, Any]):
     return tls or None
 
 
+#: What a config naming the host env is told (`configuration.md` § 2.1c).
+_HOST_ENV_FIXED = (
+    "{path}: 'envs.host' is no longer configured -- delete it.  The host env "
+    "is always 'molbuilder' (docs/configuration.md § 2.1c; user, "
+    "2026-10-02: \"let's enforce one name\").")
+
+
 def _read_envs(raw: Mapping[str, Any]):
     """``envs`` -- the conda environment each category runs in when it is not
-    the default name, the host env's name, and the conda-compatible command
-    (`configuration.md` § 4).  The categories are `diagnostics`'s own table,
-    asked rather than re-listed; another key is refused (``envs.siseta`` was
-    accepted and read by nothing until 2026-10-02)."""
+    the default name, and the conda-compatible command (`configuration.md`
+    § 4).  The categories are `diagnostics`'s own table, asked rather than
+    re-listed; another key is refused (``envs.siseta`` was accepted and read
+    by nothing until 2026-10-02), and ``envs.host`` by name: the host env is
+    always ``molbuilder``."""
     envs = _require_object_section(raw, "envs") or {}
-    from .diagnostics import DEFAULT_ENV_NAMES, HOST_CATEGORY
-    _refuse_unknown(envs, (*DEFAULT_ENV_NAMES, HOST_CATEGORY, "manager"),
-                    "envs")
+    if "host" in envs:
+        raise RuntimeConfigError(_HOST_ENV_FIXED.format(path=CONFIG_FILENAME))
+    from .diagnostics import DEFAULT_ENV_NAMES
+    _refuse_unknown(envs, (*DEFAULT_ENV_NAMES, "manager"), "envs")
     for k, v in envs.items():
         if str(k).startswith("_"):
             continue

@@ -101,7 +101,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
-HOST_ENV="${MOLBUILDER_HOST_ENV:-molbuilder}"
+# The host env is always `molbuilder` -- one name, no override
+# (docs/configuration.md § 2.1c; user, 2026-10-02).
+HOST_ENV="molbuilder"
 MB_WANT_HELP=0
 
 # AUTO_YES is set by the main case below when any arg is ``--yes``
@@ -471,7 +473,6 @@ Two equivalent entry points (use whichever you prefer):
   record it once as `envs.manager` in molbuilder.json.
 
 Environment variables:
-  MOLBUILDER_HOST_ENV            host env name (default: molbuilder).
   MOLBUILDER_HOST_ENV_CHANNELS   comma-separated channels to pass when
                                  creating the host env, overriding
                                  .condarc.  Leave unset to respect
@@ -799,8 +800,8 @@ host_env_exists() {
     # under ``set -o pipefail`` the pipeline then reports awk's SIGPIPE (141)
     # as its own status -- which reads as "env missing" for an env that is
     # right there.  The name is also DATA, not a pattern: ``grep -x
-    # "${HOST_ENV}"`` treated a user's MOLBUILDER_HOST_ENV as a regex, so
-    # `mb.dev` matched an env called `mbxdev` and the shim would then
+    # "${HOST_ENV}"`` treated the name as a regex -- `mb.dev`, when the name
+    # could be chosen, matched an env called `mbxdev` and the shim would then
     # dispatch into the wrong env's python.
     "${ENV_MGR}" env list 2>/dev/null \
         | awk -v name="${HOST_ENV}" '
@@ -1284,9 +1285,6 @@ Error: host env '${HOST_ENV}' does not exist.
 
 Run this first:
     bash scripts/install-env.sh bootstrap --yes
-
-Or, to override the host env name:
-    MOLBUILDER_HOST_ENV=<name> bash scripts/install-env.sh bootstrap --yes
 EOF
             exit 2
         fi

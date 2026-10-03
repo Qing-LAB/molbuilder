@@ -1544,8 +1544,8 @@ def _install_one(recipe, effective: str, caps, *,
         click.echo("")
         click.echo("Or the manual equivalent:")
         click.echo("")
-        # `effective`, not `name`: with MOLBUILDER_HOST_ENV or an
-        # `envs.<category>` override the recipe name is not the env name, and
+        # `effective`, not `name`: with an `envs.<category>` override the
+        # recipe name is not the env name, and
         # every neighbouring line here already uses the effective one.  The
         # LINE comes from the one speller (`remove_env_cmd`, M3): this site
         # spelled it by hand until 2026-09-13, with its own copy of M3's

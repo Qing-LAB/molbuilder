@@ -119,14 +119,9 @@ def _serve(port: int, capture_cwd: Path) -> Iterator[subprocess.Popen]:
     )
 
     # ASK THE ONE DOOR, do not re-spell the rule.  This read
-    # `os.environ.get("MOLBUILDER_HOST_ENV", "molbuilder")`, which is two
-    # thirds of `effective_name`: it honoured the per-invocation override and
-    # the default, and silently skipped `envs.host` in molbuilder.json -- the
-    # PERSISTENT home, which exists so the name survives a new shell.  An
-    # operator with `envs.host: mb-dev` got `mb-dev` from `envs list` and
-    # `conda run -n molbuilder` from here.  `effective_name`'s own docstring
-    # records that this same asymmetry once built a second host env and left
-    # the one in use invisible to the health report.
+    # `os.environ.get("MOLBUILDER_HOST_ENV", "molbuilder")`, a second answer
+    # to the host env's name beside `effective_name`'s; the name is
+    # `molbuilder` always now (configuration.md § 2.1c), and the door says so.
     #
     # Importing is safe HERE though not everywhere: this script's documented
     # usage runs it inside the host env with Playwright, so the package and

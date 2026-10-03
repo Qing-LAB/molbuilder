@@ -38,7 +38,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 
-from ..diagnostics import DEFAULT_ENV_NAMES, HOST_CATEGORY, Capabilities
+from ..diagnostics import DEFAULT_ENV_NAMES, Capabilities
 from . import hints as _hints
 from typing import Any, Optional, Tuple
 
@@ -2815,52 +2815,24 @@ def recipe_for_category(category: str) -> Optional[Recipe]:
                  if r.category is not None and r.category == category), None)
 
 
-#: The host env's name override.  `install-env.sh` owns the other half of this
-#: contract -- it creates and dispatches into the env this names -- so the
-#: spelling lives in exactly these two files and the shim's help documents it.
-HOST_ENV_ENV = "MOLBUILDER_HOST_ENV"
-
-# The host recipe carries no `category` (it is not routed to by a tool), so
-# its name lives under `diagnostics.HOST_CATEGORY` in `molbuilder.json`'s
-# `envs` block -- the persistent home the variable above only overrides.
-
-
 def effective_name(recipe: Recipe, caps: Capabilities) -> str:
     """The env name that ``conda run -n ...`` will hit.
 
-    Every recipe's name comes from the same place: ``envs.<category>`` in
-    ``molbuilder.json``, falling back to the recipe's own name.  The host
-    recipe carries no category, so its key is ``envs.host`` -- and
-    ``$MOLBUILDER_HOST_ENV`` overrides that for one invocation.
+    A routed recipe's name comes from ``envs.<category>`` in
+    ``molbuilder.json``, falling back to the recipe's own name.  **The host
+    recipe's is always its own, ``molbuilder``** *(user, 2026-10-02: "let's
+    enforce one name")*: `install-env.sh` creates that env and nothing renames
+    it (`configuration.md` § 2.1c).
 
-    **``envs.host`` was accepted and ignored until 2026-09-13** (D13).  The
-    `envs` block takes any string->string pair, so writing it validated; nothing
-    read it, because this function consulted the config only when `category` was
-    set.  So the host env's name had no persistent home at all: the override
-    held only while the variable was exported, and a later shell without it
-    reported the host recipe against `molbuilder` again -- and `install
-    molbuilder` from there would build the second host env the override existed
-    to avoid.
-
-    **The host override was shim-only until 2026-09-12**, and that asymmetry
-    cost an env.  `install-env.sh` reads ``MOLBUILDER_HOST_ENV`` (line 98),
-    creates that env, probes it, dispatches into it, and ADVERTISES it in its
-    own help and in its host-env-missing error.  Nothing under ``molbuilder/``
-    read it (grep: zero hits), and this docstring said "there's no override slot
-    for host today".  So ``MOLBUILDER_HOST_ENV=mb-dev install-env.sh bootstrap
-    --yes`` created ``mb-dev`` in the shim and then a SECOND full host env named
-    ``molbuilder`` from the Python plan -- after which `list` and `doctor`
-    reported the host recipe against ``molbuilder``, leaving the env the user was
-    actually running in invisible to the health report.
-
-    Read at CALL time, not captured at import, like `config_dir.config_dir` and
-    for the same reason: a test (or an operator) that moves it moves every
-    caller together.
+    *(Until that day the host env had two names' worth of machinery: a
+    per-invocation ``$MOLBUILDER_HOST_ENV`` and, from 2026-09-13, a
+    persistent ``envs.host``.  The shim read only the variable and this
+    function read both, so the twice-measured failure was one env built
+    under one name and reported under another -- a second full host env, the
+    one in use invisible to the health report (D13, D21).)*
     """
     if recipe.category is not None:
         # env_for_category falls back to DEFAULT_ENV_NAMES when no
         # override is present, so this is always a non-None string.
         return caps.env_for_category(recipe.category) or recipe.name
-    return (os.environ.get(HOST_ENV_ENV)
-            or caps.env_for_category(HOST_CATEGORY)
-            or recipe.name)
+    return recipe.name

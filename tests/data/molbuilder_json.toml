@@ -99,6 +99,11 @@ machine_config = { cert = "/c.pem", key = "/k.pem" }
 refused = ["'tls' is a section, not top-level keys", '"tls": {"cert": "...", "key": "..."}']
 
 [[case]]
+name = "envs.host is refused -- the host env is always molbuilder"
+machine_config = { envs = { host = "mb-dev" } }
+refused = ["'envs.host' is no longer configured", "always 'molbuilder'"]
+
+[[case]]
 name = "secret_key_file is refused, naming the session key's one home"
 machine_config = { secret_key_file = "~/.mb/key" }
 refused = ["'secret_key_file' is no longer configured", "<config dir>/secrets/secret_key"]

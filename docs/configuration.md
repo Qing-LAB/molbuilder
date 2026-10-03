@@ -219,18 +219,15 @@ variable itself is review's to hold (`process/code-audit.md` § 1c): a second
 reader that agrees with `config_dir()` answers exactly as it does, so no run can
 tell the two apart until the rule moves.
 
-**The other `MOLBUILDER_*` variable: `MOLBUILDER_HOST_ENV`** *(recorded here
-2026-09-13; it had no contract entry, which is D10)*. It names the HOST env for
-one invocation — the env `molbuilder` itself runs from — and exists for
-developing against a second host env without disturbing the first. Both
-`scripts/install-env.sh` and the Python layer read it.
-
-**Its persistent home is `envs.host` in `molbuilder.json`**, the same place
-every other env's name lives, and the variable overrides that for one command.
-Until 2026-09-13 there was no home: `envs.host` was accepted by the validator
-and read by nothing, so the name survived only as long as the variable was
-exported — and a later shell without it reported the host recipe against
-`molbuilder` while `install` would have built a second host env.
+**The host env is always `molbuilder`** *(user, 2026-10-02: "let's enforce one
+name")* — the env molbuilder itself runs from, which `scripts/install-env.sh`
+creates and every `envs` verb reports against. Nothing renames it: `envs.host`
+is refused by name (§ 4), and `MOLBUILDER_HOST_ENV` is not read.
+*(Until that day the variable named the host env for one invocation, recorded
+here 2026-09-13, and `envs.host` was its persistent home — but the installer
+read only the variable and the `envs` verbs read the key too, so a name set in
+the file alone had `bootstrap` build `molbuilder` while `envs list` and
+`doctor` watched another env: two answers to one name, D21 and C23.)*
 
 **Who creates it.** Nobody had to, and that was the gap: every reader treats an
 absent file as *unset*, so a machine on which the directory had never been made
@@ -852,7 +849,7 @@ that column cannot disagree with the code.
 | key | what it is for | read by | printed in provenance logs | owner |
 |---|---|---|---|---|
 | `launch.mode` | how `jobset launch` sends a job when no `--mode` is given: `direct` runs it here with bash, `submit` hands it to the scheduler. Unset, launch refuses and asks for `--mode` | `runtime_config.get_launch` ← `jobset launch` | yes | [`running-a-job.md`](?doc=execution/running-a-job.md) § 5.4 |
-| `envs.<category>` | which conda environment a backend's work runs in, when it is not the default name. Categories: `siesta`, `siesta-gpu`, `pyscf`, `mdtools`, `jupyter`, `host` | `diagnostics.Capabilities.env_for_category` ← the run script, the `envs` verbs | no | [`ops/installation.md`](?doc=ops/installation.md) |
+| `envs.<category>` | which conda environment a backend's work runs in, when it is not the default name. Categories: `siesta`, `siesta-gpu`, `pyscf`, `mdtools`, `jupyter` — the host env is always `molbuilder` (§ 2.1c) | `diagnostics.Capabilities.env_for_category` ← the run script, the `envs` verbs | no | [`ops/installation.md`](?doc=ops/installation.md) |
 | `envs.manager` | the absolute path of the conda-compatible command (`mamba`, `micromamba`, `conda`) when the one on PATH is not the one to use | `runtime_config.get_env_manager` ← the `envs` verbs | no | [`ops/installation.md`](?doc=ops/installation.md) |
 | `env_init.activation` · `env_init.preamble` | how a shell on THIS machine enters a conda environment — `conda activate` or `source activate`, with no default — and the shell run before it (`module load mamba`, or sourcing conda's hook). Asked by `envs init-config`; `jobset probe --write` copies both into every record it writes, and prep reads them from the target's record | `runtime_config.get_env_init` ← `jobset probe` | no | [`running-a-job.md`](?doc=execution/running-a-job.md) § 5.2 |
 | `paths.projects` | where the project tree is | `projects.projects_root` ← every surface | yes | § 2.1d |
@@ -872,6 +869,7 @@ make the same file fail as an unknown key, which tells the person nothing.
 | `script_generation` | 2026-10-02 | Renamed `env_init`, for what it holds: how a shell on this machine enters an environment — the same two keys |
 | `execution` | 2026-10-02 | Renamed `launch`. `execution` is the run card in `task.json`, and means only that |
 | `notify_keys_file` · `notify_route` | 2026-08-31 | The key file carries its own route ([`run-reports.md`](?doc=execution/run-reports.md) § 4.3) |
+| `envs.host` | 2026-10-02 | Delete it: the host env is always `molbuilder` (§ 2.1c) |
 | `secret_key_file`, at the top level or inside `auth` | 2026-08-31 | The session key has one home, `secrets/secret_key` (§ 2.1e) |
 | `auth.providers[].client_secret` · `auth.providers[].client_secret_file` | 2026-10-02 | Neither the secret nor its path sits here: write the secret to its kind's home, `secrets/<kind>_client_secret` (§ 3.1; `molbuilder auth-setup` writes Google's) |
 | `auth.providers[].service_validate_url` | 2026-10-02 | Delete it: python-cas derives the validate endpoint from `login_url`, and nothing ever read this key (accepted and ignored from 2026-09-12) |
