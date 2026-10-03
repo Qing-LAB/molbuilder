@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import math
 import sys
+from contextvars import ContextVar
 from typing import Callable, Dict, List, Optional, Type
 
 import numpy as np
@@ -349,6 +350,14 @@ def validate(struct: Structure, cfg, *,
     return issues
 
 
+#: Where :func:`report` writes when it is given no stream: this context's
+#: own, set by a caller for the span of one act -- `prep` shows a sweep's
+#: repeated warnings once -- and ``sys.stderr`` when none is.  A context
+#: variable, never ``sys.stderr`` swapped: the server preps on several
+#: threads at once, and a swap one thread puts back is another's (W55 D8).
+REPORT_STREAM: "ContextVar" = ContextVar("report_stream", default=None)
+
+
 def report(issues: List[Issue], *,
            raise_on_error: bool = True,
            stream=None) -> None:
@@ -368,7 +377,7 @@ def report(issues: List[Issue], *,
     distinction and not a downgrade.
     """
     if stream is None:
-        stream = sys.stderr
+        stream = REPORT_STREAM.get() or sys.stderr
     for i in issues:
         if i.severity in ("warn", "info"):
             tag = f" [{i.where}]" if i.where else ""

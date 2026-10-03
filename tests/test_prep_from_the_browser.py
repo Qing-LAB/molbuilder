@@ -219,6 +219,60 @@ def _twin(calc, name):
     return twin
 
 
+def test_two_preps_at_once_leave_the_servers_stderr_as_they_found_it(
+        described):
+    """The server preps on several threads at once, and a prep shows a
+    sweep's repeated deck warnings once (O5).  It did that by swapping the
+    process's `sys.stderr` for a filter, so two preps whose rendering
+    overlapped -- the first finishing first -- left the first's filter as
+    the server's stderr, swallowing every repeated line after (W55 D8).
+    The filter is scoped to its own prep now (`validation.REPORT_STREAM`).
+
+    API-LEVEL ON PURPOSE: two threads inside one step at once is the
+    server's doing, which no road verb makes; the step is held so the
+    overlap is certain.
+
+    MUTATION THIS MUST FAIL AGAINST: the filter installed as `sys.stderr`."""
+    import sys
+    import threading
+    from molbuilder.jobset import prep as P
+    first = Path(described)
+    _make_preppable(first)
+    second = _twin(first, "calc-second")
+    inside = {n: threading.Event() for n in ("first", "second")}
+    go = {n: threading.Event() for n in ("first", "second")}
+    job_for, failed = P._job_for, []
+
+    def held(*a, **kw):
+        me = threading.current_thread().name
+        inside[me].set()
+        go[me].wait(60)
+        return job_for(*a, **kw)
+
+    def prep(calc):
+        try:
+            P.prep_stage(calc, "run", "coarse", target=LOCAL_TARGET,
+                         answer=P.Answer(False, "no"))
+        except Exception as exc:          # said below, with the rest
+            failed.append(exc)
+
+    before = sys.stderr
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(P, "_job_for", held)
+        threads = {n: threading.Thread(target=prep, args=(c,), name=n)
+                   for n, c in (("first", first), ("second", second))}
+        threads["first"].start()
+        assert inside["first"].wait(60)
+        threads["second"].start()
+        assert inside["second"].wait(60)
+        for n in ("first", "second"):
+            go[n].set()
+            threads[n].join(120)
+    assert not failed, failed
+    assert sys.stderr is before, (
+        "a prep left its once-per-line filter as the process's stderr")
+
+
 def _ledger_decisions(calc):
     from molbuilder.jobset.ledger import LEDGER_FILE
     log = Path(calc) / LEDGER_FILE

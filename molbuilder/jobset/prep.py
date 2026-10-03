@@ -1256,9 +1256,13 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # but sixteen identical thin-vacuum warnings on one terminal is
     # noise wearing a safety vest.  Scoped to THIS loop (not a module
     # global) so a long-lived server process cannot quietly swallow a
-    # later prep's warnings.
+    # later prep's warnings -- and to this THREAD: the gate's report reads
+    # its stream from `validation.REPORT_STREAM`, a context variable.  It
+    # swapped the process's `sys.stderr` until W55 D8, and two preps at once
+    # left one's filter as the server's stderr.
     import io as _io
     import sys as _sys
+    from ..validation import REPORT_STREAM
 
     class _OncePerLine(_io.TextIOBase):
         def __init__(self, wrapped):
@@ -1279,7 +1283,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             self._w.flush()
 
     _once = _OncePerLine(_sys.stderr)
-    _real_stderr, _sys.stderr = _sys.stderr, _once
+    _scope = REPORT_STREAM.set(_once)
     try:
         for element in pset:
             script = _rf(element.label, seam.suffix, token or None)
@@ -1411,7 +1415,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                                  finish=(None if element.is_trial
                                          else spec.finish)))
     finally:
-        _sys.stderr = _real_stderr
+        REPORT_STREAM.reset(_scope)
     if _once.dropped:
         print(f"  (each warning shown once; {_once.dropped} repeat(s) "
               f"across the other trials suppressed -- every trial's own "
