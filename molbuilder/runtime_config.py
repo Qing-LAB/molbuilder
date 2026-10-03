@@ -1192,18 +1192,13 @@ def get_admin_emails(cfg: Mapping[str, Any]) -> frozenset:
     address written twice.
 
     Emails are lowercased and blanks dropped, matching how the auth layer
-    stores ``session["user"]["email"]``, so membership is case-stable.
+    stores ``session["user"]["email"]``, so membership is case-stable -- the
+    one place that is done.  ``cfg`` has met :func:`_normalise`, whose
+    :func:`_read_admin` holds the section's shape, so it is not checked again
+    (W54 C21).
     """
-    section = cfg.get("admin") or {}
-    if not isinstance(section, Mapping):
-        return frozenset()
-    raw = section.get("emails") or []
-    if not isinstance(raw, (list, tuple)):
-        return frozenset()
-    return frozenset(
-        e.strip().lower() for e in raw
-        if isinstance(e, str) and e.strip()
-    )
+    emails = (cfg.get("admin") or {}).get("emails") or ()
+    return frozenset(e.strip().lower() for e in emails if e.strip())
 
 
 def get_rate_limit(cfg: Mapping[str, Any]) -> Dict[str, Any]:

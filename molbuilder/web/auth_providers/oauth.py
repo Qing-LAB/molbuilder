@@ -171,7 +171,7 @@ def _client_kwargs_for_kind(kind: str, entry: Mapping) -> dict:
         # Tenant-aware metadata URL.  "common" = any Microsoft account
         # (work, school, personal); a GUID or verified domain restricts
         # to one tenant.
-        tenant = entry.get("tenant_id", "common")
+        tenant = entry["tenant_id"]    # its default is the validator's
         return {
             "server_metadata_url":
                 f"https://login.microsoftonline.com/{tenant}/v2.0/"

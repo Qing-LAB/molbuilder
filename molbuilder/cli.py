@@ -1550,7 +1550,6 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
     import getpass
 
     from . import auth_setup as _as
-    from .runtime_config import _validate_provider as _validate
 
     # 0. Say what is already wrong about this machine's config ---------
     #
@@ -1633,10 +1632,6 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
                 default=sys_user,
             )
         entry = _as.build_asu_cas_entry(asurite)
-        # Round-trip through the canonical validator so a future
-        # schema change can't let the wizard emit something the
-        # server then rejects at startup.
-        _validate(entry, idx=len(providers))
         providers.append(entry)
         click.echo(
             f"  + ASU CAS configured for "
@@ -1687,28 +1682,36 @@ def cmd_auth_setup(provider, asurite, google_email, hosted_domain, force):
                         continue
                     break
                 emails.append(e)
-        # The secret goes to its fixed home; the entry names nothing.
-        _as.write_secret_file(google_secret_file, client_secret.strip())
+        # The entry names no secret; the secret goes to its fixed home
+        # once the config has been accepted, below.
         entry = _as.build_google_entry(
             client_id=client_id,
             allowed_users=emails,
             hosted_domain=list(hosted_domain) if hosted_domain else None,
         )
-        _validate(entry, idx=len(providers))
         providers.append(entry)
-        click.echo(
-            f"  + Google OAuth configured for {len(emails)} "
-            f"allowed email(s); secret stored at {google_secret_file}",
-            err=True,
-        )
 
     # 6. Merge the auth block into the machine config ------------------
+    #
+    # THE SERVER'S OWN VALIDATOR, ONCE: `write_config_scope` validates the
+    # merge before it writes, so the wizard cannot emit what the server
+    # would refuse at startup.  Each entry was also run through the private
+    # `_validate_provider` here, and Google's secret written before either
+    # check, until 2026-10-02 (W54 C21) -- a refused config left a secret
+    # behind for an entry that was never written.
     auth_block = _as.build_auth_block(providers=providers)
     try:
         write_config_scope({"auth": auth_block})
     except RuntimeConfigError as exc:
         click.echo(f"Error: not written -- {exc}", err=True)
         sys.exit(2)
+    if want_google:
+        _as.write_secret_file(google_secret_file, client_secret.strip())
+        click.echo(
+            f"  + Google OAuth configured for {len(emails)} "
+            f"allowed email(s); secret stored at {google_secret_file}",
+            err=True,
+        )
 
     click.echo("", err=True)
     click.echo(f"Wrote {output_path} (mode 0600)", err=True)

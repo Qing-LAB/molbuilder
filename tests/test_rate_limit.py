@@ -401,10 +401,11 @@ class TestXFFTrust:
 def _admin_login(app, client, email="admin@example.com"):
     """Attach a logged-in session to ``client`` AND name it as an admin.
 
-    Both halves are needed now: signing in is not enough, because an absent or
-    empty admin list means NOBODY.  The set is installed on the app the same
-    way `create_app` installs it from config, so these tests exercise the real
-    door rather than a stand-in.
+    Both halves, because these tests are about a NAMED list: with none, anyone
+    signed in is an admin (`access-control.md` § 5), and naming addresses
+    narrows it.  The set is installed on the app the same way `create_app`
+    installs it from config, so these tests exercise the real door rather than
+    a stand-in.
     """
     from molbuilder.web.admin import install_admins
     app.secret_key = "test-only-not-for-prod"

@@ -54,11 +54,10 @@ _EXT_KEY = "molbuilder_admin_emails"
 
 
 def install_admins(app, emails: Iterable[str]) -> frozenset:
-    """Resolve the admin set once, at app setup, and hang it on the app."""
-    resolved = frozenset(
-        e.strip().lower() for e in (emails or ())
-        if isinstance(e, str) and e.strip()
-    )
+    """Hang the admin set on the app, once, at setup -- as
+    `runtime_config.get_admin_emails` resolved it (lowercased, blanks
+    dropped: the rule's one home; this re-did it until 2026-10-02, W54 C21)."""
+    resolved = frozenset(emails or ())
     app.extensions[_EXT_KEY] = resolved
     return resolved
 
