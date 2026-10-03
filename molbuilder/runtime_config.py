@@ -1435,51 +1435,6 @@ def machine_config_shadow() -> Optional[str]:
     ])
 
 
-def machine_config_mode_warning() -> Optional[str]:
-    """A warning when the machine config is readable by anyone but its owner.
-
-    `configuration.md` § 2.1b.  This file carries `tls.key` and the
-    `auth.providers` block, so a world-readable copy on a shared login node is
-    an exposure rather than an untidiness.
-
-    WRITING IT TIGHTLY IS THE WRITER'S JOB -- `write_config_scope` goes
-    through ``write_bytes(mode=0o600)``, whose temp is private before it has
-    a name, so the mode is right before there is anything to read.  What no
-    writer can control is a file
-    that ARRIVES loose: copied from another machine, restored from a backup,
-    made by an editor, or unpacked from an archive that dropped its modes.
-    Those never pass through the careful path, so the check belongs on the way
-    IN.
-
-    A warning and never a refusal (§ 2.1a's reasoning): the fix is one command
-    and it is named here.  ``None`` when the mode is already tight, and when
-    the file does not exist -- there is nothing to say about a file nobody
-    wrote.
-    """
-    path = machine_config_path()
-    try:
-        if not path.is_file():
-            return None
-        mode = path.stat().st_mode & 0o777
-    except OSError:
-        return None
-    # Bits that give SOMEONE ELSE access.  Owner-execute (a 0700 file) is
-    # untidy but grants nobody anything, and this said "more than its owner
-    # can read it" for exactly that case (review C-L7, 2026-09-14).
-    if not (mode & 0o077):
-        return None
-    who = []
-    if mode & 0o077 & 0o070:
-        who.append("your group")
-    if mode & 0o007:
-        who.append("everyone on this machine")
-    reach = " and ".join(who) if who else "more than its owner"
-    return (f"{path} is mode {mode:04o}, so {reach} can read it. It holds "
-            f"private-key paths and provider credentials "
-            f"(configuration.md § 2.1b).\n"
-            f"  Fix it with: chmod {PRIVATE_FILE_MODE:04o} {path}")
-
-
 def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     """Which config files this process consults, and which one supplied each
     execution-relevant value — the answer to *"where did that setting come
@@ -1505,8 +1460,11 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     # once.  Asked of the one place that phrases it, never re-worded here.
     shadow = machine_config_shadow()
     # Same split as § 2.1a's: WHICH file, and whether it is safe to hold what
-    # it holds.  Asked of the one place that phrases each, never re-worded.
-    mode_warning = machine_config_mode_warning()
+    # it holds.  Asked of the one place that phrases each, never re-worded --
+    # the mode's is the placement table's row, the sentence the terminal
+    # prints too (§ 2.1b).
+    from .placement import machine_config_finding
+    mode_warning = machine_config_finding()
 
 
     # RAW file bytes decide what a file "supplied" (R10, 2026-08-12: the

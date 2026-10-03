@@ -1953,9 +1953,10 @@ def _folder_provenance(dest) -> dict:
     # THE WARNINGS TRAVEL WITH THE PROVENANCE, and forwarding only three of
     # the five keys is how the tab and the terminal came to disagree.  The
     # terminal prints `shadow` (a `molbuilder.json` sitting unread in a working
-    # directory) and `mode_warning` (the config readable by more than its
-    # owner); a page that showed the resolved path WITHOUT them would tell a
-    # person their config is fine while the file they are editing is ignored.
+    # directory) and the config's mode finding, which `mode_warning` carries in
+    # the same words (`placement.machine_config_finding`); a page that showed
+    # the resolved path WITHOUT them would tell a person their config is fine
+    # while the file they are editing is ignored.
     return {
         "ok": True,
         "sources": prov.get("sources") or [],

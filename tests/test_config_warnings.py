@@ -144,8 +144,9 @@ class TestEverySurfaceSaysTheSameThing:
 # ---------------------------------------------------------------------------
 
 def _mode_warning():
-    from molbuilder.runtime_config import machine_config_mode_warning
-    return machine_config_mode_warning()
+    """The config's mode finding -- the table's one sentence (§ 2.1b)."""
+    from molbuilder.placement import machine_config_finding
+    return machine_config_finding()
 
 
 class TestTheModeIsCheckedOnTheWayIn:
@@ -164,14 +165,11 @@ class TestTheModeIsCheckedOnTheWayIn:
         assert _mode_warning() is None, (
             "there is nothing to say about a file nobody wrote")
 
-    def test_owner_only_bits_are_not_a_reach(self, isolated):
-        """A 0700 file is untidy and grants nobody anything; this said "more
-        than its owner can read it" about it (review C-L7)."""
-        _work, home = isolated
-        home.parent.mkdir(parents=True, exist_ok=True)
-        home.write_text("{}")
-        home.chmod(0o700)
-        assert _mode_warning() is None
+    # `test_owner_only_bits_are_not_a_reach` and
+    # `test_group_only_and_world_readable_read_differently` retired 2026-10-02
+    # with the second sentence they pinned (`machine_config_mode_warning`):
+    # the one sentence is the table's, whose rule is any bit beyond 0600
+    # (`configuration.md` § 2.1b, T24).
 
     @pytest.mark.parametrize("mode", [0o644, 0o640, 0o666, 0o604])
     def test_any_reach_past_the_owner_is_named(self, isolated, mode):
@@ -194,20 +192,6 @@ class TestTheModeIsCheckedOnTheWayIn:
         f.chmod(0o644)
         assert f"chmod 0600 {f}" in _mode_warning()
 
-    def test_group_only_and_world_readable_read_differently(self, isolated):
-        """`0640` and `0644` are not the same exposure, and a message that
-        called both "everyone" would overstate one and understate nothing."""
-        _work, home = isolated
-        home.parent.mkdir(parents=True, exist_ok=True)
-        f = home
-        f.write_text("{}")
-        f.chmod(0o640)
-        group_only = _mode_warning()
-        f.chmod(0o644)
-        world = _mode_warning()
-        assert "everyone" not in group_only
-        assert "everyone" in world
-
     def test_it_says_why_the_mode_matters(self, isolated):
         """Not decoration: without the reason this reads as pedantry about a
         config file, and the reason is that it carries key paths and provider
@@ -218,8 +202,7 @@ class TestTheModeIsCheckedOnTheWayIn:
         f.write_text("{}")
         f.chmod(0o644)
         msg = _mode_warning()
-        assert "credential" in msg or "private-key" in msg
-        assert "2.1b" in msg, "and where the rule lives"
+        assert "tls.key" in msg and "auth.providers" in msg
 
 
 # RETIRED 2026-09-14 (review D): `test_a_loose_file_is_still_read` asked
@@ -268,9 +251,9 @@ class TestOneFindingIsSaidOnce:
     doing that in `serve` since the table was added.
 
     `architecture.md` A11 is the rule (one home per filename) and the table is
-    what knows every path in the tree, so the table owns it.  The prose
-    sentence is not dead -- `config_provenance` still reports it, which is a
-    line about this file's provenance rather than an audit of the tree.
+    what knows every path in the tree, so the table owns it -- and since
+    2026-10-02 the prose sentence is gone too: `config_provenance` carries the
+    table's row for the card (`configuration.md` § 2.1b, T24).
     """
 
     def test_a_loose_config_is_reported_once(self, isolated):
@@ -286,15 +269,3 @@ class TestOneFindingIsSaidOnce:
         assert len(about_the_file) == 1, (
             "one file, one finding, one remedy -- got:\n  "
             + "\n  ".join(about_the_file))
-
-    def test_provenance_still_has_its_own_sentence(self, isolated):
-        """Removing it from the sum must not remove it from the one reader
-        that is not an audit of the tree."""
-        from molbuilder.runtime_config import config_provenance
-        _work, cfg = isolated
-        cfg.parent.mkdir(parents=True, exist_ok=True)
-        cfg.write_text("{}")
-        cfg.chmod(0o644)
-
-        assert config_provenance()["mode_warning"], (
-            "config_provenance reports this file's mode and still must")

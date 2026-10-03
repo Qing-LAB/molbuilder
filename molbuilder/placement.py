@@ -42,7 +42,7 @@ from .config_dir import (PRIVATE_FILE_MODE, PRIVATE_DIR_MODE, SECRETS_DIRNAME,
                          state_dir)
 
 __all__ = ["Place", "places", "findings", "misplaced",
-           "machine_config_warnings"]
+           "machine_config_finding", "machine_config_warnings"]
 
 
 @dataclass(frozen=True)
@@ -102,7 +102,7 @@ def places() -> Tuple[Place, ...]:
         Place("the config directory", config_dir, True, PRIVATE_DIR_MODE,
               "it holds `secrets/` and molbuilder.json, and a listable "
               "directory names a file even when the file itself is shut"),
-        Place("molbuilder.json", lambda: machine_config_path(), False,
+        Place("molbuilder.json", machine_config_path, False,
               PRIVATE_FILE_MODE,
               "it carries tls.key's path and the auth.providers block"),
         # The NAME from its owner, not a literal: this row re-spelled
@@ -291,35 +291,56 @@ def findings() -> List[str]:
     """
     out: List[str] = list(misplaced())
     for place in places():
-        if place.mode is None:
-            continue
-        try:
-            base = place.resolve()
-        except Exception:          # a resolver that needs config we cannot read
-            continue
-        targets: List[Path] = []
-        if place.pattern:
-            try:
-                targets = sorted(p for p in Path(base).glob(place.pattern)
-                                 if p.is_file())
-            except OSError:
-                targets = []
-        elif Path(base).exists():
-            targets = [Path(base)]
-        for target in targets:
-            try:
-                actual = stat.S_IMODE(target.stat().st_mode)
-            except OSError:
-                continue
-            if actual == place.mode:
-                continue
-            if not (actual & ~place.mode):
-                continue           # tighter than required is not a finding
-            out.append(
-                f"{place.what} is mode {actual:04o}, and {place.mode:04o} is "
-                f"what it should be -- {place.why}.\n"
-                f"  Fix it with: chmod {place.mode:04o} {target}")
+        out.extend(_mode_findings(place))
     return out
+
+
+def _mode_findings(place: Place) -> List[str]:
+    """One row's mode findings -- THE sentence for a file that arrived looser
+    than its row says, one per file that exists."""
+    if place.mode is None:
+        return []
+    try:
+        base = place.resolve()
+    except Exception:              # a resolver that needs config we cannot read
+        return []
+    targets: List[Path] = []
+    if place.pattern:
+        try:
+            targets = sorted(p for p in Path(base).glob(place.pattern)
+                             if p.is_file())
+        except OSError:
+            targets = []
+    elif Path(base).exists():
+        targets = [Path(base)]
+    out: List[str] = []
+    for target in targets:
+        try:
+            actual = stat.S_IMODE(target.stat().st_mode)
+        except OSError:
+            continue
+        if actual == place.mode:
+            continue
+        if not (actual & ~place.mode):
+            continue               # tighter than required is not a finding
+        out.append(
+            f"{place.what} is mode {actual:04o}, and {place.mode:04o} is "
+            f"what it should be -- {place.why}.\n"
+            f"  Fix it with: chmod {place.mode:04o} {target}")
+    return out
+
+
+def machine_config_finding() -> Optional[str]:
+    """`molbuilder.json`'s mode finding, or ``None`` -- its row's sentence,
+    for a surface that shows the config alone (the Task-setup card, through
+    `runtime_config.config_provenance`).  The terminal prints the same words
+    among every `findings()`: ONE sentence and one rule for the file's mode
+    (`configuration.md` § 2.1b).  *(A second phrasing,
+    `runtime_config.machine_config_mode_warning`, with a rule of its own, was
+    the card's until 2026-10-02 -- T24.)*"""
+    from .runtime_config import machine_config_path
+    row = next(p for p in places() if p.resolve is machine_config_path)
+    return next(iter(_mode_findings(row)), None)
 
 
 def machine_config_warnings() -> List[str]:

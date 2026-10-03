@@ -179,10 +179,17 @@ so a file that is `0644` today is `0644` silently.
 
 **A warning, never a refusal**, for the same reason as § 2.1a: refusing locks a
 person out of their own tooling over a condition they can fix in one command,
-and the fix is named in the message. `runtime_config.machine_config_mode_warning()`
-is the one place it is phrased, so every surface says the same thing, and it
-names the exact `chmod` to run. It says nothing when the mode is already tight —
-the quiet case is the correct one.
+and the fix is named in the message. **One sentence and one rule, the table's**
+(§ 3.1): `placement`'s `molbuilder.json` row phrases it, naming the mode, why it
+matters and the exact `chmod` to run. The terminal prints it among the tree's
+findings (`placement.machine_config_warnings()`), and the Task-setup card asks
+for that row alone (`placement.machine_config_finding()`), so both say the same
+words. It says nothing when no bit is set beyond `0600` — the quiet case is the
+correct one. *(Until 2026-10-02 a second sentence,
+`runtime_config.machine_config_mode_warning()`, was this paragraph's "one
+place" while the terminal printed the table's — two phrasings and two rules for
+one fact, so a `0700` file was quiet on the card and a finding in the terminal
+(T24, C8; user: one sentence, the one with the fix).)*
 
 ### 2.1c Naming the root outright — `MOLBUILDER_CONFIG_DIR`
 
