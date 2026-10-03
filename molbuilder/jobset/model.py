@@ -58,8 +58,9 @@ _KINDS = (KIND_SWEEP, KIND_LADDER)
 @dataclass
 class Resources:
     """A per-job scheduler ask.  Every field is optional, and ``None``
-    means **unstated** — the scheduler's own default then decides, said out
-    loud (assistant, not nanny — no surprise resource choices).
+    means **unstated** — which nothing fills in: prep and launch refuse a
+    launch value stated nowhere (`architecture.md` § 5.2; user, 2026-10-02:
+    *"explicit job config is the only way allowed"*).
 
     *It said "inherit the job-level default / per-job estimate" until
     2026-08-24.  There is no per-job estimate: every one was deleted in the

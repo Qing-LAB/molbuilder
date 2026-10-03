@@ -299,7 +299,9 @@ Walk through it with the *why* for each piece:
   > settings because a sweep has no order. The full table, for every layer,
   > is [`job-contracts.md`](?doc=execution/job-contracts.md) § 6.3.
 - **`Job.resources`** (`Resources`) are the per-job scheduler asks — all optional,
-  `None` meaning "inherit / resolve at submit". They use the **scheduler's
+  `None` meaning *unstated*, which nothing fills in: a launch value stated
+  nowhere is refused ([`architecture.md`](?doc=execution/architecture.md)
+  § 5.2). They use the **scheduler's
   vocabulary** (`mpi_np` for MPI ranks → `-n`; `cpus_per_task` for cores/rank →
   `-c`; `time`, `mem`, `gres`, `exclusive`, `domain`), the same names the
   persisted files and SLURM flags use — the full mapping is pinned in
@@ -1123,7 +1125,7 @@ route — is this, for the whole verb.
 | in the answer | what it is |
 |---|---|
 | `findings` | the description's preflight notes (`engines/stages.md` § 6.6); an error refuses instead |
-| `notes` | what the inputs said: the run's sizing when nothing stated it, a bench's grid — enumerated, crossed out, kept |
+| `notes` | what the inputs said: a run card's value the run does not use (`gpu_count` with `use_gpu` off), a bench's grid — enumerated, crossed out, kept |
 | `offer` | the save, offered (§ 5.0, checkpoint 5): the `note` prep drafted, what is `unsaved`, and the state the folder `standing_at` — when its state is not saved and no answer was given; **nothing is written** until it is answered |
 | `dirs` | the job folders the five steps wrote |
 | `provenance` | which configuration file supplied each setting (`configuration.md` § 2.2) |

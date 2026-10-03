@@ -274,7 +274,7 @@ def command_stage(token: str) -> str:
 #: What the mode means, beside a launch line a text read LATER carries -- a
 #: deck's header, a result's remedy -- every engine's.
 LAUNCH_MODE_NOTE = ("(--mode direct runs it here, --mode submit sends it to "
-                    "the queue; unsaid, molbuilder.json's execution.mode "
+                    "the queue; unsaid, molbuilder.json's launch.mode "
                     "decides)")
 
 

@@ -191,17 +191,23 @@ def _scheduler_job_name(jobset: JobSet, name: str) -> str:
 #: rest are named as unasked rather than silently dropped.
 ASK_MAX_QUERIES = 24
 
-#: The one answer to *there is no scheduler header*, whichever door finds
-#: it missing (`job-system.md` § 6): prep withholds the ``.sbatch`` only
-#: where the machine it prepped for names no queue.  Three doors worded it
-#: three ways until 2026-10-01, one telling a person to "add a scheduler
-#: block" -- a premise § 6 retired -- and one to "run prep_jobset" (W52).
-_NO_SBATCH = (
-    "{what}: there is no scheduler header ({name}) -- prep writes one only "
-    "where the machine it prepped for names a queue (job-system.md § 6: a "
-    "record saying `workstation`, or no (partition, qos) pair to name).  Run "
-    "it here with --mode direct, or prep it for the machine with the queue, "
-    "naming its record with --target.")
+def _no_sbatch(what: str, name: str, *, base) -> str:
+    """The one answer to *there is no scheduler header*, whichever door
+    finds it missing (`job-system.md` § 6): prep withholds the ``.sbatch``
+    only where the machine it prepped for names no queue.  Three doors
+    worded it three ways until 2026-10-01, one telling a person to "add a
+    scheduler block" -- a premise § 6 retired -- and one to "run
+    prep_jobset" (W52).  A machine with a queue is another machine, and a
+    calculation is set to the machine of its first prep (`configuration.md`
+    M-3): the way there is the state saved before that prep."""
+    return (f"{what}: there is no scheduler header ({name}) -- prep writes "
+            f"one only where the machine it prepped for names a queue "
+            f"(job-system.md § 6: a record saying `workstation`, or no "
+            f"(partition, qos) pair to name).  Run it here with --mode "
+            f"direct.  For a machine with a queue, prep it for that machine "
+            f"(--target, its record's name) -- a calculation is set to the "
+            f"machine of its first prep, so "
+            + rollback("its first prep", base=base))
 
 
 def _sbatch_request(base: Path, *, envelope: Resources, gpu_side: bool,
@@ -399,10 +405,9 @@ class _Plan:
             return (f"{how}: launching it again in the same folder, where "
                     f"its files are")
         return (f"{how}: continuing {self.continues} -> {self.run_dir.name} "
-                f"(carrying {', '.join(self.carries)}).  A new attempt "
-                f"instead: `{_cmd('prep', 'run', self.job.name, base=self.base)}`"
-                f" first (from the stage before it; --cold from the "
-                f"structure).")
+                f"(carrying {', '.join(self.carries)}).  To start it afresh "
+                f"instead (from the stage before it, or --cold from the "
+                f"structure): " + rollback("its prep", base=self.base))
 
 
 def _plan_job(jobset: JobSet, base: Path, job, *, mode: str) -> _Plan:
@@ -456,9 +461,9 @@ def _plan_job(jobset: JobSet, base: Path, job, *, mode: str) -> _Plan:
                 f"{launch_record_path(where, basename)} records it.  A "
                 f"trial measures its point ONCE (project-layout.md § 1.5: "
                 f"immutable once it has run); read the sweep back with "
-                f"{read_back}.  To measure this point again, move the "
-                f"trial's directory aside yourself -- molbuilder never "
-                f"deletes results.")
+                f"{read_back}.  To measure it again -- a prepped benchmark is "
+                f"not prepped again (job-system.md § 5.0): "
+                + rollback("the benchmark's prep", base=base))
         raise SubmitError(
             f"trial {job.name!r}: {run.name} has already been launched "
             f"({launch_record_path(where, basename)}).  A measurement is "
@@ -1305,8 +1310,8 @@ def _prepare_side_group(jobset: JobSet, base: Path, dirs, pending,
                                             placement.qos)
                                            if placement else None))
     if header is None:
-        raise SubmitError(_NO_SBATCH.format(what=name,
-                                            name=f"launch/{name}.sbatch"))
+        raise SubmitError(_no_sbatch(name, f"launch/{name}.sbatch",
+                                     base=base))
     launch_dir.mkdir(parents=True, exist_ok=True)
     script.write_text("\n".join(lines), encoding="utf-8")
     (launch_dir / f"{name}.sbatch").write_text(_into_launch(header, name),
@@ -1570,8 +1575,8 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
                                             placement.qos)
                                            if placement else None))
     if header is None:
-        raise SubmitError(_NO_SBATCH.format(what=name,
-                                            name=f"launch/{name}.sbatch"))
+        raise SubmitError(_no_sbatch(name, f"launch/{name}.sbatch",
+                                     base=base))
     launch_dir.mkdir(parents=True, exist_ok=True)
     (launch_dir / f"{name}.run.sh").write_text("\n".join(lines),
                                                encoding="utf-8")
@@ -1841,8 +1846,8 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
         if ((mode == "submit" and not dry_run) or (mode == "ask"
                                                      and sbatch_here)) \
                 and not (p.read_from / sbatch_name).exists():
-            raise SubmitError(_NO_SBATCH.format(
-                what=f"job {p.job.name!r}", name=sbatch_name))
+            raise SubmitError(_no_sbatch(f"job {p.job.name!r}", sbatch_name,
+                                         base=base))
         gpu = _job_wants_gpu(p.read_from, p.job)
         _env, p.placement, p.command = _sbatch_request(
             base, envelope=p.job.resources, gpu_side=gpu,

@@ -622,7 +622,8 @@ function setRunValue(name, raw, stage) {
         const blank = (v === null || raw === "");
         const box = stageExecutionOf(stage, !blank);
         if (box) {
-            // BLANK IS A STATE: the target's own width, or a refusal.
+            // BLANK IS A STATE: the calculation's own value, or unstated --
+            // which prep refuses for a launch value (architecture.md § 5.2).
             if (blank) delete box[name]; else box[name] = v;
             if (!Object.keys(box).length) {
                 const st = _task.stages.find((x) => x && x.name === stage);
@@ -665,8 +666,9 @@ function stageRunCard(task, stage, active) {
     box.appendChild(el("h3", { class: "ts-reports-head" },
                        "What this run will use"));
     box.appendChild(el("p", { class: "hint" },
-        "One value each \u2014 not a grid. Blank is sized from the target's "
-        + "own width; a benchmark reports here but never fills this in."));
+        "One value each \u2014 not a grid. Blank takes the calculation's "
+        + "own value; a launch value stated nowhere is refused at prep. A "
+        + "benchmark reports here but never fills this in."));
     const rows = el("div", { class: "ts-rows" });
     const fit = el("div", { class: "ts-fit", hidden: "" });
     box.appendChild(rows);
@@ -746,9 +748,8 @@ function stageRunCard(task, stage, active) {
     }
     if (!names.length) {
         rows.appendChild(el("p", { class: "hint" },
-            "Nothing stated \u2014 this run is sized from the target's own "
-            + "width, or refused if that target has no record. Add a "
-            + "setting to decide it here."));
+            "Nothing stated \u2014 prep refuses a run whose launch values "
+            + "are stated nowhere. Add a setting to decide it here."));
     }
 
     const sel = el("select", { class: "ts-pick",
@@ -2139,11 +2140,11 @@ function askLine(a, chosen) {
     if (a.domain) bits.push(a.domain);
     if (a.time) bits.push(a.time);
     if (a.mem) bits.push(a.mem);
-    // NOTHING STATED IS A REAL ANSWER, and naming it is the point: the run
-    // is sized from the target's own width, and a blank line would read as
+    // NOTHING STATED IS A REAL ANSWER, and naming it is the point: prep
+    // refuses a launch value stated nowhere, and a blank line would read as
     // "no idea" rather than "not yet decided".
     return bits.length ? bits.join(" \u00b7 ")
-                       : "nothing stated \u2014 the target's own width";
+                       : "nothing stated \u2014 prep refuses until it is";
 }
 
 function paintPlan(box, host, body) {
@@ -2345,9 +2346,9 @@ function renderNext(task) {
         block.appendChild(stageRunCard(task, name, active));
 
         block.appendChild(el("p", { class: "hint" },
-            "Run it \u2014 at what the card above says. What no row states "
-            + "is sized from the target's own width, or refused if that "
-            + "target has no record. Add --np / --cpus-per-task / --time to override."));
+            "Run it \u2014 at what the card above says. A launch value no "
+            + "row states is refused at prep; --np / --cpus-per-task / --time "
+            + "on the command line state one, or override the card."));
         /* CONTINUE FROM (plan W37, `job-system.md` § 5.4): what this stage
          * starts from -- by default the stage before it's newest run, which
          * must have concluded; a run of it, named; or the calculation's
@@ -2835,9 +2836,13 @@ function _showPrepAnswer(wrap, say, r, onAnswer) {
     for (const g of (r.gathered || [])) line("gathered: " + g.file + " ← " + g.from);
     if (r.resources) {
         const rs = r.resources;
-        line("resources: mpi_np " + (rs.mpi_np || "auto") + " | omp "
-             + (rs.cpus_per_task || "auto")
-             + (rs.continue_retries ? " | retries " + rs.continue_retries : ""));
+        // WHAT IS STATED, and nothing else -- the terminal's line
+        // (`_echo_prep_answer`): no launch value is left to a wrapper, and a
+        // PySCF run has no rank count at all.
+        const asks = [["mpi_np", rs.mpi_np], ["omp", rs.cpus_per_task],
+                      ["retries", rs.continue_retries]]
+            .filter(([, v]) => v).map(([k, v]) => k + " " + v);
+        if (asks.length) line("resources: " + asks.join(" | "));
     }
     const g = r.agreement;
     if (g && g.verdict === "agrees") {
@@ -3314,7 +3319,8 @@ function paintAskNotes() {
             msg = "not a value I can read";
         } else if (val === null) {
             state = "unset";
-            msg = "left blank \u2014 the scheduler's own default decides";
+            msg = "left blank \u2014 stated nowhere, prep refuses it "
+                + "for a job sent to a queue";
         } else if (cap && val > cap) {
             state = "bad";
             msg = "more than " + _fs.queue + " allows (" + fmt(cap) + ")";

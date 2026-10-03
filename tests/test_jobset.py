@@ -2522,12 +2522,13 @@ def test_prep_stays_quiet_about_a_deck_that_makes_no_claim(tmp_path):
 
 def test_prep_reports_the_resources_this_stage_will_be_launched_with(tmp_path):
     """The second of § 2.3.3's three — *"the measured numbers, the chosen
-    geometry and the rendered deck appear together"*. `auto` is printed as a
-    word rather than omitted, because a blank line and *"the wrapper decides"*
-    are different claims."""
+    geometry and the rendered deck appear together"*. What is stated is
+    printed, and nothing else: no launch value is left for the wrapper to
+    decide (`architecture.md` § 5.2), so `omp auto` claimed a decision
+    nobody makes — and a PySCF run has no rank count to call `auto`."""
     out = _prep_output(tmp_path, mpi_np_deck=8, mpi_np_launch=8)
     assert "resources: mpi_np 8" in out
-    assert "omp auto" in out
+    assert "auto" not in out
 
 
 def test_a_flat_stage_that_never_ran_does_not_borrow_a_siblings_state(tmp_path):

@@ -81,8 +81,8 @@ def launch_agreement(job_dir, job) -> LaunchAgreement:
     many processors for the system size"*. The migration then moved rendering
     into `prep` (ladder step 4), so both halves resolve on one machine — and
     this comparison stays, because a deck can still meet a launch it was not
-    rendered for: a re-prep with a new allocation, a hand-carried deck, an
-    edited wrapper.
+    rendered for: an edited `job-set.json`, a hand-carried deck, an edited
+    wrapper.
 
     P4 unit 5 put the launch quantity **into** the deck, which is why that
     failure was diagnosable at all. **Recording is not agreeing**: this is the
@@ -117,10 +117,12 @@ def disagreement_note(a: LaunchAgreement) -> str:
             "all -- so one rendered for a different launch is wrong for "
             "this one (project-layout.md § 2.3.1: a parameter that depends "
             "on the launch cannot be decided before the launch is known).  "
-            f"Prep the stage again for the width it will launch at "
-            f"({a.launch_text}) -- `prep` renders the deck and the launch "
-            f"together (`--np`, or the run card's `mpi_np`); `launch` takes "
-            f"no width of its own.")
+            f"A prepped stage is not prepped again (job-system.md § 5.0): go "
+            f"back to the state saved before its prep -- `molbuilder "
+            f"checkpoint list` shows the folder's states -- and prep it anew "
+            f"for the width it will launch at ({a.launch_text}); `prep` "
+            f"renders the deck and the launch together (`--np`, or the run "
+            f"card's `mpi_np`), and `launch` takes no width of its own.")
 
 
 class DeckLaunchMismatch(Exception):
@@ -161,6 +163,14 @@ __all__ = ["LaunchAgreement", "launch_agreement", "disagreement_note",
            "check_trial_starts_cold"]
 
 
+#: A trial's deck redone: a prepped benchmark is not prepped again, so the
+#: way back is the state saved before its prep (`job-system.md` § 5.0).
+_BENCH_ANEW = ("a prepped benchmark is not prepped again (job-system.md "
+               "§ 5.0): go back to the state saved before its prep -- "
+               "`molbuilder checkpoint list` shows the folder's states -- and "
+               "prep it anew.")
+
+
 def check_trial_starts_cold(job_dir, job) -> None:
     """A TRIAL measures from scratch, and SUBMISSION verifies it.
 
@@ -173,8 +183,9 @@ def check_trial_starts_cold(job_dir, job) -> None:
     reading false; a deck where any reads true would warm-start -- a
     continued run wearing a trial's label -- and one carrying none at all
     cannot be vouched for (hand-stripped, or rendered before the pin).
-    A warm or group-stripped deck refuses by name (remedy: one
-    re-prep); an ABSENT deck passes silently -- absence says nothing,
+    A warm or group-stripped deck refuses by name (remedy: the benchmark
+    prepped anew, from the state saved before its prep); an ABSENT deck
+    passes silently -- absence says nothing,
     and the launch itself fails loudly without one.
 
     Raises :class:`DeckLaunchMismatch` (the same family as the launch
@@ -199,7 +210,7 @@ def check_trial_starts_cold(job_dir, job) -> None:
             f"trial {job.name!r}: {deck.name} carries no restart group at "
             f"all, so its cold start cannot be vouched for (the clean "
             f"group is always written -- a deck without one was edited or "
-            f"predates the pin).  Re-prep the bench.")
+            f"predates the pin).  " + _BENCH_ANEW)
     warm = [k for k, v in saves
             if v.strip().lower().strip(".") in ("t", "true", "yes", "1")]
     # NAME THE DECK'S OWN SPELLING, not the normalised key.  `_parse_fdf`
@@ -217,5 +228,5 @@ def check_trial_starts_cold(job_dir, job) -> None:
         raise DeckLaunchMismatch(
             f"trial {job.name!r}: {deck.name} would WARM-start "
             f"({', '.join(warm)} true) -- that measures a continued run, "
-            f"not its point (generator.md § 4.3a).  Re-prep the bench to "
-            f"restore the cold deck.")
+            f"not its point (generator.md § 4.3a).  For the cold deck, "
+            + _BENCH_ANEW)

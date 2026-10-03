@@ -1428,8 +1428,9 @@ To run at it, put this in task.json and save:
       "use_gpu": true
     }
 
-Until you do, `prep run` sizes the launch from the target's own
-width (architecture.md 5.2) -- a benchmark does not steer a run.
+Until you do, `prep run` launches at what task.json states, and
+refuses a launch value it states nowhere (architecture.md 5.2) --
+a benchmark does not steer a run.
 ```
 
 > *Re-rendered 2026-09-05 by running `recommendation_text` on this page's

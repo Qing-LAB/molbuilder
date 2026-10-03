@@ -622,8 +622,9 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
         out += ['    "execution": ' + body[0]]
         out += ["    " + ln for ln in body[1:]]
         out += [""]
-    out += ["Until you do, `prep run` sizes the launch from the target's own",
-            "width (architecture.md 5.2) -- a benchmark does not steer a run.",
+    out += ["Until you do, `prep run` launches at what task.json states, and",
+            "refuses a launch value it states nowhere (architecture.md 5.2) --",
+            "a benchmark does not steer a run.",
             ""]
     return "\n".join(out)
 

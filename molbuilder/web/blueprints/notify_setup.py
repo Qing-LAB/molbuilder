@@ -27,7 +27,7 @@ server runs as; a molbuilder login is a person.  molbuilder does not manage
 that mapping and does not try to (user, 2026-08-27) — `access-control.md` § 8
 rule 3, *identity is borrowed, never stored*, applied to the filesystem.
 
-**IT ALWAYS WRITES, AND `execution.mode` HAS NOTHING TO SAY ABOUT IT.**  This
+**IT ALWAYS WRITES, AND `launch.mode` HAS NOTHING TO SAY ABOUT IT.**  This
 gated on ``mode != "submit"`` from 2026-08-27 until 2026-09-01, reading
 ``submit`` as *"the jobs run somewhere this server cannot reach"* and refusing
 to save.  That is not what the setting means: `running-a-job.md` § 5.4 defines

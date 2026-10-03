@@ -1373,11 +1373,16 @@ def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
         click.echo(f"  gathered: {fn} <- {src}")
     if ans.resources is not None:
         r = ans.resources
-        asks = [f"mpi_np {r['mpi_np'] if r['mpi_np'] else 'auto'}",
-                f"omp {r['cpus_per_task'] if r['cpus_per_task'] else 'auto'}"]
+        # WHAT IS STATED, and nothing else: no launch value is left for
+        # the wrapper to decide (`architecture.md` § 5.2), and a PySCF run
+        # has no rank count at all -- `mpi_np auto` claimed one.
+        asks = [f"{word} {r[key]}" for word, key in (("mpi_np", "mpi_np"),
+                                                     ("omp", "cpus_per_task"))
+                if r.get(key)]
         if r.get("continue_retries"):
             asks.append(f"retries {r['continue_retries']}")
-        click.echo(f"  resources: {' | '.join(asks)}")
+        if asks:
+            click.echo(f"  resources: {' | '.join(asks)}")
     a = ans.agreement
     if a is not None and a.verdict == "agrees":
         click.echo(f"  {ans.deck}: rendered for mpi_np {a.rendered_text} "
@@ -1627,13 +1632,6 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
         # R14 -- the cap this sweep will meet, said while no is still free.
         if r.detail and "  " + r.detail.strip() not in warn:
             warn.append("  " + r.detail.strip())
-    if any(not any(a.startswith("--mem") for a in r.command) for r in planned):
-        warn.append("  MEMORY NOT STATED -- the scheduler's own default decides "
-                    "(a per-core or per-GPU rate; on some sites far below the "
-                    "node).  State it at prep (--mem) or here (--mem).")
-    if any("-t" not in r.command for r in planned):
-        warn.append("  time not stated and this queue declares no ceiling -- "
-                    "the scheduler's default stands.")
     judged = [r.judgement for r in plan if r.judgement]
     lines += warn + list(footer) + ["  " + j for j in judged]
     if dry_run:

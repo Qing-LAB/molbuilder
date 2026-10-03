@@ -43,7 +43,7 @@ def resources_text(r) -> str:
         bits.append("exclusive")
     if r.mem and not r.exclusive:
         bits.append(f"mem={r.mem}")
-    return ", ".join(bits) if bits else "(inherit defaults)"
+    return ", ".join(bits) if bits else "(none stated)"
 
 
 def render_plan(jobset: JobSet) -> str:
