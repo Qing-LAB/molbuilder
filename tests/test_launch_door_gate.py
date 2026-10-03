@@ -95,7 +95,7 @@ def test_provenance_names_each_values_source(tmp_path, machine_config):
     assert prov["effective"]["launch.mode"] == {
         "value": "direct", "from": "machine"}
     scopes = {s["scope"]: s for s in prov["sources"]}
-    assert scopes["machine"]["found"] and scopes["machine"]["via"] == "config-dir"
+    assert scopes["machine"]["found"]
 
 
 def test_provenance_never_carries_secret_material(tmp_path, machine_config):

@@ -3645,7 +3645,8 @@ function renderResolved(d) {
         facts.appendChild(el("div", null,
             el("dt", null, "read from"),
             el("dd", { class: "hint" },
-               found.map((s) => s.scope + " (" + s.via + ")").join(", "))));
+               found.map((s) => s.scope + (s.via ? " (" + s.via + ")" : ""))
+                    .join(", "))));
     }
     /* AND WHAT IS WRONG WITH WHERE IT WAS READ FROM.  Showing the resolved
      * path without these would be the worse half of an answer: a person with

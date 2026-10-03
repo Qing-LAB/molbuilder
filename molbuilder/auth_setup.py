@@ -41,7 +41,7 @@ import secrets
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .config_dir import ensure_private_dir
+from .config_dir import PRIVATE_FILE_MODE, ensure_private_dir
 
 
 
@@ -122,7 +122,7 @@ def write_secret_file(path: Path, contents: str) -> None:
     # it has a name, so the mode is never wrong; os.replace is atomic, so the
     # old secret is either fully replaced or fully intact.
     from .persist import write_bytes
-    write_bytes(path, contents.encode("utf-8"), mode=0o600)
+    write_bytes(path, contents.encode("utf-8"), mode=PRIVATE_FILE_MODE)
 
 
 class NotifyKeyError(ValueError):

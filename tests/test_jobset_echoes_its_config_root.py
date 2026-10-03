@@ -38,7 +38,7 @@ def _first_line(args):
 def test_a_real_verb_opens_with_the_config_root():
     line = _first_line(["machines"])
     assert line.startswith("molbuilder.json: ")
-    assert line.endswith("(not found -- defaults in effect, via config-dir)")
+    assert line.endswith("(not found -- defaults in effect)")
 
 
 def test_the_groups_own_help_has_no_config_line():
@@ -56,7 +56,7 @@ def test_the_file_is_named_and_marked_found(tmp_path):
     (root / "molbuilder.json").write_text("{}")
     line = _first_line(["machines"])
     assert str(root / "molbuilder.json") in line
-    assert "(found, via config-dir)" in line
+    assert line.endswith("(found)")
 
 
 # `test_a_file_in_the_working_directory_is_not_what_it_names` retired 2026-10-02 (W54): a cwd file not being read is `test_config_warnings.py`'s to say, once.

@@ -543,7 +543,7 @@ def _install_secret_key(app) -> None:
 
     # First-run generate.  0700 on the directory, because a listable directory
     # names the file even when the file itself is shut (§ 2.1b).
-    from ..config_dir import ensure_private_dir
+    from ..config_dir import PRIVATE_FILE_MODE, ensure_private_dir
     from ..persist import write_bytes
     ensure_private_dir(path.parent)
     # THROUGH THE ONE WRITER (§ 2.3), which `auth_setup.write_secret_file`
@@ -554,7 +554,8 @@ def _install_secret_key(app) -> None:
     # every logged-in person out -- and adds what it lacked: the bytes arrive
     # through a temp, so the file is complete or absent, never partial.
     try:
-        write_bytes(path, secrets.token_bytes(32), mode=0o600, exclusive=True)
+        write_bytes(path, secrets.token_bytes(32), mode=PRIVATE_FILE_MODE,
+                    exclusive=True)
     except FileExistsError:
         # Another start won the race between the read above and this write.
         # Not an error: its key is in the file, and the read below adopts it.

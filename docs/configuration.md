@@ -366,7 +366,7 @@ and frequent diagnosis. Two rules make it a readable one:
 
 ```text
 config:
-  machine     /home/you/.config/molbuilder/molbuilder.json  (found, via config-dir)
+  machine     /home/you/.config/molbuilder/molbuilder.json  (found)
   environment /work/calc/environment.json  (found, via calculation)
   environment /home/you/.config/molbuilder/environment.json  (found, via machine)
   launch.mode = 'submit'   <- machine

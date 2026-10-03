@@ -37,7 +37,8 @@ from typing import List, Optional, Tuple
 # it restarts -- reach it.  Four one-line pass-throughs (`run_dir`, `pid_path`,
 # `log_path`, `stacks_path`) and a private `_mkdir_private` stood between this
 # module and those doors until 2026-09-13 (K-D3, I8's shape).
-from .config_dir import (ensure_private_dir, jupyter_log, jupyter_pidfile,
+from .config_dir import (PRIVATE_FILE_MODE, ensure_private_dir,
+                         jupyter_log, jupyter_pidfile,
                           runtime_dir, serve_log, serve_pidfile)
 from .reload_protocol import RELOAD_EXIT_CODE, SUPERVISED_ENV
 
@@ -73,10 +74,10 @@ def open_private(path: Path, mode: str):
     """
     flags = os.O_WRONLY | os.O_CREAT
     flags |= os.O_APPEND if "a" in mode else os.O_TRUNC
-    fd = os.open(path, flags, 0o600)
+    fd = os.open(path, flags, PRIVATE_FILE_MODE)
     try:
-        if (os.fstat(fd).st_mode & 0o777) != 0o600:
-            os.fchmod(fd, 0o600)          # pre-existing loose file
+        if (os.fstat(fd).st_mode & 0o777) != PRIVATE_FILE_MODE:
+            os.fchmod(fd, PRIVATE_FILE_MODE)    # pre-existing loose file
     except OSError:
         pass
     if "b" in mode:

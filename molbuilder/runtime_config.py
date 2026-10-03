@@ -919,7 +919,7 @@ def _read_paths(raw: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
             continue
         if not isinstance(val, str) or not val.strip():
             raise RuntimeConfigError(
-                f"molbuilder.json: paths.{key} must be a non-empty string "
+                f"{CONFIG_FILENAME}: paths.{key} must be a non-empty string "
                 f"path; got {val!r}.")
     return section
 
@@ -1474,7 +1474,7 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     """
     machine_path = machine_config_path()
     sources = [{"scope": "machine", "path": str(machine_path.resolve()),
-                "found": machine_path.is_file(), "via": "config-dir"}]
+                "found": machine_path.is_file()}]
     # WHAT THIS SCOPE IS STANDING IN FRONT OF (§ 2.1a).  The row above says
     # which file was reached; it cannot say that another one exists and was
     # skipped, and that is the state where a setting is written twice and read
@@ -1546,7 +1546,7 @@ def format_provenance(prov: Mapping[str, Any]) -> str:
     width = max([len(s["scope"]) for s in prov["sources"]] + [8]) + 1
     for s in prov["sources"]:
         state = "found" if s["found"] else "absent"
-        via = f", via {s['via']}" if s["found"] else ""
+        via = f", via {s['via']}" if s["found"] and s.get("via") else ""
         lines.append(f"  {s['scope']:<{width}}{s['path']}  ({state}{via})")
     for key in sorted(prov["effective"]):
         e = prov["effective"][key]
