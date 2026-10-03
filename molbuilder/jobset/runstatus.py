@@ -424,11 +424,12 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
             row = dataclasses.replace(
                 _job_status(base, jobset, job, task, **kw), ref=ref)
             if getattr(st, "enabled", True) is False:
-                # PREPPED, THEN DISABLED: its run is read as ever, and the
-                # row says the description no longer runs it.
+                # PREPPED, THEN TURNED OFF: its folder is read as ever, and
+                # the row says it is never used (`task.stage_disabled`).
                 row = dataclasses.replace(
                     row, enabled=False,
-                    detail=f"disabled in the description; {row.detail}")
+                    detail=f"disabled in the description -- its folder is "
+                           f"kept as it is and never used; {row.detail}")
             stages.append(row)
     else:
         stages = [_job_status(base, jobset, job, None, **kw)

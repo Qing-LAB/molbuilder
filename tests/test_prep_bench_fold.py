@@ -1216,9 +1216,16 @@ def test_the_cg_pair_rule_holds_both_ways_on_a_live_bundle(calc):
     Broyden; carrying it would corrupt the restart) while medium->tight
     must CARRY it (same optimizer, verified through the merged plan the
     A11-era merge keeps whole).  The first version of this test asserted
-    a blind carry and the SYSTEM was right to refuse it."""
+    a blind carry and the SYSTEM was right to refuse it.  The shipped
+    `publishable` ladder disables tight, and a disabled stage is never
+    prepped (`engines/stages.md` § 6.2), so tight is enabled first -- as a
+    person enables it."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
+    desc = json.loads((calc / "task.json").read_text())
+    for st in desc["stages"]:
+        st["enabled"] = True
+    (calc / "task.json").write_text(json.dumps(desc, indent=2))
     r = CliRunner()
     res = r.invoke(jobset_group, ["prep", "run", "coarse",
                                   "--bundle", str(calc), "--no-sbatch"])

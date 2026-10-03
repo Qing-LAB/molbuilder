@@ -457,12 +457,12 @@ def test_a_flat_calculation_refuses_a_second_force_constant_stage(
     `<label>.spectra.json`, so two force-constant stages would overwrite each
     other's result: `prep` refuses the description before any sort,
     permutation record or deck is written, at whichever stage is prepped
-    first (`engines/vibration.md` § 5.9) -- counting a stage that is not
-    enabled, because a stage named on the command line is prepped either way.
+    first (`engines/vibration.md` § 5.9) -- counting the stages the
+    description runs: a disabled one is never prepped (`engines/stages.md`
+    § 6.2; it was counted until 2026-10-03, while a stage named on the
+    command line was prepped either way).
 
-    MUTATION THIS MUST FAIL AGAINST: counting only the enabled stages -- the
-    disabled second stage then escapes, and prepping it would overwrite the
-    first one's result (the review of 51590fa6).
+    MUTATION THIS MUST FAIL AGAINST: the check not made.
     """
     tree = tmp_path / "projects"
     bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.741], [5.0, 5.0, 5.0]],
@@ -470,7 +470,7 @@ def test_a_flat_calculation_refuses_a_second_force_constant_stage(
     task = json.loads((bundle / "task.json").read_text())
     # a stage overrides only what the description varies (stages.md § 6.2)
     task["varies"] = sorted(set(task.get("varies") or []) | {"fc_displacement"})
-    task["stages"].append({"name": "freq_half", "enabled": False,
+    task["stages"].append({"name": "freq_half", "enabled": True,
                            "overrides": {"fc_displacement": 0.02}})
     (bundle / "task.json").write_text(json.dumps(task, indent=2))
     r = _jobset("prep", "run", "relax", "--bundle", str(bundle),

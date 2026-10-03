@@ -1561,9 +1561,9 @@ puts them at different geometries — which the summary refuses, below. Each sta
 data at that displacement, never merged or moved. **The hierarchical layout
 only**: in the flat one every stage writes the same `<label>.FC` and
 `<label>.spectra.json`, so `prep` refuses a second force-constant stage there
-— counting every described one, enabled or not, since a stage named on the
-command line is prepped either way — before any sort, permutation record or
-deck is written, rather than let it overwrite the first's result.
+— counting the enabled ones, since a disabled stage is never prepped
+([`stages.md`](?doc=engines/stages.md) § 6.2) — before any sort, permutation
+record or deck is written, rather than let it overwrite the first's result.
 
 **The summary: `jobset summarize run`** — `summarize` summarizes results that
 exist (§ 5.5). On a SIESTA vibration with two or more force-constant stages it

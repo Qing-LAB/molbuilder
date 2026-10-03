@@ -223,6 +223,12 @@ def _cannot_be_named(base: Path, task, stage: str, from_attempt,
             return (f"--from {from_attempt!r}: {head!r} is not a stage "
                     f"folder of this calculation -- name a run as "
                     f"<NN>_<stage>/run-<n>.")
+        # A RUN OF A STAGE TURNED OFF is never continued from (user,
+        # 2026-10-03, Q1: "never allow use").
+        from ..task import stage_disabled
+        why = stage_disabled(task, named)
+        if why:
+            return f"--from {from_attempt!r}: {why}"
     return None
 
 

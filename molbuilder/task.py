@@ -1287,10 +1287,29 @@ def write_task(path, task: Task):
     return write_json(path, task.to_dict())
 
 
+def stage_disabled(task: Task, stage: str) -> Optional[str]:
+    """Why ``stage`` is not used -- the description turns it off -- or
+    ``None``.  THE ONE ANSWER every verb asks before it acts on a stage
+    (`engines/stages.md` § 6.2; user, 2026-10-03: "mark the dir as disabled
+    and never allow use"): prep, launch, and a run named to continue from.
+    A folder the stage left from before it was disabled is kept as it is,
+    and `status` shows it disabled."""
+    for st in task.stages or ():
+        if st.name == stage and st.enabled is False:
+            return (f"stage {stage!r} is disabled in this description "
+                    f"(\"enabled\": false in task.json) -- a disabled stage "
+                    f"is never prepped, launched or continued from, and a "
+                    f"folder it left is kept as it is.  To use it, enable it "
+                    f"-- Task setup's stage table, or \"enabled\": true in "
+                    f"task.json -- and save.")
+    return None
+
+
 __all__ = ["SCHEMA", "FILENAME", "STAGE_FIELDS",
            "Allocation",
            "Run", "StructureRef", "Stage", "Task",
-           "derive_run", "read_task", "varies_for", "write_task"]
+           "derive_run", "read_task", "stage_disabled", "varies_for",
+           "write_task"]
 
 
 #: See the note beside § 2 above.  Derived here, where `Stage` is in scope.

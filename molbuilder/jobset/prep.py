@@ -1193,13 +1193,14 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         # finish its spectrum by the label alone, so two force-constant
         # stages sharing the flat layout's one directory would overwrite the
         # first one's result.  Refused before any sort, permutation record or
-        # deck is written, at whichever stage the person preps first -- and
-        # counted over EVERY described stage, enabled or not, since a stage
-        # named here is prepped either way (plan W38 F5).
+        # deck is written, at whichever stage the person preps first --
+        # counted over the stages the description runs: a disabled one is
+        # never prepped (`task.stage_disabled`; plan W38 F5 counted them
+        # while a stage named here was prepped either way).
         from ..spectra.displacement_sweep import stages_share_a_directory
-        if stages_share_a_directory(task, include_disabled=True):
+        if stages_share_a_directory(task, include_disabled=False):
             from ..pyscf.stages import force_constant_stages
-            _fc = force_constant_stages(task, include_disabled=True)
+            _fc = force_constant_stages(task, include_disabled=False)
             raise PrepError(
                 f"this flat calculation describes "
                 f"{len(_fc)} force-constant stages "
@@ -1975,13 +1976,9 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                        f"{len(task.stages or ())} stage(s)")
         for _g, _l in _environment_rows(environment):
             _tlog.produced(_g, _l)
-    stage_ref = next(s for s in task.stages if s.name == stage)
-    if not stage_ref.enabled:
-        raise PrepError(
-            f"stage {stage!r} is disabled in this description "
-            f"(enabled: false in task.json).  The seed is skippable by "
-            f"design (archive/2026-09-01-transport-design.md, ruling Q4) -- re-enable it "
-            f"there, or prep the next stage.")
+    # A STAGE TURNED OFF never reaches here: the entry refuses it first
+    # (`task.stage_disabled`, `prep_stage`) -- the seed is skippable by
+    # design (archive/2026-09-01-transport-design.md, ruling Q4).
 
     # ---- 3a. compose the junction (or load the travelled copy) --------- #
     # The record beside task.json answers first (the folder travels;
@@ -3137,6 +3134,15 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             from ..identity import StageRef, resolve_stage_ref
             refs = StageRef.ladder([s.name for s in task.stages])
             stage = resolve_stage_ref(refs, stage).name
+
+        #    ...AND ENABLED: a stage the description disables is never prepped
+        #    (user, 2026-10-03, Q1: "never allow use").  Transport refused
+        #    one on its own, and the ladder prepped it when named.
+        if stage is not None:
+            from ..task import stage_disabled
+            why = stage_disabled(task, stage)
+            if why:
+                raise PrepError(why)
 
         # 2a · NOT PREPPED BEFORE (user, 2026-10-02: "refuse it, redo via
         #      rollback").  Asked before anything is read of the machine or

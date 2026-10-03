@@ -866,6 +866,19 @@ def _described_stage(base, stage):
         raise click.ClickException(str(e))
 
 
+def _refuse_disabled(base, stage) -> None:
+    """A stage the description disables is never launched -- a folder it
+    left from before is kept as it is (`task.stage_disabled`; user,
+    2026-10-03, Q1: "never allow use")."""
+    from ..task import FILENAME, read_task, stage_disabled
+    desc = Path(base) / FILENAME
+    if stage is None or not desc.is_file():
+        return
+    why = stage_disabled(read_task(desc), stage)
+    if why:
+        raise click.ClickException(why)
+
+
 def _refuse_unprepped(base, stage) -> None:
     """A stage the description holds and no prep has prepared is refused by
     NAME, with its prep and its launch -- what `status` says of it.  It read
@@ -1720,6 +1733,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     if kind == "bench":
         # the stage's own sweep record, from its bench container (§ 6.3)
         stage = _described_stage(bundle, stage)
+        _refuse_disabled(bundle, stage)
         js, base = _load_bench_set(bundle, stage, "launch")
     else:
         if trial is not None:
@@ -1735,6 +1749,7 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
         # records and every line prints (plan § 5w K12) -- and a stage it
         # holds that is not prepped, said so (W55 D4).
         stage = _described_stage(bundle, stage)
+        _refuse_disabled(base, stage)
         _refuse_unprepped(base, stage)
         only = stage = _resolve_stage(js, stage, "launch", base=base)
     launching = [j for j in js.jobs if only is None or j.name == only]

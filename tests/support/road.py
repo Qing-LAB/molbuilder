@@ -300,7 +300,9 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # `saved_first` -- the folder's state saved before anything else, as a person
 # saves it (`molbuilder checkpoint init`); `before` -- the verbs a person typed
 # first, each a list of words (`["prep", "run", "coarse"]`), the calculation
-# and the target named as the row's own prep names them; `answers` -- what
+# and the target named as the row's own prep names them; `disabled` -- the
+# stages then disabled through Task setup's Save; `stage` -- the stage the
+# row's prep names, `coarse` unless given; `answers` -- what
 # the person types at the row's prep's question ("" is EOF, no terminal).
 #
 # AFTER PREP, whatever it answered: the folder's saved states, newest first
@@ -417,6 +419,21 @@ def _road_probe_layer(case, said, target, began) -> None:
         stamp = record["detected_at"]
         assert stamp and datetime.fromisoformat(stamp) >= began, \
             f"record.detected_at is {stamp!r}, older than its probe ({began})"
+
+
+def _road_disabled(names, bundle) -> None:
+    """These stages disabled, as a person disables one -- the stage table's
+    switch, written through Task setup's Save."""
+    import json
+    from molbuilder.web.app import create_app
+    task = json.loads((bundle / "task.json").read_text())
+    for st in task["stages"]:
+        if st["name"] in names:
+            st["enabled"] = False
+    r = create_app(config={}).test_client().post(
+        "/api/task-setup/save",
+        json={"dest": str(bundle), "text": json.dumps(task)})
+    assert r.status_code == 200, (r.get_json() or {}).get("error")
 
 
 def _road_saved(case, bundle) -> None:
@@ -626,8 +643,10 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
     for words in case.get("before", []):
         got = jobset(*words, "--bundle", bundle, "--target", target)
         assert got.exit_code == 0, f"{words}: {_one_line(got)}"
+    if "disabled" in case:
+        _road_disabled(case["disabled"], bundle)
     kind = "bench" if "bench" in case else "run"
-    r = jobset("prep", kind, "coarse", "--bundle", bundle,
+    r = jobset("prep", kind, case.get("stage", "coarse"), "--bundle", bundle,
                "--target", target, *case.get("prep", []),
                input=case.get("answers"))
 
@@ -645,7 +664,8 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
             # WHAT THE REFUSAL SAYS TO DO, DONE -- the machine probed again,
             # holding what it lacked -- and the same prep is taken.
             _reprobed(case["reprobed"])
-            r = jobset("prep", kind, "coarse", "--bundle", bundle,
+            r = jobset("prep", kind, case.get("stage", "coarse"),
+                       "--bundle", bundle,
                        "--target", target, *case.get("prep", []))
             assert r.exit_code == 0, _one_line(r)
         return

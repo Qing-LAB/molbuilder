@@ -1146,31 +1146,12 @@ class TestRefusals:
             prep_calculation(calc, "coarse")
         assert "'coarse'" in str(e.value).replace('"', "'")
 
-    def test_a_disabled_seed_refuses_with_the_skip_rule(self, calc):
-        """Prepping a stage the description has DISABLED is refused, and the refusal
-        cites the ruling that makes the seed skippable.
-
-        Catches a disabled stage prepping anyway. The seed is the one stage that may
-        legitimately be turned off (ruling Q4 -- the device can start cold), so
-        `enabled: false` is a real choice a user makes; prepping it regardless would
-        put a deck and a job-set row in the tree for a stage the DAG does not expect,
-        and the gather then looks for a `.DM` that will never be produced.
-
-        Contract: `engines/transport.md` § 1 + ruling Q4 (the seed is skippable),
-        whose other half is `test_a_disabled_seed_drops_its_row`.
-        """
-        from molbuilder.task import (Stage, Task, derive_run, read_task,
-                                     write_task)
-        t = read_task(calc / "task.json")
-        stages = tuple(Stage(name=s.name, enabled=(s.name != "seed"),
-                             overrides={}) for s in t.stages)
-        write_task(calc / "task.json", Task(
-            engine=t.engine, shape=t.shape, run=t.run, structure=None,
-            calculation="transport", slots=dict(t.slots), bias=t.bias,
-            varies=(), stages=stages))
-        with pytest.raises(PrepError) as e:
-            prep_calculation(calc, "seed")
-        assert "disabled" in str(e.value) and "Q4" in str(e.value)
+    # `test_a_disabled_seed_refuses_with_the_skip_rule` retired 2026-10-03:
+    # a disabled stage is refused by ONE rule for every calculation, at the
+    # prep entry (`task.stage_disabled`; user, Q1: "never allow use") -- the
+    # transport arm's own refusal, which this drove directly, is gone.  The
+    # rule is rows of `tests/data/prep_protocol.toml`; its other half, the
+    # seed's row dropped, is `test_a_disabled_seed_drops_its_row` below.
 
     def test_a_sweep_is_refused_naming_the_bias_axis(self, calc):
         """A generic `sweep=` on a transport prep is refused, naming bias.
