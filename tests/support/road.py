@@ -303,8 +303,11 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # (`saved_states`, their notes), what `status` says of the calculation
 # (`status_says`), and the decisions its ledger does not hold
 # (`ledger_lacks`); a prep that was not refused says nothing of `said_lacks`.
-# A REFUSED prep, its remedy done: this machine re-probed holding `reprobed`
-# (its record's fields), the same prep is typed again and taken.
+# THEN, refused or not: the description saved through Task setup's Save with
+# `saved`'s fields changed (`{shape = "flat"}`) -- refused, with
+# `save_refused`'s words, or taken.  A REFUSED prep, its remedy done: this
+# machine re-probed holding `reprobed` (its record's fields), the same prep
+# is typed again and taken.
 #
 # 0 · WHAT THE PROBE RECORDS, checked before anything else: what it says
 # (`probe_said`, lines any of the probes printed) and what the record it
@@ -397,6 +400,28 @@ def _road_probe_layer(case, said, target, began) -> None:
         stamp = record["detected_at"]
         assert stamp and datetime.fromisoformat(stamp) >= began, \
             f"record.detected_at is {stamp!r}, older than its probe ({began})"
+
+
+def _road_saved(case, bundle) -> None:
+    """The description saved through Task setup's Save -- the page's door,
+    which no `jobset` verb reaches -- with ``saved``'s fields changed:
+    refused, saying each of ``save_refused``, or taken."""
+    if "saved" not in case:
+        return
+    import json
+    from molbuilder.web.app import create_app
+    task = json.loads((bundle / "task.json").read_text())
+    task.update(case["saved"])
+    r = create_app(config={}).test_client().post(
+        "/api/task-setup/save",
+        json={"dest": str(bundle), "text": json.dumps(task)})
+    said = (r.get_json() or {}).get("error") or ""
+    if "save_refused" not in case:
+        assert r.status_code == 200, said
+        return
+    assert r.status_code == 409, (r.status_code, said)
+    for words in case["save_refused"]:
+        assert words in said, said
 
 
 def _reprobed(fields) -> None:
@@ -592,6 +617,7 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         for words in ([said] if isinstance(said, str) else said):
             assert words in r.output, _one_line(r)
         _road_after_prep(case, bundle)
+        _road_saved(case, bundle)
         if "reprobed" in case:
             # WHAT THE REFUSAL SAYS TO DO, DONE -- the machine probed again,
             # holding what it lacked -- and the same prep is taken.
@@ -606,6 +632,7 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
     for words in case.get("said_lacks", []):
         assert words not in r.output, _one_line(r)
     _road_after_prep(case, bundle)
+    _road_saved(case, bundle)
 
     # 2 · WHAT IS PRODUCED -- the run's header, deck and run script
     if case.get("header_absent"):
@@ -616,12 +643,13 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
                          ("run_sh", "*.run.sh")):
         if key in case or f"{key}_lacks" in case:
             _road_lines(case, key, _the_runs(bundle, pattern).read_text())
-    # ...a benchmark's trials
-    if kind == "bench":
+    # ...a benchmark's trials, when the row names them
+    if kind == "bench" and ("bench_gres" in case
+                            or "bench_header_lacks" in case):
         plan = next(bundle.rglob("bench/job-set.json"))
         asked = sorted({j["resources"]["gres"]
                         for j in json.loads(plan.read_text())["jobs"]})
-        assert asked == sorted(case["bench_gres"]), asked
+        assert asked == sorted(case.get("bench_gres", asked)), asked
         for header in plan.parent.rglob("*.sbatch"):
             _road_lines({"h_lacks": case.get("bench_header_lacks", [])}, "h",
                         header.read_text())

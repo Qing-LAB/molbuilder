@@ -56,7 +56,7 @@ before = [["prep", "bench", "coarse"]]
 refused = ["the benchmark of stage 'coarse' is already prepped", "molbuilder checkpoint list"]
 
 [[case]]
-name = "a first prep refused after it began writing puts back what it wrote -- not counted prepped, not set to the machine, not recorded as prepped: the build installed and the machine re-probed, as the refusal says, the prep is taken"
+name = "a first prep refused after it began writing puts back what it wrote -- not counted prepped, not set to the machine, not recorded as prepped, its shape still free: the build installed and the machine re-probed, as the refusal says, the prep is taken"
 template = { diag_algorithm = "ELPA-1STAGE" }
 run = { use_gpu = true, gpu_count = 1 }
 allocation = { domain = "gpu" }
@@ -64,7 +64,24 @@ record = { conda_envs = ["molbuilder-siesta"] }
 refused = ["env is not installed", "re-probe that machine"]
 status_says = ["First incomplete stage: coarse, not prepped yet"]
 ledger_lacks = ["prepped"]
+saved = { shape = "flat" }
 reprobed = { conda_envs = ["molbuilder-siesta", "molbuilder-siesta-gpu"] }
+
+# ===================================================================== #
+#  A CALCULATION THAT HAS PRODUCED KEEPS ITS SHAPE                      #
+#  (`web/task-setup.md` § 4; § 5.0's "changing it later")               #
+# ===================================================================== #
+
+[[case]]
+name = "a calculation with a prepped stage keeps its shape -- Task setup's Save refuses another, naming the way back"
+saved = { shape = "flat" }
+save_refused = ["shape is fixed once it has produced", "coarse is prepped", "molbuilder checkpoint list"]
+
+[[case]]
+name = "...a prepped benchmark is a prep too"
+bench = { mpi_np = [2] }
+saved = { shape = "flat" }
+save_refused = ["shape is fixed once it has produced", "coarse is prepped"]
 
 # ===================================================================== #
 #  THE SAVE, OFFERED BEFORE PREP WRITES                                 #

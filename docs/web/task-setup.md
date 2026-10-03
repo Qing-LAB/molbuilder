@@ -195,7 +195,11 @@ make ([`stages.md § 6.7`](?doc=engines/stages.md),
 [`project-layout.md § 1.2`](?doc=execution/project-layout.md)).
 
 **It is fixed once the calculation has produced.** Before the first produce it is
-free to change; after, it would orphan every deck, output and warm file.
+free to change; after, it would orphan every deck, output and warm file. So once
+a stage is prepped — as a run or as a benchmark; a prep that was refused counts
+for none — Save refuses another shape, naming the way back: the state saved
+before the first prep, restored ([`execution/job-system.md`](?doc=execution/job-system.md)
+§ 5.0).
 
 ---
 

@@ -2969,6 +2969,17 @@ def prepped_already(base, task, kind: str, stage: str) -> Optional[str]:
             + rollback("its prep", base=base))
 
 
+def prepped_stages(base, task) -> List[str]:
+    """The stages of ``task`` prepped in ``base`` -- as a run or as a
+    benchmark -- in the description's order: whether the calculation has
+    PRODUCED, which fixes its shape (`web/task-setup.md` § 4).  Each is
+    :func:`prepped_already`'s answer, so a prep refused after it began
+    writing, put back, counts for none."""
+    return [st.name for st in task.stages
+            if any(prepped_already(base, task, kind, st.name)
+                   for kind in ("run", "bench"))]
+
+
 def save_offer(base, kind: str, stage: str,
                notes: Optional[List[str]] = None) -> Optional[SaveOffer]:
     """The save prep offers before it writes (`checkpointing.md` § 9), or
@@ -3421,4 +3432,5 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
 
 
 __all__ = ["prep_calculation", "prep_jobset", "prep_stage", "PrepAnswer",
-           "Answer", "SaveOffer", "PrepError", "resolve_target"]
+           "Answer", "SaveOffer", "PrepError", "resolve_target",
+           "prepped_already", "prepped_stages"]

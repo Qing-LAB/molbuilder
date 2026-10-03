@@ -1640,6 +1640,28 @@ def api_task_setup_save():
                          f"here would orphan its results. One job per folder — "
                          f"pick or make another.",
             }), 409
+        # THE SHAPE IS FIXED ONCE THE CALCULATION HAS PRODUCED
+        # (`web/task-setup.md` § 4): a prepped stage -- a run or a benchmark,
+        # the prep entry's own answer (`prep.prepped_stages`) -- lies where
+        # the shape put it, and another shape would orphan every deck, output
+        # and warm file there.  A redo is a rollback (`job-system.md` § 5.0).
+        if prior is not None and prior.shape and task.shape != prior.shape:
+            from molbuilder.jobset.commands import rollback
+            from molbuilder.jobset.prep import prepped_stages
+            done = prepped_stages(dest, prior)
+            if done:
+                return jsonify({
+                    "ok": False,
+                    "error": f"this calculation is {prior.shape}, and its "
+                             f"shape is fixed once it has produced "
+                             f"(task-setup.md § 4): {', '.join(done)} "
+                             f"{'is' if len(done) == 1 else 'are'} prepped, "
+                             f"laid out {prior.shape}, and a {task.shape} "
+                             f"calculation would orphan every deck, output "
+                             f"and warm file there.  To make it "
+                             f"{task.shape}: " + rollback("its first prep",
+                                                          base=dest),
+                }), 409
 
     try:
         write_task(dest / TASK_FILENAME, task)      # atomic (persist.write_json)
