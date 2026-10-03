@@ -714,6 +714,74 @@ flowchart LR
     P -->|"scp the bundle"| PR
 ```
 
+### 5.0 The prep protocol — the agreement, and every checkpoint in order
+
+> **This is the one statement of the protocol.** What follows in § 5 — and the
+> documents linked from each row — says how each step works; this section says
+> what it is, in order, and who decides what. Both doors run it — the command
+> line's `jobset prep` and Task setup's **Prep run** / **Prep bench** — through
+> one entry, `jobset/prep.py::prep_stage` (§ 5.3, *One prep, two doors*).
+
+#### Before prep: a described calculation
+
+A calculation is described **once**, and prep only ever reads that description.
+
+| | what happens | what is refused |
+|---|---|---|
+| **the hand-over** | a parameter tab sends its work to Task setup: the structure pair, the template and `task.1st.json` — a description still missing what only you can say ([`web/handover-procedure.md`](?doc=web/handover-procedure.md)) | — |
+| **the description** | Task setup shows what came over and what is still needed; you complete it and save: `task.json` is written beside the template, and `task.1st.json` is removed ([`web/task-setup.md`](?doc=web/task-setup.md) § 2, § 8). From the command line, `jobset init` writes the same pair (§ 5.1) | a folder holding **another** calculation's `task.json` (Task setup § 2); `jobset init` on a folder already described — change it in Task setup or in `task.json` |
+| **changing it later** | Task setup opens a described calculation **as it is** — the file is loaded, never merged — and saves what you change, offering to save the folder's state first ([`checkpointing.md`](?doc=execution/checkpointing.md); Task setup § 8) | what the calculation **is** — its name, engine, structure and label — is read-only there (Task setup § 3); its shape is fixed once it has produced (§ 4 there) |
+
+#### The agreement
+
+1. **You state; molbuilder checks.** Every value a run is launched with — its
+   ranks and threads, a GPU run's GPU count, and where a `.sbatch` is written
+   its queue, wall and memory — is stated by you, in the description or on the
+   command line ([`architecture.md`](?doc=execution/architecture.md) § 5.2
+   lists them). The target's record **checks** each one and supplies none.
+2. **You choose the machine, once.** A calculation is set to the machine of its
+   first prep, and that does not change; preparing it for another machine is a
+   new prep from a saved state ([`configuration.md`](?doc=configuration.md)
+   M-3). Prep never measures a machine: its record is there, or prep refuses
+   and prints the probe that writes it.
+3. **What can be checked before writing is checked before writing.**
+   Checkpoints 1–5 below write nothing, so a refusal there leaves the folder
+   as it was; every refusal says why in your words and names what to do.
+4. **What ran is not overwritten, and is asked about.** A stage that already
+   ran is shown to you before anything is rendered over it; nothing is
+   rendered until you answer.
+5. **You advance it, one stage at a time.** Prep prepares one stage; `launch`
+   starts one job and shows it before sending it; nothing starts a stage but
+   you (§ 5.3, *Three ideas*).
+6. **Every decision is written down** — each check that refused, each
+   question and its answer, what each stage continues from — in the
+   calculation's `jobset-decisions.log`.
+
+#### The checkpoints, in order
+
+| # | checkpoint | passes when | otherwise |
+|:--:|---|---|---|
+| 1 | **a described calculation** | the folder holds `task.json` and its template | refused: `jobset init` first — or, from one of its stage or attempt folders, the calculation's own folder named |
+| 2 | **one stage, named** | a stage of the description, by its name or `#N` (§ 5.3, *The grammar*); for `prep bench`, a calculation the benchmark can measure, and no `--from` / `--cold` (a trial starts from the structure) | refused, listing the stages it takes |
+| 3 | **the description's own checks** — the preflight ([`engines/stages.md`](?doc=engines/stages.md) § 6.6) | no error | refused, with the errors; warnings are shown and carried in the answer |
+| 4 | **the machine, and every launch value stated** | the calculation's own copy of its machine's record answers — or, at its first prep, the record of the machine you named (`--target`; the machine you are on when none other is on file); the name typed is the machine the calculation is set to; and every launch value is stated | refused, naming what is missing: which machine, when several are on file and none is named; the probe that writes a record; the machine the calculation is set to; the file and key where each value is stated |
+| 4a | **what the stage continues from** (§ 5.4) | the stage before it — its newest attempt, concluded — or the run you name with `--from`, or none with `--cold`. A first stage, or one whose run card says `restart: clean`, starts from the structure; a linked stage's input is fixed by its kind | refused, naming what to do: launch it, let it finish, or name another run |
+| 5 | **already under way?** | nothing in the folder says a run happened: no launched attempt of this stage, no warm files at the calculation's root (for a benchmark, no launched trial) | **asked** — the evidence, and what rendering over it does and does not touch, are shown, and nothing is rendered until you answer; *no* stops. At a terminal the answer defaults to yes, and with no terminal to ask prep proceeds and says so ([`run-identity.md`](?doc=execution/run-identity.md) § 6) |
+| 6 | **the five steps** — machine, parameters, decks, wrappers, directory ([`script-preparation.md`](?doc=execution/script-preparation.md) § 3) | every deck passes its two gates: **validate** the resolved values before a line is written, and **check** the written file the engine will open | refused: a deck that fails a gate, or a machine record that does not say how a shell enters an environment there. At this step the calculation's first prep copies the machine's record into it, naming the machine — after that check |
+| 7 | **the attempt** ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6) | the stage's last attempt is reused until it has been launched, and then the next is opened — with what step 4a decided copied in, never linked | — (a flat calculation keeps no attempt folders: its run is the calculation's folder) |
+| 8 | **the agreement** | the rendered deck agrees with the resources it will launch with | shown in the answer; `launch` refuses a deck rendered for another width |
+
+**What you get back** is the whole of what was found and decided — the table in
+§ 5.3, *One prep, two doors*: the terminal prints it, Task setup shows it.
+
+#### After prep
+
+`launch` shows the exact command it will send — for `submit`, the `sbatch`
+line with the queue, wall and memory as sent — and asks before sending it
+([`submission.md`](?doc=execution/submission.md) S4); `--yes` skips the
+question, never the output. One job per invocation (§ 5.3). Then you look —
+`status`, the Results tab — and decide what to prep next.
+
 ### 5.1 Describe (host)
 
 **`molbuilder jobset init` writes the portable package** — the template,
@@ -1033,7 +1101,8 @@ asks before anything is sent
 
 `prep` has two doors — this command, and the Task setup tab's **Prep run** /
 **Prep bench** buttons ([`web/task-setup.md`](?doc=web/task-setup.md) § 11) —
-and **one entry**, `jobset/prep.py::prep_stage`, which both call. It does the
+and **one entry**, `jobset/prep.py::prep_stage`, which both call; § 5.0 is
+the order of its checkpoints. It does the
 whole act and returns what it found and decided **as data** (`PrepAnswer`),
 and it asks nothing: the asking is each door's. The five steps inside it still
 say, as each deck renders, what that deck's checks found — on the terminal's

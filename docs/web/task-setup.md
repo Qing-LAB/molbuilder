@@ -38,7 +38,8 @@ guesses.
 
 So this page writes what any machine can read — and **prepares only against a
 machine's own record**: its Prep buttons run the command line's `prep`, one
-entry for both doors ([`job-system.md`](?doc=execution/job-system.md) § 5.3),
+entry for both doors, whose checkpoints and agreement
+[`job-system.md`](?doc=execution/job-system.md) § 5.0 states,
 rendering from the facts of the machine you chose in § 6, never from the
 browser's. **Launching stays at the terminal**: it spends a queue slot, one job
 per invocation, by hand. What the page writes:
