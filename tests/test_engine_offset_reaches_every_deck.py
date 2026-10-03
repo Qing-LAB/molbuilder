@@ -94,7 +94,8 @@ def _prep(root, struct, cfg, stages, engine, *, stage=None,
                          if engine == "siesta" else {"threads": 1})
     (dest / "task.json").write_text(json.dumps(task, indent=2))
     # The machine the calculation is prepped for, with how a shell enters an
-    # environment there -- the record is that fact's one home.
+    # environment there -- the record carries it for the generator
+    # (`configuration.md` § 4).
     (dest / "environment.json").write_text(
         Environment(scheduler="workstation",
                     topology=Topology(sockets=1, cores_per_socket=4),

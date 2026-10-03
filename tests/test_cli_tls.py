@@ -16,8 +16,8 @@ commands pass the resolved pair to ``app.run(ssl_context=...)``.
 Tests cover (a) the resolver under every combination, (b) the two
 serve commands wire the resolved pair into Flask, and (c) the
 ``--help`` surface advertises the new flags.  Every test ``chdir``s
-into ``tmp_path`` so the repo-root template ``molbuilder.json`` never
-leaks into the resolver.
+into ``tmp_path``; the resolver reads the config directory's
+``molbuilder.json`` alone, which conftest points at a temporary one.
 """
 
 from __future__ import annotations

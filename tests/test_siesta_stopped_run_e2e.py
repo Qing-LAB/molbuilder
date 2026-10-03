@@ -99,7 +99,7 @@ def stopped(isolated_projects_root_module, tmp_path_factory):
         mp.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("xdg")))
         # ...and the box probed, as a real one is before its first prep.
         # ...its record saying how a shell enters conda here -- the
-        # activation's one home (`configuration.md` § 5 M-1).
+        # activation the generator reads (`configuration.md` § 4).
         from conftest import write_machine_record
         write_machine_record(env_init={
             "activation": "conda activate", "preamble": f"source {CONDA_SH}"})

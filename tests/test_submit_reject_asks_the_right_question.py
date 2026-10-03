@@ -52,13 +52,13 @@ def workstation_with_a_named_target(tmp_path, monkeypatch):
     no probe of its own.  (`_isolated_machine_scope`, autouse in this suite
     since 2026-08-23, gives this test its own XDG_CONFIG_HOME.)
 
-    **A second isolation gap, found writing this test.**  That fixture never
-    touches cwd, and ``molbuilder.json``'s server-wide lookup tries
-    ``./molbuilder.json`` FIRST (`configuration.md` § 2.1) -- so a test
-    calling `get_routing` from the repo root reads the real, gitignored dev
-    server config (TLS + auth secrets + a real `scheduler.routing` block),
-    not nothing.  First draft of this test asserted `get_routing(...) == []`
-    and got back THREE real domain names instead -- proof, not suspicion.
+    **A second isolation gap, found writing this test (2026-08-23).**  That
+    fixture never touched cwd, and ``molbuilder.json``'s lookup then tried
+    ``./molbuilder.json`` FIRST -- so a test calling `get_routing` from the
+    repo root read the real, gitignored dev server config, not nothing; the
+    first draft asserted `get_routing(...) == []` and got back THREE real
+    domain names.  The cwd step went 2026-08-31 (`configuration.md` § 2.1a);
+    the chdir stays as plain isolation.
     Chdir'd here, narrowly, rather than folded into the autouse fixture:
     `isolated_projects_root`'s own docstring records a prior blanket cwd
     override breaking 13 unrelated tests, so widening this needs its own

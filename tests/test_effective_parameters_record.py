@@ -30,7 +30,8 @@ from molbuilder.structure import Structure
 @pytest.fixture(autouse=True)
 def _a_machine_record_with_an_activation(tmp_path, monkeypatch):
     """`render_run_wrapper` refuses without an activation in the machine's
-    record -- its one home (`configuration.md` § 5 M-1).
+    record -- the probe's copy of that machine's `env_init`, which the
+    generator reads (`configuration.md` § 4).
 
     These tests took it from whatever `./molbuilder.json` happened to sit in
     the repo root -- the developer's own, which no test had put under control,

@@ -21,10 +21,9 @@ import pytest
 
 from molbuilder.scheduler import AmbiguousTarget, UnknownTarget
 
-#: A record as `jobset probe --write` writes one.  It carries
-#: `script_generation` because a probed machine states how a shell enters
-#: an environment there -- a FACT about the machine (`configuration.md`
-#: § 5 M-1), and since 2026-08-24 the field the generator reads.  Without
+#: A record as `jobset probe --write` writes one.  It carries `env_init`,
+#: the probe's copy of how a shell enters an environment on that machine
+#: (`configuration.md` § 4) -- since 2026-08-24 what the generator reads.  Without
 #: it `prep --target <name>` refuses rather than bake THIS machine's
 #: activation into a wrapper bound for another one, so a fixture that
 #: omitted it stopped every target test at that refusal instead of at the
@@ -221,8 +220,8 @@ class TestTheUserChoosesTheMachine:
 # `preparing-for-another-machine.md` § 3 retracted on 2026-08-24 -- *"a
 # preamble is a preference, so it stays local"*.  Since that date the
 # bootstrap rides the machine's probed record and `runwrap` reads the
-# record and nothing else (see `_REC` above, which carries
-# `script_generation` precisely because the generator now requires it).
+# record and nothing else (see `_REC` above, which carries `env_init`
+# precisely because the generator now requires it).
 # The warning it pinned therefore fired on every named-target prep while
 # the wrapper being generated was correct.
 

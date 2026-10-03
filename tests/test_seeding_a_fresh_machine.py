@@ -9,8 +9,9 @@
 Nothing created the config directory or this machine's record, so that was
 the state every new machine started in.  ``molbuilder envs init-config`` --
 run at the end of ``bootstrap`` -- is what ends it: it asks the activation and
-writes it into the RECORD, its one home since 2026-10-02 (`configuration.md`
-§ 5 M-1), and seeds ``molbuilder.json`` with the preference sections alone.
+writes it into ``molbuilder.json`` as ``env_init`` -- the one fact that file
+keeps about this machine (`configuration.md` § 4) -- and seeds this machine's
+record through the probe, which copies it there.
 
 **These drive the API and assert the OUTCOME.**  Not one of them reads the
 source of anything: the question is always *what does the program do now that
@@ -377,7 +378,7 @@ def test_the_seeded_template_loads_and_names_every_section(fresh):
                     "checkpoint"):
         assert section in doc, f"{section} should be a fillable stub"
     # ...and no retired one: each is refused by name (`configuration.md`
-    # § 4), and the activation is the record's.
+    # § 4), and the activation is `env_init`'s.
     for retired in ("execution", "script_generation", "scheduler"):
         assert retired not in doc and retired not in cfg, retired
 

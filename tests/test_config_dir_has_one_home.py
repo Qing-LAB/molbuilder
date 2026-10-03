@@ -134,7 +134,8 @@ class TestOperationalStateFollowsXdg:
 
     def test_state_is_not_under_the_config_root(self, monkeypatch, tmp_path):
         """Configuration is edited and backed up; logs grow and are deleted.
-        A person who wants them together says so with `paths`."""
+        A person who wants them elsewhere moves them with `XDG_STATE_HOME`
+        (`configuration.md` § 2.1d)."""
         from molbuilder.config_dir import config_dir, state_dir
         monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path / "cfg"))
         monkeypatch.delenv("XDG_STATE_HOME", raising=False)

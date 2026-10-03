@@ -38,7 +38,7 @@ from molbuilder.structure import Structure
 @pytest.fixture(autouse=True)
 def _isolated(monkeypatch, tmp_path_factory):
     """cwd + HOME of their own, like `test_prep_calculation`'s: an
-    un-isolated run folds the repo's own ``molbuilder.json`` into every
+    un-isolated run would fold the developer's own config into every
     wrapper and into the log's config phase."""
     home = tmp_path_factory.mktemp("home")
     monkeypatch.setenv("HOME", str(home))

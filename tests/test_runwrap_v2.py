@@ -7,8 +7,8 @@ The wrapper:
   * has no runtime detection (no 6-path block, no autodetect)
   * bakes ``preamble`` verbatim from the target machine's record
   * bakes a literal ``<activation_form> <env_name>`` line
-  * refuses to emit when the record states no activation (the record is
-    their one home since 2026-10-02 -- `configuration.md` § 5 M-1)
+  * refuses to emit when the record states no activation (the generator
+    reads them from the record -- `configuration.md` § 4)
 
 These tests pin those properties on the rendered shell text.
 """

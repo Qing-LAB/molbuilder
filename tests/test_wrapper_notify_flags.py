@@ -42,8 +42,8 @@ def _setup(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     (tmp_path / "home").mkdir()
-    # The record follows the config root -- and carries the activation, its
-    # one home (`configuration.md` § 5 M-1).
+    # The record follows the config root -- and carries the activation, the
+    # probe's copy the generator reads (`configuration.md` § 4).
     from conftest import write_machine_record
     write_machine_record()
     set_capabilities(Capabilities(

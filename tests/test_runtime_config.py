@@ -3,8 +3,6 @@
 Covered:
 
 * nested form is parsed straight through
-* flat (legacy) form is folded into the nested shape
-* nested wins when both present
 * malformed JSON raises ``RuntimeConfigError`` (not silent swallow)
 * non-dict top-level / sections raise ``RuntimeConfigError``
 * missing file returns ``{}`` (not raise)
@@ -119,11 +117,6 @@ def test_nested_envs_section_parses(monkeypatch, tmp_path):
     }))
     cfg = read_config()
     assert cfg == {"envs": {"siesta": "my-siesta", "pyscf": "my-pyscf"}}
-
-
-# --------------------------------------------------------------------- #
-#  Flat form (backwards compatibility)                                  #
-# --------------------------------------------------------------------- #
 
 
 # --------------------------------------------------------------------- #

@@ -3,7 +3,7 @@
 Two warnings, both on the way IN, both phrased in exactly one place so every
 surface says the same thing -- `configuration.md` §§ 2.1a and 2.1b.
 
-A working-directory `molbuilder.json` is honoured and SAID OUT LOUD.
+A working-directory `molbuilder.json` is NOT read, and that is SAID OUT LOUD.
 
 `configuration.md` § 2.1a.  User, 2026-08-31:
 

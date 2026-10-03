@@ -978,7 +978,7 @@ def test_help_flag_lists_continue_and_force(tmp_path, _autosetup_minimal_config)
     # activate`` form (the test bash has a stub ``conda`` we can mock OR
     # the wrapper aborts before the argv parser runs -- which is the point
     # this test was originally written to verify didn't happen).  The
-    # record is the activation's one home (`configuration.md` § 5 M-1).
+    # generator reads the activation from the record (`configuration.md` § 4).
     (_autosetup_minimal_config / "environment.json").write_text(
         _Env(scheduler="workstation",
              topology=_Topo(sockets=2, cores_per_socket=32),

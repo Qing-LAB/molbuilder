@@ -376,8 +376,8 @@ def test_a_python_file_that_names_no_job_is_nobodys_deck(
                             source=str(root / "in.xyz")),
         dest, struct=struct)
     # The calculation's record: the machine it is prepped for, with how a
-    # shell enters an environment there -- the activation's one home
-    # (`configuration.md` § 5 M-1).
+    # shell enters an environment there -- the activation the generator
+    # reads (`configuration.md` § 4).
     (dest / "environment.json").write_text(
         Environment(scheduler="workstation",
                     topology=Topology(sockets=1, cores_per_socket=4),

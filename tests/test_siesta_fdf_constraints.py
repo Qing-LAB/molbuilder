@@ -294,7 +294,8 @@ def test_the_wrappers_awk_reads_the_same_four_spellings(tmp_path, monkeypatch):
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     # The machine the wrapper is for, with how a shell enters an
-    # environment there -- the record is that fact's one home.
+    # environment there -- the record carries it for the generator
+    # (`configuration.md` § 4).
     from conftest import write_machine_record
     write_machine_record()
 

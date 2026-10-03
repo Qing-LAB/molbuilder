@@ -91,8 +91,8 @@ def _pyscf_wrapper(tmp_path, monkeypatch):
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(tmp_path))
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    # This machine's record: the activation's one home
-    # (`configuration.md` § 5 M-1).
+    # This machine's record, carrying the activation the generator reads
+    # (`configuration.md` § 4).
     (tmp_path / "environment.json").write_text(Environment(
         scheduler="workstation", topology=Topology(),
         env_init={"preamble": "true",

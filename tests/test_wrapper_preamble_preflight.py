@@ -1,8 +1,9 @@
 """A baked preamble must not fail as a bare bash error on the target.
 
-**The failure this closes (Sol, 2026-08-24).** The preamble (`env_init`'s
-since 2026-10-02) is baked VERBATIM into the `.run.sh` from the machine that ran `prep`.  The
-workstation's config says
+**The failure this closes (Sol, 2026-08-24).** The preamble is baked
+VERBATIM into the `.run.sh`, and it was baked from the machine that ran
+`prep` -- today it is the target record's copy of that machine's `env_init`
+(`configuration.md` § 4).  The workstation's config said
 
     source /home/u/miniconda3/etc/profile.d/conda.sh
 
@@ -40,7 +41,7 @@ from molbuilder.runwrap import _preamble_source_targets, render_run_wrapper
 
 def _render(tmp_path: Path, preamble: str, monkeypatch=None) -> Path:
     """Render a wrapper whose ONLY preamble is the one under test -- the
-    record's, the preamble's one home (`configuration.md` § 5 M-1), handed
+    record's, which the generator reads (`configuration.md` § 4), handed
     over as prep hands the target's."""
     from molbuilder.scheduler import Environment, Topology
     if monkeypatch is not None:

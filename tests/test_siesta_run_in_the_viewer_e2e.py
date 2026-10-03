@@ -69,7 +69,7 @@ def finished(isolated_projects_root_module, tmp_path_factory):
         mp.delenv("MOLBUILDER_CONFIG_DIR", raising=False)
         mp.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("xdg")))
         # ...the box probed, its record saying how a shell enters conda here
-        # -- the activation's one home (`configuration.md` § 5 M-1).
+        # -- the activation the generator reads (`configuration.md` § 4).
         from conftest import write_machine_record
         write_machine_record(env_init={
             "activation": "conda activate", "preamble": f"source {CONDA_SH}"})

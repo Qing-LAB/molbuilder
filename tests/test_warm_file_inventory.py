@@ -46,7 +46,7 @@ def _isolated(monkeypatch, tmp_path_factory):
     every wrapper here folded in the developer's own configuration, so the
     banner/mover surfaces under test varied by machine).  Sandboxed, with
     the activation the writer requires DECLARED by the test, in the record
-    -- its one home (`configuration.md` § 5 M-1)."""
+    the generator reads it from (`configuration.md` § 4)."""
     home = tmp_path_factory.mktemp("home")
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)

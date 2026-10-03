@@ -93,7 +93,7 @@ def _describe(tree, monkeypatch, positions, shape="hierarchical"):
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "frequency" / "F"
     # How a shell enters conda HERE is this machine's record's to say -- the
-    # activation's one home (`configuration.md` § 5 M-1).
+    # activation the generator reads (`configuration.md` § 4).
     from conftest import write_machine_record
     write_machine_record(env_init={
         "activation": "conda activate", "preamble": f"source {CONDA_SH}"})

@@ -693,9 +693,9 @@ def deprotonated_diester() -> Structure:
 def web_client():
     """Flask test client; skips the test if Flask isn't installed.
 
-    Passes ``config={}`` explicitly so ``create_app`` does NOT read
-    the repo-root ``molbuilder.json`` (which may have auth/TLS
-    enabled in a developer's working tree).  Tests against the
+    Passes ``config={}`` explicitly so ``create_app`` takes its sections
+    (auth, admin, rate_limit) from no file at all -- the developer's own
+    may have auth/TLS enabled.  Tests against the
     no-auth/no-TLS default isolate the page-render + API surface
     from per-machine config state.  Tests that need an auth-enabled
     or otherwise non-default app build their own fixture and pass
@@ -1043,8 +1043,7 @@ def write_machine_record(at=None, **over):
     from molbuilder.scheduler import (Environment, Topology,
                                       machine_scope_path, write_environment)
     # HOW A SHELL ENTERS AN ENVIRONMENT HERE, as a probed record carries it
-    # since that record became its one home (`configuration.md` § 5 M-1,
-    # 2026-10-02): `conda activate`, behind a preamble that does nothing.  A
+    # -- the probe's copy of `env_init` (`configuration.md` § 4): `conda activate`, behind a preamble that does nothing.  A
     # test that runs a real engine passes its own -- the real conda hook --
     # and there is no second home left for the two to disagree in.
     fields = dict(scheduler="",          # a workstation: no queue system

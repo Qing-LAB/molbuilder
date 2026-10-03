@@ -68,7 +68,7 @@ def sandbox(tmp_path, monkeypatch):
 
 def _machine():
     """This machine's record: how a shell enters an environment here --
-    the activation's one home (`configuration.md` § 5 M-1)."""
+    the activation the generator reads (`configuration.md` § 4)."""
     from molbuilder.scheduler import Environment, Topology
     return Environment(scheduler="workstation", topology=Topology(),
                        env_init={"preamble": "module load mamba",

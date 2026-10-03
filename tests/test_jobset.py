@@ -17,10 +17,10 @@ from molbuilder.jobset.model import Job, JobSet, Resources, SCHEMA, WarmFile
 @pytest.fixture(autouse=True)
 def _sandbox(tmp_path_factory, monkeypatch):
     """cwd + HOME isolation for EVERY test here (I6, 2026-08-13): the
-    prep/submit tests read runtime config through the cascade, and
-    without this they read the DEVELOPER's cwd molbuilder.json and
-    ~/.molbuilder -- found state, the contamination class the 2026-08-12
-    isolation memory records.  Tests that need their own cwd/HOME
+    prep/submit tests read this machine's config and record, and without
+    this they read the DEVELOPER's -- found state, the contamination class
+    the 2026-08-12 isolation memory records.  (It named a cwd
+    molbuilder.json and ~/.molbuilder, both retired 2026-08-31.)  Tests that need their own cwd/HOME
     (monkeypatch.chdir / setenv) still win: their monkeypatching applies
     after this fixture's."""
     box = tmp_path_factory.mktemp("sandbox")

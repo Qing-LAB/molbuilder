@@ -84,8 +84,8 @@ def _a_prepared_calculation(tmp_path: Path, engine: str = _ENGINE) -> Path:
     root.mkdir()
     # The activation the wrapper needs is the machine record's -- the
     # conftest's autouse `write_machine_record`, since 2026-09-02 a
-    # precondition rather than something prep arranges, and the
-    # activation's one home since 2026-10-02.
+    # precondition rather than something prep arranges, and what the
+    # generator reads the activation from.
     (root / f"{LABEL}.fdf").write_text(
         "SystemName test\nSystemLabel J\nNumberOfAtoms 2\n"
         "DM.UseSaveDM .false.\nMD.UseSaveXV .false.\n")

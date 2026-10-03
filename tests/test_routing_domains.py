@@ -48,9 +48,9 @@ def _write_record(where, domains=_DOMAINS, gpu_type=None):
 def _sandbox(tmp_path, monkeypatch):
     """Isolated cwd + $HOME + XDG.
 
-    Both readers below consult the CWD-first server-wide scope and the per-user
-    machine scope, so without this the verdicts depend on the developer's own
-    ``molbuilder.json`` — caught 2026-08-12 the moment that file gained a real
+    Both readers below consult the config directory's ``molbuilder.json`` and
+    this machine's record, so without this the verdicts depend on the
+    developer's own (the cwd step they also consulted went 2026-08-31) — caught 2026-08-12 the moment that file gained a real
     ``scheduler.routing``, and again on 2026-08-17 when N4 made that key an
     error and thirteen tests in OTHER files failed for that reason alone.
     """

@@ -31,7 +31,7 @@ def _sandbox(tmp_path, monkeypatch):
 def _wrapper(tmp_path):
     (tmp_path / "JOB.fdf").write_text("SystemLabel JOB\n")
     # A PROBED MACHINE, its record saying how a shell enters an environment
-    # there -- the activation's one home (`configuration.md` § 5 M-1); a
+    # there -- the activation the generator reads (`configuration.md` § 4); a
     # wrapper is not rendered without one.  Its shape is STATED, as every
     # run's is (`architecture.md` § 5.2).
     from molbuilder.scheduler import Environment as _Env, Topology as _Topo

@@ -120,7 +120,7 @@ def test_an_older_record_states_no_architecture_and_that_is_fine():
 
 def test_the_field_is_absent_rather_than_null_when_unknown():
     """`to_dict` omits it entirely, the same way `conda_envs` and
-    `script_generation` are omitted: a key that is missing and a key that is
+    `env_init` are omitted: a key that is missing and a key that is
     null are different claims to anything testing for one."""
     d = json.loads(Environment(scheduler="workstation").to_json())
     assert "env_arch" not in d

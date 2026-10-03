@@ -37,8 +37,8 @@ def _isolated(monkeypatch, tmp_path_factory):
     by machine -- and failed in an isolated cwd (the writer rightly REFUSES
     with no activation declared, which is exactly what running the file
     isolated exposed).  One sandboxed cwd + HOME for the file, with the
-    activation DECLARED by the test, in the record -- its one home since
-    2026-10-02 (`configuration.md` § 5 M-1)."""
+    activation DECLARED by the test, in the record the
+    generator reads it from (`configuration.md` § 4)."""
     home = tmp_path_factory.mktemp("home")
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)

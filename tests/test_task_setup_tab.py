@@ -568,8 +568,8 @@ def _child_env_with_a_config(tmp_path):
     looked for in the working directory (`configuration.md` § 2.1a).
 
     So the child is given a root of its own, holding the one thing the render
-    requires: a probed record, carrying the activation -- its one home
-    (`configuration.md` § 5 M-1).  ``monkeypatch`` cannot reach across a
+    requires: a probed record, carrying the activation the generator reads
+    (`configuration.md` § 4).  ``monkeypatch`` cannot reach across a
     process boundary, which is why the environment is built here rather than
     set on the parent.
     """
