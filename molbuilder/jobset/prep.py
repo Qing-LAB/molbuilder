@@ -109,7 +109,8 @@ def _user_error_as_prep():
 #: probe is that a probed-on-the-fly number is indistinguishable from a
 #: recorded one once it is in a wrapper.
 _NO_RECORD = (
-    "no machine record for {which}, so there is nothing to prep against.\n"
+    "no machine record for this machine, so there is nothing to prep "
+    "against.\n"
     "  Record it, once:\n"
     "      {cmd}\n"
     "  A machine's cores, GPUs and queues are read from a record and never "
@@ -180,19 +181,18 @@ def resolve_target(base_dir, target: Optional[str] = None) -> Path:
     # prep stops.
     env = machine_for(target=target)
     if env is None:
-        raise _no_record(target)
+        raise _no_record()
     return write_environment(env, out)
 
 
-def _no_record(target: Optional[str]) -> PrepError:
-    """The refusal of a machine with no record, naming the probe that
-    writes one (`scheduler.record.probe_line`: THIS machine's with no name -- `this`
-    is reserved and the probe refuses it; W52)."""
-    from ..scheduler.record import LOCAL_TARGET, probe_line
-    return PrepError(_NO_RECORD.format(
-        which=("this machine" if target in (None, LOCAL_TARGET)
-               else repr(target)),
-        cmd=probe_line(target)))
+def _no_record() -> PrepError:
+    """The refusal of THIS machine with no record, naming the probe that
+    writes one (`scheduler.record.probe_line`, W52).  Only this machine can
+    have none: a named target's record is there, or `machine_for` refuses
+    the name itself (W54 R10 -- a branch for a named target stood here, and
+    could not be reached)."""
+    from ..scheduler.record import probe_line
+    return PrepError(_NO_RECORD.format(cmd=probe_line(None)))
 
 
 def _environment_read(base: Path, target: Optional[str] = None):
@@ -206,7 +206,7 @@ def _environment_read(base: Path, target: Optional[str] = None):
     from ..scheduler import machine_for
     env = machine_for(base, target=target)
     if env is None:
-        raise _no_record(target)
+        raise _no_record()
     return env
 
 

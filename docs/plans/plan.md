@@ -214,8 +214,8 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | C21 | redundant validation and normalisation | **fixed `8f3d450c`** — the admin set normalised once (`get_admin_emails`, trusting `_read_admin`'s shape); `auth-setup` validates once, through `write_config_scope`, and writes Google's secret after it; the Microsoft tenant's default is the validator's alone |
 | C22 | stranded comments | fixed `0a7ea0e4` |
 | C23 | the envs report named the wrong source for the host env | Q2c 6, `311ab27e` |
-| C24 | conftest re-derives the config-directory rule by hand | **fixed** — `_REAL_CONFIG_DIR` asks `config_dir()` at import |
-| C25 | a second reader of the notify file's format | `_document` not real (§ 2.3's management carve-out); **fixed** — `_write` writes `persist.json_text`'s bytes |
+| C24 | conftest re-derives the config-directory rule by hand | **fixed `5ba5ac5f`** — `_REAL_CONFIG_DIR` asks `config_dir()` at import |
+| C25 | a second reader of the notify file's format | `_document` not real (§ 2.3's management carve-out); **fixed `5ba5ac5f`** — `_write` writes `persist.json_text`'s bytes |
 | R1 | the activation refusal named the wrong record | fixed `92e84cc8` |
 | R2 | an unreadable snapshot skipped silently | fixed `92e84cc8` |
 | R3 | `--target this` takes another machine's snapshot unasked — and the tab sends `this` on every prep once "(this machine)" is picked | **your word** — below |
@@ -225,7 +225,7 @@ written rule — fixed without asking); *your word* (a decision); *own unit*.
 | R7 | the preamble guard's remedy | fixed `92e84cc8` |
 | R8 | the provenance card vanished with a named record | fixed `92e84cc8` (C10) |
 | R9 | the web prep route's own copy of the target checks | fixed `92e84cc8` |
-| R10 | the record read 3–4 times per prep | **to do** — read once in `prep_stage` and handed down; `_no_record`'s unreachable named branch |
+| R10 | the record read 3–4 times per prep | the reads go through one door and agree — one source, read again, is not a defect (`One source, not one place`), left; **fixed** — `_no_record`'s unreachable named-target branch |
 | R11 | a second road into the wrapper that only tests use | launch's `machine_for` fallback is used, kept; **to do** — the test-only fallbacks (`runwrap.py:3247`, `:2219`, `prep.py:287`) |
 | R12 | paths and probe commands written by hand | **fixed `4d5b28f8`** (the rest, with R5) — `calculation_record` at prep and summarize; the probe commands through `probe_command` / `record_and_renewal` (the retired-`scheduler` message also said "copied here" for a named target's record, which would have overwritten this machine's) |
 | R13 | every record says prep wrote it | **fixed `5157ae90`** — the field's default is `jobset-probe@1` |
