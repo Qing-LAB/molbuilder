@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from molbuilder import calcdirs
 from molbuilder import runfiles as _rf
 from molbuilder.identity import parse_token
-from molbuilder.paths import trial_point
+from molbuilder.paths import trial_label, trial_point
 
 
 # --------------------------------------------------------------------- #
@@ -88,7 +88,7 @@ def _position(folder: Path, place: Place) -> Tuple[str, Optional[str]]:
     names -- read off the folders the layout made (`paths`, `identity`):
     ``<NN>_<stage>/`` in the hierarchy, ``bench_<NN>_<stage>/`` at a flat
     root, a trial's ``bench-<point>/`` relabelling its files
-    ``<label>-<point>`` (`resolve._label_for`)."""
+    (`paths.trial_label`)."""
     label, stage = place.task.label, None
     try:
         parts = folder.resolve().relative_to(place.root.resolve()).parts
@@ -101,7 +101,7 @@ def _position(folder: Path, place: Place) -> Tuple[str, Optional[str]]:
             stage = part
         point = trial_point(part)
         if point:
-            label = f"{place.task.label}-{point}"
+            label = trial_label(place.task.label, point)
     return label, stage
 
 

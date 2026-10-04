@@ -940,7 +940,8 @@ def _label_for(base: str, point: Mapping[str, Any]) -> str:
     read — or overwrite — the real run's ``.DM`` and ``.XV``
     (`project-layout.md` § 2.3.2).
     """
-    label = base if not point else f"{base}-{point_token(point)}"
+    from .paths import trial_label
+    label = base if not point else trial_label(base, point_token(point))
     if len(label) > _SIESTA_LABEL_MAX:
         # REFUSED, never truncated (roadmap 7.10 M2, user 2026-08-24).
         # SIESTA silently cuts label-derived filenames at ~50 characters

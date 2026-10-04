@@ -35,6 +35,7 @@ from ..identity import StageRef, parse_token, resolve_stage_ref
 from ..runfiles import parse as _rf_parse
 from .model import JobSet, warm_carry
 from ..paths import (attempt_dir, attempts_in,
+                     trial_label as _paths_trial_label,
                      trial_name as _paths_trial_name,
                      trials_in as _paths_trials_in,
                      bench_containers_in as _bench_containers_in,
@@ -446,7 +447,7 @@ def _trial_stage_token(jobset: JobSet, job) -> Optional[str]:
     (`runfiles.parse`, the one grammar).
     """
     got = _rf_parse(os.path.basename(job.script),
-                    f"{jobset.name}-{job.name}")
+                    _paths_trial_label(jobset.name, job.name))
     return got.stage if got is not None else None
 
 

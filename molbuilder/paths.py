@@ -221,6 +221,22 @@ def trial_point(name: str) -> Optional[str]:
     return point or None
 
 
+def trial_label(label: str, point: str) -> str:
+    """``<label>-<point>`` -- THE LABEL A TRIAL'S FILES ARE NAMED ON: the
+    calculation's, with the point's token appended (`project-layout.md`
+    § 2.3.2).  A trial is relabelled so its warm files never meet the real
+    run's: SIESTA finds them by ``SystemLabel``.
+
+    THE ONE COMPOSER, and every reader asks it: prep's element label
+    (`resolve._label_for`), the run door's reading of a trial's folder
+    (`runs`), a trial's deck read back for its stage token
+    (`materialize`), and the job a status row reads (`runstatus`).  *(Three
+    of them spelled the f-string themselves and the fourth cut the label
+    off the deck's name until 2026-10-04: plan W56 3b.3.)*
+    """
+    return f"{label}-{point}"
+
+
 def stages_in(root, shape: "Shape", label: str = ""
               ) -> "list[tuple[int, str]]":
     """Every stage a calculation's folder holds files of, as ``(seq, name)``

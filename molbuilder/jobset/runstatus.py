@@ -31,7 +31,7 @@ from ..paths import attempts_in
 from .materialize import (job_dir_names, launch_record_at, latest_attempt, run_dir, shape_of, stage_refs)
 from ..runrecord import LaunchRecordError, launch_record
 from .commands import block, command, launch_lines, rollback
-from .model import JobSet
+from .model import KIND_SWEEP, JobSet
 from .plan import resources_text
 
 # Engine-native warm-restart files keyed by the project id (system label).
@@ -41,8 +41,8 @@ from .plan import resources_text
 # question -- could a stage here hand state to the next one? -- asked of the
 # one door with the calculation's folder, so its own list answers.
 from ..warmfiles import warm_list as _warm_list
-from ..paths import attempt_name
-from ..runfiles import is_stage_token, stem as rf_stem
+from ..paths import attempt_name, trial_label
+from ..runfiles import stem as rf_stem
 
 
 
@@ -197,46 +197,10 @@ def _warm_present(stage_dir: Path, label: str, engine: str,
     return out
 
 
-def _label_of(job: Any, fallback: str) -> str:
-    """The label THIS job's files carry, read off its own deck.
-
-    `JobSet.name` is the TASK's label; a sweep trial's deck is
-    `f"{task.label}-{point_token}"` (`resolve._label_for`), so the two differ
-    for exactly the case that matters.  Measured on a real sweep:
-    `find(trial_dir, "siesta-AuBDTAu", role=".out")` is `[]` while
-    `find(trial_dir, "siesta-AuBDTAu-G0K20C1ELPA1STAGE", role=".out")` finds
-    the run -- so `has_output` was False for a trial that had finished, and a
-    measured 269.8 s/iter sat beside "launched, no output yet".
-
-    THE STAGE IS FOUND, NOT ASSUMED.  A deck is `<label>_<stage>.<role>`, the
-    stage token itself contains an underscore (`01_coarse`), and
-    `StageRef.token` is None on a real sweep -- so neither splitting on `_` nor
-    trusting the caller's token works.  `runfiles.is_stage_token` is the
-    grammar's own answer: walk the underscore boundaries from the right and
-    take the first tail it recognises.
-
-    Label-free lookup was tried first and is not available: `find_by_role`
-    refuses an underscore role (`_geom.log`) because it cannot be told from a
-    stage name without a label.
-    """
-    script = getattr(job, "script", None)
-    if not script:
-        return fallback
-    stem = Path(str(script)).name
-    for role in (".run.sh", ".sbatch", ".sh", ".py", ".fdf"):
-        if stem.endswith(role):
-            stem = stem[: -len(role)]
-            break
-    parts = stem.split("_")
-    for i in range(len(parts) - 1, 0, -1):
-        if is_stage_token("_".join(parts[i:])):
-            return "_".join(parts[:i]) or fallback
-    # NO STAGE TOKEN, NO GUESS.  A ladder names its stages freely (`demo_s1.fdf`
-    # with output `demo.out`), and `s1` is not a stage token -- returning the
-    # whole stem would ask for `demo_s1.out` and find nothing.  The jobset's own
-    # name is right whenever the deck carries no token, which is every case this
-    # function is not here to fix.
-    return fallback
+# `_label_of` -- a job's label cut off its deck's name, walking the
+# underscores for a stage token -- stood here until 2026-10-04.  A trial's
+# label is composed by the one composer, `paths.trial_label` (plan W56
+# 3b.3).
 
 
 #: The state a stage has before `prep` has made it a directory -- the ONE
@@ -308,13 +272,13 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
     # run indexes.
     token = refs[job.name].token
     # THE LABEL IS THIS JOB'S, NOT THE JOBSET'S.  A sweep's `JobSet.name`
-    # is `task.label`, while each trial's deck is `f"{task.label}-{token}"`
-    # (`resolve._label_for`) -- so narrowing by the jobset's name matched
-    # NOTHING for a trial, and a finished trial answered § 1.6's forbidden
-    # "prepped, not launched".  Read off the deck the way `summarize` does
-    # (`Path(job.script).stem` minus the stage suffix), which is the name
-    # the files actually carry.
-    job_label = _label_of(job, jobset.name)
+    # is `task.label`, while each trial is relabelled with its point --
+    # its job's name (`project-layout.md` § 2.3.2) -- so narrowing by the
+    # jobset's name matched NOTHING for a trial, and a finished trial
+    # answered § 1.6's forbidden "prepped, not launched".  Composed by the
+    # one composer prep's label comes from (`paths.trial_label`).
+    job_label = (trial_label(jobset.name, job.name)
+                 if jobset.kind == KIND_SWEEP else jobset.name)
     basename = rf_stem(job_label, token or None)
     read = []
     for home, volts in _rung_homes(base, task, job.name, d):

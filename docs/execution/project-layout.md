@@ -1946,7 +1946,8 @@ benchmark's **pins** laid over the resolved values
 - **the cap made clean** (`scf_must_converge: false` — SIESTA accepts the
   deliberately-unconverged density instead of aborting; added 2026-08-19);
 - **relabelled per trial** — the calculation's label with the point's token
-  appended.
+  appended: `paths.trial_label`, the one composer prep and every reader of a
+  trial's files ask.
 
 **And nothing else.** What is pinned is what makes a trial a *measurement*
 rather than a run. **What the calculation IS — the GPU, the eigensolver, the
@@ -2338,6 +2339,7 @@ module the job works around.
 | which stage directories exist? | `stages_in`; a run's files, by its stem in either shape (`runfiles.stem`) |
 | where does a sweep live? | `bench_container`, `bench_containers_in` |
 | where does a trial run? | `trial_name`, `trial_point`, `trials_in`; `materialize.trial_dir`, `trial_work_dir` |
+| what is a trial's label? | `trial_label` (§ 2.3.2) |
 | which attempts exist? | `attempt_name`, `attempt_dir`, `attempt_index`, `attempts_in`; `materialize.latest_attempt`, `resolve_attempt` |
 
 *(This table named `paths.path_for`, `sweep_set_paths`, `attempts` and a
