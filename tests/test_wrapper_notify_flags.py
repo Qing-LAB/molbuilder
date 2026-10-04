@@ -332,8 +332,8 @@ def test_the_monitor_is_told_whether_the_run_uses_a_gpu(tmp_path, deck,
     f.write_text("SystemLabel job\nNumberOfAtoms 8\n" if deck.endswith(".fdf")
                  else 'JOB = "job"\n')
     text = runwrap.render_run_wrapper(
-        f, resources=Resources(mpi_np=4, cpus_per_task=1,
-                               use_gpu=use_gpu))
+        f, resources=Resources(mpi_np=4, cpus_per_task=1, use_gpu=use_gpu,
+                               gres="gpu:1" if use_gpu else None))
     line = next(ln for ln in text.splitlines()
                 if "mb_monitor.py" in ln and "--label" in ln)
     assert ("--gpu" in line.split()) is told, line

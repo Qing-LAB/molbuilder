@@ -906,18 +906,15 @@ class SiestaConfig:
         # Only meaningful with an ELPA algorithm; GPU + ScaLAPACK is
         # rejected at render time.  Keyword Src/diag_option.F90:138-139
         # (``Diag.ELPA.GPU`` / older ``Diag.ELPA.UseGPU``; we emit the
-        # modern form).  Routing to ``molbuilder-siesta-gpu`` is driven by
-        # the ELPA *algorithm* choice, not by this toggle (CPU-ELPA still
-        # needs the ELPA build).
-        # § 6.1: the WRAPPER derives from this value too, and for a
-        # DIFFERENT question than ``diag_algorithm``'s.  That one decides
-        # which env to activate; this one decides the GPU RUNTIME -- the
-        # gres ask, MPS, the NUMA pin, and the rank/thread budget
-        # (``runwrap._fdf_requests_gpu`` has eight call sites, only one of
-        # them the env route).  Declared 2026-08-13, when T8's walk found
-        # the wrapper scanning TWO deck keywords while only one was
-        # declared: trusting the declarations alone would have dropped
-        # every GPU runtime fact silently.
+        # modern form).
+        # § 6.1: the WRAPPER derives from this value too -- the env (the
+        # GPU build of SIESTA; the solver decides none, `execution/gpu.md`
+        # G3) and the GPU runtime: the gres ask, MPS, the NUMA pin.  It is
+        # TOLD the value, never reads the deck for it: `resolve` carries it
+        # onto the job's resources and every reader asks the job's GPU
+        # request (`jobset.model.gpu_request`).  Declared 2026-08-13, when
+        # T8's walk found the wrapper scanning a deck keyword no item
+        # declared.
         "read_by": ("wrapper",),
         # MERGED with PySCF's item 2026-08-23 (ruled 2026-08-13).  One
         # question -- does this run use a GPU -- so one item, `kind="deck"`,

@@ -46,8 +46,10 @@ def _setup(tmp_path, monkeypatch):
 def _gpu(tmp_path: Path, np: int = 4) -> str:
     f = tmp_path / "g.fdf"
     f.write_text("NumberOfAtoms 444\nDiag.ELPA.GPU .true.\n")
+    # a GPU job as `resolve` writes one: told, with its count (`gpu.md` G5)
     return runwrap.render_run_wrapper(
-        f, resources=Resources(mpi_np=np, cpus_per_task=1))
+        f, resources=Resources(mpi_np=np, cpus_per_task=1, use_gpu=True,
+                               gres="gpu:1"))
 
 
 def _cpu(tmp_path: Path, np: int = 20) -> str:

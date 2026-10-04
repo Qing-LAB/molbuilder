@@ -367,6 +367,7 @@ def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
     bundle format (u5).
     """
     from .materialize import job_dir_names, run_dir, shape_of
+    from .model import gpu_request
     bundle = Path(bundle)
     dirs = job_dir_names(jobset, shape_of(jobset, bundle))
     pts: List[BenchPoint] = []
@@ -382,8 +383,11 @@ def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
             knobs["mpi_np"] = j.resources.mpi_np
         if j.resources.cpus_per_task:
             knobs["cpus_per_task"] = j.resources.cpus_per_task
-        if j.resources.gres:
-            knobs["gres"] = j.resources.gres
+        # THE TRIAL'S GPU REQUEST, through the one door (`model.
+        # gpu_request`): its side and its count are one answer.
+        gpus = gpu_request(j.resources)
+        if gpus.uses:
+            knobs["gres"] = gpus.gres
         # THE LATEST ATTEMPT WHERE THERE IS ONE, the container otherwise --
         # `runstatus`'s own rule, and shape-agnostic, so it answered for a
         # hierarchical stage long before a trial had attempts to find
@@ -393,7 +397,7 @@ def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
         _d = bundle / dirs[j.name]
         pts.append(parse_point(
             j.name, run_dir(_d), Path(j.script).stem,
-            "gpu" if j.resources.gres else "cpu", knobs,
+            "gpu" if gpus.uses else "cpu", knobs,
             point=dict(j.point)))
     return pts
 

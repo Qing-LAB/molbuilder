@@ -1595,7 +1595,7 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
     is asked: ``None``.  Otherwise the answer (`ask.Said`).  ``--yes``
     skips the question, never the output."""
     from .ask import confirm, gpu_share_notes
-    from .submit import _gres_count
+    from ..scheduler.quantities import parse_gres_flag
     planned = [r for r in plan if r.status == "planned"]
     lines = ["about to submit:"]
     for r in plan:
@@ -1614,7 +1614,7 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
         # 2026-08-23) -- its `-n` and its `--gres`, through the one reader.
         g = next((a for a in r.command if a.startswith("--gres=")), None)
         try:
-            ng = _gres_count(g.split("=", 1)[1]) if g else 0
+            ng = parse_gres_flag(g.split("=", 1)[1]) if g else 0
             nr = int(r.command[r.command.index("-n") + 1])
         except (ValueError, IndexError):
             ng = 0
@@ -1793,9 +1793,9 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
         from .submit import sides_of
         _gpu_only = bool(gpu_domain) and kind == "bench" and (
             (grouped and (only_side == "gpu"
-                          or not sides_of(js, base)["cpu"]))
+                          or not sides_of(js)["cpu"]))
             or (only is not None
-                and any(j.name == only for j in sides_of(js, base)["gpu"])))
+                and any(j.name == only for j in sides_of(js)["gpu"])))
         from ..runtime_config import get_routing
         _rows = [] if _gpu_only else get_routing(
             project_dir=Path(base) if base else None)
@@ -1808,13 +1808,18 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
             _cores = max(((j.resources.mpi_np or 0)
                           * max(j.resources.cpus_per_task or 1, 1)
                           for j in launching), default=0) or None
-            _gpu = only_side == "gpu" or (bool(launching) and all(
-                j.resources.gres or j.resources.use_gpu for j in launching))
-            # ...and the GPU COUNT the door admits (`submit._gres_count`),
+            # ...each job's GPU REQUEST, through the one door the
+            # submission asks (`model.gpu_request`) -- whether, and how many;
             # never a stand-in of one.
-            from .submit import _gres_count
-            _gpus = (max((_gres_count(j.resources.gres or "")
-                          for j in launching), default=0) or None
+            from .submit import _gpus as _request
+            try:
+                _asks = [_request(j.resources, f"job {j.name!r}")
+                         for j in launching]
+            except SubmitError as e:
+                raise click.ClickException(str(e))
+            _gpu = only_side == "gpu" or (bool(_asks)
+                                          and all(a.uses for a in _asks))
+            _gpus = (max((a.count or 0 for a in _asks), default=0) or None
                      if _gpu else None)
             # ...and the WALL AND MEMORY the door admits: what launch
             # states, else what prep baked (`submit._sbatch_request`) -- the

@@ -600,11 +600,11 @@ framework rule, not a script patch)*:
   > measure"* while they were standing on it.  Two ceilings, both read off
   > the wrong thing, neither agreeing with the admission `launch` would
   > apply.
-- **Submission splits by the deck's own answer** (`_job_wants_gpu`, the
-  one door) **and then by RESOURCE SHELF** *(user, 2026-08-21: "lighter
-  tasks scheduled for heavy resource idling for hours is not a good use
-  of cpu time")*: trials sharing one exact ask — the same ranks, cores
-  and GPU request (`gres`) — share one grouped job sized to fit them
+- **Submission splits by each trial's GPU request** (`gpu_request`, the
+  one door, `architecture.md` § 3.2) **and then by RESOURCE SHELF** *(user,
+  2026-08-21: "lighter tasks scheduled for heavy resource idling for hours
+  is not a good use of cpu time")*: trials sharing one exact ask — the same
+  ranks, cores and GPU count — share one grouped job sized to fit them
   exactly, so **nothing idles inside a group** —
   neither the cores a narrow trial would leave of a wide envelope nor
   the devices a G1 trial would hold of a `gres:4` one.  The value-axis

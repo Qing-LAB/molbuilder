@@ -383,6 +383,55 @@ class TestTheBenchPreviewSaysNothingAboutTheRun:
         assert r.get_json().get("emitted"), "the run lost its A13 block"
 
 
+#: (case, whether the calculation's run card keeps its `gpu_count: 1`, the
+#: stage's own run card over it, and the devices row the card shows --
+#: (value, source), or `None` for no row).  The template runs on the GPU.
+_DEVICE_ROWS = [
+    ("a run on the GPU shows the count it asks for",
+     True, {}, ("gpu:1", "stated")),
+    ("a count for a run on the CPU shows prep's refusal",
+     True, {"use_gpu": False},
+     ("gpu:1", "prep refuses it -- this run does not use the GPU")),
+    ("a run on the GPU stating no count shows prep's refusal",
+     False, {}, ("\u2014", "not stated -- prep refuses it")),
+    ("a run on the CPU asking none shows no row",
+     False, {"use_gpu": False}, None),
+]
+
+
+@pytest.mark.parametrize("case, count, stage_card, row", _DEVICE_ROWS,
+                         ids=[c[0] for c in _DEVICE_ROWS])
+def test_the_run_previews_devices_are_its_gpu_request(client, bundle, case,
+                                                      count, stage_card, row):
+    """The card's devices row is the run's GPU request -- the door prep asks
+    (`prep_inputs.run_gpu_request`, `execution/gpu.md` G5) -- and a request
+    prep refuses is shown as the refusal, beside the rest of the card.
+
+    API-LEVEL: the Task setup card is a door of the page's alone, which no
+    `jobset` verb reaches; what prep does with each request is the GPU
+    contract's table.
+
+    PREVENTS: the card asking a second reading of `use_gpu` (until
+    2026-10-03), and a refused request losing the card -- the assembly
+    raised, and the card showed nothing."""
+    tj = bundle / "task.json"
+    d = json.loads(tj.read_text())
+    if not count:
+        d["execution"].pop("gpu_count")
+    if stage_card:
+        d["stages"][0]["execution"] = {**d["stages"][0].get("execution", {}),
+                                       **stage_card}
+    tj.write_text(json.dumps(d, indent=2))
+    r = client.post("/api/task-setup/prep", json={
+        "dest": str(bundle), "kind": "run", "stage": "coarse", "plan": True})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    rows = {e["flag"]: e for e in r.get_json()["emitted"]}
+    assert "-n" in rows, rows                       # the rest of the card
+    got = rows.get("--gres")
+    assert (None if got is None else (got["value"], got["source"])) == row, (
+        case, got)
+
+
 class TestThePlanComesFromTheProducer:
     """§ 7.1: a confirmation, not a second answer.  Flat and hierarchical
     name directories differently, and a list the page composed would be free

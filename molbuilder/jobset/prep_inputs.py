@@ -6,7 +6,8 @@ Two tuples, one per kind:
     bench_inputs     ->  (points, pins, translation)      a benchmark sweep
 
 and the pieces they are made of: the run's condition (`Task.run_condition`,
-read by `run_uses_device`, `declared_run_shape`, `run_inputs`), the bench's
+read by `declared_run_shape`, `run_inputs`), the run's GPU request as prep
+will write it (`run_gpu_request`, which the prep entry asks), the bench's
 declared pins and axes (`_declared_execution_pins`), and the bench grid --
 enumerated, checked cell by cell against the target's queues, and reported
 (`_cells_this_machine_holds`, `_rank_reasons`, `_local_refusals`, `_cell_*`).
@@ -332,34 +333,36 @@ from ..task import LANE_ASKS as _LANE_ASKS
 from .placement import AS_RESOURCE
 
 
-def run_uses_device(base, task, stage=None):
-    """Does this RUN use a device? — the TEMPLATE's ``use_gpu``, overridden by
-    the condition's.
+def run_gpu_request(base, task, stage, allocation, pins=None):
+    """The run's GPU request as prep will write it -- `gpu_request` of the
+    job `resolve` makes for this stage, from what prep resolves it from: the
+    template, the stage's overrides, the run card's pins, and ``allocation``
+    (the flags, with the run card's launch shape folded in --
+    :func:`prep_run_inputs`).  ``None`` when there is no template to
+    resolve: the five steps refuse that description, in its kind's own
+    words.
 
-    **ONE PRODUCER, because two readers had two answers.**  `declared_run_shape`
-    asked the shipped CATALOGUE, whose ``use_gpu`` value is ``false`` — so the
-    test was a constant, and `execution: {"gpu_count": 2}` on a GPU
-    calculation had its device ask **silently deleted** unless the condition
-    also spelled ``use_gpu``.  Meanwhile the Task-setup card asked
-    ``bool(gres)`` and the emitter asked `_wants_gpu`, so the card could print
-    a rank count the header would not carry — the discrepancy A13 exists to
-    end.  `bench_inputs` had it right all along (it reads the template), and
-    this is that read, named once.
+    Raises `GpuRequestError` when the request disagrees with itself
+    (`execution/gpu.md` G5) -- the prep entry refuses on it before anything
+    is written, and the Task setup card shows it -- and `ResolveError` when
+    the stage does not resolve.
+
+    *Until 2026-10-03 a second reading answered here: the template's
+    ``use_gpu`` under the card's, read from the file -- and it dropped a
+    count stated for a run on the CPU, with a note, while ``--gpus`` reached
+    the header.*
     """
-    cond = task.run_condition(stage)
-    if "use_gpu" in cond:
-        return bool(cond["use_gpu"])
-    try:
-        from ..template import read_template, template_path
-        from ..template import select as _tsel
-        tmpl = read_template(
-            template_path(Path(base), task.label).read_text(encoding="utf-8"))
-        return any(i.name == "use_gpu" and bool(i.value)
-                   for i in _tsel(tmpl, engine=task.engine))
-    except Exception:                                         # noqa: BLE001
-        # No template (the transport composite has none) -- nothing claims a
-        # device, which is the same answer an absent flag gives.
-        return False
+    from ..resolve import resolve
+    from ..template import template_path
+    from .engines import engine_seam
+    from .model import gpu_request
+    tpl = template_path(Path(base), task.label)
+    if not tpl.is_file():
+        return None
+    ps = resolve(tpl.read_text(encoding="utf-8"), task,
+                 engine_seam(task.engine).config_cls,
+                 allocation=allocation, stage=stage, pins=pins or None)
+    return gpu_request(ps.elements[0].resources)
 
 
 def declared_run_shape(base, task, stage=None):
@@ -390,10 +393,9 @@ def declared_run_shape(base, task, stage=None):
     The device ask is a COUNT -- ``gpu:N`` -- and names no card: which card
     a node carries is the machine's business (`scheduler.md` R2a; a card was
     looked up here, 2026-09-30 to 2026-10-01).  The count is the run card's
-    own ``gpu_count``, on every engine; a device run that states none gets
-    no ask here, and `prep_run_inputs` refuses it once a flag has had its
-    say (`execution/gpu.md` G5: no default -- it was one device, filled in
-    here, until 2026-10-01).
+    own ``gpu_count``, on every engine, carried as stated: whether the run
+    uses the GPU is its resolved ``use_gpu``, and the two are asked together
+    by the prep entry (:func:`run_gpu_request`, `execution/gpu.md` G5).
     """
     cond = task.run_condition(stage)
     from ..template import catalogue, select
@@ -401,7 +403,7 @@ def declared_run_shape(base, task, stage=None):
     items = {i.name: i for i in select(catalogue(),
                                        engine=getattr(task, "engine", ""))}
     known = {f.name for f in __import__("dataclasses").fields(Resources)}
-    out, want_devices = {}, None
+    out = {}
     for name, val in sorted(cond.items()):
         if name in _LANE_ASKS:
             # THE RUN'S OWN SCHEDULER ASK (`stages.md` § 6.8e).  Not a
@@ -413,9 +415,6 @@ def declared_run_shape(base, task, stage=None):
         it = items.get(name)
         if it is None:
             continue                    # membership is validation's refusal
-        if name == "use_gpu":
-            want_devices = bool(val)    # a PIN for the deck; read here as a gate
-            continue
         if not it.allocation:
             continue                    # a parameter -- pins, never the launch
         field = AS_RESOURCE.get(name, name)
@@ -423,16 +422,6 @@ def declared_run_shape(base, task, stage=None):
             out["gres"] = int(val)      # spelled below, as the count it is
         elif field in known:
             out[field] = val
-    # WHETHER there is a device is the run's answer (the card's `use_gpu`
-    # over the template's); HOW MANY is this block's `gpu_count` (G5: no
-    # default); which card is the machine's business, never asked (R2a).  A
-    # count without a device run is not an ask: it is dropped here, and
-    # `prep_run_inputs` says so.
-    if want_devices is None:
-        want_devices = run_uses_device(base, task, stage)
-    if not want_devices:
-        out.pop("gres", None)
-        return out
     if "gres" in out:
         out["gres"] = f"gpu:{out['gres']}"
     return out
@@ -454,14 +443,13 @@ def run_inputs(base, task, stage=None):
             base, task.engine, {k: [v] for k, v in cond.items()})
     # THE SHAPE EVEN WHEN THE CARD IS EMPTY: a template whose `use_gpu` is on
     # is a device run with nothing on its card, and its count is asked for
-    # like any other's (`gpu.md` G5 -- refused, unstated, by
-    # `prep_run_inputs`).  It returned before this, so that run reached the
-    # header with no ask (the K5 review's B1).
+    # like any other's (`gpu.md` G5 -- refused, unstated, by the prep entry
+    # through `run_gpu_request`).  It returned before this, so that run
+    # reached the header with no ask (the K5 review's B1).
     return declared_run_shape(base, task, stage), dict(pins or {})
 
 
-def prep_run_inputs(base, task, stage, allocation=None, *,
-                    notes=None):
+def prep_run_inputs(base, task, stage, allocation=None):
     """Everything ``prep run`` needs, assembled ONCE -- ``(allocation, pins,
     chosen)``.
 
@@ -494,10 +482,6 @@ def prep_run_inputs(base, task, stage, allocation=None, *,
     sbatch's neighbour and not the deck.  That is the class of bug one
     assembly makes impossible rather than merely unlikely.
     """
-    # WHAT A PERSON IS TOLD comes back to the caller, never printed here:
-    # the command line prints it, the Task setup tab shows it
-    # (`prep.prep_stage`, `job-system.md` § 5.3).
-    note = notes.append if notes is not None else (lambda _text: None)
     import dataclasses as _dc
 
     from .model import Resources
@@ -510,30 +494,15 @@ def prep_run_inputs(base, task, stage, allocation=None, *,
     # 1 · THE CONDITION -- the run card, the launch-shape ladder's first rung,
     #     under a flag (`architecture.md` § 5.2).
     chosen, cond_pins = run_inputs(base, task, stage)
-    if ("gpu_count" in task.run_condition(stage)
-            and not run_uses_device(base, task, stage)):
-        # A COUNT WITHOUT A DEVICE RUN asks for nothing (`gpu.md` G4/G5),
-        # and dropping it unsaid is the silent-value class -- the card
-        # offers both rows, so this is a person mid-way through deciding.
-        note("  `gpu_count` is on the run card but `use_gpu` is off -- no "
-             "device is asked for.  Set `use_gpu` on the card to run on "
-             "the GPU, or remove the count.")
     known = {f.name for f in _dc.fields(Resources)}
     patch = {k: v for k, v in chosen.items()
              if k in known and getattr(allocation, k, None) in (None, "")}
     if patch:
         allocation = _dc.replace(allocation, **patch)
-    # A DEVICE RUN STATES HOW MANY (`execution/gpu.md` G5): the run card's
-    # `gpu_count`, or `--gpus N` -- folded just above, so a flag counts.  It
-    # was one device, filled in unsaid, until 2026-10-01 (user: "there is
-    # no default. all resources are explicit").
-    if allocation.gres in (None, "") and run_uses_device(base, task, stage):
-        raise PrepError(
-            f"stage {stage!r} runs on a GPU (`use_gpu` -- its run card, "
-            f"else the template) and states no GPU count.  Write it on the "
-            f"run card -- \"execution\": {{\"gpu_count\": N}} in task.json, "
-            f"the calculation's or this stage's -- or say it on this prep: "
-            f"--gpus N (docs/execution/gpu.md G5).")
+    # WHETHER A GPU RUN STATES HOW MANY, AND A CPU RUN NONE (`execution/
+    # gpu.md` G5) is the prep entry's to ask, of the request this assembly
+    # makes -- `run_gpu_request`, beside the launch values' refusal -- so
+    # the Task setup card can show the answer instead of losing the card.
 
     # 1b · AND THE CALCULATION'S SCHEDULER ASK, before the verdict for the
     #      same reason: `architecture.md` § 5.2's scheduler ladder is
@@ -699,26 +668,11 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # description it read the GPU flag as absent and enumerated a CPU grid,
     # silently -- § 2.2's predicted failure exactly.
     #
-    # TWO names answer one question until § 6.3's settled merge is renamed:
-    # SIESTA's `use_gpu`, PySCF's `use_gpu`.  Spelling both here is the
-    # honest encoding of "an un-renamed pair stays two items", and it collapses
-    # to one line when the rename lands.
-    #
     # ``select`` rather than ``one`` because the question is *is it on?*: a
     # template that never carried the item answers "no", while ``one`` RAISES
     # on a name the file never had -- right for a caller that NEEDS the item,
-    # wrong for one asking whether it exists.
-    #
-    # THE NAME IS SIESTA'S, AND THAT IS A DEPENDENCY RATHER THAN A CHOICE.
-    # The GPU question has no engine-agnostic name yet: `template.md` § 6.3's
-    # merge of ``use_gpu`` / ``use_gpu`` is RULED and not yet renamed, so
-    # today two names answer one question.  Writing an engine->name table here
-    # would put that un-landed rename in a second place to maintain.  Reading
-    # SIESTA's name flat is SAFE because the seam refusal above already
-    # stopped every non-SIESTA description by name (E-J1, restored
-    # 2026-08-21) -- the un-renamed pair can no longer make a `use_gpu`
-    # sweep enumerate a CPU grid.  The engine-agnostic bench remains
-    # § 12.1 row 9's recorded design.
+    # wrong for one asking whether it exists.  One name for both engines
+    # since 2026-08-23 (`execution/gpu.md` § 4).
     # THE DECLARED OVERRIDE LANE, split before anything is decided (user
     # rule, 2026-08-20): one-point non-machine entries are pins -- values
     # in force for every trial -- and the machine-answered entries are the
@@ -737,8 +691,8 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # points enumerates the machine grid once per flag -- the CPU family
     # holds the device count at G=0, the GPU family ranges it -- and the
     # flag rides each point as an ordinary value coordinate, so the deck's
-    # answer and the point's family agree by construction (submit reads
-    # the deck, `_job_wants_gpu`, and splits the groups from that answer).
+    # answer and the point's family agree by construction (launch splits
+    # the groups by each trial's GPU request, `model.gpu_request`).
     gpu_flags = None
     if "use_gpu" in value_axes:
         gpu_flags = [bool(v) for v in value_axes.pop("use_gpu")]

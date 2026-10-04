@@ -350,21 +350,14 @@ def canonical_gres(text) -> Optional[str]:
     """A stated GPU ask -> what reaches ``sbatch``: ``gpu:<count>``.
     ``None`` when nothing was stated.
 
-    Reads the person's count (:func:`parse_gres_flag`) and SLURM's own
-    spelling as a ``job-set.json`` written before 2026-10-01 stored it
-    (``gpu:a100:1``) -- reduced to its COUNT, because no GPU ask names a
-    card (`execution/scheduler.md` R2a).  Anything else is refused: a text
-    that is no GPU ask must not reach ``--gres``."""
+    Reads the person's count (:func:`parse_gres_flag`); anything else is
+    refused -- a card included, because no GPU ask names one
+    (`execution/scheduler.md` R2a) -- since a text that is no GPU ask must
+    not reach ``--gres``.  *(A card stored by a ``job-set.json`` from before
+    2026-10-01 was read as its count until 2026-10-03.)*"""
     if text is None or str(text).strip() == "":
         return None
-    g = str(text).strip()
-    try:
-        return f"gpu:{parse_gres_flag(g)}"
-    except ValueError:
-        got = parse_gres(g)
-        if got and max(got.values()) > 0:
-            return f"gpu:{max(got.values())}"
-        raise
+    return f"gpu:{parse_gres_flag(str(text).strip())}"
 
 
 def canonical_mem(text) -> Optional[str]:

@@ -144,8 +144,9 @@ def test_rendered_sbatch_is_valid_bash(tmp_path):
     (``test_wrapper_emits_sbatch_when_scheduler_configured`` below)."""
     fdf = tmp_path / "gpu-2a100.fdf"
     fdf.write_text("Diag.ELPA.GPU .true.\n")
+    from molbuilder.jobset.model import GpuRequest
     text = render_sbatch(fdf, **_stated(ntasks=2, cpus_per_task=12),
-                         gpu=True, gpu_count=2, exclusive=False)
+                         gpus=GpuRequest(uses=True, count=2), exclusive=False)
     runwrap._validate_rendered_wrapper(text, fdf)   # raises if bash rejects it
 
 

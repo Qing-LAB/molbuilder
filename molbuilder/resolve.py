@@ -629,14 +629,14 @@ def resolve(template_text: str, task, config_cls, *,
         # satisfied that by GREPPING the rendered deck for `Diag.ELPA.GPU` --
         # a layer re-deriving what this one already holds, and doing it by
         # matching a SIESTA keyword, so a PySCF GPU run could not route at
-        # all.  An explicitly stated allocation still wins; otherwise the
-        # resolved config's answer rides the element, exactly as
-        # `continue_retries` does above and for the same reason.
-        if resources.use_gpu is None:
-            wants_gpu = getattr(values, "use_gpu", None)
-            if wants_gpu is not None:
-                resources = dataclasses.replace(resources,
-                                                use_gpu=bool(wants_gpu))
+        # all.  ALWAYS the values' answer, never an allocation's: it is what
+        # the deck renders, and the job's GPU request is read off it
+        # (`jobset.model.gpu_request`) -- an allocation stating its own would
+        # be a second answer, and nothing states one.
+        wants_gpu = getattr(values, "use_gpu", None)
+        if wants_gpu is not None:
+            resources = dataclasses.replace(resources,
+                                            use_gpu=bool(wants_gpu))
 
         elements.append(ResolvedConfig(
             values=values,

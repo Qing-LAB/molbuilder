@@ -229,10 +229,22 @@ deck = ["Diag.ELPA.GPU .false."]
 run_sh_lacks = ["molbuilder-siesta-gpu", "socket co-location"]
 
 [[case]]
-name = "a count without use_gpu asks for nothing, and prep says so"
+name = "a count for a run that does not use the GPU is refused at prep, before anything is written"
 run = { gpu_count = 2, mpi_np = 4 }
-header_lacks = ["--gres"]
-said = ["`gpu_count` is on the run card but `use_gpu` is off"]
+refused = "asks for 2 GPU(s) and does not use the GPU"
+made_lacks = ["01_coarse"]
+
+[[case]]
+name = "--gpus on a run that does not use the GPU is refused the same"
+run = { use_gpu = false, mpi_np = 4 }
+prep = ["--gpus", "2"]
+refused = "asks for 2 GPU(s) and does not use the GPU"
+
+[[case]]
+name = "a PySCF run is asked the same"
+engine = "pyscf"
+run = { gpu_count = 1, threads = 2 }
+refused = "asks for 1 GPU(s) and does not use the GPU"
 
 [[case]]
 name = "a GPU run binds its ranks to cores and to its GPU's socket, and says so"

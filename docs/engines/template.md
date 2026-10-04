@@ -108,17 +108,15 @@ the engine seam, and for the same reason.)*
 | **the template is the master; nothing derives it from a config class** | ✅ wired — `render_template` was deleted 2026-08-14 | § 2.1 |
 | **a machine fact's value is refused on read** | ✅ wired — `template_fields` + `config_from_template` | § 7 |
 | **`kind` lets a layer find its own items** | ⚠ **not a dispatch axis.** No caller filters `select` by `kind`. What `kind` does today is force `anchor` on an engine item and `expands` on a deck one — a completeness check on the catalogue — and tell a *reader* who owns the item | § 6, § 8 |
-| **`read_by` tells the wrapper which items it depends on** | ✅ **consumed since 2026-08-23.** The answer rides `Resources.use_gpu` — the allocation that already travels to the wrapper whole (A8) — and `runwrap._wants_gpu` prefers it, reading the deck only when a caller states nothing (a wrapper written for a deck someone points at has no allocation to ask). The keyword scan is no longer how a GPU run is recognised, which is what let a PySCF GPU run route at all | § 6.1, § 11.3, `execution/gpu.md` G7 |
+| **`read_by` tells the wrapper which items it depends on** | ✅ **consumed since 2026-08-23.** The answer rides `Resources.use_gpu` — the allocation that already travels to the wrapper whole (A8) — and every reader asks the job's GPU request (`jobset.model.gpu_request`, `execution/architecture.md` § 3.2). The wrapper reads no deck keyword for it: the scan, kept as a fallback until 2026-10-03, is gone, which is what lets a PySCF GPU run route at all | § 6.1, § 11.3, `execution/gpu.md` G7 |
 | **`kind = "monitor"`** | ⚠ **zero items carry it.** `monitor.py` reads a log; it is not a configured layer. The two molwatch switches are `kind="produce"`, which is correct — the *producer* decides what the script writes | § 6 |
 
-**Why the declarations are worth keeping while unconsumed, which is the part
-that needs saying.** The wrapper's deck scan is the habit
-[`architecture.md`](?doc=execution/architecture.md) § 1 exists to remove, and
-removing it means the wrapper is *told* instead. On the day that lands, the
-declarations must already be right — a rewiring that also has to discover which
-items the wrapper depends on is two changes at once. The guard test is what
-makes them right in the meantime: **it fails when a scanner is added without a
-declaration**, so the two cannot drift while one waits for the other.
+**Why the declarations were kept while unconsumed.** The wrapper's deck scan
+was the habit [`architecture.md`](?doc=execution/architecture.md) § 1 exists to
+remove, and removing it meant the wrapper is *told* instead — so the
+declarations had to be right on the day that landed, and a guard test failed
+when a scanner was added without one. The last scanner went on 2026-10-03, and
+the guard with it: the wrapper reads no deck keyword for what it is told.
 
 **What that costs today, stated plainly.** A new engine still cannot declare a
 wrapper dependency and be served — it would declare `read_by` correctly and the
@@ -1227,9 +1225,8 @@ a new engine declares its own without anyone editing the wrapper writer.
 > **✅ Reached 2026-08-23** — by carrying the answer rather than by importing
 > the catalogue into the wrapper. `resolve` puts `use_gpu` on the element's
 > `Resources` (the same ride `continue_retries` takes), and the wrapper asks
-> that. The deck scan survives only as the fallback for a caller that states
-> nothing, which is a different thing from re-deriving: that path has no
-> allocation to ask.
+> that — the job's GPU request. The deck scan stayed as a fallback for a
+> caller that stated nothing until 2026-10-03; every job of ours states it.
 >
 > **What it bought, beyond tidiness:** the scan matched a SIESTA keyword, so a
 > PySCF GPU run could not route to a GPU environment however correctly its

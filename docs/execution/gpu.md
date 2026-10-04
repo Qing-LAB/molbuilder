@@ -60,7 +60,7 @@ accurate/accommodating" — "and which part is none of your business".)*
 | question | answered by, where | what molbuilder does with it |
 |---|---|---|
 | **Does this run use a GPU?** | the person — `use_gpu` on the run card (`execution`), over the template's value; an axis of a bench | renders each engine's keyword (`Diag.ELPA.GPU`, gpu4pyscf), takes SIESTA to its GPU build, asks the scheduler for GPUs. Not said, no GPU is asked for |
-| **How many GPUs?** | the person — `gpu_count` on the run card, both engines, or `--gpus N` on the prep | asks `--gres=gpu:N`. **No default:** a run that uses a GPU and states no count is refused at prep, naming where to write it (G5). A bench that names no `gpu_count` measures each count that divides its rank counts, up to the most one node holds (§ 3.1) |
+| **How many GPUs?** | the person — `gpu_count` on the run card, both engines, or `--gpus N` on the prep | asks `--gres=gpu:N`. **No default, and no count without the GPU:** a run that uses a GPU and states no count, or states a count and does not use the GPU, is refused at prep, before anything is written, naming where each is said (G5). A bench that names no `gpu_count` measures each count that divides its rank counts, up to the most one node holds (§ 3.1) |
 | **Which queue may take it?** | the target's record, written by `jobset probe` | only a queue whose record lists GPUs, where one node holds at least N — the queue the job names (`allocation.domain`, the run card, `--domain`). That is the whole of the GPU check ([`scheduler.md`](?doc=execution/scheduler.md) R2a). A GPU job's cores are checked against the widest node that HAS GPUs (R3) |
 | **Where is GPU work submitted?** | the job — the queue it names | `-p` is that queue's own partition, as for any job. *(A record column, `gpu_partition`, could send GPU work elsewhere until 2026-10-02; the probe never wrote it, and it was removed — user: "gpu detection is done independently from this".)* |
 | **Are the job's cores bound to its GPUs?** | molbuilder: yes — and the person may turn it off, `"gpu_binding": false` in `task.json`'s `allocation` | sends `--gres-flags=enforce-binding` with every GPU ask, unless turned off (G9) |
@@ -160,14 +160,21 @@ count with the most one node holds — on the queue the job names
 ([`scheduler.md`](?doc=execution/scheduler.md) R2a). Neither may be read as
 the other.
 
-**G5 — No default for the count.** A run that uses a GPU states how many —
-`gpu_count` on its run card, or `--gpus N` on its prep — or `prep` refuses
-and says where to write it; a header asked to render a GPU job with no count
-refuses too. *(User, 2026-10-01: "there is no default. all resources are
-explicit". It was one device, in one place, until then — and before
-2026-08-23 a second default, one GPU per rank, a model retired 2026-08-13.)*
-A bench is not a run: a bench that names no `gpu_count` measures the counts
-§ 3.1 describes.
+**G5 — No default for the count, and no count without the GPU.** A run that
+uses a GPU states how many — `gpu_count` on its run card, or `--gpus N` on its
+prep — and a run that does not use one states none: either disagreement is
+refused at prep, before anything is written, saying where each half is stated.
+*(User, 2026-10-01: "there is no default. all resources are explicit". It was
+one device, in one place, until then — and before 2026-08-23 a second default,
+one GPU per rank, a model retired 2026-08-13.  A count for a run on the CPU was
+dropped with a note until 2026-10-03, while `--gpus` reached the header and
+the queue as a GPU job whose deck ran on the CPU — plan D17.)* The two halves
+are one answer, the job's **GPU request** (`jobset.model.gpu_request`,
+`architecture.md` § 3.2), and every reader asks it — the header, the run
+script, launch and its queue table, a benchmark's trials and their report, the
+Task setup card, which shows a request prep refuses as the refusal. A bench is
+not a run: a bench that names no `gpu_count` measures the counts § 3.1
+describes.
 
 **G6 — No silent fallback, in either direction.** A GPU deck that cannot
 run on a GPU **refuses**: SIESTA at prep (the wrapper gates env presence and
@@ -177,12 +184,12 @@ defaults to the GPU codepath, so an omitted flag crashes a CPU run.
 
 **G7 — The value travels; the deck is not re-read for it.** `use_gpu`
 declares `read_by = ["wrapper"]` precisely so the wrapper can be *handed* the
-value. **Landed 2026-08-23:** the answer rides `Resources.use_gpu` — the
-allocation that already travels there whole (A8) — and one door,
-`runwrap._wants_gpu`, prefers it. The deck scan remains only for a caller that
-states nothing, which is not re-deriving: that path has no allocation to ask.
-*The scan matched a SIESTA keyword, so a PySCF GPU run could not route at all;
-that is what this bought beyond tidiness.*
+value. `resolve` carries it from the job's own values — what its deck renders —
+onto the job's resources, and the GPU request is read off them (G5's one door).
+*The wrapper scanned the rendered SIESTA deck for `Diag.ELPA.GPU` until
+2026-08-23, and kept the scan as a fallback for a job that stated nothing until
+2026-10-03: a PySCF GPU run, whose deck carries no SIESTA keyword, could not
+route by it at all.*
 
 **G8 — Capability is checked where it can be seen.** SIESTA's GPU capability
 is an **environment** — visible in the target's record, so checked at prep.
@@ -341,13 +348,13 @@ Phase 3 is the one that must not be split: while two names exist, every
 caller asking the question must name an engine, and a half-done rename adds
 a third state.
 
-> **Where the phases stand** *(re-read 2026-09-29)*: **1 done** (§ 5's note);
+> **Where the phases stand** *(re-read 2026-10-03)*: **1 done** (§ 5's note);
 > **3 done** — one name, `use_gpu`, which is why its own row now reads as a
-> rename to itself; **2** not re-derived; **4 open to question** —
-> `runwrap._fdf_requests_gpu` still has call sites while the plan records G7 as
-> reached on 2026-08-23 by carrying the answer on `Resources`
-> (`plans/plan.md` § 5p.3p.1): which reads win is the M11 review's to say
-> (plan W50).
+> rename to itself; **2** not re-derived; **4 done 2026-10-03** — the scan
+> (`runwrap._fdf_requests_gpu`) and the reader that fell back to it
+> (`_wants_gpu`) are gone, with launch's own (`_job_wants_gpu`) and prep's
+> second reading of the template (`run_uses_device`): every reader asks the
+> job's GPU request (G5, G7).
 
 ---
 
@@ -373,6 +380,7 @@ queue card's box writes `allocation.gpu_binding` — is one browser test,
 |---|---|
 | `test_sbatch_emit.py` — the `ntasks`-default case | pins the retired *one rank per GPU* model (C4). G5 has no default since 2026-10-01, and a rank count none since 2026-10-02: the table's rows refuse both |
 | any test naming `use_gpu` as the question rather than the SIESTA spelling | after phase 3 there is one name; a test that asserts the pair is asserting the gap |
+| `test_wrapper_is_told_not_grepping.py`, the deck reader's table in `test_siesta_use_gpu.py`, and `test_template_declarations.py`'s audit of the wrapper's deck reads | each pinned the deck scan or its fallback, gone with phase 4 (2026-10-03); that the wrapper is told is the table's PySCF rows, whose deck carries no SIESTA keyword |
 
 **Added** — each pins a rule that could not previously be checked:
 
@@ -380,7 +388,7 @@ queue card's box writes `allocation.gpu_binding` — is one browser test,
 |---|---|
 | `test_gpu_answerers.py` — the `allocation` set is read from the catalogue and `use_gpu` is not in it | **G2.** The one door, so a document cannot disagree with the data |
 | the solver decides no environment and no resource | **G3.** Mutate `diag_algorithm` and assert env, gres and partition are unchanged |
-| a GPU run with no count is refused at prep, naming where to write it — rows of the table | **G5** |
+| a GPU run with no count, and a count for a run that does not use the GPU — by the run card or `--gpus`, either engine — are refused at prep before anything is written, naming where to write it — rows of the table; the Task setup card shows each refusal on its devices row (`test_bench_grid_card.py`, API-level: no `jobset` verb reaches the card) | **G5** |
 | a calculation that turns the binding off asks without it, in the header, on the launch line and in a benchmark's trials — rows of the table | **G9** |
 | a CPU deck writes `.false.` explicitly | **G6.** Absence crashes a CPU run; this is the test that would have caught it |
 | every name in § 1's table resolves to exactly one answerer | **the document's own integrity** — a tenth GPU name arrives with its row or it does not arrive |

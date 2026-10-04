@@ -1383,12 +1383,12 @@ def api_task_setup_prep():
         for it -- the target's width, a rank per GPU, a queue's ceiling and
         a config default each stood here until 2026-10-02.
         """
-        from molbuilder.jobset.model import Resources
+        from molbuilder.jobset.model import GpuRequestError, Resources
         from molbuilder.jobset.prep_inputs import (prep_run_inputs,
-                                                   run_uses_device)
+                                                   run_gpu_request)
         try:
-            alloc, _pins, _chosen = prep_run_inputs(dest, task, stage,
-                                                    Resources())
+            alloc, pins, _chosen = prep_run_inputs(dest, task, stage,
+                                                   Resources())
         except Exception:                                     # noqa: BLE001
             return []
         try:
@@ -1417,9 +1417,23 @@ def api_task_setup_prep():
              else _row("MPI ranks", "-n", getattr(alloc, "mpi_np", None))),
             _row("cores per rank", "-c", getattr(alloc, "cpus_per_task", None)),
         ]
+        # THE DEVICES: the run's GPU request, from the door prep asks
+        # (`prep_inputs.run_gpu_request`) -- a run on the GPU shows its
+        # count, one on the CPU no row, and a request prep refuses shows
+        # the refusal.
         gres = getattr(alloc, "gres", None)
-        if gres or run_uses_device(dest, task, stage):
-            rows.append(_row("devices", "--gres", gres))
+        try:
+            gpus = run_gpu_request(dest, task, stage, alloc, pins)
+        except GpuRequestError:
+            rows.append({"name": "devices", "flag": "--gres",
+                         "value": gres or "\u2014",
+                         "source": ("prep refuses it -- this run does not "
+                                    "use the GPU" if gres else refused)})
+        except Exception:                                     # noqa: BLE001
+            pass      # a stage that does not resolve: prep says why
+        else:
+            if gpus is not None and gpus.uses:
+                rows.append(_row("devices", "--gres", gpus.gres))
         rows += [_row("memory", "--mem", getattr(alloc, "mem", None),
                       asked=header),
                  _row("wall", "-t", getattr(alloc, "time", None),

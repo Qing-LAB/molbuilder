@@ -210,7 +210,7 @@ def _no_sbatch(what: str, name: str, *, base) -> str:
             + rollback("its first prep", base=base))
 
 
-def _sbatch_request(base: Path, *, envelope: Resources, gpu_side: bool,
+def _sbatch_request(base: Path, *, envelope: Resources,
                     domain: Optional[str], mem: Optional[str],
                     time_s: Optional[int], label: str, job_name: str,
                     script: str) -> Tuple[Resources, object, List[str]]:
@@ -249,11 +249,13 @@ def _sbatch_request(base: Path, *, envelope: Resources, gpu_side: bool,
             raise SubmitError(
                 f"prep baked time={envelope.time!r}, which does not parse "
                 f"as a SLURM walltime.")
-    placement = _place(base, gpu_side=gpu_side, needed_s=needed_s,
+    # THE GPU REQUEST is the envelope's own -- whether, and how many (the
+    # one door, `model.gpu_request`), never a side a caller passes beside it.
+    gpus = _gpus(envelope, label)
+    placement = _place(base, gpu_side=gpus.uses, needed_s=needed_s,
                        cores=(envelope.mpi_np or 0)
                              * max(envelope.cpus_per_task or 1, 1) or None,
-                       mem=envelope.mem,
-                       gpus=_gres_count(envelope.gres or ""),
+                       mem=envelope.mem, gpus=gpus.count,
                        named=domain, label=label)
     # THE WALL: what was stated at launch, else what prep baked.  The target
     # queue's own ceiling stood in for neither until 2026-10-02 -- a wall
@@ -541,23 +543,18 @@ def _trial_run_dir(container):
     return run_dir(container)
 
 
-def _job_wants_gpu(job_dir: Path, job) -> bool:
-    """Whether this job asks for a GPU -- `runwrap._wants_gpu`, the one door
-    (`gpu.md` G7), which reads ``resources.use_gpu`` first and the deck
-    only for a job that states nothing.
-
-    A sweep point that states ``gres`` outright is honoured unchanged -- the
-    benchmark knows its own grid, and `bench/to_jobset.py` is where a GPU
-    *count* is a swept parameter rather than a property of one deck.  *(This
-    grepped a SIESTA keyword out of the deck until 2026-09-04, answering
-    False for every PySCF GPU run and True for a SIESTA deck whose
-    allocation said `use_gpu: false`.)*
-    """
-    if job.resources.gres:
-        return True
-    from ..runwrap import _wants_gpu                 # heavy; jobset stays light
-    deck = Path(job_dir) / os.path.basename(job.script)
-    return _wants_gpu(deck, job.resources)
+def _gpus(resources, what: str):
+    """A job's GPU request -- `model.gpu_request`, the one door every reader
+    asks (`execution/architecture.md` § 3.2) -- or a `SubmitError` naming
+    ``what`` when it disagrees with itself, which a job prep wrote never
+    does (prep refuses it first).  *(`_job_wants_gpu` stood here until
+    2026-10-03: a job was a GPU job by its count OR by `use_gpu`, else by a
+    scan of its deck.)*"""
+    from .model import GpuRequestError, gpu_request
+    try:
+        return gpu_request(resources)
+    except GpuRequestError as exc:
+        raise SubmitError(f"{what}: {exc}") from None
 
 
 def _send(jobset: JobSet, base: Path, p: _Plan, *, mode: str) -> List[JobResult]:
@@ -634,7 +631,7 @@ def _group_envelope(jobs) -> "Resources":
     """The allocation one shelf's grouped job asks for.
 
     Since the shelf split (2026-08-21) every caller passes trials sharing
-    ONE exact ask (`_shelf_key`: ranks, cores, gres), so this is the
+    ONE exact ask (`_shelf_key`: ranks, cores, GPUs), so this is the
     shelf's own ask read off its trials -- nothing is widened and nothing
     narrower exists inside a group.  The uniformity is ASSERTED rather
     than assumed: trials disagreeing here mean the shelf partition broke,
@@ -667,13 +664,20 @@ def _group_envelope(jobs) -> "Resources":
     # ...and the GPU binding, the description's switch for the whole
     # calculation (`execution/gpu.md` G9) -- one value over a sweep, too.
     binds = {j.resources.gpu_binding for j in jobs}
-    if len(mems) > 1 or len(times) > 1 or len(binds) > 1:
+    # ...and WHETHER the trials use the GPU: the envelope is a request like
+    # any job's (`model.gpu_request`), so it carries both halves -- its
+    # count above, and this.  A shelf's trials share one family by
+    # construction (G = 0 is the CPU family, `prep_inputs.bench_inputs`).
+    uses = {bool(j.resources.use_gpu) for j in jobs}
+    if len(mems) > 1 or len(times) > 1 or len(binds) > 1 or len(uses) > 1:
         raise SubmitError(
-            f"the group's trials disagree about mem/time/gpu_binding "
+            f"the group's trials disagree about mem/time/gpu_binding/use_gpu "
             f"({sorted(mems, key=str)} / {sorted(times, key=str)} / "
-            f"{sorted(binds, key=str)}) -- prep bakes one allocation over "
-            f"a sweep, so this is a bug, not a declaration problem.")
+            f"{sorted(binds, key=str)} / {sorted(uses)}) -- prep bakes one "
+            f"allocation over a sweep, so this is a bug, not a declaration "
+            f"problem.")
     return Resources(mpi_np=n, cpus_per_task=c, gres=gres,
+                     use_gpu=next(iter(uses)),
                      exclusive=exclusive, gpu_binding=next(iter(binds)),
                      mem=next(iter(mems)), time=next(iter(times)))
 
@@ -706,8 +710,8 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
     timing data, not the structure, so the trials ride one allocation in
     sequence.
 
-    **The split** (§ 4.3a): trials partition by the DECK's own GPU answer
-    (:func:`_job_wants_gpu`, the one door) -- a sweep whose trials all
+    **The split** (§ 4.3a): trials partition by each trial's GPU request
+    (:func:`sides_of`, the one door) -- a sweep whose trials all
     answer one way submits the single ``bench-group``; a sweep spanning
     both submits ``bench-group-cpu`` and ``bench-group-gpu``, so the CPU
     group's envelope asks no ``gres`` and devices are never held while CPU
@@ -746,7 +750,7 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
     base = Path(base_dir)
     if only not in (None, "cpu", "gpu"):
         raise SubmitError(f"--only takes cpu or gpu, not {only!r}")
-    sides = sides_of(jobset, base)
+    sides = sides_of(jobset)
     if only and not sides[only]:
         raise SubmitError(f"this sweep has no {only} trials to submit")
     mixed = bool(sides["cpu"]) and bool(sides["gpu"])
@@ -984,27 +988,14 @@ def _shelf_key(job: "Job"):
     trials grouped together must fit ONE allocation with nothing idle, so
     the key is everything the envelope would widen over."""
     r = job.resources
-    return (r.mpi_np or 0, r.cpus_per_task or 0, r.gres or "")
-
-
-def _gres_count(gres: str) -> int:
-    """How many devices a ``--gres`` string asks for.
-
-    Through `scheduler.quantities.parse_gres` -- the ONE reader of SLURM's
-    gres spelling -- rather than the ``rsplit(":", 1)`` this was.  That
-    read the last colon-separated token as the count, so
-    ``gpu:a100:4,mps:400`` asked for four devices and reported 400, and
-    the version-legal ``gpu:a100`` (one device, no count) raised and was
-    caught as 1 by accident rather than by reading.
-    """
-    from ..scheduler.quantities import parse_gres
-    return max(parse_gres(gres).values(), default=0)
+    return (r.mpi_np or 0, r.cpus_per_task or 0,
+            _gpus(r, f"trial {job.name!r}").count or 0)
 
 
 def _shelf_width(key) -> tuple:
     """Widest-first order across shelves: cores, then devices."""
-    n, c, gres = key
-    return (n * max(c, 1), _gres_count(gres))
+    n, c, g = key
+    return (n * max(c, 1), g)
 
 
 #: The machine axes of a sweep coordinate, in the order they are spelled.
@@ -1039,8 +1030,7 @@ def _shelf_token(key, jobs=()) -> str:
         pt = getattr(j, "point", None) or {}
         if all(a in pt for a in _MACHINE_AXES):
             return point_token({a: pt[a] for a in _MACHINE_AXES})
-    n, c, gres = key
-    g = _gres_count(gres)
+    n, c, g = key
     if g and n % g:
         # An uneven split is a bug upstream (the grid drops those cells),
         # and `n // g` would name a rank count no trial has.  Say the
@@ -1133,19 +1123,15 @@ class _Prepared:
     domain:    Optional[str]
 
 
-def sides_of(jobset: JobSet, base_dir) -> Dict[str, List[Job]]:
+def sides_of(jobset: JobSet) -> Dict[str, List[Job]]:
     """A sweep's trials by the side they run on -- ``{"cpu": [...],
-    "gpu": [...]}`` -- each trial's deck's own answer (:func:`_job_wants_gpu`,
-    the one door), read where the trial RUNS (§ 1.6: the container holds no
-    deck, so a trial that asks for a GPU without stating ``gres`` answered
-    "cpu" by absence when the container was read).  The grouped door splits
-    on it, and the launch verb asks it which queue each side needs."""
-    from .materialize import job_dir_names, shape_of
-    base = Path(base_dir)
-    dirs = job_dir_names(jobset, shape_of(jobset, base))
+    "gpu": [...]}`` -- each trial's GPU request (`model.gpu_request`, the one
+    door), read off the trial itself.  The grouped door splits on it, and
+    the launch verb asks it which queue each side needs.  *(It read each
+    trial's deck where the trial runs until 2026-10-03.)*"""
     sides: Dict[str, List[Job]] = {"cpu": [], "gpu": []}
     for j in jobset.jobs:
-        sides["gpu" if _job_wants_gpu(_trial_run_dir(base / dirs[j.name]), j)
+        sides["gpu" if _gpus(j.resources, f"trial {j.name!r}").uses
               else "cpu"].append(j)
     return sides
 
@@ -1303,10 +1289,10 @@ def _prepare_side_group(jobset: JobSet, base: Path, dirs, pending,
     script = launch_dir / f"{name}.run.sh"
     # THE ONE REQUEST (`_sbatch_request`): prep's envelope, what was said at
     # launch, admitted on this side's queue (R9), every value stated.  The
-    # side IS the GPU answer -- partitioned by the
-    # deck's own word in `submit_bench_group`, so nothing is re-derived here.
+    # side IS the envelope's GPU request -- every trial on the shelf shares
+    # it (`_group_envelope`), so nothing is re-derived here.
     envelope, placement, cmd = _sbatch_request(
-        base, envelope=envelope, gpu_side=gpu_side, domain=domain, mem=mem,
+        base, envelope=envelope, domain=domain, mem=mem,
         time_s=time_s, label=name,
         job_name=_scheduler_job_name(jobset, name),
         script=f"launch/{name}.sbatch")
@@ -1328,7 +1314,7 @@ def _prepare_side_group(jobset: JobSet, base: Path, dirs, pending,
     # header still runs `bash {name}.run.sh` from the container.
     header = _render_sbatch_for(base / f"{name}.sh",
                                 project_dir=base,
-                                resources=envelope, env=None,
+                                resources=envelope,
                                 domain_pq=((placement.partition,
                                             placement.qos)
                                            if placement else None))
@@ -1588,8 +1574,7 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
 
     # ---- submit / ask: one scheduler job, the group pattern in miniature #
     envelope, placement, cmd = _sbatch_request(
-        base, envelope=job.resources,
-        gpu_side=_job_wants_gpu(attempts[0][1], job), domain=domain,
+        base, envelope=job.resources, domain=domain,
         mem=mem, time_s=time_s, label=name,
         job_name=_scheduler_job_name(jobset, name),
         script=f"launch/{name}.sbatch")
@@ -1603,7 +1588,7 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
             for v, _a in attempts]
     from ..runwrap import _render_sbatch_for
     header = _render_sbatch_for(base / f"{name}.sh", project_dir=base,
-                                resources=envelope, env=None,
+                                resources=envelope,
                                 domain_pq=((placement.partition,
                                             placement.qos)
                                            if placement else None))
@@ -1881,9 +1866,9 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
                 and not (p.read_from / sbatch_name).exists():
             raise SubmitError(_no_sbatch(f"job {p.job.name!r}", sbatch_name,
                                          base=base))
-        gpu = _job_wants_gpu(p.read_from, p.job)
+        gpu = _gpus(p.job.resources, f"job {p.job.name!r}").uses
         _env, p.placement, p.command = _sbatch_request(
-            base, envelope=p.job.resources, gpu_side=gpu,
+            base, envelope=p.job.resources,
             domain=(gpu_domain if gpu and gpu_domain else domain),
             mem=mem, time_s=time_s, label=p.job.name,
             job_name=_scheduler_job_name(jobset, p.job.name),

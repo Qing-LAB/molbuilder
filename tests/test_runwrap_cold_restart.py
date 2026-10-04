@@ -316,7 +316,9 @@ def _gpu_wrapper(tmp_path: Path, fdf_text: str) -> Path:
     _bind_gpu()
     fdf = tmp_path / "myjob.fdf"
     fdf.write_text(fdf_text)
-    wrapper = write_run_wrapper(fdf, resources=Resources(mpi_np=4, cpus_per_task=1))
+    # a GPU job as `resolve` writes one: told, with its count (`gpu.md` G5)
+    wrapper = write_run_wrapper(fdf, resources=Resources(
+        mpi_np=4, cpus_per_task=1, use_gpu=True, gres="gpu:1"))
     wrapper.write_text(_strip_preamble_activation(wrapper.read_text()))
     return wrapper
 
@@ -421,7 +423,8 @@ class TestGpuFlagPrecedence:
         # one GPU and one rank, stated -- a GPU job states its count
         # (`gpu.md` G5) and its ranks; -n 1
         wrapper = write_run_wrapper(fdf, resources=Resources(
-            gres="gpu:1", mpi_np=1, cpus_per_task=1, domain="general",
+            use_gpu=True, gres="gpu:1", mpi_np=1, cpus_per_task=1,
+            domain="general",
             time="0-01:00:00", mem="8G"))
         assert "#SBATCH -n 1" in (tmp_path / "myjob.sbatch").read_text()
         wrapper.write_text(_strip_preamble_activation(wrapper.read_text()))

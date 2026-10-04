@@ -105,10 +105,9 @@ class Resources:
     #: 2026-08-23 the wrapper satisfied that by grepping the rendered deck
     #: for `Diag.ELPA.GPU` at four sites -- a layer re-deriving what another
     #: layer already held, and doing it by matching a SIESTA keyword, so a
-    #: PySCF GPU run could not route at all.  ``None`` means the caller did
-    #: not say, and the wrapper falls back to reading the artifact it was
-    #: handed -- which is a different thing from re-deriving: a wrapper
-    #: written for a deck someone points at has nothing else to ask.
+    #: PySCF GPU run could not route at all.  `resolve` sets it on every job
+    #: from the job's own values; :func:`gpu_request` reads it, with the
+    #: count, for every reader.
     use_gpu:       Optional[bool] = field(default=None, metadata={"axis": "rider"})
     mpi_np:        Optional[int]   = None    # SLURM -n (MPI ranks)
     cpus_per_task: Optional[int]   = None    # SLURM -c (OMP cores/rank); == SiestaConfig.omp_threads
@@ -184,8 +183,7 @@ class Resources:
         if self.mem:
             self.mem = canonical_mem(self.mem)
         # AND A GPU ASK, which reaches `sbatch --gres` as it stands here: a
-        # count, `gpu:N` -- an older stored `gpu:<card>:N` reads as its N
-        # (`scheduler.md` R2a).
+        # count, `gpu:N` (`scheduler.md` R2a).
         if self.gres:
             self.gres = canonical_gres(self.gres)
         # A TUPLE OUT, A TUPLE BACK.  `to_dict` is `asdict`, so a job-set
@@ -231,6 +229,78 @@ class Resources:
                 + ", ".join(repr(k) for k in sorted(unknown))
                 + f" (known keys: {', '.join(sorted(known))})")
         return cls(**{k: v for k, v in d.items() if k in known})
+
+
+class GpuRequestError(ValueError):
+    """A GPU request that cannot be sent: a run on the GPU stating no count,
+    or a count stated for a run that does not use the GPU
+    (`execution/gpu.md` G5)."""
+
+
+#: `gpu.md` G5, both halves -- each says where the two facts are stated.
+_GPU_NO_COUNT = (
+    "this run uses a GPU (`use_gpu` -- its run card, else the template) and "
+    "states no GPU count.  Write it on the run card -- \"execution\": "
+    "{\"gpu_count\": N} in task.json, the calculation's or this stage's -- "
+    "or say it on the prep: --gpus N (docs/execution/gpu.md G5).")
+_GPU_NOT_USED = (
+    "this run asks for {count} GPU(s) and does not use the GPU (`use_gpu` is "
+    "off -- its run card, else the template): its deck runs on the CPU, so "
+    "the GPUs would be held and never used.  Set `use_gpu` on the run card "
+    "to run it on the GPU, or remove the count -- `gpu_count` on the run "
+    "card, or --gpus on the prep (docs/execution/gpu.md G5).")
+
+
+@dataclass(frozen=True)
+class GpuRequest:
+    """Whether a run uses a GPU, and how many it asks for -- one answer, and
+    a consistent one by construction (`execution/gpu.md` § 1.1, G5).
+
+    The two facts are stated in different places -- ``use_gpu`` on the run
+    card or in the template, the count on the run card or as ``--gpus`` --
+    so they can disagree, and each disagreement is refused here: a run on
+    the GPU with no count, and a count for a run on the CPU, which would
+    hold devices its deck never uses.
+    """
+    uses: bool = False
+    count: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        if self.uses and self.count is None:
+            raise GpuRequestError(_GPU_NO_COUNT)
+        if self.count is not None and not self.uses:
+            raise GpuRequestError(_GPU_NOT_USED.format(count=self.count))
+
+    @property
+    def gres(self) -> Optional[str]:
+        """What ``--gres`` carries: ``gpu:<count>`` -- a count, never a card
+        (`scheduler.md` R2a) -- or ``None`` for a run on the CPU."""
+        return f"gpu:{self.count}" if self.uses else None
+
+
+def gpu_request(resources) -> GpuRequest:
+    """**Does this job use a GPU, and how many does it ask for** -- the one
+    door every reader asks (`execution/architecture.md` § 3.2): the header,
+    the run script, launch and its queue table, a benchmark's trials and
+    their report, the Task setup card.
+
+    Read off the job's ``Resources``: ``use_gpu`` as `resolve` carries it
+    from the job's own values -- what its deck renders -- and the count in
+    ``gres``.  An unstated ``use_gpu`` is the item's default, no GPU
+    (`gpu.md` § 1.1).  Raises :class:`GpuRequestError` when the two
+    disagree; prep asks before anything is written (`prep_inputs.
+    run_gpu_request`), so a job it wrote never does.
+
+    *Until 2026-10-03 the header counted a GPU job by its count OR by
+    ``use_gpu``, launch the same, and the run script by ``use_gpu`` alone
+    -- else by a scan of the SIESTA deck -- so ``--gpus 2`` on a CPU run
+    asked the queue for two GPUs its deck never used.*
+    """
+    from ..scheduler.quantities import parse_gres_flag
+    gres = getattr(resources, "gres", None)
+    return GpuRequest(
+        uses=bool(getattr(resources, "use_gpu", None)),
+        count=None if gres in (None, "") else parse_gres_flag(gres))
 
 
 @dataclass

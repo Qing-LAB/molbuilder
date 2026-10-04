@@ -47,7 +47,7 @@ if TYPE_CHECKING:                       # floor 5 reading floor 3's object
     # `write_run_wrapper` unpacks a `Resources`, it never builds one (A4 --
     # `resolve.py` is the one builder).  A runtime import would also be legal
     # -- floor 5 may read floor 3 -- but it would be an import nothing calls.
-    from .jobset.model import Resources
+    from .jobset.model import GpuRequest, Resources
 
 # Shell-safety guard for wrapper emission.  The wrapper interpolates
 # ``basename`` and ``script_name`` (the script's filename stem and
@@ -1716,52 +1716,13 @@ def _gpu_runtime_block() -> str:
     )
 
 
-#: SIESTA's own truthy set for the GPU toggle (fdf_get's accepted values;
-#: Src/diag_option.F90).  Shared between the Python parser below and the
-#: wrapper's LAUNCH-TIME re-detect, so the two rules cannot diverge (R6,
-#: 2026-08-12: the emitted grep matched one spelling, one truthy value,
-#: any-occurrence -- a ``Diag.ELPA.UseGPU yes`` deck got the GPU env with
-#: the CPU all-cores rank default, the task-#36 OOM class; and
-#: ``.true.``-then-``.false.`` read as GPU although SIESTA reads false).
-_GPU_TRUTHY = (".true.", "true", "yes", "t", "y", "1")
-
-
-def _fdf_requests_gpu(fdf_path: Path) -> bool:
-    """Whether the .fdf has ``Diag.ELPA.GPU`` set true.
-
-    The SIESTA 5.4.2 source (Src/diag_option.F90:138-139) accepts two
-    keyword spellings that toggle the same internal ``elpa_use_gpu``
-    flag: ``Diag.ELPA.UseGPU`` (older) and ``Diag.ELPA.GPU`` (newer).
-    Either turning the value true means the job needs to run in the
-    ``molbuilder-siesta-gpu`` env -- the precompiled ``molbuilder-siesta``
-    conda package is built WITHOUT ELPA (verified: ``conda list -n
-    molbuilder-siesta`` has scalapack + siesta, no elpa), so the flag
-    would error / fall back there.
-
-    Match defensively: SIESTA's FDF parser is whitespace- and case-
-    insensitive on labels; the value may be ``.true.``, ``true``,
-    ``yes``, ``T``, ``Y``, or ``1`` (the canonical truthy set fdf_get
-    accepts).  Returns False on any read error -- the routing
-    fall-through is the CPU env, which is the safe default.
-    """
-    try:
-        text = fdf_path.read_text()
-    except OSError:
-        return False
-    # One deck reader: `parse/fdf.py`.  Its `_norm` is fdf's real keyword
-    # rule, so `Diag_ELPA_GPU` and `DiagELPAGPU` match too, and it is
-    # first-wins like `fdf_locate` (`siesta/layout.py::check_rules`).
-    from .parse.fdf import _parse_fdf
-    scalars, _blocks = _parse_fdf(text)
-    truthy = set(_GPU_TRUTHY)
-    # EITHER keyword turning true means the job needs the GPU env, so this
-    # is an OR over the two -- not "whichever key we look at first".  Within
-    # one keyword `_parse_fdf` is first-wins, which is fdf.
-    for key in ("diagelpausegpu", "diagelpagpu"):
-        got = scalars.get(key)
-        if got and got[0].strip().lower() in truthy:
-            return True
-    return False
+#: fdf's own truthy set for a logical keyword (fdf_get's accepted values) --
+#: how `_fdf_honours_restart` reads the deck's ``DM.UseSaveDM`` as SIESTA
+#: does.  *(It was the GPU toggle's too, read off the deck by
+#: ``_fdf_requests_gpu`` until 2026-10-03: whether a run uses the GPU is its
+#: request now, `jobset.model.gpu_request`, never a scan of what was
+#: rendered.)*
+_FDF_TRUTHY = (".true.", "true", "yes", "t", "y", "1")
 
 
 # DELETED 2026-08-13: ``_fdf_requests_elpa``.  It read ``Diag.Algorithm``
@@ -1852,7 +1813,7 @@ def _fdf_honours_restart(fdf_path: Path) -> Optional[bool]:
     answer = parameter("restart", "siesta", deck_text=text).value
     if answer is None:
         return None
-    return answer.strip().lower() in _GPU_TRUTHY
+    return answer.strip().lower() in _FDF_TRUTHY
 
 
 def _py_deck_reads_prior(script_path: Path) -> Optional[bool]:
@@ -1947,27 +1908,6 @@ def _effective_parameters_block(script_path: "Path") -> str:
         "",
     ]
     return "\n".join(lines) + "\n"
-
-
-def _wants_gpu(script_path: Path, resources=None) -> bool:
-    """Does this run use a GPU?  **Told first, read second.**
-
-    `execution/gpu.md` G7.  The catalogue item declares
-    ``read_by = ["wrapper"]``, and until 2026-08-23 the wrapper satisfied that
-    by grepping the rendered deck for ``Diag.ELPA.GPU`` at four sites -- a
-    layer re-deriving a value another layer already held, and matching a
-    SIESTA KEYWORD to do it, so a PySCF GPU run could not route at all.
-
-    ``resources.use_gpu`` is the answer, carried on the allocation that
-    already travels here whole (A8).  Falling back to the deck when it is
-    unstated is not the same defect: a wrapper written for a deck someone
-    points at has nothing else to ask, and that path has no allocation.
-    """
-    if resources is not None:
-        stated = getattr(resources, "use_gpu", None)
-        if stated is not None:
-            return bool(stated)
-    return _fdf_requests_gpu(script_path)
 
 
 def _preamble_source_targets(chunks) -> List[str]:
@@ -2116,9 +2056,20 @@ def render_run_wrapper(script_path: Path, *,
             f"{', '.join(sorted(_FINISH_BUNDLES))}; it cannot finish a "
             f"{category} job with {finish!r}")
 
-    # SIESTA env routing: the .fdf is the ground truth for which env
-    # to run in, and the ONE thing that decides it is whether the deck
-    # asks for GPU diagonalization.
+    # WHETHER THIS RUN USES THE GPU is its request -- `jobset.model.
+    # gpu_request`, the one door (`execution/architecture.md` § 3.2) -- read
+    # once, here, for the env, the GPU placement and the monitor alike.
+    # Prep asks it before anything is written, so a job of ours always
+    # answers; the refusal below is the door's own words for one that does
+    # not.
+    from .jobset.model import GpuRequestError, gpu_request
+    try:
+        gpus = gpu_request(resources)
+    except GpuRequestError as exc:
+        raise WrapperError(f"`{script_path.name}`: {exc}") from None
+
+    # SIESTA env routing: the ONE thing that decides which env to run in is
+    # whether the run uses the GPU -- never the solver.
     #
     # THE TWO ENVS SPLIT ON PROVENANCE, NOT ON HARDWARE (2026-08-13).
     # ``molbuilder-siesta`` is installable from packages on ANY machine;
@@ -2143,7 +2094,6 @@ def render_run_wrapper(script_path: Path, *,
     # telling the user to install an env they cannot build -- for a
     # solver the installed baseline already runs.  Knowing a keyword is
     # not providing the capability, and the two are now kept apart.
-    # Inspecting the fdf here keeps the config -> runwrap path stateless.
     #
     # IMPORTANT: ``category`` drives every downstream ``if category ==
     # "siesta":`` branch in this module (MPI launch, .out filename,
@@ -2156,7 +2106,7 @@ def render_run_wrapper(script_path: Path, *,
     # choosing the source build for its external ELPA stays available
     # without molbuilder guessing on their behalf.
     env_lookup_category = category
-    if category == "siesta" and env is None and _wants_gpu(script_path, resources):
+    if category == "siesta" and env is None and gpus.uses:
         env_lookup_category = "siesta-gpu"
 
     caps = get_capabilities()
@@ -2337,11 +2287,10 @@ def render_run_wrapper(script_path: Path, *,
     #     -- ``python job.py`` run by hand, with no wrapper.
     env_prefix = ""
     if category == "siesta":
-        # GPU mode is the run's own answer (`_wants_gpu`, the one door).  It
+        # GPU mode is the run's own answer (its request, read above).  It
         # decides the GPU placement block below (MPS, NUMA) and the env --
         # and nothing about the counts, which are stated in either mode.
-        gpu_mode = (script_path.suffix.lower() == ".fdf"
-                    and _wants_gpu(script_path, resources))
+        gpu_mode = gpus.uses
         # THE RANKS AND THE THREADS ARE STATED (user, 2026-10-02: "explicit
         # job config is the only way allowed"; `architecture.md` § 5.2) --
         # and baked as stated.  An unstated count became the target's width
@@ -3696,10 +3645,9 @@ def render_run_wrapper(script_path: Path, *,
                              notify_report,
                              # OpenMP only: `-np` is accepted and ignored.
                              cores="$_omp_threads",
-                             # The deck's GPU use IS `use_gpu` (its probe is
-                             # emitted from it); a `.py` holds no SIESTA
-                             # keyword for `_wants_gpu`'s fallback to find.
-                             gpu=bool(getattr(resources, "use_gpu", False)),
+                             # the run's GPU request, read above -- its
+                             # deck's GPU probe is emitted from the same value
+                             gpu=gpus.uses,
                              unwatchable=unwatchable)
             # NOT `exec`: the shell has to outlive the engine to conclude.
             + f"set +e\n"
@@ -4253,12 +4201,11 @@ def render_wrappers(script_path: Path, *,
     if not script_path.is_file():
         raise WrapperError(f"script not found: {script_path}")
     r = resources
-    # TOLD FIRST, READ SECOND -- `_wants_gpu`'s shape, and `gpu.md` G7's rule.
-    # The count is `len(struct.elements)`, which `prep` holds when it renders a
-    # deck; reading it back out of the file we just wrote is re-deriving a value
-    # we had.  The read stays for the caller that has no structure to ask --
-    # `prep_jobset` walks a job set of scripts, not structures -- which is the
-    # same exemption G7 grants the GPU scan, and for the same reason.
+    # TOLD FIRST, READ SECOND.  The count is `len(struct.elements)`, which
+    # `prep` holds when it renders a deck; reading it back out of the file we
+    # just wrote is re-deriving a value we had.  The read stays for the caller
+    # that has no structure to ask -- `prep_jobset` walks a job set of
+    # scripts, not structures.
     if n_atoms is None and script_path.suffix.lower() == ".fdf":
         n_atoms = _parse_fdf_n_atoms(script_path)
     text = render_run_wrapper(
@@ -4291,11 +4238,10 @@ def render_wrappers(script_path: Path, *,
         blobs += ((finish, _FINISH_BUNDLES[finish]()),)
 
     # The submission layer (`job-system.md` § 6): a ``.sbatch`` only when the
-    # machine has a queue.  Resolving its header values lives here because only
-    # this layer knows both the deck (GPU request, atom count) and the
-    # invocation's overrides.
+    # machine has a queue -- every value in it the job's own (its resources,
+    # its GPU request among them).
     if emit_sbatch:
-        sbatch = _render_sbatch_for(script_path, resources=r, env=env,
+        sbatch = _render_sbatch_for(script_path, resources=r,
                                     project_dir=project_dir,
                                     machine_record=machine_record)
         if sbatch is not None:
@@ -4418,18 +4364,9 @@ def _bound_queue(resources, domain_pq, env_rec, *, prefer_gpu=False):
             + "\n    ".join(r.message for r in exc.reasons)) from None
 
 
-#: A GPU job with no GPU count is refused, never given one (`execution/gpu.md`
-#: G5).  `prep` refuses such a run first, naming the same two ways to say it.
-_NO_GPU_COUNT = (
-    "this job runs on a GPU and states no GPU count -- write `gpu_count` on "
-    "its run card (task.json `execution`), or `--gpus N` on the prep "
-    "(docs/execution/gpu.md G5).")
-
-
 def _render_sbatch_for(script_path: Path, *,
                        project_dir: Optional[Path] = None,
                        resources: "Resources",
-                       env: Optional[str],
                        domain_pq: Optional[Tuple[str, str]] = None,
                        machine_record=None,
                        ) -> Optional[str]:
@@ -4469,28 +4406,17 @@ def _render_sbatch_for(script_path: Path, *,
         return None  # no queue on this machine -> only .run.sh is meaningful
 
     suffix = script_path.suffix.lower()
-    is_siesta = suffix == ".fdf"
-    # Is this a GPU job?  The one door's answer for ANY engine (`gpu.md` G1,
-    # G7).  An explicit --env override still points a SIESTA deck away from
-    # its GPU build (mirrors the run-wrapper's env_lookup_category logic);
-    # PySCF's GPU path lives in its one env.
-    gpu = bool((env is None or not is_siesta)
-               and _wants_gpu(script_path, resources))
-    gpu_count: Optional[int] = None
-    if r.gres is not None:
-        # A COUNT, never a card (`scheduler.md` R2a): `Resources` stores the
-        # ask as `gpu:N`, and an older stored `gpu:<card>:N` reads as its N.
-        from .scheduler.quantities import canonical_gres, parse_gres_flag
-        try:
-            gpu_count = parse_gres_flag(canonical_gres(r.gres))
-        except ValueError as e:
-            raise WrapperError(f"invalid --gres: {e}") from None
-        gpu = True  # an explicit --gres forces a GPU header
-    if gpu and gpu_count is None:
-        # NO DEFAULT COUNT (`execution/gpu.md` G5).
-        raise WrapperError(_NO_GPU_COUNT)
+    # IS THIS A GPU JOB, AND HOW MANY -- the job's request, the one door for
+    # every engine and every reader (`jobset.model.gpu_request`).  The
+    # header counted a GPU job by its count OR by `use_gpu` until
+    # 2026-10-03, so `--gpus 2` on a CPU run asked the queue for two GPUs.
+    from .jobset.model import GpuRequestError, gpu_request
+    try:
+        gpus = gpu_request(r)
+    except GpuRequestError as exc:
+        raise WrapperError(f"`{script_path.name}`: {exc}") from None
 
-    placement = _bound_queue(r, domain_pq, env_rec, prefer_gpu=gpu)
+    placement = _bound_queue(r, domain_pq, env_rec, prefer_gpu=gpus.uses)
     ntasks = 1 if suffix == ".py" else r.mpi_np
 
     return render_sbatch(
@@ -4498,7 +4424,7 @@ def _render_sbatch_for(script_path: Path, *,
         partition=placement.partition, qos=placement.qos,
         ntasks=int(ntasks), cpus_per_task=int(r.cpus_per_task),
         time=r.time, mem=r.mem,
-        gpu=gpu, gpu_count=gpu_count, gpu_binding=r.gpu_binding,
+        gpus=gpus, gpu_binding=r.gpu_binding,
         exclusive=r.exclusive,
     )
 
@@ -4517,8 +4443,7 @@ def render_sbatch(script_path: Path, *,
                   partition: str, qos: str,
                   ntasks: int, cpus_per_task: int,
                   time: str, mem: str,
-                  gpu: bool = False,
-                  gpu_count: Optional[int] = None,
+                  gpus: "Optional[GpuRequest]" = None,
                   gpu_binding: Optional[bool] = None,
                   exclusive: Optional[bool] = None) -> str:
     """Render the ``<basename>.sbatch`` submission script.
@@ -4542,10 +4467,12 @@ def render_sbatch(script_path: Path, *,
         GPU via MPS, so ntasks = mpi_np, NOT the GPU count.  Under sbatch the
         launcher reads ``SLURM_NTASKS``, so this ``-n`` and ``mpirun -np``
         agree by construction (running-a-job.md § 3.1).
-      gpu: emit ``--gres=gpu:<gpu_count>`` -- and
-        ``--gres-flags=enforce-binding`` unless ``gpu_binding`` is False
-        (`execution/gpu.md` G9).  A GPU job with no ``gpu_count`` is refused
-        (G5).
+      gpus: the job's GPU request (`jobset.model.gpu_request`) -- for a run
+        on the GPU, ``--gres=gpu:<count>`` and ``--gres-flags=enforce-binding``
+        unless ``gpu_binding`` is False (`execution/gpu.md` G9).  ``None`` is
+        a job that asks for none.  The request is consistent by construction:
+        a GPU run with no count, or a count for a CPU run, never reaches
+        here (G5).
       exclusive: ``--exclusive`` for a GPU job whose resources say so;
         always off for CPU.
     """
@@ -4567,14 +4494,8 @@ def render_sbatch(script_path: Path, *,
             f"unsafe script basename for sbatch emission: {basename!r}."
         )
 
-    if gpu:
-        if gpu_count is None:
-            # NO DEFAULT COUNT (`execution/gpu.md` G5, 2026-10-01).  Ranks
-            # and devices stay INDEPENDENT (K ranks share a device via MPS,
-            # running-a-job.md § 3.3), so no count is derived from the ranks
-            # either.  `prep` refuses such a run first; this is the
-            # emitter's own guard.
-            raise WrapperError(_NO_GPU_COUNT)
+    gres = gpus.gres if gpus is not None else None
+    if gres:
         exclusive = bool(exclusive)
     else:
         exclusive = False  # CPU jobs never request a whole node here
@@ -4598,7 +4519,7 @@ def render_sbatch(script_path: Path, *,
     from .scheduler.emit import Directives
     _d = Directives(partition=partition, qos=qos, walltime=time,
                     ntasks=ntasks, cpus_per_task=cpus_per_task,
-                    gres=(f"gpu:{gpu_count}" if gpu else None),
+                    gres=gres,
                     gpu_binding=gpu_binding is not False,
                     mem=mem, exclusive=bool(exclusive))
     if exclusive:

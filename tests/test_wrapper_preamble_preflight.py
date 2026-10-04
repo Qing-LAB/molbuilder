@@ -176,7 +176,8 @@ class TestTheEnvGateAsksTheTargetMachine:
             warnings.simplefilter("ignore")
             return render_run_wrapper(
                 self._gpu_deck(tmp_path),
-                resources=Resources(mpi_np=4, cpus_per_task=1),
+                resources=Resources(mpi_np=4, cpus_per_task=1, use_gpu=True,
+                                    gres="gpu:1"),
                 project_dir=tmp_path, machine_record=record)
 
     def test_the_target_having_it_is_what_permits_generation(self, tmp_path):

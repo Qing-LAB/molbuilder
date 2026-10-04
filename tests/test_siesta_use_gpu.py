@@ -2,14 +2,15 @@
 
   * ``SiestaConfig.use_gpu``: dataclass field + form metadata.
   * ``render_fdf``: emits ``Diag.ELPA.GPU .true.`` iff the toggle is on.
-  * ``runwrap._fdf_requests_gpu``: reads a deck's GPU keyword the way SIESTA
-    does, for a run whose resources do not carry the answer.
 
 What a GPU run's wrapper and header carry -- the env it activates, the
 binding, the placement -- is the GPU contract's table, run down the road
 (`tests/data/gpu_contract.toml`).  The wrapper-text tests that stood here
 until 2026-10-02 retired into its rows, or with the rank and thread policy
-they pinned (`architecture.md` § 5.2: every launch value is stated).
+they pinned (`architecture.md` § 5.2: every launch value is stated).  *(The
+deck reader's own table, ``runwrap._fdf_requests_gpu``, went with the reader
+on 2026-10-03: whether a run uses the GPU is its request, never read back
+off the deck -- `execution/gpu.md` G7.)*
 """
 from __future__ import annotations
 
@@ -22,7 +23,6 @@ import pytest
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.siesta.input import render_fdf
 from molbuilder.structure import Structure
-from molbuilder import runwrap as _runwrap
 
 
 # --------------------------------------------------------------------- #
@@ -174,67 +174,3 @@ def test_diag_algorithm_field_metadata():
     assert md["choices"] == ("ScaLAPACK", "ELPA-1STAGE", "ELPA-2STAGE")
     assert md["engine_key"] == "Diag.Algorithm"
     assert SiestaConfig().diag_algorithm == "ScaLAPACK"
-
-
-# --------------------------------------------------------------------- #
-#  L1: _fdf_requests_gpu detector                                        #
-# --------------------------------------------------------------------- #
-
-
-def test_fdf_requests_gpu_unreadable_returns_false(tmp_path):
-    """Missing file -> safe default (CPU env).  Routing must never
-    raise from inside write_run_wrapper -- the wrapper is on a
-    user-input boundary and an OSError here would propagate as a
-    500."""
-    missing = tmp_path / "absent.fdf"
-    assert _runwrap._fdf_requests_gpu(missing) is False
-
-
-# ---------------------------------------------------------------------------
-#  The deck's GPU keyword, read the way SIESTA reads it
-# ---------------------------------------------------------------------------
-#
-#  BOTH keyword spellings, SIESTA fdf_get's truthy set, and the FIRST
-#  occurrence of each -- libfdf's `fdf_locate` walks from `file_in%first` and
-#  stops at the first matching label, so a later line never overrides an
-#  earlier one.  Either keyword being true means the run wants a GPU, so the
-#  two are ORed.  (A second reader -- an awk pass inside the wrapper at
-#  launch, for a deck edited after prep -- was compared against this one
-#  until 2026-10-02; it went with the rank defaults it chose between.)
-
-_DECKS = [
-    # (name, deck body, expected)
-    ("absent",                 "SystemLabel J\n",                              False),
-    ("modern spelling",        "Diag.ELPA.GPU .true.\n",                       True),
-    ("older spelling",         "Diag.ELPA.UseGPU .true.\n",                    True),
-    ("truthy: true",           "Diag.ELPA.GPU true\n",                         True),
-    ("truthy: yes",            "Diag.ELPA.GPU yes\n",                          True),
-    ("truthy: t",              "Diag.ELPA.GPU T\n",                            True),
-    ("truthy: y",              "Diag.ELPA.GPU y\n",                            True),
-    ("truthy: 1",              "Diag.ELPA.GPU 1\n",                            True),
-    ("falsy: .false.",         "Diag.ELPA.GPU .false.\n",                      False),
-    ("falsy: no",              "Diag.ELPA.GPU no\n",                           False),
-    ("falsy: 0",               "Diag.ELPA.GPU 0\n",                            False),
-    ("first wins: on then off", "Diag.ELPA.GPU .true.\nDiag.ELPA.GPU .false.\n", True),
-    ("first wins: off then on", "Diag.ELPA.GPU .false.\nDiag.ELPA.GPU .true.\n", False),
-    ("either keyword true",
-     "Diag.ELPA.UseGPU .true.\nDiag.ELPA.GPU .false.\n",                       True),
-    ("case-insensitive label", "DIAG.elpa.GpU .TRUE.\n",                       True),
-    ("leading whitespace",     "    Diag.ELPA.GPU .true.\n",                   True),
-    ("longer token is not it", "Diag.ELPA.GPUX .true.\n",                      False),
-    ("commented out",          "# Diag.ELPA.GPU .true.\n",                     False),
-    ("no value",               "Diag.ELPA.GPU\n",                              False),
-    ("trailing comment",       "Diag.ELPA.GPU .true.   # on purpose\n",        True),
-]
-
-
-@pytest.mark.parametrize("label,body,expected", _DECKS,
-                         ids=[d[0] for d in _DECKS])
-def test_the_deck_gpu_reader_reads_as_siesta_does(tmp_path, label, body,
-                                                  expected):
-    """MUTATION THIS MUST FAIL AGAINST: drop a truthy value from
-    `_GPU_TRUTHY`, drop the older `Diag.ELPA.UseGPU` spelling, or take the
-    LAST occurrence instead of the first."""
-    deck = tmp_path / "job.fdf"
-    deck.write_text(body, encoding="utf-8")
-    assert _runwrap._fdf_requests_gpu(deck) is expected, label

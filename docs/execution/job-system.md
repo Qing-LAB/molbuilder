@@ -1144,7 +1144,7 @@ route — is this, for the whole verb.
 | in the answer | what it is |
 |---|---|
 | `findings` | the description's preflight notes (`engines/stages.md` § 6.6); an error refuses instead |
-| `notes` | what the inputs said: a run card's value the run does not use (`gpu_count` with `use_gpu` off), a bench's grid — enumerated, crossed out, kept |
+| `notes` | what the inputs said: a bench's grid — enumerated, crossed out, kept. *(A run card's `gpu_count` with `use_gpu` off was a note here until 2026-10-03; it is refused now, `gpu.md` G5)* |
 | `saved` | the folder's state, saved before the five steps wrote (§ 5.0, checkpoint 5): the state saved now, or the one it already stood at, and its note |
 | `dirs` | the job folders the five steps wrote |
 | `provenance` | which configuration file supplied each setting (`configuration.md` § 2.2) |

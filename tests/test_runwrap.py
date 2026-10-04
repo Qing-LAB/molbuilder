@@ -1454,8 +1454,7 @@ class TestTheHeaderReadsTheProbedRecord:
         header = _render_sbatch_for(
             deck, resources=Resources(mpi_np=4, cpus_per_task=1,
                                       domain="public", time="0-04:00:00",
-                                      mem="8G"),
-            env=None)
+                                      mem="8G"))
         assert header is not None, (
             "refused to write a header for a machine whose probed record "
             "names reachable domains")
@@ -1470,7 +1469,7 @@ class TestTheHeaderReadsTheProbedRecord:
         header = _render_sbatch_for(
             deck, resources=Resources(mpi_np=4, cpus_per_task=1,
                                       time="0-04:00:00", mem="8G"),
-            env=None, domain_pq=("general", "public"))
+            domain_pq=("general", "public"))
         assert "#SBATCH -p general" in header
         assert "#SBATCH -q public" in header
 
@@ -1487,8 +1486,7 @@ class TestTheHeaderReadsTheProbedRecord:
             "site": {"name": "box", "scheduler": "workstation"},
             "domains": [], "topology": {"cores": 8},
         }))
-        assert _render_sbatch_for(deck, resources=Resources(mpi_np=4),
-                                  env=None) is None
+        assert _render_sbatch_for(deck, resources=Resources(mpi_np=4)) is None
 
 
 class TestTheBootstrapFailsFast:

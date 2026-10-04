@@ -447,12 +447,12 @@ def _sweep() -> JobSet:
         name="sw", engine="siesta", kind="sweep",
         jobs=[Job(name="G1K1C4", script="job-gpu.fdf",
                   resources=Resources(mpi_np=1, cpus_per_task=4,
-                                      gres="gpu:1", time="0-01:00:00",
-                                      mem="8G")),
+                                      use_gpu=True, gres="gpu:1",
+                                      time="0-01:00:00", mem="8G")),
               Job(name="G1K2C4", script="job-gpu.fdf",
                   resources=Resources(mpi_np=2, cpus_per_task=4,
-                                      gres="gpu:1", time="0-01:00:00",
-                                      mem="8G"))])
+                                      use_gpu=True, gres="gpu:1",
+                                      time="0-01:00:00", mem="8G"))])
 
 
 def _write_fdf(path):
@@ -1125,7 +1125,7 @@ def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
         "SystemName g\nSystemLabel GPU\nNumberOfAtoms 100\n"
         "NumberOfSpecies 1\nMeshCutoff 300 Ry\nBasis.Size DZP\n"
         "Diag.ELPA.GPU .true.\n")
-    maximal = _blocks(write_run_wrapper(tmp_path / "GPU.fdf", resources=Resources(mpi_np=4, cpus_per_task=1, gres="gpu:1", continue_retries=2), env="e").read_text())
+    maximal = _blocks(write_run_wrapper(tmp_path / "GPU.fdf", resources=Resources(mpi_np=4, cpus_per_task=1, use_gpu=True, gres="gpu:1", continue_retries=2), env="e").read_text())
     # The ESTIMABLE CPU deck (D9 tightening, user decision 2026-08-13):
     # the Memory block renders only from a chemically parseable deck
     # (species + coordinates) -- which NEITHER fixture above carries, so

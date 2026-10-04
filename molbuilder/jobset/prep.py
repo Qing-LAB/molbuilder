@@ -2509,7 +2509,8 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
     from ..validation.task import preflight
     from .ledger import prepped as ledger_prepped
     from .ledger import record as ledger
-    from .prep_inputs import bench_inputs, bench_refusal, prep_run_inputs
+    from .prep_inputs import (bench_inputs, bench_refusal, prep_run_inputs,
+                              run_gpu_request)
     base = Path(base).resolve()
     desc = base / TASK_FILENAME
     findings: list = []
@@ -2669,11 +2670,10 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
 
         # 4 · THE INPUTS -- one assembly per kind (`prep_inputs`, A12).  A
         #     bench measures ONE stage's configuration, and there is always a
-        #     stage to name (§ 6.5).  Assembled before the question, and so
-        #     is what they read of the target -- a bench's grid, and the type
-        #     of the devices a run's condition counts -- so a refusal about
-        #     THAT machine comes first; the rest of a run's machine is
-        #     resolved by the five steps, after the answer.
+        #     stage to name (§ 6.5).  Assembled before anything is written,
+        #     and so is what they read of the target -- a bench's grid -- so
+        #     a refusal about THAT machine comes first; the rest of a run's
+        #     machine is resolved by the five steps.
         sweep = pins = translation = None
         chosen: dict = {}
         container = None
@@ -2685,7 +2685,18 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                                                stage_home(base, task, stage).token)
         else:
             allocation, pins, chosen = prep_run_inputs(
-                base, task, stage, allocation, notes=notes)
+                base, task, stage, allocation)
+            #  ...AND ITS GPU REQUEST AGREES WITH ITSELF (`execution/gpu.md`
+            #  G5): a run on the GPU states how many, a run on the CPU none
+            #  -- asked of the job this prep will write, before anything is.
+            from ..resolve import ResolveError
+            from .model import GpuRequestError
+            try:
+                run_gpu_request(base, task, stage, allocation, pins)
+            except GpuRequestError as exc:
+                raise PrepError(f"stage {stage!r}: {exc}") from None
+            except ResolveError as exc:
+                raise PrepError(str(exc)) from exc
 
         #     ...AND EVERY LAUNCH VALUE IS STATED, OR THE PREP IS REFUSED --
         #      here, with the whole assembly in hand, before the question and

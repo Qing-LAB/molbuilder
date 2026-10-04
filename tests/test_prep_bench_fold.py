@@ -410,6 +410,9 @@ def _describe_cpu(calc):
     p.write_text(text[:i]
                  + text[i:j].replace("value = true", "value = false")
                  + text[j:])
+    # ...and a CPU run states no GPU count: one stated for a run that does
+    # not use the GPU is refused at prep (`execution/gpu.md` G5).
+    _state_the_run(calc)
 
 
 def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
@@ -1619,7 +1622,10 @@ def test_a_stage_without_an_open_attempt_refuses_to_launch(calc):
     from molbuilder.jobset._cli import jobset_group
     import shutil
     from molbuilder.jobset.prep import prep_calculation as _pc
-    _pc(calc, "coarse", allocation=Resources(mpi_np=2, cpus_per_task=2),
+    # the five steps alone, so the run card's GPU count is said here, as
+    # the prep entry folds it (`execution/gpu.md` G5)
+    _pc(calc, "coarse", allocation=Resources(mpi_np=2, cpus_per_task=2,
+                                             gres="gpu:1"),
         emit_sbatch=False)
     # THE STATE IS BUILT, NOT LEFT BEHIND BY PREP.  This used to call
     # `prep_calculation` and assert no attempt appeared -- "library prep: NO
