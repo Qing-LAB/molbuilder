@@ -310,7 +310,8 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # stages then removed, or added (`{name, at}`, `at` the place, the end when
 # absent), through the same Save; `ran` -- a stage's run then laid down as it
 # ended, where its prep put it (`_road_ran`: `stage`, `rc`, `concluded`,
-# `output`, `engine_mark`, `monitor_ended`); `stage` -- the stage the
+# `output`, `engine_mark`, `monitor_ended`, `launch_record`); `stage` -- the
+# stage the
 # row's prep names, `coarse` unless given; `answers` -- what
 # the person types at the row's prep's question ("" is EOF, no terminal);
 # `calculation` -- the kind `jobset init` describes, an optimization unless
@@ -504,8 +505,9 @@ def _road_ran(ran, bundle) -> None:
     put it -- its newest attempt; the calculation's folder in the flat
     shape: the measured relaxation (:func:`a_finished_run` -- ``rc``,
     ``concluded``, ``output``), SIESTA's own ``0_NORMAL_EXIT`` beside it
-    (``engine_mark``), and the monitor's closing record (``monitor_ended``:
-    the process seen to go).  ``stage`` is ``coarse`` unless given."""
+    (``engine_mark``), the monitor's closing record (``monitor_ended``: the
+    process seen to go) and the run's launch record, as its text
+    (``launch_record``).  ``stage`` is ``coarse`` unless given."""
     from molbuilder.jobset.materialize import run_dir, stage_home
     from molbuilder.parse.dirs.job import MONITOR_ENDED
     from molbuilder.runfiles import stem
@@ -522,6 +524,12 @@ def _road_ran(ran, bundle) -> None:
     if ran.get("monitor_ended"):
         (where / f"{name}-run0.monitor.log").write_text(
             f"[12:00:00] [INFO ] {MONITOR_ENDED}\n")
+    if "launch_record" in ran:
+        from molbuilder.paths import Shape
+        from molbuilder.runrecord import launch_record_path
+        flat = not Shape.named(task.shape).keeps_attempts_as_directories
+        launch_record_path(where, name if flat else None).write_text(
+            ran["launch_record"])
 
 
 def _road_after_prep(case, bundle) -> None:

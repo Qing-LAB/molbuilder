@@ -566,8 +566,8 @@ run_status(run_dir, match="*", *, launch=<not asked>) -> RunStatus   # parse/dir
 | argument | meaning |
 |---|---|
 | `run_dir` | the attempt (`run-<n>/`), or the calculation itself in the flat shape |
-| `match` | narrows to one rung: the flat shape keeps every stage in one directory |
-| `launch` | `read_run_launch(dir)` (`jobset/materialize.py`) — the `run.json` dict, or `None`; left out, *not asked* |
+| `basename` | narrows to one run, by its deck's stem: the flat shape keeps every stage in one directory (`Shape.run_basename`; `None` in the hierarchy) |
+| `launch` | `launch_record(dir)` (`runrecord.py`) — the `run.json` dict, or `None`; one that does not read is an error naming the file, never an answer; left out, *not asked* |
 
 | field | holds |
 |---|---|

@@ -1303,13 +1303,13 @@ def test_an_unlaunched_attempt_is_reused_and_a_launched_one_is_never_touched():
     import tempfile
     from pathlib import Path
     from molbuilder.jobset.materialize import prepare_attempt
-    from molbuilder.runrecord import write_run_launch
+    from molbuilder.runrecord import write_launch
     js = _token_ladder("JOB_03_tight.fdf")
     with tempfile.TemporaryDirectory() as td:
         first = prepare_attempt(js, td, "tight").dir
         assert first.name == "run-0"
         assert prepare_attempt(js, td, "tight").dir == first   # reused
-        write_run_launch(first, mode="direct", command=["bash", "x.sh"])
+        write_launch(first, mode="direct", command=["bash", "x.sh"])
         second = prepare_attempt(js, td, "tight").dir
         assert second.name == "run-1"                             # never reused
         assert (Path(first) / "run.json").is_file()               # left intact
@@ -1403,15 +1403,15 @@ def test_a_launched_attempt_with_no_output_is_queued_not_not_started(tmp_path):
     tells them apart, and status *"can say queued as job 481923 instead of
     guessing from an absence"*."""
     from molbuilder.jobset.materialize import prepare_attempt
-    from molbuilder.runrecord import write_run_launch
+    from molbuilder.runrecord import write_launch
     js = _token_ladder("JOB_03_tight.fdf")
     attempt = prepare_attempt(js, tmp_path, "tight").dir
 
     before = jobset_status(js, tmp_path).stages[0]
     assert before.state == "pending"             # prepped, genuinely not launched
 
-    write_run_launch(attempt, mode="submit", command=["sbatch", "x"],
-                     job_id="481923")
+    write_launch(attempt, mode="submit", command=["sbatch", "x"],
+                 job_id="481923")
     after = jobset_status(js, tmp_path).stages[0]
     assert after.state == "queued"
     assert "481923" in after.detail              # the contract's own sentence
@@ -1495,15 +1495,15 @@ def test_status_takes_a_stage_and_answers_the_other_question(tmp_path):
     provenance, not just the row.
     """
     from molbuilder.jobset.materialize import prepare_attempt
-    from molbuilder.runrecord import write_run_launch
+    from molbuilder.runrecord import write_launch
     from molbuilder.jobset.runstatus import render_stage_status
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
     coarse = prepare_attempt(js, tmp_path, "coarse").dir
     (coarse / "JOB.XV").write_text("COARSE-GEOM")
     tight = prepare_attempt(js, tmp_path, "tight",
                             continue_from="01_coarse/run-0").dir
-    write_run_launch(tight, mode="submit", command=["sbatch", "x.sbatch"],
-                     job_id="481923", continued_from="01_coarse/run-0")
+    write_launch(tight, mode="submit", command=["sbatch", "x.sbatch"],
+                 job_id="481923", continued_from="01_coarse/run-0")
 
     out = render_stage_status(jobset_status(js, tmp_path), "tight")
     assert out.splitlines()[0].startswith("STAGE 03_tight")
@@ -1536,11 +1536,11 @@ def test_a_cold_run_prints_no_provenance_line_at_all(tmp_path):
     view that printed a blank line for every cold run would still pass.
     """
     from molbuilder.jobset.materialize import prepare_attempt
-    from molbuilder.runrecord import write_run_launch
+    from molbuilder.runrecord import write_launch
     from molbuilder.jobset.runstatus import render_stage_status
     js = _token_ladder("JOB_03_tight.fdf")
     attempt = prepare_attempt(js, tmp_path, "tight", cold=True).dir
-    write_run_launch(attempt, mode="direct", command=["bash", "x.sh"])
+    write_launch(attempt, mode="direct", command=["bash", "x.sh"])
 
     out = render_stage_status(jobset_status(js, tmp_path), "tight")
     assert "launched" in out and "direct" in out      # it DID start
@@ -1552,15 +1552,15 @@ def test_every_label_in_the_per_stage_view_is_padded_off_the_longest(tmp_path):
     so the one row with provenance to report ran its value into its own name.
     Same defect as the table's two column counts, one screen over."""
     from molbuilder.jobset.materialize import prepare_attempt
-    from molbuilder.runrecord import write_run_launch
+    from molbuilder.runrecord import write_launch
     from molbuilder.jobset.runstatus import render_stage_status
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
     coarse = prepare_attempt(js, tmp_path, "coarse").dir
     (coarse / "JOB.XV").write_text("x")
     tight = prepare_attempt(js, tmp_path, "tight",
                             continue_from="01_coarse/run-0").dir
-    write_run_launch(tight, mode="direct", command=["bash", "x.sh"],
-                     continued_from="01_coarse/run-0")
+    write_launch(tight, mode="direct", command=["bash", "x.sh"],
+                 continued_from="01_coarse/run-0")
 
     body = [l for l in render_stage_status(jobset_status(js, tmp_path),
                                            "tight").splitlines()
@@ -1760,10 +1760,10 @@ def test_a_redo_of_one_stage_agrees_with_itself(tmp_path):
     matches its own optimizer — so the full group comes across, including the
     history the rule exists to protect."""
     from molbuilder.jobset.materialize import prepare_attempt
-    from molbuilder.runrecord import write_run_launch
+    from molbuilder.runrecord import write_launch
     js = _shipped_ladder()
     first = _finished(tmp_path, "03_tight")
-    write_run_launch(first, mode="direct", command=["bash", "x"])
+    write_launch(first, mode="direct", command=["bash", "x"])
 
     rep = prepare_attempt(js, tmp_path, "tight",
                           continue_from="03_tight/run-0")
@@ -1904,10 +1904,12 @@ def test_attempts_are_ordered_as_numbers_not_as_names(tmp_path):
     """
     from molbuilder.jobset.materialize import latest_attempt, resolve_attempt
     from molbuilder.paths import attempts_in
+    from molbuilder.runrecord import write_launch
     d = tmp_path / "03_tight"
     for n in (0, 1, 2, 9, 10):
         (d / f"run-{n}").mkdir(parents=True)
-        (d / f"run-{n}" / "run.json").write_text("{}")   # all launched
+        write_launch(d / f"run-{n}", mode="direct",       # all launched
+                     command=["bash", "x"])
     (d / "notes.txt").write_text("")                     # not an attempt
     (d / "run-x").mkdir()                                # nor is this
 
@@ -1972,14 +1974,14 @@ def test_run_launch_omits_continued_from_rather_than_writing_null(tmp_path):
     key sees a starting-from-the-structure run as one that continued from
     nothing-in-particular.  Two different claims, one of them false."""
     import json
-    from molbuilder.runrecord import RUN_LAUNCH_SCHEMA, write_run_launch
-    p = write_run_launch(tmp_path, mode="direct", command=["bash", "x.sh"])
+    from molbuilder.runrecord import RUN_LAUNCH_SCHEMA, write_launch
+    p = write_launch(tmp_path, mode="direct", command=["bash", "x.sh"])
     body = json.loads(p.read_text())
     assert body["schema"] == RUN_LAUNCH_SCHEMA
     assert "continued_from" not in body          # ABSENT, not None
 
-    p = write_run_launch(tmp_path, mode="direct", command=["bash", "x.sh"],
-                         continued_from="01_coarse/run-0")
+    p = write_launch(tmp_path, mode="direct", command=["bash", "x.sh"],
+                     continued_from="01_coarse/run-0")
     assert json.loads(p.read_text())["continued_from"] == "01_coarse/run-0"
 
 
@@ -2023,19 +2025,6 @@ def test_prepare_attempt_refuses_a_from_that_has_not_run(tmp_path):
     with pytest.raises(ValueError) as e:
         prepare_attempt(js, tmp_path, "tight", continue_from="01_coarse/run-9")
     assert "no such attempt" in str(e.value)
-
-
-def test_a_corrupt_run_json_still_reads_as_launched(tmp_path):
-    """The file's PRESENCE is the answer to *has this been launched?* (§ 1.6).
-    Its contents are extra, so a truncated write must not demote the stage to
-    'never started' -- which would invite a submit on top of a running job."""
-    from molbuilder.jobset.materialize import prepare_attempt
-    js = _token_ladder("JOB_03_tight.fdf")
-    attempt = prepare_attempt(js, tmp_path, "tight").dir
-    (attempt / "run.json").write_text('{"schema": "molbuilder/run-la')
-
-    st = jobset_status(js, tmp_path).stages[0]
-    assert st.state == "queued"                  # launched, details lost
 
 
 def test_submit_only_takes_the_same_two_spellings_as_every_surface(tmp_path):
@@ -2115,7 +2104,7 @@ def test_a_launched_sweep_trial_reports_queued_not_pending(tmp_path):
     looked only inside attempts, and a grouped-submitted trial answered
     the exact false line § 1.6 forbids."""
     from molbuilder.jobset.materialize import job_dir_names, shape_of
-    from molbuilder.runrecord import write_run_launch
+    from molbuilder.runrecord import write_launch
     from molbuilder.jobset.model import Job, JobSet
     js = JobSet(name="JOB", engine="siesta", kind="sweep",
                 jobs=[Job(name="p1", script="JOB_p1.fdf"),
@@ -2124,9 +2113,9 @@ def test_a_launched_sweep_trial_reports_queued_not_pending(tmp_path):
     for name in dirs.values():
         (tmp_path / name).mkdir(parents=True)
     # p1 rides a grouped submission; p2 was never launched.
-    write_run_launch(tmp_path / dirs["p1"], mode="submit",
-                     command=["sbatch", "bench-group.sbatch"],
-                     job_id="48213")
+    write_launch(tmp_path / dirs["p1"], mode="submit",
+                 command=["sbatch", "bench-group.sbatch"],
+                 job_id="48213")
     st = jobset_status(js, tmp_path)
     by = {s_.ref.name: s_ for s_ in st.stages}
     assert by["p1"].state == "queued", by["p1"]
@@ -2616,8 +2605,8 @@ def test_two_flat_rungs_with_real_output_each_report_their_own(tmp_path):
     new_.write_text("Siesta Version: 5.4.2\nsiesta: iscf\nscf:  1  -100.0\n")
     past = _time.time() - 86400
     os.utime(old, (past, past))
-    for a in (tmp_path / "run.json",):
-        a.write_text('{"mode": "direct"}')
+    from molbuilder.runrecord import write_launch
+    write_launch(tmp_path, mode="direct", command=["bash", "x"])
 
     by_name = {s.name: s for s in jobset_status(js, tmp_path).stages}
     assert (by_name["coarse"].state, by_name["tight"].state) == (

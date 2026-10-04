@@ -109,15 +109,15 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     from ..paths import Shape
     from ..runfiles import find as rf_find, stem as rf_stem
     from .materialize import stage_stdout
-    from ..runrecord import ending, read_run_launch
+    from ..runrecord import ending, launch_record
     from .materialize import stage_home
     token = stage_home(base, task, stage).token
     stem = rf_stem(task.label, token)
     sh = Shape.named(task.shape)
     concluded = ending(attempt, stem).line
     try:
-        launch = (read_run_launch(attempt) if sh.keeps_attempts_as_directories
-                  else read_run_launch(container, basename=stem))
+        launch = (launch_record(attempt) if sh.keeps_attempts_as_directories
+                  else launch_record(container, basename=stem))
         state = run_status(attempt, sh.run_basename(token, task.label),
                            launch=launch).state
     except Exception:                                    # noqa: BLE001

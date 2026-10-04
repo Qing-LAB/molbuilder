@@ -206,7 +206,7 @@ def test_a_flat_stage_records_the_run_it_continued_from(tmp_path,
     MUTATIONS THIS MUST FAIL AGAINST: prep leaving no record of the run on
     the flat layout (the launch record without `continued_from`); a flat
     stage launched again recording the stage before it (W55 D5)."""
-    from molbuilder.runrecord import read_run_launch
+    from molbuilder.runrecord import launch_record
     from molbuilder.scheduler import Domain
     from support.road import a_queue_that_answers
     a_queue_that_answers(tmp_path, monkeypatch, [
@@ -229,14 +229,14 @@ def test_a_flat_stage_records_the_run_it_continued_from(tmp_path,
     r = _jobset("launch", "run", "medium", "--bundle", bundle, "--mode",
                 "submit", "--domain", "htc", "--yes")
     assert r.exit_code == 0, r.output
-    record = read_run_launch(bundle, basename="H2_02_medium")
+    record = launch_record(bundle, basename="H2_02_medium")
     assert record["continued_from"] == "H2_01_coarse-run0", record
 
     a_finished_run(bundle, stem="H2_02_medium")
     r = _jobset("launch", "run", "medium", "--bundle", bundle, "--mode",
                 "submit", "--domain", "htc", "--yes")
     assert r.exit_code == 0, r.output
-    record = read_run_launch(bundle, basename="H2_02_medium")
+    record = launch_record(bundle, basename="H2_02_medium")
     assert record["continued_from"] == "H2_02_medium-run0", record
 
 
@@ -393,7 +393,7 @@ def test_the_run_panel_says_what_a_run_continued_from(ladder):
     Results tab's Run panel -- names the run, from its `run.json`.
 
     MUTATION THIS MUST FAIL AGAINST: the record without `continued_from`."""
-    from molbuilder.runrecord import write_run_launch
+    from molbuilder.runrecord import write_launch
     from molbuilder.web.app import create_app
     bundle = ladder()
     assert _prep(bundle, "coarse").exit_code == 0
@@ -401,9 +401,9 @@ def test_the_run_panel_says_what_a_run_continued_from(ladder):
     assert _prep(bundle, "medium").exit_code == 0
     attempt = bundle / "02_medium" / "run-0"
     # the launch's own record (submit writes it from `.continued-from`)
-    write_run_launch(attempt, mode="direct", command=["bash", "x"],
-                     continued_from=(attempt / ".continued-from")
-                     .read_text().strip())
+    write_launch(attempt, mode="direct", command=["bash", "x"],
+                 continued_from=(attempt / ".continued-from")
+                 .read_text().strip())
     shutil.copy2(_RELAX / "H2_01_relax-run0.out",
                  attempt / "H2_02_medium-run0.out")
     body = create_app(config={}).test_client().get(

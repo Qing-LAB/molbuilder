@@ -936,14 +936,14 @@ class TestTheContractEndpoint:
         the folder above.
         """
         from molbuilder import calcdirs
-        from molbuilder.runrecord import write_run_launch
+        from molbuilder.runrecord import write_launch
         root, client = isolated
         calc = root / "calc"
         run = calc / "01_a" / "run-0"
         run.mkdir(parents=True)
         calcdirs.write(calc / "01_a", role=calcdirs.CONTAINER, root=calc)
         calcdirs.write(run, role=calcdirs.RUN, root=calc)
-        write_run_launch(run, mode="direct", command=["bash", "run.sh"])
+        write_launch(run, mode="direct", command=["bash", "run.sh"])
         body = client.get("/api/results/dir?path=" + str(run)).get_json()
         assert body["place"]["role"] == "run"
         assert body["status"] is not None and body["status"]["state"] == "queued"

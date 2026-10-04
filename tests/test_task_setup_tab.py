@@ -1229,7 +1229,8 @@ def _cited_junction(root, *, concluded=True):
     if concluded:
         (attempt / "Relax_01_only-run0.concluded").write_text("rc=0\n")
     else:
-        (attempt / "run.json").write_text("{}")
+        from molbuilder.runrecord import write_launch
+        write_launch(attempt, mode="direct", command=["bash", "x"])
     return calc
 
 

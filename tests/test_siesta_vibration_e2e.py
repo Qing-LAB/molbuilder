@@ -548,7 +548,7 @@ def test_a_job_that_cannot_finish_itself_stops_before_the_engine(
     index is resolved -- it can name no marker, and the attempt reads queued
     for ever (the review of 51590fa6).
     """
-    from molbuilder.runrecord import read_run_launch
+    from molbuilder.runrecord import launch_record
     from molbuilder.parse.dirs import run_status
     from molbuilder.parse.dirs.job import FINISH_CANNOT_LOAD
     from molbuilder.runrecord import read_concluded
@@ -574,5 +574,5 @@ def test_a_job_that_cannot_finish_itself_stops_before_the_engine(
     assert marker.is_file(), "the stop left no conclusion: it reads queued"
     got = read_concluded(marker.read_text())
     assert got["code"] != 0 and got["note"].startswith(FINISH_CANNOT_LOAD), got
-    st = run_status(attempt, launch=read_run_launch(attempt))
+    st = run_status(attempt, launch=launch_record(attempt))
     assert st.state == "failed", (st.state, st.detail)

@@ -584,7 +584,7 @@ def launch_record_at(kind: str, job, container: Path,
                      attempt: Optional[Path]) -> Tuple[Path, Optional[str]]:
     """``(where, basename)`` -- where a job's launch is recorded
     (`project-layout.md` § 1.6.3), for :func:`runrecord.launch_record_path`,
-    :func:`runrecord.was_launched`, :func:`runrecord.write_run_launch` and every reader: the
+    :func:`runrecord.launch_record`, :func:`runrecord.write_launch` and every reader: the
     attempt's ``run.json`` when there is an attempt; a sweep trial's own, at
     the trial's top; a flat stage's ``<basename>.run.json`` in the
     calculation's directory, which every stage shares -- ``basename`` its
@@ -687,7 +687,12 @@ def resolve_attempt(stage_dir: Path) -> Tuple[Path, bool]:
     existing = attempts_in(stage_dir)
     if existing:
         last = attempt_dir(stage_dir, existing[-1])
-        if not runrecord.was_launched(last):
+        try:
+            launched = runrecord.launch_record(last) is not None
+        except runrecord.LaunchRecordError as e:
+            from .errors import PrepError
+            raise PrepError(str(e)) from e
+        if not launched:
             return last, False
         return attempt_dir(stage_dir, existing[-1] + 1), True
     return Path(stage_dir) / "run-0", True

@@ -1965,7 +1965,9 @@ class TestTheBiasScan:
         launched) + `archive/2026-09-01-transport-design.md` § 4.3.
         """
         self._ready(calc, tmp_path, monkeypatch)
-        (calc / "04_device" / "v0" / "run-0" / "run.json").write_text("{}")
+        from molbuilder.runrecord import write_launch
+        write_launch(calc / "04_device" / "v0" / "run-0", mode="direct",
+                     command=["bash", "x"])
         r = self._launch(calc)
         assert r.exit_code != 0 and "immutable" in r.output, r.output
 
@@ -2002,13 +2004,13 @@ class TestTheBiasScan:
         attempted; and `jobset status` with the Results tab's ladder, which
         read a running scan as *prepped, not launched*.
 
-        The launch is `write_run_launch` and a run's end its conclusion
+        The launch is `write_launch` and a run's end its conclusion
         marker (`_conclude`) -- the records a launch and a finished run
         leave, which is what the readers look for; the run itself is not
         under test."""
         from click.testing import CliRunner
         from molbuilder.jobset._cli import jobset_group
-        from molbuilder.runrecord import write_run_launch
+        from molbuilder.runrecord import write_launch
         from molbuilder.web.app import create_app
         self._ready(calc, tmp_path, monkeypatch)
         client = create_app(config={}).test_client()
@@ -2022,8 +2024,8 @@ class TestTheBiasScan:
                         if ln.split()[1:2] == ["device"])
 
         # the chain has launched 0 V, which has written nothing yet
-        write_run_launch(calc / "04_device" / "v0" / "run-0",
-                         mode="direct", command=["bash", "x"])
+        write_launch(calc / "04_device" / "v0" / "run-0",
+                     mode="direct", command=["bash", "x"])
         r = CliRunner().invoke(jobset_group,
                                ["prep", "run", "device", "--bundle",
                                 "J/transport/T"])
@@ -2039,8 +2041,8 @@ class TestTheBiasScan:
         # 0 V ran to its end and the chain launched 0.2 V: the device is
         # outstanding at 0.2 V now, on both status surfaces
         _conclude(calc, "device", ["T.TS.HSX"], point="v0")
-        write_run_launch(calc / "04_device" / "v0.2" / "run-0",
-                         mode="direct", command=["bash", "x"])
+        write_launch(calc / "04_device" / "v0.2" / "run-0",
+                     mode="direct", command=["bash", "x"])
         assert device_row() == ["v0.2/run-0", "queued"], (
             "a finished point does not speak for the rung")
         ladder = client.get(

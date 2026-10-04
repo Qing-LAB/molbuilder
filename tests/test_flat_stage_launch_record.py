@@ -84,7 +84,7 @@ def test_a_submitted_flat_stage_records_its_launch_and_reads_queued(
     attempt anywhere but its own record (`submit._where_recorded`), or the
     ladder reading an attempt's record only -- the code before 2026-09-27.
     """
-    from molbuilder.runrecord import launch_record_path, read_run_launch
+    from molbuilder.runrecord import launch_record_path, launch_record
     from molbuilder.jobset.model import FILENAME, JobSet
     from molbuilder.jobset.runstatus import jobset_status
     from molbuilder.parse import parse_dir
@@ -93,7 +93,7 @@ def test_a_submitted_flat_stage_records_its_launch_and_reads_queued(
     record = launch_record_path(submitted, deck.stem)
     assert record.name == "H2_01_coarse.run.json" and record.is_file(), (
         sorted(p.name for p in submitted.iterdir()))
-    assert read_run_launch(submitted, basename=deck.stem)["job_id"] == "4242"
+    assert launch_record(submitted, basename=deck.stem)["job_id"] == "4242"
 
     row = next(s for s in jobset_status(
         JobSet.load(submitted / FILENAME), submitted).stages

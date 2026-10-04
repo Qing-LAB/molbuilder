@@ -857,7 +857,14 @@ Two small files answer the two questions *(the second decided by the user,
   and every stage shares the calculation's one, so the record is named by
   its stage like every other file of it *(user, 2026-09-26: "unify this
   behavior")*. A flat calculation's directory, asked as a whole, reads the
-  newest of them.
+  newest of them. **One that does not read** — not JSON, or not a
+  `molbuilder/run-launch` record — is an error naming the file, never
+  *launched* or *not launched*: status says so on its row, and prep and
+  launch refuse (`runrecord.launch_record`, the one door,
+  [`architecture.md`](?doc=execution/architecture.md) § 3.2). It read as
+  *launched, the details lost* until 2026-10-03, while launch's gates asked
+  only whether the file was there. It is written through `persist`, whole or
+  absent.
 - **An error is a conclusion**: an engine returning nonzero still reaches the
   wrapper's main line, so the marker carries that code — *"because of error or
   whatever — but the process is done."* **A forced stop leaves no marker, by

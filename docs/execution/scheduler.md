@@ -441,7 +441,7 @@ at once *by construction*, so it is the one limit a sweep reliably meets.
 > decision is not a display of the decision.**
 >
 > **A note, not a refusal.** A refused shelf already costs nothing: its trials
-> keep no launch record, so `was_launched` leaves them pending and re-running
+> keep no launch record, so the launched door (`runrecord.launch_record`) leaves them pending and re-running
 > the launch picks up exactly them. What was missing was not enforcement, it was
 > being told — so the preview states the arithmetic (*debug takes 2; this sweep
 > is 6; 4 will be refused*) while saying no is still free, and the choice stays

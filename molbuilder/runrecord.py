@@ -10,7 +10,6 @@ A module of its own since 2026-10-03 (W55 B7): they lived in
 """
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +25,14 @@ except ImportError:                         # beside a job, as the monitor's
     import runfiles as _rf
 
 
+def _persist():
+    """`persist`, the one JSON reader and writer, imported where a record is
+    read or written -- never beside a job, where only :func:`ending` is
+    asked, so it does not travel."""
+    from . import persist
+    return persist
+
+
 #: Written by ``launch`` into the attempt, AFTER the launch succeeds
 #: (``project-layout.md`` § 1.6).  Its presence is the only honest answer to
 #: *has this been launched?* -- a queued job has produced nothing yet, so
@@ -34,20 +41,12 @@ RUN_LAUNCH_SCHEMA = "molbuilder/run-launch@1"
 RUN_LAUNCH_FILE = "run.json"
 
 
-def was_launched(where: Path, basename: Optional[str] = None) -> bool:
-    """Whether ``launch`` has launched this run — its launch record exists:
-    an attempt's ``run.json``, or with ``basename`` a flat stage's own
-    (:func:`launch_record_at` says which).
-
-    This is the whole reason that file exists. Without it, preparing a stage
-    twice could rewrite the setup underneath a job already sitting in a queue,
-    because a queued job has written nothing and looks exactly like one that
-    was never started (§ 1.6).  *(It read ``run.json`` alone until
-    2026-10-01, so a flat stage -- whose record is ``<basename>.run.json`` --
-    always read as never launched, and was launched again over a run still
-    in the queue; W52.)*
-    """
-    return launch_record_path(where, basename).is_file()
+class LaunchRecordError(ValueError):
+    """A launch record that is there and does not read -- neither JSON, nor
+    a ``molbuilder/run-launch`` record.  Never *launched* or *not
+    launched*: whether the run was launched cannot be told from it, so
+    every reader stops and names the file (`execution/architecture.md`
+    § 3.2)."""
 
 
 def continued_from_marker(where: Path, basename: Optional[str] = None
@@ -168,15 +167,17 @@ def launch_record_path(where: Path, basename: Optional[str] = None) -> Path:
                           else basename + _rf.tail(".run.json"))
 
 
-def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
-                     job_id: Optional[str] = None,
-                     continued_from: Optional[str] = None,
-                     launched_at: Optional[str] = None,
-                     placed_on: Optional[dict] = None,
-                     basename: Optional[str] = None) -> Path:
+def write_launch(attempt_dir: Path, *, mode: str, command: List[str],
+                 job_id: Optional[str] = None,
+                 continued_from: Optional[str] = None,
+                 launched_at: Optional[str] = None,
+                 placed_on: Optional[dict] = None,
+                 basename: Optional[str] = None) -> Path:
     """Record a launch into the attempt — ``molbuilder/run-launch@1`` -- or,
     given ``basename``, a flat stage's own record in its calculation's
-    directory (:func:`launch_record_path`).
+    directory (:func:`launch_record_path`) -- through `persist`, so it is
+    whole or absent, never half a file (`execution/architecture.md` § 2.1:
+    a run's own records are read and written through `persist`).
 
     Written **after** the launch succeeds, so a failed launch leaves the
     attempt exactly as prepare left it and is still safe to prepare again
@@ -218,14 +219,14 @@ def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
     # testing for the key learns that rather than reading a null as "nowhere".
     if placed_on:
         body["placed_on"] = dict(placed_on)
-    p.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
-    return p
+    return _persist().write_json(p, body)
 
 
-def read_run_launch(attempt_dir, basename: Optional[str] = None
-                    ) -> Optional[dict]:
-    """The launch record, or ``None`` when there is none -- the reader
-    beside :func:`write_run_launch`.
+def launch_record(where, basename: Optional[str] = None) -> Optional[dict]:
+    """THE door for *was this run launched?* (`execution/architecture.md`
+    § 3.2; plan W38 F2) -- the run's launch record, or ``None`` when there
+    is none: asked by status, the Run panel, prep (an unlaunched attempt is
+    reused), every launch gate and the transport citation.
 
     An attempt's ``run.json`` answers for the attempt.  A flat stage has no
     attempt: ``basename`` names its own record (:func:`launch_record_path`);
@@ -233,27 +234,39 @@ def read_run_launch(attempt_dir, basename: Optional[str] = None
     a flat calculation was launched when any of its stages was.
 
     `project-layout.md` § 1.6: *"Has this been launched? has no honest answer
-    from the directory alone"*, so this file is the answer.  Present but
-    unreadable reads ``{}``: launched, the details lost.  *(It was a private
-    `runstatus._launch_record` until 2026-09-26, when the run record became
-    its second reader.)*
+    from the directory alone"*, so this file is the answer -- and **one that
+    does not read** is :class:`LaunchRecordError`, naming the file, never
+    an answer: it read ``{}``, *launched, the details lost*, until
+    2026-10-03, while the gates asked whether the file existed.  *(It was a
+    private `runstatus._launch_record` until 2026-09-26, and
+    ``read_run_launch`` beside a second answerer, ``was_launched``, until
+    2026-10-03.)*
     """
-    if attempt_dir is None:
+    if where is None:
         return None
-    p = launch_record_path(attempt_dir)
+    p = launch_record_path(where)
     if not p.is_file():
         if basename is not None:
-            p = launch_record_path(attempt_dir, basename)
+            p = launch_record_path(where, basename)
         else:
-            stages = sorted(_rf.find_by_role(attempt_dir, ".run.json"),
+            stages = sorted(_rf.find_by_role(where, ".run.json"),
                             key=lambda f: f.stat().st_mtime)
             p = stages[-1] if stages else p
     if not p.is_file():
         return None
     try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except Exception:                                      # noqa: BLE001
-        return {}
+        body = _persist().read_json(p)
+        if not isinstance(body, dict):
+            raise ValueError("not a JSON object")
+        _persist().check_schema(body.get("schema"), RUN_LAUNCH_SCHEMA,
+                                label=p.name)
+    except (OSError, ValueError) as e:
+        raise LaunchRecordError(
+            f"{p} does not read as a launch record ({e}) -- whether this run "
+            f"was launched cannot be told from it.  It is written once, at "
+            f"launch, and the decision ledger's `launched` line holds what it "
+            f"said (project-layout.md 1.6.3).") from e
+    return body
 
 
 #: What a gathered rung took from which upstream attempt, one ``<file> <-
@@ -267,10 +280,10 @@ GATHERED_FROM_FILE = ".gathered-from"
 
 def write_gathered_from(attempt_dir, gathered) -> None:
     """``gathered`` -- ``[(source attempt, filename), ...]`` in the order
-    taken -- as the attempt's ``.gathered-from``."""
-    (Path(attempt_dir) / GATHERED_FROM_FILE).write_text(
-        "".join(f"{fn} <- {src}\n" for src, fn in gathered),
-        encoding="utf-8")
+    taken -- as the attempt's ``.gathered-from``, through `persist`."""
+    _persist().write_bytes(
+        Path(attempt_dir) / GATHERED_FROM_FILE,
+        "".join(f"{fn} <- {src}\n" for src, fn in gathered).encode("utf-8"))
 
 
 def read_gathered_from(attempt_dir) -> List[dict]:
@@ -289,4 +302,4 @@ def read_gathered_from(attempt_dir) -> List[dict]:
     return out
 
 
-__all__ = ["RUN_LAUNCH_SCHEMA", "RUN_LAUNCH_FILE", "was_launched", "continued_from_marker", "ENGINE_END_MARK", "read_concluded", "Ending", "ending", "launch_record_path", "write_run_launch", "read_run_launch", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]
+__all__ = ["RUN_LAUNCH_SCHEMA", "RUN_LAUNCH_FILE", "LaunchRecordError", "continued_from_marker", "ENGINE_END_MARK", "read_concluded", "Ending", "ending", "launch_record_path", "write_launch", "launch_record", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]

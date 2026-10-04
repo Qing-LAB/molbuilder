@@ -1,5 +1,6 @@
-# HOW A RUN ENDED, AND THE RUN TO BUILD ON -- `docs/execution/architecture.md`
-# § 3.2 (`ending`, `usable`), `docs/execution/job-system.md` § 5.4.
+# A RUN'S OWN RECORDS -- LAUNCHED, HOW IT ENDED, AND THE RUN TO BUILD ON --
+# `docs/execution/architecture.md` § 3.2 (`launch_record`, `ending`,
+# `usable`), `docs/execution/job-system.md` § 5.4.
 #
 # ONE door says whether a run ended on its own and with what exit code: its
 # own conclusion marker, else the engine's end mark where it can belong only
@@ -8,9 +9,13 @@
 # code 0 (`continuation.usable`) -- a continuing stage, the frequency stage's
 # geometry, a transport rung's inputs.  Until 2026-10-03 three readers
 # answered: status said finished where prep refused, and a frequency stage
-# measured at a relaxation that had failed.  Each disagreement is a row.
+# measured at a relaxation that had failed.  Whether a run was launched is
+# its launch record (`runrecord.launch_record`), and one that does not read
+# is an error naming the file -- it read as *launched, the details lost*
+# while launch's gates asked whether the file was there.  Each disagreement
+# is a row.
 #
-# `tests/test_how_a_run_ended.py` runs every case down the road a person
+# `tests/test_run_records.py` runs every case down the road a person
 # runs, through the one runner every contract table shares
 # (`tests/support/road.py`, `run_road_case`, whose header names each key):
 # the stage before is prepped, its run laid down as it ended (`ran`), then
@@ -91,3 +96,18 @@ before = [["prep", "run", "relax"]]
 ran = { stage = "relax", rc = 1, output = "ended" }
 stage = "freq"
 refused = ["whose newest attempt failed (rc=1 at Thu Sep 24 02:38:51 PM MST 2026)", "a run that ended with an error is never built on", "molbuilder jobset launch run relax"]
+
+# ===================================================================== #
+#  LAUNCHED                                                             #
+# ===================================================================== #
+
+[[case]]
+name = "a launch record that does not read is an error naming the file -- status says so, and launch refuses rather than send the run again"
+before = [["prep", "run", "coarse"]]
+ran = { launch_record = '{"schema": "molbuilder/run-la' }
+stage = "medium"
+said = ["continues from 01_coarse/run-0"]
+status_says = ["unknown", "01_coarse/run-0/run.json does not read as a launch record"]
+launch = []
+launch_mode = "direct"
+launch_refused = ["01_coarse/run-0/run.json does not read as a launch record", "whether this run was launched cannot be told"]

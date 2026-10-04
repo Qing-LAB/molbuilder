@@ -448,9 +448,15 @@ class JobDirParser(DirParser):
                 "(project-layout.md § 1.4)")
         elif place == calcdirs.RUN or openable:
             # WITH ITS LAUNCH RECORD: an attempt prepped and never launched
-            # is `pending`, not "running" (`run_status`).
-            from molbuilder.runrecord import read_run_launch
-            st = run_status(d, launch=read_run_launch(d))
+            # is `pending`, not "running" (`run_status`).  One that does not
+            # read is said, and the files answer without it -- never read as
+            # launched or not (`runrecord.launch_record`).
+            from molbuilder.runrecord import LaunchRecordError, launch_record
+            try:
+                st = run_status(d, launch=launch_record(d))
+            except LaunchRecordError as e:
+                attempts.append(str(e))
+                st = run_status(d)
             # ``active_source`` is the status's own pick -- stage, then mtime
             # (§ 5.1, user ruling 2026-09-04) -- and a bare filename.
             status = {"state": st.state, "detail": st.detail,

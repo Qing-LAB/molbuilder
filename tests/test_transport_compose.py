@@ -336,7 +336,8 @@ class TestStrictComposition:
         root, _, _ = tree
         attempt = root / "J/optimization/Relax/01_coarse/run-0"
         (attempt / "Relax_01_coarse-run0.concluded").unlink()
-        (attempt / "run.json").write_text("{}")
+        from molbuilder.runrecord import write_launch
+        write_launch(attempt, mode="direct", command=["bash", "x"])
         with pytest.raises(ComposeError) as e:
             compose_junction(_CITE, tree_root=root)
         msg = str(e.value)
@@ -353,7 +354,8 @@ class TestStrictComposition:
         root, _, _ = tree
         attempt = root / "J/optimization/Relax/01_coarse/run-0"
         (attempt / "Relax_01_coarse-run0.concluded").unlink()
-        (attempt / "run.json").write_text("{}")
+        from molbuilder.runrecord import write_launch
+        write_launch(attempt, mode="direct", command=["bash", "x"])
         (attempt / "0_NORMAL_EXIT").write_text("")
         out = compose_junction(_CITE, tree_root=root)
         assert "0_NORMAL_EXIT" in out.provenance["evidence"]

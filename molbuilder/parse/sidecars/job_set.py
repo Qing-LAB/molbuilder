@@ -79,33 +79,32 @@ def _load_sweep(path: Path) -> dict:
     caller that asks this parser directly, and nothing else.  Carrying a
     reason through the fan-out is a registry change, not a parser one.
     """
-    from molbuilder.jobset.model import FILENAME, KIND_SWEEP, SCHEMA
+    from molbuilder.jobset.model import FILENAME, KIND_SWEEP, JobSet
 
     p = Path(path)
     if p.name != FILENAME:
         raise JobSetReadError(f"{p.name} is not {FILENAME}")
+    # THROUGH THE ONE DOOR, `JobSet.load` (`persist`, the schema by name and
+    # major -- `execution/architecture.md` § 3.2): this read the file raw and
+    # compared the schema exactly until 2026-10-03, a second answer to what
+    # a job set is.
     try:
-        text = p.read_text(encoding="utf-8")
+        js = JobSet.load(p)
     except OSError as exc:
         raise JobSetReadError(f"{p.name} could not be read: {exc}") from exc
-    try:
-        said = json.loads(text)
-    except ValueError as exc:
+    except json.JSONDecodeError as exc:
         raise JobSetReadError(
             f"{p.name} is not valid JSON -- a killed write leaves this "
             f"shape: {exc}") from exc
-    if not isinstance(said, dict):
+    except (ValueError, KeyError, TypeError) as exc:
         raise JobSetReadError(
-            f"{p.name} holds a {type(said).__name__}, not an object")
-    if said.get("schema") != SCHEMA:
+            f"{p.name} does not read as a job set: {exc}") from exc
+    if js.kind != KIND_SWEEP:
         raise JobSetReadError(
-            f"{p.name} says schema {said.get('schema')!r}, not {SCHEMA!r}")
-    if said.get("kind") != KIND_SWEEP:
-        raise JobSetReadError(
-            f"{p.name} says kind {said.get('kind')!r}, not {KIND_SWEEP!r} -- "
+            f"{p.name} says kind {js.kind!r}, not {KIND_SWEEP!r} -- "
             f"an ordinary calculation's stage ladder is also called "
             f"{FILENAME}, and its result is the runs below it, not this file")
-    return said
+    return js.to_dict()
 
 
 class JobSetSweepFileParser(FileParser):

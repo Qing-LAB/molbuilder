@@ -410,6 +410,18 @@ class _Plan:
                 f"structure): " + rollback("its prep", base=self.base))
 
 
+def _launched(where, basename: Optional[str] = None) -> bool:
+    """Was this run launched -- the one door's answer
+    (`runrecord.launch_record`), every gate of launch asking it.  A record
+    that does not read is a refusal naming the file: launching over it could
+    send a job twice, and not launching could hide one in the queue."""
+    from ..runrecord import LaunchRecordError, launch_record
+    try:
+        return launch_record(where, basename) is not None
+    except LaunchRecordError as e:
+        raise SubmitError(str(e)) from e
+
+
 def _plan_job(jobset: JobSet, base: Path, job, *, mode: str) -> _Plan:
     """Where ``job`` runs and what it follows -- read, never written.
 
@@ -435,7 +447,7 @@ def _plan_job(jobset: JobSet, base: Path, job, *, mode: str) -> _Plan:
     from .commands import command
     from ..paths import attempts_in
     from .materialize import (bench_stage_of, continuation_files, job_dir_names, launch_record_at, shape_of)
-    from ..runrecord import ending, launch_record_path, was_launched
+    from ..runrecord import ending, launch_record_path
     _plan = functools.partial(_Plan, base=base)
     sh = shape_of(jobset, base)
     container = base / job_dir_names(jobset, sh)[job.name]
@@ -445,7 +457,7 @@ def _plan_job(jobset: JobSet, base: Path, job, *, mode: str) -> _Plan:
         run = _trial_run_dir(container)
         where, basename = launch_record_at("sweep", job, container,
                                            run if ns else None)
-        if not was_launched(where, basename):
+        if not _launched(where, basename):
             return _plan(job, container, run, bool(ns), run)
         if mode in ("direct", "ask"):
             return _plan(job, container, run, bool(ns), run,
@@ -483,12 +495,12 @@ def _plan_job(jobset: JobSet, base: Path, job, *, mode: str) -> _Plan:
                 f"1.6), and a prepped stage is not prepped again: "
                 + rollback("its prep", base=base))
         where, basename = launch_record_at("ladder", job, container, None)
-        if not was_launched(where, basename):
+        if not _launched(where, basename):
             return _plan(job, container, container, False, container)
         return _plan(job, container, container, False, container, again=True,
                      concluded=ending(container, stem).line)
     last = attempt_dir(container, ns[-1])
-    if not was_launched(last):
+    if not _launched(last):
         return _plan(job, container, last, True, last)
     source = str(last.relative_to(base))
     try:
@@ -730,7 +742,6 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
     and ``dry_run`` nothing is written.
     """
     from .materialize import job_dir_names, shape_of
-    from ..runrecord import was_launched
     dirs = job_dir_names(jobset, shape_of(jobset, base_dir))
     base = Path(base_dir)
     if only not in (None, "cpu", "gpu"):
@@ -762,7 +773,7 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
         multi = len(shelves) > 1
         for key in sorted(shelves, key=_shelf_width, reverse=True):
             pending = [j for j in shelves[key]
-                       if not was_launched(
+                       if not _launched(
                            _trial_run_dir(base / dirs[j.name]))]
             if not pending:
                 continue            # this shelf already rode a group
@@ -839,7 +850,7 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
     #
     # So a refusal is DATA on that shelf's result, not an exception over
     # the sweep.  Nothing is lost by continuing: the trials of a refused
-    # shelf keep no launch record, so `was_launched` leaves them pending
+    # shelf keep no launch record, so `_launched` leaves them pending
     # and the next `launch bench` picks up exactly them.
     results: List[JobResult] = []
     refused: List[str] = []
@@ -1054,7 +1065,7 @@ def submitted_cap_notes(plans) -> List[str]:
 
     **A note, not a refusal**, and that is the design.  A refused shelf
     already costs nothing: its trials keep no launch record, so
-    ``was_launched`` leaves them pending and the next ``launch bench``
+    ``_launched`` leaves them pending and the next ``launch bench``
     picks up exactly them.  What was missing was not enforcement, it was
     being TOLD -- a sweep of six went to a queue that takes two, and the
     person learned the cap from four red refusals after saying yes.
@@ -1376,7 +1387,7 @@ def _launch_prepared(base: Path, dirs, prep: "_Prepared") -> List[JobResult]:
     jid = _parse_sbatch_id(cp.stdout)
     results = [JobResult(name, cmd, "submitted", job_id=jid)]
     for j in pending:
-        # WHERE IT RAN, not the container.  `was_launched` reads the
+        # WHERE IT RAN, not the container.  `_launched` reads the
         # attempt (`_trial_run_dir`), so recording in the container left
         # every grouped trial reading *never launched* -- and a re-launch
         # re-submitted work that had already measured its point.  The
@@ -1423,7 +1434,6 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
     from ..task import bias_token
     from ..transport.stages import rung_containers, scan_points
     from .materialize import latest_attempt
-    from ..runrecord import was_launched
 
     if mode not in ("submit", "ask", "direct"):
         raise SubmitError(f"unknown mode {mode!r}: submit, ask or direct")
@@ -1467,7 +1477,7 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
                 f"{token}/{bias_token(v)}/ -- the scan launches whole, so "
                 f"every point needs one, and a prepped stage is not prepped "
                 f"again: " + rollback("its prep", base=base))
-        if was_launched(att):
+        if _launched(att):
             raise SubmitError(
                 f"bias point {bias_token(v)}: {att.relative_to(base)} "
                 f"has already been launched.  An attempt is immutable once "
@@ -1642,14 +1652,14 @@ def _record_launch(attempt: Path, *, mode: str, command: List[str],
     the opposite reason: submission is what knows where the job went, and
     nothing downstream should have to work it out from a command line.
     """
-    from ..runrecord import continued_from_marker, write_run_launch
+    from ..runrecord import continued_from_marker, write_launch
     src = None
     marker = continued_from_marker(attempt, basename)
     if marker.is_file():
         src = marker.read_text(encoding="utf-8").strip() or None
-    write_run_launch(attempt, mode=mode, command=command, job_id=job_id,
-                     continued_from=src, placed_on=_placed_on(placement),
-                     basename=basename)
+    write_launch(attempt, mode=mode, command=command, job_id=job_id,
+                 continued_from=src, placed_on=_placed_on(placement),
+                 basename=basename)
 
 
 # --------------------------------------------------------------------- #

@@ -508,8 +508,8 @@ def _pyscf_sys(f: RunFiles) -> Dict[str, Any]:
 
 def _launch_record(f: RunFiles) -> Dict[str, Any]:
     """``run.json`` -- how the attempt was launched (`materialize`)."""
-    from ...runrecord import read_run_launch
-    rec = read_run_launch(f.directory,
+    from ...runrecord import launch_record
+    rec = launch_record(f.directory,
                           basename=f.deck.stem if f.deck else None) or {}
     # `continued_from`: the run this attempt continued from, as prep took it
     # (`job-system.md` § 5.4, plan W37) -- written by the launch from the

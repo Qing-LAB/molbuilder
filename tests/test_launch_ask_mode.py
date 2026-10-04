@@ -207,7 +207,7 @@ def test_asking_writes_NOTHING_to_the_tree(tmp_path, monkeypatch):
     Found live during the full review: one ask, and a running relax
     vanished from the status table."""
     from molbuilder.paths import attempts_in
-    from molbuilder.runrecord import write_run_launch
+    from molbuilder.runrecord import write_launch
     from molbuilder.jobset.model import Job, JobSet, Resources
     from molbuilder.jobset.submit import submit_jobset
 
@@ -220,7 +220,7 @@ def test_asking_writes_NOTHING_to_the_tree(tmp_path, monkeypatch):
     (d / "run-0" / "J_01_coarse.fdf").write_text("SystemLabel J\n")
     (base / "J_01_coarse.fdf").write_text("SystemLabel J\n")
     (d / "run-0" / "J.XV").write_text("warm state, mid-flight")
-    write_run_launch(d / "run-0", mode="direct", command=["bash", "x"])
+    write_launch(d / "run-0", mode="direct", command=["bash", "x"])
 
     before = attempts_in(d)
     try:
@@ -322,7 +322,7 @@ def test_ask_answers_on_the_road_and_launches_nothing(tmp_path, monkeypatch,
     printed without its no-scheduler guard; the closing line always naming
     `--mode submit`.
     """
-    from molbuilder.runrecord import read_run_launch, was_launched
+    from molbuilder.runrecord import launch_record
 
     calls = tmp_path / "sbatch-calls.log"
     if machine == "scheduler answers":
@@ -355,7 +355,7 @@ def test_ask_answers_on_the_road_and_launches_nothing(tmp_path, monkeypatch,
     assert r.exit_code == 0, r.output
     out = r.output
 
-    assert read_run_launch(attempt) is None and not was_launched(attempt), (
+    assert launch_record(attempt) is None, (
         f"asking recorded a launch in {attempt.name}: `status` would now "
         f"report a job nobody submitted\n{out}")
     if machine == "scheduler answers":

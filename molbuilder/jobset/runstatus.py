@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional
 from ..identity import StageRef
 from ..paths import attempts_in
 from .materialize import (job_dir_names, launch_record_at, latest_attempt, run_dir, shape_of, stage_refs)
-from ..runrecord import read_run_launch
+from ..runrecord import LaunchRecordError, launch_record
 from .commands import block, command, launch_lines, rollback
 from .model import JobSet
 from .plan import resources_text
@@ -325,9 +325,16 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, sh, dirs,
         # too (`materialize.launch_record_at`): the attempt when one exists;
         # a sweep trial's at the trial's top; a flat stage's own record,
         # named by its deck, in the directory every stage shares.  This
-        # spelled the rule a second time until 2026-10-01 (W52).
-        launch = read_run_launch(
-            *launch_record_at(jobset.kind, job, home, attempt))
+        # spelled the rule a second time until 2026-10-01 (W52).  ONE THAT
+        # DOES NOT READ is said, never read as launched or not
+        # (`runrecord.launch_record`).
+        try:
+            launch = launch_record(
+                *launch_record_at(jobset.kind, job, home, attempt))
+        except LaunchRecordError as e:
+            read.append((home, volts, attempt, observed, None, "unknown",
+                         str(e)))
+            continue
         read.append((home, volts, attempt, observed, launch)
                     + _stage_state(observed, launch, basename))
     # A SCAN'S RUNG SPEAKS FROM ITS FIRST POINT NOT FINISHED, in the

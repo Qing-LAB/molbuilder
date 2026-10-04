@@ -552,7 +552,7 @@ def test_the_group_sequencer_runs_every_trial_and_survives_failures(
 
     from molbuilder.jobset._cli import _load_bench_set
     from molbuilder.jobset.materialize import job_dir_names, shape_of
-    from molbuilder.runrecord import was_launched
+    from molbuilder.runrecord import launch_record
     from molbuilder.jobset.submit import _trial_run_dir, submit_bench_group
 
     # A DECLARED one-shelf sweep (one machine point x a block_size value
@@ -650,7 +650,7 @@ def test_the_group_sequencer_runs_every_trial_and_survives_failures(
     assert "took=" in log and "s" in log
     for job in js.jobs:
         where = _trial_run_dir(base / dirs[job.name])
-        assert was_launched(where), f"{job.name} has no launch record"
+        assert launch_record(where) is not None, f"{job.name} has no launch record"
         rec = _json.loads((where / "run.json").read_text())
         assert rec.get("job_id") == "4242"
 
@@ -1649,11 +1649,11 @@ def test_a_direct_sweep_resumes_past_launched_trials(calc):
     grouped path collects the still-unlaunched remainder the same way."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
-    from molbuilder.runrecord import write_run_launch
+    from molbuilder.runrecord import write_launch
     js = _prep_bench(calc)
     first = js["jobs"][0]["name"]
-    write_run_launch(_artifacts(calc, first),
-                     mode="direct", command=["bash", "x"])
+    write_launch(_artifacts(calc, first),
+                 mode="direct", command=["bash", "x"])
     res = CliRunner().invoke(jobset_group,
                              ["launch", "bench", "coarse",
                               "--bundle", str(calc),
@@ -1668,12 +1668,12 @@ def test_a_direct_sweep_resumes_past_launched_trials(calc):
     # mid-function by a merge; kept as the comment it really is).
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
-    from molbuilder.runrecord import write_run_launch
+    from molbuilder.runrecord import write_launch
     js = _prep_bench(calc)
     first = js["jobs"][0]["name"]
     second = js["jobs"][1]["name"]
-    write_run_launch(_artifacts(calc, first),
-                     mode="submit", command=["sbatch", "x"], job_id="42")
+    write_launch(_artifacts(calc, first),
+                 mode="submit", command=["sbatch", "x"], job_id="42")
     r = CliRunner()
     res = r.invoke(jobset_group, ["launch", "bench", "coarse", first,
                                   "--bundle", str(calc),
@@ -2526,7 +2526,7 @@ def test_every_shelf_is_written_before_any_is_sent(calc, monkeypatch):
 
     from molbuilder.jobset._cli import _load_bench_set
     from molbuilder.jobset.materialize import job_dir_names, shape_of
-    from molbuilder.runrecord import was_launched
+    from molbuilder.runrecord import launch_record
     from molbuilder.jobset.submit import submit_bench_group
 
     _describe_cpu(calc)
@@ -2587,7 +2587,7 @@ def test_every_shelf_is_written_before_any_is_sent(calc, monkeypatch):
     pend = [r.name for r in results if r.status == "stays pending"]
     assert pend
     for name in pend:
-        assert not was_launched(base / dirs[name]), (
+        assert launch_record(base / dirs[name]) is None, (
             f"{name} rode a refused group; it must stay pending")
 
 
@@ -2664,11 +2664,12 @@ def test_the_sequencer_cds_where_the_wrapper_ACTUALLY_is(calc, monkeypatch):
     assert checked, "no run_trial lines to check -- re-anchor this pin"
 
 
-def test_a_grouped_launch_records_where_was_launched_LOOKS(calc, monkeypatch):
+def test_a_grouped_launch_records_where_the_launched_door_LOOKS(calc,
+                                                             monkeypatch):
     """`run.json` is written where the job RAN and read from the same
     place, or a re-launch re-submits work that has already measured.
 
-    The grouped path wrote it into the container while `was_launched`
+    The grouped path wrote it into the container while the launched check
     read the attempt (`_trial_run_dir`) -- so every trial read *never
     launched* forever.  The single-job paths had always resolved this;
     only this one did not, which is what one shared resolver now prevents.
@@ -2678,7 +2679,7 @@ def test_a_grouped_launch_records_where_was_launched_LOOKS(calc, monkeypatch):
 
     from molbuilder.jobset._cli import _load_bench_set
     from molbuilder.jobset.materialize import job_dir_names, shape_of
-    from molbuilder.runrecord import was_launched
+    from molbuilder.runrecord import launch_record
     from molbuilder.jobset.submit import _trial_run_dir, submit_bench_group
 
     _describe_cpu(calc)
@@ -2710,7 +2711,7 @@ def test_a_grouped_launch_records_where_was_launched_LOOKS(calc, monkeypatch):
         assert (where / "run.json").is_file(), (
             f"{job.name}: no run.json at {where} -- the record and the "
             f"check must name one directory")
-        assert was_launched(where), f"{job.name} reads as never launched"
+        assert launch_record(where) is not None, f"{job.name} reads as never launched"
 
 
 def test_only_a_bench_prefixed_directory_counts_as_a_trial(tmp_path):

@@ -128,7 +128,7 @@ def collect_sweep(base_dir, task, *,
     from ..engine_atom_index import from_engine_index
     from ..jobset.commands import rollback
     from ..jobset.materialize import latest_attempt
-    from molbuilder.runrecord import read_run_launch
+    from molbuilder.runrecord import launch_record
     from ..jobset.materialize import stage_home
     from ..parse.dirs import run_status
     from ..parse.engines.siesta_fc import (EV_PER_ANG2_TO_HARTREE_PER_BOHR2,
@@ -191,7 +191,7 @@ def collect_sweep(base_dir, task, *,
             continue
         spectrum = attempt / spectrum_name
         if not spectrum.is_file():
-            st = run_status(attempt, launch=read_run_launch(attempt))
+            st = run_status(attempt, launch=launch_record(attempt))
             entry = {"stage": name, "attempt": rel(attempt),
                      "state": st.state, "detail": st.detail}
             if st.state in ("pending", "queued", "running"):

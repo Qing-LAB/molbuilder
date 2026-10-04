@@ -1537,7 +1537,7 @@ system** adds is submission and routing:
   and **one scheduler refusal does not cancel the rest**: the shelves are
   independent jobs the queue may run concurrently, so a refusal is recorded
   on that shelf's result and the loop goes on. Its trials keep no launch
-  record, so `was_launched` leaves them pending and the next `launch` picks
+  record, so the launched door (`runrecord.launch_record`) leaves them pending and the next `launch` picks
   up exactly them. The command reports what went out and what did not.
 
   > **Both halves were one fault, found 2026-08-30.** Rendering and

@@ -264,7 +264,8 @@ def classify_citation(cite_dir: Path) -> CitedDir:
     wins when both are present — the deck carries the contract, and
     more information never loses to less.
     """
-    from molbuilder.runrecord import RUN_LAUNCH_FILE, ending
+    from molbuilder.runrecord import (LaunchRecordError, ending,
+                                      launch_record)
     from ..runfiles import find_by_role
     cite_dir = Path(cite_dir)
     # THE DECK IS OURS AND THE REST IS NOT, and the two halves of this
@@ -322,11 +323,15 @@ def classify_citation(cite_dir: Path) -> CitedDir:
         # classification only RECORDS the state (describing ahead of a
         # running relax is legal); COMPOSING from it refuses (strict
         # composition, ruling Q2 -- compose_junction).
-        # `run.json` is ONE NAME, so it is asked as one -- it globbed a
-        # literal with no wildcard in it.  `.concluded` is the catalogue's, so
-        # the catalogue finds it.
-        has_record = (concluded is not None
-                      or (cite_dir / RUN_LAUNCH_FILE).is_file()
+        # LAUNCHED is the one door's answer (`runrecord.launch_record`), and
+        # a record that does not read is refused by name -- never "launched"
+        # or "not".  `.concluded` is the catalogue's, so the catalogue finds
+        # it.
+        try:
+            launched = launch_record(cite_dir) is not None
+        except LaunchRecordError as e:
+            raise ComposeError(str(e)) from e
+        has_record = (concluded is not None or launched
                       or bool(find_by_role(cite_dir, ".concluded")))
         return CitedDir(path=cite_dir, form="relaxation", deck=deck,
                         xv=xvs[0], concluded=concluded,
