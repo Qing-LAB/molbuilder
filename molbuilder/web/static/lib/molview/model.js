@@ -821,14 +821,17 @@ export function createModel(opts) {
         },
 
         /* The `info` doors (molview.md § 8.4a, structure-info-plan.md):
-         * the free-form NON-structural store.  UNGATED on a read-only
-         * viewer -- § 9.4's one question ("does this change the
-         * structure the calculation ran on?") answers no: `info`
-         * DESCRIBES the structure, which is exactly what lets the
-         * read-only Results viewer attach the recorded contract before
-         * an export.  Mutations never raise the unsaved badge (host
-         * work, not user edits) and announce so the Metadata pane
-         * repaints.  Values are JSON only, checked at the door. */
+         * the free-form NON-structural store.  The HOST's -- `set`,
+         * `remove` -- are UNGATED on a read-only viewer: § 9.4's one
+         * question ("does this change the structure the calculation ran
+         * on?") answers no, `info` DESCRIBES the structure, which is
+         * exactly what lets the read-only Results viewer attach the
+         * recorded contract before an export.  They never raise the
+         * unsaved badge (a page describing what it loaded has changed
+         * nothing the person made).  The PERSON's -- `edit`, `drop`, the
+         * Metadata page's -- are gated and recorded (below).  Every door
+         * announces, so the page repaints; values are JSON only, checked
+         * at the door. */
         info: {
             set(key, value) {
                 if (!structure || typeof key !== "string" || !key) {
@@ -857,6 +860,49 @@ export function createModel(opts) {
                 return structure && structure.info
                     ? JSON.parse(JSON.stringify(structure.info)) : {};
             },
+            /* THE PERSON'S DOORS (§ 8.4a; user, 2026-10-03: "we need to
+             * allow user to edit it too").  GATED: a read-only viewer's
+             * store is rebuilt from the run's files at every load, so an
+             * edit there would vanish -- refused, as every structure edit
+             * is.  RECORDED like any other edit (`recordEdit`): the unsaved
+             * badge rises and Retract takes it back, since a history state
+             * is the structure entire, the store with it.
+             *
+             * AN EDITED RECORD SAYS SO.  A block that names its `source` --
+             * a run's recorded contract, its relaxation -- is no longer what
+             * that source said once a person changes it, so the edit stamps
+             * `edited_by_hand` (the time), and the relaxation check reads
+             * the values as the person's word.  An edit that changes nothing
+             * records nothing. */
+            edit: gated(function (key, value) {
+                if (!structure || typeof key !== "string" || !key) return false;
+                let v;
+                try { v = JSON.parse(JSON.stringify({ v: value === undefined
+                                                         ? null : value })).v; }
+                catch (_) { return false; }
+                const had = structure.info && key in structure.info
+                    ? JSON.stringify(structure.info[key]) : undefined;
+                if (had !== undefined && had === JSON.stringify(v)) return true;
+                if (v && typeof v === "object" && !Array.isArray(v)
+                        && "source" in v) {
+                    v.edited_by_hand = new Date().toISOString();
+                }
+                structure.info = structure.info || {};
+                structure.info[key] = v;
+                announceStructure();
+                recordEdit();
+                return true;
+            }, false),
+            drop: gated(function (key) {
+                if (!structure || !structure.info
+                        || !(key in structure.info)) {
+                    return false;
+                }
+                delete structure.info[key];
+                announceStructure();
+                recordEdit();
+                return true;
+            }, false),
         },
         // The atoms carrying the reserved frozen label. A cut of the same one
         // mechanism (§ 6.6), not a field of its own.

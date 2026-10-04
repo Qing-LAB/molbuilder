@@ -264,6 +264,7 @@ made; the Metadata pane shows the raw store.
 |---|---|---|
 | ticked | absent | the plain warning of the table above, and an info line that no record travels with this structure — the statement stands on its own and the finish measures it |
 | ticked | present, for a different geometry (another frame of that run, or edited since — the fingerprint differs) | **warning**: the record does not vouch for these coordinates |
+| any | edited by hand (`edited_by_hand`, a person's change on MolView's Metadata page — [`web/molview.md`](?doc=web/molview.md) § 8.4a) | an info line first: the record's values are the person's word, not the run's — then the findings below, read from those values |
 | ticked | present, for these coordinates | the engine, the tolerance, the steps and the largest remaining force are shown; a different engine, a different level of theory (`info.calculation` against this form's basis, functional, mesh cutoff, electronic temperature, and the charge and spin it will carry, resolved), a largest force above **this calculation's** tolerance, or a different held set is each a **warning** naming the number or the field; within tolerance at the same level is an info line |
 | unticked | present, for these coordinates, within this calculation's tolerance at the same level and held set | an info line: the record already meets this calculation's criterion, so the box may be ticked and the relaxation skipped |
 | unticked | anything else | the same facts as information; the ladder relaxes regardless |

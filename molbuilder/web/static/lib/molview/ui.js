@@ -1876,17 +1876,337 @@ function mountPanel(doc, card, model) {
 
     /* ── The Metadata page (§ 8.4a) ──────────────────────────────────────
      *
-     * DISPLAY, never a mutator: it renders the structure's `info` store
-     * -- free-form, NON-structural metadata the host tabs write through
-     * `data.info` -- as a read-only key/value listing.  What shows here
-     * is exactly what the .xyz+.molstruct.json pair will carry. */
+     * READ THROUGH, NOT SCROLLED PAST (user, 2026-10-03: "we need a good
+     * way to go through them").  A run's recorded contract and relaxation
+     * were 343 lines of raw JSON -- the 150 held atoms, twice, one to a
+     * line.  So the store is a tree: each entry a section that folds, its
+     * line saying what it holds; a field a row; a nested block a section of
+     * its own; a long list folded to its count and opened as one wrapped
+     * line; a long string cut short, its whole text a hover away -- under a
+     * pinned bar: a filter, expand / collapse all, the raw JSON.
+     *
+     * EDITED WHERE THE STRUCTURE IS SAVED (user: "we need to allow user to
+     * edit it too"; "a: yes, b: yes").  On an editable viewer a field's
+     * value is changed in its row, an entry added, removed, or edited as
+     * JSON -- through the person's doors, `info.edit` / `info.drop`, which
+     * are gated and recorded (model.js).  A read-only viewer reads only,
+     * and says where to edit: its store is rebuilt at every load.
+     *
+     * Every choice the person makes here -- what is folded, the filter, an
+     * edit in progress -- is this page's state, kept across the repaints a
+     * model change brings; the store itself is only ever read off the
+     * model. */
+    const INFO_CUT = 48;        // a string longer than this is cut short
+    const INFO_INLINE = 8;      // a list of plain values this short is one line
+    const infoClosed = new Set();     // paths of blocks the person folded
+    const infoOpenLists = new Set();  // paths of long lists the person opened
+    let infoRawShown = false;
+    let infoEdit = null;        // {kind: field|entry|raw|add, ...} or null
+    const infoEditable = () => model.mode !== "readonly";
+
+    const infoBar = el("div", "molviewer-info-bar");
+    const infoFilter = el("input", "molviewer-filter-text molviewer-info-filter");
+    infoFilter.type = "text";
+    infoFilter.placeholder = "Filter fields or values";
+    infoFilter.setAttribute("aria-label",
+        "Filter the metadata by a field's name or its value");
+    infoFilter.addEventListener("input", () => drawInfo());
+    infoBar.appendChild(infoFilter);
+    const infoButtons = {};
+    for (const [key, label] of [["expand", "Expand all"],
+                                ["collapse", "Collapse all"],
+                                ["raw", "Raw JSON"], ["add", "Add entry"]]) {
+        const b = el("button", "molviewer-selection-add-btn");
+        b.type = "button";
+        b.textContent = label;
+        b.setAttribute("data-info-action", key);
+        infoButtons[key] = b;
+        infoBar.appendChild(b);
+    }
+    pages.info.appendChild(infoBar);
+    const infoHint = el("p", "molviewer-info-hint");
+    infoHint.textContent = "Read only here: this structure's metadata is "
+        + "rebuilt from the run's files at every load.  Edit it on the "
+        + "Molbuilder or Modify tab, where the structure is saved.";
+    pages.info.appendChild(infoHint);
+    const infoError = el("p", "molviewer-info-error");
+    infoError.hidden = true;
+    pages.info.appendChild(infoError);
     const infoEmpty = el("p", "molviewer-info-empty");
     infoEmpty.textContent = "Nothing recorded.  Metadata is written by "
         + "the page that loaded this structure (a recorded calculation "
         + "contract, a note) and travels with the exported pair.";
     pages.info.appendChild(infoEmpty);
-    const infoList = el("dl", "molviewer-info-list");
-    pages.info.appendChild(infoList);
+    const infoTree = el("div", "molviewer-info-tree");
+    pages.info.appendChild(infoTree);
+
+    const isInfoObject = (v) => v !== null && typeof v === "object"
+        && !Array.isArray(v);
+    const isInfoPlain = (v) => v === null || typeof v !== "object";
+    const infoText = (v) => (typeof v === "string" ? v : JSON.stringify(v));
+    const infoCut = (t, most = INFO_CUT) => (t.length > most
+        ? t.slice(0, most - 1) + "…" : t);
+    const infoKey = (segs) => JSON.stringify(segs);
+
+    /** One line saying what a value holds: a list's count; a block's first
+     *  plain fields and how many more. */
+    function infoSummary(v) {
+        if (Array.isArray(v)) {
+            return v.length + (v.length === 1 ? " item" : " items");
+        }
+        if (!isInfoObject(v)) return infoCut(infoText(v));
+        const keys = Object.keys(v);
+        const shown = keys.filter((k) => isInfoPlain(v[k])).slice(0, 3)
+            .map((k) => k + ": " + infoCut(infoText(v[k]), 24));
+        const more = keys.length - shown.length;
+        return shown.join(" · ")
+            + (more > 0 ? (shown.length ? " · " : "") + "+" + more
+               + " more" : "");
+    }
+
+    /** Does this field -- its name, its value, anything under it -- hold
+     *  the filter's words? */
+    function infoHit(segs, v, q) {
+        if (!q) return true;
+        if (segs.join(".").toLowerCase().includes(q)) return true;
+        if (isInfoPlain(v)) return infoText(v).toLowerCase().includes(q);
+        if (Array.isArray(v)) {
+            return JSON.stringify(v).toLowerCase().includes(q);
+        }
+        return Object.keys(v).some((k) => infoHit(segs.concat(k), v[k], q));
+    }
+
+    function infoButton(label, run) {
+        const b = el("button", "molviewer-selection-add-btn");
+        b.type = "button";
+        b.textContent = label;
+        b.addEventListener("click", run);
+        return b;
+    }
+
+    function infoSay(message) {
+        infoError.textContent = message || "";
+        infoError.hidden = !message;
+    }
+
+    /** The value at ``segs`` replaced, in a copy of the entry it sits in. */
+    function infoWith(entry, segs, value) {
+        if (!segs.length) return value;
+        const out = JSON.parse(JSON.stringify(entry));
+        let at = out;
+        for (const s of segs.slice(0, -1)) at = at[s];
+        at[segs[segs.length - 1]] = value;
+        return out;
+    }
+
+    /** A field's new text, read as the value it replaces was: text stays
+     *  text; anything else is JSON, or refused with the reason. */
+    function infoParseField(textIn, was) {
+        if (typeof was === "string") return { ok: true, value: textIn };
+        try { return { ok: true, value: JSON.parse(textIn) }; }
+        catch (_) {
+            return { ok: false, error: "“" + textIn + "” is not JSON "
+                + "-- write a number, true, false, null, or text in quotes." };
+        }
+    }
+
+    function infoCommit(key, value) {
+        if (!model.info.edit(key, value)) {
+            infoSay("Not changed: this viewer does not save its structure.");
+            return false;
+        }
+        infoEdit = null;
+        infoSay("");
+        return true;
+    }
+
+    /* THE APP'S CODE VIEW, NOT A SECOND ONE (user, 2026-10-03: "we have
+     * codeview integration ... so don't reinvent the wheels"): the raw
+     * store and every JSON editor here are the vendored CodeMirror through
+     * its one loader (`lib/codemirror-load.js`) -- the JSON dialect, line
+     * numbers, its search -- fetched the first time one opens, as the
+     * projects preview and Task setup's editor fetch it.  A host repainted
+     * away before the load lands gets nothing. */
+    function infoCode(host, text, { readOnly, onChange }) {
+        import("../codemirror-load.js").then(async ({ loadCodeMirror, modeFor }) => {
+            const CM = await loadCodeMirror();
+            const mode = await modeFor("metadata.json");
+            if (!host.isConnected) return;
+            const cm = CM(host, { value: text, mode, lineNumbers: true,
+                                  lineWrapping: true, readOnly: !!readOnly,
+                                  viewportMargin: Infinity });
+            if (onChange) cm.on("change", () => onChange(cm.getValue()));
+        }).catch((e) => {
+            host.textContent = "The code view did not load: "
+                + ((e && e.message) || e);
+        });
+        return host;
+    }
+
+    /** An editor of JSON text -- an entry, the whole store, a new entry --
+     *  kept in `infoEdit`, so a repaint redraws it as it was being typed. */
+    function infoEditor(state, label, apply) {
+        const box = el("div", "molviewer-info-editor");
+        if (state.kind === "add") {
+            const name = el("input", "molviewer-filter-text");
+            name.placeholder = "entry name";
+            name.setAttribute("aria-label", "The new entry's name");
+            name.value = state.key || "";
+            name.addEventListener("input", () => { state.key = name.value; });
+            box.appendChild(name);
+        }
+        const code = el("div", "molviewer-info-code");
+        code.setAttribute("aria-label", label);
+        box.appendChild(infoCode(code, state.text, {
+            onChange: (text) => { state.text = text; } }));
+        const row = el("div", "molviewer-selection-actions-row");
+        row.appendChild(infoButton("Apply", apply));
+        row.appendChild(infoButton("Cancel", () => {
+            infoEdit = null;
+            infoSay("");
+            drawInfo();
+        }));
+        box.appendChild(row);
+        return box;
+    }
+
+    function infoRow(segs, name, v, q, top) {
+        const row = el("div", "molviewer-info-row");
+        row.setAttribute("data-path", segs.join("."));
+        const label = el("span", "molviewer-info-field");
+        label.textContent = name;
+        row.appendChild(label);
+        if (Array.isArray(v) && (v.length > INFO_INLINE
+                                 || !v.every(isInfoPlain))) {
+            const fold = el("details", "molviewer-info-items-fold");
+            const k = infoKey(segs);
+            fold.open = !!q || infoOpenLists.has(k);
+            fold.addEventListener("toggle", () => {
+                if (fold.open) infoOpenLists.add(k);
+                else infoOpenLists.delete(k);
+            });
+            const head = el("summary");
+            head.textContent = infoSummary(v);
+            fold.appendChild(head);
+            const items = el("div", "molviewer-info-items");
+            items.textContent = v.every(isInfoPlain)
+                ? v.map(infoText).join(", ") : JSON.stringify(v, null, 1);
+            fold.appendChild(items);
+            row.appendChild(fold);
+            return row;
+        }
+        const editing = infoEdit && infoEdit.kind === "field"
+            && infoKey(infoEdit.segs) === infoKey(segs);
+        if (editing) {
+            const input = el("input", "molviewer-filter-text molviewer-info-input");
+            input.value = infoEdit.text;
+            input.setAttribute("aria-label", "New value of " + segs.join("."));
+            input.addEventListener("input", () => { infoEdit.text = input.value; });
+            input.addEventListener("keydown", (ev) => {
+                if (ev.key === "Escape") {
+                    infoEdit = null;
+                    infoSay("");
+                    drawInfo();
+                } else if (ev.key === "Enter") {
+                    ev.preventDefault();
+                    const read = infoParseField(input.value, v);
+                    if (!read.ok) { infoSay(read.error); return; }
+                    const store = model.info.get();
+                    infoCommit(top, infoWith(store[top], segs.slice(1),
+                                             read.value));
+                    drawInfo();
+                }
+            });
+            row.appendChild(input);
+            // Focus lands in the field being edited, after it is placed.
+            Promise.resolve().then(() => input.focus());
+            return row;
+        }
+        const full = Array.isArray(v) ? "[" + v.map(infoText).join(", ") + "]"
+                                      : infoText(v);
+        const value = el("span", "molviewer-info-value");
+        value.textContent = infoCut(full);
+        if (full.length > INFO_CUT) value.title = full;
+        if (infoEditable() && !Array.isArray(v)) {
+            value.setAttribute("data-editable", "");
+            value.setAttribute("role", "button");
+            value.tabIndex = 0;
+            value.title = (value.title ? value.title + "\n\n" : "")
+                + "Click to change";
+            const begin = () => {
+                infoEdit = { kind: "field", segs, top,
+                             text: typeof v === "string" ? v : infoText(v) };
+                infoSay("");
+                drawInfo();
+            };
+            value.addEventListener("click", begin);
+            value.addEventListener("keydown", (ev) => {
+                if (ev.key === "Enter" || ev.key === " ") {
+                    ev.preventDefault();
+                    begin();
+                }
+            });
+        }
+        row.appendChild(value);
+        return row;
+    }
+
+    function infoBlock(segs, name, v, q, top) {
+        const block = el("details", segs.length === 1 ? "molviewer-info-entry"
+                                                      : "molviewer-info-block");
+        block.setAttribute("data-path", segs.join("."));
+        const k = infoKey(segs);
+        block.open = !!q || !infoClosed.has(k);
+        block.addEventListener("toggle", () => {
+            if (block.open) infoClosed.delete(k);
+            else infoClosed.add(k);
+        });
+        const head = el("summary", "molviewer-info-head");
+        const keyEl = el("span", "molviewer-info-key");
+        keyEl.textContent = name;
+        const sum = el("span", "molviewer-info-sum");
+        sum.textContent = infoSummary(v);
+        head.appendChild(keyEl);
+        head.appendChild(sum);
+        block.appendChild(head);
+        const body = el("div", "molviewer-info-fields");
+        if (isInfoObject(v)) {
+            for (const field of Object.keys(v)) {
+                const at = segs.concat(field);
+                if (q && !infoHit(at, v[field], q)) continue;
+                body.appendChild(isInfoObject(v[field])
+                    ? infoBlock(at, field, v[field], q, top)
+                    : infoRow(at, field, v[field], q, top));
+            }
+        } else {
+            body.appendChild(infoRow(segs, "value", v, q, top));
+        }
+        block.appendChild(body);
+        return block;
+    }
+
+    /** An entry's own actions: edit it as JSON, remove it -- the removal
+     *  asked once in place, never through a browser dialog. */
+    function infoEntryActions(key, v) {
+        const row = el("div", "molviewer-selection-actions-row molviewer-info-actions");
+        row.appendChild(infoButton("Edit as JSON", () => {
+            infoEdit = { kind: "entry", key, text: JSON.stringify(v, null, 2) };
+            infoSay("");
+            drawInfo();
+        }));
+        const remove = infoButton("Remove", () => {
+            remove.replaceWith(ask);
+        });
+        const ask = el("span", "molviewer-info-ask");
+        ask.appendChild(doc.createTextNode("Remove “" + key + "”? "));
+        ask.appendChild(infoButton("Yes", () => {
+            model.info.drop(key);
+            infoSay("");
+        }));
+        ask.appendChild(infoButton("No", () => drawInfo()));
+        row.appendChild(remove);
+        return row;
+    }
 
     function drawInfo() {
         const store = (model.info && typeof model.info.get === "function")
@@ -1900,21 +2220,149 @@ function mountPanel(doc, card, model) {
             if (keys.length) tab.setAttribute("data-has-content", "1");
             else tab.removeAttribute("data-has-content");
         }
-        infoEmpty.hidden = keys.length > 0;
-        infoList.textContent = "";
+        const editable = infoEditable();
+        // An edit in progress belongs to an editable viewer -- and to an
+        // entry that is still there.
+        if (!editable) infoEdit = null;
+        else if (infoEdit && (infoEdit.kind === "field" || infoEdit.kind === "entry")
+                 && !((infoEdit.top || infoEdit.key) in store)) infoEdit = null;
+        infoHint.hidden = editable;
+        infoButtons.add.hidden = !editable;
+        infoButtons.expand.hidden = infoButtons.collapse.hidden = infoRawShown;
+        infoFilter.hidden = infoRawShown;
+        infoButtons.raw.setAttribute("aria-pressed", infoRawShown ? "true" : "false");
+        infoEmpty.hidden = keys.length > 0 || !!infoEdit;
+        infoTree.textContent = "";
+
+        if (infoEdit && infoEdit.kind === "add") {
+            infoTree.appendChild(infoEditor(infoEdit, "The new entry's value, as JSON or text", () => {
+                const name = (infoEdit.key || "").trim();
+                if (!name) { infoSay("Name the new entry."); return; }
+                if (name in model.info.get()) {
+                    infoSay("“" + name + "” is already an entry -- "
+                            + "edit it instead.");
+                    return;
+                }
+                let value;
+                try { value = JSON.parse(infoEdit.text); }
+                catch (_) { value = infoEdit.text; }      // plain text is text
+                infoCommit(name, value);
+                drawInfo();
+            }));
+        }
+        if (infoRawShown) {
+            if (infoEdit && infoEdit.kind === "raw") {
+                infoTree.appendChild(infoEditor(infoEdit, "The whole store, as JSON", () => {
+                    let next;
+                    try { next = JSON.parse(infoEdit.text); }
+                    catch (e) { infoSay("Not applied -- not JSON: " + e.message); return; }
+                    if (!isInfoObject(next)) {
+                        infoSay("Not applied -- the store is a JSON object "
+                                + "of entries, {\"name\": value, ...}.");
+                        return;
+                    }
+                    const now = model.info.get();
+                    for (const k of Object.keys(now)) {
+                        if (!(k in next)) model.info.drop(k);
+                    }
+                    for (const k of Object.keys(next)) {
+                        if (!(k in now) || JSON.stringify(now[k])
+                                !== JSON.stringify(next[k])) {
+                            model.info.edit(k, next[k]);
+                        }
+                    }
+                    infoEdit = null;
+                    infoSay("");
+                    drawInfo();
+                }));
+            } else {
+                const code = el("div", "molviewer-info-code");
+                code.setAttribute("aria-label", "The whole store, as JSON");
+                infoTree.appendChild(infoCode(code, JSON.stringify(store, null, 2),
+                                              { readOnly: true }));
+                if (editable) {
+                    const row = el("div", "molviewer-selection-actions-row");
+                    row.appendChild(infoButton("Edit as JSON", () => {
+                        infoEdit = { kind: "raw", text: JSON.stringify(store, null, 2) };
+                        infoSay("");
+                        drawInfo();
+                    }));
+                    infoTree.appendChild(row);
+                }
+            }
+            return;
+        }
+        const q = String(infoFilter.value || "").trim().toLowerCase();
+        let shown = 0;
         for (const key of keys) {
-            const dt = el("dt", "molviewer-info-key");
-            dt.textContent = key;
-            infoList.appendChild(dt);
-            const dd = el("dd", "molviewer-info-value");
-            const pre = el("pre");
-            const v = store[key];
-            pre.textContent = (v !== null && typeof v === "object")
-                ? JSON.stringify(v, null, 2) : String(v);
-            dd.appendChild(pre);
-            infoList.appendChild(dd);
+            if (q && !infoHit([key], store[key], q)) continue;
+            shown += 1;
+            if (infoEdit && infoEdit.kind === "entry" && infoEdit.key === key) {
+                const block = el("div", "molviewer-info-entry");
+                const head = el("div", "molviewer-info-head");
+                const keyEl = el("span", "molviewer-info-key");
+                keyEl.textContent = key;
+                head.appendChild(keyEl);
+                block.appendChild(head);
+                block.appendChild(infoEditor(infoEdit, "The entry " + key + ", as JSON", () => {
+                    let value;
+                    try { value = JSON.parse(infoEdit.text); }
+                    catch (e) { infoSay("Not applied -- not JSON: " + e.message); return; }
+                    infoCommit(key, value);
+                    drawInfo();
+                }));
+                infoTree.appendChild(block);
+                continue;
+            }
+            const block = infoBlock([key], key, store[key], q, key);
+            if (editable) block.appendChild(infoEntryActions(key, store[key]));
+            infoTree.appendChild(block);
+        }
+        if (q && !shown) {
+            const none = el("p", "molviewer-info-empty");
+            none.textContent = "No field or value holds “" + q + "”.";
+            infoTree.appendChild(none);
         }
     }
+
+    infoButtons.expand.addEventListener("click", () => {
+        infoClosed.clear();
+        const store = model.info.get();
+        const lists = (segs, v) => {
+            if (Array.isArray(v)) infoOpenLists.add(infoKey(segs));
+            else if (isInfoObject(v)) {
+                for (const k of Object.keys(v)) lists(segs.concat(k), v[k]);
+            }
+        };
+        for (const k of Object.keys(store)) lists([k], store[k]);
+        drawInfo();
+    });
+    infoButtons.collapse.addEventListener("click", () => {
+        infoOpenLists.clear();
+        const store = model.info.get();
+        const blocks = (segs, v) => {
+            if (!isInfoObject(v)) return;
+            infoClosed.add(infoKey(segs));
+            for (const k of Object.keys(v)) blocks(segs.concat(k), v[k]);
+        };
+        for (const k of Object.keys(store)) {
+            infoClosed.add(infoKey([k]));
+            blocks([k], store[k]);
+        }
+        drawInfo();
+    });
+    infoButtons.raw.addEventListener("click", () => {
+        infoRawShown = !infoRawShown;
+        if (infoEdit && infoEdit.kind === "raw") infoEdit = null;
+        infoSay("");
+        drawInfo();
+    });
+    infoButtons.add.addEventListener("click", () => {
+        infoEdit = { kind: "add", key: "", text: "" };
+        infoRawShown = false;
+        infoSay("");
+        drawInfo();
+    });
 
     function atomCount() {
         const atoms = model.getAtoms();

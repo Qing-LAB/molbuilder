@@ -351,6 +351,16 @@ def test_a_matching_record_answers_the_ticked_box_with_its_numbers(
     assert "relaxed on siesta to 0.01 eV/Å" in found[0].message
     assert "0.0010 eV/Å, within this calculation's tolerance of 0.01" \
         in found[0].message
+    # EDITED BY HAND on MolView's Metadata page (`web/molview.md` § 8.4a):
+    # the same record, stamped as the page's door stamps it, says whose
+    # word its values are -- first -- and is read as stated after.
+    rec = dict(s.info["relaxation"], edited_by_hand="2026-10-03T12:00:00Z")
+    s.info["relaxation"] = rec
+    edited = _record_findings(s, cfg)
+    assert [i.severity for i in edited] == ["info", "info"], edited
+    assert edited[0].message.startswith(
+        "This structure's relaxation record was edited by hand"), edited[0]
+    assert edited[1].message == found[0].message
 
 
 def test_a_record_looser_than_this_calculation_warns_when_ticked(

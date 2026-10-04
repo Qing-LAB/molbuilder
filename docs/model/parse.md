@@ -1125,6 +1125,7 @@ geometry it left** — the `info.relaxation` block:
 | `converged` | the moved atoms' largest component within the run's tolerance (when a run held nothing the two figures are one figure). A run whose last step reports no force at all has no record |
 | `run_state` | how the run ended (§ 2b) |
 | `geometry_sha256` | the **last frame's** `Structure.geometry_fingerprint()` — sha256 over the **sorted** `geometry_lines()` (element and position rounded to a millionth of an ångström, negative zero folded), so it is the same whatever order a copy lists the atoms in — so a consumer can tell whether the coordinates in front of it are the ones this record is about. A rigid shift is not folded in: a pair exported from a run carries the run's cell, and no deck shifts a structure that states one |
+| `edited_by_hand` | *absent* as the run wrote it; the time a person changed the record on MolView's Metadata page ([`web/molview.md`](?doc=web/molview.md) § 8.4a) — from then on its values are the person's word, not the run's, and the relaxation check says so. The contract (`info.calculation`) is stamped the same way |
 
 **One openable output, or `None`** — the same rule as § 5b, read through the
 doors the Results tab opens a run with (`dirs.openable_in`, the registry's

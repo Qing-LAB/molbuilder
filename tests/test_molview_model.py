@@ -2103,6 +2103,86 @@ def test_deleting_every_atom_is_an_ORDINARY_EDIT():
         "deleting atoms destroyed the metadata -- that is `clear`'s job")
 
 
+def test_a_persons_metadata_edit_is_an_edit_and_a_hosts_write_is_not():
+    """`web/molview.md` § 8.4a *(user, 2026-10-03: "we need to allow user to
+    edit it too"; "a: yes, b: yes")*: the person's doors -- `info.edit`,
+    `info.drop`, the Metadata page's -- are gated and recorded: a point on
+    the sequence each, taken back by undo; refused on a read-only viewer,
+    whose store is rebuilt at every load.  The host's `set` stays silent.
+    A block that names its `source` is stamped `edited_by_hand` when a
+    person changes it; a value with no source is not; an edit that changes
+    nothing records nothing.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the person's doors ungated; an edit
+    not recorded; no stamp on a sourced block."""
+    out = _run("""
+        const files = new Map();
+        const store = {
+            workspaceId: (tag) => "id-" + tag,
+            persist: (tag, bytes, identity) => {
+                files.set(identity.workspace_id + ":" + identity.state_index,
+                          JSON.parse(JSON.stringify(bytes)));
+                return true;
+            },
+            readState: async (identity) => {
+                const key = identity.workspace_id + ":" + identity.state_index;
+                return files.has(key) ? files.get(key) : null;
+            },
+            pruneStatesAbove: () => {},
+        };
+        const settle = () => new Promise((r) => setTimeout(r, 0));
+        const m = createModel({ owner: "s", workspace: store });
+        await m.installMolecule({ text: "2\\n\\nC 0 0 0\\nO 1 0 0\\n",
+                                  filename: "x.xyz" });
+        const run = { engine: "siesta", source: "Relax.out", n_steps: 5 };
+        m.info.set("relaxation", run);                  // the host's write
+        m.info.set("note", "as loaded");
+        await settle();
+        const fresh = m.state_index;
+
+        const edited = m.info.edit("relaxation", Object.assign({}, run, { n_steps: 9 }));
+        const noted = m.info.edit("note", "mine");
+        await settle();
+        const afterEdits = m.state_index;
+        const same = m.info.edit("note", "mine");        // changes nothing
+        await settle();
+        const afterSame = m.state_index;
+        const dropped = m.info.drop("note");
+        await settle();
+        const afterDrop = { at: m.state_index, info: m.info.get() };
+        await m.undo();
+        await settle();
+        const afterUndo = m.info.get();
+
+        const ro = createModel({ mode: "readonly" });
+        await ro.installMolecule({ text: "2\\n\\nC 0 0 0\\nO 1 0 0\\n",
+                                   filename: "x.xyz" });
+        ro.info.set("note", "the run's");               // a host still writes
+        const roEdit = ro.info.edit("note", "mine");
+        const roDrop = ro.info.drop("note");
+        console.log(JSON.stringify({
+            fresh, edited, noted, afterEdits, same, afterSame, dropped,
+            afterDrop, afterUndo, info: afterDrop.info,
+            ro: { edit: roEdit, drop: roDrop, info: ro.info.get() },
+        }));
+    """)
+    assert out["edited"] is True and out["noted"] is True, out
+    assert out["afterEdits"] == out["fresh"] + 2, (
+        f"each person's edit lays down a point (§ 11.2): {out}")
+    assert out["afterSame"] == out["afterEdits"], (
+        "an edit that changes nothing recorded a point")
+    rel = out["info"]["relaxation"]
+    assert rel["n_steps"] == 9 and rel.get("edited_by_hand"), (
+        f"a record that names its source was not stamped: {rel}")
+    assert out["afterDrop"]["at"] == out["afterEdits"] + 1, out
+    assert "note" not in out["afterDrop"]["info"], out
+    assert out["afterUndo"].get("note") == "mine", (
+        f"undo did not bring the dropped entry back: {out['afterUndo']}")
+    assert out["ro"] == {"edit": False, "drop": False,
+                         "info": {"note": "the run's"}}, (
+        f"a read-only viewer took a person's edit: {out['ro']}")
+
+
 def test_clear_is_the_door_that_means_start_empty():
     """§ 6.7a's other row: `clear()` returns the viewer to EMPTY -- nothing
     loaded, no atom identity -- and takes the metadata with it.

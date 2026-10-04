@@ -1576,25 +1576,71 @@ The panel names its rows in the same vocabulary the server evaluates, so there i
 no translation table in between to drift — with the single exception of atom
 numbering, which crosses at exactly one point (§ 11.5).
 
-### 8.4a The Metadata pane — display, never a mutator *(user, 2026-08-29)*
+### 8.4a The Metadata pane — read through, and edited where the structure is saved *(user, 2026-08-29; 2026-10-03)*
 
 The panel's third page, beside Selection and Cell.  It renders the
 structure's **`info` store** — metadata that is not part of the
 structure and not in its hash (`model/structure.md` § 2.2a), a JSON
-dict of key → value — as a read-only key/value listing, with an
-honest empty state when nothing is recorded.
+dict of key → value — with an honest empty state when nothing is
+recorded.
 
-**The pane displays; the API mutates.**  Which keys exist is the HOST
-tabs' business, through the one door set (`viewer.data.info` — § 9.3):
-the Results tab records the finished run's electronic contract
-(`info.calculation`) and what the run did to the geometry it left
-(`info.relaxation`, [`model/parse.md` § 5b.1](?doc=model/parse.md)), a
-future tab records whatever describes its structure.  A person reads the metadata here; nothing on this page
-writes it.
+**Which keys exist is the host tabs' business**, through the host's
+doors (`viewer.data.info` — § 9.3): the Results tab records the finished
+run's electronic contract (`info.calculation`) and what the run did to
+the geometry it left (`info.relaxation`,
+[`model/parse.md` § 5b.1](?doc=model/parse.md)), a future tab records
+whatever describes its structure.
+
+**Read through, not scrolled past** *(user, 2026-10-03: "we need a good
+way to go through them")*.  A run's recorded contract and relaxation fill
+343 lines as raw JSON — the 150 held atoms, twice — so the page shows the
+store as a tree:
+
+- **each entry is a section that folds**, its line saying what it holds —
+  its first few values, and how many more;
+- inside, **one row per field**; a nested block is a section of its own;
+  **a list longer than a line folds to its count** (*150 items*) and opens
+  as one wrapped line, never one item to a line; a long string — a
+  fingerprint — is cut short, its whole text a hover away;
+- above the entries, pinned while they scroll: **a filter** that keeps the
+  fields whose name or value matches, *expand all* / *collapse all*, and
+  **the store as raw JSON**.
+
+The page scrolls as a whole when it is taller than the panel — the Cell
+page's rule, which it lacked until 2026-10-03, so a long store was cut off.
+
+**Edited where the structure is saved** *(user, 2026-10-03: "we need to
+allow user to edit it too"; "a: yes, b: yes")*.  On a viewer that saves
+its structure — the Molbuilder and Modify tabs — a person changes a
+field's value in its row, adds an entry, removes one, or edits an entry —
+or the whole store — as JSON, applied only when it parses (the whole store
+must be a JSON object); otherwise the error is shown and nothing changes.
+**A read-only viewer — the Results tab — reads only**: its store is
+rebuilt from the run's files at every load, so an edit there would vanish
+on the next one; the page says where to edit instead.
+
+**A person's edit is an edit; a host's write is not.**  The person's
+doors — `data.info.edit(key, value)` and `data.info.drop(key)` — are
+**gated**: refused on a read-only viewer, and recorded on the history like
+any other edit, so the unsaved badge rises and Retract takes it back
+(§ 11.2).  The host's doors — `set`, `remove` — stay ungated and silent: a
+page describing what it loaded has changed nothing the person made.
+
+**An edited record says so.**  A block that names its `source` — a run's
+recorded contract (`calculation`) and relaxation (`relaxation`), both
+written from the run's own files — is no longer what that source said
+once a person changes it, so the edit stamps it `edited_by_hand` with the
+time, beside the two flags an edit to the structure sets (below); and
+every reader that weighs it as evidence says its values are the person's
+word, not the run's — the relaxation check does
+(`validation/sidecar.py::check_relaxation_record`,
+[`engines/vibration.md`](?doc=engines/vibration.md) § 2.2).  Nothing
+refuses it: the person may state what they know; the reader says whose
+statement it is.
 
 **`info` is not core data.**  § 9.4's one question — *does this change
 the structure the calculation ran on?* — answers no: `info` describes
-the structure, it is not the structure.  So the `info` doors are
+the structure, it is not the structure.  So the host's `info` doors are
 **ungated on a read-only viewer** (that is precisely what lets the
 read-only Results viewer attach the contract before an export), they
 never raise the unsaved badge, and the store never enters
@@ -2020,13 +2066,17 @@ restate it, and there is no rival: reading coordinates back out of the drawing
 would give the isolated subset under its own renumbering, which is a different
 thing and one MolView does not offer.
 
-**The `info` doors** (§ 8.4a): ``data.info.set(key, value)`` /
-``data.info.remove(key)`` / ``data.info.get()`` (a read-copy).  Values
+**The `info` doors** (§ 8.4a): the host's ``data.info.set(key, value)`` /
+``data.info.remove(key)`` / ``data.info.get()`` (a read-copy), and the
+person's ``data.info.edit(key, value)`` / ``data.info.drop(key)``.  Values
 are JSON only; the store rides the structure through every install and
-export, and is only ever removed by an explicit `remove` — never
-silently (`model/structure.md` § 2.2a).  Ungated in read-only mode and
-badge-silent in editable mode — `info` describes the structure rather
-than being it, which is § 9.4's one question answered.
+export, and is only ever removed by an explicit `remove` or `drop` — never
+silently (`model/structure.md` § 2.2a).  The host's are ungated in
+read-only mode and badge-silent in editable mode — `info` describes the
+structure rather than being it, which is § 9.4's one question answered.
+The person's are gated and recorded on the history, and stamp
+`edited_by_hand` on a block that names its `source` — the Metadata page
+is their caller.
 
 ### 9.3a Handing the structure to the server
 

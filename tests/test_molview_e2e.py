@@ -22,6 +22,7 @@ through its one public import and nothing else.
 """
 from __future__ import annotations
 
+import json
 import threading
 
 import pytest
@@ -624,3 +625,159 @@ def test_two_viewers_on_one_page_collide_over_nothing(demo, molview_server):
     assert first_pages.nth(0).is_visible(), (
         "choosing a page in the second viewer moved the first viewer's"
     )
+
+
+_RUN_INFO = """() => {
+    const held = Array.from({ length: 150 }, (_, i) => i);
+    const data = window.__molview;
+    data.info.set("relaxation", {
+        engine: "siesta", source: "Relax-run0.out", n_steps: 5,
+        converged: true, force_tolerance_ev_ang: 0.01,
+        max_force_free_ev_ang: 0.009936,
+        held_atom_idxs: held,
+        held_atom_keys: held.map((i) => "Au " + (i * 1.5).toFixed(6)
+                                        + " 0.000000 0.000000"),
+        geometry_sha256: "sha256:" + "4".repeat(64) });
+    data.info.set("calculation", {
+        engine: "siesta", source: "Relax.fdf",
+        contract: { basis_size: "DZP", xc_functional: "GGA",
+                    xc_authors: "PBE", siesta_mesh_cutoff_ry: 300 } });
+}"""
+
+
+def _metadata_page(page, card=0):
+    """Open a card's Metadata page and hand back its selector."""
+    viewer = page.locator(".molviewer-card").nth(card)
+    viewer.locator(".molviewer-panel-tab-option", has_text="Metadata").click()
+    return viewer.locator('.molviewer-panel-tab[data-page="info"]')
+
+
+def test_the_metadata_page_is_read_through_and_edited_where_it_is_saved(demo):
+    """`web/molview.md` § 8.4a *(user, 2026-10-03: "the meta data tab in the
+    molview does not correctly scroll when meta data is a lot to be fully
+    shown in that panel. we need a good way to go through them, - and we
+    need to allow user to edit it too")*.
+
+    A run's recorded relaxation -- 150 held atoms, twice -- opens as a
+    tree, each long list folded to its count and opened as one wrapped
+    line; expanded whole, the page scrolls to its end under a bar that
+    stays; the filter keeps the fields that match.  On this editable viewer
+    a field changes in its row and the record is stamped as edited by hand;
+    an entry edited as text that is not JSON is refused with nothing
+    changed; a removal is asked in place.  A read-only viewer -- the Results
+    tab's kind -- shows the store, offers no edit, and says where to edit.
+
+    MUTATIONS THIS MUST FAIL AGAINST: the page without its scroll rule; a
+    long list drawn one item to a line; a read-only viewer offering edits."""
+    demo.evaluate(_RUN_INFO)
+    info = _metadata_page(demo)
+    info.locator(".molviewer-info-entry").first.wait_for()
+
+    # FOLDED TO THEIR COUNT, the two long lists.
+    folds = info.locator(".molviewer-info-items-fold")
+    assert folds.count() == 2
+    assert [folds.nth(i).locator("summary").inner_text() for i in range(2)] \
+        == ["150 items", "150 items"]
+    assert not any(folds.nth(i).evaluate("e => e.open") for i in range(2))
+
+    # EXPANDED WHOLE, the page scrolls to its end UNDER THE WHEEL -- a
+    # person's scroll, which an element that clips does not take, though
+    # code may still set its offset -- and the bar stays on top.
+    info.locator("[data-info-action='expand']").click()
+    info.scroll_into_view_if_needed()
+    box = info.bounding_box()
+    demo.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    for _ in range(40):
+        demo.mouse.wheel(0, 600)
+    demo.wait_for_timeout(300)
+    shape = info.evaluate("""p => {
+        const items = p.querySelector('.molviewer-info-items');
+        const line = parseFloat(getComputedStyle(items).lineHeight) || 16;
+        const bar = p.querySelector('.molviewer-info-bar').getBoundingClientRect();
+        const page = p.getBoundingClientRect();
+        return { tall: p.scrollHeight > p.clientHeight,
+                 scrolled: p.scrollTop > 0,
+                 atEnd: p.scrollTop + p.clientHeight >= p.scrollHeight - 2,
+                 barPinned: Math.abs(bar.top - page.top) <= 2,
+                 itemsH: items.getBoundingClientRect().height,
+                 oneALine: 150 * line };
+    }""")
+    assert shape["tall"] and shape["scrolled"] and shape["atEnd"], (
+        f"a store taller than the panel does not scroll to its end: {shape}")
+    assert shape["barPinned"], f"the filter bar scrolled away: {shape}"
+    assert shape["itemsH"] < shape["oneALine"] / 4, (
+        f"a long list is drawn one item to a line: {shape}")
+
+    # THE FILTER keeps what matches -- the field, and the block it sits in.
+    info.locator(".molviewer-info-filter").fill("mesh_cutoff")
+    rows = info.locator(".molviewer-info-row").evaluate_all(
+        "els => els.map(e => e.getAttribute('data-path'))")
+    assert rows == ["calculation.contract.siesta_mesh_cutoff_ry"], rows
+    info.locator(".molviewer-info-filter").fill("")
+
+    # THE RAW STORE is the app's code view (`lib/codemirror-load.js`), read
+    # only -- not a second viewer.
+    info.locator("[data-info-action='raw']").click()
+    raw = info.locator(".molviewer-info-code .CodeMirror")
+    raw.wait_for()
+    view = raw.evaluate("e => ({ ro: e.CodeMirror.getOption('readOnly'),"
+                        "        text: e.CodeMirror.getValue() })")
+    assert view["ro"] is True, view
+    assert json.loads(view["text"]) == demo.evaluate(
+        "() => window.__molview.info.get()")
+    info.locator("[data-info-action='raw']").click()
+
+    # A FIELD CHANGES IN ITS ROW, and the record says it was edited by hand.
+    info.locator(".molviewer-info-row[data-path='relaxation.n_steps'] "
+                 ".molviewer-info-value").click()
+    field = info.locator(".molviewer-info-input")
+    field.fill("9")
+    field.press("Enter")
+    rel = demo.evaluate("() => window.__molview.info.get().relaxation")
+    assert rel["n_steps"] == 9 and rel.get("edited_by_hand"), rel
+
+    # TEXT THAT IS NOT JSON is refused, and nothing changes.
+    before = demo.evaluate("() => window.__molview.info.get().calculation")
+    entry = info.locator(".molviewer-info-entry[data-path='calculation']")
+    entry.locator("button", has_text="Edit as JSON").click()
+    editor = info.locator(".molviewer-info-editor .CodeMirror")
+    editor.wait_for()
+    editor.evaluate("e => e.CodeMirror.setValue('{not json')")
+    info.locator(".molviewer-info-editor button", has_text="Apply").click()
+    assert "not JSON" in info.locator(".molviewer-info-error").inner_text()
+    assert demo.evaluate(
+        "() => window.__molview.info.get().calculation") == before
+    info.locator(".molviewer-info-editor button", has_text="Cancel").click()
+
+    # A REMOVAL IS ASKED IN PLACE -- no, then yes.
+    entry = info.locator(".molviewer-info-entry[data-path='calculation']")
+    entry.locator("button", has_text="Remove").click()
+    entry.locator(".molviewer-info-ask button", has_text="No").click()
+    assert "calculation" in demo.evaluate("() => window.__molview.info.get()")
+    entry = info.locator(".molviewer-info-entry[data-path='calculation']")
+    entry.locator("button", has_text="Remove").click()
+    entry.locator(".molviewer-info-ask button", has_text="Yes").click()
+    assert "calculation" not in demo.evaluate(
+        "() => window.__molview.info.get()")
+
+    # A READ-ONLY VIEWER reads only, and says where to edit.
+    demo.evaluate("""async () => {
+        const host = document.createElement("div");
+        host.style.width = "900px";
+        document.body.appendChild(host);
+        const { mount } = await import("/static/lib/molview/index.js");
+        const ws = { read: async () => null, write: async () => {} };
+        const ro = await mount(host, ws, { owner: "read-only", mode: "readonly" });
+        await ro.data.installMolecule({ text: "2\\n\\nC 0 0 0\\nO 1 0 0\\n",
+                                        filename: "x.xyz" });
+        ro.data.info.set("relaxation", { engine: "siesta", source: "Relax.out",
+                                         n_steps: 5 });
+    }""")
+    demo.wait_for_function(
+        "() => document.querySelectorAll('.molviewer-card').length === 2")
+    ro = _metadata_page(demo, card=1)
+    ro.locator(".molviewer-info-entry").first.wait_for()
+    assert ro.locator(".molviewer-info-hint").is_visible()
+    assert ro.locator("[data-editable]").count() == 0
+    assert ro.locator("button", has_text="Edit as JSON").count() == 0
+    assert not ro.locator("[data-info-action='add']").is_visible()

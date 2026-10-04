@@ -2192,42 +2192,157 @@
     margin-top:     var(--molviewer-space-xs);
 }
 
-/* ── The Metadata page (§ 8.4a, structure-info-plan.md) ─────────────────
- * Read-only key/value listing of the structure's `info` store.  All
- * values through the module's own tokens (the § here never says a px a
- * named metric already owns). */
-.molviewer-info-empty {
-    color: var(--molviewer-color-text-dim);
+/* ── The Metadata page (§ 8.4a) ──────────────────────────────────────────
+ * The store as a tree under a pinned bar (user, 2026-10-03: "we need a good
+ * way to go through them"): each entry a fold with its one-line summary, a
+ * field a row, a long list folded to its count and opened as ONE wrapped
+ * line.  Edited in place on an editable viewer.  All values through the
+ * module's own tokens. */
+.molviewer-info-bar {
+    position: sticky;              /* the page scrolls; the bar stays */
+    top: 0;
+    z-index: 1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--molviewer-space-xs);
+    align-items: center;
+    padding: var(--molviewer-space-sm);
+    background: var(--molviewer-color-surface);
+    border-bottom: 1px solid var(--molviewer-color-edge-soft);
+}
+.molviewer-info-filter { flex: 1 1 8rem; }
+.molviewer-info-hint,
+.molviewer-info-empty,
+.molviewer-info-error {
+    margin: 0;
+    padding: var(--molviewer-space-xs) var(--molviewer-space-sm);
     font: var(--molviewer-text-sm)/var(--molviewer-line-normal)
           var(--molviewer-control-family);
-    padding: var(--molviewer-space-sm);
+    color: var(--molviewer-color-text-dim);
 }
-.molviewer-info-list {
-    margin: 0;
-    padding: var(--molviewer-space-sm);
-    overflow: auto;
+.molviewer-info-error { color: var(--molviewer-color-warn); }
+.molviewer-info-tree {
+    padding: 0 var(--molviewer-space-sm) var(--molviewer-space-sm);
+}
+.molviewer-info-entry {
+    border-bottom: 1px solid var(--molviewer-color-edge-soft);
+    padding: var(--molviewer-space-xs) 0;
+}
+.molviewer-info-head {
+    display: flex;
+    gap: var(--molviewer-space-sm);
+    align-items: baseline;
+    cursor: pointer;
+    min-width: 0;
 }
 .molviewer-info-key {
+    flex: 0 0 auto;
     color: var(--molviewer-color-text);
     font: 600 var(--molviewer-text-sm)/var(--molviewer-line-snug)
           var(--molviewer-control-family);
-    margin-top: var(--molviewer-space-sm);
 }
-.molviewer-info-key:first-child { margin-top: 0; }
+.molviewer-info-sum {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--molviewer-color-text-faint);
+    font: var(--molviewer-text-2xs)/var(--molviewer-line-snug)
+          var(--molviewer-font-mono, monospace);
+}
+.molviewer-info-block > .molviewer-info-head .molviewer-info-key {
+    font-weight: 500;
+    font-size: var(--molviewer-text-xs);
+}
+.molviewer-info-fields {
+    margin: var(--molviewer-space-xs) 0 0 var(--molviewer-space-sm);
+    padding-left: var(--molviewer-space-sm);
+    border-left: 1px solid var(--molviewer-color-edge-soft);
+}
+.molviewer-info-row {
+    display: grid;
+    grid-template-columns: minmax(6rem, 40%) minmax(0, 1fr);
+    gap: var(--molviewer-space-xs);
+    align-items: baseline;
+    padding: 1px 0;
+    font: var(--molviewer-text-2xs)/var(--molviewer-line-normal)
+          var(--molviewer-font-mono, monospace);
+}
+.molviewer-info-field {
+    color: var(--molviewer-color-text-dim);
+    overflow-wrap: anywhere;
+}
 .molviewer-info-value {
-    margin: 0;
+    color: var(--molviewer-color-text);
+    overflow-wrap: anywhere;
 }
-.molviewer-info-value pre {
-    margin: var(--molviewer-space-xs) 0 0;
+.molviewer-info-value[data-editable] {
+    cursor: text;
+    border-bottom: 1px dashed var(--molviewer-color-edge);
+}
+.molviewer-info-value[data-editable]:hover,
+.molviewer-info-value[data-editable]:focus-visible {
+    color: var(--molviewer-color-accent);
+    border-bottom-color: var(--molviewer-color-accent);
+    outline: none;
+}
+.molviewer-info-items-fold > summary {
+    cursor: pointer;
+    color: var(--molviewer-color-text-dim);
+}
+.molviewer-info-items {
+    margin-top: var(--molviewer-space-xs);
     padding: var(--molviewer-space-xs);
     background: var(--molviewer-color-panel-well);
     border: 1px solid var(--molviewer-color-edge-soft);
     border-radius: var(--molviewer-radius-sm);
     color: var(--molviewer-color-text-dim);
+    white-space: pre-wrap;         /* ONE wrapped line, never one item a line */
+    overflow-wrap: anywhere;
+}
+.molviewer-info-input { width: 100%; }
+.molviewer-info-actions { margin-top: var(--molviewer-space-xs); }
+.molviewer-info-ask {
+    display: inline-flex;
+    gap: var(--molviewer-space-xs);
+    align-items: center;
+    color: var(--molviewer-color-text-dim);
+    font: var(--molviewer-text-2xs)/var(--molviewer-line-snug)
+          var(--molviewer-control-family);
+}
+.molviewer-info-editor {
+    display: flex;
+    flex-direction: column;
+    gap: var(--molviewer-space-xs);
+    margin: var(--molviewer-space-xs) 0;
+}
+/* The app's CodeMirror (`lib/codemirror-load.js`), themed here as every host
+ * themes its own instance -- the sidebar preview and Task setup do the same
+ * under their classes.  Its height follows its text, so the page stays the
+ * ONE scroll region. */
+.molviewer-info-code {
+    margin: var(--molviewer-space-xs) 0;
+    min-height: 4rem;
+}
+.molviewer-info-code .CodeMirror {
+    height: auto;
     font: var(--molviewer-text-2xs)/var(--molviewer-line-normal)
           var(--molviewer-font-mono, monospace);
-    white-space: pre-wrap;
-    word-break: break-word;
+    background: var(--molviewer-color-panel-well);
+    color: var(--molviewer-color-text);
+    border: 1px solid var(--molviewer-color-edge-soft);
+    border-radius: var(--molviewer-radius-sm);
+}
+.molviewer-info-code .CodeMirror-gutters {
+    background: var(--molviewer-color-panel-well);
+    border-right: 1px solid var(--molviewer-color-edge-soft);
+}
+.molviewer-info-code .CodeMirror-linenumber {
+    color: var(--molviewer-color-text-faint);
+}
+.molviewer-info-code .CodeMirror-cursor {
+    border-left: 2px solid var(--molviewer-color-accent);
 }
 
 

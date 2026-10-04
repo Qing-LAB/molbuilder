@@ -279,6 +279,20 @@ def check_relaxation_record(struct: Structure, *, engine: str,
     disagree = "warn" if already_relaxed else "info"
     disagreed = False           # any fact below that says "not stationary here"
     rec_engine = rec.get("engine")
+    # AN EDITED RECORD SAYS WHOSE WORD IT IS (`web/molview.md` § 8.4a; user,
+    # 2026-10-03: "we need to allow user to edit it too").  A person may
+    # change either record on MolView's Metadata page, which stamps it; its
+    # values are then theirs, not what the run measured -- said first, and
+    # read as stated below.  Never a refusal, like everything here.
+    for name, block in (("relaxation", rec),
+                        ("calculation", info.get("calculation"))):
+        if isinstance(block, dict) and block.get("edited_by_hand"):
+            issues.append(Issue(
+                severity="info", where=where,
+                message=(f"This structure's {name} record was edited by "
+                         f"hand ({block['edited_by_hand']}) -- its values "
+                         f"are the person's word, not what the run "
+                         f"measured, and are read as such below.")))
 
     if rec["geometry_sha256"] != struct.geometry_fingerprint():
         issues.append(Issue(
