@@ -2078,13 +2078,14 @@ keeping the old one leaves a folder whose results came from a file that no longe
 exists. That is not a reason to refuse the edit — redoing a stage is ordinary
 work. It is a reason for the history to exist, which § 7.2 already requires.
 
-So the boundaries where a checkpoint is taken are exactly two, and both are
-molbuilder's rather than the engine's:
-
-| When | What it holds | Why there |
-|---|---|---|
-| **before a replacing produce** | the folder as the last produce left it | it is what makes rewriting a run stage safe rather than lossy (§ 7.2) |
-| **when a stage's run finishes** | that stage's converged state, tagged with its name | it is the point a user will want to come back to and **branch from** — the next stage is a choice, and a choice wants somewhere to return to |
+So the history keeps it. **When a state is saved is
+[`execution/checkpointing.md`](?doc=execution/checkpointing.md) § 9's rule, and
+nothing here restates it**: `prep` and Task setup's Save save the folder first,
+always, and say so (`checkpoint.save_before`); a folder with no history gets its
+first state then; nothing is saved during a run or at submit, and a finished run
+is shown as unsaved — never saved or tagged on anyone's behalf (§ 9, L4). A redo
+restores the state saved before the stage's prep
+([`job-system.md`](?doc=execution/job-system.md) § 5.0).
 
 > **The obstacle here is cleared** (2026-08-06). `Repo.init` used to refuse any
 > directory whose subdirectories held a working-dir marker — and § 7.1's layout
@@ -2094,40 +2095,13 @@ molbuilder's rather than the engine's:
 > calculation's stages rather than rival jobs; a directory that declares nothing
 > is still refused. See `execution/checkpointing.md` L1.
 
-**Both are asked for, never taken** (corrected 2026-08-07 — this paragraph used
-to say the opposite, and `execution/checkpointing.md § 9` is the decision).
-molbuilder never takes a checkpoint on its own. What these two boundaries are is
-the two moments where **`prep`, running interactively, asks** — showing the
-message it would write and the tag if a stage finished.
-
-**Why asking is not weaker than doing.** The automatic version needed something
-to *observe* a run finishing, which is unachievable on a cluster: the job ends at
-3am with nothing local watching. Asking at the next `prep` needs no observer,
-because a finished run's state stays intact until `prep` touches it — and that is
-exactly the moment the question is worth asking. The trigger was not weakened; it
-was moved to the only place it can be honoured.
-
-**Never at run or submit time.** That may be a scheduled job, and blocking a
-queue to ask is the wrong party at the wrong moment. A non-interactive `prep`
-proceeds without a checkpoint **and says that it did**.
-
-**Who initialises, exactly.** A produce that *creates* the folder initialises it
-(`checkpoint init --engine <engine>`) — molbuilder made the directory, so offering
-it a history costs the user nothing and asks them nothing. A produce into a
-folder that **already existed without a checkpoint** does not: that folder is
-someone's deliberate state, and putting it under version control is their call,
-not a side effect of generating a deck into it. The two rules together: *created
-here means initialised; already under checkpoint means kept; neither means left
-alone.*
-
-**Neither is the wrapper's job.** `running-a-job.md § 6.2` records that the
-wrapper-bootstraps-git path was deliberately dropped — *"the wrapper is
-deliberately git-agnostic, so init is CLI/UI-only"* — so the second boundary is
-observed where a run is already being watched: `run_status` reports `finished`
-(`running-a-job.md § 4.2`), and the surface or the CLI takes the checkpoint.
-*(It added that a wrapper committing to git would need git on the compute
-node, which the standalone contract forbids, until 2026-10-04: every env
-molbuilder installs ships git, `ops/env-framework.md`.)*
+*(This section held its own account of the moments until 2026-10-04 — two
+boundaries, the second a checkpoint tagged when a stage's run finished; both
+asked at an interactive prep and never taken, a non-interactive prep going
+without; a folder that existed without a history left so; a wrapper that could
+not commit for want of git on the node. `checkpointing.md` § 9's ruling of
+2026-10-03 superseded each, `checkpoint.save_before` follows § 9, and every
+env molbuilder installs ships git.)*
 
 #### What each checkpoint is called
 
@@ -2139,7 +2113,7 @@ it belongs.
 
 | | What it is now |
 |---|---|
-| **the note** | *yours*, required, never generated — it is what a save records about why you stopped here and what you were about to do |
+| **the note** | written by the act that saves — the time the state was taken, then what was about to change it, `2026-10-03 14:05:12 · before prep run tight` (`checkpointing.md` § 9); yours, and required, when you save by hand (L3) |
 | **the calculation's name** | carried in the state's own `Calculation:` trailer, so a folder opened a year later still says which calculation its history is |
 | **a tag** | *yours*, and only yours. Nothing tags on your behalf |
 
@@ -2149,12 +2123,9 @@ tags added no information, and they filled the one namespace you were meant to b
 naming things in yourself. A history where most tags are machine-made is one
 where your own are hard to find, which is the opposite of what a tag is for.
 
-**What a stage boundary still buys you.** `run_status` reports `finished` /
-`failed` (`running-a-job.md § 4.2`), and the run's record whether each SCF
-phase converged ([`model/parse.md`](?doc=model/parse.md) § 5d.6), so whatever
-offers the save at that moment knows enough to **draft** the note — *"tight
-converged"* rather than *"stage 2 done"*. You confirm or edit it; nothing is
-written without you (`checkpointing.md` § 9, L3).
+*(A save offered when a stage finished, its note drafted from the run's record,
+was described here until 2026-10-04: no such moment is § 9's, and none is
+built.)*
 
 **And re-entering costs no new verb.** The folder stops being *the current state
 of one calculation* and becomes a chain of states you can go back into: restore
