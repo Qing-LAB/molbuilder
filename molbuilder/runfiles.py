@@ -1107,8 +1107,9 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(".util.csv", "processor and memory samples taken while it ran",
              attempt="maybe", kind="record", writer="the monitor",
              door="parse.instruments.util_csv.UtilCsvFileParser"),
-    Artifact(".scf-timing.log", "wall time per SCF iteration, both phases "
-                                "of a TranSIESTA device", attempt="always",
+    Artifact(".scf-timing.log", "wall time per SCF iteration — on a "
+                                "TranSIESTA device, both its phases",
+             attempt="always",
              engine="siesta", kind="record",
              writer="the run script's tee of the output's SCF lines",
              door="parse.instruments.scf_timing_rows.timing_of",
