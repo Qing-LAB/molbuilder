@@ -2040,10 +2040,11 @@ def api_task_setup_prep_plan():
     which is the same function the prep itself resolves through -- so the
     row cannot promise a wall the run will not ask for.
 
-    POST ``{task}`` -- the description AS IT IS BEING EDITED, not what is
-    saved, for the reason the grid door gives: the card's edits live in the
-    browser's model until the person saves.  No folder is needed; none of
-    this touches a filesystem.
+    POST ``{task, dest?}`` -- the description AS IT IS BEING EDITED, not
+    what is saved, for the reason the grid door gives: the card's edits live
+    in the browser's model until the person saves -- and the folder, whose
+    files hold the stages' numbers (a stage that has files keeps its own,
+    W38 F4).  Nothing here writes.
     """
     body = request.get_json(silent=True) or {}
     raw = body.get("task")
@@ -2070,14 +2071,22 @@ def api_task_setup_prep_plan():
              "mem": task.allocation.mem}
     # The plan card reads the DESCRIPTION as posted, mid-edit, with no
     # machine resolved -- so it reports the condition as WRITTEN, without
-    # asking the enumerator, which needs a target.  `dest` is not in hand
-    # here either: the body carries the document, not the folder.
+    # asking the enumerator, which needs a target.  THE FOLDER, when the page
+    # names it (`dest`), is where the stages' numbers are read: a stage that
+    # has files keeps its number (`materialize.stage_home`, W38 F4), so the
+    # plan names the folders prep will write, not the description's places.
+    folder = None
+    if body.get("dest"):
+        try:
+            folder = _resolve_within_roots(str(body["dest"]))
+        except _PickerError as exc:
+            return jsonify({"ok": False, "error": exc.message}), exc.status
 
     rows = []
     for st in task.stages:
         if st.enabled is False:
             continue
-        token = stage_home(None, task, st.name).token
+        token = stage_home(folder, task, st.name).token
         rows.append({"stage": st.name, "token": token,
                      "dir": shape.stage_dir(token),
                      "allocation": alloc,

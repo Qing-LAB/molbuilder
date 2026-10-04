@@ -301,6 +301,17 @@ def deck_launch(stage_token: Optional[str],
     return launch_as_typed(command_stage(stage_token), trial)
 
 
+_TOKEN_RE = re.compile(r"(\d{2,})_([A-Za-z0-9_]+)")
+
+
+def parse_token(token: str) -> Optional[Tuple[int, str]]:
+    """The ``(seq, name)`` of a bare stage token -- ``01_coarse`` -- or
+    ``None``: the inverse of :func:`stage_token`, for a stage DIRECTORY's
+    name, where :func:`parse_stage_token` reads a filename's tail."""
+    m = _TOKEN_RE.fullmatch(str(token))
+    return (int(m.group(1)), m.group(2)) if m else None
+
+
 def parse_stage_token(filename: str,
                       label: str = "") -> Optional[Tuple[int, str]]:
     """The ``(seq, name)`` a filename's stage token carries, or ``None``.

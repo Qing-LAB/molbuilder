@@ -162,13 +162,11 @@ def rung_containers(base, task, stage: str) -> List[Tuple[Path, Optional[float]]
     a finished device scan read *not run*, and Task setup's count and
     prep's *already under way* looked in the stage folder alone (the M11
     review's T-F27, T-F13)."""
-    from ..identity import StageRef
-    from ..paths import Shape
+    from ..jobset.materialize import stage_home
     from ..task import bias_token
-    token = next(r.token for r in StageRef.ladder([s.name for s in task.stages])
-                 if r.name == stage)
-    sd = Shape.named(task.shape).stage_dir(token)
-    stage_dir = Path(base) if sd == "." else Path(base) / sd
+    # THE STAGE'S FOLDER, from the one door -- its number read off the disk
+    # (`execution/architecture.md` § 3.2; W38 F4).
+    stage_dir = stage_home(base, task, stage).dir
     points = scan_points(task, stage)
     if not points:
         return [(stage_dir, None)]

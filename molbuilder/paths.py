@@ -232,6 +232,42 @@ def trial_point(name: str) -> Optional[str]:
     return point or None
 
 
+def stages_in(root, shape: "Shape", label: str = ""
+              ) -> "list[tuple[int, str]]":
+    """Every stage a calculation's folder holds files of, as ``(seq, name)``
+    -- the finder half of :meth:`Shape.stage_dir` (§ 4.5: for every name the
+    framework composes, it owns the search).
+
+    A stage's number is READ OFF WHAT IS THERE, never off the description
+    (`project-layout.md` § 4.1, § 4.2): its directory in the hierarchy; in
+    the flat shape, the token every file of it carries (its deck, its run
+    script, its outputs) and its bench container's.  A stage the description
+    no longer names still holds its number here -- gaps are honest.
+    """
+    from .identity import parse_stage_token, parse_token
+    root = Path(root)
+    try:
+        entries = list(root.iterdir())
+    except OSError:
+        return []
+    found = set()
+    for e in entries:
+        if shape.keeps_attempts_as_directories:
+            if e.is_dir():
+                got = parse_token(e.name)
+                if got:
+                    found.add(got)
+        elif e.is_file():
+            got = parse_stage_token(e.name, label) if label else None
+            if got:
+                found.add(got)
+    for _rel, token in bench_containers_in(root, shape):
+        got = parse_token(token) if token else None
+        if got:
+            found.add(got)
+    return sorted(found)
+
+
 def bench_container(shape: "Shape", token: str = "") -> str:
     """Where a stage's bench state lives, **relative to the calculation root**.
 

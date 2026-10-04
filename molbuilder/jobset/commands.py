@@ -118,15 +118,6 @@ def name_a_stage(verb: str, kind: str, refs, *, base) -> str:
             + block(lines(verb, kind, refs[0].name, base=base)))
 
 
-def enabled_refs(task):
-    """The description's stages that run, as refs (`identity.StageRef`) --
-    numbered on the whole ladder, so ``#N`` names the same stage everywhere."""
-    from ..identity import StageRef
-    return [r for r, s in zip(StageRef.ladder([s.name for s in task.stages]),
-                              task.stages)
-            if getattr(s, "enabled", True) is not False]
-
-
 def block(text_lines, pad: str = "    ") -> str:
     """Lines indented as a command block under a sentence."""
     return "\n".join(pad + ln for ln in text_lines)
@@ -193,5 +184,5 @@ def stage_lines(kind: str, stage: str, *, base, from_attempt=None,
 
 __all__ = ["PROG", "bundle_flag", "command", "configured_mode",
            "launch_lines", "lines", "run_first", "name_a_stage",
-           "enabled_refs", "block", "rollback", "stage_lines",
+           "block", "rollback", "stage_lines",
            "target_flags"]

@@ -217,14 +217,13 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
     rung explains the ones after it, but this reports what each directory
     says rather than reasoning about the order.
     """
-    from ..identity import StageRef
     from ..jobset.materialize import latest_attempt, run_dir
     from ..parse import detect
     from ..runfiles import find_by_role
     from .stages import STAGE_FACT, TRANSPORT_STAGES
 
-    ladder = {r.name: r.token
-              for r in StageRef.ladder([s.name for s in task.stages])}
+    from ..jobset.materialize import ladder_homes
+    ladder = {h.name: h.token for h in ladder_homes(base, task)}
     out: List[Dict] = []
     for name in TRANSPORT_STAGES:
         token = ladder.get(name)

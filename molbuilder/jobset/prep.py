@@ -43,10 +43,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from typing import Callable, List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 from .. import script_emit as _sc
-from .materialize import job_dir_names, shape_of, materialize, stage_home
+from .materialize import (job_dir_names, shape_of, materialize, stage_home,
+                          ladder_homes)
 from ..runrecord import write_gathered_from
 from ..issues import calling as _calling
 from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
@@ -1361,7 +1362,8 @@ def _transport_rung(base, task, stage: str, composed, allocation, *,
     return struct, config, state, element
 
 
-def _transport_spec(task, stage: str, struct, config, state, volts=None):
+def _transport_spec(task, stage: str, struct, config, state, volts=None, *,
+                    base=None):
     """One transport deck's ``(spec, cfg)`` -- the bias point's when
     ``volts`` is given (the point is the rung's answer, `engines/template.md`
     § 6.4; a single-bias rung keeps the 0 V `resolve` laid on)."""
@@ -1371,7 +1373,7 @@ def _transport_spec(task, stage: str, struct, config, state, volts=None):
     with _user_error_as_prep():
         try:
             spec = _siesta_spec_for(struct, cfg,
-                                    stage_token=(stage_home(None, task, stage).token
+                                    stage_token=(stage_home(base, task, stage).token
                                                  or None),
                                     calculation="transport", state=state)
         except ValueError as exc:
@@ -1462,11 +1464,12 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # ---- 2. the description, and WHICH rung ---------------------------- #
     task = read_task(desc)
     if not stage:
-        from .commands import enabled_refs, name_a_stage
+        from .commands import name_a_stage
+        from .materialize import described_refs
         raise PrepError(
             "a transport prep names its rung: the composite's stages render "
             "separately, in dependency order (engines/transport.md); "
-            + name_a_stage("prep", "run", enabled_refs(task), base=base))
+            + name_a_stage("prep", "run", described_refs(base, task), base=base))
     token = stage_home(base, task, stage).token          # refuses an unknown stage by name
 
     # THE PIPELINE LOG (TR4).  This arm printed "not wired for the transport
@@ -1613,7 +1616,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
         # the bias's only home (`engines/transport.md` § 2a.10), and a
         # single-bias rung keeps the answer `resolve` laid on, 0 V.
         spec, cfg = _transport_spec(task, stage, struct, config,
-                                    _junction_state, volts)
+                                    _junction_state, volts, base=base)
         with _user_error_as_prep():
             _sc.prepare_deck(spec, struct, cfg, out_dir / script,
                              log=_tlog, dest_dir=base, findings=findings)
@@ -1853,7 +1856,8 @@ def _rung_deck_now(base, task, stage: str, composed, *, volts=None) -> str:
             base, task.engine, {k: [v] for k, v in card.items()})
     struct, config, state, _element = _transport_rung(
         base, task, stage, composed, Resources(), pins=pins or None)
-    spec, cfg = _transport_spec(task, stage, struct, config, state, volts)
+    spec, cfg = _transport_spec(task, stage, struct, config, state, volts,
+                                base=base)
     with _user_error_as_prep():
         return _sc.render_deck(spec, struct, cfg, verbose=True,
                                dest_dir=base).text
@@ -1941,9 +1945,16 @@ def _merge_run_jobset(path: Path, new: JobSet,
     # A STAGE IS PREPPED ONCE (`job-system.md` § 5.0), so its row is new;
     # one already here is replaced rather than doubled, should two preps of
     # one stage ever race past the entry's gate together.
-    fresh = {j.name for j in new.jobs}
-    kept = [j for j in old.jobs if j.name not in fresh
-            and (ladder is None or j.name in ladder)]
+    # ONE KEY for a stage's name, as every reader of the plan matches it
+    # (`identity.stage_key`): a stage renamed in case only kept its row on
+    # every read and lost it here, so the next prep of any stage made it
+    # preppable twice (the framework inventory, 2026-10-03).
+    from ..identity import stage_key
+    fresh = {stage_key(j.name) for j in new.jobs}
+    standing = (None if ladder is None
+                else {stage_key(n) for n in ladder})
+    kept = [j for j in old.jobs if stage_key(j.name) not in fresh
+            and (standing is None or stage_key(j.name) in standing)]
     merged = dataclasses.replace(
         new, jobs=kept + list(new.jobs),
         shared=sorted(set(old.shared) | set(new.shared)))
@@ -2571,8 +2582,9 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             # written (W52: a bare `prep run` was refused by `resolve` after
             # the machine record had been snapshotted).  THE STAGES THE VERB
             # TAKES are offered: a prepped one is not (2a).
-            from .commands import enabled_refs, name_a_stage
-            takes = [r for r in enabled_refs(task)
+            from .commands import name_a_stage
+            from .materialize import described_refs
+            takes = [r for r in described_refs(base, task)
                      if not prepped_already(base, task, kind, r.name)]
             raise PrepError(
                 (f"`prep {kind}` acts on ONE stage" + (
@@ -2589,7 +2601,8 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         #     stage that is.
         if stage is not None and getattr(task, "stages", None):
             from ..identity import StageRef, resolve_stage_ref
-            refs = StageRef.ladder([s.name for s in task.stages])
+            refs = [StageRef(h.seq, h.name)
+                    for h in ladder_homes(base, task)]
             stage = resolve_stage_ref(refs, stage).name
 
         #    ...AND ENABLED: a stage the description disables is never prepped

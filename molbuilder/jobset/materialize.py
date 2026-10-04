@@ -23,7 +23,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:                      # annotations only
     from ..paths import Shape
 
-import json
 import os
 import shutil
 from dataclasses import dataclass
@@ -53,34 +52,75 @@ class StageHome:
     dir: Optional[Path]
 
 
+def ladder_homes(base, task) -> Tuple[StageHome, ...]:
+    """Every described stage's home, numbered by the ONE rule
+    (`project-layout.md` § 4.2; W38 F4, W55 B8):
+
+    * a stage that has files keeps the number they carry -- its directory in
+      the hierarchy, its files' token in the flat shape (`paths.stages_in`);
+    * a stage that has none takes its place in the description when no
+      folder holds that number, else the next number after every one in use.
+
+    So before anything is produced the numbers are the description's order,
+    reordering is free, and once a stage has files its number never moves --
+    a stage removed after its prep leaves its number taken and every later
+    stage where it was; a stage added after production takes the next one.
+    ``base`` ``None`` -- a description with no folder -- numbers by place."""
+    from ..identity import stage_key, stage_token
+    from ..paths import Shape, stages_in
+    shape = Shape.named(task.shape)
+    folder = Path(base) if base is not None else None
+    on_disk = (stages_in(folder, shape, task.label)
+               if folder is not None else [])
+    held: Dict[str, int] = {}
+    for seq, name in on_disk:
+        # Two folders of one name (one left by a removal, one added since):
+        # the newer number is the stage's -- numbers only grow.
+        k = stage_key(name)
+        held[k] = max(held.get(k, 0), seq)
+    in_use = {seq for seq, _ in on_disk}
+    homes = []
+    for place, st in enumerate(task.stages, start=1):
+        seq = held.get(stage_key(st.name))
+        if seq is None:
+            seq = place if place not in in_use else max(in_use) + 1
+        in_use.add(seq)
+        token = stage_token(seq, st.name)
+        homes.append(StageHome(
+            name=st.name, seq=seq, token=token,
+            dir=(folder / shape.stage_dir(token)
+                 if folder is not None else None)))
+    return tuple(homes)
+
+
+def described_refs(base, task) -> List[StageRef]:
+    """The description's stages that run, as refs (`identity.StageRef`)
+    numbered by the one door (:func:`ladder_homes`), so ``#N`` names the
+    folder ``NN_…`` everywhere -- the stages a verb that takes one offers.
+    It was ``commands.enabled_refs`` until 2026-10-03, numbered by place."""
+    return [StageRef(h.seq, h.name)
+            for h, s in zip(ladder_homes(base, task), task.stages)
+            if getattr(s, "enabled", True) is not False]
+
+
 def stage_home(base, task, stage: Optional[str]) -> StageHome:
     """This stage's number, token and folder -- THE ONE DOOR every reader
-    asks (`execution/architecture.md` § 3.2; W55 B8).  It was
-    ``prep.token_for`` until 2026-10-03, imported from the conductor by
-    status's continuation, a spectra reader, launch's bench lookup and Task
-    setup.
+    asks (`execution/architecture.md` § 3.2; W55 B8): :func:`ladder_homes`'
+    answer for it.  It was ``prep.token_for`` until 2026-10-03, numbering by
+    the stage's place in the description, so a stage removed after its prep
+    renumbered every stage after it (W38 F4).
 
-    ``NN`` is the stage's place in the **full** ladder (decision 27), so a
-    stage left out of the run leaves a gap rather than renumbering what
-    follows: renumbering would hand an existing output to a stage that did
-    not produce it.  ``base`` is the calculation's folder -- the folder the
-    token names.  An unknown stage is refused by name: an empty token would
-    silently drop the stage from every artifact name (`job-contracts.md`
-    § 6.3)."""
+    An unknown stage is refused by name: an empty token would silently drop
+    the stage from every artifact name (`job-contracts.md` § 6.3)."""
     from .errors import PrepError
-    from ..paths import Shape
-    folder = Path(base) if base is not None else None
     if not stage:
         # Asked without naming a rung; every ladder has one.
-        return StageHome(name="", seq=0, token="", dir=folder)
-    # The ordinal rule is stated ONCE (StageRef.ladder -- decision 28's
-    # pre-produce arm); this door reads the ref and places it.
-    for ref in StageRef.ladder([s.name for s in task.stages]):
-        if ref.name == stage:
-            where = (folder / Shape.named(task.shape).stage_dir(ref.token)
-                     if folder is not None else None)
-            return StageHome(name=ref.name, seq=ref.seq, token=ref.token,
-                             dir=where)
+        return StageHome(name="", seq=0, token="",
+                         dir=Path(base) if base is not None else None)
+    from ..identity import stage_key
+    for home in ladder_homes(base, task):
+        if stage_key(home.name) == stage_key(stage):
+            return home
     raise PrepError(f"stage {stage!r} is not in this description's "
                     f"ladder: {', '.join(s.name for s in task.stages)}.")
 
@@ -968,7 +1008,7 @@ def _source_job(jobset: JobSet, dir_of: Dict[str, str], continue_from):
 
 
 __all__ = [
-    "StageHome", "stage_home", "Attempt", "bench_owner", "bench_stage_of", "trial_dir",
+    "StageHome", "stage_home", "ladder_homes", "described_refs", "Attempt", "bench_owner", "bench_stage_of", "trial_dir",
            "trial_work_dir",
            "trials_in",
            "materialize", "job_dir_names", "stage_refs",

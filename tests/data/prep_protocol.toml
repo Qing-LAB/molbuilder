@@ -147,3 +147,30 @@ name = "...and none when nothing changed: the state it stands at is named"
 saved_first = true
 said = ["the folder's state was already saved:", "set up", "nothing changed since"]
 saved_states = ["set up"]
+
+# ===================================================================== #
+#  A STAGE'S NUMBER IS ITS FILES' -- `project-layout.md` § 4.2 (W38 F4) #
+# ===================================================================== #
+#
+# One door answers it (`materialize.stage_home`): a stage that has files
+# keeps the number they carry; one that has none takes its place in the
+# description when no folder holds that number, else the next after every
+# one in use.  It was the place in the description everywhere until
+# 2026-10-03, so a stage removed after its prep renumbered every stage
+# after it.
+
+[[case]]
+name = "a stage removed after its prep leaves every later number as it was -- #2 is still the folder 02_medium"
+before = [["prep", "run", "coarse", "--cold"], ["prep", "run", "medium", "--cold"]]
+removed = ["coarse"]
+stage = "#2"
+refused = ["stage 'medium' is already prepped (02_medium/)"]
+
+[[case]]
+name = "a stage added after production takes the next number -- the stage with files keeps its own"
+before = [["prep", "run", "coarse", "--cold"]]
+added = [{ name = "extra", at = 0 }]
+stage = "extra"
+prep = ["--cold"]
+made = ["01_coarse/run-0", "02_extra/run-0"]
+made_lacks = ["01_extra"]

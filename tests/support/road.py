@@ -301,11 +301,15 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # saves it (`molbuilder checkpoint init`); `before` -- the verbs a person typed
 # first, each a list of words (`["prep", "run", "coarse"]`), the calculation
 # and the target named as the row's own prep names them; `disabled` -- the
-# stages then disabled through Task setup's Save; `stage` -- the stage the
+# stages then disabled through Task setup's Save; `removed` / `added` -- the
+# stages then removed, or added (`{name, at}`, `at` the place, the end when
+# absent), through the same Save; `stage` -- the stage the
 # row's prep names, `coarse` unless given; `answers` -- what
 # the person types at the row's prep's question ("" is EOF, no terminal).
 #
-# AFTER PREP, whatever it answered: the folder's saved states, newest first
+# AFTER PREP, whatever it answered: the folders it left (`made`, paths
+# under the calculation that exist; `made_lacks`, ones that do not), the
+# folder's saved states, newest first
 # (`saved_states`, their notes -- `{stamp}` standing for the time a note
 # leads with, `2026-10-03 14:05:12`), what `status` says of the calculation
 # (`status_says`), and the decisions its ledger does not hold
@@ -436,6 +440,24 @@ def _road_disabled(names, bundle) -> None:
     assert r.status_code == 200, (r.get_json() or {}).get("error")
 
 
+def _road_ladder_edited(case, bundle) -> None:
+    """The stages a person removes (``removed``) or adds (``added`` --
+    ``{name, at}``, ``at`` the place, the end when absent) after the steps
+    before it, written through Task setup's Save as the page writes them."""
+    import json
+    from molbuilder.web.app import create_app
+    task = json.loads((bundle / "task.json").read_text())
+    gone = set(case.get("removed", ()))
+    task["stages"] = [st for st in task["stages"] if st["name"] not in gone]
+    for new in case.get("added", ()):
+        at = new.get("at", len(task["stages"]))
+        task["stages"].insert(at, {"name": new["name"]})
+    r = create_app(config={}).test_client().post(
+        "/api/task-setup/save",
+        json={"dest": str(bundle), "text": json.dumps(task)})
+    assert r.status_code == 200, (r.get_json() or {}).get("error")
+
+
 def _road_saved(case, bundle) -> None:
     """The description saved through Task setup's Save -- the page's door,
     which no `jobset` verb reaches -- with ``saved``'s fields changed:
@@ -484,6 +506,11 @@ def _road_after_prep(case, bundle) -> None:
                 for w in case["saved_states"]]
         assert len(got) == len(want) and all(
             w.match(g) for w, g in zip(want, got)), f"saved states: {got}"
+    for where in case.get("made", []):
+        assert (bundle / where).exists(), \
+            f"{where} was not made: {sorted(p.name for p in bundle.iterdir())}"
+    for where in case.get("made_lacks", []):
+        assert not (bundle / where).exists(), f"{where} was made"
     if "status_says" in case:
         st = jobset("status", "--bundle", bundle)
         assert st.exit_code == 0, _one_line(st)
@@ -645,6 +672,8 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         assert got.exit_code == 0, f"{words}: {_one_line(got)}"
     if "disabled" in case:
         _road_disabled(case["disabled"], bundle)
+    if "removed" in case or "added" in case:
+        _road_ladder_edited(case, bundle)
     kind = "bench" if "bench" in case else "run"
     r = jobset("prep", kind, case.get("stage", "coarse"), "--bundle", bundle,
                "--target", target, *case.get("prep", []),

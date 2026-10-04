@@ -2063,7 +2063,9 @@ async function refreshPlan(task) {
         const r = await fetch("/api/task-setup/prep-plan", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ task: task }),
+            // THE FOLDER TOO: a stage that has files keeps its number, so
+            // the names the plan shows are read where prep reads them.
+            body: JSON.stringify({ task: task, dest: _dir || null }),
         });
         body = await r.json();
     } catch (e) {

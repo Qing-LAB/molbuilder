@@ -412,8 +412,12 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
         from ..identity import stage_key
         held = {stage_key(j.name): j for j in (jobset.jobs if jobset is not None
                                                else ())}
+        from .materialize import ladder_homes
+        # THE NUMBERS ARE THE DOOR'S -- what the folders carry (W38 F4), so
+        # a row's number is its folder's, not its place in the description.
         for st, ref in zip(task.stages,
-                           StageRef.ladder([s.name for s in task.stages])):
+                           [StageRef(h.seq, h.name)
+                            for h in ladder_homes(base, task)]):
             job = held.get(stage_key(st.name))
             if job is None:
                 stages.append(_not_prepped(ref, st))

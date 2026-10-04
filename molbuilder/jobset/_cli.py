@@ -505,8 +505,9 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
     # THE FIRST COMMAND A PERSON COPIES, as `init` prints it for every other
     # calculation (W52: a `cd` to this host's path, which is not a path on
     # the machine the text names).
-    from .commands import command, enabled_refs
-    click.echo("  " + command("prep", "run", enabled_refs(task)[0].name,
+    from .commands import command
+    from .materialize import described_refs
+    click.echo("  " + command("prep", "run", described_refs(dest, task)[0].name,
                               base=dest))
 
 
@@ -740,8 +741,9 @@ def init_cmd(structure, bundle: str, shape: str,
     click.echo("  " + "\n  ".join(p.name for p in written), err=True)
     # THE FIRST COMMAND A PERSON COPIES, real (W52: it printed `prep run
     # <stage>`, which bash refuses, beside a `cd` to this host's path).
-    from .commands import command, enabled_refs
-    first = enabled_refs(desc.task)[0].name
+    from .commands import command
+    from .materialize import described_refs
+    first = described_refs(out_dir, desc.task)[0].name
     click.echo(
         "\nIt names no machine. On the machine that will run it:\n  "
         + command("prep", "run", first, base=out_dir), err=True)
@@ -860,8 +862,10 @@ def _described_stage(base, stage):
     if stage is None or not desc.is_file():
         return stage
     try:
-        return resolve_stage_ref(StageRef.ladder(
-            [s.name for s in read_task(desc).stages]), stage).name
+        from .materialize import ladder_homes
+        return resolve_stage_ref(
+            [StageRef(h.seq, h.name)
+             for h in ladder_homes(base, read_task(desc))], stage).name
     except ValueError as e:
         raise click.ClickException(str(e))
 
@@ -925,8 +929,9 @@ def _stage_bench_dir(base, stage, verb: str = "launch"):
         # THE STAGES WITH A BENCHMARK TO ACT ON -- a prepped one -- or, with
         # none, the prep that makes one (W52: every stage was offered, the
         # disabled and the never-benched, and the first was then refused).
-        from .commands import command, enabled_refs, name_a_stage
-        refs = enabled_refs(task)
+        from .commands import command, name_a_stage
+        from .materialize import described_refs
+        refs = described_refs(base, task)
         benched = [r for r in refs if (Path(base) / bench_container(
             sh, stage_home(base, task, r.name).token) / _JOBSET_FILE).is_file()]
         if not benched:

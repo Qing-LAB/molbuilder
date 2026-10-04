@@ -2142,6 +2142,21 @@ is the truth.
 Before anything has run, reordering is free: numbers are assigned when the
 directories are produced, not when the rows are typed.
 
+**One door reads them, and its rule is this** *(W38 F4, built 2026-10-03 —
+`materialize.stage_home`, `execution/architecture.md` § 3.2)*: a stage that
+has files keeps the number they carry — its directory in the hierarchy, the
+token on its files in the flat shape (`paths.stages_in`); a stage that has
+none takes its place in the description when no folder holds that number,
+else the next number after every one in use. So with nothing produced the
+numbers are the description's order; a stage removed after its prep leaves
+every later stage where it was (`#2` is still `02_medium`); a stage added
+after production takes the next number however early it sits in the
+description. Every reader asks the door — prep, `#N`, status, launch,
+continuation, the transport rungs, the Task setup plan. *(Every one counted
+the stage's place in the description until then, so a removal renumbered
+the stages after it: status read `02_tight` for a job in `03_tight` and
+called it not prepped.)*
+
 **Gaps are honest, and a removed stage's folder says so** *(W38 F5, agreed
 2026-09-27 — user: "why don't we add a suffix .disabled to the dir or to the
 script"; 2026-10-03: "mark the dir as disabled and never allow use would be

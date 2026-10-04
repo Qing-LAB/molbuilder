@@ -1420,7 +1420,6 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
     asks the scheduler about it, over the first point's own header, since
     the chain's is written only when it is sent.
     """
-    from ..identity import StageRef
     from ..task import bias_token
     from ..transport.stages import rung_containers, scan_points
     from .materialize import latest_attempt
@@ -1448,14 +1447,10 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
         raise SubmitError(
             f"the {stage} stage is not in the plan -- run "
             f"`{_cmd('prep', 'run', stage, base=base)}` first.")
-    # The stage's <NN>_<name> token, read from the ordinal rule's own
-    # home (identity.StageRef.ladder -- the same door stage_home reads;
-    # importing the conductor from floor 5 is the layering the
-    # architecture guard refuses).
-    token = next(r.token for r in
-                 StageRef.ladder([s.name for s in task.stages])
-                 if r.name == stage)
-    stage_dir = base / token
+    # The stage's folder, from the one door (`materialize.stage_home`).
+    from .materialize import stage_home
+    home = stage_home(base, task, stage)
+    token, stage_dir = home.token, home.dir
     launch_dir = stage_dir / "launch"
     run_name = _wrapper_name(job.script, ".run.sh")
     name = f"{Path(job.script).stem}-chain"
