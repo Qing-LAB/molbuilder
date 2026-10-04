@@ -142,7 +142,12 @@ def api_results_contract():
     except _PickerError as exc:
         return jsonify({"ok": False, "error": exc.message}), exc.status
     directory = Path(p) if Path(p).is_dir() else Path(p).parent
-    info = run_info_for_dir(directory) or {}
+    # THE RUN'S RECORD IS OF THE FILE THE RESULTS TAB OPENS in that folder
+    # -- the run door's choice, handed down because `parse/` cannot ask
+    # the door (`model/parse.md` § 5b.1).
+    from molbuilder.runs import openable
+    output, _trail = openable(directory)
+    info = run_info_for_dir(directory, output=output) or {}
     return jsonify({"ok": True, "calculation": info.get("calculation"),
                     "relaxation": info.get("relaxation")})
 

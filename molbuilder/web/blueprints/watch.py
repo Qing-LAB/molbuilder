@@ -350,8 +350,8 @@ def _frame0_structure(
 
 
 def _run_metadata(
-    search_dir: Optional[str], data: Optional[Dict[str, Any]],
-    parsed: Optional[Tuple[str, Any]] = None,
+    search_dir: Optional[str], data: Optional[Dict[str, Any]], *,
+    output: Optional[str] = None, traj: Any = None,
 ) -> Dict[str, Any]:
     """The metadata block EVERY ``/api/watch/load`` answer carries.
 
@@ -397,9 +397,11 @@ def _run_metadata(
         # in and exportFile out (molview.md § 8.4a), so an export from a
         # results view carries the contract and a transport citation of
         # that pair seals its fields rather than leaving them open.
-        # ``parsed`` -- the file this load just parsed, and its parse -- so
-        # the directory's record reads it rather than parsing it again.
-        "info":          run_info_for_dir(search_dir, parsed=parsed),
+        # ``output`` -- the file this load opened, the one on screen -- so
+        # the run's record is of it, and ``traj`` its parse, so the record
+        # reads it rather than parsing it again.
+        "info":          run_info_for_dir(search_dir, output=output,
+                                         traj=traj),
     }
 
 
@@ -625,11 +627,16 @@ def api_load():
     # Metadata search dir: the resolved run directory, else the parent of
     # the file we loaded (Watch was pointed straight at a log inside a run
     # dir).  The directory the resolved log sits in.  ONCE per load, for
-    # the structure envelope and the answer alike, with this load's own
-    # parse handed on: the relaxation record reads the run's result, and
-    # composing the block per consumer parsed it twice more.
+    # the structure envelope and the answer alike, with the file this load
+    # opened and its parse handed on: the relaxation record is of the file
+    # on screen, and composing the block per consumer parsed it twice more.
+    # The parse rides only when it is of that file -- a load racing this
+    # one can swap the state between the parse and here.
+    _parsed = state.get("parsed")
     meta = _run_metadata(resolved_from_dir or os.path.dirname(path),
-                         state["data"], parsed=state.get("parsed"))
+                         state["data"], output=path,
+                         traj=(_parsed[1] if _parsed and _parsed[0] == path
+                               else None))
     return jsonify({
         "ok":               True,
         "path":             state["path"],

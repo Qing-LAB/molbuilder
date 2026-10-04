@@ -127,8 +127,8 @@ def _trajectory_parser_for(resolved):
     if _P(resolved).is_dir():
         click.echo(f"Error: {resolved} is a directory.  These verbs read one "
                    f"run artifact; name the file inside it (the Watch tab "
-                   f"resolves a directory for you, via "
-                   f"`parse.dirs.openable_in`).", err=True)
+                   f"resolves a directory for you, through the run door, "
+                   f"`runs.openable`).", err=True)
         sys.exit(2)
     parser_cls = _detect(resolved)
     if not answers_a_trajectory(parser_cls):

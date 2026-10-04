@@ -97,14 +97,13 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     line its conclusion said, through the one door (`runrecord.ending`;
     ``None`` when it has not ended on its own), its state through the one
     door (`parse.dirs.run_status`) and its relaxation's verdict
-    (`parse.contract`):
-    an attempt's own run on the hierarchy; on the flat layout THIS stage's
-    files among the folder's -- its progress log, the one both engines write
-    and the only one a PySCF run's stdout cannot stand in for, then its
-    engine output.  ``verdict=False`` skips the relaxation's parse -- a list
-    of runs needs each one's conclusion, not a parse of each output."""
-    from ..parse import detect
-    from ..parse.contract import relaxation_of, relaxation_of_output
+    (`parse.contract.relaxation_of`), read from the run's own files in
+    either shape, the run door's (`runs.run_of`): its progress log --
+    where a PySCF run writes its steps, which its stdout cannot stand in
+    for -- then its engine output at the run's index.  ``verdict=False``
+    skips the relaxation's parse -- a list of runs needs each one's
+    conclusion, not a parse of each output."""
+    from ..parse.contract import relaxation_of
     from ..parse.dirs import run_status
     from ..paths import Shape
     from ..runfiles import stem as rf_stem
@@ -123,23 +122,16 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     except Exception:                                    # noqa: BLE001
         state = None
     rec = None
-    if not verdict:
-        pass
-    elif sh.keeps_attempts_as_directories:
-        try:
-            rec = relaxation_of(attempt)
-        except Exception:                                # noqa: BLE001
-            rec = None
-    else:
-        # THIS STAGE'S RUN among the folder's, the run door's: its progress
-        # log, then its engine output at the run's index.
+    if verdict:
+        # THIS STAGE'S RUN, the run door's, in either shape -- an attempt's
+        # own, or this stage's among a flat folder's: its progress log,
+        # then its engine output at the run's index.
         _run = run_of(attempt, stage=token)
         paths = ([_run.file(".molwatch.log"), _run.stdout]
                  if _run is not None else [])
         for path in (q for q in paths if q is not None):
             try:
-                rec = relaxation_of_output(path, detect(path).parse(str(path)),
-                                           engine=str(task.engine))
+                rec = relaxation_of(path)
             except Exception:                            # noqa: BLE001
                 rec = None
             if rec is not None:

@@ -88,19 +88,39 @@ class TestTheComposer:
         assert info["calculation"]["contract"]["basis_size"] == "DZP"
         assert info["calculation"]["source"] == "Relax.fdf"
 
-    def test_a_finished_run_answers_both_keys(self):
+    def test_a_finished_run_answers_both_keys_at_both_doors(
+            self, client, monkeypatch):
         """A run directory says two things about the structure it left
         (`model/parse.md` § 5b, § 5b.1): the level of theory its deck
-        stated and what the run did to the geometry.  Measured fixture:
-        the H2 relaxation under `tests/fixtures/siesta_relax`."""
-        from molbuilder.parse.dirs.run_info import run_info_for_dir
-        run = (Path(__file__).resolve().parent / "fixtures" / "siesta_relax"
-               / "01_relax" / "run-0")
-        from molbuilder.parse.contract import contract_of, relaxation_of
-        info = run_info_for_dir(run)
-        assert set(info) == {"calculation", "relaxation"}
-        assert info["calculation"] == contract_of(run)
-        assert info["relaxation"] == relaxation_of(run)
+        stated, and what the run did to the geometry -- read from the file
+        the viewer has open, so the two doors that ask answer one record:
+        the trajectory load, of the file it opened, and the structure
+        inspector's, of the file the Results tab opens in the structure's
+        folder (`runs.openable`).
+
+        WHY API-LEVEL: a measured fixture, read where it was measured --
+        the H2 relaxation under `tests/fixtures/siesta_relax`; the road
+        that produced it is the SIESTA e2e test."""
+        from molbuilder.parse.contract import contract_of
+        fixtures = Path(__file__).resolve().parent / "fixtures"
+        _register_tmp_as_picker_root(fixtures, monkeypatch)
+        run = fixtures / "siesta_relax" / "01_relax" / "run-0"
+
+        loaded = client.post("/api/watch/load",
+                             json={"path": str(run)}).get_json()
+        assert loaded["ok"] is True, loaded
+        asked = client.get("/api/results/contract",
+                           query_string={"path": str(run / "H2.XV")}
+                           ).get_json()
+        assert asked["ok"] is True, asked
+
+        record = loaded["info"]["relaxation"]
+        assert record["source"] == Path(loaded["path"]).name, (
+            "the record is of the file on screen", record)
+        assert record["converged"] is True, record
+        assert asked["relaxation"] == record
+        assert (asked["calculation"] == loaded["info"]["calculation"]
+                == contract_of(run))
 
     def test_nothing_to_say_is_none_not_an_empty_dict(self, tmp_path):
         """``None`` reads like its two siblings on the same response

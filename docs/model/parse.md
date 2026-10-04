@@ -1109,8 +1109,9 @@ those names: user, "don't care about old projects".)*
 
 ### 5b.1 The relaxation record — what the run says about its final geometry
 
-`contract.relaxation_of(directory)` reads back **what the run did to the
-geometry it left** — the `info.relaxation` block:
+`contract.relaxation_of(output)` reads back **what the run did to the
+geometry it left**, from the run output a viewer has open — the
+`info.relaxation` block:
 
 | key | what it is |
 |---|---|
@@ -1124,18 +1125,24 @@ geometry it left** — the `info.relaxation` block:
 | `geometry_sha256` | the **last frame's** `Structure.geometry_fingerprint()` — sha256 over the **sorted** `geometry_lines()` (element and position rounded to a millionth of an ångström, negative zero folded), so it is the same whatever order a copy lists the atoms in — so a consumer can tell whether the coordinates in front of it are the ones this record is about. A rigid shift is not folded in: a pair exported from a run carries the run's cell, and no deck shifts a structure that states one |
 | `edited_by_hand` | *absent* as the run wrote it; the time a person changed the record on MolView's Metadata page ([`web/molview.md`](?doc=web/molview.md) § 8.4a) — from then on its values are the person's word, not the run's, and the relaxation check says so. The contract (`info.calculation`) is stamped the same way |
 
-**One openable output, or `None`** — the same rule as § 5b, read through the
-doors the Results tab opens a run with (`dirs.openable_in`, the registry's
-`detect`), so the record describes the file a person would be looking at.
-A run that relaxed nothing — a force-constant run, a single point, a seed
-nothing wrote into — echoes no force tolerance and has **no record**; no
-openable output, or one that does not parse, is `None`, never a guess.
+**The file a viewer has open, or `None`.** The record is read from the output
+its caller hands it — the run door's choice for a folder (`runs.openable`,
+what the Results tab opens) or the file a person pointed at — so it describes
+the file in front of them. `parse/` sits below the run door and searches for
+nothing itself *(it searched the folder with `dirs.openable_in` until
+2026-10-04, which no longer knows the calculation and could pick another file
+than the one on screen: plan B11, 3b.5)*. A run that relaxed nothing — a
+force-constant run, a single point, a seed nothing wrote into — echoes no
+force tolerance and has **no record**; no output, or one that does not parse,
+is `None`, never a guess.
 
-**Read once per load.** The trajectory viewer's load parses that same file, so
-it hands its parse on (`relaxation_of(directory, parsed=(path, parse))`, through
-`run_info_for_dir`) and composes the directory's metadata once, for the
-structure envelope and the answer alike; the record parses the file itself only
-for a caller that has not (the structure inspector's `/api/results/contract`).
+**Read once per load.** The trajectory viewer's load hands the file it opened
+and its parse on (`run_info_for_dir(directory, output=path, traj=parse)`, which
+asks `relaxation_of(path, traj=parse)`) and composes the directory's metadata
+once, for the structure envelope and the answer alike; the record parses the
+file itself only for a caller that has not (the structure inspector's
+`/api/results/contract`, which hands the run door's choice for the structure's
+folder). So the two doors answer one record of one file.
 The stop reason the viewer shows is the parse's own `cause` (§ 2b), not a
 second read.
 

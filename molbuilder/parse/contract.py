@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 
 def contract_of(directory) -> Optional[Dict[str, Any]]:
@@ -118,11 +118,10 @@ def _force_tolerance_of(targets: Optional[Dict[str, Any]]) -> Optional[float]:
     return None
 
 
-def relaxation_of(directory, *,
-                  parsed: Optional[Tuple[Any, Any]] = None
-                  ) -> Optional[Dict[str, Any]]:
-    """The relaxation record -- what the run in *directory* did to the
-    geometry it left -- or ``None`` (`model/parse.md` § 5b.1).
+def relaxation_of(output, *, traj: Any = None) -> Optional[Dict[str, Any]]:
+    """The relaxation record -- what the run did to the geometry it left --
+    read from ``output``, the run output a viewer has open, or ``None``
+    (`model/parse.md` § 5b.1).
 
     Shape (the ``info.relaxation`` block)::
 
@@ -130,13 +129,20 @@ def relaxation_of(directory, *,
          "max_force_ev_ang", "max_force_free_ev_ang", "held_atom_idxs",
          "held_atom_keys", "converged", "run_state", "geometry_sha256"}
 
-    Read through the doors the Results tab opens a run with
-    (`dirs.openable_in`, the registry's `detect`), so the record describes
-    the file a person would be looking at.  A run that relaxed nothing --
-    a force-constant run, a single point, a seed nothing wrote into --
-    echoes no force tolerance and has no record; a directory with no
-    openable output, or one that does not parse, or one whose last
-    reported forces are missing, is ``None``, never a guess.  The forces
+    **The file is the caller's**: the one in front of the person -- the
+    run door's choice for a folder (`runs.openable`, what the Results tab
+    opens) or the file they pointed at -- so the record describes what
+    they are looking at.  `parse/` sits below the run door and cannot ask
+    it, so this reads the file it is handed and searches for nothing
+    *(it searched the folder with `dirs.openable_in` until 2026-10-04,
+    which no longer knows the calculation and could pick another file:
+    plan B11, 3b.5)*.  ``traj`` is that file's parse when the caller
+    holds one -- the viewer's load -- so it is parsed once, not twice.
+
+    A run that relaxed nothing -- a force-constant run, a single point, a
+    seed nothing wrote into -- echoes no force tolerance and has no
+    record; an output that is missing, does not parse, or whose last
+    reported forces are missing is ``None``, never a guess.  The forces
     are the last step that reported any, judged as the engines judge them:
     the largest absolute Cartesian COMPONENT, over every atom and over the
     atoms the run moved (the held set excluded), from that step's per-atom
@@ -147,30 +153,19 @@ def relaxation_of(directory, *,
     frame's :meth:`Structure.geometry_fingerprint` and ``held_atom_keys``
     the held atoms' :meth:`Structure.geometry_lines`, so a consumer can tell
     whether the coordinates in front of it are the ones this record is
-    about, whatever order it lists them in.  ``engine`` is ``None`` when the
-    directory does not declare one.
-
-    ``parsed`` is ``(path, parse)`` a caller already holds -- the viewer's
-    load of this very file -- and is used when ``path`` is the file this
-    record reads, so that file is parsed once, not twice.
+    about, whatever order it lists them in.  ``engine`` is the output's
+    folder's (`engine_of`), ``None`` when it declares none.
     """
-    directory = Path(directory)
-    if not directory.is_dir():
+    path = Path(output)
+    if not path.is_file():
         return None
-    from .dirs import openable_in
     from .registry import detect
     try:
-        path, _trail = openable_in(str(directory))
-        if not path:
-            return None
-        if (parsed is not None
-                and Path(parsed[0]).resolve() == Path(path).resolve()):
-            traj = parsed[1]
-        else:
-            traj = detect(Path(path)).parse(path)
+        if traj is None:
+            traj = detect(path).parse(str(path))
     except Exception:                                       # noqa: BLE001
         return None
-    return relaxation_of_output(path, traj, engine=engine_of(directory))
+    return relaxation_of_output(path, traj, engine=engine_of(path.parent))
 
 
 def relaxation_of_output(path, traj, *,
@@ -179,7 +174,7 @@ def relaxation_of_output(path, traj, *,
     """The relaxation record of ONE output already parsed -- ``traj``, the
     parse of ``path`` -- in :func:`relaxation_of`'s shape, or ``None`` for a
     run that relaxed nothing.  :func:`relaxation_of` asks it of the file a
-    directory's viewer opens; `prep` asks it of the `relax` stage's own
+    viewer has open; `prep` asks it of the `relax` stage's own
     output, the one it reads the relaxed geometry from
     (`engines/vibration.md` § 5.2a), so the record is of that run and no
     other, whatever else the directory holds."""

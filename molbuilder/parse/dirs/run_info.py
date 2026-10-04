@@ -25,29 +25,32 @@ Two keys:
   (``parse.contract.RECORDED_FIELDS``),
   so a cited pair defaults a transport calculation's template
   (`transport-design.md` § 4.1b).
-* ``relaxation`` — what the run did to the geometry it left
+* ``relaxation`` — what the run did to the geometry it left, read from
+  the output the viewer has open, which the caller hands down
   (``parse.contract.relaxation_of``, `model/parse.md` § 5b.1): its force
   tolerance, the largest force left on the atoms it moved, the held set
   and a fingerprint of the final geometry, so a structure exported from a
   finished relaxation can be checked against its own record when it is
   stated relaxed (`engines/vibration.md` § 2.2).
 
-Callers:
+Callers, each handing the output it has open:
   * ``web/blueprints/watch.py::_run_metadata`` — the block every
-    ``/api/watch/load`` answer carries.
+    ``/api/watch/load`` answer carries: the file the load opened.
   * ``web/blueprints/results.py::api_results_contract`` — the structure
-    inspector's door, which reads the ``calculation`` key out of it.
+    inspector's door: the run door's choice for the structure's folder
+    (``runs.openable``).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Union
 
 
 def run_info_for_dir(
     directory: Union[str, Path, None], *,
-    parsed: Optional[Tuple[Union[str, Path], Any]] = None,
+    output: Union[str, Path, None] = None,
+    traj: Any = None,
 ) -> Optional[Dict[str, Any]]:
     """The ``info`` block *directory* answers for itself, or ``None``.
 
@@ -61,9 +64,12 @@ def run_info_for_dir(
     Never raises: a directory that cannot be read is a directory with
     nothing to say, not a failed load.
 
-    ``parsed`` is ``(path, parse)`` of a file the caller has just parsed --
-    the viewer's load -- so the relaxation is read from it rather than by
-    parsing the same file again (`contract.relaxation_of`).
+    ``output`` is the run output the viewer has open -- the run door's
+    choice for the directory, or the file a person pointed at -- handed
+    down because `parse/` cannot ask the door: the relaxation is ITS
+    record, and there is none without one (`contract.relaxation_of`).
+    ``traj`` is its parse when the caller holds one -- the viewer's load
+    -- so the file is not parsed again.
     """
     if not directory:
         return None
@@ -77,7 +83,8 @@ def run_info_for_dir(
     if calculation is not None:
         out["calculation"] = calculation
     try:
-        relaxation = relaxation_of(directory, parsed=parsed)
+        relaxation = (relaxation_of(output, traj=traj)
+                      if output else None)
     except Exception:                                       # noqa: BLE001
         relaxation = None
     if relaxation is not None:

@@ -11,8 +11,8 @@ experimental bond (H at z = 5.741 Å above the held H at z = 5.0), the
 (`run.json`).  The atom order is the sorted copy's (held atom first), which is
 why the record's held set is `[0]`.
 
-The tests read this directory the way the Results tab does -- through
-`parse.dirs.openable_in` and the registry -- so it keeps the layout a run
+The tests read this directory the way the Results tab does -- through the
+run door (`runs.openable`) and the registry -- so it keeps the layout a run
 has: `task.json` at the calculation root, `01_relax/run-0/` with
 `calcdir.json` pointing at it.
 
