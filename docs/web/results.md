@@ -122,8 +122,9 @@ back. Two gates decide the menu, in this order:
 
 What is left is listed newest first, grouped by kind (the group with the newest
 file floats to the top). **The opened file is the server's answer, not the
-newest** — `openable`, from `parse.dirs.openable_in`, which asks what this
-*calculation* produces before it looks at dates. The picker mirrors your pick to
+newest** — `openable`, from the run door (`runs.folder_answer`), which opens
+the run the folder speaks for at what its *calculation* produces, and looks at
+no date (`model/parse.md` § 5.1–§ 5.2). The picker mirrors your pick to
 the sidebar so the highlight matches.
 
 *(Both sentences above were the opposite until 2026-09-18: the picker listed

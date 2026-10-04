@@ -299,13 +299,13 @@ def _rung_homes(base: Path, task, job_name: str, d: Path) -> list:
     return rung_containers(base, task, job_name)
 
 
-def _job_status(base: Path, jobset: JobSet, job, task, *, sh, dirs,
+def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
                 refs) -> StageStatus:
     """One prepped job's status, read from where its attempts are."""
     d = base / dirs[job.name]
-    # WHICH FILES are this stage's, asked of the layout (§ 9's `Shape`).
-    # In the hierarchy the directory already answered; in flat every stage
-    # shares one, and the deck's token in each filename is the answer.
+    # WHICH FILES are this stage's: its run's stem names them, in either
+    # shape -- a flat folder holds every stage, an attempt may hold several
+    # run indexes.
     token = refs[job.name].token
     # THE LABEL IS THIS JOB'S, NOT THE JOBSET'S.  A sweep's `JobSet.name`
     # is `task.label`, while each trial's deck is `f"{task.label}-{token}"`
@@ -414,7 +414,7 @@ def jobset_status(jobset: Optional[JobSet], base_dir) -> JobSetStatus:
     kw = {}
     if jobset is not None:
         sh = shape_of(jobset, base_dir)
-        kw = {"sh": sh, "dirs": job_dir_names(jobset, sh),
+        kw = {"dirs": job_dir_names(jobset, sh),
               "refs": stage_refs(jobset)}
     stages: List[StageStatus] = []
     if task is not None:

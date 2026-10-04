@@ -2255,8 +2255,9 @@ is the **tree** — which decks exist, by rung, bias point and attempt, each
 with its state.
 
 > **It consumes the calculation-root reader that exists and writes no
-> second one.** That reader is `calcdirs.container_or_run` (landed
-> 2026-09-19); `plan.md` § 5c.3's proposed owner, `checkpoint._is_bundle_root`,
+> second one.** That reader is the run door's `runs.place_of`, which reads
+> the description through `read_task` (`calcdirs.container_or_run` from
+> 2026-09-19 until 2026-10-04, plan B14); `plan.md` § 5c.3's proposed owner, `checkpoint._is_bundle_root`,
 > is superseded and still private with one caller. § 5c.3's warning that a
 > second copy *"would be instance 14"* of a known duplication stands, and an
 > earlier draft of this section designed exactly that parallel enumerator.

@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from molbuilder import calcdirs
 from molbuilder import runfiles as _rf
 from molbuilder.identity import parse_token
-from molbuilder.paths import attempt_index, trial_point
+from molbuilder.paths import trial_point
 
 
 # --------------------------------------------------------------------- #
@@ -386,12 +386,21 @@ def folder_answer(directory) -> Dict[str, Any]:
             else:
                 attempts.append("no run here yet: no stage has run in this "
                                 "folder, and more than one is prepped")
-        else:
+        elif place.role == calcdirs.CONTAINER:
             chosen = _openable(d, label, stage, calc, attempts)
             attempts.append(
                 "this directory is a container, not a run -- it has no run "
                 "state; its runs are the directories below it "
                 "(project-layout.md § 1.4)")
+        else:
+            # INSIDE A CALCULATION, AND NOTHING SAYS WHAT IT IS -- no
+            # `calcdir.json` (a `pseudos/`, a folder a person made): its files
+            # are read with the calculation's label, and no run is asked of it.
+            chosen = _openable(d, label, stage, calc, attempts)
+            attempts.append(
+                "nothing marks this folder in its calculation (no "
+                "calcdir.json), so only what is in it is shown "
+                "(project-layout.md § 1.4a)")
     declared = set(_rf.roles())
     files = []
     for entry in sorted(d.iterdir(), key=lambda e: e.name):

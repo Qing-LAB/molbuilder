@@ -35,7 +35,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 #: How much of a ``.out`` the launch, build, solver and pseudopotential lines
 #: can sit in -- the solver is printed after the basis report, ~49 KB into a
@@ -109,7 +109,7 @@ def run_files(directory, *, label: str, stage: Optional[str],
     **The caller says which run** -- the run door (`runs.run_of`,
     `execution/architecture.md` § 3.2), which reads the label from the
     description and decides the run a folder speaks for: the highest stage
-    with run output, then its newest run index (`model/parse.md` § 5.1).
+    launched, then its newest run index (`model/parse.md` § 5.1).
     This floor knows no calculation (§ 2.1): it read the label off the
     folder's decks, and the stage off the status's chosen file, until
     2026-10-04 (plan B11).

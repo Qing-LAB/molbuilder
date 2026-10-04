@@ -267,7 +267,8 @@ pass; if it is wrong they all fail together — **four tests carrying one bit**.
 > **The first one stopped being an example on 2026-09-18, and the reason is
 > this section's own rule.** `openable_in` still calls `find_by_role`, so the
 > claim above is still literally true of it — but it is no longer THIN: it
-> asks `task.json` what calculation this is, `runfiles.result_roles` what
+> asked `task.json` what calculation this is (the run door, `runs`, asks the
+> description since 2026-10-04), `runfiles.result_roles` what
 > that produces, and `detect()` whether anything can open the answer
 > (`model/parse.md` § 5.2). Three rules the door cannot know, so by the rule
 > below it now earns its own tests, and it has them. Left in place rather

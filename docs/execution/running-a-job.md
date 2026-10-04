@@ -523,7 +523,7 @@ stopped with SIGUSR1, not an ending (§ 4.1).
 | how is it doing — how did it end? | `parse.dirs.job.run_status` | § 4.2 |
 | which engine ran? | `parse.contract.engine_of` | § 4.2 |
 | what ran, with what, and how did it go? | the run record, `runs.folder_answer(dir)["record"]` | [`model/parse.md`](?doc=model/parse.md) § 5d |
-| which file should a viewer open? | `parse.dirs.openable_in` | [`model/parse.md`](?doc=model/parse.md) § 5.2 |
+| which file should a viewer open? | the run door, `runs.openable` — `parse.dirs.openable_in` for a folder no calculation claims | [`model/parse.md`](?doc=model/parse.md) § 5.2 |
 
 ### 4.1 The wrapper's own instruments
 
