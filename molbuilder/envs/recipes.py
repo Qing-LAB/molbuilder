@@ -36,6 +36,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 from ..diagnostics import DEFAULT_ENV_NAMES, Capabilities
 from . import hints as _hints
@@ -204,6 +205,50 @@ _SIESTA_REF  = _env_default("MOLBUILDER_SIESTA_TAG",
                             #   MOLBUILDER_SIESTA_TAG=<sha>
                             "5.4.2")
 
+#: THE HOST ENV'S PACKAGE LIST -- ONE FILE, read here and by
+#: `scripts/install-env.sh`, which creates the host env from it before any
+#: python exists to read a recipe (`env-framework.md` § 8).  It also states
+#: the python every env is built on.  Nothing here repeats it.
+_HOST_ENV_FILE = Path(__file__).with_name("host-env.txt")
+
+
+@dataclass(frozen=True)
+class _HostEnv:
+    """What `host-env.txt` states: the python every env is built on, the
+    host env's conda specs, and its pip packages with each one's reason."""
+    python: str
+    conda: Tuple[str, ...]
+    pip: Tuple[Tuple[str, str], ...]
+
+
+def _read_host_env(path: Path = _HOST_ENV_FILE) -> _HostEnv:
+    """``<kind> <value> [<reason>]`` per line, ``#`` a comment -- the file's
+    own header states the three kinds.  A line that is none of them is
+    refused, naming the file and the line."""
+    python, conda, pip = None, [], []
+    for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(),
+                             1):
+        words = line.split(None, 2)
+        if not words or words[0].startswith("#"):
+            continue
+        kind = words[0]
+        if kind == "python" and len(words) == 2:
+            python = words[1]
+        elif kind == "conda" and len(words) == 2:
+            conda.append(words[1])
+        elif kind == "pip" and len(words) == 3:
+            pip.append((words[1], words[2]))
+        else:
+            raise ValueError(
+                f"{path}:{n}: not `python <X.Y>`, `conda <spec>` or "
+                f"`pip <name> <reason>`: {line!r}")
+    if python is None:
+        raise ValueError(f"{path}: no `python <X.Y>` line")
+    return _HostEnv(python, tuple(conda), tuple(pip))
+
+
+_HOST_ENV = _read_host_env()
+
 #: THE PYTHON EVERY ENV IS BUILT ON.  One value, EVERY recipe -- a count
 #: went stale here twice, so the rule is stated instead and a test holds
 #: it (`test_every_recipe_declares_the_uniform_packages`).
@@ -211,7 +256,8 @@ _SIESTA_REF  = _env_default("MOLBUILDER_SIESTA_TAG",
 #: Read at IMPORT time, like `MOLBUILDER_GCC` and for the same forcing
 #: reason: the recipes are module-level data, so a Python-side flag would
 #: arrive after the value it must change was already frozen.  `--python <X.Y>`
-#: on the shim sets it; so does exporting the variable.
+#: on the shim sets it; so does exporting the variable.  Unset, it is the
+#: `python` line of `host-env.txt`, the default the shim reads too.
 #:
 #: **A MINOR PIN, not a major one.**  conda reads a bare ``3`` as ``3.*``, so
 #: two machines installing weeks apart would legitimately resolve different
@@ -241,7 +287,7 @@ _SIESTA_REF  = _env_default("MOLBUILDER_SIESTA_TAG",
 #: siesta build (`5.4.2-mpi_openmpi_h9ae7e9f_3`), drops nothing, changes
 #: nothing, and adds 9 packages (80 -> 89) because siesta already pulls most
 #: of what python needs.  It constrains that solve in no way at all.
-_PYTHON_VERSION = _env_default("MOLBUILDER_PYTHON", "3.12")
+_PYTHON_VERSION = _env_default("MOLBUILDER_PYTHON", _HOST_ENV.python)
 _PYTHON_SPEC = f"python={_PYTHON_VERSION}"
 
 
@@ -1226,9 +1272,8 @@ class Recipe:
 #  The built-in recipes                                                  #
 #                                                                       #
 #  Collected, in order, by `builtin_recipes` at the end of the file.   #
-#  The host recipe's default packages are inlined a second time, in    #
-#  bash, by scripts/install-env.sh (it runs before any python exists): #
-#  a change to one is made to the other (`env-framework.md` § 8).      #
+#  The host recipe's default packages are `host-env.txt`'s, the one    #
+#  list scripts/install-env.sh reads too (`env-framework.md` § 8).     #
 # --------------------------------------------------------------------- #
 
 
@@ -1238,44 +1283,11 @@ _HOST = Recipe(
     description="Host env: runs `python -m molbuilder ...`, build-time "
                 "chemistry, and the web UI.",
     channels=("conda-forge",),
+    # THE DEFAULT PACKAGES ARE THE FILE'S (`host-env.txt`), each one's reason
+    # beside it there; what follows them is the opt-in test tooling, which a
+    # default install -- the shim's -- leaves out.
     conda_packages=(
-        _PYTHON_SPEC, "pip",
-        "numpy", "ase", "sisl",
-        # NOTHING NOTEBOOK-RELATED BELONGS HERE.  On 2026-09-14 this list
-        # briefly gained `scipy`, `pandas`, `matplotlib` and `ipykernel`,
-        # added while this env was going to be the notebook KERNEL.  It is
-        # not: `molbuilder-jupyternb` holds the server, the kernel and the
-        # analysis stack, and no other env carries notebook tooling.  All
-        # four are gone and this list is what it was before.
-        "rdkit", "openbabel", "biopython",
-        "flask", "click", "plotly",
-        "authlib", "python-cas",
-        # The test runner, its parallel workers and the static check.
-        # `pytest-xdist` is what lets `tools/testrun.py` spread a run over
-        # the machine's cores (`docs/process/testing.md` § 6.1a) -- a
-        # plugin of the suite's own runner, so it sits beside pytest rather
-        # than with the opt-in browser tooling below.
-        "pytest", "pytest-xdist", "pyflakes",
-        # System metrics for the web UI's system-load blueprint.
-        # ``molbuilder serve`` imports the blueprint at startup; without
-        # psutil the import (and the whole server) hard-fails with
-        # ModuleNotFoundError.  Declared in pyproject.toml's runtime
-        # deps; mirrored here so the conda path also delivers it.
-        "psutil>=5.9",
-        # Git is required by the checkpoint subsystem
-        # (docs/execution/running-a-job.md § 6).
-        #
-        # DECLARED IN EVERY ENV, deliberately and uniformly, so there is
-        # nothing to remember: no env is the "one with git", and no
-        # future need has to re-litigate which list to add it to.  It
-        # costs a few MB (`env-framework.md` § 3.2b).  When a state is
-        # saved is checkpointing.md § 9's rule: prep and Task setup's
-        # Save, never a running job.
-        #
-        # HPC sites have inconsistent system git versions; the conda
-        # env's git takes precedence via PATH ordering and is the only
-        # version we control.
-        "git",
+        _PYTHON_SPEC, *_HOST_ENV.conda,
         # Opt-in, with the playwright pair below.  A conda package rather
         # than a documented `nvm install`, because nvm is a per-user local
         # thing conda cannot provide and this project cannot assume -- the
@@ -1283,21 +1295,11 @@ _HOST = Recipe(
         # env fine (user, 2026-09-18).
         CondaPackage("nodejs", opt_in='test tooling -- runs the shipped ES modules directly; without it 717 JS tests SKIP, and pytest counts a skip toward a green run'),
     ),
-    # OPTIONAL, and the bootstrap shim already said so.
-    #
-    # `scripts/install-env.sh` has always treated these two as extras --
-    # "UI-only conveniences; the env is usable without them" -- warning
-    # and continuing when pip fails.  The record said the opposite, so
-    # the SAME failure aborted the install when it came through
-    # `molbuilder envs install` and was survived when it came through
-    # the shim.  Two halves of one install path disagreeing about one
-    # package is the drift the record exists to prevent, so the record
-    # now states what the shim does.
+    # The file's pip packages are OPTIONAL -- UI-only conveniences, the env
+    # usable without them -- as the shim installs them (warn and continue).
     pip_packages=(
-        PipPackage("PeptideBuilder", optional=True,
-                   reason="UI only -- the peptide builder in the Molbuilder tab"),
-        PipPackage("pubchempy", optional=True,
-                   reason="UI only -- PubChem name lookup in the Molbuilder tab"),
+        *(PipPackage(name, optional=True, reason=reason)
+          for name, reason in _HOST_ENV.pip),
         # THE TEST TOOLING LIVES HERE, in the host env, and is opt-in.
         #
         # Here because the `e2e` tests start the real server IN-PROCESS

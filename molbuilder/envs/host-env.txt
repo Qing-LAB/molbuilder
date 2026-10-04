@@ -1,0 +1,54 @@
+# THE HOST ENV'S PACKAGE LIST -- one list, written here and nowhere else.
+#
+# Read by both (docs/ops/env-framework.md § 8):
+#   * scripts/install-env.sh, which creates the host env `molbuilder` from it
+#     before any python exists (`bootstrap`);
+#   * molbuilder/envs/recipes.py, whose host recipe (`_HOST`) is these
+#     packages plus the opt-in test tooling, and whose every recipe is built
+#     on the `python` line.
+#
+# One entry per line, `<kind> <value> [<reason>]`; a line starting `#` is a
+# comment:
+#   python <X.Y>          the python EVERY env is built on; `--python` on the
+#                         shim, or MOLBUILDER_PYTHON, overrides it
+#   conda <spec>          a conda package -- one conda spec, no spaces
+#   pip <name> <reason>   a pip package, installed after conda and OPTIONAL:
+#                         the env is usable without it, the reason says why
+#
+# A NAME AND NOTHING ELSE: a package that needs a source, a force flag or a
+# fallback is a record in recipes.py, not a line here.
+
+python 3.12
+
+conda pip
+conda numpy
+conda ase
+conda sisl
+# NOTHING NOTEBOOK-RELATED BELONGS HERE: `molbuilder-jupyternb` holds the
+# server, the kernel and the analysis stack, and no other env carries notebook
+# tooling (recipes.py `_JUPYTER`).
+conda rdkit
+conda openbabel
+conda biopython
+conda flask
+conda click
+conda plotly
+conda authlib
+conda python-cas
+# The test runner, its parallel workers -- what lets `tools/testrun.py` spread
+# a run over the machine's cores (docs/process/testing.md § 6.1a) -- and the
+# static check.
+conda pytest
+conda pytest-xdist
+conda pyflakes
+# System metrics for the web UI's system-load blueprint: `molbuilder serve`
+# imports it at startup and hard-fails without it.  pyproject.toml declares it
+# too, for an install by pip.
+conda psutil>=5.9
+# The checkpoint subsystem (docs/execution/running-a-job.md § 6): git in every
+# molbuilder env, a known version rather than the system's
+# (docs/ops/env-framework.md § 3.2b).
+conda git
+
+pip PeptideBuilder UI only -- the peptide builder in the Molbuilder tab
+pip pubchempy UI only -- PubChem name lookup in the Molbuilder tab

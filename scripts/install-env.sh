@@ -140,9 +140,9 @@ ORIGINAL_ARGS=("$@")
 # ---- THE SHIM'S OWN FLAGS ARE PARSED FIRST -------------------------------
 #
 # Moved here from the bottom of the file on 2026-09-14, and the move is the
-# fix for a real bug rather than tidying.  `HOST_CONDA_PACKAGES` below is a
-# TOP-LEVEL array assignment, so its `python=${MOLBUILDER_PYTHON:-3.12}`
-# entry expands the moment control reaches it.  With this block still ~400
+# fix for a real bug rather than tidying.  `HOST_CONDA_PACKAGES` below is
+# built at TOP LEVEL, so its `python=${MOLBUILDER_PYTHON:-...}` entry
+# expands the moment control reaches it.  With this block still ~400
 # lines further down, `bootstrap --python 3.13` built the HOST env on 3.12
 # and every other env on 3.13 -- a split, silently, because only the
 # exported-variable form was in the environment early enough.
@@ -414,7 +414,8 @@ Post-bootstrap subcommands (forwarded verbatim to the Python CLI):
 THE TWO FLAGS THIS SCRIPT OWNS (Python's --help does not list them):
 
   --python <X.Y>  the python every env is built on, e.g. --python 3.12
-                  (default 3.12).  Consumed here, never forwarded, for the
+                  (default: the python line of molbuilder/envs/host-env.txt).
+                  Consumed here, never forwarded, for the
                   same reason as --gcc: recipes.py reads MOLBUILDER_PYTHON
                   at IMPORT time.  Refuses a bare major (not a pin) and
                   anything below 3.11 (molbuilder's real floor), so a typo
@@ -508,8 +509,9 @@ Environment variables:
                                  produce unrunnable binaries.
                                  Pair with --clean to change an env that
                                  already exists.
-  MOLBUILDER_PYTHON              the python EVERY env is built on (default
-                                 3.12).  A minor version -- conda reads a bare
+  MOLBUILDER_PYTHON              the python EVERY env is built on (default:
+                                 host-env.txt's python line).  A minor version
+                                 -- conda reads a bare
                                  "3" as "3.*", which is not a pin.  Floor is
                                  3.11 (pyproject's requires-python, and
                                  molbuilder imports tomllib unconditionally);
@@ -748,40 +750,38 @@ EOF
 
 # ---- host-env package list (chicken-and-egg solver) ----------------------
 #
-# This list is molbuilder/envs/recipes.py::_HOST's DEFAULT packages
-# (`conda_set()` / `pip_set()`, opt-in ones left out), and a change to one
-# is made to the other (docs/ops/env-framework.md § 8).  The bash copy is
-# intentional: bash cannot read the Python recipe without first having
-# Python, and Python isn't available until the host env exists.
+# ONE LIST, molbuilder/envs/host-env.txt, which recipes.py reads too
+# (docs/ops/env-framework.md § 8): the host env's packages and the python
+# every env is built on.  Read here because this list creates the host env
+# BEFORE any python exists to read a recipe.  `--python` / MOLBUILDER_PYTHON,
+# parsed above, overrides the file's python line.  The file's own header
+# states its three kinds of line.
 
-HOST_CONDA_PACKAGES=(
-    # THE SAME VARIABLE recipes.py reads, resolved here because this array is
-    # what creates the host env BEFORE any python exists to read a recipe;
-    # recipes.py takes the same default, so the two halves agree whether or
-    # not the variable is set.
-    "python=${MOLBUILDER_PYTHON:-3.12}" pip
-    numpy ase sisl
-    rdkit openbabel biopython
-    flask click plotly
-    authlib python-cas
-    pytest pytest-xdist pyflakes
-    "psutil>=5.9"
-    # the checkpoint subsystem (docs/execution/running-a-job.md § 6): git
-    # in every molbuilder env, a known version rather than the system's.
-    git
-)
-# PLAIN NAMES ONLY, and that is a real constraint rather than a habit.
-# A `PipPackage` can carry a source, a force flag and a fallback; a bash
-# array can carry a name.  So a host package that ever needs one of
-# those cannot be expressed here: either the package does not belong in
-# the bootstrap list, or the shim needs to learn to read the record.
-#
-# These two are OPTIONAL (`optional=True` in the recipe, matching the
-# warn-and-continue below): UI-only conveniences, and the env is usable
-# without them.
-HOST_PIP_PACKAGES=(
-    PeptideBuilder pubchempy
-)
+HOST_ENV_FILE="${REPO_ROOT}/molbuilder/envs/host-env.txt"
+HOST_PYTHON=""
+HOST_CONDA_PACKAGES=()
+HOST_PIP_PACKAGES=()
+if [[ ! -r "${HOST_ENV_FILE}" ]]; then
+    echo "[molbuilder] cannot read ${HOST_ENV_FILE}, the host env's package list" >&2
+    exit 1
+fi
+while read -r _kind _value _reason || [[ -n "${_kind:-}" ]]; do
+    case "${_kind:-}" in
+        ""|\#*) ;;
+        python) HOST_PYTHON="${_value}" ;;
+        conda)  HOST_CONDA_PACKAGES+=("${_value}") ;;
+        pip)    HOST_PIP_PACKAGES+=("${_value}") ;;
+        *)  echo "[molbuilder] ${HOST_ENV_FILE}: '${_kind}' is not python, conda" \
+                 "or pip" >&2
+            exit 1 ;;
+    esac
+done < "${HOST_ENV_FILE}"
+if [[ -z "${HOST_PYTHON}" ]]; then
+    echo "[molbuilder] ${HOST_ENV_FILE} states no python line" >&2
+    exit 1
+fi
+HOST_CONDA_PACKAGES=("python=${MOLBUILDER_PYTHON:-${HOST_PYTHON}}"
+                     ${HOST_CONDA_PACKAGES[@]+"${HOST_CONDA_PACKAGES[@]}"})
 
 host_env_exists() {
     # Parse ``<mgr> env list`` robustly across conda / mamba (2 header

@@ -160,10 +160,18 @@ bash scripts/install-env.sh bootstrap --yes
 
 That script is a small **bootstrap shim** whose only job is the chicken-and-egg
 problem — you can't run `molbuilder envs` until the host env exists. It: finds
-conda/mamba, creates the **host `molbuilder`** env from an inlined package list,
-then hands off to `python -m molbuilder envs bootstrap`, which creates the
+conda/mamba, creates the **host `molbuilder`** env from its package list,
+**`molbuilder/envs/host-env.txt`**, then hands off to `python -m molbuilder envs
+bootstrap`, which creates the
 **conda-only backend envs** (siesta, pySCF, MDtools) and runs a health check
 (`doctor`). Add `--include-source-builds` to also build the GPU SIESTA env (§6).
+
+**The host env's packages are that one file.** It is a plain list — `python
+3.12`, `conda numpy`, `pip PeptideBuilder <why>`, one per line, each with a
+comment saying why it is there — and both the shim and molbuilder's own
+recipe read it, so a bootstrap and `molbuilder envs` always mean the same host
+env. To add or drop a host package, change its line; nothing else holds the
+list ([`env-framework.md`](?doc=ops/env-framework.md) § 3.4).
 
 `doctor` verifies the installed backends; its checks include `siesta`, the
 `pyscf` import probe, and AmberTools `LEaP`. **Every problem it detects
@@ -632,7 +640,8 @@ MOLBUILDER_GCC=13 bash scripts/install-env.sh install molbuilder-siesta-gpu   # 
 
 ### Choosing the Python every env is built on
 
-One value, `MOLBUILDER_PYTHON`, default **3.12**. It sets the `python=` pin in
+One value: the `python` line of `molbuilder/envs/host-env.txt` (**3.12** today),
+which `--python` or `MOLBUILDER_PYTHON` overrides. It sets the `python=` pin in
 **every** recipe — there is no exception:
 
 ```bash
@@ -1205,7 +1214,7 @@ its own header documents the three and its error text names all three.
 > **This section said micromamba could not run `bootstrap`** and offered a
 > hand-built host env as the workaround, until 2026-09-12. The shim had supported
 > it all along, so the advice sent micromamba users around the one path that
-> keeps the host env's package list in step with `recipes.py`
+> creates the host env from its one package list, `molbuilder/envs/host-env.txt`
 > ([`env-framework.md`](?doc=ops/env-framework.md) § 8).
 
 ## 9. Test map

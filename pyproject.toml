@@ -210,6 +210,9 @@ molbuilder = [
     # pattern existed until 2026-08-14, so NEITHER shipped in a built wheel --
     # it worked from the repo and would have failed on an installed copy.
     "data/*.toml", "siesta/*.toml", "pyscf/*.toml",
+    # The host env's package list (`envs/host-env.txt`), read at import by
+    # `envs/recipes.py` and by `scripts/install-env.sh`.
+    "envs/*.txt",
     # `data/jupyter_server_config.py` -- Python that is COPIED, never
     # imported: the framed notebook server's config file, which subclasses
     # jupyter_server's checkpoints class and so cannot be imported by the

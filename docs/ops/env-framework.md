@@ -16,6 +16,7 @@ packages) and must not be confused with this one.
 |---|---|
 | **Two state machines, and they answer different questions.** `EnvState` about the env before we touch it; `Outcome` about each step after we run it | § 2 |
 | **The registry is the only place that says what an env is.** Recipes are data | § 3 |
+| **The host env's package list is one file** — `envs/host-env.txt`, read by the bootstrap shim and by the registry; its `python` line is the python every env is built on | § 3.4 |
 | **A fact about one package lives ON that package.** No parallel `optional_*` lists — membership-by-name silently mis-declares | § 3.2 |
 | **A bare string is the ordinary case**, a record only when the package needs more than a name | § 3.1 |
 | **The sequence is forced by dependency**, not by list order, and the document says which orderings may never move | § 4.1 |
@@ -254,9 +255,9 @@ neither can be left to "whatever that env happened to need":
   `command -v python3` finds *after* the env is activated, so an env declaring
   none falls through its own empty `bin/` to the compute node's interpreter.
   `molbuilder-siesta` was that env until 2026-09-17; measured inside it,
-  `python3` resolved to `/usr/bin/python3`. See
-  [`installation.md`](?doc=ops/installation.md) *"Choosing the Python every env
-  is built on"*.
+  `python3` resolved to `/usr/bin/python3`. Its version is `host-env.txt`'s
+  `python` line (§ 3.4). See [`installation.md`](?doc=ops/installation.md)
+  *"Choosing the Python every env is built on"*.
 * **`git`** — `checkpoint.py`'s `GitNotInstalledError` tells the person to
   activate a molbuilder env *because* "every molbuilder env ships git as a
   conda_packages entry". That is a promise the registry has to keep, and HPC
@@ -340,6 +341,46 @@ cannot prove it is the declared build, so install unconditionally) and
 the package EXISTS, not to replace what is there — with a force flag, an
 unreachable source during an unrelated install would overwrite a good tree with
 a worse one.
+
+### 3.4 The host env's package list is one file, and two readers read it *(2026-10-04)*
+
+Every env but one is installed by molbuilder's Python layer from its recipe.
+The exception is the host env, `molbuilder`: it is the env that layer runs in,
+so on a fresh machine it is created by the bash shim before any Python exists
+(§ 8) — and bash cannot read `recipes.py`. So the host env's list is **data,
+in one file both read**:
+
+```
+molbuilder/envs/host-env.txt           one entry per line; `#` is a comment
+    python 3.12                        the python EVERY env is built on
+    conda numpy                        a conda package, one spec
+    pip PeptideBuilder <reason>        a pip package, optional, with why
+
+scripts/install-env.sh  ── reads it ──►  creates the host env (`bootstrap`)
+envs/recipes.py         ── reads it ──►  `_HOST`'s packages; every recipe's python
+```
+
+* **One list, so nothing has to be kept in line.** Adding or removing a host
+  package is one line in the file: a fresh bootstrap and every `molbuilder
+  envs` verb (`install`, `doctor`, `repair`) then agree on it. The reason a
+  package is there is the comment beside it, in the file.
+* **A line holds a kind and a name — nothing a record says.** A host package
+  that ever needs a source, a force flag or a fallback (§ 3.3) is a record in
+  `recipes.py`, as is the **opt-in test tooling** (`nodejs`, `playwright`,
+  `pytest-playwright` and the chromium step, § 3.2a): the shim performs a
+  default install, which leaves those out, so they are not on the list it
+  reads.
+* **The `python` line is the python every env is built on**, not only the
+  host's (§ 3.2b) — the shim needs it before any Python exists, so it lives
+  where the shim can read it. `--python` / `MOLBUILDER_PYTHON` overrides it
+  for both readers.
+* **A line neither reader understands is refused**, naming the file — by the
+  shim before it creates anything, by `recipes.py` at import.
+
+*(Until 2026-10-04 the shim held a second, hand-written copy of this list as
+bash arrays, kept equal to the recipe by a test, and the python default was
+written in both. User: "both bash and recipes.py can read one ... well
+formatted file that has one ... list".)*
 
 ## 4. The pipeline
 
@@ -803,13 +844,9 @@ appeared. A separate `MB_WANT_HELP` now stops that arm when the host env is abse
 and says why per-verb help needs it (the help comes from molbuilder itself, which
 lives in that env).
 
-It duplicates the host env's **default** package list — `conda_set()` /
-`pip_set()`, the opt-in test tooling left out, because the shim performs a
-default install — and **a bash array can hold a name and nothing else**: a
-host package that ever needs a source or a force flag cannot be expressed
-there. A change to the recipe's host list is made to the arrays too, and a
-review reads the two side by side. *(A test compared them until 2026-10-04;
-user: "your useless test wastes both cpu time and my ... time. retire it".)*
+**It reads the host env's package list from the one file the registry reads**,
+`molbuilder/envs/host-env.txt` (§ 3.4), and creates the host env from it — it
+holds no list of its own.
 
 ## 9. What stays asymmetric, and why
 
