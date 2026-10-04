@@ -110,9 +110,10 @@ def rung_of(stage_token: Optional[str]) -> str:
     never learns the word), so this reads the name back out rather than being
     told it twice.
     """
+    from ..identity import parse_token
     tok = str(stage_token or "")
-    head, sep, tail = tok.partition("_")
-    return tail if (sep and head.isdigit()) else tok
+    got = parse_token(tok)
+    return got[1] if got else tok
 
 
 # ===================================================================== #

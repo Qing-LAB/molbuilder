@@ -244,7 +244,8 @@ def stages_in(root, shape: "Shape", label: str = ""
     script, its outputs) and its bench container's.  A stage the description
     no longer names still holds its number here -- gaps are honest.
     """
-    from .identity import parse_stage_token, parse_token
+    from .identity import parse_token
+    from .runfiles import parse as _rf_parse
     root = Path(root)
     try:
         entries = list(root.iterdir())
@@ -258,7 +259,9 @@ def stages_in(root, shape: "Shape", label: str = ""
                 if got:
                     found.add(got)
         elif e.is_file():
-            got = parse_stage_token(e.name, label) if label else None
+            # READ BACK WITH ITS LABEL, through the one grammar (§ 4.5).
+            rec = _rf_parse(e.name, label) if label else None
+            got = parse_token(rec.stage) if rec and rec.stage else None
             if got:
                 found.add(got)
     for _rel, token in bench_containers_in(root, shape):

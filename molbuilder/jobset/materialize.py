@@ -31,7 +31,8 @@ from typing import Dict, List, Optional, Tuple
 
 from .. import calcdirs, runrecord
 from ..pseudos import PSEUDO_DIRNAME
-from ..identity import StageRef, parse_stage_token, resolve_stage_ref
+from ..identity import StageRef, parse_token, resolve_stage_ref
+from ..runfiles import parse as _rf_parse
 from .model import JobSet, warm_carry
 from ..paths import (attempt_dir, attempts_in,
                      trial_name as _paths_trial_name,
@@ -440,14 +441,13 @@ def _trial_stage_token(jobset: JobSet, job) -> Optional[str]:
 
     A trial's script is ``<label>-<point>_<NN>_<stage>.ext`` — its own § 6.3
     label (the calculation's, qualified by the coordinate) plus the stage
-    token.  Anchoring the parse on that full label is what keeps a stage
-    name containing ``_`` unambiguous, exactly as for a rung
-    (`identity.parse_stage_token`).
+    token.  Reading the name back with that full label is what keeps a
+    stage name containing ``_`` unambiguous, exactly as for a rung
+    (`runfiles.parse`, the one grammar).
     """
-    from ..identity import stage_token
-    parsed = parse_stage_token(os.path.basename(job.script),
-                               f"{jobset.name}-{job.name}")
-    return stage_token(*parsed) if parsed else None
+    got = _rf_parse(os.path.basename(job.script),
+                    f"{jobset.name}-{job.name}")
+    return got.stage if got is not None else None
 
 
 def stage_refs(jobset: JobSet) -> Dict[str, StageRef]:
@@ -484,7 +484,8 @@ def stage_refs(jobset: JobSet) -> Dict[str, StageRef]:
     # ``if ladder`` guard produced, read off the deck instead of a field.
     out: Dict[str, StageRef] = {}
     for j in jobset.jobs:
-        parsed = parse_stage_token(os.path.basename(j.script), jobset.name)
+        got = _rf_parse(os.path.basename(j.script), jobset.name)
+        parsed = parse_token(got.stage) if got and got.stage else None
         out[j.name] = StageRef(parsed[0] if parsed else None, j.name)
     return out
 

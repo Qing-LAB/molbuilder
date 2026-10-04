@@ -101,12 +101,12 @@ def differs(asked: Any, used: Any) -> Optional[bool]:
 
 
 def _stage_name(f: "RunFiles") -> Optional[str]:
-    from ...identity import parse_stage_token
-    # A deck's stage token is read only under its run's label.
-    if f.deck is None or not f.label:
-        return None
-    parsed = parse_stage_token(f.deck.name, f.label or "")
-    return parsed[1] if parsed else None
+    """The stage's NAME -- out of the token the run door gave the record
+    (`RunFiles.stage`), never cut from a deck's name: the run's stage is
+    known before any file of it is read."""
+    from ...identity import parse_token
+    got = parse_token(f.stage) if f.stage else None
+    return got[1] if got else None
 
 
 def _used_from_fdf_log(keys, params, blocks) -> Any:
