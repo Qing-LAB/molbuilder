@@ -542,8 +542,8 @@ Each viewer keeps a small amount of state, and it's worth knowing the shape
 because it explains how Reload behaves. A viewer holds: the **parsed file**
 (replaced whole on a file switch, never patched), your **per-file view** (which
 frame or which mode you're looking at — reset when you switch files), and your
-**per-session preferences** (which survive a file switch). If the run is still
-going, a **poll timer** is running.
+**per-session preferences** (which survive a file switch). While the run is
+live, a **poll timer** is running (§ 4.1).
 
 The one rule to remember: **"Reload = open the same file again."** Reload is
 not a special path — it runs the exact same clean reload a file-switch does
@@ -553,30 +553,43 @@ half-refreshed-state bugs. Two guards back it up: a **late response from a
 previous file can't write into the current view**, and **partial frames** the
 parser flags as in-progress are shown in the list but kept out of the plots.
 
-### 4.1 A run is finished when it has said so **twice** *(written down 2026-09-02)*
+### 4.1 A viewer follows the run, and the server says how the run is doing *(W38 M2f, 2026-10-03)*
 
-A watching **trajectory** viewer flips to *finished* only after **two
-consecutive** ticks report the run ended. One tick can lie: the parser may still be flushing
-trailing output, so a viewer that believed the first one stopped polling with
-the last few frames still on their way — and the plot you were left looking at
-was short of the end of the run you had just watched finish.
+A viewer showing a file **follows the run the file belongs to**: it polls
+while the run is **live** — queued or running — and stops when it is not:
+finished, failed, or never launched, when nothing more will arrive. *Live* is
+the run's state, and that state has one door: `run_status`, built on how the
+run's process ended (`runrecord.ending` —
+[`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2,
+[`architecture.md`](?doc=execution/architecture.md) § 3.2), the answer the
+Run panel and `jobset status` give. The server sends it with the file:
+`/api/watch/load`, `/api/watch/data` and `/api/spectra/load` each carry
+`run: {state, detail, live}` for the run the file belongs to — its folder,
+and the run its name reads back to (`parse.dirs.run_answer`) — or `null` for
+a file that belongs to no run, an upload. **A viewer never decides from the
+file's own ending**: an output that states its end belongs to a job that may
+still be deriving its result, and one killed mid-step states nothing at all —
+both viewers followed such a run until the page closed, until 2026-10-03.
 
-A tick that reports *still running* **resets the count**: the buffer counts
-consecutive ticks, not ticks in total. A stopped or out-of-memory run is a
-different answer and is taken at once — those do not get better on a second
-look.
+**The end is read before the file's last read.** When the server finds the
+run no longer live, it reads the file again if it has changed since the read
+before — so what a viewer stops on is the file's last state, in the answer
+that says the run is over. That is what the trajectory viewer's
+two-finished-ticks buffer approximated (*one tick can lie: the parser may
+still be flushing trailing output*) and what the spectra viewer's *every
+asked-for phase complete* stood in for; both are gone, and a run that stops —
+a crash, a kill its monitor saw — stops the polling in the same step as a
+finish.
 
-**The spectra viewer has no such buffer, on purpose** (`lib/spectra/core.js`,
-`_settlePostLoad`): its phase flags only move forward — *running* to
-*complete*, never back — and each file write is atomic, so one tick that finds
-every asked-for phase complete is already the end.
+**What a poll costs.** The run's state is asked whenever the file has
+nothing new — a load, and a poll that finds it unchanged; a poll that brings
+new content leaves it as it was, since the run was writing. Each output's
+ending is read once per version of the file (`_run_ending.ending_of` keeps it
+by the file's size and modification time), so a quiet poll costs a look at
+the run's folder; and an output that states how it ended takes the ending
+its own parse just read, so a load reads its file once.
 
-> **Why this is here now.** The rule has been in the code since the state
-> machine landed, and the only place it was written down was the design
-> proposal this contract replaced — so the tests that enforce it cited a
-> section number in `archive/`, a document the project's own rule says to open
-> for history and never to decide what is open now. A behaviour with no live
-> home is one nobody can check the code against.
+### 4.2 The buckets, and how they are written
 
 **The buckets have names in the code — five, not the four described above.**
 Read from `lib/trajectory/core.js`, which is the shipped implementation:
@@ -880,11 +893,17 @@ presenters pass (see [`presenters.md`](?doc=web/presenters.md)).
   — the Run panel (§ 3a) on a SIESTA run the road makes and stops: the closed
   line, the four sections, the deck's View, and hidden for a container and
   under a rebind whose scan fails.
-- `test_results_state_contract_js.py` — § 4's buckets, its two guards and
-  § 4.1's two-tick settle, on the trajectory side.
-- `test_results_state_contract_spectra_js.py` — § 4's buckets and guards on
-  the spectra side, which is a second inspector and not a copy (it settles on
-  one tick, § 4.1).
+- `test_results_state_contract_js.py` — § 4.2's buckets and its two guards,
+  on the trajectory side.
+- `test_results_state_contract_spectra_js.py` — § 4.2's buckets and guards on
+  the spectra side, which is a second inspector and not a copy.
+- § 4.1, the run followed by the server's answer:
+  `test_viewers_follow_the_run.py` (the server's `run`, and the run's end
+  read before the file's last read), `test_trajectory_settle_post_load_js.py`
+  (the trajectory settle, as a case table), `test_trajectory_transition_js.py`
+  (its poll loop takes a quiet poll's answer), and
+  `test_inspector_registry_e2e.py::…::test_a_followed_run_is_let_go_when_the_run_ends`
+  (the spectra viewer, a run concluding and one killed between phases).
 
 *(The last two were missing from this list until 2026-09-02, which is how they
 came to be read as tests of a retired design: the vocabulary they use —

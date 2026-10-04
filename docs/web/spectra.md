@@ -523,14 +523,17 @@ is still running, the viewer **follows it by itself — it polls
 `/api/spectra/load` every 2 seconds** and redraws as new modes arrive, and the
 status line above the phase dots says it is following. (That's a faster
 cadence than the trajectory viewer's 15 seconds — a spectrum job produces its
-phases in quicker bursts.) The poll stops when the run is done, when the file
+phases in quicker bursts.) The poll stops when the run is no longer live —
+finished, failed or never launched, the state the server sends with the file
+from the one door ([`results.md`](?doc=web/results.md) § 4.1) — when the file
 goes away or keeps failing to load, and with the viewer — another pick, or
-leaving the tab. It considers the run done once every phase the
-description asked for reports `complete` — the infrared intensities included,
-which carry their own flag, `phase_ir`; a phase it never asked for reports
-`not requested` from the first write and counts as finished, and a file
-written before the infrared flag (`phase_ir` `""`) is not waited on for it
-([`engines/vibration.md`](?doc=engines/vibration.md) § 4.9).
+leaving the tab. The phase dots say how far each phase got — the infrared
+intensities with their own flag, `phase_ir`; a phase it never asked for reads
+`not requested` from the first write
+([`engines/vibration.md`](?doc=engines/vibration.md) § 4.9) — and a run that
+stopped between phases says so on the status line, in the run's own words.
+*(It stopped once every asked-for phase reported complete until 2026-10-03, so
+a run killed mid-phase was followed until the page closed.)*
 
 Like every Results-tab viewer, the spectra viewer is a small **state machine**
 (idle → loading → loaded / watching → error), and **Refresh is a clean reload**

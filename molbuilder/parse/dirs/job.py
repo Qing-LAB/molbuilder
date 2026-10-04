@@ -302,6 +302,11 @@ def _stderr_of(run_dir: Path, path: Path,
 RUN_STATES: "tuple[str, ...]" = ("pending", "queued", "running",
                                  "finished", "failed")
 
+#: The states in which more can still arrive -- launched and not over.  What a
+#: Results viewer follows (`web/results.md` § 4.1): a run never launched writes
+#: nothing until it is, and one finished or failed writes nothing more.
+LIVE_STATES: "tuple[str, ...]" = ("queued", "running")
+
 
 @dataclass(frozen=True)
 class RunStatus:

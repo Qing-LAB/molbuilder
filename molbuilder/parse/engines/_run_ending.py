@@ -38,9 +38,11 @@ always has been.
 """
 from __future__ import annotations
 
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 # THE EMITTERS' OWN END LINES, imported rather than spelled -- the
 # `ROLE_GEOM_TRAJ` pattern (`parse/dirs/rundir.py`) applied to a line.  Two,
@@ -54,13 +56,13 @@ try:                                        # inside molbuilder
                                     as PYSCF_SPECTRUM_END_MARKER)
     from ... import runfiles as _rf
     from . import molwatch_grammar as _MG
-    from .siesta_reader import SiestaReader
+    from .siesta_reader import SiestaReader, read_output
 except ImportError:                         # beside a job, as the monitor's
     from end_lines import (END_MARKER as PYSCF_END_MARKER,
                            SPECTRUM_END_MARKER as PYSCF_SPECTRUM_END_MARKER)
     import runfiles as _rf
     import molwatch_grammar as _MG
-    from siesta_reader import SiestaReader
+    from siesta_reader import SiestaReader, read_output
 
 #: The run is over and will produce nothing more -- § 2b P-S1's vocabulary
 #: split by the only question a watcher asks.  ``unknown`` is deliberately
@@ -108,33 +110,47 @@ def _siesta_ending(path, stderr=None) -> RunEnding:
     """The ``.out``'s ending, as the SIESTA reading pass reads it
     (`siesta_reader.SiestaReader`, `model/parse.md` § 4a) -- the one reader
     of the family's lines, which the registered parser builds its Frames
-    from.  Asked for the ending alone, it builds none.
+    from, through the one read (`siesta_reader.read_output`).  Asked for the
+    ending alone, it builds none.
 
     Given ``stderr`` -- the file SIESTA's stderr went to, its wrapper's
     session log -- the same pass reads it after the output when the output
     states no ending.  SIESTA's ``die`` writes its message to both channels
     but flushes stdout on node 0 alone (``Src/siesta_handlers_m.F90``), so a
-    rank other than 0 that dies may say why on stderr only.
+    rank other than 0 that dies may say why only there.
 
     ``running`` is the honest answer for an output with no ending in it --
     not finished: nothing in it separates a slow DFT step from a job the
     scheduler killed (§ 2b P-S1).
     """
-    reader = SiestaReader()
+    return _siesta_reading(path, stderr)[0]
+
+
+def _siesta_reading(path, stderr=None) -> "Tuple[RunEnding, bool]":
+    """``(ending, final)`` -- :func:`_siesta_ending`'s answer, and whether
+    the output ALONE stated how it ended: then the stderr was never read, and
+    the ending is the output's own reading's, the one a parse of the same
+    version reads (:func:`keep_reading`)."""
     # AN OUTPUT SIESTA NEVER WROTE TO is not there at all -- the tee creates
     # it on the first line -- and a run that died before its first line may
     # still have said why on stderr.
-    if stderr is None or Path(path).exists():
-        reader.feed_text(_read(path))
+    there = stderr is None or Path(path).exists()
+    reader = read_output(path) if there else SiestaReader()
+    final = there and reader.run_state in CONCLUDED
     if stderr is not None and reader.run_state == "running":
         try:
             reader.new_channel().feed_text(_read(stderr))
         except OSError:
             pass    # a log that cannot be read says nothing; the output has
-    got = reader.finish()
-    return RunEnding(got["run_state"], got["scf_converged"],
-                     got["error_message"], got["phases"],
-                     relaxed=got["relaxed"], cause=got["cause"])
+    return _ending_of_reading(reader.finish()), final
+
+
+def _ending_of_reading(read: Dict[str, Any]) -> RunEnding:
+    """A SIESTA reading's ending -- the one constructor, for the ending
+    reader and for a parse's reading handed over (:func:`keep_reading`)."""
+    return RunEnding(read["run_state"], read["scf_converged"],
+                     read["error_message"], read["phases"],
+                     relaxed=read["relaxed"], cause=read["cause"])
 
 
 # ---- PySCF: our own decks' end lines, and Python's own failure shape ---- #
@@ -303,13 +319,86 @@ def ending_of(path, *, stderr=None) -> RunEnding:
             f"{role!r}, and the run-output roles are "
             f"{', '.join(_rf.run_output_roles())} (`runfiles.WRITTEN`'s `output` "
             f"column, `model/parse.md` § 5.5).")
-    if stderr is None:
-        return reader(path)
-    if reader is not _siesta_ending:
+    if stderr is not None and reader is not _siesta_ending:
         raise ValueError(
             f"{Path(path).name!r} carries its engine's stderr itself; only a "
             f"SIESTA-family output is read beside a separate one.")
-    return reader(path, stderr)
+    # ONCE PER VERSION (:data:`_KEPT`): a file that has not changed is not
+    # read again, and an output that stated its own end is kept by its own
+    # version whatever the stderr (:data:`_FINAL`).
+    version = version_of(path)
+    if version is not None:
+        got = _kept(_FINAL, version)
+        if got is not None:
+            return got
+    key = (str(path), version,
+           None if stderr is None else version_of(stderr))
+    got = _kept(_KEPT, key)
+    if got is not None:
+        return got
+    if reader is _siesta_ending:
+        got, final = _siesta_reading(path, stderr)
+    else:
+        got, final = reader(path), False
+    if final and version is not None:
+        _keep(_FINAL, version, got)
+    else:
+        _keep(_KEPT, key, got)
+    return got
+
+
+#: EACH FILE'S ENDING, KEPT BY THE FILE'S VERSION -- its path, size and
+#: modification time, and the stderr file's beside it -- so a run asked about
+#: again and again (a Results viewer following it, `web/results.md` § 4.1)
+#: reads a file only when it has changed.  An ending is a pure function of
+#: the files it reads.  Bounded, oldest out.
+_KEPT: "OrderedDict[Any, RunEnding]" = OrderedDict()
+#: A SIESTA output that STATED HOW IT ENDED, by its own version: its ending
+#: reads no other file, so no stderr changes it -- and a parse that has just
+#: read that version hands its reading over (:func:`keep_reading`), so a load
+#: reads the file once (`watch/test_api_load.py`).
+_FINAL: "OrderedDict[Any, RunEnding]" = OrderedDict()
+_KEPT_MAX = 512
+_LOCK = threading.Lock()
+
+
+def version_of(path) -> Optional[Tuple[str, int, int]]:
+    """A file's version -- its path, size and modification time -- or
+    ``None`` when it is not there."""
+    try:
+        st = Path(path).stat()
+    except OSError:
+        return None
+    return (str(path), st.st_size, st.st_mtime_ns)
+
+
+def keep_reading(path, version, read: Dict[str, Any]) -> None:
+    """A SIESTA output's reading, done by a parse of ``version`` -- kept as
+    the file's ending when the output stated how it ended (an ending no
+    other file changes) and the file is still that version, so the ending
+    reader does not read it again."""
+    if (version is None or read["run_state"] not in CONCLUDED
+            or version_of(path) != version):
+        return
+    _keep(_FINAL, version, _ending_of_reading(read))
+
+
+def _kept(table: "OrderedDict", key) -> Optional[RunEnding]:
+    with _LOCK:
+        got = table.get(key)
+        if got is not None:
+            table.move_to_end(key)
+        return got
+
+
+def _keep(table: "OrderedDict", key, ending: RunEnding) -> None:
+    with _LOCK:
+        table[key] = ending
+        table.move_to_end(key)
+        while len(table) > _KEPT_MAX:
+            table.popitem(last=False)
+
+
 
 
 # ---- The shell's door onto this reader ------------------------------------ #

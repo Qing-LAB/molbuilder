@@ -38,7 +38,7 @@ from __future__ import annotations
 import glob
 import os
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..base import DirParser
 from ..types import ParseResult, RunDirResult
@@ -237,6 +237,51 @@ def read_back(name: str, labels):
     return None
 
 
+def run_of(path) -> Tuple[Path, Optional[str]]:
+    """THE RUN A FILE BELONGS TO -- its folder, and its run's name: the stem
+    the file's own name reads back to through the folder's labels
+    (:func:`read_back`), or ``None`` -- the folder's own run -- for a name
+    that does not read back.  In a hierarchical attempt the two are one run;
+    in a flat calculation's folder the name is what tells its stages apart."""
+    from molbuilder.runfiles import stem
+    p = Path(path)
+    rec = read_back(p.name, labels_in(str(p.parent)))
+    if rec is None:
+        return p.parent, None
+    return p.parent, stem(rec.label, rec.stage)
+
+
+def run_state_of(directory, basename: Optional[str] = None):
+    """``(RunStatus, problem)`` -- the run's state through the one door
+    (`job.run_status`), asked with its launch record
+    (`runrecord.launch_record`) as every reader asks it.  A launch record
+    that does not read is the ``problem``, said beside a state the files
+    answer without it -- never read as launched or not launched.  The folder
+    door and the Results viewers ask it."""
+    from molbuilder.runrecord import LaunchRecordError, launch_record
+    from .job import run_status
+    try:
+        launch = launch_record(directory, basename)
+    except LaunchRecordError as e:
+        return run_status(directory, basename), str(e)
+    return run_status(directory, basename, launch=launch), None
+
+
+def run_answer(path) -> Dict[str, Any]:
+    """``{state, detail, live}`` -- how the run the file at ``path`` belongs
+    to (:func:`run_of`) is doing, the one door's answer
+    (:func:`run_state_of`), with ``problem`` when its launch record does not
+    read.  ``live`` -- `job.LIVE_STATES` -- is what a Results viewer follows
+    (`web/results.md` § 4.1)."""
+    from .job import LIVE_STATES
+    st, problem = run_state_of(*run_of(path))
+    said: Dict[str, Any] = {"state": st.state, "detail": st.detail,
+                            "live": st.state in LIVE_STATES}
+    if problem:
+        said["problem"] = problem
+    return said
+
+
 def openable_in(directory: str) -> Tuple[Optional[str], List[str]]:
     """*What should a viewer load here?* — and the trail of what was tried.
 
@@ -432,7 +477,6 @@ class JobDirParser(DirParser):
     @classmethod
     def parse(cls, run_dir: Path) -> RunDirResult:
         from molbuilder import calcdirs
-        from .job import run_status
         from .record import run_record
         from ..contract import engine_of
 
@@ -450,13 +494,10 @@ class JobDirParser(DirParser):
             # WITH ITS LAUNCH RECORD: an attempt prepped and never launched
             # is `pending`, not "running" (`run_status`).  One that does not
             # read is said, and the files answer without it -- never read as
-            # launched or not (`runrecord.launch_record`).
-            from molbuilder.runrecord import LaunchRecordError, launch_record
-            try:
-                st = run_status(d, launch=launch_record(d))
-            except LaunchRecordError as e:
-                attempts.append(str(e))
-                st = run_status(d)
+            # launched or not (`run_state_of`).
+            st, problem = run_state_of(d)
+            if problem:
+                attempts.append(problem)
             # ``active_source`` is the status's own pick -- stage, then mtime
             # (§ 5.1, user ruling 2026-09-04) -- and a bare filename.
             status = {"state": st.state, "detail": st.detail,

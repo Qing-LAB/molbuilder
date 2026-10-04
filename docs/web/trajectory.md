@@ -115,12 +115,17 @@ such line and every one of those messages was dropped on the Results tab.
 It does not repeat the file's modification time or a frame count — the badge
 below carries the run's time, and the frame bar its frames.)*
 
-The **run badge** reads the open file's own ending (`run_state`,
-[`model/parse.md`](?doc=model/parse.md) § 2b): `ended` is *Finished*, `stopped`
-or `out_of_memory` is *Stopped*, anything else *Running*. It reads the file; the
-Run panel reads the run ([`running-a-job.md`](?doc=execution/running-a-job.md)
-§ 4.2 maps the two). It carries a detail line beneath it with two different
-facts:
+The **run badge** reads **the run** the file belongs to — the state the server
+sends with it ([`results.md`](?doc=web/results.md) § 4.1), the one the Run
+panel and `jobset status` read: *Finished*, *Stopped* (failed — the reason
+beneath: the output's own stop where it states one, else the run's own words,
+such as *stopped before its end: no exit recorded*), *Queued*, *Not launched*,
+else *Running*. A file that belongs to no run — an upload — is read by its own
+ending (`run_state`, [`model/parse.md`](?doc=model/parse.md) § 2b): `ended` is
+*Finished*, `stopped` or `out_of_memory` *Stopped*, anything else *Running*.
+*(It read the file alone until 2026-10-03, so an output that ended read
+Finished while its job was still deriving its result, and the Run panel said
+running.)* It carries a detail line beneath it with two different facts:
 
 | detail | reads | where it comes from |
 |---|---|---|
@@ -160,32 +165,33 @@ duration. *(Until 2026-09-27 the viewer estimated its own three ways — SIESTA'
 first-iteration timer, the browser's poll times, the output's modification
 times.)*
 
-A **stopped** run — a crash, or SIESTA stopping because its SCF had to converge
-and did not — settles like a finished one: the badge shows **Stopped**, with the
-reason beneath, and the polling stops, in one step rather than the two a normal
-finish takes, because a crash does not un-crash on the next poll
+A **stopped** run — a crash, SIESTA stopping because its SCF had to converge
+and did not, a kill its monitor saw — settles like a finished one: the badge
+shows **Stopped**, with the reason beneath, and the polling stops
 ([`results.md`](?doc=web/results.md) § 4.1). A run that reaches its end without
 converging, where its deck allows that, is **Finished**: convergence rides
 beside the badge, never inside it (`model/parse.md` § 2b, P-S2).
 
 ## 5. Live updating
 
-The viewer **loads once** (`POST /api/watch/load`), renders, and then — if the
-run is still going — **polls every 15 seconds** (`GET /api/watch/data`). Each
-poll sends the last timestamp it saw; the server replies "nothing changed" (and
-the viewer waits) or "here's the new data" (and the viewer appends the new
-frames and redraws only what moved). A run counts as done only after **two
-"finished" replies in a row** — a single one can be the parser mid-flush.
+The viewer **loads once** (`POST /api/watch/load`), renders, and then — while
+the run is live, queued or running — **polls every 15 seconds**
+(`GET /api/watch/data`). Each poll sends the last timestamp it saw; the server
+replies "nothing changed" with how the run is doing (and the viewer waits, or
+stops once the run is no longer live), or "here's the new data" (and the viewer
+appends the new frames and redraws only what moved). How the run is doing is
+the server's answer, from the one door, and the file the viewer stops on is the
+file's last ([`results.md`](?doc=web/results.md) § 4.1).
 
 ```mermaid
 flowchart TD
-  P["you pick a run in Results"] --> LOAD["POST /api/watch/load — the server parses it"]
+  P["you pick a run in Results"] --> LOAD["POST /api/watch/load — the server parses it, and says how the run is doing"]
   LOAD --> R["render: the 3D movie + the four plots + the badge + the SCF line"]
-  R --> Q{"is the run still going?"}
-  Q -->|"no"| DONE["Finished — no polling"]
-  Q -->|"yes"| POLL["every 15s — GET /api/watch/data with the last timestamp<br/>unchanged → wait · changed → append frames + replot"]
-  POLL -->|"finished twice in a row"| DONE
-  POLL -.->|"still going"| POLL
+  R --> Q{"is the run live? — queued or running"}
+  Q -->|"no"| DONE["no polling — Finished, Stopped or Not launched"]
+  Q -->|"yes"| POLL["every 15s — GET /api/watch/data with the last timestamp<br/>unchanged → how the run is doing · changed → append frames + replot"]
+  POLL -->|"the run is no longer live"| DONE
+  POLL -.->|"still live"| POLL
 ```
 
 Appending is the cheap path: the movie keeps playing, the camera holds still,
@@ -258,8 +264,11 @@ header. The header's source-path line has the username redacted.
 - `test_trajectory_csv_redaction_js.py` — the CSV export + path redaction.
 - `test_siesta_run_in_the_viewer_e2e.py` — § 4 on a SIESTA relaxation the road
   makes: the SCF line's rate is the run record's (the timing log, one reader),
-  and the badge dates the run by its `>> End of run`, in its folder and as a
-  copy whose file time is later.
+  and the badge dates the run by its `>> End of run`, in its folder.
+- § 4's badge and § 5's follow read the run the server sends:
+  `test_trajectory_settle_post_load_js.py` (the settle, as a case table) and
+  `test_trajectory_transition_js.py` (a quiet poll's answer taken) —
+  `results.md` § 10 lists the server's half.
 - **The poll loop.** `test_live_poll_invariants_audit.py` was retired
   2026-09-03: 18 of its 21 tests asserted on the spelling of lines in
   `lib/trajectory/core.js` (`process/testing.md` § 3a). What replaced it is
@@ -270,8 +279,10 @@ header. The header's source-path line has the username redacted.
   comes back to ~1.19 Å, the energy falls monotonically) and then the
   drawing (the energy curve has one point per step, falling).
   `test_inspector_registry_e2e.py`'s poll-timer fixture runs the same
-  optimisation and keeps the trajectory alone, because a finished run's log
-  says finished and stops the poll the test exists to watch.
+  optimisation and keeps the trajectory alone beside a launch record: a run
+  launched and not over is live, which is what the viewer follows, while a
+  finished run's log and conclusion would stop the poll the test exists to
+  watch.
 
   **Which file the viewer is showing, and why it is the log.**
   *(Corrected 2026-09-04: an earlier note here said "the discovery chain

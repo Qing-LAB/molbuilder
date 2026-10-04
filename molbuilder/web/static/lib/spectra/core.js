@@ -184,6 +184,11 @@
             // results: SpectraResults dict from /api/spectra/load.
             // Replaced atomically inside transition('APPLY').
             results: null,
+            // HOW THE RUN THIS FILE BELONGS TO IS DOING -- `{state, detail,
+            // live}`, the one door's answer, sent with every load
+            // (web/results.md § 4.1).  The viewer follows while `live`.
+            // null = the file belongs to no run.
+            run: null,
         },
 
         viewState: {
@@ -470,6 +475,7 @@
             // when the fetch resolves.
             state.fileState.path    = payload.path || null;
             state.fileState.results = null;
+            state.fileState.run     = null;
             // Reset viewState per matrix.  selectedMode = null
             // forces _pickDefaultMode on the next renderResults.
             state.viewState.selectedMode = null;
@@ -596,33 +602,33 @@
                 return;          // an answer for a file we are not showing
             }
             state.fileState.path    = payload.path;
-            state.fileState.results = payload.results;
+            // Each field is written when the payload carries it: the results
+            // by `renderResults`, how the run is doing by the load and the
+            // tick that fetched them.
+            if (payload.results !== undefined)
+                state.fileState.results = payload.results;
+            if (payload.run !== undefined)
+                state.fileState.run = payload.run;
             return;
         }
         // Unknown target: silent no-op.
     }
 
     // _settlePostLoad: after fileState has been populated by
-    // transition('APPLY'), inspect the fresh results and route to
-    // the appropriate post-LOADING state -- for both callers,
-    // loadByPath and watchTick, the same rule: allPhasesComplete ->
-    // transition('LOADED') (run done; no polling), else ->
-    // transition('WATCHING') (the run is FOLLOWED, web/spectra.md § 7).
-    // Until 2026-09-28 a load was a snapshot and following took a
-    // "Start watching" press, so a run picked from the dropdown while
-    // still going sat unchanged on screen.
-    //
-    // Unlike trajectory there is NO 2-tick buffer here: spectra's
-    // allPhasesComplete is a sticky monotonic flag (phase_*
-    // markers progress forward through "running" -> "complete"
-    // and never flap back).  One "complete" tick is sufficient.
+    // transition('APPLY'), route to the state THE RUN calls for -- the one
+    // door's answer the server sends with the file (`run`,
+    // web/results.md § 4.1), for both callers, loadByPath and watchTick:
+    // live -> transition('WATCHING') (the run is FOLLOWED,
+    // web/spectra.md § 7), else -> transition('LOADED') (finished, failed,
+    // never launched, or no run: nothing more will arrive).  Until
+    // 2026-09-28 a load was a snapshot and following took a "Start
+    // watching" press; until 2026-10-03 the follow stopped only when every
+    // asked-for phase reported complete, so a run killed between phases
+    // was followed until the page closed.  The phase flags are the file's
+    // facts, drawn as the dots; the follow is the run's.
     function _settlePostLoad() {
-        const results = state.fileState.results;
-        if (results && allPhasesComplete(results)) {
-            transition("LOADED");
-        } else {
-            transition("WATCHING");
-        }
+        const run = state.fileState.run;
+        transition(run && run.live ? "WATCHING" : "LOADED");
     }
 
     // Poll interval for the live-watch loop.  2 s is the sweet spot:
@@ -1141,9 +1147,9 @@
 
     /** Load the file ``path`` names -- the dropdown's pick, a Refresh, a
      *  return to the tab, or the registry's hot swap -- and FOLLOW it while
-     *  its run is still going (web/spectra.md § 7): `_settlePostLoad` starts
-     *  the poll when a phase the description asked for is unfinished, and
-     *  `watchTick` stops it when the last one lands. */
+     *  its run is live (web/spectra.md § 7): `_settlePostLoad` starts the
+     *  poll when the run the server says the file belongs to is queued or
+     *  running, and `watchTick` stops it when it no longer is. */
     async function loadByPath(path) {
         path = String(path || "").trim();
         if (!path) return;
@@ -1205,10 +1211,13 @@
             _announceReady({ error: msg });
             return;
         }
+        // How the run is doing, from the answer, before anything is drawn.
+        transition("APPLY", { path: path,
+                              run: body.run !== undefined ? body.run : null });
         renderResults(body.results, path);
         updatePhaseIndicator(body.results);
-        // LOADED when every asked-for phase is done, else WATCHING: a
-        // run still going is followed from here (web/spectra.md § 7).
+        // WATCHING while the run is live, else LOADED: a run still going is
+        // followed from here (web/spectra.md § 7).
         _settlePostLoad();
         _showRunStatus(body.results);
         _announceReady({});
@@ -1228,10 +1237,16 @@
      *  like the rest of the viewer: it names the phases the file's own
      *  flags carry, never a switch only one engine has. */
     function _showRunStatus(results) {
+        const run = state.fileState.run;
         if (state.machine === "WATCHING") {
             setStatus(els.watchStatus, _watchProgressLine(results)
                       + " — following, every "
                       + (WATCH_INTERVAL_MS / 1000) + " s.", "muted");
+        } else if (run && run.state === "failed") {
+            // THE RUN STOPPED, in its own words -- between phases, the dot
+            // for the one it was in still reads running.
+            setStatus(els.watchStatus, "Run stopped — " + run.detail + ". "
+                      + _watchProgressLine(results) + ".", "error");
         } else if (allPhasesComplete(results)) {
             const n = (results.modes || []).length;
             setStatus(els.watchStatus, "Run complete ✓ — " + n + " mode"
@@ -1251,10 +1266,10 @@
     // SpectraResults and re-renders the UI with whatever phases are
     // populated so far.
     //
-    // Stops by itself when allPhasesComplete() returns true, when the
-    // file goes away, or after WATCH_MAX_ERRORS consecutive transient
-    // failures -- and with the inspector, when another file is picked
-    // or it is disposed.
+    // Stops by itself when the run is no longer live (the server's `run`,
+    // web/results.md § 4.1), when the file goes away, or after
+    // WATCH_MAX_ERRORS consecutive transient failures -- and with the
+    // inspector, when another file is picked or it is disposed.
     function stopWatch(reason) {
         // Contract § 2: stop following -> LOADED (the file is no longer
         // being polled but the loaded snapshot remains visible, and
@@ -1327,10 +1342,12 @@
             return;
         }
         state.lifecycle.watchErrors = 0;
-        // Render whatever phases are populated so far.
+        // How the run is doing, then whatever phases are populated so far.
+        transition("APPLY", { path: myPath,
+                              run: body.run !== undefined ? body.run : null });
         renderResults(body.results, myPath);
         updatePhaseIndicator(body.results);
-        // The same settle as a load: allPhasesComplete -> LOADED (the
+        // The same settle as a load: the run no longer live -> LOADED (the
         // timer stops), else WATCHING (keeps polling).
         _settlePostLoad();
         _showRunStatus(body.results);

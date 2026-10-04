@@ -52,7 +52,7 @@ from molbuilder.structure import Structure
 
 from ._helpers import wrap_trajectory
 from . import siesta_grammar as _G
-from .siesta_reader import SiestaReader
+from .siesta_reader import read_output
 
 
 # Runtime info detection (cross-cutting -- same display path as
@@ -206,11 +206,14 @@ class SiestaParser:
             _scan_log.warn(error, line_no=line_no,
                            snippet=line.rstrip()[:120], category=category)
 
-        reader = SiestaReader(warn=_warn)
-        with open(path, "r", errors="replace") as fh:
-            for line_no, raw in enumerate(fh, start=1):
-                reader.feed(raw.rstrip("\n"), line_no)
-        read = reader.finish()
+        # THE ONE READ (`siesta_reader.read_output`), and the version it read
+        # -- an output that states how it ended has the ending no other file
+        # changes, so the ending reader keeps this reading's rather than
+        # reading the file again (`_run_ending.keep_reading`).
+        from . import _run_ending
+        before = _run_ending.version_of(path)
+        read = read_output(path, warn=_warn).finish()
+        _run_ending.keep_reading(path, before, read)
         runtime_info = read["runtime_info"]
 
         frames: List[Frame] = []

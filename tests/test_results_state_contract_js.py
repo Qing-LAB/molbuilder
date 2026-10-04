@@ -81,16 +81,15 @@ def _unused_braced(src: str, open_idx: int) -> str:
 # the live versions are in `test_trajectory_transition_js.py`.
 
 class TestSettlePostLoad:
-    """The 2-consecutive-ticks WATCHING -> LOADED buffer
-    (`results.md` § 4.1) lives in ``_settlePostLoad()``.  Called from both
-    loadByPath and pollOnce; reads run_state, decides which
-    transition to invoke."""
+    """The follow rule (`results.md` § 4.1) lives in ``_settlePostLoad()``.
+    Called from both loadByPath and pollOnce; reads the run's state the
+    server sent with the file, decides which transition to invoke."""
 
 
     def test_helper_called_from_loadByPath(self, core_body):
         """loadByPath's success path MUST call _settlePostLoad after
-        applyNewData -- otherwise the freshly-loaded file's run_state
-        is never inspected and we never transition out of LOADING."""
+        applyNewData -- otherwise the freshly-loaded file's run is never
+        asked about and we never transition out of LOADING."""
         m = re.search(
             r"async\s+function\s+loadByPath\s*\([^)]*\)\s*\{(.+?)\n\s{4}\}",
             core_body, re.DOTALL,

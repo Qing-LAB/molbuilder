@@ -1120,3 +1120,21 @@ class SiestaReader:
                 "error_message": self.error_message,
                 "runtime_info": self.runtime_info,
                 "warnings": self.warnings}
+
+
+def read_output(path, *, warn: Optional[Callable[[int, str, str, str], None]]
+                = None) -> SiestaReader:
+    """THE ONE WAY A SIESTA OUTPUT IS READ: line by line, as the file holds
+    it, each line fed with its number -- a reader fed and not yet finished,
+    so the caller can add the run's other channel (`new_channel`) before
+    :meth:`SiestaReader.finish`.  The registered parser and the ending reader
+    (`_run_ending`) both read through it, so the two readings of one version
+    of a file are the same reading -- which is what lets the ending reuse a
+    parse's (`_run_ending.keep_reading`).  *(The parser iterated the file and
+    the ending split its text, two spellings of one read, until
+    2026-10-03.)*"""
+    reader = SiestaReader(warn=warn)
+    with open(path, "r", errors="replace") as fh:
+        for line_no, raw in enumerate(fh, start=1):
+            reader.feed(raw.rstrip("\n"), line_no)
+    return reader

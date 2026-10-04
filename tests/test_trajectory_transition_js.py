@@ -13,10 +13,9 @@ Both were found by mutation on 2026-09-04, while deciding whether the
 * **`LOADED` stops the poll timer** — caught only by a source-grep for
   the string `stopPolling()`, which dies with a rename.
 
-The third behaviour in that group, § 4.1's two-tick settle, needed no
-test written: `test_trajectory_settle_post_load_js.py` already drives
-`_settlePostLoad` in node, and the mutation `finishedTicks >= 2` -> `>= 1`
-fails it. That was checked before writing anything here.
+The third behaviour in that group, § 4.1's settle by the run's state, is
+`test_trajectory_settle_post_load_js.py`'s case table, which drives
+`_settlePostLoad` in node.
 
 **These RUN the real function.** `transition`'s source is lifted from the
 shipped module and executed against a fake state, so what is asserted is
@@ -75,12 +74,12 @@ def _transition(target, *, machine="WATCHING", path="/p/run.molwatch.log",
         const state = {{
             machine: {json.dumps(machine)},
             fileState: {{ path: {json.dumps(path)}, mtime: 1, format: "siesta",
-                         label: "l", data: {{}}, atomMetadata: {{}} }},
+                         label: "l", data: {{}}, atomMetadata: {{}},
+                         run: {{ state: "running", live: true }} }},
             viewState: {{}},
             uiPrefs: {{}},
             lifecycle: {{ loadAbort: _ac("load"), pollAbort: _ac("poll"),
-                         pollInFlight: true, finishedTicks: 1,
-                         pollTimer: 1 }},
+                         pollInFlight: true, pollTimer: 1 }},
             derived: {{}},
         }};
         {fn}
@@ -90,7 +89,7 @@ def _transition(target, *, machine="WATCHING", path="/p/run.molwatch.log",
             path:         state.fileState.path,
             timerRunning: _timerRunning,
             aborted:      _aborted,
-            finishedTicks: state.lifecycle.finishedTicks,
+            run:          state.fileState.run,
         }}));
     """
     proc = subprocess.run([node, "--input-type=commonjs", "-e", harness],
@@ -160,14 +159,14 @@ def test_loading_releases_the_previous_files_requests():
         f"{out['aborted']}")
 
 
-def test_loading_resets_the_finished_counter():
-    """`finishedTicks` is a count toward settling THIS file.
+def test_loading_forgets_the_last_files_run():
+    """How the run is doing belongs to THIS file (`results.md` § 4.1).
 
-    Carried across a switch, a new file that reports `ended` once would
-    settle immediately — skipping the two-tick buffer § 4.1 exists for,
-    which is the whole defence against a parser caught mid-flush.
+    Carried across a switch, the previous file's live run would keep the
+    new file followed -- or its finished one would leave a live run
+    unwatched -- until an answer for the new file landed.
     """
-    assert _transition("LOADING", machine="WATCHING")["finishedTicks"] == 0
+    assert _transition("LOADING", machine="WATCHING")["run"] is None
 
 
 # --------------------------------------------------------------------- #
@@ -466,14 +465,18 @@ def test_starting_the_poll_wires_no_listener():
 #  The loaders must actually CALL the settle                            #
 # --------------------------------------------------------------------- #
 
-def _poll_once(*, run_state, path="/p/run.molwatch.log"):
+def _poll_once(*, changed, run, held=None, path="/p/run.molwatch.log"):
     """Run the REAL `pollOnce` against a stubbed `/api/watch/data`.
 
     Everything it reaches is faked at the edge — `fetch`, the applier,
-    the status line — except `_settlePostLoad`, which is lifted from the
-    module and run for real. That is the point: the previous guard was a
-    grep for the string `_settlePostLoad` inside `pollOnce`'s body, which
-    says the call is written and nothing about whether it happens.
+    the badge, the status line — except `_settlePostLoad`, which is lifted
+    from the module and run for real. That is the point: the previous guard
+    was a grep for the string `_settlePostLoad` inside `pollOnce`'s body,
+    which says the call is written and nothing about whether it happens.
+
+    ``changed`` -- whether the answer brings new content; ``run`` -- the
+    run's state it carries (``"absent"`` for none: a poll with new content
+    leaves it out); ``held`` -- the run's state the viewer already holds.
     """
     node = shutil.which("node")
     if node is None:
@@ -482,26 +485,41 @@ def _poll_once(*, run_state, path="/p/run.molwatch.log"):
     run_state_const = _slice(src, "const RUN_STATE = Object.freeze", "});") + "});"
     settle = _slice(src, "    function _settlePostLoad", "\n    function plottableFrames")
     poll = _slice(src, "    async function pollOnce()", "\n    function ")
+    answer = {"ok": True, "changed": changed, "mtime": 2 if changed else 1,
+              "path": path, "data": {"frames": []}}
+    if run != "absent":
+        answer["run"] = run
     harness = f"""
         {run_state_const}
         const _seen = [];
-        function transition(name) {{ _seen.push(name); state.machine = name; }}
-        function applyNewData(r) {{ state.fileState.data = r.data; }}
+        function transition(name, payload) {{
+            _seen.push(name);
+            if (name === "APPLY") {{
+                if (payload.run !== undefined) state.fileState.run = payload.run;
+                return;
+            }}
+            state.machine = name;
+        }}
+        function applyNewData(r) {{
+            state.fileState.data = r.data;
+            if (r.run !== undefined) state.fileState.run = r.run;
+        }}
+        function _renderBadge() {{}}
         function setStatus() {{}}
         function dispose() {{}}
         const state = {{
             machine: "WATCHING",
+            mtime: 1,
+            data: {{ frames: [] }},
             fileState: {{ path: {json.dumps(path)}, mtime: 1,
-                         data: {{ run_state: {json.dumps(run_state)} }} }},
-            lifecycle: {{ pollInFlight: false, pollAbort: null,
-                         finishedTicks: 1 }},
+                         data: {{ run_state: "running", frames: [] }},
+                         run: {json.dumps(held)} }},
+            lifecycle: {{ pollInFlight: false, pollAbort: null }},
             derived: {{}},
         }};
         globalThis.fetch = async () => ({{
             ok: true,
-            json: async () => ({{ ok: true, changed: true, mtime: 2,
-                                  data: {{ run_state: {json.dumps(run_state)},
-                                          frames: [] }} }}),
+            json: async () => ({json.dumps(answer)}),
         }});
         {settle}
         {poll}
@@ -516,22 +534,37 @@ def _poll_once(*, run_state, path="/p/run.molwatch.log"):
     return json.loads(proc.stdout.strip().splitlines()[-1])
 
 
-def test_a_poll_that_finds_the_run_ended_settles_it():
-    """The poll loop must ASK `_settlePostLoad`, not just contain a call
-    to it.
-
-    With `finishedTicks` already at 1, an `ended` answer is the second
-    consecutive one, so the run settles and polling stops. If `pollOnce`
-    stopped calling the settle, a finished run would be re-fetched every
-    15 s for as long as the tab is open — which is bug #12, and the grep
-    that guarded it could not tell a written call from a reached one.
-    """
-    out = _poll_once(run_state="ended")
-    assert "LOADED" in out["transitions"], (
-        f"a second 'ended' poll must settle the run; the poll transitioned "
-        f"{out['transitions']!r}")
+_LIVE = {"state": "running", "detail": "running", "live": True}
 
 
-def test_a_poll_on_a_running_run_keeps_watching():
-    out = _poll_once(run_state="running")
-    assert out["transitions"] == ["WATCHING"], out["transitions"]
+def test_a_quiet_poll_that_finds_the_run_over_settles_it():
+    """THE CASE M2f EXISTS FOR (`results.md` § 4.1).  A run killed mid-step
+    leaves an output that never changes again and states nothing; the
+    quiet poll brings how the run is doing -- failed, its monitor saw it go
+    -- and the poll loop must take it and settle, or the viewer polls for
+    as long as the tab is open."""
+    out = _poll_once(changed=False, held=_LIVE,
+                     run={"state": "failed", "live": False,
+                          "detail": "stopped before its end"})
+    assert out["machine"] == "ERROR", out["transitions"]
+
+
+def test_a_quiet_poll_on_a_live_run_keeps_watching():
+    out = _poll_once(changed=False, held=_LIVE, run=_LIVE)
+    assert out["machine"] == "WATCHING", out["transitions"]
+
+
+def test_a_poll_with_new_content_keeps_the_runs_state_it_held():
+    """New content leaves the run's state out -- the run was writing -- so
+    the viewer keeps following on what it held."""
+    out = _poll_once(changed=True, held=_LIVE, run="absent")
+    assert out["machine"] == "WATCHING", out["transitions"]
+
+
+def test_a_poll_whose_write_ended_the_run_settles_it():
+    """The final write and the run's end arrive together (the server reads
+    the end before the file's last read): settled in that one answer."""
+    out = _poll_once(changed=True, held=_LIVE,
+                     run={"state": "finished", "live": False,
+                          "detail": "job_completed"})
+    assert out["machine"] == "LOADED", out["transitions"]

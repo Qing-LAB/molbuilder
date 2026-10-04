@@ -102,7 +102,7 @@ def _page_constants():
     }
 
 
-def _loaded(results):
+def _loaded(results, run: Optional[Dict[str, Any]] = None):
     """The one success reply for /api/spectra/load — the typed results as a
     dict, plus what only the server can work out.
 
@@ -163,7 +163,10 @@ def _loaded(results):
                 elements, rows, free)
         except (ValueError, KeyError):
             pass
-    return jsonify({"ok": True, "results": payload})
+    # HOW THE RUN THE FILE BELONGS TO IS DOING -- the one door's answer, which
+    # the viewer follows; ``None`` for an upload or an inline result, which
+    # belong to no run (`web/results.md` § 4.1).
+    return jsonify({"ok": True, "results": payload, "run": run})
 
 
 @bp.route("/api/spectra/load", methods=["POST"])
@@ -242,11 +245,20 @@ def api_spectra_load():
             path = _resolve_within_roots(path)
         except _PickerError as exc:
             return jsonify({"ok": False, "error": exc.message}), exc.status
+        # THE RUN'S END IS READ BEFORE THE FILE'S LAST READ (`web/results.md`
+        # § 4.1): the run this file belongs to is asked after the file is
+        # read, and when it is no longer live the file is read again if it
+        # changed in between -- so the viewer stops on the file's last state.
+        from molbuilder.parse.dirs import run_answer
         try:
+            before = _version(path)
             results = parse_spectra_json(path)
+            run = run_answer(path)
+            if not run["live"] and _version(path) != before:
+                results = parse_spectra_json(path)
         except SpectraJsonError as exc:
             return _err_load(exc)
-        return _loaded(results)
+        return _loaded(results, run=run)
     if inline is not None:
         if not isinstance(inline, dict):
             return _err_load(SpectraJsonMalformedError(
@@ -270,6 +282,17 @@ def api_spectra_load():
 # --------------------------------------------------------------------- #
 # Helpers                                                               #
 # --------------------------------------------------------------------- #
+
+
+def _version(path) -> Optional[Tuple[int, int]]:
+    """The file's size and modification time -- ``None`` when it is gone,
+    which the read that follows reports in its own words."""
+    import os
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return (st.st_size, st.st_mtime_ns)
 
 
 def _err_load(exc: SpectraJsonError):

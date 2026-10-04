@@ -48,7 +48,7 @@ from molbuilder.parse import (
     detect as detect_parser,
 )
 from molbuilder.parse.contract import engine_of
-from molbuilder.parse.dirs import openable_in
+from molbuilder.parse.dirs import openable_in, run_answer
 from molbuilder.parse.dirs.atom_metadata import engine_frame_for_run_dir
 from molbuilder.parse.dirs.run_info import run_info_for_dir
 from molbuilder.parse.engines._helpers import (
@@ -611,6 +611,9 @@ def api_load():
     state, err = _refresh_if_changed()
     if err:
         return jsonify({"ok": False, "error": err}), 500
+    run, state, err = _with_the_run(state)
+    if err:
+        return jsonify({"ok": False, "error": err}), 500
     # Metadata search dir: the resolved run directory, else the parent of
     # the file we loaded (Watch was pointed straight at a log inside a run
     # dir).  The directory the resolved log sits in.  ONCE per load, for
@@ -630,6 +633,9 @@ def api_load():
         "label":            parser_cls.label,
         "data":             state["data"],
         "uploaded":         False,
+        # HOW THE RUN THIS FILE BELONGS TO IS DOING -- the one door's answer,
+        # which the viewer follows (`web/results.md` § 4.1).
+        "run":              run,
         # FRAME 0 AS AN ENVELOPE -- what the viewer installs.  The parcels below
         # stay because the Cell page reads them directly; what changed is that
         # the browser no longer rebuilds a structure out of them.
@@ -721,6 +727,9 @@ def _api_load_multipart(uploaded_file):
         "data":             state["data"],
         "uploaded":         True,
         "uploaded_filename": uploaded_file.filename,
+        # An upload belongs to no run, so there is no run to follow --
+        # said, in the field the path load answers (`web/results.md` § 4.1).
+        "run":              None,
         # Frame 0 as an envelope, same as the path branch -- an upload has no
         # run directory, so it carries the geometry and nothing more.
         "structure":        _frame0_structure(state["data"], meta),
@@ -749,9 +758,49 @@ def api_data():
         # gating on HTTP status now see the actual failure.
         return jsonify({"ok": False, "error": err}), 500
     if client_mtime is not None and client_mtime == state["mtime"]:
-        return jsonify({"ok": True, "changed": False, "mtime": state["mtime"]})
+        # NOTHING NEW FOR THIS VIEWER: how the run is doing is the news
+        # (`web/results.md` § 4.1) -- and when it is over, the file's last
+        # read comes after that answer, so a final write between the two
+        # reaches the viewer with it.
+        if state.get("uploaded"):
+            return jsonify({"ok": True, "changed": False,
+                            "mtime": state["mtime"], "run": None})
+        run, state, err = _with_the_run(state)
+        if err:
+            return jsonify({"ok": False, "error": err}), 500
+        if client_mtime == state["mtime"]:
+            return jsonify({"ok": True, "changed": False,
+                            "mtime": state["mtime"], "run": run})
+        return jsonify(dict(_changed(state), run=run))
+    # NEW CONTENT: the run was writing, so how it is doing is asked when the
+    # file is quiet -- the field is left out, which keeps it.
+    return jsonify(_changed(state))
+
+
+def _with_the_run(state: Dict[str, Any]
+                  ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any],
+                             Optional[str]]:
+    """``(run, state, error)`` -- how the run the watched file belongs to is
+    doing (`parse.dirs.run_answer`, the one door), and, when it is no longer
+    live, the file read again if it changed since ``state``: the run's end is
+    read before the file's last read, so what a viewer stops on is the
+    file's last (`web/results.md` § 4.1)."""
+    run = run_answer(state["path"])
+    if run["live"]:
+        return run, state, None
+    again, err = _refresh_if_changed()
+    if err or again is None or again["mtime"] == state["mtime"]:
+        # Nothing new: the state in hand, with the parse it carries -- the
+        # load hands that parse on (`_run_metadata`), and a refresh that
+        # found nothing has none to hand.
+        return run, state, err
+    return run, again, None
+
+
+def _changed(state: Dict[str, Any]) -> Dict[str, Any]:
+    """A poll's answer carrying the file's new content."""
     parser_cls = state["parser"]
-    return jsonify({
+    return {
         "ok":       True,
         "changed":  True,
         "path":     state["path"],
@@ -770,7 +819,7 @@ def api_data():
         "label":    parser_cls.label,
         "data":     state["data"],
         "uploaded": state.get("uploaded", False),
-    })
+    }
 
 
 # ``warn_if_remote()`` + ``_LOCAL_HOSTS`` (legacy helpers that printed a

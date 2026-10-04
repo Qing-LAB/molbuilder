@@ -48,17 +48,16 @@ import { molviewFiles } from "../projects/molview-doors.js";
      * that reached its end without converging is "ended"; whether the
      * SCF converged rides beside it in `scf_converged`.
      *
-     * Named here because this file reads it in TWO places -- the run-state
-     * badge and the stop-polling decision -- and for a while they disagreed.
-     * The badge tested "error" and was right; the stop-check tested
-     * "errored", which nothing has ever emitted, so a crashed run fell into
-     * the "still going" branch and polled every 15 s until the user left the
-     * tab.  The badge said Stopped the whole time, so it looked fine.
-     *
-     * NOT to be confused with the STATUS envelope's state
-     * ("pending"|"queued"|"running"|"failed"|"finished", parse/dirs/job.py),
-     * which is a different field for a different consumer (jobset/runstatus).
-     * "failed" is not a run_state and never reaches this file. */
+     * The FILE's ending -- read only for a file that belongs to no run (an
+     * upload), and for the reason a stopped output states.  How the RUN is
+     * doing is a different field: the STATUS state
+     * ("pending"|"queued"|"running"|"failed"|"finished", the one door,
+     * parse/dirs/job.py), which the server sends with the file as `run` and
+     * which the badge and the follow read (`fileState.run`,
+     * web/results.md § 4.1).  *(The badge and the stop decision read
+     * `run_state` in two places until 2026-10-03, and once disagreed: the
+     * stop-check tested "errored", which nothing emits, so a crashed run
+     * polled every 15 s until the user left the tab.)* */
     const RUN_STATE = Object.freeze({
         RUNNING:  "running",
         ENDED:    "ended",
@@ -261,6 +260,13 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // poll -- the store is re-supplied to each installMolecule or
             // it lasts one tick.  null = the run said nothing.
             info: null,
+            // HOW THE RUN THIS FILE BELONGS TO IS DOING -- `{state, detail,
+            // live}`, the one door's answer, which the server sends with the
+            // file (web/results.md § 4.1).  The viewer follows while `live`,
+            // and the badge reads it.  null = the file belongs to no run (an
+            // upload).  Keep-on-undefined, like the three above: a poll with
+            // new content leaves it out.
+            run: null,
         },
 
         viewState: {
@@ -297,15 +303,10 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // the file it was issued for) before applying.  Late responses
             // from a prior file can never write into the current
             // file's view.
-            // 2-consecutive-ticks WATCHING -> LOADED buffer
-            // (contract § 2, § 3 matrix row "poll says run
-            // finished (2 consecutive ticks)").  A single tick
-            // can lie -- the server may see `run_state=finished`
-            // while the parser is still flushing trailing data.
-            // Incremented in pollOnce when r.data.run_state ===
-            // "finished"; reset to 0 on LOADING / WATCHING tick
-            // with ongoing state.
-            finishedTicks: 0,
+            // (A two-finished-ticks buffer, `finishedTicks`, stood here
+            // until 2026-10-03: a tick could lie while the parser flushed
+            // trailing output.  The server now reads the run's end before
+            // the file's last read, web/results.md § 4.1.)
         },
 
         derived: {
@@ -401,19 +402,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
             state.fileState.periodicity  = null;
             state.fileState.info         = null;
             state.fileState.structure    = null;
+            state.fileState.run          = null;
             // Reset viewState per matrix: refit the camera on the next render.  The
             // playhead is NOT reset here -- MolView owns it, and a fresh load resets it
             // there (setData lands on frame 0).
             state.viewState.firstFit     = true;
-            // Reset the 2-tick WATCHING -> LOADED buffer counter.
-            // A fresh load is a new ground truth; any stale
-            // finishedTicks from a prior file/run must not carry
-            // over.  (Pre-PR-2.2: this reset lived in
-            // transition('WATCHING') which had the side effect of
-            // wiping a just-incremented count when _settlePostLoad
-            // transitioned LOADING -> WATCHING with a finished
-            // run.  Now the reset is here, where it belongs.)
-            state.lifecycle.finishedTicks = 0;
             // (No sequence counter: the answer carries its own path, and
             // every guard compares against `fileState.path` below.)
             state.machine = "LOADING";
@@ -439,36 +432,24 @@ import { molviewFiles } from "../projects/molview-doors.js";
             state.fileState.periodicity  = null;
             state.fileState.info         = null;
             state.fileState.structure    = null;
+            state.fileState.run          = null;
             state.viewState.firstFit     = true;
             state.machine = "IDLE";
             return;
         }
         if (target === "LOADED") {
-            // Run reached its end (run_state="ended") OR static
-            // file (no run_state).  Side effects per contract § 3
-            // matrix row "fetch resolved, run finished": stop poll
-            // timer if running; clear pollInFlight; reset
-            // finishedTicks (we're already in LOADED).
+            // The run is no longer live -- finished, or never launched --
+            // or the file belongs to no run (`_settlePostLoad`).  Stop the
+            // poll timer if running; clear pollInFlight.
             stopPolling();
             state.lifecycle.pollInFlight = false;
-            state.lifecycle.finishedTicks = 0;
             state.machine = "LOADED";
             return;
         }
         if (target === "WATCHING") {
-            // Run is ongoing.  Side effects per contract § 3
-            // matrix row "fetch resolved, run ongoing": START poll
-            // timer.  startPolling() is idempotent so re-entering
-            // WATCHING on a mid-poll tick is a no-op for the timer.
-            //
-            // NOTE: do NOT reset finishedTicks here.  _settlePostLoad
-            // owns the counter: it increments on a "finished" tick
-            // BEFORE transitioning to WATCHING (if not yet ready to
-            // flip to LOADED).  Resetting here would wipe the
-            // just-incremented value and effectively turn the
-            // 2-tick buffer into a 3-tick one.  The "ongoing tick
-            // breaks the consecutive count" reset lives in
-            // _settlePostLoad's ongoing branch instead.
+            // The run is live.  START the poll timer; startPolling() is
+            // idempotent, so re-entering WATCHING on a mid-poll tick is a
+            // no-op for the timer.
             startPolling();
             state.machine = "WATCHING";
             return;
@@ -589,47 +570,40 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // re-sends frames does not drop it.
             if (payload.structure !== undefined)
                 state.fileState.structure = payload.structure;
+            // How the run is doing: on the load, and on a poll whose file
+            // had nothing new; a poll with new content leaves it out.
+            if (payload.run !== undefined)
+                state.fileState.run = payload.run;
             return;
         }
         // Unknown target: silent no-op.  Future targets (the
         // contract reserves room for sub-states) land here.
     }
 
-    // Helper for applyNewData et al: after fileState has been
-    // populated, transition to the appropriate post-LOADING state
-    // based on run_state.  Centralizes the "finished/ongoing"
-    // decision + the 2-consecutive-ticks WATCHING -> LOADED buffer
-    // (contract § 2, § 13).
+    // After fileState has been written -- a load, or any poll -- move to
+    // the state THE RUN calls for: the one door's answer the server sends
+    // with the file (`run`, web/results.md § 4.1), never the file's own
+    // ending.  Follow while the run is live; a failed run stops as a stopped
+    // file always did (ERROR keeps the last data on screen); a finished run,
+    // one never launched, and a file that belongs to no run -- an upload --
+    // have nothing more to bring.  (It read the file's `run_state` and
+    // waited for two finished ticks until 2026-10-03, so a run killed
+    // mid-step was followed until the page closed.)
     function _settlePostLoad() {
-        const rs = state.fileState.data
-                && state.fileState.data.run_state;
-        if (rs === RUN_STATE.STOPPED || rs === RUN_STATE.OOM) {
-            transition("ERROR");
+        const run = state.fileState.run;
+        if (run && run.live) {
+            transition("WATCHING");
             return;
         }
-        if (rs === RUN_STATE.ENDED) {
-            // 2-tick buffer: a single "finished" tick may lie if
-            // the parser is still flushing trailing data.  Stay in
-            // WATCHING until we've seen N consecutive finished
-            // ticks; flip to LOADED on the Nth.
-            state.lifecycle.finishedTicks++;
-            if (state.lifecycle.finishedTicks >= 2) {
-                transition("LOADED");
-            } else {
-                // First finished tick: stay in WATCHING (keep the
-                // timer running for one more cycle).
-                if (state.machine !== "WATCHING") {
-                    transition("WATCHING");
-                }
-            }
-            return;
-        }
-        // Still running (rs === "running" or absent).  Reset the
-        // buffer counter: a tick that has not stopped breaks any
-        // consecutive stopped streak.  Per contract § 13 the buffer counts
-        // CONSECUTIVE ticks only.
-        state.lifecycle.finishedTicks = 0;
-        transition("WATCHING");
+        const failed = run ? run.state === "failed" : _fileStopped();
+        transition(failed ? "ERROR" : "LOADED");
+    }
+
+    // A file read alone -- one that belongs to no run -- stopped by its own
+    // ending: a fatal marker, or out of memory.
+    function _fileStopped() {
+        const rs = state.fileState.data && state.fileState.data.run_state;
+        return rs === RUN_STATE.STOPPED || rs === RUN_STATE.OOM;
     }
 
     // (Contract § 4 Invariant 3 "render-with-snapshot" is NOT
@@ -1975,19 +1949,19 @@ import { molviewFiles } from "../projects/molview-doors.js";
                     + "(checked " + new Date().toLocaleTimeString() + ").",
                     "ok"
                 );
-                // No new data, but a no-change tick still counts
-                // for the 2-tick WATCHING -> LOADED buffer if the
-                // run was previously reported finished.  Settle
-                // re-using the cached fileState.data.run_state.
+                // Nothing new in the file: the news is how the run is
+                // doing, which the server sends on such a tick.
+                if (r.run !== undefined) {
+                    transition("APPLY", { path: myPath, run: r.run });
+                    _renderBadge();
+                }
                 _settlePostLoad();
                 return;
             }
             applyNewData(r);
-            // Contract \u00a7 3 matrix rows "watch tick (new SCF iter)"
-            // and "watch tick (new frame)" + the WATCHING->LOADED
-            // 2-tick buffer all run through _settlePostLoad.  This
-            // is the single canonical site where run_state drives
-            // state-machine transitions (Refresh path is the other).
+            // A tick with new content: the same settle, by the run's
+            // state (kept from the last answer that carried it, or this
+            // one's when the run ended with this write).
             _settlePostLoad();
         } catch (e) {
             // AbortError: dispose() or a file-change supersede ran.
@@ -2303,6 +2277,134 @@ import { molviewFiles } from "../projects/molview-doors.js";
         return hist.length + "/" + last.length + "/" + e;
     }
 
+    /* THE RUN-STATE BADGE -- the user's primary "is this finished?" signal --
+     * drawn from THE RUN the file belongs to: the state the server sends with
+     * the file, from the one door (`run`; web/results.md § 4.1,
+     * web/trajectory.md § 4), the one the Run panel and `jobset status` read.
+     * A file that belongs to no run -- an upload -- is read by its own ending.
+     * ONE renderer, called by every answer that can change it: a load, a
+     * poll with new content, and a quiet poll that brings only how the run is
+     * doing.  (It read the file alone, and only on a full rebuild, until
+     * 2026-10-03: an output that ended read Finished while its job was still
+     * deriving its result.) */
+    function _renderBadge() {
+        if (!state.data) return;
+        // Two clocks, and they are not interchangeable
+        // (docs/model/parse.md § 2a).  `elapsed_s[]` counts from the
+        // run's start and is the only series that may be shown as a
+        // duration; `wall_clock_s[]` is an absolute epoch and the only
+        // one that may be shown as a date.  Either may be an all-null
+        // series when the engine cannot report it -- no step of a SIESTA
+        // .out carries a time of day -- so each is read on its own and
+        // neither substitutes for the other.
+        const { elapsed, lastResultEpoch, endedLocal } = badgeClocks(state);
+
+        // WHICH OF THE FIVE (`_badgeKind`): the run's, or a lone file's.
+        const run       = state.fileState.run;
+        const kind      = _badgeKind(run, state.data);
+        const errMsg    = state.data.error_message || "";
+        const badge     = $("run-state-badge");
+        const badgeLab  = $("run-state-label");
+        const badgeDet  = $("run-state-detail");
+        if (badge) {
+            badge.classList.remove(
+                "run-state-blank", "run-state-finished",
+                "run-state-ongoing", "run-state-error",
+            );
+            badge.hidden = false;
+            // "Last result at <time>": prefer the per-frame
+            // `wall_clock_s` from the simulation log (authoritative;
+            // this is when the simulation itself produced the result),
+            // fall back to the file's mtime -- the only timestamp
+            // available when the engine's steps carry no time of day,
+            // e.g. a raw SIESTA .out without molwatch hooks.  That fallback
+            // is reached because the parser reports null rather than
+            // handing over its elapsed seconds; when it did the latter,
+            // a run six minutes in displayed "Dec 31, 5:06 PM".  This
+            // is DIFFERENT from "Watch tab last polled at X" -- a
+            // client-side concern not shown on the badge.
+            const lastResultTs = (lastResultEpoch != null)
+                ? fmtTimestamp(lastResultEpoch)
+                : "";
+            // A run that has stopped moving is dated by its own end where
+            // its output states one (badgeClocks); the fallback is the
+            // "last result" time.
+            const endedTs = endedLocal ? fmtNodeClock(endedLocal) : lastResultTs;
+            const elapsedTxt = (elapsed != null)
+                ? fmtElapsed(elapsed)
+                : "";
+            const joinParts = (...parts) =>
+                parts.filter(s => s && s.length).join(" \u00b7 ");
+            if (kind === "finished") {
+                badge.classList.add("run-state-finished");
+                badgeLab.textContent = "Finished";
+                badgeDet.textContent = joinParts(
+                    endedTs ? "ended " + endedTs : "",
+                    elapsedTxt ? "total " + elapsedTxt : "",
+                );
+                badgeDet.removeAttribute("title");
+            } else if (kind === "stopped") {
+                // 2026-05-30: "Error" relabelled to "Stopped" per user
+                // feedback.  Non-convergence is a STATE, not an error
+                // of the viewer / the .out file.  The actual reason
+                // (SCF non-convergence, MPI fault, ...) is shown below
+                // as a classified tag; the raw parser message is the
+                // tooltip so power users can read it without losing
+                // the visual hierarchy.
+                badge.classList.add("run-state-error");
+                badgeLab.textContent = "Stopped";
+                // The output's own stop where it states one; else the run's
+                // own words -- a kill its monitor saw states nothing in the
+                // output (web/trajectory.md § 4).
+                const reasonTag = _fileStopped()
+                    ? _stopReason(state.data, errMsg)
+                    : ((run && run.detail) || _stopReason(state.data, errMsg));
+                badgeDet.textContent = joinParts(
+                    reasonTag ? "Reason: " + reasonTag : "",
+                    endedTs ? "stopped " + endedTs : "",
+                    elapsedTxt ? "total " + elapsedTxt : "",
+                );
+                // Full raw message available on hover (and for screen
+                // readers via aria, since title is announced by most).
+                if (errMsg) badgeDet.setAttribute("title", errMsg);
+                else        badgeDet.removeAttribute("title");
+            } else if (kind === "queued" || kind === "pending") {
+                // Launched and silent, or prepped and never launched: the
+                // run's own words beneath -- "queued as job 481923".
+                badge.classList.add("run-state-ongoing");
+                badgeLab.textContent = kind === "queued" ? "Queued"
+                                                         : "Not launched";
+                badgeDet.textContent = (run && run.detail) || "";
+                badgeDet.removeAttribute("title");
+            } else {
+                badge.classList.add("run-state-ongoing");
+                badgeLab.textContent = "Running";
+                badgeDet.textContent = joinParts(
+                    lastResultTs ? "last result " + lastResultTs : "",
+                    elapsedTxt ? "sim time " + elapsedTxt : "",
+                );
+                badgeDet.removeAttribute("title");
+            }
+        }
+
+    }
+
+    /* Which badge: finished | stopped | queued | pending | running -- the
+     * run's state when the file belongs to one, else the file's own ending
+     * (`run_state`, model/parse.md § 2b). */
+    function _badgeKind(run, data) {
+        if (run) {
+            return ({ finished: "finished", failed: "stopped",
+                      queued: "queued", pending: "pending" })[run.state]
+                || "running";
+        }
+        const rs = String((data && data.run_state)
+                          || RUN_STATE.RUNNING).toLowerCase();
+        if (rs === RUN_STATE.ENDED) return "finished";
+        if (rs === RUN_STATE.STOPPED || rs === RUN_STATE.OOM) return "stopped";
+        return "running";
+    }
+
     function applyNewData(r) {
         // Decide poll path: strict-tail-append (cheap; keeps playback
         // running) vs full rebuild (structure changed or frames
@@ -2384,10 +2486,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // writer in disguise.  noNewContent only updates the two
             // fields that can change on a same-content tick.
             transition("APPLY", { path: r.path, mtime: r.mtime,
-                                  data: r.data });
+                                  data: r.data, run: r.run });
             _renderRuntimeInfo(state.data.runtime_info);
             _renderParseWarnings(state.data.parse_warnings);
             if (runStateChanged || scfChanged) makePlots();
+            _renderBadge();
             return;
         }
 
@@ -2430,6 +2533,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
             // Same rule, same reason: frame 0's envelope rides with the load
             // and a poll that re-sends frames must not drop it.
             structure:    r.structure,
+            // How the run is doing -- on the load always, on a poll only when
+            // the run ended with this write (web/results.md § 4.1).
+            run:          r.run,
         });
         _renderRuntimeInfo(state.data && state.data.runtime_info);
         _renderParseWarnings(state.data && state.data.parse_warnings);
@@ -2509,96 +2615,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
         // status; ``parsingFor`` is null on poll-triggered fires).
         _announceReady({ frames: n });
 
-        // Two clocks, and they are not interchangeable
-        // (docs/model/parse.md § 2a).  `elapsed_s[]` counts from the
-        // run's start and is the only series that may be shown as a
-        // duration; `wall_clock_s[]` is an absolute epoch and the only
-        // one that may be shown as a date.  Either may be an all-null
-        // series when the engine cannot report it -- no step of a SIESTA
-        // .out carries a time of day -- so each is read on its own and
-        // neither substitutes for the other.
-        const { elapsed, lastResultEpoch, endedLocal } = badgeClocks(state);
-
-        // Run-state badge: authoritative when the writer emitted
-        // explicit end-of-run markers (PySCF .molwatch.log:
-        // "# concluded:" / "# error:"; SIESTA .out: ">> End of run").
-        // Defaults to "running" when neither is present.  The badge
-        // is the user's primary "is this finished?" signal -- ONE
-        // location instead of inferring from various places.
-        const runState  = (state.data.run_state
-                           || RUN_STATE.RUNNING).toLowerCase();
-        const errMsg    = state.data.error_message || "";
-        const badge     = $("run-state-badge");
-        const badgeLab  = $("run-state-label");
-        const badgeDet  = $("run-state-detail");
-        if (badge) {
-            badge.classList.remove(
-                "run-state-blank", "run-state-finished",
-                "run-state-ongoing", "run-state-error",
-            );
-            badge.hidden = false;
-            // "Last result at <time>": prefer the per-frame
-            // `wall_clock_s` from the simulation log (authoritative;
-            // this is when the simulation itself produced the result),
-            // fall back to the file's mtime -- the only timestamp
-            // available when the engine's steps carry no time of day,
-            // e.g. a raw SIESTA .out without molwatch hooks.  That fallback
-            // is reached because the parser reports null rather than
-            // handing over its elapsed seconds; when it did the latter,
-            // a run six minutes in displayed "Dec 31, 5:06 PM".  This
-            // is DIFFERENT from "Watch tab last polled at X" -- a
-            // client-side concern not shown on the badge.
-            const lastResultTs = (lastResultEpoch != null)
-                ? fmtTimestamp(lastResultEpoch)
-                : "";
-            // A run that has stopped moving is dated by its own end where
-            // its output states one (badgeClocks); the fallback is the
-            // "last result" time.
-            const endedTs = endedLocal ? fmtNodeClock(endedLocal) : lastResultTs;
-            const elapsedTxt = (elapsed != null)
-                ? fmtElapsed(elapsed)
-                : "";
-            const joinParts = (...parts) =>
-                parts.filter(s => s && s.length).join(" \u00b7 ");
-            if (runState === RUN_STATE.ENDED) {
-                badge.classList.add("run-state-finished");
-                badgeLab.textContent = "Finished";
-                badgeDet.textContent = joinParts(
-                    endedTs ? "ended " + endedTs : "",
-                    elapsedTxt ? "total " + elapsedTxt : "",
-                );
-                badgeDet.removeAttribute("title");
-            } else if (runState === RUN_STATE.STOPPED
-                       || runState === RUN_STATE.OOM) {
-                // 2026-05-30: "Error" relabelled to "Stopped" per user
-                // feedback.  Non-convergence is a STATE, not an error
-                // of the viewer / the .out file.  The actual reason
-                // (SCF non-convergence, MPI fault, ...) is shown below
-                // as a classified tag; the raw parser message is the
-                // tooltip so power users can read it without losing
-                // the visual hierarchy.
-                badge.classList.add("run-state-error");
-                badgeLab.textContent = "Stopped";
-                const reasonTag = _stopReason(state.data, errMsg);
-                badgeDet.textContent = joinParts(
-                    reasonTag ? "Reason: " + reasonTag : "",
-                    endedTs ? "stopped " + endedTs : "",
-                    elapsedTxt ? "total " + elapsedTxt : "",
-                );
-                // Full raw message available on hover (and for screen
-                // readers via aria, since title is announced by most).
-                if (errMsg) badgeDet.setAttribute("title", errMsg);
-                else        badgeDet.removeAttribute("title");
-            } else {
-                badge.classList.add("run-state-ongoing");
-                badgeLab.textContent = "Running";
-                badgeDet.textContent = joinParts(
-                    lastResultTs ? "last result " + lastResultTs : "",
-                    elapsedTxt ? "sim time " + elapsedTxt : "",
-                );
-                badgeDet.removeAttribute("title");
-            }
-        }
+        _renderBadge();
 
         /* WHERE THE BOX CAME FROM, when there is one -- and nothing else on
          * an ordinary load.  A cell drawn round a structure is a claim about
@@ -2786,6 +2803,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
                 // no viewer at all.  Broken from the commit that introduced
                 // the envelope (2026-09-07) until this line.
                 structure:    r.structure || null,
+                // How the run this file belongs to is doing -- the one door's
+                // answer, which `_settlePostLoad` follows and the badge reads;
+                // null for an upload, which belongs to no run
+                // (web/results.md § 4.1).
+                run:          r.run !== undefined ? r.run : null,
             });
             // Directory mode: show the user which file the loader
             // picked, and update the input with the resolved path so
@@ -2803,12 +2825,11 @@ import { molviewFiles } from "../projects/molview-doors.js";
                     + "/.";
                 setStatus(msg, "ok");
             }
-            // Contract § 2: transition to LOADED or WATCHING based
-            // on run_state.  _settlePostLoad starts the poll timer
-            // iff the run is ongoing (WATCHING branch) -- finished
-            // files don't get polled.  Pre-PR-2.1 startPolling()
-            // fired unconditionally; finished files would burn a
-            // server request every 15 s forever.
+            // Contract § 2: transition by the run's state.
+            // _settlePostLoad starts the poll timer iff the run is live
+            // (WATCHING) -- a run that is over doesn't get polled.
+            // Pre-PR-2.1 startPolling() fired unconditionally; finished
+            // files would burn a server request every 15 s forever.
             _settlePostLoad();
         } catch (e) {
             // AbortError fires when the user picks another file

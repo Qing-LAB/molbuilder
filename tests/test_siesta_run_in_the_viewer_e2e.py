@@ -5,12 +5,14 @@ by the reader the run record reads them by; the badge's "ended" time is the
 output's own ``>> End of run``.
 
 ``jobset init`` -> ``prep run coarse`` -> ``launch run --mode direct`` on an
-H2 relaxation, then opened in the Results tab as a person opens it -- in its
-folder, and as its output copied into a folder of its own, whose file time
-is the copy's.  Until 2026-09-27 the viewer estimated its own rate three ways
+H2 relaxation, then opened in the Results tab as a person opens it, in its
+folder.  Until 2026-09-27 the viewer estimated its own rate three ways
 (SIESTA's first-iteration timer, the browser's poll times, the output's file
 times), and dated an ended run by the output's file time, so a copy made
-three days later read "ended" at the copy's time.
+three days later read "ended" at the copy's time.  *(An output copied alone
+into a folder of its own was opened here too until 2026-10-03; the badge
+reads the RUN now, and an output whose run's records are not beside it is a
+run that never concluded -- `web/results.md` § 4.1.)*
 """
 from __future__ import annotations
 
@@ -137,20 +139,6 @@ def _the_runs_own_times(attempt):
     return time, datetime.fromisoformat(time["run_end_local"])
 
 
-@pytest.fixture(scope="module")
-def copied(finished):
-    """The run's output alone, in a folder of its own, its file time set 20
-    minutes after the run's end -- as a copy made later has."""
-    _time, ended = _the_runs_own_times(finished)
-    alone = finished.parents[2] / "copied" / "alone"
-    alone.mkdir(parents=True)
-    copy = alone / "H2_01_coarse-run0.out"
-    shutil.copy(finished / "H2_01_coarse-run0.out", copy)
-    later = ended.timestamp() + 1234
-    os.utime(copy, (later, later))
-    return alone, datetime.fromtimestamp(later)
-
-
 def test_in_its_folder_the_viewer_states_the_runs_rate_and_end(
         finished, page, flask_server, monkeypatch):
     """The SCF line's rate is the number the run record states -- the
@@ -169,22 +157,3 @@ def test_in_its_folder_the_viewer_states_the_runs_rate_and_end(
                                                  rel=5e-3), (scf, time)
     detail = page.locator("#run-state-detail").inner_text()
     assert "ended" in detail and ended.strftime(":%M:%S") in detail, detail
-
-
-def test_copied_alone_the_output_still_says_when_its_run_ended(
-        finished, copied, page, flask_server, monkeypatch):
-    """Copied alone with a later file time, the output still dates its run
-    by its own ``>> End of run``, and the SCF line states no rate: the copy
-    has no timing log, and a rate is not computed from anything else.
-
-    MUTATION THIS MUST FAIL AGAINST: the badge dating an ended run by the
-    file's time.
-    """
-    _time, ended = _the_runs_own_times(finished)
-    alone, copied_at = copied
-    at_end, at_copy = ended.strftime(":%M:%S"), copied_at.strftime(":%M:%S")
-    assert at_end != at_copy
-    _open(page, flask_server, alone, monkeypatch)
-    detail = page.locator("#run-state-detail").inner_text()
-    assert at_end in detail and at_copy not in detail, (detail, at_end)
-    assert "s/iter" not in page.locator("#scf-status").inner_text()

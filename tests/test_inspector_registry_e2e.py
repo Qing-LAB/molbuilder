@@ -50,12 +50,15 @@ def ongoing_trajectory(isolated_projects_root_module) -> str:
     So this runs CO2 stretched to 1.30 A, which relaxes to about 1.19 in
     ~4 seconds, and keeps ONLY the trajectory file it wrote.
 
-    Only the `.xyz`, deliberately: `_settlePostLoad` reads a completion
-    marker to decide LOADED versus WATCHING, and a finished run's log says
-    finished -- which stops the poll this fixture exists to start.  A
-    trajectory with no log beside it is the state a run is genuinely in
-    while it is still going, and it is the state whose timer must not
-    survive dispose.
+    Only the `.xyz` of what the run wrote, deliberately, beside the run's
+    launch record: a viewer follows a run while it is LIVE -- launched and
+    not over (`web/results.md` § 4.1) -- and a finished run's log and
+    conclusion say it is over, which stops the poll this fixture exists to
+    start.  A launched run with no ending yet is the state a run is
+    genuinely in while it is still going, and it is the state whose timer
+    must not survive dispose.  *(The `.xyz` alone stood for it until
+    2026-10-03, when the viewer read the file's own ending; with no run
+    around it, a file is a run never launched, which is not followed.)*
     """
     env = _pyscf_env()
     if env is None:
@@ -92,6 +95,8 @@ def ongoing_trajectory(isolated_projects_root_module) -> str:
             f"trajectory.\n{proc.stdout[-1500:]}\n{proc.stderr[-1500:]}")
         dest = live / "probe_geom_optim.xyz"
         shutil.copy2(src, dest)          # the trajectory ALONE -- see above
+        from molbuilder.runrecord import write_launch
+        write_launch(live, mode="direct", command=["bash", "probe.run.sh"])
         yield str(dest.resolve())
     finally:
         # No rmtree: the tree lives under `tmp_path_factory`, which pytest
@@ -103,16 +108,19 @@ def ongoing_trajectory(isolated_projects_root_module) -> str:
 @pytest.fixture(scope="module")
 def running_spectra(isolated_projects_root_module) -> str:
     """A vibration result whose run is still going: frequencies done, the
-    Raman activities the description asked for still to come.
+    Raman activities the description asked for still to come -- and the run
+    itself LIVE, launched and not over (its `run.json`), which is what a
+    viewer follows (`web/results.md` § 4.1).
 
-    Built through the writer's OWN types -- `SpectraResults`, written by
+    Built through the writers' OWN types -- `SpectraResults`, written by
     `dump_spectra_json`, the door the deck's writer and the load route
-    share -- rather than by a run, and that is a decision, not a shortcut:
-    the state lasts only while a Raman sweep runs, so no road test can hold
-    a page there (the same reasoning as
-    `test_spectra_no_spectrum_sentence_js.py`).  Nothing here is typed as
-    JSON by hand.
+    share, and the launch record by `runrecord.write_launch` -- rather than
+    by a run, and that is a decision, not a shortcut: the state lasts only
+    while a Raman sweep runs, so no road test can hold a page there (the
+    same reasoning as `test_spectra_no_spectrum_sentence_js.py`).  Nothing
+    here is typed as JSON by hand.
     """
+    from molbuilder.runrecord import write_launch
     from molbuilder.sidecars.spectra import dump_spectra_json
     from tests.spectra._helpers import _make_results
 
@@ -120,6 +128,7 @@ def running_spectra(isolated_projects_root_module) -> str:
     live.mkdir(parents=True)
     dest = live / "job.spectra.json"
     dump_spectra_json(_make_results(complete=False), dest)
+    write_launch(live, mode="direct", command=["bash", "job.run.sh"])
     return str(dest.resolve())
 
 
@@ -503,28 +512,41 @@ class TestInspectorListenerTeardown:
             f"leak compounds.  Every interval must be held where dispose() "
             f"can reach it (the lifecycle scope), not in a bare local.")
 
-    def test_a_followed_run_is_let_go_when_its_last_phase_lands(
-            self, page, flask_server, isolated_projects_root_module):
-        """`web/spectra.md` § 7: a result still running is followed, and the
-        follow ENDS by itself -- the tick that finds every phase the
-        description asked for complete settles to LOADED, clears its
-        interval and says the run is complete.  The half of decision 1 the
-        teardown test above cannot see: that one disposes a viewer still
-        following; this one watches the run finish under it.
+    @pytest.mark.parametrize("ending, said", [
+        ("concluded", "Run complete"),
+        ("monitor_ended", "Run stopped"),
+    ], ids=["the run concludes", "the run is killed between phases"])
+    def test_a_followed_run_is_let_go_when_the_run_ends(
+            self, page, flask_server, isolated_projects_root_module,
+            ending, said):
+        """`web/spectra.md` § 7, `web/results.md` § 4.1: a result whose run
+        is live is followed, and the follow ENDS when the RUN does -- the
+        tick that brings the server's answer *no longer live* settles to
+        LOADED, clears its interval and says how the run ended: complete
+        when it concluded, stopped -- in the run's own words -- when its
+        monitor saw it go between phases, whose dot still reads running.
+        The second is the case M2f exists for: the follow stopped only when
+        every asked-for phase was complete until 2026-10-03, so a run killed
+        between phases was followed until the page closed.
 
-        The run's two states are written through the writer's own types
-        (`dump_spectra_json`), as `running_spectra` explains.
+        The run's states are written through the writers' own types, as
+        `running_spectra` explains: its launch record, its conclusion marker
+        or its monitor's closing record.
 
-        MUTATION THIS MUST FAIL AGAINST: the tick not settling (a finished
-        run polled forever).
+        MUTATIONS THIS MUST FAIL AGAINST: the settle by the phases again (the
+        killed run followed forever); the server leaving the run out.
         """
+        from molbuilder.parse.dirs.job import MONITOR_ENDED
+        from molbuilder.runrecord import write_launch
         from molbuilder.sidecars.spectra import dump_spectra_json
         from tests.spectra._helpers import _make_results
 
-        live = isolated_projects_root_module / "spectra_finish" / "frequency"
+        live = (isolated_projects_root_module / f"spectra_{ending}"
+                / "frequency")
         live.mkdir(parents=True)
         dest = live / "job.spectra.json"
         dump_spectra_json(_make_results(complete=False), dest)
+        write_launch(live, mode="direct", command=["bash", "job.run.sh"])
         _open_results(page, flask_server)
         started = page.evaluate("""async (RUNNING) => {
             const live = new Set();
@@ -553,13 +575,20 @@ class TestInspectorListenerTeardown:
         assert "following" in started["status"], started
         assert started["watching"] > started["background"], started
 
-        # the run finishes: its last phase lands in the file
-        dump_spectra_json(_make_results(complete=True), dest)
-        ended = page.wait_for_function("""() => {
+        # the run ends: it concludes with its last phase in the file, or its
+        # monitor sees it go with a phase still running
+        if ending == "concluded":
+            dump_spectra_json(_make_results(complete=True), dest)
+            (live / "job-run0.concluded").write_text(
+                "rc=0 at Thu Sep 24 02:38:51 PM MST 2026\n")
+        else:
+            (live / "job-run0.monitor.log").write_text(
+                f"[12:00:00] [INFO ] {MONITOR_ENDED}\n")
+        ended = page.wait_for_function("""(said) => {
             const s = document.querySelector("#finish-host #watch-status");
-            return (s && /Run complete/.test(s.textContent))
+            return (s && s.textContent.includes(said))
                 ? { status: s.textContent, live: window.__finish.live.size }
-                : null; }""", timeout=10000).json_value()
+                : null; }""", arg=said, timeout=10000).json_value()
         page.evaluate("""() => {
             window.__finish.handle.dispose();
             document.getElementById("finish-host").remove();
@@ -761,8 +790,8 @@ class TestInspectorListenerTeardown:
         trajectory rather than one spectrum.
 
         No user gesture starts it: `_settlePostLoad` transitions to
-        WATCHING on its own whenever the loaded run has no completion
-        marker.  Mounting an ongoing run IS the trigger.
+        WATCHING on its own whenever the run the file belongs to is live
+        (`web/results.md` § 4.1).  Mounting an ongoing run IS the trigger.
         """
         _open_results(page, flask_server)
         result = page.evaluate("""async (traj) => {
@@ -819,11 +848,11 @@ class TestInspectorListenerTeardown:
         started = result["watching"] - result["background"]
         assert started >= 1, (
             "mounting an ongoing trajectory started no poll interval, so "
-            "this test proves nothing about teardown.  Either the fixture "
-            "no longer reads as a running job (a completion marker would "
-            "send `_settlePostLoad` to LOADED instead of WATCHING), or the "
-            "poll moved -- fix the setup rather than deleting this "
-            "assertion")
+            "this test proves nothing about teardown.  Either the fixture's "
+            "run no longer reads as live (the server's `run` -- a run over, "
+            "or never launched, sends `_settlePostLoad` to LOADED instead of "
+            "WATCHING), or the poll moved -- fix the setup rather than "
+            "deleting this assertion")
         assert result["afterDispose"] <= result["background"], (
             f"{result['afterDispose'] - result['background']} of {started} "
             f"poll interval(s) outlived dispose().  A torn-down trajectory "
