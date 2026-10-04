@@ -643,7 +643,7 @@ its point count:
   // anywhere else.  Its sidecar is found by the pairing rule, never named here.
   "structure": { "source": "bdt_au.xyz", "formula": "Au38C6H4S2", "atoms": 50 },
   "varies": ["mesh_cutoff", "relax_force_tol", "relax_type"],
-  "stages": [ { "name": "coarse", "enabled": true, "overrides": { … },
+  "stages": [ { "name": "coarse", "overrides": { … },
                 "execution": { "restart": "clean" } }, … ],
   "bench":  { "mpi_np": [4, 8, 16], "omp_threads": [1, 2] } }
 ```
@@ -841,11 +841,10 @@ Every one of these can silently destroy a value if its rule is not stated.
 | Operation | What it does | The rule that keeps it safe |
 |---|---|---|
 | **add a parameter column** | adds it to `varies` | **seeds every stage with the template's current value**, so adding a column changes nothing on screen. It is a statement about *structure*, never about values |
-| **remove a column** | drops it from `varies` | the stages disagree and one value must survive: **the last enabled stage wins**, because that is the production stage and the value a single run would use. The page says which value it kept, and says it *before* the click |
+| **remove a column** | drops it from `varies` | the stages disagree and one value must survive: **the last stage wins**, because that is the production stage and the value a single run would use. The page says which value it kept, and says it *before* the click |
 | **add a stage** | appends a row | **copies the previous stage's overrides.** A refinement starts from what came before; a stage that inherits nothing is a different calculation, not a next step |
-| **remove a stage** | drops a row | **refused when it is the last one** — a job has at least one stage (§ 5) |
+| **remove a stage** | drops a row | **refused when it is the last one** — a job has at least one stage (§ 5). **A stage that left files** — prepped, as a run or a benchmark — is removed by the Save that writes the description: its folder is marked `.disabled` and its number stays taken ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2), and the row says so before the Save; one whose job is launched and not finished is refused *(W38 F5)* |
 | **reorder** | moves a stage | the files are written in order and `restart` reads that order, so this is a real edit, not a display preference |
-| **enable / disable** | marks a stage to run or skip | changes what `prep` will build and what the hand-off says; it does **not** delete the row's values |
 | **edit a cell** | sets one stage's value | nothing else moves |
 | **apply a stage preset** | fills a row from a tier | a preset knows several fields. If some are not columns yet it **adds them first** — a preset that half-applied would be worse than one that refused. **And it is offered only where it CAN apply**: the menu holds a tier only when every field it carries may be a column of this folder's kind (`/api/task-setup/presets?calculation=`, the columns route's own membership rule), so an optimization's rows and a vibration ladder's rows carry `coarse / medium / tight` and a transport ladder's rows carry no menu at all — its rungs own none of those fields ([`engines/transport.md § 2a.7`](?doc=engines/transport.md): a rung carries its role's profile). *Until 2026-09-24 every transport rung offered the relaxation tiers (plan W31).* **And a preset fills only what the row's rung reads**: on a vibration ladder the `freq` row takes none of the relaxation tier's values, which the `relax` row alone reads (plan § 5w K4). |
 | **add a measurement point** | turns a value into an axis | the value becomes the first point, so measuring never discards what you chose |

@@ -201,13 +201,13 @@ place; each names the file that holds it, so the claim is checkable.**
 
 #### What a PySCF rung varies
 
-A `Stage` (`task.py`) carries `name`, `enabled` and `overrides`, and § 2 says
+A `Stage` (`task.py`) carries `name`, `overrides` and `execution`, and § 2 says
 `overrides` may name **any field of the shared schema** except the few bound to
 the whole calculation or fixed by the rung (below). So a PySCF rung is
 declared exactly as a SIESTA one is:
 
 ```
-Stage(name="coarse", enabled=True,
+Stage(name="coarse",
       overrides={"scf_conv_tol": 1e-7, "geom_gmax": 2e-3,
                  "geom_max_steps": 50})
 ```
@@ -571,21 +571,34 @@ written twice: every tab already has a schema, so every tab gets this.
 ## 2. The object
 
 ```jsonc
-{ "name": "coarse", "enabled": true,
+{ "name": "coarse",
   "overrides": { "mesh_cutoff": 150, "relax_force_tol": 0.04 } }
 ```
 
-**Four fields, and no others.**
+**Three fields, and no others.**
 
 | Field | Type | Meaning |
 |---|---|---|
 | `name` | `[A-Za-z0-9_]+` — letters, digits, underscore, **no hyphen**; **compared case-insensitively everywhere** (two names differing only in case are ONE name, refused as a duplicate) | becomes the deck's suffix, `<label>_<NN>_<name>` (`job-contracts.md § 2.3`). The hyphen is excluded because it is the separator *around* a name, never inside one: an attempt is `run-0`, a trial is `bench-G1K4C6`, and a flat stdout is `<label>_<NN>_<name>-run<N>.out`. A name free of hyphens means any of those can be split on one without knowing what it contains. Case folds because the name keys **filenames**, and the filesystems these run on include case-insensitive ones (macOS, some network mounts) — `Tight.fdf` and `tight.fdf` are one file there, so `Tight` and `tight` must be one stage everywhere (D6, 2026-08-12: the constructor compared exact strings while both parsers folded case; all three doors agree now). **One key, `identity.stage_key`**, compares a name the description holds with one from outside it — the duplicate check, the verbs' resolver (`launch run TIGHT` is `tight`) and the role rule (a SIESTA vibration's `Relax` is its relaxation); until K12 the last two compared exact strings (plan § 5w K12, the M11 review's SS-C15). A verb resolves once, at its entry, and works with the description's own spelling after that |
-| `enabled` | bool | whether the description runs this stage. A disabled stage is never prepped, launched or continued from, and a folder it left from before is kept as it is, shown disabled (`task.stage_disabled`; user, 2026-10-03: "mark the dir as disabled and never allow use"). A shipped ladder's strategy disables tiers rather than leaving them out, so a tier keeps its settings and is enabled without retyping them |
 | `overrides` | map | schema field name → that stage's value |
 | `execution` | map | *(added 2026-09-02)* what THIS rung runs at, when it differs from the calculation's own answer — one value per parameter, laid over the top-level block field by field (§ 6.8d). Absent means *"runs at what the calculation says"* |
 
-`overrides` may name **any field of the shared schema** and **never** `name` or
-`enabled`, nor an item bound to the whole calculation — the items the catalogue marks `shared` for the kind (the
+**There is no `enabled`** *(W38 F5, agreed 2026-09-27 — user: "remove on/off
+for optimization and vibration", "yes, drop the seed switch too"; 2026-10-03:
+"mark the dir as disabled and never allow use would be the correct way")*. A
+stage is in the description or it is not. Removing one that left files marks
+its folder `.disabled` and keeps its number taken
+([`project-layout.md`](?doc=execution/project-layout.md) § 4.2); a transport
+ladder's seed is skipped by removing it. A description written before carries
+`"enabled": true` on every stage — read and ignored; `"enabled": false` is
+refused by name, saying to remove the stage instead. A shipped ladder's
+strategy writes the stages it runs; a tier it leaves out is added later from
+the tier presets, its values filled in ([`web/task-setup.md`](?doc=web/task-setup.md)
+§ 9). *(Until 2026-10-03 a stage carried `enabled`, and a strategy wrote a
+switched-off third tier.)*
+
+`overrides` may name **any field of the shared schema** and **never** `name`,
+nor an item bound to the whole calculation — the items the catalogue marks `shared` for the kind (the
 electronic state's four for every kind; the calculation's identity — its
 `system_label`, `species_order` and `psml_lib` — for every SIESTA kind;
 transport's electronic description) — nor an item the rung itself fixes (`role`:
@@ -636,7 +649,6 @@ description of something that will still exist.
 | Field | Survives without a scheduler? | Can a single run mean it? | Lands |
 |---|:--:|:--:|---|
 | `name` | yes | no — a single run is named by its id | **the stage** |
-| `enabled` | yes | no — there is nothing to enable | **the stage** |
 | `relax_type` | yes | yes | the shared schema |
 | `relax_steps` | yes | yes | the shared schema |
 | `relax_force_tol` | yes | yes | the shared schema |
@@ -972,13 +984,13 @@ rather than inventing a second mechanism.
   "varies": ["mesh_cutoff", "relax_force_tol", "relax_type"],
 
   "stages": [
-    { "name": "coarse", "enabled": true,
+    { "name": "coarse",
       "overrides": { "mesh_cutoff": 150, "relax_force_tol": 0.04,
                      "relax_type": "CG" },
       // HOW THIS RUNG IS RUN -- its run card (§ 6.8d), never a column.
       "execution": { "restart": "clean" } },
 
-    { "name": "tight",  "enabled": true,
+    { "name": "tight",
       "overrides": { "mesh_cutoff": 300, "relax_force_tol": 0.01,
                      "relax_type": "Broyden" } }
   ],

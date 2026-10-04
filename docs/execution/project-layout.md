@@ -798,8 +798,19 @@ deck, the wrapper, `mb_monitor.pyz` and the pseudopotentials in (§ 1.5);
 **copy** whatever this run continues from; and **report** what it did, so you
 can read it before committing a week of cluster time. That last one is why this
 belongs to prepare rather than submit: preparing is still design, and the split
-gives you somewhere to look; submitting is then a plain "yes, that one"
-(`jobset/materialize.py::prepare_attempt`).
+gives you somewhere to look; submitting is then a plain "yes, that one".
+
+**One opener makes every run folder** *(W55 B6, 2026-10-03)* —
+`jobset/materialize.py::open_run`: a stage's attempt at prep and at a re-launch,
+a benchmark trial's, a bias point's. It creates the folder and every container
+above it that does not exist yet — the stage, a benchmark's `bench/`, a bias
+point's `v<V>/`, a submission's `launch/` — stamping each (§ 1.4a; invariant
+6b), seeds the run's progress channel, copies in what it runs from and what its
+`Continuation` carries, writes `.continued-from`, and gives the run script the
+run's own label — a trial's is the trial's. *(Until 2026-10-03 there were two:
+`prepare_attempt`, and `trial_work_dir` with a bare `mkdir` for trials, which
+stamped nothing; an attempt opened at launch, and a transport rung's, got no
+progress channel; a trial's run script was told the calculation's label.)*
 
 **A stage is prepared once** *(user, 2026-10-02: "refuse it, redo via
 rollback")*. `prep` opens its attempt; a stage the calculation's plan already
@@ -2131,8 +2142,21 @@ is the truth.
 Before anything has run, reordering is free: numbers are assigned when the
 directories are produced, not when the rows are typed.
 
-**Gaps are honest.** Disable stage 2 and the tree shows `01_` and `03_`. The gap
-says something real — there was a stage there and it is switched off.
+**Gaps are honest, and a removed stage's folder says so** *(W38 F5, agreed
+2026-09-27 — user: "why don't we add a suffix .disabled to the dir or to the
+script"; 2026-10-03: "mark the dir as disabled and never allow use would be
+the correct way")*. A stage has no on/off switch: it is in the description or
+it is not. Removing one that left files marks them — Task setup's Save, which
+writes the description, does it: `02_medium/` becomes
+`02_medium.disabled/` in the hierarchy; in the flat shape its deck and run
+script take the `.disabled` suffix — and leaves its outputs untouched. Its
+number stays taken: the stage-number door reads the disk, `.disabled` folders
+included, so `tight` stays `03_tight` and a stage added later takes `04`. The
+folder is never prepped, launched or continued from, and status shows it as
+removed and kept. Removing a stage whose job is launched and not finished is
+refused. *(Until 2026-10-03 a stage carried `"enabled"`, the Task setup row an
+on/off button; a turned-off stage left its folder unmarked, and one removed
+renumbered the stages after it.)*
 
 **Renaming is not a rename** — a stage's name is its identity, so renaming one
 that has run is creating a different stage. The rule and its reasoning are
@@ -2652,7 +2676,8 @@ than no invariant, because it fails a directory that is working correctly.
    each engine and assert its text contains no `cd` command
    (`tests/test_warm_file_inventory.py`).
 6b. **Every directory this tree makes below the calculation root carries a
-   `calcdir.json`, and the root carries `task.json`** (§ 1.4a). So
+   `calcdir.json`, and the root carries `task.json`** (§ 1.4a) — stamped by
+   the one opener (§ 1.6.2), a benchmark's folders and `launch/` among them. So
    *container-or-run* — § 1.4's rule — is answerable for every directory this
    tree makes, without reading a filename. **This is 6a's dividend**: Python
    makes them all, so Python can stamp them all. A directory carrying neither

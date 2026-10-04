@@ -40,7 +40,7 @@ flowchart LR
 | the folder is | the picker opens | shown by | its data |
 |---|---|---|---|
 | **one run** — an attempt directory, or one rung's files in a flat calculation | the run's result: its product if it made one (a spectrum, an optimized structure), else the engine's output (`-runN.out`, `-runN.pyscf.log`), else its progress log (§ 2.3) | the viewer for that file — trajectory (steps, energy, forces, SCF, how the run ended), spectra or structure | `/api/watch/*` parses the one file through the registry ([`trajectory.md`](?doc=web/trajectory.md)); `/api/spectra/*`; the structure's file door |
-| **a calculation root** | a result file at the root if it holds one; otherwise nothing, and the card shows the **ladder** — each rung's state (§ 2.4) | the ladder card | `/api/results/dir` → `ladder` (`jobset/runstatus.py`) |
+| **a calculation root** | a result file at the root if it holds one, **beside** the **ladder** — each rung's state and **every run of the calculation**, any of which is opened here when picked (§ 2.4) | the ladder card, and the picked run's presenter | `/api/results/dir` → `ladder` (`jobset/runstatus.py`) |
 | **a benchmark** | its `job-set.json` (`kind: sweep` — a ladder's `job-set.json` is not openable) | the bench summary: its trials compared ([`bench-summary.md`](?doc=web/bench-summary.md)) | `/api/bench/summary` (`jobset/summarize.py`) |
 | **a transport calculation** | its `<label>.transport.json` | the transport report: the I–V table and what is not drawn | the record file itself |
 | **a SIESTA vibration with a displacement sweep** | its `<label>.fc-sweep.json`, once `summarize run` has written it | the sweep: each force-constant stage and what it varied, each mode's frequency per stage, the force-constant changes, the paths of each stage's own files ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.9) | the record file itself |
@@ -407,6 +407,25 @@ outstanding — `engines/transport.md` § 2a.12's third
 requirement — instead of *pick a file*. A rung's files are read by opening the
 rung's directory; the product, when present, is what `openable` picks at the
 root.
+
+**Every run of the calculation, in one place, picked in place** *(W55 B6,
+2026-10-03 — user: "this gives a bird's eye of one parent task dir that can
+have different run results in one place such that result tab would be able to
+show them (don't have to get into individual run dir to probe, and rather
+result can display the result by simply select which run to pick")*. The
+root's answer lists every run of the calculation under its stage — each stage's
+attempts, a benchmark's trials, a bias scan's points — each with its state, its
+folder and the file it opens; the states are status's, which reads **every**
+attempt, so a launched run that has not ended is never hidden behind a newer
+one. **Picking a run shows its result in this panel** — the file that run's
+own folder would open, with its Run panel — while the sidebar stays on the
+calculation; *back to the calculation* returns to the ladder. A calculation's
+own product — a transport I–V, a displacement sweep — is shown **with** the
+ladder, never instead of it, and its rows name the attempt and the point each
+fact came from. A flat calculation's root lists its stages' runs the same way,
+by run number. *(Until 2026-10-03 the ladder's rows were text: a run was read
+by moving the sidebar into its folder, a root's product hid the ladder, and
+status read only each stage's newest attempt.)*
 
 ## 3. Showing the file
 

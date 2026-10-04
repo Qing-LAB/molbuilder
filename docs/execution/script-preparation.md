@@ -186,6 +186,38 @@ stages runs the tail twice; a benchmark of nine trials runs it nine times. That
 is `project-layout.md` § 2.3.1a — *benchmarking is `prep` whose parameters are a
 set rather than a point* — reaching all the way down.
 
+### 3.0 One table of steps, planned before anything is written *(W55 B1/B2, 2026-10-03)*
+
+**The steps are one table, and a kind adds steps to it — it never runs a
+second sequence** *(user, 2026-10-03: "we need a framework and template (or
+config data/instruction) driven approach such that the current prep can be used
+for the transport preparation too. the added transport steps can be designed as
+an optional step for transport operation but it would be in the same framework
+of prep")*. Each step reads what the steps before it decided and adds its own
+answer to the plan; **nothing is written until the last step has passed**
+([`job-system.md`](?doc=execution/job-system.md) § 5.0). Which optional steps a
+calculation runs is declared by its kind, as data — never a branch of the
+conductor:
+
+| step | every calculation | an optional step, declared by the kind |
+|---|---|---|
+| **1 · machine** | the record read once (`machine_for`), its activation checked, the job's placement admitted | — |
+| **2 · parameters** | each element resolved (`resolve`): a run is one, a benchmark's grid is N | a benchmark — **grid**: its points, from the declared axes or the machine's proposal |
+| **3 · structure** (*load*) | the structure loaded and checked against what was described | transport — **compose**: the junction and its leads, every rung's structure, composed in memory and kept as the text of the record prep writes; transport — **electronic state**: decided once on the junction, carried into every rung; a SIESTA vibration's frequency stage — **relaxed geometry**: the relax run it builds on (a `Continuation`), its coordinates and the atom order |
+| **3 · decks** (*data files* … *declare*) | the data files listed and screened; each deck rendered, validated, merged with the reader's own section as it stands on disk, and checked — the very text that will be written | transport — **points**: one deck per bias point |
+| **4 · wrappers** | `.run.sh` and `.sbatch` rendered from the deck's text and the job's placement | — |
+| **5 · directory** | the plan's new row merged; `STAGE-PLAN.md`; the attempt to open and what it receives — the `Continuation`'s files | transport — **gather**: each rung's inputs, from the runs upstream it builds on |
+| ***the writing*** | every file of the plan written, the attempt opened, `job-set.json` last | — |
+
+**Transport is not a second conductor.** Its five rungs are prepped by these
+steps, with its four optional ones; until 2026-10-03 it had its own arm, a copy
+of the steps' opening and closing that had drifted from them — no progress
+seed, no once-per-line filter, no provenance in its log, its job built by hand.
+
+**The pipeline log is the plan's own account** (§ 4.5): every step adds its
+lines as it decides, and the log is written with the rest — for every prep,
+from either door.
+
 ### 3.1 Why each order is forced
 
 Every adjacent pair is a data dependency, not a convention.
@@ -832,11 +864,13 @@ assumed. None says *through which step, out of which file, folded with what* —
 which is what you need when one rung of a ladder converges and the next does
 not.
 
-`molbuilder jobset prep --pipeline-log` writes that record.
+Every prep writes that record, from either door *(W20, ruled 2026-09-27;
+written into the framework 2026-10-03 — `--pipeline-log` was a flag, and the
+Task setup tab never wrote one)*.
 
-> **W13 · The log observes the pipeline; it is never a step in it.** Off by
-> default, and with it on **every generated artifact is byte-identical**. A
-> record that perturbs what it records is worse than no record.
+> **W13 · The log observes the pipeline; it is never a step in it.** Every
+> generated artifact is **byte-identical** to what a prep without the log
+> would write. A record that perturbs what it records is worse than no record.
 >
 > It follows that no engine may write to it. There is ONE writer
 > (`molbuilder/pipeline_log.py`), and exactly two callers: the framework

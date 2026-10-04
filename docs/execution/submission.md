@@ -85,14 +85,23 @@ says *I have decided to trust this*; its absence is not permission. A
 question that carries a judgement only the person can make — following a run
 that was launched and never concluded — takes **no** as Enter's answer.
 
-**S5 — The queue is named, never inferred.** Which queue to spend a day of
+**S5 — The queue is named, never inferred — and checked where it is named.** Which queue to spend a day of
 wall-clock in is a judgement about priority, contention and what else is
 running — none of it on the machine's record, all of it the person's. So the
 person names one — in the description (`allocation.domain`, the run card's
 `domain`) or with `--domain` — and a run on a scheduler that names none is
-refused at prep. Where the queues are listed, a queue that cannot take the job
-is listed too, with the reason: hiding it answers *"why is my queue not an
-option?"* with silence.
+refused at prep. **Prep admits the job on the queue it names** — its wall,
+memory, ranks, cores and GPUs against what the record says that queue takes —
+and records the placement with each value's source
+([`job-system.md`](?doc=execution/job-system.md) § 6.0); a queue that cannot
+take it is refused there, naming what was asked and what the queue offers.
+Where the queues are listed, a queue that cannot take the job is listed too,
+with the reason: hiding it answers *"why is my queue not an option?"* with
+silence. **And a page that offers queues proposes no value**: choosing a queue
+on the Task setup card fills neither the wall nor the memory — its limits are
+shown beside the fields, and an empty field stays empty until it is stated
+*(it wrote the queue's ceiling and 95 % of its memory until 2026-10-03, which a
+Save made "stated" — S1's default wearing a number's clothes)*.
 
 *There is no queue given once for a whole machine: `execution.domain` in
 `molbuilder.json` did that until 2026-10-02, and every job there received a
@@ -138,9 +147,13 @@ was asked.*
 | `queue_table` | the queues this machine offers, and which can take the job |
 | `confirm` | the one interface — approve, or don't |
 
-*The one output is the launch door's **plan** — the exact `sbatch` command
-of every job, printed by the code that submits it. A `render` summary lived
-here until 2026-08-24 and could disagree with the submission it described.*
+*The one output is the launch entry's **plan** — the exact `sbatch` command
+of every submission, made once and then sent as it was shown
+([`job-system.md`](?doc=execution/job-system.md) § 6.0): the send checks the
+folder is still the one the plan was made from, and refuses otherwise. A
+`render` summary lived here until 2026-08-24 and could disagree with the
+submission it described; until 2026-10-03 the plan was made twice — once to
+show, once to send — with nothing comparing the two.*
 
 ```
 $ molbuilder jobset launch bench coarse --mem 900G
