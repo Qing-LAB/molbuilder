@@ -449,7 +449,7 @@ class JobDirParser(DirParser):
         elif place == calcdirs.RUN or openable:
             # WITH ITS LAUNCH RECORD: an attempt prepped and never launched
             # is `pending`, not "running" (`run_status`).
-            from molbuilder.jobset.materialize import read_run_launch
+            from molbuilder.runrecord import read_run_launch
             st = run_status(d, launch=read_run_launch(d))
             # ``active_source`` is the status's own pick -- stage, then mtime
             # (§ 5.1, user ruling 2026-09-04) -- and a bare filename.

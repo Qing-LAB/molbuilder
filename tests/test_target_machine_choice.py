@@ -5,7 +5,7 @@ be chosen; two already refused before this file existed (C2, C4) and are
 pinned here so they stay refused, two did not (C1, C3).
 
 **Every case drives the real `prep` command.** The unit-level probe that
-first surfaced C2 said the target was ignored -- `resolve_target` returns
+first surfaced C2 said the target was ignored -- `machine.set_machine` returns
 an existing snapshot before it ever reads `target` -- and running the case
 showed the guard fires further along. A test that reasons about one
 function would have "found" a bug that is not there.
@@ -213,7 +213,7 @@ class TestTheUserChoosesTheMachine:
 
     def test_c2_a_contradicting_target_is_refused(self, machines):
         """Refused before this file existed.  Pinned because reading
-        `resolve_target` alone suggests otherwise -- it returns an existing
+        `machine.set_machine` alone suggests otherwise -- it returns an existing
         snapshot before consulting `target`, and the guard is further on."""
         machines.write("sol", scheduler="slurm")
         machines.write("agave", scheduler="workstation")

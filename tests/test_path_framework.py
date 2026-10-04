@@ -279,7 +279,7 @@ def test_no_counter_keyed_name_is_built_by_hand():
     """`-run<N>` and `run-<N>` have one composer each, and nobody else spells them.
 
     The search guard above is blind to this by construction: a duplicate
-    COMPOSER performs no search. `materialize.attempt_concluded` spelled
+    COMPOSER performs no search. `runrecord.attempt_concluded` spelled
     ``f"{basename}-run{newest}.concluded"`` on the line *after* asking
     `runfiles.latest_run` for that counter, and `submit.py` built
     ``f"{names[j]}/run-{n}"`` and handed it to `prepare_attempt` as the attempt

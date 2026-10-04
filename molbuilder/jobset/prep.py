@@ -46,31 +46,17 @@ import numpy as np
 from typing import Callable, List, Optional, Sequence, Tuple
 
 from .. import script_emit as _sc
-from .materialize import (job_dir_names, shape_of, materialize,
-                          write_gathered_from)
+from .materialize import job_dir_names, shape_of, materialize, stage_home
+from ..runrecord import write_gathered_from
 from ..issues import calling as _calling
 from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
 from .plan import FILENAME as _PLAN_FILE
 from ..runfiles import compose as _rf, stem as _rf_stem
 from ..pseudos import PSEUDO_DIRNAME
-
-
-class PrepError(Exception):
-    """A prep refused -- in the reader's own words, which each surface shows
-    as they are.
-
-    What the one prep entry had already found when it refused rides with it
-    (`prep_stage`): ``findings`` (the description's preflight notes),
-    ``notes`` (what its inputs said -- a bench's grid with every crossed-out
-    cell, a run's sizing) and ``partial`` (the answer so far, once the five
-    steps have written something).  A refusal that says *see the crossed-out
-    list above* is only honest if the list is shown with it; the command line
-    prints these before the error, the Task setup route returns them beside
-    it.  Empty on a refusal raised anywhere else.
-    """
-    findings: tuple = ()
-    notes: tuple = ()
-    partial: "Optional[PrepAnswer]" = None
+from .errors import PrepError
+from .machine import machine_record, require_activation, set_machine
+from .engines import (EngineSeam, engine_seam, _pseudo_dir, _screen_pseudos,
+                      _siesta_shared_package)
 
 
 from contextlib import contextmanager
@@ -108,115 +94,6 @@ def _user_error_as_prep():
 #: local box included -- and the reason it is worth a refusal rather than a
 #: probe is that a probed-on-the-fly number is indistinguishable from a
 #: recorded one once it is in a wrapper.
-_NO_RECORD = (
-    "no machine record for this machine, so there is nothing to prep "
-    "against.\n"
-    "  Record it, once:\n"
-    "      {cmd}\n"
-    "  A machine's cores, GPUs and queues are read from a record and never "
-    "probed on the fly -- so the numbers in a wrapper can always be traced "
-    "to a file you can look at (running-a-job.md 3.1)."
-)
-
-
-def resolve_target(base_dir, target: Optional[str] = None) -> Path:
-    """**Step 1 of the five: resolve the machine** (`project-layout.md`
-    § 2.3.1) — read the machine's record (its cores, GPUs, scheduler and
-    environment) and snapshot it as ``environment.json`` beside the bundle.
-
-    **This step existed only inside the benchmark until 2026-08-10.**
-    `bench/prep.py` did it; `prep_jobset` did not do it at all, so a staged
-    calculation went straight to rendering wrappers on a machine nobody had
-    asked about. § 2.3.1a is explicit about how to read that: *"`bench prep`
-    is the one place this framework is already built, and it was built inside
-    the benchmark because that is where the need appeared first … the general
-    part needs lifting out of it"* — and *"stating it the other way round
-    would make the general case look like a special case of the special
-    case."*
-
-    So the module moved out of `bench/` and became ``molbuilder/environment``.
-    Its persisted artifact was **already** registered then, as
-    ``molbuilder/environment@1`` (`job-contracts.md` § 6.1; ``@2`` since
-    2026-08-17), which is the schema saying it was never the benchmark's to
-    own.
-
-    Written once per bundle and **not** overwritten on a later prep: the file
-    records what this machine is, and re-reading on every stage would make two
-    stages of one calculation disagree about their own target for no reason a
-    user asked for.  It names the machine the calculation is set to -- this
-    prep's ``--target`` -- and that does not change: another record reaches
-    the calculation only through a new prep, from a state saved before this
-    one (`configuration.md` M-3).  A preview reads without writing
-    (:func:`_environment_read`).
-
-    **IT DOES NOT PROBE.  A machine that has no record is a REFUSAL**
-    *(user, 2026-09-02: "all environments have to be explicitly probed and
-    stored. no environment json, error")*, and it names the one command that
-    fixes it.
-
-    This step used to run a fresh probe and write the answer down whenever no
-    scope answered — which read as helpful and is the guess
-    `running-a-job.md` § 3.1 forbids: the numbers a wrapper carries would
-    then come from *whichever box happened to run prep*, and for a bundle
-    described at a desk and run on a cluster that is the wrong machine, with
-    a number that looks exactly like a right one.  Probing is one command and
-    it is the user's to run, so the record is always something they can point
-    at and say where it came from.
-
-    Returns the path to ``environment.json``.
-    """
-    from ..scheduler import machine_for, write_environment
-    from ..scheduler.record import calculation_record
-    out = calculation_record(base_dir)
-    if out.is_file():
-        return out
-    # `machine_for()` WITHOUT a bundle: the calculation has no record yet (we
-    # just early-returned if it did), so this is the MACHINE scope -- what
-    # `jobset probe` wrote.  Snapshotting that answer rather than re-probing
-    # is what makes one probe serve every calculation here
-    # (configuration.md § 5, M-3).  ``target`` names WHICH machine this is
-    # for (P2); an unknown name is `machine_for`'s own error, naming the ones
-    # that exist.
-    #
-    # NO `probe=`.  Nothing here detects anything: a record is read or the
-    # prep stops.
-    env = machine_for(target=target)
-    if env is None:
-        raise _no_record()
-    # THE MACHINE IT IS SET TO, named in the copy (M-3): a later prep's
-    # `--target` is checked against it.  No target is this machine --
-    # `machine_for` refuses the question when another is on file.
-    from dataclasses import replace
-    from ..scheduler.record import LOCAL_TARGET
-    return write_environment(replace(env, machine=target or LOCAL_TARGET),
-                             out)
-
-
-def _no_record() -> PrepError:
-    """The refusal of THIS machine with no record, naming the probe that
-    writes one (`scheduler.record.probe_line`, W52).  Only this machine can
-    have none: a named target's record is there, or `machine_for` refuses
-    the name itself (W54 R10 -- a branch for a named target stood here, and
-    could not be reached)."""
-    from ..scheduler.record import probe_line
-    return PrepError(_NO_RECORD.format(cmd=probe_line(None)))
-
-
-def _environment_read(base: Path, target: Optional[str] = None):
-    """Step 1's ANSWER, read -- the record `prep` snapshots
-    (:func:`resolve_target` writes it, after this is checked), and all a
-    preview asks, which writes nothing (`web/task-setup.md` § 11.1).  The
-    bench card snapshotted on every edit until 2026-10-01, so looking at a
-    calculation with the picker on one machine tied it to that machine
-    before anything was prepped (W52).  Refuses as step 1 does when no
-    record answers."""
-    from ..scheduler import machine_for
-    env = machine_for(base, target=target)
-    if env is None:
-        raise _no_record()
-    return env
-
-
 def _flat_continued_from(base: Path, task, stage: str, continuation) -> None:
     """A flat stage's own ``<basename>.continued-from``, for its launch
     record (`project-layout.md` § 1.6.3) -- the flat layout records what a
@@ -226,14 +103,14 @@ def _flat_continued_from(base: Path, task, stage: str, continuation) -> None:
     `clean` -- takes the old one away, or the launch would record a source
     it did not read."""
     from ..runfiles import latest_run, run_name, stem as rf_stem
-    from .materialize import continued_from_marker
+    from ..runrecord import continued_from_marker
     marker = continued_from_marker(base, rf_stem(task.label,
-                                                 token_for(task, stage)))
+                                                 stage_home(base, task, stage).token))
     if continuation is None:
         if marker.is_file():
             marker.unlink()
         return
-    token = token_for(task, continuation.stage)
+    token = stage_home(base, task, continuation.stage).token
     n = latest_run(base, task.label, stage=token)
     if n is None:
         return                     # concluded with no run file: name none
@@ -267,7 +144,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     the bundle root and symlinked into a ``point-<name>/`` dir — which is the
     design the body deleted on 2026-08-24 (step 1's own header says *IN THE
     JOB DIR* and step 3's says *(gone)*), and ``point-<name>`` is a directory
-    name ``materialize.job_dir_name`` records retiring before that.  A public
+    name ``materialize.job_dir_name`` (now `paths.trial_name`) records retiring before that.  A public
     entry point whose docstring describes a deleted design misleads at the
     lines a caller actually reads.
     """
@@ -288,11 +165,11 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
         raise PrepError(f"bundle root not found: {base}")
 
     # ---- 0. resolve the machine (§ 2.3.1 step ONE) ---------------------- #
-    # Idempotent by contract (resolve_target early-returns on an existing
+    # Idempotent by contract (set_machine early-returns on an existing
     # environment.json).  Every production caller is the described route,
     # whose `prep_calculation` already ran step 1; this call serves a direct
     # caller of `prep_jobset` (its tests) -- not a re-decision.
-    resolve_target(base)
+    set_machine(base)
 
     # ---- 1. render wrappers once per distinct script, IN THE JOB DIR --- #
     # Nothing rendered lives at the bundle root (user, 2026-08-24;
@@ -458,319 +335,6 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
 #  The five steps, entire — `project-layout.md` § 2.3.1                  #
 # --------------------------------------------------------------------- #
 
-@dataclass(frozen=True)
-class EngineSeam:
-    """What an engine supplies for `prep` to run the steps over it —
-    `script-preparation.md` § 4's seam, stated as data.
-
-    **That document indexes the questions by the STEP that asks them**, which is
-    the ordering to read them in: a bag of callables cannot answer *"what does
-    this engine still owe?"*, and against the steps a gap is a blank row.
-
-    **Fifteen questions, ten members.**  One is answered by shared code
-    (`validation.validate`), and four arrive together through ``spec_for`` --
-    the layout, the syntax, the record's values and the check rules are all the
-    engine describing its deck, so they ride on one ``DeckSpec`` rather than on
-    four seam members.  A member that answers ``None`` is answering *nothing*,
-    which is a real answer and a recorded one (§ 4, W5): PySCF gives it to
-    ``provide_data``, ``shared_package`` and ``sibling_artifacts``, and to
-    ``bench_marks`` on the spec.
-
-    Everything engine-specific that the loop below needs lives HERE, so the
-    loop itself never asks which engine it is in.  ``_job_for`` branched on
-    ``task.engine == "siesta"`` until 2026-08-12, which was § 7's forbidden
-    ``if`` one floor down from where it was deleted.
-    """
-    #: The config class the template rebuilds into.
-    config_cls: type
-    #: ``(structure, config, stage_token=) -> DeckSpec`` — the engine
-    #: DESCRIBES its deck; the framework renders, writes and checks it
-    #: (`script-preparation.md` § 4.3).  The token is a RENDER ARGUMENT (step
-    #: 7, C7): the emitter never learns the word, the deck's filename carries
-    #: it.
-    #:
-    #: **It handed back finished TEXT until 2026-08-18**, and that one fact was
-    #: what kept the framework's step-3 runner unreachable: given text, the
-    #: conductor had no form to pass on, so it performed the write and the
-    #: check itself and the ORDER of step 3 was stated in two places.  Given a
-    #: form, the framework can also re-derive what the deck was supposed to
-    #: contain, so nothing has to be carried alongside the text to make the
-    #: check possible.
-    spec_for: Callable
-    #: The deck's type suffix (``.fdf``).
-    suffix: str
-    #: ``config -> the engine's identity literal`` (``SystemLabel`` / ``JOB``).
-    label_of: Callable
-    #: ``(config, label) -> config`` — the identity WRITTEN, for a trial's
-    #: relabelling.  Filename relabelling alone is not the § 2.3.2
-    #: protection: the deck's own ``SystemLabel`` line is what keys the warm
-    #: files, and until 2026-08-12 it kept the run's label (found by the
-    #: first sweep that ever rendered a deck).
-    relabel: Callable
-    #: ``(label, config, calculation, base_dir) -> warm-file declaration``
-    #: for the Job -- the engine reads its § 4.2a rules file for the TYPE
-    #: (U2), and ``base_dir`` lets a calculation's own fine-tuned copy win
-    #: (U6a; the comment said 3 args while the call passed 4 -- C-d).
-    warm_for: Callable
-    #: ``config -> traits`` the launcher routes on (GPU solver, …).
-    traits_for: Callable
-    #: ``(struct, config, deck_path) -> None`` — the sibling files this
-    #: engine's deck TEXT promises (E6: a charged SIESTA deck instructs
-    #: running a script; the promise must be kept on every route that
-    #: renders the deck).  ``None`` for an engine whose decks promise
-    #: nothing.
-    sibling_artifacts: Optional[Callable] = None
-    #: ``(base_dir) -> [filename]`` — which files in the calculation are the
-    #: SHARED PACKAGE every job links to.  The engine that put them there is
-    #: the one that can name them: this was a ``*.psml`` glob in shared code,
-    #: a SIESTA fact stated a floor below where SIESTA may speak, so a second
-    #: engine with data files of its own would have shipped none of them.
-    #: ``None`` for an engine that puts nothing in — the package is then empty,
-    #: which is the honest answer rather than an accident of a glob.
-    shared_package: Optional[Callable] = None
-    #: ``(struct, config, base_dir) -> None`` — the DATA FILES this engine's
-    #: deck cannot run without, put into the calculation.
-    #:
-    #: *Named ``stage_data`` for about a minute: "stage" is this project's
-    #: core noun and here it was being borrowed as a verb -- the collision
-    #: `submit._staged_for_launch` was renamed for.*  Distinct from
-    #: ``sibling_artifacts``, which is about what a deck's own text promises;
-    #: this is about what the ENGINE will open.  ``None`` for an engine that
-    #: needs none (PySCF's basis sets ship inside PySCF).
-    #:
-    #: It belongs to `prep` because `project-layout.md` § 2.6 puts the copy on
-    #: the machine that runs the job — where the library lives is a fact about
-    #: that machine — and because `prep` is already what decides the shared
-    #: package.  Added 2026-08-18: the rule *"a calculation copies the
-    #: pseudopotentials it needs into its own shared package"* was written and
-    #: unowned, so `jobset init` performed it and the browser's hand-over
-    #: did not, and a calculation described in the browser prepped, laid out
-    #: its directories and reported success with no pseudopotentials in it.
-    provide_data: Optional[Callable] = None
-
-
-def _siesta_sibling_artifacts(struct, cfg, deck_path: Path, *,
-                              kind: str) -> None:
-    """The sibling files a SIESTA deck's own text PROMISES.
-
-    A charged deck instructs ``python3 makov_payne_correction.py`` in its
-    header -- a promise only ``convert`` kept until E6 (redo 2026-08-12):
-    the described route rendered the same header and never wrote the
-    script, so `prep` shipped an instruction to run a file that did not
-    exist.  Same writer both routes, so they cannot drift.
-
-    The charge is the electronic state's (`science/chemistry-correctness.md`
-    § 2a) -- the one the deck beside it was written from.  The deck has just
-    been written from that state, so a label naming no element cannot reach
-    here.  ONLY FOR A FINITE SYSTEM (§ 2b): the script's formula is a
-    molecule's in a vacuum box, and a charged slab or crystal -- whose deck
-    says it gets no formula -- got the script too until the M6 review."""
-    from ..electronic_state import electronic_state
-    from ..siesta.makov_payne import emit_correction_script
-    state = electronic_state(struct, cfg, kind=kind)
-    q = state.net_charge.value
-    if q != 0 and state.finite:
-        emit_correction_script(fdf_path=deck_path,
-                               system_label=cfg.system_label, q=q)
-
-
-def _pseudo_dir(base: Path) -> Path:
-    """THE PARENT'S DATA IS GROUPED (roadmap 7.10 M6): the calculation's
-    pseudopotential copies live in ``pseudos/``, one folder, instead of
-    N ``<El>.psml`` entries loose at the root.  Root strays -- put there
-    by `init`, an earlier prep, or a travelled bundle -- are ADOPTED,
-    the same move-in the deck adoption uses.  The run directories are
-    untouched by this: each still receives ``<El>.psml`` beside the
-    deck (that is SIESTA's own contract; it has no search path).
-
-    ONE rule, two providers: the SIESTA arm below and the transport
-    composite's (which fetches from the citation instead of a library).
-    """
-    pdir = base / PSEUDO_DIRNAME
-    pdir.mkdir(exist_ok=True)
-    # A container, and it says so (`project-layout.md` § 1.4a): the shared
-    # package holds files, never a run.  Left unstamped it was the directory
-    # that reported a calculation *running* because it had no result file in
-    # it -- which is the shape of answer § 1.4a exists to stop.  It reads back
-    # as *support* rather than a stage, because the naming authority maps no
-    # job to it; that is derived, not stored.
-    from .. import calcdirs
-    calcdirs.write(pdir, role=calcdirs.CONTAINER, root=base)
-    for stray in base.glob("*.psml"):
-        target = pdir / stray.name
-        if not target.exists():
-            stray.replace(target)
-        else:
-            stray.unlink()
-    return pdir
-
-
-def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
-    """Put the pseudopotentials this deck needs into the calculation.
-
-    SIESTA opens ``<element>.psml`` in the directory it runs from and has no
-    search path, so a missing file is not a preference — it is a run that
-    cannot start, after a queue wait and however long MPI takes to come up.
-
-    **Idempotent, and the folder wins.**  Anything already here was put here by
-    an earlier prep, by `jobset init`, or by travelling with the folder;
-    `copy_pseudopotentials` leaves it alone.  Only what is missing is fetched,
-    from the library named by ``psml_lib``.
-
-    **The species come from the STRUCTURE**, which `prep` has just loaded and
-    checked against the description's witness — not from a list in the
-    description.  A recorded list would be a second answer to *which elements
-    is this calculation of*, and the structure is the first.
-
-    A species in neither place stops `prep` **by name**, before a deck is
-    written.
-
-    **And then the science protocol runs on what is actually there.**
-    `science/pseudopotentials.md` exists because a defective `S.psml` with a
-    dead p-channel shipped into a real run on 2026-06-26: wrong sulfur bonding,
-    and `propor: ERROR: IMAX=0` — but only at high rank counts, so a small run
-    would have reported plausible, wrong numbers instead of crashing. The check
-    that catches that class reads the pseudopotentials themselves.
-
-    It has always run against ``psml_lib`` — the LIBRARY — and it is gated on
-    that field being set, so a calculation whose files are already beside it and
-    whose ``psml_lib`` is empty had **nothing checked at all**: the only thing
-    said was *"psml_lib is not set … once set, this preflight will check
-    coverage"*, while three real pseudopotentials sat in the folder the run
-    would open them from. This step makes that state the normal one, so it runs
-    the protocol here, against the **calculation** — which is where the files
-    the run reads actually are — and refuses on the same ERROR statuses the
-    preflight and `molbuilder pseudo check` refuse on, from the same shared
-    constant.
-    """
-    from ..pseudos import psml_sources, resolve_psml_lib
-    from ..siesta.input import copy_pseudopotentials
-    from ..chemistry import species_order
-
-    species = species_order(struct.elements)
-    if not species:
-        return
-    pdir = _pseudo_dir(base)
-    # THE FOLDER WINS, by the one rule the settings gate asks too.
-    want = [s for s, d in psml_sources(species, dest_dir=base).items()
-            if d is None]
-    if not want:
-        _screen_pseudos(species, cfg, pdir)
-        return
-
-    lib_raw = getattr(cfg, "psml_lib", None)
-    if not lib_raw:
-        raise PrepError(
-            f"this calculation needs pseudopotentials for "
-            f"{', '.join(want)} and none are in {base.name}/, but no "
-            f"pseudopotential directory is set.  Set `psml_lib` in the "
-            f"template to the library they live in -- the convention is the "
-            f"bare name `pseudopotential`, which means the projects tree "
-            f"this calculation lives in (project-layout.md § 2.6, "
-            f"job-contracts.md § 2.5a).")
-    from ..pseudos import PsmlLibError
-    try:
-        lib = resolve_psml_lib(str(lib_raw), dest_dir=base)
-    except PsmlLibError as exc:
-        raise PrepError(str(exc))
-    if not lib.is_dir():
-        # Name the anchor the SPELLING asked for, in the rule's own words.
-        # This used to print only the resolved path, which under the old
-        # cascade was whichever candidate was tried last -- on Sol that was
-        # `<calc>/projects/pseudopotential`, a folder assembled from the
-        # user's working directory that nobody had chosen (2026-08-21).
-        from ..pseudos import describe_psml_anchor
-        raise PrepError(
-            f"this calculation needs pseudopotentials for "
-            f"{', '.join(want)}, and the library they should come from is "
-            f"not a directory.  "
-            + describe_psml_anchor(str(lib_raw), dest_dir=base)
-            + "  Put the .psml files there, or set `psml_lib` to a "
-              "directory that has them.")
-    missing = copy_pseudopotentials(want, lib, pdir)
-    if missing:
-        raise PrepError(
-            f"this calculation needs {', '.join(f'{m}.psml' for m in missing)}"
-            f" and there is none in {base.name}/ or in {lib}.  SIESTA opens "
-            f"<element>.psml in the directory it runs from and has no search "
-            f"path, so it would refuse at startup.  Put the file in the "
-            f"library, or point `psml_lib` at one that has it.")
-    _screen_pseudos(species, cfg, pdir)
-
-
-def _screen_pseudos(species, cfg, base: Path) -> None:
-    """`science/pseudopotentials.md` § 1, run on the calculation's own files.
-
-    Same engine (`pseudos.check_coverage`), same severity set
-    (`pseudos.ERROR_STATUSES`) and same XC-family table
-    (`pseudos.expected_xc_family`) as the render-time preflight and the
-    `molbuilder pseudo check` CLI, so the three surfaces cannot disagree about
-    what blocks.  What differs is only WHICH DIRECTORY is read: this one asks
-    about the files the run will open.
-
-    The three blocking statuses are `missing`, `dead_projector` and
-    `xc_family_mismatch` — a file absent, a valence channel physically absent,
-    or the wrong XC family.  The rest are advisory, and the settings gate
-    reports them in the deck's report: it reads these same files
-    (`pseudos.psml_sources`), so printing them here too said each one twice.
-    """
-    from ..pseudos import ERROR_STATUSES, check_coverage, expected_xc_family
-    entries = check_coverage(
-        species, base,
-        expected_xc_family=expected_xc_family(
-            getattr(cfg, "xc_authors", "") or ""),
-        expected_xc_authors=(getattr(cfg, "xc_authors", "") or "") or None,
-    )
-    blocking = [e for e in entries if e.status in ERROR_STATUSES]
-    if blocking:
-        raise PrepError(
-            "the pseudopotentials in this calculation do not pass the "
-            "screening (science/pseudopotentials.md § 1):\n  - "
-            + "\n  - ".join(f"{e.element}: {e.message}" for e in blocking)
-            + "\n  These are the checks that exist because a dead-channel "
-              "S.psml once shipped into a real run -- wrong bonding, and a "
-              "propor IMAX=0 crash that only appeared at high rank counts.")
-
-
-def _engine_seam(engine: str) -> EngineSeam:
-    if engine == "siesta":
-        from ..config.siesta import SiestaConfig
-        from ..siesta.input import spec_for as _siesta_spec
-        from ..siesta.stages import _traits, _warm_declaration
-        return EngineSeam(config_cls=SiestaConfig, spec_for=_siesta_spec,
-                          suffix=".fdf",
-                          label_of=lambda cfg: cfg.system_label,
-                          relabel=lambda cfg, label: dataclasses.replace(
-                              cfg, system_label=label),
-                          warm_for=_warm_declaration, traits_for=_traits,
-                          sibling_artifacts=_siesta_sibling_artifacts,
-                          provide_data=_siesta_provide_pseudos,
-                          shared_package=_siesta_shared_package)
-    if engine == "pyscf":
-        from ..config.pyscf import PySCFConfig
-        from ..pyscf.input import spec_for as _pyscf_spec
-        from ..pyscf.stages import _traits as _pyscf_traits
-        from ..pyscf.stages import _warm_declaration as _pyscf_warm
-        # NO ``provide_data`` and NO ``sibling_artifacts``, and both absences
-        # are ANSWERS rather than omissions (`script-preparation.md` § 4, W5):
-        # PySCF's basis sets ship inside PySCF, so there is no file to put in
-        # the calculation; and its script's own text instructs nothing to be
-        # run beside it, so there is no promise to keep.
-        return EngineSeam(config_cls=PySCFConfig, spec_for=_pyscf_spec,
-                          suffix=".py",
-                          label_of=lambda cfg: cfg.job_name,
-                          relabel=lambda cfg, label: dataclasses.replace(
-                              cfg, job_name=label),
-                          warm_for=_pyscf_warm, traits_for=_pyscf_traits)
-        # NO ``shared_package``: PySCF's basis sets ship inside PySCF, so
-        # there is nothing in the calculation for every job to link to.
-    raise PrepError(
-        f"no deck writer for engine {engine!r}. An engine supplies its "
-        f"catalogue rows and an answer at each preparation step "
-        f"(script-preparation.md § 4); this backend has neither for that "
-        f"name.")
-
-
 def _vibration_block(stage: str, cfg, relaxed_by, *, criterion) -> dict:
     """A SIESTA force-constant deck's `vibration` block: the facts its job's
     finish reads and no SIESTA keyword states (`engines/vibration.md`
@@ -849,8 +413,9 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
                 f"and says whether the statement held.")
         return struct, None, None
     from ..paths import Shape
-    from .materialize import attempt_concluded, run_dir, stage_stdout
-    token = token_for(task, relax.name)
+    from .materialize import run_dir, stage_stdout
+    from ..runrecord import attempt_concluded
+    token = stage_home(base, task, relax.name).token
     container = base / Shape.named(task.shape).stage_dir(token)
     stem = _rf_stem(task.label, token)
     # THE COMMANDS, from the one composer: the calculation named, the mode
@@ -1053,7 +618,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # function places the sweep's record and the trials' directories, so the
     # two can never disagree (A-1/A-2).  The log's own home is the same
     # container, spelled by the same function.
-    from .materialize import bench_container
+    from ..paths import bench_container
     from ..paths import Shape
 
     base = Path(base_dir).resolve()
@@ -1070,9 +635,9 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # named machine's environment is refused before anything is on disk --
     # the snapshot included, or the remedy's re-copied record would then
     # contradict it (W52, and its fix's review).
-    environment = _environment_read(base, target)
-    _require_activation(target, environment, base=base)
-    resolve_target(base, target)          # step 1 proper: the snapshot
+    environment = machine_record(base, target)
+    require_activation(target, environment, base=base)
+    set_machine(base, target)          # step 1 proper: the snapshot
 
     # ---- 2. resolve the parameters ------------------------------------- #
     task = read_task(desc)
@@ -1085,7 +650,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # step that refused -- which is the step a reader is looking for.
     log = None
     if pipeline_log:
-        _token = token_for(task, stage)
+        _token = stage_home(base, task, stage).token
         _record = (base / bench_container(Shape.named(task.shape), _token)
                    if sweep is not None else base)
         _record.mkdir(parents=True, exist_ok=True)
@@ -1114,7 +679,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             f"no {template_path.name} beside {TASK_FILENAME}. The portable "
             f"folder is a template PLUS a description (project-layout.md § 2.1) "
             f"and `prep` rebuilds the config from the template.")
-    seam = _engine_seam(task.engine)
+    seam = engine_seam(task.engine)
     # THE DESCRIPTION'S OWN ALLOCATION, under the caller's (2026-08-24).
     # `task.json` carries the queue, the wall and the memory a person chose
     # for this calculation (`task.Allocation`), so a prepped bundle needs
@@ -1239,9 +804,10 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         with _user_error_as_prep(), _calling(
                 "provide_data", engine=task.engine, log=log):
             seam.provide_data(struct, pset[0].render_config(), base)
-    token = token_for(task, pset.stage)
+    token = stage_home(base, task, pset.stage).token
     jobs: List[Job] = []
-    from .materialize import (bench_container, trial_dir,
+    from ..paths import bench_container
+    from .materialize import (trial_dir,
                               trial_work_dir)
     from ..paths import Shape as _Shape
     _shape = _Shape.named(task.shape)
@@ -1469,7 +1035,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # same field whoever it is for.
     #
     # A record that does not state it was refused at step 1, before anything
-    # was written (`_require_activation`) -- whichever machine it describes.
+    # was written (`machine.require_activation`) -- whichever machine it describes.
     dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
                        record_dir=record_dir, log=log,
                        machine_record=environment)
@@ -1591,55 +1157,6 @@ def _move_progress_channel_into(attempt: Path) -> None:
         for seeded in find_by_role(stage_dir, role):
             seeded.replace(attempt / seeded.name)
 
-
-def _require_activation(target: Optional[str], environment,
-                        base=None) -> None:
-    """A record that does not state how a shell enters an environment there
-    is refused HERE, for every target -- this machine included.
-
-    **Prep reads the TARGET's record, and only it** (`configuration.md` § 4):
-    each machine declares its ``env_init`` in its own ``molbuilder.json`` and
-    `jobset probe` copies it into the record it writes.  No target is allowed
-    a substitute: generating with THIS machine's activation for another
-    machine succeeds at generate time and dies on the cluster hours later, on
-    a path that exists only here (2026-08-24).
-    """
-    from ..scheduler.record import (LOCAL_TARGET, calculation_record,
-                                    probe_command, probe_steps)
-    from .commands import rollback
-    if (getattr(environment, "env_init", None) or {}).get("activation"):
-        return
-    here = target in (None, LOCAL_TARGET)
-    own = calculation_record(base) if base is not None else None
-    if own is not None and own.is_file():
-        # THE CALCULATION'S OWN COPY ANSWERED (`configuration.md` § 5 M-3):
-        # taken at its first prep and never replaced, so no probe reaches it.
-        raise PrepError(
-            f"this calculation's record of its machine, {own}, does not say "
-            f"how a shell enters an environment there -- it was copied at the "
-            f"calculation's first prep and is never replaced, so a probe does "
-            f"not reach it (a copy taken before 2026-10-02 names it "
-            f"`script_generation`).  Rename that key to `env_init` in it, or "
-            + rollback("the calculation's first prep", base=base)
-            + ("" if here else f"  Name the machine again: --target {target}."))
-    whose = "this machine's record" if here else f"the record of {target!r}"
-    raise PrepError(
-        f"{whose} does not say "
-        f"how a shell enters an environment there, and nothing else may "
-        f"(docs/configuration.md § 4).  Declare it in that machine's "
-        f"molbuilder.json --\n"
-        f"      \"env_init\": {{\"activation\": \"conda activate\", "
-        f"\"preamble\": \"source <conda root>/etc/profile.d/conda.sh\"}}\n"
-        f"  or \"source activate\" after \"module load mamba\" where a "
-        f"module gives the toolchain -- then probe {probe_steps(target)}:\n"
-        f"      {probe_command(target)}\n"
-        f"  and prep again.  A copied record that is wrong for its machine "
-        f"is edited by hand.")
-
-
-# --------------------------------------------------------------------- #
-#  The transport arm — the composite's prep (archive/2026-09-01-transport-design.md § 4.2)  #
-# --------------------------------------------------------------------- #
 
 def _transport_provide_pseudos(struct, cfg, base: Path,
                                citation: str) -> None:
@@ -1854,7 +1371,7 @@ def _transport_spec(task, stage: str, struct, config, state, volts=None):
     with _user_error_as_prep():
         try:
             spec = _siesta_spec_for(struct, cfg,
-                                    stage_token=(token_for(task, stage)
+                                    stage_token=(stage_home(None, task, stage).token
                                                  or None),
                                     calculation="transport", state=state)
         except ValueError as exc:
@@ -1886,7 +1403,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     sort, gate, extract the leads — is step 3a below and belongs to this
     arm. Everything else is the shared machinery, un-forked::
 
-        1  the machine            `_environment_read`, then `resolve_target`
+        1  the machine            `machine.machine_record`, then `machine.set_machine`
         2  the description        `read_task`, and WHICH rung
         3a the citation           compose  (transport's own)
         3b the data files         the pseudos travel with the citation
@@ -1938,9 +1455,9 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # named machine's environment is refused before anything is on disk --
     # the snapshot included, or the remedy's re-copied record would then
     # contradict it (W52, and its fix's review).
-    environment = _environment_read(base, target)
-    _require_activation(target, environment, base=base)
-    resolve_target(base, target)          # step 1 proper: the snapshot
+    environment = machine_record(base, target)
+    require_activation(target, environment, base=base)
+    set_machine(base, target)          # step 1 proper: the snapshot
 
     # ---- 2. the description, and WHICH rung ---------------------------- #
     task = read_task(desc)
@@ -1950,7 +1467,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
             "a transport prep names its rung: the composite's stages render "
             "separately, in dependency order (engines/transport.md); "
             + name_a_stage("prep", "run", enabled_refs(task), base=base))
-    token = token_for(task, stage)          # refuses an unknown stage by name
+    token = stage_home(base, task, stage).token          # refuses an unknown stage by name
 
     # THE PIPELINE LOG (TR4).  This arm printed "not wired for the transport
     # arm yet" until 2026-09-16 -- honest, and a documented no-op is still a
@@ -2119,7 +1636,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # anything was written: this check stood after the per-point wrapper
     # loop until 2026-09-16, and then here -- after the decks, the compose
     # record and the pseudos -- until 2026-10-01 (W52), while its own premise
-    # (`_require_activation`) is that no such file may exist.
+    # (`machine.require_activation`) is that no such file may exist.
 
     # Each bias point's directory gets its own wrapper, beside its own deck
     # -- the same render `prep_jobset` gives the stage directory, through
@@ -2213,7 +1730,7 @@ def gather_transport_inputs(base_dir, task, stage: str,
     """
     from ..transport.stages import (per_point_rungs, rung_container,
                                      stage_inputs)
-    from .materialize import attempt_concluded
+    from ..runrecord import attempt_concluded
 
     base = Path(base_dir)
     attempt_dir = Path(attempt_dir)
@@ -2223,7 +1740,7 @@ def gather_transport_inputs(base_dir, task, stage: str,
     gathered: List[tuple] = []
     composed = None              # the junction, read once, when first needed
     for upstream, filename in inputs:
-        token = token_for(task, upstream)
+        token = stage_home(base, task, upstream).token
         # A bias scan keeps a per-point rung's products PER POINT -- the
         # transmission at v reads the device at v, never another point's
         # converged state (archive/2026-09-01-transport-design.md 4.3); a lead is every
@@ -2551,33 +2068,6 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
         frame=frame)
 
 
-def token_for(task, stage_name: Optional[str]) -> str:
-    """This stage's ``<NN>_<name>`` — the ONE namer (decision 27).
-
-    ``NN`` is the stage's place in the **full** ladder, so disabling one leaves
-    a gap rather than renumbering what follows: renumbering would hand an
-    existing output to a stage that did not produce it.
-
-    Public since 2026-08-13: the CLI's container/underway surfaces need the
-    same answer, and reaching in for a private name was the re-derivation
-    habit the final review's C-c row names.
-    """
-    if not stage_name:
-        return ""       # asked without naming a rung; every ladder has one
-    from ..identity import StageRef
-    # The ordinal rule is stated ONCE (StageRef.ladder -- decision 28's
-    # pre-produce arm); this function reads the ref and spells the token.
-    for ref in StageRef.ladder([s.name for s in task.stages]):
-        if ref.name == stage_name:
-            return ref.token
-    # Unreachable through prep_calculation -- resolve._stage_of already
-    # refused an unknown stage -- and LOUD rather than "" if a future caller
-    # reaches it another way: an empty token would silently drop the stage
-    # from every artifact name (job-contracts.md § 6.3).
-    raise PrepError(f"stage {stage_name!r} is not in this description's "
-                    f"ladder: {', '.join(s.name for s in task.stages)}.")
-
-
 def _job_for(element, script: str, task, stage_name: Optional[str],
              seam: EngineSeam, base_dir=None, log=None,
              finish: Optional[str] = None) -> Job:
@@ -2636,31 +2126,6 @@ def _rung_kind(task, stage_name: Optional[str]) -> str:
                   stage_name) == "relaxation":
         return "optimization"
     return str(task.calculation)
-
-
-def _siesta_shared_package(base: Path) -> List[str]:
-    """SIESTA's shared package: the pseudopotentials it put in the folder,
-    and the atom-permutation record when its decks are written from a sorted
-    copy.
-
-    The same files ``_siesta_provide_pseudos`` stages, named by the engine
-    that staged them (`script-preparation.md` § 4, the data-files step).
-    Under ``pseudos/`` since the layout repair (roadmap 7.10 M6); the bare
-    root glob stays as the fallback for a bundle prepped before it, so a
-    travelled calculation still names its package.
-
-    THE PERMUTATION TRAVELS WITH THE RUNS, because a run of a sorted copy
-    speaks the sorted order in every file it writes and the record is the
-    one way back (`atom_permutation`, I7): every attempt holds its copy, so
-    a SIESTA force-constant job's finish reads it beside the run it finishes
-    (`engines/vibration.md` § 5.5).
-    """
-    from ..atom_permutation import PERMUTATION_FILE
-    grouped = sorted(f"{PSEUDO_DIRNAME}/{p.name}"
-                     for p in (base / PSEUDO_DIRNAME).glob("*.psml"))
-    pseudos = grouped or sorted(p.name for p in base.glob("*.psml"))
-    return pseudos + ([PERMUTATION_FILE]
-                      if (base / PERMUTATION_FILE).is_file() else [])
 
 
 def _under_description(flags, declared, chosen=None) -> "Resources":
@@ -2901,11 +2366,12 @@ def prepped_already(base, task, kind: str, stage: str) -> Optional[str]:
     from ..identity import stage_key
     from ..paths import Shape
     from .commands import rollback
-    from .materialize import bench_container, job_dir_names, shape_of
+    from ..paths import bench_container
+    from .materialize import job_dir_names, shape_of
     base = Path(base)
     if kind == "bench":
         home = base / bench_container(Shape.named(task.shape),
-                                      token_for(task, stage))
+                                      stage_home(base, task, stage).token)
         if not (home / JOBSET_FILENAME).is_file():
             return None
         what, where = (f"the benchmark of stage {stage!r}",
@@ -3175,10 +2641,10 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         container = None
         if kind == "bench":
             from ..paths import Shape
-            from .materialize import bench_container
+            from ..paths import bench_container
             sweep, pins, translation = bench_inputs(base, target, notes=notes)
             container = base / bench_container(Shape.named(task.shape),
-                                               token_for(task, stage))
+                                               stage_home(base, task, stage).token)
         else:
             allocation, pins, chosen = prep_run_inputs(
                 base, task, stage, allocation, notes=notes)
@@ -3191,8 +2657,8 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         #      prep writes a `.sbatch` for states its queue, wall and memory.
         #      The target's record CHECKS an ask -- its queues are shown so
         #      one can be named -- and supplies no value of it.
-        from .prep_inputs import launch_refusal
-        _rec = _environment_read(base, target)
+        from .placement import launch_refusal
+        _rec = machine_record(base, target)
         why = launch_refusal(
             (allocation if kind == "run" else _under_description(
                 allocation or Resources(), task.allocation)),
@@ -3273,7 +2739,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         if pipeline_log:
             from ..pipeline_log import log_name
             out.pipeline_log = (container or base) / log_name(
-                task.label, token_for(task, stage) or "", task.engine,
+                task.label, stage_home(base, task, stage).token or "", task.engine,
                 task.shape)
         if kind == "bench":
             return _finish(out)
@@ -3357,5 +2823,4 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
 
 
 __all__ = ["prep_calculation", "prep_jobset", "prep_stage", "PrepAnswer",
-           "PrepError", "resolve_target",
            "prepped_already", "prepped_stages"]

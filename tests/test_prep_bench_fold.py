@@ -20,7 +20,8 @@ from molbuilder.config.siesta import SiestaConfig
 from molbuilder.scheduler import Environment, Topology
 from molbuilder.jobset.prep_inputs import bench_inputs
 from molbuilder.jobset.model import Resources
-from molbuilder.jobset.prep import PrepError, prep_calculation
+from molbuilder.jobset.errors import PrepError
+from molbuilder.jobset.prep import prep_calculation
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 from molbuilder.task import Stage
@@ -130,7 +131,7 @@ def calc(tmp_path):
         dest)
     from conftest import write_pseudos
     write_pseudos(dest, sorted(set(struct.elements)))
-    # The probe's answer, pre-seeded: resolve_target early-returns on an
+    # The probe's answer, pre-seeded: machine.set_machine early-returns on an
     # existing environment.json, so the grid enumerates THIS topology.
     (dest / "environment.json").write_text(
         Environment(scheduler="workstation",
@@ -550,8 +551,8 @@ def test_the_group_sequencer_runs_every_trial_and_survives_failures(
     from pathlib import Path
 
     from molbuilder.jobset._cli import _load_bench_set
-    from molbuilder.jobset.materialize import (job_dir_names, shape_of,
-                                               was_launched)
+    from molbuilder.jobset.materialize import job_dir_names, shape_of
+    from molbuilder.runrecord import was_launched
     from molbuilder.jobset.submit import _trial_run_dir, submit_bench_group
 
     # A DECLARED one-shelf sweep (one machine point x a block_size value
@@ -947,8 +948,8 @@ class TestTheRunsOwnCondition:
         so a hand-edited `run-config.toml` silently beat the description --
         over exactly the two fields whose absence killed five Sol jobs
         (62039301-05)."""
-        from molbuilder.jobset.materialize import bench_container
-        from molbuilder.jobset.prep import token_for
+        from molbuilder.paths import bench_container
+        from molbuilder.jobset.materialize import stage_home
         from molbuilder.paths import Shape
         from molbuilder.task import read_task
 
@@ -958,7 +959,7 @@ class TestTheRunsOwnCondition:
         (calc / "task.json").write_text(json.dumps(d, indent=2))
         t = read_task(calc / "task.json")
         cont = calc / bench_container(Shape.named(t.shape),
-                                      token_for(t, "coarse"))
+                                      stage_home(calc, t, "coarse").token)
         cont.mkdir(parents=True, exist_ok=True)
         (cont / "run-config.toml").write_text(
             'schema = "molbuilder/run-config@1"\n'
@@ -1547,7 +1548,7 @@ def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):
     assert all("02_medium" in j["script"] for j in mj["jobs"])
     # A-1 (2026-08-13): the TRIALS live in the same qualified container as
     # the record.  Until job_dir_names and prep shared one spelling
-    # (materialize.bench_container), flat trials fell into an unqualified
+    # (paths.bench_container), flat trials fell into an unqualified
     # shared root bench/ -- two stages' same-coordinate trials collided
     # (run.json cross-contamination read as "all trials launched") while
     # the underway-ask globbed the qualified container and found nothing.
@@ -1648,7 +1649,7 @@ def test_a_direct_sweep_resumes_past_launched_trials(calc):
     grouped path collects the still-unlaunched remainder the same way."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
-    from molbuilder.jobset.materialize import write_run_launch
+    from molbuilder.runrecord import write_run_launch
     js = _prep_bench(calc)
     first = js["jobs"][0]["name"]
     write_run_launch(_artifacts(calc, first),
@@ -1667,7 +1668,7 @@ def test_a_direct_sweep_resumes_past_launched_trials(calc):
     # mid-function by a merge; kept as the comment it really is).
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
-    from molbuilder.jobset.materialize import write_run_launch
+    from molbuilder.runrecord import write_run_launch
     js = _prep_bench(calc)
     first = js["jobs"][0]["name"]
     second = js["jobs"][1]["name"]
@@ -2524,8 +2525,8 @@ def test_every_shelf_is_written_before_any_is_sent(calc, monkeypatch):
     from pathlib import Path
 
     from molbuilder.jobset._cli import _load_bench_set
-    from molbuilder.jobset.materialize import (job_dir_names, shape_of,
-                                               was_launched)
+    from molbuilder.jobset.materialize import job_dir_names, shape_of
+    from molbuilder.runrecord import was_launched
     from molbuilder.jobset.submit import submit_bench_group
 
     _describe_cpu(calc)
@@ -2676,8 +2677,8 @@ def test_a_grouped_launch_records_where_was_launched_LOOKS(calc, monkeypatch):
     from pathlib import Path
 
     from molbuilder.jobset._cli import _load_bench_set
-    from molbuilder.jobset.materialize import (job_dir_names, shape_of,
-                                               was_launched)
+    from molbuilder.jobset.materialize import job_dir_names, shape_of
+    from molbuilder.runrecord import was_launched
     from molbuilder.jobset.submit import _trial_run_dir, submit_bench_group
 
     _describe_cpu(calc)
@@ -2721,7 +2722,8 @@ def test_only_a_bench_prefixed_directory_counts_as_a_trial(tmp_path):
     fold green.  A container also holds the sweep's own record, and a person
     may put anything beside it; neither is an attempt at a measurement.
     """
-    from molbuilder.jobset.materialize import TRIAL_PREFIX, trials_in
+    from molbuilder.jobset.materialize import trials_in
+    from molbuilder.paths import TRIAL_PREFIX
     (tmp_path / f"{TRIAL_PREFIX}K4C1").mkdir()
     (tmp_path / f"{TRIAL_PREFIX}K8C1").mkdir()
     (tmp_path / "notes").mkdir()                 # a person's own folder

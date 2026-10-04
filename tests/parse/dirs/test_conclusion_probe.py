@@ -61,7 +61,7 @@ class TestTheMarkerIsParsedNotMatched:
 class TestWhichMarkerSpeaks:
 
     def test_a_previous_attempts_goodbye_is_not_this_ones(self, tmp_path):
-        """`materialize.attempt_concluded` states the rule: *"an earlier
+        """`runrecord.attempt_concluded` states the rule: *"an earlier
         index's marker beside a newer unconcluded `.out` is a previous
         re-run's goodbye, not this one's."*  The probe shipped ranging over
         `.concluded` alone, so it read run0's marker while run1 was live."""

@@ -279,11 +279,12 @@ def test_a_printed_remedy_names_the_resolved_directory(monkeypatch, tmp_path):
 
     root = tmp_path / "named"
     monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(root))
-    from molbuilder.jobset.prep import PrepError, _require_activation
+    from molbuilder.jobset.errors import PrepError
+    from molbuilder.jobset.machine import require_activation
     from molbuilder.scheduler.record import Environment
 
     with _pytest.raises(PrepError) as excinfo:
-        _require_activation("sol", Environment(scheduler="slurm"))
+        require_activation("sol", Environment(scheduler="slurm"))
 
     message = str(excinfo.value)
     assert str(root / "environments") in message, message

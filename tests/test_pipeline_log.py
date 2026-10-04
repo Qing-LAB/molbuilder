@@ -27,7 +27,8 @@ from molbuilder import describe as D
 from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.jobset.model import Resources
-from molbuilder.jobset.prep import EngineSeam, prep_calculation
+from molbuilder.jobset.engines import EngineSeam
+from molbuilder.jobset.prep import prep_calculation
 from molbuilder.pipeline_log import PipelineLog, log_name
 from molbuilder.pyscf.stages import default_pyscf_stages
 from molbuilder.script_emit import Block, DeckSpec
@@ -318,7 +319,7 @@ def test_a_settings_refusal_is_in_the_log_with_its_reason(tmp_path):
 
     Driven through a real refusal: GPU without an ELPA diagonaliser.
     """
-    from molbuilder.jobset.prep import PrepError
+    from molbuilder.jobset.errors import PrepError
     dest, stages = _calculation(tmp_path, "siesta", "flat")
     tpl = dest / "BDT.template.toml"
     head, sep, tail = tpl.read_text().partition("[item.use_gpu]")
@@ -377,7 +378,7 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
     def _raises(*_a, **_k):
         raise TypeError("engine bug")
 
-    engine_seam = P._engine_seam
+    engine_seam = P.engine_seam
 
     def _with_one_hook_swapped(engine):
         seam = engine_seam(engine)
@@ -395,7 +396,7 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
             return dataclasses.replace(spec, layout=tuple(layout))
         return dataclasses.replace(seam, spec_for=_spec_for)
 
-    monkeypatch.setattr(P, "_engine_seam", _with_one_hook_swapped)
+    monkeypatch.setattr(P, "engine_seam", _with_one_hook_swapped)
     dest, stages = _calculation(tmp_path, "siesta", "flat")
     with pytest.raises(TypeError) as caught:
         if hook == "relabel":
@@ -431,7 +432,7 @@ def test_an_engines_deliberate_refusal_survives_the_boundary(tmp_path):
     exception with a ``RuntimeError`` passed it. Found by that mutation.
     """
     from molbuilder.issues import calling
-    from molbuilder.jobset.prep import PrepError
+    from molbuilder.jobset.errors import PrepError
 
     # 1. the unit: an engine's ValueError through the boundary is still a
     #    ValueError, with its own message.
@@ -484,7 +485,8 @@ def test_the_attribution_reaches_the_person_running_the_command(tmp_path):
     a CLI user never sees.
     """
     from molbuilder.issues import Issue, ValidationError, calling
-    from molbuilder.jobset.prep import PrepError, _user_error_as_prep
+    from molbuilder.jobset.errors import PrepError
+    from molbuilder.jobset.prep import _user_error_as_prep
 
     with pytest.raises(PrepError) as caught:
         with _user_error_as_prep():
@@ -570,7 +572,7 @@ def test_nothing_reaches_a_deck_until_the_last_refusal(tmp_path):
     PySCF refusal today comes from somewhere other than the two gates.  A
     parametrised arm here would assert a refusal the code cannot produce.
     """
-    from molbuilder.jobset.prep import PrepError
+    from molbuilder.jobset.errors import PrepError
 
     dest, stages = _calculation(tmp_path, "siesta", "flat")
     for psml in dest.glob("*.psml"):     # what the engine cannot start without

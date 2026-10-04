@@ -283,7 +283,7 @@ a lot, because that is where the real defects were:
 - `runstatus._stage_state` deciding *queued* vs *pending* from which roles are
   present — the policy is the caller's, and a finished PySCF rung reported
   **queued** because `.pyscf.log` was not in the set it asked for;
-- `materialize.attempt_concluded` **degrading rather than raising** on a deck
+- `runrecord.attempt_concluded` **degrading rather than raising** on a deck
   name it was handed — a reporter's contract, not the grammar's;
 - `parse.engines._sidecar.read_frozen_atoms` reconstructing a name instead of
   asking by role — every staged run silently lost its frozen atoms.

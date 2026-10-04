@@ -1632,7 +1632,7 @@ class TestBothEnginesConclude:
     @pytest.mark.parametrize("rc", [0, 3])
     def test_a_finished_pyscf_attempt_says_so_with_its_exit_code(self,
                                                                  tmp_path, rc):
-        from molbuilder.jobset.materialize import attempt_concluded
+        from molbuilder.runrecord import attempt_concluded
         d, cp = self._run_to_completion(tmp_path, rc)
         said = attempt_concluded(d, "myjob")
         assert said is not None, (

@@ -30,49 +30,64 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from .. import calcdirs
+from .. import calcdirs, runrecord
 from ..pseudos import PSEUDO_DIRNAME
 from ..identity import StageRef, parse_stage_token, resolve_stage_ref
 from .model import JobSet, warm_carry
 from ..paths import (attempt_dir, attempts_in,
-                     TRIAL_PREFIX as _TRIAL_PREFIX,
                      trial_name as _paths_trial_name,
                      trials_in as _paths_trials_in,
                      bench_containers_in as _bench_containers_in,
                      bench_container as _paths_bench_container)
 
+@dataclass(frozen=True)
+class StageHome:
+    """Where a stage lives, and its number -- `execution/architecture.md`
+    § 3's ``StageHome``, answered by :func:`stage_home` alone (§ 3.2)."""
+    name: str
+    seq: int
+    #: ``<NN>_<name>`` -- the stage's directory in the hierarchy, its decks'
+    #: token in either shape; ``""`` when no stage was named.
+    token: str
+    #: The stage's folder, or ``None`` when no calculation folder was given.
+    dir: Optional[Path]
+
+
+def stage_home(base, task, stage: Optional[str]) -> StageHome:
+    """This stage's number, token and folder -- THE ONE DOOR every reader
+    asks (`execution/architecture.md` § 3.2; W55 B8).  It was
+    ``prep.token_for`` until 2026-10-03, imported from the conductor by
+    status's continuation, a spectra reader, launch's bench lookup and Task
+    setup.
+
+    ``NN`` is the stage's place in the **full** ladder (decision 27), so a
+    stage left out of the run leaves a gap rather than renumbering what
+    follows: renumbering would hand an existing output to a stage that did
+    not produce it.  ``base`` is the calculation's folder -- the folder the
+    token names.  An unknown stage is refused by name: an empty token would
+    silently drop the stage from every artifact name (`job-contracts.md`
+    § 6.3)."""
+    from .errors import PrepError
+    from ..paths import Shape
+    folder = Path(base) if base is not None else None
+    if not stage:
+        # Asked without naming a rung; every ladder has one.
+        return StageHome(name="", seq=0, token="", dir=folder)
+    # The ordinal rule is stated ONCE (StageRef.ladder -- decision 28's
+    # pre-produce arm); this door reads the ref and places it.
+    for ref in StageRef.ladder([s.name for s in task.stages]):
+        if ref.name == stage:
+            where = (folder / Shape.named(task.shape).stage_dir(ref.token)
+                     if folder is not None else None)
+            return StageHome(name=ref.name, seq=ref.seq, token=ref.token,
+                             dir=where)
+    raise PrepError(f"stage {stage!r} is not in this description's "
+                    f"ladder: {', '.join(s.name for s in task.stages)}.")
+
+
 #: One attempt at running a stage.  ``project-layout.md`` § 1.5: immutable once
 #: it has run, so a re-run is a NEW directory rather than an overwrite.
 
-#: Written by ``launch`` into the attempt, AFTER the launch succeeds
-#: (``project-layout.md`` § 1.6).  Its presence is the only honest answer to
-#: *has this been launched?* -- a queued job has produced nothing yet, so
-#: "no output" and "not started" are indistinguishable from the directory alone.
-RUN_LAUNCH_SCHEMA = "molbuilder/run-launch@1"
-RUN_LAUNCH_FILE = "run.json"
-
-
-#: What a trial's directory starts with.  One home, because the finder below
-#: and `job_dir_name` must agree, and `jobset/_cli.py` spelled it twice more
-#: -- once in a glob and once in a loop that walked path parts looking for it.
-#: Re-exported from `paths`, which owns it since 2026-09-09 -- the address
-#: layer is floor 1 and cannot reach this module.  Kept as a name here because
-#: `submit` and the tests read it; there is one definition, not two.
-TRIAL_PREFIX = _TRIAL_PREFIX
-
-
-def job_dir_name(job_name: str) -> str:
-    """The on-disk directory for a **trial** — ``bench-<point>``.
-
-    `job-contracts.md` § 6.3 is the authority: ``bench-`` plus the coordinate
-    as ONE qualifier (``bench-G1K4C6``).  This wrote ``point-…`` until the
-    fold (C6, 2026-08-12) — the name the docs had already retired.
-
-    A ladder's stage directory is NOT this: see :func:`job_dir_names`, which is
-    what every caller should use, because the answer depends on the job SET
-    (the deck each job carries) rather than on a name alone.
-    """
-    return _paths_trial_name(job_name)
 
 
 def trial_dir(shape, stage_token: Optional[str], job_name: str) -> str:
@@ -101,7 +116,7 @@ def trial_dir(shape, stage_token: Optional[str], job_name: str) -> str:
     yet.  That is what makes a shared RULE the fix rather than a shared
     lookup.
     """
-    return f"{bench_container(shape, stage_token)}/{job_dir_name(job_name)}"
+    return f"{_paths_bench_container(shape, stage_token)}/{_paths_trial_name(job_name)}"
 
 
 def trials_in(container) -> "List[Path]":
@@ -183,34 +198,6 @@ def shape_of(jobset: JobSet, base_dir) -> Optional["Shape"]:
     if not desc.is_file():
         return None
     return Shape.named(read_task(desc).shape)
-
-
-def bench_container(shape: "Shape", token: str = "") -> str:
-    """Where a stage's bench state lives — its trials, the sweep's own
-    ``job-set.json``, its verdict — relative to the bundle root.
-
-    ``<NN>_<stage>/bench`` in the hierarchy; ``bench_<NN>_<stage>`` at the
-    root of a FLAT calculation; bare ``bench`` for a stageless one.
-    `job-contracts.md` § 6.3: *"benchmark | bench/ inside the stage it
-    measures"* — in flat there IS no stage directory to sit inside, so the
-    token qualifies the container's own name instead (2026-08-12 plan A5:
-    unqualified, two flat stages' benchmarks shared one root ``bench/``
-    and each prep overwrote the other's job-set, plan and verdict).  The
-    underscore join keeps it apart from a TRIAL's dash-joined
-    ``bench-<point>``, which lives INSIDE a container.
-
-    **This is the ONE spelling of that rule.**  `prep` lays the sweep's
-    record down with it and :func:`job_dir_names` places the trials with
-    it — which is what makes "record here, trials there" impossible to
-    reintroduce on one side only.  Until 2026-08-13 the rule lived twice
-    (here as an inline ``if``, in `prep` as ``_bench_container``) and the
-    two disagreed in BOTH non-hierarchical layouts: flat trials fell into
-    an unqualified shared ``bench/`` while the record sat in
-    ``bench_<NN>_<stage>/``, and a stageless sweep's trials sat at the
-    ROOT while its record sat in ``bench/`` — so `launch` launched trials
-    in directories the underway-ask never looked at (final review A-1/A-2).
-    """
-    return _paths_bench_container(shape, token)
 
 
 def sweep_set_paths(bundle) -> "List[Path]":
@@ -399,7 +386,7 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
         # 2026-08-13).
         if jobset.kind == "ladder":
             out[j.name] = ("." if j.name == jobset.name
-                           else job_dir_name(j.name))
+                           else _paths_trial_name(j.name))
         else:
             # THE SAME RULE with no stage token, so it asks for it too --
             # a third spelling of `<container>/bench-<point>` is a third
@@ -506,7 +493,7 @@ def materialize(jobset: JobSet, base_dir) -> List[Path]:
             #
             # EXCEPT THE PSEUDOPOTENTIALS, and the exception is this guard's
             # own premise going stale (fixed 2026-09-11).  "Every file it
-            # needs already sits" held until `prep._pseudo_dir` began ADOPTING
+            # needs already sits" held until `engines._pseudo_dir` began ADOPTING
             # root `<El>.psml` into `pseudos/` (2026-08-28, 08656f2c) -- which
             # in flat is the run directory being emptied of the one input
             # SIESTA cannot look for anywhere else ("it opens
@@ -553,38 +540,11 @@ def materialize(jobset: JobSet, base_dir) -> List[Path]:
 # --------------------------------------------------------------------- #
 
 
-def attempts(stage_dir: Path) -> List[int]:
-    """The attempt numbers present under ``stage_dir``, ascending."""
-    if not Path(stage_dir).is_dir():
-        return []
-    # ASKED FOR.  This walked the directory and matched `ATTEMPT_RE` -- the
-    # regex that read a name `f"run-{n}"` composed in nine other places
-    # (`project-layout.md` § 4.5).  `paths.attempts_in` is the finder half of
-    # `paths.attempt_dir`, so the name is spelled once and read once.
-    return attempts_in(stage_dir)
-
-
-def was_launched(where: Path, basename: Optional[str] = None) -> bool:
-    """Whether ``launch`` has launched this run — its launch record exists:
-    an attempt's ``run.json``, or with ``basename`` a flat stage's own
-    (:func:`launch_record_at` says which).
-
-    This is the whole reason that file exists. Without it, preparing a stage
-    twice could rewrite the setup underneath a job already sitting in a queue,
-    because a queued job has written nothing and looks exactly like one that
-    was never started (§ 1.6).  *(It read ``run.json`` alone until
-    2026-10-01, so a flat stage -- whose record is ``<basename>.run.json`` --
-    always read as never launched, and was launched again over a run still
-    in the queue; W52.)*
-    """
-    return launch_record_path(where, basename).is_file()
-
-
 def launch_record_at(kind: str, job, container: Path,
                      attempt: Optional[Path]) -> Tuple[Path, Optional[str]]:
     """``(where, basename)`` -- where a job's launch is recorded
-    (`project-layout.md` § 1.6.3), for :func:`launch_record_path`,
-    :func:`was_launched`, :func:`write_run_launch` and every reader: the
+    (`project-layout.md` § 1.6.3), for :func:`runrecord.launch_record_path`,
+    :func:`runrecord.was_launched`, :func:`runrecord.write_run_launch` and every reader: the
     attempt's ``run.json`` when there is an attempt; a sweep trial's own, at
     the trial's top; a flat stage's ``<basename>.run.json`` in the
     calculation's directory, which every stage shares -- ``basename`` its
@@ -596,18 +556,6 @@ def launch_record_at(kind: str, job, container: Path,
     if kind == "sweep":
         return Path(container), None
     return Path(container), Path(job.script).stem
-
-
-def continued_from_marker(where: Path, basename: Optional[str] = None
-                          ) -> Path:
-    """Where `prep` leaves the run a stage continues from, for `launch` to
-    write into the launch record (`project-layout.md` § 1.6.3): the
-    attempt's ``.continued-from``, or a flat stage's own
-    ``<basename>.continued-from`` beside its other files -- the flat layout
-    records it too (user, 2026-10-01)."""
-    from ..runfiles import tail
-    return Path(where) / (".continued-from" if basename is None
-                          else basename + tail(".continued-from"))
 
 
 def latest_attempt(stage_dir: Path) -> Optional[Path]:
@@ -625,7 +573,7 @@ def latest_attempt(stage_dir: Path) -> Optional[Path]:
     container until 2026-08-10 and therefore reported a finished hierarchical
     stage as *"prepped, not launched"* — forever.
     """
-    ns = attempts(stage_dir)
+    ns = attempts_in(stage_dir)
     return attempt_dir(stage_dir, ns[-1]) if ns else None
 
 
@@ -685,80 +633,6 @@ def stage_stdout(attempt_dir: Path, label: str, token: Optional[str],
     return hits[-1] if hits else None
 
 
-def attempt_concluded(attempt_dir: Path, basename: str) -> Optional[str]:
-    """The conclusion marker's content when this attempt's LAST process got
-    to say goodbye, else ``None`` (`project-layout.md` § 1.6, *the other
-    file*).
-
-    *Launched* spans three states; ``run.json`` separates none of them.
-    The wrapper writes ``<basename>-run<N>.concluded`` as its last act on
-    the MAIN path -- an engine error still reaches it, a kill never does
-    -- so the marker separates *ran to its own end* from *still running
-    or force-stopped*, and those last two are indistinguishable from
-    files alone, which is why the caller asks the user rather than
-    deciding.
-
-    A warm-retry chain execs fresh wrappers; only the final process
-    concludes, at the final run index.  So the question is asked of the
-    HIGHEST index any per-run artifact reached: an earlier index's marker
-    beside a newer unconcluded ``.out`` is a previous re-run's goodbye,
-    not this one's.  The index ranges over ``.out`` AND ``.concluded``
-    together, because an engine that dies before printing a single line
-    leaves a marker and NO ``.out`` -- a real conclusion (rc rides the
-    marker) that an out-only rule read as silence (caught by this file's
-    own error-path test, first run).  Nothing per-run at all reads as
-    unconcluded: a launch killed before the engine is exactly a process
-    that never said goodbye.
-    """
-    d = Path(attempt_dir)
-    # THE INDEX IS ASKED FOR, not scanned for.  This globbed
-    # `f"{basename}-run*.{suffix}"` over three suffixes and pulled N back out
-    # with a regex of its own -- the `-run<N>` counter written twice here and
-    # once more in `summarize`, for a grammar `runfiles` composes in one
-    # place (`project-layout.md` § 4.5).  `latest_run` reads it through
-    # `runfiles.parse`, so a name this module cannot read is not counted as
-    # an attempt.
-    #
-    # ACROSS EVERY ROLE, which is the rule and not an implementation detail.
-    # The wrapper's redirect is engine-specific -- SIESTA's `-runN.out`,
-    # PySCF's `-runN.pyscf.log` -- and an engine that dies before printing
-    # leaves a `.concluded` and no output at all.  Asking without a `role=`
-    # ranges over all of them, so a NEWER killed attempt cannot hide behind
-    # an OLDER one's goodbye.
-    from ..runfiles import latest_run, tail as _rf_tail
-    newest = latest_run(d, basename)
-    if newest is None:
-        return None
-    # AND THE NAME IS COMPOSED BY THE GRAMMAR TOO.  This spelled
-    # `f"{basename}-run{newest}.concluded"` one line after asking `latest_run`
-    # for the counter -- the door answered the SEARCH and the caller still
-    # built the name (`project-layout.md` § 4.5, the compose half).
-    #
-    # `tail`, NOT `compose`, and the difference is load-bearing here:
-    # ``basename`` is whatever the DECK is called, and for a cited transport
-    # directory that is a person's own file -- `my.relaxation.fdf`.  `compose`
-    # would refuse it, correctly (§ 2.1: a label carrying a dot cannot be read
-    # back out of a filename), and this function's job is to answer None, not
-    # to raise at a person who named a file with a dot in it.  `tail` cuts the
-    # `-run<N>.concluded` end off a real `compose` result, so the GRAMMAR owns
-    # the tail and the caller owns the stem it was handed.
-    mark = d / (basename + _rf_tail(".concluded", run=newest))
-    try:
-        return mark.read_text(encoding="utf-8").strip()
-    except OSError:
-        return None
-
-
-def conclusion_line(attempt_dir: Path, basename: str) -> Optional[str]:
-    """The conclusion marker's first line -- ``rc=0 at <date>`` -- or
-    ``None`` when the run has not concluded (:func:`attempt_concluded`).
-    An EMPTY marker is a conclusion, so it reads ``""``: two readers took
-    the first line two ways until 2026-10-01, and one of them raised on an
-    empty marker after the new attempt was already open (W52)."""
-    mark = attempt_concluded(attempt_dir, basename)
-    return None if mark is None else (mark.splitlines() or [""])[0].strip()
-
-
 def resolve_attempt(stage_dir: Path) -> Tuple[Path, bool]:
     """The attempt directory to prepare into, and whether it is a fresh one.
 
@@ -770,10 +644,10 @@ def resolve_attempt(stage_dir: Path) -> Tuple[Path, bool]:
     is opened only when the last has. That also makes the numbering mean
     something: every ``run-<n>`` on disk was actually started.
     """
-    existing = attempts(stage_dir)
+    existing = attempts_in(stage_dir)
     if existing:
         last = attempt_dir(stage_dir, existing[-1])
-        if not was_launched(last):
+        if not runrecord.was_launched(last):
             return last, False
         return attempt_dir(stage_dir, existing[-1] + 1), True
     return Path(stage_dir) / "run-0", True
@@ -978,7 +852,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # steps opened the attempt that way and undid a carry a moment before its
     # own refusal, which left an attempt prepared a minute ago stripped of
     # what it was to start from (W52).
-    marker = continued_from_marker(attempt)
+    marker = runrecord.continued_from_marker(attempt)
     if not is_new and marker.is_file() and (cold or continue_from):
         # The WHOLE declared set, not the pair-filtered one: the previous prep
         # may have named a different source and so copied a conditional file
@@ -1093,146 +967,12 @@ def _source_job(jobset: JobSet, dir_of: Dict[str, str], continue_from):
     return None
 
 
-def launch_record_path(where: Path, basename: Optional[str] = None) -> Path:
-    """Where a launch is recorded (`project-layout.md` § 1.6.3): an attempt's
-    ``run.json``; with ``basename`` -- a flat stage's deck stem,
-    ``<label>_<token>`` -- that stage's own ``<basename>.run.json``, beside
-    every other file of it in the calculation's one directory."""
-    from ..runfiles import tail
-    return Path(where) / (RUN_LAUNCH_FILE if basename is None
-                          else basename + tail(".run.json"))
-
-
-def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
-                     job_id: Optional[str] = None,
-                     continued_from: Optional[str] = None,
-                     launched_at: Optional[str] = None,
-                     placed_on: Optional[dict] = None,
-                     basename: Optional[str] = None) -> Path:
-    """Record a launch into the attempt — ``molbuilder/run-launch@1`` -- or,
-    given ``basename``, a flat stage's own record in its calculation's
-    directory (:func:`launch_record_path`).
-
-    Written **after** the launch succeeds, so a failed launch leaves the
-    attempt exactly as prepare left it and is still safe to prepare again
-    (§ 1.6). ``continued_from`` is the run's provenance — *this geometry came
-    from ``01_coarse/run-0``* — which is worth recording whether or not
-    anything reads it back.
-
-    ``placed_on`` is WHERE IT WAS SENT: the domain name, its partition and
-    qos (`scheduler.md` R12 -- the queue half; what it LANDED ON is the
-    monitor's ``[MACHINE]`` line, written on the node).  The placement was
-    already in this file, buried inside the ``sbatch`` argv as ``-p``/``-q``
-    — so reading it back meant parsing a command line, which is the
-    re-derivation A4 exists to remove.  *(It said "WHERE IT RAN" and
-    carried a ``node_type`` until 2026-08-27 -- a queue's opinion of
-    itself, which the probe never wrote, and the reason S3's check never
-    fired.)*
-
-    Absent when there was no placement to record — a direct run, or a machine
-    with no queue at all. **Absent means the question cannot be answered**,
-    which a reader must not mistake for *yes*.
-    """
-    from datetime import datetime, timezone
-    p = launch_record_path(attempt_dir, basename)
-    body = {
-        "schema": RUN_LAUNCH_SCHEMA,
-        "mode": mode,
-        "command": list(command),
-        "job_id": job_id,
-        "launched_at": launched_at or datetime.now(timezone.utc)
-                                              .strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }
-    # ABSENT, not null, when this run started from the structure.
-    # ``checkpointing.md`` S3 words its test that way -- *"names a directory
-    # that exists or is absent"* -- and the two are different to a reader that
-    # tests for the key rather than for its truthiness.
-    if continued_from:
-        body["continued_from"] = str(continued_from)
-    # Same absent-not-null rule: a direct run has no placement, and a reader
-    # testing for the key learns that rather than reading a null as "nowhere".
-    if placed_on:
-        body["placed_on"] = dict(placed_on)
-    p.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
-    return p
-
-
-def read_run_launch(attempt_dir, basename: Optional[str] = None
-                    ) -> Optional[dict]:
-    """The launch record, or ``None`` when there is none -- the reader
-    beside :func:`write_run_launch`.
-
-    An attempt's ``run.json`` answers for the attempt.  A flat stage has no
-    attempt: ``basename`` names its own record (:func:`launch_record_path`);
-    without one, the newest stage record in the directory answers for it --
-    a flat calculation was launched when any of its stages was.
-
-    `project-layout.md` § 1.6: *"Has this been launched? has no honest answer
-    from the directory alone"*, so this file is the answer.  Present but
-    unreadable reads ``{}``: launched, the details lost.  *(It was a private
-    `runstatus._launch_record` until 2026-09-26, when the run record became
-    its second reader.)*
-    """
-    if attempt_dir is None:
-        return None
-    p = launch_record_path(attempt_dir)
-    if not p.is_file():
-        if basename is not None:
-            p = launch_record_path(attempt_dir, basename)
-        else:
-            from ..runfiles import find_by_role
-            stages = sorted(find_by_role(attempt_dir, ".run.json"),
-                            key=lambda f: f.stat().st_mtime)
-            p = stages[-1] if stages else p
-    if not p.is_file():
-        return None
-    try:
-        return json.loads(p.read_text(encoding="utf-8"))
-    except Exception:                                      # noqa: BLE001
-        return {}
-
-
-#: What a gathered rung took from which upstream attempt, one ``<file> <-
-#: <attempt>`` line each -- an attempt's own file, beside ``run.json``:
-#: written by `prep`'s gather (:func:`write_gathered_from`) and read by the
-#: run record's provenance (:func:`read_gathered_from`, `model/parse.md`
-#: § 5d.4).  *(Both sat in `prep` until 2026-09-26, so the record imported
-#: the conductor to read one file.)*
-GATHERED_FROM_FILE = ".gathered-from"
-
-
-def write_gathered_from(attempt_dir, gathered) -> None:
-    """``gathered`` -- ``[(source attempt, filename), ...]`` in the order
-    taken -- as the attempt's ``.gathered-from``."""
-    (Path(attempt_dir) / GATHERED_FROM_FILE).write_text(
-        "".join(f"{fn} <- {src}\n" for src, fn in gathered),
-        encoding="utf-8")
-
-
-def read_gathered_from(attempt_dir) -> List[dict]:
-    """``[{"file", "from"}]`` -- what this attempt was gathered from, in the
-    order it was taken; ``[]`` when it gathered nothing."""
-    p = Path(attempt_dir) / GATHERED_FROM_FILE
-    try:
-        text = p.read_text(encoding="utf-8")
-    except OSError:
-        return []
-    out = []
-    for line in text.splitlines():
-        name, sep, src = line.partition(" <- ")
-        if sep and name.strip() and src.strip():
-            out.append({"file": name.strip(), "from": src.strip()})
-    return out
-
-
-__all__ = ["Attempt", "bench_owner", "bench_stage_of", "trial_dir",
+__all__ = [
+    "StageHome", "stage_home", "Attempt", "bench_owner", "bench_stage_of", "trial_dir",
            "trial_work_dir",
-           "TRIAL_PREFIX", "trials_in",
-           "materialize", "job_dir_name", "job_dir_names", "stage_refs",
-           "attempts", "was_launched", "latest_attempt", "run_dir",
+           "trials_in",
+           "materialize", "job_dir_names", "stage_refs",
+           "latest_attempt", "run_dir",
            "resolve_attempt",
            "prepare_attempt",
-           "write_run_launch", "read_run_launch", "launch_record_path",
-           "RUN_LAUNCH_SCHEMA",
-           "RUN_LAUNCH_FILE",
-           "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]
+           ]

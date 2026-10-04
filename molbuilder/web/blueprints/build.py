@@ -1494,7 +1494,8 @@ def api_task_setup_prep():
     # it came back as an offer the page answered; until 2026-10-02 the
     # question was *already under way here*.)
     from molbuilder.jobset.model import Resources
-    from molbuilder.jobset.prep import PrepError, prep_stage
+    from molbuilder.jobset.errors import PrepError
+    from molbuilder.jobset.prep import prep_stage
     try:
         ans = prep_stage(dest, kind, stage, target=target,
                          allocation=Resources(),
@@ -2032,7 +2033,7 @@ def api_task_setup_prep_plan():
     **The names come from the producer, never from the page.**  Flat and
     hierarchical name directories differently (§ 4), so a list composed in
     the browser would be a second answer free to disagree with the thing it
-    describes.  `prep.token_for` is the one namer (decision 27) and
+    describes.  `materialize.stage_home` is the one namer (decision 27) and
     `Shape.stage_dir` the one layout, and this asks both.
 
     The allocation each stage would carry is `task.allocation`,
@@ -2049,7 +2050,7 @@ def api_task_setup_prep_plan():
     if not isinstance(raw, dict):
         return jsonify({"ok": False,
                         "error": "task: must be the description object"}), 400
-    from molbuilder.jobset.prep import token_for
+    from molbuilder.jobset.materialize import stage_home
     from molbuilder.paths import Shape
     from molbuilder.runfiles import manifest
     from molbuilder.task import Task
@@ -2076,7 +2077,7 @@ def api_task_setup_prep_plan():
     for st in task.stages:
         if st.enabled is False:
             continue
-        token = token_for(task, st.name)
+        token = stage_home(None, task, st.name).token
         rows.append({"stage": st.name, "token": token,
                      "dir": shape.stage_dir(token),
                      "allocation": alloc,
@@ -2122,7 +2123,7 @@ def api_task_setup_prep_plan():
         # every stage disabled -- *"an all-disabled ladder is an empty one
         # spelled longer"* -- so there is no empty case to invent a
         # location for.
-        from molbuilder.jobset.materialize import bench_container
+        from molbuilder.paths import bench_container
         bench = {"axes": {k: list(v) for k, v in task.bench.items()},
                  "allocation": alloc,
                  "rungs": [{"stage": r["stage"],
@@ -2212,7 +2213,7 @@ def _folder_continue_from(dest) -> dict:
 
 def _folder_attempts(dest) -> dict:
     """How many attempts each stage has on disk -- the payload."""
-    from molbuilder.jobset.prep import token_for
+    from molbuilder.jobset.materialize import stage_home
     from molbuilder.paths import Shape, attempts_in
     from molbuilder.runfiles import find
     from molbuilder.task import FILENAME as TASK_FILENAME
@@ -2228,7 +2229,7 @@ def _folder_attempts(dest) -> dict:
 
     stages = {}
     for st in task.stages:
-        token = token_for(task, st.name)
+        token = stage_home(dest, task, st.name).token
         sd = shape.stage_dir(token)
         where = dest if sd == "." else dest / sd
         if shape.keeps_attempts_as_directories:

@@ -133,7 +133,10 @@ def deck_spin(run_dir) -> str:
     run used (every SIESTA deck molbuilder writes states ``Spin``, since
     2026-09-28).  No ``Spin`` line is SIESTA's own default, non-polarized."""
     from ..parse.fdf import _parse_fdf
-    for deck in sorted(Path(run_dir).glob("*.fdf")):
+    from ..runfiles import find_by_role
+    # THE FRAMEWORK'S SEARCH for the deck (`project-layout.md` § 4.5), not a
+    # glob of its suffix here (it globbed `*.fdf` until 2026-10-03).
+    for deck in find_by_role(run_dir, ".fdf"):
         scalars, _blocks = _parse_fdf(deck.read_text(encoding="utf-8",
                                                      errors="replace"))
         said = (scalars.get("spin") or [None])[0]

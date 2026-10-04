@@ -80,7 +80,7 @@ def read_run(base: Path, task, stage: str, attempt: Path,
              container: Path, *, verdict: bool = True
              ) -> Tuple[Optional[str], Optional[str], Optional[bool]]:
     """``(concluded, state, converged)`` of one run of ``stage`` -- its
-    conclusion marker (`materialize.attempt_concluded`; an empty marker is a
+    conclusion marker (`runrecord.attempt_concluded`; an empty marker is a
     conclusion, so ``""``), its state through the one door
     (`parse.dirs.run_status`) and its relaxation's verdict (`parse.contract`):
     an attempt's own run on the hierarchy; on the flat layout THIS stage's
@@ -93,9 +93,10 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     from ..parse.dirs import run_status
     from ..paths import Shape
     from ..runfiles import find as rf_find, stem as rf_stem
-    from .materialize import conclusion_line, read_run_launch, stage_stdout
-    from .prep import token_for
-    token = token_for(task, stage)
+    from .materialize import stage_stdout
+    from ..runrecord import conclusion_line, read_run_launch
+    from .materialize import stage_home
+    token = stage_home(base, task, stage).token
     stem = rf_stem(task.label, token)
     sh = Shape.named(task.shape)
     concluded = conclusion_line(attempt, stem)
@@ -239,11 +240,13 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool
     from ..paths import Shape
     from ..paths import attempt_dir as _adir
     from ..runfiles import compose as rf_compose
-    from .materialize import attempts as _attempts, latest_attempt
-    from .prep import _engine_seam, token_for
+    from ..paths import attempts_in
+    from .materialize import latest_attempt
+    from .engines import engine_seam
+    from .materialize import stage_home
     sh = Shape.named(task.shape)
-    seam = _engine_seam(str(task.engine))
-    token = token_for(task, prev)
+    seam = engine_seam(str(task.engine))
+    token = stage_home(base, task, prev).token
     sd = sh.stage_dir(token)
     container = base if sd == "." else base / sd
     flat = not sh.keeps_attempts_as_directories
@@ -306,7 +309,7 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool
         # AN EARLIER RUN THAT CAN STAND IN WHEN ASKED FOR: the newest that
         # concluded and did not fail, typed out -- never a placeholder.  Its
         # conclusion is the question, not its relaxation.
-        for n in reversed(_attempts(container)):
+        for n in reversed(attempts_in(container)):
             a = _adir(container, n)
             if a == attempt:
                 continue
@@ -341,14 +344,14 @@ def _stage_before(base, task, stage: str) -> Optional[str]:
     from ..identity import continues
     from ..resolve import resolved_ladder
     from ..template import template_path
-    from .prep import _engine_seam
+    from .engines import engine_seam
     if not _independent(task):
         return None
     tpl = template_path(Path(base), task.label)
     if not tpl.is_file():
         return None
     ladder = resolved_ladder(tpl.read_text(encoding="utf-8"), task,
-                             _engine_seam(str(task.engine)).config_cls)
+                             engine_seam(str(task.engine)).config_cls)
     names = [n for n, _c in ladder]
     if stage not in names:
         return None
@@ -370,8 +373,8 @@ def continue_from_choices(base, task, stage: str) -> Optional[dict]:
     preview nobody asked for."""
     from ..paths import Shape
     from ..paths import attempt_dir as _adir
-    from .materialize import attempts as _attempts
-    from .prep import token_for
+    from ..paths import attempts_in
+    from .materialize import stage_home
     base = Path(base)
     prev = _stage_before(base, task, stage)
     if prev is None:
@@ -380,8 +383,8 @@ def continue_from_choices(base, task, stage: str) -> Optional[dict]:
     sh = Shape.named(task.shape)
     runs = []
     if sh.keeps_attempts_as_directories:
-        container = base / sh.stage_dir(token_for(task, prev))
-        for n in (reversed(_attempts(container)) if container.is_dir()
+        container = base / sh.stage_dir(stage_home(base, task, prev).token)
+        for n in (reversed(attempts_in(container)) if container.is_dir()
                   else ()):
             a = _adir(container, n)
             c, s, _v = read_run(base, task, prev, a, container,

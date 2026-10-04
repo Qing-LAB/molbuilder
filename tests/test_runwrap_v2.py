@@ -82,7 +82,7 @@ def test_render_refuses_a_record_that_states_no_activation():
     refuses to emit a wrapper that can't activate its env.
 
     API-LEVEL because the road cannot reach it: prep refuses such a target
-    first (`jobset.prep._require_activation`,
+    first (`jobset.machine.require_activation`,
     `tests/data/launch_values.toml`).  This is the emitter's own guard, for
     a caller that reaches it directly."""
     _bind()

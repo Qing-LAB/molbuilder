@@ -262,7 +262,7 @@ def _sbatch_request(base: Path, *, envelope: Resources, gpu_side: bool,
     if time_s is not None:
         envelope = _dc_replace_time(envelope, _slurm_time(time_s))
     # EVERY VALUE IS STATED, asked of the request AS SENT by the one answer
-    # prep gives (`prep_inputs.launch_refusal`): a launch flag may state
+    # prep gives (`placement.launch_refusal`): a launch flag may state
     # what the description did not, and a prep with `--no-sbatch` asked
     # none of the three.  The envelope names the queue it is sent to.
     # Asked only where the request goes to a QUEUE: a machine with no menu
@@ -270,7 +270,7 @@ def _sbatch_request(base: Path, *, envelope: Resources, gpu_side: bool,
     # here", as prep asks no wall of a run that writes no header.
     if placement is not None:
         from .. import runtime_config as _rc
-        from .prep_inputs import launch_refusal
+        from .placement import launch_refusal
         envelope = dataclasses.replace(envelope, domain=placement.domain.name)
         why = launch_refusal(
             envelope, engine=None, header=True, shape=False,
@@ -433,14 +433,13 @@ def _plan_job(jobset: JobSet, base: Path, job, *, mode: str) -> _Plan:
     """
     import functools
     from .commands import command
-    from .materialize import (attempts, bench_stage_of, conclusion_line,
-                              continuation_files, job_dir_names,
-                              launch_record_at, launch_record_path, shape_of,
-                              was_launched)
+    from ..paths import attempts_in
+    from .materialize import (bench_stage_of, continuation_files, job_dir_names, launch_record_at, shape_of)
+    from ..runrecord import conclusion_line, launch_record_path, was_launched
     _plan = functools.partial(_Plan, base=base)
     sh = shape_of(jobset, base)
     container = base / job_dir_names(jobset, sh)[job.name]
-    ns = attempts(container)
+    ns = attempts_in(container)
     stem = Path(job.script).stem
     if jobset.kind == "sweep":
         run = _trial_run_dir(container)
@@ -574,7 +573,7 @@ def _send(jobset: JobSet, base: Path, p: _Plan, *, mode: str) -> List[JobResult]
         # marker prep left names what the stage's FIRST launch continued
         # from, the stage before it, and was recorded again (W55 D5).
         from ..runfiles import latest_run, run_name
-        from .materialize import continued_from_marker
+        from ..runrecord import continued_from_marker
         n = latest_run(where, basename)
         if n is not None:
             continued_from_marker(where, basename).write_text(
@@ -730,7 +729,8 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
     asked about trial by trial while submit sent shelves).  Under ``ask``
     and ``dry_run`` nothing is written.
     """
-    from .materialize import job_dir_names, shape_of, was_launched
+    from .materialize import job_dir_names, shape_of
+    from ..runrecord import was_launched
     dirs = job_dir_names(jobset, shape_of(jobset, base_dir))
     base = Path(base_dir)
     if only not in (None, "cpu", "gpu"):
@@ -1423,7 +1423,8 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
     from ..identity import StageRef
     from ..task import bias_token
     from ..transport.stages import rung_containers, scan_points
-    from .materialize import latest_attempt, was_launched
+    from .materialize import latest_attempt
+    from ..runrecord import was_launched
 
     if mode not in ("submit", "ask", "direct"):
         raise SubmitError(f"unknown mode {mode!r}: submit, ask or direct")
@@ -1448,7 +1449,7 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
             f"the {stage} stage is not in the plan -- run "
             f"`{_cmd('prep', 'run', stage, base=base)}` first.")
     # The stage's <NN>_<name> token, read from the ordinal rule's own
-    # home (identity.StageRef.ladder -- the same door token_for reads;
+    # home (identity.StageRef.ladder -- the same door stage_home reads;
     # importing the conductor from floor 5 is the layering the
     # architecture guard refuses).
     token = next(r.token for r in
@@ -1646,7 +1647,7 @@ def _record_launch(attempt: Path, *, mode: str, command: List[str],
     the opposite reason: submission is what knows where the job went, and
     nothing downstream should have to work it out from a command line.
     """
-    from .materialize import continued_from_marker, write_run_launch
+    from ..runrecord import continued_from_marker, write_run_launch
     src = None
     marker = continued_from_marker(attempt, basename)
     if marker.is_file():

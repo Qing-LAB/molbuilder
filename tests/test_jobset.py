@@ -24,7 +24,8 @@ def _sandbox(tmp_path_factory, monkeypatch):
     monkeypatching applies after this fixture's."""
     box = tmp_path_factory.mktemp("sandbox")
     monkeypatch.chdir(box)
-from molbuilder.jobset.materialize import job_dir_name, materialize
+from molbuilder.jobset.materialize import materialize
+from molbuilder.paths import trial_name
 from molbuilder.jobset.plan import render_plan
 from molbuilder.jobset import submit as _submit
 from molbuilder.jobset.submit import submit_jobset, SubmitError
@@ -284,7 +285,7 @@ def test_job_dir_name():
     directory nothing else can find. `job-contracts.md` § 6.3 owns the
     identifier conventions.
     """
-    assert job_dir_name("stage1") == "bench-stage1"
+    assert trial_name("stage1") == "bench-stage1"
 
 
 # --------------------------------------------------------------------- #
@@ -550,7 +551,7 @@ def test_prep_rejects_missing_script(tmp_path):
     failed job with an unhelpful log, after the queue wait has been paid.
     `PrepError` at the door keeps the diagnosis at the moment of the mistake.
     """
-    from molbuilder.jobset.prep import PrepError
+    from molbuilder.jobset.errors import PrepError
     with pytest.raises(PrepError, match="not in"):
         prep_jobset(_sweep(), tmp_path, emit_sbatch=False)
 
@@ -1298,7 +1299,8 @@ def test_an_unlaunched_attempt_is_reused_and_a_launched_one_is_never_touched():
     run-1 beside an empty run-0 would just litter."""
     import tempfile
     from pathlib import Path
-    from molbuilder.jobset.materialize import prepare_attempt, write_run_launch
+    from molbuilder.jobset.materialize import prepare_attempt
+    from molbuilder.runrecord import write_run_launch
     js = _token_ladder("JOB_03_tight.fdf")
     with tempfile.TemporaryDirectory() as td:
         first = prepare_attempt(js, td, "tight").dir
@@ -1397,7 +1399,8 @@ def test_a_launched_attempt_with_no_output_is_queued_not_not_started(tmp_path):
     yet, so 'no output' and 'not started' look identical"* -- run.json is what
     tells them apart, and status *"can say queued as job 481923 instead of
     guessing from an absence"*."""
-    from molbuilder.jobset.materialize import prepare_attempt, write_run_launch
+    from molbuilder.jobset.materialize import prepare_attempt
+    from molbuilder.runrecord import write_run_launch
     js = _token_ladder("JOB_03_tight.fdf")
     attempt = prepare_attempt(js, tmp_path, "tight").dir
 
@@ -1488,7 +1491,8 @@ def test_status_takes_a_stage_and_answers_the_other_question(tmp_path):
     a record (§ 1.5, § 1.6) -- so it prints the attempt, the launch and the
     provenance, not just the row.
     """
-    from molbuilder.jobset.materialize import prepare_attempt, write_run_launch
+    from molbuilder.jobset.materialize import prepare_attempt
+    from molbuilder.runrecord import write_run_launch
     from molbuilder.jobset.runstatus import render_stage_status
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
     coarse = prepare_attempt(js, tmp_path, "coarse").dir
@@ -1528,7 +1532,8 @@ def test_a_cold_run_prints_no_provenance_line_at_all(tmp_path):
     proves nothing: that path stops before provenance is ever considered, so a
     view that printed a blank line for every cold run would still pass.
     """
-    from molbuilder.jobset.materialize import prepare_attempt, write_run_launch
+    from molbuilder.jobset.materialize import prepare_attempt
+    from molbuilder.runrecord import write_run_launch
     from molbuilder.jobset.runstatus import render_stage_status
     js = _token_ladder("JOB_03_tight.fdf")
     attempt = prepare_attempt(js, tmp_path, "tight", cold=True).dir
@@ -1543,7 +1548,8 @@ def test_every_label_in_the_per_stage_view_is_padded_off_the_longest(tmp_path):
     """The pad was hand-written as 14 -- exactly the width of `continued from`,
     so the one row with provenance to report ran its value into its own name.
     Same defect as the table's two column counts, one screen over."""
-    from molbuilder.jobset.materialize import prepare_attempt, write_run_launch
+    from molbuilder.jobset.materialize import prepare_attempt
+    from molbuilder.runrecord import write_run_launch
     from molbuilder.jobset.runstatus import render_stage_status
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
     coarse = prepare_attempt(js, tmp_path, "coarse").dir
@@ -1750,7 +1756,8 @@ def test_a_redo_of_one_stage_agrees_with_itself(tmp_path):
     stage re-runs it from where the last attempt reached, and a stage always
     matches its own optimizer — so the full group comes across, including the
     history the rule exists to protect."""
-    from molbuilder.jobset.materialize import prepare_attempt, write_run_launch
+    from molbuilder.jobset.materialize import prepare_attempt
+    from molbuilder.runrecord import write_run_launch
     js = _shipped_ladder()
     first = _finished(tmp_path, "03_tight")
     write_run_launch(first, mode="direct", command=["bash", "x"])
@@ -1892,8 +1899,8 @@ def test_attempts_are_ordered_as_numbers_not_as_names(tmp_path):
     already exists, so the next prep writes into a directory that has already
     run -- § 1.5's one prohibition, reached by a sort order.
     """
-    from molbuilder.jobset.materialize import (attempts, latest_attempt,
-                                               resolve_attempt)
+    from molbuilder.jobset.materialize import latest_attempt, resolve_attempt
+    from molbuilder.paths import attempts_in
     d = tmp_path / "03_tight"
     for n in (0, 1, 2, 9, 10):
         (d / f"run-{n}").mkdir(parents=True)
@@ -1901,7 +1908,7 @@ def test_attempts_are_ordered_as_numbers_not_as_names(tmp_path):
     (d / "notes.txt").write_text("")                     # not an attempt
     (d / "run-x").mkdir()                                # nor is this
 
-    assert attempts(d) == [0, 1, 2, 9, 10]
+    assert attempts_in(d) == [0, 1, 2, 9, 10]
     assert latest_attempt(d).name == "run-10"
     assert resolve_attempt(d) == (d / "run-11", True)
 
@@ -1962,8 +1969,7 @@ def test_run_launch_omits_continued_from_rather_than_writing_null(tmp_path):
     key sees a starting-from-the-structure run as one that continued from
     nothing-in-particular.  Two different claims, one of them false."""
     import json
-    from molbuilder.jobset.materialize import (RUN_LAUNCH_SCHEMA,
-                                               write_run_launch)
+    from molbuilder.runrecord import RUN_LAUNCH_SCHEMA, write_run_launch
     p = write_run_launch(tmp_path, mode="direct", command=["bash", "x.sh"])
     body = json.loads(p.read_text())
     assert body["schema"] == RUN_LAUNCH_SCHEMA
@@ -2105,8 +2111,8 @@ def test_a_launched_sweep_trial_reports_queued_not_pending(tmp_path):
     trial's top, not in a `run-<n>`/.  Until 2026-08-20 the status reader
     looked only inside attempts, and a grouped-submitted trial answered
     the exact false line § 1.6 forbids."""
-    from molbuilder.jobset.materialize import (job_dir_names, shape_of,
-                                               write_run_launch)
+    from molbuilder.jobset.materialize import job_dir_names, shape_of
+    from molbuilder.runrecord import write_run_launch
     from molbuilder.jobset.model import Job, JobSet
     js = JobSet(name="JOB", engine="siesta", kind="sweep",
                 jobs=[Job(name="p1", script="JOB_p1.fdf"),
@@ -2696,7 +2702,8 @@ def test_a_machine_WITHOUT_A_RECORD_stops_the_prep(tmp_path, monkeypatch):
     best-effort ABOUT -- and a record-less machine is refused, by name, with
     the command.
     """
-    from molbuilder.jobset.prep import PrepError, prep_jobset
+    from molbuilder.jobset.errors import PrepError
+    from molbuilder.jobset.prep import prep_jobset
     from molbuilder.scheduler import machine_scope_path
 
     # NOTHING is probed: the record the suite writes for every test is gone.
@@ -2811,7 +2818,7 @@ def test_prep_resolves_the_machine_before_it_writes_anything(tmp_path,
     The outcome alone cannot show this: a prep that resolved the machine LAST
     leaves exactly the same files behind.  So the order is observed directly --
     the two steps' functions are wrapped and the call order recorded.  Step 1
-    is `resolve_target`, step 4 is `write_run_wrapper`; if the wrapper is
+    is `machine.set_machine`, step 4 is `write_run_wrapper`; if the wrapper is
     written first, the deck it accompanies was rendered against nothing.
     """
     from molbuilder.jobset import prep as _prep
@@ -2836,7 +2843,7 @@ def test_prep_resolves_the_machine_before_it_writes_anything(tmp_path,
     from molbuilder import runwrap as _rw
 
     order: list = []
-    real_target, real_wrap = _prep.resolve_target, _rw.write_run_wrapper
+    real_target, real_wrap = _prep.set_machine, _rw.write_run_wrapper
 
     def spy_target(b):
         order.append("1 machine")
@@ -2848,7 +2855,7 @@ def test_prep_resolves_the_machine_before_it_writes_anything(tmp_path,
 
     # `prep_jobset` imports the wrapper writer inside its own body, so the
     # patch goes on the SOURCE module -- patching `prep` would miss it.
-    monkeypatch.setattr(_prep, "resolve_target", spy_target)
+    monkeypatch.setattr(_prep, "set_machine", spy_target)
     monkeypatch.setattr(_rw, "write_run_wrapper", spy_wrap)
     _prep.prep_jobset(js, base, env="molbuilder-siesta")
 

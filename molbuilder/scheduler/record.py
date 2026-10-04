@@ -335,7 +335,7 @@ class Environment:
     #: of the machine it was probed on declared no ``env_init``.  Absent is
     #: NOT "use the local machine's" -- that substitution is the bug -- so
     #: prep REFUSES any target whose record carries no activation, saying
-    #: where to declare it (`jobset.prep._require_activation`).
+    #: where to declare it (`jobset.machine.require_activation`).
     #:
     #: Shape: ``{"preamble": str, "activation": str}``, both optional.
     env_init: Dict[str, str] = field(default_factory=dict)

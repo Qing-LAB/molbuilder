@@ -983,7 +983,7 @@ def _this_machine_has_been_probed(config_root_is_never_the_developers):
     command, so the numbers in a wrapper can always be traced to a file
     somebody can look at *(user: "all environments have to be explicitly
     probed and stored. no environment json, error"; `running-a-job.md`
-    § 3.1)*.  Before that, `resolve_target` probed and wrote the answer
+    § 3.1)*.  Before that, `machine.set_machine` probed and wrote the answer
     itself, so every test got a machine for free.
 
     **It asks `machine_scope_path()` where to write** rather than composing

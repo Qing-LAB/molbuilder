@@ -27,10 +27,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..identity import StageRef
-from .materialize import (attempts, job_dir_names, launch_record_at,
-                          read_run_launch,
-                          latest_attempt, run_dir, shape_of,
-                          stage_refs)
+from ..paths import attempts_in
+from .materialize import (job_dir_names, launch_record_at, latest_attempt, run_dir, shape_of, stage_refs)
+from ..runrecord import read_run_launch
 from .commands import block, command, launch_lines, rollback
 from .model import JobSet
 from .plan import resources_text
@@ -346,7 +345,7 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, sh, dirs,
     return StageStatus(
         ref=refs[job.name], dir=d.name, state=state, detail=detail,
         attempt=where,
-        attempts=attempts(home),
+        attempts=attempts_in(home),
         launch=launch,
         resumes=job.resumes,
         # THE SAME LABEL THE STATE WAS READ WITH.  This asked for

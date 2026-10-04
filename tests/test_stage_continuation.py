@@ -206,7 +206,7 @@ def test_a_flat_stage_records_the_run_it_continued_from(tmp_path,
     MUTATIONS THIS MUST FAIL AGAINST: prep leaving no record of the run on
     the flat layout (the launch record without `continued_from`); a flat
     stage launched again recording the stage before it (W55 D5)."""
-    from molbuilder.jobset.materialize import read_run_launch
+    from molbuilder.runrecord import read_run_launch
     from molbuilder.scheduler import Domain
     from support.road import a_queue_that_answers
     a_queue_that_answers(tmp_path, monkeypatch, [
@@ -393,7 +393,7 @@ def test_the_run_panel_says_what_a_run_continued_from(ladder):
     Results tab's Run panel -- names the run, from its `run.json`.
 
     MUTATION THIS MUST FAIL AGAINST: the record without `continued_from`."""
-    from molbuilder.jobset.materialize import write_run_launch
+    from molbuilder.runrecord import write_run_launch
     from molbuilder.web.app import create_app
     bundle = ladder()
     assert _prep(bundle, "coarse").exit_code == 0

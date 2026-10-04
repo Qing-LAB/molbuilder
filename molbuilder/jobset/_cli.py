@@ -30,7 +30,7 @@ import click
 
 from .ledger import record as _ledger
 from .model import JobSet
-from .prep import PrepError
+from .errors import PrepError
 from .submit import submit_jobset, SubmitError
 from .runstatus import jobset_status, render_stage_status, render_status
 
@@ -906,8 +906,8 @@ def _stage_bench_dir(base, stage, verb: str = "launch"):
     listed — § 6.5 gives every description a ladder, so there is always a
     stage to name and never a bare form to fall back to."""
     from ..task import FILENAME, read_task
-    from .materialize import bench_container
-    from .prep import token_for
+    from ..paths import bench_container
+    from .materialize import stage_home
     from ..paths import Shape
     desc = Path(base) / FILENAME
     if not desc.is_file():
@@ -928,7 +928,7 @@ def _stage_bench_dir(base, stage, verb: str = "launch"):
         from .commands import command, enabled_refs, name_a_stage
         refs = enabled_refs(task)
         benched = [r for r in refs if (Path(base) / bench_container(
-            sh, token_for(task, r.name)) / _JOBSET_FILE).is_file()]
+            sh, stage_home(base, task, r.name).token) / _JOBSET_FILE).is_file()]
         if not benched:
             raise click.ClickException(
                 "no stage has a prepped benchmark yet -- prep one first:\n"
@@ -936,7 +936,7 @@ def _stage_bench_dir(base, stage, verb: str = "launch"):
         raise click.ClickException(
             "which stage's benchmark? "
             + name_a_stage(verb, "bench", benched, base=base))
-    token = token_for(task, stage)
+    token = stage_home(base, task, stage).token
     return Path(base) / bench_container(sh, token), token
 
 

@@ -853,7 +853,7 @@ Two small files answer the two questions *(the second decided by the user,
   next unlaunched trial, until 2026-10-01: § 1.5a gave trials attempts, the
   verb is `launch`, and the picker was retired; the W52 review.)*
   **A flat stage writes its own**, `<basename>.run.json` beside its deck
-  (`jobset.materialize.launch_record_path`): there is no attempt directory,
+  (`runrecord.launch_record_path`): there is no attempt directory,
   and every stage shares the calculation's one, so the record is named by
   its stage like every other file of it *(user, 2026-09-26: "unify this
   behavior")*. A flat calculation's directory, asked as a whole, reads the
@@ -2360,7 +2360,7 @@ check as an assertion. Three things stop it from being decorative:
 #### The rule has two halves, and the second one has its own check
 
 **A duplicate COMPOSER performs no search, so nothing above can see it.** That
-is how `materialize.attempt_concluded` came to spell
+is how `runrecord.attempt_concluded` came to spell
 `f"{basename}-run{newest}.concluded"` on the line *after* asking
 `runfiles.latest_run` for that very counter, and how `submit.py` built
 `f"{names[j]}/run-{n}"` and handed it to `prepare_attempt` as the attempt to

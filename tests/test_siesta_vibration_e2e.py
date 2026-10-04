@@ -548,7 +548,7 @@ def test_a_job_that_cannot_finish_itself_stops_before_the_engine(
     index is resolved -- it can name no marker, and the attempt reads queued
     for ever (the review of 51590fa6).
     """
-    from molbuilder.jobset.materialize import read_run_launch
+    from molbuilder.runrecord import read_run_launch
     from molbuilder.parse.dirs import run_status
     from molbuilder.parse.dirs.job import FINISH_CANNOT_LOAD, read_concluded
     from molbuilder.runfiles import compose

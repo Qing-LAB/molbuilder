@@ -2367,7 +2367,7 @@ def render_run_wrapper(script_path: Path, *,
         # (ranks), one (threads), or -- on a GPU -- this script's own policy,
         # worked out at launch; each was a number nobody stated.  Whether
         # both are stated is asked ONCE, before anything is written:
-        # `prep_inputs.launch_refusal` for a run, the grid's own point for a
+        # `placement.launch_refusal` for a run, the grid's own point for a
         # benchmark (`MachineTranslation`).
         #
         # THE RANK COUNT IS THE USER'S (user ruling, 2026-09-03), and nothing
@@ -4383,7 +4383,7 @@ def _bound_queue(resources, domain_pq, env_rec, *, prefer_gpu=False):
     allowed")*.  An unnamed queue is not chosen here -- the menu's first row
     stood in until then, and a named one the record does not list fell back
     to it silently.  Prep refuses both before anything is written
-    (`prep_inputs.launch_refusal`).  What can still meet this is the queue
+    (`placement.launch_refusal`).  What can still meet this is the queue
     the record CAN'T take -- a GPU job naming a queue with no GPUs -- and
     `place`, the binding, says so.
 
@@ -4444,7 +4444,7 @@ def _render_sbatch_for(script_path: Path, *,
     count and -- for SIESTA -- its rank count.  PySCF runs ONE process with
     OpenMP threads, so its header asks for one task: that is what the engine
     is, not a value anyone picks.  Whether each is stated is asked ONCE per
-    moment, by `prep_inputs.launch_refusal` -- at prep, before anything is
+    moment, by `placement.launch_refusal` -- at prep, before anything is
     written, and at launch for a header written there (`submit.
     _sbatch_request`).  Nothing is filled in: not the target's width, not a
     rank per GPU, not a queue's ceiling, not a default from any config.

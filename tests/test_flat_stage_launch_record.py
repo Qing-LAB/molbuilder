@@ -84,7 +84,7 @@ def test_a_submitted_flat_stage_records_its_launch_and_reads_queued(
     attempt anywhere but its own record (`submit._where_recorded`), or the
     ladder reading an attempt's record only -- the code before 2026-09-27.
     """
-    from molbuilder.jobset.materialize import launch_record_path, read_run_launch
+    from molbuilder.runrecord import launch_record_path, read_run_launch
     from molbuilder.jobset.model import FILENAME, JobSet
     from molbuilder.jobset.runstatus import jobset_status
     from molbuilder.parse import parse_dir

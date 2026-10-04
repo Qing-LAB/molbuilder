@@ -508,7 +508,7 @@ def _pyscf_sys(f: RunFiles) -> Dict[str, Any]:
 
 def _launch_record(f: RunFiles) -> Dict[str, Any]:
     """``run.json`` -- how the attempt was launched (`materialize`)."""
-    from ...jobset.materialize import read_run_launch
+    from ...runrecord import read_run_launch
     rec = read_run_launch(f.directory,
                           basename=f.deck.stem if f.deck else None) or {}
     # `continued_from`: the run this attempt continued from, as prep took it
@@ -537,7 +537,7 @@ def _concluded(f: RunFiles) -> Dict[str, Any]:
 def _deck(f: RunFiles) -> Dict[str, Any]:
     """The deck as run: its path and hash, whether it is still the stage's
     deck, and what it was gathered from."""
-    from ...jobset.materialize import read_gathered_from
+    from ...runrecord import read_gathered_from
     from ...script_emit import same_calculation
     if f.deck is None:
         return {}

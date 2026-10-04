@@ -206,7 +206,8 @@ def test_asking_writes_NOTHING_to_the_tree(tmp_path, monkeypatch):
     then hid the running one from `status`, which reports the latest.
     Found live during the full review: one ask, and a running relax
     vanished from the status table."""
-    from molbuilder.jobset.materialize import attempts, write_run_launch
+    from molbuilder.paths import attempts_in
+    from molbuilder.runrecord import write_run_launch
     from molbuilder.jobset.model import Job, JobSet, Resources
     from molbuilder.jobset.submit import submit_jobset
 
@@ -221,12 +222,12 @@ def test_asking_writes_NOTHING_to_the_tree(tmp_path, monkeypatch):
     (d / "run-0" / "J.XV").write_text("warm state, mid-flight")
     write_run_launch(d / "run-0", mode="direct", command=["bash", "x"])
 
-    before = attempts(d)
+    before = attempts_in(d)
     try:
         submit_jobset(js, base, mode="ask", only="coarse", dry_run=False)
     except Exception:
         pass          # the refusal text is not this test's subject
-    assert attempts(d) == before, (
+    assert attempts_in(d) == before, (
         "asking opened a new attempt -- a question verb wrote to the tree")
     assert not (d / "run-1").exists()
 
@@ -321,7 +322,7 @@ def test_ask_answers_on_the_road_and_launches_nothing(tmp_path, monkeypatch,
     printed without its no-scheduler guard; the closing line always naming
     `--mode submit`.
     """
-    from molbuilder.jobset.materialize import read_run_launch, was_launched
+    from molbuilder.runrecord import read_run_launch, was_launched
 
     calls = tmp_path / "sbatch-calls.log"
     if machine == "scheduler answers":

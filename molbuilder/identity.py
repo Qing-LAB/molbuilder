@@ -371,7 +371,7 @@ class StageRef:
         Decision 28's first arm, made callable: *"before a produce it comes
         from the ladder's full list"*. The ordinal is the stage's place in
         that list counted from 1, disabled rungs included, so disabling one
-        leaves a gap rather than renumbering what follows (`token_for`'s
+        leaves a gap rather than renumbering what follows (`materialize.stage_home`'s
         rule, stated once). The after-produce arm — reading ``seq`` back off
         the decks — is `jobset/materialize.py::stage_refs`, and A4 allows
         exactly those two: the owner and the class's own method.

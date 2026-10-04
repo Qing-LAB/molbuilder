@@ -292,10 +292,10 @@ def _real(engine, **over):
     """A seam, a config and a structure for one engine — through `prep`'s own
     door, so this asks what the production route asks."""
     import dataclasses
-    from molbuilder.jobset.prep import _engine_seam
+    from molbuilder.jobset.engines import engine_seam
     from molbuilder.structure import Structure
 
-    seam = _engine_seam(engine)
+    seam = engine_seam(engine)
     label = {"siesta": {"system_label": "t"}, "pyscf": {"job_name": "t"}}[engine]
     cfg = dataclasses.replace(seam.config_cls(**label), **over)
     struct = Structure(elements=["O", "H", "H"],

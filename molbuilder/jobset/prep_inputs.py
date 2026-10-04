@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .prep import PrepError
+from .errors import PrepError
 
 
 def _declared_execution_pins(base, engine, bench_override=None):
@@ -329,12 +329,7 @@ def _cell_shape(g, k, c) -> str:
 #: direct map under their own names (they are already `Resources` fields).
 from ..task import LANE_ASKS as _LANE_ASKS
 
-_AS_RESOURCE = {
-    "omp_threads": "cpus_per_task",
-    "threads": "cpus_per_task",
-    "gpu_count": "gres",
-    "max_memory_mb": "max_memory_mb",
-}
+from .placement import AS_RESOURCE
 
 
 def run_uses_device(base, task, stage=None):
@@ -423,7 +418,7 @@ def declared_run_shape(base, task, stage=None):
             continue
         if not it.allocation:
             continue                    # a parameter -- pins, never the launch
-        field = _AS_RESOURCE.get(name, name)
+        field = AS_RESOURCE.get(name, name)
         if field == "gres":
             out["gres"] = int(val)      # spelled below, as the count it is
         elif field in known:
@@ -610,107 +605,6 @@ def bench_refusal(task):
     return None
 
 
-#: The run card's launch-shape items: the catalogue's machine items that size
-#: the processes -- not `gpu_count`, which G5 refuses on its own and only for a
-#: device run, and not `max_memory_mb`, a cap whose absence asks for nothing.
-_SHAPE_ITEMS = ("mpi_np", "omp_threads", "threads")
-
-#: What a person calls each launch value, and the flag that states it -- the
-#: words of the one refusal below.
-_LAUNCH_WORDS = {
-    "mpi_np":        ("ranks", "--np N"),
-    "cpus_per_task": ("cores per rank", "--cpus-per-task N"),
-    "domain":        ("queue", "--domain QUEUE"),
-    "time":          ("wall", "--time 2-00:00:00"),
-    "mem":           ("memory", "--mem 64G"),
-}
-
-
-def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
-                   stage=None, queues=(), base=None, target=None):
-    """**Why this launch cannot be written** -- ``None`` when every value it
-    needs is stated (`execution/architecture.md` § 5.2; user, 2026-10-02:
-    *"explicit job config is the only way allowed"*).
-
-    ONE ANSWER, asked at each moment a launch is written: by `prep_stage`
-    with the whole assembly in hand, before anything is written -- for a run
-    and for a benchmark alike -- and by launch's one request
-    (`submit._sbatch_request`) of what it sends, where a launch flag may
-    have stated a value.  The renderers below them take what is stated and
-    ask nothing again:
-
-    * ``shape`` -- a RUN's processes: the engine's own launch-shape items
-      (the catalogue's, so PySCF is asked its threads and never a rank
-      count).  A benchmark's shape is its grid point, so it passes ``False``.
-    * ``header`` -- a ``.sbatch`` is written for a queue (the target has a
-      scheduler, and ``--no-sbatch`` was not given): the queue, the wall and
-      the memory.
-
-    Nothing here fills a value in -- not the target's width, not a rank per
-    GPU, not a thread count of one, not a queue's ceiling, not the
-    scheduler's default memory.  Each was a value nobody stated for that run,
-    and a run is hours before anyone learns which one it got.  ``queues`` --
-    the target's own, by name -- is the record's fact, shown so the person
-    can choose one; ``base`` and ``target`` say which record that was, for
-    the refusal that finds it lists none.
-    """
-    from ..template import catalogue, select
-    missing = []
-    if shape:
-        for item in select(catalogue(), engine=engine):
-            if item.name in _SHAPE_ITEMS:
-                field = _AS_RESOURCE.get(item.name, item.name)
-                if getattr(allocation, field, None) in (None, "", 0):
-                    missing.append((field, item.name))
-    if header:
-        for field in ("domain", "time", "mem"):
-            if getattr(allocation, field, None) in (None, ""):
-                missing.append((field, field))
-        named = getattr(allocation, "domain", None)
-        if named and named not in queues:
-            # A QUEUE THE RECORD DOES NOT LIST is not a queue this job can be
-            # sent to -- the header fell back to the menu's first row,
-            # silently, until 2026-10-02.  A record that lists none at all
-            # was probed off its scheduler, or not probed there.
-            said = f"{'stage ' + repr(stage) + ' ' if stage else ''}names "
-            if queues:
-                return (f"{said}the queue {named!r}, which the target's "
-                        f"record does not list -- it lists: "
-                        f"{', '.join(queues)}.")
-            # NONE AT ALL: probed off its scheduler, or not probed there --
-            # renewed by the record that answered's own steps (W54 R5: this
-            # printed the bare probe command whatever the target, and
-            # nothing about a snapshot).
-            from ..scheduler.record import record_and_renewal
-            which, renew = record_and_renewal(base, target)
-            return (f"{said}the queue {named!r}, and the record it reads "
-                    f"({which}) lists no queues at all.  If that machine has "
-                    f"queues, its record is out of date: {renew}.")
-    if not missing:
-        return None
-    where = []
-    for field, key in missing:
-        words, flag = _LAUNCH_WORDS[field]
-        if field in ("domain", "time"):
-            card = (f'"allocation": {{"{key}": ...}} in task.json'
-                    + (f' or "execution": {{"{key}": ...}} (this run)'
-                       if shape else ""))
-        elif field == "mem":
-            card = '"allocation": {"mem": ...} in task.json'
-        else:
-            card = f'"execution": {{"{key}": N}} in task.json'
-        line = f"  {words:<15} {card}, or {flag}"
-        if field == "domain" and queues:
-            line += (f"\n  {'':<15} (the target's record lists: "
-                     f"{', '.join(queues)})")
-        where.append(line)
-    what = ", ".join(f"{_LAUNCH_WORDS[f][0]} ({k})" for f, k in missing)
-    return (f"{'stage ' + repr(stage) + ' ' if stage else ''}states no "
-            f"{what} -- and nothing fills one in "
-            f"(docs/execution/architecture.md § 5.2).  State each:\n"
-            + "\n".join(where))
-
-
 def bench_inputs(base, target, *, bench_override=None, report=None,
                  notes=None):
     """The benchmark specialisation's three inputs — `project-layout.md`
@@ -771,7 +665,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     from ..task import FILENAME as TASK_FILENAME, read_task
     from ..template import (read_template, template_path,
                             select as template_select)
-    from .prep import _environment_read
+    from .machine import machine_record
     task = read_task(Path(base) / TASK_FILENAME)
     # A DESCRIPTION WITH NO BENCH is refused before any machine is read: a
     # refusal about the target would otherwise answer a question the
@@ -787,7 +681,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # `prep bench` writes its snapshot at step 1 of the five, after the
     # under-way question (W52: every edit tied the calculation to the
     # machine on the picker).
-    environment = _environment_read(base, target)
+    environment = machine_record(base, target)
     # THE TARGET'S MENU, from the record in hand -- its probed queues -- for
     # every check below (`runtime_config.routing_of`;
     # W52: the cells read the folder's menu, which a calculation not yet

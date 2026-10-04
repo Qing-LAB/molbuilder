@@ -397,7 +397,7 @@ def tail(role: str, stage: Optional[str] = None,
 
     **:func:`compose` when you own the label; this when you were handed a stem.**
     That is the same distinction from the reading side, and it decides real
-    cases: `materialize.attempt_concluded` is given whatever the DECK is called,
+    cases: `runrecord.attempt_concluded` is given whatever the DECK is called,
     and a cited transport relaxation may be a person's own ``my.relaxation.fdf``.
     :func:`compose` refuses that, correctly -- § 2.1, a label carrying a dot
     cannot be read back out of a filename -- but the caller's job there is to

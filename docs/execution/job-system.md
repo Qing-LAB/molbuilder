@@ -1880,7 +1880,8 @@ Where each responsibility lives, for someone extending the framework:
 | The prep verb's one entry (`prep_stage` → `PrepAnswer`, § 5.3), which the command line and the Task setup tab both call: the plan (`plan_prep` → `PrepPlan` — the steps of [`script-preparation.md`](?doc=execution/script-preparation.md) § 3, decided with nothing written), the save, the writing (`write_plan`), the ledger | `molbuilder/jobset/prep.py` |
 | The engine seam — an engine's deck writer, its data files, its warm declaration and traits, its config class (one map for every caller) | `molbuilder/jobset/engines.py` |
 | A job's placement — queue, wall, memory, ranks, cores, GPUs with their sources, admitted (§ 6.0); the launch-value check | `molbuilder/jobset/placement.py` |
-| The refusal types every floor raises (`PrepError`, `SubmitError`) | `molbuilder/jobset/errors.py` |
+| The refusal type every floor raises (`PrepError`) | `molbuilder/jobset/errors.py` |
+| The calculation's machine — its record read (`machine_record`), checked (`require_activation`), and set at the first prep (`set_machine`, `configuration.md` M-3) | `molbuilder/jobset/machine.py` |
 | A run's own records — `run.json` read and written through `persist`, how a run ended (its conclusion marker, the engine's end mark), `.continued-from`, `.gathered-from` | `molbuilder/runrecord.py` |
 | What a prep receives, assembled once (A12) — the run's `(allocation, pins, chosen)` and the bench's `(points, pins, translation)`, the bench grid's cell checks, and the notes a person is told; the conductor's own assembly, beside it | `molbuilder/jobset/prep_inputs.py` |
 | The human-readable plan table | `molbuilder/jobset/plan.py` |

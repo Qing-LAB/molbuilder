@@ -55,7 +55,7 @@ SEARCH_ATTRS = {"glob", "rglob", "iterdir", "listdir", "scandir"}
 def _owned_rules() -> "list[tuple[str, str, str]]":
     import sys
     sys.path.insert(0, str(ROOT))
-    from molbuilder.jobset.materialize import TRIAL_PREFIX
+    from molbuilder.paths import TRIAL_PREFIX
     from molbuilder.paths import ATTEMPT_PREFIX
     from molbuilder.runfiles import WRITTEN
     rules = [
@@ -253,7 +253,7 @@ GUARDED_UNDECLARED = ("launch",)
 # --------------------------------------------------------------------------- #
 #
 # Everything above looks at SEARCHES, and a duplicate COMPOSER is invisible to
-# it.  That is how `materialize.attempt_concluded` came to spell
+# it.  That is how `runrecord.attempt_concluded` came to spell
 # `f"{basename}-run{newest}.concluded"` on the line AFTER asking `latest_run`
 # for that very counter, and how `submit.py` built the path
 # `f"{names[j]}/run-{n}"` and handed it to `prepare_attempt` as the attempt to
@@ -392,7 +392,7 @@ def _calc_containers() -> "dict[str, str | None]":
     return {
         # declared, and reached through its door everywhere (checked 2026-09-08:
         # `_cli.py`'s hardcoded `base/"bench"` was closed 2026-08-13)
-        "bench": "jobset.materialize.bench_container",
+        "bench": "paths.bench_container",
         # declared as a constant, so the name has one home
         ARCHIVE_DIR: "checkpoint.ARCHIVE_DIR",
         # declared as a constant, and every caller imports it (2026-09-19)

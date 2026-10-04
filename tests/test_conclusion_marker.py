@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.jobset.materialize import attempt_concluded
+from molbuilder.runrecord import attempt_concluded
 from molbuilder.jobset.model import Resources
 from molbuilder.runwrap import render_run_wrapper
 

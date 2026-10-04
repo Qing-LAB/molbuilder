@@ -42,7 +42,7 @@ from conftest import write_pseudos
 from molbuilder.transport.sort import (REGION_BRIDGE, REGION_BUFFER,
                                          REGION_LEFT_ELECTRODE,
                                          REGION_RIGHT_ELECTRODE)
-from molbuilder.jobset.prep import PrepError
+from molbuilder.jobset.errors import PrepError
 from molbuilder.jobset.prep import prep_calculation as _prep_calculation
 from molbuilder.structure import Structure
 from test_transport_compose import _BRIDGE, _LAYERS_L, _LAYERS_R, _write_xv
@@ -2008,7 +2008,7 @@ class TestTheBiasScan:
         under test."""
         from click.testing import CliRunner
         from molbuilder.jobset._cli import jobset_group
-        from molbuilder.jobset.materialize import write_run_launch
+        from molbuilder.runrecord import write_run_launch
         from molbuilder.web.app import create_app
         self._ready(calc, tmp_path, monkeypatch)
         client = create_app(config={}).test_client()

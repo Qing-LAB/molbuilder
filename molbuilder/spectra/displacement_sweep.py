@@ -104,12 +104,12 @@ def stages_share_a_directory(task, *, include_disabled: bool = False
     `prep` refuses a sweep by (over every described stage,
     ``include_disabled``, since it preps any stage named) and `summarize`
     reads it by."""
-    from ..jobset.prep import token_for
+    from ..jobset.materialize import stage_home
     from ..paths import Shape
     from ..pyscf.stages import force_constant_stages
     shape = Shape.named(task.shape)
     names = force_constant_stages(task, include_disabled=include_disabled)
-    dirs = {shape.stage_dir(token_for(task, n)) for n in names}
+    dirs = {shape.stage_dir(stage_home(None, task, n).token) for n in names}
     return len(dirs) < len(names)
 
 
@@ -127,8 +127,9 @@ def collect_sweep(base_dir, task, *,
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE
     from ..engine_atom_index import from_engine_index
     from ..jobset.commands import rollback
-    from ..jobset.materialize import latest_attempt, read_run_launch
-    from ..jobset.prep import token_for
+    from ..jobset.materialize import latest_attempt
+    from molbuilder.runrecord import read_run_launch
+    from ..jobset.materialize import stage_home
     from ..parse.dirs import run_status
     from ..parse.engines.siesta_fc import (EV_PER_ANG2_TO_HARTREE_PER_BOHR2,
                                            hessian_from_fc, read_fc)
@@ -181,7 +182,7 @@ def collect_sweep(base_dir, task, *,
     failed: List[Dict[str, Any]] = []
     loaded = []
     for name in names:
-        token = token_for(task, name)
+        token = stage_home(base, task, name).token
         attempt = latest_attempt(base / shape.stage_dir(token))
         if attempt is None:
             pending.append({"stage": name, "state": "not-started",

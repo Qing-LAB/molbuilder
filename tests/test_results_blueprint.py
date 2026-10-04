@@ -936,7 +936,7 @@ class TestTheContractEndpoint:
         the folder above.
         """
         from molbuilder import calcdirs
-        from molbuilder.jobset.materialize import write_run_launch
+        from molbuilder.runrecord import write_run_launch
         root, client = isolated
         calc = root / "calc"
         run = calc / "01_a" / "run-0"

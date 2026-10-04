@@ -201,7 +201,7 @@ and one of those I had first written up as broken.
 | **C4** | `--target` names a record that does not exist | ✅ raises `UnknownTarget`, listing the known ones and how to write the missing one | *(correct today)* |
 
 > **C2 is why this section is written from measurements.** Reading
-> `resolve_target` alone says the target is ignored — it returns an
+> `machine.set_machine` alone says the target is ignored — it returns an
 > existing `environment.json` before ever consulting `target`. The guard
 > lives further along the prep path, and running the case is what showed
 > it. A contract written from the first reading would have added a second

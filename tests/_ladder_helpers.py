@@ -27,9 +27,9 @@ def _live_ladder_decks(struct, template, stages, engine: str = "siesta"):
     and the NAME is where it lands (`stages.md` § 1.1).
     """
     from molbuilder.identity import stage_token
-    from molbuilder.jobset.prep import _engine_seam
+    from molbuilder.jobset.engines import engine_seam
     from molbuilder.resolve import effective_config
-    seam = _engine_seam(engine)
+    seam = engine_seam(engine)
     label = seam.label_of(template)
     out = {}
     for i, st in enumerate(stages, start=1):

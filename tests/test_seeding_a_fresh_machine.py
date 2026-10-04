@@ -33,12 +33,12 @@ from molbuilder.runtime_config import ACTIVATION_FORMS, CONFIG_FILENAME
 
 def _the_gate():
     """What prep asks of this machine's record before it renders a wrapper
-    (`jobset.prep._require_activation`) -- the record read the way every
+    (`jobset.machine.require_activation`) -- the record read the way every
     prep reads it.  Returns the record."""
-    from molbuilder.jobset.prep import _require_activation
+    from molbuilder.jobset.machine import require_activation
     from molbuilder.scheduler import machine_for
     env = machine_for()
-    _require_activation(None, env)
+    require_activation(None, env)
     return env
 
 
@@ -67,7 +67,7 @@ def test_a_fresh_machine_has_no_record_to_prep_against(fresh):
     a machine that never ran molbuilder has no record, so every prep refuses
     at its first step, naming the probe (`jobset/prep.py::_no_record`).
 
-    *(This asserted the activation refusal, through `_require_activation`
+    *(This asserted the activation refusal, through `machine.require_activation`
     called on no record -- a refusal the road never gives a fresh machine,
     which stops one step earlier; W54 T22.)*"""
     from molbuilder.scheduler import machine_for

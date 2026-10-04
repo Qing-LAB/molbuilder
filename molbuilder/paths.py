@@ -178,8 +178,8 @@ def attempt_index(name: str) -> Optional[int]:
 def attempts_in(container) -> "list[int]":
     """Every attempt index present in *container*, ascending.
 
-    The finder half.  `materialize.attempts` is the caller that had it, and
-    kept its own regex to do it.
+    The finder half -- every caller's (`materialize.attempts` passed it through
+    until 2026-10-03, and kept its own regex before that).
     """
     c = Path(container)
     try:
@@ -201,8 +201,8 @@ def attempts_in(container) -> "list[int]":
 # THEY MOVED DOWN 2026-09-09.  Both rules were `jobset/materialize.py`'s,
 # floor 4, and the address layer is floor 1 -- a rule the framework cannot
 # reach is a rule its callers re-spell, which is § 4.5's whole subject.
-# `materialize.bench_container` and `materialize.job_dir_name` still exist
-# and still answer; they now ask these.
+# `materialize.bench_container` and `materialize.job_dir_name` passed
+# them through until 2026-10-03; every caller asks these now.
 
 #: What a TRIAL directory starts with.  Dash-joined, where the container is
 #: underscore-joined -- § 6.3's separator rule, and what keeps

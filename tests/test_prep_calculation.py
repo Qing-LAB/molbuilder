@@ -20,7 +20,8 @@ import pytest
 from molbuilder import describe as D
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.jobset.model import Resources
-from molbuilder.jobset.prep import PrepError, prep_calculation
+from molbuilder.jobset.errors import PrepError
+from molbuilder.jobset.prep import prep_calculation
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 

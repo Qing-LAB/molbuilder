@@ -264,7 +264,7 @@ def classify_citation(cite_dir: Path) -> CitedDir:
     wins when both are present — the deck carries the contract, and
     more information never loses to less.
     """
-    from ..jobset.materialize import RUN_LAUNCH_FILE, attempt_concluded
+    from molbuilder.runrecord import RUN_LAUNCH_FILE, attempt_concluded
     from ..runfiles import find_by_role
     cite_dir = Path(cite_dir)
     # THE DECK IS OURS AND THE REST IS NOT, and the two halves of this

@@ -450,7 +450,7 @@ def run_status(run_dir, match: str = "*", *,
     active_source}``.
 
     ``launch`` is the attempt's launch record, ``run.json``
-    (`jobset.materialize.read_run_launch`): ``None`` when it was never
+    (`runrecord.read_run_launch`): ``None`` when it was never
     launched.  It is what tells *never launched* from *launched, nothing
     written yet* before any output exists (`project-layout.md` § 1.6) --
     ``pending`` and ``queued`` -- and a caller that holds it passes it.

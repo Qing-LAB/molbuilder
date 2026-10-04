@@ -1,34 +1,15 @@
 """The ``jobset`` framework — a declarative model of a set of related
-jobs that share a package, with engine-agnostic materialize / submit /
-plan / status / summarize engines (docs/execution/job-system.md).
+jobs that share a package, with engine-agnostic prep / launch / status /
+summarize verbs (docs/execution/job-system.md).
 
 **Floor 3 is DERIVED, not built by producers**: nothing constructs a
 JobSet ahead of time and hands it down.  ``prep`` derives it from a
 described calculation on the machine that will run it — so the ranks,
-resources and paths in it are the ones that machine actually has, which a
-JobSet built elsewhere could only guess at — and the engines below consume
-it.  Import-light by design (model is pure stdlib) so it runs on a
-compute target alongside the other on-target tools.
-"""
-from .agreement import (DeckLaunchMismatch, LaunchAgreement,
-                        check_launch_matches_deck, launch_agreement)
-from .ledger import LEDGER_FILE, record
-from .model import Job, JobSet, Resources, SCHEMA
-from .materialize import materialize, job_dir_name
-from .prep import prep_jobset, prep_calculation, PrepError
-from .plan import render_plan
-from .submit import submit_jobset, JobResult, SubmitError
-from .runstatus import jobset_status, render_status, StageStatus, JobSetStatus
-from .summarize import run_summarize_jobset
+resources and paths in it are the ones that machine actually has.
 
-__all__ = [
-    "Job", "JobSet", "Resources", "SCHEMA",
-    "materialize", "job_dir_name",
-    "prep_jobset", "prep_calculation", "PrepError", "render_plan",
-    "submit_jobset", "JobResult", "SubmitError",
-    "jobset_status", "render_status", "StageStatus", "JobSetStatus",
-    "LaunchAgreement", "launch_agreement", "check_launch_matches_deck",
-    "DeckLaunchMismatch",
-    "record", "LEDGER_FILE",
-    "run_summarize_jobset",
-]
+**This package re-exports nothing** (W55 B7, 2026-10-03).  It re-exported
+twenty-four names that nobody imported through it, and loading them ran
+the conductor, launch and status for every reader of ``jobset.model`` —
+the floors each module sits on are `execution/architecture.md` § 2.1, and
+a caller imports the module that owns what it wants.
+"""

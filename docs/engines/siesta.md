@@ -76,7 +76,7 @@ flowchart LR
   is the whole public surface. A deck reaches disk one way — `jobset prep`,
   which calls `spec_for` → `prepare_deck` on the machine that will run it, and
   writes the siblings the deck's own text promises
-  (`prep._siesta_sibling_artifacts`).
+  (`engines._siesta_sibling_artifacts`).
 
   > **These are the Python API and they are unchanged. The `molbuilder fdf` CLI
   > verb is deleted** *(2026-08-11, user — obsolete residue from the flat-dir
@@ -314,7 +314,7 @@ default-gap box is reported as thin, correctly: it is well-formed and not yet
 converged.
 
 *(When the resolved charge ≠ 0, **`prep` writes** a `makov_payne_correction.py`
-post-process script beside the deck — `prep._siesta_sibling_artifacts` →
+post-process script beside the deck — `engines._siesta_sibling_artifacts` →
 `siesta/makov_payne.py` — that estimates the residual image-charge energy after
 the run. It is not part of the `.fdf` itself: the deck's own text instructs
 `python3 makov_payne_correction.py`, and that file has to exist, which is why

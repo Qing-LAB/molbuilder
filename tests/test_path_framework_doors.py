@@ -502,7 +502,7 @@ def test_attempt_concluded_answers_for_a_persons_own_deck_name(tmp_path):
     Measured 2026-09-08: the first M8 spelling raised RunFileError here where
     the code it replaced returned the marker.
     """
-    from molbuilder.jobset.materialize import attempt_concluded
+    from molbuilder.runrecord import attempt_concluded
     (tmp_path / "my.relaxation-run0.concluded").write_text("rc=0\n",
                                                            encoding="utf-8")
     assert attempt_concluded(tmp_path, "my.relaxation") == "rc=0"

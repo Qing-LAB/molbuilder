@@ -122,7 +122,7 @@ def deck_value(deck: Path, keyword: str) -> Optional[str]:
 def _trial_deck(d: Path, basename: str) -> Path:
     """The deck a trial ran, beside its results.
 
-    `tail`, not `compose`, for the reason `materialize.attempt_concluded`
+    `tail`, not `compose`, for the reason `runrecord.attempt_concluded`
     states: ``basename`` is ``Path(job.script).stem`` read out of
     ``job-set.json``, so it is a stem this reader was HANDED, not a label it
     chose.  `compose` validates the label and would raise on a hand-edited
@@ -569,7 +569,7 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
 
     # WHAT TO WRITE -- the `execution` block that would use this winner.
     # `omp_threads` and `gpu_count` are `execution`'s names for what the
-    # record calls `cpus_per_task` and a `gres` string (`prep_inputs._AS_RESOURCE`);
+    # record calls `cpus_per_task` and a `gres` string (`placement.AS_RESOURCE`);
     # naming them here in the RECORD's vocabulary would hand over a block
     # `task.json` refuses.
     block: Dict = {}
@@ -846,7 +846,7 @@ def bundle_for_sweep_file(jobset, path) -> Path:
     looking like a sweep that simply has not run yet.
 
     Rather than climb a fixed number of levels -- which would encode one
-    of the three layouts `materialize.bench_container` supports -- ask the
+    of the three layouts `paths.bench_container` supports -- ask the
     naming authority where the trials should be and walk up until they are
     actually THERE.  The answer is checked against the disk, so a wrong
     guess cannot be returned as a right one.

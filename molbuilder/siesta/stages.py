@@ -2,7 +2,7 @@
 warm restart means (docs/execution/job-system.md).
 
 Three things live here, all consumed by the engine seam
-(`jobset/prep.py::_engine_seam`) or by `describe`:
+(`jobset/engines.py::engine_seam`) or by `describe`:
 
   * :func:`default_siesta_stages` — the shipped ladder as ``Stage`` objects,
     the science stated once in the presets table;
