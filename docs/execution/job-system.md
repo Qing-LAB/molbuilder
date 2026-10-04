@@ -1882,7 +1882,7 @@ Where each responsibility lives, for someone extending the framework:
 | A job's placement — queue, wall, memory, ranks, cores, GPUs with their sources, admitted (§ 6.0); the launch-value check | `molbuilder/jobset/placement.py` |
 | The refusal type every floor raises (`PrepError`) | `molbuilder/jobset/errors.py` |
 | The calculation's machine — its record read (`machine_record`), checked (`require_activation`), and set at the first prep (`set_machine`, `configuration.md` M-3) | `molbuilder/jobset/machine.py` |
-| A run's own records — `run.json` read and written through `persist`, how a run ended (its conclusion marker, the engine's end mark), `.continued-from`, `.gathered-from` | `molbuilder/runrecord.py` |
+| A run's own records — `run.json` read and written through `persist`, how a run ended (its conclusion marker), `.continued-from`, `.gathered-from` | `molbuilder/runrecord.py` |
 | What a prep receives, assembled once (A12) — the run's `(allocation, pins, chosen)` and the bench's `(points, pins, translation)`, the bench grid's cell checks, and the notes a person is told; the conductor's own assembly, beside it | `molbuilder/jobset/prep_inputs.py` |
 | The human-readable plan table | `molbuilder/jobset/plan.py` |
 | The launch verb's one entry — the plan (`plan_launch` → `LaunchPlan`: submissions, members, attempts, continuations, placements, the exact lines), then the send: the one sender, the one sequencer, the one launch request (`_sbatch_request`) and the refusal to hand the scheduler more than one at a time (§ 6.0) | `molbuilder/jobset/submit.py` |

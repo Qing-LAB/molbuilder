@@ -60,20 +60,11 @@ def continued_from_marker(where: Path, basename: Optional[str] = None
                           else basename + _rf.tail(".continued-from"))
 
 
-#: SIESTA's own end-of-run mark -- a FILE whose existence is the signal, and
-#: whose name is SIESTA's, not ours: written as its last act on a clean exit
-#: (`siesta_end.F`) and deleted as one of its first (`siesta_init.F`), so it
-#: is always the newest SIESTA run's in its folder.  A literal is forced: it
-#: is in no `runfiles.WRITTEN` row.
-ENGINE_END_MARK = "0_NORMAL_EXIT"
-
-
 def read_concluded(text: Optional[str]) -> Optional[dict]:
     """The conclusion marker's first line, ``rc=<N> at <when>[; <note>]`` as
     the wrapper writes it (`runwrap.py`), as ``{"code": N, "at": when,
     "note": note}`` -- ``at`` and ``note`` only when stated -- or ``None``
-    when the text is not one (SIESTA's own ``0_NORMAL_EXIT``, which carries
-    no code).  The note is what the wrapper adds when the job's finish
+    when the text is not one.  The note is what the wrapper adds when the job's finish
     failed or cannot run (`parse.dirs.job.FINISH_FAILED`,
     `FINISH_CANNOT_LOAD`).  THE one reader of that line -- beside the marker
     it reads since 2026-10-03; `parse/dirs/job.py` held it before.
@@ -91,8 +82,7 @@ def read_concluded(text: Optional[str]) -> Optional[dict]:
 class Ending:
     """HOW A RUN ENDED (`execution/architecture.md` § 3.2): the line its
     conclusion said -- molbuilder's marker's first line, ``rc=0 at <date>``;
-    ``rc=?`` for an empty one; SIESTA's ``0_NORMAL_EXIT`` -- or ``None`` when
-    it has not ended on its own (still running, or force-stopped: no file
+    ``rc=?`` for an empty one -- or ``None`` when it has not ended on its own (still running, or force-stopped: no file
     tells those two apart); and the exit code that line states."""
     line: Optional[str] = None
     code: Optional[int] = None
@@ -118,8 +108,7 @@ def ending(where, basename: Optional[str] = None) -> Ending:
 
     ``where`` is the run's folder; ``basename`` its deck's stem,
     ``<label>_<token>``, where the folder holds several runs (a flat
-    calculation's) -- without it the folder's own run answers (an attempt, a
-    folder read alone).
+    calculation's) -- without it the folder's own run answers (an attempt).
 
     **Molbuilder's own marker first** -- ``<basename>-run<N>.concluded``,
     the wrapper's last act on its main path: an engine error still reaches
@@ -127,16 +116,16 @@ def ending(where, basename: Optional[str] = None) -> Ending:
     newest run index any file of the run reached (`runfiles.at_latest_run`):
     an earlier index's marker beside a newer run is that run's goodbye.
 
-    **Else the engine's own end mark, where it can belong only to this
-    run** -- SIESTA's ``0_NORMAL_EXIT``, in a folder no wrapper of ours ran
-    in: a run started by hand, which a cited relaxation is.  Where our
-    wrapper ran, its marker is the run's answer and the engine's mark is
-    not: the mark says the ENGINE ended, while the job -- a finish after
-    it, the wrapper's own end -- may not have; and in a folder every stage
-    shares it names no stage.  Asked about one deck, the folder holds no
-    other.  *(Three readers answered this until 2026-10-03 -- the marker
-    alone for prep's gates, marker-or-mark for the citation, the output's
-    ending first for status -- so status said finished where prep refused.)*
+    **Nothing else**: a run molbuilder's wrapper did not run is not a run of
+    ours, so it never ended on its own here -- the engine's own end mark
+    (SIESTA's ``0_NORMAL_EXIT``) says the ENGINE ended, while the job -- a
+    finish after it, the wrapper's own end -- may not have.  *(It answered,
+    in a folder no wrapper of ours ran in, until 2026-10-03, for a
+    relaxation run by hand and cited -- input molbuilder does not take,
+    user, 2026-10-03.  Three readers answered this until that day too -- the
+    marker alone for prep's gates, marker-or-mark for the citation, the
+    output's ending first for status -- so status said finished where prep
+    refused.)*
     """
     d = Path(where)
     marks = [m for m in _rf.find_by_role(d, ".concluded")
@@ -150,12 +139,7 @@ def ending(where, basename: Optional[str] = None) -> Ending:
         line = (text.splitlines() or [""])[0].strip() or "rc=?"
         said = read_concluded(line)
         return Ending(line, None if said is None else said["code"])
-    if _rf.carries_a_run(d) or not (d / ENGINE_END_MARK).is_file():
-        return Ending()
-    if basename is not None and any(f.stem != basename
-                                    for f in _rf.find_by_role(d, ".fdf")):
-        return Ending()
-    return Ending(ENGINE_END_MARK, 0)
+    return Ending()
 
 
 def launch_record_path(where: Path, basename: Optional[str] = None) -> Path:
@@ -302,4 +286,4 @@ def read_gathered_from(attempt_dir) -> List[dict]:
     return out
 
 
-__all__ = ["RUN_LAUNCH_SCHEMA", "RUN_LAUNCH_FILE", "LaunchRecordError", "continued_from_marker", "ENGINE_END_MARK", "read_concluded", "Ending", "ending", "launch_record_path", "write_launch", "launch_record", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]
+__all__ = ["RUN_LAUNCH_SCHEMA", "RUN_LAUNCH_FILE", "LaunchRecordError", "continued_from_marker", "read_concluded", "Ending", "ending", "launch_record_path", "write_launch", "launch_record", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]

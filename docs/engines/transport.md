@@ -1552,13 +1552,12 @@ layout to reproduce.
 > transporting with an accurate one is ordinary practice and is what that
 > ruling exists for.
 
-**Evidence is FILES, never a marker of ours.** SIESTA writes `0_NORMAL_EXIT`
-as its last act on a clean exit and deletes it as it starts, so a cited folder
-carrying it — one no wrapper of ours ran in, holding its one deck — ran to its
-own end, whoever launched it. Where molbuilder's wrapper ran, its own record
-answers, because it carries the exit code and the engine's end is not the
-job's: the one door's rule (`runrecord.ending`,
-[`execution/architecture.md`](?doc=execution/architecture.md) § 3.2).
+**A cited relaxation is a run of ours.** It ended on its own when its
+wrapper's conclusion says so, with the exit code — the one door's rule
+(`runrecord.ending`, [`execution/architecture.md`](?doc=execution/architecture.md)
+§ 3.2). *(SIESTA's `0_NORMAL_EXIT` answered for a relaxation launched by hand
+until 2026-10-03 — "evidence is FILES, never a marker of ours" — input
+molbuilder does not take, user, 2026-10-03.)*
 
 **Classifying is not composing.** A relaxation still running has record files
 that do not conclude; classification RECORDS that, because describing a

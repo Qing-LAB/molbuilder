@@ -367,12 +367,13 @@ def sibling_md_nc(out_path: Path) -> Optional[Path]:
     """The ``.MD.nc`` belonging to *out_path*, or None.
 
     Two ways to find it, because the .out's NAME and SIESTA's ``SystemLabel``
-    need not agree -- a run redirected to ``siesta.out`` with
-    ``SystemLabel hemeC`` writes ``hemeC.MD.nc``:
+    need not agree -- and in a run of ours they never do: the output is
+    ``<label>_<token>-run<N>.out`` while SIESTA names its history by
+    ``SystemLabel``, ``<label>.MD.nc`` (`write_md_history` is on by default):
 
-      1. the exact stem (``x.out`` -> ``x.MD.nc``), which is the molbuilder
-         convention and the common case;
-      2. failing that, the only ``*.MD.nc`` in the same directory.
+      1. the exact stem (``x.out`` -> ``x.MD.nc``);
+      2. failing that, the only ``*.MD.nc`` in the same directory -- how a
+         run of ours finds its own.
 
     **Exactly one, or nothing.**  Two .MD.nc files in a directory means two
     runs, and guessing which belongs to this .out would attach one run's

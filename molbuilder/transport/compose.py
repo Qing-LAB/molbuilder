@@ -301,19 +301,15 @@ def classify_citation(cite_dir: Path) -> CitedDir:
         deck = decks[0]
         # HOW THE CITED RUN ENDED, asked of the one door (`runrecord.ending`,
         # `execution/architecture.md` § 3.2) about THIS deck: molbuilder's own
-        # marker, else SIESTA's `0_NORMAL_EXIT` -- *"evidence is FILES, never
-        # a marker spelling of ours"* (`transport.md`) -- which counts where
-        # it can belong only to this run: a folder no wrapper of ours ran in,
-        # holding this one deck, which form A has required above.
+        # marker -- a cited relaxation is a run of ours.  *(SIESTA's
+        # `0_NORMAL_EXIT` answered too, for a relaxation run by hand, until
+        # 2026-10-03: input molbuilder does not take.)*
         #
         # DECK-SCOPED, never the directory's `run_status`: measured
         # 2026-09-18, a directory answer reported a neighbour rung's `rc=1`
         # for a citation whose own run concluded `rc=0`, cost 3,000x the
         # runtime and appended a `.parse.log` into the person's folder on
-        # every browse.  *(This weighed `0_NORMAL_EXIT` itself, beside a
-        # marker-only reader, until 2026-10-03 -- one of the three answers
-        # the door replaced; the fallback was lost once, 2026-09-18, and
-        # every SIESTA-only citation read NOT CONCLUDED.)*
+        # every browse.
         concluded = ending(cite_dir, deck.stem).line
         # A molbuilder attempt mid-run HAS record files that do not
         # conclude; `ending` answers "not concluded" for both that and

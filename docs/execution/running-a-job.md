@@ -637,10 +637,9 @@ the line.
 status, every hand-over and launch: molbuilder's conclusion marker, counted
 only at the highest run index the run's files reached
 ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1) — an earlier
-one, beside a newer output, is a previous run's goodbye — else SIESTA's own
-`0_NORMAL_EXIT` where it can belong only to this run: a folder no wrapper of
-ours ran in, holding one deck (SIESTA deletes it as it starts and writes it as
-it ends cleanly). **Finished is a run that ended on its own with exit code 0;
+one, beside a newer output, is a previous run's goodbye. Nothing else
+answers: SIESTA's own `0_NORMAL_EXIT` says the engine ended, not the job
+*(it answered for a run started by hand until 2026-10-03)*. **Finished is a run that ended on its own with exit code 0;
 failed, one that ended with any other** — or whose output states a stop.
 **An output that states its end is not a run that ended**: the job may still
 be on its way out — a finish deriving its result, the wrapper's last lines —

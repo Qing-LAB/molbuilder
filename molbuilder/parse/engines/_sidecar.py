@@ -277,7 +277,9 @@ def _siesta_fdf_path_for(traj_path: str) -> str | None:
     Strips engine suffixes (``.out`` / ``.molwatch.log``) AND the
     wrapper's ``-run<N>`` index tail so ``foo-stage1-run3.out`` pairs
     with ``foo-stage1.fdf``.  Falls back to a single ``*.fdf`` in the
-    same directory.
+    same directory -- how a run of ours finds its deck from its ``.XV``,
+    which SIESTA names by ``SystemLabel`` (``H2.XV`` beside
+    ``H2_01_relax.fdf``).
     """
     base, fname = os.path.split(traj_path)
     if not base:

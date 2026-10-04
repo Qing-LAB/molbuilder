@@ -321,8 +321,8 @@ class RunStatus:
     detail:         str
     last_change_at: "Optional[str]" = None
     active_source:  "Optional[str]" = None
-    #: What the run's PROCESS said on its way out -- ``rc=0 at <date>``,
-    #: ``0_NORMAL_EXIT`` -- or None if it never said goodbye: the line of
+    #: What the run's PROCESS said on its way out -- ``rc=0 at <date>`` --
+    #: or None if it never said goodbye: the line of
     #: the one door's answer (`runrecord.ending`), which the state is built
     #: on.
     #:

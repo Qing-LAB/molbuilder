@@ -1391,18 +1391,12 @@ log, so a log merely *containing* run N is not its log. `run.json`,
 `.gathered-from`, the deck and the pseudopotential files belong to the attempt,
 not to one run.
 
-**A folder read alone is still a run** (`execution/project-layout.md` § 1.4a):
-a SIESTA run made by hand — `input.fdf`, `siesta.out` — or an output copied
-without its deck. Its output's name carries no label the folder's decks state,
-so molbuilder's names cannot find its files; the output itself says what ran.
-The run is the output the directory's status speaks for, taken as it is; its
-`fdf` log is paired by stamp, as always, since that pairing is SIESTA's own
-naming; its deck is the folder's one deck, or of several the one whose
-`SystemLabel` SIESTA's `fdf` log says it read, and none when that does not
-single one out. molbuilder's own files are not there — the wrapper log, the
-instruments, `run.json`, `.concluded` — and the fields only they state are
-simply not stated. *(Until 2026-09-27 such a folder had a status and a viewer,
-and a record of its state and nothing else, or none.)*
+**A run's files are found by molbuilder's names, so the run is ours or it is
+not one.** A SIESTA run made by hand — `input.fdf`, `siesta.out` — or an output
+copied without its deck has no record: its output's name carries no label the
+folder's decks state. *(It was read as a run of its own, its deck guessed from
+SIESTA's `fdf` log, from 2026-09-27 until 2026-10-03 — input molbuilder does
+not take, user, 2026-10-03.)*
 
 | part | the question | read by |
 |---|---|---|
@@ -1468,7 +1462,7 @@ is rows, not a code path.
 | `instruments` | `.scf-timing.log` (a PySCF run: its `.molwatch.log`'s stamped rows) · `.monitor.log` · `.util.csv` | the instruments and `utilisation` (§ 5c) | any | `computation.time.s_per_iter` · `iters_measured`, and per phase `s_per_iter_<phase>` · `iters_measured_<phase>` · `rows_<phase>` (`periodic`, `negf`) · `memory` · `host.machine` |
 | `pyscf-log` | `<base>.log`, PySCF's own logger | `parse/engines/pyscf.read_pyscf_sys_info` | PySCF | `computation.engine` (program, version, python) · `launch.threads_engine` |
 | `run-json` | `run.json` — a flat stage's `<basename>.run.json` | `runrecord.launch_record` | any | `computation.launch` (mode, command, job_id, launched_at, placed_on, continued_from — the run it continued from, `execution/job-system.md` § 5.4) |
-| `concluded` | `<base>-runN.concluded` — or SIESTA's `0_NORMAL_EXIT` where it can belong only to this run | `runrecord.ending`, the one door, through `run_status` | any | `computation.exit` |
+| `concluded` | `<base>-runN.concluded` | `runrecord.ending`, the one door, through `run_status` | any | `computation.exit` |
 | `deck` | the deck · `.gathered-from` | `script_emit.same_calculation` · `runrecord.read_gathered_from` | any | `deck` |
 | `setup` | the parameters fence (§ 5d.3a) · the deck · `fdf.<stamp>.log` | `script_emit.read_parameters_fence` · `script_emit.parameter` · the `siesta-fdf-log` parser | any that writes the fence | `setup.rows` · `setup.engine_only` · `verdict.findings` |
 
@@ -1696,7 +1690,7 @@ verdict are plan § 5t.3's P4, not yet built.*
 ### 5d.7 Where it is read
 
 * **The Results tab's Run panel** (`web/results.md` § 3a) — for every kind of
-  run, a folder read alone included. The picker carries the record from
+  run. The picker carries the record from
   `/api/results/dir` in its selection event; `lib/results/run-panel.js`
   renders it. A viewer may state a fact the panel states, read through the
   same reader (§ 3a there: one source, and a repeat is not a fault).

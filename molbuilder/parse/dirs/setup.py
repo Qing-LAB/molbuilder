@@ -102,8 +102,7 @@ def differs(asked: Any, used: Any) -> Optional[bool]:
 
 def _stage_name(f: "RunFiles") -> Optional[str]:
     from ...identity import parse_stage_token
-    # A folder read alone names no label, and a deck's stage token is read
-    # only under one: a hand-named `h2_01_relax.fdf` is not stage 1.
+    # A deck's stage token is read only under its run's label.
     if f.deck is None or not f.label:
         return None
     parsed = parse_stage_token(f.deck.name, f.label or "")

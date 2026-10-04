@@ -702,23 +702,6 @@ def at_latest_run(directory, files) -> "list[Path]":
     return [f for _key, f in sorted(kept, key=lambda k: k[0], reverse=True)]
 
 
-def carries_a_run(directory) -> bool:
-    """Whether any file here carries a run counter -- ``<label>-run<N>.<role>``,
-    which only molbuilder's wrapper writes: a folder where one of our runs
-    ran, as against one where a run was started by hand."""
-    try:
-        entries = list(Path(directory).iterdir())
-    except OSError:
-        return False
-    for f in entries:
-        if "-" + QUALIFIERS[0] not in f.name or not f.is_file():
-            continue
-        got = parse(f.name, label_of_run_file(f.name))
-        if got is not None and got.run is not None:
-            return True
-    return False
-
-
 def is_carried(f: "RunFile | str", label: str = "") -> bool:
     """Does this name cross rungs?  A carried file states it by having no token.
 

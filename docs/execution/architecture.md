@@ -357,7 +357,7 @@ classDiagram
 | **`Shape`** | 1 | *flat or hierarchical — how deep do this calculation's files go?* | `Shape.named`, from the description — never inferred from the disk |
 | **`StageHome`** | 4 | *where does this stage live, and what is its number?* — read off the disk: a stage with a folder keeps its number, one without takes the next unused ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2) | `stage_home` |
 | **`RunLaunch`** | 1 | *was this run launched — how, where, from what?* — its `run.json`, read through `persist`, its schema checked | `launch_record` |
-| **`Ending`** | 1 | *did this run end on its own, and how?* — molbuilder's marker for that run first (it carries the exit code), else the engine's own end mark where it can belong only to this run | `ending` |
+| **`Ending`** | 1 | *did this run end on its own, and how?* — molbuilder's marker for that run (it carries the exit code); a run our wrapper did not run is not a run of ours | `ending` |
 | **`Continuation`** | 4 | *what does this run start from?* — the run it continues from (by default or named) or none (cold, linked), what that run was, **and the files it carries** | `continuation` |
 | **`Placement`** | 3 | *where does this job go, and what does it ask?* — queue, wall, memory, ranks, cores, GPUs, each with its source, admitted against the target's record | `placement` |
 | **`Attempt`** | 4 | *which try is this, and what was put in it?* | `open_run` — the one opener of a run folder (a stage's attempt, a trial's, a bias point's) |
@@ -432,7 +432,7 @@ job by its count *or* by `use_gpu`; `run.json` read raw *or* through `persist`.
 | **a stage's number and folder** | `stage_home(base, task, stage)` — the number on disk for a stage that has a folder (its directory in the hierarchy, its deck's token in the flat shape, a `.disabled` one included); the next unused for one that has none ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2) | 4 | prep, launch, status, `#N`, what a stage continues from, the transport record, the displacement sweep, a benchmark's folder, Task setup |
 | **prepped** | `prepped(base, task, kind, stage)` — the plan holds the stage's row, or its bench folder a sweep, matched by `identity.stage_key` | 4 | prep's gate, launch's gate, status, the plan's merge, Task setup's folder answer, its Save, its commands |
 | **launched** | `launch_record(run)` — the run's `run.json` (a flat stage's `<stem>.run.json`); one that does not read is an error naming the file, never *launched* or *not launched* | 1 | status, the Run panel, prep (an unlaunched attempt is reused), every launch gate, the transport citation |
-| **how a run ended** | `ending(run)` — the run's own conclusion marker (it carries the exit code), else the engine's end mark where it can belong only to this run: a folder no wrapper of ours ran in, holding one deck — where ours ran, its marker answers, since the engine's end is not the job's | 1 | status (its state is built on it), continuation, the frequency stage, the transport gather and citation, launch's re-launch question, the transport record, a benchmark's trials, the viewers through the server |
+| **how a run ended** | `ending(run)` — the run's own conclusion marker, which carries the exit code; nothing else answers — the engine's own end mark says the engine ended, not the job *(it answered for a run started by hand until 2026-10-03)* | 1 | status (its state is built on it), continuation, the frequency stage, the transport gather and citation, launch's re-launch question, the transport record, a benchmark's trials, the viewers through the server |
 | **a run to build on** | `usable(run)` — it ended on its own, with exit code 0; the default of every hand-over, while a run named with `--from` is taken as said and a structure can be stated relaxed ([`job-system.md`](?doc=execution/job-system.md) § 5.4) | 4 | every hand-over: a continuing stage, the frequency stage's geometry, a transport rung's inputs, a re-launch |
 | **what a run starts from** | `continuation(...)` → `Continuation`, the files it carries included | 4 | prep — checked, written and ledgered as one object — a re-launch, status, Task setup's *Continue from* |
 | **the restart files** | `warm_list(engine, kind, base)` — the calculation's own `warm-files.toml` first, else the shipped one ([`job-contracts.md`](?doc=execution/job-contracts.md)) | 3 | a job's declaration, status's column, the run script's detection and a bias scan's hand-forward — both written at prep from it |
@@ -444,11 +444,11 @@ job by its count *or* by `use_gpu`; `run.json` read raw *or* through `persist`.
 | **the machine** | `machine_for(base, target)` — read once per verb and passed whole | 1 | prep, launch, the printed commands, the Task setup card, `summarize` |
 | **a stage's resolved values** | `resolve` — the ladder's view is made of its answers, never composed a second way | 3 | prep, the preflight's sequence checks, continuation, the frequency stage's force criterion, the transport gather |
 
-**Where two answerers disagreed, the door's answer is the one kept**, and each
-disagreement is a case of the door's table — a stage removed after its prep
-(the numbers), an output that ended with no marker (the end), a calculation
-whose own list withholds `.DM` (the restart files), `--gpus` on a run that does
-not use a GPU (the request). A door is asked; it is never worked around.
+**Where two answerers disagreed, the door's answer is the one kept** — a stage
+removed after its prep (the numbers), an output that ended with no marker (the
+end), a calculation whose own list withholds `.DM` (the restart files), `--gpus`
+on a run that does not use a GPU (the request). A door is asked; it is never
+worked around.
 
 ---
 
