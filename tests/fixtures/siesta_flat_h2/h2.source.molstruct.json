@@ -1,0 +1,38 @@
+{
+  "schema_version": 10,
+  "n_atoms_total": 2,
+  "structure_hash": "e4a43b894d43b9a06d8ec416cf541c5097f499ff8fd2999509e5b580c047efa2",
+  "regions": {
+    "frozen_atoms": [
+      0
+    ]
+  },
+  "cell": [
+    [
+      10.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      10.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      10.0
+    ]
+  ],
+  "engine_offset": null,
+  "axis_kind": [
+    "isolated",
+    "isolated",
+    "isolated"
+  ],
+  "vacuum": null,
+  "annotations": {},
+  "selection_rules": {},
+  "created_by": "molbuilder",
+  "created_at": "2026-10-04T15:23:33Z"
+}

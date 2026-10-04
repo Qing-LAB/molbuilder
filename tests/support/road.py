@@ -279,7 +279,10 @@ def calls_made(calls: Path):
 # and the target named as the row's own prep names them; `disabled` -- the
 # stages then disabled through Task setup's Save; `removed` / `added` -- the
 # stages then removed, or added (`{name, at}`, `at` the place, the end when
-# absent), through the same Save; `own_warm_files` -- the calculation's own restart-file list, the engine's
+# absent), through the same Save; `stand_in` -- what the suite's stand-in
+# engine does on the row's launches (`_road_stand_in`: `rc`,
+# `leaves_restart`); `own_warm_files` -- the calculation's own restart-file
+# list, the engine's
 # copied beside `task.json` with `withhold` / `add` (`_road_own_warm_files`),
 # before anything is prepped; `stage` -- the
 # stage the
@@ -289,7 +292,9 @@ def calls_made(calls: Path):
 # given.
 #
 # AFTER PREP, whatever it answered: the folders it left (`made`, paths
-# under the calculation that exist; `made_lacks`, ones that do not), the
+# under the calculation that exist; `made_lacks`, ones that do not), how the
+# server answers a viewer about a stage's newest run (`run_answer`: `stage`,
+# `state`, `live` -- `_road_run_answer`), the
 # folder's saved states, newest first
 # (`saved_states`, their notes -- `{stamp}` standing for the time a note
 # leads with, `2026-10-03 14:05:12`), what `status` says of the calculation
@@ -494,6 +499,36 @@ def _road_own_warm_files(case, bundle) -> None:
     (bundle / FILENAME).write_text(text)
 
 
+def _road_stand_in(asked, monkeypatch) -> None:
+    """What the suite's stand-in engine does on this row's launches
+    (`conftest._STUB_BODIES`): end with exit code ``rc``, and -- with
+    ``leaves_restart`` -- leave the restart file SIESTA leaves, empty, so a
+    run can be continued.  The run's records are our wrapper's, written as
+    it concludes; nothing is laid by hand."""
+    if "rc" in asked:
+        monkeypatch.setenv("MB_STAND_IN_RC", str(asked["rc"]))
+    if asked.get("leaves_restart"):
+        monkeypatch.setenv("MB_STAND_IN_LEAVES_XV", "1")
+
+
+def _road_run_answer(want, bundle) -> None:
+    """How the server answers a viewer about a stage's newest run
+    (`parse.dirs.run_answer`, the one door the watch and spectra loads
+    ask): ``want`` holds the stage and the ``state`` and ``live`` expected,
+    asked about the run's own deck where its prep put it."""
+    from molbuilder.jobset.materialize import run_dir, stage_home
+    from molbuilder.parse.dirs import run_answer
+    from molbuilder.runfiles import stem
+    from molbuilder.task import read_task
+    task = read_task(bundle / "task.json")
+    home = stage_home(bundle, task, want["stage"])
+    deck = run_dir(home.dir) / (stem(task.label, home.token) + ".fdf")
+    got = run_answer(str(deck))
+    for key in ("state", "live"):
+        if key in want:
+            assert got.get(key) == want[key], f"{key}: {got}"
+
+
 def _road_after_prep(case, bundle) -> None:
     """What the row's prep left, refused or not: the folder's saved states,
     newest first (`saved_states`), what `status` says of the calculation
@@ -516,6 +551,8 @@ def _road_after_prep(case, bundle) -> None:
             f"{where} was not made: {sorted(p.name for p in bundle.iterdir())}"
     for where in case.get("made_lacks", []):
         assert not (bundle / where).exists(), f"{where} was made"
+    if "run_answer" in case:
+        _road_run_answer(case["run_answer"], bundle)
     if "status_says" in case or "status_lacks" in case:
         st = jobset("status", "--bundle", bundle)
         assert st.exit_code == 0, _one_line(st)
@@ -679,8 +716,12 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         got = CliRunner().invoke(cli, ["checkpoint", "init", "-p",
                                        str(bundle), "-m", "set up"])
         assert got.exit_code == 0, _one_line(got)
+    if "stand_in" in case:
+        _road_stand_in(case["stand_in"], monkeypatch)
     for words in case.get("before", []):
-        got = jobset(*words, "--bundle", bundle, "--target", target)
+        # A machine is named at prep; the other verbs read the one prep set.
+        got = jobset(*words, "--bundle", bundle,
+                     *(("--target", target) if words[0] == "prep" else ()))
         assert got.exit_code == 0, f"{words}: {_one_line(got)}"
     if "disabled" in case:
         _road_disabled(case["disabled"], bundle)

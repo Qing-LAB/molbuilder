@@ -270,6 +270,28 @@ def test_the_merge_upgrades_precision_without_reshaping_the_trajectory(tmp_path)
                       "took the text values")
 
 
+#: A flat calculation of ours, measured on the road (its README says how).
+_OURS = Path(__file__).resolve().parents[1] / "fixtures" / "siesta_flat_h2"
+
+
+def test_a_run_of_ours_takes_the_history_siesta_names_by_its_label():
+    """A run of ours names its output by stage and run index,
+    ``H2_01_coarse-run0.out``, while SIESTA names the history by its
+    ``SystemLabel``, ``H2.MD.nc`` -- so the exact stem never matches, and the
+    one ``.MD.nc`` in the folder is how the output finds its own
+    (`siesta_mdnc.sibling_md_nc`).
+
+    API-LEVEL on a measured fixture: a real run of ours, read where it lies
+    (`tests/fixtures/siesta_flat_h2`, `process/testing.md` § 6).
+
+    MUTATION THIS MUST FAIL AGAINST: the one-candidate rule removed -- the
+    trajectory falls back to the output's four-decimal coordinates."""
+    res = parse(str(_OURS / "H2_01_coarse-run0.out"))
+    assert res.runtime_info.get("mdnc_source") == "H2.MD.nc", res.runtime_info
+    assert res.runtime_info.get("mdnc_coords_upgraded", 0) >= 1, (
+        res.runtime_info)
+
+
 def test_the_merge_keeps_the_input_geometry_as_step_0(tmp_path):
     """The user's requirement, at the level that actually ships it.
 

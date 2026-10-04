@@ -898,12 +898,13 @@ presenters pass (see [`presenters.md`](?doc=web/presenters.md)).
 - `test_results_state_contract_spectra_js.py` — § 4.2's buckets and guards on
   the spectra side, which is a second inspector and not a copy.
 - § 4.1, the run followed by the server's answer:
+  `tests/data/hand_overs.toml` (the server's answer for a run waiting in the
+  queue -- followed -- and for one that ended -- not),
   `test_trajectory_settle_post_load_js.py` (the trajectory settle, as a case
   table) and `test_trajectory_transition_js.py` (its poll loop takes a quiet
-  poll's answer).  *(The server's half -- `run` on every answer, the run's end
-  read before the file's last read -- and the spectra viewer letting a run go
-  had tests that made the run by copying an output; they were retired
-  2026-10-03, `process/testing.md` § 6.)*
+  poll's answer).  *(The run's end read before the file's last read, and the
+  spectra viewer letting a run go, had tests that made the run by copying an
+  output; they were retired 2026-10-03, `process/testing.md` § 6.)*
 
 *(The last two were missing from this list until 2026-09-02, which is how they
 came to be read as tests of a retired design: the vocabulary they use —

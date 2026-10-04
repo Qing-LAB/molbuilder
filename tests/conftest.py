@@ -204,6 +204,16 @@ _STUB_BODIES = {
         "    exit 0\n"
         "fi\n"
         'echo "stub siesta: $*"\n'
+        # WHAT A ROAD ROW ASKS OF THE ENGINE (`support.road`, the row's
+        # `stand_in`), and nothing else: leave the restart file SIESTA leaves,
+        # `<SystemLabel>.XV`, EMPTY -- the carry copies it and never reads it
+        # -- and end with the exit code the row gives.  Our wrapper, running
+        # this, writes the run's records itself; a test never lays them.
+        'if [ -n "${MB_STAND_IN_LEAVES_XV:-}" ] && [ -f "${1:-}" ]; then\n'
+        "    _label=$(awk 'tolower($1)==\"systemlabel\"{print $2; exit}' \"$1\")\n"
+        '    [ -n "$_label" ] && : > "$_label.XV"\n'
+        "fi\n"
+        'exit "${MB_STAND_IN_RC:-0}"\n'
     ),
     # Drops its own flags and runs what it was asked to launch, so a
     # `mpirun -np 4 siesta ...` still reaches the siesta stub above.

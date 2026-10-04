@@ -1,0 +1,70 @@
+# WHAT A STAGE BUILDS ON, AND WHETHER A VIEWER FOLLOWS A RUN --
+# `docs/execution/job-system.md` § 5.4, `docs/execution/architecture.md`
+# § 3.2 (`ending`, `usable`, `continuation`), `docs/web/results.md` § 4.1.
+#
+# Every run here is made on the road: `jobset prep` and `jobset launch`, our
+# wrapper running the suite's stand-in engine, which ends as a row says
+# (`stand_in`) -- so each run's records are the ones our code writes as it
+# concludes, never laid by a test (`process/testing.md` § 6: a run is made
+# on the road, or not at all).
+#
+# `tests/test_hand_overs.py` runs every case through the one runner every
+# contract table shares (`tests/support/road.py`, `run_road_case`, whose
+# header names each key).
+#
+# A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
+
+machine = "workstation"
+
+[run_base.siesta]
+mpi_np = 1
+omp_threads = 1
+
+# The queue a row on a machine with a scheduler names, and its wall and memory.
+[allocation_base]
+domain = "cpu"
+time = "01:00:00"
+mem = "4G"
+
+[[queues]]
+name = "cpu"
+partition = "cpu"
+qos = "public"
+max_time = "1-00:00:00"
+max_cores = 128
+node_types = [{ cores = 128, nodes = 10 }]
+
+[[case]]
+name = "a stage continues from the newest run of the stage before it"
+stand_in = { leaves_restart = true }
+before = [["prep", "run", "coarse"],
+          ["launch", "run", "coarse", "--mode", "direct", "--yes"],
+          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+stage = "medium"
+said = ["continues from 01_coarse/run-1"]
+
+[[case]]
+name = "a run that ended with an error is never built on: the stage after it is refused, saying so"
+stand_in = { rc = 1, leaves_restart = true }
+before = [["prep", "run", "coarse"],
+          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+stage = "medium"
+refused = "which failed (rc=1"
+
+[[case]]
+name = "a run that ended on its own is built on, and no viewer follows it"
+stand_in = { leaves_restart = true }
+before = [["prep", "run", "coarse"],
+          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+stage = "medium"
+said = ["continues from 01_coarse/run-0"]
+run_answer = { stage = "coarse", state = "finished", live = false }
+
+[[case]]
+name = "a run waiting in the queue is followed by the viewers, and the stage after it waits"
+machine = "this"
+before = [["prep", "run", "coarse"],
+          ["launch", "run", "coarse", "--mode", "submit", "--yes"]]
+stage = "medium"
+refused = "which is queued"
+run_answer = { stage = "coarse", state = "queued", live = true }

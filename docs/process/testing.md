@@ -619,6 +619,22 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   called another run's result. *(282 tests and 10 case-table rows were
   retired for it that day, the transport suite's citation fixture and the
   run-ending and viewer cases of plan W55 9b among them.)*
+- **Framework and API tests; end-to-end only when the user asks** *(user,
+  2026-10-04: "you have to rely on more api and framework test rather than
+  fucking e2e test. e2e test is only necessary when i say so")*. A run a
+  framework test needs is made on the road with the suite's **stand-in
+  engine** (`conftest._STUB_BODIES`), which plays the engine's part and no
+  other: a road row says how it ends (`stand_in`: the exit code, and whether
+  it leaves the restart file SIESTA leaves, empty), and our wrapper, running
+  it, writes the run's records as it concludes — so what a stage builds on,
+  what it continues from and whether a viewer follows a run are tested
+  through our own code with no engine (`tests/data/hand_overs.toml`). What
+  depends on the ENGINE's own files — the `.MD.nc`, an `.XV` — is read from a
+  **measured fixture**: a real run of ours, the smallest that shows the
+  mechanism (H2; H2O at most — user, 2026-10-04: *"run are supposed to verify
+  mechanism ... a Au-BDT-Au is too much"*), made once on the road and kept
+  as itself with a README saying how (`tests/fixtures/siesta_flat_h2`). A
+  browser or a real engine in a test is for when the user asks for one.
 - **State-composition tests** — the molview class of bug: a value is correct in
   isolation but wrong once composed with a sibling piece of state. These get an
   explicit test that exercises the *combination*, not each part alone.

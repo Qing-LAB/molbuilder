@@ -1,0 +1,58 @@
+{
+  "schema": "molbuilder/task@1",
+  "engine": {
+    "name": "siesta"
+  },
+  "shape": "flat",
+  "run": {
+    "name": "H2",
+    "id": "H2_H2"
+  },
+  "structure": {
+    "source": "h2.source.xyz",
+    "formula": "H2",
+    "atoms": 2
+  },
+  "varies": [
+    "relax_type",
+    "relax_steps",
+    "relax_force_tol",
+    "relax_max_displ"
+  ],
+  "stages": [
+    {
+      "name": "coarse",
+      "enabled": true,
+      "overrides": {
+        "relax_type": "CG",
+        "relax_steps": 600,
+        "relax_force_tol": 0.05,
+        "relax_max_displ": 0.2
+      }
+    },
+    {
+      "name": "medium",
+      "enabled": true,
+      "overrides": {
+        "relax_type": "Broyden",
+        "relax_steps": 200,
+        "relax_force_tol": 0.04,
+        "relax_max_displ": 0.05
+      }
+    },
+    {
+      "name": "tight",
+      "enabled": false,
+      "overrides": {
+        "relax_type": "Broyden",
+        "relax_steps": 100,
+        "relax_force_tol": 0.01,
+        "relax_max_displ": 0.02
+      }
+    }
+  ],
+  "execution": {
+    "mpi_np": 1,
+    "omp_threads": 1
+  }
+}
