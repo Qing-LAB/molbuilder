@@ -42,7 +42,7 @@ from .plan import resources_text
 # one door with the calculation's folder, so its own list answers.
 from ..warmfiles import warm_list as _warm_list
 from ..paths import attempt_name
-from ..runfiles import is_stage_token
+from ..runfiles import is_stage_token, stem as rf_stem
 
 
 
@@ -253,8 +253,9 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
     ``observed`` is the latest attempt where there is one, and the stage
     container for a flat run (`project-layout.md` § 1.5) — the caller resolves
     that, because *where a run happens* is a layout question and this layer
-    only reads.  ``basename`` narrows the directory to THIS rung's run --
-    the flat shape keeps every stage in one (`Shape.run_basename`).
+    only reads.  ``basename`` is THIS rung's run's stem -- the flat shape
+    keeps every stage in one folder, and an attempt may hold several run
+    indexes.
 
     ``launch`` is the attempt's ``run.json``. It is what separates *queued* from
     *never started*, which no amount of looking at an empty directory can do:
@@ -314,8 +315,7 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, sh, dirs,
     # (`Path(job.script).stem` minus the stage suffix), which is the name
     # the files actually carry.
     job_label = _label_of(job, jobset.name)
-    basename = (sh.run_basename(token, job_label)
-                if (sh is not None and token) else None)
+    basename = rf_stem(job_label, token or None)
     read = []
     for home, volts in _rung_homes(base, task, job.name, d):
         # WHERE the run happened, asked of the layer that decides layout

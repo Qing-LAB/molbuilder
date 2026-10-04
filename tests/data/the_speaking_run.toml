@@ -1,0 +1,33 @@
+# THE RUN A FOLDER SPEAKS FOR -- `docs/model/parse.md` § 5.1, the run door's
+# one rule (`docs/execution/architecture.md` § 3.2): the highest stage
+# launched, then that stage's newest run index.  A file's time decides
+# nothing: a copied or restored folder reorders times, never runs.
+#
+# Every run here is made on the road: `jobset prep` and `jobset launch`, our
+# wrapper running the suite's stand-in engine, which ends as a row says
+# (`stand_in`) -- so each run's files are the ones our code writes, never laid
+# by a test (`process/testing.md` § 6).
+#
+# `tests/test_the_speaking_run.py` runs every case through the one runner
+# every contract table shares (`tests/support/road.py`, `run_road_case`,
+# whose header names each key).
+#
+# A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
+
+machine = "workstation"
+
+[run_base.siesta]
+mpi_np = 1
+omp_threads = 1
+
+[[case]]
+name = "the newest run index speaks, though an earlier run's output is the newer file"
+shape = "flat"
+stand_in = { rc = 1 }
+before = [["prep", "run", "coarse"],
+          ["launch", "run", "coarse", "--mode", "direct", "--yes"],
+          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+touched = ["H2_01_coarse-run0.out"]
+stage = "medium"
+refused = "which failed (rc=1"
+speaks = { stage = "coarse", file = "H2_01_coarse-run1.out" }

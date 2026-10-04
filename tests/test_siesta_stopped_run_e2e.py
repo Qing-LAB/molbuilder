@@ -149,7 +149,7 @@ def test_the_folder_is_failed_and_says_what_stopped_it(stopped):
     from molbuilder.parse.dirs import run_status
     from molbuilder.parse.engines.siesta_grammar import SCF_NOT_CONV_MARKER
 
-    st = run_status(stopped)
+    st = run_status(stopped, "H2_01_coarse")    # the run's stem
     assert st.state == "failed", st
     assert st.detail.startswith("stopped before its end: SCF_NOT_CONV"), st
     # the latest run speaks -- the warm retry's -- and the one before it
@@ -238,7 +238,7 @@ def test_a_rank_that_said_why_only_on_stderr_is_still_heard(stopped,
         "SIESTA's stderr did not reach the session log -- this run cannot "
         "show a rank's stderr, and the premise of the test is wrong")
 
-    st = run_status(run)
+    st = run_status(run, "H2_01_coarse")
     assert st.state == "failed", st
     assert st.detail.startswith("stopped before its end: SCF_NOT_CONV"), st
 

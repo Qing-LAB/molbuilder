@@ -279,20 +279,11 @@ def test_a_flat_rung_that_never_ran_does_not_read_its_siblings_output(tmp_path):
         f"has read its sibling's .out")
 
 
-def test_a_hierarchical_rung_is_found_although_the_shape_names_no_run(tmp_path):
-    """The hierarchy names no run (`Shape.run_basename` is ``None``) and the
-    grammar's answer is the token.
-
-    Both are correct: in the hierarchy the DIRECTORY already selected the rung,
-    and the deck still carries the token because `prep` composes the name the
-    same way in either layout.  So the token narrows nothing there — and must
-    not narrow it to nothing, which is what would happen if a hierarchical
-    deck were named without its stage.
-    """
-    from molbuilder.jobset.runstatus import _stage_state
-    _touch(tmp_path, "bdt_01_tight.out")
-    state, _d = _stage_state(tmp_path, {"mode": "direct"}, None)
-    assert state != "queued" and state != "pending"
+# `test_a_hierarchical_rung_is_found_although_the_shape_names_no_run` stood
+# here until 2026-10-04: a hierarchical rung was asked with no name
+# (`Shape.run_basename` was ``None`` there).  A run is asked about by its
+# stem in either shape now (plan B11, 3b.2), on the road
+# (`tests/test_results_blueprint.py`, the road rows' ``run_answer``).
 
 
 # --------------------------------------------------------------------------- #

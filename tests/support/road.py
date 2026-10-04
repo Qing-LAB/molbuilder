@@ -281,7 +281,9 @@ def calls_made(calls: Path):
 # stages then removed, or added (`{name, at}`, `at` the place, the end when
 # absent), through the same Save; `stand_in` -- what the suite's stand-in
 # engine does on the row's launches (`_road_stand_in`: `rc`,
-# `leaves_restart`); `own_warm_files` -- the calculation's own restart-file
+# `leaves_restart`); `touched` -- files then made the newest in their
+# folder, paths under the calculation, as a copy or a restore leaves a
+# folder's times; `own_warm_files` -- the calculation's own restart-file
 # list, the engine's
 # copied beside `task.json` with `withhold` / `add` (`_road_own_warm_files`),
 # before anything is prepped; `stage` -- the
@@ -298,7 +300,9 @@ def calls_made(calls: Path):
 # file the Task setup card names for a stage on disk as it names it
 # (`card_written`: `{stage, moments}` each -- `_road_card_written`), how the
 # server answers a viewer about a stage's newest run (`run_answer`: `stage`,
-# `state`, `live` -- `_road_run_answer`), the
+# `state`, `live` -- `_road_run_answer`), which file speaks for a stage's
+# run in the folder it ran in (`speaks`: `stage`, `file` -- `_road_speaks`),
+# the
 # folder's saved states, newest first
 # (`saved_states`, their notes -- `{stamp}` standing for the time a note
 # leads with, `2026-10-03 14:05:12`), what `status` says of the calculation
@@ -533,6 +537,27 @@ def _road_run_answer(want, bundle) -> None:
             assert got.get(key) == want[key], f"{key}: {got}"
 
 
+def _road_touched(names, bundle) -> None:
+    """Files made the newest in their folder, as a copy or a restore leaves
+    a folder's times -- which reorder files, never runs."""
+    import time
+    later = time.time() + 120
+    for where in names:
+        os.utime(bundle / where, (later, later))
+
+
+def _road_speaks(want, bundle) -> None:
+    """Which file speaks for a stage's run -- the run door's answer for the
+    folder it ran in (`runs.folder_answer`, `model/parse.md` § 5.1)."""
+    from molbuilder.jobset.materialize import run_dir, stage_home
+    from molbuilder.runs import folder_answer
+    from molbuilder.task import read_task
+    task = read_task(bundle / "task.json")
+    home = stage_home(bundle, task, want["stage"])
+    got = folder_answer(run_dir(home.dir))["status"]
+    assert got and got["active_source"] == want["file"], got
+
+
 def _road_after_prep(case, bundle) -> None:
     """What the row's prep left, refused or not: the folder's saved states,
     newest first (`saved_states`), what `status` says of the calculation
@@ -559,6 +584,8 @@ def _road_after_prep(case, bundle) -> None:
         _road_card_written(case["card_written"], bundle)
     if "run_answer" in case:
         _road_run_answer(case["run_answer"], bundle)
+    if "speaks" in case:
+        _road_speaks(case["speaks"], bundle)
     if "status_says" in case or "status_lacks" in case:
         st = jobset("status", "--bundle", bundle)
         assert st.exit_code == 0, _one_line(st)
@@ -767,6 +794,8 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         got = jobset(*words, "--bundle", bundle,
                      *(("--target", target) if words[0] == "prep" else ()))
         assert got.exit_code == 0, f"{words}: {_one_line(got)}"
+    if "touched" in case:
+        _road_touched(case["touched"], bundle)
     if "disabled" in case:
         _road_disabled(case["disabled"], bundle)
     if "removed" in case or "added" in case:

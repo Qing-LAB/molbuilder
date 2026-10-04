@@ -229,7 +229,7 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
     """
     from ..jobset.materialize import latest_attempt, run_dir
     from ..parse import detect
-    from ..paths import Shape
+    from ..runfiles import stem as rf_stem
     from .stages import STAGE_FACT, TRANSPORT_STAGES
 
     from ..jobset.materialize import ladder_homes
@@ -262,7 +262,7 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
         # (`runrecord.ending`).  The newest attempt by file time spoke until
         # 2026-10-03 (plan W38 M4).
         from ..runrecord import ending
-        basename = Shape.named(task.shape).run_basename(token, label)
+        basename = rf_stem(label, token)
         container, att = next(
             ((c, a) for c, a in cand
              if not ending(run_dir(c), basename).ok), cand[-1])

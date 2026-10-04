@@ -604,9 +604,10 @@ and **there is one convention for it**:
   > no second grammar**: a reader that cuts the token out of a name its own
   > way reads no stage from `<base>-run0.scf-timing.log`,
   > `<base>.runwrap-<stamp>.log` or `<base>.continued-from`, and a stage
-  > `coarse_geom` from geomeTRIC's log *(measured 2026-10-04; the readers that
-  > still do are plan § 0c B11's)*. *(This named `identity.parse_stage_token`
-  > as the reader until 2026-10-04.)*
+  > `coarse_geom` from geomeTRIC's log *(measured 2026-10-04; the two that
+  > still read a name their own way are plan W56's: `runstatus._label_of`,
+  > 3b.3, and the PySCF parser's `_resolve_job_token`, unit 4)*. *(This
+  > named `identity.parse_stage_token` as the reader until 2026-10-04.)*
   >
   > **The underscore is load-bearing.** A hyphen announces *a counter follows*
   > on this document's own terms, and a stage is not a counter — it is a name

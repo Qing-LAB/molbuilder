@@ -61,13 +61,11 @@ try:                                        # inside molbuilder
     from ... import runfiles as _rf
     from ... import runrecord as _rr
     from ... import wrapper_log as _wl
-    from ...identity import parse_stage_token
     from ..engines import _run_ending as _re
 except ImportError:                         # beside a job, as the monitor's
     import runfiles as _rf
     import runrecord as _rr
     import wrapper_log as _wl
-    from identity import parse_stage_token
     import _run_ending as _re
 
 
@@ -92,32 +90,10 @@ except ImportError:                         # beside a job, as the monitor's
 # ---- helpers --------------------------------------------------------- #
 
 
-def _detect_stage(filename: str) -> Optional[int]:
-    """A file's stage ORDINAL, or ``None`` when it carries no stage token.
-
-    The token is ``<NN>_<name>`` (``bdt_au_01_coarse.fdf``) and this returns
-    the ``NN``.  Read through :func:`molbuilder.identity.parse_stage_token`,
-    which is the one place the shape is written down -- the decoder used to
-    carry its own ``-stage(N)`` regex, a second spelling of the emitter's
-    convention that could and did drift from it.
-
-    **Still an int, and deliberately so.**  Decision 27 kept the ordinal in
-    the filename, so ordering by stage stays possible: this function is the
-    first component of the active-file sort key in :func:`run_status`
-    (stage first, mtime second), which is what makes a re-run of an earlier
-    stage stop hijacking the run's reported state.
-
-    *This cited ``_anchor_sort_key`` and "the ``stage`` field of the
-    engine-input envelope" as the other downstream orderers until
-    2026-09-05.  Neither exists: the envelope went with the run decoder on
-    2026-09-04, and ``_anchor_sort_key`` has never been defined anywhere in
-    the tree -- it appeared only in this sentence.*  Had the token carried
-    the name alone, the anchor rule would have lost its sort key and the
-    Results tab its notion of "the active stage"; that is the trap
-    ``staged-runs-implementation-plan.md`` § 8d walked into and § 8e closed.
-    """
-    hit = parse_stage_token(filename)
-    return hit[0] if hit else None
+# `_detect_stage` -- a file's stage ordinal, the first half of the speaking
+# file's sort -- stood here until 2026-10-04.  A run is asked about by its
+# stem, which names the stage, so within it only the run index orders
+# (`model/parse.md` § 5.1; plan B11, 3b.2).
 
 
 def _iso_z(ts: float) -> str:
@@ -129,29 +105,34 @@ def _iso_z(ts: float) -> str:
 # ---- file enumeration ------------------------------------------------ #
 
 
-def _of_run(paths, basename: Optional[str]) -> List[Path]:
+def _of_run(paths, basename: str) -> List[Path]:
     """Those of ``paths`` that are the run ``basename`` names -- a name that
-    reads back under it (`runfiles.parse`) -- or all of them without one."""
-    return [p for p in paths
-            if basename is None or _rf.parse(p.name, basename) is not None]
+    reads back under it (`runfiles.parse`)."""
+    return [p for p in paths if _rf.parse(p.name, basename) is not None]
 
 
-def _enumerate_files(run_dir: Path,
-                     basename: Optional[str] = None) -> Dict[str, List[Path]]:
+def _run_index(path: Path, basename: str) -> int:
+    """The run index ``path``'s name carries under the run's stem, ``-1``
+    for a file of the stage itself (its progress log)."""
+    got = _rf.parse(path.name, basename)
+    return got.run if got is not None and got.run is not None else -1
+
+
+def _enumerate_files(run_dir: Path, basename: str) -> Dict[str, List[Path]]:
     """The run-output files of the run ``basename`` names, keyed by ROLE --
     ``{".out": [...], ".pyscf.log": [...], ".molwatch.log": [...]}`` -- and
     sorted by name within each.  Which files are a run's output is the
     catalogue's question (`runfiles.run_output_roles`, `model/parse.md`
     § 5.5, R-RO1).
 
-    ``basename`` NARROWS THE DIRECTORY TO ONE RUN, and in the flat shape that
-    is the whole question: every stage of a flat calculation shares one
-    directory and is told apart by FILENAME (`project-layout.md` § 1), so a
-    bucket built from the whole directory answers about all of them at once.
-    The caller passes `Shape.run_basename(token, label)` -- ``None`` in the
-    hierarchy, where the directory has already selected the run.  *(A glob,
-    ``<stem>*``, until 2026-10-03, when the run's ending came to be asked of
-    one door by its name.)*
+    ``basename`` NARROWS THE DIRECTORY TO ONE RUN -- its stem, in either
+    shape: every stage of a flat calculation shares one directory and is
+    told apart by FILENAME (`project-layout.md` § 1), and an attempt's
+    folder may hold several run indexes -- a warm retry re-runs the run
+    script with ``--continue``, which advances the index in place
+    (`runwrap`).  *(A glob, ``<stem>*``, until
+    2026-10-03; ``None`` in the hierarchy, where the folder was taken to
+    select the run, until 2026-10-04.)*
     """
     return {role: _of_run(_rf.find_by_role(run_dir, role), basename)
             for role in _rf.run_output_roles()}
@@ -182,7 +163,7 @@ FINISH_CANNOT_LOAD = "finish cannot load"
 MONITOR_ENDED = "[MONITOR] job ended"
 
 
-def _monitor_ended(run_dir: Path, basename: Optional[str] = None) -> bool:
+def _monitor_ended(run_dir: Path, basename: str) -> bool:
     """Did the latest run's monitor see its process go -- its log's closing
     record, :data:`MONITOR_ENDED`?
 
@@ -196,7 +177,7 @@ def _monitor_ended(run_dir: Path, basename: Optional[str] = None) -> bool:
     """
     for log in _rf.at_latest_run(
             run_dir, _of_run(_rf.find_by_role(run_dir, ".monitor.log"),
-                             basename)):
+                             basename), basename):
         try:
             with log.open(encoding="utf-8", errors="replace") as fh:
                 if any(MONITOR_ENDED in line for line in fh):
@@ -221,8 +202,8 @@ def _finish_failed(concluded: Optional[str]) -> bool:
 # field is what got the decoder deleted, as this module's docstring says.)
 
 
-def _output_endings(paths: List[Path],
-                    run_dir: Path) -> "Dict[str, _re.RunEnding]":
+def _output_endings(paths: List[Path], run_dir: Path,
+                    basename: str) -> "Dict[str, _re.RunEnding]":
     """Each run-output file's ending, by filename — ONE loop, one door.
 
     This was two functions, `_out_conclusions` and `_molwatch_conclusions`,
@@ -252,40 +233,37 @@ def _output_endings(paths: List[Path],
     for path in paths:
         try:
             endings[path.name] = _re.ending_of(
-                path, stderr=_stderr_of(run_dir, path, logs))
+                path, stderr=_stderr_of(run_dir, path, logs, basename))
         except OSError:
             continue
     return endings
 
 
-def _finish_started(run_dir: Path, path: Path) -> bool:
+def _finish_started(run_dir: Path, path: Path, basename: str) -> bool:
     """Did the run that wrote ``path`` begin its job's finish -- does its
     session log (the one :func:`_stderr_of` finds) record it
     (`wrapper_log.FINISH_STARTED`)?  Asked only of an output that ended with
     no conclusion yet, so the log is read in that one case."""
-    log = _stderr_of(run_dir, path, {})
+    log = _stderr_of(run_dir, path, {}, basename)
     return log is not None and _wl.finish_started(log)
 
 
-def _stderr_of(run_dir: Path, path: Path,
-               logs: Dict[str, Dict[Any, Path]]) -> Optional[Path]:
+def _stderr_of(run_dir: Path, path: Path, logs: Dict[str, Dict[Any, Path]],
+               basename: str) -> Optional[Path]:
     """Where the run that wrote ``path`` sent its stderr, when it kept it
     apart: a SIESTA-family output's session log -- the log whose first
     section is that run (`wrapper_log.logs_by_run`), the one the wrapper's
     own ending question reads (`_mb_ending --stderr`).  SIESTA's ``die``
     flushes stdout on node 0 alone, so a rank other than 0 that dies may say
     why only there.  ``None`` for any other output -- a PySCF log takes its
-    stderr in -- and for a run with no log.  ``logs`` holds each label's
-    table for the rest of this walk."""
-    if _rf.role_of(path.name) != ".out":
+    stderr in -- and for a run with no log.  ``basename`` is the run's stem;
+    ``logs`` holds its table for the rest of this walk."""
+    got = _rf.parse(path.name, basename)
+    if got is None or got.role != ".out" or got.run is None:
         return None
-    label = _rf.label_of_run_file(path.name)
-    got = _rf.parse(path.name, label)
-    if got is None or got.run is None:
-        return None
-    if label not in logs:
-        logs[label] = _wl.logs_by_run(run_dir, label)
-    return logs[label].get((got.stage, got.run))
+    if basename not in logs:
+        logs[basename] = _wl.logs_by_run(run_dir, basename)
+    return logs[basename].get((got.stage, got.run))
 
 
 # ---- status + progress ---------------------------------------------- #
@@ -349,7 +327,7 @@ class RunStatus:
 _UNASKED = object()
 
 
-def run_status(run_dir, basename: Optional[str] = None, *,
+def run_status(run_dir, basename: str, *,
                launch: Any = _UNASKED) -> "RunStatus":
     """How is this run doing?  ``{state, detail, last_change_at,
     active_source}``.
@@ -367,15 +345,15 @@ def run_status(run_dir, basename: Optional[str] = None, *,
     role's reader (``_run_ending.ending_of``).  This settles what neither
     can alone:
 
-    * **which file speaks for the directory.**  A folder holds one
-      ``.out`` per run index and one molwatch log per stage; a parser
-      sees one file and cannot pick.  Highest stage, newest mtime.
+    * **which file speaks for the run.**  A folder holds one ``.out`` per
+      run index and one molwatch log per stage; a parser sees one file and
+      cannot pick.  The newest run index (`model/parse.md` § 5.1) -- never a
+      file's time, which a copied or restored folder reorders.
 
-      ``basename`` says WHICH RUN is being asked about -- the deck's stem,
-      in a folder every stage of a flat calculation shares -- and without it
-      this answered about whichever rung ran last: measured 2026-09-08, with
-      a later stage's `.out` present a finished rung read the later rung's
-      "running".
+      ``basename`` says WHICH RUN is being asked about -- its stem, in
+      either shape -- and without it this answered about whichever rung ran
+      last: measured 2026-09-08, with a later stage's `.out` present a
+      finished rung read the later rung's "running".
 
     Callers wanted exactly this and had to take it out of an
     eleven-field summary: ``decode_run_dir`` answered ``status`` plus
@@ -385,7 +363,8 @@ def run_status(run_dir, basename: Optional[str] = None, *,
     run_dir = Path(run_dir)
     files = _enumerate_files(run_dir, basename)
     endings = _output_endings(
-        [p for role in _rf.run_output_roles() for p in files[role]], run_dir)
+        [p for role in _rf.run_output_roles() for p in files[role]], run_dir,
+        basename)
     states = {name: e.run_state or "unknown" for name, e in endings.items()}
     messages = {name: e.error_message for name, e in endings.items()}
     # WHICH OF THEM MAY SPEAK is the catalogue's `output` column, not a rule
@@ -404,7 +383,8 @@ def run_status(run_dir, basename: Optional[str] = None, *,
         launch=launch,
         monitor_ended=lambda: _monitor_ended(run_dir, basename),
         out_messages=messages,
-        finish_started=lambda p: _finish_started(run_dir, p)),
+        finish_started=lambda p: _finish_started(run_dir, p, basename),
+        run_index=lambda p: _run_index(p, basename)),
         endings=endings)
 
 
@@ -423,6 +403,7 @@ def _build_status(out_paths: List[Path],
                   monitor_ended: Callable[[], bool] = lambda: False,
                   out_messages: Optional[Dict[str, Optional[str]]] = None,
                   finish_started: Callable[[Path], bool] = lambda _p: False,
+                  run_index: Callable[[Path], int] = lambda _p: -1,
                   ) -> "RunStatus":
     """Build the status envelope per § 5, over the directory's RESULT
     files — every ``"stdout"`` run output plus each ``"progress"`` one whose
@@ -445,8 +426,9 @@ def _build_status(out_paths: List[Path],
     of 1.)*  Where nothing says anything the run is ``running`` -- not
     finished -- however long it has been quiet (`running-a-job.md` § 4.2).
 
-    ``out_paths`` are the files that may SPEAK; ``last_change_at`` is the
-    speaker's mtime, paired with ``active_source`` beside it.
+    ``out_paths`` are the files that may SPEAK, the run's newest run index
+    speaking (``run_index``); ``last_change_at`` is the speaker's mtime,
+    paired with ``active_source`` beside it.
     """
     end = end if end is not None else _rr.Ending()
     said = end.line
@@ -476,12 +458,9 @@ def _build_status(out_paths: List[Path],
                 f"queued as job {jid}" if jid else
                 f"launched ({launch.get('mode') or '?'}), no output yet"))
         return RunStatus(state="running", detail="no result file yet")
-    # Active source = highest stage, latest mtime.
-    sorted_outs = sorted(
-        out_paths,
-        key=lambda p: (_detect_stage(p.name) or 0, p.stat().st_mtime),
-    )
-    active = sorted_outs[-1]
+    # THE ACTIVE SOURCE: the run's newest run index (`model/parse.md`
+    # § 5.1); within one index the catalogue's order, the input's.
+    active = sorted(out_paths, key=run_index)[-1]
     active_state = out_run_states.get(active.name, "unknown")
     ended = active_state == "ended"
 

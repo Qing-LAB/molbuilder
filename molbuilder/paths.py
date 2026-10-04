@@ -92,21 +92,10 @@ class Shape:
         """
         return token if self.name == "hierarchical" else "."
 
-    def run_basename(self, token: str, label: str) -> "Optional[str]":
-        """The name that narrows :meth:`stage_dir` to **this stage's run** --
-        what `parse.dirs.run_status` and `runrecord.ending` are asked with.
-
-        This is the half that does not exist in the hierarchy's world view.
-        There, the directory has already selected the stage, so anything in
-        it belongs to it: ``None``.  In flat, one directory holds every
-        stage, and they are told apart by the deck's stem carried in each
-        filename (`job-contracts.md § 6.3`) -- so the *name* does the
-        selecting: ``<label>_<token>``.  *(A glob, ``stage_glob``, until
-        2026-10-03, when the run's ending came to be asked of one door by
-        its name.)*
-        """
-        from .runfiles import stem
-        return None if self.name == "hierarchical" else stem(label, token)
+    # `run_basename` -- the stage's stem in the flat shape, ``None`` in the
+    # hierarchy -- stood here until 2026-10-04.  A run is asked about by its
+    # stem in either shape (`runfiles.stem`): an attempt's folder may hold
+    # several run indexes (plan B11, 3b.2).
 
     @property
     def keeps_attempts_as_directories(self) -> bool:

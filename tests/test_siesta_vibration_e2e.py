@@ -520,17 +520,17 @@ def test_a_finish_that_fails_fails_the_job(tmp_path, monkeypatch):
     assert not (attempt / "H2.spectra.json").exists()
     concluded = (attempt / compose("H2", ".concluded", "01_freq", run=0)).read_text()
     assert FINISH_FAILED in concluded and not concluded.startswith("rc=0"), concluded
-    st = run_status(attempt)
+    st = run_status(attempt, "H2_01_freq")
     assert st.state == "failed" and "finish" in st.detail, (st.state, st.detail)
 
     (attempt / compose("H2", ".concluded", "01_freq", run=0)).unlink()
-    st = run_status(attempt)
+    st = run_status(attempt, "H2_01_freq")
     assert st.state == "failed" and "stopped before it concluded" in st.detail, \
         (st.state, st.detail)
     mon = attempt / compose("H2", ".monitor.log", "01_freq", run=0)
     mon.write_text("".join(ln for ln in mon.read_text().splitlines(True)
                            if MONITOR_ENDED not in ln))
-    st = run_status(attempt)
+    st = run_status(attempt, "H2_01_freq")
     assert st.state == "running" and "finish is deriving" in st.detail, \
         (st.state, st.detail)
 
@@ -574,5 +574,5 @@ def test_a_job_that_cannot_finish_itself_stops_before_the_engine(
     assert marker.is_file(), "the stop left no conclusion: it reads queued"
     got = read_concluded(marker.read_text())
     assert got["code"] != 0 and got["note"].startswith(FINISH_CANNOT_LOAD), got
-    st = run_status(attempt, launch=launch_record(attempt))
+    st = run_status(attempt, "H2_01_freq", launch=launch_record(attempt))
     assert st.state == "failed", (st.state, st.detail)

@@ -794,7 +794,7 @@ def _with_the_run(state: Dict[str, Any]
     read before the file's last read, so what a viewer stops on is the
     file's last (`web/results.md` § 4.1)."""
     run = run_answer(state["path"])
-    if run["live"]:
+    if run is not None and run["live"]:
         return run, state, None
     again, err = _refresh_if_changed()
     if err or again is None or again["mtime"] == state["mtime"]:

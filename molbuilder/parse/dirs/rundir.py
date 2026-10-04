@@ -107,13 +107,13 @@ def openable_in(directory: str, calculation: Optional[str] = None
     return None, attempts
 
 
-def run_state_of(directory, basename: Optional[str] = None):
+def run_state_of(directory, basename: str):
     """``(RunStatus, problem)`` -- the run's state through the one door
     (`job.run_status`), asked with its launch record
     (`runrecord.launch_record`) as every reader asks it.  A launch record
     that does not read is the ``problem``, said beside a state the files
     answer without it -- never read as launched or not launched.  The run
-    door (`runs`) asks it, with the run's own basename."""
+    door (`runs`) asks it, with the run's own stem."""
     from molbuilder.runrecord import LaunchRecordError, launch_record
     from .job import run_status
     try:

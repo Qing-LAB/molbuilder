@@ -205,18 +205,6 @@ OUR_FILE_PATTERNS: Sequence[str] = _runfile_patterns()
 #  resolver) in `archive/2026-08-19-staged-runs-implementation-plan.md`  #
 # --------------------------------------------------------------------- #
 
-#: A stage token at the **tail** of a filename: ``_<NN>_<name>``, then the
-#: optional ``-run<N>`` attempt counter, then the extension, and nothing else.
-#:
-#: **One pattern, and it is anchored on purpose.** A label and a stage name may
-#: both contain ``_`` (``STAGE_NAME_RE`` is ``[A-Za-z0-9_]+``), so a loose
-#: search reads a calculation called ``run_01_setup`` as stage 1 *"setup"*.
-#: Anchoring at the end — and, when the label is known, at the front too — is
-#: what removes that ambiguity, which is why the token pattern is written once,
-#: here, rather than as a bare ``(\d{2,})_(\w+)`` a caller could point anywhere.
-_STAGE_TOKEN_TAIL = r"_(\d{2,})_([A-Za-z0-9_]+?)(?:-run\d+)?\.[A-Za-z0-9.]+$"
-
-
 def stage_token(seq: int, name: str) -> str:
     """``<NN>_<name>`` — the one token every per-stage artifact is named from.
 
@@ -307,31 +295,14 @@ _TOKEN_RE = re.compile(r"(\d{2,})_([A-Za-z0-9_]+)")
 def parse_token(token: str) -> Optional[Tuple[int, str]]:
     """The ``(seq, name)`` of a bare stage token -- ``01_coarse`` -- or
     ``None``: the inverse of :func:`stage_token`, for a stage DIRECTORY's
-    name, where :func:`parse_stage_token` reads a filename's tail."""
+    name; a filename's is `runfiles.parse`'s."""
     m = _TOKEN_RE.fullmatch(str(token))
     return (int(m.group(1)), m.group(2)) if m else None
 
 
-def parse_stage_token(filename: str,
-                      label: str = "") -> Optional[Tuple[int, str]]:
-    """The ``(seq, name)`` a filename's stage token carries, or ``None``.
-
-    Anchored at the tail: after the token comes an optional ``-run<N>``
-    counter, then the extension, and nothing else.
-
-    **Pass ``label`` whenever it is known.**  Both a label and a stage name may
-    contain ``_``, so without it a calculation the user called
-    ``run_01_setup`` has a plain deck ``run_01_setup.fdf`` that reads as stage
-    1 *"setup"*.  With it, everything before the token must be exactly the
-    label and the ambiguity is gone.  Callers that genuinely do not know the
-    label get the best-effort read, which is what the old ``-stage<N>`` regex
-    gave them too.
-    """
-    m = (re.fullmatch(re.escape(label) + _STAGE_TOKEN_TAIL, filename) if label
-         else re.search(_STAGE_TOKEN_TAIL, filename))
-    if not m:
-        return None
-    return int(m.group(1)), m.group(2)
+# `parse_stage_token` -- a stage cut from a filename's tail by its own
+# pattern -- stood here until 2026-10-04: a name is read back with its
+# label through `runfiles.parse`, which returns its stage (plan B11, 3b).
 
 
 def seq_text(seq: Optional[int]) -> str:
@@ -643,6 +614,6 @@ def run_id(label: str, formula: str = "", *,
 __all__ = ["LAUNCH_MODE_NOTE", "MAX_LABEL_BYTES", "OUR_FILE_PATTERNS",
            "RestartGroup", "StageRef", "command_stage", "continues",
            "deck_launch", "is_ours", "launch_as_typed", "normalise_id",
-           "parse_stage_token", "render_stage_choices", "render_stage_refs",
+           "render_stage_choices", "render_stage_refs",
            "resolve_stage_ref", "run_id", "seq_text", "stage_key",
            "stage_token"]

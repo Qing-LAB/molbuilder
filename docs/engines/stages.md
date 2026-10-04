@@ -1809,8 +1809,10 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
   `<label>_<NN>_<name>.molwatch.log` beside `<label>_<NN>_<name>.fdf`. One
   naming, derived rather than declared, so there is nothing to keep in step.
   **Landed 2026-08-10**: `molwatch_log_basename` takes the stage's artifact
-  token, the same one the deck carries, and the run decoder reads it back
-  through `identity.parse_stage_token` rather than keeping a second regex.
+  token, the same one the deck carries, and every reader reads it back
+  through the one grammar, `runfiles.parse`, with the run's label rather
+  than keeping a second regex *(through `identity.parse_stage_token` until
+  2026-10-04)*.
 
   That was one rule instead of two, and it was a **small** correction — smaller
   than an earlier draft of this section claimed. *Until it landed*, the log

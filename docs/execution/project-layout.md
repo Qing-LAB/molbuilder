@@ -2335,7 +2335,7 @@ module the job works around.
 | which files here match? | `runfiles.find`, `find_by_role` |
 | which run is this file of, and where are its files? | the run door, `run_of` → `Run` (`architecture.md` § 3.2) |
 | where does this stage live? | `Shape.stage_dir` |
-| which stage directories exist? | `stages_in`; a stage's files in the flat shape, `Shape.run_basename` |
+| which stage directories exist? | `stages_in`; a run's files, by its stem in either shape (`runfiles.stem`) |
 | where does a sweep live? | `bench_container`, `bench_containers_in` |
 | where does a trial run? | `trial_name`, `trial_point`, `trials_in`; `materialize.trial_dir`, `trial_work_dir` |
 | which attempts exist? | `attempt_name`, `attempt_dir`, `attempt_index`, `attempts_in`; `materialize.latest_attempt`, `resolve_attempt` |

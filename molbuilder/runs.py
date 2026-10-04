@@ -238,21 +238,21 @@ def about(path) -> Dict[str, Any]:
     return _row_about(p, label)
 
 
-def run_answer(path) -> Dict[str, Any]:
+def run_answer(path) -> Optional[Dict[str, Any]]:
     """``{state, detail, live}`` -- how the run the file at ``path`` belongs
     to is doing, the one door's answer (`parse.dirs.run_state_of`, asked
     with its launch record), with ``problem`` when that record does not
     read.  ``live`` -- `job.LIVE_STATES` -- is what a Results viewer follows
-    (`web/results.md` § 4.1).  A file of no run of ours answers for its
-    folder alone."""
+    (`web/results.md` § 4.1).  ``None`` for a file of no run of ours, as
+    for an upload: nothing is asked of a folder no calculation claims
+    (`model/parse.md` § 5).  *(It answered for such a file's folder, with
+    no run named, until 2026-10-04: plan B11, 3b.2.)*"""
     from molbuilder.parse.dirs.job import LIVE_STATES
     from molbuilder.parse.dirs.rundir import run_state_of
     run = run_of(path)
-    p = Path(path)
     if run is None:
-        st, problem = run_state_of(p if p.is_dir() else p.parent, None)
-    else:
-        st, problem = run_state_of(run.folder, run.basename)
+        return None
+    st, problem = run_state_of(run.folder, run.basename)
     said: Dict[str, Any] = {"state": st.state, "detail": st.detail,
                             "live": st.state in LIVE_STATES}
     if problem:

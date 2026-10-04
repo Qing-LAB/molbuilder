@@ -724,9 +724,9 @@ stages separable — the filename is the separation, and the person picks one
 name in the system is [`job-contracts.md § 6.3`](?doc=execution/job-contracts.md)
 and the reasoning is [`stages.md § 7`](?doc=engines/stages.md).
 
-`molwatch_log_basename` takes the stage's artifact token, and the run decoder
-reads it back through `identity.parse_stage_token` — one spelling, no second
-regex.
+`molwatch_log_basename` takes the stage's artifact token, and every reader
+reads it back through `runfiles.parse`, with the run's label — one spelling,
+no second regex.
 
 For a charged molecule **`prep`** also drops a `makov_payne_correction.py`
 script next to the `.fdf` (§ 4). And each per-stage `.molwatch.log` carries

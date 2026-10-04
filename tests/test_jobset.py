@@ -879,9 +879,9 @@ def test_a_flat_rung_is_asked_about_by_name_not_by_directory(tmp_path):
     tight = run_status(tmp_path, "bdt_02_tight")
     assert coarse.active_source == old.name
     assert tight.active_source == new.name
-    # The hierarchical answer is unchanged: the DIRECTORY selected the rung,
-    # so no name is passed and the newest file still speaks for it.
-    assert run_status(tmp_path).active_source == new.name
+    # *(A hierarchical folder was asked with no name, its newest file
+    # speaking, until 2026-10-04: a run is asked about by its stem in either
+    # shape, and its newest run index speaks -- plan B11, 3b.2.)*
 
 
 def test_status_fresh_bundle_all_not_started(tmp_path):
@@ -1792,10 +1792,10 @@ def test_hierarchical_tells_stages_apart_by_PATH_and_flat_by_NAME():
     hier, flat = Shape.named("hierarchical"), Shape.named("flat")
 
     assert hier.stage_dir("03_tight") == "03_tight"
-    assert hier.run_basename("03_tight", "JOB") is None  # the dir already chose
-
     assert flat.stage_dir("03_tight") == "."             # a joinable path, not None
-    assert flat.run_basename("03_tight", "JOB") == "JOB_03_tight"
+    # *(`Shape.run_basename` -- the stem in flat, ``None`` in the hierarchy --
+    # was asserted here until 2026-10-04: a run is asked about by its stem
+    # in either shape, `runfiles.stem`.)*
 
 
 def test_only_the_hierarchy_keeps_attempts_as_directories():

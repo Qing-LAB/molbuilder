@@ -254,7 +254,7 @@ def api_spectra_load():
             before = _version(path)
             results = parse_spectra_json(path)
             run = run_answer(path)
-            if not run["live"] and _version(path) != before:
+            if not (run and run["live"]) and _version(path) != before:
                 results = parse_spectra_json(path)
         except SpectraJsonError as exc:
             return _err_load(exc)

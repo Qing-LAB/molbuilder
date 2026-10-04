@@ -560,13 +560,13 @@ each surface's words. A file's own ending is
 #### The call
 
 ```python
-run_status(run_dir, match="*", *, launch=<not asked>) -> RunStatus   # parse/dirs/job.py
+run_status(run_dir, basename, *, launch=<not asked>) -> RunStatus   # parse/dirs/job.py
 ```
 
 | argument | meaning |
 |---|---|
 | `run_dir` | the attempt (`run-<n>/`), or the calculation itself in the flat shape |
-| `basename` | narrows to one run, by its deck's stem: the flat shape keeps every stage in one directory (`Shape.run_basename`; `None` in the hierarchy) |
+| `basename` | the run's stem, `<label>[_<token>]` (`runfiles.stem`), in either shape: the flat shape keeps every stage in one directory, and an attempt's may hold several run indexes |
 | `launch` | `launch_record(dir)` (`runrecord.py`) — the `run.json` dict, or `None`; one that does not read is an error naming the file, never an answer; left out, *not asked* |
 
 | field | holds |
@@ -598,9 +598,13 @@ only once the process started; a progress log (`.molwatch.log`) speaks once its
 footer concludes, because prep seeds it before the engine starts. Each is read
 by its role's scan for ending markers, `_run_ending.ending_of`
 ([`model/parse.md`](?doc=model/parse.md) § 5.4) — not parsed through the
-registry. Of several, the highest stage speaks, then the newest mtime *(user
-ruling, 2026-09-04: a re-run of an earlier rung must not take over the state)*
-— the mtime picks *which* file, never *whether* the run is alive.
+registry. Of several, the newest run index speaks ([`model/parse.md`](?doc=model/parse.md)
+§ 5.1) — the run is asked about by its stem, so its stage is never in
+question *(user ruling, 2026-09-04: a re-run of an earlier rung must not
+take over the state)*; a file's time decides nothing, because a copied or
+restored folder reorders times, never runs *(the newest mtime picked the
+file until 2026-10-04, plan B11)*. The run index picks *which* file, never
+*whether* the run is alive.
 
 #### The order of evidence
 

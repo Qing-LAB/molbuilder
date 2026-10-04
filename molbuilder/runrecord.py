@@ -99,16 +99,16 @@ class Ending:
         return self.code == 0
 
 
-def ending(where, basename: Optional[str] = None) -> Ending:
+def ending(where, basename: str) -> Ending:
     """THE door for *did this run end on its own, and with what exit code?*
     (`execution/architecture.md` § 3.2; plan W38 F3) -- asked by status,
     whose state is built on it, by every hand-over
     (`jobset.continuation.usable`), launch's re-launch question and the
     transport citation.
 
-    ``where`` is the run's folder; ``basename`` its deck's stem,
-    ``<label>_<token>``, where the folder holds several runs (a flat
-    calculation's) -- without it the folder's own run answers (an attempt).
+    ``where`` is the run's folder; ``basename`` its stem, ``<label>_<token>``
+    -- the run's own, in either shape: an attempt's folder may hold several
+    run indexes, and a flat calculation's every stage.
 
     **Molbuilder's own marker first** -- ``<basename>-run<N>.concluded``,
     the wrapper's last act on its main path: an engine error still reaches
@@ -129,8 +129,8 @@ def ending(where, basename: Optional[str] = None) -> Ending:
     """
     d = Path(where)
     marks = [m for m in _rf.find_by_role(d, ".concluded")
-             if basename is None or _rf.parse(m.name, basename) is not None]
-    latest = _rf.at_latest_run(d, marks)
+             if _rf.parse(m.name, basename) is not None]
+    latest = _rf.at_latest_run(d, marks, basename)
     if latest:
         try:
             text = latest[0].read_text(encoding="utf-8")

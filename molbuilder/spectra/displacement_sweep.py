@@ -136,7 +136,7 @@ def collect_sweep(base_dir, task, *,
     from ..parse.errors import ParseError
     from ..paths import Shape
     from ..pyscf.stages import force_constant_stages
-    from ..runfiles import compose
+    from ..runfiles import compose, stem
     from ..sidecars.spectra import SpectraJsonError, parse_spectra_json
     from ..template import catalogue, one
 
@@ -191,7 +191,8 @@ def collect_sweep(base_dir, task, *,
             continue
         spectrum = attempt / spectrum_name
         if not spectrum.is_file():
-            st = run_status(attempt, launch=launch_record(attempt))
+            st = run_status(attempt, stem(task.label, token),
+                            launch=launch_record(attempt))
             entry = {"stage": name, "attempt": rel(attempt),
                      "state": st.state, "detail": st.detail}
             if st.state in ("pending", "queued", "running"):

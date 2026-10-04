@@ -48,7 +48,7 @@ from typing import Optional
 
 #: A stage artifact token: `01_coarse`, `02_electrode_L`.  The ordinal is
 #: **two or more** digits and the name is ``[A-Za-z0-9_]+`` -- `identity.py`'s
-#: ``STAGE_NAME_RE`` and ``_STAGE_TOKEN_TAIL``, which own the word itself; this
+#: ``STAGE_NAME_RE`` and ``stage_token``, which own the word itself; this
 #: is only the shape a NAME may carry, so a token that module would reject
 #: cannot reach a filename through here either.
 #:
@@ -700,37 +700,33 @@ def latest_run(directory, label: str, *,
     return max(runs) if runs else None
 
 
-def label_of_run_file(name: str) -> str:
-    """The label a per-run file, ``<label>-run<N>.<role>``, carries -- what
-    :func:`parse` needs to read the name back, for a file met before anything
-    has said whose it is: a conclusion marker, a monitor log.  The counter
-    keyword is :data:`QUALIFIERS`'.  *(It was `parse/dirs/job.py`'s own until
-    2026-10-03, when the run record's door came to need it too.)*"""
-    cut = name.rfind("-" + QUALIFIERS[0])
-    return name[:cut] if cut > 0 else name
+def at_latest_run(directory, files, stem: str) -> "list[Path]":
+    """Those of ``files`` that belong to the run ``stem`` names at its LATEST
+    run index, newest first.
 
+    A per-run file counts only at the HIGHEST index any per-run file of the
+    run reached, across every role: a warm-retry chain execs a fresh wrapper
+    per run, so an earlier index's file beside a newer run's is a previous
+    run's -- its goodbye, or its monitor's -- and says nothing about the run
+    that followed it.  Across every role, because an engine that dies before
+    printing leaves a marker and no output at all.
 
-def at_latest_run(directory, files) -> "list[Path]":
-    """Those of ``files`` that belong to their label's LATEST run, newest
-    first.
-
-    A per-run file counts only at the HIGHEST index any per-run file of its
-    label reached, across every role: a warm-retry chain execs a fresh
-    wrapper per run, so an earlier index's file beside a newer run's is a
-    previous run's -- its goodbye, or its monitor's -- and says nothing about
-    the run that followed it.  Across every role, because an engine that
-    dies before printing leaves a marker and no output at all.
+    ``stem`` is the run's own, ``<label>[_<stage>]`` -- its caller's, who
+    knows which run it asks about (`execution/architecture.md` § 3.2).  The
+    run index orders; a file's time does not (`model/parse.md` § 5.1).
+    *(The stem was cut off each name, everything before ``-run``, by
+    `label_of_run_file`, and file times broke ties, until 2026-10-04: plan
+    B11.)*
     """
     d = Path(directory)
+    newest = latest_run(d, stem)
     kept = []
     for f in files:
-        label = label_of_run_file(f.name)
-        got = parse(f.name, label)
+        got = parse(f.name, stem)
         idx = got.run if got else None
-        newest = latest_run(d, label)
         if newest is not None and idx is not None and idx < newest:
             continue
-        kept.append(((idx if idx is not None else -1, f.stat().st_mtime), f))
+        kept.append((idx if idx is not None else -1, f))
     return [f for _key, f in sorted(kept, key=lambda k: k[0], reverse=True)]
 
 

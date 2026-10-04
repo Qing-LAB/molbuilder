@@ -77,7 +77,7 @@ def _what_it_is(concluded: Optional[str], state: Optional[str]) -> str:
         state, "NOT concluded -- stopped without its conclusion marker")
 
 
-def usable(where, basename: Optional[str] = None) -> bool:
+def usable(where, basename: str) -> bool:
     """THE RULE FOR A RUN TO BUILD ON (`execution/architecture.md` § 3.2,
     `job-system.md` § 5.4): it ended on its own with exit code 0
     (`runrecord.ending`).  The default of every hand-over -- a continuing
@@ -118,7 +118,7 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     try:
         launch = (launch_record(attempt) if sh.keeps_attempts_as_directories
                   else launch_record(container, basename=stem))
-        state = run_status(attempt, sh.run_basename(token, task.label),
+        state = run_status(attempt, stem,
                            launch=launch).state
     except Exception:                                    # noqa: BLE001
         state = None
