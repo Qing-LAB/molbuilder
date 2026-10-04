@@ -576,7 +576,15 @@ def find(directory, label: str, *,
          roles: "tuple[str, ...]" = (),
          stage: Optional[str] = None,
          run: Optional[int] = None) -> "list[tuple[Path, RunFile]]":
-    """Our files in *directory*, read back — the counterpart of :func:`compose`.
+    """The label's files in *directory*, read back — the counterpart of
+    :func:`compose`: molbuilder's, and the engine's own named on the label
+    (SIESTA's ``<label>.XV``, PySCF's ``<label>.chk`` -- the carried files of
+    `job-contracts.md` § 2.2a), each in the role its name spells.  Which of
+    them molbuilder wrote is the catalogue's question (:func:`row_for`, the
+    run door's `about`): what molbuilder did not write, under the run's
+    name, is the engine's -- found by that name, never by a list of what an
+    engine writes (§ 4.2).  *(This line said "our files" until 2026-10-04,
+    and read as if the engine's were left out: plan D24.)*
 
     **`project-layout.md` § 4.5: for every name it composes, the framework
     owns the search.**  Two callers spelled ``glob(f"{basename}-run*.{suffix}")``
@@ -588,9 +596,11 @@ def find(directory, label: str, *,
     Returns ``(path, RunFile)`` pairs, sorted by run index then name, so a
     caller that wants the latest takes the last and one that wants them all
     walks in order.  **The parsing is :func:`parse`'s**, not a second reader:
-    a name this module cannot read is not ours and is left out, which is what
-    keeps a foreign file in the same directory from being reported as an
-    attempt.
+    a name that does not read back with this label -- another label's, a
+    file foreign to the run -- is left out, which is what keeps a foreign
+    file in the same directory from being reported as an attempt.  A
+    question with a ``stage`` never meets an engine's file: those carry no
+    token.
 
     ``role`` narrows to one, and it is an EQUALITY on the declared role -- pass
     the catalogue's spelling, template and all (``".runwrap-{stamp}.log"``).
