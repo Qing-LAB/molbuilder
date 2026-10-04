@@ -22,24 +22,6 @@ mpi_np = 2
 omp_threads = 1
 
 [[case]]
-name = "molbuilder's list: the next stage takes the density the stage before left, and status counts it"
-before = [["prep", "run", "coarse"]]
-ran = { files = ["H2.DM"] }
-stage = "medium"
-said = ["copied H2.XV, H2.DM"]
-status_says = ["H2.XV, H2.DM"]
-
-[[case]]
-name = "a calculation's own list that withholds .DM is followed by every reader -- the next stage does not take it, and status does not count it"
-own_warm_files = { withhold = [".DM"] }
-before = [["prep", "run", "coarse"]]
-ran = { files = ["H2.DM"] }
-stage = "medium"
-said = ["continues from 01_coarse/run-0", "copied H2.XV"]
-said_lacks = ["H2.DM"]
-status_lacks = ["H2.DM"]
-
-[[case]]
 name = "a restart file a calculation's own list adds is one its run script checks for"
 own_warm_files = { add = [".NEWSTATE"] }
 run_sh = ["NEWSTATE"]

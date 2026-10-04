@@ -198,39 +198,6 @@ def test_an_empty_ask_says_so_rather_than_printing_a_header():
 #  the mode itself                                                       #
 # --------------------------------------------------------------------- #
 
-def test_asking_writes_NOTHING_to_the_tree(tmp_path, monkeypatch):
-    """`--mode ask` is a question, and a question must not write.  Until
-    2026-08-28 asking about a LAUNCHED hierarchical stage opened
-    run-<n+1> and copied the warm files -- from an attempt that could
-    still be running (a torn .DM/.XV copy) -- and the fresh empty attempt
-    then hid the running one from `status`, which reports the latest.
-    Found live during the full review: one ask, and a running relax
-    vanished from the status table."""
-    from molbuilder.paths import attempts_in
-    from molbuilder.runrecord import write_launch
-    from molbuilder.jobset.model import Job, JobSet, Resources
-    from molbuilder.jobset.submit import submit_jobset
-
-    js = JobSet(name="J", engine="siesta", kind="ladder", shared=[],
-                jobs=[Job(name="coarse", script="J_01_coarse.fdf",
-                          resources=Resources(mpi_np=2))])
-    base = tmp_path
-    d = base / "01_coarse"
-    (d / "run-0").mkdir(parents=True)
-    (d / "run-0" / "J_01_coarse.fdf").write_text("SystemLabel J\n")
-    (base / "J_01_coarse.fdf").write_text("SystemLabel J\n")
-    (d / "run-0" / "J.XV").write_text("warm state, mid-flight")
-    write_launch(d / "run-0", mode="direct", command=["bash", "x"])
-
-    before = attempts_in(d)
-    try:
-        submit_jobset(js, base, mode="ask", only="coarse", dry_run=False)
-    except Exception:
-        pass          # the refusal text is not this test's subject
-    assert attempts_in(d) == before, (
-        "asking opened a new attempt -- a question verb wrote to the tree")
-    assert not (d / "run-1").exists()
-
 
 # --------------------------------------------------------------------- #
 #  what `launch --mode ask` says, on the road a person takes             #

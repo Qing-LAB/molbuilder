@@ -1,6 +1,9 @@
-"""The road a test drives -- `jobset init`, `prep`, `launch` -- and the two
-things a test may put beside it: a machine whose record names queues, with a
-scheduler that queues nothing, and a run that has already happened.
+"""The road a test drives -- `jobset init`, `prep`, `launch` -- and the one
+thing a test may put beside it: a machine whose record names queues, with a
+scheduler that queues nothing.  A run is made on the road or not at all: an
+output copied into a stage's folder, or a conclusion written by hand, is a
+run that never happened (user, 2026-10-03; `support.road.a_finished_run` and
+every test built on it were retired that day).
 
 WHY THIS FILE EXISTS.  A test drives the designed workflow (user, 2026-09-23:
 *"tests should be using our established jobset workflow, unless you have a
@@ -22,24 +25,16 @@ from the road it imitates.  The steps live here once.
 * :func:`gpus_given` -- the GPUs a machine hands a job, with an
   `nvidia-smi` that knows them;
 * :func:`strip_preamble_activation` -- a generated run script, runnable in
-  a bare shell: its preamble and environment activation cut out;
-* :func:`a_finished_run` -- the measured H2 relaxation
-  (``tests/fixtures/siesta_relax``, its README says what it pins), put where
-  a run of the stage would have left it: the one thing the road cannot make
-  without an engine.
+  a bare shell: its preamble and environment activation cut out.
 """
 from __future__ import annotations
 
 import os
 import shlex
-import shutil
 from pathlib import Path
 
 import numpy as np
 
-#: The measured relaxation a finished run stands on.
-RELAX = (Path(__file__).resolve().parent.parent / "fixtures" / "siesta_relax"
-         / "01_relax" / "run-0")
 
 #: Sol's own answer to `sbatch --test-only`, verbatim (2026-08-27).
 SOL_PREDICTION = ("sbatch: Job 62266174 to start at 2026-08-27T11:22:03 a "
@@ -228,30 +223,6 @@ def calls_made(calls: Path):
     return out
 
 
-def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
-                   rc: int = 0, tolerance: str = "0.0100",
-                   concluded: bool = True,
-                   output: "str | None" = None) -> None:
-    """A run of the stage ``stem`` names, ended, in ``where``: the measured
-    relaxation's output and geometry -- and, when it ``concluded``, its
-    conclusion marker.  A failed one (``rc`` nonzero) died partway, so its
-    output stops before the engine's end, unless ``output`` says how it
-    ended: ``"ended"`` -- the engine's end, whatever the exit code --
-    ``"cut"``, or ``"none"``: an engine that died before printing a line."""
-    output = output or ("ended" if rc == 0 else "cut")
-    text = (RELAX / "H2_01_relax-run0.out").read_text().replace(
-        "Force tolerance                             =     0.0100 eV/Ang",
-        f"Force tolerance                             =     {tolerance} "
-        f"eV/Ang")
-    if output != "none":
-        (where / f"{stem}-run0.out").write_text(
-            text if output == "ended" else text[: len(text) // 3])
-    shutil.copy2(RELAX / "H2.XV", where / "H2.XV")
-    if concluded:
-        (where / f"{stem}-run0.concluded").write_text(
-            f"rc={rc} at Thu Sep 24 02:38:51 PM MST 2026\n")
-
-
 # --------------------------------------------------------------------- #
 #  ONE RUNNER FOR A CONTRACT'S CASE TABLE                               #
 # --------------------------------------------------------------------- #
@@ -308,10 +279,7 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # and the target named as the row's own prep names them; `disabled` -- the
 # stages then disabled through Task setup's Save; `removed` / `added` -- the
 # stages then removed, or added (`{name, at}`, `at` the place, the end when
-# absent), through the same Save; `ran` -- a stage's run then laid down as it
-# ended, where its prep put it (`_road_ran`: `stage`, `rc`, `concluded`,
-# `output`, `engine_mark`, `monitor_ended`, `launch_record`, `files`);
-# `own_warm_files` -- the calculation's own restart-file list, the engine's
+# absent), through the same Save; `own_warm_files` -- the calculation's own restart-file list, the engine's
 # copied beside `task.json` with `withhold` / `add` (`_road_own_warm_files`),
 # before anything is prepped; `stage` -- the
 # stage the
@@ -526,41 +494,6 @@ def _road_own_warm_files(case, bundle) -> None:
     (bundle / FILENAME).write_text(text)
 
 
-def _road_ran(ran, bundle) -> None:
-    """The stage's run, ended as the row says (``ran``), laid where its prep
-    put it -- its newest attempt; the calculation's folder in the flat
-    shape: the measured relaxation (:func:`a_finished_run` -- ``rc``,
-    ``concluded``, ``output``), SIESTA's own ``0_NORMAL_EXIT`` beside it
-    (``engine_mark``), the monitor's closing record (``monitor_ended``: the
-    process seen to go), the run's launch record, as its text
-    (``launch_record``), and more of the run's files by name (``files``).
-    ``stage`` is ``coarse`` unless given."""
-    from molbuilder.jobset.materialize import run_dir, stage_home
-    from molbuilder.parse.dirs.job import MONITOR_ENDED
-    from molbuilder.runfiles import stem
-    from molbuilder.runrecord import ENGINE_END_MARK
-    from molbuilder.task import read_task
-    task = read_task(bundle / "task.json")
-    home = stage_home(bundle, task, ran.get("stage", "coarse"))
-    where, name = run_dir(home.dir), stem(task.label, home.token)
-    a_finished_run(where, stem=name, rc=ran.get("rc", 0),
-                   concluded=ran.get("concluded", True),
-                   output=ran.get("output"))
-    if ran.get("engine_mark"):
-        (where / ENGINE_END_MARK).write_text("SIESTA completed, MPI exit: 0\n")
-    if ran.get("monitor_ended"):
-        (where / f"{name}-run0.monitor.log").write_text(
-            f"[12:00:00] [INFO ] {MONITOR_ENDED}\n")
-    for name in ran.get("files", []):
-        (where / name).write_text("state\n")
-    if "launch_record" in ran:
-        from molbuilder.paths import Shape
-        from molbuilder.runrecord import launch_record_path
-        flat = not Shape.named(task.shape).keeps_attempts_as_directories
-        launch_record_path(where, name if flat else None).write_text(
-            ran["launch_record"])
-
-
 def _road_after_prep(case, bundle) -> None:
     """What the row's prep left, refused or not: the folder's saved states,
     newest first (`saved_states`), what `status` says of the calculation
@@ -753,8 +686,6 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         _road_disabled(case["disabled"], bundle)
     if "removed" in case or "added" in case:
         _road_ladder_edited(case, bundle)
-    if "ran" in case:
-        _road_ran(case["ran"], bundle)
     kind = "bench" if "bench" in case else "run"
     r = jobset("prep", kind, case.get("stage", "coarse"), "--bundle", bundle,
                "--target", target, *case.get("prep", []),

@@ -27,8 +27,7 @@ from __future__ import annotations
 
 import pytest
 
-from support.road import (a_finished_run, describe_h2, each_is_taken, jobset,
-                          printed_commands)
+from support.road import describe_h2, each_is_taken, jobset, printed_commands
 
 
 def _described(tmp_path, monkeypatch, **kw):
@@ -43,45 +42,6 @@ def _described(tmp_path, monkeypatch, **kw):
     d["allocation"] = {"time": "0-01:00:00", "mem": "8G"}
     tj.write_text(json.dumps(d, indent=2))
     return bundle
-
-
-def test_every_command_a_refusal_or_a_next_step_prints_is_taken(
-        tmp_path, monkeypatch):
-    """`prep run` and `launch run` naming no stage offer the stages each
-    takes and the command for the first, the launch with its mode; the prep
-    it offers, typed back, names its launch as the next step; `prep run
-    medium` before coarse has run is refused, naming how to run coarse and
-    how to start medium cold; `status` names the next one.  Each line, typed
-    back from outside the calculation, is taken -- and none is a prep of a
-    stage already prepped (`job-system.md` § 5.0; the order of this test
-    changed with that rule, 2026-10-02).
-
-    MUTATIONS THIS MUST FAIL AGAINST: a launch line printing
-    `--mode submit|direct`; a printed command naming no calculation; a
-    stage-less refusal offering no command, a `<stage>`, or a launch with no
-    mode."""
-    bundle = _described(tmp_path, monkeypatch)
-    r = jobset("prep", "run", "--target", "this", "--bundle", bundle)
-    assert r.exit_code != 0, r.output
-    offered = list(printed_commands(r.output))
-    assert offered and offered[0][:3] == ["prep", "run", "coarse"], r.output
-    r = jobset(*offered[0])                     # typed back, as printed
-    assert r.exit_code == 0, r.output
-    assert each_is_taken(r.output), r.output    # its next step: the launch
-
-    r = jobset("launch", "run", "--mode", "direct", "--bundle", bundle)
-    assert r.exit_code != 0, r.output
-    assert each_is_taken(r.output), r.output    # the first stage's launch
-
-    r = jobset("prep", "run", "medium", "--bundle", bundle,
-               "--target", "this")
-    assert r.exit_code != 0, r.output
-    assert each_is_taken(r.output) >= 2         # coarse's launch, --cold
-
-    a_finished_run(bundle / "01_coarse" / "run-0")
-    r = jobset("status", "--bundle", bundle)
-    assert r.exit_code == 0, r.output
-    assert each_is_taken(r.output), r.output
 
 
 def test_the_lines_task_setup_shows_are_the_terminals_and_are_taken(

@@ -76,21 +76,6 @@ def test_the_deck_prints_the_end_line_its_reader_looks_for(tmp_path,
         == "ended"
 
 
-def test_a_caught_failure_above_the_end_line_is_still_a_finished_run(
-        tmp_path):
-    """The real shape, from `BDT/optimization/BDT-only-pySCF`: the frequency
-    analysis raised, the script CAUGHT it, said so, and went on to write the
-    optimized geometry and print its end line.  The run ended -- the energy
-    and the geometry are on disk -- so the end line outranks the report.
-    """
-    text = ("=== Stage: harmonic frequencies + thermochemistry ===\n"
-            "Frequency analysis FAILED: unsupported format string passed to "
-            "numpy.ndarray.__format__\n"
-            "Wrote /tmp/pyscf_relax_optimized.xyz\n"
-            f"\n{PYSCF_END_MARKER} 145.8 s\n")
-    assert _pyscf(tmp_path, text).run_state == "ended"
-
-
 def test_an_uncaught_exception_is_stopped_and_names_its_own_line(tmp_path):
     """Python's traceback IS sniffed, because it is Python's shape and not
     one we print -- and the sentence a person wants is the exception line at

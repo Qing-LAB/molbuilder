@@ -226,35 +226,3 @@ def xv_file(path, struct=None):
                         *xyz, 0.0, 0.0, 0.0))
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")
     return path
-
-
-def job_run_dir(tmp_path, out_names=("hemeC-stage2-run3-finished-42fr.out",),
-                label="junction"):
-    """A run directory with INPUT and OUTPUT, both under test control.
-
-    The input is rendered from the junction; the output is one of the FROZEN
-    SIESTA logs in ``tests/watch/fixtures/siesta_frozen/`` -- real engine
-    output, checked in beside the tests, reviewed when it changes.
-
-    Why not invent the ``.out``: a hand-written one would test my guess at
-    SIESTA's format rather than SIESTA's format.  Why not point at
-    ``projects/``: that is the user's record, its relevance is unconfirmed, and
-    a missing directory turns the test into a silent skip.  A frozen fixture is
-    neither.
-
-    ``out_names`` takes more than one for the multi-stage cases (several
-    ``.out`` files in one directory, each its own plot bucket).
-    """
-    import shutil
-    from pathlib import Path as _P
-
-    fixtures = _P(__file__).resolve().parents[1] / "watch" / "fixtures" / "siesta_frozen"
-    run = run_dir(tmp_path, label=label)
-    for name in out_names:
-        src = fixtures / name
-        if not src.is_file():                     # pragma: no cover
-            raise AssertionError(
-                f"frozen SIESTA fixture missing: {src}.  These live in the "
-                f"test tree on purpose -- do not repoint this at projects/.")
-        shutil.copyfile(src, run / name)
-    return run

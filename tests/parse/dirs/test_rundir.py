@@ -34,7 +34,6 @@ import pytest
 from molbuilder.parse import parse_dir
 from molbuilder.parse.dirs import openable_in
 from molbuilder.parse.errors import UnknownFormatError
-from molbuilder.parse.types import RunDirResult
 
 
 def _live_molwatch(run, name: str) -> pathlib.Path:
@@ -60,32 +59,6 @@ def _live_molwatch(run, name: str) -> pathlib.Path:
         "==== molwatch step 0 end ====\n",
         encoding="utf-8")
     return p
-
-
-def test_the_registry_answers_for_a_run_directory(tmp_path):
-    """`parse_dir(<a run directory>)` returns the composed answer.
-
-    This is step 1's whole point.  `model/parse.md` § 5's banner said
-    `parse_dir` and `detect` "can only raise" on a directory, for want of a
-    registered DirParser -- so every consumer reached past the registry and
-    called `run_status`, `_enumerate_files`, `engine_of` and the web layer's
-    private resolver by name, and the one consumer that CANNOT import Python
-    guessed from filenames instead.
-    """
-    from support.junction import job_run_dir
-    run = job_run_dir(tmp_path)
-    (run / "junction-run0.concluded").write_text("rc=0 at then\n")
-
-    got = parse_dir(run)
-
-    assert isinstance(got, RunDirResult), (
-        "the registry dispatched somewhere else -- there is one DirParser")
-    assert got.parser_name == "jobdir"
-    assert got.engine == "siesta"
-    assert got.status["state"] == "finished", got.status
-    # THE RECORD rides the same answer (`model/parse.md` § 5d): what ran,
-    # judged by the same `run_status` call the status above is.
-    assert got.record["verdict"]["state"] == got.status["state"], got.record
 
 
 def test_a_prepped_stage_that_has_not_run_is_still_a_run_directory(tmp_path):

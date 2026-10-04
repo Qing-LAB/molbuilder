@@ -19,8 +19,7 @@ from molbuilder.parse.instruments.monitor import monitor_metrics
 
 def _machine(text):
     return monitor_metrics(text)["machine"]
-from molbuilder.jobset.summarize import parse_point, summary_text
-from molbuilder.bench.result import BenchResult
+from molbuilder.jobset.summarize import parse_point
 
 
 A100_LINE = ("[2026-08-27T14:02:11] [MACHINE] node={host} cores=48 "
@@ -46,13 +45,6 @@ def test_parse_reads_the_line_and_a_legacy_log_reads_empty(tmp_path):
     assert _machine("[ts] [MONITOR] start ...\n") == {}, (
         "a log from before the [MACHINE] line must read as absent, "
         "not raise or invent")
-
-
-def test_parse_point_carries_the_machine(tmp_path):
-    _trial(tmp_path, "j", A100_LINE.format(host="sol-g042", mem="503.5"))
-    pt = parse_point("t", tmp_path, "j", "gpu", {})
-    assert pt.machine.get("node") == "sol-g042"
-    assert pt.machine.get("gpu") == "NVIDIA A100-SXM4-80GB"
 
 
 # ------------------------------------------------------------- T1: the kind
@@ -81,9 +73,6 @@ def test_absent_machine_has_no_kind():
 
 # ---------------------------------------------------------------- showing
 
-def _result(points):
-    return BenchResult(environment={}, system={}, points=points, choice={})
-
 
 def _pt(label, log_line, tmp_path, engine="cpu"):
     d = tmp_path / label
@@ -91,58 +80,5 @@ def _pt(label, log_line, tmp_path, engine="cpu"):
     return parse_point(label, d, "j", engine, {})
 
 
-def test_two_kinds_are_stated_plainly_and_without_judgement(tmp_path):
-    pts = [_pt("g1", A100_LINE.format(host="a", mem="503.5"), tmp_path,
-               engine="gpu"),
-           _pt("c1", STD_LINE.format(host="b"), tmp_path),
-           _pt("c2", STD_LINE.format(host="c"), tmp_path)]
-    text = summary_text(_result(pts), tmp_path / "r.json")
-    assert "2 kinds of node" in text
-    assert "48c 500G A100" in text and "128c 500G no gpu" in text
-    for verdict_word in ("warning", "invalid", "not comparable", "!!"):
-        assert not any(verdict_word in ln for ln in text.splitlines()
-                       if "kinds of node" in ln), (
-            "the machine statement judged the comparison — 4.4b says "
-            "present the data, the reader is the analyzer")
-
-
-def test_one_kind_on_many_hosts_says_nothing(tmp_path):
-    """Six identical boxes are ONE machine — the statement must stay quiet
-    or it becomes noise attached to every healthy sweep (T1)."""
-    pts = [_pt(f"c{i}", STD_LINE.format(host=f"h{i}"), tmp_path)
-           for i in range(3)]
-    text = summary_text(_result(pts), tmp_path / "r.json")
-    assert "kinds of node" not in text
-
-
-def test_the_table_names_each_trials_machine(tmp_path):
-    pts = [_pt("g1", A100_LINE.format(host="a", mem="503.5"), tmp_path,
-               engine="gpu"),
-           _pt("c1", STD_LINE.format(host="b"), tmp_path)]
-    text = summary_text(_result(pts), tmp_path / "r.json")
-    head = next(ln for ln in text.splitlines() if "machine" in ln)
-    assert "machine" in head, "no machine column despite recorded machines"
-
-
-def test_legacy_records_get_no_machine_column(tmp_path):
-    """Absent is absent: a sweep recorded before the [MACHINE] line must
-    render exactly as before — no column of '--'."""
-    d = tmp_path / "old"
-    d.mkdir()
-    (d / "j-run0.monitor.log").write_text(
-        "[ts] [MONITOR] start ...\n", encoding="utf-8")
-    pt = parse_point("old", d, "j", "cpu", {})
-    text = summary_text(_result([pt]), tmp_path / "r.json")
-    assert "machine" not in text.splitlines()[1], (
-        "a legacy sweep grew a machine column with nothing to put in it")
-
-
 # ------------------------------------------------------------- round-trip
 
-def test_machine_survives_the_result_json(tmp_path):
-    pt = _pt("g1", A100_LINE.format(host="a", mem="503.5"), tmp_path)
-    res = _result([pt])
-    back = BenchResult.from_dict(res.to_dict())
-    assert back.points[0].machine == pt.machine, (
-        "the machine field fell out of the bench-result round-trip; the "
-        "web page composes from this JSON and would show nothing")

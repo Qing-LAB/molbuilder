@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import json
 
-from support.road import a_finished_run, describe_h2, jobset
+from support.road import describe_h2, jobset
 
 
 def _prep(bundle, stage, *more):
@@ -45,44 +45,6 @@ def _ledger(bundle):
 # 2026-10-02 with re-preps: a prepped stage is refused before anything is
 # read (`job-system.md` § 5.0), so a mistyped `--from` is a FIRST prep's,
 # below.
-
-
-def test_what_cannot_be_named_is_refused_before_anything_is_written(
-        tmp_path, monkeypatch):
-    """Each before a single file of the stage is written: `--from` with
-    `--cold`, a path out of the calculation, and a run that does not exist
-    -- refused in its words and in the ledger -- at the terminal as in the
-    browser; `--cold` on a bench; `--cold` on the flat layout, which says
-    how a flat stage starts clean.
-
-    MUTATIONS THIS MUST FAIL AGAINST: `--from` with `--cold` taking
-    `--cold`; the flat refusal after the five steps (a deck written)."""
-    bundle = describe_h2(tmp_path, monkeypatch)
-    assert _prep(bundle, "coarse").exit_code == 0
-    a_finished_run(bundle / "01_coarse" / "run-0")
-    for more, said in ((("--from", "01_coarse/run-0", "--cold"),
-                        "two answers to one question"),
-                       (("--from", "../elsewhere"),
-                        "names a run of this calculation"),
-                       (("--from", "01_coarse/run-9"), "no such attempt")):
-        r = _prep(bundle, "medium", *more)
-        assert r.exit_code != 0 and said in r.output, (more, r.output)
-        assert not (bundle / "02_medium").exists(), (more, "written")
-        last = _ledger(bundle)[-1]
-        assert (last["verb"], last["decision"], last["stage"]) == (
-            "prep", "refused", "medium") and said in last["reason"], last
-    r = jobset("prep", "bench", "coarse", "--bundle", bundle,
-               "--target", "this", "--cold")
-    assert r.exit_code != 0 and "a bench trial" in r.output, r.output
-    assert not (bundle / "01_coarse" / "bench").exists()
-
-    flat = describe_h2(tmp_path / "flat", monkeypatch, shape="flat")
-    r = _prep(flat, "coarse", "--cold")
-    assert r.exit_code != 0, r.output
-    assert "restart: clean" in r.output, r.output
-    assert not list(flat.glob("H2_01_coarse.*")), (
-        "the flat refusal came after the deck was written: "
-        + ", ".join(p.name for p in flat.iterdir()))
 
 
 def test_a_mistyped_amount_is_refused_by_its_flag(tmp_path, monkeypatch):

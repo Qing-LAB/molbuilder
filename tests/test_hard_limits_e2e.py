@@ -28,14 +28,12 @@ from __future__ import annotations
 import json
 
 import pytest
-from click.testing import CliRunner
 
 from molbuilder.config.pyscf import PySCFConfig
 
 from test_fixed_and_shared_items_e2e import _template_says
-from test_transport_prep import _CITE, _isolated, _junction_struct, \
-    _write_junction  # noqa: F401
-from test_what_a_kind_offers_e2e import _pyscf_vibration, _siesta
+from test_what_a_kind_offers_e2e import _siesta
+from test_transport_prep import _isolated  # noqa: F401 -- its sandbox, autouse
 
 
 @pytest.mark.parametrize("engine, name, reason", [
@@ -106,56 +104,6 @@ def test_a_value_outside_its_recommended_range_is_warned_where_it_is_saved(
         assert f"{said}, outside the recommended range" in \
             found[0]["message"], found
         assert "a recommendation, not a limit" in found[0]["message"], found
-
-
-def test_the_bias_list_is_held_to_its_item(web_client,
-                                           isolated_projects_root):
-    """The bias list is the points `bias_voltage_v` takes (`engines/
-    transport.md` § 2a.10): a repeated point is two runs of one voltage in
-    one folder and is refused where the description is read -- on the
-    Transport tab's Send and at `jobset init` alike -- and a point outside
-    the item's recommended range describes, and says so among the Send's
-    notices.
-
-    MUTATIONS THIS MUST FAIL AGAINST: the codec's repeat check removed (the
-    repeat describes); points compared by value rather than by folder (the
-    near pair describes into one folder); the description's own check not
-    run at the Transport tab's Send, or its warnings not said by `jobset
-    init` (the out-of-range point says nothing)."""
-    from molbuilder.jobset._cli import jobset_group
-    _write_junction(isolated_projects_root, _junction_struct())
-
-    def send(bias):
-        return web_client.post("/api/transport/describe", json=dict(
-            engine="siesta", name="T", junction=_CITE, bias=bias))
-
-    repeat = send([0.0, 0.5, 0.5])
-    assert repeat.status_code == 400, repeat.get_json()
-    assert "the bias list repeats 0.5 V" in repeat.get_json()["error"]
-    # ...and two voltages whose folder names are one: v0.1/
-    near = send([0.0, 0.1, 0.1000001])
-    assert near.status_code == 400, near.get_json()
-    assert "0.1 V and 0.1000001 V in one folder (v0.1/)" in \
-        near.get_json()["error"], near.get_json()["error"]
-
-    def init(bias, bundle):
-        return CliRunner().invoke(jobset_group, [
-            "init", "--calculation", "transport", "--shape", "hierarchical",
-            "--bundle", bundle, "--slot", f"junction={_CITE}",
-            "--bias", bias])
-    cli = init("0.0,0.5,0.5", "J/transport/T")
-    assert cli.exit_code != 0, cli.output
-    assert "the bias list repeats 0.5 V" in cli.output, cli.output
-
-    far = send([0.0, 6.0])
-    assert far.status_code == 200, far.get_json()
-    notices = [n["message"] for n in far.get_json()["notices"]]
-    assert any("the bias list holds 6 V, outside the recommended range "
-               "[-5, 5] V" in m for m in notices), notices
-    cli = init("0.0,6.0", "J/transport/Tfar")
-    assert cli.exit_code == 0, cli.output
-    assert ("note: the bias list holds 6 V, outside the recommended range"
-            in cli.output), cli.output
 
 
 def test_what_the_save_refuses_it_refuses_once(web_client,

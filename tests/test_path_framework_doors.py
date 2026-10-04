@@ -490,32 +490,6 @@ def test_read_system_degrades_on_a_missing_bundle():
         "engine": "siesta"}
 
 
-def test_the_ending_door_answers_for_a_persons_own_deck_name(tmp_path):
-    """A cited directory holds whatever the person named their deck.
-
-    `transport.classify_citation` asks the door with `deck.stem`, and a cited
-    relaxation is not necessarily one molbuilder prepped — `my.relaxation.fdf`
-    is a legal thing to cite.  Composing the marker with `runfiles.compose`
-    would **raise** there (§ 2.1: a label carrying a dot cannot be read back out
-    of a filename, and that refusal is right), turning *"this directory has no
-    record"* into a crash at somebody who used a dot.  The door reads names
-    back (`runfiles.parse`), which takes any stem.
-
-    Measured 2026-09-08: the first M8 spelling raised RunFileError here where
-    the code it replaced returned the marker.
-    """
-    from molbuilder.runrecord import ending
-    (tmp_path / "my.relaxation-run0.concluded").write_text("rc=0\n",
-                                                           encoding="utf-8")
-    assert ending(tmp_path, "my.relaxation").line == "rc=0"
-    # ...and our own naming still answers, which is what makes the test above
-    # a discrimination rather than a blanket loosening.
-    (tmp_path / "bdt_01_tight-run2.concluded").write_text("rc=1 (walltime)\n",
-                                                          encoding="utf-8")
-    assert ending(tmp_path, "bdt_01_tight").line == "rc=1 (walltime)"
-    assert ending(tmp_path, "never_ran").line is None
-
-
 def test_the_watch_resolver_survives_a_dotted_script_filename(tmp_path):
     """A dot in a filename must not 500 the Watch tab.
 

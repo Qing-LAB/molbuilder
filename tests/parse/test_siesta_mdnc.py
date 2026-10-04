@@ -315,28 +315,6 @@ def test_an_unreadable_sibling_is_recorded_not_raised(tmp_path):
     assert "mdnc_coords_upgraded" not in res.runtime_info
 
 
-def test_two_candidates_are_left_alone_rather_than_guessed(tmp_path):
-    """Two .MD.nc in one directory means two runs.  Picking one would risk
-    attaching another run's geometry to this run's energies."""
-    import shutil
-    shutil.copy(_need(OUT), tmp_path / "siesta.out")      # name != label
-    shutil.copy(_need(MDNC), tmp_path / "runA.MD.nc")
-    shutil.copy(_need(MDNC), tmp_path / "runB.MD.nc")
-    res = parse(str(tmp_path / "siesta.out"))
-    assert not [k for k in res.runtime_info if k.startswith("mdnc_")]
-
-
-def test_a_differently_named_out_still_finds_the_only_sibling(tmp_path):
-    """`siesta.out` with `SystemLabel hemeC` writes `hemeC.MD.nc`; the stem
-    will not match, and the single-candidate rule is what saves it."""
-    import shutil
-    shutil.copy(_need(OUT), tmp_path / "siesta.out")
-    shutil.copy(_need(MDNC), tmp_path / "hemeC.MD.nc")
-    res = parse(str(tmp_path / "siesta.out"))
-    assert res.runtime_info.get("mdnc_source") == "hemeC.MD.nc"
-    assert res.runtime_info["mdnc_coords_upgraded"] >= 3
-
-
 def test_it_reads_the_same_data_without_netCDF4(monkeypatch):
     """The reader claims two interchangeable backends: netCDF4 when present,
     scipy.io otherwise.  scipy is a hard dependency of this project and

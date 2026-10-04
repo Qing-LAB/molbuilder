@@ -18,7 +18,6 @@ order + the four currently-registered inspectors + dispatch JS.
 """
 from __future__ import annotations
 
-from pathlib import Path
 
 import pytest
 
@@ -119,15 +118,6 @@ class TestInspectorModulesServed:
     def test_inspector_module_served(self, web, name):
         r = web.get(f"/static/lib/inspectors/{name}.js")
         assert r.status_code == 200
-
-
-
-
-
-
-
-
-
 
 
 # --------------------------------------------------------------------- #
@@ -234,10 +224,6 @@ class TestResultsDispatchJS:
         assert r.status_code == 200
         assert b".results-inspector-host" in r.data
         assert b".inspector-card" in r.data
-
-
-
-
 
 
 # --------------------------------------------------------------------- #
@@ -783,26 +769,6 @@ class TestTheContractEndpoint:
         assert out["calculation"]["engine"] == "siesta"
         assert out["calculation"]["contract"]["basis_size"] == "SZ"
 
-    def test_a_finished_relaxation_answers_its_record_too(self, isolated):
-        """The same door answers `relaxation` beside `calculation`
-        (`model/parse.md` § 5b.1) -- what the structure inspector records
-        so a pair exported from a finished relaxation carries it.  The
-        measured H2 relaxation under `tests/fixtures/siesta_relax`, copied
-        whole into the isolated root so its `calcdir.json` still points at
-        its description."""
-        import shutil
-        root, client = isolated
-        src = (Path(__file__).resolve().parent / "fixtures" / "siesta_relax")
-        shutil.copytree(src, root / "F")
-        run = root / "F" / "01_relax" / "run-0"
-        (run / "chain.xyz").write_text("2\n\nH 5 5 5\nH 5 5 5.774583\n")
-        out = client.get("/api/results/contract?path="
-                         + str(run / "chain.xyz")).get_json()
-        assert out["ok"] is True
-        from molbuilder.parse.dirs.run_info import run_info_for_dir
-        info = run_info_for_dir(run)
-        assert out["calculation"] == info["calculation"]
-        assert out["relaxation"] == info["relaxation"]
 
     def test_a_directory_with_no_run_reports_no_run_state(self, isolated):
         """`run_status` cannot say *there is no run here*.
@@ -885,68 +851,6 @@ class TestTheContractEndpoint:
             "the calculation's own product must be what opens here; got "
             + repr(body["openable"]))
 
-    def test_a_calculation_root_answers_with_its_ladder(
-            self, isolated, monkeypatch, tmp_path_factory):
-        """`web/results.md` § 2.4 (`plan.md` § 5c.3 c-d): a calculation root
-        is a container with no run state and ONE ladder -- N rungs, each a
-        run directory below it.  The door answers `ladder` from
-        `jobset_status`, the ladder door the CLI's `status` verb reads, so
-        the page can draw which rung is outstanding instead of *pick a
-        file*.  Driven the way a person gets there: describe, prep the
-        seed, ask.  A rung's own directory answers no ladder."""
-        # The transport prep tests' cwd sandbox, made here for this one test
-        # (conftest isolates the config root and writes the machine record).
-        monkeypatch.chdir(tmp_path_factory.mktemp("cwd"))
-        from test_transport_prep import (_describe_transport, _junction_struct,
-                                         _write_junction)
-        from molbuilder.jobset.model import Resources
-        from molbuilder.jobset.prep import prep_calculation
-        from molbuilder.transport.stages import TRANSPORT_STAGES
-        root, client = isolated
-        _write_junction(root, _junction_struct())
-        calc = _describe_transport(root)
-        # the seed's launch shape, stated -- a run with none is refused at
-        # prep (`architecture.md` § 5.2)
-        prep_calculation(calc, "seed",
-                         allocation=Resources(mpi_np=2, cpus_per_task=1))
-        body = client.get("/api/results/dir?path=" + str(calc)).get_json()
-        assert body["place"]["role"] == "container" and body["status"] is None
-        lad = body["ladder"]
-        assert lad is not None, body["attempts"]
-        assert [s["name"] for s in lad["stages"]] == list(TRANSPORT_STAGES)
-        assert lad["complete"] is False and lad["first_incomplete"] == "seed"
-        by = {s["name"]: s for s in lad["stages"]}
-        assert by["seed"]["state"] == "pending" and by["seed"]["attempt"] == "run-0"
-        # the four rungs nothing has prepped are the description's, in the
-        # status reader's own words -- the job-set grows rung by rung
-        from molbuilder.jobset.runstatus import NOT_PREPPED
-        assert (by["device"]["state"], by["device"]["detail"]) == NOT_PREPPED
-        # its number is the description's -- the one `#4` names
-        # (`job-system.md` § 5.3)
-        assert by["device"]["attempt"] is None and by["device"]["seq"] == 4
-        stage = client.get("/api/results/dir?path=" + str(calc / "01_seed")).get_json()
-        assert stage["ok"] and stage["ladder"] is None
-
-    def test_a_launched_run_with_no_output_yet_reports_queued(self, isolated):
-        """The other side, so the fix above cannot be a blanket silence.
-
-        A stamped run that has launched and written nothing has a status:
-        its launch record says it was sent, so it is ``queued``
-        (`running-a-job.md` § 4.2).  The record is what separates it from
-        the folder above.
-        """
-        from molbuilder import calcdirs
-        from molbuilder.runrecord import write_launch
-        root, client = isolated
-        calc = root / "calc"
-        run = calc / "01_a" / "run-0"
-        run.mkdir(parents=True)
-        calcdirs.write(calc / "01_a", role=calcdirs.CONTAINER, root=calc)
-        calcdirs.write(run, role=calcdirs.RUN, root=calc)
-        write_launch(run, mode="direct", command=["bash", "run.sh"])
-        body = client.get("/api/results/dir?path=" + str(run)).get_json()
-        assert body["place"]["role"] == "run"
-        assert body["status"] is not None and body["status"]["state"] == "queued"
 
     def test_no_deck_answers_null(self, isolated):
         root, client = isolated

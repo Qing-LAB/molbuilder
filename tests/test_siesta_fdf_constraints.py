@@ -68,24 +68,6 @@ def test_no_fdf_paired_returns_none(tmp_path):
     assert _siesta_fdf_path_for(str(out)) is None
 
 
-def test_single_other_fdf_in_dir_falls_back(tmp_path):
-    """A common layout: one-run folder with mismatched basenames.
-    When there's exactly one ``.fdf`` in the directory, use it."""
-    (tmp_path / "siesta.out").write_text("dummy\n")
-    (tmp_path / "input.fdf").write_text("dummy\n")
-    assert _siesta_fdf_path_for(
-        str(tmp_path / "siesta.out")) == str(tmp_path / "input.fdf")
-
-
-def test_multiple_fdfs_in_dir_returns_none(tmp_path):
-    """Bail rather than guess wrong when the stem doesn't match
-    and multiple ``.fdf`` files share the directory."""
-    (tmp_path / "run.out").write_text("dummy\n")
-    (tmp_path / "a.fdf").write_text("dummy\n")
-    (tmp_path / "b.fdf").write_text("dummy\n")
-    assert _siesta_fdf_path_for(str(tmp_path / "run.out")) is None
-
-
 # --------------------------------------------------------------------- #
 #  Block parsing                                                         #
 # --------------------------------------------------------------------- #

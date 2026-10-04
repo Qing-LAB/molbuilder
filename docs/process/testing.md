@@ -605,6 +605,20 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   per case, and never a test of an internal step a row already reaches. The
   first is the GPU contract's (`tests/data/gpu_contract.toml`,
   `tests/test_gpu_contract.py`; `execution/gpu.md` § 7).
+- **A run is made on the road, or not at all** *(user, 2026-10-03: "why would
+  any fucker copy an .out to some fucking other directory and call it the
+  result"; "retire all")*. A test that asserts what a run ended as, produced,
+  hands on or shows makes that run with the engine, through `init → prep →
+  launch`. Everything else is a run that never happened, and a test built on
+  one is not written: an output copied into a stage's folder, renamed, cut
+  or edited; an output invented as text; a conclusion marker, launch record,
+  monitor record, restart or product file written by hand; a structure
+  carrying the record of a calculation nothing ran. A measured fixture is
+  read where it was measured, as itself — a parser on the file, the monitor
+  replaying the measured run's own files under their own names — never
+  called another run's result. *(282 tests and 10 case-table rows were
+  retired for it that day, the transport suite's citation fixture and the
+  run-ending and viewer cases of plan W55 9b among them.)*
 - **State-composition tests** — the molview class of bug: a value is correct in
   isolation but wrong once composed with a sibling piece of state. These get an
   explicit test that exercises the *combination*, not each part alone.

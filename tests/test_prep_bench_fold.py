@@ -46,8 +46,6 @@ def _artifacts(calc, point, stage="01_coarse"):
     return latest_attempt(c) or c
 
 
-
-
 @pytest.fixture(autouse=True)
 def _tmp_is_the_projects_tree(tmp_path, monkeypatch):
     """These tests build a calculation under ``tmp_path`` and hand its path
@@ -289,76 +287,6 @@ def test_cli_prep_bench_end_to_end_lists_trials_not_attempts(calc):
     assert len(set(listed)) == len(listed), (
         "two trials printed the same name, which names nobody: "
         + repr(listed))
-
-
-def test_cli_summarize_bench_reads_trials_by_data(calc):
-    """u4: discovery keyed by job-set.json's data, results through the same
-    artifacts as any run, ASYNC — a trial with no output yet reports
-    ``incomplete`` rather than failing the set (user, 2026-08-12)."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    js = _prep_bench(calc)
-    name = js["jobs"][0]["name"]
-    d = _artifacts(calc, name)
-    (d / f"JOB-{name}_01_coarse-run0.out").write_text(
-        "banner\nsiesta: Final energy (eV) = -1.0\n")
-    r = CliRunner().invoke(jobset_group, ["summarize", "bench", "coarse",
-                                          "--bundle", str(calc)])
-    assert r.exit_code == 0, r.output
-    assert (calc / "01_coarse" / "bench" / "bench-result.json").is_file()
-    assert not (calc / "bench-result.json").exists()
-    assert name in r.output
-    assert "completed" in r.output       # the trial with the finished .out
-    assert "unknown" in r.output         # siblings with no output yet
-    # A run's outputs are the calculation's, not a benchmark's to rank.
-    r = CliRunner().invoke(jobset_group,
-                           ["summarize", "run", "--bundle", str(calc)])
-    assert r.exit_code != 0
-
-
-def _finished_trial_and_verdict(calc):
-    """prep bench + one completed trial + summarize -> bench-result.json."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    js = _prep_bench(calc)
-    name = js["jobs"][0]["name"]
-    d = _artifacts(calc, name)
-    (d / f"JOB-{name}_01_coarse-run0.out").write_text(
-        "x\n>> End of run:\n")
-    # epoch-per-line format: consecutive deltas are the per-iter durations
-    (d / f"JOB-{name}_01_coarse-run0.scf-timing.log").write_text(
-        "100.0 scf 1\n104.0 scf 2\n108.0 scf 3\n112.0 scf 4\n")
-    r = CliRunner().invoke(jobset_group, ["summarize", "bench", "coarse",
-                                          "--bundle", str(calc)])
-    assert r.exit_code == 0, r.output
-    return name
-
-
-def test_the_bench_verbs_take_a_stage_the_way_every_verb_does(calc):
-    """`launch bench` and `summarize bench` take a stage through the one
-    resolver -- its name in any case, or `#N` (`job-system.md` § 5.3; plan
-    § 5w K12) -- and print it back by its name.  They matched the exact name
-    in a lookup of their own until K12, so `launch bench '#1'` refused the
-    stage `prep bench '#1'` had prepared; and a `#1` printed back would be a
-    comment in bash.
-
-    MUTATIONS THIS MUST FAIL AGAINST: the bench lookup matching the exact
-    name; `summarize bench` printing the spelling it was given."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    _finished_trial_and_verdict(calc)
-    runner = CliRunner()
-    for spelling in ("#1", "COARSE"):
-        r = runner.invoke(jobset_group, ["launch", "bench", spelling,
-                                         "--bundle", str(calc),
-                                         "--mode", "submit", "--dry-run",
-                                         "--yes"])
-        assert r.exit_code == 0, (spelling, r.output)
-        assert "WOULD run" in r.output, (spelling, r.output)
-    r = runner.invoke(jobset_group, ["summarize", "bench", "#1",
-                                     "--bundle", str(calc)])
-    assert r.exit_code == 0, r.output
-    assert "molbuilder jobset prep run coarse " in r.output, r.output
 
 
 def test_a_trials_deck_prints_the_launch_of_that_trial(calc):
@@ -739,27 +667,6 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
     assert launch["mode"] == "submit"
     assert launch["mode_source"] == "--mode flag"
     assert launch["jobs"][0]["status"] == "planned"
-
-
-def test_the_choice_names_its_winner_and_its_mechanism(calc):
-    """U13: the verdict is consumable as DATA -- the winner's label is a
-    field (not a sentence to parse), the knobs speak the job-set's own
-    exchange vocabulary, and the MECHANISM is read from the winning
-    trial's own deck, never re-derived from `engine == "gpu"`."""
-    _finished_trial_and_verdict(calc)
-    res = json.loads((calc / "01_coarse" / "bench"
-                      / "bench-result.json").read_text())
-    choice = res["choice"]
-    assert choice["label"] and choice["label"] in (
-        j["name"] for j in json.loads(
-            (calc / "01_coarse" / "bench" / "job-set.json").read_text()
-        )["jobs"])
-    assert "mpi_np" in choice["knobs"]          # exchange, not "ranks"
-    assert "ranks" not in choice["knobs"]
-    mech = choice["mechanism"]
-    assert mech["use_gpu"] is True           # the deck's gpu_mode
-    assert mech["diag_algorithm"] == "ELPA-1STAGE"   # the deck's own line
-    assert res["generated_at"]                  # the offer reads this key
 
 
 # `test_prep_over_a_launched_attempt_asks_and_no_stops_it` and
@@ -1647,63 +1554,6 @@ def test_a_stage_without_an_open_attempt_refuses_to_launch(calc):
     assert not (calc / "01_coarse" / "run.json").exists()
 
 
-def test_a_direct_sweep_resumes_past_launched_trials(calc):
-    """A6 (redo 2026-08-12): direct mode runs the set in order, and the
-    launched-trial refusal (R2) made it die at the FIRST record -- an
-    interrupted direct sweep could never finish.  The loop now skips a
-    launched trial out loud and runs the rest; under submit mode the
-    grouped path collects the still-unlaunched remainder the same way."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    from molbuilder.runrecord import write_launch
-    js = _prep_bench(calc)
-    first = js["jobs"][0]["name"]
-    write_launch(_artifacts(calc, first),
-                 mode="direct", command=["bash", "x"])
-    res = CliRunner().invoke(jobset_group,
-                             ["launch", "bench", "coarse",
-                              "--bundle", str(calc),
-                              "--mode", "direct", "--dry-run", "--yes"])
-    assert res.exit_code == 0, res.output
-    assert "skip" in res.output and first in res.output
-    assert res.output.count("WOULD run") == len(js["jobs"]) - 1
-    # R2: § 1.5's immutability holds for trials AT THE SEAM -- a named
-    # relaunch is refused by the library naming run.json and the next
-    # verbs, and the grouped path collects only the still-unlaunched
-    # remainder (this stray block was a second test's docstring left
-    # mid-function by a merge; kept as the comment it really is).
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    from molbuilder.runrecord import write_launch
-    js = _prep_bench(calc)
-    first = js["jobs"][0]["name"]
-    second = js["jobs"][1]["name"]
-    write_launch(_artifacts(calc, first),
-                 mode="submit", command=["sbatch", "x"], job_id="42")
-    r = CliRunner()
-    res = r.invoke(jobset_group, ["launch", "bench", "coarse", first,
-                                  "--bundle", str(calc),
-                                  "--mode", "submit", "--dry-run", "--yes"])
-    assert res.exit_code != 0
-    # THE PROPERTY, not one branch's wording.  A launched trial is refused
-    # and the refusal names it.  Which sentence comes back depends on the
-    # SHAPE: hierarchical answers from the attempt branch ("run-0 has
-    # already been launched"), flat from the trial-is-its-own-attempt one
-    # ("already launched") -- two accurate phrasings of one fact
-    # (`project-layout.md` § 1.5a).
-    assert "already" in res.output and "launched" in res.output, res.output
-    assert res.exit_code != 0
-    assert "summarize" in res.output
-    res = r.invoke(jobset_group, ["launch", "bench", "coarse",
-                                  "--bundle", str(calc),
-                                  "--mode", "submit", "--dry-run", "--yes"])
-    assert res.exit_code == 0, res.output
-    # the bare form groups the REMAINDER: the launched trial does not ride
-    assert "bench-group" in res.output
-    assert res.output.count("rides the group") == len(js["jobs"]) - 1
-    assert f"rides      {first}" not in res.output
-
-
 def test_a_trial_deck_is_forced_cold_not_only_relabelled():
     """The relabel alone does not cover the case that matters.
 
@@ -2007,41 +1857,6 @@ def test_a_verdictless_summary_says_so_with_the_census():
     assert "prep run <stage>" not in out          # no command without a verdict
 
 
-def test_summarize_writes_the_report_in_EXECUTIONS_vocabulary(calc):
-    """`summarize` PRINTS the winner as a report,
-    and the block it tells you to paste must be one `task.json` accepts.
-
-    **The translation is the point.** The record speaks `cpus_per_task` and
-    a `gres` string; `execution` speaks `omp_threads` and `gpu_count`
-    (`prep_inputs._AS_RESOURCE`).  A report handing over the record's names would
-    hand over a block the reader refuses -- and the person would have no way
-    to tell whose fault that was.
-
-    *(This replaced `test_summarize_writes_the_proposal_and_never_overwrites_yours`
-    on 2026-09-02.  Its other half -- that a re-summarize KEEPS the file
-    because it is yours to edit -- went with the editable file: a report is
-    nobody's to edit, so it is always refreshed.)*"""
-    import json as _json
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-
-    _finished_trial_and_verdict(calc)
-    r = CliRunner().invoke(jobset_group, ["summarize", "bench", "coarse",
-                                          "--bundle", str(calc)])
-    assert r.exit_code == 0, r.output
-    # PRINTED, not written: `bench-recommendation.txt` is gone
-    # (`job-system.md` § 7.1) and zero were ever produced.
-    text = r.output
-    assert "NOTHING APPLIES THIS" in text
-    assert not list((calc / "01_coarse" / "bench").glob("*recommendation*")), (
-        "the report is printed now; nothing should be written beside the "
-        "record")
-    assert '"execution"' in text
-    # The record's own names must NOT appear in the block it hands over.
-    assert "cpus_per_task" not in text, text
-    assert '"gres"' not in text, text
-
-
 def test_a_verdictless_summarize_prints_no_report(calc):
     """No verdict, no report — a report would recommend a shape with nothing
     measured behind it, and a person reading one cannot tell that from a
@@ -2135,7 +1950,6 @@ def test_a_bench_row_never_reaches_the_run_deck(calc):
                           deck.read_text(), _re.M), (
         "the bench row reached the run deck (the value line, not the "
         "help comments)")
-
 
 
 def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tmp_path):
@@ -2298,70 +2112,6 @@ def test_sweep_view_reports_where_the_RUN_is_not_what_the_files_say(calc):
         "artifact reader")
 
 
-def test_sweep_view_carries_the_verdict(calc):
-    """The analysis IS choose_winner's answer, composed in -- not a second
-    ranking done by the view."""
-    from molbuilder.jobset.summarize import sweep_view
-    name = _finished_trial_and_verdict(calc)
-    jobset, bundle = _load_sweep(calc)
-    view = sweep_view(jobset, bundle)
-    assert view["choice"].get("label") == name
-    # and the winning trial's own measurement is on its row
-    won = [t for t in view["trials"] if t["label"] == name][0]
-    assert won["s_per_iter"] == pytest.approx(4.0)
-
-
-def _machine_log(calc, jobset, bundle, job, line):
-    """Write a monitor log carrying ``line`` where the summarizer's own
-    walk will find it: the trial's latest attempt (or container), under
-    the basename ``parse_point`` derives from the job's script."""
-    from pathlib import Path as _P
-    from molbuilder.jobset.materialize import (job_dir_names, latest_attempt,
-                                               shape_of)
-    dirs = job_dir_names(jobset, shape_of(jobset, bundle))
-    d = _P(bundle) / dirs[job.name]
-    d = latest_attempt(d) or d
-    d.mkdir(parents=True, exist_ok=True)
-    (d / f"{_P(job.script).stem}-run0.monitor.log").write_text(
-        line, encoding="utf-8")
-
-
-def test_sweep_view_census_is_by_kind_and_absent_reads_absent(calc):
-    """`machines` is the composer's census (B5): one entry per KIND —
-    hostnames and BIOS-jittered MemTotal do not split it (R11) — and a
-    sweep whose logs predate the [MACHINE] line gets [] and empty briefs,
-    never a census of '?'."""
-    from molbuilder.jobset.summarize import sweep_view
-    _prep_bench(calc)
-    jobset, bundle = _load_sweep(calc)
-
-    view = sweep_view(jobset, bundle)          # nothing has run yet
-    assert view["machines"] == []
-    assert all(t["machine"] == {} and t["machine_brief"] == ""
-               for t in view["trials"])
-
-    # Two trials, two hosts, jittered memory -- ONE kind.  A third on
-    # different silicon -- a second kind, counted apart.
-    a100 = ("[t] [MACHINE] node={h} cores=48 mem_gb={m} "
-            "gpu=NVIDIA A100-SXM4-80GB\n")
-    std = "[t] [MACHINE] node=c1 cores=128 mem_gb=503.2 gpu=none\n"
-    jobs = list(jobset.jobs)
-    _machine_log(calc, jobset, bundle, jobs[0],
-                 a100.format(h="g042", m="503.4"))
-    _machine_log(calc, jobset, bundle, jobs[1],
-                 a100.format(h="g117", m="503.5"))
-    _machine_log(calc, jobset, bundle, jobs[2], std)
-
-    view = sweep_view(jobset, bundle)
-    kinds = {m["brief"]: m["trials"] for m in view["machines"]}
-    assert kinds == {"48c 500G A100": 2, "128c 500G no gpu": 1}, (
-        "two hosts of one kind must count as one machine (T1), and the "
-        "different silicon as another")
-    briefs = {t["label"]: t["machine_brief"] for t in view["trials"]}
-    assert briefs[jobs[0].name] == "48c 500G A100"
-    assert briefs[jobs[2].name] == "128c 500G no gpu"
-
-
 def test_sweep_view_names_the_coordinate_the_sweep_varied(calc):
     from molbuilder.jobset.summarize import sweep_view
     _prep_bench(calc)
@@ -2418,37 +2168,6 @@ def test_sweep_view_refuses_to_pair_trials_by_position_if_the_readers_disagree(
                         lambda b, j: real(b, j)[:-1])
     with pytest.raises(ValueError, match="refusing to pair"):
         S.sweep_view(jobset, bundle)
-
-
-def test_both_doors_onto_a_sweep_report_the_SAME_verdict(calc):
-    """`bench-summary.md` B2 (not this file's other B2, the pins): a
-    second path that computes the same figure
-    is the defect, not the feature.
-
-    There are two ways to ask a sweep what it concluded -- the CLI, which
-    writes ``bench-result.json``, and the Results tab, which reads
-    ``sweep_view``.  They composed the record separately and then differed:
-    only the writing path enriched ``choice`` with ``_winner_mechanism``,
-    so the same sweep answered "ELPA-1STAGE on a GPU" through one door and
-    said nothing about mechanism through the other.  Both go through
-    ``bench_record`` now, and this fails if either grows its own copy.
-    """
-    from molbuilder.jobset.summarize import sweep_view, bench_record
-    name = _finished_trial_and_verdict(calc)
-    jobset, bundle = _load_sweep(calc)
-
-    written = json.loads((_bench_dir(calc) / "bench-result.json").read_text())
-    viewed = sweep_view(jobset, bundle)["choice"]
-
-    assert written["choice"]["label"] == viewed["label"] == name
-    assert written["choice"].get("mechanism"), (
-        "the fixture's winner should carry a mechanism, or this proves nothing")
-    # every key the record's verdict has, the view's verdict has too
-    assert set(written["choice"]) == set(viewed), (
-        f"the two doors disagree on the verdict's shape: "
-        f"written-only={set(written['choice']) - set(viewed)}, "
-        f"view-only={set(viewed) - set(written['choice'])}")
-    assert viewed["mechanism"] == written["choice"]["mechanism"]
 
 
 def test_the_terminal_says_each_warning_once_across_a_sweep(calc, capsys):

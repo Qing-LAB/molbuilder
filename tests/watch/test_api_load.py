@@ -14,7 +14,6 @@ from pathlib import Path
 import pytest
 
 from molbuilder.web.app import create_app
-from molbuilder.web.blueprints import watch as app_module
 
 
 _SIESTA_HEAD = (
@@ -61,19 +60,6 @@ def client_with_default_roots():
     only) rejects an out-of-root path.
     """
     return create_app(config={}).test_client()
-
-
-@pytest.fixture(autouse=True)
-def _reset_app_state():
-    """Clear the global state between tests so they don't leak."""
-    with app_module._lock:
-        app_module._state["path"]     = None
-        app_module._state["mtime"]    = None
-        app_module._state["data"]     = None
-        app_module._state["parser"]   = None
-        app_module._state["uploaded"] = False
-        app_module._state["run_dir"]  = None
-    yield
 
 
 # --------------------------------------------------------------------- #
@@ -349,33 +335,6 @@ _MOLWATCH_HEAD = (
 # first, the seed outranked the run's own result.  The engine's own output now
 # opens first, pinned where this door asks (`openable_in`):
 # `tests/parse/dirs/test_rundir.py::test_the_engines_own_output_opens_before_the_seeded_progress_log`.
-
-
-def test_load_directory_falls_back_to_fdf_system_label(client, tmp_path):
-    """No .molwatch.log; an .fdf is present.  Loader parses
-    SystemLabel and looks for <label>.molwatch.log, then <label>.out."""
-    (tmp_path / "input.fdf").write_text("SystemLabel my-job\n")
-    (tmp_path / "my-job.out").write_text(_SIESTA_HEAD)
-    r = client.post("/api/watch/load", json={"path": str(tmp_path)})
-    body = r.get_json()
-    assert body["ok"] is True
-    assert body["path"].endswith("my-job.out")
-
-
-def test_load_directory_falls_back_to_py_job_name(client, tmp_path):
-    """No .molwatch.log or .fdf; a .py is present with a molbuilder-
-    style ``job_name = "..."`` declaration.  Loader picks up
-    <job>.molwatch.log."""
-    (tmp_path / "script.py").write_text(
-        '"""molbuilder PySCF script"""\n'
-        'job_name = "my-pyscf-run"\n'
-        'print("hi")\n'
-    )
-    (tmp_path / "my-pyscf-run.molwatch.log").write_text(_MOLWATCH_HEAD)
-    r = client.post("/api/watch/load", json={"path": str(tmp_path)})
-    body = r.get_json()
-    assert body["ok"] is True
-    assert body["path"].endswith("my-pyscf-run.molwatch.log")
 
 
 def test_load_directory_empty_returns_chain_error(client, tmp_path):
@@ -714,85 +673,6 @@ def test_two_parsers_claiming_one_file_is_a_clean_refusal(client, tmp_path):
 #: The measured H2 relaxation (its README says what each file pins).
 _RELAX_RUN = (Path(__file__).resolve().parents[1]
               / "fixtures" / "siesta_relax" / "01_relax" / "run-0")
-
-
-def _the_run(tmp_path, *, record_kinds, source_kinds):
-    """The measured run, copied under ``tmp_path`` -- never read from
-    `projects/` (`process/testing.md` § 2a) -- with a `.source` pair beside it
-    stating ``source_kinds``, and, when ``record_kinds`` is given, the
-    ENGINE-OFFSET record a deck prepped today carries (this run's predates
-    it), written by the real emitter for the coordinates beside it -- which
-    applied no offset, so the record states 0."""
-    import shutil
-
-    import numpy as np
-
-    from molbuilder.cell import to_engine
-    from molbuilder.script_emit import emit_engine_offset
-    from molbuilder.structure import Structure
-    from molbuilder.workingcopy_structure import StructureCodec
-
-    run = tmp_path / "01_relax" / "run-0"
-    shutil.copytree(_RELAX_RUN, run)
-    design = dict(elements=["H", "H"],
-                  positions=np.array([[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]]),
-                  cell=np.eye(3) * 10.0)
-    StructureCodec().write(Structure(**design, axis_kind=source_kinds),
-                           run / "H2.source.xyz")
-    if record_kinds is not None:
-        deck = next(run.glob("*.fdf"))
-        frame = to_engine(Structure(**design, axis_kind=record_kinds,
-                                    engine_offset=np.zeros(3)))
-        deck.write_text(deck.read_text() + "\n"
-                        + emit_engine_offset(frame, record_kinds) + "\n")
-    return run
-
-
-@pytest.mark.parametrize("has_record", [True, False],
-                         ids=["the-deck-record", "a-run-before-the-record"])
-def test_the_results_door_shows_the_engines_frame_and_the_structures_kinds(
-        client, tmp_path, has_record):
-    """A finished run opens with the coordinates the engine wrote, verbatim,
-    stating the engine's origin -- an offset of 0, the box at their origin --
-    and with the axis kinds the structure had: the deck record's (D5), or,
-    for a run made before the record, the `.source` pair's.  A reload of that
-    structure draws the box at the origin (D4): the viewer sees what the
-    engine saw.
-
-    Here the pair says `periodic` and the record `isolated`, so which one
-    answered is visible.
-
-    Contract: `model/structure-periodicity.md` § 6.0 (engine output states 0);
-    plan § 5q.3 (the Results door), § 5q.8 D4, D5.
-    """
-    import numpy as np
-
-    isolated, periodic = ["isolated"] * 3, ["periodic"] * 3
-    run = _the_run(tmp_path, record_kinds=isolated if has_record else None,
-                   source_kinds=periodic)
-    body = client.post("/api/watch/load", json={"path": str(run)}).get_json()
-    assert body["ok"] is True, body
-    kinds = isolated if has_record else periodic
-
-    per = body["periodicity"]
-    assert per["engine_offset"] == [0.0, 0.0, 0.0], per
-    assert per["axis_kind"] == kinds, per
-    meta = body["structure"]["metadata"]
-    assert meta["engine_offset"] == [0.0, 0.0, 0.0], meta
-    assert meta["axis_kind"] == kinds, meta
-    # Against the deck the run started from (the fixture's README), not the
-    # door's own frames: a door that shifted what it parsed would pass that.
-    np.testing.assert_allclose(
-        body["structure"]["positions"], [[5.0, 5.0, 5.0], [5.0, 5.0, 5.741]],
-        atol=1e-6, err_msg="the Results door moved the engine's coordinates")
-
-    again = client.post("/api/build/load",
-                        json={"structure": body["structure"]}).get_json()
-    assert again["ok"] is True, again
-    assert again["periodicity"]["box_corner"] == [0.0, 0.0, 0.0], (
-        "the viewer would draw a box the engine never had",
-        again["periodicity"])
-
 
 
 def test_a_load_parses_its_file_once_and_the_record_reads_that_parse(

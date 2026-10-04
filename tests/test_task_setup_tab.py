@@ -77,15 +77,6 @@ def test_the_page_loads_the_shared_stylesheet_layers(web_client):
 # --------------------------------------------------------------------- #
 
 
-
-
-
-
-
-
-
-
-
 # --------------------------------------------------------------------- #
 #  The controller                                                       #
 # --------------------------------------------------------------------- #
@@ -103,7 +94,6 @@ def test_the_tab_reuses_the_shipped_files_api(endpoint, web_client):
 # --------------------------------------------------------------------- #
 
 import json as _json
-import shutil as _shutil
 
 
 def _folder(client, d):
@@ -284,16 +274,6 @@ def _row_badge(name, points, machine):
     return _json.loads(out.stdout.strip().splitlines()[-1])
 
 
-
-
-
-
-
-
-
-
-
-
 def test_one_point_is_the_trials_value_and_several_a_measurement():
     """A one-point non-machine row is what EVERY TRIAL runs with -- never the
     run's value, which is its run card's (`stages.md` § 6.8, § 6.8d; user,
@@ -331,20 +311,9 @@ def test_a_ONE_POINT_MACHINE_row_is_a_trial_not_a_decision():
     assert many["kind"] == "machine"
 
 
-
-
-
 # --------------------------------------------------------------------- #
 #  The checkpoint API (F3) and the two guards (F1, F2)                   #
 # --------------------------------------------------------------------- #
-
-
-
-
-
-
-
-
 
 
 def test_the_runtime_loads_before_every_other_script(web_client):
@@ -354,10 +323,6 @@ def test_the_runtime_loads_before_every_other_script(web_client):
     i_rt   = body.index("lib/molbuilder-runtime.js")
     i_tab  = body.index("task-setup/viewer.js")
     assert i_rt < i_tab, "the runtime loads after the tab's own script"
-
-
-
-
 
 
 def test_the_column_picker_offers_no_run_setting(web_client):
@@ -424,8 +389,6 @@ def test_the_sweepable_list_says_which_the_machine_answers(web_client):
         "(engines/overview.md § 3a: the user decides the GPU)")
 
 
-
-
 def test_the_presets_come_from_the_shipped_table(web_client):
     """The same table `default_siesta_stages` builds the ladder from, so a
     stage filled here and stage N of that ladder cannot drift.  `tuning.md § 4`
@@ -449,8 +412,6 @@ def test_the_presets_come_from_the_shipped_table(web_client):
     v = web_client.get("/api/task-setup/presets?engine=siesta"
                        "&calculation=vibration").get_json()
     assert v["ok"] and len(v["presets"]) == 3
-
-
 
 
 def test_the_folder_template_is_what_an_empty_cell_names(web_client, isolated_projects_root):
@@ -521,12 +482,6 @@ def test_a_folder_with_no_template_is_not_an_error(web_client, isolated_projects
         assert j["ok"] and j["name"] is None and j["values"] == {}
     finally:
         pass    # tmp_path removes the tree
-
-
-
-
-
-
 
 
 def test_the_structure_pair_is_not_reported_as_engine_state():
@@ -857,8 +812,6 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path, isolated_p
         pass    # tmp_path removes the tree
 
 
-
-
 def test_a_refused_cell_is_the_door_s_400_not_a_500(web_client):
     """`checked_periodicity` RAISES on a box it will not accept, and the app
     turns that into a 400 carrying the gate's own sentence.  The hand-over runs
@@ -876,10 +829,6 @@ def test_a_refused_cell_is_the_door_s_400_not_a_500(web_client):
     assert r.status_code == 400, (r.status_code, r.get_json())
     assert "flat" in ((r.get_json() or {}).get("error") or ""), (
         "the 400 does not carry the gate's reason", r.get_json())
-
-
-
-
 
 
 # --------------------------------------------------------------------- #
@@ -1012,10 +961,6 @@ def test_save_runs_gate_three_and_refuses_a_failing_preflight(web_client, isolat
                    for f in body.get("findings", []))
     finally:
         pass    # tmp_path removes the tree
-
-
-
-
 
 
 # --------------------------------------------------------------------- #
@@ -1194,10 +1139,6 @@ class TestTheTabShowsWhatAPrepWouldResolve:
     # untested now and held by review (process/code-audit.md § 3.1).
 
 
-
-
-
-
 # --------------------------------------------------------------------- #
 #  The TRANSPORT hand-over (archive/2026-09-01-transport-design.md § 4.1, P7b) +           #
 #  the slot picker's describe seam                                      #
@@ -1234,68 +1175,6 @@ def _cited_junction(root, *, concluded=True):
     return calc
 
 
-def test_transport_describe_answers_the_finished_description(web_client, isolated_projects_root):
-    """No hand-over for the composite (user ruling 2026-08-29): nothing
-    is awaiting, so /api/transport/describe answers with the COMPLETE
-    task.json -- one file, readable by the shipped reader, knobs on the
-    device stage's overrides promoted through varies."""
-    import pathlib as _pl
-    import tempfile as _tf
-    _cited_junction(isolated_projects_root)
-    try:
-        r = web_client.post("/api/transport/describe", json=dict(
-            engine="siesta", name="T",
-            junction=_T_CITE, bias=[0.0, 0.2],
-            stages={"transmission": {"transmission_n_points": 101}}))
-        assert r.status_code == 200, r.get_json()
-        out = r.get_json()
-        assert out["ok"] is True
-        files = out["files"]
-        assert [f["name"] for f in files] == ["task.json", "T.template.toml"], (
-            "a transport description is task.json AND a template, like every "
-            "other kind's (TR1).  This asserted `== ['task.json']` with the "
-            "comment 'floor 2 is task.json ALONE' until 2026-09-16 -- the "
-            "SEALED design, where the electronic description was re-read "
-            "from the cited run at every prep and so had nowhere to be "
-            "written down.  `engines/transport.md` § 2a.7 ruled the other "
-            "way and a shared baseline needs a file to live in")
-        # ...and the template is REAL: the same reader `prep` opens it with
-        # accepts it, and it carries the cited run's own values.
-        from molbuilder.template import one as _one
-        from molbuilder.template import read_template as _read_tmpl
-        _tmpl = _read_tmpl(files[1]["text"])
-        assert _one(_tmpl, "basis_size").value is not None, (
-            "the template must carry the electronic description, defaulted "
-            "from the cited run -- an empty one would leave `prep` with "
-            "nothing to resolve")
-        # the text is a real description: the shipped reader accepts it
-        from molbuilder.task import read_task
-        with _tf.TemporaryDirectory() as td:
-            probe = _pl.Path(td) / "task.json"
-            probe.write_text(files[0]["text"])
-            task = read_task(probe)
-        assert task.calculation == "transport"
-        assert task.slots == {"junction": _T_CITE}
-        assert task.bias == (0.0, 0.2)
-        assert task.shape == "hierarchical"
-        assert [s.name for s in task.stages] == [
-            "seed", "electrode_L", "electrode_R", "device",
-            "transmission"]
-        # ROUTED TO THE RUNG THAT OWNS IT (TR8, `engines/template.md`
-        # § 6.4's `stages` declaration).  This asserted the value landed on
-        # the DEVICE until 2026-09-16, which is where every override went
-        # whatever it was -- so a person's T(E) point count was written into
-        # the deck siesta runs, where the keyword is inert, and not into the
-        # deck tbtrans runs.  Silently.
-        by_rung = {s.name: dict(s.overrides) for s in task.stages}
-        assert by_rung["transmission"] == {"transmission_n_points": 101}
-        assert by_rung["device"] == {}, (
-            "the device must not carry a parameter it does not own")
-        assert task.varies == ("transmission_n_points",)
-    finally:
-        pass    # tmp_path removes the tree
-
-
 def test_the_handover_door_refuses_transport_by_name(web_client):
     r = web_client.post("/api/task-setup/handover", json=dict(
         engine="siesta", calculation="transport", name="T",
@@ -1312,221 +1191,12 @@ def test_transport_describe_refuses_a_citation_the_tree_lacks(web_client):
     assert "not a directory" in r.get_json()["error"]
 
 
-def test_transport_describe_refuses_a_bias_off_equilibrium(web_client, isolated_projects_root):
-    _cited_junction(isolated_projects_root)
-    try:
-        r = web_client.post("/api/transport/describe", json=dict(
-            engine="siesta", name="T",
-            junction=_T_CITE, bias=[0.2, 0.4]))
-        assert r.status_code == 400
-        assert "0.0" in r.get_json()["error"]
-    finally:
-        pass    # tmp_path removes the tree
-
-
-def test_describe_attempt_reads_the_attempts_own_deck(web_client, isolated_projects_root):
-    """The describe seam: fdf-is-truth, plus the honest concluded
-    line."""
-    _cited_junction(isolated_projects_root)
-    try:
-        r = web_client.get("/api/transport/describe_attempt?path="
-                           "transport/optimization/Relax/01_only/run-0")
-        assert r.status_code == 200, r.get_json()
-        out = r.get_json()
-        assert out["ok"] and out["concluded"] is True
-        assert "SZ" in out["summary"] and "250" in out["summary"]
-        assert "CONCLUDED (rc=0)" in out["summary"]
-    finally:
-        pass    # tmp_path removes the tree
-
-
-def _recorded_pair(root, *, edited=None):
-    """A labeled structure pair carrying a finished run's own settings."""
-    import numpy as np
-
-    from molbuilder.structure import Structure
-    from molbuilder.workingcopy_structure import StructureCodec
-    d = root / "exported"
-    d.mkdir(parents=True, exist_ok=True)
-    s = Structure(elements=["Au", "Au"],
-                  positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 2.9]]),
-                  vacuum=(10.0, 10.0, 10.0))
-    s.info = {"calculation": {
-        "engine": "siesta",
-        "contract": {"basis_size": "TZP", "mesh_cutoff": 275},
-        "source": "Relax.fdf", "source_sha256": "c" * 64}}
-    if edited:
-        s.info["calculation"][f"{edited}_modified"] = True
-    StructureCodec().write(s, d / "junction.xyz")
-    return "exported"
-
-
-def test_the_citation_line_says_when_the_pair_was_edited_since(
-        web_client, isolated_projects_root):
-    """What a person reads at the moment of choosing.
-
-    The line already says the contract is RECORDED from a named deck. If the
-    pair was edited after that, the mesh cutoff and k-mesh about to be
-    inherited were converged for atoms that are no longer there -- so the
-    same line has to say so, or the recorded settings read as deliberate.
-    """
-    cite = _recorded_pair(isolated_projects_root, edited="structure")
-    out = web_client.get(f"/api/transport/describe_attempt?path={cite}").get_json()
-    assert out["ok"], out
-    assert "RECORDED" in out["summary"], out["summary"]
-    assert "geometry/cell EDITED SINCE" in out["summary"], (
-        f"the pair's geometry was edited after its contract was recorded and "
-        f"the line a person reads does not say so: {out['summary']!r}")
-
-
-def test_an_unedited_pair_reads_exactly_as_before(web_client,
-                                                  isolated_projects_root):
-    """The addition must not appear on the ordinary case."""
-    cite = _recorded_pair(isolated_projects_root)
-    out = web_client.get(f"/api/transport/describe_attempt?path={cite}").get_json()
-    assert out["ok"] and "RECORDED" in out["summary"]
-    assert "EDITED" not in out["summary"], out["summary"]
-
-
-def test_a_label_edit_is_named_as_such_on_the_citation_line(
-        web_client, isolated_projects_root):
-    """The line must say which kind of edit, not just that there was one."""
-    cite = _recorded_pair(isolated_projects_root, edited="labels")
-    out = web_client.get(f"/api/transport/describe_attempt?path={cite}").get_json()
-    assert "labels EDITED SINCE" in out["summary"], out["summary"]
-    assert "electrode and device regions" in out["summary"]
-    assert "mesh cutoff" not in out["summary"], (
-        f"a rename told the person their convergence was suspect: "
-        f"{out['summary']!r}")
-
-
-def test_describe_attempt_names_both_unconcluded_states(web_client, isolated_projects_root):
-    _cited_junction(isolated_projects_root, concluded=False)
-    try:
-        r = web_client.get("/api/transport/describe_attempt?path="
-                           "transport/optimization/Relax/01_only/run-0")
-        out = r.get_json()
-        assert out["concluded"] is False
-        assert "still running" in out["summary"]
-        assert "force-stopped" in out["summary"]
-    finally:
-        pass    # tmp_path removes the tree
-
-
 def test_describe_attempt_stays_inside_the_tree(web_client):
     r = web_client.get("/api/transport/describe_attempt?path=../../etc")
     assert r.status_code == 400
 
 
 import re as _re
-
-
-
-
-def test_transport_describe_refuses_a_sealed_override_by_name(web_client, isolated_projects_root):
-    """The electronic contract is the citation's to say (ruling Q5) --
-    refused at the DESCRIBE door, from the same constant prep refuses
-    from, while changing it is still free."""
-    _cited_junction(isolated_projects_root)
-    try:
-        r = web_client.post("/api/transport/describe", json=dict(
-            engine="siesta", name="T",
-            junction=_T_CITE, bias=[0.0],
-            stages={"device": {"basis_size": "DZP"}}))
-        assert r.status_code == 400
-        msg = r.get_json()["error"]
-        # THE REASON CHANGED, THE REFUSAL DID NOT.  It said "the citation's
-        # to say -- cite a relaxation that ran with the values you want"
-        # until 2026-09-16, which § 2a.7 reversed: the cited run DEFAULTS
-        # these values.  By then it was misleading advice -- redo a
-        # relaxation, when one line of the template would do.  What stays
-        # true is that the value is SHARED by every rung, so giving one rung
-        # its own is how the device comes to disagree with its leads.
-        assert "shared" in msg.lower(), (
-            f"the refusal must say why -- the value is shared: {msg}")
-        assert "shared panel" in msg, (
-            f"...and where it IS changed, or the person is refused with "
-            f"nowhere to go: {msg}")
-    finally:
-        pass    # tmp_path removes the tree
-
-
-def test_transport_describe_refuses_a_rungs_value_on_another_rung(
-        web_client, isolated_projects_root):
-    """`engines/transport.md` § 3.8.2a: a rung's tab writes that rung's
-    bag, and a bag naming an item the rung does not own is refused by the
-    same door `prep` refuses from (`foreign_overrides`), naming the rung
-    that owns it.  A transmission window on the seed, for one."""
-    _cited_junction(isolated_projects_root)
-    r = web_client.post("/api/transport/describe", json=dict(
-        engine="siesta", name="T", junction=_T_CITE, bias=[0.0],
-        stages={"seed": {"transmission_n_points": 101}}))
-    assert r.status_code == 400
-    msg = r.get_json()["error"]
-    assert "transmission" in msg and "'seed'" in msg, msg
-    r = web_client.post("/api/transport/describe", json=dict(
-        engine="siesta", name="T", junction=_T_CITE, bias=[0.0],
-        stages={"lead": {}}))
-    assert r.status_code == 400 and "no such rung" in r.get_json()["error"]
-
-
-def test_transport_describe_writes_the_shared_panels_values_into_the_template(
-        web_client, isolated_projects_root):
-    """`engines/transport.md` § 3.8.2: the shared panel edits the TEMPLATE
-    -- a value chosen there applies to all five rungs at once and is what
-    the template carries; a name the catalogue does not mark `shared` is
-    refused by the same door."""
-    import tomllib
-    _cited_junction(isolated_projects_root)
-    r = web_client.post("/api/transport/describe", json=dict(
-        engine="siesta", name="T", junction=_T_CITE, bias=[0.0],
-        stages={}, shared={"mesh_cutoff": "450", "spin_treatment": "unrestricted",
-                              "species_order": ""}))
-    assert r.status_code == 200, r.get_json()
-    tmpl = next(f["text"] for f in r.get_json()["files"]
-                if f["name"].endswith(".template.toml"))
-    items = tomllib.loads(tmpl)["item"]
-    # typed as text on the form, a number in the template (the one
-    # params-to-config door, R5); a blank is not chosen and is not written
-    assert items["mesh_cutoff"]["value"] == 450.0
-    assert items["spin_treatment"]["value"] == "unrestricted"
-    assert "value" not in items["species_order"], items["species_order"]
-    from molbuilder.template import read_template   # the template is readable
-    read_template(tmpl)
-    r = web_client.post("/api/transport/describe", json=dict(
-        engine="siesta", name="T", junction=_T_CITE, bias=[0.0],
-        stages={}, shared={"transmission_n_points": 7}))
-    assert r.status_code == 400
-    assert "not a shared value" in r.get_json()["error"]
-
-
-def test_describe_attempt_names_a_recorded_contract(web_client, isolated_projects_root):
-    """4.1b's third shade at the seam: a pair whose sidecar carries
-    info.calculation answers contract="cited" and says RECORDED."""
-    import numpy as _np
-    from molbuilder.structure import Structure as _S
-    from molbuilder.workingcopy_structure import StructureCodec as _C
-    d = isolated_projects_root / "transport/exported"
-    d.mkdir(parents=True, exist_ok=True)
-    s2 = _S(elements=["Au"] * 12 + ["S", "C", "C", "S"] + ["Au"] * 12,
-            positions=_np.array([[1.0, 1.0, float(i)] for i in range(28)]),
-            regions={"L-electrode": list(range(12)),
-                     "R-electrode": list(range(16, 28))},
-            cell=_np.diag([8.0, 8.0, 40.0]))
-    s2.info = {"calculation": {"engine": "siesta",
-                               "contract": {"basis_size": "DZP"},
-                               "source": "Relax.fdf",
-                               "source_sha256": "c" * 64}}
-    _C().write(s2, d / "junction.xyz")
-    try:
-        r = web_client.get("/api/transport/describe_attempt"
-                           "?path=transport/exported")
-        out = r.get_json()
-        assert out["ok"] and out["form"] == "structure"
-        assert out["contract"] == "cited"
-        assert "RECORDED" in out["summary"]
-    finally:
-        import shutil as _shutil
 
 
 def test_the_sheet_writes_no_raw_palette_colour():

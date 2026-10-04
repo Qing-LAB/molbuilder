@@ -30,9 +30,7 @@ import json
 
 import numpy as np
 import pytest
-
-from test_transport_prep import _CITE, _isolated, _junction_struct, \
-    _write_junction  # noqa: F401
+from test_transport_prep import _isolated  # noqa: F401 -- its sandbox, autouse
 
 
 def _described(engine, stages, calculation="optimization"):
@@ -95,40 +93,6 @@ def test_an_override_its_rung_does_not_read_is_refused_where_it_is_saved(
     assert not (d / "task.json").exists()
 
 
-def test_a_ladder_is_judged_one_role_at_a_time(web_client,
-                                               isolated_projects_root):
-    """The ladder check reads each item's direction from the catalogue, on
-    every engine -- a PySCF ladder whose SCF tolerance loosens is warned
-    where it is saved -- and compares only rungs of one role: a transport
-    calculation's seed and device are different programs, so a tighter
-    tolerance on the seed than on the device is no loosening.
-
-    MUTATIONS THIS MUST FAIL AGAINST: the directions left in a SIESTA-only
-    table (the PySCF ladder says nothing); the rungs compared across roles
-    (the transport Send warns)."""
-    from molbuilder.config.pyscf import PySCFConfig
-    from test_task_setup_tab import _fresh_calc_dir
-    d = _fresh_calc_dir(isolated_projects_root)
-    _template_beside(d, "pyscf", "optimization", PySCFConfig(job_name="x"))
-    r = _save(web_client, d, _described("pyscf", [
-        {"name": "tight", "overrides": {"scf_conv_tol": 1e-9}},
-        {"name": "loose", "overrides": {"scf_conv_tol": 1e-7}}]))
-    assert r.status_code == 200, r.get_json()
-    assert [f["where"] for f in r.get_json()["findings"]
-            if f["where"].startswith("stages.loosens")] == [
-        "stages.loosens.scf_conv_tol"], r.get_json()["findings"]
-
-    _write_junction(isolated_projects_root, _junction_struct())
-    sent = web_client.post("/api/transport/describe", json=dict(
-        engine="siesta", name="T", junction=_CITE, bias=[0.0],
-        stages={"seed": {"dm_tolerance": 1e-5},
-                "device": {"dm_tolerance": 1e-4}}))
-    assert sent.status_code == 200, sent.get_json()
-    assert not [n for n in sent.get_json()["notices"]
-                if n["where"].startswith("stages.loosens")], \
-        sent.get_json()["notices"]
-
-
 def test_a_relaxation_that_takes_no_step_is_refused(web_client,
                                                     isolated_projects_root):
     """``relax_steps = 0`` on a rung that relaxes is a single point -- the
@@ -154,36 +118,6 @@ def test_a_relaxation_that_takes_no_step_is_refused(web_client,
     found = [f["severity"] for f in r.get_json()["findings"]
              if f["where"] == "config.relax_steps"]
     assert found == ["error"], r.get_json()["findings"]
-
-
-def test_the_finish_judges_by_the_relaxations_own_criterion(
-        isolated_projects_root):
-    """A vibration whose `relax` stage relaxed to its own 0.05 eV/A: the
-    force-constant deck's finish judges the reference geometry by that
-    criterion -- the force it was relaxed to -- not by a copy on `freq`,
-    which no longer reads it.  The `relax` attempt is the measured fixture
-    (`tests/fixtures/siesta_relax`), copied in as this ladder's.
-
-    MUTATION THIS MUST FAIL AGAINST: the finish reading the force-constant
-    stage's own value (the template's 0.01)."""
-    import shutil
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.deck_record import extract_vibration_record
-    from molbuilder.task import Stage
-    from test_engine_offset_reaches_every_deck import _RELAX_RUN, _h2, _prep
-
-    def the_relax_ran(dest):
-        shutil.copytree(_RELAX_RUN, dest / "01_relax" / "run-0")
-
-    _dest, _stage, deck = _prep(
-        isolated_projects_root, _h2(),
-        SiestaConfig(system_label="H2", relax_force_tol=0.01),
-        (Stage(name="relax", enabled=True,
-               overrides={"relax_force_tol": 0.05}),
-         Stage(name="freq", enabled=True, overrides={})), "siesta",
-        stage="freq", calculation="vibration", name="H2",
-        before_prep=the_relax_ran)
-    assert extract_vibration_record(deck)["force_criterion_ev_ang"] == 0.05
 
 
 # --------------------------------------------------------------------- #

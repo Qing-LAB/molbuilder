@@ -266,81 +266,14 @@ def test_the_setup_tells_a_key_the_engine_read_alone_from_the_decks(stopped):
 
 
 @pytest.fixture(scope="module")
-def read_alone(stopped):
-    """The stopped run as folders molbuilder did not write: ``plain/`` --
-    its deck and latest output named by hand, ``input.fdf`` and
-    ``siesta.out``, beside SIESTA's own logs and pseudopotential and a
-    second deck of another label; ``no-deck/`` -- the output and SIESTA's
-    logs alone.  Made from the road's run because the road never writes
-    one."""
-    base = stopped.parents[2] / "by-hand"
-    plain, no_deck = base / "plain", base / "no-deck"
-    for d in (plain, no_deck):
-        d.mkdir(parents=True)
-        shutil.copy(stopped / "H2_01_coarse-run1.out", d / "siesta.out")
-        for log in stopped.glob("fdf.*.log"):
-            shutil.copy(log, d / log.name)
-    shutil.copy(stopped / "H2_01_coarse.fdf", plain / "input.fdf")
-    shutil.copy(stopped / "H.psml", plain / "H.psml")
-    (plain / "other.fdf").write_text("SystemLabel other\n")
-    return plain, no_deck
-
-
-def test_a_run_read_alone_still_has_its_record(stopped, read_alone):
-    """A folder molbuilder did not write is still a run, and its record
-    states what its files state (`model/parse.md` § 5d.1, a folder read
-    alone): the output the status speaks for is the run, taken as it is;
-    the deck, of two, the one whose ``SystemLabel`` SIESTA's log says it
-    read.  The same run read both ways states the same engine, ending and
-    setup -- less what only molbuilder's files say.  Asked at the door the
-    Results tab asks, ``parse_dir``: no road writes such a folder.
-
-    MUTATION THIS MUST FAIL AGAINST: the record finding a run's files by
-    molbuilder's names alone -- the code before 2026-09-27, which gave the
-    hand-named folder a record of its state and nothing else and the output
-    alone none; of two decks, taking neither.
-    """
-    from molbuilder.parse import parse_dir
-
-    made = parse_dir(stopped).record
-    plain, no_deck = read_alone
-    by_hand = parse_dir(plain).record
-
-    assert by_hand["deck"]["path"] == "input.fdf", by_hand.get("deck")
-    build = ("program", "version", "build")
-    engine = made["computation"]["engine"]
-    assert ({k: by_hand["computation"]["engine"].get(k) for k in build}
-            == {k: engine.get(k) for k in build})
-    assert by_hand["verdict"]["ended"] == made["verdict"]["ended"] == "stopped"
-    assert by_hand["verdict"]["converged"] == made["verdict"]["converged"]
-    assert (by_hand["setup"]["pseudopotentials"]
-            == made["setup"]["pseudopotentials"])
-    rows = {r["item"]: r for r in by_hand["setup"]["rows"]}
-    ours = {r["item"]: r for r in made["setup"]["rows"]}
-    shared = set(rows) & set(ours)
-    assert "max_scf_iter" in shared, sorted(rows)
-    for item in shared:
-        assert ((rows[item].get("asked"), rows[item].get("used"))
-                == (ours[item].get("asked"), ours[item].get("used"))), item
-
-    alone = parse_dir(no_deck).record
-    assert "deck" not in alone, alone.get("deck")
-    assert alone["computation"]["engine"]["version"] == engine["version"]
-    assert alone["verdict"]["ended"] == "stopped"
-    stated = alone["setup"]["rows"]
-    assert stated and all("asked" not in r for r in stated)
-    assert any("used" in r for r in stated)
-
-
-@pytest.fixture(scope="module")
 def flask_server():
     from support.live_server import serve
     with serve() as base_url:
         yield base_url
 
 
-def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, read_alone,
-                                                         page, flask_server,
+def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, page,
+                                                         flask_server,
                                                          monkeypatch):
     """The Results tab's Run panel (`web/results.md` § 3a) reads this run's
     record: closed, one line -- the engine, the ranks, how the latest run
@@ -349,12 +282,8 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, read_alone,
     container, and from the moment the panel is bound to another folder --
     a scan that fails announces nothing, so the old record must not stay.
 
-    An output read alone, with no deck, shows what SIESTA used and leaves
-    what was asked unsaid -- "engine default" is a deck's to say.
-
     MUTATION THIS MUST FAIL AGAINST: the picker not carrying ``record`` in
-    its selection event; the panel not hiding when it is re-bound; "engine
-    default" where no deck was read.
+    its selection event; the panel not hiding when it is re-bound.
     """
     from molbuilder import diagnostics
 
@@ -432,13 +361,3 @@ def test_the_run_panel_says_what_ran_and_why_it_stopped(stopped, read_alone,
     rebind(bundle)
     page.locator(".results-ladder").wait_for(state="visible", timeout=20000)
     assert panel.is_hidden()
-
-    # An output read alone: what SIESTA used, and what was asked left blank.
-    rebind(read_alone[1])
-    panel.locator(".rp-setup tbody tr").first.wait_for(timeout=20000)
-    used = page.evaluate(
-        "() => [...document.querySelectorAll("
-        "  '#results-run-panel .rp-setup tbody tr')].map(tr =>"
-        "    [tr.children[2].textContent, tr.children[3].textContent])")
-    assert used and all(asked == "" for asked, _u in used), used[:3]
-    assert any(u for _a, u in used), used[:3]

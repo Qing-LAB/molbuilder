@@ -109,17 +109,6 @@ def test_a_forced_stop_leaves_NO_marker(tmp_path):
 
 # ----------------------------------------------------- the reader's rule
 
-def test_the_question_is_asked_of_the_HIGHEST_out_index(tmp_path):
-    """A warm-retry chain execs fresh wrappers; an old index's marker
-    beside a newer unconcluded .out is a previous goodbye, not this
-    one's."""
-    (tmp_path / "J-run0.out").write_text("old")
-    (tmp_path / "J-run0.concluded").write_text("rc=0 at earlier")
-    (tmp_path / "J-run1.out").write_text("newer, killed")
-    assert not ending(tmp_path, "J").concluded
-    (tmp_path / "J-run1.concluded").write_text("rc=0 at now")
-    assert ending(tmp_path, "J").line.startswith("rc=0")
-
 
 def test_no_out_at_all_reads_unconcluded(tmp_path):
     assert not ending(tmp_path, "J").concluded
@@ -140,12 +129,6 @@ class TestTheEnginesOwnMarkCountsForACitation:
     for a finished relaxation.
     """
 
-    def test_a_siesta_only_relaxation_reads_as_concluded(self, tmp_path):
-        from molbuilder.transport.compose import classify_citation
-        (tmp_path / "relax.fdf").write_text("SystemLabel relax\n")
-        (tmp_path / "relax.XV").write_text("x\n")
-        (tmp_path / "0_NORMAL_EXIT").write_text("")
-        assert classify_citation(tmp_path).concluded == "0_NORMAL_EXIT"
 
     def test_without_it_the_same_directory_is_not_concluded(self, tmp_path):
         """Anti-vacuity: the assertion above must not pass by calling
@@ -154,15 +137,6 @@ class TestTheEnginesOwnMarkCountsForACitation:
         (tmp_path / "relax.fdf").write_text("SystemLabel relax\n")
         (tmp_path / "relax.XV").write_text("x\n")
         assert classify_citation(tmp_path).concluded is None
-
-    def test_it_is_no_deck_s_when_the_folder_holds_another(self, tmp_path):
-        """Asked about one deck, the mark counts only where that deck is the
-        folder's one: another deck's run may have left it."""
-        for name in ("a_01_x.fdf", "a_02_y.fdf"):
-            (tmp_path / name).write_text("x\n")
-        (tmp_path / "0_NORMAL_EXIT").write_text("")
-        assert not ending(tmp_path, "a_02_y").concluded
-        assert ending(tmp_path).line == "0_NORMAL_EXIT"
 
 
 # The launch gate over these markers -- a launched run that concluded is

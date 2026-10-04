@@ -173,9 +173,6 @@ def test_a_job_declares_exactly_these_eight_things():
     assert "resumes" not in finished.to_dict()
 
 
-
-
-
 def test_validate_catches_empty_and_bad_kind():
     """A job-set with no jobs, and one whose `kind` is not a known kind, are both
     reported.
@@ -433,7 +430,6 @@ def test_render_plan_sweep_says_independent():
 #      (test_prep_calculation.py::test_the_allocation_reaches_...);      #
 #    * invalid-ladder refusal -> task.py at read + resolve._stage_of.    #
 # --------------------------------------------------------------------- #
-
 
 
 # --------------------------------------------------------------------- #
@@ -857,26 +853,6 @@ def test_direct_launch_carries_the_launch_door_claim(tmp_path, monkeypatch):
     assert seen["env"]["MB_LAUNCHED_BY"] == "jobset-launch"
 
 
-def _fake_status(states):
-    """A `run_status` stand-in: dir-name -> state.
-
-    These tests are about the LADDER -- first_incomplete, complete --
-    not about how a state is read off a directory, so the read is
-    stubbed.  It stubbed `decode_run_dir` until 2026-09-04, when the one
-    field anyone used was split out of that eleven-field summary and the
-    caller moved to `run_status`.
-    """
-    def fake(run_dir, match="*", *, launch=None):
-        # A `RunStatus`, not a look-alike dict.  The stub is now bound by the
-        # same constructor as the real thing, so a stubbed state outside
-        # `RUN_STATES` raises here instead of flowing into the ladder as a
-        # value production can never produce (2026-09-09).
-        from molbuilder.parse.dirs.job import RunStatus
-        s = states[Path(run_dir).name]
-        return RunStatus(state=s, detail=s)
-    return fake
-
-
 def test_a_flat_rung_is_asked_about_by_name_not_by_directory(tmp_path):
     """ONE DIRECTORY, EVERY RUNG -- that is what the flat shape is
     (`project-layout.md` § 1), so "how is this directory doing" is not the
@@ -922,102 +898,6 @@ def test_status_fresh_bundle_all_not_started(tmp_path):
     assert st.first_incomplete == "s1" and st.complete is False
 
 
-def test_status_pending_and_warm_files(tmp_path):
-    """A directory with warm files but no output reads `pending`, and the warm files
-    are NAMED.
-
-    "Prepared but not run" and "ran and produced nothing" are the two states a
-    person most needs told apart, and both look like an absent `.out`. The warm
-    list is what the next stage would continue from (`job-contracts.md` section
-    4.2), so showing it is how someone checks a restart will actually be warm
-    before spending the allocation to find out.
-    """
-    (tmp_path / "bench-s1").mkdir()
-    (tmp_path / "bench-s1" / "demo.XV").write_text("x")   # label = jobset.name
-    st = jobset_status(_ladder(), tmp_path)
-    assert st.stages[0].state == "pending"                # dir, no .out
-    assert "demo.XV" in st.stages[0].warm_files
-
-
-def test_a_trials_warm_files_are_found_under_the_trials_own_label(tmp_path):
-    """The warm list is read with the SAME label the state is read with.
-
-    A sweep trial is relabelled — SIESTA finds its warm files by
-    `SystemLabel`, so a trial carrying the real run's label could read or
-    overwrite the real run's `.DM` and `.XV` (`project-layout.md` § 2.3.2)
-    — and `_label_of` exists to recover that label off the deck.  It was
-    applied to the `.out` and not to the warm files beside it, so the
-    column asked for `<task.label>.XV` in a directory holding
-    `<task.label>-<token>.XV`.
-
-    MEASURED before the fix on this exact fixture: `warm_files == []` with
-    `siesta-AuBDTAu-G0K20C1.XV` on disk — `jobset status` telling a person
-    there is nothing to restart from, which is the answer that costs an
-    allocation to disprove (`job-contracts.md` § 4.2).
-    """
-    js = JobSet(
-        name="siesta-AuBDTAu", engine="siesta", kind="sweep",
-        jobs=[Job(name="G0K20C1",
-                  script="siesta-AuBDTAu-G0K20C1_01_coarse.fdf",
-                  resources=Resources(mpi_np=1),
-                  warm=[WarmFile("siesta-AuBDTAu-G0K20C1.XV")])])
-    trial = tmp_path / "01_coarse/bench/bench-G0K20C1"
-    trial.mkdir(parents=True)
-    (trial / "siesta-AuBDTAu-G0K20C1.XV").write_text("x")
-
-    st = jobset_status(js, tmp_path)
-    assert st.stages[0].warm_files == ["siesta-AuBDTAu-G0K20C1.XV"]
-
-
-def test_status_first_incomplete_advances(tmp_path, monkeypatch):
-    """With the first stage finished and the second running, `first_incomplete` moves
-    to the second and the set is not complete.
-
-    `first_incomplete` is the resume pointer (`job-system.md` § 5.4) and it
-    has to follow the stage STATES, not the row order: a pointer stuck at stage
-    one sends a person to re-run finished work, and one that runs ahead skips a
-    stage still going. That `running` counts as incomplete is the part a plain
-    "is it finished?" test would not pin.
-    """
-    # PATCH THE DOOR, not the module behind it.  `runstatus` imports
-    # `run_status` from `molbuilder.parse.dirs` -- the package that owns the
-    # question (`model/parse.md` § 5.5, R-RO2) -- so patching
-    # `parse.dirs.job` leaves the re-export pointing at the real function.
-    import molbuilder.parse.dirs as jobmod
-    for n in ("bench-s1", "bench-s2"):
-        d = tmp_path / n; d.mkdir(); (d / "demo.out").write_text("x")
-    monkeypatch.setattr(jobmod, "run_status",
-                        _fake_status({"bench-s1": "finished",
-                                       "bench-s2": "running"}))
-    st = jobset_status(_ladder(), tmp_path)
-    assert st.stages[0].state == "finished"
-    assert st.first_incomplete == "s2" and st.complete is False
-
-
-def test_status_complete_when_all_finished(tmp_path, monkeypatch):
-    """Every stage finished means `complete` is True, `first_incomplete` is None, and
-    the rendered status SAYS so.
-
-    The terminal state has to be unambiguous in both the object and the text a
-    person reads. `first_incomplete` left pointing at the last stage offers a
-    resume for a ladder that is done -- an allocation spent to discover the work
-    was already there.
-    """
-    # PATCH THE DOOR, not the module behind it.  `runstatus` imports
-    # `run_status` from `molbuilder.parse.dirs` -- the package that owns the
-    # question (`model/parse.md` § 5.5, R-RO2) -- so patching
-    # `parse.dirs.job` leaves the re-export pointing at the real function.
-    import molbuilder.parse.dirs as jobmod
-    for n in ("bench-s1", "bench-s2"):
-        d = tmp_path / n; d.mkdir(); (d / "demo.out").write_text("x")
-    monkeypatch.setattr(jobmod, "run_status",
-                        _fake_status({"bench-s1": "finished",
-                                       "bench-s2": "finished"}))
-    st = jobset_status(_ladder(), tmp_path)
-    assert st.complete is True and st.first_incomplete is None
-    assert "All stages finished" in render_status(st)
-
-
 def test_render_status_shows_resume_pointer(tmp_path):
     """The rendered status names the calculation, the stage to resume from, and that
     nothing resumes on its own.
@@ -1047,30 +927,6 @@ def test_cli_status(tmp_path):
     r = runner.invoke(grp, ["status", "--bundle", str(tmp_path)])
     assert r.exit_code == 0, r.output
     assert "JOB-SET STATUS" in r.output and "First incomplete" in r.output
-
-
-def test_status_finished_with_real_siesta_out(tmp_path):
-    """The status reader reaches `finished` through the REAL parser on a real SIESTA
-    output, with nothing monkeypatched.
-
-    Its neighbours stub `run_status` to place a state; this one does not, which
-    makes it the only test in the group that would notice the status dict's shape
-    drifting between `parse.dirs.job` and `jobset.runstatus`. Under that drift
-    every stubbed test still passes and every real bundle reports the wrong state.
-    The fixture is a frozen finished run from `tests/watch/fixtures/siesta_frozen`,
-    concluded as its wrapper concludes one: finished is a run that ended on its
-    own with exit code 0 (`runrecord.ending`), not an output alone.
-    """
-    # DEPTH: the real decode_run_dir -> "finished" path (not monkeypatched),
-    # so a drift in the status-dict shape between decode + runstatus is caught.
-    import shutil
-    fix = (Path(__file__).parent / "watch" / "fixtures" / "siesta_frozen"
-           / "hemeC-stage2-run3-finished-42fr.out")
-    d = tmp_path / "bench-s1"; d.mkdir()
-    shutil.copy(fix, d / "demo.out")            # label = jobset.name = "demo"
-    (d / "demo-run0.concluded").write_text("rc=0 at then\n")
-    st = jobset_status(_ladder(), tmp_path)
-    assert st.stages[0].state == "finished"     # REAL parse of a finished run
 
 
 # --------------------------------------------------------------------- #
@@ -1296,25 +1152,6 @@ def test_prepare_attempt_refuses_with_the_one_listing_that_carries_ordinals():
     assert "coarse ('#1'), tight ('#3')" in str(e.value)
 
 
-def test_an_unlaunched_attempt_is_reused_and_a_launched_one_is_never_touched():
-    """§ 1.5: an attempt is immutable once it has run, so a re-run is a NEW
-    directory.  Before it has run there is nothing to preserve, and minting
-    run-1 beside an empty run-0 would just litter."""
-    import tempfile
-    from pathlib import Path
-    from molbuilder.jobset.materialize import prepare_attempt
-    from molbuilder.runrecord import write_launch
-    js = _token_ladder("JOB_03_tight.fdf")
-    with tempfile.TemporaryDirectory() as td:
-        first = prepare_attempt(js, td, "tight").dir
-        assert first.name == "run-0"
-        assert prepare_attempt(js, td, "tight").dir == first   # reused
-        write_launch(first, mode="direct", command=["bash", "x.sh"])
-        second = prepare_attempt(js, td, "tight").dir
-        assert second.name == "run-1"                             # never reused
-        assert (Path(first) / "run.json").is_file()               # left intact
-
-
 def test_prep_says_reused_only_of_an_attempt_an_earlier_prep_opened(
         isolated_projects_root):
     """The report tells a new attempt from one an earlier prep left behind.
@@ -1350,25 +1187,6 @@ def test_prep_says_reused_only_of_an_attempt_an_earlier_prep_opened(
 # --------------------------------------------------------------------- #
 
 
-def test_status_reads_the_attempt_because_that_is_where_the_run_happened(tmp_path):
-    """`project-layout.md` § 1.5, *"Where a run happens: inside the attempt
-    directory"* -- so a stage whose output is in run-0 has RUN, and status that
-    globs the container reports it as never launched, forever."""
-    from molbuilder.jobset.materialize import prepare_attempt
-    js = _token_ladder("JOB_03_tight.fdf")
-    attempt = prepare_attempt(js, tmp_path, "tight").dir
-    (attempt / "JOB_03_tight.out").write_text("Job completed\n")
-
-    st = jobset_status(js, tmp_path).stages[0]
-    assert st.attempt == "run-0"                 # says WHICH attempt it read
-    # A POSITIVE claim: the decoder was reached and returned one of its own
-    # verdicts.  `!= "pending"` would also pass for "unknown", which is what
-    # this reports when the decoder THROWS -- a broken decoder would look like
-    # a working fix.
-    assert st.state in ("running", "finished", "failed")
-    assert "not launched" not in st.detail
-
-
 def test_every_table_column_gets_a_rule_segment(tmp_path):
     """The widths and the rule were two hand-written column counts, and adding
     `attempt` desynchronised them at once: six headings over a five-segment
@@ -1383,38 +1201,6 @@ def test_every_table_column_gets_a_rule_segment(tmp_path):
         rule = next(l for l in lines if l.strip() and set(l.strip()) <= {"-", " "})
         header = lines[lines.index(rule) - 1]
         assert len(rule.split()) == len(re.split(r"\s{2,}", header.strip()))
-
-
-def test_warm_files_are_read_from_the_attempt_not_the_container(tmp_path):
-    """Same sentence, other half: what a run WRITES is created in place, so the
-    restart files a user is deciding on are in the attempt."""
-    from molbuilder.jobset.materialize import prepare_attempt
-    js = _token_ladder("JOB_03_tight.fdf")
-    attempt = prepare_attempt(js, tmp_path, "tight").dir
-    (attempt / "JOB.XV").write_text("")
-    (attempt / "JOB_03_tight.out").write_text("Job completed\n")
-
-    assert jobset_status(js, tmp_path).stages[0].warm_files == ["JOB.XV"]
-
-
-def test_a_launched_attempt_with_no_output_is_queued_not_not_started(tmp_path):
-    """`project-layout.md` § 1.6: *"a queued cluster job has produced nothing
-    yet, so 'no output' and 'not started' look identical"* -- run.json is what
-    tells them apart, and status *"can say queued as job 481923 instead of
-    guessing from an absence"*."""
-    from molbuilder.jobset.materialize import prepare_attempt
-    from molbuilder.runrecord import write_launch
-    js = _token_ladder("JOB_03_tight.fdf")
-    attempt = prepare_attempt(js, tmp_path, "tight").dir
-
-    before = jobset_status(js, tmp_path).stages[0]
-    assert before.state == "pending"             # prepped, genuinely not launched
-
-    write_launch(attempt, mode="submit", command=["sbatch", "x"],
-                 job_id="481923")
-    after = jobset_status(js, tmp_path).stages[0]
-    assert after.state == "queued"
-    assert "481923" in after.detail              # the contract's own sentence
 
 
 def test_a_continue_carries_the_accumulative_records_too(tmp_path):
@@ -1485,34 +1271,6 @@ def test_re_prepping_cold_removes_what_the_previous_prep_carried_in(tmp_path):
     assert not (attempt / ".continued-from").exists()
 
 
-def test_status_takes_a_stage_and_answers_the_other_question(tmp_path):
-    """`job-system.md` § 5.3 reserves a per-stage form and marked it unbuilt.
-
-    The table answers *where is this calculation up to*; this answers *what
-    happened to this stage*, which is what you ask before deciding to run it
-    again.  It is only answerable because a try is a directory and a launch is
-    a record (§ 1.5, § 1.6) -- so it prints the attempt, the launch and the
-    provenance, not just the row.
-    """
-    from molbuilder.jobset.materialize import prepare_attempt
-    from molbuilder.runrecord import write_launch
-    from molbuilder.jobset.runstatus import render_stage_status
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    coarse = prepare_attempt(js, tmp_path, "coarse").dir
-    (coarse / "JOB.XV").write_text("COARSE-GEOM")
-    tight = prepare_attempt(js, tmp_path, "tight",
-                            continue_from="01_coarse/run-0").dir
-    write_launch(tight, mode="submit", command=["sbatch", "x.sbatch"],
-                 job_id="481923", continued_from="01_coarse/run-0")
-
-    out = render_stage_status(jobset_status(js, tmp_path), "tight")
-    assert out.splitlines()[0].startswith("STAGE 03_tight")
-    assert "run-0" in out
-    assert "481923" in out                       # the launch record, not a guess
-    assert "01_coarse/run-0" in out              # where this geometry came from
-    assert "03_tight/run-0" in out               # and where to go look
-
-
 def test_a_never_launched_stage_says_so_instead_of_showing_a_blank_record(tmp_path):
     """Prepared but not started is its own state, and it is what `run.json`'s
     absence means (§ 1.6)."""
@@ -1524,51 +1282,6 @@ def test_a_never_launched_stage_says_so_instead_of_showing_a_blank_record(tmp_pa
     out = render_stage_status(jobset_status(js, tmp_path), "tight")
     assert "no run.json" in out
     assert "continued from" not in out
-
-
-def test_a_cold_run_prints_no_provenance_line_at_all(tmp_path):
-    """`continued_from` is ABSENT, not null, when a run starts from the
-    structure (checkpointing.md S3) -- and the view must not turn that absence
-    into *"continued from: nothing"*, which is a different claim.
-
-    This is the LAUNCHED-but-cold case.  Testing it on a never-launched stage
-    proves nothing: that path stops before provenance is ever considered, so a
-    view that printed a blank line for every cold run would still pass.
-    """
-    from molbuilder.jobset.materialize import prepare_attempt
-    from molbuilder.runrecord import write_launch
-    from molbuilder.jobset.runstatus import render_stage_status
-    js = _token_ladder("JOB_03_tight.fdf")
-    attempt = prepare_attempt(js, tmp_path, "tight", cold=True).dir
-    write_launch(attempt, mode="direct", command=["bash", "x.sh"])
-
-    out = render_stage_status(jobset_status(js, tmp_path), "tight")
-    assert "launched" in out and "direct" in out      # it DID start
-    assert "continued from" not in out                # from the structure
-
-
-def test_every_label_in_the_per_stage_view_is_padded_off_the_longest(tmp_path):
-    """The pad was hand-written as 14 -- exactly the width of `continued from`,
-    so the one row with provenance to report ran its value into its own name.
-    Same defect as the table's two column counts, one screen over."""
-    from molbuilder.jobset.materialize import prepare_attempt
-    from molbuilder.runrecord import write_launch
-    from molbuilder.jobset.runstatus import render_stage_status
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    coarse = prepare_attempt(js, tmp_path, "coarse").dir
-    (coarse / "JOB.XV").write_text("x")
-    tight = prepare_attempt(js, tmp_path, "tight",
-                            continue_from="01_coarse/run-0").dir
-    write_launch(tight, mode="direct", command=["bash", "x.sh"],
-                 continued_from="01_coarse/run-0")
-
-    body = [l for l in render_stage_status(jobset_status(js, tmp_path),
-                                           "tight").splitlines()
-            if l.startswith("  ")]
-    # every indented row separates its label from its value by real whitespace
-    assert body, "no rows rendered"
-    for line in body:
-        assert re.match(r"^ {2}\S.*?\s{2,}\S", line), f"label runs into value: {line!r}"
 
 
 def test_status_takes_the_bundle_the_way_every_verb_does(tmp_path):
@@ -1754,23 +1467,6 @@ def test_and_the_same_prep_does_carry_it_when_the_two_agree(tmp_path):
     assert (rep.dir / "bdt.CG").read_text() == "02_medium:CG"
 
 
-def test_a_redo_of_one_stage_agrees_with_itself(tmp_path):
-    """§ 2.3.4: *"A redo is the same instruction."* `--from` inside the SAME
-    stage re-runs it from where the last attempt reached, and a stage always
-    matches its own optimizer — so the full group comes across, including the
-    history the rule exists to protect."""
-    from molbuilder.jobset.materialize import prepare_attempt
-    from molbuilder.runrecord import write_launch
-    js = _shipped_ladder()
-    first = _finished(tmp_path, "03_tight")
-    write_launch(first, mode="direct", command=["bash", "x"])
-
-    rep = prepare_attempt(js, tmp_path, "tight",
-                          continue_from="03_tight/run-0")
-    assert rep.dir.name == "run-1"            # the launched one is immutable
-    assert rep.copied == ["bdt.XV", "bdt.DM", "bdt.CG"]
-
-
 def test_a_source_this_jobset_cannot_place_withholds_the_conditional_file(
         tmp_path):
     """Unverified is not the same as satisfied, and the mistake is not
@@ -1894,30 +1590,6 @@ def test_re_prep_sweeps_the_whole_declared_set_not_the_pair_filtered_one(
     assert (again.dir / "bdt.XV").read_text() == "01_coarse:XV"
 
 
-def test_attempts_are_ordered_as_numbers_not_as_names(tmp_path):
-    """`run-10` comes after `run-9`, and lexically it does not.
-
-    Nothing reads these back as strings today, and that is the point of pinning
-    it: sorting by name makes `resolve_attempt` hand out `run-3` when `run-10`
-    already exists, so the next prep writes into a directory that has already
-    run -- § 1.5's one prohibition, reached by a sort order.
-    """
-    from molbuilder.jobset.materialize import latest_attempt, resolve_attempt
-    from molbuilder.paths import attempts_in
-    from molbuilder.runrecord import write_launch
-    d = tmp_path / "03_tight"
-    for n in (0, 1, 2, 9, 10):
-        (d / f"run-{n}").mkdir(parents=True)
-        write_launch(d / f"run-{n}", mode="direct",       # all launched
-                     command=["bash", "x"])
-    (d / "notes.txt").write_text("")                     # not an attempt
-    (d / "run-x").mkdir()                                # nor is this
-
-    assert attempts_in(d) == [0, 1, 2, 9, 10]
-    assert latest_attempt(d).name == "run-10"
-    assert resolve_attempt(d) == (d / "run-11", True)
-
-
 def test_prepare_links_resolve_from_two_levels_down(tmp_path):
     """The deck and the package arrive in ``<stage>/run-<n>/`` as REAL
     COPIES (L2, roadmap 7.10; they were relative links until the layout
@@ -1966,23 +1638,6 @@ def test_the_grammar_is_unambiguous_even_for_a_stage_named_3(tmp_path):
     assert resolve_stage_ref(refs, "tight").seq == 3
     with _pt.raises(ValueError, match="no stage named"):
         resolve_stage_ref(refs, "03_tight")              # tokens retired
-
-
-def test_run_launch_omits_continued_from_rather_than_writing_null(tmp_path):
-    """`checkpointing.md` S3 words its check as *"names a directory that exists
-    **or is absent**"*, and absent is not `null`: a reader that tests for the
-    key sees a starting-from-the-structure run as one that continued from
-    nothing-in-particular.  Two different claims, one of them false."""
-    import json
-    from molbuilder.runrecord import RUN_LAUNCH_SCHEMA, write_launch
-    p = write_launch(tmp_path, mode="direct", command=["bash", "x.sh"])
-    body = json.loads(p.read_text())
-    assert body["schema"] == RUN_LAUNCH_SCHEMA
-    assert "continued_from" not in body          # ABSENT, not None
-
-    p = write_launch(tmp_path, mode="direct", command=["bash", "x.sh"],
-                     continued_from="01_coarse/run-0")
-    assert json.loads(p.read_text())["continued_from"] == "01_coarse/run-0"
 
 
 def test_the_provenance_survives_the_prep_to_submit_handover(tmp_path):
@@ -2093,35 +1748,6 @@ def test_status_prints_the_seq_not_the_row(tmp_path):
     out = render_status(st)
     assert "seq" in out
     assert [l.split()[0] for l in out.splitlines() if "tight" in l] == ["3"]
-
-
-def test_a_launched_sweep_trial_reports_queued_not_pending(tmp_path):
-    """`project-layout.md` § 1.6: `run.json` is the honest answer to "has
-    this been launched?" -- a queued job has produced nothing, so "no
-    output" and "never started" look identical without it.  A sweep trial
-    is ITS OWN attempt (submit.py's rule), so its record sits at the
-    trial's top, not in a `run-<n>`/.  Until 2026-08-20 the status reader
-    looked only inside attempts, and a grouped-submitted trial answered
-    the exact false line § 1.6 forbids."""
-    from molbuilder.jobset.materialize import job_dir_names, shape_of
-    from molbuilder.runrecord import write_launch
-    from molbuilder.jobset.model import Job, JobSet
-    js = JobSet(name="JOB", engine="siesta", kind="sweep",
-                jobs=[Job(name="p1", script="JOB_p1.fdf"),
-                      Job(name="p2", script="JOB_p2.fdf")])
-    dirs = job_dir_names(js, shape_of(js, tmp_path))
-    for name in dirs.values():
-        (tmp_path / name).mkdir(parents=True)
-    # p1 rides a grouped submission; p2 was never launched.
-    write_launch(tmp_path / dirs["p1"], mode="submit",
-                 command=["sbatch", "bench-group.sbatch"],
-                 job_id="48213")
-    st = jobset_status(js, tmp_path)
-    by = {s_.ref.name: s_ for s_ in st.stages}
-    assert by["p1"].state == "queued", by["p1"]
-    assert "queued as job 48213" in by["p1"].detail
-    assert by["p1"].launch and by["p1"].launch.get("job_id") == "48213"
-    assert by["p2"].state == "pending"
 
 
 def test_status_seq_is_none_for_a_sweep_point():
@@ -2550,84 +2176,11 @@ def test_prep_reports_the_resources_this_stage_will_be_launched_with(tmp_path):
     assert "auto" not in out
 
 
-def test_a_flat_stage_that_never_ran_does_not_borrow_a_siblings_state(tmp_path):
-    """`project-layout.md` § 1: flat is **depth 1** — every stage shares one
-    directory and they are told apart by the deck's token in each filename.
-
-    The observe layer asked *"is there a `.out` in this stage's directory?"*,
-    which is right in the hierarchy (the directory already chose the stage) and
-    silently wrong in flat: `coarse` finishing made `tight` claim to be running
-    too, because the glob matched `coarse`'s file.
-
-    `Shape.run_basename` is what answers *which files are this stage's*, and
-    this is the caller it was built for.
-    """
-    from molbuilder.jobset.materialize import prepare_attempt
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    _describe(tmp_path, "flat")
-    # coarse ran; tight has not been touched
-    (tmp_path / "JOB_01_coarse-run0.out").write_text("Job completed\n")
-
-    by_name = {s.name: s for s in jobset_status(js, tmp_path).stages}
-    assert by_name["coarse"].state not in ("pending", "not-started")
-    assert by_name["tight"].state == "pending", (
-        "tight borrowed coarse's output: they share a directory in flat")
-    assert "not launched" in by_name["tight"].detail
     # Deliberately NOT asserting `first_incomplete` here: that depends on the
     # DECODER's verdict for coarse ("Job completed" is not necessarily
     # `finished`), which is a different contract.  This test is about which
     # files a stage owns, and asserting past that would make it fail for a
     # reason it does not name.
-
-
-def test_two_flat_rungs_with_real_output_each_report_their_own(tmp_path):
-    """The SECOND half of the same rule, and the half that had no test.
-
-    The one above proves a stage with NO output does not borrow a sibling's —
-    that is caught by the existence gate, which was already shape-aware. This
-    proves the case the gate lets through: **both** rungs have real output, and
-    they must still be told apart. The gate narrows with `Shape.run_basename`
-    and then hands the directory to `run_status`; until 2026-09-08 it handed
-    over no narrowing at all, so `run_status` picked "highest ordinal, newest mtime"
-    across the whole directory and every row showed the newest rung's state.
-
-    Reverting only that one argument passes every other test in this suite —
-    which is how it shipped. This is the test that fails.
-    """
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    _describe(tmp_path, "flat")
-    old = tmp_path / "JOB_01_coarse-run0.out"
-    new_ = tmp_path / "JOB_03_tight-run0.out"
-    old.write_text("Siesta Version: 5.4.2\nsiesta: iscf\n>> End of run:  1-JAN-2026\n")
-    # ...and coarse ENDED ON ITS OWN: an output that ended is finished only
-    # with its run's conclusion (`runrecord.ending`, architecture.md § 3.2).
-    (tmp_path / "JOB_01_coarse-run0.concluded").write_text("rc=0 at then\n")
-    new_.write_text("Siesta Version: 5.4.2\nsiesta: iscf\nscf:  1  -100.0\n")
-    past = _time.time() - 86400
-    os.utime(old, (past, past))
-    from molbuilder.runrecord import write_launch
-    write_launch(tmp_path, mode="direct", command=["bash", "x"])
-
-    by_name = {s.name: s for s in jobset_status(js, tmp_path).stages}
-    assert (by_name["coarse"].state, by_name["tight"].state) == (
-        "finished", "running"), (
-        "the rungs did not each report their own file -- the newest one spoke "
-        "for the whole directory, which is the flat-shape bug this narrows: "
-        f"{by_name['coarse']} / {by_name['tight']}")
-
-
-def test_the_hierarchy_is_unaffected_because_its_directory_already_chose(tmp_path):
-    """`run_basename` is None there, so the behaviour is identical to before —
-    which is the point of one object answering for both."""
-    from molbuilder.jobset.materialize import prepare_attempt
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    _describe(tmp_path, "hierarchical")
-    a = prepare_attempt(js, tmp_path, "coarse").dir
-    (a / "JOB_01_coarse.out").write_text("Job completed\n")
-
-    by_name = {s.name: s for s in jobset_status(js, tmp_path).stages}
-    assert by_name["coarse"].state not in ("pending", "not-started")
-    assert by_name["tight"].state == "not-started"      # no directory at all
 
 
 # --------------------------------------------------------------------- #
@@ -2657,8 +2210,6 @@ def test_prep_resolves_the_machine_before_anything_else(tmp_path):
     env = json.loads((tmp_path / "environment.json").read_text())
     assert env["schema"] == "molbuilder/environment@2"
     assert env["topology"]["cores_per_socket"] >= 1     # a real probe ran
-
-
 
 
 def test_the_machine_probe_is_molbuilders_not_the_benchmarks():
