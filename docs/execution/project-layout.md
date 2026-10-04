@@ -38,17 +38,20 @@ refuses a hierarchical stage with no attempt open — § 1.6.2.)*
 ```
 <project>/optimization/<Calc>/          <- PORTABLE: travels as-is, names no machine
   task.json  <label>.template.toml      the description + the answers
-  <name>.source.xyz  (+.molstruct.json) the structure pair
+  <label>.source.xyz (+.molstruct.json) the structure pair
   pseudos/  (H.psml, ...)               travel with the calculation
   01_coarse/                            <- prep writes the stage (hierarchical shape)
     <label>_01_coarse.fdf  *.run.sh     the deck + wrapper, rendered FOR this machine,
     mb_monitor.pyz                         and the monitor beside them
-    run-0/  run-1/                      <- attempts: PREP opens each and copies its inputs in;
-                                           launch runs it and writes run.json
+    run-0/  run-1/                      <- attempts: prep opens the first and copies its
+                                           inputs in, launch each one after; launch writes run.json
       *-run0.out  *-run0.concluded      the output + the conclusion marker (rc inside)
-  bench-K2C1/run-0/                     <- a benchmark trial keeps attempts as a stage does (§ 1.5a)
+    bench/bench-K2C1/run-0/             <- a benchmark trial keeps attempts as a stage does (§ 1.5a)
   (the report is PRINTED by `summarize`, not written -- § 7.1 of job-system.md)
 ```
+
+*Every file, in both shapes, with who writes it and the one door that reads it:
+the manifest, § 5.*
 
 | key rule | one line | where |
 |---|---|---|
@@ -271,7 +274,8 @@ au_bdt_relax/
 ```
 
 *A flat stage's launch record is its own `<basename>.run.json`, named like
-every other file of it: the directory is every stage's (§ 1.6.3).*
+every other file of it: the directory is every stage's (§ 1.6.3). The tree is a
+picture; every file, with its writer and its door, is § 5.*
 
 *`<label>` is the `SystemLabel` — the stem of every file here. It is **not** the
 run id, which carries the formula as well and lives in `task.json`
@@ -322,7 +326,8 @@ bdt-relax/                            the CALCULATION — the user typed this na
 ```
 
 *Every directory `prep` makes also holds its `calcdir.json` (§ 1.4a), and each
-start of a wrapper its `<basename>.runwrap-<stamp>.log`.*
+start of a wrapper its `<basename>.runwrap-<stamp>.log`. The tree is a picture;
+every file, with its writer and its door, is § 5.*
 
 **The deck repeats the stage its directory already names, on purpose.** Without
 it every stage directory holds an identically-named deck, and two swapped by a
@@ -881,7 +886,7 @@ What an attempt holds, moment by moment (`running-a-job.md` § 4.2 reads each):
 
 | moment | the attempt holds | `run_status` |
 |---|---|---|
-| prepped | `calcdir.json`; copies of the deck, the wrapper, `mb_monitor.pyz`, the pseudopotentials (and `atom-permutation.json` when the decks come from a sorted copy); the job's finish bundle when it has one (`mb_vibration.pyz`); the molwatch seed; the warm files and `.continued-from` if it continues | `pending` |
+| prepped | `calcdir.json`; copies of the deck, the wrapper (and its `.sbatch` on a machine with a queue), `mb_monitor.pyz`, the pseudopotentials (and `atom-permutation.json` when the decks come from a sorted copy); the job's finish bundle when it has one (`mb_vibration.pyz`); `makov_payne_correction.py` for a charged, isolated deck; the molwatch seed; the warm files and `.continued-from` if it continues — every one with its writer and door in § 5.3 | `pending` |
 | launched | + `run.json` | `queued` |
 | running | + `-run0.out` (PySCF: `-run0.pyscf.log`), the monitor's pair, the session log | `running` — and still `running` after the engine's output ended, until the job concludes: its finish deriving its result (its session log says the finish began), the wrapper's last lines |
 | concluded | + `-run0.concluded` | `finished` with exit code 0, `failed` with any other — the one door's answer (`runrecord.ending`, [`architecture.md`](?doc=execution/architecture.md) § 3.2) — or when its output states a stop. A marker naming a failed finish: the engine ended and the job did not, so `failed`. A job that cannot run its finish stops before its engine with a marker saying so and no output: `failed` |
@@ -2061,7 +2066,7 @@ stage they belong to; the engine's cannot, because SIESTA gives no choice.
 |---|---|---|
 | stage directory | — *(there are none)* | `<seq>_<name>` — `01_coarse`, `02_tight` |
 | deck | `<label>_<NN>_<name>.fdf` | `<label>_<NN>_<name>.fdf` **inside `<NN>_<name>/`** — the same name, and the repetition is a self-check |
-| trajectory log | `<label>_<NN>_<name>.molwatch.log` | `<label>_<NN>_<name>.molwatch.log`, beside the deck |
+| trajectory log | `<label>_<NN>_<name>.molwatch.log` | `<label>_<NN>_<name>.molwatch.log`, in the attempt — seeded beside the deck and moved in (§ 1.0) |
 | warm files | `<label>.XV` `.DM` `.CG` — bare, shared | `<label>.XV` `.DM` `.CG` — bare, inside the attempt |
 
 **The log is named for the deck that produced it, in either shape** — so it
@@ -2123,6 +2128,10 @@ directory to say otherwise. The ordinal is safe in a name because § 4.2 assigns
 it once and never reassigns it — see `engines/stages.md` R5's table, which draws
 the line between an assigned ordinal and a list position.
 
+> *(Superseded 2026-08-10 by the paragraph above — every file of a stage
+> carries the whole token, number and name; the note is kept for the
+> disagreement it records.)*
+>
 > **`seq` orders; `name` identifies — and only one of them belongs in a file.**
 > The stage directory is the single place both appear, because a directory
 > listing is the one view where *order* is what you want to see. Everywhere else
@@ -2437,22 +2446,150 @@ located our files through the door would be asserting that the door agrees with
 itself. A test spells the name because the literal IS the independent check on
 the grammar.
 
-## 5. The files, and which of them are sources
+## 5. The manifest — every file in a calculation, who writes it, and the one door that reads it
 
-At the calculation level every file is one of three things, and confusing them is
-how a folder stops being trustworthy.
+*Verified 2026-10-04 against the code at `e63d111e` and against two real H₂
+calculations made on the road, one of each shape (`jobset init`, `prep`
+coarse, `launch`, `prep` medium): three readers of the code, a fourth who
+checked them, and every writer and door below read in its function.*
 
-| File | Kind | Written by | If you delete it |
-|---|---|---|---|
-| `<label>.template.toml` | **source** | the user's surface | **every value the calculation ever set is gone.** `task.json` cannot supply them: it carries only what *varies* |
-| `task.json` | **source** | the user's surface | the calculation cannot be regenerated or reopened |
-| `<NN>_<name>/<label>_<NN>_<name>.fdf` | derived | `prep` step 3, from the template ⊕ the allocation — **born in the stage's own directory** (L1, roadmap 7.10; nothing rendered sits at the root since 2026-08-24) | restored from a saved state — a prepped stage is not prepped again ([`job-system.md`](?doc=execution/job-system.md) § 5.0); its attempt holds a copy |
-| `<NN>_<name>/<label>_<NN>_<name>.run.sh` / `.sbatch` | derived | prep, beside the deck it launches | as the deck |
-| `job-set.json`, `STAGE-PLAN.md` | derived | prep | restored from a saved state; without the plan, no stage reads as prepped |
-| `*.pipeline.log` | **record** | `prep --pipeline-log`, when asked | nothing the next prep cannot write again — but the record of the prep that ALREADY ran is gone, which is the one you wanted |
-| `pseudos/*.psml` | **input**, copied in | the producer — one folder at the root (M6); each run directory receives its own `<El>.psml` copies | re-resolve from the project's cache |
-| stage outputs (④) | **result** | the engine | gone — this is what the history is for |
-| trial outputs (the stage's `bench/`) | **scratch** | the engine | nothing lost; `bench-result.json` is the answer |
+**The rule.** Every file molbuilder writes into a calculation folder has one
+row here — its name, where it sits in each shape, what it is for, who writes it
+and when, and **its door: the one function every reader asks for it.** A reader
+that needs one of these files asks its door. Spelling its name again, globbing
+for it or reading it raw is a second reader of one fact (`architecture.md`
+§ 3.2, rule A14; § 4.5 above). A ⚠ names a second reader or a wrong spelling
+that exists today, and the `plans/plan.md` § 0c row that removes it. A door of
+*none* means a person reads the file and no code does.
+
+**Names.** A run file is `<label>[_<stage>][-run<N>]<role>`, composed by
+`runfiles.compose` and read back by `runfiles.parse` with its label
+(`job-contracts.md` § 2.2a). The catalogue in code of what molbuilder writes is
+`runfiles.WRITTEN`; the run-file rows below are its reading. `<label>` is
+`task.label` (the `SystemLabel` / `JOB`); `<base>` is `<label>_<NN>_<stage>`,
+the deck's stem; `<N>` is the run script's run index; `<El>` an element.
+
+**Kinds** — what losing the file costs (§ 5.7): **source**, nothing else can
+rebuild it; **input**, copied in as it was; **derived**, rendered by `prep` and
+restored from the state saved before that prep (a stage is not prepped again,
+[`job-system.md`](?doc=execution/job-system.md) § 5.0); **record**, what a verb
+or a run said about itself; **result**, what a run produced.
+
+### 5.1 The calculation root — both shapes
+
+In the flat shape the root is also the run folder, so the files of § 5.2–§ 5.4
+sit here too.
+
+| file | what it is for | written by | the door | kind |
+|---|---|---|---|---|
+| `task.json` | the description: what varies, the stages, the shape, the structure | `jobset init` (`describe.write_description`); Task setup's Save and transport's `jobset init` (`task.write_task`); the Transport tab's describe, which the browser writes | `task.read_task` ⚠ read raw by `calcdirs.container_or_run`, `rundir._calculation_of` and Task setup's folder answer (B14) | source |
+| `<label>.template.toml` | every parameter, with the value it was given | `jobset init`; the hand-over and the Transport tab, which the browser writes; transport's `jobset init`; `jobset migrate` | `template.template_path(base, label)` ⚠ `template.find_template(base)` answers prep's gate, transport, `migrate` and Task setup (W38 M1) | source |
+| `<label>.source.xyz` + `<label>.source.molstruct.json` | the structure the calculation is of, with its cell and its labels | the hand-over (`StructureCodec.files(struct, "<label>.source")`, `web/blueprints/build.py`); `jobset init` (`describe.write_description`) ⚠ names it after the structure FILE, `<file stem>.source.*` (D20) | `task.json`'s `structure.source`, followed by `prep._structure_for` into `StructureCodec.load` | input |
+| `task.1st.json` | a hand-over waiting for its shape and stages; Save removes it | the hand-over route (`api_task_setup_handover`), which the browser writes | Task setup's folder answer | record |
+| `environment.json` | the machine record this calculation is set to — its first prep's | the first prep (`jobset.machine.set_machine`) | `scheduler.record.machine_for` | record |
+| `job-set.json` | the run plan: one job per prepped stage, merged per stage | prep (`JobSet.write`) | `JobSet.load` | derived |
+| `STAGE-PLAN.md` | the plan in reading order | prep (`prep_jobset`), written whole at each prep | none ⚠ its restart-file column lists what a stage declares, not what the carry took (D28) | derived |
+| `jobset-decisions.log` | one JSON line per decision of every verb | `jobset.ledger.record` | none | record |
+| `<base>.<engine>.<shape>.pipeline.log` | what each step of a prep received, decided and produced | `prep --pipeline-log` (`pipeline_log.PipelineLog`) | none | record |
+| `warm-files.toml` *(optional)* | this calculation's own restart-file list | a person | `warmfiles.warm_list` | source |
+| `atom-permutation.json` | the atom order the decks were written in — a SIESTA vibration's, a transport calculation's | prep (`transport.sort.write_permutation`; transport's compose) | `atom_permutation.read_permutation` | derived |
+| `pseudos/` — its `calcdir.json` and `<El>.psml` | the calculation's one copy of each pseudopotential | prep step 3 (`jobset.engines._pseudo_dir`), which moves in any found at the root | `pseudos.psml_sources` | input |
+| `<El>.psml` at the root | **flat:** the run folder's own copy, since SIESTA opens only its working directory · **hierarchical:** none once prep has run | `jobset init --psml-lib`; in the flat shape prep step 3 moves it into `pseudos/` and `materialize` copies it back ⚠ a refusal between the two leaves the run folder without it (D16) | SIESTA | input |
+| `<label>.transport.json` | a transport calculation's I–V record | `summarize run` (`transport.record.write_record`) | the registry's `TransportRecordFileParser` | result |
+| `<label>.fc-sweep.json` | a SIESTA vibration's force-constant stages compared | `summarize run` (`spectra.displacement_sweep.write_sweep`) | the registry's `FcSweepRecordFileParser` | result |
+| `junction.xyz` + `junction.molstruct.json`, `junction.cited.fdf`, `slot-provenance.json` | the composed junction, the deck it was cited from, and where each part came from | a transport calculation's first prep (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | derived |
+| `.git/`, `.gitignore`, `.binsnapshots/` | the folder's saved states | `checkpoint.save_before`, before every Save and every prep | `checkpoint.Repo` | record |
+| `<label>.template.toml.pre-m6` | the template as it was before `jobset migrate` | `jobset migrate` | none | record |
+
+### 5.2 A stage
+
+**Hierarchical:** `<NN>_<stage>/`, a container. **Flat:** the same files at the
+root, told apart by `<base>`.
+
+| file | what it is for | written by | the door | kind |
+|---|---|---|---|---|
+| `calcdir.json`, `"role": "container"` *(hierarchical)* | says the folder is a container of this calculation (§ 1.4a) | `materialize.prepare_attempt` | `calcdirs.read`, `container_or_run`, `root_of` | record |
+| `<base>.fdf` · `<base>.py` | the deck, rendered for this machine | prep (`script_emit.prepare_deck`) | the engine; a folder's deck: `runfiles.find_by_role(dir, ".fdf")`, read back with the label | derived |
+| `<base>.validation.txt` | what the deck's own checks said | prep (`script_emit.write_validation_report`) | none | record |
+| `<base>.run.sh` · `<base>.sbatch` *(a machine with a queue)* | the run script; its queue header | prep (`runwrap.write_run_wrapper`) ⚠ every later prep renders every earlier stage's again — in the flat shape, the launched stage's own (D21) | launch | derived |
+| `mb_monitor.pyz` · `mb_vibration.pyz` *(a force-constant stage)* | the monitor and the readers it runs on; the job's finish | prep, beside each run script ⚠ rewritten with them (D21) | the run script | derived |
+| `<El>.psml`, `atom-permutation.json` *(hierarchical)* | the shared package's copies | `materialize.materialize`, never refreshed once there | SIESTA; the finish | input |
+| `makov_payne_correction.py` | the correction a charged, isolated deck asks a person to run afterwards | prep (`siesta.makov_payne.emit_correction_script`) | a person | derived |
+| `<base>.molwatch.log` *(hierarchical, until the attempt opens)* | the progress channel's seed, moved into the attempt (§ 1.0) | prep (`_seed_trajectory_log`, then `_move_progress_channel_into`) | § 5.3 | record |
+
+### 5.3 A run
+
+**Hierarchical:** `<NN>_<stage>/run-<n>/` — prep opens the first, launch each
+one after it. **Flat:** the root, every stage's files side by side, told apart
+by `<base>` and `-run<N>`.
+
+| file | what it is for | written by | the door | kind |
+|---|---|---|---|---|
+| `calcdir.json`, `"role": "run"` *(hierarchical)* | says the folder is a run of this calculation | `materialize.prepare_attempt` | `calcdirs.read`, `container_or_run`, `root_of` | record |
+| the deck, `.run.sh`, `.sbatch`, `mb_monitor.pyz`, the finish, `<El>.psml`, `atom-permutation.json`, `makov_payne_correction.py` *(hierarchical: copies)* | everything the run reads, as real files (§ 1.5) | `materialize.prepare_attempt`, at prep and at launch's re-launch | the engine; launch runs the run script here | input |
+| `<base>.molwatch.log` | the progress channel: seeded at prep, written by PySCF's deck as it runs, never by SIESTA | prep ⚠ not seeded in an attempt launch opens, nor in a transport rung's (D18) | the registry's `MolwatchLogFileParser` | record |
+| the restart files carried in — SIESTA's `<label>.XV .DM .MD.nc .MD .MDE .ANI`, and `.CG` between stages of one optimizer; PySCF's `<label>.chk`, `<label>_optimized.xyz`; a transport rung's `.DM`, `.TSDE` *(hierarchical; in the flat shape they lie where the last stage left them)* | the state the engine continues from | `materialize.prepare_attempt`, from `continuation_files` (`model.warm_carry`) | the engine | input |
+| `.continued-from` *(hierarchical)* · `<base>.continued-from` *(flat)* | the run whose files were carried in, for launch's record | prep (`prepare_attempt`; in the flat shape `prep._flat_continued_from`); launch, on a re-launch (`submit._send`) | `runrecord.continued_from_marker`, copied into the launch record by `submit._record_launch` ⚠ a path (`01_coarse/run-0`) in one shape and a run's name (`H2_01_coarse-run0`) in the other, while the ledger's flat line says `null` (unit 10) | record |
+| `.gathered-from`, with `<label>_<electrode>.TSHS`, `<label>.DM`, `<label>.TS.HSX` *(transport)* | what a rung took, from which upstream run | prep (`gather_transport_inputs`, `runrecord.write_gathered_from`) | `runrecord.read_gathered_from` | record |
+| `run.json` *(hierarchical)* · `<base>.run.json` *(flat)* | the launch record | launch (`runrecord.write_launch`) | `runrecord.launch_record` | record |
+| `<base>-run<N>.out` *(SIESTA, TBtrans)* · `<base>-run<N>.pyscf.log` *(PySCF)* | the engine's stdout | the run script | how it ended: `parse.engines._run_ending.ending_of`; what it holds: the registry's parser; which output speaks for the run: `parse.dirs.job.run_status` ⚠ five other pickers (B11) | result |
+| `<base>-run<N>.scf-timing.log` *(SIESTA)* | the wall time of each SCF iteration | the run script | `parse.instruments.scf_timing_rows.timing_of` | record |
+| `<base>-run<N>.concluded` | the run ended on its own, with its exit code | the run script, its last act | `runrecord.ending` | record |
+| `<base>-run<N>.monitor.log` · `<base>-run<N>.util.csv` | the monitor's account; its processor and memory samples | the monitor | the registry's `MonitorLogFileParser`, `UtilCsvFileParser` | record |
+| `<base>.runwrap-<stamp>.log` | the run script's session log, with the engine's stderr | the run script | `wrapper_log.log_of_run` ⚠ `summarize._wrapper_log` takes the newest by name (B11) | record |
+| `<base>-run<N>.parse.log` · `<base>.molwatch.parse.log` *(only with `MOLBUILDER_PARSE_LOG`)* | the parser's account of reading a file | `parse._log.ParseLogger` | none | record |
+| `slurm.<jobid>.out` · `slurm.<jobid>.err` *(launched to a queue)* | SLURM's own stdout and stderr | SLURM, as the header's `-o` / `-e` say | none | record |
+| `.mb-rank-launch-<pid>.sh` *(a GPU run)* | the per-rank launcher, removed when the run script exits | the run script | `mpirun` | — |
+| `<label>.FC`, `<label>.FCC`; `<label>.spectra.json` *(a SIESTA force-constant stage)* | the force constants; the vibration's result | SIESTA; the job's finish (`mb_vibration.pyz`) | the finish reads `.FC`; the registry's `SpectraSidecarFileParser` | result |
+| `<label>[_<NN>_<stage>].log` *(PySCF)* | PySCF's own log | the deck | `parse.dirs.record` (the engine's version and threads) | result |
+| `<label>_initial.xyz` + `<label>_initial.molstruct.json`; `<label>_optimized.xyz` + `<label>_optimized.molstruct.json` *(PySCF)* | the input geometry, echoed back; the relaxed one, which is carried | the deck ⚠ neither `.molstruct.json` has a catalogue row (D23) | the registry's `PySCFOutFileParser`, `PySCFGeomFileParser` | result |
+| `<label>.constraints.txt` *(PySCF)* | the held atoms, in geomeTRIC's form | the deck | geomeTRIC | derived |
+| `<label>_<NN>_<stage>_geom_optim.xyz`, `_geom.log`, `_geom.tmp/` *(PySCF)* | geomeTRIC's trajectory, log and scratch | geomeTRIC, under the prefix the deck hands it | the registry's `PySCFOutFileParser` (the trajectory) | result |
+| `<label>.spectra.json` *(PySCF)* | the vibration's result, rewritten at each phase | the deck | the registry's `SpectraSidecarFileParser` | result |
+
+### 5.4 What the engines write
+
+None of these is ours to name. SIESTA names its files by `SystemLabel`, so they
+carry no stage and no run index; in the flat shape there is one set at the root,
+overwritten or appended by each stage that runs. PySCF writes nothing its deck
+does not name (§ 5.3).
+
+| | SIESTA's files | the door |
+|---|---|---|
+| **read** | `<label>.XV` | the registry's `SiestaXVFileParser` (`read_xv_with_cell`) — the Results tab, the transport citation, `xv2xyz` |
+| | `<label>.xyz` | `StructureCodec.load`, the frame from the run's deck (`engine_frame_for_run_dir`, `model/structure-periodicity.md` § 6.0) |
+| | `<label>.MD.nc` | `parse.engines.siesta_mdnc.sibling_md_nc` — the `.out`'s frames are upgraded from it |
+| | `fdf.<stamp>.log` | the run record's setup, paired with the `.out` by its stamp (`parse.dirs.record`) |
+| | `<El>.ion` | a transport calculation citing the run |
+| | every row of `siesta/warm-files.toml` | for presence only: the run script's banner, and which engine a folder holds |
+| **carried** | `.XV .DM .MD.nc .MD .MDE .ANI`; `.CG` between stages of one optimizer | `warmfiles.warm_list` (§ 5.3) |
+| **read by nothing** | `0_NORMAL_EXIT` (on purpose: `runrecord.ending`), `MESSAGES`, `CLOCK`, `FORCE_STRESS`, `BASIS_ENTHALPY`, `BASIS_HARRIS_ENTHALPY`, `OUTVARS.yml`, `PARALLEL_DIST`, `NON_TRIMMED_KP_LIST`; `<label>.alloc`, `.bib`, `.BASIS_ENTHALPY`, `.BONDS`, `.BONDS_FINAL`, `.FA`, `.FAC`, `.KP`, `.ORB_INDX`, `.MD_CAR`, `.STRUCT_OUT`; `<El>.ion.nc`, `<El>.ion.xml` | ⚠ `.BONDS` is spelled `.Bonds` in `siesta/warm-files.toml` (D26) |
+| **TranSIESTA, TBtrans** | an electrode rung's `<electrode stem>.TSHS` and the device's `<label>.TS.HSX`, gathered into the rungs after them (§ 5.3, `transport.stages`); the device's `<label>.TSDE`, carried along a bias scan; `<label>.TBT.AVTRANS_<pair>` | `transport.record` ⚠ not a spin-polarized point's `.TBT_UP.` / `.TBT_DN.` files (plan K21) |
+
+### 5.5 Benchmarks, launch groups and the bias scan
+
+| file | what it is for | written by | the door | kind |
+|---|---|---|---|---|
+| `<NN>_<stage>/bench/` *(hierarchical)* · `bench_<NN>_<stage>/` *(flat)* | a stage's benchmark: the sweep's own `job-set.json` and `STAGE-PLAN.md`, the trials, `bench-result.json` | prep bench ⚠ no `calcdir.json` (D18) | `jobset._cli._load_bench_set`; `paths.bench_containers_in` | derived |
+| `bench-<point>/`, and its `run-<n>/` *(hierarchical)* | one measured point, its attempts kept as a stage's (§ 1.5a) | prep bench (`materialize.trial_work_dir`) ⚠ no `calcdir.json`; the trial's run script is told the calculation's label (D18) | `materialize.trial_dir`, `trial_work_dir`; then as § 5.3 | as § 5.2–§ 5.3 |
+| `bench-result.json` | every trial's timing and the winner — the sweep's archival trace | `summarize` (`run_summarize_jobset`) | none | record |
+| `launch/<group>.run.sh` · `.sbatch` · `.log`, and SLURM's `slurm.<jobid>.*` | a grouped benchmark launch: its sequencer, its header, every member's output | launch (`jobset/submit.py`), written again at each launch | `bash` / `sbatch` | record |
+| `<NN>_<rung>/v<V>/` and its `run-<n>/` *(transport)* | one bias point: its deck, its run script, its attempts | transport prep | as § 5.2–§ 5.3 | as § 5.2–§ 5.3 |
+| `<NN>_<rung>/launch/<base>-chain.run.sh` · `.sbatch` · `.log` *(transport)* | the bias chain: the scan's points in order, each handed the device's carried files by the one before it | launch | `bash` / `sbatch` ⚠ a point records no `.continued-from` for what it was handed | record |
+
+### 5.6 Files that exist only while they are written
+
+Each is removed when its write ends; only a kill in between leaves one.
+
+| file | written by |
+|---|---|
+| `<file>.<random>.tmp` beside the target of every `persist` write; `junction.xyz.tmp`, `<sidecar>.tmp`, a `.spectra.json`'s temporary | `persist.write_json` / `write_bytes`, the codec, `sidecars.molstruct`, `sidecars.spectra` |
+| `.runwrap-syntax-check-<random>.sh` beside each run script | prep, checking each rendered run script with `bash -n` |
+| `.<calculation>.describe-<random>/` beside the calculation folder | `jobset init`, publishing the folder whole |
+| `.binsnapshots/<digest>.<random>/` | `checkpoint`, staging a saved state |
+| `<sidecar>.lock` — **left behind** | `sidecars.molstruct.with_lock`: the Transport tab's electrode swap, inside the cited run's attempt (Q6) |
+
+### 5.7 Two sources, everything else derived
 
 > **Two sources, everything else derived.** The **template** and **`task.json`**
 > are the files at the calculation level that cannot be reconstructed from the
@@ -2468,7 +2605,10 @@ how a folder stops being trustworthy.
 > is to say what lives where. It dates from before the template was a file of
 > its own: § 3.7 of `job-contracts.md` moved it out on 2026-08-11.)*
 
-### 5.1 The config files, by level
+A calculation's own `warm-files.toml`, when a person writes one, is a third:
+optional, and read only for the restart files it lists (§ 5.1).
+
+### 5.8 The config files, by level
 
 | File | Level | Format | Holds |
 |---|---|---|---|
@@ -2730,7 +2870,7 @@ than no invariant, because it fails a directory that is working correctly.
     ([`architecture.md` § 5.2](?doc=execution/architecture.md)).
     The machine-measurement files are the deliberate exception —
     `environment.json` at the root, the benchmark files in the stage's
-    `bench/` container (§ 5.1). *(The last sentence said they "sit at ④"
+    `bench/` container (§ 5.8). *(The last sentence said they "sit at ④"
     until 2026-08-12 — one of the three numberings § 2.6's note records.)*
 11. **A parameter difference is a different deck; a resource difference is a
     different launch.** Neither mechanism is used for the other's job.
