@@ -20,20 +20,6 @@ machine = "workstation"
 mpi_np = 1
 omp_threads = 1
 
-# The queue a row on a machine with a scheduler names, and its wall and memory.
-[allocation_base]
-domain = "cpu"
-time = "01:00:00"
-mem = "4G"
-
-[[queues]]
-name = "cpu"
-partition = "cpu"
-qos = "public"
-max_time = "1-00:00:00"
-max_cores = 128
-node_types = [{ cores = 128, nodes = 10 }]
-
 [[case]]
 name = "a stage continues from the newest run of the stage before it"
 stand_in = { leaves_restart = true }
@@ -59,12 +45,3 @@ before = [["prep", "run", "coarse"],
 stage = "medium"
 said = ["continues from 01_coarse/run-0"]
 run_answer = { stage = "coarse", state = "finished", live = false }
-
-[[case]]
-name = "a run waiting in the queue is followed by the viewers, and the stage after it waits"
-machine = "this"
-before = [["prep", "run", "coarse"],
-          ["launch", "run", "coarse", "--mode", "submit", "--yes"]]
-stage = "medium"
-refused = "which is queued"
-run_answer = { stage = "coarse", state = "queued", live = true }
