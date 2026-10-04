@@ -815,7 +815,11 @@ class TestTheContractEndpoint:
           record says (§ 1.6) -- not *not mine*, which would make every
           consumer asking about a rung before it runs raise;
         * each file says what it is: the attempt's deck is the catalogue's,
-          its launch record not there yet.
+          its launch record not there yet;
+        * a BENCHMARK TRIAL's folder is a run of ours too, pending: prep
+          marks it as it marks a stage's attempt (§ 1.4a).  *(Its folders
+          carried no record until 2026-10-04, so the run door read a
+          trial as a folder nothing marks.)*
 
         *(The root's own PRODUCT -- a transport calculation's I–V record --
         is transport's own case, on the minimal junction (plan Q5–Q7).  This
@@ -847,6 +851,15 @@ class TestTheContractEndpoint:
         about = {f["name"]: f["about"] for f in body["files"]}
         assert about["H2_01_coarse.fdf"]["ours"] is True, about
         assert about["calcdir.json"]["ours"] is True, about
+
+        got = jobset("prep", "bench", "coarse", "--bundle", bundle,
+                     "--target", "this")
+        assert got.exit_code == 0, got.output
+        trial = sorted((bundle / "01_coarse" / "bench").glob("bench-*"))[0]
+        body = client.get("/api/results/dir?path="
+                          + str(trial / "run-0")).get_json()
+        assert body["place"]["role"] == "run", body["place"]
+        assert body["status"]["state"] == "pending", body["status"]
 
     def test_a_measured_run_of_ours_is_answered_by_the_run_door(self):
         """A REAL run of ours -- `tests/fixtures/siesta_flat_h2`, measured:

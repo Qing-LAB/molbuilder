@@ -207,6 +207,11 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
             from .materialize import trial_work_dir
             _jd = trial_work_dir(_jd, _sh)
         _jd.mkdir(parents=True, exist_ok=True)
+        if jobset.kind == "sweep":
+            # A TRIAL'S FOLDERS SAY WHAT THEY ARE, as a stage's attempt
+            # does (`project-layout.md` § 1.4a).
+            from .materialize import mark_run
+            mark_run(base, _jd)
         if job.script in rendered:
             # A SHARED script (several trials, one deck): each directory
             # still holds its own real copy (L2) -- under the symlink
@@ -915,6 +920,11 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                 _sd = _shape.stage_dir(token) if token else "."
                 _jdir = base if _sd == "." else base / _sd
             _jdir.mkdir(parents=True, exist_ok=True)
+            if element.is_trial:
+                # WHERE A TRIAL'S DECK IS BORN, ITS FOLDERS SAY WHAT THEY ARE
+                # (`project-layout.md` § 1.4a), as a stage's attempt does.
+                from .materialize import mark_run
+                mark_run(base, _jdir)
             # The deck is rendered from values ⊕ THIS element's allocation, so it
             # records the rank count it actually assumed.  Rendering from the
             # values alone emits `mpi_np auto` and the launch check then refuses a

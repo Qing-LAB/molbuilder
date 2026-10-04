@@ -1320,8 +1320,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
                   "a run — and where the calculation is",
              when="prep", level="stage", kind="record",
              writer="prep, in every folder it makes "
-                    "(`materialize.prepare_attempt`, "
-                    "`jobset.engines._pseudo_dir`)",
+                    "(`materialize.mark_run` -- a stage's attempt and a "
+                    "benchmark trial's -- and `jobset.engines._pseudo_dir`)",
              door="calcdirs.read"),
     Artifact(name=MONITOR_BUNDLE,
              what="the monitor, and the readers it runs on — one file",

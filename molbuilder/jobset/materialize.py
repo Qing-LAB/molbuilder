@@ -741,6 +741,27 @@ FLAT_HAS_NO_ATTEMPTS = (
     "run card's `restart: clean`, not by --cold.")
 
 
+def mark_run(base, run_dir) -> None:
+    """SAY WHAT EACH DIRECTORY DOWN TO A RUN IS (`project-layout.md` § 1.4a,
+    invariant 6b): every directory between the calculation root and the run
+    a container, the run itself a run -- written by the code that makes
+    them, the moment it does: a stage's attempt (:func:`prepare_attempt`,
+    a bias point's included) and a benchmark trial's folder (`prep`).  The
+    root says itself, through its description, and gets no record.
+
+    *(Only a stage's attempt was marked until 2026-10-04: a trial's
+    folders carried nothing, so the run door could not tell a trial was a
+    run of ours -- plan W56 3b.4.)*"""
+    base, run_dir = Path(base), Path(run_dir)
+    if run_dir.resolve() == base.resolve():
+        return
+    for c in reversed(run_dir.parents):
+        if c == base or base not in c.parents:
+            continue
+        calcdirs.write(c, role=calcdirs.CONTAINER, root=base)
+    calcdirs.write(run_dir, role=calcdirs.RUN, root=base)
+
+
 def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                     continue_from: Optional[str] = None,
                     cold: bool = False,
@@ -830,12 +851,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # `container=<...>/v0.2`, whose parent `04_device/` is then created by
     # `parents=True` and would be the one directory in the tree that never
     # answered.
-    for _c in reversed(stage_dir.parents):
-        if _c == base or base not in _c.parents:
-            continue
-        calcdirs.write(_c, role=calcdirs.CONTAINER, root=base)
-    calcdirs.write(stage_dir, role=calcdirs.CONTAINER, root=base)
-    calcdirs.write(attempt, role=calcdirs.RUN, root=base)
+    mark_run(base, attempt)
 
     # Inputs: the deck, wrappers and shared package, COPIED in -- real
     # files, per L2 (roadmap 7.10; `project-layout.md` § 1.0: the run
