@@ -249,7 +249,7 @@ def api_spectra_load():
         # § 4.1): the run this file belongs to is asked after the file is
         # read, and when it is no longer live the file is read again if it
         # changed in between -- so the viewer stops on the file's last state.
-        from molbuilder.parse.dirs import run_answer
+        from molbuilder.runs import run_answer
         try:
             before = _version(path)
             results = parse_spectra_json(path)

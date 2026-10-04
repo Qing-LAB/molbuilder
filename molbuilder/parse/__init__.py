@@ -5,16 +5,17 @@ contract this package implements.
 
 Public surface:
 
-* ABCs — :class:`FileParser`, :class:`DirParser`.  *(`TextParser`
+* ABC — :class:`FileParser`.  *(`DirParser` retired 2026-10-04: a run
+  folder is the run door's, `molbuilder.runs`.  `TextParser`
   retired 2026-09-05: its only implementations read molbuilder's OWN
   generated blocks, which need no detection — they moved to the
   module that writes them, `script_emit`.  `plans/plan.md` § 5d.)*
-* Result types — :class:`ParseResult` and its 5 frozen subclasses
-  (trajectory / structure / sidecar / instrument / rundir —
-  ``BundleResult`` retired 2026-08-29 with calculation-to-calculation
+* Result types — :class:`ParseResult` and its frozen subclasses
+  (trajectory / structure / sidecar / instrument / engine parameters —
+  ``RunDirResult`` retired 2026-10-04 with the directory door's move to the
+  run door, ``BundleResult`` 2026-08-29 with calculation-to-calculation
   passing, ``JobResult`` 2026-09-04 with the run decoder).
-* Registry / dispatch — :func:`detect`, :func:`parse`,
-  :func:`parse_dir`, :func:`register`.
+* Registry / dispatch — :func:`detect`, :func:`parse`, :func:`register`.
 * Exceptions — :exc:`ParseError` and its two children
   :exc:`UnknownFormatError` / :exc:`AmbiguousFormatError`.  Detection
   raises BOTH, and they are SIBLINGS: a caller that catches only the
@@ -24,10 +25,10 @@ The 2026-06 migration (phases A-H) is complete: the engine, coords,
 sidecar, script and dir parsers all live here and register at import.
 """
 
-from .base import DirParser, FileParser
+from .base import FileParser
 from .errors import (AmbiguousFormatError, ParseError,
                      UnknownFormatError)
-from .registry import detect, parse, parse_dir, register
+from .registry import detect, parse, register
 from .types import (
     ParseResult,
     ParseWarning,
@@ -52,13 +53,13 @@ from . import dirs as _dirs   # noqa: F401  -- side-effect import
 
 __all__ = [
     # ABCs
-    "FileParser", "DirParser",
+    "FileParser",
     # Results
     "ParseResult", "TrajectoryResult", "StructureResult",
     "SidecarResult", "InstrumentResult", "EngineParamsResult",
     "ParseWarning",
     # Registry / dispatch
-    "detect", "parse", "parse_dir", "register",
+    "detect", "parse", "register",
     # Exceptions
     "ParseError", "UnknownFormatError", "AmbiguousFormatError",
     # Canonical entry-point classes (convenience re-exports)

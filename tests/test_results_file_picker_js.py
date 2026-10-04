@@ -507,9 +507,11 @@ class TestAbsorbSatellites:
     #: both the rule and its test agreed on a grammar no generated file has
     #: ever used.  Twice.  Names that come out of the generator cannot do that.
     _JOB = "pyscf_relax"
-    #: What `parse.dirs.labels_in` would answer for this folder: the decks
-    #: state them, and every file is read back against all of them.
-    _LABELS = ["other_job", "pyscf_relax"]
+    #: The label the run door reads this folder's run's names back with --
+    #: the description's (`execution/architecture.md` § 3.2).  A file of
+    #: another job in the same folder reads back as nobody's: foreign.
+    #: *(Every label the folder's decks stated, until 2026-10-04 -- plan
+    #: B11.)*
     _MASTER = "/p/" + _rf(_JOB, ".molwatch.log", "03_tight")
     #: What THIS rung's master absorbs: the two carried files, which stem on
     #: the bare job, and its own trajectory, which carries its token.
@@ -553,15 +555,15 @@ class TestAbsorbSatellites:
         round trip in one test.
         """
         import json
-        from molbuilder.parse.dirs import read_back
+        from molbuilder.runfiles import parse as rf_parse, roles
         rows = []
         for p in paths:
             name = p.rsplit("/", 1)[-1]
-            # EVERY LABEL THE DIRECTORY HOLDS, which is what `labels_in`
-            # answers on a real one -- two jobs in one folder is a case
-            # below, and reading against only the first would make its files
-            # unresolvable rather than foreign.
-            rec = read_back(name, TestAbsorbSatellites._LABELS)
+            # READ BACK AS THE SERVER READS IT (`runs.folder_answer`): with
+            # the run's own label, a declared role or nothing.
+            rec = rf_parse(name, TestAbsorbSatellites._JOB)
+            if rec is not None and rec.role not in roles():
+                rec = None
             rows.append({"name": name, "path": p, "mtime": 1000,
                          "role": rec.role if rec else None,
                          "label": rec.label if rec else None,
@@ -619,17 +621,11 @@ class TestAbsorbSatellites:
         out = self._absorb((self._SATS))
         assert sorted(out) == sorted(p.rsplit("/", 1)[-1] for p in self._SATS)
 
-    def test_a_different_run_in_the_same_folder_is_untouched(self):
-        """Only files sharing the master's base are absorbed -- a second job in
-        the same directory keeps its own result."""
-        out = self._absorb(([
-            self._MASTER,
-            "/p/pyscf_relax_optimized.xyz",
-            "/p/other_job_01_coarse.molwatch.log",
-            "/p/other_job_optimized.xyz",
-        ]))
-        assert sorted(out) == ["other_job_01_coarse.molwatch.log",
-                               "pyscf_relax_03_tight.molwatch.log"]
+    # `test_a_different_run_in_the_same_folder_is_untouched` stood here until
+    # 2026-10-04: two jobs' runs in one folder.  A calculation folder holds
+    # one run label, the description's (plan B11) -- another job's files in
+    # it are foreign, and two jobs sharing a folder is not a layout molbuilder
+    # makes.
 
     def test_a_label_holding_a_stage_shaped_run_is_still_one_entry(self):
         """The label is READ BACK, never cut out of the name.
@@ -653,15 +649,12 @@ class TestAbsorbSatellites:
                  _rf(job, "_initial.xyz"),
                  _rf(job, "_optimized.xyz"),
                  _rf(job, "_geom_optim.xyz", "02_fine")]
-        old_job, old_labels = (TestAbsorbSatellites._JOB,
-                               TestAbsorbSatellites._LABELS)
+        old_job = TestAbsorbSatellites._JOB
         TestAbsorbSatellites._JOB = job
-        TestAbsorbSatellites._LABELS = [job]
         try:
             out = self._absorb(["/p/" + n for n in names])
         finally:
             TestAbsorbSatellites._JOB = old_job
-            TestAbsorbSatellites._LABELS = old_labels
         assert out == [names[0]], (
             "one run must be ONE menu entry whatever its label looks like; "
             "got: " + repr(out))

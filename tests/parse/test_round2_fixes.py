@@ -27,7 +27,6 @@ from molbuilder.parse import (
     UnknownFormatError,
     detect,
     parse,
-    parse_dir,
     register,
 )
 from molbuilder.parse.base import FileParser

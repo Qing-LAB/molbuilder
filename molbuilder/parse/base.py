@@ -1,22 +1,14 @@
 """Abstract base classes for the parse module.
 
-Per ``docs/model/parse.md`` § 1.  **Two** ABCs, one discriminator per
-scope (file / directory).  All concrete parsers subclass exactly one.
-*(Three until 2026-09-05, when ``TextParser`` retired -- see below.  The
-count here still said three until 2026-09-18.)*
+Per ``docs/model/parse.md`` § 1.  **One** ABC, :class:`FileParser`: a
+parser turns one FILE into a result.  *(A ``DirParser`` stood beside it until
+2026-10-04: its one subclass read the description, which this floor must not
+-- the directory door moved up to the run door, `molbuilder.runs`, plan B11,
+B14.  A ``TextParser`` retired 2026-09-05.)*
 
 Forbidden by the doc:
 * (TextParsers did NO I/O; the ABC retired 2026-09-05 -- see below.)
 * FileParsers do NO subprocess / network / threads.
-* DirParsers MUST compose readers that own their formats; no inline
-  file-level parsing.  WHICH reader is the question's: the REGISTRY answers
-  *what typed result does this file hold* (`detect`+`parse`), and
-  `engines/_run_ending.ending_of` answers *how did this run end* -- a
-  substring scan, where the registry's answer costs a whole `Trajectory` to
-  reach one string (`model/parse.md` § 5.4).  *(Said "compose registered
-  FileParsers" until 2026-09-18, which the code stopped obeying that day for
-  a measured reason; § 5.4 carries it.  Said "FileParsers + TextParsers"
-  earlier the same day.)*
 """
 
 from __future__ import annotations
@@ -99,39 +91,3 @@ class FileParser(ABC):
 # which also removed a circular import the split had forced.  `plans/plan.md` § 5d.
 
 
-class DirParser(ABC):
-    """One directory → one :class:`ParseResult`, composed from
-    per-file parsers PLUS directory-level invariants
-    (cross-file consistency, status state machine, stage ordering).
-
-    Concrete subclasses MUST compose a reader that owns the format; they
-    MUST NOT inline file-level parsing logic that duplicates one.  The
-    REGISTRY is that reader for *what typed result does this file hold*
-    (and is the only thing that may decide WHICH parser, so a registration
-    change propagates); `engines/_run_ending.ending_of` is that reader for
-    *how did this run end*, one per ROLE.  `model/parse.md` § 5.4 carries
-    the split and why it exists.
-
-    *(This licensed "(or directly invoke a known FileParser class)" until
-    2026-09-18 -- which is exactly what ``registry.py``'s own header
-    FORBIDS: "Callers MUST NOT import a parser class directly + call its
-    methods -- go through the registry so registration changes propagate."
-    Two files in one package, opposite rules, and the registry's is the one
-    that has a reason attached, so the parenthetical went.)*
-    """
-    name:   str
-    label:  str
-    output: Type[ParseResult]
-
-    @classmethod
-    @abstractmethod
-    def can_parse(cls, run_dir: Path) -> bool:
-        """Cheap sniff of the directory's contents — typically
-        "does it contain a .fdf + an .out?", or similar
-        domain-specific check."""
-
-    @classmethod
-    @abstractmethod
-    def parse(cls, run_dir: Path) -> ParseResult:
-        """Walk the directory, compose per-file results, return
-        the typed directory-level result."""

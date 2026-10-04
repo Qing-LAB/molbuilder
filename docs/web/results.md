@@ -28,7 +28,7 @@ one per kind of result — shows it.
 ```mermaid
 flowchart LR
   F["the folder's files<br/>each one aspect of the calculation,<br/>at one stage of its life"] --> R["one reader per file<br/>parse/, the registry"]
-  R --> D["the folder's answer — parse_dir:<br/>what the folder IS, which file is<br/>its result, what each file is"]
+  R --> D["the folder's answer — runs.folder_answer:<br/>what the folder IS, which file is<br/>its result, what each file is"]
   D --> API["GET /api/results/dir"]
   API --> P["the picker: lists the openable files,<br/>opens the folder's result"]
   P --> C["the controller: picks the presenter<br/>for that file, mounts it"]
@@ -56,7 +56,7 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 
 | part | module | what it does |
 |---|---|---|
-| the folder's answer | `parse/dirs/rundir.py` — `JobDirParser` → `RunDirResult`, served by `web/blueprints/results.py::api_results_dir` | what the folder is (`place`: run · container · not marked), its engine, the file to open (`openable`); per file, its role, label, stage, whether a parser reads it (`parser`) and what it is (`about`, § 3b); for a calculation root, the ladder |
+| the folder's answer | `runs.py` — the run door's `folder_answer` ([`execution/architecture.md`](?doc=execution/architecture.md) § 3.2), served by `web/blueprints/results.py::api_results_dir` | what the folder is (`place`: run · container · not marked), its engine, the file to open (`openable`); per file, its role, label, stage, whether a parser reads it (`parser`) and what it is (`about`, § 3b); for a calculation root, the ladder |
 | the picker | `lib/results/file-picker.js` | scans the folder the sidebar scopes, drops files nothing can read and files no presenter calls a result, opens `openable`, and announces the choice with `place`, `ladder` and `record` |
 | the file card | `lib/results/file-card.js` (§ 3b) | what the file in hand is — the dropdown's, or one clicked in the sidebar inside the folder the panel shows: what it holds and who wrote it, or *not written by molbuilder* |
 | the Run panel | `lib/results/run-panel.js` (§ 3a) | the run the folder's files came from — its `record` — above whichever presenter is mounted; hidden for a container and a folder with no run |
@@ -323,19 +323,19 @@ Two rules keep this from hiding anything:
 
 #### The door the picker asks
 
-> `GET /api/results/dir` is the HTTP surface over the directory door,
-> `parse_dir` → `JobDirParser` → `RunDirResult`
-> ([`model/parse.md`](?doc=model/parse.md) § 5) — **one route, one question,
-> one answer per directory.** It reports what the directory IS
-> (`calcdirs.container_or_run`, as `place`), which engine ran (`engine_of`),
-> which file a viewer should open (`openable_in`), and — for a run — its
+> `GET /api/results/dir` is the HTTP surface over the directory door, the run
+> door's `folder_answer` ([`model/parse.md`](?doc=model/parse.md) § 5) —
+> **one route, one question, one answer per directory.** It reports what the
+> directory IS (`runs.place_of`, as `place`), which engine ran (the
+> description's), which file a viewer should open (the run the folder speaks
+> for, its result), and — for a run — its
 > `status` (`run_status` with its launch record,
 > [`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2) and its
 > `record` (§ 3a); per file, its `role`, `label`, `stage`, `parser` and `about` (§ 3b). What a
-> directory is decides what is asked of it, and that rule is `JobDirParser`'s,
+> directory is decides what is asked of it, and that rule is the run door's,
 > not the route's: a container has no state and no record; a folder that does
-> not say what it is is read alone, with a state only where its product was
-> found. The picker is the route's browser consumer and decides nothing from a
+> not say what it is holds no run of ours: listed, with nothing claimed and no
+> state asked. The picker is the route's browser consumer and decides nothing from a
 > filename; `presenters.md` § 2 is where that answer becomes each viewer's
 > `meta`.
 >
@@ -603,7 +603,7 @@ run's process ended (`runrecord.ending` —
 Run panel and `jobset status` give. The server sends it with the file:
 `/api/watch/load`, `/api/watch/data` and `/api/spectra/load` each carry
 `run: {state, detail, live}` for the run the file belongs to — its folder,
-and the run its name reads back to (`parse.dirs.run_answer`) — or `null` for
+and the run its name reads back to (`runs.run_answer`) — or `null` for
 a file that belongs to no run, an upload. **A viewer never decides from the
 file's own ending**: an output that states its end belongs to a job that may
 still be deriving its result, and one killed mid-step states nothing at all —

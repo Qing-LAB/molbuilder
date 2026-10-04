@@ -29,7 +29,8 @@ def _jobset(*args):
 
 @pytest.fixture
 def submitted(tmp_path, monkeypatch):
-    """A flat stage, prepped and submitted to a queue that answers."""
+    """A flat calculation's first stage of two, prepped and submitted to a
+    queue that answers."""
     from conftest import write_machine_record
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.scheduler import Domain
@@ -55,7 +56,8 @@ def submitted(tmp_path, monkeypatch):
     monkeypatch.chdir(tree.parent)
     r = _jobset("init", "--structure", "P/structure/h2.xyz",
                 "--bundle", "P/optimization/H2", "--engine", "pyscf",
-                "--shape", "flat", "--name", "H2")
+                "--shape", "flat", "--name", "H2",
+                "--stage-strategy", "publishable")
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "optimization" / "H2"
     # EVERY LAUNCH VALUE STATED (`architecture.md` § 5.2): the run card's
@@ -80,14 +82,23 @@ def test_a_submitted_flat_stage_records_its_launch_and_reads_queued(
     """The stage's own record, beside its deck -- and the ladder and the
     folder both read it: ``queued as job 4242``, not ``pending``.
 
+    And a later stage prepped beside it does not take the folder's voice:
+    the folder speaks for the stage that was launched, by its launch record,
+    before that stage has written a line (`model/parse.md` § 5.1) -- two
+    decks share the folder then, and neither is guessed between.  The later
+    stage starts clean, the way on that prep's own refusal offers while the
+    stage before it is queued (`job-system.md` § 5.4).
+
     MUTATION THIS MUST FAIL AGAINST: submit writing a stage with no
     attempt anywhere but its own record (`submit._where_recorded`), or the
-    ladder reading an attempt's record only -- the code before 2026-09-27.
+    ladder reading an attempt's record only -- the code before 2026-09-27;
+    the run door's speaking rule counting only files that carry a run index,
+    which a queued stage has not written yet.
     """
     from molbuilder.runrecord import launch_record_path, launch_record
     from molbuilder.jobset.model import FILENAME, JobSet
     from molbuilder.jobset.runstatus import jobset_status
-    from molbuilder.parse import parse_dir
+    from molbuilder.runs import folder_answer
 
     deck = next(submitted.glob("H2_01_coarse.*py"))
     record = launch_record_path(submitted, deck.stem)
@@ -100,6 +111,21 @@ def test_a_submitted_flat_stage_records_its_launch_and_reads_queued(
         if s.name == "coarse")
     assert (row.state, row.detail) == ("queued", "queued as job 4242"), row
 
-    status = parse_dir(submitted).status
+    status = folder_answer(submitted)["status"]
     assert (status["state"], status["detail"]) == ("queued",
                                                    "queued as job 4242"), status
+
+    tj = submitted / "task.json"
+    d = json.loads(tj.read_text())
+    # ITS RUN CARD (`engines/stages.md` § 6.8d): a run setting, per rung.
+    next(s for s in d["stages"] if s["name"] == "medium").setdefault(
+        "execution", {})["restart"] = "clean"
+    tj.write_text(json.dumps(d, indent=2))
+    r = _jobset("prep", "run", "medium", "--bundle", submitted,
+                "--target", "this")
+    assert r.exit_code == 0, r.output
+    status = folder_answer(submitted)["status"]
+    assert (status["state"], status["detail"]) == ("queued",
+                                                   "queued as job 4242"), (
+        "the folder speaks for the stage launched, not for none because a "
+        "second stage is prepped", status)

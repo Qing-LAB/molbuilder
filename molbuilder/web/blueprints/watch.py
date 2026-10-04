@@ -17,11 +17,11 @@ Flow on /results: the user picks a trajectory file in the Projects
 sidebar; the registry mounts the trajectory inspector; the inspector
 core POSTs to /api/watch/load with the absolute path, then polls
 /api/watch/data every ~15 s while the mtime advances.  The directory
-branch of /api/watch/load ASKS `parse.dirs.rundir.openable_in` -- *what
-should a viewer load here* -- and does not restate the chain's rungs; they
-are `job-contracts.md` § 2.4 and `model/parse.md` § 5.2.  A copy here had
-already drifted: it omitted rung 3's deck-filename-stem pass, which is the
-half that finds a staged trajectory.
+branch of /api/watch/load ASKS the run door's `runs.openable` -- *what
+should a viewer load here* -- and does not restate its rule, which is
+`model/parse.md` § 5.1-§ 5.2.  *(A copy of the search this held until
+2026-09-18 had drifted from its owner: it omitted a pass that found a
+staged trajectory.)*
 
 Format support is plugin-style: see ``molbuilder/parse/`` for the
 registered parsers and the auto-detection registry
@@ -48,7 +48,7 @@ from molbuilder.parse import (
     detect as detect_parser,
 )
 from molbuilder.parse.contract import engine_of
-from molbuilder.parse.dirs import openable_in, run_answer
+from molbuilder.runs import openable, run_answer, run_of
 from molbuilder.parse.dirs.atom_metadata import engine_frame_for_run_dir
 from molbuilder.parse.dirs.run_info import run_info_for_dir
 from molbuilder.parse.engines._helpers import (
@@ -154,8 +154,10 @@ def _remove_temp_quietly(path: str) -> None:
 #
 # They became one call each to the reader that owns each format --
 # `parse.fdf.system_label` and `pyscf.input.job_name` -- and on 2026-09-18
-# those calls LEFT THIS FILE with the chain that made them.  They live in
-# `parse/dirs/rundir.py::openable_in` now; nothing here reads a deck.
+# those calls LEFT THIS FILE with the chain that made them, into
+# `parse/dirs/rundir.py::openable_in` -- and on 2026-10-04 out of the search
+# altogether: a run's label is its description's (`runs`, plan B11).
+# Nothing here reads a deck.
 #
 # Eight readers of deck content were measured across the tree on 2026-09-17;
 # this pair was two of them.
@@ -177,11 +179,12 @@ def _by_role(directory: str, role: str) -> "List[Any]":
 
 
 # `_resolve_run_directory` STOOD HERE until 2026-09-18 -- 132 lines, and with
-# the five helpers above it the whole four-rung discovery chain.  It is
-# `parse.dirs.rundir.openable_in` now (`model/parse.md` § 5.2, `plan.md` § 5c
-# step 2), which is not a re-implementation: the body was absorbed VERBATIM and
-# proved identical on all 141 run directories in the checkout before this
-# deletion was allowed -- the same gate the `run_status` split passed.
+# the five helpers above it the whole four-rung discovery chain.  It moved to
+# `parse.dirs.rundir.openable_in` (`plan.md` § 5c step 2) VERBATIM, proved
+# identical on all 141 run directories in the checkout before this deletion
+# was allowed -- the same gate the `run_status` split passed.  Since
+# 2026-10-04 a run of ours is answered by the run door, `runs.openable`, by
+# its description's label (`model/parse.md` § 5.2, plan B11).
 #
 # WHY IT HAD TO MOVE RATHER THAN BE CALLED: it answers *what should a viewer
 # load in this directory*, which `jobset` and the Results tab need too, and
@@ -457,8 +460,14 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     # § 5c): the SIESTA tee or a PySCF progress log, by the one rule the run
     # record reads them by, re-read with the output.  ``None`` -- not stated
     # -- for a run with none.
+    # The timing log is THE RUN'S, at the output's own run index, found
+    # through the run door (`runs.run_of`) -- read back with the run's label,
+    # never one guessed off the folder's decks (plan B11).
     from molbuilder.parse.dirs.record import scf_timing_of
-    new_data["scf_timing"] = scf_timing_of(path) or None
+    _run = run_of(path)
+    new_data["scf_timing"] = scf_timing_of(
+        path, _run.file(".scf-timing.log", _run.run)
+        if _run is not None else None) or None
 
     # ---- Re-acquire to commit (skip if a concurrent /api/load
     #      already swapped to a different file under us) ---------
@@ -556,19 +565,18 @@ def api_load():
         # person picks one stage and judges it.  Stitching them into one
         # trajectory is not a view this project offers -- that is what the
         # bench summary is for, where comparison IS the question.
-        path, attempts = openable_in(raw_path)
+        path, attempts = openable(raw_path)
         if path is None:
             tried = "\n  ".join(attempts) if attempts else "(no candidates)"
             return jsonify({
                 "ok": False,
                 "error": (
-                    f"No molbuilder-job artefacts found in directory:\n"
+                    f"Nothing here a viewer can open:\n"
                     f"  {raw_path}\n"
-                    f"Discovery chain (per docs/execution/job-contracts.md):\n"
+                    f"What was tried (docs/model/parse.md § 5.2):\n"
                     f"  {tried}\n"
-                    f"Generate an FDF or PySCF script with the Build "
-                    f"tab into this directory, or point Watch at the "
-                    f"specific log file."
+                    f"Point the viewer at a run's folder -- one prep "
+                    f"opened -- or at one of its files."
                 ),
             }), 404
         resolved_from_dir = raw_path
@@ -781,7 +789,7 @@ def _with_the_run(state: Dict[str, Any]
                   ) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any],
                              Optional[str]]:
     """``(run, state, error)`` -- how the run the watched file belongs to is
-    doing (`parse.dirs.run_answer`, the one door), and, when it is no longer
+    doing (`runs.run_answer`, the one door), and, when it is no longer
     live, the file read again if it changed since ``state``: the run's end is
     read before the file's last read, so what a viewer stops on is the
     file's last (`web/results.md` § 4.1)."""

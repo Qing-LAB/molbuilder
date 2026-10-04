@@ -108,7 +108,7 @@ def _trajectory_parser_for(resolved):
 
     These verbs hand the result to trajectory code, so they want a file whose
     parser answers a TRAJECTORY.  Two conditions are PERMANENT: a directory
-    (`detect()` answers for one since `JobDirParser` was registered) and a
+    (`detect()` refuses one by name: a run folder is the run door's) and a
     file whose parser answers something else -- both reach `.frames` and
     raise `AttributeError`.  The `is_dir()` test alone caught only the first,
     so `<job>_optimized.xyz` still crashed all three verbs.

@@ -165,29 +165,11 @@ class TestTheLoadDoorTakesIt:
 
 class TestWatchLoadAnswersTheBlock:
 
-    def test_a_run_directory_answers_its_recorded_contract(
-            self, client, tmp_path, monkeypatch):
-        _register_tmp_as_picker_root(tmp_path, monkeypatch)
-        run = tmp_path / "run"
-        run.mkdir()
-        (run / "Relax.fdf").write_text(_DECK)
-        (run / "run_geom_optim.xyz").write_text(_XYZ_3)
-
-        d = client.post("/api/watch/load",
-                        json={"path": str(run)}).get_json()
-        assert d["ok"] is True
-        assert d["info"]["calculation"]["contract"]["basis_size"] == "DZP"
-
-    def test_a_run_with_no_deck_says_so(self, client, tmp_path, monkeypatch):
-        _register_tmp_as_picker_root(tmp_path, monkeypatch)
-        run = tmp_path / "bare"
-        run.mkdir()
-        (run / "run_geom_optim.xyz").write_text(_XYZ_3)
-
-        d = client.post("/api/watch/load",
-                        json={"path": str(run)}).get_json()
-        assert d["ok"] is True
-        assert "info" in d and d["info"] is None
+    # Retired 2026-10-04 (plan B11/B12): a run folder a test laid by hand -- a
+    # deck and a trajectory written beside it -- loaded as a directory.  A
+    # folder no calculation claims holds no run of ours; what a run of ours
+    # declared reaches the viewer through the run door, on the road
+    # (`process/testing.md` § 6).
 
     def test_pointing_at_the_log_itself_finds_the_deck_beside_it(
             self, client, tmp_path, monkeypatch):

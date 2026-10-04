@@ -151,9 +151,9 @@ def api_results_contract():
 def api_results_dir():
     """**What is in this run directory, and which file should open?**
 
-    The HTTP surface over `parse.dirs`' front door — `JobDirParser` /
-    `RunDirResult` — and the consumer it was built for and never got
-    (`plans/plan.md` N9; `model/parse.md` § 5.0, § 5.5).
+    The HTTP surface over the run door's directory answer,
+    `runs.folder_answer` (`execution/architecture.md` § 3.2; `model/parse.md`
+    § 5.0, § 5.5) -- and, for a calculation root, its ladder.
 
     **WHY THIS EXISTS.**  The browser is the one consumer that cannot import
     Python, and nothing served it the directory's own answer: the Results
@@ -163,32 +163,21 @@ def api_results_dir():
     directories: *which file to open* differed from `openable_in` on **18 of
     96**; **13** files were offered that no parser can read and **155** that
     a parser handles were unreachable; the engine was guessed from the
-    suffix; and the run-file grammar was re-implemented as a JS regex.  A
-    spectrum run was shown a 1,373-byte progress stub instead of its
-    spectrum because two mtimes landed in the same second and the
-    tie-break picked by name.
+    suffix; and the run-file grammar was re-implemented as a JS regex.
 
-    Every one of those is the same missing connection, so they are answered
-    together, once, here.
-
-    **PER FILE the server says what the file IS**, which is the half the
-    browser cannot derive: ``role`` from the catalogue, ``label`` and
-    ``stage`` — *which run this file is part of, and which rung* — read
-    back with the label the deck states, ``parser`` from the registry
-    (``null`` when nothing claims it — the browser must not offer it),
-    and ``engine`` from the directory, not from the suffix.
-
-    ``openable`` is the door's own pick, so the page defaults to the file the
-    calculation produced rather than to whatever was written last.
+    **PER FILE the server says what the file IS** -- ``role``, ``label`` and
+    ``stage``, read back with its run's label, ``parser`` from the registry
+    (``null`` when nothing claims it — the browser must not offer it), and
+    ``about``: the catalogue's line for a file molbuilder writes, or *not
+    written by molbuilder* (`web/results.md` § 3b).  ``openable`` is the
+    door's own pick, the run the folder speaks for.
     """
     from pathlib import Path
 
     from flask import jsonify, request
 
-    from molbuilder.parse import detect, parse_dir
-    from molbuilder.parse.dirs import labels_in, read_back
-    from molbuilder.parse.errors import ParseError, UnknownFormatError
-    from molbuilder.runfiles import role_of
+    from molbuilder import calcdirs
+    from molbuilder.runs import folder_answer
     from .files import _PickerError, _resolve_within_roots
 
     raw = str(request.args.get("path") or "")
@@ -203,25 +192,14 @@ def api_results_dir():
         return jsonify({"ok": False,
                         "error": f"{raw}: not a directory"}), 404
 
-    # THE DOOR ANSWERS the run's questions -- engine, the file to open, the
-    # run state and the record (`model/parse.md` § 5.0) -- and it owns the
-    # rules for WHAT THIS DIRECTORY IS: a container has no run state but may
-    # have a product (a transport ladder's I-V record at its root); a folder
-    # nobody described is read alone, with a run state only where its product
-    # was found.  They lived in this route until W35 P2 (2026-09-26), where
-    # nothing below the web layer could apply them.  A folder the door does
-    # not claim -- empty, or holding no file a run writes -- has no run to
-    # describe, and is still listed below.
-    try:
-        got = parse_dir(directory)
-    except UnknownFormatError as exc:
-        got, attempts = None, [str(exc)]
-    else:
-        attempts = list(got.attempts)
-
-    from molbuilder import calcdirs
-    place = calcdirs.container_or_run(directory)
-    root = calcdirs.root_of(directory)
+    # THE RUN DOOR ANSWERS what this folder is and holds -- its place, the run
+    # it speaks for, that run's result, state and record, and what each file
+    # is (`runs.folder_answer`).  It was `parse.dirs`' `JobDirParser`, read
+    # through `parse_dir`, until 2026-10-04: below the floor that may know a
+    # calculation (plan B11, B14).
+    got = folder_answer(directory)
+    attempts = list(got["attempts"])
+    place = got["place"]
     ladder = None
     # A CALCULATION ROOT HAS A LADDER (`web/results.md` § 2.4; `plan.md`
     # § 5c.3 c-d): N rungs, each a run directory below it -- `jobset_status`'s
@@ -233,7 +211,8 @@ def api_results_dir():
     # one-rung ladder).  This route composed that itself until 2026-10-01,
     # and the CLI's `status` listed the prepped rungs alone.  `null` for a
     # container that is not the root.
-    if (place == calcdirs.CONTAINER and root is not None
+    root = place["calculation"]
+    if (place["role"] == calcdirs.CONTAINER and root is not None
             and Path(root).resolve() == directory.resolve()):
         from molbuilder.jobset.model import FILENAME as JOBSET_FILENAME
         from molbuilder.jobset.model import JobSet
@@ -249,68 +228,25 @@ def api_results_dir():
             # answer included -- a dict of this route's own dropped it (W52).
             ladder = got_status.to_dict()
 
-    # THE LABEL, so each file can be read back EXACTLY.  `role_of` answers
-    # WITHOUT one and therefore cannot answer an underscore role at all --
-    # its own docstring says why: a role may contain `_` and so may a stage
-    # name, and nothing tells them apart from the string alone.  So
-    # `_initial.xyz`, `_optimized.xyz` and `_geom_optim.xyz` -- the very
-    # files the browser has to fold into one run -- all came back
-    # `role: null`, and the browser re-implemented the grammar as a regex to
-    # compensate: `trajectory.js::absorbs` read `au_2_bdt_02_fine` as a label
-    # of `au`.  The deck states the label; `labels_in` asks it.
-    labels = labels_in(str(directory))
-
-    files = []
-    for entry in sorted(directory.iterdir(), key=lambda e: e.name):
-        if not entry.is_file():
-            continue
-        rec = read_back(entry.name, labels)
-        # THE REGISTRY DECIDES WHETHER IT CAN BE OPENED, never the suffix.
-        # A refusal is an answer -- `parser: null` is what stops the page
-        # offering a Slurm log, a 0-byte `.out`, or a `job-set.json` its own
-        # inspector's route then refuses with a 400.
-        try:
-            kind = detect(str(entry))
-            parser, opens = kind.name, getattr(
-                getattr(kind, "output", None), "__name__", None)
-        except (ParseError, OSError, ValueError, LookupError):
-            parser, opens = None, None
-        files.append({
-            "name":   entry.name,
-            "role":   rec.role if rec is not None else role_of(entry.name),
-            # WHICH RUN THIS FILE IS PART OF, and which rung.  `label` is
-            # what makes *these files are one run* answerable without string
-            # surgery; both are `null` for a file no label claims -- a
-            # foreign file, or a directory with no deck.
-            "label":  rec.label if rec is not None else None,
-            "stage":  rec.stage if rec is not None else None,
-            "parser": parser,
-            "opens":  opens,
-            "size":   entry.stat().st_size,
-            "mtime":  entry.stat().st_mtime,
-        })
-
     return jsonify({
         "ok":       True,
         "run_dir":  str(directory),
-        "engine":   got.engine if got is not None else "unknown",
-        "openable": (Path(got.openable).name
-                     if got is not None and got.openable else None),
+        "engine":   got["engine"],
+        "openable": (Path(got["openable"]).name if got["openable"] else None),
         "attempts": attempts,
         # WHAT THIS DIRECTORY IS, and what it belongs to -- `null` when it
         # does not say, which the page shows as *read alone* rather than
         # hiding (§ 1.4a: absence narrows the answer, it does not refuse the
         # directory).
-        "place":    {"role": place,
-                     "calculation": str(root) if root else None},
-        # `null` where there is no run: a container, or a folder whose run
-        # the door could not ground (`RunDirResult`).
-        "status":   got.status if got is not None else None,
+        "place":    place,
+        # `null` where there is no run: a container, or a folder holding no
+        # run of ours.
+        "status":   got["status"],
         # WHAT RAN, WITH WHAT, AND HOW IT WENT (`model/parse.md` § 5d) --
         # the Run panel's one source (`web/results.md` § 3a); `null` where
         # `status` is.
-        "record":   got.record if got is not None else None,
+        "record":   got["record"],
         # THE LADDER, for a calculation root (§ 2.4); `null` elsewhere.
         "ladder":   ladder,
-        "files":    files,
+        "files":    got["files"],
     })

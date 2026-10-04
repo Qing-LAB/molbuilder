@@ -134,8 +134,8 @@ def _open(page, flask_server, folder, monkeypatch):
 def _the_runs_own_times(attempt):
     """What the run record states -- the SCF-timing log's rate and the
     output's own end -- through the door the Results tab asks."""
-    from molbuilder.parse import parse_dir
-    time = parse_dir(attempt).record["computation"]["time"]
+    from molbuilder.runs import folder_answer
+    time = folder_answer(attempt)["record"]["computation"]["time"]
     return time, datetime.fromisoformat(time["run_end_local"])
 
 

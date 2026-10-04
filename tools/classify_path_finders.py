@@ -152,20 +152,9 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
          "from `pyscf/warm-files.toml`).  WHICH engine outputs count as a "
          "startable geometry is this picker's own curation -- the rules file "
          "has no field for it -- so the selection stays and the spellings ask"),
-    # Re-anchored 2026-09-18: this site moved out of the web layer with the
-    # rest of the discovery chain (`plan.md` § 5c step 2).  Same code, same
-    # reason -- which is why this is a re-anchor and not a deletion.
-    ("molbuilder/parse/dirs/rundir.py", "openable_in",
-     "os.path.join(directory, '*' + ROLE_GEOM_TRAJ)"):
-        ("door-fed - the pattern comes from a door",
-         "The pattern is `'*' + ROLE_GEOM_TRAJ`, the declared constant -- "
-         "spelled inline since 2026-09-18, where a local `optim_glob` held "
-         "it.  It "
-         "cannot go through `runfiles.find_by_role`, and that refusal is the "
-         "grammar's own rule rather than a gap: `_geom_optim.xyz` is an "
-         "UNDERSCORE role, and without a label a trailing `_geom_optim.xyz` "
-         "cannot be told from a stage token named `..._geom_optim` with `.xyz` "
-         "as the role (`runfiles.parse`).  Refused rather than answered wrongly"),
+    # `parse/dirs/rundir.py::openable_in`'s `'*' + ROLE_GEOM_TRAJ` stood here
+    # until 2026-10-04: a folder no calculation claims is searched by dotted
+    # role alone (`model/parse.md` § 5.2), so the site and its reason went.
 
     # -- SOMEBODY ELSE'S NAMES.  molbuilder composes none of these, so § 4.5
     #    gives them no door: *"for every name IT COMPOSES, the framework owns

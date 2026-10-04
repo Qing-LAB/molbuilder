@@ -73,6 +73,12 @@ class RunFiles:
     earlier: Tuple[Tuple[int, Optional[Path]], ...] = ()
     #: The ``.out``'s head, read once here for every row that reads it.
     out_head: str = ""
+    #: The calculation's kind, from its description -- the caller's
+    #: (`runs.run_of`), never read here: this floor knows no calculation.
+    calculation: Optional[str] = None
+    #: The stage's own deck, as the run door places it -- the copy in the
+    #: stage's folder in the hierarchy, the run's own in the flat shape.
+    stage_deck: Optional[Path] = None
 
 
 def _read(path: Optional[Path], *, head: Optional[int] = None,
@@ -92,72 +98,41 @@ def _read(path: Optional[Path], *, head: Optional[int] = None,
         return ""
 
 
-def _deck_roles(engine: str) -> List[str]:
-    """The deck role(s) the catalogue gives this engine -- both when the
-    engine is not known."""
-    from ...runfiles import WRITTEN
-    from .rundir import _DECK_ROLES
-    own = [r for r in _DECK_ROLES
-           if any(a.role == r and a.engine == engine for a in WRITTEN)]
-    return own or list(_DECK_ROLES)
+def run_files(directory, *, label: str, stage: Optional[str],
+              status=None, engine: Optional[str] = None,
+              calculation: Optional[str] = None,
+              stage_deck: Optional[Path] = None) -> Optional[RunFiles]:
+    """What the run ``label`` / ``stage`` left in ``directory``, found
+    through the doors that own each name -- or ``None`` when no deck of it
+    is here.
 
+    **The caller says which run** -- the run door (`runs.run_of`,
+    `execution/architecture.md` § 3.2), which reads the label from the
+    description and decides the run a folder speaks for: the highest stage
+    with run output, then its newest run index (`model/parse.md` § 5.1).
+    This floor knows no calculation (§ 2.1): it read the label off the
+    folder's decks, and the stage off the status's chosen file, until
+    2026-10-04 (plan B11).
 
-def run_files(directory, *, status=None,
-              engine: Optional[str] = None) -> Optional[RunFiles]:
-    """What the run this directory's status speaks for left, found through
-    the doors that own each name -- or ``None`` when neither a deck nor an
-    output says whose run it is.
-
-    **A run's files are found by molbuilder's names** -- the run is ours or
-    it is not one (`model/parse.md` § 5d.1).  *(An output named by hand, or
-    copied without its deck, was read as a run of its own from 2026-09-27
-    until 2026-10-03: input molbuilder does not take.)*
-
-    ``status`` and ``engine`` are the directory's `run_status` and
-    `engine_of`, passed by a caller that already has them (the directory
-    door does); asked here otherwise.
-
-    **THE RUN IS THE ONE THE STATUS SPEAKS FOR** (§ 5.1: stage, then time).
-    A flat calculation keeps every stage in one directory, and taking the
-    first deck by name described stage 1 while the status reported stage 3
-    -- measured 2026-09-26 on four real flat directories.  Before anything
-    has run, the directory's one deck; several decks and no output is no run
-    to describe.
+    ``status`` and ``engine`` are the run's `run_status` and engine, passed
+    by a caller that already has them; asked here otherwise.
     """
     from ..contract import engine_of
-    from ...runfiles import find, find_by_role
+    from ...runfiles import deck_roles, find, stem
     from .job import run_status
-    from .rundir import labels_in, read_back
 
     d = Path(directory)
     if status is None:
-        status = run_status(d)
+        status = run_status(d, stem(label, stage))
     engine = engine or engine_of(str(d))
-    labels = labels_in(str(d))
-    # THE ENGINE'S OWN DECK ROLE, from the catalogue's `engine` column -- and
-    # only files a label reads back: every attempt also holds the modules its
-    # monitor runs on, which carry the PySCF deck's suffix, name no `JOB`,
-    # and so are nobody's deck (`labels_in`).
-    decks = [(p, r) for role in _deck_roles(engine)
-             for p in find_by_role(d, role)
-             for r in [read_back(p.name, labels)] if r is not None]
-    speaks = (read_back(status.active_source, labels)
-              if status.active_source else None)
-    if speaks is not None:
-        mine = [(p, r) for p, r in decks
-                if (r.label, r.stage) == (speaks.label, speaks.stage)]
-    else:
-        mine = decks if len({(r.label, r.stage) for _p, r in decks}) == 1 \
-            else []
-    if not mine:
-        return None
-    deck, rec = mine[0]
-    label, stage = rec.label, rec.stage
-
     # ONE LISTING of this run's files, filtered below -- `find` lists and
     # reads every name in the directory on each call, and a flat directory
     # holds hundreds.
     listing = find(d, label, stage=stage)
+    decks = [p for p, rf in listing if rf.role in deck_roles(engine)]
+    if not decks:
+        return None
+    deck = decks[0]
 
     def one(role: str, run: Optional[int]) -> Optional[Path]:
         hits = [p for p, rf in listing
@@ -198,7 +173,7 @@ def run_files(directory, *, status=None,
         progress_log=one(".molwatch.log", None),
         monitor_log=one(".monitor.log", n) if n is not None else None,
         util_csv=one(".util.csv", n) if n is not None else None,
-        earlier=earlier)
+        earlier=earlier, calculation=calculation, stage_deck=stage_deck)
 
 
 def _fdf_log_of(d: Path, out_head: str) -> Optional[Path]:
@@ -408,24 +383,18 @@ def _timing_figures(path: Optional[Path]) -> Dict[str, Any]:
             and v is not None}
 
 
-def scf_timing_of(output) -> Dict[str, Any]:
+def scf_timing_of(output, timing_log: Optional[Path] = None
+                  ) -> Dict[str, Any]:
     """The SCF-timing figures of the run ``output`` is an output of: a PySCF
     progress log stamps its own rows; a SIESTA-family ``<base>-runN.out``'s
-    are its run's tee, ``<base>-runN.scf-timing.log``, found through the
-    run-file door by the output's own label, stage and run.  Read as the
-    record reads them.  ``{}`` when the run has none -- an output read
-    alone, a log from before its rows were stamped."""
-    from ...runfiles import find, role_of
-    from .rundir import labels_in, read_back
+    are its run's tee, ``timing_log`` -- the run's `.scf-timing.log` at its
+    run index, which the caller finds through the run door (`runs.run_of`).
+    Read as the record reads them.  ``{}`` when the run has none."""
+    from ...runfiles import role_of
     p = Path(output)
     if role_of(p.name) == ".molwatch.log":
         return _timing_figures(p)
-    rec = read_back(p.name, labels_in(str(p.parent)))
-    if rec is None or rec.run is None:
-        return {}
-    logs = [q for q, _rf in find(p.parent, rec.label, stage=rec.stage,
-                                 run=rec.run, role=".scf-timing.log")]
-    return _timing_figures(logs[-1]) if logs else {}
+    return _timing_figures(Path(timing_log)) if timing_log else {}
 
 
 def _pyscf_sys(f: RunFiles) -> Dict[str, Any]:
@@ -483,8 +452,14 @@ def _deck(f: RunFiles) -> Dict[str, Any]:
     deck: Dict[str, Any] = {
         "path": f.deck.name,
         "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}
-    stage_deck = f.directory.parent / f.deck.name
-    if stage_deck.is_file() and stage_deck.resolve() != f.deck.resolve():
+    # THE STAGE'S OWN DECK, where the run door places it (`runs.Run.
+    # stage_deck`): in the stage's folder in the hierarchy; in the flat shape
+    # it is the run's own, one file, with nothing to compare.  *(This looked
+    # one folder up from the run's -- outside a flat calculation -- until
+    # 2026-10-04, plan D25.)*
+    stage_deck = f.stage_deck
+    if (stage_deck is not None and stage_deck.is_file()
+            and stage_deck.resolve() != f.deck.resolve()):
         deck["current"] = bool(same_calculation(text, _read(stage_deck)))
     gathered = read_gathered_from(f.directory)
     if gathered:
@@ -609,12 +584,17 @@ def _merge(into: Dict[str, Any], part: Dict[str, Any]) -> None:
             into[key] = val
 
 
-def run_record(directory, *, status=None,
-               engine: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """The record of the run this directory's status speaks for, or ``None``
-    when no deck says whose run it is (§ 5d).  ``status`` and ``engine`` as
-    :func:`run_files` takes them."""
-    f = run_files(directory, status=status, engine=engine)
+def run_record(directory, *, label: str, stage: Optional[str],
+               status=None, engine: Optional[str] = None,
+               calculation: Optional[str] = None,
+               stage_deck: Optional[Path] = None
+               ) -> Optional[Dict[str, Any]]:
+    """The record of the run ``label`` / ``stage`` in ``directory`` -- the
+    one its caller names, through the run door -- or ``None`` when no deck of
+    it is here (§ 5d).  The rest as :func:`run_files` takes them."""
+    f = run_files(directory, label=label, stage=stage, status=status,
+                  engine=engine, calculation=calculation,
+                  stage_deck=stage_deck)
     if f is None:
         return None
     record: Dict[str, Any] = {}

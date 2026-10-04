@@ -145,7 +145,6 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
     from ... import script_emit as _sc
     from ..fdf import _norm
     from ..registry import parse as _parse
-    from .rundir import _calculation_of
     from .record import _read
 
     if f.engine not in ("siesta", "pyscf"):
@@ -163,8 +162,7 @@ def setup_rows(f: "RunFiles") -> Dict[str, Any]:
         except Exception:                                  # noqa: BLE001
             pass
 
-    calculation, _where = _calculation_of(str(f.directory))
-    items = _sc.declarations(engine=f.engine, calculation=calculation,
+    items = _sc.declarations(engine=f.engine, calculation=f.calculation,
                              stage=_stage_name(f))
     rows: List[Dict[str, Any]] = []
     by_keys: Dict[tuple, Dict[str, Any]] = {}

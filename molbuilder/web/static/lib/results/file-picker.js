@@ -486,6 +486,7 @@
         let lastPlace       = null;
         let lastLadder      = null;   // the root's ladder (results.md § 2.4)
         let lastRecord      = null;   // the run's record (results.md § 3a)
+        let lastFiles       = [];     // every file, with what it is (§ 3b)
         let cachedResults   = [];  // last successful scan -- flat, newest first
         let cachedGroups    = [];  // same data bucketed via groupResultFiles;
                                    // ``_populate`` consumes this so we don't
@@ -600,6 +601,7 @@
             lastPlace = null;
             lastLadder = null;
             lastRecord = null;
+            lastFiles = [];
             if (!dir) {
                 // No directory selected (sidebar cleared).  Show
                 // the picker bar in its placeholder state so the
@@ -686,6 +688,7 @@
                     lastPlace = body.place || null;
                     lastLadder = body.ladder || null;
                     lastRecord = body.record || null;
+                    lastFiles = body.files || [];
                     cachedResults = results;
                     cachedGroups = results.length
                         ? groupResultFiles(results, inspReg.pickResult)
@@ -986,10 +989,13 @@
                     /* `record` rides along for the Run panel (§ 3a), which
                      * listens to this event and nothing else: the run the
                      * folder's files came from, or null for a container or a
-                     * folder with no run in it. */
+                     * folder with no run in it.  `files` -- EVERY file of
+                     * the folder, each with what it is (`about`) -- rides for
+                     * the file card (§ 3b), which explains a file the menu
+                     * does not list as readily as one it does. */
                     { detail: { file: file || "", meta: _metaFor(file),
                                 place: lastPlace, ladder: lastLadder,
-                                record: lastRecord,
+                                record: lastRecord, files: lastFiles,
                                 dir: boundDir,
                                 diverged: _divergedFromSidebar(),
                                 force: forced } }));

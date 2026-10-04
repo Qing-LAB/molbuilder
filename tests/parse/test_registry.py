@@ -16,14 +16,12 @@ import pytest
 
 from molbuilder.parse import (
     AmbiguousFormatError,
-    DirParser,
     FileParser,
     ParseResult,
     TrajectoryResult,
     UnknownFormatError,
     detect,
     parse,
-    parse_dir,
     register,
 )
 from molbuilder.parse.engines import (
@@ -31,10 +29,7 @@ from molbuilder.parse.engines import (
     PySCFOutFileParser,
     SiestaOutFileParser,
 )
-from molbuilder.parse.registry import (
-    _registered_dir_parsers,
-    _registered_file_parsers,
-)
+from molbuilder.parse.registry import _registered_file_parsers
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -72,14 +67,11 @@ def test_engine_parsers_registered():
     assert "molwatch" in names
 
 
-# `JobDirParser` retired 2026-09-04 with the eleven-field summary it
-# produced, leaving the DirParser registry empty -- so `parse_dir` could
-# only raise, which is why six functions across three modules were called
-# by name instead.  A `JobDirParser` is registered again since 2026-09-18
-# (`plans/plan.md` § 5c) answering the four fields § 5.0 names, each with
-# a reader.  That it ANSWERS is held in `dirs/test_rundir.py`, beside the
-# parser, rather than by a registration assertion here: a membership
-# check on the registry list passes on a parser that raises.
+# A directory is not a file: the registry holds FileParsers only, and a run
+# folder is the run door's (`molbuilder.runs.folder_answer`, `model/parse.md`
+# § 5).  `JobDirParser` and `parse_dir` stood here until 2026-10-04: the
+# directory door read the description, which this floor must not (plan B11,
+# B14).
 
 
 # Detection + dispatch ------------------------------------------------- #
@@ -116,10 +108,11 @@ def test_parse_siesta_out_returns_trajectoryresult():
     assert len(result.frames) > 0
 
 
-def test_parse_dir_on_non_directory_raises():
-    """parse_dir refuses non-directories cleanly."""
-    with pytest.raises(UnknownFormatError):
-        parse_dir(_need(SIESTA_FIXTURE))
+def test_detect_refuses_a_directory_by_name(tmp_path):
+    """A run folder is the run door's (`model/parse.md` § 3): the registry
+    says so rather than trying a file parser on a directory."""
+    with pytest.raises(UnknownFormatError, match="run door"):
+        detect(tmp_path)
 
 
 # Result discriminators ----------------------------------------------- #

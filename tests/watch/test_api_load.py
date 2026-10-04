@@ -314,10 +314,10 @@ def test_watch_data_surfaces_runtime_info_convergence_targets(client):
 # --------------------------------------------------------------------- #
 #  Directory mode (job-layout v1)                                       #
 #                                                                       #
-#  Per docs/execution/job-contracts.md the loader resolves a directory path     #
-#  to a single file via a documented discovery chain.  These tests pin  #
-#  each rung of the chain so a regression at the protocol boundary      #
-#  fails loudly here rather than as user-visible "load failed" errors. #
+#  The loader resolves a directory path to a single file through the   #
+#  run door (`model/parse.md` § 5.1-§ 5.2, job-contracts.md § 2.4).     #
+#  These tests pin the route's half of it, so a regression at the      #
+#  protocol boundary fails here rather than as "load failed".          #
 # --------------------------------------------------------------------- #
 
 
@@ -332,9 +332,12 @@ _MOLWATCH_HEAD = (
 # pinned "the protocol prefers .molwatch.log", which `model/parse.md` § 5.5
 # withdrew on 2026-09-24 (`0f914577`): SIESTA never writes into the log prep
 # seeds -- a 613-byte `initial_preview` beside a 34 KB `.out` -- so offered
-# first, the seed outranked the run's own result.  The engine's own output now
-# opens first, pinned where this door asks (`openable_in`):
-# `tests/parse/dirs/test_rundir.py::test_the_engines_own_output_opens_before_the_seeded_progress_log`.
+# first, the seed outranked the run's own result.  An optimization's engine
+# output is what opens now (`runfiles.result_roles` names it first), pinned on
+# a measured run of ours:
+# `tests/test_results_blueprint.py::TestTheContractEndpoint::test_a_measured_run_of_ours_is_answered_by_the_run_door`
+# -- whose folder holds no seeded log, so the order against one is not pinned
+# there (plan W56 unit 4 re-measures it).
 
 
 def test_load_directory_empty_returns_chain_error(client, tmp_path):
@@ -344,12 +347,12 @@ def test_load_directory_empty_returns_chain_error(client, tmp_path):
     body = r.get_json()
     assert r.status_code == 404
     assert body["ok"] is False
-    # The discovery chain cites its protocol doc; that doc was renamed
-    # protocols/job-layout.md -> execution/job-contracts.md in the
-    # 2026-07 docs migration, and this assertion was left behind.
-    assert "docs/execution/job-contracts.md" in body["error"]
-    assert "*.molwatch.log" in body["error"]
-    assert "*.fdf" in body["error"]
+    # The trail cites the rule it followed (`model/parse.md` § 5.2) and says
+    # what it found: a folder no calculation claims, holding no file a run
+    # of ours writes.  *(It cited the retired deck-label search's roles,
+    # `*.fdf` among them, until 2026-10-04, plan B11.)*
+    assert "docs/model/parse.md" in body["error"]
+    assert "no file here is one a run of ours writes" in body["error"]
 
 
 # --------------------------------------------------------------------- #

@@ -179,55 +179,6 @@ class SidecarResult(ParseResult):
     result_kind: str = "sidecar"
 
 
-@dataclass(frozen=True)
-class RunDirResult(ParseResult):
-    """One directory -> what a run directory is asked, answered once.
-
-    `model/parse.md` § 5.0.  **No field is added without naming its reader**
-    -- that is the rule the deleted predecessor broke: it answered eleven
-    fields, ten of which had no reader anywhere in the tree, and reached the
-    eleventh by parsing every result file to build plots and then discarding
-    them.
-
-    ============  ==========================================  =================
-    field         the question                                who reads it
-    ============  ==========================================  =================
-    ``engine``    which engine ran                            the Results page
-    ``status``    how is it doing -- ``None`` where there is  `/api/results/dir`
-                  no run to ask about
-    ``openable``  what a VIEWER should load                    the Results page
-    ``attempts``  what was tried, for the refusal              `/api/results/dir`
-    ``record``    what ran, with what, and how it went        the Run panel
-                  (§ 5d) -- ``None`` where ``status`` is
-    ============  ==========================================  =================
-
-    **One reader, the Results route** (W35 P2, 2026-09-26): `/api/results/dir`
-    asks `parse_dir` and serves these as they are.  `files` and `active` stood
-    here until then with no reader: the route lists the directory itself, and
-    ``status["active_source"]`` is the file the status speaks for.
-
-    **``status`` and ``record`` are there only where a run is** -- the
-    directory is stamped a run, or, read alone, the door found its product
-    (§ 5.5, `project-layout.md` § 1.4a).  A container is not a run, and a
-    folder nobody described is not asked to invent one: `run_status` has no
-    *there is no run here*, so asking it anyway is how a `pseudos/` folder
-    reported *running*.
-
-    **``openable`` is a PATH**, handed to a reader that opens it, while
-    ``status["active_source"]`` is a bare FILENAME -- the file whose
-    run-state the status is, serialized to the browser, where a server-side
-    path has no business.  Different questions (§ 5.1): a directory mid-run
-    has an ``openable`` and no ``active_source``.
-    """
-    run_dir:  str = ""
-    engine:   str = "unknown"
-    openable: Optional[str] = None
-    attempts: List[str] = field(default_factory=list)
-    status:   Optional[Dict[str, Any]] = None
-    record:   Optional[Dict[str, Any]] = None
-    result_kind: str = "rundir"
-
-
 # `ScriptResult` stood here until 2026-09-05.
 #
 # One field per reserved block, produced by six `TextParser` classes that

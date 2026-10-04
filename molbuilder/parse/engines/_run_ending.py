@@ -45,7 +45,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
 # THE EMITTERS' OWN END LINES, imported rather than spelled -- the
-# `ROLE_GEOM_TRAJ` pattern (`parse/dirs/rundir.py`) applied to a line.  Two,
+# `ROLE_GEOM_TRAJ` pattern (`pyscf/input.py`) applied to a line.  Two,
 # because PySCF has two decks and they print different lines: the relaxation
 # deck says "Job complete in", the spectrum deck "Total wall time:".
 # SIESTA's markers are the family's one table's (`siesta_grammar`), the

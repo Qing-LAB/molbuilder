@@ -1,0 +1,22 @@
+/* The file card (`web/results.md` § 3b) -- owned by lib/results/file-card.js,
+ * the only file that builds these classes.  Tokens only (lib/tokens.css). */
+
+.results-file-card {
+    margin: 0 0 var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
+.results-file-card[hidden] { display: none; }
+
+.fc-line {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+.fc-name {
+    color: var(--text-primary);
+    font-weight: 600;
+}

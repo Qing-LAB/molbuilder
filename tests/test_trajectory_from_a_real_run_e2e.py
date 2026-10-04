@@ -515,10 +515,10 @@ def test_the_scf_line_states_the_runs_own_rate(page, flask_server,
     """
     import re
 
-    from molbuilder.parse import parse_dir
+    from molbuilder.runs import folder_answer
 
     d = co2_optimization.parent
-    time = parse_dir(d).record["computation"]["time"]
+    time = folder_answer(d)["record"]["computation"]["time"]
     assert time["iters_measured"] >= 1, time
     _open_in_results(page, flask_server, d, d / "co2opt.molwatch.log")
     scf = page.wait_for_function(

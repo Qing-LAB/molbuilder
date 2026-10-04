@@ -53,18 +53,25 @@ in every report that reads it.
 
 ---
 
-## 1. The two ABCs
+## 1. The ABC
 
 `molbuilder/parse/base.py`:
 
 | ABC | Input → output | Detection |
 |---|---|---|
 | **`FileParser`** | one file path → one `ParseResult` | `can_parse(path)` — the registry auto-detects |
-| **`DirParser`** | one directory → one `ParseResult`, **composed** from per-file parsers plus directory-level invariants | `can_parse(run_dir)` |
 
-Each declares `name` / `label` / `output` (the concrete `ParseResult` subclass
-it returns); **`FileParser`s** also declare a `hint` (what to point at when
-`can_parse` is `False`).
+It declares `name` / `label` / `output` (the concrete `ParseResult` subclass it
+returns) and a `hint` (what to point at when `can_parse` is `False`). The
+registry refuses a directory by name.
+
+> **A `DirParser` stood beside it until 2026-10-04.** Its one subclass,
+> `JobDirParser`, answered a run directory — and to answer it read the
+> calculation's description raw and guessed the run's label from the decks,
+> which this floor must not (`execution/architecture.md` § 2.1: *`parse/` …
+> knows no calculation*). The directory door moved up to the run door,
+> `molbuilder.runs.folder_answer` (§ 5; plan B11, B14), and with it the ABC,
+> `registry.parse_dir` and `RunDirResult` went.
 
 > **There were THREE until 2026-09-05.** `TextParser` took a text body and had
 > **no detection** — the caller named the parser — which is the tell: an ABC in
@@ -133,11 +140,6 @@ classDiagram
         metrics · parse_warnings
         result_kind = "instrument"
     }
-    class RunDirResult {
-        run_dir · engine · openable ·
-        attempts · status · record
-        result_kind = "rundir"
-    }
     class EngineParamsResult {
         params · blocks · parse_warnings
         result_kind = "engine-params"
@@ -146,7 +148,6 @@ classDiagram
     ParseResult <|-- StructureResult
     ParseResult <|-- SidecarResult
     ParseResult <|-- InstrumentResult
-    ParseResult <|-- RunDirResult
     ParseResult <|-- EngineParamsResult
 ```
 
@@ -243,7 +244,7 @@ home:
 No other layer computes either field.
 
 There is **no** cross-stage derivation, and there is no place for one: stages
-are separate runs and nothing joins them (`job-contracts.md` § 2.4). A row
+are separate runs and nothing joins them (`job-contracts.md` § 2.3). A row
 here named the Watch blueprint's multi-stage merge as the one home for
 `elapsed_s` "across chained stages" until 2026-09-05. That merge is
 deleted — and the arithmetic that row blessed was wrong anyway: each stage's
@@ -405,20 +406,17 @@ in `registry.py`.
 ```mermaid
 flowchart TD
     P["parse(path)"] --> D["detect(path)"]
-    D -->|"path is a dir"| DP["the ONE DirParser whose<br/>can_parse is True"]
     D -->|"path is a file"| FP["the ONE FileParser whose<br/>can_parse is True"]
+    D -->|"path is a directory"| DIR["raise UnknownFormatError<br/>(a run folder is the run door's)"]
     D -->|"none match"| ERR["raise UnknownFormatError<br/>(lists every parser + hints)"]
     D -->|"two or more match"| AMB["raise AmbiguousFormatError<br/>(registration order is NOT precedence)"]
-    DP --> R["ParseResult"]
-    FP --> R
-    PD["parse_dir(path)"] -->|"DirParsers only"| R
+    FP --> R["ParseResult"]
 ```
 
 | Function (`registry.py`) | Does |
 |---|---|
-| `detect(path)` | return the parser whose `can_parse(path)` is `True` — **DirParsers when `path` is a directory, FileParsers when it is a file** (no dir→file fall-through); `UnknownFormatError` if none match / `AmbiguousFormatError` if more than one does, both listing every registered parser + the standard foot-gun hints |
+| `detect(path)` | return the FileParser whose `can_parse(path)` is `True`; a directory is refused by name — a run folder is the run door's (`runs.folder_answer`, § 5); `UnknownFormatError` if none match / `AmbiguousFormatError` if more than one does, both listing every registered parser + the standard foot-gun hints |
 | `parse(path)` | `detect` + `parse` in one call |
-| `parse_dir(path)` | detect among **DirParsers only** — for callers whose contract is "this is a run directory". One is registered since **2026-09-18**: `JobDirParser` (§ 5). *(It raised for every input between 2026-09-04 and then, the registry having been emptied by a deletion; and it named "JobMonitor, Results" as its callers until 2026-09-05, neither of which ever called it.)* |
 | `register(parser)` | add a parser at module-init time (idempotent; not for runtime registration) |
 
 **Errors** (`errors.py`): `UnknownFormatError` and `AmbiguousFormatError`, both on a `ParseError`
@@ -495,9 +493,9 @@ resolving, not a signal to build a second door.)*
 
 ```
 molbuilder/parse/
-├── base.py        # the 2 ABCs                (FileParser / DirParser)
-├── types.py       # ParseResult + 6 subclasses + ParseWarning
-├── registry.py    # _REGISTRY, detect/parse/parse_dir/register
+├── base.py        # the ABC                   (FileParser)
+├── types.py       # ParseResult + 5 subclasses + ParseWarning
+├── registry.py    # _REGISTRY, detect/parse/register
 ├── errors.py      # ParseError, UnknownFormatError, AmbiguousFormatError
 ├── contract.py    # what a DIRECTORY records about itself:
 │                  #   contract_of  — the electronic contract its deck states (§ 5b)
@@ -537,8 +535,8 @@ molbuilder/parse/
 │   ├── molstruct.py · spectra.py · transport.py · job_set.py
 │   └── _helpers.py
 │
-└── dirs/          # what a directory answers (§ 5)
-    ├── rundir.py              # JobDirParser, the one DirParser → RunDirResult; the discovery chain
+└── dirs/          # what a run folder's files say, read on floor 1 (§ 5)
+    ├── rundir.py              # openable_in (a folder read without its run) · run_state_of
     ├── job.py                 # run_status → how a run directory is doing — stdlib, travels
     ├── record.py · setup.py   # run_record → the run record (§ 5d)
     ├── run_info.py            # run_info_for_dir → the `info` block (composer)
@@ -698,49 +696,41 @@ sequenceDiagram
 
 ---
 
-## 5. Composer pattern — the DirParser
+## 5. The directory door — the run door's, composed from this floor
 
-A DirParser turns a whole run directory into one result. **`JobDirParser`**
-(`parse/dirs/rundir.py`) is the one registered: it composes readers that
-already exist — `calcdirs.container_or_run`, `run_status`, `engine_of`, the
-discovery chain (§ 5.2) and the run record (§ 5d) — into one `RunDirResult`,
-which `/api/results/dir` serves. **A question that must see the whole directory
-comes here; one that does not, does not**: `run_status` for one rung,
-`engine_of` and `runfiles.find` each have one home already, and routing them
-through a composer would parse a whole directory to obtain one string.
+A run directory is answered **one level up**: `molbuilder.runs.folder_answer`
+(`execution/architecture.md` § 3.2, floor 2) composes the readers that live
+here — `job.run_status` asked with its launch record (`rundir.run_state_of`),
+the run record (`record.run_record`, § 5d), the registry per file — with what
+only a reader of the calculation knows: what the folder IS, the description it
+belongs to, the label its files are named on, and the run it speaks for.
+`/api/results/dir` serves it. **A question that must see the whole directory
+goes there; one that does not, does not**: `run_status` for one run,
+`engine_of` and `runfiles.find` each have one home already.
 
-### 5.0 The result — one reader per field
+### 5.0 The answer — one reader per field
 
-```python
-@dataclass(frozen=True)
-class RunDirResult(ParseResult):
-    run_dir:  str                        # resolved
-    engine:   str                        # "siesta" | "pyscf" | "unknown"
-    openable: Optional[str]              # PATH -- which file a VIEWER should load
-    attempts: List[str]                  # what was tried, for the refusal
-    status:   Optional[Dict[str, Any]]   # state · detail · last_change_at · active_source
-    record:   Optional[Dict[str, Any]]   # what ran, with what, and how it went (§ 5d)
-```
+| field | the question | who reads it |
+|---|---|---|
+| `place` | what the folder is — a run, a container, or not ours — and its calculation | the Results page (the empty state, § 1.4a) |
+| `engine` · `openable` | which engine ran — the description's; which file the viewer loads | `/api/results/dir` → the Results viewer |
+| `status` | how it is doing (`running-a-job.md` § 4.2) — the run the folder speaks for, `null` for a container or a folder not ours | `/api/results/dir` — served, not yet shown for a run folder (`web/results.md` § 0.4) |
+| `attempts` | what was tried | `/api/results/dir` → the refusal a person reads |
+| `record` | what ran, with what, and how it went (§ 5d) | `/api/results/dir` → the Run panel (`web/results.md` § 3a) |
+| `files` | per file its role, label, stage — read back with the run's label — whether a parser reads it, and what it is (`about`, the catalogue's line or *not written by molbuilder*) | the picker; the file card (`web/results.md` § 3b) |
 
 **What the directory IS decides what is asked of it** (`project-layout.md`
 § 1.4a). A container is not a run: no `status` and no `record`, though its own
-product may still be `openable`. A run is asked everything, even before it has
-written a byte. A directory that does not say is read alone, and given a
-`status` and a `record` only where the search found its product — `run_status`
-has no *"there is no run here"*, so it is never asked of a `pseudos/` folder.
+product may still be `openable`. A run of ours is asked everything, even before
+it has written a byte. A folder no calculation claims holds no run of ours:
+its files are listed, the registry says what it can open, and nothing is
+claimed or asked of it.
 
 **`status["active_source"]` is a bare filename and `openable` is a path,
 deliberately.** The status is serialized to the browser, where a server-side
 path has no business, and the directory it is relative to is `run_dir`, right
 beside it; `openable` is handed to a reader that opens it. They answer
 different questions (§ 5.1).
-
-| field | the question | who reads it |
-|---|---|---|
-| `engine` · `openable` | which engine ran; which file the viewer loads | `/api/results/dir` → the Results viewer |
-| `status` | how is it doing (`running-a-job.md` § 4.2) | `/api/results/dir` — served, not yet shown for a run folder (`web/results.md` § 0.4) |
-| `attempts` | what was tried | `/api/results/dir` → the refusal a person reads |
-| `record` | what ran, with what, and how it went (§ 5d) | `/api/results/dir` → the Run panel (`web/results.md` § 3a) |
 
 **No field is added without naming its reader in this table.**
 
@@ -761,8 +751,8 @@ So a directory whose run has written only its seeded log has an `openable` and
 no `active_source`; that is correct in both directions.
 
 **`active_source` is the run the folder speaks for** — the run door's one rule
-(`execution/architecture.md` § 3.2): the highest stage that has run output, then
-that stage's newest run index. *(The stage first is the user's ruling of
+(`execution/architecture.md` § 3.2): the highest stage launched — its launch
+record, or files carrying a run index — then that stage's newest run index. *(The stage first is the user's ruling of
 2026-09-04: within one directory a re-run of an earlier rung must not hijack the
 run's reported state, and only the stage ordinal can say so. The run index
 within a stage replaced the file's time on 2026-10-04, plan B11: a copied or
@@ -795,8 +785,11 @@ titled "unchanged in behaviour", which was true of the move out of the web
 layer and stopped being true the day the ladder was replaced. § 5.5 carries
 the rule; this is where it is applied.)*
 
-`parse/dirs/rundir.py::openable_in` asks **four** questions of four owners, and
-the first one decides whether the other three apply at all:
+The run door's `openable` asks **four** questions of four owners, and the first
+one decides whether the other three apply at all — a folder of ours is opened
+at its run's own result, read back with the run's label (`runs.folder_answer`);
+`parse/dirs/rundir.py::openable_in` answers a folder read without its run, by
+dotted role alone:
 
 | question | owner | reader |
 |---|---|---|
@@ -888,7 +881,7 @@ its parser reads it as its own content.
 > decline* — were guards on a guess, and `xv2xyz --from-run` wrote an isolated
 > molecule's held atom away and its axes periodic (plan D19).
 
-### 5.4 Every DirParser must
+### 5.4 The directory door must
 
 **walk** the directory, **compose readers that own their formats**, and
 **apply cross-file invariants** no single reader can see — atom-count
@@ -1055,11 +1048,11 @@ caller's very next step was `detect()`, which refuses it.
 
 #### The door, and the route through `detect()`
 
-`JobDirParser` **is** the front door (§ 5): it composes `run_status`,
-`engine_of`, the discovery chain and the run record into one answer, and
-`RunDirResult` is that answer's shape. **A directory reaches `detect()` too**,
-and the answer is a `RunDirResult`, which has no `.frames` — so every caller
-that reads frames asks `answers_a_trajectory()` first rather than assuming.
+The run door's `folder_answer` **is** the front door (§ 5): it composes
+`run_status`, the run's result, the run record and each file's reading into one
+answer. **A directory does not reach `detect()`**: the registry refuses one by
+name, and every caller that reads frames asks `answers_a_trajectory()` of a
+file's parser rather than assuming.
 
 #### Adding an engine: two edits
 
@@ -1374,8 +1367,9 @@ phases as one would hide a loop that diverged.
 
 ### 5d.1 The record, and where it lives
 
-`parse_dir(<attempt directory>)` → `RunDirResult.record` (§ 5.0), composed on
-read by `parse/dirs/record.py::run_record` — never written as a second store,
+`runs.folder_answer(<attempt directory>)["record"]` (§ 5.0), composed on read
+by `parse/dirs/record.py::run_record` for the run the folder speaks for -- its
+label, stage and stage deck named by the run door — never written as a second store,
 so it cannot drift from its sources. **Cheap reads only**: it is composed on
 every folder scan, so it never builds a trajectory. It reads the `.out`'s head
 and tail through the grammar (§ 5d.5), the endings `run_status` already scanned
@@ -1588,7 +1582,8 @@ with the default alone — SIESTA has not started, so `asked` is the deck's and
 
 Its name and sha256 · `current`, whether it is still the stage's deck
 (`script_emit.same_calculation` against the deck in the stage container above
-the attempt) · for a gathered rung, what was taken from which attempt, read
+the attempt, where the run door places it — `runs.Run.stage_deck`; a flat
+run's deck IS its stage's, one file, so a flat record states none) · for a gathered rung, what was taken from which attempt, read
 from `.gathered-from` (`jobset/materialize.read_gathered_from`, beside its
 writer) — the provenance a transport record cites, never a newest-file guess.
 
@@ -1765,8 +1760,10 @@ Per parser kind, the specifics:
   `metrics`, a one-level dict (§ 5c). Where two instruments describe
   one figure, the choice is a **resolver** beside them (§ 5a) — never one
   parser reading the other's file.
-- **DirParser composer** (`parse/dirs/`): **composes readers that own their
-  formats** (forbidden pattern #1 below), never parses files inline. The
+- **Directory readers** (`parse/dirs/`): **compose readers that own their
+  formats** (forbidden pattern #1 below), never parse files inline, and know
+  no calculation — the run they are about is named by their caller, the run
+  door. The
   reserved `.fdf` / `.py` blocks are not a parser kind: `script_emit`'s
   extractors read them (§ 1a).
 
@@ -1776,8 +1773,8 @@ Per parser kind, the specifics:
 
 These stop the next round of parallel parse paths:
 
-1. **DirParsers compose readers that own their formats — no inline file-level
-   parsing.** Need a new file read? Add the reader first. WHICH reader is the
+1. **Directory readers compose readers that own their formats — no inline
+   file-level parsing.** Need a new file read? Add the reader first. WHICH reader is the
    question's: the registry for *what typed result does this file hold*,
    `_run_ending.ending_of` for *how did this run end* (§ 5.4 carries the
    split and the measurement behind it). (A convention today, not yet

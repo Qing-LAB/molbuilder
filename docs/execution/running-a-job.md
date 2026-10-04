@@ -522,7 +522,7 @@ stopped with SIGUSR1, not an ending (§ 4.1).
 | how is it going, right now? | the monitor, beside the job | [`run-reports.md`](?doc=execution/run-reports.md) § 2 |
 | how is it doing — how did it end? | `parse.dirs.job.run_status` | § 4.2 |
 | which engine ran? | `parse.contract.engine_of` | § 4.2 |
-| what ran, with what, and how did it go? | the run record, `parse_dir(dir).record` | [`model/parse.md`](?doc=model/parse.md) § 5d |
+| what ran, with what, and how did it go? | the run record, `runs.folder_answer(dir)["record"]` | [`model/parse.md`](?doc=model/parse.md) § 5d |
 | which file should a viewer open? | `parse.dirs.openable_in` | [`model/parse.md`](?doc=model/parse.md) § 5.2 |
 
 ### 4.1 The wrapper's own instruments
@@ -583,7 +583,7 @@ run_status(run_dir, match="*", *, launch=<not asked>) -> RunStatus   # parse/dir
 | caller | `launch` | `match` |
 |---|---|---|
 | `jobset/runstatus.py` — `jobset status`, the bench summary, the Results ladder | the attempt's — each point's, for a bias scan's rung ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) — or a trial's; none for a flat stage | the rung's glob |
-| `JobDirParser` — `/api/results/dir`, the run record | the directory's | `*` |
+| the run door, `runs.folder_answer` — `/api/results/dir`, the run record; `runs.run_answer` — the viewers | the run's | the run's basename: the run the folder speaks for (`execution/architecture.md` § 3.2) |
 | the monitor's closing line | not asked | its run's stem |
 
 `run_status` has no answer *there is no run here*: asked without `launch`, a

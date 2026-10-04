@@ -625,7 +625,7 @@ retired.)*
 hierarchical one. The person picks one stage, inspects it, and judges what it
 means — which stage to look at, and what to do next, is theirs to decide.
 There is no combined view, and the viewer offers none: a directory resolves
-to exactly ONE file through § 2.4's discovery chain.
+to exactly ONE file (§ 2.4).
 
 Comparison across runs is a different question with a different answer — the
 bench summary, where comparing IS the point (`web/bench-summary.md`).
@@ -643,55 +643,33 @@ ladder opened with its real curve last and its dividers labelled `02 | 03 |
 for a job that spanned 41 and computed 12; and a failed middle stage's error
 was erased by the next stage's silence.)*
 
-### 2.4 Resolving a directory — the discovery chain
+### 2.4 Resolving a directory
 
-When a reader (the Results tab's trajectory viewer, or `molbuilder watch`) is handed a **directory** instead of a
-specific file, it resolves the trajectory with this chain — first hit wins
-(`molbuilder/parse/dirs/rundir.py::openable_in`, which is `RunDirResult.openable`;
-`model/parse.md` § 5.2). *(It lived in `web/blueprints/watch.py` until
-2026-09-18. Watch was the only reader that could ask, because nothing below the
-web layer may import it — and the Results tab, which is a browser, could not ask
-at all.)*
+When a reader (the Results tab's viewer, or `molbuilder watch`) is handed a
+**directory** instead of a specific file, the run door answers which ONE file
+opens (`runs.openable`, `runs.folder_answer`; the rule is `model/parse.md`
+§ 5.1–§ 5.2, the door `execution/architecture.md` § 3.2). What the folder is
+decides it (`project-layout.md` § 1.4a):
 
-1. `*.molwatch.log` — if several, the most recently modified.
-2. `*.fdf` — parse `SystemLabel`; try `<label>.molwatch.log`, then
-   `<label>.out`.
-3. `*.py` — grep for a `JOB = "…"` assignment; try `<job>.molwatch.log`,
-   then `<job>.log`, then `<job>_geom_optim.xyz` — **each also tried on the
-   deck filename's stem** when it differs, because a staged deck is
-   `<job>_<token>.py` and its stdout / molwatch siblings carry that token
-   (§ 6.3) while `JOB` stays bare — which is what covers a staged
-   trajectory, under the name that is written. *(This step also carried a
-   rung-aware glob `<job>_geom_*_optim.xyz` until 2026-09-07: a spelling from
-   before § 2.2a fixed the token's position, matching nothing, and redundant
-   besides — the deck-stem pass above already finds
-   `<job>_<token>_geom_optim.xyz`. A resolver step that finds nothing is
-   silent, so it sat there working for five weeks by not being needed.)*
-   *(This step said `job_name` and
-   warned that it "matches none of them today", calling the mismatch a code
-   follow-up. Both the emitter and the reader have agreed on `JOB` since
-   2026-07-28 — and both are one function now, `pyscf/input.py::job_name`,
-   the writer reading back its own literal (`model/parse.md` § 1a); the
-   hand-rolled `watch.py::_PY_JOB_NAME_RE` went on 2026-09-17. The
-   note outlived the defect by five weeks and would have sent someone to fix a
-   code follow-up.)*
-4. `run.out` / `siesta.log` / `*.out` / `*_geom_optim.xyz` — content-sniff via
-   the trajectory-parser registry.  ONE star, and it stands for label **and**
-   token together: `_geom_optim.xyz` is the whole role (§ 2.2a), so everything
-   in front of it is what the star covers. The `*_geom*_optim.xyz` that stood
-   here allowed a second star for a token that has not sat inside the role
-   since the grammar was written down.
+* **a run of ours** — its files are read back with the label its description
+  gives it (§ 2.2a); the run it speaks for is the highest stage launched, then
+  that stage's newest run index (with none launched, its one prepped stage);
+  and it opens at the first role its calculation produces
+  (`runfiles.result_roles`) in which that run has a file a parser claims;
+* **a container** — the calculation's own product at its root, when it has
+  one; its runs are the folders below it;
+* **a folder no calculation claims** — it holds no run of ours: the
+  catalogue's dotted roles are tried, the calculations' products and the
+  progress log first, then the engines' stdout, newest file first, each
+  vetted by the registry; no label is read off a deck.
 
-> **Note on the `.out` / `.log` fallbacks (steps 2–3):** they look for the
-> **non-indexed** `<label>.out` / `<job>.log`, not the run-indexed
-> `<label>-runN.out` the wrapper now writes (§ 2.6). In practice the
-> `.molwatch.log` at step 1 wins for any molbuilder-generated run, so the
-> non-indexed fallbacks only match a hand-redirected legacy stdout. A reader
-> that wants a specific run's stdout should open `<label>-runN.out` directly.
+The search's trail (`attempts`) is the body of the refusal a person reads
+when nothing matched. A path that is a regular **file** is loaded directly.
 
-If nothing matches, the reader returns a clear error naming every filename it
-tried. A path that resolves to a regular **file** is loaded directly — the
-chain only runs for directories.
+*(Until 2026-10-04 this section was a four-step chain — the newest
+`*.molwatch.log`, then a label read off a `.fdf`'s `SystemLabel` or a `.py`'s
+`JOB =`, then generic names: a search for a run molbuilder's wrapper did not
+run, plan B11.)*
 
 ### 2.5 The project tree and the canonical topics
 

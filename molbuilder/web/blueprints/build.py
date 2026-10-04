@@ -2345,11 +2345,25 @@ def api_task_setup_folder():
         except Exception as exc:                  # noqa: BLE001
             return {"error": f"{name}: {exc}"}
 
+    def _described():
+        """The description, through its one reader (`read_task`,
+        `execution/architecture.md` § 3.2) -- the dict a molbuilder-written
+        `task.json` holds; one that does not read is said in its reader's
+        words.  *(Read as raw JSON until 2026-10-04, plan B14.)*"""
+        from molbuilder.task import read_task
+        f = folder / TASK_FILENAME
+        if not f.is_file():
+            return None
+        try:
+            return read_task(f).to_dict()
+        except Exception as exc:                  # noqa: BLE001
+            return {"error": f"{TASK_FILENAME}: {exc}"}
+
     # `task.json` and the hand-over are mutually exclusive by design: a save
     # writes the first and deletes the second (`task-setup.md` § 3), so the
     # page's MODE follows from which is here rather than from a flag it has
     # to keep.
-    described = _read(TASK_FILENAME)
+    described = _described()
     handover = None if described is not None else _read(TASK_HANDOVER_NAME)
 
     return jsonify({

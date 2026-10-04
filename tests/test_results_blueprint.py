@@ -801,55 +801,94 @@ class TestTheContractEndpoint:
         # ...and it is still READ: the listing is the part absence keeps.
         assert [f["name"] for f in body["files"]] == ["README.md"]
 
-    def test_a_container_has_no_run_state_but_may_have_a_product(
-            self, isolated):
-        """Two questions, and a container answers them differently.
+    def test_a_calculations_folders_are_answered_by_the_run_door(
+            self, isolated, tmp_path, monkeypatch):
+        """Through the road -- `jobset init` and `prep` of an H2 relaxation,
+        no engine run -- the run door answers each folder as what it IS
+        (`project-layout.md` § 1.4a; `execution/architecture.md` § 3.2):
 
-        *Run state?* — no: a container is not a run, and inventing one is
-        what made a `pseudos/` folder report *running* (6ddc551a).
-        *Product?* — maybe: a container may also be a CALCULATION, and a
-        calculation's own result belongs to no single rung.
+        * the calculation's ROOT is a container: no run state, no record --
+          a container is not a run, and inventing one is what made a
+          `pseudos/` folder report *running* (6ddc551a) -- and its ladder;
+        * a PREPPED stage's attempt is a run before it has written a byte:
+          ``pending``, prepped and never launched, as its missing launch
+          record says (§ 1.6) -- not *not mine*, which would make every
+          consumer asking about a rung before it runs raise;
+        * each file says what it is: the attempt's deck is the catalogue's,
+          its launch record not there yet.
 
-        Those were conflated, so the container branch skipped the door as
-        well — and a finished five-rung transport ladder offered its five
-        `.out` files and never its I–V curve, which `summarize` writes at
-        the calculation root and which is the FIRST entry in
-        `result_roles("transport")`.  The door had the answer all along and
-        was not asked.
+        *(The root's own PRODUCT -- a transport calculation's I–V record --
+        is transport's own case, on the minimal junction (plan Q5–Q7).  This
+        test laid one by hand, under a description `read_task` refuses, until
+        2026-10-04; and a prepped stage's pending state was asked of a deck
+        laid by hand.)*
         """
-        import json as _json
-        from molbuilder.task import FILENAME as TASK_FILENAME
+        from conftest import write_machine_record
+        from support.road import describe_h2, jobset
         root, client = isolated
-        calc = root / "ladder"
-        (calc / "05_transmission" / "run-0").mkdir(parents=True)
-        (calc / TASK_FILENAME).write_text(_json.dumps({
-            "schema": "molbuilder/task@1",
-            "engine": {"name": "siesta"}, "shape": "hierarchical",
-            "calculation": "transport",
-            "run": {"name": "T", "id": "T_1"},
-            "structure": {"source": "x.xyz", "formula": "Au", "atoms": 1},
-            "varies": [], "stages": [{"name": "transmission",
-                                      "enabled": True, "overrides": {}}],
-        }))
-        # What `jobset summarize run` leaves at the root.  The SCHEMA is
-        # imported from the module that owns it, not spelled -- the first
-        # cut of this guessed `molbuilder/transport@1`, the registry
-        # refused the file, and the door correctly declined to offer it.
-        # The test was wrong and the code was right; a spelled constant is
-        # how that happens quietly.
-        from molbuilder.transport.record import TRANSPORT_RESULT_SCHEMA
-        (calc / "T.transport.json").write_text(_json.dumps({
-            "schema": TRANSPORT_RESULT_SCHEMA, "label": "T",
-            "points": [], "iv": [], "stages": {}, "treatment": None,
-            "energies_relative_to_ef": True, "provenance": {}}))
+        write_machine_record()
+        bundle = describe_h2(tmp_path, monkeypatch)
+        got = jobset("prep", "run", "coarse", "--bundle", bundle,
+                     "--target", "this")
+        assert got.exit_code == 0, got.output
 
-        body = client.get("/api/results/dir?path=" + str(calc)).get_json()
+        body = client.get("/api/results/dir?path=" + str(bundle)).get_json()
         assert body["place"]["role"] == "container", (
             "a hierarchical root is a container (§ 1.4)")
-        assert body["status"] is None, "a container is not a run"
-        assert body["openable"] == "T.transport.json", (
-            "the calculation's own product must be what opens here; got "
-            + repr(body["openable"]))
+        assert body["status"] is None and body["record"] is None, (
+            "a container is not a run")
+        assert body["ladder"] is not None, "a calculation root has a ladder"
+
+        attempt = bundle / "01_coarse" / "run-0"
+        body = client.get("/api/results/dir?path=" + str(attempt)).get_json()
+        assert body["place"]["role"] == "run"
+        assert (body["status"]["state"], body["status"]["detail"]) == (
+            "pending", "prepped, not launched (no run.json)"), body["status"]
+        about = {f["name"]: f["about"] for f in body["files"]}
+        assert about["H2_01_coarse.fdf"]["ours"] is True, about
+        assert about["calcdir.json"]["ours"] is True, about
+
+    def test_a_measured_run_of_ours_is_answered_by_the_run_door(self):
+        """A REAL run of ours -- `tests/fixtures/siesta_flat_h2`, measured:
+        a flat H2 relaxation whose coarse stage ran, medium prepped beside
+        it, SIESTA's own files among ours.  API level on a MEASURED FIXTURE
+        (`process/testing.md` § 6): the road's stand-in engine writes no
+        SIESTA output, so which output opens cannot be shown there.
+
+        * the folder speaks for the stage that ran, though two stages' decks
+          lie in it (`model/parse.md` § 5.1): coarse's state and record;
+        * the calculation decides what opens -- an optimization's engine
+          output, the run's own ``-run0.out`` (§ 5.2);
+        * every name is read back with the run's label, to a declared role
+          or to none (`job-contracts.md` § 2.2a, plan D24): SIESTA's
+          ``fdf.<stamp>.log``, ``H2.XV`` and ``H2.MD.nc`` are listed as the
+          engine's -- no role, not ours -- the decks as their stages' own.
+
+        MUTATIONS THIS MUST FAIL AGAINST: a name with no label read back by
+        its tail alone (`runfiles.role_of`: the fdf log as PySCF's ``.log``),
+        or an engine file named on the label kept in the role its tail
+        spells (``.XV``) -- the listing until 2026-10-04.
+        """
+        from pathlib import Path
+
+        from molbuilder.runs import folder_answer
+        here = Path(__file__).resolve().parent / "fixtures" / "siesta_flat_h2"
+        got = folder_answer(here)
+        assert got["place"]["role"] == "run", got["place"]
+        assert Path(got["openable"]).name == "H2_01_coarse-run0.out", (
+            got["attempts"])
+        assert got["status"]["state"] == "finished", got["status"]
+        assert got["record"]["deck"]["path"] == "H2_01_coarse.fdf", (
+            got["record"]["deck"])
+        files = {f["name"]: f for f in got["files"]}
+        for name in ("fdf.20261004T082401.341.log", "H2.XV", "H2.MD.nc"):
+            assert (files[name]["role"], files[name]["about"]) == (
+                None, {"ours": False}), files[name]
+        for name, stage in (("H2_01_coarse.fdf", "01_coarse"),
+                            ("H2_02_medium.fdf", "02_medium")):
+            assert (files[name]["role"], files[name]["stage"],
+                    files[name]["about"]["ours"]) == (".fdf", stage, True), (
+                files[name])
 
 
     def test_no_deck_answers_null(self, isolated):

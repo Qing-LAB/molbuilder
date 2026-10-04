@@ -395,9 +395,10 @@ def system_label(text: str) -> Optional[str]:
     """The deck's ``SystemLabel``, or ``None`` when it states none.
 
     **The one spelling-correct reader of this keyword.**  SIESTA names its
-    output and warm-restart files from it, so it is what the wrapper's
-    cold-restart sweep and the Results discovery chain both need — and both
-    used to hand-roll a regex for it.  Through :func:`_parse_fdf`, so fdf's
+    output and warm-restart files from it, which is what its reader -- the
+    SIESTA vibration reader (`spectra/siesta_vibration.py`) -- needs; the
+    wrapper's cold-restart sweep and the Results search each hand-rolled a
+    regex for it until 2026-09-17.  Through :func:`_parse_fdf`, so fdf's
     real matching rule applies: ``SystemLabel``, ``system_label`` and
     ``System.Label`` are one keyword, which a regex anchored on the literal
     word is not (measured 2026-09-17: neither hand-rolled reader matched the

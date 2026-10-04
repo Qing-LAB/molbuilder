@@ -1519,6 +1519,15 @@ def result_roles(calculation: Optional[str] = None) -> "tuple[str, ...]":
     return tuple(named + spoken + live)
 
 
+def deck_roles(engine: Optional[str] = None) -> "tuple[str, ...]":
+    """The DECKS -- what a stage's engine reads: the stage's own file, derived
+    at prep, that one engine owns (`.fdf`, `.py`) -- for ``engine``, or every
+    engine's.  Read off the rows, so a new engine's deck is its row."""
+    return tuple(a.role for a in ON_THE_LABEL
+                 if a.level == "stage" and a.kind == "derived" and a.engine
+                 and (engine is None or a.engine == engine))
+
+
 def engine_of_role(role: str) -> Optional[str]:
     """Which engine writes this role, or None when any of them may.
 

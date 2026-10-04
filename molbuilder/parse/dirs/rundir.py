@@ -1,57 +1,24 @@
-"""`JobDirParser` — one run directory, and the questions asked about one
-(`model/parse.md` § 5.0: its engine, what to open, what was tried, how it is
-doing, and its run record).
+"""A run folder's floor-1 questions that need the whole folder: what a viewer
+should open in a folder no calculation claims (:func:`openable_in`), and how a
+run is doing, asked with its launch record (:func:`run_state_of`).
 
-Contract: `model/parse.md` § 5.  Plan: `plans/plan.md` § 5c, step 1.
+Contract: `model/parse.md` § 5.  Floor 1 (`execution/architecture.md` § 2.1):
+**this module knows no calculation.**  What a folder IS, the description it
+belongs to, the label its files are named on and the run it speaks for are the
+run door's (`molbuilder.runs`, floor 2), which asks these with what it read.
 
-**What this replaces, and what it does not.** A `JobDirParser` existed and was
-DELETED 2026-09-04: it answered an eleven-field `JobResult`, ten of whose
-fields had no reader anywhere, and reached the eleventh by parsing every
-result file to build plots and then discarding them.  This is not that
-returning.  The name was always right — it *is* the directory composer — but
-every field here is written against a caller that exists today, and § 5.0's
-table names each one.
-
-**Why a door at all.** Several functions across three modules answer
-questions about a run directory, and the Results tab asks them all through
-this one door (`/api/results/dir`) rather than guessing from filenames in the
-browser.
-
-**What a folder IS decides what is shown** (`web/results.md` § 0): one run is
-shown by the presenter for its result file; a calculation root by its ladder;
-a benchmark and a transport calculation by their own presenters.  This door
-answers what the folder is and what each file in it is; the higher-level
-reports are their own modules' (`jobset/runstatus.py`, `jobset/summarize.py`,
-`transport/record.py`), never composed here.
-
-**This module composes; it does not re-parse.** `run_status` stays in
-`job.py` and `engine_of` in `contract.py`; they are CALLED here.  The one thing absorbed bodily is the openable-discovery chain,
-which lived in `web/blueprints/watch.py` — the web layer, which nothing below
-it can import, which is the whole reason it had to move rather than be
-called.
-
-**Proved before its callers moved**: the door answered identically to the
-functions it replaced on the real tree before any caller was repointed.
+*Until 2026-10-04 this module also held `JobDirParser` -- the directory door,
+which composed these with the folder's place and the calculation's kind, read
+from `task.json` raw, and with labels guessed from the folder's decks
+(`labels_in`, `read_back`).  It moved up to `molbuilder.runs.folder_answer`
+(plan B11, B14): the label is the description's, and only `read_task` opens
+the description.*
 """
 from __future__ import annotations
 
-import glob
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
-
-from ..base import DirParser
-from ..types import ParseResult, RunDirResult
-
-
-#: geomeTRIC's trajectory role, tried by the PySCF rung of the chain.
-#
-#: IMPORTED, not spelled.  `pyscf/input.py` declares it beside the writer that
-#: emits it and warm-files.toml that declares it; a literal here would be a
-#: second home for one string.  *(Step 1 shipped it as a literal on 2026-09-18
-#: and this is the correction -- the `web/watch` copy it was absorbed from had
-#: imported it all along.)*
-from ...pyscf.input import ROLE_GEOM_TRAJ   # noqa: E402  -- re-exported below
+from typing import List, Optional, Tuple
 
 
 def _claimed(path: str) -> bool:
@@ -75,251 +42,42 @@ def _claimed(path: str) -> bool:
         return False
 
 
-def _calculation_of(directory: str) -> Tuple[Optional[str], Optional[str]]:
-    """What calculation is this? — and which `task.json` said so.
-
-    **THE DIRECTORY IS ASKED, NOT SEARCHED FOR** (`project-layout.md` § 1.4a).
-    It either holds `task.json` — then it is the root, invariant 2 — or it
-    holds a `calcdir.json` whose ``of`` points at the root.  Either way the
-    answer is read, in one step, from a fact the creator wrote down.
-
-    *What this replaced, because the shape of the mistake is worth keeping.*
-    § 1.0 puts the description in the PARENT — *"only rendered files and
-    copies go down to where the engine runs"* — so asking the handed directory
-    alone is right only in the flat shape, and every hierarchical spectrum run
-    therefore opened the molwatch stub the catalogue offers when nothing says
-    what a run is FOR (measured on `spectrum/bridge-hier/01_raman/run-0`).
-    The first repair WALKED UP to the nearest `task.json`, fenced by the
-    projects tree and a four-level cap: a search with a tuned number, standing
-    in for a fact the tree could simply state.  § 1.4a made it state it, and
-    the walk and its constant went with it.
-
-    ``(None, None)`` when the directory does not say — one molbuilder did not
-    write, or an attempt copied out of its calculation.  That is a real answer
-    and not a failure (§ 1.4a): the directory is read ALONE, and the search
-    below then asks what ANY run produces.
-    """
-    from molbuilder.calcdirs import root_of
-    from molbuilder.task import FILENAME as _TASK, read_json as _read_json
-
-    root = root_of(directory)
-    if root is None:
-        return None, None
-    # WHERE it was said, for the trail: a decision taken outside the handed
-    # directory has to name where it came from, or the refusal a person reads
-    # stops being checkable.  Computed BEFORE the read, because the read is
-    # the thing that can fail and a failure has to name its file too --
-    # "not stated" and "could not be read" were one answer until 2026-09-19,
-    # so a damaged description was reported as a silent one and the search
-    # below took the unknown-calculation path with nothing saying why.
-    where = os.path.relpath(root / _TASK, Path(directory).resolve())
-    try:
-        said = (_read_json(root / _TASK) or {})
-    except (OSError, ValueError, TypeError):
-        return None, f"{where}, which could not be read"
-    return (said.get("calculation") or None), where
-
-
 def _search_roles() -> "List[str]":
-    """The roles to try, in order, for a directory that did not say what it is.
-
-    Built from the catalogue, not listed here: the PROGRESS channel first
-    (every run has one), then whatever any calculation names as its product,
-    then the trajectory, then the engine's stdout — which for SIESTA IS a
+    """The dotted roles to try, in order, when nothing says what a folder's
+    calculation produces: the PROGRESS channel and every calculation's
+    product first, then the engine's stdout -- which for SIESTA IS a
     trajectory source, and for PySCF is refused by the registry and so drops
-    out of this list on its own.
-    """
-    from molbuilder.runfiles import WRITTEN, result_roles, stdout_roles
+    out on its own.  Built from the catalogue, not listed here."""
+    from molbuilder.runfiles import ON_THE_LABEL, result_roles, stdout_roles
     out = list(result_roles(None))
-    out += [a.role for a in WRITTEN if a.calculation and a.role not in out]
-    if ROLE_GEOM_TRAJ not in out:
-        out.append(ROLE_GEOM_TRAJ)
+    out += [a.role for a in ON_THE_LABEL if a.calculation and a.role not in out]
     out += [r for r in stdout_roles() if r not in out]
-    return out
+    return [r for r in out if r.startswith(".")]
 
 
-from ..fdf import system_label                # noqa: E402
-from ...pyscf.input import job_name           # noqa: E402
+def openable_in(directory: str, calculation: Optional[str] = None
+                ) -> Tuple[Optional[str], List[str]]:
+    """*What should a viewer load here?* — and the trail of what was tried —
+    for a folder read WITHOUT its run: by the catalogue's roles alone,
+    newest first, each vetted by the registry (`model/parse.md` § 5.2).
 
-#: WHERE A LABEL IS WRITTEN DOWN, per engine: the deck's role, and the reader
-#: that pulls the label out of it.  Both engines, one table -- these are the
-#: only per-engine facts in the discovery chain, and neither is a role
-#: vocabulary.  Module-level because `openable_in`'s refusal trail NAMES the
-#: roles it searched, and a second spelling there would be free to disagree
-#: with the search itself.
-_DECK_READERS = ((".fdf", system_label), (".py", job_name))
-_DECK_ROLES = tuple(r for r, _ in _DECK_READERS)
-
-
-def labels_in(directory: str) -> List[str]:
-    """Which labels this directory's files are stemmed on — LONGEST FIRST.
-
-    A run's files are ``<label>[_<stage>][-run<N>]<role>`` and **nothing can
-    find the boundary between the label and the rest by looking at the string
-    alone** (`runfiles.parse`): a role may contain ``_`` and so may a label.
-    So the label has to come from somewhere, and the deck is where it is
-    written down — ``SystemLabel`` in an ``.fdf``, ``JOB`` in a ``.py``.
-
-    **The deck's own stem too**, because a staged deck is ``<job>_<token>``
-    while the label inside it stays bare: a staged run whose seed is missing
-    resolved to nothing without it (2026-08-19).
-
-    SHORTEST FIRST, and that is the grammar's own order rather than a
-    preference: a name is ``<label>_<stage><role>``, so every character a
-    label claims is one the STAGE cannot.  Read
-    ``bridge_01_relax.molwatch.log`` under ``bridge_01_relax`` and the role
-    still comes out right while the stage comes out ``None``; read it under
-    ``bridge`` and it is ``01_relax``, which is what it is.
-
-    A caller must still REJECT a reading whose role the catalogue does not
-    declare, because `runfiles.parse` accepts any label a name starts with:
-    ``parse("au_2_bdt_initial.xyz", "au")`` answers with a role of
-    ``_2_bdt_initial.xyz``.  That check is what makes shortest-first safe —
-    the too-short label is refused on its role and the next one is tried.
-
-    Two readers: `openable_in`'s search, and `/api/results/dir`, which needs
-    the label to answer what each file IS.  It was inline in the first until
-    the second existed.
-    """
-    from molbuilder.runfiles import find_by_role
-
-    stems: List[str] = []
-    for deck_role, label_of in _DECK_READERS:
-        for deck in find_by_role(directory, deck_role):
-            label = label_of(_read_head(str(deck)))
-            # A `.py` THAT NAMES NO `JOB` IS NOT A DECK.  The suffix is
-            # generic, and beside every job sit the framework modules its
-            # monitor runs on (`runwrap.MONITOR_COMPANIONS`): read by stem,
-            # `job.py` and `runfiles.py` became labels -- runs of their own
-            # in the Results listing, and decks enough that a prepped PySCF
-            # attempt had no record (2026-09-26).  An `.fdf` keeps its stem:
-            # SIESTA names its files `siesta` when no SystemLabel is stated.
-            if label is None and deck_role == ".py":
-                continue
-            if label and label not in stems:
-                stems.append(label)
-            stem = os.path.splitext(os.path.basename(str(deck)))[0]
-            if stem not in stems:
-                stems.append(stem)
-    stems.sort(key=len)
-    return stems
-
-
-def read_back(name: str, labels):
-    """What IS this file — `runfiles.parse`'s reading, or ``None``.
-
-    *name* is a basename; *labels* is `labels_in`'s answer for the directory
-    it sits in.  The pair is the whole point: `runfiles.parse` is exact only
-    because it is GIVEN a label, and this is where a directory's labels meet
-    its filenames.
-
-    TWO RULES, and each is load-bearing.
-
-    **Shortest label first** — `labels_in`'s order.  The grammar is
-    ``<label>_<stage><role>``, so every character a label claims is one the
-    stage cannot: ``bridge_01_relax.molwatch.log`` read under ``bridge`` has
-    a stage of ``01_relax``, and read under ``bridge_01_relax`` has none.
-
-    **The role must be one the catalogue DECLARES.**  `parse` accepts any
-    label a name starts with and will read whatever follows as a role, so
-    ``parse("au_2_bdt_initial.xyz", "au")`` answers with a role of
-    ``_2_bdt_initial.xyz``.  Refusing an undeclared role is what makes
-    shortest-first safe — the too-short label is rejected and the next one
-    tried — and it is also what keeps *role* meaning what it has always
-    meant to a reader: **a declared role, or nothing**.
-    """
-    from molbuilder.runfiles import parse as rf_parse, roles
-    declared = set(roles())
-    for label in labels:
-        rec = rf_parse(name, label)
-        if rec is not None and rec.role in declared:
-            return rec
-    return None
-
-
-def run_of(path) -> Tuple[Path, Optional[str]]:
-    """THE RUN A FILE BELONGS TO -- its folder, and its run's name: the stem
-    the file's own name reads back to through the folder's labels
-    (:func:`read_back`), or ``None`` -- the folder's own run -- for a name
-    that does not read back.  In a hierarchical attempt the two are one run;
-    in a flat calculation's folder the name is what tells its stages apart."""
-    from molbuilder.runfiles import stem
-    p = Path(path)
-    rec = read_back(p.name, labels_in(str(p.parent)))
-    if rec is None:
-        return p.parent, None
-    return p.parent, stem(rec.label, rec.stage)
-
-
-def run_state_of(directory, basename: Optional[str] = None):
-    """``(RunStatus, problem)`` -- the run's state through the one door
-    (`job.run_status`), asked with its launch record
-    (`runrecord.launch_record`) as every reader asks it.  A launch record
-    that does not read is the ``problem``, said beside a state the files
-    answer without it -- never read as launched or not launched.  The folder
-    door and the Results viewers ask it."""
-    from molbuilder.runrecord import LaunchRecordError, launch_record
-    from .job import run_status
-    try:
-        launch = launch_record(directory, basename)
-    except LaunchRecordError as e:
-        return run_status(directory, basename), str(e)
-    return run_status(directory, basename, launch=launch), None
-
-
-def run_answer(path) -> Dict[str, Any]:
-    """``{state, detail, live}`` -- how the run the file at ``path`` belongs
-    to (:func:`run_of`) is doing, the one door's answer
-    (:func:`run_state_of`), with ``problem`` when its launch record does not
-    read.  ``live`` -- `job.LIVE_STATES` -- is what a Results viewer follows
-    (`web/results.md` § 4.1)."""
-    from .job import LIVE_STATES
-    st, problem = run_state_of(*run_of(path))
-    said: Dict[str, Any] = {"state": st.state, "detail": st.detail,
-                            "live": st.state in LIVE_STATES}
-    if problem:
-        said["problem"] = problem
-    return said
-
-
-def openable_in(directory: str) -> Tuple[Optional[str], List[str]]:
-    """*What should a viewer load here?* — and the trail of what was tried.
-
-    **FOUR QUESTIONS, FOUR OWNERS**, and the first one decides whether the
-    other three apply at all (`model/parse.md` § 5.5):
-
-      | what IS this directory?    | the DIRECTORY | `calcdir.json`, or a root's `task.json` |
-      | what calculation is this?  | the CALCULATION | `of` -> its `task.json` |
-      | what does it produce?      | the CATALOGUE | `runfiles.result_roles`  |
-      | can anything open it?      | the REGISTRY  | `detect()`               |
-
-    **The calculation decides, so there is no preference order to tune.**  A
-    vibration run is FOR its `.spectra.json` — the deck rewrites it
-    atomically at every phase boundary and it carries its own `phase_*`
-    flags, so it is the live view during the run and the result after it.  An
-    optimization is for its trajectory.  Neither switches at conclusion; the
-    "unconcluded progress log first" rule this replaces was an
-    optimization-shaped rule generalised to every kind, and it sent every
-    spectrum run's viewer to a molwatch log holding one `initial_preview`
-    block.
-
-    WHAT REMAINS A SEARCH, and why: a directory that does not say what it is.
-    Then the deck is asked for its label and the label's files are looked up
-    — through `runfiles.find`, which knows the attempt counter, where this
-    hand-rolled `compose` + `isfile` did not and so missed every
-    `-run<N>` spelling.  Every candidate goes through the registry either
-    way.
+    ``calculation`` is the kind, when the caller knows it from the
+    description (`runs.place_of`); the roles a calculation produces come
+    first then (`runfiles.result_roles`).  A run of OURS is opened by the
+    run door instead (`runs.folder_answer`): its speaking run's own file,
+    read back with its label -- this floor knows no label, so it can only
+    ask by a dotted role, and among one role's files it can only take the
+    newest.  *(The search read a label off the folder's decks, and tried
+    generic names for a folder nobody described, until 2026-10-04 -- a
+    search for a run molbuilder's wrapper did not run: plan B11.)*
 
     ``attempts`` is not decoration: it is the BODY of the refusal a person
     reads when nothing matched, and it moves with the search so the message
     cannot drift from it.
     """
-    from molbuilder.runfiles import find, find_by_role, result_roles
+    from molbuilder.runfiles import find_by_role, result_roles
 
     attempts: List[str] = []
-
-    def by_role(role: str) -> List[str]:
-        return [str(p) for p in find_by_role(directory, role)]
 
     def offer(paths: List[str], how: str) -> Optional[str]:
         """The newest of *paths* the REGISTRY claims, with the trail written."""
@@ -332,184 +90,37 @@ def openable_in(directory: str) -> Tuple[Optional[str], List[str]]:
                             f"no parser claims it, not offered")
         return None
 
-    # 1. WHAT THIS CALCULATION PRODUCES, from the catalogue.
-    calc, said_by = _calculation_of(directory)
-    from molbuilder.task import FILENAME as _TASK_FILE
-    attempts.append(
-        f"calculation: {calc} (from {said_by})" if calc
-        else f"calculation: (not stated in {said_by})" if said_by
-        else f"calculation: (no {_TASK_FILE} above this directory)")
-    for role in result_roles(calc):
-        hits = by_role(role)
+    tried = []
+    for role in [r for r in result_roles(calculation) if r.startswith(".")] \
+            + _search_roles():
+        if role in tried:
+            continue
+        tried.append(role)
+        hits = [str(p) for p in find_by_role(directory, role)]
+        if not hits:
+            continue
         attempts.append(f"*{role} -> {len(hits)} match(es)")
         chosen = offer(hits, f"*{role}")
         if chosen:
             return chosen, attempts
-
-    # 2. THE DIRECTORY DID NOT SAY WHAT IT IS, so the DECK is asked for the
-    #    label and the label's own files are looked up.  Both engines, one
-    #    loop: the deck role and the reader that pulls the label out of it
-    #    are the only per-engine facts, and neither is a role vocabulary.
-    stems = labels_in(directory)
-    attempts.append(
-        "decks (" + ", ".join("*" + r for r in _DECK_ROLES) + ")"
-        + f" -> {len(stems)} label(s): "
-        + (", ".join(stems) if stems else "none"))
-
-    # ROLE FIRST, THEN NEWEST -- and the order between those two is the whole
-    # rule.  The role says what the file IS; mtime picks WHICH ONE, which in
-    # the flat shape is the latest rung (`model/parse.md` § 5.1, the same rule
-    # `run_status` picks `active` by).  Gathering across every stem before
-    # offering is what keeps that true: returning on the first deck handed a
-    # four-stage flat run its FIRST stage, because decks sort by name
-    # (measured 2026-09-18 on four real directories).
-    for role in _search_roles():
-        pool: List[str] = []
-        for s in stems:
-            # A DOTTED STEM NEEDS NO GUARD HERE, and that is a property of
-            # `find` rather than luck: it READS names and returns what
-            # matches, where the `compose` this replaced BUILT one and
-            # refused `my.job` (§ 2.1).  There is no raise left to catch --
-            # `tests/test_path_framework_doors.py` asserts the skip message
-            # never appears -- so the `except RunFileError` that stood here
-            # went with the composer on 2026-09-18.
-            pool += [str(path) for path, _rec in
-                     find(directory, s, role=role, roles=(ROLE_GEOM_TRAJ,))]
-        if not pool:
-            continue
-        attempts.append(f"  *{role} across {len(stems)} label(s)"
-                        f" -> {len(pool)} match(es)")
-        chosen = offer(pool, f"  *{role}")
-        if chosen:
-            return chosen, attempts
-
-    # 3. NO DECK NAMED A LABEL, so the roles are searched WITHOUT one.
-    #    `find_by_role` is the label-less half of the same door, and it takes
-    #    a dotted role only -- which is its own rule, not a limitation
-    #    invented here: an underscore role cannot be told from a stage name
-    #    without a label, so the trajectory keeps the glob below.
-    for role in _search_roles():
-        if not role.startswith("."):
-            continue
-        hits = by_role(role)
-        if not hits:
-            continue
-        attempts.append(f"*{role} (no label) -> {len(hits)} match(es)")
-        chosen = offer(hits, f"*{role}")
-        if chosen:
-            return chosen, attempts
-
-    # 4. GENERIC NAMES, for a directory molbuilder did not write at all.
-    generic = [os.path.join(directory, n) for n in ("run.out", "siesta.log")]
-    # ONE glob for the trajectory, because there is one spelling: the role is
-    # `_geom_optim.xyz` and the star covers the label and the token.  NOT
-    # `find_by_role` -- an UNDERSCORE role cannot be told from a stage name
-    # without a label, and having no label is the whole point of this rung.
-    generic += glob.glob(os.path.join(directory, "*" + ROLE_GEOM_TRAJ))
-    present = [c for c in generic if os.path.isfile(c)]
-    attempts.append(f"generic names -> {len(present)} match(es)")
-    chosen = offer(present, "generic")
-    if chosen:
-        return chosen, attempts
-
+    attempts.append("no file here is one a run of ours writes")
     return None, attempts
 
 
-def _read_head(path: str, limit: int = 65536) -> str:
-    """The first chunk of a deck — enough to find `SystemLabel` / `JOB`.
-
-    The whole file is not read: an fdf can be multi-MB of coordinates and the
-    label is in its head.  Absorbed with the chain.
-    """
+def run_state_of(directory, basename: Optional[str] = None):
+    """``(RunStatus, problem)`` -- the run's state through the one door
+    (`job.run_status`), asked with its launch record
+    (`runrecord.launch_record`) as every reader asks it.  A launch record
+    that does not read is the ``problem``, said beside a state the files
+    answer without it -- never read as launched or not launched.  The run
+    door (`runs`) asks it, with the run's own basename."""
+    from molbuilder.runrecord import LaunchRecordError, launch_record
+    from .job import run_status
     try:
-        with open(path, "rb") as fh:
-            return fh.read(limit).decode("utf-8", errors="replace")
-    except OSError:
-        return ""
+        launch = launch_record(directory, basename)
+    except LaunchRecordError as e:
+        return run_status(directory, basename), str(e)
+    return run_status(directory, basename, launch=launch), None
 
 
-class JobDirParser(DirParser):
-    """A directory → :class:`RunDirResult` — what `/api/results/dir` serves.
-
-    Composes the readers that already exist — `calcdirs.container_or_run`,
-    `job.run_status`, `contract.engine_of`, `record.run_record` — plus the
-    discovery chain above.  It inlines no file-level parsing (`model/parse.md`
-    § 1's rule for a DirParser, and § 5.4's).
-
-    **What the directory IS decides what is asked of it** (§ 5.0,
-    `project-layout.md` § 1.4a), and the rules live here, not in a caller:
-
-    * a CONTAINER is not a run: no run state and no record — but it may be a
-      calculation, whose own product (a transport ladder's I–V record) the
-      discovery still offers;
-    * a RUN is asked everything, even before it has written a byte;
-    * a directory that does not say is read ALONE: listed, searched, and given
-      a run state and a record only where the search found this directory's
-      product — `run_status` has no *there is no run here*, so asking it
-      anyway is how ten of nineteen folders reported *running* (2026-09-19).
-    """
-    name = "jobdir"
-    label = "A run directory"
-    output = RunDirResult
-
-    @classmethod
-    def can_parse(cls, run_dir: Path) -> bool:
-        """Does this directory answer for itself? — it SAYS what it is, or it
-        holds a file a run writes.
-
-        Said: a calculation root or a ``calcdir.json`` (§ 1.4a) — a stamped
-        run that has written nothing yet is still a run, and a container is
-        answered too, with no run state.  Unsaid: a file whose role the
-        catalogue declares (`runfiles.role_of`) — a deck, a run's output, a
-        product.  An empty folder, or one of notes, is nobody's.  Cheap on
-        purpose (§ 1's ABC): one listing, one small JSON read.
-        """
-        d = Path(run_dir)
-        if not d.is_dir():
-            return False
-        from molbuilder import calcdirs
-        from molbuilder.runfiles import role_of
-        if calcdirs.container_or_run(d) is not None:
-            return True
-        return any(e.is_file() and role_of(e.name) is not None
-                   for e in d.iterdir())
-
-    @classmethod
-    def parse(cls, run_dir: Path) -> RunDirResult:
-        from molbuilder import calcdirs
-        from .record import run_record
-        from ..contract import engine_of
-
-        d = str(Path(run_dir))
-        place = calcdirs.container_or_run(d)
-        engine = engine_of(d)
-        openable, attempts = openable_in(d)
-        status = record = None
-        if place == calcdirs.CONTAINER:
-            attempts.append(
-                "this directory is a container, not a run -- it has no run "
-                "state; its runs are the directories below it "
-                "(project-layout.md § 1.4)")
-        elif place == calcdirs.RUN or openable:
-            # WITH ITS LAUNCH RECORD: an attempt prepped and never launched
-            # is `pending`, not "running" (`run_status`).  One that does not
-            # read is said, and the files answer without it -- never read as
-            # launched or not (`run_state_of`).
-            st, problem = run_state_of(d)
-            if problem:
-                attempts.append(problem)
-            # ``active_source`` is the status's own pick -- stage, then mtime
-            # (§ 5.1, user ruling 2026-09-04) -- and a bare filename.
-            status = {"state": st.state, "detail": st.detail,
-                      "last_change_at": st.last_change_at,
-                      "active_source": st.active_source}
-            record = run_record(d, status=st, engine=engine)
-        return RunDirResult(
-            **ParseResult.envelope(cls.name, d),
-            run_dir=d,
-            engine=engine,
-            openable=openable,
-            attempts=attempts,
-            status=status,
-            record=record,
-        )
+__all__ = ["openable_in", "run_state_of"]

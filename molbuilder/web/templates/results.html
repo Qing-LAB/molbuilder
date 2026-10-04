@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects/projects-sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='results/style.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/results/run-panel.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/results/file-card.css') }}">
 {# Trajectory inspector styles -- the inspector's DOM (rendered from
    _trajectory_inspector.html into #inspector-host at mount time)
    uses the classes defined here.  Linked unconditionally because
@@ -99,6 +100,14 @@
      event.  Filled by lib/results/run-panel.js; hidden where there is no
      record (a container, a folder with no run).  Not a viewer: no file
      picks it, and results/viewer.js does not know it. #}
+  {# THE FILE CARD (results.md § 3b): what the file in hand is -- the
+     dropdown's, or one clicked in the sidebar inside this panel's folder --
+     in the catalogue's words, or "not written by molbuilder".  Filled by
+     lib/results/file-card.js from the picker's selection event; it asks for
+     nothing of its own. #}
+  <section id="results-file-card" class="results-file-card" hidden
+           aria-label="What this file is" aria-live="polite"></section>
+
   <section id="results-run-panel" class="results-run-panel" hidden
            aria-label="The run these files came from"></section>
 
@@ -259,6 +268,7 @@
    so it is deferred -- it registers before the picker's first scan, which
    starts at DOMContentLoaded. #}
 <script type="module" src="{{ url_for('static', filename='lib/results/run-panel.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/results/file-card.js') }}"></script>
 {# Specific (compound-extension) inspectors register first...
 
    EVERY INSPECTOR BELOW CARRIES `defer` OR IS A MODULE, deliberately: that puts
