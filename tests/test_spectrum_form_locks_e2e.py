@@ -5,7 +5,10 @@ selects nothing and `explicit` names its modes, so the window enters neither.
 
 Driven the way a person drives it: the page on a live server, the selection
 changed through its own control -- and first, the page as it loads, before any
-change: the default `skip` locks all three.
+change: nothing chosen -- a new calculation's form holds what the person gives
+it, and a blank is not chosen (`web/form-schema.md`, plan K7) -- and the kind's
+`skip`, which then applies, locks all three.  *(This said the default `skip`
+stood in the box at load until 2026-10-03, two days after K7 made it blank.)*
 
 MUTATIONS THIS MUST FAIL AGAINST: the window left out of the lock map (it stays
 editable under `skip` and `explicit`, where it enters nothing); the lock
@@ -39,7 +42,7 @@ def test_the_selection_locks_what_it_would_ignore(page, flask_server):
         "(ids) => [document.getElementById('py-es-mode-selection').value]"
         ".concat(ids.map(i => !document.getElementById(i).disabled))",
         list(_FIELDS))
-    assert at_load == ["skip", False, False, False], at_load
+    assert at_load == ["", False, False, False], at_load
     live = {}
     for choice in ("skip", "all", "explicit"):
         page.select_option("#py-es-mode-selection", value=choice)
