@@ -30,7 +30,7 @@ _SIESTA_INVENTORY = (".XV", ".DM",
                      # never read back, carried so `hierarchical` ends up
                      # with the same file `flat` would have.
                      ".MD.nc", ".MD", ".MDE", ".ANI",
-                     ".LWF", ".ZM", ".Bonds", ".PARTIAL",
+                     ".LWF", ".ZM", ".BONDS", ".PARTIAL",
                      ".EIG", ".HSX", ".WFSX", ".STRUCT_NEXT_ITER",
                      ".CG", ".TSHS", ".TSDE",
                      # the force-constant run's product and its constrained twin

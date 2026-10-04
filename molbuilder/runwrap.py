@@ -706,13 +706,17 @@ def _cold_restart_block(basename: str, *, engine: str, label: str) -> str:
     # protects exactly one file while `<label>_optimized.xyz` goes aside.
     #
     # The ONE enumeration still governs (E-1, 2026-08-13): this narrows how the
-    # list is read, and adds no second list to drift from it.
+    # list is read, and adds no second list to drift from it.  `*.psml` is
+    # the one glob of its own: a pseudopotential is named for its element,
+    # not for the run.  *(`*-restart-aside-*` stood beside it until
+    # 2026-10-04, for folders `--cold` filled before 2026-08-18 -- old runs
+    # are not a design input; plan D27.)*
     from .identity import OUR_FILE_PATTERNS
     _exceptions = "|".join(sorted(
         {p.replace("{label}", anchor)
          for p in OUR_FILE_PATTERNS
          for anchor in ('"$_warm_label"', basename)}
-        | {"*.psml", "*-restart-aside-*"}))
+        | {"*.psml"}))
     return (
         f"# --- Cold restart: SAY WHAT WOULD BE LOST, THEN STOP ------\n"
         f"# --cold starts the engine from the deck alone, so everything\n"

@@ -124,60 +124,20 @@ def test_the_structure_is_a_reference_and_a_witness_never_a_copy(struct, cfg,
     assert not list((tmp_path / "calc").glob("*.xyz"))
 
 
-def test_an_existing_structure_file_travels_with_the_calculation(
-        struct, cfg, tmp_path):
-    """M9 / stages.md § 6.3 (amended U19): the data FILE is copied beside
-    task.json, exactly like the pseudos -- what stays forbidden is
-    coordinates embedded IN task.json.  This is the pin test_describe
-    lacked while test_prep_calculation asserted the copy: the two files
-    asserted OPPOSITE contracts, both green, because this fixture's
-    source never existed on disk."""
-    src = tmp_path / "bdt.xyz"
-    src.write_text(struct.to_xyz())
-    D.write_description(_describe(struct, cfg, source=str(src)),
-                        tmp_path / "calc")
-    # The travelling copy carries the ``.source`` mark and the written
-    # task.json records THAT name (`job-contracts.md` 6.3, 2026-08-19):
-    # identities are dot-free, so no engine output can take the copy's
-    # name, and the folder is self-contained -- prep resolves the local
-    # marked file, never this machine's original path.
-    copied = tmp_path / "calc" / "bdt.source.xyz"
-    assert copied.is_file()
-    assert copied.read_text() == src.read_text()
-    task = read_task(tmp_path / "calc" / "task.json")
-    assert task.structure.source == "bdt.source.xyz"
+def test_the_structure_travels_as_the_calculations_own_pair(tmp_path):
+    """`jobset init` writes the structure it describes as the calculation's
+    own pair, named for the LABEL -- ``<label>.source.xyz`` and its sidecar,
+    the catalogue's name and the hand-over's (`job-contracts.md` § 6.3,
+    `StructureCodec.source_files`) -- ``task.json`` records that name, and
+    the ``--vacuum 8`` it was described with travels in the sidecar, so
+    prep's own loader reads it back (the fix of 2026-08-12).
 
-
-def test_a_described_modification_travels_as_the_codec_pair(
-        struct, cfg, tmp_path):
-    """The ``--vacuum`` fix (2026-08-12): describe can MODIFY the structure
-    it was handed, and those facts live in metadata a bare .xyz has nowhere
-    to put -- so the raw copy silently dropped them and prep rendered the
-    3 A-default cell over an explicit scientific choice.  With ``struct``
-    passed, a structure carrying metadata travels as the codec pair, and
-    prep's own loader reads the vacuum back."""
-    src = tmp_path / "bdt.xyz"
-    src.write_text(struct.to_xyz())     # bare xyz: no vacuum in these bytes
-    D.write_description(_describe(struct, cfg, source=str(src)),
-                        tmp_path / "calc", struct=struct)
-    assert (tmp_path / "calc" / "bdt.source.molstruct.json").is_file(), \
-        "the metadata sidecar did not travel"
-    from molbuilder.jobset.prep import _structure_for
-    task = read_task(tmp_path / "calc" / "task.json")
-    reloaded = _structure_for(task, tmp_path / "calc")
-    assert reloaded.vacuum == (10.0, 10.0, 10.0), (
-        "prep reloads the structure without the vacuum the description "
-        "was built with -- the deck would get the default cell")
-
-
-def test_the_vacuum_flag_reaches_the_travelling_structure(tmp_path):
-    """The CLI half of the same fix: ``describe --vacuum 8`` on a bare
-    XYZ must put 8 A on the structure that travels, not only on the one
-    in memory."""
+    The structure FILE is ``h2.xyz`` and the label ``JOB``: init named the
+    pair ``h2.source.*`` until 2026-10-04 (plan D20).  This test held the
+    API-level halves of both rules until then, retired with it."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     from molbuilder.projects import PROJECTS_ROOT_ENV
-    from molbuilder.workingcopy_structure import StructureCodec
     import os
     # `init` cites both the structure and the calculation FROM THE PROJECTS
     # ROOT (job-contracts.md 2.5b), so the test says where its tree is --
@@ -195,9 +155,13 @@ def test_the_vacuum_flag_reaches_the_travelling_structure(tmp_path):
     finally:
         os.environ.pop(PROJECTS_ROOT_ENV, None)
     assert res.exit_code == 0, res.output
-    reloaded = StructureCodec().load(
-        tree / "P" / "optimization" / "calc" / "h2.source.xyz")
-    assert reloaded.vacuum == (8.0, 8.0, 8.0)
+    calc = tree / "P" / "optimization" / "calc"
+    assert sorted(p.name for p in calc.glob("*.source.*")) == [
+        "JOB.source.molstruct.json", "JOB.source.xyz"]
+    task = read_task(calc / "task.json")
+    assert task.structure.source == "JOB.source.xyz"
+    from molbuilder.jobset.prep import _structure_for
+    assert _structure_for(task, calc).vacuum == (8.0, 8.0, 8.0)
 
 
 def test_the_calculation_key_is_absent_is_a_state(struct, cfg, tmp_path):

@@ -1165,13 +1165,14 @@ def api_task_setup_handover():
     from ._shared import checked_periodicity
     struct, struct_notices = checked_periodicity(struct)
     try:
-        # ``<label>.source`` -- the dotted segment is the reservation
+        # ``<label>.source.xyz`` -- the dotted segment is the reservation
         # (`job-contracts.md` § 6.3): every identity is validated
         # dot-free, so no engine output, which stems its files on an
         # identity, can ever take this name.  Before it, a flat SIESTA
         # run whose label matched the structure's stem overwrote its own
-        # input via WriteCoorXmol (found 2026-08-19).
-        made = StructureCodec().files(struct, f"{label}.source")
+        # input via WriteCoorXmol (found 2026-08-19).  The one call both
+        # writers make -- `jobset init` too (`StructureCodec.source_files`).
+        made = StructureCodec().source_files(struct, label)
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     structure_files = [{"name": path.name, "text": blob.decode("utf-8")}

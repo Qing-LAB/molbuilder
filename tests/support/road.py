@@ -289,10 +289,12 @@ def calls_made(calls: Path):
 # row's prep names, `coarse` unless given; `answers` -- what
 # the person types at the row's prep's question ("" is EOF, no terminal);
 # `calculation` -- the kind `jobset init` describes, an optimization unless
-# given.
+# given; `shape` -- the shape it describes, hierarchical unless given.
 #
 # AFTER PREP, whatever it answered: the folders it left (`made`, paths
-# under the calculation that exist; `made_lacks`, ones that do not), how the
+# under the calculation that exist; `made_lacks`, ones that do not), the
+# files it left as they were (`kept`: paths under the calculation whose
+# bytes and write time are the same before and after the row's prep), how the
 # server answers a viewer about a stage's newest run (`run_answer`: `stage`,
 # `state`, `live` -- `_road_run_answer`), the
 # folder's saved states, newest first
@@ -571,6 +573,14 @@ def _road_after_prep(case, bundle) -> None:
             assert decision not in decided, f"the ledger holds: {decided}"
 
 
+def _as_written(path: Path):
+    """A file as it stands: its bytes and its write time to the
+    nanosecond -- a file written again with the same bytes is still written
+    again, which is what `kept` rows are about."""
+    assert path.is_file(), f"{path} is not there to keep"
+    return path.read_bytes(), path.stat().st_mtime_ns
+
+
 def _road_holds(got, want, where) -> None:
     """``want`` -- a table -- is in ``got``, key by key, nested."""
     for key, value in want.items():
@@ -600,7 +610,8 @@ def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
     engine = case.get("engine", "siesta")
     calculation = case.get("calculation", "optimization")
     bundle = describe_h2(tmp_path, monkeypatch, engine=engine,
-                         calculation=calculation)
+                         calculation=calculation,
+                         shape=case.get("shape", "hierarchical"))
     values = (dict(table.get("siesta_template", {}))
               if engine == "siesta" else {})
     values.update(case.get("template", {}))
@@ -728,9 +739,14 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
     if "removed" in case or "added" in case:
         _road_ladder_edited(case, bundle)
     kind = "bench" if "bench" in case else "run"
+    kept = {where: _as_written(bundle / where)
+            for where in case.get("kept", [])}
     r = jobset("prep", kind, case.get("stage", "coarse"), "--bundle", bundle,
                "--target", target, *case.get("prep", []),
                input=case.get("answers"))
+    for where, was in kept.items():
+        assert _as_written(bundle / where) == was, \
+            f"{where} was written again by the row's prep"
 
     # 1 · ALLOWED OR REFUSED -- at prep, in its words
     if "refused" in case:

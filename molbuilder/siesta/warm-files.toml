@@ -89,7 +89,7 @@ suffix = ".LWF"                 # localized Wannier functions
 [[base.file]]
 suffix = ".ZM"                  # Z-matrix state
 [[base.file]]
-suffix = ".Bonds"
+suffix = ".BONDS"                # bond lengths, as SIESTA spells it (`.Bonds` until 2026-10-04)
 [[base.file]]
 suffix = ".PARTIAL"
 [[base.file]]

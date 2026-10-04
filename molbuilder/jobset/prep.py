@@ -122,8 +122,19 @@ def _flat_continued_from(base: Path, task, stage: str, continuation) -> None:
 
 def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 emit_sbatch: bool = True, record_dir=None,
-                log=None, machine_record=None) -> List[Path]:
+                log=None, machine_record=None,
+                render=None) -> List[Path]:
     """Render launchers + lay out the per-job tree under ``base_dir``.
+
+    ``render`` names the jobs whose run scripts this prep writes -- the
+    stage it preps.  The plan it is handed is the calculation's, merged
+    (`_merge_run_jobset`), and every other stage in it was prepped already:
+    its run script and monitor stay as that stage's own prep wrote them,
+    the copy its attempt ran with (`project-layout.md` § 1.6.2, § 2.6; plan
+    D21: every prep rendered every stage's again until 2026-10-04 -- in the
+    flat shape, the launched stage's own, in its run folder).  ``None``
+    renders every job: a benchmark's plan is its own, every trial this
+    prep's.
 
     Steps, in order:
       1. render each **distinct** ``job.script``'s ``.run.sh`` (and
@@ -184,6 +195,8 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     _dir_of = job_dir_names(jobset, _sh)
     rendered: dict = {}
     for job in jobset.jobs:
+        if render is not None and job.name not in render:
+            continue
         # THE SAME QUESTION `prep_calculation` AND `materialize` ASK.  A
         # trial's files live in its attempt when the shape keeps them
         # (`project-layout.md` § 1.5a); this loop looked in the container
@@ -1061,7 +1074,9 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # was written (`machine.require_activation`) -- whichever machine it describes.
     dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
                        record_dir=record_dir, log=log,
-                       machine_record=environment)
+                       machine_record=environment,
+                       render=(None if kind == "sweep"
+                               else {j.name for j in jobs}))
 
     # ---- THE ATTEMPT, because PREP is what sets a stage up to run ------- #
     #
@@ -1685,7 +1700,8 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                            ladder=frozenset(s.name for s in task.stages))
     js.write(base / JOBSET_FILENAME)
     dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
-                       record_dir=base, log=_tlog, machine_record=environment)
+                       record_dir=base, log=_tlog, machine_record=environment,
+                       render={job.name})
     # STEP 6, through the SAME door the shared arm uses.  `prep` is what sets
     # a stage up to run: `_launch_dir` refuses a hierarchical stage with no
     # attempt open precisely because opening one is not `launch`'s job, and

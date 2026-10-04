@@ -812,9 +812,9 @@ def test_the_exception_is_anchored_on_the_id_not_widened_to_a_star():
 
     So this guards the CLASS rather than that one file: the next shared suffix
     added to ``OUR_FILE_PATTERNS`` for the other reader's sake must not quietly
-    re-open it.  Two globs are exempt by design and named here — ``*.psml`` is
-    element-named, not run-named, and the aside directories are what the sweep
-    must never recurse into.
+    re-open it.  One glob is exempt by design and named here — ``*.psml`` is
+    element-named, not run-named.  *(The aside directories were a second until
+    2026-10-04: nothing has made one since 2026-08-18, plan D27.)*
     """
     from molbuilder.runwrap import _cold_restart_block
 
@@ -825,7 +825,7 @@ def test_the_exception_is_anchored_on_the_id_not_widened_to_a_star():
     pats = line[0].strip()[:-len(") continue ;;")].split("|")
 
     bare = sorted(p for p in pats if p.startswith("*"))
-    assert bare == ["*-restart-aside-*", "*.psml"], (
+    assert bare == ["*.psml"], (
         f"an exception is anchored on nothing but a suffix: {bare}.\n"
         f"A pattern that starts with `*` protects every file of that shape "
         f"from --cold, including the engine output the sweep exists to move. "

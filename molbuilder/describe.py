@@ -213,10 +213,10 @@ def write_description(desc: Description, dest, *,
     """Write *desc* into *dest*, publishing every file or none.
 
     *struct*, when given, is the structure AS DESCRIBED -- including any
-    modification describe itself applied (``--vacuum``).  It decides how the
-    structure travels: with metadata, as the codec pair; without, as a raw
-    copy of the source (see the comment at the copy below).  ``None`` keeps
-    the raw-copy behaviour for callers that never modify.
+    modification describe itself applied (``--vacuum``); ``None`` reads the
+    source file through the codec.  Either way it travels as the
+    calculation's own pair, named for the label (`StructureCodec.source_files`,
+    the call the hand-over makes).
 
     The transaction is a staging directory **beside the target**, published
     with :func:`os.replace` once every artifact exists, and removed entirely if
@@ -232,24 +232,38 @@ def write_description(desc: Description, dest, *,
     out_dir = Path(dest)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # THE TRAVELLING COPY'S NAME CARRIES THE ``.source`` MARK, and the
-    # written ``task.json`` records that marked name (`job-contracts.md`
-    # § 6.3): identities are validated dot-free, so no engine output --
-    # which stems every file on an identity -- can ever take a dotted
-    # name.  Before the mark, a flat run whose label matched the
-    # structure's stem overwrote its own input (WriteCoorXmol writes
-    # ``<SystemLabel>.xyz``; found 2026-08-19).  The original path stays
-    # the locator here; what lands in the folder is the description's
-    # own, self-contained reference.
+    # THE STRUCTURE TRAVELS AS THE CALCULATION'S OWN PAIR,
+    # ``<label>.source.xyz`` + its sidecar, through the one call the hand-over
+    # makes (`StructureCodec.source_files`), and the written ``task.json``
+    # records the name that call gave (`job-contracts.md` § 6.3): identities
+    # are validated dot-free, so no engine output -- which stems every file
+    # on an identity -- can ever take a dotted name.  Before the mark, a flat
+    # run whose label matched the structure's stem overwrote its own input
+    # (WriteCoorXmol writes ``<SystemLabel>.xyz``; found 2026-08-19).
+    #
+    # NAMED FOR THE LABEL, never for the structure file *(plan D20,
+    # 2026-10-04)*.  This named the pair ``<file stem>.source<suffix>`` --
+    # ``h2.source.xyz`` beside the label ``H2`` -- while the hand-over, the
+    # catalogue and the Task setup card all named the label's, and a ``.pdb``
+    # source was recorded as ``x.source.pdb`` beside a pair written as
+    # ``x.source.pdb.xyz``.  And WHICH BYTES travel is the codec's, always:
+    # describe can MODIFY the structure it was handed (``--vacuum``), whose
+    # facts live in metadata a bare copy has nowhere to put (2026-08-12); the
+    # raw copy kept for an unmodified one was a second way to write one file.
+    # The original path stays the locator; what lands in the folder is the
+    # description's own, self-contained reference.
     src = (Path(desc.task.structure.source).expanduser()
            if desc.task.structure.source else None)
-    travel_name = (f"{src.stem}.source{src.suffix}"
-                   if src is not None and src.is_file() else None)
-    if travel_name is not None:
+    pair: List[Tuple[Path, bytes]] = []
+    if src is not None and src.is_file():
+        codec = StructureCodec()
+        pair = codec.source_files(
+            struct if struct is not None else codec.load(src),
+            desc.task.label)
         import dataclasses as _dc
         desc = _dc.replace(desc, task=_dc.replace(
             desc.task, structure=_dc.replace(
-                desc.task.structure, source=travel_name)))
+                desc.task.structure, source=pair[0][0].name)))
 
     staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.describe-",
                                     dir=out_dir.parent))
@@ -261,25 +275,10 @@ def write_description(desc: Description, dest, *,
         # (stages.md § 6.3), and `prep` looks "beside the calculation
         # FIRST" -- but nothing made that true.  A relative source recorded
         # from another cwd was unresolvable the moment you stood inside the
-        # folder.  Copied like the pseudos: the file is the calculation's
+        # folder.  Written like the pseudos: the file is the calculation's
         # data, the PATH stays this machine's.
-        #
-        # WHICH bytes travel is the codec's call (2026-08-12): describe can
-        # MODIFY the structure it was handed (--vacuum), and those facts
-        # live in metadata a bare .xyz has nowhere to put -- so a raw copy
-        # silently dropped them, and prep rendered the 3 A-default cell
-        # over an explicit scientific choice.  A structure with metadata
-        # travels as the codec pair (document + .molstruct.json, the pair
-        # prep's loader already reads); one without travels as the raw
-        # copy, byte-identical provenance.
-        if travel_name is not None:
-            pair = ([] if struct is None else
-                    StructureCodec().files(struct, staging / travel_name))
-            if len(pair) > 1:      # keep_sidecar: metadata worth carrying
-                for path, data in pair:
-                    path.write_bytes(data)
-            else:
-                shutil.copy2(src, staging / travel_name)
+        for path, data in pair:
+            (staging / path.name).write_bytes(data)
         if psml_lib and desc.pseudo_species:
             from .siesta.input import copy_pseudopotentials
             from .pseudos import describe_psml_anchor, resolve_psml_lib

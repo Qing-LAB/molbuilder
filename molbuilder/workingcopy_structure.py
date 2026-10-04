@@ -342,6 +342,19 @@ class StructureCodec:
                         molstruct.dumps(made.sidecar).encode("utf-8")))
         return out
 
+    def source_files(self, struct: Structure,
+                     label: str) -> List[Tuple[Path, bytes]]:
+        """The structure a calculation is OF, as named bytes:
+        ``<label>.source.xyz`` and its sidecar -- the catalogue's name
+        (`runfiles.WRITTEN`, `job-contracts.md` § 6.3), for :meth:`files` to
+        give the format's suffix.  Both writers of a calculation's structure
+        ask it: the hand-over and `jobset init`.  *(Until 2026-10-04 init named
+        the pair after the structure FILE -- ``h2.source.xyz`` beside the label
+        ``H2`` -- and a ``.pdb`` source was recorded under a name nothing
+        wrote.)*"""
+        from .runfiles import compose
+        return self.files(struct, compose(label, ".source.xyz"))
+
     # ---- write the pair to disk, atomically -------------------------- #
     def write(self, struct: Structure, target, *, atomic: bool = True,
               frames: "Sequence | None" = None,

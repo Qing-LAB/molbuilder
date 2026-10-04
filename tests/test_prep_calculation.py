@@ -243,8 +243,11 @@ def test_a_structure_that_changed_since_describing_is_refused(calc, tmp_path):
 
     The mutated file is the CALCULATION'S OWN copy — `describe` copies the
     structure in since 2026-08-12 (M9's walk found nothing made "beside the
-    calculation first" true), and that copy is what `prep` reads."""
-    (calc / "bdt.source.xyz").write_text(
+    calculation first" true), and that copy is what `prep` reads: the one
+    `task.json` records, named for the label since 2026-10-04 (plan D20)."""
+    from molbuilder.task import read_task
+    own = read_task(calc / "task.json").structure.source
+    (calc / own).write_text(
         Structure(elements=["H", "H"],
                   positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),
                   vacuum=(10.0, 10.0, 10.0)).to_xyz())
