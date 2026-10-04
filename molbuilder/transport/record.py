@@ -179,6 +179,16 @@ def conductance_g0(energies: List[float], trans: List[float]
     return float(np.interp(0.0, e, t))
 
 
+def _outs_newest_first(where: Path, label: str, token: str) -> List[Path]:
+    """A rung's engine outputs in ``where``, its NEWEST RUN first -- by the
+    run number every one carries (`runfiles.find`), never by file time
+    (plan W38 M4): a copy, a touch or a restored folder reorders the times
+    and not the runs."""
+    from ..runfiles import find
+    return [p for p, _rf in reversed(find(where, label, role=".out",
+                                          stage=token))]
+
+
 def _point_dirs(base: Path, task) -> List[Tuple[float, Path]]:
     """``(voltage, transmission point container)`` per § 4.2/4.3: the one
     door's folders (`stages.rung_containers`), each with the bias it ran
@@ -219,7 +229,7 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
     """
     from ..jobset.materialize import latest_attempt, run_dir
     from ..parse import detect
-    from ..runfiles import find_by_role
+    from ..paths import Shape
     from .stages import STAGE_FACT, TRANSPORT_STAGES
 
     from ..jobset.materialize import ladder_homes
@@ -246,8 +256,16 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
             fact["state"] = "not_run"
             out.append(fact)
             continue
-        # The newest attempt across the points speaks for the rung.
-        container, att = max(cand, key=lambda ca: ca[1].stat().st_mtime)
+        # A SCAN'S RUNG SPEAKS FROM ITS FIRST POINT NOT FINISHED, in the
+        # scan's order, and from its last once every point has -- status's
+        # rule (`runstatus._job_status`), each point asked the one door
+        # (`runrecord.ending`).  The newest attempt by file time spoke until
+        # 2026-10-03 (plan W38 M4).
+        from ..runrecord import ending
+        basename = Shape.named(task.shape).run_basename(token, label)
+        container, att = next(
+            ((c, a) for c, a in cand
+             if not ending(run_dir(c), basename).ok), cand[-1])
         if len(containers) > 1:
             fact["points"] = len(cand)
         fact["attempt"] = str(att.relative_to(base))
@@ -258,8 +276,7 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
         # only ever fail -- and did, as two hundred words of the registry's
         # format list in the cell where its state belongs.
         answers = STAGE_FACT.get(name, "scf")
-        outs = sorted(find_by_role(run_dir(container), ".out"),
-                      key=lambda q: q.stat().st_mtime, reverse=True)
+        outs = _outs_newest_first(run_dir(container), label, token)
         # PRODUCED ANYTHING AT ALL is asked of every rung the same way, and
         # before the split below: a prepped rung that has not run reads
         # `no_output` whatever question it would have answered.
@@ -273,8 +290,20 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
             # comes from the run's own conclusion -- the door's answer, no
             # parser involved -- and the RESULT is the transmission this
             # record already carries in its `points` blocks.
+            # THE ONE RUN-STATE DOOR, asked as every reader asks it: the
+            # rung's run by its name and with its launch record (plan W38
+            # M4) -- one that does not read is said, never guessed past.
             from ..parse.dirs import run_status
-            st = run_status(run_dir(container))
+            from ..runrecord import LaunchRecordError, launch_record
+            where = run_dir(container)
+            try:
+                launch = launch_record(where, basename)
+            except LaunchRecordError as exc:
+                fact["state"] = "unreadable"
+                fact["why"] = str(exc)
+                out.append(fact)
+                continue
+            st = run_status(where, basename, launch=launch)
             fact["state"] = "ran" if st.state == "finished" else st.state
             if st.state != "finished":
                 fact["run_state"] = st.state
@@ -320,12 +349,13 @@ def collect_record(base_dir, task) -> Dict:
     :class:`RecordError` only when NOTHING has run — an empty record
     would say less than the refusal.
     """
-    from ..jobset.materialize import latest_attempt, run_dir
+    from ..jobset.materialize import latest_attempt, run_dir, stage_home
     from .compose import PROVENANCE_FILE
 
     base = Path(base_dir)
     points_out: List[Dict] = []
     pending: List[Dict] = []
+    token = stage_home(base, task, "transmission").token
     for v, container in _point_dirs(base, task):
         att = latest_attempt(container)   # None is the ANSWER: prepared?
         where = run_dir(container)        # ...and this is where to look
@@ -340,11 +370,8 @@ def collect_record(base_dir, task) -> Dict:
         energies, trans = parse_avtrans(avtrans[0].read_text())
         spin = deck_spin(where)
         current = None
-        # `.out` IS the catalogue's role, so the catalogue finds it; the
-        # newest-first order is this caller's own question and stays here.
-        from ..runfiles import find_by_role
-        for out in sorted(find_by_role(where, ".out"),
-                          key=lambda p: p.stat().st_mtime, reverse=True):
+        # THE NEWEST RUN'S, by its number (`_outs_newest_first`).
+        for out in _outs_newest_first(where, task.label, token):
             current = parse_current_a(out.read_text())
             if current is not None:
                 break

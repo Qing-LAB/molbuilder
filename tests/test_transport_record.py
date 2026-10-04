@@ -202,6 +202,27 @@ class TestTheRecord:
         assert rec["pending"][0]["bias_v"] == 0.2
         assert "pending" in iv_table_text(rec)
 
+    def test_the_newest_run_speaks_by_its_number_not_its_file_time(
+            self, calc):
+        """A point run twice -- a warm retry's run 1 after run 0 -- whose
+        run 0 output was touched last (a copy, a restored folder): the record
+        reads run 1's current, the newest RUN, which every file names by its
+        number (plan W38 M4).  API-level: the frozen TBtrans output is the
+        measured fixture.
+
+        MUTATION THIS MUST FAIL AGAINST: the outputs ordered by file time."""
+        import os
+        import time
+        from molbuilder.task import read_task
+        att = _ran_transmission(calc, "v0")
+        run0 = att / "T_05_transmission-run0.out"
+        (att / "T_05_transmission-run1.out").write_text(
+            run0.read_text().replace("0.309835E-04 A", "0.500000E-04 A"))
+        later = time.time() + 60
+        os.utime(run0, (later, later))
+        rec = collect_record(calc, read_task(calc / "task.json"))
+        assert rec["points"][0]["current_a_printed"] == pytest.approx(5e-05)
+
     def test_nothing_ran_refuses_naming_the_launch(self, calc):
         from molbuilder.task import read_task
         with pytest.raises(RecordError) as e:

@@ -774,12 +774,14 @@ reported state, and only the stage ordinal can say so — the run index cannot.
 > was not swept with it**, so for two weeks the contract told a reader to go
 > change a function the plan had measured as correct. Corrected 2026-09-18.
 >
-> A third spelling does exist and is in neither document:
-> `transport/record.py` picks the newest `.out` by **mtime alone**, twice.
-> It agrees with this rule in practice — a transport calculation is refused
-> unless its shape is hierarchical (`task.py`), so each rung has its own
-> directory and there is only one stage to order — but it is a third place
-> the question is answered. Recorded in `plan.md` § 5c.
+> A third spelling existed until 2026-10-03: `transport/record.py` picked
+> the newest `.out` by **mtime alone**, twice. It agreed with this rule in
+> practice — a transport calculation is refused unless its shape is
+> hierarchical (`task.py`), so each rung has its own directory and there is
+> only one stage to order — but it was a third place the question was
+> answered, and a copied or restored folder reorders file times and not
+> runs. It reads the newest RUN by its number now (`runfiles.find`; plan W38
+> M4).
 
 ### 5.2 `openable` — the CALCULATION decides, and the registry vets
 
