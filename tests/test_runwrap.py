@@ -1357,7 +1357,7 @@ def test_every_siesta_warm_suffix_reaches_both_halves_of_the_wrapper(tmp_path):
     both blocks of the generated script actually mention each suffix -- the
     end result, which is what a user's `--cold` and banner run against.
     """
-    from molbuilder.runwrap import _SIESTA_WARM_SUFFIXES
+    from molbuilder.warmfiles import warm_list
 
     # Engine is routed by extension, and the basename comes from the path --
     # `.fdf` is what makes this the SIESTA wrapper.
@@ -1367,7 +1367,7 @@ def test_every_siesta_warm_suffix_reaches_both_halves_of_the_wrapper(tmp_path):
     # The cold-restart aside block, and the warm-detection test, are both in
     # the one script; every suffix must appear for the file-name patterns of
     # both (``$_warm_label.<ext>`` and ``job.<ext>``).
-    for suffix in _SIESTA_WARM_SUFFIXES:
+    for suffix in warm_list("siesta").suffixes:
         ext = suffix.lstrip(".")
         assert f'job.{ext}' in script, (
             f"{ext} never reaches the generated wrapper -- the cold-restart "

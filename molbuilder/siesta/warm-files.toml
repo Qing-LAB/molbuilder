@@ -3,6 +3,36 @@
 # and the guards all derive from these rows.  Row order is load-bearing
 # (Job.warm order; the banner/test order) -- append, don't reorder.
 # The vocabulary is closed: suffix · carry · requires_same · honoured_by.
+#
+# ---- HOW TO CHANGE WHAT ONE CALCULATION CARRIES ----------------------
+# This is molbuilder's list for SIESTA, and every calculation follows it
+# unless it has its own.  To give one calculation its own list:
+#
+#   1. copy this file into the calculation's folder, beside its task.json,
+#      keeping the name: <calculation>/warm-files.toml
+#   2. edit the copy -- that copy is then read instead of this one, for
+#      that calculation alone, by everything that reads the list: prep's
+#      carry, the run script's restart check, `jobset status`
+#      (job-contracts.md § 4.2a).  The Task setup page says which list a
+#      calculation follows.
+#
+# What a row says:
+#   suffix        the file's name after the label: <label><suffix>
+#   carry         "when-continuing" -- a stage that continues from a run
+#                 takes this file from it; leave the key out and the file
+#                 is only known (listed, never copied)
+#   requires_same a trait both runs must share for the file to carry,
+#                 e.g. "optimizer": a CG history is never handed to Broyden
+#   honoured_by   the deck keyword that reads the file, which the deck must
+#                 write whenever the file carries
+# and one fact per section, `resumes`: whether a re-run of that kind of run
+# continues from what the last one left (true unless stated).
+#
+# What an edit does: drop a row's `carry` to stop a file carrying (withhold
+# .DM for one debugging ladder); add a row for a file a new engine build
+# writes; add `requires_same` to tighten when a file may carry.  The
+# vocabulary is closed -- those four keys -- and a copy that adds another is
+# refused, naming the key.
 
 schema = "molbuilder/warm-files@1"
 engine = "siesta"

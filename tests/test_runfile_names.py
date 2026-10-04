@@ -340,10 +340,10 @@ def test_the_catalogue_and_the_warm_vocabulary_do_not_overlap():
     both lists would make `--cold` walk past the file it exists to move, which
     is exactly what a widened `*.xyz` row once did.
     """
-    from molbuilder.warmfiles import inventory
+    from molbuilder.warmfiles import warm_list
     ours = {a.role for a in WRITTEN}
     for engine in ("siesta", "pyscf"):
-        warm = set(inventory(engine))
+        warm = set(warm_list(engine).suffixes)
         assert not (ours & warm), (
             f"{engine}: {sorted(ours & warm)} is claimed by both the warm "
             f"vocabulary and the catalogue of what molbuilder writes")
@@ -364,8 +364,8 @@ def test_the_role_is_what_says_which_engine_wrote_a_file():
     ONE wrapper runs both engines, so an engine token on `.run.sh` would be a
     claim about the file that is not true of it.
     """
-    from molbuilder.warmfiles import inventory
-    assert not set(inventory("siesta")) & set(inventory("pyscf"))
+    from molbuilder.warmfiles import warm_list
+    assert not set(warm_list("siesta").suffixes) & set(warm_list("pyscf").suffixes)
     per_engine = {e: {a.role for a in WRITTEN if a.engine == e}
                   for e in ("siesta", "pyscf")}
     assert not per_engine["siesta"] & per_engine["pyscf"]
@@ -380,9 +380,9 @@ def test_a_carried_file_is_named_the_same_whichever_engine_reads_it_next():
     rung that wants it -- the same failure the stage token has, one exception
     further on.
     """
-    from molbuilder.warmfiles import inventory
+    from molbuilder.warmfiles import warm_list
     for engine in ("siesta", "pyscf"):
-        for suffix in inventory(engine):
+        for suffix in warm_list(engine).suffixes:
             name = compose(LABEL, suffix)
             assert is_carried(name, LABEL), name
             assert LABEL + suffix == name, (

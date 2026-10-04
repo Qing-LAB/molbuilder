@@ -707,6 +707,17 @@ list: a SIESTA run is not told about `.py`, and a relaxation is not promised a
 one per launch), and it is shown with the star rather than with an invented
 timestamp.
 
+**And which restart-file list the calculation follows** *(plan W36 ⑧,
+2026-10-03; user: "provide information on the task setup web ui")*. The card's
+last group says whether this calculation follows molbuilder's list for its
+engine or its own `warm-files.toml` beside `task.json` — the one door's answer
+(`warmfiles.warm_list`, [`job-contracts.md`](?doc=execution/job-contracts.md)
+§ 4.2a), sent with the plan (`/api/task-setup/prep-plan`'s `warm`) — with the
+file's path; and, while it is molbuilder's, where a copy goes to change what
+this calculation carries between runs. The copy is made by hand, and the
+shipped file opens with how: where the copy goes, what each key means, what an
+edit does.
+
 ---
 
 ## 7a. The path a value takes, end to end *(2026-09-02)*

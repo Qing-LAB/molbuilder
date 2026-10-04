@@ -310,7 +310,10 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # stages then removed, or added (`{name, at}`, `at` the place, the end when
 # absent), through the same Save; `ran` -- a stage's run then laid down as it
 # ended, where its prep put it (`_road_ran`: `stage`, `rc`, `concluded`,
-# `output`, `engine_mark`, `monitor_ended`, `launch_record`); `stage` -- the
+# `output`, `engine_mark`, `monitor_ended`, `launch_record`, `files`);
+# `own_warm_files` -- the calculation's own restart-file list, the engine's
+# copied beside `task.json` with `withhold` / `add` (`_road_own_warm_files`),
+# before anything is prepped; `stage` -- the
 # stage the
 # row's prep names, `coarse` unless given; `answers` -- what
 # the person types at the row's prep's question ("" is EOF, no terminal);
@@ -322,7 +325,8 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # folder's saved states, newest first
 # (`saved_states`, their notes -- `{stamp}` standing for the time a note
 # leads with, `2026-10-03 14:05:12`), what `status` says of the calculation
-# (`status_says`), and the decisions its ledger does not hold
+# (`status_says`, and what it does not, `status_lacks`), and the decisions
+# its ledger does not hold
 # (`ledger_lacks`); a prep that was not refused says nothing of `said_lacks`.
 # THEN, refused or not: the description saved through Task setup's Save with
 # `saved`'s fields changed (`{shape = "flat"}`) -- refused, with
@@ -500,14 +504,37 @@ def _reprobed(fields) -> None:
     write_environment(dataclasses.replace(read_environment(at), **fields), at)
 
 
+def _road_own_warm_files(case, bundle) -> None:
+    """The calculation's OWN restart-file list (``own_warm_files``), made as
+    the shipped file says to make it (`job-contracts.md` § 4.2a): the
+    engine's file copied beside ``task.json`` and edited -- ``withhold``
+    takes the ``carry`` off those suffixes' rows, ``add`` appends a row
+    known and not carried for each."""
+    import re
+    from molbuilder.task import read_task
+    from molbuilder.warmfiles import FILENAME, warm_list
+    own = case["own_warm_files"]
+    engine = str(read_task(bundle / "task.json").engine)
+    text = Path(warm_list(engine).path).read_text()
+    for suffix in own.get("withhold", []):
+        row = re.compile(r'(suffix\s*=\s*"' + re.escape(suffix)
+                         + r'"[^\n]*\n)carry\s*=\s*"when-continuing"[^\n]*\n')
+        text, n = row.subn(r"\1", text)
+        assert n == 1, f"no carried row for {suffix} to withhold"
+    for suffix in own.get("add", []):
+        text += f'\n[[base.file]]\nsuffix = "{suffix}"\n'
+    (bundle / FILENAME).write_text(text)
+
+
 def _road_ran(ran, bundle) -> None:
     """The stage's run, ended as the row says (``ran``), laid where its prep
     put it -- its newest attempt; the calculation's folder in the flat
     shape: the measured relaxation (:func:`a_finished_run` -- ``rc``,
     ``concluded``, ``output``), SIESTA's own ``0_NORMAL_EXIT`` beside it
     (``engine_mark``), the monitor's closing record (``monitor_ended``: the
-    process seen to go) and the run's launch record, as its text
-    (``launch_record``).  ``stage`` is ``coarse`` unless given."""
+    process seen to go), the run's launch record, as its text
+    (``launch_record``), and more of the run's files by name (``files``).
+    ``stage`` is ``coarse`` unless given."""
     from molbuilder.jobset.materialize import run_dir, stage_home
     from molbuilder.parse.dirs.job import MONITOR_ENDED
     from molbuilder.runfiles import stem
@@ -524,6 +551,8 @@ def _road_ran(ran, bundle) -> None:
     if ran.get("monitor_ended"):
         (where / f"{name}-run0.monitor.log").write_text(
             f"[12:00:00] [INFO ] {MONITOR_ENDED}\n")
+    for name in ran.get("files", []):
+        (where / name).write_text("state\n")
     if "launch_record" in ran:
         from molbuilder.paths import Shape
         from molbuilder.runrecord import launch_record_path
@@ -535,7 +564,8 @@ def _road_ran(ran, bundle) -> None:
 def _road_after_prep(case, bundle) -> None:
     """What the row's prep left, refused or not: the folder's saved states,
     newest first (`saved_states`), what `status` says of the calculation
-    (`status_says`), and the decisions its ledger does not hold
+    (`status_says`, and what it does not, `status_lacks`), and the decisions
+    its ledger does not hold
     (`ledger_lacks`)."""
     if "saved_states" in case:
         import re
@@ -553,11 +583,13 @@ def _road_after_prep(case, bundle) -> None:
             f"{where} was not made: {sorted(p.name for p in bundle.iterdir())}"
     for where in case.get("made_lacks", []):
         assert not (bundle / where).exists(), f"{where} was made"
-    if "status_says" in case:
+    if "status_says" in case or "status_lacks" in case:
         st = jobset("status", "--bundle", bundle)
         assert st.exit_code == 0, _one_line(st)
-        for words in case["status_says"]:
+        for words in case.get("status_says", []):
             assert words in st.output, _one_line(st)
+        for words in case.get("status_lacks", []):
+            assert words not in st.output, _one_line(st)
     if "ledger_lacks" in case:
         import json
         from molbuilder.jobset.ledger import LEDGER_FILE
@@ -706,6 +738,8 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         given = case["calculation_record"]
         calculation_record(bundle).write_text(
             given if isinstance(given, str) else json.dumps(given))
+    if "own_warm_files" in case:
+        _road_own_warm_files(case, bundle)
     if case.get("saved_first"):
         from click.testing import CliRunner
         from molbuilder.cli import cli

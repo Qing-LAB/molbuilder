@@ -46,7 +46,7 @@ from typing import Dict, List, Optional, Sequence
 
 from ..identity import is_ours
 from ..issues import Issue
-from ..warmfiles import inventory as _warm_inventory
+from ..warmfiles import warm_list as _warm_list
 
 
 #: engine -> the shipped warm-restart SUFFIXES an id keys.
@@ -63,15 +63,15 @@ from ..warmfiles import inventory as _warm_inventory
 #: the shell attempt-directory block, which P7 unit 1 retired, and this reads
 #: the tuples directly now.
 def _engine_inventory(engine: str) -> Optional[Sequence[str]]:
-    """The engine's warm inventory, DERIVED from the one rules file (U3,
-    2026-08-13) — validation stops reaching into runwrap for a vocabulary
-    neither owns — and resolved AT USE, never at import (C-b, same day):
-    the module-level dict that stood here loaded both engines' TOMLs the
-    moment anything imported ``validation``, so one malformed file broke
-    every entry point.  ``None`` for an engine with no rules file — the
+    """The engine's warm vocabulary from the one door (`warmfiles.warm_list`,
+    asked with no folder: a stranger's restart file is the engine's, not
+    this calculation's list) — resolved AT USE, never at import (C-b,
+    2026-08-13): the module-level dict that stood here loaded both engines'
+    TOMLs the moment anything imported ``validation``, so one malformed file
+    broke every entry point.  ``None`` for an engine with no rules file — the
     caller already treats unknown engines as *not refused twice*."""
     try:
-        return _warm_inventory(engine)
+        return _warm_list(engine).suffixes
     except Exception:
         return None
 

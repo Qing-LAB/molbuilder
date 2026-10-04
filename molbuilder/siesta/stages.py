@@ -131,11 +131,10 @@ def _warm_declaration(label: str, eff,
     § 4.2a's history records drifting.
     """
     from ..identity import continues
-    from ..warmfiles import rules_for
+    from ..warmfiles import warm_list
     if not continues(eff):
         return []
     return [WarmFile(f"{label}{r.suffix}", requires_same=r.requires_same)
-            for r in rules_for("siesta", calculation,
-                               base_dir) if r.carry]
+            for r in warm_list("siesta", calculation, base_dir).carry_rules]
 
 

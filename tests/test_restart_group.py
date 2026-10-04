@@ -269,9 +269,9 @@ def test_prep_carries_state_only_into_a_stage_that_will_read_it():
     # vocabulary grows.  It did: the four accumulative records (.MD.nc,
     # .MD, .MDE, .ANI) were added 2026-08-15 and this line still said
     # [.XV, .DM, .CG].
-    from molbuilder.warmfiles import rules_for
+    from molbuilder.warmfiles import warm_list
     declared = [f"job{r.suffix}"
-                for r in rules_for("siesta", "optimization") if r.carry]
+                for r in warm_list("siesta", "optimization").rules if r.carry]
     assert warm({"restart": "clean"}) == []   # told to start clean
     assert [w.name for w in warm({"restart": "continue"})] == declared
     # ...and the gate is the whole point: the two answers differ.
@@ -313,8 +313,8 @@ def test_the_group_reaches_prep_as_a_declaration_not_as_engine_knowledge():
     eff = effective_config(
         SiestaConfig(system_label="job", relax_type="CG"),
         {"restart": "continue"})
-    from molbuilder.warmfiles import rules_for
-    declared = [r.suffix for r in rules_for("siesta", "optimization")
+    from molbuilder.warmfiles import warm_list
+    declared = [r.suffix for r in warm_list("siesta", "optimization").rules
                 if r.carry]
     assert [w.name for w in _warm_declaration("job", eff)] == [
         f"job{s}" for s in declared]

@@ -13,16 +13,18 @@ the same leaf posture as ``task``, and load-bearing the same way: the
 jobset seam, the wrapper generator and validation must all reach ONE
 loader or the vocabulary forks again.
 
-TWO QUESTIONS, TWO FUNCTIONS (§ 4.2's three-questions table):
-
-* :func:`rules_for` — *"what does THIS calculation carry, and what does
-  its deck honour?"* — type-scoped: ``[base]`` + the calculation's own
-  section, refusing an unknown type BY NAMING THE SECTIONS THAT EXIST.
-* :func:`inventory` — *"what might warm-start an engine here at all?"* —
-  type-blind: ``[base]`` plus every section, because the wrapper's
-  banner and warm detection are a HINT about the directory (they run
-  where no description need exist), and an over-inclusive hint is safe
-  where an over-inclusive carry is not.
+ONE DOOR, :func:`warm_list` (§ 4.2a, plan W36 ⑧) -- the list in effect
+for a calculation: its own copy beside ``task.json`` first, else the
+engine's file; for a kind's section over ``[base]`` (*"what does THIS
+calculation carry, and what does its deck honour?"*, refusing an unknown
+kind BY NAMING THE SECTIONS THAT EXIST), or every section (*"what might
+warm-start here at all?"* -- a HINT, safe to over-include where a carry is
+not).  Every reader asks it with the calculation's folder and takes one of
+its two views, :attr:`WarmList.carry` and :attr:`WarmList.suffixes`.
+*(There were two doors until 2026-10-03: ``rules_for`` was told the
+calculation's folder, ``inventory`` / ``carry_inventory`` were not, so the
+run script, status and the prior-state check read the engine's file while
+prep followed the calculation's copy.)*
 
 THE CLOSED VOCABULARY — three keys, and it stays three (§ 4.2a):
 ``carry`` (``"when-continuing"`` or absent = inventory-only),
@@ -34,7 +36,7 @@ signal to design, not to patch.
 
 AND ONE FACT ABOUT A WHOLE SECTION, ``resumes`` (2026-09-29, the design that
 signal asked for): whether a re-run of that kind of run continues from what
-the last one left -- a fact no row can say.  :func:`resumes_for` answers it.
+the last one left -- a fact no row can say.  :func:`warm_list` answers it.
 """
 from __future__ import annotations
 
@@ -77,7 +79,7 @@ class WarmFilesDoc:
     path: str = ""
     #: The one section-level fact (`job-contracts.md` § 4.2a): the sections
     #: that STATE whether a re-run of their kind resumes.  A section that
-    #: states nothing is absent here, and :func:`resumes_for` answers with
+    #: states nothing is absent here, and :func:`warm_list` answers with
     #: ``[base]``'s statement, else true.
     resumes: Tuple[Tuple[str, bool], ...] = ()
 
@@ -117,7 +119,71 @@ def _parse_row(obj: dict, *, where: str) -> WarmRule:
                     honoured_by=hon)
 
 
-def load_warm_files(engine: str, base_dir=None) -> WarmFilesDoc:
+@dataclass(frozen=True)
+class WarmList:
+    """THE RESTART FILES IN EFFECT (`job-contracts.md` § 4.2a): which file
+    answered -- the calculation's own copy (``own``) or the engine's --
+    and its rows for the kind asked, ``[base]`` first, in file order (the
+    order is load-bearing: ``Job.warm``'s, and the banner's)."""
+    engine: str
+    #: The section asked over ``[base]``; ``None`` -- every section.
+    kind: Optional[str]
+    path: str
+    own: bool
+    rules: Tuple[WarmRule, ...]
+    #: Whether a re-run of this kind of run continues from what the last
+    #: one left -- the section's statement, else ``[base]``'s, else true.
+    resumes: bool
+
+    @property
+    def carry_rules(self) -> Tuple[WarmRule, ...]:
+        """The rows a continuing run takes -- ``carry`` set."""
+        return tuple(r for r in self.rules if r.carry)
+
+    @property
+    def carry(self) -> Tuple[str, ...]:
+        """WHAT CARRIES: the suffixes of :attr:`carry_rules`."""
+        return tuple(r.suffix for r in self.carry_rules)
+
+    @property
+    def suffixes(self) -> Tuple[str, ...]:
+        """EVERY RESTART FILE: every row's suffix."""
+        return tuple(r.suffix for r in self.rules)
+
+
+def warm_list(engine: str, kind: Optional[str] = None,
+              base=None) -> WarmList:
+    """THE ONE DOOR to the restart files (`job-contracts.md` § 4.2a,
+    `execution/architecture.md` § 3.2): the list in effect for the
+    calculation in ``base`` -- its own ``warm-files.toml`` beside
+    ``task.json`` first, else the engine's -- for ``kind``'s section over
+    ``[base]``, or every section when no kind is asked.  Asked with no
+    folder it is the engine's file alone: the question a folder no
+    calculation describes poses.  An unknown kind is refused by naming the
+    sections that exist -- a new calculation type is a new section, never a
+    branch."""
+    doc = _load(engine, base)
+    stated = dict(doc.resumes)
+    if kind is None:
+        rules = tuple(r for _, rows in doc.sections for r in rows)
+        resumes = stated.get("base", True)
+    else:
+        table = dict(doc.sections)
+        if kind not in table or kind == "base":
+            raise WarmFilesError(
+                f"engine {engine!r} has no warm-file section for calculation "
+                f"{kind!r}.  Sections: "
+                f"{', '.join(doc.section_names()) or '(none)'} "
+                f"(job-contracts.md 4.2a: a new calculation type is a new "
+                f"section in {engine}/{FILENAME}, never a branch).")
+        rules = tuple(table.get("base", ())) + tuple(table[kind])
+        resumes = stated.get(kind, stated.get("base", True))
+    own = base is not None and Path(doc.path) == Path(base) / FILENAME
+    return WarmList(engine=engine, kind=kind, path=doc.path, own=own,
+                    rules=rules, resumes=resumes)
+
+
+def _load(engine: str, base_dir=None) -> WarmFilesDoc:
     """Read and validate the rules file, preserving file order.
 
     NEAREST FILE WINS (U6a, § 4.2a's template mechanism): a calculation
@@ -126,9 +192,9 @@ def load_warm_files(engine: str, base_dir=None) -> WarmFilesDoc:
     engine's own file answers -- the default state, which is almost
     every calculation.
 
-    File order is load-bearing both ways: :func:`rules_for` hands the
-    declaration builder its rows in it (so ``Job.warm`` is stable), and
-    :func:`inventory` hands the wrapper its banner/test order from it.
+    File order is load-bearing both ways: :func:`warm_list` hands the
+    declaration builder its rows in it (so ``Job.warm`` is stable), and the
+    run script its banner/test order.
     """
     path = _rules_path(engine)
     if base_dir is not None:
@@ -182,63 +248,3 @@ def load_warm_files(engine: str, base_dir=None) -> WarmFilesDoc:
             f"be empty, but its absence reads as a truncated file.")
     return WarmFilesDoc(engine=engine, sections=tuple(sections),
                         path=str(path), resumes=tuple(resumes))
-
-
-def rules_for(engine: str, calculation: str,
-              base_dir=None) -> List[WarmRule]:
-    """``[base]`` + the calculation's own section, in file order.
-
-    The type-scoped answer: what THIS calculation carries between stages
-    and what its deck honours.  An unknown type is refused **by naming
-    the sections that exist** — the § 4.2a growth rule's other half: a
-    new calculation type is a new section, and the refusal is the prompt
-    that says where it goes.
-    """
-    doc = load_warm_files(engine, base_dir)
-    table = dict(doc.sections)
-    if calculation not in table or calculation == "base":
-        raise WarmFilesError(
-            f"engine {engine!r} has no warm-file section for calculation "
-            f"{calculation!r}.  Sections: "
-            f"{', '.join(doc.section_names()) or '(none)'} "
-            f"(job-contracts.md 4.2a: a new calculation type is a new "
-            f"section in {engine}/{FILENAME}, never a branch).")
-    return list(table.get("base", ())) + list(table[calculation])
-
-
-def resumes_for(engine: str, calculation: str, base_dir=None) -> bool:
-    """Whether a re-run of this kind of run continues from what the last one
-    left — the one section-level fact (`job-contracts.md` § 4.2a): the
-    calculation's own section's statement, else ``[base]``'s, else true.
-
-    Asked by `prep` of the section a rung's OWN kind reads, and baked into
-    the rung's job (``Job.resumes``), so the wrapper says what a retry of it
-    will do (`running-a-job.md` § 3.5).  An unknown type is refused by
-    :func:`rules_for`, the same door, before this answers."""
-    rules_for(engine, calculation, base_dir)
-    stated = dict(load_warm_files(engine, base_dir).resumes)
-    return stated.get(calculation, stated.get("base", True))
-
-
-def carry_inventory(engine: str) -> Tuple[str, ...]:
-    """The carry rows across every section, in file order — the type-blind
-    CARRY hint: *"could a stage here hand state to the next one?"*, which
-    is `runstatus`'s question (its own per-engine table was the THIRD fork
-    of this vocabulary until U3, 2026-08-13).  Type-blind for the same
-    reason :func:`inventory` is: status reads a directory where the
-    description may not be in hand, and a hint may over-include."""
-    doc = load_warm_files(engine)
-    return tuple(rule.suffix
-                 for _, rows in doc.sections
-                 for rule in rows if rule.carry)
-
-
-def inventory(engine: str) -> Tuple[str, ...]:
-    """Every suffix the engine may warm-start from — ``[base]`` plus all
-    sections, in file order.  The type-blind answer, for the wrapper's
-    banner and warm detection: a HINT about a directory, safe to
-    over-include, required to under-include nothing."""
-    doc = load_warm_files(engine)
-    return tuple(rule.suffix
-                 for _, rows in doc.sections
-                 for rule in rows)

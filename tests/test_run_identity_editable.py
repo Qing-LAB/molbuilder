@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from molbuilder.runwrap import _SIESTA_WARM_SUFFIXES
+from molbuilder.warmfiles import warm_list
 from molbuilder.validation.identity import check_id_change, warm_files_present
 
 
@@ -92,14 +92,15 @@ def test_it_is_a_warning_and_never_a_refusal(calc):
 #  The inventory — the reason this unit could have been built wrong      #
 # --------------------------------------------------------------------- #
 
-@pytest.mark.parametrize("suffix", _SIESTA_WARM_SUFFIXES)
+@pytest.mark.parametrize("suffix", warm_list("siesta").suffixes)
 def test_every_suffix_the_cold_glob_covers_is_detected(calc, suffix):
     """`job-contracts.md § 4.2`: *"Every file below is in that engine's
     --cold move-aside glob"* — so the glob's list is the authority on what an
     id keys, and all thirteen count.
 
-    Parametrised over ``runwrap``'s own tuple rather than a retyped list, so a
-    fourteenth warm hook is detected here the day it is added. Built against
+    Parametrised over the engine's own list (`warmfiles.warm_list`) rather
+    than a retyped one, so a fourteenth warm hook is detected here the day it
+    is added. Built against
     this list and not ``runstatus._WARM_FILES``, which names three: a
     directory holding only a `.TSHS` has state keyed by the id, and reading it
     as 'nothing has run' would declare the id editable when it is not."""

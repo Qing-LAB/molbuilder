@@ -447,9 +447,10 @@ def _from_cluster(directory: Path) -> set:
     ``("*.pyscf.log", "*_geom_optim.xyz", "*.chk")``, two of whose three
     entries were verbatim rows of ``pyscf/warm-files.toml``.
 
-    ``warmfiles.inventory`` is the door and says so in its own docstring
-    -- *"a HINT about a directory, safe to over-include, required to
-    under-include nothing"* -- which is exactly this question.  Measured
+    ``warmfiles.warm_list`` is the door -- asked with no folder, since a
+    folder molbuilder did not write has no calculation's list: the
+    engine's own file, every section, *"a HINT about a directory, safe to
+    over-include"* -- which is exactly this question.  Measured
     when it went in: the two engines' inventories are disjoint (no
     shared suffix, no suffix-containment), and over the 113 real run
     directories in the tree the derived answer matches the hand-written
@@ -463,7 +464,7 @@ def _from_cluster(directory: Path) -> set:
     the monitor's shipped modules as every attempt held them until
     2026-09-26.
     """
-    from molbuilder.warmfiles import WarmFilesError, inventory
+    from molbuilder.warmfiles import WarmFilesError, warm_list
     from ..runfiles import find_by_role
     names = [f.name for f in directory.iterdir() if f.is_file()]
     out = set()
@@ -483,7 +484,7 @@ def _from_cluster(directory: Path) -> set:
         if any(find_by_role(directory, r) for r in _stdout_roles(engine)):
             out.add(engine)
         try:
-            suffixes = inventory(engine)
+            suffixes = warm_list(engine).suffixes
         except (WarmFilesError, OSError):
             continue                    # a broken rules file is not an engine vote
         if any(n.endswith(s) for n in names for s in suffixes):

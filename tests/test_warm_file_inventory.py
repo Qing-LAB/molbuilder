@@ -70,30 +70,29 @@ def _isolated(monkeypatch, tmp_path_factory):
 
 
 ENGINES = (
-    pytest.param("siesta", "_SIESTA_WARM_SUFFIXES", ".fdf",
-                 "SystemLabel job\n", id="siesta"),
-    pytest.param("pyscf", "_PYSCF_WARM_SUFFIXES", ".py",
-                 'JOB = "job"\nimport pyscf\n', id="pyscf"),
+    pytest.param("siesta", ".fdf", "SystemLabel job\n", id="siesta"),
+    pytest.param("pyscf", ".py", 'JOB = "job"\nimport pyscf\n', id="pyscf"),
 )
 
 
-def _wrapper(tmp_path, ext, body, **kw):
+def _wrapper(tmp_path, ext, body, warm=None, **kw):
     """The wrapper of a run that STATES its shape -- one written for an
-    unstated one is refused (`architecture.md` § 5.2)."""
+    unstated one is refused (`architecture.md` § 5.2) -- handed ``warm``,
+    the restart files in effect, as prep hands it."""
     p = tmp_path / f"job{ext}"
     p.write_text(body)
     return runwrap.render_run_wrapper(
-        p, env="molbuilder-siesta",
+        p, env="molbuilder-siesta", warm=warm,
         resources=Resources(**{"mpi_np": 2, "cpus_per_task": 1, **kw}))
 
 
-@pytest.mark.parametrize("engine,const,ext,body", ENGINES)
+@pytest.mark.parametrize("engine,ext,body", ENGINES)
 def test_adding_a_suffix_changes_the_banner_and_only_the_banner(
-        tmp_path, monkeypatch, engine, const, ext, body):
+        tmp_path, engine, ext, body):
     """12c's *Done when*, re-stated for the § 4.1 name sweep (U17,
     2026-08-12).
 
-    A suffix nobody would invent is added to the engine's one tuple.  The
+    A suffix nobody would invent is added to the list the script is handed.  The
     startup banner must show it -- the banner ENUMERATES, and a suffix it
     does not test is a run announcing a clean start over live warm state.
     The ``--cold`` mover must NOT show it: since U17 the mover is a NAME
@@ -107,15 +106,15 @@ def test_adding_a_suffix_changes_the_banner_and_only_the_banner(
     before = _wrapper(tmp_path, ext, body)
     assert marker not in before, "the probe suffix must not already occur"
 
-    monkeypatch.setattr(runwrap, const,
-                        tuple(getattr(runwrap, const)) + (marker,))
-    after = _wrapper(tmp_path, ext, body)
+    from molbuilder.warmfiles import warm_list
+    after = _wrapper(tmp_path, ext, body,
+                     warm=warm_list(engine).suffixes + (marker,))
 
     banner, mover = _two_surfaces(after)
 
     # `_mb_has_state`, not `[ -e ]`, since 2026-09-18: warm state is CONTENT
     # (test_runwrap_cold_restart).  What this test pins is unchanged -- the
-    # banner must ENUMERATE every suffix in the engine's tuple; only the
+    # banner must ENUMERATE every suffix of the list it is handed; only the
     # predicate moved.
     assert re.search(rf'_mb_has_state "[^"]*{re.escape(marker)}"', banner), (
         "the startup banner does not read the engine's warm list: a run whose "
@@ -157,9 +156,8 @@ def _two_surfaces(text: str):
     return text[j:], text[i:j]
 
 
-@pytest.mark.parametrize("engine,const,ext,body", ENGINES)
-def test_no_generated_wrapper_changes_directory(tmp_path, engine, const,
-                                                ext, body):
+@pytest.mark.parametrize("engine,ext,body", ENGINES)
+def test_no_generated_wrapper_changes_directory(tmp_path, engine, ext, body):
     """`job-contracts.md § 2.1`: **the caller's working directory is the
     contract** — both launchers establish it, and neither the wrapper nor the
     engine ever navigates.

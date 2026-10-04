@@ -1887,14 +1887,14 @@ language; anything this vocabulary cannot say belongs in the ONE interpreter
 **And one fact about a whole section, `resumes`** *(2026-09-29, plan § 5w
 K6)*: whether a re-run of this kind of run continues from what the last one
 left — true unless stated, a section without it answering as `[base]` does
-(`warmfiles.resumes_for`). It is a fact, not a conditional, and no row can say
+(`warmfiles.warm_list`'s `resumes`). It is a fact, not a conditional, and no row can say
 it. SIESTA's force-constant run does not resume: SIESTA restarts it at its
 reference step (`siesta_init.F`, idyn 6 starts at step 0) and reloads the
 density it saved at that step before every displacement (`m_new_dm.F90`) — so a
 retry continues an SCF that stopped the reference step, and meets the same SCF
 again after one that stopped at a displacement — and `[vibration]` states
 `resumes = false`.
-`prep` asks it (`warmfiles.resumes_for`) of the section the rung's OWN kind
+`prep` asks it (`warm_list(engine, kind, base).resumes`) of the section the rung's OWN kind
 reads — a vibration's `relax` rung is an optimisation and reads
 `[optimization]`, `.CG` among it; its force-constant rungs read `[vibration]` —
 and bakes the answer into the rung's job (`Job.resumes`), so the wrapper says
@@ -1927,22 +1927,57 @@ today — the stage policy in `task.json`, the declaration and traits in
 `job-set.json` — and this section moves the last hard-coded layer (the
 engine's rule table) into the same readable form.
 
-**A template like any other — and the UI's door to it** *(user decision
-2026-08-13)*.  The engine's file is the schema-emitted DEFAULT, and the same
-two-state mechanism the parameter template uses
+**A template like any other — and one door to the list in effect** *(user
+decisions 2026-08-13, and 2026-09-27, plan W36 ⑧: "keep customization, make
+every reader use it. provide information on the task setup web ui, and make
+sure the template for such list has enough comment where use knows how to and
+where to edit it")*.  The engine's file is the schema-emitted DEFAULT, and the
+same two-state mechanism the parameter template uses
 ([`generator.md`](?doc=execution/generator.md) § 3.1: *one format, one
 renderer, two states*) applies here:
 
-* **Default state**: no copy in the calculation folder — `prep` reads the
-  engine's own `warm-files.toml`.  This is almost every calculation.
-* **Fine-tuned state**: `describe` (or the UI) copies the file INTO the
-  calculation, beside `task.json`, and that copy wins for this calculation.
-  The edit that
-  motivates it is surgical: withhold `.DM` for one debugging ladder, declare
-  an extra result file a new engine build writes, tighten a pair condition.
-* **The UI exposes the file itself** for that fine modification — rendered
-  from the same artifact, the § 3.1 direction (the template IS the
-  interface), never a second hand-maintained form.
+* **Default state**: no copy in the calculation folder — the engine's own
+  `warm-files.toml` answers.  This is almost every calculation.
+* **Fine-tuned state**: a copy of the engine's file beside the calculation's
+  `task.json`, edited there, answers for that calculation instead.  The copy
+  is made by hand — the shipped files open with how: where the copy goes, what
+  each key means, what an edit does — and the Task setup page says which list
+  is in effect and where a custom copy goes
+  ([`web/task-setup.md`](?doc=web/task-setup.md)).  The edit that motivates
+  it is surgical: withhold `.DM` for one debugging ladder, declare an extra
+  result file a new engine build writes, tighten a pair condition.  *(A
+  `describe` or UI door that copied the file in was promised here and never
+  built; the person's copy is the door.)*
+
+**ONE door, every reader** *(W36 ⑧, built 2026-10-03)*.
+`warmfiles.warm_list(engine, kind, base)` is the list in effect — the
+calculation's own copy in `base` first, else the engine's file — for a
+`kind`'s section over `[base]`, or, asked with no kind, every section; asked
+with no folder, the engine's file alone, which is the question a folder no
+calculation describes poses.  It answers which file it read and whether that
+is the calculation's own, its rows, and the two views every reader takes:
+**what carries** (the `carry` rows) and **every restart file** (all of them).
+Its readers, each asking with the calculation's folder:
+
+* the **declaration builder** — `Job.warm`, the kind's carry rows, and
+  `Job.resumes`, the section's one fact;
+* `jobset status`'s **warm-files column** — what carries, every section;
+* the **run script** — its banner's warm detection and its `--cold` help, a
+  list written into the script when `prep` renders it, never read at import;
+* the **bias scan's hand-forward** — each point takes what a continuing
+  device takes from the point before it: the device job's own declaration,
+  which `prep` recorded from this door (it spelled `.TSDE` by hand until
+  2026-10-03);
+* `STAGE-PLAN.md`'s **warm-files line** — which file answered;
+* and, asked with no folder, the engine-sniff of a folder molbuilder did not
+  write (`parse.contract`) and the dormant prior-state check
+  (`validation.identity`).
+
+*(Until 2026-10-03 there were two doors onto one list: `rules_for` was told
+the calculation, `inventory` / `carry_inventory` were not, and the copy rule
+had been added to the first only — so the run script's `Mode :` line, the
+status column and the prior-state notice read the shipped list while prep
+followed the calculation's copy.)*
 
 Two guards keep a fine-tuned copy honest: the `honoured_by` agreement check
 runs against WHICHEVER copy is in effect, and the provenance block +
@@ -1967,8 +2002,9 @@ differently has misread the design.
    because it is what makes 2 and 3 safe against a drifting file.
 5. **The § 4.2 guard** flips from "one tuple per engine" to "one file per
    engine".
-6. **The per-calculation copy + the UI door** — last, because it is the same
-   mechanism at a second precedence level, and it inherits every guard above.
+6. **The per-calculation copy, through the one door** — last, because it is
+   the same mechanism at a second precedence level, and it inherits every
+   guard above; every reader asks `warm_list` with the calculation's folder.
 
 **What stays code, and why** *(the closed doors, each with its reason)*:
 

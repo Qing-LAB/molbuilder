@@ -92,9 +92,12 @@ one" — an omitted argument says *I did not think about it*, an explicit
 
 **Corollary — a default is a decision, and decisions get written down.** If
 you cannot state in one sentence why the default is the *right answer* rather
-than merely a *safe-looking* one, it should not be a default. `load_warm_files(engine)`
-passes this test: its docstring says status reads a directory where the
-description may not be in hand, so the shipped rules ARE the answer.
+than merely a *safe-looking* one, it should not be a default. `warm_list(engine)`
+asked with no folder passes this test only for a folder no calculation
+describes — a folder molbuilder did not write, where the shipped rules ARE the
+answer. Status passed it for every folder until 2026-10-03 on the claim that a
+description may not be in hand, while it held the calculation's folder: the
+calculation's own list was ignored there (plan W36 ⑧).
 
 ### D2 — Scope is stated, never achieved by construction
 

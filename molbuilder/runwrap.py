@@ -31,7 +31,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
 
 from .diagnostics import EXTENSION_TO_CATEGORY, get_capabilities
 # The channel-name rule, from the module that owns the file those names
@@ -512,35 +512,17 @@ def _continue_force_args_parser(name_for_usage: str) -> str:
     )
 
 
-#: SIESTA's warm-restart files, by suffix (job-contracts.md § 4.2) -- the
-#: short hint list a deck writes and ``prep`` carries between stages.
-#: CANONICAL ORDER (U1 precursor, 2026-08-13): the carry rows first, in
-#: `project-layout.md` § 2.3.4's own row order (.XV geometry, .DM density,
-#: .CG history), then the inventory-only rows, transport's last.  The old
-#: order was an arbitrary listing; the warm-files rules file (job-contracts
-#: § 4.2a) reproduces THIS order, so canonicalizing here first is what lets
-#: U3 prove itself byte-identical.  Order is cosmetic at runtime -- an
-#: ``||`` chain and a banner label -- which is why this is safe as its own
-#: deliberate commit.
-#: DERIVED, not listed (U3, 2026-08-13): the literal tuple this held is
-#: retired -- ``siesta/warm-files.toml`` is the one source, this name the
-#: wrapper generator's read of it.
-from .warmfiles import inventory as _warm_inventory
-_SIESTA_WARM_SUFFIXES = _warm_inventory("siesta")
-
-#: PySCF's warm-restart files, by SUFFIX rather than extension -- ``.chk`` is
-#: just ``.chk`` but the others end ``_optimized.xyz`` and the like, which no
-#: plain extension match would catch (job-contracts.md § 4.2).
-#:
-#: **Hoisted 2026-08-10 (P7 unit 5).**  These five were a local tuple inside
-#: ``_cold_restart_block``, while the startup banner tested ``.chk``
-#: ALONE -- so a run holding ``<JOB>_optimized.xyz`` and no ``.chk`` announced
-#: itself as a clean start and then had that file named by ``--cold`` as
-#: warm state.  The two halves of one contract disagreeing, and the half that
-#: was wrong is the one `run-identity.md § 5` says must never be weakened,
-#: because it is the one always present.  SIESTA's pair was derived from a
-#: single tuple by P3's Review 2 for exactly this reason; PySCF's was missed.
-_PYSCF_WARM_SUFFIXES = _warm_inventory("pyscf")
+#: THE RESTART FILES A RUN SCRIPT KNOWS are the list in effect for its
+#: calculation (`job-contracts.md` § 4.2a, `warmfiles.warm_list`, every
+#: section -- a hint about the directory, safe to over-include), handed in
+#: when ``prep`` renders the script (:func:`render_run_wrapper`'s ``warm``).
+#: They were read from the engine's file at import -- ``_SIESTA_WARM_SUFFIXES``
+#: / ``_PYSCF_WARM_SUFFIXES`` -- until 2026-10-03, so a calculation's own copy
+#: was followed by prep and ignored by its script's ``Mode :`` line (plan
+#: W36 ⑧).  PySCF's are SUFFIXES rather than extensions -- ``_optimized.xyz``
+#: -- which no plain extension match would catch; and since 2026-08-10 the
+#: banner and the ``--cold`` help read the one list, so a run holding only
+#: ``<JOB>_optimized.xyz`` no longer announces a clean start.
 
 
 def _cold_usage_entry(*, warm_examples: str) -> str:
@@ -624,10 +606,9 @@ def _cold_restart_block(basename: str, *, engine: str, label: str) -> str:
     The engine's output set depends on its version and options;
     completeness was never purchasable by maintenance.
 
-    The engines' suffix tuples (``_SIESTA_WARM_SUFFIXES`` /
-    ``_PYSCF_WARM_SUFFIXES``) keep their OTHER § 4.2 job -- the short
-    hint list a deck writes and ``prep`` carries between stages -- and
-    stop being read here.
+    The restart-file list (``warm``, the calculation's own, handed in at
+    render) keeps its OTHER § 4.2 job -- the short hint list the banner
+    tests -- and is not read here.
 
     What survives the sweep is § 4.1's exception — *what molbuilder
     wrote* — and since 2026-08-13 (E-1) the bash case list is DERIVED
@@ -842,6 +823,7 @@ def _runtime_status_block(
     *,
     engine: str,
     script_name: str,
+    warm: Sequence[str],
     resumes: bool = True,
 ) -> str:
     """Bash snippet that detects and emits the execution status banner.
@@ -906,7 +888,7 @@ def _runtime_status_block(
         # must never be weakened, because it is the one always present.
         # Found by P3's Review 2, whose checklist names this exact shape:
         # "a comment claiming one list sat above two lists".  Now derived.
-        warmstart_exts = tuple(s.lstrip(".") for s in _SIESTA_WARM_SUFFIXES)
+        warmstart_exts = tuple(s.lstrip(".") for s in warm)
         warmstart_test_pieces = []
         for ext in warmstart_exts:
             # `_mb_has_state`, not `[ -e ]` -- warm state is CONTENT.  See
@@ -963,8 +945,7 @@ def _runtime_status_block(
         # hand-typed five-name label told a .TSHS-only directory the
         # engine "will load DM/CG/XV..." -- files that were not there --
         # while the detection had already keyed on all thirteen (R9).
-        warm_files_label = "/".join(x.lstrip(".")
-                                    for x in _SIESTA_WARM_SUFFIXES)
+        warm_files_label = "/".join(x.lstrip(".") for x in warm)
     elif engine == "pyscf":
         # PySCF's ``mf.chkfile`` is keyed on ``JOB`` (a Python
         # variable in the .py script), same naming-mismatch risk as
@@ -981,7 +962,7 @@ def _runtime_status_block(
         # terminates the name; same brace lesson as bench/grid.py.
         warmstart_test = " || ".join(
             piece
-            for suf in _PYSCF_WARM_SUFFIXES
+            for suf in warm
             for piece in (f'_mb_has_state "${{_warm_label}}{suf}"',
                           f'_mb_has_state "{basename}{suf}"')
         )
@@ -1012,8 +993,7 @@ def _runtime_status_block(
         # DERIVED like SIESTA's (D11, 2026-08-12): hand-typed "chk", the
         # banner told a <JOB>_optimized.xyz-only directory "engine will
         # load existing chk" while the detection keyed on all five.
-        warm_files_label = "/".join(x.lstrip(".")
-                                    for x in _PYSCF_WARM_SUFFIXES)
+        warm_files_label = "/".join(x.lstrip(".") for x in warm)
     else:                                  # pragma: no cover
         raise WrapperError(f"unknown engine for status block: {engine!r}")
 
@@ -2026,7 +2006,8 @@ def render_run_wrapper(script_path: Path, *,
                         project_dir: Optional[Path] = None,
                         machine_record=None,
                         finish: Optional[str] = None,
-                        resumes: bool = True) -> str:
+                        resumes: bool = True,
+                        warm: Optional[Sequence[str]] = None) -> str:
     """Return the bash text for a wrapper running ``script_path``.
 
     **The allocation arrives whole** — `architecture.md` § 3.1, rule A8.  This
@@ -2607,6 +2588,7 @@ def render_run_wrapper(script_path: Path, *,
             + _cold_restart_block(basename, engine="siesta", label=label)
             + _runtime_status_block(basename, engine="siesta",
                                     resumes=resumes,
+                                    warm=_warm_in_effect("siesta", warm),
                                      script_name=script_name)
         )
 
@@ -3183,6 +3165,7 @@ def render_run_wrapper(script_path: Path, *,
             + _run_index_resolver(basename, ext=_stdout_role_for(".py"))
             + _cold_restart_block(basename, engine="pyscf", label=label)
             + _runtime_status_block(basename, engine="pyscf",
+                                    warm=_warm_in_effect("pyscf", warm),
                                      script_name=script_name)
         )
 
@@ -4223,7 +4206,8 @@ def render_wrappers(script_path: Path, *,
                     project_dir: Optional[Path] = None,
                     machine_record=None,
                     finish: Optional[str] = None,
-                    resumes: bool = True) -> RenderedWrapper:
+                    resumes: bool = True,
+                    warm: Optional[Sequence[str]] = None) -> RenderedWrapper:
     """Render everything step 4 produces for *script_path*, and write nothing.
 
     **W7 — floor 3 returns text.**  The deck writers hand back a string and the
@@ -4280,7 +4264,7 @@ def render_wrappers(script_path: Path, *,
     text = render_run_wrapper(
         script_path, label=label, resources=r, env=env, n_atoms=n_atoms,
         project_dir=project_dir, machine_record=machine_record,
-        finish=finish, resumes=resumes)
+        finish=finish, resumes=resumes, warm=warm)
     _validate_rendered_wrapper(text, script_path)
     # ``stem + ".run.sh"`` rather than ``with_suffix(".run.sh")``: the latter
     # replaces only the LAST suffix, so ``job.spectra.py`` would become
@@ -4322,6 +4306,18 @@ def render_wrappers(script_path: Path, *,
                            blobs=blobs)
 
 
+def _warm_in_effect(engine: str, warm: Optional[Sequence[str]]
+                    ) -> Tuple[str, ...]:
+    """The restart files this script knows: ``warm``, the list in effect for
+    its calculation that ``prep`` hands in (`warmfiles.warm_list`), or --
+    for a script rendered with no calculation behind it -- the engine's own
+    file, every section: the same door asked with no folder."""
+    if warm is not None:
+        return tuple(warm)
+    from .warmfiles import warm_list
+    return warm_list(engine).suffixes
+
+
 def write_run_wrapper(script_path: Path, *,
                       label: str = "",
                       n_atoms: Optional[int] = None,
@@ -4331,7 +4327,8 @@ def write_run_wrapper(script_path: Path, *,
                       project_dir: Optional[Path] = None,
                       machine_record=None,
                       finish: Optional[str] = None,
-                      resumes: bool = True) -> Path:
+                      resumes: bool = True,
+                      warm: Optional[Sequence[str]] = None) -> Path:
     """Write what :func:`render_wrappers` produced, and return the wrapper's path.
 
     **This function renders nothing.**  It is the writing half of step 4, kept
@@ -4355,7 +4352,7 @@ def write_run_wrapper(script_path: Path, *,
                                machine_record=machine_record,
                                env=env, emit_sbatch=emit_sbatch,
                                project_dir=project_dir, finish=finish,
-                               resumes=resumes)
+                               resumes=resumes, warm=warm)
     parent = Path(script_path).resolve().parent
     for name, text in rendered.files:
         written = _sc_write.write_script(parent / name, text)

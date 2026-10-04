@@ -38,24 +38,27 @@ from .plan import resources_text
 # DERIVED from the one rules file (job-contracts § 4.2a; U3/W2, 2026-08-13):
 # the per-engine dict that stood here was the THIRD hand-kept copy of the
 # vocabulary, already citing a retired doc.  The carry rows are status's
-# question -- could a stage here hand state to the next one?
-from ..warmfiles import carry_inventory as _carry_inventory
+# question -- could a stage here hand state to the next one? -- asked of the
+# one door with the calculation's folder, so its own list answers.
+from ..warmfiles import warm_list as _warm_list
 from ..paths import attempt_name
 from ..runfiles import is_stage_token
 
 
 
-def _warm_files(engine: str):
-    """The engine's carry rows, resolved AT USE — never at import (C-b,
+def _warm_files(engine: str, base):
+    """What carries, from the list in effect for the calculation in
+    ``base`` (`warmfiles.warm_list`, every section: status reads a folder,
+    not a rung's kind) -- its own copy first, else the engine's
+    (`job-contracts.md` § 4.2a).  Resolved AT USE — never at import (C-b,
     2026-08-13): the module-level dict that stood here loaded BOTH
     engines' rules files the moment anything imported
     ``molbuilder.jobset``, so one malformed TOML killed every entry
-    point with an import-time traceback.  Resolved here, a broken rules
-    file refuses at the status call it affects, with the loader's own
-    message — the same moment `prep` already owns for its copy.  An
-    engine without a rules file simply has no carry rows to report."""
+    point with an import-time traceback.  An engine without a rules file
+    simply has no carry rows to report.  *(The engine's file alone answered
+    here until 2026-10-03, while prep followed the calculation's copy.)*"""
     try:
-        return _carry_inventory(engine)
+        return _warm_list(engine, None, base).carry
     except Exception:
         return ()
 
@@ -181,11 +184,13 @@ class JobSetStatus:
         }
 
 
-def _warm_present(stage_dir: Path, label: str, engine: str) -> List[str]:
+def _warm_present(stage_dir: Path, label: str, engine: str,
+                  base) -> List[str]:
     """Which engine warm-restart files actually exist (real files, not
-    dangling carry symlinks) in this stage's dir."""
+    dangling carry symlinks) in this stage's dir -- by the list in effect
+    for the calculation in ``base``."""
     out: List[str] = []
-    for ext in _warm_files(engine):
+    for ext in _warm_files(engine, base):
         f = stage_dir / f"{label}{ext}"
         if f.is_file():                      # follows symlinks; dangling -> False
             out.append(f.name)
@@ -362,7 +367,7 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, sh, dirs,
         # staged sweep trial: `siesta-AuBDTAu-G0K20C1.XV` on disk, warm
         # files reported `[]`, and `jobset status` told a person there
         # was nothing to restart from.
-        warm_files=_warm_present(observed, job_label, jobset.engine),
+        warm_files=_warm_present(observed, job_label, jobset.engine, base),
         # WHAT THE STAGE IS -- the plan's own columns, read per stage by
         # `status <stage>` since `plan` folded into it (2026-10-01).
         script=str(job.script),

@@ -306,7 +306,7 @@ def _token_ladder(*scripts, optimizers=None):
     disagree; by default they all match, which is the case that carries `.CG`.
     """
     from molbuilder.jobset.model import Job, JobSet, WarmFile
-    from molbuilder.warmfiles import rules_for
+    from molbuilder.warmfiles import warm_list
     names = [s.split("_", 2)[2].rsplit(".", 1)[0] for s in scripts]
     opt = dict(optimizers or {})
     # DERIVED from the rules file, exactly as `siesta/stages.py`'s
@@ -317,7 +317,7 @@ def _token_ladder(*scripts, optimizers=None):
     # list rather than the system's.  § 4.2a's history is exactly this kind
     # of copy drifting; the fixture was the fourth one.
     declared = [WarmFile(f"JOB{r.suffix}", requires_same=r.requires_same)
-                for r in rules_for("siesta", "optimization") if r.carry]
+                for r in warm_list("siesta", "optimization").rules if r.carry]
     jobs = []
     for i, (name, script) in enumerate(zip(names, scripts)):
         jobs.append(Job(

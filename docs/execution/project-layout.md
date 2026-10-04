@@ -2301,7 +2301,7 @@ So these searches have no door and must not grow one:
 
 | the search | whose name it is |
 |---|---|
-| `*.XV`, `*{suffix}` from `warmfiles.inventory` | SIESTA's restart state. The vocabulary already comes from one home (`<engine>/warm-files.toml`); only the loop is local |
+| `*.XV`, `*{suffix}` from `warmfiles.warm_list` | SIESTA's restart state. The vocabulary already comes from one home (`<engine>/warm-files.toml`); only the loop is local |
 | a bare `*.xyz` in a cited directory | a person's structure file. Its SIDECAR is ours, and is paired through the composer |
 | `*_geom_optim.xyz` | geomeTRIC's, via the declared `pyscf.input.ROLE_GEOM_TRAJ`. It cannot go through `find_by_role` and that refusal is the grammar's own rule: without a label, a trailing `_geom_optim.xyz` cannot be told from a stage token named `..._geom_optim` with `.xyz` as the role |
 | conda-meta's `*.json` | conda's |

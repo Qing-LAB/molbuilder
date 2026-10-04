@@ -41,20 +41,11 @@ _PYSCF_INVENTORY = (".chk", "_optimized.xyz")
 
 
 def test_siesta_inventory_is_the_declared_vocabulary():
-    assert W.inventory("siesta") == _SIESTA_INVENTORY
+    assert W.warm_list("siesta").suffixes == _SIESTA_INVENTORY
 
 
 def test_pyscf_inventory_is_the_declared_vocabulary():
-    assert W.inventory("pyscf") == _PYSCF_INVENTORY
-
-
-def test_runwrap_banner_tuples_are_the_loader_alias():
-    """The U3 re-plumbing itself: runwrap's tuples ARE the loader's
-    answer.  Meaningful again now that the loader's answer is pinned to
-    literals above -- equality to a pinned side is no tautology."""
-    from molbuilder.runwrap import _PYSCF_WARM_SUFFIXES, _SIESTA_WARM_SUFFIXES
-    assert _SIESTA_WARM_SUFFIXES == _SIESTA_INVENTORY
-    assert _PYSCF_WARM_SUFFIXES == _PYSCF_INVENTORY
+    assert W.warm_list("pyscf").suffixes == _PYSCF_INVENTORY
 
 
 def test_siesta_optimization_carries_exactly_what_the_table_declares():
@@ -68,7 +59,7 @@ def test_siesta_optimization_carries_exactly_what_the_table_declares():
     them, so there is no keyword to name.  They carry so that `hierarchical`
     ends up with the same file `flat` would have, rather than a record
     truncated at the attempt boundary."""
-    rows = [r for r in W.rules_for("siesta", "optimization") if r.carry]
+    rows = [r for r in W.warm_list("siesta", "optimization").rules if r.carry]
     assert [(r.suffix, r.requires_same, r.honoured_by) for r in rows] == [
         (".XV", None, "MD.UseSaveXV"),
         (".DM", None, "DM.UseSaveDM"),
@@ -86,7 +77,7 @@ def test_the_accumulative_records_name_no_deck_keyword():
     stray `honoured_by` here would put these into the "present but not
     honoured" check (run-identity.md § 4) and have a stage refuse to
     continue because a record it appends to was not readable."""
-    rows = {r.suffix: r for r in W.rules_for("siesta", "optimization")}
+    rows = {r.suffix: r for r in W.warm_list("siesta", "optimization").rules}
     for suffix in (".MD.nc", ".MD", ".MDE", ".ANI"):
         assert rows[suffix].carry == "when-continuing", suffix
         assert rows[suffix].honoured_by is None, suffix
@@ -100,7 +91,7 @@ def test_transport_has_its_own_vocabulary_and_no_optimizer_history():
     inventory-only ON PURPOSE (a product of its own deck; the device's
     copies arrive by the structural gather, never by continuation, so a
     carried one could mask a changed deck)."""
-    rows = {r.suffix: r for r in W.rules_for("siesta", "transport")}
+    rows = {r.suffix: r for r in W.warm_list("siesta", "transport").rules}
     assert ".TSHS" in rows and ".TSDE" in rows
     assert ".CG" not in rows
     assert rows[".TSDE"].carry == "when-continuing"
@@ -114,7 +105,7 @@ def test_transport_has_its_own_vocabulary_and_no_optimizer_history():
 def test_an_empty_section_is_base_only():
     """[vibration] with no rows IS a statement — the smallest expansion
     the § 4.2a growth rule allows."""
-    assert [r.suffix for r in W.rules_for("pyscf", "vibration")] == [".chk"]
+    assert [r.suffix for r in W.warm_list("pyscf", "vibration").rules] == [".chk"]
 
 
 # --------------------------------------------------------------------- #
@@ -123,7 +114,7 @@ def test_an_empty_section_is_base_only():
 
 def test_an_unknown_calculation_is_refused_naming_the_sections():
     with pytest.raises(W.WarmFilesError) as e:
-        W.rules_for("siesta", "spectroscopy")
+        W.warm_list("siesta", "spectroscopy").rules
     msg = str(e.value)
     assert "spectroscopy" in msg
     assert "optimization" in msg and "transport" in msg
@@ -132,7 +123,7 @@ def test_an_unknown_calculation_is_refused_naming_the_sections():
 
 def test_base_is_not_a_calculation_type():
     with pytest.raises(W.WarmFilesError):
-        W.rules_for("siesta", "base")
+        W.warm_list("siesta", "base").rules
 
 
 # --------------------------------------------------------------------- #
@@ -153,7 +144,7 @@ def test_a_fourth_key_is_refused_as_the_design_signal(tmp_path, monkeypatch):
     _write_rules(tmp_path, monkeypatch,
                  _HEAD + '[[base.file]]\nsuffix = ".A"\nwhen = "always"\n')
     with pytest.raises(W.WarmFilesError, match="closed"):
-        W.load_warm_files("x")
+        W.warm_list("x")
 
 
 def test_a_carry_value_outside_the_vocabulary_is_refused(tmp_path,
@@ -161,7 +152,7 @@ def test_a_carry_value_outside_the_vocabulary_is_refused(tmp_path,
     _write_rules(tmp_path, monkeypatch,
                  _HEAD + '[[base.file]]\nsuffix = ".A"\ncarry = "always"\n')
     with pytest.raises(W.WarmFilesError, match="when-continuing"):
-        W.load_warm_files("x")
+        W.warm_list("x")
 
 
 def test_one_suffix_lives_in_one_section(tmp_path, monkeypatch):
@@ -169,14 +160,14 @@ def test_one_suffix_lives_in_one_section(tmp_path, monkeypatch):
                  _HEAD + '[[base.file]]\nsuffix = ".A"\n'
                  '[[opt.file]]\nsuffix = ".A"\n')
     with pytest.raises(W.WarmFilesError, match="one row per file"):
-        W.load_warm_files("x")
+        W.warm_list("x")
 
 
 def test_a_file_without_base_reads_as_truncated(tmp_path, monkeypatch):
     _write_rules(tmp_path, monkeypatch,
                  _HEAD + '[[opt.file]]\nsuffix = ".A"\n')
     with pytest.raises(W.WarmFilesError, match="base"):
-        W.load_warm_files("x")
+        W.warm_list("x")
 
 
 def test_the_engine_key_must_match_the_package(tmp_path, monkeypatch):
@@ -184,19 +175,19 @@ def test_the_engine_key_must_match_the_package(tmp_path, monkeypatch):
                  'schema = "molbuilder/warm-files@1"\nengine = "y"\n'
                  '[base]\n')
     with pytest.raises(W.WarmFilesError, match="agree"):
-        W.load_warm_files("x")
+        W.warm_list("x")
 
 
 def test_a_wrong_schema_major_is_refused(tmp_path, monkeypatch):
     _write_rules(tmp_path, monkeypatch,
                  'schema = "molbuilder/warm-files@2"\nengine = "x"\n[base]\n')
     with pytest.raises(ValueError):
-        W.load_warm_files("x")
+        W.warm_list("x")
 
 
 def test_a_missing_file_names_the_expected_home():
     with pytest.raises(W.WarmFilesError, match="warm-files.toml"):
-        W.load_warm_files("no_such_engine")
+        W.warm_list("no_such_engine")
 
 
 # --------------------------------------------------------------------- #
@@ -222,7 +213,7 @@ def test_a_continuing_deck_emits_every_declared_keyword():
     pair reborn as config drift — a file carried in and never read."""
     import re
     deck = _siesta_deck("continue")
-    rules = [r for r in W.rules_for("siesta", "optimization")
+    rules = [r for r in W.warm_list("siesta", "optimization").rules
              if r.honoured_by]
     assert rules, "the optimization vocabulary declares no keywords?"
     for rule in rules:
@@ -247,7 +238,7 @@ def test_a_clean_deck_refuses_every_honouring_keyword_out_loud():
     """
     import re
     deck = _siesta_deck("clean")
-    honouring = [r.honoured_by for r in W.rules_for("siesta", "optimization")
+    honouring = [r.honoured_by for r in W.warm_list("siesta", "optimization").rules
                  if r.honoured_by]
     assert honouring, "the rules file names no honouring keyword to check"
     for keyword in honouring:
@@ -285,7 +276,7 @@ def test_the_warm_rules_and_the_catalogue_name_the_same_keywords():
     from molbuilder.script_emit import parameter
     declared = set(parameter("restart", "siesta").writes)
     honoured = {r.honoured_by
-                for r in W.rules_for("siesta", "optimization")
+                for r in W.warm_list("siesta", "optimization").rules
                 if r.honoured_by}
     assert declared == honoured, (
         f"the catalogue says `restart` writes {sorted(declared)} and the warm "

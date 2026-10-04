@@ -1415,9 +1415,11 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
     group's sequencer: it ``cd``s into each point's prepared attempt and
     runs the point's own ``.run.sh`` — env activation and the engine
     launch stay where they always live.  What it adds is the WARM CHAIN:
-    before each point after the first, the previous point's ``.TSDE``
-    (the NEGF density) is copied forward, so ``V_{i+1}`` converges from
-    ``V_i``'s state instead of from scratch.  And unlike the bench
+    before each point after the first, what the previous point left that
+    a continuing device takes -- the device job's declaration, the NEGF
+    density ``.TSDE`` among it, from the one restart-list door -- is copied
+    forward, so ``V_{i+1}`` converges from ``V_i``'s state instead of from
+    scratch.  And unlike the bench
     group it STOPS on a failed point: later points chain their density
     from this one, so walking on would converge from a state the
     failure poisoned — a benchmark's points are independent, a chain's
@@ -1445,7 +1447,7 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
     if len(points) < 2:
         raise SubmitError("not a bias scan -- the plain launch owns "
                           "a single-point device.")
-    # The device chain warm-hands the .TSDE and STOPS on failure
+    # The device chain warm-hands its declaration and STOPS on failure
     # (later points inherit the failed state); the transmission walk is
     # the same one-submission sequence over INDEPENDENT points -- no
     # hand-forward, and a bad point says nothing about the next, so the
@@ -1464,7 +1466,6 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
     launch_dir = stage_dir / "launch"
     run_name = _wrapper_name(job.script, ".run.sh")
     name = f"{Path(job.script).stem}-chain"
-    label = task.label
 
     attempts: List[Tuple[float, Path]] = []
     # Each point's folder, from the one door (`rung_containers`, plan § 5w
@@ -1490,10 +1491,19 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
         attempts.append((v, att))
 
     args = " ".join(_run_sh_args(job.resources))
+    # WHAT A POINT TAKES FROM THE ONE BEFORE IT is what a continuing device
+    # takes -- the device job's own declaration (`Job.warm`), which prep
+    # recorded from the one restart-list door (`warmfiles.warm_list`,
+    # `job-contracts.md` § 4.2a), the calculation's own list among it.
+    # `.TSDE` was spelled here by hand until 2026-10-03 (plan W38, W36 ⑧).
+    import shlex as _shlex
+    handed = " ".join(_shlex.quote(w.name) for w in (job.warm or ()))
     lines = [
         "#!/usr/bin/env bash",
         f"# {name}.run.sh -- the bias chain: this scan's points in",
-        "# sequence, each warm-started from the previous point's .TSDE",
+        "# sequence, each warm-started from what the previous point left",
+        "# that a continuing device takes -- its declaration:",
+        f"#   {handed or '(nothing)'}",
         "# (archive/2026-09-01-transport-design.md 4.3).  Regenerated at each launch.",
         "# STOPS on a failed point: later points chain their density",
         "# from this one, so walking on would converge from a state the",
@@ -1510,15 +1520,20 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
         '    _name="$1"; _dir="$2"; shift 2',
     ] + ([
         '    if [ -n "$prev" ]; then',
-        f'        if [ -f "$prev/{label}.TSDE" ]; then',
-        f'            cp "$prev/{label}.TSDE" "$_dir/"',
-        '            echo "[chain] ${_name}: warm from $prev" >> "$LOG"',
+        '        _took=""',
+        f'        for _f in {handed}; do',
+        '            if [ -f "$prev/$_f" ]; then',
+        '                cp "$prev/$_f" "$_dir/" && _took="$_took $_f"',
+        "            fi",
+        "        done",
+        '        if [ -n "$_took" ]; then',
+        '            echo "[chain] ${_name}: warm from $prev:$_took" >> "$LOG"',
         "        else",
-        f'            echo "[chain] ${{_name}}: no {label}.TSDE in '
-        '$prev -- converging from scratch" >> "$LOG"',
+        '            echo "[chain] ${_name}: nothing to take from $prev -- '
+        'converging from scratch" >> "$LOG"',
         "        fi",
         "    fi",
-    ] if warm else []) + [
+    ] if warm and handed else []) + [
         '    echo "[chain] $(date \'+%Y-%m-%dT%H:%M:%S\') -> '
         '${_name} starts" >> "$LOG"',
         '    ( cd "${_dir}" && bash "$@" ) >> "$LOG" 2>&1',

@@ -1,0 +1,49 @@
+# THE RESTART FILES IN EFFECT -- `docs/execution/job-contracts.md` § 4.2a,
+# `docs/execution/architecture.md` § 3.2 (`warm_list`).
+#
+# A calculation follows molbuilder's restart-file list for its engine unless it
+# has its own `warm-files.toml` beside `task.json`, made by copying the
+# engine's file and editing it -- and then EVERY reader follows its own: what
+# the next stage takes, `jobset status`'s warm-files column, and the run
+# script's restart check (plan W36 ⑧; user: "keep customization, make every
+# reader use it").  Until 2026-10-03 only prep's carry read the calculation's
+# copy; the run script and status read the engine's file.
+#
+# `tests/test_restart_files.py` runs every case down the road a person runs,
+# through the one runner every contract table shares (`tests/support/road.py`,
+# `run_road_case`, whose header names each key).
+#
+# A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
+
+machine = "workstation"
+
+[run_base.siesta]
+mpi_np = 2
+omp_threads = 1
+
+[[case]]
+name = "molbuilder's list: the next stage takes the density the stage before left, and status counts it"
+before = [["prep", "run", "coarse"]]
+ran = { files = ["H2.DM"] }
+stage = "medium"
+said = ["copied H2.XV, H2.DM"]
+status_says = ["H2.XV, H2.DM"]
+
+[[case]]
+name = "a calculation's own list that withholds .DM is followed by every reader -- the next stage does not take it, and status does not count it"
+own_warm_files = { withhold = [".DM"] }
+before = [["prep", "run", "coarse"]]
+ran = { files = ["H2.DM"] }
+stage = "medium"
+said = ["continues from 01_coarse/run-0", "copied H2.XV"]
+said_lacks = ["H2.DM"]
+status_lacks = ["H2.DM"]
+
+[[case]]
+name = "a restart file a calculation's own list adds is one its run script checks for"
+own_warm_files = { add = [".NEWSTATE"] }
+run_sh = ["NEWSTATE"]
+
+[[case]]
+name = "...and one molbuilder's list does not have, its run script does not"
+run_sh_lacks = ["NEWSTATE"]

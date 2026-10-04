@@ -239,10 +239,10 @@ def warm_declaration(stage: str, task_label: str, base_dir=None):
     if stage not in ("seed", "device"):
         return []
     from ..jobset.model import WarmFile
-    from ..warmfiles import rules_for
+    from ..warmfiles import warm_list
     return [WarmFile(f"{task_label}{r.suffix}",
                      requires_same=r.requires_same)
-            for r in rules_for("siesta", "transport", base_dir) if r.carry]
+            for r in warm_list("siesta", "transport", base_dir).carry_rules]
 
 
 #: What each rung computes and hands on -- the ONE-LINE NOTE a surface puts

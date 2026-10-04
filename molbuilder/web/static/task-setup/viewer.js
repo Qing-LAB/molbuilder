@@ -2139,6 +2139,30 @@ function paintWritten(body) {
             row.dir === "." ? "in the folder itself" : row.dir + "/",
             row.files || []));
     }
+    /* AND WHICH RESTART-FILE LIST THIS CALCULATION FOLLOWS -- its own copy,
+     * or molbuilder's for its engine, and where a custom copy goes
+     * (job-contracts.md § 4.2a, task-setup.md § 7.2).  The server's answer
+     * (`warm`, the one door's), shown as it is. */
+    if (body.warm) host.appendChild(warmGroup(body.warm));
+}
+
+function warmGroup(w) {
+    const kids = [
+        el("p", { class: "ts-written-where" },
+           w.own ? "this calculation's own list"
+                 : "molbuilder's list for this engine"),
+        el("p", { class: "ts-warm-path" }, el("code", {}, w.path)),
+    ];
+    if (!w.own && w.copy_to) {
+        kids.push(el("p", { class: "ts-warm-howto" },
+            "To change what this calculation carries between runs, copy it "
+            + "to ", el("code", {}, w.copy_to), " and edit it: that copy is "
+            + "read instead, for this calculation alone, and the file says "
+            + "what each key does."));
+    }
+    return el("div", { class: "ts-written-group" },
+        el("h3", { class: "ts-reports-head" },
+           "Restart files carried between runs"), ...kids);
 }
 
 function askLine(a, chosen) {

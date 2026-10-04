@@ -2173,7 +2173,25 @@ def api_task_setup_prep_plan():
     once = manifest(task.label, None, task.engine,
                     ("prep", "run", "summarize"), task.calculation)
     return jsonify({"ok": True, "shape": shape.name, "stages": rows,
-                    "bench": bench, "bundle": bundle, "once": once})
+                    "bench": bench, "bundle": bundle, "once": once,
+                    "warm": _warm_in_effect(task, folder)})
+
+
+def _warm_in_effect(task, folder) -> "dict | None":
+    """WHICH RESTART-FILE LIST THIS CALCULATION FOLLOWS -- the one door's
+    answer (`warmfiles.warm_list`, `job-contracts.md` § 4.2a): its own copy
+    beside ``task.json``, or molbuilder's for its engine -- and where a
+    custom copy goes, which the card says (`web/task-setup.md` § 7.2; plan
+    W36 ⑧: "provide information on the task setup web ui").  ``None`` for an
+    engine with no list."""
+    from molbuilder.warmfiles import FILENAME, WarmFilesError, warm_list
+    try:
+        in_effect = warm_list(str(task.engine), None, folder)
+    except WarmFilesError:
+        return None
+    return {"path": in_effect.path, "own": in_effect.own,
+            "copy_to": (str(pathlib.Path(folder) / FILENAME)
+                        if folder is not None else None)}
 
 
 def _plan_prepped(dest, task, kind, stage) -> dict:

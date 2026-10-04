@@ -49,6 +49,7 @@ from .. import script_emit as _sc
 from .materialize import (job_dir_names, shape_of, materialize, stage_home,
                           ladder_homes)
 from ..runrecord import write_gathered_from
+from ..warmfiles import warm_list
 from ..issues import calling as _calling
 from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
 from .plan import FILENAME as _PLAN_FILE
@@ -258,6 +259,11 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 # already resolved, handed over whole, cannot be forgotten
                 # or answered a second way further down.
                 machine_record=machine_record,
+                # THE RESTART FILES IN EFFECT for this calculation -- its own
+                # list first (`warmfiles.warm_list`, `job-contracts.md`
+                # § 4.2a): written into the script here, never read by it at
+                # import (plan W36 ⑧).
+                warm=warm_list(jobset.engine, None, base).suffixes,
                 # THE JOB'S LAST STEP, when its engine leaves no result
                 # (`Job.finish`, `engines/vibration.md` § 5.5): the wrapper
                 # runs it, and its bundle is written beside the deck.
@@ -318,8 +324,10 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     # engine's own, or this calculation's fine-tuned copy -- a surprising
     # carry must be debuggable from the plan alone (§ 4.2a).
     try:
-        from ..warmfiles import load_warm_files
-        _vocab = f"warm-files: {load_warm_files(jobset.engine, base).path}\n"
+        _in_effect = warm_list(jobset.engine, None, base)
+        _vocab = (f"warm-files: {_in_effect.path}"
+                  + (" (this calculation's own)" if _in_effect.own
+                     else "") + "\n")
     except Exception:
         _vocab = ""    # an engine without a rules file has no line to print
     (plan_dir / _PLAN_FILE).write_text(
@@ -1643,11 +1651,10 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
         # read off the deck -- it rides the allocation road
         # (`model.Resources.program`) into the wrapper.
         res = dataclasses.replace(res, program="tbtrans")
-    from ..warmfiles import resumes_for
     job = Job(name=stage, script=script, resources=res,
               warm=warm_declaration(stage, task.label, base),
-              resumes=resumes_for(str(task.engine), _rung_kind(task, stage),
-                                  base))
+              resumes=warm_list(str(task.engine), _rung_kind(task, stage),
+                                base).resumes)
 
     # The activation the wrappers below carry was checked at step 1, before
     # anything was written: this check stood after the per-point wrapper
@@ -1669,7 +1676,9 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                               machine_record=environment,
                               # the job's own facts, as the ladder's
                               # wrapper is given them (`prep_jobset`)
-                              finish=job.finish, resumes=job.resumes)
+                              finish=job.finish, resumes=job.resumes,
+                              warm=warm_list(str(task.engine), None,
+                                             base).suffixes)
     js = JobSet(name=task.label, engine=task.engine, kind="ladder",
                 shared=_siesta_shared_package(base), jobs=[job])
     js = _merge_run_jobset(base / JOBSET_FILENAME, js,
@@ -2127,8 +2136,7 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
     kind = _rung_kind(task, stage_name)
     with _calling("warm_for", engine=task.engine, where=name, log=log):
         warm = seam.warm_for(element.label, element.values, kind, base_dir)
-    from ..warmfiles import resumes_for
-    resumes = resumes_for(str(task.engine), kind, base_dir)
+    resumes = warm_list(str(task.engine), kind, base_dir).resumes
     with _calling("traits_for", engine=task.engine, where=name, log=log):
         traits = seam.traits_for(element.values)
     # ``finish`` is the deck's own statement (`DeckSpec.finish`): the bundle

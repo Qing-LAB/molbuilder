@@ -47,11 +47,11 @@ def _warm_declaration(label: str, eff,
     of the pair.
     """
     from ..identity import continues
-    from ..warmfiles import rules_for
+    from ..warmfiles import warm_list
     if not continues(eff):
         return []
     return [WarmFile(f"{label}{r.suffix}", requires_same=r.requires_same)
-            for r in rules_for("pyscf", calculation, base_dir) if r.carry]
+            for r in warm_list("pyscf", calculation, base_dir).carry_rules]
 
 
 def default_pyscf_stages(strategy: str = "publishable") -> List["Stage"]:

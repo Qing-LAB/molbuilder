@@ -1011,3 +1011,18 @@
     flex: 1 1 100%;
     overflow-wrap: anywhere;
 }
+/* WHICH RESTART-FILE LIST IS IN EFFECT (job-contracts.md 4.2a): its path is
+   an install path or the calculation's, longer than the column, and a person
+   copies it -- so it wraps rather than clipping, the name rule above; the
+   how-to beneath it reads as a note. */
+.ts-warm-path {
+    margin: 0 0 var(--space-xs);
+    font-size: var(--text-xs);
+    overflow-wrap: anywhere;
+}
+.ts-warm-howto {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+}
+.ts-warm-howto code { overflow-wrap: anywhere; }

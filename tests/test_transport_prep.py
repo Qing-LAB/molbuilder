@@ -1822,14 +1822,17 @@ class TestTheBiasScan:
 
     def _stub(self, calc, point):
         """Replace one point's wrapper with a stub that records the run
-        order and the density it STARTED with, then writes its own."""
+        order and the densities it STARTED with -- the NEGF one and the
+        equilibrium one -- then writes its own."""
         att = calc / "04_device" / point / "run-0"
         (att / "T_04_device.run.sh").write_text(
             "#!/bin/bash\n"
             'echo "$(basename $(dirname $(dirname $PWD)))'
             f'/{point}" >> ../../chain-order.log\n'
             "if [ -f T.TSDE ]; then cp T.TSDE TSDE-at-start; fi\n"
-            f'echo "density-from-{point}" > T.TSDE\n')
+            "if [ -f T.DM ]; then cp T.DM DM-at-start; fi\n"
+            f'echo "density-from-{point}" > T.TSDE\n'
+            f'echo "dm-from-{point}" > T.DM\n')
 
     def test_the_points_render_their_own_decks(self, calc):
         """SCIENCE. Each bias point renders its OWN deck carrying its OWN
@@ -1880,7 +1883,13 @@ class TestTheBiasScan:
 
     def test_the_chain_warm_chains(self, calc, tmp_path, monkeypatch):
         """THE P5 gate: a two-point bias fixture warm-chains -- the
-        second point STARTS with the first point's .TSDE."""
+        second point STARTS with what the first point left that a continuing
+        device takes: the device job's declaration, from the one
+        restart-list door (`job-contracts.md` § 4.2a), its `.TSDE` and `.DM`
+        among it.
+
+        MUTATION THIS MUST FAIL AGAINST: the hand-forward spelled `.TSDE` by
+        hand (it was until 2026-10-03), which leaves the `.DM` behind."""
         self._ready(calc, tmp_path, monkeypatch)
         self._stub(calc, "v0")
         self._stub(calc, "v0.2")
@@ -1893,6 +1902,10 @@ class TestTheBiasScan:
         seen = (calc / "04_device" / "v0.2" / "run-0" / "TSDE-at-start")
         assert seen.is_file(), "point 2 must START with a .TSDE"
         assert seen.read_text().strip() == "density-from-v0"
+        dm = (calc / "04_device" / "v0.2" / "run-0" / "DM-at-start")
+        assert dm.is_file() and dm.read_text().strip() == "dm-from-v0", (
+            "point 2 must start with every file the device's declaration "
+            "names -- the .DM among them")
         for point in ("v0", "v0.2"):
             assert (calc / "04_device" / point / "run-0" / "run.json"
                     ).is_file(), "every point is launched by this command"
