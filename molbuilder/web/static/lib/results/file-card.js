@@ -96,13 +96,26 @@ if (C.EVENT_SCOPE_CHANGED) {
 }
 /* The sidebar's single click: a preview, and the card follows it -- only
  * inside the folder the panel shows, whose files the scan has already
- * answered for. */
-if (NS.projects && typeof NS.projects.onChange === "function") {
-    NS.projects.onChange((sel) => {
+ * answered for.
+ *
+ * SUBSCRIBED AT DOMContentLoaded, reading the namespace then: the sidebar's
+ * module comes after this one on the page, so `molbuilder.projects` does not
+ * exist while this module runs -- the picker mounts at the same moment for the
+ * same reason.  *(Checked at load until 2026-10-04, which found no sidebar and
+ * so never followed a click: seen on the dev server.)* */
+function followTheSidebar() {
+    const projects = (window.molbuilder || {}).projects;
+    if (!projects || typeof projects.onChange !== "function") return;
+    projects.onChange((sel) => {
         const file = sel && sel.file;
         if (!file || !shown.dir) return;
         if (dirName(file).replace(/\/+$/, "") !== shown.dir.replace(/\/+$/, "")) return;
         shown.name = baseName(file);
         render();
     });
+}
+if (document.readyState === "complete") {
+    followTheSidebar();
+} else {
+    document.addEventListener("DOMContentLoaded", followTheSidebar, { once: true });
 }
