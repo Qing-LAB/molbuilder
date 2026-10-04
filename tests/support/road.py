@@ -294,7 +294,9 @@ def calls_made(calls: Path):
 # AFTER PREP, whatever it answered: the folders it left (`made`, paths
 # under the calculation that exist; `made_lacks`, ones that do not), the
 # files it left as they were (`kept`: paths under the calculation whose
-# bytes and write time are the same before and after the row's prep), how the
+# bytes and write time are the same before and after the row's prep), every
+# file the Task setup card names for a stage on disk as it names it
+# (`card_written`: `{stage, moments}` each -- `_road_card_written`), how the
 # server answers a viewer about a stage's newest run (`run_answer`: `stage`,
 # `state`, `live` -- `_road_run_answer`), the
 # folder's saved states, newest first
@@ -553,6 +555,8 @@ def _road_after_prep(case, bundle) -> None:
             f"{where} was not made: {sorted(p.name for p in bundle.iterdir())}"
     for where in case.get("made_lacks", []):
         assert not (bundle / where).exists(), f"{where} was made"
+    if "card_written" in case:
+        _road_card_written(case["card_written"], bundle)
     if "run_answer" in case:
         _road_run_answer(case["run_answer"], bundle)
     if "status_says" in case or "status_lacks" in case:
@@ -571,6 +575,35 @@ def _road_after_prep(case, bundle) -> None:
                    if x.strip()]
         for decision in case["ledger_lacks"]:
             assert decision not in decided, f"the ledger holds: {decided}"
+
+
+def _road_card_written(specs, bundle) -> None:
+    """Every name the Task setup card gives a stage -- the catalogue's
+    `manifest`, in the calculation's shape, for the moments asked -- is a file
+    in that stage's folder or its attempts (the hierarchy), or in the folder
+    itself (flat).  A name written only sometimes (`only`) is not promised;
+    a field (`<stamp>`) stands for any value."""
+    import fnmatch
+    import re
+    from molbuilder.jobset.materialize import stage_home
+    from molbuilder.runfiles import manifest
+    from molbuilder.task import read_task
+    task = read_task(bundle / "task.json")
+    for spec in specs:
+        token = stage_home(bundle, task, spec["stage"]).token
+        if task.shape == "hierarchical":
+            held = [p.name for p in (bundle / token).rglob("*") if p.is_file()]
+        else:
+            held = [p.name for p in bundle.iterdir() if p.is_file()]
+        for row in manifest(task.label, token, task.engine,
+                            tuple(spec["moments"]), task.calculation,
+                            task.shape):
+            if row["only"]:
+                continue
+            pattern = re.sub(r"<[a-z_]+>", "*", row["name"])
+            assert any(fnmatch.fnmatchcase(n, pattern) for n in held), (
+                f"the card names {row['name']} for {spec['stage']}, and "
+                f"no such file is there: {sorted(held)}")
 
 
 def _as_written(path: Path):

@@ -45,9 +45,10 @@ class ComposeError(Exception):
 #: The composed record's on-disk names, beside the transport
 #: calculation's ``task.json`` (§ 4.1: the cited structure is COPIED in
 #: with provenance, and the folder then travels like any other).
-JUNCTION_GEOMETRY = "junction.xyz"          # the SORTED junction (codec pair)
-JUNCTION_DECK = "junction.cited.fdf"        # the attempt's own deck, verbatim
-PROVENANCE_FILE = "slot-provenance.json"
+#: The catalogue's names (`runfiles.WRITTEN`, `job-contracts.md` § 2.2).
+from ..runfiles import JUNCTION_FILE as JUNCTION_GEOMETRY  # noqa: E402 -- the SORTED junction (codec pair)
+from ..runfiles import JUNCTION_CITED_FILE as JUNCTION_DECK  # noqa: E402 -- the attempt's own deck, verbatim
+from ..runfiles import SLOT_PROVENANCE_FILE as PROVENANCE_FILE  # noqa: E402
 # (`PERMUTATION_FILE`, the record beside them, is `atom_permutation`'s.)
 
 #: How far two statements of the SAME cell may differ before the citation

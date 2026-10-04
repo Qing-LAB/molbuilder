@@ -36,7 +36,12 @@ import numpy as np
 #: The record's file name beside a calculation -- and, as part of the
 #: calculation's shared package, in each attempt that runs from its sorted
 #: copy (`execution/job-contracts.md` § 6.1).
-PERMUTATION_FILE = "atom-permutation.json"
+# THE CATALOGUE'S NAME (`runfiles.WRITTEN`) -- imported both ways, since this
+# module travels beside a force-constant job's finish (`mb_vibration.pyz`).
+try:                                        # inside molbuilder
+    from .runfiles import PERMUTATION_FILE
+except ImportError:                         # beside a job
+    from runfiles import PERMUTATION_FILE  # type: ignore[no-redef]
 
 #: The record's schema name (registered: `job-contracts.md` § 6.1).
 PERMUTATION_SCHEMA = "molbuilder/atom-permutation@1"

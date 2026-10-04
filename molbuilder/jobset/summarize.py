@@ -488,7 +488,8 @@ def run_summarize_jobset(jobset, bundle, *,
     IS a use"*, `job-system.md` § 7.1).
     """
     res = bench_record(jobset, bundle, now_iso=now_iso)
-    out_path = Path(out) if out else Path(bundle) / "bench-result.json"
+    from ..runfiles import BENCH_RESULT_FILE
+    out_path = Path(out) if out else Path(bundle) / BENCH_RESULT_FILE
     out_path.write_text(res.to_json() + "\n", encoding="utf-8")
     return res, out_path, recommendation_text(res, stage=stage)
 

@@ -477,7 +477,8 @@ def emit_correction_script(
     # run it -- and a plain ``write_text`` here was the last generated artifact
     # in the tree written by a second hand.
     from .. import script_emit as _sc
-    return _sc.write_script(parent / "makov_payne_correction.py",
+    from ..runfiles import MAKOV_PAYNE_SCRIPT
+    return _sc.write_script(parent / MAKOV_PAYNE_SCRIPT,
                             render_correction_script(
                                 system_label=system_label, q=q,
                                 epsilon_r=epsilon_r))

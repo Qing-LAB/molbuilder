@@ -14,9 +14,10 @@ from __future__ import annotations
 
 #: The plan's filename.  A constant so the name has ONE home: spelled at
 #: each call site it is free to drift, which is the same shape the run-file
-#: grammar exists to end, one level up.  These bundle files are not
-#: per-label, so they are not `runfiles` names -- but one home still applies.
-FILENAME = "STAGE-PLAN.md"
+#: grammar exists to end, one level up.  Not named on the label, and still
+#: the catalogue's (`runfiles.WRITTEN`, `job-contracts.md` § 2.2, 2026-10-04):
+#: every file molbuilder writes is a row there.
+from ..runfiles import PLAN_FILE as FILENAME  # noqa: E402
 
 from typing import List
 

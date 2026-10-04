@@ -993,7 +993,7 @@ TASK_HANDOVER_SCHEMA = "molbuilder/task-handover@1"
 #: a folder "declares itself the root of one multi-directory unit of work", so
 #: writing a premature one would make the folder claim to be a calculation root
 #: before it is one (`checkpointing.md` L1).
-TASK_HANDOVER_NAME = "task.1st.json"
+from molbuilder.runfiles import TASK_HANDOVER_FILE as TASK_HANDOVER_NAME  # noqa: E402 -- the catalogue's name
 
 
 @bp.route("/api/task-setup/handover", methods=["POST"])
@@ -2114,8 +2114,11 @@ def api_task_setup_prep_plan():
                      # show a spelling the writers do not use -- which is
                      # the failure that module exists for.  The engine
                      # filters it: a SIESTA run is not told about `.py`.
+                     # ...spelled as THIS shape spells them: an attempt's
+                     # `run.json`, a flat stage's `<base>.run.json` (plan D22).
                      "files": manifest(task.label, token, task.engine,
-                                       calculation=task.calculation)})
+                                       calculation=task.calculation,
+                                       shape=shape.name)})
     bench = None
     if task.bench:
         # Every axis, with its points.  A row of length one is a DECISION and
@@ -2159,25 +2162,14 @@ def api_task_setup_prep_plan():
     # generated"*).  These are MOLBUILDER's own records -- not the engine's
     # outputs, which belong to the run and are listed by the Results tab.
     #
-    # EACH NAME COMES FROM THE MODULE THAT WRITES IT, for the reason the stage
-    # rows do: a list composed here would be a second answer, free to disagree
-    # with the thing it describes.  `STAGE-PLAN.md` was a literal written twice
-    # inside `prep` until this needed a name to ask for.
-    from molbuilder.jobset.ledger import LEDGER_FILE
-    from molbuilder.jobset.model import FILENAME as JOBSET_FILE
-    from molbuilder.jobset.plan import FILENAME as PLAN_FILE
-    from molbuilder.scheduler.record import FILENAME as ENV_FILE
-    bundle = [
-        {"name": JOBSET_FILE,
-         "what": "the jobs this run is, with each one's resources"},
-        {"name": PLAN_FILE,
-         "what": "the plan in reading order — what runs, in what order, "
-                 "with which warm files"},
-        {"name": ENV_FILE,
-         "what": "the machine as probed: queues, cores, memory"},
-        {"name": LEDGER_FILE,
-         "what": "every decision prep made, one line each"},
-    ]
+    # FROM THE CATALOGUE, like the stage rows: its fixed-name rows at the
+    # calculation's root that prep writes (`runfiles.fixed`).  This was a
+    # list of its own, four names with a line each written here, until
+    # 2026-10-04 (plan B13) -- a second answer, free to disagree with the
+    # thing it describes.
+    from molbuilder.runfiles import fixed
+    bundle = fixed("calculation", when=("prep",),
+                   calculation=task.calculation, engine=task.engine)
     # AND WHAT THE CALCULATION WRITES ONCE, beside the per-rung lists: the
     # deck's own files that carry no stage token.  The SETUP's three
     # (`.template.toml` and the source pair) are asked for by moment rather

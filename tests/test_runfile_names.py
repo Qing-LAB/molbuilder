@@ -24,7 +24,7 @@ import itertools
 
 import pytest
 
-from molbuilder.runfiles import (QUALIFIERS, WRITTEN, RunFile, RunFileError,
+from molbuilder.runfiles import (QUALIFIERS, WRITTEN, ON_THE_LABEL, RunFile, RunFileError,
                                  find, find_by_role, latest_run,
                                  compose, is_carried, manifest, parse,
                                  patterns, tail)
@@ -253,7 +253,7 @@ def test_every_declared_examples_matches_its_own_shape():
             f"shape {f.shape!r}")
 
 
-@pytest.mark.parametrize("art", WRITTEN, ids=lambda a: a.role)
+@pytest.mark.parametrize("art", ON_THE_LABEL, ids=lambda a: a.role)
 @pytest.mark.parametrize("label", LABELS)
 @pytest.mark.parametrize("stage", STAGES)
 def test_every_name_the_catalogue_can_produce_is_matched_by_its_globs(
@@ -276,7 +276,7 @@ def test_every_name_the_catalogue_can_produce_is_matched_by_its_globs(
             f"{name!r} is a name molbuilder writes and no glob matches it")
 
 
-@pytest.mark.parametrize("art", WRITTEN, ids=lambda a: a.role)
+@pytest.mark.parametrize("art", ON_THE_LABEL, ids=lambda a: a.role)
 def test_a_file_that_carries_no_stage_never_grows_one(art):
     """The three that belong to the CALCULATION -- the template and the
     source pair -- are written once at the bundle root, so a stage token in
@@ -341,7 +341,7 @@ def test_the_catalogue_and_the_warm_vocabulary_do_not_overlap():
     is exactly what a widened `*.xyz` row once did.
     """
     from molbuilder.warmfiles import warm_list
-    ours = {a.role for a in WRITTEN}
+    ours = {a.role for a in ON_THE_LABEL}
     for engine in ("siesta", "pyscf"):
         warm = set(warm_list(engine).suffixes)
         assert not (ours & warm), (
@@ -366,7 +366,7 @@ def test_the_role_is_what_says_which_engine_wrote_a_file():
     """
     from molbuilder.warmfiles import warm_list
     assert not set(warm_list("siesta").suffixes) & set(warm_list("pyscf").suffixes)
-    per_engine = {e: {a.role for a in WRITTEN if a.engine == e}
+    per_engine = {e: {a.role for a in ON_THE_LABEL if a.engine == e}
                   for e in ("siesta", "pyscf")}
     assert not per_engine["siesta"] & per_engine["pyscf"]
     assert per_engine["siesta"] and per_engine["pyscf"]
@@ -401,7 +401,7 @@ def test_a_rung_is_told_its_own_files_and_the_calculation_its_own():
     calc = {r["name"] for r in manifest(LABEL)}
     assert rung and calc
     assert not rung & calc
-    assert len(rung) + len(calc) == len(WRITTEN)
+    assert len(rung) + len(calc) == len(ON_THE_LABEL)
     # And the calculation's are exactly the ones with no rung in the name.
     assert all(parse(n, LABEL).stage is None for n in calc)
     assert all(parse(n, LABEL).stage == "01_coarse" for n in rung)
@@ -427,26 +427,29 @@ def test_a_relaxation_is_not_promised_a_spectrum():
 
 def test_each_file_says_which_moment_it_appears_in():
     """A card listing a run's files has to say which of them exist yet, and
-    the four moments are what it says: the description hand-over, the prep,
-    the launch, and `summarize run` -- which writes a summary of results
-    that exist and is never the launch (a sweep's comparison was promised as
-    the launch's to every SIESTA vibration until 2026-09-28).  Declared per
-    file, so no page subtracts one list from another to find out."""
+    the five moments are what it says: the description hand-over, the prep,
+    the launch, the run, and `summarize run` -- which writes a summary of
+    results that exist and is never the launch (a sweep's comparison was
+    promised as the launch's to every SIESTA vibration until 2026-09-28).
+    Declared per file, so no page subtracts one list from another to find
+    out.  The launch record is LAUNCH's, and the progress log PREP's, which
+    seeds it (both said `run` until 2026-10-04, plan D22)."""
     moments = {a.when for a in WRITTEN}
-    assert moments == {"setup", "prep", "run", "summarize"}
+    assert moments == {"setup", "prep", "launch", "run", "summarize"}
     launched = {r["name"] for r in manifest(LABEL, None, when=("run",))}
     assert compose(LABEL, ".fc-sweep.json") not in launched
     assert compose(LABEL, ".transport.json") not in launched
     setup = {r["name"] for r in manifest(LABEL, None, when=("setup",))}
     assert setup == {compose(LABEL, r) for r in (".template.toml",
                                                  ".source.xyz",
-                                                 ".source.molstruct.json")}
+                                                 ".source.molstruct.json",
+                                                 ".template.toml.pre-m6")}
     # The deck and its wrapper are PREP's, and they are this rung's.
     prep = {r["name"] for r in manifest(LABEL, "01_coarse", "siesta",
                                         when=("prep",))}
     assert compose(LABEL, ".fdf", "01_coarse") in prep
     assert compose(LABEL, ".run.sh", "01_coarse") in prep
-    assert compose(LABEL, ".molwatch.log", "01_coarse") not in prep
+    assert compose(LABEL, ".molwatch.log", "01_coarse") in prep
 
 
 # ══ THE READER — find / latest_run ═════════════════════════════════════════

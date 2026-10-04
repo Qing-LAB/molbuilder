@@ -41,7 +41,7 @@ import xml.etree.ElementTree as ET
 
 #: Where a calculation's staged pseudopotentials live, relative to it
 #: (roadmap 7.10 M6: grouped in one folder rather than N loose `<El>.psml`).
-PSEUDO_DIRNAME = "pseudos"
+from .runfiles import PSEUDO_DIR as PSEUDO_DIRNAME  # noqa: E402 -- the catalogue's name
 
 
 def psml_sources(elements, *, dest_dir=None,

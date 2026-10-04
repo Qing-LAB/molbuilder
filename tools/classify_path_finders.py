@@ -57,7 +57,7 @@ def _owned_rules() -> "list[tuple[str, str, str]]":
     sys.path.insert(0, str(ROOT))
     from molbuilder.paths import TRIAL_PREFIX
     from molbuilder.paths import ATTEMPT_PREFIX
-    from molbuilder.runfiles import WRITTEN
+    from molbuilder.runfiles import ON_THE_LABEL
     rules = [
         (ATTEMPT_PREFIX, "paths.attempt_dir / paths.attempts_in",
          "the attempt directory (project-layout.md § 1.5)"),
@@ -68,8 +68,9 @@ def _owned_rules() -> "list[tuple[str, str, str]]":
     ]
     # Every role the catalogue declares, longest first so `.source.xyz` is
     # recognised before `.xyz` -- which is NOT a role of ours and must not be
-    # matched by one.
-    for a in sorted(WRITTEN, key=lambda x: len(x.role), reverse=True):
+    # matched by one.  The rows named ON THE LABEL: a fixed name's row has no
+    # role, and an empty one would match every search there is.
+    for a in sorted(ON_THE_LABEL, key=lambda x: len(x.role), reverse=True):
         door = ("runfiles.find_by_role" if a.role.startswith(".")
                 else "runfiles.find(dir, label, role=…)")
         rules.append((a.role, door, a.what))

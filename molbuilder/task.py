@@ -80,7 +80,8 @@ from .scheduler.quantities import canonical_mem, canonical_time
 
 
 SCHEMA = "molbuilder/task@1"
-FILENAME = "task.json"
+#: Its name is the catalogue's (`runfiles.WRITTEN`, `job-contracts.md` § 2.2).
+from .runfiles import TASK_FILE as FILENAME  # noqa: E402
 
 #: § 6.7 — required, no default, never inferred.
 # The layout vocabulary lives with the layout (`paths`), which is floor 1

@@ -41,8 +41,10 @@ SCHEMA = "molbuilder/job-set@1"
 #: private `_JOBSET_FILE` nobody could import) and in `checkpoint`'s bundle
 #: descriptors, so the name of the file this module defines was spelled
 #: everywhere except here.  The pattern is `task.FILENAME` and
-#: `environment.FILENAME`: the module that owns the format owns its name.
-FILENAME = "job-set.json"
+#: `environment.FILENAME`: one home -- the catalogue's since 2026-10-04
+#: (`runfiles.WRITTEN`, `job-contracts.md` § 2.2: every file molbuilder
+#: writes is a row there, and a fixed name's owner takes it from the row).
+from ..runfiles import JOBSET_FILE as FILENAME  # noqa: E402
 
 #: The two kinds, each a name with ONE home.  `KIND_SWEEP` is exported
 #: because a reader outside this module has to ask *is this a benchmark

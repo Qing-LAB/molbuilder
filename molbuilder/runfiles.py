@@ -140,6 +140,38 @@ FIELDS: "dict[str, Field]" = {
         # `runwrap`: `date +%Y%m%d-%H%M%S`
         shape=r"[0-9]{8}-[0-9]{6}",
         example="20260908-120000"),
+    # The fields of the catalogue's FIXED-NAME families (B13, 2026-10-04):
+    # files molbuilder writes that are not named on the label -- a
+    # pseudopotential is named for its element, SLURM's output for its job.
+    "element": Field(
+        what="the chemical element a pseudopotential is for",
+        shape=r"[A-Z][a-z]?",
+        example="Au"),
+    "jobid": Field(
+        what="the scheduler's id for the job",
+        shape=r"[0-9]+",
+        example="62372574"),
+    "pid": Field(
+        what="the run script's own process id",
+        shape=r"[0-9]+",
+        example="48213"),
+    "group": Field(
+        what="a launch group's name: a benchmark's side and shelf, or a "
+             "bias scan's chain",
+        shape=r"[A-Za-z0-9_.-]+",
+        example="bench-group-gpu"),
+    "random": Field(
+        what="a temporary file's random part",
+        shape=r"[A-Za-z0-9_.-]+",
+        example="k3j9x_2a"),
+    "engine": Field(
+        what="the engine a prep rendered for",
+        shape=r"siesta|pyscf",
+        example="siesta"),
+    "shape": Field(
+        what="the calculation's shape",
+        shape=r"flat|hierarchical",
+        example="hierarchical"),
 }
 
 _FIELD_RE = re.compile(r"\{([a-z_]+)\}")
@@ -177,7 +209,7 @@ def canonical_role(concrete: str) -> "tuple[str, dict]":
     `role_matches`, and the pattern-matching it forced into `find` and
     `find_by_role`, are gone.
     """
-    for a in WRITTEN:
+    for a in ON_THE_LABEL:
         if not a.fields:
             continue
         m = _role_pattern(a.role).match(concrete)
@@ -747,12 +779,15 @@ def is_carried(f: "RunFile | str", label: str = "") -> bool:
 class Artifact:
     """One kind of file molbuilder writes, and the shapes its name takes.
 
-    ``role`` is the suffix :func:`compose` takes.  ``what`` is one line a
-    person can read -- these are shown in the Task-setup card, so it says what
-    the file HOLDS, not which module writes it.
+    ``role`` is the suffix :func:`compose` takes, for a file named on the
+    label; ``name`` is the whole name of one that is not (`task.json`, a
+    pseudopotential's ``{element}.psml``) -- a row has exactly one of the two.
+    ``what`` is one line a person can read -- these are shown in the
+    Task-setup card and the Results tab's file card, so it says what the file
+    HOLDS; ``writer`` says who writes it, and when.
     """
-    role: str
-    what: str
+    role: str = ""
+    what: str = ""
     #: The FIELDS this role's template carries, if any -- the bounded
     #: flexibility (`plans/plan.md` § 5l.1).  A role naming ``{stamp}`` is a
     #: family of names, and the field is what tells them apart; the shape of
@@ -799,6 +834,64 @@ class Artifact:
     #: `.molwatch.log` as a literal, putting membership back in a function
     #: while the row says nothing, which is the split that caused this.
     output: Optional[str] = None
+    # ---- the rest of the row (B13, `job-contracts.md` § 2.2, 2026-10-04):
+    # the catalogue is the ONE source of what each file is, and the
+    # contract's manifest (`project-layout.md` § 5, rendered by
+    # `tools/manifest.py`), the Task setup card and the Results tab's file
+    # card are its readings.
+    #: The whole name of a file NOT named on the label -- a fixed name, or a
+    #: family whose fields are declared in :data:`FIELDS` -- and ``""`` for a
+    #: role row.
+    name: str = ""
+    #: Where it sits: ``calculation`` (the root), ``stage`` (a stage's
+    #: folder in the hierarchy), ``run`` (an attempt; in the flat shape every
+    #: level is the root), ``bench`` (a benchmark's container), ``launch``
+    #: (a launch group's folder), or ``transient`` (only while a write runs).
+    level: str = "run"
+    #: Its name in the HIERARCHY where that differs from the label's
+    #: spelling: an attempt's ``run.json``, a flat stage's
+    #: ``<base>.run.json`` -- one file, two spellings, one row.
+    hierarchical: str = ""
+    #: Who writes it, and when -- one line.
+    writer: str = ""
+    #: The one function its readers ask (`architecture.md` § 3.2), as a
+    #: dotted path under ``molbuilder``; ``""`` when a person reads it and no
+    #: code does.
+    door: str = ""
+    #: ``source`` · ``input`` · ``derived`` · ``record`` · ``result`` ·
+    #: ``transient`` -- what losing the file costs (`project-layout.md` § 5).
+    kind: str = "record"
+    #: When it is written only sometimes, the condition, in words: *a
+    #: machine with a queue*, *MOLBUILDER_PARSE_LOG set*.  A card that listed
+    #: such a file unconditionally named a file the run may never write.
+    only: str = ""
+
+
+#: THE FIXED NAMES -- files molbuilder writes that are not named on the label,
+#: spelled ONCE, here; each owner imports its own (`job-contracts.md` § 2.2,
+#: B13, 2026-10-04).  Plain data, so this module stays stdlib and travels.
+TASK_FILE = "task.json"
+TASK_HANDOVER_FILE = "task.1st.json"
+WARM_FILES_FILE = "warm-files.toml"
+MACHINE_RECORD_FILE = "environment.json"
+JOBSET_FILE = "job-set.json"
+PLAN_FILE = "STAGE-PLAN.md"
+LEDGER_FILE = "jobset-decisions.log"
+PERMUTATION_FILE = "atom-permutation.json"
+PSEUDO_DIR = "pseudos"
+JUNCTION_FILE = "junction.xyz"
+JUNCTION_SIDECAR_FILE = "junction.molstruct.json"
+JUNCTION_CITED_FILE = "junction.cited.fdf"
+SLOT_PROVENANCE_FILE = "slot-provenance.json"
+CALCDIR_FILE = "calcdir.json"
+LAUNCH_RECORD_FILE = "run.json"
+CONTINUED_FROM_FILE = ".continued-from"
+GATHERED_FROM_FILE = ".gathered-from"
+MONITOR_BUNDLE = "mb_monitor.pyz"
+VIBRATION_BUNDLE = "mb_vibration.pyz"
+MAKOV_PAYNE_SCRIPT = "makov_payne_correction.py"
+BENCH_RESULT_FILE = "bench-result.json"
+LAUNCH_DIR = "launch"
 
 
 #: Ordered as `job-contracts.md` § 2.2 lists them: inputs, the wrapper, the
@@ -808,9 +901,15 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # ---- what we generated to run -------------------------------------
     Artifact(".fdf", "the SIESTA deck — every keyword this rung runs with",
              engine="siesta",
-             when="prep"),
+             when="prep", level="stage", kind="derived",
+             writer="prep (`script_emit.prepare_deck`), in the stage's "
+                    "folder; a copy in each attempt",
+             door="runfiles.find_by_role"),
     Artifact(".py", "the PySCF script this rung runs", engine="pyscf",
-             when="prep"),
+             when="prep", level="stage", kind="derived",
+             writer="prep (`script_emit.prepare_deck`), in the stage's "
+                    "folder; a copy in each attempt",
+             door="runfiles.find_by_role"),
     # THE SUFFIX IS SPELLED, NOT IMPORTED, and that is the LAYERING rule
     # rather than a lapse: this module is L1 and `template` is L2, so
     # importing it here is the upward import review refuses
@@ -823,7 +922,10 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # module BY NAME.
     Artifact(".template.toml", "every parameter, with the value it was given",
              staged=False,
-             when="setup"),
+             when="setup", level="calculation", kind="source",
+             writer="`jobset init`; the hand-over and the Transport tab, "
+                    "which the browser writes; `jobset migrate`",
+             door="template.template_path"),
     # THE STRUCTURE THE CALCULATION IS OF, written into the bundle by the
     # hand-over (`web/handover-procedure.md`).  Added 2026-08-16, the same
     # day molbuilder started writing them: before that the pair did not
@@ -841,10 +943,22 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # therefore the ENGINE's, and it is deliberately absent from this table.
     Artifact(".source.xyz", "the structure the calculation is of",
              staged=False,
-             when="setup"),
+             when="setup", level="calculation", kind="input",
+             writer="the hand-over and `jobset init` "
+                    "(`StructureCodec.source_files`)",
+             door="jobset.prep._structure_for"),
     Artifact(".source.molstruct.json", "its cell and its region labels",
              staged=False,
-             when="setup"),
+             when="setup", level="calculation", kind="input",
+             writer="the hand-over and `jobset init` "
+                    "(`StructureCodec.source_files`)",
+             door="jobset.prep._structure_for"),
+    Artifact(".template.toml.pre-m6", "the template as it was before "
+                                      "`jobset migrate` rewrote it",
+             staged=False,
+             when="setup", level="calculation", kind="record",
+             writer="`jobset migrate`",
+             only="a template migrated"),
     # THE DECK'S COMPANION REPORT (`script_emit.VALIDATION_SUFFIX`, added
     # 2026-08-23 with the file itself).  Here for the reason the `.source`
     # pair records: a file molbuilder writes and does not declare reads as
@@ -852,7 +966,9 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # under way"*, offering the user their own report back as run state.
     Artifact(".validation.txt", "what the generator checked before it wrote "
                                 "the deck",
-             when="prep"),
+             when="prep", level="stage", kind="record",
+             writer="prep (`script_emit.write_validation_report`), beside "
+                    "the deck"),
     # ---- what the DECK writes for itself ------------------------------
     # A file the generated script writes is molbuilder's too -- it is our
     # deck that writes it -- and the three below were on NEITHER list until
@@ -863,31 +979,61 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # geometry it had written itself.  None of them is warm -- nothing reads
     # them back -- which is why declaring them here is the whole fix.
     Artifact("_initial.xyz", "the input geometry, echoed back before "
-                             "anything ran", staged=False, engine="pyscf"),
+                             "anything ran", staged=False, engine="pyscf",
+             kind="result", writer="the PySCF deck"),
+    # ITS SIDECAR, the pair's other half -- written by the deck's own pair
+    # writer (`pyscf/input.py`), and on no list until 2026-10-04 (plan D23):
+    # undeclared, `--cold` named it as engine state it would overwrite.
+    Artifact("_initial.molstruct.json", "the input geometry's cell and "
+                                        "labels",
+             staged=False, engine="pyscf", kind="result",
+             writer="the PySCF deck"),
+    Artifact("_optimized.molstruct.json", "the relaxed geometry's cell and "
+                                          "labels -- the sidecar of the "
+                                          "restart file `_optimized.xyz`",
+             staged=False, engine="pyscf", kind="result",
+             writer="the PySCF deck"),
     Artifact(".constraints.txt", "which atoms are held still, in geomeTRIC's "
-                                 "own format — written only when some are",
-             staged=False, engine="pyscf"),
+                                 "own format",
+             staged=False, engine="pyscf", kind="derived",
+             writer="the PySCF deck", only="atoms are held"),
     # EITHER ENGINE'S RUN WRITES IT: the PySCF deck, and on SIESTA the job's
     # finish after the force-constant run (`engines/vibration.md` § 5.5).
     Artifact(".spectra.json", "the spectrum this run computed: frequencies, "
                               "the strengths the engine computes, "
                               "thermochemistry -- written by the run itself",
-             staged=False, calculation="vibration"),
+             staged=False, calculation="vibration", kind="result",
+             writer="the run itself: the PySCF deck, or a SIESTA "
+                    "force-constant job's finish (`mb_vibration.pyz`)",
+             door="parse.sidecars.spectra.SpectraSidecarFileParser"),
     # ---- the wrapper --------------------------------------------------
     Artifact(".run.sh", "the wrapper — activates the environment, tees "
                         "the output, catches a kill",
-             when="prep"),
-    Artifact(".sbatch", "the queue header, written only when the run is "
-                        "submitted rather than started here",
-             when="prep"),
+             when="prep", level="stage", kind="derived",
+             writer="prep (`runwrap.write_run_wrapper`), beside its deck; "
+                    "a copy in each attempt"),
+    # ON A MACHINE WITH A QUEUE, whether the run is then submitted or not:
+    # the header is written whenever the target's record names a scheduler
+    # (`runwrap`).  This said "written only when the run is submitted" until
+    # 2026-10-04 (plan D22).
+    Artifact(".sbatch", "the queue header — `sbatch` reads it",
+             when="prep", level="stage", kind="derived",
+             writer="prep (`runwrap.write_run_wrapper`), beside the run "
+                    "script; a copy in each attempt",
+             only="a machine with a queue"),
     # ---- the canonical trajectory -------------------------------------
     # Written before the engine even starts.
     # SEEDED AT PREP, which is why it is `progress` and not `stdout`: it
     # exists before the engine does, so an empty one is a prep and says
     # nothing about a run.  It speaks only once its footer concludes.
+    # PREP SEEDS IT, so its moment is prep's: this row said `run` until
+    # 2026-10-04 (plan D22), and the card promised a seed prep had written.
     Artifact(".molwatch.log", "the run as it happens — coordinates, "
                               "energy and forces, one block per step",
-             output="progress"),
+             output="progress", when="prep", kind="record",
+             writer="prep seeds it in the attempt; PySCF's deck writes "
+                    "each step into it, SIESTA never does",
+             door="parse.engines.molwatch.MolwatchLogFileParser"),
     # ---- history: stdout and the logs ---------------------------------
     # ALL OF THIS IS HISTORY AND NOT STATE -- it is what a person goes back
     # to read, and nothing may treat it as leftovers.  The rows were missing
@@ -904,7 +1050,10 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # rung a `-run0.out` no PySCF run has ever written (`model/parse.md`
     # § 5.5).
     Artifact(".out", "the run's output as the engine printed it",
-             attempt="maybe", engine="siesta", output="stdout"),
+             attempt="maybe", engine="siesta", output="stdout",
+             kind="result", writer="the run script, from the engine's "
+                                   "stdout",
+             door="parse.engines._run_ending.ending_of"),
     # `attempt="maybe"` for the SAME reason `.out` above has it, and it
     # became true on 2026-09-18: the deck's own banner told a person to run
     # `python <deck>.py > <label>.out`, so the one unindexed spelling that
@@ -913,22 +1062,34 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # ENGINE state, the fault three rows in this table already record.
     Artifact(".pyscf.log", "the same, for PySCF — it writes here and not "
                            "to .out", attempt="maybe",
-             engine="pyscf", output="stdout"),
-    Artifact(".log", "the engine's verbose log"),
+             engine="pyscf", output="stdout",
+             kind="result", writer="the run script, from the engine's "
+                                   "stdout",
+             door="parse.engines._run_ending.ending_of"),
+    # PYSCF'S OWN LOG (`mol.output`, `model/parse.md` § 5.5).  The row named
+    # no engine until 2026-10-04 (plan D22), so every SIESTA rung's card
+    # promised a `<base>.log` no SIESTA run writes.
+    Artifact(".log", "PySCF's own log", engine="pyscf", kind="result",
+             writer="the PySCF deck",
+             door="parse.dirs.record.run_record"),
     # GEOMETRIC'S OPT LOG, and the row that recorded the drift this catalogue
     # exists to end.  It was spelled `{label}_geom_*.log` -- the token INSIDE
     # the role, which is how the name read before § 2.2a fixed the token's
     # position.  Nothing has written that since; what IS written,
     # `<label>_<stage>_geom.log`, matched no row, so our own log came back to
     # the user as the engine's warm state (measured 2026-09-07).
-    Artifact("_geom.log", "geomeTRIC's optimizer log", engine="pyscf"),
+    Artifact("_geom.log", "geomeTRIC's optimizer log", engine="pyscf",
+             kind="result",
+             writer="geomeTRIC, under the prefix the deck hands it"),
     # A TEMPLATE, NOT A GLOB.  This was `.runwrap-*.log` until 2026-09-08 -- a
     # wildcard stored as a role -- and the module had to grow `role_matches` to
     # compare one.  The stamp is a FIELD: the file it names is real and
     # concrete, and what varies is a value the name carries (§ 5l.1).
     Artifact(".runwrap-{stamp}.log", "the wrapper's own session log — one per "
                                      "launch, stamped with the clock",
-             fields=("stamp",)),
+             fields=("stamp",), kind="record",
+             writer="the run script, at each start",
+             door="wrapper_log.log_of_run"),
     # The monitor's two files gained the wrapper's run index on 2026-08-27,
     # so both spellings are listed: a directory can hold artifacts from
     # before the change, and a cold sweep that misses one leaves it to be
@@ -940,12 +1101,21 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # the engine: a PySCF rung's card must not promise a file no PySCF run
     # writes (the `.out` row's fault, found 2026-09-26).  `patterns()` ignores
     # the column, so the cold sweep still knows them in any directory.
-    Artifact(".monitor.log", "the monitor's rolling status", attempt="maybe"),
+    Artifact(".monitor.log", "the monitor's rolling status", attempt="maybe",
+             kind="record", writer="the monitor",
+             door="parse.instruments.monitor.MonitorLogFileParser"),
     Artifact(".util.csv", "processor and memory samples taken while it ran",
-             attempt="maybe"),
+             attempt="maybe", kind="record", writer="the monitor",
+             door="parse.instruments.util_csv.UtilCsvFileParser"),
     Artifact(".scf-timing.log", "wall time per SCF iteration, both phases "
                                 "of a TranSIESTA device", attempt="always",
-             engine="siesta"),
+             engine="siesta", kind="record",
+             writer="the run script's tee of the output's SCF lines",
+             door="parse.instruments.scf_timing_rows.timing_of",
+             # THE TEE OPENS IT AT THE FIRST SCF ROW (`runwrap._mb_scf_tee`):
+             # a run that stops before one has none -- found by the card's
+             # own road check, 2026-10-04.
+             only="the engine printed an SCF iteration"),
     # MOLBUILDER'S OWN READING LOG, and the THIRD time this table has been
     # missing a row for a file we write ourselves (`.out` in 2026-08-13,
     # `_geom.log` above in 2026-09-07).  The parser opens one beside whatever
@@ -957,11 +1127,20 @@ WRITTEN: "tuple[Artifact, ...]" = (
     # Three spellings because the name is built off the file being read, not
     # off the label: `job.out` gives `job.parse.log`, and the two sidecars
     # keep their own middle segment.
-    Artifact(".parse.log", "molbuilder's log of reading the run's output"),
+    # NAMED OFF THE FILE READ, so the output's `-run<N>` rides it:
+    # `<base>-run0.out` gives `<base>-run0.parse.log` (`parse/_log.py`).  The
+    # row said no run index until 2026-10-04, and a third row named a
+    # `.transport.parse.log` nothing writes (plan D22).  Off unless asked.
+    Artifact(".parse.log", "molbuilder's log of reading the run's output",
+             attempt="always", kind="record",
+             writer="molbuilder's parser, reading the output "
+                    "(`parse._log.ParseLogger`)",
+             only="`MOLBUILDER_PARSE_LOG` set"),
     Artifact(".molwatch.parse.log",
-             "the same, for the trajectory log"),
-    Artifact(".transport.parse.log",
-             "the same, for the transport results sidecar"),
+             "the same, for the trajectory log", kind="record",
+             writer="molbuilder's parser, reading the trajectory log "
+                    "(`parse._log.ParseLogger`)",
+             only="`MOLBUILDER_PARSE_LOG` set"),
     # The summary `jobset summarize run` writes.  Ours, and undeclared until
     # 2026-09-17: it never produced a false "something ran here" because it
     # only exists after a run, but `--cold` builds its keep-list from the same
@@ -983,7 +1162,10 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(".transport.json", "the transport results, summarised by "
                                 "`summarize run` from the transmission "
                                 "points that ran",
-             staged=False, calculation="transport", when="summarize"),
+             staged=False, calculation="transport", when="summarize",
+             level="calculation", kind="result",
+             writer="`jobset summarize run` (`transport.record.write_record`)",
+             door="parse.sidecars.transport.TransportRecordFileParser"),
     # A SIESTA VIBRATION'S DISPLACEMENT SWEEP, summarised (`engines/
     # vibration.md` § 5.9): written at the calculation root by `summarize run`
     # when the ladder holds two or more force-constant stages -- a record of
@@ -995,25 +1177,229 @@ WRITTEN: "tuple[Artifact, ...]" = (
                                "stage, the force-constant changes, and "
                                "where each stage's files are",
              staged=False, engine="siesta", calculation="vibration",
-             when="summarize"),
+             when="summarize", level="calculation", kind="result",
+             writer="`jobset summarize run` "
+                    "(`spectra.displacement_sweep.write_sweep`)",
+             door="parse.sidecars.fc_sweep.FcSweepRecordFileParser",
+             only="two or more force-constant stages"),
     # THE CONCLUSION MARKER -- the wrapper's last act on its main path
     # (`project-layout.md` § 1.6, "the other file", 2026-08-28).  Indexed
     # like the stdout, because a warm-retry chain execs fresh wrappers and
     # only the FINAL process concludes.
     Artifact(".concluded", "the marker the wrapper writes when the job ends",
-             attempt="always"),
+             attempt="always", kind="record",
+             writer="the run script, its last act",
+             door="runrecord.ending"),
     # A FLAT STAGE'S LAUNCH RECORD (`project-layout.md` § 1.6.3) -- what an
     # attempt's `run.json` is for a stage with no attempt of its own: every
     # stage of a flat calculation shares one directory, so each names its
     # record as it names every other file of it.  Written at launch.
-    Artifact(".run.json", "a flat stage's launch record: how, where and when "
-                          "it was sent"),
+    # AND AN ATTEMPT'S, `run.json`: one file, two spellings, one row
+    # (`hierarchical`) -- the card named the flat spelling for a hierarchical
+    # stage until 2026-10-04 (plan D22).
+    Artifact(".run.json", "the launch record: how, where and when the run "
+                          "was sent, and what it continued from",
+             hierarchical=LAUNCH_RECORD_FILE, when="launch", kind="record",
+             writer="launch (`runrecord.write_launch`)",
+             door="runrecord.launch_record"),
     # AND THE RUN IT CONTINUES FROM, left by `prep` for `launch` to write into
     # that record -- an attempt's `.continued-from`, for a stage with none of
     # its own (user, 2026-10-01: the flat layout records it too).
-    Artifact(".continued-from", "the run a flat stage continues from, left "
-                                "by prep for its launch record"),
+    Artifact(".continued-from", "the run whose restart files were carried "
+                                "in, for launch's record",
+             hierarchical=CONTINUED_FROM_FILE, when="prep", kind="record",
+             writer="prep (`materialize.prepare_attempt`; in the flat shape "
+                    "`prep._flat_continued_from`); launch, on a re-launch",
+             door="runrecord.continued_from_marker",
+             only="it continues from an earlier run"),
+    # ---- written on the label, beside any file of ours ---------------------
+    Artifact(".runtime_info.json", "what a file of the run says about the "
+                                   "run, as `molbuilder runtime-info` read it",
+             attempt="maybe", kind="record",
+             writer="`molbuilder runtime-info`, beside the file it reads",
+             only="a person runs `molbuilder runtime-info`"),
+    Artifact(".{engine}.{shape}.pipeline.log",
+             "what each step of a prep received, decided and produced",
+             fields=("engine", "shape"), when="prep", level="calculation",
+             kind="record",
+             writer="`jobset prep --pipeline-log` (`pipeline_log.PipelineLog`)",
+             only="`--pipeline-log`"),
+    # ---- NOT named on the label: fixed names, and families of them --------
+    # A FIXED NAME'S OWNER TAKES IT FROM HERE (`job-contracts.md` § 2.2): the
+    # constants above are the one spelling.
+    Artifact(name=TASK_FILE, what="the description: what varies, the stages, "
+                                  "the shape, the structure",
+             when="setup", level="calculation", kind="source",
+             writer="`jobset init`; Task setup's Save; the Transport tab's "
+                    "describe, which the browser writes",
+             door="task.read_task"),
+    Artifact(name=TASK_HANDOVER_FILE,
+             what="a hand-over waiting for its shape and stages; Save "
+                  "removes it",
+             when="setup", level="calculation", kind="record",
+             writer="the hand-over route, which the browser writes",
+             door="web.blueprints.build.api_task_setup_folder"),
+    Artifact(name=WARM_FILES_FILE,
+             what="this calculation's own restart-file list",
+             when="setup", level="calculation", kind="source",
+             writer="a person, from molbuilder's list for the engine",
+             door="warmfiles.warm_list", only="a person writes one"),
+    Artifact(name=MACHINE_RECORD_FILE,
+             what="the machine record this calculation is set to — its "
+                  "first prep's",
+             when="prep", level="calculation", kind="record",
+             writer="the first prep (`jobset.machine.set_machine`)",
+             door="scheduler.record.machine_for"),
+    Artifact(name=JOBSET_FILE,
+             what="the plan: one job per prepped stage, merged per stage — "
+                  "and a benchmark's own, in its container",
+             when="prep", level="calculation", kind="derived",
+             writer="prep (`jobset.model.JobSet.write`)",
+             door="jobset.model.JobSet.load"),
+    Artifact(name=PLAN_FILE, what="the plan in reading order",
+             when="prep", level="calculation", kind="derived",
+             writer="prep (`jobset.prep.prep_jobset`), whole at each prep"),
+    Artifact(name=LEDGER_FILE, what="one line per decision of every verb",
+             when="prep", level="calculation", kind="record",
+             writer="every verb (`jobset.ledger.record`)"),
+    Artifact(name=PERMUTATION_FILE,
+             what="the atom order the decks were written in",
+             when="prep", level="calculation", kind="derived",
+             writer="prep (`transport.sort.write_permutation`)",
+             door="atom_permutation.read_permutation",
+             only="a SIESTA vibration, or a transport calculation"),
+    Artifact(name="{element}.psml",
+             what="a pseudopotential: the calculation's one copy in "
+                  "`pseudos/`, and a real copy beside every deck — SIESTA "
+                  "opens only its working directory",
+             engine="siesta", when="prep", level="calculation", kind="input",
+             writer="prep (`jobset.engines._pseudo_dir`, `materialize`); "
+                    "`jobset init --psml-lib`",
+             door="pseudos.psml_sources"),
+    Artifact(name=JUNCTION_FILE, what="the composed junction",
+             calculation="transport", when="prep", level="calculation",
+             kind="derived",
+             writer="a transport calculation's first prep "
+                    "(`transport.compose.write_compose_record`)",
+             door="transport.compose.load_compose_record"),
+    Artifact(name=JUNCTION_SIDECAR_FILE,
+             what="its cell and its region labels",
+             calculation="transport", when="prep", level="calculation",
+             kind="derived",
+             writer="a transport calculation's first prep "
+                    "(`transport.compose.write_compose_record`)",
+             door="transport.compose.load_compose_record"),
+    Artifact(name=JUNCTION_CITED_FILE,
+             what="the deck the junction was cited from, as it was",
+             calculation="transport", when="prep", level="calculation",
+             kind="derived",
+             writer="a transport calculation's first prep "
+                    "(`transport.compose.write_compose_record`)",
+             door="transport.compose.load_compose_record"),
+    Artifact(name=SLOT_PROVENANCE_FILE,
+             what="where each part of the junction came from, with hashes",
+             calculation="transport", when="prep", level="calculation",
+             kind="record",
+             writer="a transport calculation's first prep "
+                    "(`transport.compose.write_compose_record`)",
+             door="transport.compose.load_compose_record"),
+    Artifact(name=".gitignore",
+             what="which files the saved states keep by content in "
+                  "`.binsnapshots/` rather than in git",
+             when="setup", level="calculation", kind="record",
+             writer="`checkpoint.save_before`, before every Save and prep",
+             door="checkpoint.Repo"),
+    Artifact(name=".git/", what="the folder's saved states",
+             when="setup", level="calculation", kind="record",
+             writer="`checkpoint.save_before`, before every Save and prep",
+             door="checkpoint.Repo"),
+    Artifact(name=".binsnapshots/",
+             what="the big files of each saved state, by content",
+             when="setup", level="calculation", kind="record",
+             writer="`checkpoint.save_before`, before every Save and prep",
+             door="checkpoint.Repo"),
+    Artifact(name=CALCDIR_FILE,
+             what="what this folder is in its calculation — a container or "
+                  "a run — and where the calculation is",
+             when="prep", level="stage", kind="record",
+             writer="prep, in every folder it makes "
+                    "(`materialize.prepare_attempt`, "
+                    "`jobset.engines._pseudo_dir`)",
+             door="calcdirs.read"),
+    Artifact(name=MONITOR_BUNDLE,
+             what="the monitor, and the readers it runs on — one file",
+             when="prep", level="stage", kind="derived",
+             writer="prep, beside each run script "
+                    "(`runwrap.write_run_wrapper`); a copy in each attempt"),
+    Artifact(name=VIBRATION_BUNDLE,
+             what="a force-constant job's finish: the modes, from `.FC`",
+             engine="siesta", calculation="vibration",
+             when="prep", level="stage", kind="derived",
+             writer="prep, beside the run script "
+                    "(`runwrap.write_run_wrapper`); a copy in each attempt",
+             only="a force-constant stage"),
+    Artifact(name=MAKOV_PAYNE_SCRIPT,
+             what="the energy correction a charged, isolated deck asks a "
+                  "person to run afterwards",
+             engine="siesta", when="prep", level="stage", kind="derived",
+             writer="prep (`siesta.makov_payne.emit_correction_script`); a "
+                    "copy in each attempt",
+             only="a charged, isolated deck"),
+    Artifact(name=GATHERED_FROM_FILE,
+             what="what a rung took, from which upstream run",
+             calculation="transport", when="prep", level="run",
+             kind="record",
+             writer="prep (`jobset.prep.gather_transport_inputs`)",
+             door="runrecord.read_gathered_from"),
+    Artifact(name="slurm.{jobid}.out", what="SLURM's own stdout for the job",
+             level="run", kind="record",
+             writer="SLURM, as the run's header asks (`-o`)",
+             only="launched to a queue"),
+    Artifact(name="slurm.{jobid}.err", what="SLURM's own stderr for the job",
+             level="run", kind="record",
+             writer="SLURM, as the run's header asks (`-e`)",
+             only="launched to a queue"),
+    Artifact(name=".mb-rank-launch-{pid}.sh",
+             what="the per-rank GPU launcher",
+             level="run", kind="transient",
+             writer="the run script, removed when it exits",
+             only="a GPU run"),
+    Artifact(name=BENCH_RESULT_FILE,
+             what="every trial's timing and the winner — the benchmark's "
+                  "archival trace",
+             when="summarize", level="bench", kind="record",
+             writer="`jobset summarize` (`run_summarize_jobset`)"),
+    Artifact(name="{group}.run.sh",
+             what="a launch group's sequencer: a benchmark's trials, or a "
+                  "bias scan's points, in order",
+             when="launch", level="launch", kind="derived",
+             writer="launch (`jobset/submit.py`), written again at each "
+                    "launch"),
+    Artifact(name="{group}.sbatch", what="its queue header",
+             when="launch", level="launch", kind="derived",
+             writer="launch (`jobset/submit.py`), written again at each "
+                    "launch",
+             only="launched to a queue"),
+    Artifact(name="{group}.log", what="every member's output, in order",
+             when="run", level="launch", kind="record",
+             writer="the group's sequencer, as it runs"),
+    Artifact(name="{random}.tmp",
+             what="a file being written; it replaces its target when the "
+                  "write ends",
+             when="run", level="transient", kind="transient",
+             writer="`persist` and the codec, writing whole or not at all"),
+    Artifact(name=".runwrap-syntax-check-{random}.sh",
+             what="a rendered run script, being checked with `bash -n`",
+             when="prep", level="transient", kind="transient",
+             writer="prep (`runwrap`), removed after the check"),
+    Artifact(name="{random}.lock", what="a sidecar's lock",
+             when="run", level="transient", kind="transient",
+             writer="`sidecars.molstruct.with_lock`"),
 )
+
+#: The rows NAMED ON THE LABEL -- the role rows every reader of the run-file
+#: grammar walks; the fixed names are the rest of :data:`WRITTEN`.
+ON_THE_LABEL: "tuple[Artifact, ...]" = tuple(a for a in WRITTEN if a.role)
 
 #: The attempt counter as a GLOB, per :attr:`Artifact.attempt`.  Empty string
 #: means the unindexed spelling; ``-run*`` the wrapper's.
@@ -1046,7 +1432,7 @@ def roles(*, engines: bool = True) -> "tuple[str, ...]":
 
     Ordered and de-duplicated, so it is stable to compare against.
     """
-    out = [a.role for a in WRITTEN]
+    out = [a.role for a in ON_THE_LABEL]
     if engines:
         out += [r for r in _ENGINE_ROLES if r not in out]
     seen, uniq = set(), []
@@ -1070,7 +1456,7 @@ def run_output_roles(engine: Optional[str] = None) -> "tuple[str, ...]":
     which is what a reader of a directory whose engine it does not know needs
     -- and § 5.5's reason that `ending_of` dispatches on the ROLE.
     """
-    return tuple(a.role for a in WRITTEN
+    return tuple(a.role for a in ON_THE_LABEL
                  if a.output is not None
                  and not (engine and a.engine and a.engine != engine))
 
@@ -1083,7 +1469,7 @@ def stdout_roles(engine: Optional[str] = None) -> "tuple[str, ...]":
     has ended -- where a SEEDED progress log speaks only once its footer
     concludes, and an empty one is a prep.
     """
-    return tuple(a.role for a in WRITTEN
+    return tuple(a.role for a in ON_THE_LABEL
                  if a.output == "stdout"
                  and not (engine and a.engine and a.engine != engine))
 
@@ -1124,11 +1510,11 @@ def result_roles(calculation: Optional[str] = None) -> "tuple[str, ...]":
     the "concluded vs unconcluded" switch that stood in the discovery chain
     was an optimization-shaped rule generalised to everything.
     """
-    named = [a.role for a in WRITTEN
+    named = [a.role for a in ON_THE_LABEL
              if calculation and a.calculation == calculation]
-    spoken = [a.role for a in WRITTEN
+    spoken = [a.role for a in ON_THE_LABEL
               if a.output == "stdout" and a.role not in named]
-    live = [a.role for a in WRITTEN
+    live = [a.role for a in ON_THE_LABEL
             if a.output == "progress" and a.role not in named]
     return tuple(named + spoken + live)
 
@@ -1171,7 +1557,7 @@ def patterns(artifacts: "Optional[tuple[Artifact, ...]]" = None
     matched here -- and that is what the suite checks.
     """
     out = []
-    for a in artifacts if artifacts is not None else WRITTEN:
+    for a in artifacts if artifacts is not None else ON_THE_LABEL:
         # A FIELD BECOMES A STAR HERE, and only here.  `.runwrap-{stamp}.log`
         # yields `.runwrap-*.log` -- the same string this function produced when
         # the glob WAS the role, so `identity.OUR_FILE_PATTERNS` and `runwrap`'s
@@ -1190,7 +1576,8 @@ def patterns(artifacts: "Optional[tuple[Artifact, ...]]" = None
 def manifest(label: str, stage: Optional[str] = None,
              engine: Optional[str] = None,
              when: "Optional[tuple]" = None,
-             calculation: Optional[str] = None) -> "list[dict]":
+             calculation: Optional[str] = None,
+             shape: Optional[str] = None) -> "list[dict]":
     """The names one rung writes, each with a line saying what the file is.
 
     ``stage`` given answers for THAT RUNG and lists only what carries its
@@ -1209,11 +1596,17 @@ def manifest(label: str, stage: Optional[str] = None,
     state, so its second card asks for everything else rather than subtracting
     one list from the other.
 
+    ``shape`` names each file as that shape spells it: an attempt's
+    ``run.json`` in the hierarchy where a flat stage writes
+    ``<base>.run.json`` (:attr:`Artifact.hierarchical`).  *(The card named the
+    flat spelling for every calculation until 2026-10-04, plan D22.)*  A
+    file written only sometimes carries its condition, ``only``.
+
     Every name comes out of :func:`compose`, so a card cannot show a spelling
     the writers do not use -- which is the failure this module exists for.
     """
     rows = []
-    for a in WRITTEN:
+    for a in ON_THE_LABEL:
         if a.staged != (stage is not None):
             continue
         if engine and a.engine and a.engine != engine:
@@ -1228,8 +1621,72 @@ def manifest(label: str, stage: Optional[str] = None,
         # `...runwrap-*.log` until 2026-09-08 -- a glob, in a list telling a
         # person which files a prep is about to write.
         _role = _FIELD_RE.sub(lambda m: f"<{m.group(1)}>", a.role)
-        rows.append({"name": compose(label, _role, stage, run),
+        name = (a.hierarchical if shape == "hierarchical" and a.hierarchical
+                else compose(label, _role, stage, run))
+        rows.append({"name": name,
                      "what": a.what,
                      "when": a.when,
-                     "carries_attempt": a.attempt != "never"})
+                     "carries_attempt": a.attempt != "never",
+                     "only": a.only})
     return rows
+
+
+def fixed(level: Optional[str] = None,
+          when: "Optional[tuple]" = None,
+          calculation: Optional[str] = None,
+          engine: Optional[str] = None) -> "list[dict]":
+    """The catalogue's FIXED-NAME files -- the ones not named on the label --
+    at ``level``, with a line each: what the Task-setup card lists for the
+    whole run (`job-set.json`, the plan, the machine record, the ledger),
+    narrowed like :func:`manifest`.  A family shows its fields by name:
+    ``<element>.psml``."""
+    rows = []
+    for a in WRITTEN:
+        if a.role:
+            continue
+        if level and a.level != level:
+            continue
+        if when and a.when not in when:
+            continue
+        if calculation and a.calculation and a.calculation != calculation:
+            continue
+        if engine and a.engine and a.engine != engine:
+            continue
+        rows.append({"name": _FIELD_RE.sub(lambda m: f"<{m.group(1)}>",
+                                           a.name),
+                     "what": a.what, "when": a.when, "only": a.only})
+    return rows
+
+
+def row_for(path, label: Optional[str] = None) -> Optional[Artifact]:
+    """WHICH ROW OF THE CATALOGUE IS THIS FILE -- or ``None``: not a file
+    molbuilder writes.
+
+    ``label`` is the label the file's run names its files on (the run door
+    reads it from the description, `architecture.md` § 3.2): a name read back
+    with it to a declared role is that role's row.  Otherwise a fixed name,
+    or a family of them -- a launch group's files only inside a ``launch/``
+    folder, where the group's name is the whole stem, so SIESTA's
+    ``fdf.<stamp>.log`` beside a run is not taken for one.  Without a label
+    no role row answers: a role cannot be told from the rest of a name that
+    way (:func:`parse`).
+    """
+    p = Path(path)
+    base = p.name
+    if label:
+        rec = parse(base, label)
+        if rec is not None:
+            for a in ON_THE_LABEL:
+                if a.role == rec.role:
+                    return a
+    in_launch = p.parent.name == LAUNCH_DIR
+    for a in WRITTEN:
+        if a.role:
+            if a.hierarchical and a.hierarchical == base:
+                return a
+            continue
+        if (a.level == "launch") != in_launch and a.level != "transient":
+            continue
+        if not a.name.endswith("/") and _role_pattern(a.name).match(base):
+            return a
+    return None

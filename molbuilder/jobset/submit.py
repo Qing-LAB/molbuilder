@@ -55,6 +55,7 @@ from .agreement import (DeckLaunchMismatch, check_launch_matches_deck,
                         check_trial_starts_cold)
 from .model import Job, JobSet, Resources
 from ..paths import attempt_dir
+from ..runfiles import LAUNCH_DIR
 from .commands import command as _cmd, rollback
 
 
@@ -1215,7 +1216,7 @@ def _prepare_side_group(jobset: JobSet, base: Path, dirs, pending,
     # ``launch/`` beside the trial directories, not among them.  Made only
     # when the shelf is written (below): a dry run and a declined preview
     # leave nothing behind, an empty ``launch/`` included (W52).
-    launch_dir = container / "launch"
+    launch_dir = container / LAUNCH_DIR
 
     envelope = _group_envelope(pending)
 
@@ -1449,7 +1450,7 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
     from .materialize import stage_home
     home = stage_home(base, task, stage)
     token, stage_dir = home.token, home.dir
-    launch_dir = stage_dir / "launch"
+    launch_dir = stage_dir / LAUNCH_DIR
     run_name = _wrapper_name(job.script, ".run.sh")
     name = f"{Path(job.script).stem}-chain"
 

@@ -239,7 +239,8 @@ def test_the_survey_sees_a_name_hidden_behind_a_constant(tmp_path):
 # --------------------------------------------------------------------------- #
 
 def test_the_survey_derives_its_vocabulary_from_the_catalogue():
-    """Every role in `runfiles.WRITTEN` is a name the survey recognises.
+    """Every role in `runfiles.WRITTEN` is a name the survey recognises --
+    the rows named on the label; a fixed name's row has no role.
 
     The table was hand-copied beside the catalogue until 2026-09-08 and had
     already drifted -- it claimed `.XV` was ours, and `.XV` is SIESTA's own
@@ -247,10 +248,10 @@ def test_the_survey_derives_its_vocabulary_from_the_catalogue():
     copy of the vocabulary is the very habit it exists to find, so the check is
     that adding a row to the catalogue is enough.
     """
-    from molbuilder.runfiles import WRITTEN
+    from molbuilder.runfiles import ON_THE_LABEL
     t = _tool()
     known = {needle for needle, _door, _what in t.OWNED}
-    missing = sorted({a.role for a in WRITTEN} - known)
+    missing = sorted({a.role for a in ON_THE_LABEL} - known)
     assert not missing, (
         f"these catalogued roles are invisible to the survey: {missing}.  "
         f"`OWNED` must derive from `runfiles.WRITTEN`, never restate it.")

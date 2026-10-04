@@ -2465,9 +2465,8 @@ row here — its name, where it sits in each shape, what it is for, who writes i
 and when, and **its door: the one function every reader asks for it.** A reader
 that needs one of these files asks its door. Spelling its name again, globbing
 for it or reading it raw is a second reader of one fact (`architecture.md`
-§ 3.2, rule A14; § 4.5 above). A ⚠ names a second reader or a wrong spelling
-that exists today, and the `plans/plan.md` § 0c row that removes it. A door of
-*none* means a person reads the file and no code does.
+§ 3.2, rule A14; § 4.5 above). A door of *none* means a person reads the file
+and no code does.
 
 **One source.** The rows of § 5.1–§ 5.3, § 5.5 and § 5.6 are
 `runfiles.WRITTEN`'s — the catalogue of every file molbuilder writes into a
@@ -2493,75 +2492,90 @@ or a run said about itself; **result**, what a run produced.
 
 ### 5.1 The calculation root — both shapes
 
-In the flat shape the root is also the run folder, so the files of § 5.2–§ 5.4
-sit here too.
+In the flat shape the root is also the run folder, so the files of § 5.2 and
+§ 5.3 sit here too.
 
+<!-- manifest:calculation -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `task.json` | the description: what varies, the stages, the shape, the structure | `jobset init` (`describe.write_description`); Task setup's Save and transport's `jobset init` (`task.write_task`); the Transport tab's describe, which the browser writes | `task.read_task` ⚠ read raw by `calcdirs.container_or_run`, `rundir._calculation_of` and Task setup's folder answer (B14) | source |
-| `<label>.template.toml` | every parameter, with the value it was given | `jobset init`; the hand-over and the Transport tab, which the browser writes; transport's `jobset init`; `jobset migrate` | `template.template_path(base, label)` ⚠ `template.find_template(base)` answers prep's gate, transport, `migrate` and Task setup (W38 M1) | source |
-| `<label>.source.xyz` + `<label>.source.molstruct.json` | the structure the calculation is of, with its cell and its labels | the hand-over (`StructureCodec.files(struct, "<label>.source")`, `web/blueprints/build.py`); `jobset init` (`describe.write_description`) ⚠ names it after the structure FILE, `<file stem>.source.*` (D20) | `task.json`'s `structure.source`, followed by `prep._structure_for` into `StructureCodec.load` | input |
-| `task.1st.json` | a hand-over waiting for its shape and stages; Save removes it | the hand-over route (`api_task_setup_handover`), which the browser writes | Task setup's folder answer | record |
+| `<label>.template.toml` | every parameter, with the value it was given | `jobset init`; the hand-over and the Transport tab, which the browser writes; `jobset migrate` | `template.template_path` | source |
+| `<label>.source.xyz` | the structure the calculation is of | the hand-over and `jobset init` (`StructureCodec.source_files`) | `jobset.prep._structure_for` | input |
+| `<label>.source.molstruct.json` | its cell and its region labels | the hand-over and `jobset init` (`StructureCodec.source_files`) | `jobset.prep._structure_for` | input |
+| `<label>.template.toml.pre-m6` — only: a template migrated | the template as it was before `jobset migrate` rewrote it | `jobset migrate` | none | record |
+| `<label>.transport.json` *(transport)* | the transport results, summarised by `summarize run` from the transmission points that ran | `jobset summarize run` (`transport.record.write_record`) | `parse.sidecars.transport.TransportRecordFileParser` | result |
+| `<label>.fc-sweep.json` *(SIESTA, vibration)* — only: two or more force-constant stages | the force-constant stages compared, when the ladder has two or more (a displacement sweep), by `summarize run`: each stage and what it varied, every mode's frequency per stage, the force-constant changes, and where each stage's files are | `jobset summarize run` (`spectra.displacement_sweep.write_sweep`) | `parse.sidecars.fc_sweep.FcSweepRecordFileParser` | result |
+| `<base>.<engine>.<shape>.pipeline.log` — only: `--pipeline-log` | what each step of a prep received, decided and produced | `jobset prep --pipeline-log` (`pipeline_log.PipelineLog`) | none | record |
+| `task.json` | the description: what varies, the stages, the shape, the structure | `jobset init`; Task setup's Save; the Transport tab's describe, which the browser writes | `task.read_task` | source |
+| `task.1st.json` | a hand-over waiting for its shape and stages; Save removes it | the hand-over route, which the browser writes | `web.blueprints.build.api_task_setup_folder` | record |
+| `warm-files.toml` — only: a person writes one | this calculation's own restart-file list | a person, from molbuilder's list for the engine | `warmfiles.warm_list` | source |
 | `environment.json` | the machine record this calculation is set to — its first prep's | the first prep (`jobset.machine.set_machine`) | `scheduler.record.machine_for` | record |
-| `job-set.json` | the run plan: one job per prepped stage, merged per stage | prep (`JobSet.write`) | `JobSet.load` | derived |
-| `STAGE-PLAN.md` | the plan in reading order | prep (`prep_jobset`), written whole at each prep | none ⚠ its restart-file column lists what a stage declares, not what the carry took (D28) | derived |
-| `jobset-decisions.log` | one JSON line per decision of every verb | `jobset.ledger.record` | none | record |
-| `<base>.<engine>.<shape>.pipeline.log` | what each step of a prep received, decided and produced | `prep --pipeline-log` (`pipeline_log.PipelineLog`) | none | record |
-| `warm-files.toml` *(optional)* | this calculation's own restart-file list | a person | `warmfiles.warm_list` | source |
-| `atom-permutation.json` | the atom order the decks were written in — a SIESTA vibration's, a transport calculation's | prep (`transport.sort.write_permutation`; transport's compose) | `atom_permutation.read_permutation` | derived |
-| `pseudos/` — its `calcdir.json` and `<El>.psml` | the calculation's one copy of each pseudopotential | prep step 3 (`jobset.engines._pseudo_dir`), which moves in any found at the root | `pseudos.psml_sources` | input |
-| `<El>.psml` at the root | **flat:** the run folder's own copy, since SIESTA opens only its working directory · **hierarchical:** none once prep has run | `jobset init --psml-lib`; in the flat shape prep step 3 moves it into `pseudos/` and `materialize` copies it back ⚠ a refusal between the two leaves the run folder without it (D16) | SIESTA | input |
-| `<label>.transport.json` | a transport calculation's I–V record | `summarize run` (`transport.record.write_record`) | the registry's `TransportRecordFileParser` | result |
-| `<label>.fc-sweep.json` | a SIESTA vibration's force-constant stages compared | `summarize run` (`spectra.displacement_sweep.write_sweep`) | the registry's `FcSweepRecordFileParser` | result |
-| `junction.xyz` + `junction.molstruct.json`, `junction.cited.fdf`, `slot-provenance.json` | the composed junction, the deck it was cited from, and where each part came from | a transport calculation's first prep (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | derived |
-| `.git/`, `.gitignore`, `.binsnapshots/` | the folder's saved states | `checkpoint.save_before`, before every Save and every prep | `checkpoint.Repo` | record |
-| `<label>.template.toml.pre-m6` | the template as it was before `jobset migrate` | `jobset migrate` | none | record |
+| `job-set.json` | the plan: one job per prepped stage, merged per stage — and a benchmark's own, in its container | prep (`jobset.model.JobSet.write`) | `jobset.model.JobSet.load` | derived |
+| `STAGE-PLAN.md` | the plan in reading order | prep (`jobset.prep.prep_jobset`), whole at each prep | none | derived |
+| `jobset-decisions.log` | one line per decision of every verb | every verb (`jobset.ledger.record`) | none | record |
+| `atom-permutation.json` — only: a SIESTA vibration, or a transport calculation | the atom order the decks were written in | prep (`transport.sort.write_permutation`) | `atom_permutation.read_permutation` | derived |
+| `<element>.psml` *(SIESTA)* | a pseudopotential: the calculation's one copy in `pseudos/`, and a real copy beside every deck — SIESTA opens only its working directory | prep (`jobset.engines._pseudo_dir`, `materialize`); `jobset init --psml-lib` | `pseudos.psml_sources` | input |
+| `junction.xyz` *(transport)* | the composed junction | a transport calculation's first prep (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | derived |
+| `junction.molstruct.json` *(transport)* | its cell and its region labels | a transport calculation's first prep (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | derived |
+| `junction.cited.fdf` *(transport)* | the deck the junction was cited from, as it was | a transport calculation's first prep (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | derived |
+| `slot-provenance.json` *(transport)* | where each part of the junction came from, with hashes | a transport calculation's first prep (`transport.compose.write_compose_record`) | `transport.compose.load_compose_record` | record |
+| `.gitignore` | which files the saved states keep by content in `.binsnapshots/` rather than in git | `checkpoint.save_before`, before every Save and prep | `checkpoint.Repo` | record |
+| `.git/` | the folder's saved states | `checkpoint.save_before`, before every Save and prep | `checkpoint.Repo` | record |
+| `.binsnapshots/` | the big files of each saved state, by content | `checkpoint.save_before`, before every Save and prep | `checkpoint.Repo` | record |
+<!-- /manifest -->
 
 ### 5.2 A stage
 
 **Hierarchical:** `<NN>_<stage>/`, a container. **Flat:** the same files at the
 root, told apart by `<base>`.
 
+<!-- manifest:stage -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `calcdir.json`, `"role": "container"` *(hierarchical)* | says the folder is a container of this calculation (§ 1.4a) | `materialize.prepare_attempt` | `calcdirs.read`, `container_or_run`, `root_of` | record |
-| `<base>.fdf` · `<base>.py` | the deck, rendered for this machine | prep (`script_emit.prepare_deck`) | the engine; a folder's deck: `runfiles.find_by_role(dir, ".fdf")`, read back with the label | derived |
-| `<base>.validation.txt` | what the deck's own checks said | prep (`script_emit.write_validation_report`) | none | record |
-| `<base>.run.sh` · `<base>.sbatch` *(a machine with a queue)* | the run script; its queue header | prep (`runwrap.write_run_wrapper`) ⚠ every later prep renders every earlier stage's again — in the flat shape, the launched stage's own (D21) | launch | derived |
-| `mb_monitor.pyz` · `mb_vibration.pyz` *(a force-constant stage)* | the monitor and the readers it runs on; the job's finish | prep, beside each run script ⚠ rewritten with them (D21) | the run script | derived |
-| `<El>.psml`, `atom-permutation.json` *(hierarchical)* | the shared package's copies | `materialize.materialize`, never refreshed once there | SIESTA; the finish | input |
-| `makov_payne_correction.py` | the correction a charged, isolated deck asks a person to run afterwards | prep (`siesta.makov_payne.emit_correction_script`) | a person | derived |
-| `<base>.molwatch.log` *(hierarchical, until the attempt opens)* | the progress channel's seed, moved into the attempt (§ 1.0) | prep (`_seed_trajectory_log`, then `_move_progress_channel_into`) | § 5.3 | record |
+| `<base>.fdf` *(SIESTA)* | the SIESTA deck — every keyword this rung runs with | prep (`script_emit.prepare_deck`), in the stage's folder; a copy in each attempt | `runfiles.find_by_role` | derived |
+| `<base>.py` *(PySCF)* | the PySCF script this rung runs | prep (`script_emit.prepare_deck`), in the stage's folder; a copy in each attempt | `runfiles.find_by_role` | derived |
+| `<base>.validation.txt` | what the generator checked before it wrote the deck | prep (`script_emit.write_validation_report`), beside the deck | none | record |
+| `<base>.run.sh` | the wrapper — activates the environment, tees the output, catches a kill | prep (`runwrap.write_run_wrapper`), beside its deck; a copy in each attempt | none | derived |
+| `<base>.sbatch` — only: a machine with a queue | the queue header — `sbatch` reads it | prep (`runwrap.write_run_wrapper`), beside the run script; a copy in each attempt | none | derived |
+| `calcdir.json` | what this folder is in its calculation — a container or a run — and where the calculation is | prep, in every folder it makes (`materialize.prepare_attempt`, `jobset.engines._pseudo_dir`) | `calcdirs.read` | record |
+| `mb_monitor.pyz` | the monitor, and the readers it runs on — one file | prep, beside each run script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
+| `mb_vibration.pyz` *(SIESTA, vibration)* — only: a force-constant stage | a force-constant job's finish: the modes, from `.FC` | prep, beside the run script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
+| `makov_payne_correction.py` *(SIESTA)* — only: a charged, isolated deck | the energy correction a charged, isolated deck asks a person to run afterwards | prep (`siesta.makov_payne.emit_correction_script`); a copy in each attempt | none | derived |
+<!-- /manifest -->
 
 ### 5.3 A run
 
 **Hierarchical:** `<NN>_<stage>/run-<n>/` — prep opens the first, launch each
-one after it. **Flat:** the root, every stage's files side by side, told apart
-by `<base>` and `-run<N>`.
+one after it — with a copy of each stage file it reads. **Flat:** the root,
+every stage's files side by side, told apart by `<base>` and `-run<N>`.
 
+<!-- manifest:run -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `calcdir.json`, `"role": "run"` *(hierarchical)* | says the folder is a run of this calculation | `materialize.prepare_attempt` | `calcdirs.read`, `container_or_run`, `root_of` | record |
-| the deck, `.run.sh`, `.sbatch`, `mb_monitor.pyz`, the finish, `<El>.psml`, `atom-permutation.json`, `makov_payne_correction.py` *(hierarchical: copies)* | everything the run reads, as real files (§ 1.5) | `materialize.prepare_attempt`, at prep and at launch's re-launch | the engine; launch runs the run script here | input |
-| `<base>.molwatch.log` | the progress channel: seeded at prep, written by PySCF's deck as it runs, never by SIESTA | prep ⚠ not seeded in an attempt launch opens, nor in a transport rung's (D18) | the registry's `MolwatchLogFileParser` | record |
-| the restart files carried in — SIESTA's `<label>.XV .DM .MD.nc .MD .MDE .ANI`, and `.CG` between stages of one optimizer; PySCF's `<label>.chk`, `<label>_optimized.xyz`; a transport rung's `.DM`, `.TSDE` *(hierarchical; in the flat shape they lie where the last stage left them)* | the state the engine continues from | `materialize.prepare_attempt`, from `continuation_files` (`model.warm_carry`) | the engine | input |
-| `.continued-from` *(hierarchical)* · `<base>.continued-from` *(flat)* | the run whose files were carried in, for launch's record | prep (`prepare_attempt`; in the flat shape `prep._flat_continued_from`); launch, on a re-launch (`submit._send`) | `runrecord.continued_from_marker`, copied into the launch record by `submit._record_launch` ⚠ a path (`01_coarse/run-0`) in one shape and a run's name (`H2_01_coarse-run0`) in the other, while the ledger's flat line says `null` (unit 10) | record |
-| `.gathered-from`, with `<label>_<electrode>.TSHS`, `<label>.DM`, `<label>.TS.HSX` *(transport)* | what a rung took, from which upstream run | prep (`gather_transport_inputs`, `runrecord.write_gathered_from`) | `runrecord.read_gathered_from` | record |
-| `run.json` *(hierarchical)* · `<base>.run.json` *(flat)* | the launch record | launch (`runrecord.write_launch`) | `runrecord.launch_record` | record |
-| `<base>-run<N>.out` *(SIESTA, TBtrans)* · `<base>-run<N>.pyscf.log` *(PySCF)* | the engine's stdout | the run script | how it ended: `parse.engines._run_ending.ending_of`; what it holds: the registry's parser; which output speaks for the run: `parse.dirs.job.run_status` ⚠ five other pickers (B11) | result |
-| `<base>-run<N>.scf-timing.log` *(SIESTA)* | the wall time of each SCF iteration | the run script | `parse.instruments.scf_timing_rows.timing_of` | record |
-| `<base>-run<N>.concluded` | the run ended on its own, with its exit code | the run script, its last act | `runrecord.ending` | record |
-| `<base>-run<N>.monitor.log` · `<base>-run<N>.util.csv` | the monitor's account; its processor and memory samples | the monitor | the registry's `MonitorLogFileParser`, `UtilCsvFileParser` | record |
-| `<base>.runwrap-<stamp>.log` | the run script's session log, with the engine's stderr | the run script | `wrapper_log.log_of_run` ⚠ `summarize._wrapper_log` takes the newest by name (B11) | record |
-| `<base>-run<N>.parse.log` · `<base>.molwatch.parse.log` *(only with `MOLBUILDER_PARSE_LOG`)* | the parser's account of reading a file | `parse._log.ParseLogger` | none | record |
-| `slurm.<jobid>.out` · `slurm.<jobid>.err` *(launched to a queue)* | SLURM's own stdout and stderr | SLURM, as the header's `-o` / `-e` say | none | record |
-| `.mb-rank-launch-<pid>.sh` *(a GPU run)* | the per-rank launcher, removed when the run script exits | the run script | `mpirun` | — |
-| `<label>.FC`, `<label>.FCC`; `<label>.spectra.json` *(a SIESTA force-constant stage)* | the force constants; the vibration's result | SIESTA; the job's finish (`mb_vibration.pyz`) | the finish reads `.FC`; the registry's `SpectraSidecarFileParser` | result |
-| `<label>[_<NN>_<stage>].log` *(PySCF)* | PySCF's own log | the deck | `parse.dirs.record` (the engine's version and threads) | result |
-| `<label>_initial.xyz` + `<label>_initial.molstruct.json`; `<label>_optimized.xyz` + `<label>_optimized.molstruct.json` *(PySCF)* | the input geometry, echoed back; the relaxed one, which is carried | the deck ⚠ neither `.molstruct.json` has a catalogue row (D23) | the registry's `PySCFOutFileParser`, `PySCFGeomFileParser` | result |
-| `<label>.constraints.txt` *(PySCF)* | the held atoms, in geomeTRIC's form | the deck | geomeTRIC | derived |
-| `<label>_<NN>_<stage>_geom_optim.xyz`, `_geom.log`, `_geom.tmp/` *(PySCF)* | geomeTRIC's trajectory, log and scratch | geomeTRIC, under the prefix the deck hands it | the registry's `PySCFOutFileParser` (the trajectory) | result |
-| `<label>.spectra.json` *(PySCF)* | the vibration's result, rewritten at each phase | the deck | the registry's `SpectraSidecarFileParser` | result |
+| `<label>_initial.xyz` *(PySCF)* | the input geometry, echoed back before anything ran | the PySCF deck | none | result |
+| `<label>_initial.molstruct.json` *(PySCF)* | the input geometry's cell and labels | the PySCF deck | none | result |
+| `<label>_optimized.molstruct.json` *(PySCF)* | the relaxed geometry's cell and labels -- the sidecar of the restart file `_optimized.xyz` | the PySCF deck | none | result |
+| `<label>.constraints.txt` *(PySCF)* — only: atoms are held | which atoms are held still, in geomeTRIC's own format | the PySCF deck | none | derived |
+| `<label>.spectra.json` *(vibration)* | the spectrum this run computed: frequencies, the strengths the engine computes, thermochemistry -- written by the run itself | the run itself: the PySCF deck, or a SIESTA force-constant job's finish (`mb_vibration.pyz`) | `parse.sidecars.spectra.SpectraSidecarFileParser` | result |
+| `<base>.molwatch.log` | the run as it happens — coordinates, energy and forces, one block per step | prep seeds it in the attempt; PySCF's deck writes each step into it, SIESTA never does | `parse.engines.molwatch.MolwatchLogFileParser` | record |
+| `<base>-run<N>.out` *(SIESTA)* | the run's output as the engine printed it | the run script, from the engine's stdout | `parse.engines._run_ending.ending_of` | result |
+| `<base>-run<N>.pyscf.log` *(PySCF)* | the same, for PySCF — it writes here and not to .out | the run script, from the engine's stdout | `parse.engines._run_ending.ending_of` | result |
+| `<base>.log` *(PySCF)* | PySCF's own log | the PySCF deck | `parse.dirs.record.run_record` | result |
+| `<base>_geom.log` *(PySCF)* | geomeTRIC's optimizer log | geomeTRIC, under the prefix the deck hands it | none | result |
+| `<base>.runwrap-<stamp>.log` | the wrapper's own session log — one per launch, stamped with the clock | the run script, at each start | `wrapper_log.log_of_run` | record |
+| `<base>-run<N>.monitor.log` | the monitor's rolling status | the monitor | `parse.instruments.monitor.MonitorLogFileParser` | record |
+| `<base>-run<N>.util.csv` | processor and memory samples taken while it ran | the monitor | `parse.instruments.util_csv.UtilCsvFileParser` | record |
+| `<base>-run<N>.scf-timing.log` *(SIESTA)* — only: the engine printed an SCF iteration | wall time per SCF iteration, both phases of a TranSIESTA device | the run script's tee of the output's SCF lines | `parse.instruments.scf_timing_rows.timing_of` | record |
+| `<base>-run<N>.parse.log` — only: `MOLBUILDER_PARSE_LOG` set | molbuilder's log of reading the run's output | molbuilder's parser, reading the output (`parse._log.ParseLogger`) | none | record |
+| `<base>.molwatch.parse.log` — only: `MOLBUILDER_PARSE_LOG` set | the same, for the trajectory log | molbuilder's parser, reading the trajectory log (`parse._log.ParseLogger`) | none | record |
+| `<base>-run<N>.concluded` | the marker the wrapper writes when the job ends | the run script, its last act | `runrecord.ending` | record |
+| `run.json` *(hierarchical)* · `<base>.run.json` *(flat)* | the launch record: how, where and when the run was sent, and what it continued from | launch (`runrecord.write_launch`) | `runrecord.launch_record` | record |
+| `.continued-from` *(hierarchical)* · `<base>.continued-from` *(flat)* — only: it continues from an earlier run | the run whose restart files were carried in, for launch's record | prep (`materialize.prepare_attempt`; in the flat shape `prep._flat_continued_from`); launch, on a re-launch | `runrecord.continued_from_marker` | record |
+| `<base>-run<N>.runtime_info.json` — only: a person runs `molbuilder runtime-info` | what a file of the run says about the run, as `molbuilder runtime-info` read it | `molbuilder runtime-info`, beside the file it reads | none | record |
+| `.gathered-from` *(transport)* | what a rung took, from which upstream run | prep (`jobset.prep.gather_transport_inputs`) | `runrecord.read_gathered_from` | record |
+| `slurm.<jobid>.out` — only: launched to a queue | SLURM's own stdout for the job | SLURM, as the run's header asks (`-o`) | none | record |
+| `slurm.<jobid>.err` — only: launched to a queue | SLURM's own stderr for the job | SLURM, as the run's header asks (`-e`) | none | record |
+| `.mb-rank-launch-<pid>.sh` — only: a GPU run | the per-rank GPU launcher | the run script, removed when it exits | none | transient |
+<!-- /manifest -->
 
 ### 5.4 What the engines write
 
@@ -2582,28 +2596,43 @@ does not name (§ 5.3).
 | **read by nothing** | `0_NORMAL_EXIT` (on purpose: `runrecord.ending`), `MESSAGES`, `CLOCK`, `FORCE_STRESS`, `BASIS_ENTHALPY`, `BASIS_HARRIS_ENTHALPY`, `OUTVARS.yml`, `PARALLEL_DIST`, `NON_TRIMMED_KP_LIST`; `<label>.alloc`, `.bib`, `.BASIS_ENTHALPY`, `.BONDS`, `.BONDS_FINAL`, `.FA`, `.FAC`, `.KP`, `.ORB_INDX`, `.MD_CAR`, `.STRUCT_OUT`; `<El>.ion.nc`, `<El>.ion.xml` | ⚠ `.BONDS` is spelled `.Bonds` in `siesta/warm-files.toml` (D26) |
 | **TranSIESTA, TBtrans** | an electrode rung's `<electrode stem>.TSHS` and the device's `<label>.TS.HSX`, gathered into the rungs after them (§ 5.3, `transport.stages`); the device's `<label>.TSDE`, carried along a bias scan; `<label>.TBT.AVTRANS_<pair>` | `transport.record` ⚠ not a spin-polarized point's `.TBT_UP.` / `.TBT_DN.` files (plan K21) |
 
-### 5.5 Benchmarks, launch groups and the bias scan
+### 5.5 Benchmarks and launch groups
 
+A stage's benchmark is a container — `<NN>_<stage>/bench/` in the hierarchy,
+`bench_<NN>_<stage>/` at the flat root — holding the sweep's own `job-set.json`
+and `STAGE-PLAN.md` (§ 5.1's rows) and a folder per trial, `bench-<point>/`,
+whose attempts are kept as a stage's (§ 1.5a); a bias scan keeps a folder per
+point, `<NN>_<rung>/v<V>/`, the same way. Their files are § 5.2's and § 5.3's,
+named on a trial's own label, `<label>-<point>`. What is theirs alone:
+
+<!-- manifest:bench -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `<NN>_<stage>/bench/` *(hierarchical)* · `bench_<NN>_<stage>/` *(flat)* | a stage's benchmark: the sweep's own `job-set.json` and `STAGE-PLAN.md`, the trials, `bench-result.json` | prep bench ⚠ no `calcdir.json` (D18) | `jobset._cli._load_bench_set`; `paths.bench_containers_in` | derived |
-| `bench-<point>/`, and its `run-<n>/` *(hierarchical)* | one measured point, its attempts kept as a stage's (§ 1.5a) | prep bench (`materialize.trial_work_dir`) ⚠ no `calcdir.json`; the trial's run script is told the calculation's label (D18) | `materialize.trial_dir`, `trial_work_dir`; then as § 5.3 | as § 5.2–§ 5.3 |
-| `bench-result.json` | every trial's timing and the winner — the sweep's archival trace | `summarize` (`run_summarize_jobset`) | none | record |
-| `launch/<group>.run.sh` · `.sbatch` · `.log`, and SLURM's `slurm.<jobid>.*` | a grouped benchmark launch: its sequencer, its header, every member's output | launch (`jobset/submit.py`), written again at each launch | `bash` / `sbatch` | record |
-| `<NN>_<rung>/v<V>/` and its `run-<n>/` *(transport)* | one bias point: its deck, its run script, its attempts | transport prep | as § 5.2–§ 5.3 | as § 5.2–§ 5.3 |
-| `<NN>_<rung>/launch/<base>-chain.run.sh` · `.sbatch` · `.log` *(transport)* | the bias chain: the scan's points in order, each handed the device's carried files by the one before it | launch | `bash` / `sbatch` ⚠ a point records no `.continued-from` for what it was handed | record |
+| `bench-result.json` | every trial's timing and the winner — the benchmark's archival trace | `jobset summarize` (`run_summarize_jobset`) | none | record |
+<!-- /manifest -->
+
+A grouped launch — a benchmark's trials, or a bias scan's points in order —
+keeps its machinery in a `launch/` folder beside them:
+
+<!-- manifest:launch -->
+| file | what it is for | written by | the door | kind |
+|---|---|---|---|---|
+| `<group>.run.sh` | a launch group's sequencer: a benchmark's trials, or a bias scan's points, in order | launch (`jobset/submit.py`), written again at each launch | none | derived |
+| `<group>.sbatch` — only: launched to a queue | its queue header | launch (`jobset/submit.py`), written again at each launch | none | derived |
+| `<group>.log` | every member's output, in order | the group's sequencer, as it runs | none | record |
+<!-- /manifest -->
 
 ### 5.6 Files that exist only while they are written
 
 Each is removed when its write ends; only a kill in between leaves one.
 
-| file | written by |
-|---|---|
-| `<file>.<random>.tmp` beside the target of every `persist` write; `junction.xyz.tmp`, `<sidecar>.tmp`, a `.spectra.json`'s temporary | `persist.write_json` / `write_bytes`, the codec, `sidecars.molstruct`, `sidecars.spectra` |
-| `.runwrap-syntax-check-<random>.sh` beside each run script | prep, checking each rendered run script with `bash -n` |
-| `.<calculation>.describe-<random>/` beside the calculation folder | `jobset init`, publishing the folder whole |
-| `.binsnapshots/<digest>.<random>/` | `checkpoint`, staging a saved state |
-| `<sidecar>.lock` — **left behind** | `sidecars.molstruct.with_lock`: the Transport tab's electrode swap, inside the cited run's attempt (Q6) |
+<!-- manifest:transient -->
+| file | what it is for | written by | the door | kind |
+|---|---|---|---|---|
+| `<random>.tmp` | a file being written; it replaces its target when the write ends | `persist` and the codec, writing whole or not at all | none | transient |
+| `.runwrap-syntax-check-<random>.sh` | a rendered run script, being checked with `bash -n` | prep (`runwrap`), removed after the check | none | transient |
+| `<random>.lock` | a sidecar's lock | `sidecars.molstruct.with_lock` | none | transient |
+<!-- /manifest -->
 
 ### 5.7 Two sources, everything else derived
 

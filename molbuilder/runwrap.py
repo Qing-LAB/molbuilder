@@ -3935,7 +3935,7 @@ MONITOR_COMPANIONS: Dict[str, str] = {
 #: file holds them all (user: *"can't we just put it in one single Python
 #: file?"*): still the package's own files, so still no second copy of any
 #: reader.
-MONITOR_BUNDLE = "mb_monitor.pyz"
+from .runfiles import MONITOR_BUNDLE  # noqa: E402,F401 -- the catalogue's name
 
 #: What the wrapper's log says when the ending cannot be asked: no python
 #: beside the job, no bundle, or a bundle that does not load on it -- whose
@@ -4086,7 +4086,7 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
 #: (`DeckSpec.finish`), `prep` copies that onto the job (`Job.finish`), the
 #: wrapper runs it after SIESTA exits cleanly, and `materialize` brings it
 #: into every attempt.
-VIBRATION_BUNDLE = "mb_vibration.pyz"
+from .runfiles import VIBRATION_BUNDLE  # noqa: E402,F401 -- the catalogue's name
 
 #: The finish bundle's entry.  A set that cannot load on the job's python --
 #: most often an env without numpy or ASE -- says so in the session log's own

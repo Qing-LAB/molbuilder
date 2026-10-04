@@ -38,7 +38,7 @@ def _persist():
 #: *has this been launched?* -- a queued job has produced nothing yet, so
 #: "no output" and "not started" are indistinguishable from the directory alone.
 RUN_LAUNCH_SCHEMA = "molbuilder/run-launch@1"
-RUN_LAUNCH_FILE = "run.json"
+RUN_LAUNCH_FILE = _rf.LAUNCH_RECORD_FILE      # the catalogue's name
 
 
 class LaunchRecordError(ValueError):
@@ -56,7 +56,7 @@ def continued_from_marker(where: Path, basename: Optional[str] = None
     attempt's ``.continued-from``, or a flat stage's own
     ``<basename>.continued-from`` beside its other files -- the flat layout
     records it too (user, 2026-10-01)."""
-    return Path(where) / (".continued-from" if basename is None
+    return Path(where) / (_rf.CONTINUED_FROM_FILE if basename is None
                           else basename + _rf.tail(".continued-from"))
 
 
@@ -259,7 +259,7 @@ def launch_record(where, basename: Optional[str] = None) -> Optional[dict]:
 #: run record's provenance (:func:`read_gathered_from`, `model/parse.md`
 #: § 5d.4).  *(Both sat in `prep` until 2026-09-26, so the record imported
 #: the conductor to read one file.)*
-GATHERED_FROM_FILE = ".gathered-from"
+GATHERED_FROM_FILE = _rf.GATHERED_FROM_FILE   # the catalogue's name
 
 
 def write_gathered_from(attempt_dir, gathered) -> None:

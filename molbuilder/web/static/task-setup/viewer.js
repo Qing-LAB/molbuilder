@@ -2096,9 +2096,13 @@ function hideWritten() {
 }
 
 function fileRow(f) {
+    /* A file written only sometimes says when (`only`, the catalogue's own
+     * words): the card named the queue header and the opt-in parse logs as
+     * files every run writes until 2026-10-04 (plan D22). */
     return el("li", {},
         el("span", { class: "ts-file-name" }, f.name),
-        el("span", { class: "ts-file-what" }, f.what));
+        el("span", { class: "ts-file-what" },
+           f.only ? f.what + " (only: " + f.only + ")" : f.what));
 }
 
 function writtenGroup(head, sub, files) {

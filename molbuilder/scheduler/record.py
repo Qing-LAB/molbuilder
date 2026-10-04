@@ -58,7 +58,7 @@ SCHEMA = "molbuilder/environment@2"
 #: The record's filename, at every scope.  It was a string literal in three
 #: modules (`jobset/prep.py`, `jobset/summarize.py`, and the door below) until
 #: N1 -- the same defect `task.FILENAME` was created to fix.
-FILENAME = "environment.json"
+from ..runfiles import MACHINE_RECORD_FILE as FILENAME  # noqa: E402 -- the catalogue's name
 
 # Normalized GPU-type tokens we recognize in an nvidia-smi name string.
 _GPU_TYPES = ("a100", "a30", "h100", "h200", "v100", "a40", "l40", "l4",

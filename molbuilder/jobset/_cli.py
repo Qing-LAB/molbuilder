@@ -1532,9 +1532,10 @@ def summarize_cmd(kind: str, stage, bundle: str,
             f"this sweep carries no description, so it has no stage named "
             f"{stage!r} -- run it bare:\n    "
             + command("summarize", "bench", base=base))
+    from ..runfiles import BENCH_RESULT_FILE
     res, out_path, report = run_summarize_jobset(
         js, base,
-        out=(container / "bench-result.json") if container is not None
+        out=(container / BENCH_RESULT_FILE) if container is not None
             else None,
         now_iso=utc_now_iso(), stage=stage)
     click.echo(summary_text(res, out_path, report=report, stage=stage,

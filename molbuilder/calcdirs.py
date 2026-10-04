@@ -54,7 +54,7 @@ from .persist import read_json, write_json
 #: directory should see the thing that explains it (user ruling:
 #: *"explicit information is better than implicit, so people can see the
 #: JSON"*).
-FILENAME = "calcdir.json"
+from .runfiles import CALCDIR_FILE as FILENAME  # noqa: E402 -- the catalogue's
 
 SCHEMA = "molbuilder/calcdir@1"
 

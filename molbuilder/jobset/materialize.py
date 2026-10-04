@@ -876,7 +876,8 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # The FINISH, when the job has one (`Job.finish`): the bundle its wrapper
     # runs after the engine, beside the deck -- `engines/vibration.md` § 5.5.
     from ..runwrap import MONITOR_BUNDLE
-    for extra in (MONITOR_BUNDLE, "makov_payne_correction.py",
+    from ..runfiles import MAKOV_PAYNE_SCRIPT
+    for extra in (MONITOR_BUNDLE, MAKOV_PAYNE_SCRIPT,
                   *((job.finish,) if job.finish else ())):
         _bring(extra)
     stem = Path(job.script).stem

@@ -46,7 +46,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
-from .runfiles import stem as _stem
+from .runfiles import compose as _compose
 
 #: How a log file is named.  The STEM is the deck's own -- ``<label>_<token>``
 #: -- because that is what tells two rungs apart **in a flat calculation**,
@@ -70,13 +70,16 @@ def log_name(label: str, token: str, engine: str, shape: str) -> str:
     ``token`` is the stage's ``<NN>_<name>`` and may be empty for a
     calculation with no ladder.
 
-    THE STEM COMES FROM THE GRAMMAR (`runfiles.stem`, job-contracts.md
-    § 2.2a), not from a local rule: the tail here is not a role -- it is
-    three facts about the prep -- but the head is the same
-    ``<label>[_<token>]`` every run file is named from, and spelling it out
-    here would be a second copy of the grammar, free to drift from it.
+    THE NAME IS THE CATALOGUE'S (`runfiles.WRITTEN`, job-contracts.md
+    § 2.2): the role ``.{engine}.{shape}.pipeline.log`` on the
+    ``<label>[_<token>]`` every run file is named from, its two facts about
+    the prep declared fields -- so the file is a row like every other file
+    molbuilder writes, and `--cold` and the cards know it.  *(Until
+    2026-10-04 the tail was spelled here beside a composed stem, and the
+    file was on no list.)*
     """
-    return f"{_stem(label, token or None)}.{engine}.{shape}.{LOG_SUFFIX}"
+    return _compose(label, "." + "{engine}.{shape}." + LOG_SUFFIX,
+                    token or None, engine=engine, shape=shape)
 
 
 class PipelineLog:

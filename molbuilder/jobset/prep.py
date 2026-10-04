@@ -811,7 +811,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         struct = _sorted.structure
         if log is not None:
             log.step("the atom order the engine needs")
-            log.produced("atom-permutation.json",
+            log.produced(_perm_path.name,
                          f"key held-first, {struct.n_atoms} atoms -> {_perm_path.name}")
         _render_kind = _rung_kind(task, pset.stage)
         struct, _render_cell, _relaxed_by = _vibration_stage_geometry(
