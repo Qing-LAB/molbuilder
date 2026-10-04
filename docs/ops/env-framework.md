@@ -803,18 +803,13 @@ appeared. A separate `MB_WANT_HELP` now stops that arm when the host env is abse
 and says why per-verb help needs it (the help comes from molbuilder itself, which
 lives in that env).
 
-It duplicates the host package lists, and **a bash array can hold a name
-and nothing else**. A host package that ever needs a source or a force flag
-cannot be expressed there; the drift-guard test compares the arrays against
-`conda_specs` / `pip_specs` and will fail the moment one grows a URL. That
-failure is a decision to make, not a test to relax.
-
-**It compares against the DEFAULT set** *(2026-09-18)* — `conda_set()` /
-`pip_set()`, not `conda_specs` / `pip_specs` — because the shim performs a
-default install. An `opt_in` package (the host env's test tooling) is declared
-by the recipe and deliberately absent from the bash arrays; comparing against
-the full list would force a fresh-machine bootstrap to pay for a ~115 MB
-browser.
+It duplicates the host env's **default** package list — `conda_set()` /
+`pip_set()`, the opt-in test tooling left out, because the shim performs a
+default install — and **a bash array can hold a name and nothing else**: a
+host package that ever needs a source or a force flag cannot be expressed
+there. A change to the recipe's host list is made to the arrays too, and a
+review reads the two side by side. *(A test compared them until 2026-10-04;
+user: "your useless test wastes both cpu time and my ... time. retire it".)*
 
 ## 9. What stays asymmetric, and why
 

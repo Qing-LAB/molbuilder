@@ -1205,8 +1205,8 @@ its own header documents the three and its error text names all three.
 > **This section said micromamba could not run `bootstrap`** and offered a
 > hand-built host env as the workaround, until 2026-09-12. The shim had supported
 > it all along, so the advice sent micromamba users around the one path that
-> keeps the host env's package list in step with `recipes.py` — the parity the
-> drift guard in `tests/test_envs_readme_consistency.py` exists to hold.
+> keeps the host env's package list in step with `recipes.py`
+> ([`env-framework.md`](?doc=ops/env-framework.md) § 8).
 
 ## 9. Test map
 
@@ -1234,7 +1234,6 @@ its own header documents the three and its error text names all three.
   payload would otherwise surface at step 10 of 15.
 - `test_envs_nfs_shmem_fix.py` — the NFS shared-memory hook + the host psutil floor.
 - `test_envs_clean.py` — `molbuilder envs clean` (build dirs go, load-bearing dirs stay).
-- `test_envs_readme_consistency.py` — a drift guard tying the recipes to the install guide.
 - `test_envs_abi.py` — the build-time/run-time ABI contract (§ 6.2): version
   ordering, the host/env scope split, the rule table, and the compile-and-run
   check. Asserts on finding *codes*, never on message prose.

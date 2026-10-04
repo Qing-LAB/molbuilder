@@ -5,10 +5,9 @@ what to install, what to verify, and what category (if any) it serves
 in :data:`molbuilder.diagnostics.DEFAULT_ENV_NAMES`.
 
 The registry is the single source of truth for env shape consumed by
-the ``molbuilder envs`` CLI (doctor / install / list).  The matching
-prose in ``docs/ops/installation.md`` stays the human-readable doc; a
-test (``tests/test_envs_readme_consistency.py``) asserts the two
-mention the same env names so they cannot drift silently.
+the ``molbuilder envs`` CLI (doctor / install / list); the contract is
+``docs/ops/env-framework.md``, and ``docs/ops/installation.md`` is the
+human-readable guide.
 
 Design choices worth pinning here:
 
@@ -22,7 +21,7 @@ Design choices worth pinning here:
   :mod:`molbuilder.envs.builds` AFTER conda create + pip + extra_steps
   to clone + cmake + install each component declared by the spec.
   The 2026-06-14 Decisions log entry locks the seven design decisions;
-  see :doc:`docs/engines/siesta-gpu` for the engineering reference.
+  ``docs/ops/installation.md`` § 6 is the engineering reference.
 * **No automatic CUDA install.**  GPU runtime libraries that ship in
   conda envs (``cuda-cudart``, ``cupy-cuda13x[ctk]``, etc.) ARE
   install-time concerns and belong in the recipe; the underlying
@@ -752,7 +751,7 @@ class BuildSpec:
 
 
 # --------------------------------------------------------------------- #
-#  Pip package record                                                    #
+#  Package records                                                       #
 # --------------------------------------------------------------------- #
 
 
@@ -778,8 +777,9 @@ class CondaPackage:
     #: **Why this package is NOT installed by default**, or ``None`` when it
     #: is.  A string for the same reason `Recipe.opt_in` is one: a bare
     #: ``True`` leaves every surface inventing its own wording for *"why am I
-    #: not getting this"*, and this one has three (the installer's skip line,
-    #: `doctor`'s report, and the flag's own help).
+    #: not getting this"*.  `doctor`'s audit row renders it (an absent
+    #: opt-in package is `*-missing-opt-in`, informational); the plan
+    #: simply omits the step (`env-framework.md` § 3.2a).
     #:
     #: DISTINCT FROM ``optional``, which is already taken and means something
     #: else that is load-bearing: *attempted, but failure does not abort*.
@@ -801,8 +801,9 @@ class ExtraStep:
     """One dispatch-into-the-env command, and whether a default run makes it.
 
     A BARE TUPLE IS THE ORDINARY CASE, exactly as a bare string is for the two
-    package records (§ 3.1): `Recipe.__post_init__` normalises one into this,
-    so a recipe that needs nothing more than an argv still reads as an argv.
+    package records: `Recipe.__post_init__` normalises one into this,
+    so a recipe that needs nothing more than an argv still reads as an argv
+    (`env-framework.md` § 3.1).
     A record is written out only when the step needs to say more -- today, the
     one thing it can say is that a default install must not run it.
 
@@ -897,8 +898,9 @@ class PipPackage:
     #: **Why this package is NOT installed by default**, or ``None`` when it
     #: is.  A string for the same reason `Recipe.opt_in` is one: a bare
     #: ``True`` leaves every surface inventing its own wording for *"why am I
-    #: not getting this"*, and this one has three (the installer's skip line,
-    #: `doctor`'s report, and the flag's own help).
+    #: not getting this"*.  `doctor`'s audit row renders it (an absent
+    #: opt-in package is `*-missing-opt-in`, informational); the plan
+    #: simply omits the step (`env-framework.md` § 3.2a).
     #:
     #: DISTINCT FROM ``optional``, which is already taken and means something
     #: else that is load-bearing: *attempted, but failure does not abort*.
@@ -1001,13 +1003,14 @@ class Recipe:
         ``-c`` flags.  Order matters: the first channel listed has
         highest priority for solving.
     conda_packages
-        Conda spec strings (e.g., ``"siesta=5.4.2=mpi_openmpi_*"``).
-        Build strings + version pins must match exactly what the
-        README documents -- the consistency test catches drift.
+        Conda spec strings (e.g., ``"siesta=5.4.2=mpi_openmpi_*"``),
+        normalised to :class:`CondaPackage` records.  Delivered by
+        ``conda install`` after ``conda create`` (which carries the
+        python spec alone; `env-framework.md` § 4.4).
     pip_packages
         :class:`PipPackage` records -- NOT spec strings -- applied
-        AFTER ``conda create`` succeeds, via ``conda run -n <env>
-        python -m pip install ...``.  Using ``python -m pip`` (not
+        AFTER the conda packages are delivered, via the manager's
+        ``run -n <env> python -m pip install ...``.  Using ``python -m pip`` (not
         ``pip`` alone) sidesteps a common Ubuntu pitfall where
         ``~/.local/bin/pip`` precedes the env's pip on PATH.
 
@@ -1033,9 +1036,10 @@ class Recipe:
         than inferred from its shape.
     extra_steps
         Arbitrary shell-command argv tuples to run AFTER pip installs
-        but BEFORE the build_spec (if any).  Used for the playwright
-        env's ``python -m playwright install chromium`` post-step; each
-        is dispatched via ``conda run -n <env> ...``.
+        but BEFORE the build_spec (if any) -- the host env's opt-in
+        ``python -m playwright install chromium`` and siesta-gpu's
+        toolchain shims; each is dispatched through the manager's
+        ``run -n <env> ...``.
     build_spec
         Optional :class:`BuildSpec`.  When non-``None``, the install
         machinery chains into :mod:`molbuilder.envs.builds` after
@@ -1048,9 +1052,10 @@ class Recipe:
         Argv for the "is this env functional?" probe, dispatched via
         ``conda run -n <env>``.  Should exit 0 on healthy install.
     verify_expect_contains
-        Optional substring expected in stdout (or stderr) of the verify
-        command.  ``None`` means "exit code zero is enough"; setting
-        a string adds a content check on top of the exit-code one.
+        Substring expected in stdout (or stderr) of the verify command,
+        checked on top of the exit code.  Every recipe here sets one
+        (`env-framework.md` § 5.2): a tool can exit 0 while the thing
+        asked about is missing.
     verify_ignore_exit_code
         When ``True``, the verify outcome is determined solely by the
         ``verify_expect_contains`` substring (ignoring the process
@@ -1221,9 +1226,9 @@ class Recipe:
 #  The built-in recipes                                                  #
 #                                                                       #
 #  Collected, in order, by `builtin_recipes` at the end of the file.   #
-#  The host recipe's packages are inlined a second time, in bash, by   #
-#  scripts/install-env.sh (it runs before any python exists);          #
-#  tests/test_envs_readme_consistency.py holds the two equal.          #
+#  The host recipe's default packages are inlined a second time, in    #
+#  bash, by scripts/install-env.sh (it runs before any python exists): #
+#  a change to one is made to the other (`env-framework.md` § 8).      #
 # --------------------------------------------------------------------- #
 
 
@@ -1255,37 +1260,17 @@ _HOST = Recipe(
         # ``molbuilder serve`` imports the blueprint at startup; without
         # psutil the import (and the whole server) hard-fails with
         # ModuleNotFoundError.  Declared in pyproject.toml's runtime
-        # deps; mirrored here so the conda-create path also picks it up.
+        # deps; mirrored here so the conda path also delivers it.
         "psutil>=5.9",
-        # NUMA control tool.  The CONSUMER is the generated GPU wrapper:
-        # `runwrap._gpu_runtime_defaults_block` pins ranks to the
-        # GPU-proximate socket only when `numactl` is on PATH, and
-        # silently widens the budget to the whole box when it is not.
-        # Tiny (~200 KB) and installed by default so that decision is
-        # made on hardware grounds rather than on what happens to be
-        # installed.
-        #
-        # Its stated reason used to be `molbuilder envs advise`, which was
-        # deleted 2026-09-12 as pre-jobset residue.  The package is not
-        # orphaned -- only that justification was.
-        "numactl",
         # Git is required by the checkpoint subsystem
         # (docs/execution/running-a-job.md § 6).
         #
         # DECLARED IN EVERY ENV, deliberately and uniformly, so there is
         # nothing to remember: no env is the "one with git", and no
         # future need has to re-litigate which list to add it to.  It
-        # costs a few MB.
-        #
-        # Uniform AVAILABILITY is not permission to USE it.  Checkpoints
-        # are taken by the CLI / web surface (which run in THIS env), as
-        # an explicit user action at prep -- never on a compute node, and
-        # NO GENERATED WRAPPER MAY INVOKE GIT.  That rule is enforced
-        # where rules belong, by a test that greps rendered wrappers for
-        # git as a command word (checkpointing.md I4), not by leaving the
-        # package out of a list -- absence enforces nothing anyway, since
-        # a system git on PATH would satisfy a wrapper regardless.
-        # See checkpointing.md § 9 for who decides to save, and when.
+        # costs a few MB (`env-framework.md` § 3.2b).  When a state is
+        # saved is checkpointing.md § 9's rule: prep and Task setup's
+        # Save, never a running job.
         #
         # HPC sites have inconsistent system git versions; the conda
         # env's git takes precedence via PATH ordering and is the only
@@ -1376,14 +1361,7 @@ def _pyscf(cuda_version: str) -> Recipe:
         conda_packages=(
             _PYTHON_SPEC, "pip",
             "pyscf", "pyscf-dispersion", "geometric",
-            # NUMA control tool (mirrors molbuilder-siesta-gpu).  PySCF
-            # uses threaded BLAS that benefits from socket-local pinning
-            # on dual-socket boxes -- ``numactl --cpunodebind`` wraps the
-            # Python invocation cleanly.  Not yet auto-wired by molbuilder
-            # for PySCF jobs but present so future tuning has the tool.
-            "numactl",
-            # git: uniform across every env -- see _HOST for why, and for
-            # what may not use it.
+            # git: uniform across every env -- see _HOST for why.
             "git",
             # ASE: in every job env, for the file IO later work may need, so
             # which engine or switch a job runs under never changes what it
@@ -1396,7 +1374,8 @@ def _pyscf(cuda_version: str) -> Recipe:
         # _cuda_wheel_tag() so a future ``MOLBUILDER_CUDA_VERSION=14.*``
         # auto-picks ``cupy-cuda14x[ctk]`` + ``gpu4pyscf-cuda14x`` -- no
         # hand-edits to chase the toolkit bump.  The ``[ctk]`` extra on
-        # cupy pulls the matching cuda-cudart conda packages.  Without
+        # cupy pulls NVIDIA's CUDA runtime wheels from PyPI
+        # (``cuda-toolkit[cudart,cublas,...]==<major>.*``).  Without
         # these the ``use_gpu`` form toggle is a no-op (the runtime probe
         # in molbuilder/runtime_info.py would land in its CPU-fallback
         # branch on every run).
@@ -1515,12 +1494,11 @@ _SIESTA = Recipe(
     # variant (the `nompi_*` variant silently runs serial under
     # mpirun).  See docs/ops/installation.md (molbuilder-siesta).
     #
-    # ``numactl`` ships in this env so the run-wrapper's NUMA-pin
-    # branch (``--cpunodebind=$_gpu_numa`` on dual-socket boxes)
-    # finds the binary after ``conda activate molbuilder-siesta``.
-    # See molbuilder.runwrap._gpu_runtime_defaults_block for the
-    # full policy + cross-check against the host advisor's
-    # HostProbe.can_numa_pin.
+    # ``numactl`` ships in this env so the run script's NUMA pin
+    # (``--cpunodebind=$_gpu_numa`` on dual-socket boxes) finds the
+    # binary when a GPU run is pointed at this env by name.
+    # The pin itself is the run script's GPU placement
+    # (`runwrap._gpu_runtime_block`, ``$_numa_wrap_gpu``).
     #
     # Diagonalizer: ScaLAPACK **and ELPA on CPU**.  The conda-forge
     # ``siesta=5.4.2=mpi_openmpi_*`` build declares no ``elpa`` dependency
@@ -1588,7 +1566,7 @@ _MDTOOLS = Recipe(
     # ambertools=24.8 with conflicting pins).
     channels=("dacase", "conda-forge"),
     # git: uniform across every env -- see the _HOST recipe for why it is
-    # everywhere and what may NOT use it.
+    # everywhere.
     conda_packages=(_PYTHON_SPEC, "dacase::ambertools-dac=26", "git"),
     # tleap -f /dev/null prints its banner and exits 1 (no script to
     # source); the banner "Welcome to LEaP!" is the proof the binary
@@ -1602,18 +1580,6 @@ _MDTOOLS = Recipe(
     verify_expect_contains="LEaP",
     verify_ignore_exit_code=True,
 )
-
-
-# NOTE: there is deliberately no dedicated browser-E2E env.  The E2E
-# fixture starts the Flask app IN-PROCESS (``create_app`` + werkzeug
-# ``make_server`` in ``tests/test_molbuilder_e2e.py``), so it needs the
-# full molbuilder import stack -- a "browser tooling only" env cannot
-# start the app.  Browser E2E therefore runs under the HOST env
-# (``molbuilder``); its extra tooling comes from the pyproject ``[e2e]``
-# extra (``pip install ".[e2e]" && python -m playwright install
-# chromium``), NOT from a conda recipe, so fresh installs stay lean and
-# never force a Chromium download.  See docs/process/testing.md
-# § 4a and docs/process/testing.md
 
 
 # --------------------------------------------------------------------- #
@@ -1748,7 +1714,8 @@ _PIN_MPI_TOOLS = (
 # ELPA uses autotools; SIESTA's CUDA acceleration is entirely via
 # ELPA's CUDA-enabled build, so SIESTA itself needs no CUDA pin.
 # The CUDA isolation we DO want (refuse to wander into /usr/local/cuda)
-# is achieved via the ``CMAKE_IGNORE_PATH`` block above and via ELPA's
+# is achieved via the ``CMAKE_IGNORE_PATH`` flags in the SIESTA component
+# below and via ELPA's
 # ``--with-cuda-path={env_prefix}`` configure flag.
 
 # Install rpath blocks: cmake's RPATH at install time, so the binary
@@ -1759,16 +1726,11 @@ _PIN_MPI_TOOLS = (
 # Path math from a binary at <prefix>/<comp>/bin/<binary>:
 #   $ORIGIN/../../../../lib            -> $CONDA_PREFIX/lib (cuda/mpi/gomp)
 #   $ORIGIN/../../<other>/lib          -> sibling component's lib
-#
-# Path math from a lib at <prefix>/<comp>/lib/<lib.so>:
-#   $ORIGIN/../../../../lib            -> $CONDA_PREFIX/lib
-#   $ORIGIN/../../<other>/lib          -> sibling component's lib
 # NOTE: no shell escape needed -- we pass cmake argv through
 # subprocess.run with list argv (no shell interposed), so $ORIGIN
 # is preserved literally.  Whether the linker writes DT_RPATH or
 # DT_RUNPATH depends on the last --*-new-dtags flag on the link line;
 # for SIESTA that is --enable-new-dtags.  See _RPATH_SIESTA_BIN.
-_RPATH_ELPA       = "$ORIGIN/../../../../lib"
 #: The install rpath the recipe ASKS for -- one entry per source-built
 #: component SIESTA links, plus the env's own lib.  Read the warning below
 #: before reasoning from it.
@@ -1803,8 +1765,7 @@ _RPATH_ELPA       = "$ORIGIN/../../../../lib"
 #: The value is kept, ordered to match the hook, because it still applies
 #: to any target that does NOT override it and costs nothing -- but making
 #: it apply to siesta would mean `-DSIESTA_SET_RPATH=OFF`, which is a
-#: decision nobody has taken.  `_RPATH_ELPA` above it is referenced
-#: nowhere at all.
+#: decision nobody has taken.
 _RPATH_SIESTA_BIN = (":".join((
     "$ORIGIN/../../elpa/lib",
     "$ORIGIN/../../netcdf_fortran/lib",
@@ -1899,7 +1860,7 @@ _ELPA = BuildComponent(
     # autoreconf needed (tarball ships a pre-generated ``configure``
     # script).
     repo_url="",                 # not used; tarball path overrides clone
-    ref=_ELPA_TAG,               # bare version string ("2021.11.001")
+    ref=_ELPA_TAG,               # bare version string ("2024.05.001")
     tarball_url=f"{_ELPA_TARBALL_BASE}/Releases/{_ELPA_TAG}/elpa-{_ELPA_TAG}.tar.gz",
     tarball_sha256=_ELPA_SHA256,
     tarball_inner_dir=f"elpa-{_ELPA_TAG}",
@@ -1911,8 +1872,8 @@ _ELPA = BuildComponent(
         #   SCALAPACK_* -- where ELPA's checks should look for libscalapack
         #
         # Why ``--enable-nvidia-gpu`` (not ``--enable-gpu``): the modern
-        # Nvidia-specific naming was introduced in ELPA 2021.x; the
-        # default tag (2021.11.001) and every later tag use it.  See
+        # Nvidia-specific naming was introduced in ELPA 2021.x; every
+        # tag since, the default 2024.05.001 included, uses it.  See
         # docs/ops/installation.md § 6 for the flag history table.
         "sh", "-c",
         # Pass CFLAGS/CXXFLAGS/FCFLAGS so configure's AVX feature
@@ -2455,14 +2416,12 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
             "curl",
             "pkg-config",
             # NUMA control tool.  Critical for GPU mode on multi-socket
-            # boxes: the run-wrapper's _gpu_runtime_defaults_block wraps
-            # mpirun in ``numactl --cpunodebind=$_gpu_numa --membind=$_gpu_numa``
-            # to pin all ranks to the GPU-proximate socket.  Without it,
-            # the 3-condition AND in _numa_pinned fails and ranks spread
-            # across sockets, paying UPI/QPI crossing latency on every
-            # cudaMemcpy.  Mirrors the host-side dependency added to the
-            # ``molbuilder`` recipe so the advisor's reading matches the
-            # wrapper's runtime behaviour.
+            # boxes: the run script's GPU placement
+            # (`runwrap._gpu_runtime_block`) wraps mpirun in ``numactl
+            # --cpunodebind=$_gpu_numa --membind=$_gpu_numa`` to pin all
+            # ranks to the GPU-proximate socket.  Without it the pin is
+            # skipped and ranks spread across sockets, paying UPI/QPI
+            # crossing latency on every cudaMemcpy.
             "numactl",
             # Autotools chain.  ELPA's build invokes ``libtool`` directly
             # (via its ``nvcc_wrap`` script) when compiling the NVIDIA-GPU
@@ -2599,10 +2558,10 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
         ),),
         verify_argv=(
             "bash", "-c",
-            # the manager's activation puts <env>/bin on PATH for verify;
-            # the activate.d hook's PATH munging is duplicated by our
-            # env_overrides so siesta is reachable.  ``--version`` exits 0
-            # with the version banner.
+            # the manager's activation runs this env's activate.d hook,
+            # which puts the source-built siesta on PATH
+            # (`env-framework.md` § 5.6).  ``--version`` exits 0 with the
+            # version banner.
             #
             # The toolchain note rides along as a WARNING, not a gate.  A
             # bare ``gcc`` resolving outside the env means the shim step did
@@ -2722,12 +2681,9 @@ def _siesta_gpu(cuda_version: str) -> Recipe:
 # so it is found with no `JUPYTER_PATH` entry and nothing written outside the
 # env.  `conda env remove` takes the whole thing.
 #
-# If a notebook cannot `import numpy`, the env predates this recipe.  The verb
-# is `repair molbuilder-jupyternb`, NOT `install`: on an env that already
-# exists `install` skips create and goes straight to verify, so it adds no
-# missing conda package.  `repair` closes what the package audit reports --
-# measured 2026-09-14, when `install` reported FAILED and had installed
-# nothing.
+# If a notebook cannot `import numpy`, the env predates this recipe:
+# `install molbuilder-jupyternb` delivers the conda packages an existing env
+# lacks (`env-framework.md` § 4.4, since 2026-09-17).
 #
 _JUPYTER = Recipe(
     name=DEFAULT_ENV_NAMES["jupyter"],

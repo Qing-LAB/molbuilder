@@ -748,18 +748,17 @@ EOF
 
 # ---- host-env package list (chicken-and-egg solver) ----------------------
 #
-# This list MUST match molbuilder/envs/recipes.py::_HOST.conda_packages +
-# _HOST.pip_packages.  A drift-guard test
-# (tests/test_envs_readme_consistency.py) asserts the two lists
-# stay in sync.  The bash duplication is intentional: bash cannot
-# read the Python recipe without first having Python, and Python
-# isn't available until the host env exists.
+# This list is molbuilder/envs/recipes.py::_HOST's DEFAULT packages
+# (`conda_set()` / `pip_set()`, opt-in ones left out), and a change to one
+# is made to the other (docs/ops/env-framework.md § 8).  The bash copy is
+# intentional: bash cannot read the Python recipe without first having
+# Python, and Python isn't available until the host env exists.
 
 HOST_CONDA_PACKAGES=(
     # THE SAME VARIABLE recipes.py reads, resolved here because this array is
-    # what creates the host env BEFORE any python exists to read a recipe.
-    # The drift-guard test expands this default the same way, so the two
-    # halves agree whether or not the variable is set.
+    # what creates the host env BEFORE any python exists to read a recipe;
+    # recipes.py takes the same default, so the two halves agree whether or
+    # not the variable is set.
     "python=${MOLBUILDER_PYTHON:-3.12}" pip
     numpy ase sisl
     rdkit openbabel biopython
@@ -767,21 +766,15 @@ HOST_CONDA_PACKAGES=(
     authlib python-cas
     pytest pytest-xdist pyflakes
     "psutil>=5.9"
-    numactl
-    # run-checkpoints subsystem (docs/execution/running-a-job.md § 6):
-    # git provided by every molbuilder env so the wrapper bootstrap
-    # prologue + `molbuilder snapshot ...` operate from a known git
-    # version, not the system's.
+    # the checkpoint subsystem (docs/execution/running-a-job.md § 6): git
+    # in every molbuilder env, a known version rather than the system's.
     git
 )
 # PLAIN NAMES ONLY, and that is a real constraint rather than a habit.
 # A `PipPackage` can carry a source, a force flag and a fallback; a bash
 # array can carry a name.  So a host package that ever needs one of
-# those cannot be expressed here -- and the drift-guard test will say so
-# by comparing this list against `spec()`, which stops matching the
-# moment a record grows a URL.  Treat that failure as the decision it
-# is: either the package does not belong in the bootstrap list, or the
-# shim needs to learn to read the record.
+# those cannot be expressed here: either the package does not belong in
+# the bootstrap list, or the shim needs to learn to read the record.
 #
 # These two are OPTIONAL (`optional=True` in the recipe, matching the
 # warn-and-continue below): UI-only conveniences, and the env is usable
