@@ -717,7 +717,9 @@ could decline was a restore point you might not have.)*
 
 **Never at run or submit time**, which may be a queued job — a prompt would block
 a queue, and submitting starts something new rather than changing something that
-exists. **Never on the compute node**, which would need git there (I4).
+exists. *(It added "never on the compute node, which would need git there
+(I4)" until 2026-10-04: every env molbuilder installs has declared `git` since 2026-06-25 (`envs/recipes.py`, [`ops/env-framework.md`](?doc=ops/env-framework.md)), so a job's env carries git; I4 is
+retired, below.)*
 
 > **The launcher points here; it does not act** *(user, 2026-08-18)*. A run
 > started with `--cold`, or from a deck that says `restart: clean`, overwrites
@@ -1190,12 +1192,12 @@ deck tells an engine to look for prior state is not a property of a snapshot).
   what the rule permits. A test that excepted a *verb* would pass a save that
   quietly rewrote an input.
 
-**I4 — a generated wrapper contains no git.** A wrapper that committed would need
-git on the compute node, which `running-a-job.md § 2` forbids.
-
-- **Test:** no emitted `.run.sh` or `.sbatch` invokes `git` **as a command word** —
-  `digits` and `logging` are not violations, and a check that flags them is one
-  somebody will disable.
+*(**I4 — a generated wrapper contains no git** stood here until 2026-10-04. Its
+premise was a compute node without git, which `running-a-job.md § 2` was said
+to forbid; every env molbuilder installs has declared `git` since 2026-06-25 (`envs/recipes.py`, [`ops/env-framework.md`](?doc=ops/env-framework.md)), and § 2 asks only that a job need
+nothing beyond its folder and its env. When a save is taken is § 9's rule —
+prep and Save, never a running job. User, 2026-10-04: "we have ... included
+git in env ... long time ago".)*
 
 **S2 — shared state lives above; a stage writes only inside its own directory.**
 
@@ -1419,7 +1421,7 @@ conclude there is nothing to do.
 | **I2b** | the records themselves are tamper-evident | ✅ every state carries the digest; a tampered or missing MANIFEST is named on the cheap read as well as at restore, an edited ignore block detected; **and a save checks an archive it would reuse rather than trusting its name** — cheaply, the way git never re-reads its object store on commit; the exact comparison stays where the bytes are used (§ 7) |
 | **I2c** | the warning is measured against the records, not the config | ✅ the standing state's MANIFEST unioned with what is big now; a file the classification stopped matching is still named |
 | **I3** | `restore` is the only operation that writes into the folder | ✅ |
-| **I4** | no git in a generated wrapper | ✅ |
+| **I4** | *retired 2026-10-04* — its premise, a compute node without git, is false: every env ships git | — |
 | **A1** | build, verify, publish — create if absent, never overwrite | ✅ |
 | **A2** | verify before mutating, in order | ✅ |
 | **A3** | the save precedes the change | needs the prep prompt |
@@ -1581,7 +1583,7 @@ nobody is maintaining against this document, which is how the two drift.
 | I2b | `test_checkpoint_states.py` — **all three named edits**: a deleted MANIFEST line, a sha edited to match a swapped file (made internally consistent first, so anything looking only inward would pass), and a hand-edited ignore block |
 | I2c | `test_checkpoint_states.py` — narrow the classification, then the warning must still name the file |
 | I3 | `test_checkpoint_states.py` — after `init`, every operation but `restore` leaves the files you made byte-identical |
-| I4 | `test_checkpoint_wrapper_isolation.py` — an **emitted** wrapper contains no `git` as a command word, and the wrapper module never reaches the checkpoint module |
+| I4 | *retired 2026-10-04 with the rule; `test_checkpoint_wrapper_isolation.py` went with it* |
 | A4 | `test_checkpoint_cli.py` (no flag), `test_checkpoint_routes.py` (the route refuses the field) and `test_checkpoint_states.py` (**the Python surface: `Repo.restore` takes `state` and `force` and nothing else** — the third surface the rule names) |
 | A5 | `test_checkpoint_states.py` — the rule's own test in one place: an edit, a new file **and a deleted one**, all three named in the refusal, nothing changed by it, `--force` completes, the folder then equals the target exactly with no leftovers and no rescue copies |
 | A6 | `test_checkpoint_states.py` — restore, save, restore elsewhere, then `git gc --prune=now`: the state saved in between is still listed and still restorable |

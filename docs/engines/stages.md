@@ -2124,9 +2124,10 @@ alone.*
 wrapper-bootstraps-git path was deliberately dropped — *"the wrapper is
 deliberately git-agnostic, so init is CLI/UI-only"* — so the second boundary is
 observed where a run is already being watched: `run_status` reports `finished`
-(`running-a-job.md § 4.2`), and the surface or the CLI takes the checkpoint. A
-wrapper that committed to git would be a wrapper that needs git on the compute
-node, which is exactly what the standalone contract forbids.
+(`running-a-job.md § 4.2`), and the surface or the CLI takes the checkpoint.
+*(It added that a wrapper committing to git would need git on the compute
+node, which the standalone contract forbids, until 2026-10-04: every env
+molbuilder installs ships git, `ops/env-framework.md`.)*
 
 #### What each checkpoint is called
 

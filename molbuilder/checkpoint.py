@@ -13,9 +13,11 @@ formats** are [`execution/job-contracts.md`](?doc=execution/job-contracts.md)
 § 6.1; the **guide** (what to type, what the buttons do) is
 [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 6.
 
-Single user, one repository per calculation, no auto-commit.  **No git ever
-runs on a compute node** — a generated wrapper contains none, and initialising
-is a CLI/UI act (I4; the "wrapper bootstraps git" path was dropped).
+Single user, one repository per calculation, no auto-commit.  Saving and
+initialising are CLI/UI acts, at prep and Save, never a running job's
+(`checkpointing.md` § 9; the "wrapper bootstraps git" path was dropped).
+*("No git ever runs on a compute node" -- I4 -- stood here until 2026-10-04:
+every env molbuilder installs ships git.)*
 
 The whole surface is ``Repo``: ``init``, ``save``, ``restore``, ``status``,
 ``states``, ``tag``.  A **state** is a saved snapshot of the folder, a **tag**

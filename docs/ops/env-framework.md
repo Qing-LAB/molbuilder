@@ -261,8 +261,11 @@ neither can be left to "whatever that env happened to need":
   activate a molbuilder env *because* "every molbuilder env ships git as a
   conda_packages entry". That is a promise the registry has to keep, and HPC
   sites' system git versions are inconsistent enough that the env's is the only
-  one under our control. Availability is **not** permission to use it: no
-  generated wrapper may invoke git (`checkpointing.md` I4).
+  one under our control. When a save is taken is `checkpointing.md` § 9's
+  rule — prep and Save, never a running job. *("Availability is not
+  permission" — no generated wrapper may invoke git, `checkpointing.md` I4 —
+  stood here until 2026-10-04: I4's premise was a node without git, which
+  this entry removes.)*
 
 *Stated here 2026-09-18. `git` had been declared in all six recipes by hand
 with the rule written nowhere, which is the arrangement that let `python` slip
