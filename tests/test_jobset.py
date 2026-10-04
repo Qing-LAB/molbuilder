@@ -885,8 +885,8 @@ def test_a_flat_rung_is_asked_about_by_name_not_by_directory(tmp_path):
     `run_status` bucketed the whole directory and picked the highest stage
     ordinal / newest mtime, so every rung of a flat calculation reported the
     newest rung's state.  The caller's existence check was already narrowed by
-    `Shape.stage_glob` -- and said in a comment why -- but the filter stopped
-    at the gate and never reached here.
+    the shape (`Shape.run_basename` now) -- and said in a comment why -- but
+    the filter stopped at the gate and never reached here.
 
     MEASURED 2026-09-08 on a built fixture: with the later rung's `.out`
     present a finished, day-old rung read ('running', 'running').
@@ -899,12 +899,12 @@ def test_a_flat_rung_is_asked_about_by_name_not_by_directory(tmp_path):
     past = _time.time() - 86400
     os.utime(old, (past, past))
 
-    coarse = run_status(tmp_path, "bdt_01_coarse*")
-    tight = run_status(tmp_path, "bdt_02_tight*")
+    coarse = run_status(tmp_path, "bdt_01_coarse")
+    tight = run_status(tmp_path, "bdt_02_tight")
     assert coarse.active_source == old.name
     assert tight.active_source == new.name
     # The hierarchical answer is unchanged: the DIRECTORY selected the rung,
-    # so no glob is passed and the newest file still speaks for it.
+    # so no name is passed and the newest file still speaks for it.
     assert run_status(tmp_path).active_source == new.name
 
 
@@ -1057,7 +1057,9 @@ def test_status_finished_with_real_siesta_out(tmp_path):
     makes it the only test in the group that would notice the status dict's shape
     drifting between `parse.dirs.job` and `jobset.runstatus`. Under that drift
     every stubbed test still passes and every real bundle reports the wrong state.
-    The fixture is a frozen finished run from `tests/watch/fixtures/siesta_frozen`.
+    The fixture is a frozen finished run from `tests/watch/fixtures/siesta_frozen`,
+    concluded as its wrapper concludes one: finished is a run that ended on its
+    own with exit code 0 (`runrecord.ending`), not an output alone.
     """
     # DEPTH: the real decode_run_dir -> "finished" path (not monkeypatched),
     # so a drift in the status-dict shape between decode + runstatus is caught.
@@ -1066,6 +1068,7 @@ def test_status_finished_with_real_siesta_out(tmp_path):
            / "hemeC-stage2-run3-finished-42fr.out")
     d = tmp_path / "bench-s1"; d.mkdir()
     shutil.copy(fix, d / "demo.out")            # label = jobset.name = "demo"
+    (d / "demo-run0.concluded").write_text("rc=0 at then\n")
     st = jobset_status(_ladder(), tmp_path)
     assert st.stages[0].state == "finished"     # REAL parse of a finished run
 
@@ -2174,10 +2177,10 @@ def test_hierarchical_tells_stages_apart_by_PATH_and_flat_by_NAME():
     hier, flat = Shape.named("hierarchical"), Shape.named("flat")
 
     assert hier.stage_dir("03_tight") == "03_tight"
-    assert hier.stage_glob("03_tight", "JOB") == "*"      # the dir already chose
+    assert hier.run_basename("03_tight", "JOB") is None  # the dir already chose
 
     assert flat.stage_dir("03_tight") == "."             # a joinable path, not None
-    assert flat.stage_glob("03_tight", "JOB") == "JOB_03_tight*"
+    assert flat.run_basename("03_tight", "JOB") == "JOB_03_tight"
 
 
 def test_only_the_hierarchy_keeps_attempts_as_directories():
@@ -2567,8 +2570,8 @@ def test_a_flat_stage_that_never_ran_does_not_borrow_a_siblings_state(tmp_path):
     silently wrong in flat: `coarse` finishing made `tight` claim to be running
     too, because the glob matched `coarse`'s file.
 
-    `Shape.stage_glob` is what answers *which files are this stage's*, and this
-    is the caller it was built for.
+    `Shape.run_basename` is what answers *which files are this stage's*, and
+    this is the caller it was built for.
     """
     from molbuilder.jobset.materialize import prepare_attempt
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
@@ -2594,9 +2597,9 @@ def test_two_flat_rungs_with_real_output_each_report_their_own(tmp_path):
     The one above proves a stage with NO output does not borrow a sibling's —
     that is caught by the existence gate, which was already shape-aware. This
     proves the case the gate lets through: **both** rungs have real output, and
-    they must still be told apart. The gate narrows with `Shape.stage_glob` and
-    then hands the directory to `run_status`; until 2026-09-08 it handed over
-    no glob at all, so `run_status` picked "highest ordinal, newest mtime"
+    they must still be told apart. The gate narrows with `Shape.run_basename`
+    and then hands the directory to `run_status`; until 2026-09-08 it handed
+    over no narrowing at all, so `run_status` picked "highest ordinal, newest mtime"
     across the whole directory and every row showed the newest rung's state.
 
     Reverting only that one argument passes every other test in this suite —
@@ -2607,6 +2610,9 @@ def test_two_flat_rungs_with_real_output_each_report_their_own(tmp_path):
     old = tmp_path / "JOB_01_coarse-run0.out"
     new_ = tmp_path / "JOB_03_tight-run0.out"
     old.write_text("Siesta Version: 5.4.2\nsiesta: iscf\n>> End of run:  1-JAN-2026\n")
+    # ...and coarse ENDED ON ITS OWN: an output that ended is finished only
+    # with its run's conclusion (`runrecord.ending`, architecture.md § 3.2).
+    (tmp_path / "JOB_01_coarse-run0.concluded").write_text("rc=0 at then\n")
     new_.write_text("Siesta Version: 5.4.2\nsiesta: iscf\nscf:  1  -100.0\n")
     past = _time.time() - 86400
     os.utime(old, (past, past))
@@ -2622,7 +2628,7 @@ def test_two_flat_rungs_with_real_output_each_report_their_own(tmp_path):
 
 
 def test_the_hierarchy_is_unaffected_because_its_directory_already_chose(tmp_path):
-    """`stage_glob` is `*` there, so the behaviour is identical to before —
+    """`run_basename` is None there, so the behaviour is identical to before —
     which is the point of one object answering for both."""
     from molbuilder.jobset.materialize import prepare_attempt
     js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")

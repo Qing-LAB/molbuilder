@@ -607,24 +607,17 @@ ruling, 2026-09-04: a re-run of an earlier rung must not take over the state)*
 ```mermaid
 flowchart TD
     S{"does a file speak?"} -->|"yes"| E{"what ending does it state?"}
-    E -->|"its end"| J{"a job with a finish?"}
-    J -->|"no"| FIN["finished"]
-    J -->|"the marker names a failed finish"| FAIL["failed"]
-    J -->|"no marker yet, and its session log says the finish began"| G0{"its monitor's closing record?"}
-    G0 -->|"job ended"| FAIL
-    G0 -->|"none"| RUN["running"]
-    J -->|"its marker rc 0"| FIN
-    E -->|"a stop, or out of memory"| FAIL
-    E -->|"none"| M1{"a marker at the latest run index?"}
-    M1 -->|"rc 0"| FIN
-    M1 -->|"nonzero rc"| FAIL
-    M1 -->|"none"| G1{"its monitor's closing record?"}
-    G1 -->|"job ended"| FAIL
-    G1 -->|"none"| RUN["running"]
-    S -->|"no"| M2{"a marker at the latest run index?"}
-    M2 -->|"rc 0"| FIN
-    M2 -->|"nonzero rc"| FAIL
-    M2 -->|"none"| G2{"its monitor's closing record?"}
+    E -->|"a stop, or out of memory"| FAIL["failed"]
+    E -->|"its end, or none"| C{"did the run end on its own?"}
+    C -->|"exit code 0"| FIN["finished"]
+    C -->|"another exit code"| FAIL
+    C -->|"not yet"| G{"its monitor's closing record?"}
+    G -->|"job ended"| FAIL
+    G -->|"none"| RUN["running"]
+    S -->|"no"| C2{"did the run end on its own?"}
+    C2 -->|"exit code 0"| FIN
+    C2 -->|"another exit code"| FAIL
+    C2 -->|"not yet"| G2{"its monitor's closing record?"}
     G2 -->|"job ended"| FAIL
     G2 -->|"none"| L{"the launch record"}
     L -->|"no run.json"| PEN["pending"]
@@ -637,25 +630,37 @@ footer; *a stop* is a fatal marker, a Python traceback, an `# error:` footer or
 an out-of-memory line (`model/parse.md` § 2b) — for a SIESTA run, in its output
 or in the stderr its wrapper kept, the session log whose first section is the
 run: a rank other than 0 that dies may say why only there. The detail quotes
-the line. The marker speaks where content
-is silent — an engine that died before its first line, a PySCF `SystemExit` —
-and counts only at the highest run index the run's files reached
-([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1): an earlier
-one, beside a newer silent output, is a previous run's goodbye. SIESTA's own
-`0_NORMAL_EXIT`, which names no run, counts only where no output exists.
-The monitor's closing record — `[MONITOR] job ended` in the latest run's
+the line.
+
+**Whether the run ended on its own is one door's answer**, `runrecord.ending`
+([`architecture.md`](?doc=execution/architecture.md) § 3.2), the same for
+status, every hand-over and launch: molbuilder's conclusion marker, counted
+only at the highest run index the run's files reached
+([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.1) — an earlier
+one, beside a newer output, is a previous run's goodbye — else SIESTA's own
+`0_NORMAL_EXIT` where it can belong only to this run: a folder no wrapper of
+ours ran in, holding one deck (SIESTA deletes it as it starts and writes it as
+it ends cleanly). **Finished is a run that ended on its own with exit code 0;
+failed, one that ended with any other** — or whose output states a stop.
+**An output that states its end is not a run that ended**: the job may still
+be on its way out — a finish deriving its result, the wrapper's last lines —
+so it reads `running` until it concludes, and `failed` once the monitor's
+closing record says the process went without concluding. The monitor's
+closing record — `[MONITOR] job ended` in the latest run's
 `-runN.monitor.log` ([`run-reports.md`](?doc=execution/run-reports.md) § 2.5)
-— speaks where the marker is silent too: the process went, and nothing
-recorded an exit.
+— speaks wherever the conclusion is silent: the process went, and nothing
+recorded an exit. *(Until 2026-10-03 the output's end decided first: a run
+whose output ended read `finished` with no conclusion, and beside an exit code
+of 1, while every hand-over refused it — plan W38 F3.)*
 
 **A job with a finish is not done when its engine is**
 ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.5): a SIESTA
 force-constant stage's wrapper runs the finish after SIESTA ends, and only
 then concludes. So an output that states its end speaks for the ENGINE, and
 the job's own evidence decides: a marker naming a failed finish reads
-`failed`; with no marker yet — SIESTA's own `0_NORMAL_EXIT` names no
-finish — the run's session log saying the finish began (`finish started:`,
-`wrapper_log.FINISH_STARTED`) reads `running`, and `failed` once the
+`failed`; with no marker yet, the run's session log saying the finish began
+(`finish started:`, `wrapper_log.FINISH_STARTED`) reads `running` — *the
+engine ended; the job's finish is deriving the result* — and `failed` once the
 monitor's closing record says the process went: a walltime or a kill inside
 the finish, which leaves no marker. A marker `rc=0` is a finished job.
 
@@ -669,9 +674,9 @@ is `failed` by the stop; a capped benchmark that ran to its end is `finished`.
 |---|---|
 | `pending` | prepped, not launched (no run.json) |
 | `queued` | queued as job N · launched (direct), no output yet |
-| `running` | running · no result file yet · the engine ended; the job's finish is deriving the result |
+| `running` | running · no result file yet · the engine's output ended; the job has not concluded · the engine ended; the job's finish is deriving the result |
 | `finished` | job_completed · concluded (rc=0 at …) |
-| `failed` | stopped before its end: *the line that stopped it* · out of memory: *its line* · concluded (rc=1 at …) · stopped before its end: no ending in its output and no exit recorded · the engine ended, but the job's finish did not derive the result (*the marker*) · the engine ended and the job's finish began, but the job stopped before it concluded · concluded (rc=1 at …; finish cannot load (*bundle*)) before any output |
+| `failed` | stopped before its end: *the line that stopped it* · out of memory: *its line* · concluded (rc=1 at …) · the engine's output ended, but the job exited with an error (rc=1 at …) · stopped before its end: no ending in its output and no exit recorded · the engine's output ended, but the job stopped before it concluded — no exit recorded · the engine ended, but the job's finish did not derive the result (*the marker*) · the engine ended and the job's finish began, but the job stopped before it concluded · concluded (rc=1 at …; finish cannot load (*bundle*)) before any output |
 
 **Silence is not death.** A healthy SIESTA SCF step can print nothing for over
 twelve minutes, and a job the scheduler kills leaves no trace in its output, so

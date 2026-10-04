@@ -28,7 +28,8 @@ class Continuation:
     source: Optional[str]
     #: The stage before it, newest (the default) -- or named by ``--from``.
     by_default: bool
-    #: The conclusion marker's line, or ``None``: the run has not concluded.
+    #: The line its conclusion said (`runrecord.ending`), or ``None``: the
+    #: run has not ended on its own.
     concluded: Optional[str]
     #: Its run state, `run_status`'s word (finished, failed, running, ...).
     state: Optional[str]
@@ -76,13 +77,27 @@ def _what_it_is(concluded: Optional[str], state: Optional[str]) -> str:
         state, "NOT concluded -- stopped without its conclusion marker")
 
 
+def usable(where, basename: Optional[str] = None) -> bool:
+    """THE RULE FOR A RUN TO BUILD ON (`execution/architecture.md` § 3.2,
+    `job-system.md` § 5.4): it ended on its own with exit code 0
+    (`runrecord.ending`).  The default of every hand-over -- a continuing
+    stage, the frequency stage's geometry, a transport rung's inputs; a run
+    named with ``--from`` is taken as said, and a structure stated relaxed
+    needs no run, so neither asks it.  *(A frequency stage and a transport
+    rung took a run that concluded with an error until 2026-10-03, while an
+    independent stage refused it; user: "yes, for #1".)*"""
+    from ..runrecord import ending
+    return ending(where, basename).ok
+
+
 def read_run(base: Path, task, stage: str, attempt: Path,
              container: Path, *, verdict: bool = True
              ) -> Tuple[Optional[str], Optional[str], Optional[bool]]:
-    """``(concluded, state, converged)`` of one run of ``stage`` -- its
-    conclusion marker (`runrecord.attempt_concluded`; an empty marker is a
-    conclusion, so ``""``), its state through the one door
-    (`parse.dirs.run_status`) and its relaxation's verdict (`parse.contract`):
+    """``(concluded, state, converged)`` of one run of ``stage`` -- the
+    line its conclusion said, through the one door (`runrecord.ending`;
+    ``None`` when it has not ended on its own), its state through the one
+    door (`parse.dirs.run_status`) and its relaxation's verdict
+    (`parse.contract`):
     an attempt's own run on the hierarchy; on the flat layout THIS stage's
     files among the folder's -- its progress log, the one both engines write
     and the only one a PySCF run's stdout cannot stand in for, then its
@@ -94,16 +109,16 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     from ..paths import Shape
     from ..runfiles import find as rf_find, stem as rf_stem
     from .materialize import stage_stdout
-    from ..runrecord import conclusion_line, read_run_launch
+    from ..runrecord import ending, read_run_launch
     from .materialize import stage_home
     token = stage_home(base, task, stage).token
     stem = rf_stem(task.label, token)
     sh = Shape.named(task.shape)
-    concluded = conclusion_line(attempt, stem)
+    concluded = ending(attempt, stem).line
     try:
         launch = (read_run_launch(attempt) if sh.keeps_attempts_as_directories
                   else read_run_launch(container, basename=stem))
-        state = run_status(attempt, sh.stage_glob(token, task.label),
+        state = run_status(attempt, sh.run_basename(token, task.label),
                            launch=launch).state
     except Exception:                                    # noqa: BLE001
         state = None
@@ -142,9 +157,9 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
     the run was is read and reported; `prepare_attempt` refuses only what
     cannot be done (no restart files in it).  **By default**, for a
     continuing stage of an independent ladder (`_stage_before`): the NEWEST
-    attempt of the enabled stage before it, which must have concluded and not
-    failed -- an older one never stands in, because a stage re-launched to
-    tighten is the run the person means.  Otherwise the refusal, worded by
+    attempt of the enabled stage before it, which must have ended on its own
+    with exit code 0 (:func:`usable`) -- an older one never stands in,
+    because a stage re-launched to tighten is the run the person means.  Otherwise the refusal, worded by
     what the run's state says and naming the commands that work on this
     layout.  ``(None, None)`` for ``--cold``, a linked kind's default, the
     first stage, a stage that starts clean, and one the description disables
@@ -241,12 +256,14 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool
     from ..paths import attempt_dir as _adir
     from ..runfiles import compose as rf_compose
     from ..paths import attempts_in
+    from ..runfiles import stem as rf_stem
     from .materialize import latest_attempt
     from .engines import engine_seam
     from .materialize import stage_home
     sh = Shape.named(task.shape)
     seam = engine_seam(str(task.engine))
     token = stage_home(base, task, prev).token
+    stem = rf_stem(task.label, token)
     sd = sh.stage_dir(token)
     container = base if sd == "." else base / sd
     flat = not sh.keeps_attempts_as_directories
@@ -281,7 +298,7 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool
         attempt, source = latest, str(latest.relative_to(base))
     concluded, state, converged = read_run(base, task, prev, attempt,
                                            container, verdict=verdict)
-    if concluded is not None and state != "failed":
+    if usable(attempt, stem):
         return Continuation(stage=prev, source=source, by_default=True,
                             concluded=concluded, state=state,
                             converged=converged), None
@@ -291,7 +308,8 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool
     what = (f"the newest attempt of `{prev}`, {source}," if source
             else f"`{prev}`'s latest run,")
     if concluded is not None:
-        # A FAILED RUN IS LAUNCHED AGAIN -- a prepped stage is not prepped
+        # ENDED ON ITS OWN WITH AN ERROR -- never built on by default.  A
+        # FAILED RUN IS LAUNCHED AGAIN -- a prepped stage is not prepped
         # again (`job-system.md` § 5.0); its re-prep was offered here until
         # 2026-10-02.
         why, first = (f"which failed ({concluded})",
@@ -306,15 +324,12 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool
         first = f"Launch it again --\n{launch_prev}"
     other = None
     if not flat:
-        # AN EARLIER RUN THAT CAN STAND IN WHEN ASKED FOR: the newest that
-        # concluded and did not fail, typed out -- never a placeholder.  Its
-        # conclusion is the question, not its relaxation.
+        # AN EARLIER RUN THAT CAN STAND IN WHEN ASKED FOR: the newest one
+        # to build on, typed out -- never a placeholder.  Its ending is the
+        # question, not its relaxation.
         for n in reversed(attempts_in(container)):
             a = _adir(container, n)
-            if a == attempt:
-                continue
-            c, s, _v = read_run(base, task, prev, a, container, verdict=False)
-            if c is not None and s != "failed":
+            if a != attempt and usable(a, stem):
                 other = str(a.relative_to(base))
                 break
     alt = (f"or continue from an earlier run of `{prev}` that concluded --\n"

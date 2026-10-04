@@ -550,7 +550,8 @@ def test_a_job_that_cannot_finish_itself_stops_before_the_engine(
     """
     from molbuilder.runrecord import read_run_launch
     from molbuilder.parse.dirs import run_status
-    from molbuilder.parse.dirs.job import FINISH_CANNOT_LOAD, read_concluded
+    from molbuilder.parse.dirs.job import FINISH_CANNOT_LOAD
+    from molbuilder.runrecord import read_concluded
     from molbuilder.runfiles import compose
     from molbuilder.runwrap import VIBRATION_BUNDLE
     tree = tmp_path / "projects"

@@ -1596,7 +1596,7 @@ class TestBothEnginesConclude:
 
     PySCF's wrapper ended in `exec`, which REPLACES the shell, so nothing could
     run after the engine and the marker was never written. MEASURED
-    2026-09-08: `attempt_concluded` answered `'rc=0 at …'` for a finished
+    2026-09-08: the marker's reader answered `'rc=0 at …'` for a finished
     SIESTA attempt and `None` for an identically finished PySCF one — and
     `submit.py` refuses to continue a ladder on exactly that `None`, so a
     completed PySCF stage read as *still running, or force-stopped*.
@@ -1605,7 +1605,7 @@ class TestBothEnginesConclude:
     rendered text for a `printf … > …concluded` line would pass on a line that
     `exec` makes unreachable — which is the whole bug. The question is what the
     run LEAVES BEHIND, so that is what is asked, and it is asked through
-    `attempt_concluded`, the door the launcher itself uses.
+    `runrecord.ending`, the door the launcher itself uses.
     """
 
     @staticmethod
@@ -1632,9 +1632,9 @@ class TestBothEnginesConclude:
     @pytest.mark.parametrize("rc", [0, 3])
     def test_a_finished_pyscf_attempt_says_so_with_its_exit_code(self,
                                                                  tmp_path, rc):
-        from molbuilder.runrecord import attempt_concluded
+        from molbuilder.runrecord import ending
         d, cp = self._run_to_completion(tmp_path, rc)
-        said = attempt_concluded(d, "myjob")
+        said = ending(d, "myjob").line
         assert said is not None, (
             "a finished PySCF attempt left no conclusion, so the launcher "
             "reads it as still running or force-stopped.\n"

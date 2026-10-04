@@ -3503,7 +3503,7 @@ def render_run_wrapper(script_path: Path, *,
     # ACT.  `job-contracts.md` § 2.2 and `project-layout.md` § 1.6 state it
     # for the wrapper with no engine qualifier -- and "absent means killed",
     # so a PySCF run that finished cleanly was signalling that it had been
-    # force-stopped.  MEASURED 2026-09-08: `attempt_concluded` answered
+    # force-stopped.  MEASURED 2026-09-08: the marker's reader answered
     # 'rc=0 at ...' for a finished SIESTA attempt and None for an identically
     # finished PySCF one, which is what `submit.py` refuses a ladder on.
     # The cost is the one already accepted above: one extra bash process.
@@ -3953,8 +3953,10 @@ def render_run_wrapper(script_path: Path, *,
 #: one parser (each engine family's reading pass, its grammar, the rule
 #: engine they run on, and the physical constants a grammar converts a
 #: residual with, `constants`), the timing instrument's rows, how a run ended (the
-#: PySCF end lines, `_run_ending`), `run_status` itself, and what a report may
-#: carry (`report_fields`) -- `execution/run-reports.md` § 2.3.
+#: PySCF end lines, `_run_ending`, and the run's own records whose door
+#: `run_status` builds its state on, `runrecord`), `run_status` itself, and
+#: what a report may carry (`report_fields`) -- `execution/run-reports.md`
+#: § 2.3.
 #:
 #: **A verbatim copy of each module's own file**, not a copy of its logic:
 #: each imports the next two ways -- from the package, or from beside the job
@@ -3983,6 +3985,7 @@ MONITOR_COMPANIONS: Dict[str, str] = {
     "_run_ending.py":      "molbuilder.parse.engines._run_ending",
     "report_fields.py":    "molbuilder.report_fields",
     "job.py":              "molbuilder.parse.dirs.job",
+    "runrecord.py":        "molbuilder.runrecord",
     "wrapper_log.py":      "molbuilder.wrapper_log",
 }
 

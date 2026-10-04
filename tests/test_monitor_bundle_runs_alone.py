@@ -112,7 +112,7 @@ def test_every_file_that_ships_beside_a_job_imports_without_molbuilder(tmp_path)
                             "from": MONITOR_BUNDLE}, got["where"]
 
     # THE SAME ANSWER THE PACKAGE GIVES: one status door, shipped or not.
-    here = run_status(src, "H2_01_relax*")
+    here = run_status(src, "H2_01_relax")
     assert (got["state"], got["detail"]) == (here.state, here.detail), got
     speaker = here.endings[here.active_source]
     assert got["converged"] == {k: v for k, v in speaker.phases.items()}, got

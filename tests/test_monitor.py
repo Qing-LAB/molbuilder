@@ -119,7 +119,7 @@ def test_when_the_pid_goes_the_verdict_is_run_status_s(tmp_path):
     final = monitor.run_monitor(
         watched, interval=1, watch_pid=999_999_999,
         sleep=lambda s: None, clock=_fake_clock([0.0, 0.0, 1.0]))
-    rs = run_status(run, "H2_01_relax*")
+    rs = run_status(run, "H2_01_relax")
     assert (final.state, final.detail) == (rs.state, rs.detail) == (
         "finished", "job_completed")
     assert final.converged == {"periodic": True}
@@ -143,14 +143,14 @@ def test_a_killed_job_is_failed_stopped_before_its_end(tmp_path):
     from molbuilder.parse.dirs import run_status
     run, watched, _grow = _replay(tmp_path, upto=476)
     (run / "H2_01_relax-run0.concluded").unlink()
-    assert run_status(run, "H2_01_relax*").state == "running"
+    assert run_status(run, "H2_01_relax").state == "running"
     final = monitor.run_monitor(
         watched, interval=1, watch_pid=999_999_999,
         sleep=lambda s: None, clock=_fake_clock([0.0, 0.0, 1.0]))
     assert final.state == "failed", final.as_text()
     assert "stopped before its end" in final.detail, final.detail
     assert "no exit recorded" in final.detail
-    rs = run_status(run, "H2_01_relax*")
+    rs = run_status(run, "H2_01_relax")
     assert (rs.state, rs.detail) == (final.state, final.detail)
 
 

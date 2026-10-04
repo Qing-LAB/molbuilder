@@ -393,7 +393,7 @@ class WatchedRun:
         is written: a forced stop leaves no other word, and `run_status`
         reads it there."""
         try:
-            rs = run_status(self.directory, self.stem + "*")
+            rs = run_status(self.directory, self.stem)
         except Exception:                               # noqa: BLE001
             return st           # an unreadable directory says nothing
         st.state, st.detail = rs.state, rs.detail

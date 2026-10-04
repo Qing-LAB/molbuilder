@@ -876,17 +876,18 @@ What an attempt holds, moment by moment (`running-a-job.md` § 4.2 reads each):
 |---|---|---|
 | prepped | `calcdir.json`; copies of the deck, the wrapper, `mb_monitor.pyz`, the pseudopotentials (and `atom-permutation.json` when the decks come from a sorted copy); the job's finish bundle when it has one (`mb_vibration.pyz`); the molwatch seed; the warm files and `.continued-from` if it continues | `pending` |
 | launched | + `run.json` | `queued` |
-| running | + `-run0.out` (PySCF: `-run0.pyscf.log`), the monitor's pair, the session log | `running` — and still `running` while a job's finish derives its result after the engine's output ended (its session log says the finish began) |
-| concluded | + `-run0.concluded` | `finished` or `failed` — the output's ending first, except a marker naming a failed finish: the engine ended and the job did not, so `failed`. A job that cannot run its finish stops before its engine with a marker saying so and no output: `failed` |
-| force-stopped | as *running*; no marker comes — the monitor's closing record `[MONITOR] job ended`, when the monitor outlived the stop | `failed` by that record — also when the stop landed inside a job's finish, after the engine's output ended; `running` when nothing outlived the stop (a lost node): no file then tells it from a live run |
+| running | + `-run0.out` (PySCF: `-run0.pyscf.log`), the monitor's pair, the session log | `running` — and still `running` after the engine's output ended, until the job concludes: its finish deriving its result (its session log says the finish began), the wrapper's last lines |
+| concluded | + `-run0.concluded` | `finished` with exit code 0, `failed` with any other — the one door's answer (`runrecord.ending`, [`architecture.md`](?doc=execution/architecture.md) § 3.2) — or when its output states a stop. A marker naming a failed finish: the engine ended and the job did not, so `failed`. A job that cannot run its finish stops before its engine with a marker saying so and no output: `failed` |
+| force-stopped | as *running*; no marker comes — the monitor's closing record `[MONITOR] job ended`, when the monitor outlived the stop | `failed` by that record — also when the stop landed after the engine's output ended, inside a job's finish or the wrapper's last lines; `running` when nothing outlived the stop (a lost node): no file then tells it from a live run |
 
 #### 1.6.4 What reads them
 
 `launch` reads `run.json` to open the next attempt rather than run in a launched one (§ 1.6.2);
-`run_status` reads both after the output's own ending — except for a job
-with a finish, whose marker, or its session log's *finish started* line,
-decides after an ended output — and the monitor's closing record after the
-marker
+`run_status` builds its state on the marker, through the one door that says
+whether a run ended on its own (`runrecord.ending`) — an output that states a
+stop fails it whatever followed, and one that states its end is `running`
+until the job concludes — and reads the monitor's closing record where the
+marker is silent
 ([`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2); the run record
 reads them as its launch and its exit
 ([`model/parse.md`](?doc=model/parse.md) § 5d.2). And **`launch run`, re-submitting
@@ -2315,7 +2316,7 @@ module the job works around.
 | what is this file called? | `runfiles.compose` / `parse` / `stem` / `tail` — **unchanged**, § 2.2a still owns the grammar |
 | which files here match? | `runfiles.find` |
 | where does this stage live? | `Shape.stage_dir` (moves into `paths`) |
-| which stage directories exist? | `Shape.stage_glob` — the door that already worked this way, and the model for the rest |
+| which stage directories exist? | `Shape.run_basename` (was `stage_glob`) — the door that already worked this way, and the model for the rest |
 | where does a sweep live? | `bench_container` / `sweep_set_paths` |
 | where does a trial run? | `trial_dir`, `trial_work_dir` |
 | which attempts exist? | `attempts`, `resolve_attempt` |
@@ -2375,7 +2376,7 @@ check as an assertion. Three things stop it from being decorative:
 #### The rule has two halves, and the second one has its own check
 
 **A duplicate COMPOSER performs no search, so nothing above can see it.** That
-is how `runrecord.attempt_concluded` came to spell
+is how the run record's conclusion reader (`runrecord.ending` now) came to spell
 `f"{basename}-run{newest}.concluded"` on the line *after* asking
 `runfiles.latest_run` for that very counter, and how `submit.py` built
 `f"{names[j]}/run-{n}"` and handed it to `prepare_attempt` as the attempt to

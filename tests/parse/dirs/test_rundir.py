@@ -74,6 +74,7 @@ def test_the_registry_answers_for_a_run_directory(tmp_path):
     """
     from support.junction import job_run_dir
     run = job_run_dir(tmp_path)
+    (run / "junction-run0.concluded").write_text("rc=0 at then\n")
 
     got = parse_dir(run)
 

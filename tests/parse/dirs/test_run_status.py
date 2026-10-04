@@ -88,8 +88,10 @@ def test_a_crashed_run_reads_failed(tmp_path):
 
 def test_a_concluded_molwatch_log_finishes_a_run_with_no_out(tmp_path):
     """A PySCF attempt: no `.out` ever exists, the concluded molwatch
-    log is the result file, and the answer is `finished`."""
+    log is the result file, and -- the run concluded -- the answer is
+    `finished` by its end (`job_completed`)."""
     _mw_log(tmp_path, "w_01_coarse.molwatch.log", concluded=True)
+    (tmp_path / "w_01_coarse-run0.concluded").write_text("rc=0 at then\n")
     s = run_status(tmp_path)
     assert s.state == "finished"
     assert s.detail == "job_completed"
@@ -103,7 +105,10 @@ def test_a_finished_pyscf_run_reads_its_own_stdout(tmp_path):
     their end line sitting in the file.
 
     The end line is the SPECTRUM deck's, which is not the relaxation deck's:
-    that is why a reader taught only "Job complete in" fixes neither.
+    that is why a reader taught only "Job complete in" fixes neither.  The
+    run concluded, as its wrapper concludes one: finished is a run that ended
+    on its own (`runrecord.ending`), and its end -- `job_completed` -- is the
+    stdout's.
     """
     from molbuilder.pyscf.end_lines import SPECTRUM_END_MARKER
     (tmp_path / "spectra.spectra-run0.pyscf.log").write_text(
@@ -111,6 +116,7 @@ def test_a_finished_pyscf_run_reads_its_own_stdout(tmp_path):
         "Phase 4 done: 36 modes with ES data\n"
         f"{SPECTRUM_END_MARKER} 5090.8 s\n"
         "Results: /x/spectra.spectra.json\n", encoding="utf-8")
+    (tmp_path / "spectra.spectra-run0.concluded").write_text("rc=0 at then\n")
     s = run_status(tmp_path)
     assert s.state == "finished"
     assert s.detail == "job_completed"

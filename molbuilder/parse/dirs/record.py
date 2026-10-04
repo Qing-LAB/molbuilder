@@ -523,8 +523,8 @@ def _launch_record(f: RunFiles) -> Dict[str, Any]:
 def _concluded(f: RunFiles) -> Dict[str, Any]:
     """What the run's process said on its way out: the marker `run_status`
     already found at the latest run (``RunStatus.concluded``), read by its one
-    parser, `job.read_concluded` -- never the file a second time."""
-    from .job import read_concluded
+    parser, `runrecord.read_concluded` -- never the file a second time."""
+    from ...runrecord import read_concluded
     said = getattr(f.status, "concluded", None)
     if not said:
         return {}

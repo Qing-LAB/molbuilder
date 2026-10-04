@@ -6,7 +6,10 @@
 ``run_state``, ``model/parse.md`` § 2b -- is read for each result file
 (every ``.out``, and each ``*.molwatch.log`` whose footer concludes the
 run) by its role's reader, ``_run_ending.ending_of``: the reading the
-parsers build from.  This module greps no output itself.
+parsers build from.  This module greps no output itself.  How the run's
+PROCESS ended -- on its own or not, with what exit code -- is the run
+record's one door, ``runrecord.ending``, and the state is built on it
+(`execution/architecture.md` § 3.2).
 
 Four things a parser cannot know are settled here, because they are not
 in the file:
@@ -40,7 +43,6 @@ a second ``SystemLabel`` regex that returned a different answer.)*
 
 from __future__ import annotations
 
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 from dataclasses import dataclass, field, replace
@@ -57,11 +59,13 @@ try:                                        # inside molbuilder
     # the package while the monitor reads with the shipped copies -- two
     # versions of one reader in one process.
     from ... import runfiles as _rf
+    from ... import runrecord as _rr
     from ... import wrapper_log as _wl
     from ...identity import parse_stage_token
     from ..engines import _run_ending as _re
 except ImportError:                         # beside a job, as the monitor's
     import runfiles as _rf
+    import runrecord as _rr
     import wrapper_log as _wl
     from identity import parse_stage_token
     import _run_ending as _re
@@ -125,30 +129,33 @@ def _iso_z(ts: float) -> str:
 # ---- file enumeration ------------------------------------------------ #
 
 
-def _enumerate_files(run_dir: Path, match: str = "*") -> Dict[str, List[Path]]:
-    """The run-output files of the rung ``match`` names, keyed by ROLE --
+def _of_run(paths, basename: Optional[str]) -> List[Path]:
+    """Those of ``paths`` that are the run ``basename`` names -- a name that
+    reads back under it (`runfiles.parse`) -- or all of them without one."""
+    return [p for p in paths
+            if basename is None or _rf.parse(p.name, basename) is not None]
+
+
+def _enumerate_files(run_dir: Path,
+                     basename: Optional[str] = None) -> Dict[str, List[Path]]:
+    """The run-output files of the run ``basename`` names, keyed by ROLE --
     ``{".out": [...], ".pyscf.log": [...], ".molwatch.log": [...]}`` -- and
     sorted by name within each.  Which files are a run's output is the
     catalogue's question (`runfiles.run_output_roles`, `model/parse.md`
     § 5.5, R-RO1).
 
-    ``match`` NARROWS THE DIRECTORY TO ONE RUNG, and in the flat shape that is
-    the whole question: every stage of a flat calculation shares one directory
-    and is told apart by FILENAME (`project-layout.md` § 1), so a bucket built
-    from the whole directory answers about all of them at once.  The caller
-    passes `Shape.stage_glob(token, label)`; ``"*"`` is the hierarchical
-    answer, where the directory has already selected the stage.
+    ``basename`` NARROWS THE DIRECTORY TO ONE RUN, and in the flat shape that
+    is the whole question: every stage of a flat calculation shares one
+    directory and is told apart by FILENAME (`project-layout.md` § 1), so a
+    bucket built from the whole directory answers about all of them at once.
+    The caller passes `Shape.run_basename(token, label)` -- ``None`` in the
+    hierarchy, where the directory has already selected the run.  *(A glob,
+    ``<stem>*``, until 2026-10-03, when the run's ending came to be asked of
+    one door by its name.)*
     """
-    narrowed = {c for c in run_dir.glob(match) if c.is_file()}
-    return {role: sorted(p for p in _rf.find_by_role(run_dir, role)
-                         if p in narrowed)
+    return {role: _of_run(_rf.find_by_role(run_dir, role), basename)
             for role in _rf.run_output_roles()}
 
-
-#: SIESTA's own end-of-run marker: a FILE whose existence is the signal, and
-#: whose name is SIESTA's, not ours.  A literal is forced -- it is in no
-#: `runfiles.WRITTEN` row, so `find_by_role` refuses it, the same as `.XV`.
-_ENGINE_EXIT_MARKER = "0_NORMAL_EXIT"
 
 #: What a conclusion marker says when the job's FINISH failed -- the step the
 #: wrapper runs after the engine when the engine alone leaves no result (a
@@ -168,65 +175,6 @@ FINISH_FAILED = "finish failed"
 FINISH_CANNOT_LOAD = "finish cannot load"
 
 
-def _rung_files(run_dir: Path, role: str, match: str = "*") -> List[Path]:
-    """The ``role`` files of the rung ``match`` names (`_enumerate_files`'s
-    narrowing, for one role)."""
-    narrowed = {c.name for c in run_dir.glob(match)}
-    return [f for f in _rf.find_by_role(run_dir, role) if f.name in narrowed]
-
-
-def _at_latest_run(run_dir: Path, files: List[Path]) -> List[Path]:
-    """Those of ``files`` that belong to their label's LATEST run, newest
-    first.
-
-    The rule is `attempt_concluded`'s: a per-run file counts only at the
-    HIGHEST index any per-run artifact of its label reached, across every
-    role.  An earlier index's file beside a newer run's is a previous
-    re-run's -- its goodbye, or its monitor's -- and says nothing about the
-    run that followed it.
-    """
-    kept = []
-    for f in files:
-        label = _label_of_run_file(f.name)
-        got = _rf.parse(f.name, label)
-        idx = getattr(got, "run", None) if got else None
-        newest = _rf.latest_run(run_dir, label)
-        if newest is not None and idx is not None and idx < newest:
-            continue
-        kept.append(((idx if idx is not None else -1, f.stat().st_mtime), f))
-    return [f for _key, f in sorted(kept, key=lambda k: k[0], reverse=True)]
-
-
-def _process_conclusion(run_dir: Path, match: str = "*") -> Optional[str]:
-    """Did this run's PROCESS get to say goodbye, and with what?
-
-    ``"rc=0"`` / ``"rc=1 (walltime)"`` from the wrapper's marker, the literal
-    ``"0_NORMAL_EXIT"`` when only the engine's is there, ``None`` when
-    nothing concluded.
-
-    Content answers *did the science finish*; this answers *did the run end
-    on its own*, which an output cannot say about itself.  The wrapper
-    writes its marker on the main path, so an engine error reaches it and a
-    kill never does.  An engine that dies before printing leaves a marker
-    and no output at all -- the case content cannot see.
-    """
-    marks = _rung_files(run_dir, ".concluded", match)
-    if marks:
-        latest = _at_latest_run(run_dir, marks)
-        if not latest:
-            return None                  # a previous attempt's goodbye
-        try:
-            return latest[0].read_text(encoding="utf-8").strip() or "rc=?"
-        except OSError:
-            return None
-    # SIESTA's own marker carries NO LABEL, so it cannot be attributed to a
-    # rung.  In the flat shape every stage shares one directory, so consulting
-    # it while narrowed would let one rung's clean exit answer for all of them.
-    if match == "*" and (run_dir / _ENGINE_EXIT_MARKER).is_file():
-        return _ENGINE_EXIT_MARKER
-    return None
-
-
 #: The monitor log's closing record of a run whose process has gone
 #: (`execution/run-reports.md` § 2.5) -- written by the monitor, which
 #: imports it from here, and read by :func:`_monitor_ended`.  A warm retry's
@@ -234,7 +182,7 @@ def _process_conclusion(run_dir: Path, match: str = "*") -> Optional[str]:
 MONITOR_ENDED = "[MONITOR] job ended"
 
 
-def _monitor_ended(run_dir: Path, match: str = "*") -> bool:
+def _monitor_ended(run_dir: Path, basename: Optional[str] = None) -> bool:
     """Did the latest run's monitor see its process go -- its log's closing
     record, :data:`MONITOR_ENDED`?
 
@@ -246,8 +194,9 @@ def _monitor_ended(run_dir: Path, match: str = "*") -> bool:
     ended (`run-reports.md` § 2.4).  A node that dies takes the monitor with
     it, and then no file says the run is over.
     """
-    for log in _at_latest_run(run_dir,
-                              _rung_files(run_dir, ".monitor.log", match)):
+    for log in _rf.at_latest_run(
+            run_dir, _of_run(_rf.find_by_role(run_dir, ".monitor.log"),
+                             basename)):
         try:
             with log.open(encoding="utf-8", errors="replace") as fh:
                 if any(MONITOR_ENDED in line for line in fh):
@@ -257,59 +206,12 @@ def _monitor_ended(run_dir: Path, match: str = "*") -> bool:
     return False
 
 
-def _label_of_run_file(name: str) -> str:
-    """The label a per-run file, ``<label>-run<N>.<role>``, carries.
-
-    `runfiles.parse` needs the label to read a name back, and a marker or a
-    monitor log is met before anything has said whose it is.  The counter
-    keyword comes from `runfiles.QUALIFIERS`.
-
-    *(This spelled `"-run"` behind an `isinstance(QUALIFIERS, dict)` guard
-    that is always False -- `QUALIFIERS` is a tuple -- so the literal was
-    always used while the docstring claimed otherwise.)*
-    """
-    cut = name.rfind("-" + _rf.QUALIFIERS[0])
-    return name[:cut] if cut > 0 else name
-
-
-def read_concluded(text: Optional[str]) -> Optional[Dict[str, Any]]:
-    """The conclusion marker's first line, ``rc=<N> at <when>[; <note>]`` as
-    the wrapper writes it (`runwrap.py`), as ``{"code": N, "at": when,
-    "note": note}`` -- ``at`` and ``note`` only when stated -- or ``None``
-    when the text is not one (SIESTA's own ``0_NORMAL_EXIT``, which carries
-    no code).  The note is what the wrapper adds when the job's finish
-    failed (:data:`FINISH_FAILED`) or cannot run (:data:`FINISH_CANNOT_LOAD`).
-    THE one reader of that line.
-    """
-    head = text.splitlines()[0] if text else ""
-    m = re.search(r"\brc=(-?\d+)(?:\s+at\s+(.*?))?(?:;\s*(.*?))?\s*$", head)
-    if m is None:
-        return None
-    return {"code": int(m.group(1)),
-            **({"at": m.group(2)} if m.group(2) else {}),
-            **({"note": m.group(3)} if m.group(3) else {})}
-
-
 def _finish_failed(concluded: Optional[str]) -> bool:
     """Does the marker say the job's finish failed?  Read through the one
-    reader of the line (:func:`read_concluded`), never by a second match."""
-    got = read_concluded(concluded) if concluded else None
+    reader of the line (`runrecord.read_concluded`), never by a second
+    match."""
+    got = _rr.read_concluded(concluded) if concluded else None
     return bool(got) and str(got.get("note", "")).startswith(FINISH_FAILED)
-
-
-def _rc_ok(concluded: str) -> bool:
-    """Did the process end successfully, from the marker's own text?
-
-    The wrapper writes ``rc=<N> at <date>`` (`runwrap.py`), so the rc has to
-    be PARSED, not string-equalled.  Measured 2026-09-18: 19 of the 20 markers
-    in the checkout carry the date, and an exact test against ``"rc=0"``
-    matched only the one hand-made fixture -- reporting every real successful
-    conclusion as a failure.
-    """
-    if concluded == _ENGINE_EXIT_MARKER:
-        return True
-    got = read_concluded(concluded)
-    return got is not None and got["code"] == 0
 
 
 # ---- how each result file ENDED ------------------------------------- #
@@ -377,7 +279,7 @@ def _stderr_of(run_dir: Path, path: Path,
     table for the rest of this walk."""
     if _rf.role_of(path.name) != ".out":
         return None
-    label = _label_of_run_file(path.name)
+    label = _rf.label_of_run_file(path.name)
     got = _rf.parse(path.name, label)
     if got is None or got.run is None:
         return None
@@ -414,15 +316,13 @@ class RunStatus:
     detail:         str
     last_change_at: "Optional[str]" = None
     active_source:  "Optional[str]" = None
-    #: What the run's PROCESS said on its way out -- "rc=0",
-    #: "rc=1 (walltime)", "0_NORMAL_EXIT" -- or None if it never said
-    #: goodbye.  Reported BESIDE the state, not folded into it.
+    #: What the run's PROCESS said on its way out -- ``rc=0 at <date>``,
+    #: ``0_NORMAL_EXIT`` -- or None if it never said goodbye: the line of
+    #: the one door's answer (`runrecord.ending`), which the state is built
+    #: on.
     #:
-    #: Read by the monitor's closing report (`run-reports.md` § 2.3), which
-    #: asks about this rung's own files.  *(It had no reader from the day the
-    #: Transport tab was reverted off it: `classify_citation` asks about a
-    #: DECK and this answers about a DIRECTORY -- measured, a neighbour rung's
-    #: marker reported for a citation that concluded cleanly.)*
+    #: Read by the monitor's closing report (`run-reports.md` § 2.3) and the
+    #: run record's exit (`record._concluded`).
     concluded:      "Optional[str]" = None
     #: Every run-output file's ending (`_run_ending.RunEnding`: how it ended,
     #: whether each SCF phase converged, the error), by filename -- the ONE
@@ -444,7 +344,7 @@ class RunStatus:
 _UNASKED = object()
 
 
-def run_status(run_dir, match: str = "*", *,
+def run_status(run_dir, basename: Optional[str] = None, *,
                launch: Any = _UNASKED) -> "RunStatus":
     """How is this run doing?  ``{state, detail, last_change_at,
     active_source}``.
@@ -455,23 +355,22 @@ def run_status(run_dir, match: str = "*", *,
     written yet* before any output exists (`project-layout.md` § 1.6) --
     ``pending`` and ``queued`` -- and a caller that holds it passes it.
 
-    **The status IS the ending readers' answer**, plus what no single file
-    can know.  How each file ended -- ``run_state``, ``model/parse.md``
-    § 2b -- is read by its role's reader (``_run_ending.ending_of``), and
-    this settles what a single file cannot:
+    **The state is built on two doors, each asked once**: how the run's
+    PROCESS ended -- `runrecord.ending`, did it end on its own and with what
+    exit code (`execution/architecture.md` § 3.2) -- and how each of its
+    files ended -- ``run_state``, ``model/parse.md`` § 2b, read by its
+    role's reader (``_run_ending.ending_of``).  This settles what neither
+    can alone:
 
     * **which file speaks for the directory.**  A folder holds one
       ``.out`` per run index and one molwatch log per stage; a parser
       sees one file and cannot pick.  Highest stage, newest mtime.
 
-      ``match`` says WHICH RUNG is being asked about, and without it this
-      answered about whichever rung ran last.  The caller's own existence
-      check was already shape-aware -- `runstatus._stage_state` narrows with
-      `Shape.stage_glob` and its comment says why -- but the call through to
-      here passed no filter, so in the flat shape (one directory, every
-      stage) a finished rung reported the newest rung's state.  Measured
-      2026-09-08: with a later stage's `.out` present, a finished rung
-      read the later rung's "running".
+      ``basename`` says WHICH RUN is being asked about -- the deck's stem,
+      in a folder every stage of a flat calculation shares -- and without it
+      this answered about whichever rung ran last: measured 2026-09-08, with
+      a later stage's `.out` present a finished rung read the later rung's
+      "running".
 
     Callers wanted exactly this and had to take it out of an
     eleven-field summary: ``decode_run_dir`` answered ``status`` plus
@@ -479,7 +378,7 @@ def run_status(run_dir, match: str = "*", *,
     run-states by building every PLOT and discarding them.
     """
     run_dir = Path(run_dir)
-    files = _enumerate_files(run_dir, match)
+    files = _enumerate_files(run_dir, basename)
     endings = _output_endings(
         [p for role in _rf.run_output_roles() for p in files[role]], run_dir)
     states = {name: e.run_state or "unknown" for name, e in endings.items()}
@@ -496,9 +395,9 @@ def run_status(run_dir, match: str = "*", *,
         [p for role in _rf.run_output_roles() for p in files[role]
          if role in speaks or states.get(p.name) in _re.CONCLUDED],
         states,
-        _process_conclusion(run_dir, match),
+        _rr.ending(run_dir, basename),
         launch=launch,
-        monitor_ended=lambda: _monitor_ended(run_dir, match),
+        monitor_ended=lambda: _monitor_ended(run_dir, basename),
         out_messages=messages,
         finish_started=lambda p: _finish_started(run_dir, p)),
         endings=endings)
@@ -514,7 +413,7 @@ _STOPPED_UNRECORDED = ("stopped before its end: no ending in its output "
 
 def _build_status(out_paths: List[Path],
                   out_run_states: Dict[str, str],
-                  concluded: Optional[str] = None,
+                  end: "Optional[_rr.Ending]" = None,
                   launch: Any = _UNASKED,
                   monitor_ended: Callable[[], bool] = lambda: False,
                   out_messages: Optional[Dict[str, Optional[str]]] = None,
@@ -523,35 +422,37 @@ def _build_status(out_paths: List[Path],
     """Build the status envelope per § 5, over the directory's RESULT
     files — every ``"stdout"`` run output plus each ``"progress"`` one whose
     footer concludes (`runfiles.Artifact.output`, `model/parse.md` § 5.5) —
-    and the run's PROCESS conclusion.
+    and how the run's PROCESS ended (``end``, `runrecord.ending`).
 
-    **Content first, process second.**  An output that states how it ended
-    is the strongest evidence and keeps the answer it always gave.  The
-    marker speaks where content is silent; the monitor's closing record
-    (``monitor_ended``, asked only then) where the marker is silent too --
-    a forced stop.  Where nothing says anything the run is ``running`` --
-    not finished -- however long it has been quiet (`running-a-job.md`
-    § 4.2).
-
-    **A job with a finish is not done when its engine is**
-    (`engines/vibration.md` § 5.5): after an ended output, a marker naming a
-    failed finish reads failed, and with no wrapper marker yet -- SIESTA's
-    own ``0_NORMAL_EXIT`` names no finish -- a run whose session log says
-    its finish began (``finish_started``, asked only then) is still
-    running, or failed once its monitor saw the process go.
+    **Finished is the door's answer: the run ended on its own with exit
+    code 0** -- and *failed* when it ended on its own with any other
+    (`execution/architecture.md` § 3.2, plan W38 F3).  An output that says
+    how it ended speaks beside it: the engine's end, its error, its memory
+    running out -- and an output saying the engine stopped is a failure
+    whatever followed.  **An output that ended is not a run that ended**:
+    the job may still be on its way out -- a finish deriving its result
+    after the engine (`engines/vibration.md` § 5.5), the wrapper's own last
+    lines -- so it is ``running`` until it concludes, and ``failed`` once
+    the monitor's closing record says the process went without concluding
+    (``monitor_ended``, asked only then).  *(Until 2026-10-03 an ended
+    output read finished with no conclusion at all, so status said finished
+    where every hand-over refused the run, and finished beside an exit code
+    of 1.)*  Where nothing says anything the run is ``running`` -- not
+    finished -- however long it has been quiet (`running-a-job.md` § 4.2).
 
     ``out_paths`` are the files that may SPEAK; ``last_change_at`` is the
     speaker's mtime, paired with ``active_source`` beside it.
     """
+    end = end if end is not None else _rr.Ending()
+    said = end.line
     if not out_paths:
-        # No output at all: the marker is the whole answer.
-        if concluded is not None:
-            rc_ok = _rc_ok(concluded)
+        # No output at all: the conclusion is the whole answer.
+        if end.concluded:
             return RunStatus(
-                state=("finished" if rc_ok else "failed"),
-                detail=(f"concluded ({concluded}) before any output"
-                        if not rc_ok else f"concluded ({concluded})"),
-                concluded=concluded)
+                state=("finished" if end.ok else "failed"),
+                detail=(f"concluded ({said})" if end.ok
+                        else f"concluded ({said}) before any output"),
+                concluded=said)
         if monitor_ended():
             return RunStatus(
                 state="failed",
@@ -577,28 +478,40 @@ def _build_status(out_paths: List[Path],
     )
     active = sorted_outs[-1]
     active_state = out_run_states.get(active.name, "unknown")
+    ended = active_state == "ended"
 
-    state = "running"
-    detail = "running"
-    # The engine parser reports how the run ENDED from markers alone --
-    # "running"|"ended"|"stopped"|"out_of_memory"|"unknown" -- and a file
-    # with no ending marker is honestly "running": not finished, however
-    # long it has been quiet (`running-a-job.md` § 4.2).
-    #
-    # Note what is NOT consulted: whether the SCF converged.  That is
-    # P-S2's reported fact, carried beside this state for the reader to
-    # show, never folded into it.
-    if active_state == "ended" and _finish_failed(concluded):
+    # The engine parser reports how the OUTPUT ended from markers alone --
+    # "running"|"ended"|"stopped"|"out_of_memory"|"unknown".  Note what is
+    # NOT consulted: whether the SCF converged.  That is P-S2's reported
+    # fact, carried beside this state for the reader to show, never folded
+    # into it.
+    if active_state in ("out_of_memory", "stopped"):
+        # WHAT STOPPED IT, in the run's own words: the line its ending
+        # reader kept -- from the output, or from the stderr a rank other
+        # than 0 died on (`_stderr_of`).
+        said_why = (out_messages or {}).get(active.name)
+        state = "failed"
+        detail = ("out of memory" if active_state == "out_of_memory"
+                  else "stopped before its end")
+        if said_why:
+            detail += f": {said_why}"
+    elif ended and _finish_failed(said):
         # THE ENGINE ENDED, THE JOB DID NOT: its finish -- the step that
         # derives the result from what the engine left -- failed, and the
         # marker says so in words no engine teardown writes
         # (`project-layout.md` § 1.6.3).
         state = "failed"
         detail = (f"the engine ended, but the job's finish did not derive "
-                  f"the result ({concluded}); the session log says why")
-    elif (active_state == "ended"
-          and concluded in (None, _ENGINE_EXIT_MARKER)
-          and finish_started(active)):
+                  f"the result ({said}); the session log says why")
+    elif end.concluded:
+        if end.ok:
+            state, detail = "finished", ("job_completed" if ended
+                                         else f"concluded ({said})")
+        else:
+            state, detail = "failed", (
+                f"the engine's output ended, but the job exited with an "
+                f"error ({said})" if ended else f"concluded ({said})")
+    elif ended and finish_started(active):
         # THE ENGINE ENDED AND THE JOB'S FINISH BEGAN, and the wrapper has
         # not concluded: the finish is deriving the result now -- or the job
         # was stopped inside it (a walltime, a kill), which leaves no marker
@@ -613,49 +526,27 @@ def _build_status(out_paths: List[Path],
             state = "running"
             detail = ("the engine ended; the job's finish is deriving the "
                       "result")
-    elif active_state == "ended":
-        state, detail = "finished", "job_completed"
-    elif active_state in ("out_of_memory", "stopped"):
-        # WHAT STOPPED IT, in the run's own words: the line its ending
-        # reader kept -- from the output, or from the stderr a rank other
-        # than 0 died on (`_stderr_of`).
-        said = (out_messages or {}).get(active.name)
-        state = "failed"
-        detail = ("out of memory" if active_state == "out_of_memory"
-                  else "stopped before its end")
-        if said:
-            detail += f": {said}"
-    elif concluded is not None and concluded != _ENGINE_EXIT_MARKER:
-        # Content is silent, the process is not: the run is over and the
-        # marker says how.
-        #
-        # THE ENGINE'S OWN MARKER IS EXCLUDED, because it cannot be
-        # ATTRIBUTED.  A `.concluded` carries a label and a `-run<N>`, so
-        # `_process_conclusion` can refuse a previous attempt's goodbye;
-        # `0_NORMAL_EXIT` is a bare filename carrying neither, so a leftover
-        # from an earlier attempt promoted a silent output to `finished` --
-        # measured on a copy of `BDT-withAuJunction`, and undone with the
-        # marker removed.
-        # `_process_conclusion` already refuses it on the STAGE axis when
-        # narrowed, for the same reason; this is the ATTEMPT axis.
-        #
-        # It is still REPORTED (the `concluded` field below) and still
-        # decides where there is no output at all to contradict it, which is
-        # the case only a marker can see.  Mtime cannot stand in for the
-        # index: measured over the 31 real marker directories, SIESTA writes
-        # it up to 8 s BEFORE the output's final write.
-        if _rc_ok(concluded):
-            state, detail = "finished", f"concluded ({concluded})"
+    elif ended:
+        # THE ENGINE ENDED AND THE JOB HAS NOT CONCLUDED: on its way out --
+        # or stopped there, which its monitor saw.  Not finished either way:
+        # nothing builds on a run that did not end on its own.
+        if monitor_ended():
+            state = "failed"
+            detail = ("the engine's output ended, but the job stopped before "
+                      "it concluded -- no exit recorded")
         else:
-            state, detail = "failed", f"concluded ({concluded})"
+            state = "running"
+            detail = "the engine's output ended; the job has not concluded"
     elif monitor_ended():
-        # Content and the marker are silent, and the monitor saw the
+        # Content and the conclusion are silent, and the monitor saw the
         # process go: a forced stop (`_monitor_ended`).
         state, detail = "failed", _STOPPED_UNRECORDED
+    else:
+        state, detail = "running", "running"
 
     return RunStatus(state=state, detail=detail,
                      last_change_at=_iso_z(active.stat().st_mtime),
                      active_source=active.name,
-                     concluded=concluded)
+                     concluded=said)
 
 

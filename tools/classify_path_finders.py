@@ -144,17 +144,6 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
 
     # -- DOOR-FED: the pattern is a PARAMETER, and its one producer is a door.
     #    A survey that reads syntax cannot see that; each of these was read.
-    ("molbuilder/parse/dirs/job.py", "_enumerate_files", "match"):
-        ("door-fed - the pattern comes from a door",
-         "`match` is `paths.Shape.stage_glob` -- WHICH FILES ARE THIS RUNG'S, "
-         "answered by the layout layer, and no role search takes a glob, so "
-         "the narrowing has to be a glob.  What it narrows is then bucketed "
-         "two ways (2026-09-18): the three roles the catalogue declares ask "
-         "`runfiles.find_by_role`, and `.XV` / `.STRUCT_OUT` / `.ANI` stay "
-         "literal because they are the ENGINE's names, which "
-         "`runfiles.WRITTEN` deliberately does not carry.  *(All seven were "
-         "literal `endswith` until then -- the role vocabulary spelled "
-         "outside the module that declares it.)*"),
     ("molbuilder/projects.py", "find_geom_candidates", "pattern"):
         ("door-fed - the pattern comes from a door",
          "`_geom_output_patterns()` takes both PySCF spellings from "

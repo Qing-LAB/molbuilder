@@ -1553,9 +1553,12 @@ layout to reproduce.
 > ruling exists for.
 
 **Evidence is FILES, never a marker of ours.** SIESTA writes `0_NORMAL_EXIT`
-as its last act on a clean exit, so a run carrying it ran to its own end
-*whatever launched it*. molbuilder's own record answers first only because it
-also carries the exit code.
+as its last act on a clean exit and deletes it as it starts, so a cited folder
+carrying it — one no wrapper of ours ran in, holding its one deck — ran to its
+own end, whoever launched it. Where molbuilder's wrapper ran, its own record
+answers, because it carries the exit code and the engine's end is not the
+job's: the one door's rule (`runrecord.ending`,
+[`execution/architecture.md`](?doc=execution/architecture.md) § 3.2).
 
 **Classifying is not composing.** A relaxation still running has record files
 that do not conclude; classification RECORDS that, because describing a

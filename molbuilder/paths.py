@@ -92,21 +92,21 @@ class Shape:
         """
         return token if self.name == "hierarchical" else "."
 
-    def stage_glob(self, token: str, label: str) -> str:
-        """A glob matching the files **this stage** produced, inside
-        :meth:`stage_dir`.
+    def run_basename(self, token: str, label: str) -> "Optional[str]":
+        """The name that narrows :meth:`stage_dir` to **this stage's run** --
+        what `parse.dirs.run_status` and `runrecord.ending` are asked with.
 
         This is the half that does not exist in the hierarchy's world view.
-        There, the directory has already selected the stage, so anything in it
-        belongs to it. In flat, one directory holds every stage, and they are
-        told apart by the deck's token carried in each filename
-        (`job-contracts.md § 6.3`) — so the *name* does the selecting.
-
-        Returning a glob rather than a boolean is what lets one caller write
-        one line: ``(base / sh.stage_dir(t)).glob(sh.stage_glob(t, label))``
-        is correct in both, and there is no second code path to keep in step.
+        There, the directory has already selected the stage, so anything in
+        it belongs to it: ``None``.  In flat, one directory holds every
+        stage, and they are told apart by the deck's stem carried in each
+        filename (`job-contracts.md § 6.3`) -- so the *name* does the
+        selecting: ``<label>_<token>``.  *(A glob, ``stage_glob``, until
+        2026-10-03, when the run's ending came to be asked of one door by
+        its name.)*
         """
-        return "*" if self.name == "hierarchical" else f"{label}_{token}*"
+        from .runfiles import stem
+        return None if self.name == "hierarchical" else stem(label, token)
 
     @property
     def keeps_attempts_as_directories(self) -> bool:

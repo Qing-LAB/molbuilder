@@ -319,7 +319,7 @@ classDiagram
     }
     class Shape {
       +named(str)
-      +stage_glob()
+      +run_basename()
     }
     class Attempt {
       +str stage
@@ -432,7 +432,7 @@ job by its count *or* by `use_gpu`; `run.json` read raw *or* through `persist`.
 | **a stage's number and folder** | `stage_home(base, task, stage)` — the number on disk for a stage that has a folder (its directory in the hierarchy, its deck's token in the flat shape, a `.disabled` one included); the next unused for one that has none ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2) | 4 | prep, launch, status, `#N`, what a stage continues from, the transport record, the displacement sweep, a benchmark's folder, Task setup |
 | **prepped** | `prepped(base, task, kind, stage)` — the plan holds the stage's row, or its bench folder a sweep, matched by `identity.stage_key` | 4 | prep's gate, launch's gate, status, the plan's merge, Task setup's folder answer, its Save, its commands |
 | **launched** | `launch_record(run)` — the run's `run.json` (a flat stage's `<stem>.run.json`); one that does not read is an error naming the file, never *launched* or *not launched* | 1 | status, the Run panel, prep (an unlaunched attempt is reused), every launch gate, the transport citation |
-| **how a run ended** | `ending(run)` — the run's own conclusion marker (it carries the exit code), else the engine's end mark where it can belong only to this run | 1 | status (its state is built on it), continuation, the frequency stage, the transport gather and citation, launch's re-launch question, the transport record, a benchmark's trials, the viewers through the server |
+| **how a run ended** | `ending(run)` — the run's own conclusion marker (it carries the exit code), else the engine's end mark where it can belong only to this run: a folder no wrapper of ours ran in, holding one deck — where ours ran, its marker answers, since the engine's end is not the job's | 1 | status (its state is built on it), continuation, the frequency stage, the transport gather and citation, launch's re-launch question, the transport record, a benchmark's trials, the viewers through the server |
 | **a run to build on** | `usable(run)` — it ended on its own, with exit code 0; the default of every hand-over, while a run named with `--from` is taken as said and a structure can be stated relaxed ([`job-system.md`](?doc=execution/job-system.md) § 5.4) | 4 | every hand-over: a continuing stage, the frequency stage's geometry, a transport rung's inputs, a re-launch |
 | **what a run starts from** | `continuation(...)` → `Continuation`, the files it carries included | 4 | prep — checked, written and ledgered as one object — a re-launch, status, Task setup's *Continue from* |
 | **the restart files** | `warm_list(engine, kind, base)` — the calculation's own `warm-files.toml` first, else the shipped one ([`job-contracts.md`](?doc=execution/job-contracts.md)) | 3 | a job's declaration, status's column, the run script's detection and a bias scan's hand-forward — both written at prep from it |

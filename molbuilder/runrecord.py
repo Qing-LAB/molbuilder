@@ -11,8 +11,19 @@ A module of its own since 2026-10-03 (W55 B7): they lived in
 from __future__ import annotations
 
 import json
+import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
+
+# IT TRAVELS BESIDE EVERY JOB (`runwrap.MONITOR_COMPANIONS`): the monitor
+# reports how a run ended with `parse.dirs.job.run_status`, whose state is
+# built on :func:`ending` -- so this module is imported two ways, from the
+# package or from beside the job, as `wrapper_log` is.
+try:                                        # inside molbuilder
+    from . import runfiles as _rf
+except ImportError:                         # beside a job, as the monitor's
+    import runfiles as _rf
 
 
 #: Written by ``launch`` into the attempt, AFTER the launch succeeds
@@ -46,83 +57,106 @@ def continued_from_marker(where: Path, basename: Optional[str] = None
     attempt's ``.continued-from``, or a flat stage's own
     ``<basename>.continued-from`` beside its other files -- the flat layout
     records it too (user, 2026-10-01)."""
-    from .runfiles import tail
     return Path(where) / (".continued-from" if basename is None
-                          else basename + tail(".continued-from"))
+                          else basename + _rf.tail(".continued-from"))
 
 
-def attempt_concluded(attempt_dir: Path, basename: str) -> Optional[str]:
-    """The conclusion marker's content when this attempt's LAST process got
-    to say goodbye, else ``None`` (`project-layout.md` § 1.6, *the other
-    file*).
+#: SIESTA's own end-of-run mark -- a FILE whose existence is the signal, and
+#: whose name is SIESTA's, not ours: written as its last act on a clean exit
+#: (`siesta_end.F`) and deleted as one of its first (`siesta_init.F`), so it
+#: is always the newest SIESTA run's in its folder.  A literal is forced: it
+#: is in no `runfiles.WRITTEN` row.
+ENGINE_END_MARK = "0_NORMAL_EXIT"
 
-    *Launched* spans three states; ``run.json`` separates none of them.
-    The wrapper writes ``<basename>-run<N>.concluded`` as its last act on
-    the MAIN path -- an engine error still reaches it, a kill never does
-    -- so the marker separates *ran to its own end* from *still running
-    or force-stopped*, and those last two are indistinguishable from
-    files alone, which is why the caller asks the user rather than
-    deciding.
 
-    A warm-retry chain execs fresh wrappers; only the final process
-    concludes, at the final run index.  So the question is asked of the
-    HIGHEST index any per-run artifact reached: an earlier index's marker
-    beside a newer unconcluded ``.out`` is a previous re-run's goodbye,
-    not this one's.  The index ranges over ``.out`` AND ``.concluded``
-    together, because an engine that dies before printing a single line
-    leaves a marker and NO ``.out`` -- a real conclusion (rc rides the
-    marker) that an out-only rule read as silence (caught by this file's
-    own error-path test, first run).  Nothing per-run at all reads as
-    unconcluded: a launch killed before the engine is exactly a process
-    that never said goodbye.
+def read_concluded(text: Optional[str]) -> Optional[dict]:
+    """The conclusion marker's first line, ``rc=<N> at <when>[; <note>]`` as
+    the wrapper writes it (`runwrap.py`), as ``{"code": N, "at": when,
+    "note": note}`` -- ``at`` and ``note`` only when stated -- or ``None``
+    when the text is not one (SIESTA's own ``0_NORMAL_EXIT``, which carries
+    no code).  The note is what the wrapper adds when the job's finish
+    failed or cannot run (`parse.dirs.job.FINISH_FAILED`,
+    `FINISH_CANNOT_LOAD`).  THE one reader of that line -- beside the marker
+    it reads since 2026-10-03; `parse/dirs/job.py` held it before.
     """
-    d = Path(attempt_dir)
-    # THE INDEX IS ASKED FOR, not scanned for.  This globbed
-    # `f"{basename}-run*.{suffix}"` over three suffixes and pulled N back out
-    # with a regex of its own -- the `-run<N>` counter written twice here and
-    # once more in `summarize`, for a grammar `runfiles` composes in one
-    # place (`project-layout.md` § 4.5).  `latest_run` reads it through
-    # `runfiles.parse`, so a name this module cannot read is not counted as
-    # an attempt.
-    #
-    # ACROSS EVERY ROLE, which is the rule and not an implementation detail.
-    # The wrapper's redirect is engine-specific -- SIESTA's `-runN.out`,
-    # PySCF's `-runN.pyscf.log` -- and an engine that dies before printing
-    # leaves a `.concluded` and no output at all.  Asking without a `role=`
-    # ranges over all of them, so a NEWER killed attempt cannot hide behind
-    # an OLDER one's goodbye.
-    from .runfiles import latest_run, tail as _rf_tail
-    newest = latest_run(d, basename)
-    if newest is None:
+    head = text.splitlines()[0] if text else ""
+    m = re.search(r"\brc=(-?\d+)(?:\s+at\s+(.*?))?(?:;\s*(.*?))?\s*$", head)
+    if m is None:
         return None
-    # AND THE NAME IS COMPOSED BY THE GRAMMAR TOO.  This spelled
-    # `f"{basename}-run{newest}.concluded"` one line after asking `latest_run`
-    # for the counter -- the door answered the SEARCH and the caller still
-    # built the name (`project-layout.md` § 4.5, the compose half).
-    #
-    # `tail`, NOT `compose`, and the difference is load-bearing here:
-    # ``basename`` is whatever the DECK is called, and for a cited transport
-    # directory that is a person's own file -- `my.relaxation.fdf`.  `compose`
-    # would refuse it, correctly (§ 2.1: a label carrying a dot cannot be read
-    # back out of a filename), and this function's job is to answer None, not
-    # to raise at a person who named a file with a dot in it.  `tail` cuts the
-    # `-run<N>.concluded` end off a real `compose` result, so the GRAMMAR owns
-    # the tail and the caller owns the stem it was handed.
-    mark = d / (basename + _rf_tail(".concluded", run=newest))
-    try:
-        return mark.read_text(encoding="utf-8").strip()
-    except OSError:
-        return None
+    return {"code": int(m.group(1)),
+            **({"at": m.group(2)} if m.group(2) else {}),
+            **({"note": m.group(3)} if m.group(3) else {})}
 
 
-def conclusion_line(attempt_dir: Path, basename: str) -> Optional[str]:
-    """The conclusion marker's first line -- ``rc=0 at <date>`` -- or
-    ``None`` when the run has not concluded (:func:`attempt_concluded`).
-    An EMPTY marker is a conclusion, so it reads ``""``: two readers took
-    the first line two ways until 2026-10-01, and one of them raised on an
-    empty marker after the new attempt was already open (W52)."""
-    mark = attempt_concluded(attempt_dir, basename)
-    return None if mark is None else (mark.splitlines() or [""])[0].strip()
+@dataclass(frozen=True)
+class Ending:
+    """HOW A RUN ENDED (`execution/architecture.md` § 3.2): the line its
+    conclusion said -- molbuilder's marker's first line, ``rc=0 at <date>``;
+    ``rc=?`` for an empty one; SIESTA's ``0_NORMAL_EXIT`` -- or ``None`` when
+    it has not ended on its own (still running, or force-stopped: no file
+    tells those two apart); and the exit code that line states."""
+    line: Optional[str] = None
+    code: Optional[int] = None
+
+    @property
+    def concluded(self) -> bool:
+        """It ended on its own -- an engine error included, a kill never."""
+        return self.line is not None
+
+    @property
+    def ok(self) -> bool:
+        """It ended on its own with exit code 0 -- the run every hand-over
+        builds on by default (`jobset.continuation.usable`)."""
+        return self.code == 0
+
+
+def ending(where, basename: Optional[str] = None) -> Ending:
+    """THE door for *did this run end on its own, and with what exit code?*
+    (`execution/architecture.md` § 3.2; plan W38 F3) -- asked by status,
+    whose state is built on it, by every hand-over
+    (`jobset.continuation.usable`), launch's re-launch question and the
+    transport citation.
+
+    ``where`` is the run's folder; ``basename`` its deck's stem,
+    ``<label>_<token>``, where the folder holds several runs (a flat
+    calculation's) -- without it the folder's own run answers (an attempt, a
+    folder read alone).
+
+    **Molbuilder's own marker first** -- ``<basename>-run<N>.concluded``,
+    the wrapper's last act on its main path: an engine error still reaches
+    it, a kill never does, and it carries the exit code.  It counts at the
+    newest run index any file of the run reached (`runfiles.at_latest_run`):
+    an earlier index's marker beside a newer run is that run's goodbye.
+
+    **Else the engine's own end mark, where it can belong only to this
+    run** -- SIESTA's ``0_NORMAL_EXIT``, in a folder no wrapper of ours ran
+    in: a run started by hand, which a cited relaxation is.  Where our
+    wrapper ran, its marker is the run's answer and the engine's mark is
+    not: the mark says the ENGINE ended, while the job -- a finish after
+    it, the wrapper's own end -- may not have; and in a folder every stage
+    shares it names no stage.  Asked about one deck, the folder holds no
+    other.  *(Three readers answered this until 2026-10-03 -- the marker
+    alone for prep's gates, marker-or-mark for the citation, the output's
+    ending first for status -- so status said finished where prep refused.)*
+    """
+    d = Path(where)
+    marks = [m for m in _rf.find_by_role(d, ".concluded")
+             if basename is None or _rf.parse(m.name, basename) is not None]
+    latest = _rf.at_latest_run(d, marks)
+    if latest:
+        try:
+            text = latest[0].read_text(encoding="utf-8")
+        except OSError:
+            return Ending()
+        line = (text.splitlines() or [""])[0].strip() or "rc=?"
+        said = read_concluded(line)
+        return Ending(line, None if said is None else said["code"])
+    if _rf.carries_a_run(d) or not (d / ENGINE_END_MARK).is_file():
+        return Ending()
+    if basename is not None and any(f.stem != basename
+                                    for f in _rf.find_by_role(d, ".fdf")):
+        return Ending()
+    return Ending(ENGINE_END_MARK, 0)
 
 
 def launch_record_path(where: Path, basename: Optional[str] = None) -> Path:
@@ -130,9 +164,8 @@ def launch_record_path(where: Path, basename: Optional[str] = None) -> Path:
     ``run.json``; with ``basename`` -- a flat stage's deck stem,
     ``<label>_<token>`` -- that stage's own ``<basename>.run.json``, beside
     every other file of it in the calculation's one directory."""
-    from .runfiles import tail
     return Path(where) / (RUN_LAUNCH_FILE if basename is None
-                          else basename + tail(".run.json"))
+                          else basename + _rf.tail(".run.json"))
 
 
 def write_run_launch(attempt_dir: Path, *, mode: str, command: List[str],
@@ -212,8 +245,7 @@ def read_run_launch(attempt_dir, basename: Optional[str] = None
         if basename is not None:
             p = launch_record_path(attempt_dir, basename)
         else:
-            from .runfiles import find_by_role
-            stages = sorted(find_by_role(attempt_dir, ".run.json"),
+            stages = sorted(_rf.find_by_role(attempt_dir, ".run.json"),
                             key=lambda f: f.stat().st_mtime)
             p = stages[-1] if stages else p
     if not p.is_file():
@@ -257,4 +289,4 @@ def read_gathered_from(attempt_dir) -> List[dict]:
     return out
 
 
-__all__ = ["RUN_LAUNCH_SCHEMA", "RUN_LAUNCH_FILE", "was_launched", "continued_from_marker", "attempt_concluded", "conclusion_line", "launch_record_path", "write_run_launch", "read_run_launch", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]
+__all__ = ["RUN_LAUNCH_SCHEMA", "RUN_LAUNCH_FILE", "was_launched", "continued_from_marker", "ENGINE_END_MARK", "read_concluded", "Ending", "ending", "launch_record_path", "write_run_launch", "read_run_launch", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]

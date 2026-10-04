@@ -396,15 +396,17 @@ def tail(role: str, stage: Optional[str] = None,
     trajectory's tail and drop what geomeTRIC will add.
 
     **:func:`compose` when you own the label; this when you were handed a stem.**
-    That is the same distinction from the reading side, and it decides real
-    cases: `runrecord.attempt_concluded` is given whatever the DECK is called,
-    and a cited transport relaxation may be a person's own ``my.relaxation.fdf``.
-    :func:`compose` refuses that, correctly -- § 2.1, a label carrying a dot
-    cannot be read back out of a filename -- but the caller's job there is to
-    answer *"no record"*, not to raise at somebody who used a dot. Asking for
-    the tail keeps the GRAMMAR's half in the grammar and leaves the stem to the
-    caller who received it (both sites measured 2026-09-08, when composing
-    turned a report into a crash).
+    That is the same distinction from the reading side, and it decided a real
+    case: the run record's conclusion reader is given whatever the DECK is
+    called, and a cited transport relaxation may be a person's own
+    ``my.relaxation.fdf``.  :func:`compose` refuses that, correctly -- § 2.1, a
+    label carrying a dot cannot be read back out of a filename -- but the
+    caller's job there is to answer *"no record"*, not to raise at somebody who
+    used a dot.  Asking for the tail keeps the GRAMMAR's half in the grammar
+    and leaves the stem to the caller who received it (both sites measured
+    2026-09-08, when composing turned a report into a crash; the reader,
+    `runrecord.ending` since 2026-10-03, now finds the marker by reading names
+    back, :func:`parse`, which takes any stem).
     """
     return compose(_PLACEHOLDER, role, stage, run,
                    **counters)[len(_PLACEHOLDER):]
@@ -664,6 +666,57 @@ def latest_run(directory, label: str, *,
             find(directory, label, role=role, roles=roles, stage=stage)
             if rf.run is not None]
     return max(runs) if runs else None
+
+
+def label_of_run_file(name: str) -> str:
+    """The label a per-run file, ``<label>-run<N>.<role>``, carries -- what
+    :func:`parse` needs to read the name back, for a file met before anything
+    has said whose it is: a conclusion marker, a monitor log.  The counter
+    keyword is :data:`QUALIFIERS`'.  *(It was `parse/dirs/job.py`'s own until
+    2026-10-03, when the run record's door came to need it too.)*"""
+    cut = name.rfind("-" + QUALIFIERS[0])
+    return name[:cut] if cut > 0 else name
+
+
+def at_latest_run(directory, files) -> "list[Path]":
+    """Those of ``files`` that belong to their label's LATEST run, newest
+    first.
+
+    A per-run file counts only at the HIGHEST index any per-run file of its
+    label reached, across every role: a warm-retry chain execs a fresh
+    wrapper per run, so an earlier index's file beside a newer run's is a
+    previous run's -- its goodbye, or its monitor's -- and says nothing about
+    the run that followed it.  Across every role, because an engine that
+    dies before printing leaves a marker and no output at all.
+    """
+    d = Path(directory)
+    kept = []
+    for f in files:
+        label = label_of_run_file(f.name)
+        got = parse(f.name, label)
+        idx = got.run if got else None
+        newest = latest_run(d, label)
+        if newest is not None and idx is not None and idx < newest:
+            continue
+        kept.append(((idx if idx is not None else -1, f.stat().st_mtime), f))
+    return [f for _key, f in sorted(kept, key=lambda k: k[0], reverse=True)]
+
+
+def carries_a_run(directory) -> bool:
+    """Whether any file here carries a run counter -- ``<label>-run<N>.<role>``,
+    which only molbuilder's wrapper writes: a folder where one of our runs
+    ran, as against one where a run was started by hand."""
+    try:
+        entries = list(Path(directory).iterdir())
+    except OSError:
+        return False
+    for f in entries:
+        if "-" + QUALIFIERS[0] not in f.name or not f.is_file():
+            continue
+        got = parse(f.name, label_of_run_file(f.name))
+        if got is not None and got.run is not None:
+            return True
+    return False
 
 
 def is_carried(f: "RunFile | str", label: str = "") -> bool:

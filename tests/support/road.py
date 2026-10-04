@@ -230,18 +230,22 @@ def calls_made(calls: Path):
 
 def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
                    rc: int = 0, tolerance: str = "0.0100",
-                   concluded: bool = True) -> None:
+                   concluded: bool = True,
+                   output: "str | None" = None) -> None:
     """A run of the stage ``stem`` names, ended, in ``where``: the measured
     relaxation's output and geometry -- and, when it ``concluded``, its
     conclusion marker.  A failed one (``rc`` nonzero) died partway, so its
-    output stops before the engine's end -- the output's own ending is the
-    strongest evidence of how a run ended (`running-a-job.md` § 4.2)."""
+    output stops before the engine's end, unless ``output`` says how it
+    ended: ``"ended"`` -- the engine's end, whatever the exit code --
+    ``"cut"``, or ``"none"``: an engine that died before printing a line."""
+    output = output or ("ended" if rc == 0 else "cut")
     text = (RELAX / "H2_01_relax-run0.out").read_text().replace(
         "Force tolerance                             =     0.0100 eV/Ang",
         f"Force tolerance                             =     {tolerance} "
         f"eV/Ang")
-    (where / f"{stem}-run0.out").write_text(
-        text if rc == 0 else text[: len(text) // 3])
+    if output != "none":
+        (where / f"{stem}-run0.out").write_text(
+            text if output == "ended" else text[: len(text) // 3])
     shutil.copy2(RELAX / "H2.XV", where / "H2.XV")
     if concluded:
         (where / f"{stem}-run0.concluded").write_text(
@@ -282,7 +286,8 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # `coarse` unless it names another); `machine` -- "this" (this machine IS
 # the target, its record
 # listing `queues`), "named" (this machine is a workstation; the target is a
-# record named `sol` listing `queues`) or "workstation" (no queues at all);
+# record named `sol` listing `queues`) or "workstation" (no queues at all),
+# the table's own `machine` unless the row names one;
 # `record` -- more fields of THIS machine's record; `named_record` -- more
 # fields of the named target's; `queues` -- replaces the table's menu;
 # `probe` -- the record made as a person makes it instead, by `jobset probe
@@ -303,9 +308,13 @@ def a_finished_run(where: Path, *, stem: str = "H2_01_coarse",
 # and the target named as the row's own prep names them; `disabled` -- the
 # stages then disabled through Task setup's Save; `removed` / `added` -- the
 # stages then removed, or added (`{name, at}`, `at` the place, the end when
-# absent), through the same Save; `stage` -- the stage the
+# absent), through the same Save; `ran` -- a stage's run then laid down as it
+# ended, where its prep put it (`_road_ran`: `stage`, `rc`, `concluded`,
+# `output`, `engine_mark`, `monitor_ended`); `stage` -- the stage the
 # row's prep names, `coarse` unless given; `answers` -- what
-# the person types at the row's prep's question ("" is EOF, no terminal).
+# the person types at the row's prep's question ("" is EOF, no terminal);
+# `calculation` -- the kind `jobset init` describes, an optimization unless
+# given.
 #
 # AFTER PREP, whatever it answered: the folders it left (`made`, paths
 # under the calculation that exist; `made_lacks`, ones that do not), the
@@ -380,7 +389,7 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
     queues = [Domain.from_row(q)
               for q in case.get("queues", table.get("queues", []))]
     record = dict(case.get("record", {}))
-    where = case.get("machine", "this")
+    where = case.get("machine", table.get("machine", "this"))
     if where == "this":
         a_queue_that_answers(tmp_path, monkeypatch, queues, **record)
         return "this"
@@ -490,6 +499,31 @@ def _reprobed(fields) -> None:
     write_environment(dataclasses.replace(read_environment(at), **fields), at)
 
 
+def _road_ran(ran, bundle) -> None:
+    """The stage's run, ended as the row says (``ran``), laid where its prep
+    put it -- its newest attempt; the calculation's folder in the flat
+    shape: the measured relaxation (:func:`a_finished_run` -- ``rc``,
+    ``concluded``, ``output``), SIESTA's own ``0_NORMAL_EXIT`` beside it
+    (``engine_mark``), and the monitor's closing record (``monitor_ended``:
+    the process seen to go).  ``stage`` is ``coarse`` unless given."""
+    from molbuilder.jobset.materialize import run_dir, stage_home
+    from molbuilder.parse.dirs.job import MONITOR_ENDED
+    from molbuilder.runfiles import stem
+    from molbuilder.runrecord import ENGINE_END_MARK
+    from molbuilder.task import read_task
+    task = read_task(bundle / "task.json")
+    home = stage_home(bundle, task, ran.get("stage", "coarse"))
+    where, name = run_dir(home.dir), stem(task.label, home.token)
+    a_finished_run(where, stem=name, rc=ran.get("rc", 0),
+                   concluded=ran.get("concluded", True),
+                   output=ran.get("output"))
+    if ran.get("engine_mark"):
+        (where / ENGINE_END_MARK).write_text("SIESTA completed, MPI exit: 0\n")
+    if ran.get("monitor_ended"):
+        (where / f"{name}-run0.monitor.log").write_text(
+            f"[12:00:00] [INFO ] {MONITOR_ENDED}\n")
+
+
 def _road_after_prep(case, bundle) -> None:
     """What the row's prep left, refused or not: the folder's saved states,
     newest first (`saved_states`), what `status` says of the calculation
@@ -554,7 +588,9 @@ def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
     import dataclasses
     import json
     engine = case.get("engine", "siesta")
-    bundle = describe_h2(tmp_path, monkeypatch, engine=engine)
+    calculation = case.get("calculation", "optimization")
+    bundle = describe_h2(tmp_path, monkeypatch, engine=engine,
+                         calculation=calculation)
     values = (dict(table.get("siesta_template", {}))
               if engine == "siesta" else {})
     values.update(case.get("template", {}))
@@ -568,9 +604,10 @@ def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
         cfg = dataclasses.replace(
             config_from_template(path.read_text(), cls), **values)
         path.write_text(template_with_values(cfg, engine=engine,
-                                             calculation="optimization"))
+                                             calculation=calculation))
     task = json.loads((bundle / "task.json").read_text())
-    scheduled = case.get("machine", "this") != "workstation"
+    scheduled = case.get("machine", table.get("machine", "this")) \
+        != "workstation"
     blocks = {
         "execution": (_over_base(table.get("run_base", {}).get(engine),
                                  case.get("run"), case.get("run_unset"))
@@ -674,6 +711,8 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         _road_disabled(case["disabled"], bundle)
     if "removed" in case or "added" in case:
         _road_ladder_edited(case, bundle)
+    if "ran" in case:
+        _road_ran(case["ran"], bundle)
     kind = "bench" if "bench" in case else "run"
     r = jobset("prep", kind, case.get("stage", "coarse"), "--bundle", bundle,
                "--target", target, *case.get("prep", []),

@@ -355,7 +355,7 @@ over*.
 |---|---|---|
 | `ending_of(path, *, stderr=None)` | the ending of any run-output file, dispatched on its ROLE through `READERS` (§ 5.5): an `.out` through the SIESTA reading pass (§ 4a) — with `stderr`, the file SIESTA's stderr went to, read after the output when the output states no ending, because `die` flushes stdout on node 0 alone; a PySCF stdout through its decks' end lines; a progress log through its footer | one pass, stdlib, no Frames · `run_status`, which passes a SIESTA output's session log — the one whose first section is its run (`wrapper_log.logs_by_run`); the wrapper's door below; the bench summary |
 | `python mb_monitor.pyz ending OUTPUT [--stderr FILE] [QUESTION [ARG]]` | `relaxation-capped` or `stopped-by MARKER`, by exit status (0 yes, 1 no, 2 unreadable); with no question, the ending in words | the wrapper's `_mb_ending`: its failure hint and warm retries (`execution/running-a-job.md` § 3.5) |
-| `run_status(directory)` | a directory's state, from its outputs' endings, its `.concluded` and its `run.json` | `execution/running-a-job.md` § 4.2 |
+| `run_status(directory, basename=None)` | a run's state, from its outputs' endings, how it ended — `runrecord.ending`, the one door — and its `run.json` | `execution/running-a-job.md` § 4.2 |
 | the registered parsers (§ 3) | frames, energies, forces — and the same `run_state` and `scf_converged`, from the same grammar | callers that want the arrays |
 
 SIESTA's lines are read one way. The registered parser builds its Frames from
@@ -1466,7 +1466,7 @@ is rows, not a code path.
 | `instruments` | `.scf-timing.log` (a PySCF run: its `.molwatch.log`'s stamped rows) · `.monitor.log` · `.util.csv` | the instruments and `utilisation` (§ 5c) | any | `computation.time.s_per_iter` · `iters_measured`, and per phase `s_per_iter_<phase>` · `iters_measured_<phase>` · `rows_<phase>` (`periodic`, `negf`) · `memory` · `host.machine` |
 | `pyscf-log` | `<base>.log`, PySCF's own logger | `parse/engines/pyscf.read_pyscf_sys_info` | PySCF | `computation.engine` (program, version, python) · `launch.threads_engine` |
 | `run-json` | `run.json` — a flat stage's `<basename>.run.json` | `runrecord.read_run_launch` | any | `computation.launch` (mode, command, job_id, launched_at, placed_on, continued_from — the run it continued from, `execution/job-system.md` § 5.4) |
-| `concluded` | `<base>-runN.concluded` | `runrecord.attempt_concluded` | any | `computation.exit` |
+| `concluded` | `<base>-runN.concluded` — or SIESTA's `0_NORMAL_EXIT` where it can belong only to this run | `runrecord.ending`, the one door, through `run_status` | any | `computation.exit` |
 | `deck` | the deck · `.gathered-from` | `script_emit.same_calculation` · `runrecord.read_gathered_from` | any | `deck` |
 | `setup` | the parameters fence (§ 5d.3a) · the deck · `fdf.<stamp>.log` | `script_emit.read_parameters_fence` · `script_emit.parameter` · the `siesta-fdf-log` parser | any that writes the fence | `setup.rows` · `setup.engine_only` · `verdict.findings` |
 

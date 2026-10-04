@@ -366,9 +366,9 @@ class _Plan:
     carries: List[str] = dataclasses.field(default_factory=list)
     #: A flat stage launched again: its files lie where it reads them.
     again: bool = False
-    #: The conclusion line of what it follows -- ``None`` when that run was
-    #: launched and never concluded, which the person judges, never
-    #: molbuilder (`project-layout.md` § 1.6.4).
+    #: The line what it follows concluded with (`runrecord.ending`) --
+    #: ``None`` when that run was launched and never ended on its own, which
+    #: the person judges, never molbuilder (`project-layout.md` § 1.6.4).
     concluded: Optional[str] = None
     #: Not launched, and why -- a trial already measured, under direct/ask.
     skip: Optional[str] = None
@@ -435,7 +435,7 @@ def _plan_job(jobset: JobSet, base: Path, job, *, mode: str) -> _Plan:
     from .commands import command
     from ..paths import attempts_in
     from .materialize import (bench_stage_of, continuation_files, job_dir_names, launch_record_at, shape_of)
-    from ..runrecord import conclusion_line, launch_record_path, was_launched
+    from ..runrecord import ending, launch_record_path, was_launched
     _plan = functools.partial(_Plan, base=base)
     sh = shape_of(jobset, base)
     container = base / job_dir_names(jobset, sh)[job.name]
@@ -486,7 +486,7 @@ def _plan_job(jobset: JobSet, base: Path, job, *, mode: str) -> _Plan:
         if not was_launched(where, basename):
             return _plan(job, container, container, False, container)
         return _plan(job, container, container, False, container, again=True,
-                     concluded=conclusion_line(container, stem))
+                     concluded=ending(container, stem).line)
     last = attempt_dir(container, ns[-1])
     if not was_launched(last):
         return _plan(job, container, last, True, last)
@@ -507,7 +507,7 @@ def _plan_job(jobset: JobSet, base: Path, job, *, mode: str) -> _Plan:
             + rollback("its prep", base=base)) from e
     return _plan(job, container, attempt_dir(container, ns[-1] + 1), True,
                  last, continues=source, carries=carries,
-                 concluded=conclusion_line(last, stem))
+                 concluded=ending(last, stem).line)
 
 
 def _trial_run_dir(container):

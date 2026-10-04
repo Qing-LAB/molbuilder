@@ -122,8 +122,8 @@ def deck_value(deck: Path, keyword: str) -> Optional[str]:
 def _trial_deck(d: Path, basename: str) -> Path:
     """The deck a trial ran, beside its results.
 
-    `tail`, not `compose`, for the reason `runrecord.attempt_concluded`
-    states: ``basename`` is ``Path(job.script).stem`` read out of
+    `tail`, not `compose`, for the reason `runfiles.tail` states:
+    ``basename`` is ``Path(job.script).stem`` read out of
     ``job-set.json``, so it is a stem this reader was HANDED, not a label it
     chose.  `compose` validates the label and would raise on a hand-edited
     one -- and every reader in this module degrades rather than raises.

@@ -242,14 +242,14 @@ NOT_PREPPED = ("not-started", "no directory yet (not prepped)")
 
 
 def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
-                 out_glob: str) -> tuple:
+                 basename: Optional[str]) -> tuple:
     """(state, detail) for the directory a stage's run actually happened in.
 
     ``observed`` is the latest attempt where there is one, and the stage
     container for a flat run (`project-layout.md` § 1.5) — the caller resolves
     that, because *where a run happens* is a layout question and this layer
-    only reads.  ``out_glob`` narrows the directory to THIS rung's files --
-    the flat shape keeps every stage in one.
+    only reads.  ``basename`` narrows the directory to THIS rung's run --
+    the flat shape keeps every stage in one (`Shape.run_basename`).
 
     ``launch`` is the attempt's ``run.json``. It is what separates *queued* from
     *never started*, which no amount of looking at an empty directory can do:
@@ -267,10 +267,10 @@ def _stage_state(observed: Path, launch: Optional[Dict[str, Any]],
         # inside it (`model/parse.md` § 5.5, R-RO2: one import surface per
         # question).
         from ..parse.dirs import run_status
-        # THE RUNG'S OWN GLOB: in the flat shape every stage shares the
+        # THE RUNG'S OWN NAME: in the flat shape every stage shares the
         # directory, and without it every row showed the newest stage's
         # state.
-        st = run_status(observed, out_glob, launch=launch)
+        st = run_status(observed, basename, launch=launch)
     except Exception as e:                    # fail-soft; stay informative
         return ("unknown", f"could not decode: {e}")
     # `run_status` returns a `RunStatus` since 2026-09-09; both fields are
@@ -309,8 +309,8 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, sh, dirs,
     # (`Path(job.script).stem` minus the stage suffix), which is the name
     # the files actually carry.
     job_label = _label_of(job, jobset.name)
-    out_glob = (sh.stage_glob(token, job_label)
-                if (sh is not None and token) else "*")
+    basename = (sh.run_basename(token, job_label)
+                if (sh is not None and token) else None)
     read = []
     for home, volts in _rung_homes(base, task, job.name, d):
         # WHERE the run happened, asked of the layer that decides layout
@@ -329,7 +329,7 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, sh, dirs,
         launch = read_run_launch(
             *launch_record_at(jobset.kind, job, home, attempt))
         read.append((home, volts, attempt, observed, launch)
-                    + _stage_state(observed, launch, out_glob))
+                    + _stage_state(observed, launch, basename))
     # A SCAN'S RUNG SPEAKS FROM ITS FIRST POINT NOT FINISHED, in the
     # scan's order -- the order its chain walks -- and from its last once
     # every point has: a rung with a point outstanding is the stage to

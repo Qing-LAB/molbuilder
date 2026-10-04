@@ -371,8 +371,9 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
     input): the sorted
     copy as given, and no cell or record of its own, when the ladder holds no
     `relax` stage; the coordinates that stage relaxed to, in the cell it ran
-    in, when it does -- read from its newest attempt, which must have
-    concluded, through the one SIESTA output parser -- with that run's
+    in, when it does -- read from its newest attempt, which must be one to
+    build on (`continuation.usable`: ended on its own with exit code 0),
+    through the one SIESTA output parser -- with that run's
     relaxation record (`parse.contract.relaxation_of_output`), of the same
     output and the same parse, which the deck's `vibration` block carries to
     the finish (§ 5.3) so nothing re-picks the attempt later -- and the
@@ -384,8 +385,8 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
     Every other rung comes back unchanged.
 
     Two refusals, each naming what to do first.  A force-constant stage
-    before `relax` has concluded: the job set's own order, not a guess at
-    which geometry the force constants belong to.  And one with no `relax`
+    before `relax` has ended on its own with exit code 0: the job set's own
+    order, not a guess at which geometry the force constants belong to.  And one with no `relax`
     stage while the structure is not stated relaxed: the box says *relax
     first* and the ladder holds nothing that would, so the description
     contradicts itself and is refused with the two ways out rather than
@@ -415,19 +416,32 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
         return struct, None, None
     from ..paths import Shape
     from .materialize import run_dir, stage_stdout
-    from ..runrecord import attempt_concluded
+    from ..runrecord import ending
+    from .continuation import usable
     token = stage_home(base, task, relax.name).token
     container = base / Shape.named(task.shape).stage_dir(token)
     stem = _rf_stem(task.label, token)
     # THE COMMANDS, from the one composer: the calculation named, the mode
     # stated where its config sets none (`commands.run_first`).
-    from .commands import block, command, run_first as _run_first
+    from .commands import block, command, launch_lines
+    from .commands import run_first as _run_first
     run_first = block(_run_first(relax.name, base=base))
-    # THE NEWEST ATTEMPT, and it must have concluded: a `relax` re-launched
-    # to tighten is the geometry the person means, so an older concluded
-    # attempt never stands in for one still running.
+    # THE NEWEST ATTEMPT, and it must be one to build on -- ended on its own
+    # with exit code 0 (`continuation.usable`): a `relax` re-launched to
+    # tighten is the geometry the person means, so an older attempt never
+    # stands in for one still running, and a relaxation that failed is not
+    # measured at (it was, by its conclusion alone, until 2026-10-03).
     attempt = run_dir(container)
-    if attempt_concluded(attempt, stem) is None:
+    if not usable(attempt, stem):
+        said = ending(attempt, stem).line
+        if said is not None:
+            raise PrepError(
+                f"the `{pset.stage}` stage takes its geometry from the "
+                f"`{relax.name}` stage, whose newest attempt failed "
+                f"({said}) -- a run that ended with an error is never "
+                f"built on (job-system.md 5.4).  Look at it, then launch it "
+                f"again --\n"
+                f"{block(launch_lines('run', relax.name, base=base))}")
         raise PrepError(
             f"the `{pset.stage}` stage takes its geometry from the "
             f"`{relax.name}` stage, whose newest attempt has not concluded -- "
@@ -1733,7 +1747,7 @@ def gather_transport_inputs(base_dir, task, stage: str,
     """
     from ..transport.stages import (per_point_rungs, rung_container,
                                      stage_inputs)
-    from ..runrecord import attempt_concluded
+    from .continuation import usable
 
     base = Path(base_dir)
     attempt_dir = Path(attempt_dir)
@@ -1767,13 +1781,16 @@ def gather_transport_inputs(base_dir, task, stage: str,
         from ..paths import attempt_dir as _adir
         from ..paths import attempts_in as _ain
         attempts = [_adir(up_dir, n) for n in reversed(_ain(up_dir))]
-        concluded = [d for d in attempts
-                     if attempt_concluded(d, stem) is not None]
+        # ONE TO BUILD ON -- ended on its own with exit code 0
+        # (`continuation.usable`); one that concluded with an error was
+        # gathered until 2026-10-03.
+        concluded = [d for d in attempts if usable(d, stem)]
         if not concluded:
             raise PrepError(
                 f"the {stage} stage consumes {filename} from {upstream}, "
-                f"and {upstream} has no CONCLUDED attempt -- it was never "
-                f"launched, is still running, or was force-stopped -- "
+                f"and {upstream} has no attempt that CONCLUDED with exit "
+                f"code 0 -- it was never launched, is still running, was "
+                f"force-stopped, or failed -- "
                 f"`{command('status', upstream, base=base)}` says which "
                 f"(project-layout.md 1.6).  Let it finish, or {run_first}")
         # THE SAME CALCULATION, not the same bytes.  A deck that renders

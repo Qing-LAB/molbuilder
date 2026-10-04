@@ -453,7 +453,7 @@ def test_each_file_says_which_moment_it_appears_in():
 #
 # Added with the doors (2026-09-08, plan.md § 5k M3).  Both properties below
 # were load-bearing in the code that these doors REPLACED -- the inline scan
-# in `attempt_concluded` and the hand-rolled candidate sort in the PySCF
+# in the run record's conclusion reader and the hand-rolled candidate sort in the PySCF
 # reader -- and neither was covered: mutating `max` to `min`, and the
 # counterless-first order to counterless-last, left the whole suite green.
 # One door with three callers makes that gap wider than it was.
@@ -502,11 +502,12 @@ class TestTheReader:
         assert latest_run(tmp_path, "JOB") == 10
 
     def test_the_latest_run_is_the_HIGHEST_across_every_role(self, tmp_path):
-        """`attempt_concluded` asks this to find the newest attempt's marker.
+        """The run's conclusion door asks this to find the newest run's
+        marker (`runrecord.ending`, through `runfiles.at_latest_run`).
 
-        Lowest instead of highest reads an EARLIER attempt's goodbye as the
-        latest word -- which is what that function's own comment says must not
-        happen, for a warm-retry chain where only the final process concludes.
+        Lowest instead of highest reads an EARLIER run's goodbye as the latest
+        word -- which is what that door's own docstring says must not happen,
+        for a warm-retry chain where only the final process concludes.
         And it ranges over roles: an engine that dies before printing leaves a
         `.concluded` and no output at all.
         """

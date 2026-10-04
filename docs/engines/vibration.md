@@ -1107,9 +1107,12 @@ are read there.
 
 **The relaxed geometry travels as coordinates, not as a restart file.** When
 `prep` prepares a force-constant stage — `freq`, or any other stage after `relax` in a displacement sweep (§ 5.9); which stages those are is asked of `vibration_render_kind`, never of a name — and the ladder holds a `relax` stage, it reads the
-relaxed geometry from that stage's **newest attempt, which must have
-concluded** (a `relax` re-launched to tighten is the geometry the person
-means, so an older concluded attempt never stands in for one still running)
+relaxed geometry from that stage's **newest attempt, which must have ended
+on its own with exit code 0** — the one rule for a run to build on
+([`execution/job-system.md`](?doc=execution/job-system.md) § 5.4; a
+relaxation that failed was measured at until 2026-10-03) — a `relax`
+re-launched to tighten is the geometry the person means, so an older attempt
+never stands in for one still running
 — the last coordinate block of the stage's own output, through the one SIESTA
 output parser (`jobset/materialize.py::stage_stdout` finds it by the stage's
 own token, so a flat bundle answers with this stage's file), in the sorted
@@ -1126,8 +1129,9 @@ against the real-space grid is not stationary on that grid any more. The FC deck
 state stays the kind's (§ 5.3: `MD.UseSaveXV .false.`), because honouring a
 found `.XV` is exactly what would take a displaced geometry as the stationary
 point on a re-run. `prep` **refuses to prepare a force-constant stage before `relax` has
-concluded** when the ladder has one, naming the stage to run first — the job
-set's own order, not a guess — and **refuses a force-constant stage when the box is unticked
+ended on its own with exit code 0** when the ladder has one, naming the stage
+to run first — or, when it failed, to launch it again — the job set's own
+order, not a guess — and **refuses a force-constant stage when the box is unticked
 and the ladder holds no enabled `relax` stage**: the box says *relax first*
 and the ladder holds nothing that would, so the description contradicts
 itself, and the refusal names the two ways out (add the stage, or state the

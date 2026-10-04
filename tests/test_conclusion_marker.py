@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pytest
 
-from molbuilder.runrecord import attempt_concluded
+from molbuilder.runrecord import ending
 from molbuilder.jobset.model import Resources
 from molbuilder.runwrap import render_run_wrapper
 
@@ -73,7 +73,7 @@ def _run_wrapper(d: Path, *, background: bool = False):
 def test_a_clean_end_writes_the_marker_with_rc0(tmp_path):
     d = _wrapper_dir(tmp_path, 'echo "Job completed"\nexit 0\n')
     _run_wrapper(d)
-    mark = attempt_concluded(d, "J_01_coarse")
+    mark = ending(d, "J_01_coarse").line
     assert mark is not None and mark.startswith("rc=0"), (
         f"a run that ended cleanly must conclude: {mark!r}")
 
@@ -84,7 +84,7 @@ def test_an_engine_ERROR_is_still_a_conclusion(tmp_path):
     so the marker is written WITH that code."""
     d = _wrapper_dir(tmp_path, 'echo "boom" >&2\nexit 7\n')
     _run_wrapper(d)
-    mark = attempt_concluded(d, "J_01_coarse")
+    mark = ending(d, "J_01_coarse").line
     assert mark is not None and mark.startswith("rc=7"), (
         f"an engine error is a conclusion and carries its code: {mark!r}")
 
@@ -102,7 +102,7 @@ def test_a_forced_stop_leaves_NO_marker(tmp_path):
         time.sleep(0.2)
     os.killpg(proc.pid, signal.SIGTERM)           # the walltime kill
     proc.wait(timeout=20)
-    assert attempt_concluded(d, "J_01_coarse") is None, (
+    assert not ending(d, "J_01_coarse").concluded, (
         "a force-stopped run wrote a conclusion marker -- absence is the "
         "only honest spelling of 'never got to say goodbye'")
 
@@ -116,13 +116,53 @@ def test_the_question_is_asked_of_the_HIGHEST_out_index(tmp_path):
     (tmp_path / "J-run0.out").write_text("old")
     (tmp_path / "J-run0.concluded").write_text("rc=0 at earlier")
     (tmp_path / "J-run1.out").write_text("newer, killed")
-    assert attempt_concluded(tmp_path, "J") is None
+    assert not ending(tmp_path, "J").concluded
     (tmp_path / "J-run1.concluded").write_text("rc=0 at now")
-    assert attempt_concluded(tmp_path, "J").startswith("rc=0")
+    assert ending(tmp_path, "J").line.startswith("rc=0")
 
 
 def test_no_out_at_all_reads_unconcluded(tmp_path):
-    assert attempt_concluded(tmp_path, "J") is None
+    assert not ending(tmp_path, "J").concluded
+
+
+class TestTheEnginesOwnMarkCountsForACitation:
+    """SIESTA writes `0_NORMAL_EXIT` as its last act on a clean exit and
+    deletes it as one of its first (`siesta_end.F`, `siesta_init.F`), so a
+    folder no wrapper of ours ran in, holding one deck, ran to its own end
+    when it carries one -- `engines/transport.md`: *"evidence is FILES, never
+    a marker spelling of ours."*  API-level: a cited relaxation is a person's
+    own folder, which no road of ours writes.
+
+    **This guards a regression that shipped and broke a citation.**  The
+    2026-09-18 migration deleted the fallback, and the revert restored the
+    call and not the fallback: measured, 5 of 5 citable directories in the
+    checkout refused to compose, the Transport tab printing "NOT CONCLUDED"
+    for a finished relaxation.
+    """
+
+    def test_a_siesta_only_relaxation_reads_as_concluded(self, tmp_path):
+        from molbuilder.transport.compose import classify_citation
+        (tmp_path / "relax.fdf").write_text("SystemLabel relax\n")
+        (tmp_path / "relax.XV").write_text("x\n")
+        (tmp_path / "0_NORMAL_EXIT").write_text("")
+        assert classify_citation(tmp_path).concluded == "0_NORMAL_EXIT"
+
+    def test_without_it_the_same_directory_is_not_concluded(self, tmp_path):
+        """Anti-vacuity: the assertion above must not pass by calling
+        everything concluded."""
+        from molbuilder.transport.compose import classify_citation
+        (tmp_path / "relax.fdf").write_text("SystemLabel relax\n")
+        (tmp_path / "relax.XV").write_text("x\n")
+        assert classify_citation(tmp_path).concluded is None
+
+    def test_it_is_no_deck_s_when_the_folder_holds_another(self, tmp_path):
+        """Asked about one deck, the mark counts only where that deck is the
+        folder's one: another deck's run may have left it."""
+        for name in ("a_01_x.fdf", "a_02_y.fdf"):
+            (tmp_path / name).write_text("x\n")
+        (tmp_path / "0_NORMAL_EXIT").write_text("")
+        assert not ending(tmp_path, "a_02_y").concluded
+        assert ending(tmp_path).line == "0_NORMAL_EXIT"
 
 
 # The launch gate over these markers -- a launched run that concluded is

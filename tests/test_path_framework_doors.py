@@ -17,8 +17,8 @@ from molbuilder import runfiles
 from molbuilder.runfiles import canonical_role, find, find_by_role
 
 
-# `_stage_state(observed, launch, out_glob)` -- the rung's glob has no default:
-# a glob that matched nothing would report every rung as unstarted.  The
+# `_stage_state(observed, launch, basename)` -- the rung's name has no
+# default: in the flat shape a missing one answers for every rung at once.  The
 # no-output answers these pin -- `pending`, `queued` -- are the directory
 # door's since 2026-09-26 (`parse.dirs.job.run_status`'s `launch`); this layer
 # asks it.
@@ -197,7 +197,7 @@ def test_a_pyscf_rung_that_only_wrote_pyscf_log_is_not_reported_queued(tmp_path)
     from molbuilder.jobset.runstatus import _stage_state
     _touch(tmp_path, "bdt_01_relax.pyscf.log")
     state, _detail = _stage_state(tmp_path, {"job_id": 481923},
-                                  "bdt_01_relax*")
+                                  "bdt_01_relax")
     assert state != "queued", (
         "a rung whose engine wrote .pyscf.log has produced output; reporting "
         "it queued is § 1.6's exact forbidden line")
@@ -224,7 +224,7 @@ def test_molbuilder_reading_a_directory_does_not_make_a_rung_look_started(tmp_pa
     from molbuilder.jobset.runstatus import _stage_state
     _touch(tmp_path, "bdt_01_relax.parse.log")       # molbuilder read this dir
     state, detail = _stage_state(tmp_path, {"job_id": 481923},
-                                 "bdt_01_relax*")
+                                 "bdt_01_relax")
     assert state == "queued", (
         f"got {state!r} ({detail!r}) -- molbuilder's own reading log was "
         f"counted as the engine having produced output")
@@ -233,7 +233,7 @@ def test_molbuilder_reading_a_directory_does_not_make_a_rung_look_started(tmp_pa
     # ...and the wrapper's session log, written at launch, is not output either.
     _touch(tmp_path, "bdt_01_relax.runwrap-20260918-090000.log")
     assert _stage_state(tmp_path, {"job_id": 481923},
-                        "bdt_01_relax*")[0] == "queued"
+                        "bdt_01_relax")[0] == "queued"
 
 
 def test_a_prepped_rung_that_was_never_launched_is_not_running(tmp_path):
@@ -252,7 +252,7 @@ def test_a_prepped_rung_that_was_never_launched_is_not_running(tmp_path):
     """
     from molbuilder.jobset.runstatus import _stage_state
     _touch(tmp_path, "bdt_01_relax.molwatch.log")     # the prep seed, nothing else
-    state, detail = _stage_state(tmp_path, None, "bdt_01_relax*")
+    state, detail = _stage_state(tmp_path, None, "bdt_01_relax")
     assert state == "pending", (
         f"got {state!r} ({detail!r}) -- the prep-time seed was counted as the "
         f"engine having produced output")
@@ -260,36 +260,38 @@ def test_a_prepped_rung_that_was_never_launched_is_not_running(tmp_path):
     # ...and once the engine's own stdout exists, it HAS started.
     _touch(tmp_path, "bdt_01_relax-run0.out")
     assert _stage_state(tmp_path, {"job_id": 7},
-                        "bdt_01_relax*")[0] != "pending"
+                        "bdt_01_relax")[0] != "pending"
 
 
 def test_a_flat_rung_that_never_ran_does_not_read_its_siblings_output(tmp_path):
     """One directory, two rungs: the token in the filename is what selects.
 
-    This is the defect the ``out_glob`` argument was added for, re-asserted
-    against the grammar-based narrowing that replaced it — the failure is
-    silent and reads as *success*, which is why it needs its own test.
+    This is the defect the rung's narrowing was added for (a glob then, the
+    run's name since 2026-10-03), re-asserted against the grammar-based
+    narrowing that replaced it — the failure is silent and reads as
+    *success*, which is why it needs its own test.
     """
     from molbuilder.jobset.runstatus import _stage_state
     _touch(tmp_path, "bdt_01_coarse.out")            # only the FIRST rung ran
-    state, detail = _stage_state(tmp_path, None, "bdt_02_fine*")
+    state, detail = _stage_state(tmp_path, None, "bdt_02_fine")
     assert state == "pending", (
         f"rung 02_fine has written nothing; got {state!r} ({detail!r}) — it "
         f"has read its sibling's .out")
 
 
-def test_a_hierarchical_rung_is_found_although_the_shape_says_star(tmp_path):
-    """The hierarchy's glob is ``*`` and the grammar's answer is the token.
+def test_a_hierarchical_rung_is_found_although_the_shape_names_no_run(tmp_path):
+    """The hierarchy names no run (`Shape.run_basename` is ``None``) and the
+    grammar's answer is the token.
 
     Both are correct: in the hierarchy the DIRECTORY already selected the rung,
     and the deck still carries the token because `prep` composes the name the
-    same way in either layout.  So passing the token narrows nothing there —
-    and must not narrow it to nothing, which is what would happen if a
-    hierarchical deck were named without its stage.
+    same way in either layout.  So the token narrows nothing there — and must
+    not narrow it to nothing, which is what would happen if a hierarchical
+    deck were named without its stage.
     """
     from molbuilder.jobset.runstatus import _stage_state
     _touch(tmp_path, "bdt_01_tight.out")
-    state, _d = _stage_state(tmp_path, {"mode": "direct"}, "*")
+    state, _d = _stage_state(tmp_path, {"mode": "direct"}, None)
     assert state != "queued" and state != "pending"
 
 
@@ -455,20 +457,21 @@ def test_the_geometry_picker_takes_its_pyscf_spellings_from_their_home():
 
 
 def test_stage_state_cannot_be_asked_without_its_rung(tmp_path):
-    """No default for the rung's glob, because one that matches NOTHING would
-    not degrade — it would report *"prepped, not launched"* for a rung that has
-    finished, which is § 1.6's forbidden line reached by a signature rather
-    than by a bug.  Asserted as the outcome pair: the call is refused without
-    the glob, and answers with it, on the same directory.
+    """No default for the rung's name, because the flat shape's answer must be
+    named: a default would let one caller answer for every rung of a folder at
+    once, or -- a name matching nothing -- report *"prepped, not launched"*
+    for a rung that has finished, which is § 1.6's forbidden line reached by a
+    signature rather than by a bug.  Asserted as the outcome pair: the call is
+    refused without the name, and answers with it, on the same directory.
     """
     from molbuilder.jobset.runstatus import _stage_state
     _touch(tmp_path, "bdt_01_tight.out")
     with pytest.raises(TypeError):
         _stage_state(tmp_path, None)                       # no rung named
-    state, _d = _stage_state(tmp_path, None, "*")
+    state, _d = _stage_state(tmp_path, None, "bdt_01_tight")
     assert state != "pending", (
         "with the rung named, its .out is visible — which is exactly what a "
-        "glob matching nothing would have hidden")
+        "name matching nothing would have hidden")
 
 
 def test_read_system_degrades_on_a_missing_bundle():
@@ -487,31 +490,30 @@ def test_read_system_degrades_on_a_missing_bundle():
         "engine": "siesta"}
 
 
-def test_attempt_concluded_answers_for_a_persons_own_deck_name(tmp_path):
+def test_the_ending_door_answers_for_a_persons_own_deck_name(tmp_path):
     """A cited directory holds whatever the person named their deck.
 
-    `transport.classify_citation` calls this with `deck.stem`, and a cited
+    `transport.classify_citation` asks the door with `deck.stem`, and a cited
     relaxation is not necessarily one molbuilder prepped — `my.relaxation.fdf`
     is a legal thing to cite.  Composing the marker with `runfiles.compose`
     would **raise** there (§ 2.1: a label carrying a dot cannot be read back out
     of a filename, and that refusal is right), turning *"this directory has no
-    record"* into a crash at somebody who used a dot.  `runfiles.tail` is the
-    door for a caller holding a stem it did not choose: the grammar owns the
-    ``-run<N>.concluded`` end, the caller owns the stem.
+    record"* into a crash at somebody who used a dot.  The door reads names
+    back (`runfiles.parse`), which takes any stem.
 
     Measured 2026-09-08: the first M8 spelling raised RunFileError here where
     the code it replaced returned the marker.
     """
-    from molbuilder.runrecord import attempt_concluded
+    from molbuilder.runrecord import ending
     (tmp_path / "my.relaxation-run0.concluded").write_text("rc=0\n",
                                                            encoding="utf-8")
-    assert attempt_concluded(tmp_path, "my.relaxation") == "rc=0"
+    assert ending(tmp_path, "my.relaxation").line == "rc=0"
     # ...and our own naming still answers, which is what makes the test above
     # a discrimination rather than a blanket loosening.
     (tmp_path / "bdt_01_tight-run2.concluded").write_text("rc=1 (walltime)\n",
                                                           encoding="utf-8")
-    assert attempt_concluded(tmp_path, "bdt_01_tight") == "rc=1 (walltime)"
-    assert attempt_concluded(tmp_path, "never_ran") is None
+    assert ending(tmp_path, "bdt_01_tight").line == "rc=1 (walltime)"
+    assert ending(tmp_path, "never_ran").line is None
 
 
 def test_the_watch_resolver_survives_a_dotted_script_filename(tmp_path):

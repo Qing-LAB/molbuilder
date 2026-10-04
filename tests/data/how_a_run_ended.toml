@@ -1,0 +1,93 @@
+# HOW A RUN ENDED, AND THE RUN TO BUILD ON -- `docs/execution/architecture.md`
+# § 3.2 (`ending`, `usable`), `docs/execution/job-system.md` § 5.4.
+#
+# ONE door says whether a run ended on its own and with what exit code: its
+# own conclusion marker, else the engine's end mark where it can belong only
+# to that run (`runrecord.ending`).  Status builds its state on it, and every
+# hand-over builds by default only on a run that ended on its own with exit
+# code 0 (`continuation.usable`) -- a continuing stage, the frequency stage's
+# geometry, a transport rung's inputs.  Until 2026-10-03 three readers
+# answered: status said finished where prep refused, and a frequency stage
+# measured at a relaxation that had failed.  Each disagreement is a row.
+#
+# `tests/test_how_a_run_ended.py` runs every case down the road a person
+# runs, through the one runner every contract table shares
+# (`tests/support/road.py`, `run_road_case`, whose header names each key):
+# the stage before is prepped, its run laid down as it ended (`ran`), then
+# the next stage is prepped and `status` read.
+#
+# A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
+
+machine = "workstation"
+
+[run_base.siesta]
+mpi_np = 2
+omp_threads = 1
+
+# ===================================================================== #
+#  WHAT THE NEXT STAGE BUILDS ON                                        #
+# ===================================================================== #
+
+[[case]]
+name = "a run that ended on its own with exit code 0 is the one the next stage builds on, and status says finished"
+before = [["prep", "run", "coarse"]]
+ran = {}
+stage = "medium"
+said = ["continues from 01_coarse/run-0 (the stage before it; concluded rc=0 at Thu Sep 24 02:38:51 PM MST 2026"]
+status_says = ["finished", "job_completed"]
+
+[[case]]
+name = "one that ended on its own with an error is never built on by default -- though its output ended -- and status says it failed"
+before = [["prep", "run", "coarse"]]
+ran = { rc = 1, output = "ended" }
+stage = "medium"
+refused = ["01_coarse/run-0, which failed (rc=1 at Thu Sep 24 02:38:51 PM MST 2026)", "Launch it again"]
+status_says = ["failed", "the engine's output ended, but the job exited with an error (rc=1"]
+
+[[case]]
+name = "an engine that died before printing a line: the conclusion is the whole answer"
+before = [["prep", "run", "coarse"]]
+ran = { rc = 1, output = "none" }
+stage = "medium"
+refused = ["which failed (rc=1 at"]
+status_says = ["concluded (rc=1 at Thu Sep 24 02:38:51 PM MST 2026) before any output"]
+
+# ===================================================================== #
+#  AN OUTPUT THAT ENDED IS NOT A RUN THAT ENDED                         #
+# ===================================================================== #
+
+[[case]]
+name = "an output that ended with no conclusion: the job is still on its way out, and nothing builds on it"
+before = [["prep", "run", "coarse"]]
+ran = { concluded = false }
+stage = "medium"
+refused = ["01_coarse/run-0, which is running", "Let it finish"]
+status_says = ["running", "the engine's output ended; the job has not concluded"]
+
+[[case]]
+name = "...and stopped there, once its monitor saw the process go"
+before = [["prep", "run", "coarse"]]
+ran = { concluded = false, monitor_ended = true }
+stage = "medium"
+refused = ["which stopped without its conclusion marker"]
+status_says = ["failed", "the engine's output ended, but the job stopped before it concluded"]
+
+[[case]]
+name = "SIESTA's own end mark is not the job's where molbuilder's wrapper ran"
+before = [["prep", "run", "coarse"]]
+ran = { concluded = false, engine_mark = true }
+stage = "medium"
+refused = ["01_coarse/run-0, which is running"]
+status_says = ["the engine's output ended; the job has not concluded"]
+
+# ===================================================================== #
+#  A LINKED STAGE BY THE SAME RULE                                      #
+# ===================================================================== #
+
+[[case]]
+name = "the frequency stage measures only at a relaxation that ended on its own with exit code 0 -- one that failed is launched again"
+calculation = "vibration"
+before = [["prep", "run", "relax"]]
+ran = { stage = "relax", rc = 1, output = "ended" }
+stage = "freq"
+refused = ["whose newest attempt failed (rc=1 at Thu Sep 24 02:38:51 PM MST 2026)", "a run that ended with an error is never built on", "molbuilder jobset launch run relax"]

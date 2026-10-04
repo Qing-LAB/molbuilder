@@ -264,7 +264,7 @@ def classify_citation(cite_dir: Path) -> CitedDir:
     wins when both are present — the deck carries the contract, and
     more information never loses to less.
     """
-    from molbuilder.runrecord import RUN_LAUNCH_FILE, attempt_concluded
+    from molbuilder.runrecord import RUN_LAUNCH_FILE, ending
     from ..runfiles import find_by_role
     cite_dir = Path(cite_dir)
     # THE DECK IS OURS AND THE REST IS NOT, and the two halves of this
@@ -298,38 +298,24 @@ def classify_citation(cite_dir: Path) -> CitedDir:
                 f"({', '.join(x.name for x in xvs)}) -- ambiguous; keep "
                 f"the relaxation's own one.")
         deck = decks[0]
-        # DECK-SCOPED, and that is the whole question.  `attempt_concluded`
-        # is asked about THIS deck; `run_status` answers about the DIRECTORY.
-        # They look like one question and are not -- measured 2026-09-18: in a
-        # directory holding a neighbour rung at a higher attempt index, the
-        # directory answer reports that rung's `rc=1 (walltime)` for a
-        # citation whose own run concluded `rc=0`, and the tab renders
-        # CONCLUDED (rc=1) for a clean relaxation.  It also cost 3,000x the
-        # runtime (a full parse of every `.out`, discarded) and appended a
-        # `.parse.log` into the person's finished directory on every browse.
-        concluded = attempt_concluded(cite_dir, deck.stem)
-        # THE ENGINE'S OWN GOODBYE COUNTS.  `transport.md`: *"evidence is
-        # FILES, never a marker spelling of ours"* -- SIESTA writes
-        # `0_NORMAL_EXIT` as its last act on a clean exit, so a run carrying
-        # it ran to its own end whatever launched it, or nothing did.
-        # molbuilder's own marker answers first because it carries the rc.
+        # HOW THE CITED RUN ENDED, asked of the one door (`runrecord.ending`,
+        # `execution/architecture.md` § 3.2) about THIS deck: molbuilder's own
+        # marker, else SIESTA's `0_NORMAL_EXIT` -- *"evidence is FILES, never
+        # a marker spelling of ours"* (`transport.md`) -- which counts where
+        # it can belong only to this run: a folder no wrapper of ours ran in,
+        # holding this one deck, which form A has required above.
         #
-        # `attempt_concluded` CANNOT answer this: the marker has no label.
-        # It belongs here rather than there because form A has already
-        # required exactly one `.fdf` and one `.XV` above -- which is the
-        # unambiguous directory an unlabelled marker needs.
-        #
-        # RESTORED 2026-09-18.  `dada356a` deleted these lines when it moved
-        # this to `run_status`; the revert put the call back and not the
-        # fallback, so `attempt_concluded` answered None for every
-        # SIESTA-only run.  Measured: 5 of 5 citable directories in the
-        # checkout refused, the tab said "NOT CONCLUDED -- still running, or
-        # force-stopped" for a finished relaxation, and prep declined the
-        # citation.  A shipped test was failing on main.
-        if concluded is None and (cite_dir / "0_NORMAL_EXIT").is_file():
-            concluded = "0_NORMAL_EXIT"
+        # DECK-SCOPED, never the directory's `run_status`: measured
+        # 2026-09-18, a directory answer reported a neighbour rung's `rc=1`
+        # for a citation whose own run concluded `rc=0`, cost 3,000x the
+        # runtime and appended a `.parse.log` into the person's folder on
+        # every browse.  *(This weighed `0_NORMAL_EXIT` itself, beside a
+        # marker-only reader, until 2026-10-03 -- one of the three answers
+        # the door replaced; the fallback was lost once, 2026-09-18, and
+        # every SIESTA-only citation read NOT CONCLUDED.)*
+        concluded = ending(cite_dir, deck.stem).line
         # A molbuilder attempt mid-run HAS record files that do not
-        # conclude; `attempt_concluded` answers None for both that and
+        # conclude; `ending` answers "not concluded" for both that and
         # no-record-at-all.  This third clause is LOAD-BEARING, not
         # decoration: it is what separates "still running" from "no run
         # record", and `compose_junction` gates on the difference.  Tell them apart by the files themselves --
