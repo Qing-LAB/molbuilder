@@ -478,9 +478,12 @@
 }
 /* PIN every page section (mode toggle, Clear/Invert, the assign block) EXCEPT the click/
  * filter body, which flexes to fill the panel and holds the single scroll region. */
-/* The Cell page is ALL read-only info (no action buttons to keep on screen), so unlike the
- * Selection page it may simply SCROLL as a whole when it's taller than the panel -- it sizes
- * to its content (compact when short), then scrolls.
+/* The Cell and Metadata pages are ALL read-only info (no action buttons to keep on screen), so
+ * unlike the Selection page each may simply SCROLL as a whole when it's taller than the panel --
+ * it sizes to its content (compact when short), then scrolls.  The Metadata page had no rule
+ * here until 2026-10-03: its sections keep `flex: 0 0 auto` and the page clips, so a store
+ * longer than the panel -- a run's recorded contract and relaxation, 343 lines -- was cut off
+ * with no way to reach the rest (user: "does not correctly scroll").
  *
  * KEYED BY ROLE, NOT BY IDENTITY.  § 5.6 puts TWO viewers on one page, so an id
  * would be duplicated the moment the second one mounts.  `[data-page]` says what
@@ -489,7 +492,8 @@
  * must out-rank the `.molviewer-panel-tab` rule above (whose `overflow: hidden`
  * would clip the scroll), and 0-5-0 over 0-4-0 does that by construction rather
  * than by source order. */
-.molviewer-panel .molviewer-selection-card > .molviewer-panel-tab[data-page="cell"]:not([hidden]) {
+.molviewer-panel .molviewer-selection-card > .molviewer-panel-tab[data-page="cell"]:not([hidden]),
+.molviewer-panel .molviewer-selection-card > .molviewer-panel-tab[data-page="info"]:not([hidden]) {
     flex: 0 1 auto;
     overflow-y: auto;
 }
