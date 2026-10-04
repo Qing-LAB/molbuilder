@@ -441,7 +441,8 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
                 f"and says whether the statement held.")
         return struct, None, None
     from ..paths import Shape
-    from .materialize import run_dir, stage_stdout
+    from .materialize import run_dir
+    from ..runs import run_of
     from ..runrecord import ending
     from .continuation import usable
     token = stage_home(base, task, relax.name).token
@@ -475,7 +476,8 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
             f"-- `{command('status', relax.name, base=base)}` says which "
             f"(project-layout.md 1.6).  Let it finish, or run it first --\n"
             f"{run_first}")
-    out = stage_stdout(attempt, task.label, token, str(task.engine))
+    _run = run_of(attempt, stage=token)
+    out = _run.stdout if _run is not None else None
     if out is None:
         raise PrepError(
             f"{attempt.relative_to(base)} concluded without the engine's "

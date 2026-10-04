@@ -5,35 +5,24 @@ the comparison is by KIND (cores, memory to the nearest 10 GB, device
 models), never by hostname — SLURM spreads a sweep over whatever boxes are
 free, so hostname comparison would flag every sweep ever run (trap T1).
 
-Fixtures here write real monitor logs and parse them through the real
-readers; nothing injects a machine dict the monitor could not have written.
+The lines here are the monitor's own and are parsed by its one reader;
+nothing injects a machine dict the monitor could not have written.
 That rule is `archive/2026-09-01-machine-identity-plan.md` § 7: the migration this belongs to
 exists because a check was kept green for four days by fixtures supplying a
 value production never wrote.
 """
-from pathlib import Path
-
-from molbuilder.bench.result import BenchPoint, machine_brief, machine_kind
+from molbuilder.bench.result import machine_brief, machine_kind
 from molbuilder.parse.instruments.monitor import monitor_metrics
 
 
 def _machine(text):
     return monitor_metrics(text)["machine"]
-from molbuilder.jobset.summarize import parse_point
 
 
 A100_LINE = ("[2026-08-27T14:02:11] [MACHINE] node={host} cores=48 "
              "mem_gb={mem} gpu=NVIDIA A100-SXM4-80GB\n")
 STD_LINE = ("[2026-08-27T14:02:11] [MACHINE] node={host} cores=128 "
             "mem_gb=503.2 gpu=none\n")
-
-
-def _trial(d: Path, basename: str, machine_line: str) -> None:
-    d.mkdir(parents=True, exist_ok=True)
-    (d / f"{basename}-run0.monitor.log").write_text(
-        machine_line
-        + "[2026-08-27T14:02:11] [MONITOR] start (interval=30s "
-          "watch_pid=1) state=starting\n", encoding="utf-8")
 
 
 # ------------------------------------------------------------------ parse
@@ -69,16 +58,3 @@ def test_absent_machine_has_no_kind():
     compare equal to anything, including another absent one's ''."""
     assert machine_kind({}) is None
     assert machine_brief({}) == ""
-
-
-# ---------------------------------------------------------------- showing
-
-
-def _pt(label, log_line, tmp_path, engine="cpu"):
-    d = tmp_path / label
-    _trial(d, "j", log_line)
-    return parse_point(label, d, "j", engine, {})
-
-
-# ------------------------------------------------------------- round-trip
-

@@ -47,18 +47,12 @@ def _read(path: Path, *, head: Optional[int] = None) -> str:
         return ""
 
 
-def _latest_run_file(d: Path, basename: str, suffix: str) -> Optional[Path]:
-    """The ``<basename>-runN.<suffix>`` with the highest run index N.
-
-    Through `runfiles.find`, which returns its hits sorted by run index, so
-    the newest is the last one.  This spelled the glob and its own
-    index regex -- the second copy of a counter `runfiles` composes in one
-    place (`project-layout.md` § 4.5).  ``suffix`` arrives here without the
-    leading dot; a role carries it.
-    """
-    from ..runfiles import find
-    hits = find(d, basename, role="." + suffix.lstrip("."))
-    return hits[-1][0] if hits else None
+# `_latest_run_file`, `_wrapper_log` and `_trial_deck` -- a trial's files
+# found by the stem its job set recorded, each role at its OWN newest run
+# index and the session log by its newest stamp -- stood here until
+# 2026-10-04.  A trial's files are its run's, through the run door
+# (`runs.run_of` -> `Run`), every one at the run's one index (plan B11,
+# W56 3b.4).
 
 
 #: How far into a SIESTA ``.out`` the setup lines can sit.  The launch
@@ -68,29 +62,6 @@ def _latest_run_file(d: Path, basename: str, suffix: str) -> Optional[Path]:
 #: system.  A 16 KB head window (the one that reads the rank count) sees
 #: neither, so this is a deliberately generous but still bounded read.
 _SETUP_WINDOW = 512 * 1024
-
-
-def _wrapper_log(d: Path, basename: str) -> Optional[Path]:
-    """The most recent ``<basename>.runwrap-<stamp>.log`` in ``d``, or None.
-
-    The stamp is ``%Y%m%d-%H%M%S`` (``runwrap.py``), so lexical order IS
-    chronological order -- and `runfiles.find` returns name order for files
-    that carry no ``-run<N>``, which these do not, so the last one is the
-    newest.
-
-    **Through the door** (`project-layout.md` § 4.5), asking for the role the
-    catalogue declares -- a TEMPLATE with a ``stamp`` field, so the request is an
-    ordinary equality like ``.out``.  It globbed ``f"{basename}.runwrap-*.log"``
-    until 2026-09-08 because the row WAS a glob and no door could answer for it;
-    § 5l.3 took the wildcard out of the vocabulary and made the stamp a field.
-
-    ``None`` rather than a name nothing writes: the old fallback was
-    ``<basename>.runwrap-none.log``, a composed spelling for a file that
-    cannot exist, which is the same handcraft in the other direction.
-    """
-    from ..runfiles import find
-    hits = find(d, basename, role=".runwrap-{stamp}.log")
-    return hits[-1][0] if hits else None
 
 
 def deck_value(deck: Path, keyword: str) -> Optional[str]:
@@ -119,23 +90,14 @@ def deck_value(deck: Path, keyword: str) -> Optional[str]:
     return got[0] if got else None
 
 
-def _trial_deck(d: Path, basename: str) -> Path:
-    """The deck a trial ran, beside its results.
-
-    `tail`, not `compose`, for the reason `runfiles.tail` states:
-    ``basename`` is ``Path(job.script).stem`` read out of
-    ``job-set.json``, so it is a stem this reader was HANDED, not a label it
-    chose.  `compose` validates the label and would raise on a hand-edited
-    one -- and every reader in this module degrades rather than raises.
-    """
-    from ..runfiles import tail as _rf_tail
-    return d / (basename + _rf_tail(".fdf"))
-
-
-def parse_point(label: str, d: Path, basename: str, engine: str,
+def parse_point(label: str, run, engine: str,
                 knobs: Dict, point: Optional[Dict] = None) -> BenchPoint:
-    """Parse one point's artifacts (in directory ``d``, output basename
-    ``basename``) into a :class:`BenchPoint`."""
+    """Parse one point's artifacts -- the files of its ``run``, the run
+    door's `Run` (``None``: no run of ours there yet) -- into a
+    :class:`BenchPoint`.  Every file is taken at the run's ONE index, so
+    a point's figures never mix two runs."""
+    def _at_run(role):
+        return run.file(role, run.run) if run is not None else None
     metrics: Dict = {}
     knobs = dict(knobs)
     # What the JOB SET asked for, snapshotted BEFORE the recovery below
@@ -180,14 +142,11 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     # whose rows its deck stamps.  The tee's registered parser wraps the same
     # function.
     from molbuilder.parse.instruments.scf_timing_rows import timing_of
-    from ..runfiles import find as _rf_find
-    _timing = (_latest_run_file(d, basename, "scf-timing.log")
-               or next((q for q, _rf in _rf_find(d, basename,
-                                                 role=".molwatch.log")),
-                       None))
+    _timing = (_at_run(".scf-timing.log")
+               or (run.file(".molwatch.log") if run is not None else None))
     metrics.update(timing_of(_timing))
 
-    _mon = _metrics(_latest_run_file(d, basename, "monitor.log"))
+    _mon = _metrics(_at_run(".monitor.log"))
     bound = _mon.get("bound")
     machine: Dict = _mon.get("machine") or {}
 
@@ -195,7 +154,7 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     # otherwise -- ONE resolver decides, so the two sources cannot
     # disagree here (`parse/instruments/utilisation.py` owns the why;
     # user ruling 2026-09-03).
-    util = _latest_run_file(d, basename, "util.csv")
+    util = _at_run(".util.csv")
     if util is not None:
         metrics.update(_utilisation(_mon, _metrics(util)))
 
@@ -216,7 +175,7 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     # a second answer to "did this run end", which knew a capped bench with
     # `SCF.MustConverge .false.` exits cleanly while the parser did not, so
     # the summary rendered six healthy trials as failures.)*
-    out = _latest_run_file(d, basename, "out")
+    out = run.stdout if run is not None else None
     out_head = _read(out, head=_SETUP_WINDOW) if out is not None else ""
     state = "unknown"
     if out is not None:
@@ -239,11 +198,11 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     # launcher handing back fewer ranks, OMP_NUM_THREADS set in the
     # environment) produced a row whose label described a run that never
     # happened -- and `choose_winner` ranked it against the others.
-    _wlog = _wrapper_log(d, basename)
+    _wlog = run.session_log if run is not None else None
     effective = parse_effective_run(out_head,
                                     _read(_wlog) if _wlog is not None else "")
-    deck = _trial_deck(d, basename)
-    alg = deck_value(deck, "Diag.Algorithm")
+    deck = run.deck if run is not None else None
+    alg = deck_value(deck, "Diag.Algorithm") if deck is not None else None
     if alg is not None:
         asked["diag_algorithm"] = alg
     # The block size the deck REQUESTED, recorded beside the one SIESTA
@@ -252,7 +211,7 @@ def parse_point(label: str, d: Path, basename: str, engine: str,
     # never bars a trial: see the note on ``compare_asked_to_ran``'s
     # pairs.  SIESTA adapting the block size to the rank count is
     # documented behaviour, not a trial running something else.
-    bs = deck_value(deck, "BlockSize")
+    bs = deck_value(deck, "BlockSize") if deck is not None else None
     if bs is not None:
         try:
             effective["blocksize_asked"] = int(bs)
@@ -395,8 +354,9 @@ def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
         # is blind to the attempt layer: a re-measured trial's artifacts
         # sit one level down.
         _d = bundle / dirs[j.name]
+        from ..runs import run_of
         pts.append(parse_point(
-            j.name, run_dir(_d), Path(j.script).stem,
+            j.name, run_of(run_dir(_d)),
             "gpu" if gpus.uses else "cpu", knobs,
             point=dict(j.point)))
     return pts
@@ -414,11 +374,11 @@ def _winner_mechanism(bundle, jobset, label: str) -> Dict:
     if job is None:
         return {}
     from .materialize import job_dir_names, run_dir, shape_of
-    import os as _os
+    from ..runs import run_of
     _c = Path(bundle) / job_dir_names(jobset, shape_of(jobset, bundle))[label]
-    d = run_dir(_c)                     # the one rule, in the layout layer
-    deck = d / _os.path.basename(job.script)
-    text = _read(deck)
+    run = run_of(run_dir(_c))          # the trial's run, the run door's
+    deck = run.deck if run is not None else None
+    text = _read(deck) if deck is not None else ""
     if not text:
         return {}
     mech: Dict = {}

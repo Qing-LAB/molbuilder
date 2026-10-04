@@ -179,14 +179,14 @@ def conductance_g0(energies: List[float], trans: List[float]
     return float(np.interp(0.0, e, t))
 
 
-def _outs_newest_first(where: Path, label: str, token: str) -> List[Path]:
-    """A rung's engine outputs in ``where``, its NEWEST RUN first -- by the
-    run number every one carries (`runfiles.find`), never by file time
-    (plan W38 M4): a copy, a touch or a restored folder reorders the times
-    and not the runs."""
-    from ..runfiles import find
-    return [p for p, _rf in reversed(find(where, label, role=".out",
-                                          stage=token))]
+def _outs_newest_first(where: Path, token: str) -> List[Path]:
+    """A rung's engine outputs in ``where``, its NEWEST RUN first -- the
+    run door's (`runs.Run.outputs`), by the run number every one carries,
+    never by file time (plan W38 M4): a copy, a touch or a restored folder
+    reorders the times and not the runs.  ``[]`` where no run of ours is."""
+    from ..runs import run_of
+    run = run_of(where, stage=token)
+    return run.outputs if run is not None else []
 
 
 def _point_dirs(base: Path, task) -> List[Tuple[float, Path]]:
@@ -276,7 +276,7 @@ def _stage_facts(base: Path, task, label: str) -> List[Dict]:
         # only ever fail -- and did, as two hundred words of the registry's
         # format list in the cell where its state belongs.
         answers = STAGE_FACT.get(name, "scf")
-        outs = _outs_newest_first(run_dir(container), label, token)
+        outs = _outs_newest_first(run_dir(container), token)
         # PRODUCED ANYTHING AT ALL is asked of every rung the same way, and
         # before the split below: a prepped rung that has not run reads
         # `no_output` whatever question it would have answered.
@@ -371,7 +371,7 @@ def collect_record(base_dir, task) -> Dict:
         spin = deck_spin(where)
         current = None
         # THE NEWEST RUN'S, by its number (`_outs_newest_first`).
-        for out in _outs_newest_first(where, task.label, token):
+        for out in _outs_newest_first(where, token):
             current = parse_current_a(out.read_text())
             if current is not None:
                 break

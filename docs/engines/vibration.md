@@ -1114,8 +1114,9 @@ relaxation that failed was measured at until 2026-10-03) — a `relax`
 re-launched to tighten is the geometry the person means, so an older attempt
 never stands in for one still running
 — the last coordinate block of the stage's own output, through the one SIESTA
-output parser (`jobset/materialize.py::stage_stdout` finds it by the stage's
-own token, so a flat bundle answers with this stage's file), in the sorted
+output parser (the run door finds it — `runs.run_of(attempt, stage)`,
+`Run.stdout`: the stage's own output at its run's index, so a flat bundle
+answers with this stage's file), in the sorted
 order both decks share, **and the cell that run used**
 — and writes it as the force-constant deck's coordinates, in that cell
 (`jobset/prep.py::_vibration_stage_geometry`). The output rather than

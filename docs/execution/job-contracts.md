@@ -496,7 +496,7 @@ is:
 | **all the files molbuilder writes**, as globs | `patterns()` — and `identity.OUR_FILE_PATTERNS` already *is* this |
 | a folder and a label → **which of its files are that label's** | `find(directory, label, role=, stage=, run=)` — read back through `parse`; `latest_run` for the newest run index |
 | a folder and a dotted role, before anything has said whose it is | `find_by_role(directory, role)` |
-| **a file → the run it belongs to**, its label, stage and run index, and that run's other files | `run_of(path)` → `Run`, `Run.file(role)` — the run door (`architecture.md` § 3.2), which reads the label from the description, never from a deck or the name |
+| **a file → the run it belongs to**, its label, stage and run index, and that run's other files | `run_of(path, stage=)` → `Run` — `stage` when a folder several stages share is asked about one of them — and its files: `Run.file(role, run)`, `.deck`, `.stdout`, `.outputs`, `.session_log`. The run door (`architecture.md` § 3.2), which reads the label from the description, never from a deck or the name |
 | **a file → what it is**: its row, or *not written by molbuilder* | `about(path)`, on the run door |
 | a name you already know is one of your run's outputs → its role | `role_of(name)` — never for a name met in a folder: that one is read back with its label (`about`), or SIESTA's `fdf.<stamp>.log` reads as a log of ours |
 | a new kind of file | add a row to `WRITTEN`; do not spell its suffix at the call |

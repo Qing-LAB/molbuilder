@@ -649,7 +649,8 @@ before this change stop being readable by `summarize`; their files stay on
 disk, because molbuilder never deletes results.
 
 **What still needs deciding, and is not decided here:** with two attempts of one
-point, `summarize` reports the **latest** (`_latest_run_file` already does), so
+point, `summarize` reports the **latest** (the trial's run, through the run door
+— its newest run index, every file at that one index, `runs.run_of`), so
 the earlier measurement becomes invisible while remaining on disk. That is
 tolerable only if the summary *says* how many attempts a trial has — otherwise
 re-running silently supersedes, and comparing two measurements of one point was

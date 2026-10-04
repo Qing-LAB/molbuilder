@@ -14,7 +14,7 @@ from __future__ import annotations
 import pytest
 
 from molbuilder import runfiles
-from molbuilder.runfiles import canonical_role, find, find_by_role
+from molbuilder.runfiles import canonical_role, find_by_role
 
 
 # `_stage_state(observed, launch, basename)` -- the rung's name has no
@@ -125,25 +125,13 @@ def test_the_glob_family_is_unchanged_by_the_field():
     assert [p for p in OUR_FILE_PATTERNS if "runwrap" in p] == fam
 
 
-def test_find_answers_for_the_wrapper_log_family(tmp_path):
-    """The question `summarize._wrapper_log` asks, through the door.
-
-    Two launches leave two stamped logs; the newest is wanted, and the stamp is
-    ``%Y%m%d-%H%M%S`` so name order IS time order.  A file belonging to another
-    rung and one belonging to another label must not be in the answer — which
-    the old ``glob(f"{basename}.runwrap-*.log")`` got right by luck of the
-    prefix and this gets right by parsing.
-    """
-    d = _touch(tmp_path,
-               "bdt_01_tight.runwrap-20260101-000000.log",
-               "bdt_01_tight.runwrap-20260908-120000.log",
-               "bdt_02_fine.runwrap-20260908-130000.log",
-               "other.runwrap-20260908-140000.log")
-    hits = [p.name for p, _rf in find(d, "bdt", role=".runwrap-{stamp}.log",
-                                     stage="01_tight")]
-    assert hits == ["bdt_01_tight.runwrap-20260101-000000.log",
-                    "bdt_01_tight.runwrap-20260908-120000.log"]
-    assert hits[-1].endswith("20260908-120000.log"), "newest is last"
+# `test_find_answers_for_the_wrapper_log_family` retired 2026-10-04 (W56
+# 3b.4): it asked `runfiles.find` the question `summarize._wrapper_log` asked
+# -- a stage's newest session log by its stamp -- and that reader is gone.  A
+# run's session log is the one whose first section is its run index
+# (`wrapper_log.logs_by_run`, asked by `runs.Run.session_log`), and `find`'s
+# stage filter is driven on the road, two stages in one flat folder, by
+# `test_flat_stage_launch_record.py`.
 
 
 def test_find_by_role_answers_for_the_family_without_a_label(tmp_path):
@@ -161,23 +149,10 @@ def test_find_by_role_still_refuses_a_role_the_catalogue_does_not_declare():
     assert "not a role molbuilder writes" in str(e.value)
 
 
-def test_wrapper_log_reports_absence_as_absence(tmp_path):
-    """`summarize._wrapper_log` answers None, not a name nothing writes.
-
-    It used to return ``<basename>.runwrap-none.log`` — a composed spelling for
-    a file that cannot exist, which is the same handcraft pointing the other
-    way, and which any caller that printed the path would have shown a person.
-    """
-    from molbuilder.jobset.summarize import _wrapper_log
-    assert _wrapper_log(tmp_path, "bdt") is None
-    _touch(tmp_path, "bdt.runwrap-20260908-090000.log",
-           "bdt.runwrap-20260908-173000.log")
-    got = _wrapper_log(tmp_path, "bdt")
-    assert got is not None, "two launches are here"
-    # THE NEWEST, not the first: the caller compares what the run was ASKED to
-    # do against what it DID, and an older session's log describes a different
-    # run.  Two files, so first-vs-last is a real distinction here.
-    assert got.name.endswith("-20260908-173000.log")
+# `test_wrapper_log_reports_absence_as_absence` retired 2026-10-04 (W56
+# 3b.4): its subject, `summarize._wrapper_log`, is gone -- a trial's session
+# log is its run's (`runs.Run.session_log`), ``None`` when no log is that
+# run's.
 
 
 # --------------------------------------------------------------------------- #

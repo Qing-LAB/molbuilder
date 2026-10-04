@@ -775,8 +775,8 @@ newest run index while `openable_in` took the newest file.)*
 > hierarchical (`task.py`), so each rung has its own directory and there is
 > only one stage to order — but it was a third place the question was
 > answered, and a copied or restored folder reorders file times and not
-> runs. It reads the newest RUN by its number now (`runfiles.find`; plan W38
-> M4).
+> runs. It reads the newest RUN by its number now, the run door's
+> (`runs.Run.outputs`; plan W38 M4, B11).
 
 ### 5.2 `openable` — the CALCULATION decides, and the registry vets
 

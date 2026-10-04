@@ -178,6 +178,33 @@ class Run:
         return None
 
     @property
+    def stdout(self) -> Optional[Path]:
+        """The engine's own output of this run -- its stdout role
+        (`runfiles.stdout_roles`) at the run's index -- or ``None``."""
+        for role in _rf.stdout_roles(self.place.task.engine):
+            got = self.file(role, self.run)
+            if got is not None:
+                return got
+        return None
+
+    @property
+    def outputs(self) -> List[Path]:
+        """Every engine output of this run's stage here, newest run index
+        first -- by the number each carries, never a file's time."""
+        roles = set(_rf.stdout_roles(self.place.task.engine))
+        return [p for p, rec in reversed(self.files()) if rec.role in roles]
+
+    @property
+    def session_log(self) -> Optional[Path]:
+        """The run script's session log of THIS run -- the one whose first
+        section is its run index (`wrapper_log.log_of_run`), never the
+        newest by its stamp -- or ``None``."""
+        if self.run is None:
+            return None
+        from molbuilder.wrapper_log import log_of_run
+        return log_of_run(self.folder, self.label, self.run, self.stage)
+
+    @property
     def stage_deck(self) -> Optional[Path]:
         """The stage's own deck, the copy prep writes (`project-layout.md`
         § 5.2): in the stage's folder in the hierarchy, the run's own in the
@@ -190,22 +217,24 @@ class Run:
         return self.place.root / self.stage / deck.name
 
 
-def run_of(path) -> Optional[Run]:
+def run_of(path, stage: Optional[str] = None) -> Optional[Run]:
     """THE RUN ``path`` BELONGS TO -- a file of a run, or a run's folder --
     or ``None``: a container, a folder no calculation claims, or one whose
     description does not read (`architecture.md` § 3.2).
 
-    The label is the description's (a trial's, the description's with its
-    point); the stage is the one the folder's path names, else the one the
-    file's own name reads back to, else -- a file that names none, in a
-    folder several stages share -- the run the folder speaks for
-    (:func:`speaking`); the run index is the file's own, else the newest."""
+    The label is the description's (a trial's, `paths.trial_label`); the
+    stage is the one the folder's path names, else ``stage`` -- the one the
+    caller asks about, in a folder several stages share (a flat
+    calculation's) -- else the one the file's own name reads back to, else
+    the run the folder speaks for (:func:`speaking`); the run index is the
+    file's own, else the newest."""
     p = Path(path)
     folder = p if p.is_dir() else p.parent
     place = place_of(folder)
     if not place.ours or place.role != calcdirs.RUN:
         return None
-    label, stage = _position(folder, place)
+    label, named = _position(folder, place)
+    stage = named or stage
     run = None
     if not p.is_dir():
         rec = _rf.parse(p.name, label)

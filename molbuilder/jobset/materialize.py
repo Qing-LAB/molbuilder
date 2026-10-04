@@ -654,25 +654,9 @@ def run_dir(container: Path) -> Path:
     return latest_attempt(container) or Path(container)
 
 
-def stage_stdout(attempt_dir: Path, label: str, token: Optional[str],
-                 engine: str) -> Optional[Path]:
-    """The newest of THIS stage's engine outputs in *attempt_dir*, or ``None``.
-
-    The stdout roles are the catalogue's (`runfiles.stdout_roles`) and the
-    name is read by the grammar (`runfiles.find`, stage and run counter
-    included), so a flat bundle -- one directory holding every stage's
-    output -- answers with this stage's file and never a neighbour's.  Two
-    readers wanted this: `prep`, for the geometry a `relax` stage left, and
-    `summarize`, for the reference step of a force-constant run; the second
-    globbed ``*.out`` until 2026-09-24 and on a flat bundle would have read
-    the other stage's run.
-    """
-    from ..runfiles import find as _rf_find
-    from ..runfiles import stdout_roles
-    hits = [p for role in stdout_roles(engine)
-            for p, _rec in _rf_find(Path(attempt_dir), label, role=role,
-                                   stage=(token or None))]
-    return hits[-1] if hits else None
+# `stage_stdout` -- the newest of a stage's engine outputs in a folder --
+# stood here until 2026-10-04.  It is the run's, `runs.Run.stdout`, asked of
+# the run door (plan B11, W56 3b.4).
 
 
 def resolve_attempt(stage_dir: Path) -> Tuple[Path, bool]:

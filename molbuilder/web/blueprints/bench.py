@@ -14,8 +14,8 @@ Spec: ``docs/web/bench-summary.md``.
 ``summarize.sweep_view`` -- an L2 verb over the four doors § 2 names -- and
 what is left here is the three things a route owns: which paths may be
 read, what the HTTP failures are, and JSON.  The composition sits a layer
-down because the readers it needs (``_read_environment``, ``_latest_run_file``)
-are private to the module that owns them, and because a verb is testable
+down because the reader it needs (``_read_environment``) is private to the
+module that owns it, and because a verb is testable
 without a Flask app -- ``tests/test_prep_bench_fold.py`` exercises it
 directly.
 """

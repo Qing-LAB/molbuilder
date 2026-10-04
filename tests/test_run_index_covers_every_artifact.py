@@ -60,7 +60,6 @@ import pytest
 from molbuilder.identity import is_ours
 from molbuilder.jobset.model import Job, JobSet, Resources
 from molbuilder.jobset.prep import prep_jobset
-from molbuilder.jobset.summarize import _latest_run_file
 from molbuilder.monitor import run_monitor
 
 LABEL = "J_01_coarse"
@@ -206,34 +205,11 @@ def test_no_unindexed_monitor_artifact_reaches_the_directory(tmp_path):
             "pre-2026-08-27 name")
 
 
-# ---------------------------------------------------------------- the reader
-
-
-def test_the_reader_takes_the_newest_attempt(tmp_path):
-    """Writer and reader change together or nothing is found.
-
-    `summarize` used an exact unindexed name for these two while using
-    `_latest_run_file` for the `.out` and the timing log, so the moment the
-    writer gained an index the reader stopped seeing them at all.
-
-    MUTATION THIS MUST FAIL AGAINST: `max` -> `min` in `_latest_run_file`
-    (it reads a stale attempt), or dropping the `-run*` glob (it reads
-    nothing).  The retired test asserted the CALL SITES were spelled with
-    `_latest_run_file` and could not have noticed either.
-    """
-    d = tmp_path / "calc"
-    d.mkdir()
-    for n, body in ((0, "OLD"), (3, "NEWEST"), (2, "MIDDLE")):
-        (d / f"{LABEL}-run{n}.util.csv").write_text(body)
-    (d / f"{LABEL}.util.csv").write_text("UNINDEXED")
-
-    found = _latest_run_file(d, LABEL, "util.csv")
-    assert found is not None, "the reader found no attempt at all"
-    assert found.read_text() == "NEWEST", (
-        f"the reader took {found.name}, not the highest run index")
-
-    assert _latest_run_file(d, LABEL, "monitor.log") is None, (
-        "a suffix with no attempt on disk must report nothing, not guess")
+# `test_the_reader_takes_the_newest_attempt` retired 2026-10-04 (W56 3b.4):
+# its subject, `summarize._latest_run_file`, is gone.  A trial's files are
+# its run's, every one at the run's one index (`runs.Run.file`), and the run
+# a folder speaks for -- the newest run index, never a file's time -- is
+# `tests/data/the_speaking_run.toml`'s.
 
 
 # ----------------------------------------------------------- the cold sweep
