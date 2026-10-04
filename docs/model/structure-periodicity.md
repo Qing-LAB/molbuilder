@@ -472,10 +472,14 @@ two things state one:
   that makes a structure from an engine's output states it: the next rung of
   a ladder (the vibration `freq` stage from `relax`'s output, a transport
   rung from the cited relaxation's `.XV`), every save of a run's output, and
-  every read of an engine's own structure file — SIESTA's `<label>.xyz`,
-  written with no sidecar, takes its run's frame in the codec
-  (`StructureCodec.read`), from the composer the Results tab's trajectory
-  door also asks (`parse/dirs/atom_metadata.engine_frame_for_run_dir`).
+  every read of an engine's own structure file — SIESTA's `<label>.xyz` and
+  `<label>.XV`, written with no sidecar, take their run's frame from what that
+  run declared, `declared(run)` (`execution/architecture.md` § 3.2): the codec
+  (`StructureCodec.read`), the Results tab's trajectory door and `xv2xyz
+  --from-run`, which also takes the run's labels and held atoms from it — its
+  own deck's records, never a sidecar looked for beside the file *(plan B12,
+  D19; until 2026-10-04 the composer was `parse/dirs/atom_metadata.engine_frame_for_run_dir`
+  and `xv2xyz` looked beside the `.XV` instead)*.
   The transport citation states it only when the cited deck recorded its
   placement — its `engine-offset` record *(user, 2026-09-25, plan § 5q D7)*:
   a relaxation run before the record left its atoms flush against a face, so

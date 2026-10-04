@@ -684,9 +684,9 @@ distinction the names themselves draw (`job-contracts.md` § 2.3):
 
 | group | what is in it |
 |---|---|
-| **For the whole run** | `prep`'s own records — the job set, the plan, the machine as probed, the decision ledger |
+| **For the whole run** | `prep`'s own records — the job set, the plan, the machine as probed, the decision ledger — the catalogue's calculation-level rows |
 | **Once, for the calculation** | the files that carry **no** stage token, because one run writes one of them |
-| **one per rung** | everything stemmed on that rung's token, in the directory the shape puts it in |
+| **one per rung** | everything stemmed on that rung's token, in the directory the shape puts it in, **spelled as that shape spells it**: an attempt's `run.json` and `.continued-from` in the hierarchy, a stage's `<base>.run.json` and `<base>.continued-from` in the flat shape |
 
 **Not the engine's outputs, and that asymmetry is the point.** An engine's
 output set depends on its version and on which options are on, so listing *that*
@@ -695,17 +695,21 @@ because molbuilder writes it — the catalogue is `runfiles.WRITTEN`
 (`job-contracts.md` § 2.2), and the card is a reading of it.
 
 **Every name is composed, not spelled.** `/api/task-setup/prep-plan` calls
-`runfiles.manifest(label, token, engine, when, calculation)` and the browser only
-lays the answer out. That matters here more than anywhere: the card's whole use
+`runfiles.manifest(label, token, engine, when, calculation, shape)` and the
+browser only lays the answer out; the route keeps no list of its own *(a
+hand-kept list of the calculation's records stood beside the call until plan
+B13, 2026-10-04 — and the per-rung names came in the flat shape's spelling for
+a hierarchical calculation)*. That matters here more than anywhere: the card's whole use
 is that you can look for these files afterwards, so a name it invented would send
 you looking for something nothing wrote — which is exactly what four readers were
 doing about geomeTRIC's trajectory until the grammar was written down.
 
 The description says which calculation and which engine, and both narrow the
 list: a SIESTA run is not told about `.py`, and a relaxation is not promised a
-`.spectra.json`. A name containing `*` is a family (the wrapper's session log,
-one per launch), and it is shown with the star rather than with an invented
-timestamp.
+`.spectra.json`. A family — the wrapper's session log, one per launch — is
+shown with its field's name, `<base>.runwrap-<stamp>.log`, rather than with an
+invented timestamp. A file only an opt-in switch writes, or only a machine with
+a queue, says so on its line.
 
 **And which restart-file list the calculation follows** *(plan W36 ⑧,
 2026-10-03; user: "provide information on the task setup web ui")*. The card's

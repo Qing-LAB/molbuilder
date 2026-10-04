@@ -56,8 +56,9 @@ answers its own question — *which rung is next*, *which setting is fastest*,
 
 | part | module | what it does |
 |---|---|---|
-| the folder's answer | `parse/dirs/rundir.py` — `JobDirParser` → `RunDirResult`, served by `web/blueprints/results.py::api_results_dir` | what the folder is (`place`: run · container · not marked), its engine, the file to open (`openable`); per file, its role, label, stage, and whether a parser reads it (`parser`); for a calculation root, the ladder |
+| the folder's answer | `parse/dirs/rundir.py` — `JobDirParser` → `RunDirResult`, served by `web/blueprints/results.py::api_results_dir` | what the folder is (`place`: run · container · not marked), its engine, the file to open (`openable`); per file, its role, label, stage, whether a parser reads it (`parser`) and what it is (`about`, § 3b); for a calculation root, the ladder |
 | the picker | `lib/results/file-picker.js` | scans the folder the sidebar scopes, drops files nothing can read and files no presenter calls a result, opens `openable`, and announces the choice with `place`, `ladder` and `record` |
+| the file card | `lib/results/file-card.js` (§ 3b) | what the file in hand is — the dropdown's, or one clicked in the sidebar inside the folder the panel shows: what it holds and who wrote it, or *not written by molbuilder* |
 | the Run panel | `lib/results/run-panel.js` (§ 3a) | the run the folder's files came from — its `record` — above whichever presenter is mounted; hidden for a container and a folder with no run |
 | the controller | `results/viewer.js` | picks the presenter for the announced file, disposes the old one, mounts the new one; with nothing to show, the card that says what the folder is, and its ladder |
 | the presenters | `lib/inspectors/*.js`, through `registry.js` ([`presenters.md`](?doc=web/presenters.md)) | one per kind of result; each loads its own data |
@@ -140,7 +141,7 @@ tab has had, so the division is written out in full:
 | You do this | What happens |
 | --- | --- |
 | **Navigate the sidebar to another folder** | **nothing here.** The panel stays on the folder it is bound to, and the header says the sidebar has moved on |
-| **Single-click a file** in the sidebar | nothing here. That is a preview/browse gesture |
+| **Single-click a file** in the sidebar | the **file card** says what it is (§ 3b), when it is in the folder the panel shows; nothing else here changes — a single click is a preview, and the mounted viewer stays |
 | **Double-click a file** in the sidebar | opens it in the sidebar's own **file viewer** (the same modal the View button opens). It does **not** reach this panel |
 | **Pick from the dropdown** | that file is mounted, and everything below follows it |
 | **Reload from current project dir** | **binds the panel to wherever the sidebar is now**, lists that folder's results, and tells a live viewer to re-fetch. This is the sidebar's whole authority over this tab |
@@ -254,9 +255,10 @@ their own entry. So a PySCF relaxation is one line in the menu, not five.
 **Which files are one run is READ, never cut out of the names.** A run file is
 `<label>_<stage><role>`, and the boundary between the label and the rest cannot
 be found from the string alone — a role may contain `_` (`_geom_optim.xyz`) and
-so may a label. The server reads each name back with the label its deck states
-and sends `label`, `stage` and `role` per file (`/api/results/dir`), so a
-presenter asks *same run?* as an equality:
+so may a label. The server reads each name back with its run's label — the
+description's, through the run door ([`execution/architecture.md`](?doc=execution/architecture.md)
+§ 3.2) — and sends `label`, `stage` and `role` per file (`/api/results/dir`), so
+a presenter asks *same run?* as an equality:
 
 | the satellite | what it shares | how it is told apart |
 |---|---|---|
@@ -329,7 +331,7 @@ Two rules keep this from hiding anything:
 > which file a viewer should open (`openable_in`), and — for a run — its
 > `status` (`run_status` with its launch record,
 > [`running-a-job.md`](?doc=execution/running-a-job.md) § 4.2) and its
-> `record` (§ 3a); per file, its `role`, `label`, `stage` and `parser`. What a
+> `record` (§ 3a); per file, its `role`, `label`, `stage`, `parser` and `about` (§ 3b). What a
 > directory is decides what is asked of it, and that rule is `JobDirParser`'s,
 > not the route's: a container has no state and no record; a folder that does
 > not say what it is is read alone, with a state only where its product was
@@ -535,6 +537,42 @@ scan that fails announces nothing: from the moment the panel is bound to
 another folder it is hidden until that folder's scan lands — and owns
 `lib/results/run-panel.css`. `results/viewer.js` does not know it: § 1 keeps
 it to pick, dispose and mount.
+
+## 3b. The file card — what a file is, and who wrote it *(user, 2026-10-04)*
+
+*("we can have a UI component where it would respond to the currently selected
+file under a directory: if it is part of a manifest file, it can explain where
+this file comes from and what it contains. if it is generated by the engine,
+then the UI would just say this is not part of the file generated by
+molbuilder.")*
+
+**One line about the file in hand, beside the picker.** The file in hand is the
+dropdown's, or a file single-clicked in the sidebar inside the folder this panel
+shows (`projects.onChange`, `web/projects.md`); a click changes the card and
+nothing else — the mounted viewer stays (§ 2.1). A file clicked in another
+folder leaves the card as it was.
+
+| the file is | the card says |
+|---|---|
+| **one molbuilder writes** — a row of the catalogue, read back with its run's label | what it holds, who writes it and when: *"the run ended on its own, with its exit code — written by the run script, as its last act"* |
+| **anything else** — the engine's, SLURM's, a person's | *not written by molbuilder* |
+
+**The words are the catalogue's, and the card composes none.** Each file of
+`/api/results/dir`'s answer carries `about` — `{ours, what, writer, when}`, or
+`{ours: false}` — the run door's `about(path)`
+([`execution/architecture.md`](?doc=execution/architecture.md) § 3.2) over the
+one catalogue, `runfiles.WRITTEN`
+([`execution/job-contracts.md`](?doc=execution/job-contracts.md) § 2.2), whose
+rows are also the contract's manifest
+([`execution/project-layout.md`](?doc=execution/project-layout.md) § 5) and the
+Task setup card. A file is the catalogue's only when its name reads back with
+its run's label, so SIESTA's `fdf.<stamp>.log` is not taken for a log of ours
+by its suffix.
+
+*Module:* `lib/results/file-card.js` renders into `#results-file-card`, listens
+to the picker's selection event and to `projects.onChange`, reads the `about`
+the picker's scan already holds — no request of its own — and owns
+`lib/results/file-card.css`.
 
 ## 4. What a mounted viewer remembers
 

@@ -482,7 +482,7 @@ creation and thrown away.
 
 | the directory | what answers | container or run |
 |---|---|---|
-| the **calculation root** | `task.json` — it is the root *because* the description is here ([§ 7](#7-the-invariants), invariant 2) | from **`shape`**: `flat` ⇒ a run, `hierarchical` ⇒ a container |
+| the **calculation root** | `task.json` — it is the root *because* the description is here ([§ 7](#7-the-invariants), invariant 2), read through its one door, `read_task`, by the run door (`architecture.md` § 3.2); `calcdirs` reads no description | from **`shape`**: `flat` ⇒ a run, `hierarchical` ⇒ a container |
 | **everything below it that molbuilder made** | `calcdir.json`, written by the creator | **`role`**, said outright |
 | anything else | nothing | unknown — the directory is read alone, and told so |
 
@@ -2279,7 +2279,9 @@ the door genuinely could not:
   `.runwrap-*.log` is the one row in `runfiles.WRITTEN` that is a FAMILY rather
   than a name — one file per launch, stamped with the clock — and `find`
   compared a role by equality, so it could never answer for a patterned one.
-  `runfiles.role_matches` is that gap closed.
+  The stamp became a declared field (`runfiles.FIELDS`), so `find` answers it
+  by equality like any role. *(`role_matches` closed the gap first, and was
+  removed with the field, 2026-09-08.)*
 - `transport/compose` held four hand-written copies of `.molstruct.json`
   because the sidecar suffix had a composer (`sidecars.molstruct.sidecar_path_for`)
   and no public name and no finder. `SUFFIX`, `sidecars_in` and `is_sidecar`
@@ -2329,14 +2331,19 @@ module the job works around.
 
 | question | door |
 |---|---|
-| what is this file called? | `runfiles.compose` / `parse` / `stem` / `tail` — **unchanged**, § 2.2a still owns the grammar |
-| which files here match? | `runfiles.find` |
-| where does this stage live? | `Shape.stage_dir` (moves into `paths`) |
-| which stage directories exist? | `Shape.run_basename` (was `stage_glob`) — the door that already worked this way, and the model for the rest |
-| where does a sweep live? | `bench_container` / `sweep_set_paths` |
-| where does a trial run? | `trial_dir`, `trial_work_dir` |
-| which attempts exist? | `attempts`, `resolve_attempt` |
-| **the whole path at once** | `paths.path_for(label, stage, run, role, shape)` — one call, because a caller wanting a file wants a path, not three calls to join |
+| what is this file called? | `runfiles.compose` / `parse` / `stem` / `tail` — § 2.2a still owns the grammar |
+| which files here match? | `runfiles.find`, `find_by_role` |
+| which run is this file of, and where are its files? | the run door, `run_of` → `Run` (`architecture.md` § 3.2) |
+| where does this stage live? | `Shape.stage_dir` |
+| which stage directories exist? | `stages_in`; a stage's files in the flat shape, `Shape.run_basename` |
+| where does a sweep live? | `bench_container`, `bench_containers_in` |
+| where does a trial run? | `trial_name`, `trial_point`, `trials_in`; `materialize.trial_dir`, `trial_work_dir` |
+| which attempts exist? | `attempt_name`, `attempt_dir`, `attempt_index`, `attempts_in`; `materialize.latest_attempt`, `resolve_attempt` |
+
+*(This table named `paths.path_for`, `sweep_set_paths`, `attempts` and a
+`trial_dir` in `paths` until 2026-10-04 — doors designed on 2026-09-08 that
+were built under the names above or not at all; a file's whole path is now
+the run door's, `Run.file(role)`.)*
 
 `runfiles` keeps the filename grammar it already owns correctly and is
 imported by `paths`, L1 to L1. `materialize` keeps JobSet-level assembly and
@@ -2462,10 +2469,19 @@ for it or reading it raw is a second reader of one fact (`architecture.md`
 that exists today, and the `plans/plan.md` § 0c row that removes it. A door of
 *none* means a person reads the file and no code does.
 
+**One source.** The rows of § 5.1–§ 5.3, § 5.5 and § 5.6 are
+`runfiles.WRITTEN`'s — the catalogue of every file molbuilder writes into a
+calculation folder (`job-contracts.md` § 2.2) — rendered here by
+`tools/manifest.py`, and a check fails when the two differ: **a row is edited
+in the catalogue, never in this document** *(user, 2026-10-04)*. The same rows
+answer the Task setup card (`manifest`) and the Results tab's file card
+(`about`, `web/results.md` § 3b). § 5.4 is not ours to catalogue — an engine's
+output set is the engine's — and is written here by hand.
+
 **Names.** A run file is `<label>[_<stage>][-run<N>]<role>`, composed by
-`runfiles.compose` and read back by `runfiles.parse` with its label
-(`job-contracts.md` § 2.2a). The catalogue in code of what molbuilder writes is
-`runfiles.WRITTEN`; the run-file rows below are its reading. `<label>` is
+`runfiles.compose` and read back by `runfiles.parse` with its run's label
+(`job-contracts.md` § 2.2a), which the run door reads from the description
+(`architecture.md` § 3.2). `<label>` is
 `task.label` (the `SystemLabel` / `JOB`); `<base>` is `<label>_<NN>_<stage>`,
 the deck's stem; `<N>` is the run script's run index; `<El>` an element.
 

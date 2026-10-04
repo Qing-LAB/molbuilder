@@ -760,9 +760,14 @@ exists to mark.
 So a directory whose run has written only its seeded log has an `openable` and
 no `active_source`; that is correct in both directions.
 
-**`active_source` is picked by stage, then mtime** *(user ruling, 2026-09-04)*.
-Within one directory, a re-run of an earlier rung must not hijack the run's
-reported state, and only the stage ordinal can say so — the run index cannot.
+**`active_source` is the run the folder speaks for** — the run door's one rule
+(`execution/architecture.md` § 3.2): the highest stage that has run output, then
+that stage's newest run index. *(The stage first is the user's ruling of
+2026-09-04: within one directory a re-run of an earlier rung must not hijack the
+run's reported state, and only the stage ordinal can say so. The run index
+within a stage replaced the file's time on 2026-10-04, plan B11: a copied or
+restored folder reorders times, never runs, and four readers already took the
+newest run index while `openable_in` took the newest file.)*
 
 > **What this paragraph used to claim, and why it was withdrawn.** It named
 > `summarize._latest_run_file`'s highest-`-runN` rule as a *competing* rule
@@ -842,49 +847,46 @@ applied to one answer, and it is load-bearing: the chain used to return
 `<job>_<stage>.log` — PySCF's verbose logger, which no parser claims — and
 the caller's next step was `detect()`, which refused it.
 
-**What remains a search** is a directory that does not say what it is: the
-deck is read for a label and the label's files are looked up through
-`runfiles.find`, which knows the attempt counter. Role first, then newest —
-and the order between those two is the rule, because a role says what a file
-IS while mtime only says which one. Every candidate goes through the registry
-either way.
+**A directory that does not say what it is holds no run of ours** — no
+`calcdir.json` in it and no `task.json` at it (`execution/project-layout.md`
+§ 1.4a). Its files are listed and the registry says which it can open; the door
+claims none of them as molbuilder's, reads no label off a deck and asks it no
+run state. *(Until 2026-10-04 the deck was read for a label and the label's
+files searched, then generic names — a search for a run molbuilder's wrapper
+did not run, input molbuilder does not take: user, 2026-10-03; plan B11.)*
+Within a run of ours the run's label comes from its description through the
+run door, and its files are read back through `runfiles`.
 
 `attempts` carries the trail. It is not decoration: it is the body of the
 refusal a person reads when nothing matched, and it moves with the search so
 the message cannot drift from it.
 
-### 5.3 What this door does NOT own
+### 5.3 What this door does NOT own — and what no file parser guesses
 
-**A file parser finding its own companion stays where it is** — § 5a's sibling
-upgrade. `engines/_sidecar._siesta_fdf_path_for`,
-`engines/_sidecar.read_frozen_atoms`, `engines/pyscf._resolve_job_token` and
-`engines/siesta_mdnc.sibling_md_nc` each locate one file from another *of their
-own format*. Folding those in would make every engine parser depend on the
-directory composer, inverting § 5's own rule that a DirParser composes
-FileParsers and never the reverse.
+**A file parser reads its own file.** It may open a companion only where the
+engine names that companion from something the file itself states — SIESTA's
+`<SystemLabel>.MD.nc`, its label read from the `.out`'s own `reinit: System
+Label:` line (§ 5a). That is reading, not searching, and it stays in the parser:
+a FileParser never depends on the directory composer.
 
-The test is: **does the question need to see the whole directory?** "Which
-file is the status" does. "Where is my `.out`'s `.fdf`" does not.
+**What a run DECLARED is not a companion, and no parser looks for it.** The held
+atoms, the regions, the axis kinds and the cell the atoms were placed in are the
+run's deck's records, read through the run's one door, `declared(run)`
+(`execution/architecture.md` § 3.2), by the door that builds a view — the
+trajectory load, the codec reading an engine's own structure file, `xv2xyz`.
+A SIESTA output's own `Constraints applied` echo is what the engine applied, and
+its parser reads it as its own content.
 
-> **And the shape they share is: compose the exact name, then fall back to a
-> LONE file of that kind in the directory.** `_siesta_fdf_path_for` has done
-> both since 2026-06-14. `read_frozen_atoms` had only the first until
-> 2026-09-17, and so returned nothing for **every laddered calculation** — the
-> sidecar is written once per calculation and stemmed on the bare label, so no
-> name composed from `bdt_01_coarse` can reach `bdt.molstruct.json`. Listing a
-> directory is not "seeing the whole directory" in this section's sense: the
-> question is still *where is my companion*, answered without parsing anything
-> else.
->
-> **The fallback is licensed by `project-layout.md` § 1.4** — a directory is a
-> container or a run, and a run holds *"what that invocation produced, and
-> nothing else holds that"* — so a lone sidecar beside an artifact is that
-> run's. It is guarded on both sides: the lone file's label must be a prefix of
-> the artifact's on a `_` boundary, and **two candidates decline rather than
-> pick**. Guessing from the NAME stays forbidden, because it is undecidable —
-> measured: `runfiles.parse` reads a stage token off both `bdt_01_coarse` (rung
-> `01_coarse` of `bdt`) and `sample_02_test` (a whole label), so no rule over
-> the filename separates them.
+> **What this replaced** *(plan B12, user, 2026-10-04)*. This section licensed
+> a lookup by name: compose the exact name beside the artifact, then fall back to
+> a lone file of that kind in the folder — `_sidecar.read_frozen_atoms`,
+> `_siesta_fdf_path_for`, `siesta_mdnc.sibling_md_nc`. Measured on two real H₂
+> calculations of ours, it answered nothing: the structure pair sits at the
+> calculation root, named for its structure file, never beside a run's output,
+> and a flat folder holds two decks, so the lone-deck guess declined. The
+> guards that made it safe — a label prefix on a `_` boundary, *two candidates
+> decline* — were guards on a guess, and `xv2xyz --from-run` wrote an isolated
+> molecule's held atom away and its axes periodic (plan D19).
 
 ### 5.4 Every DirParser must
 

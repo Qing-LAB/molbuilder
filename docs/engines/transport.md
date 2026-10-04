@@ -2508,6 +2508,19 @@ expansion in the shipped 2-terminal scope.)
 > way round is **not an error** — it biases the other end, which only its author
 > can judge — so the sort notes it, the preflight warns, and the Transport tab
 > offers a one-click rename.  *(How that was settled: [`archive/2026-09-01-transport-design.md`](?doc=archive/2026-09-01-transport-design.md) § 4.1a.)*
+>
+> **The rename is the transport calculation's own, and a cited run is never
+> written** *(user, 2026-10-04, plan Q6)*. Accepting it states the swap in the
+> calculation's description — the junction slot's `swap_electrodes: true` — and
+> compose applies it to the calculation's own copy of the junction
+> (`junction.molstruct.json`, recorded in `slot-provenance.json`); the cited
+> relaxation's deck and sidecar are read, never changed
+> ([`execution/project-layout.md`](?doc=execution/project-layout.md) § 1.5: an
+> attempt is never modified). Another calculation citing the same run makes its
+> own choice. *(Until then the rename rewrote the label block in the cited run's
+> own deck, or the sidecar beside it, inside its finished attempt, and left a
+> `<sidecar>.lock` there — "fixed at the source, so every later citation of that
+> directory is right too".)*
 
 > **Bias direction.** Bias is `V_left − V_right`; the emitter binds
 > `L-electrode → chem-pot Left → μ = +V/2` **by name**, and the deck states which

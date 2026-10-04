@@ -310,18 +310,39 @@ dot.)
 ### 2.2 The file catalogue
 
 **The manifesto is `molbuilder/runfiles.py::WRITTEN`**, and this section is its
-reading. That module declares, one row per kind of file, what molbuilder itself
-writes: the role, one line saying what the file holds, whether it carries a
-stage token, whether it carries the wrapper's attempt counter, which engine and
-which calculation write it, and at which moment it appears (setup · prep · run).
-Two views come off that one table and nothing else may hold a copy:
+reading. It declares **every file molbuilder writes into a calculation
+folder** — the run's files and the calculation's own, `task.json` to the
+conclusion marker — one row each *(B13, user, 2026-10-04)*:
+
+| column | what it says |
+|---|---|
+| the name | a **role** on the label (`.molwatch.log`, composed by § 2.2a's grammar), or a **fixed name** (`task.json`, `calcdir.json`) |
+| where it sits | the level — the calculation root, a stage, a run, a benchmark, a launch folder — and **its spelling in each shape** where the two differ: an attempt's `run.json` and `.continued-from` are a flat stage's `<base>.run.json` and `<base>.continued-from` |
+| what it holds | one line a person reads |
+| who writes it, and when | the verb or the program, and the moment — setup, prep, launch, run, summarize |
+| its door | the one function its readers ask (`architecture.md` § 3.2) |
+| its kind | source · input · derived · record · result · transient (`project-layout.md` § 5) |
+
+and, as before, whether it carries a stage token and the run index, which engine
+and which calculation write it, and whether it is evidence of how a run went
+(§ 5.5 of `model/parse.md`). **A fixed name's owner takes it from the
+catalogue** — `task.json`'s from the row `task.py` reads, `calcdir.json`'s from
+the row `calcdirs` reads — so a name is spelled once.
+
+Its readings, and nothing else may hold a copy:
 
 * `runfiles.patterns()` — the glob family, which **is**
   `identity.OUR_FILE_PATTERNS` and from which `runwrap`'s `--cold` sweep derives
   its *"except what molbuilder wrote"* exception;
-* `runfiles.manifest(label, stage, engine, when, calculation)` — the concrete
-  names, which is what the Task-setup tab shows a person before they spend a
-  queue slot.
+* `runfiles.manifest(label, stage, engine, when, calculation, shape)` — the
+  concrete names a stage will have, in the shape it has, which is what the
+  Task-setup tab shows a person before they spend a queue slot;
+* `about(path)`, the run door's (`architecture.md` § 3.2) — what one file is: its
+  row, read back with its run's label, or *not written by molbuilder* — which
+  the Results tab's file card shows (`web/results.md` § 3b);
+* [`project-layout.md`](?doc=execution/project-layout.md) § 5 — the manifest,
+  rendered from the rows (`tools/manifest.py`); a check fails when the two
+  differ, so a row is edited in the catalogue and never in the document.
 
 **Only our half can be complete, and that is the point.** An engine's output set
 depends on its version and on which options are on, so enumerating *that* is a
@@ -339,9 +360,9 @@ position, matching nothing that is written.
 
 **Every file, with who writes it and the one door that reads it, is the
 manifest — [`project-layout.md`](?doc=execution/project-layout.md) § 5** —
-both shapes, every level, the engines' own files included. This section keeps
-the catalogue's rules; the files themselves are listed there once, and a list
-here would be the second copy this section exists to prevent.
+both shapes, every level, the engines' own files beside ours. This section
+keeps the catalogue's rules; the rows are the catalogue's, and a list here
+would be the second copy this section exists to prevent.
 
 What molbuilder writes is declared in `WRITTEN`; the restart files an engine
 writes — SIESTA's `.XV` / `.DM` / `.CG`, PySCF's `_optimized.xyz` / `.chk` —
@@ -357,8 +378,10 @@ offered first (`runfiles.result_roles`, `model/parse.md` § 5.5).
 
 > **Drift corrected (2026-07-27):** the old catalogue listed engine stdout as
 > a static `my-job.out` / `my-job.log`. The wrapper now writes a **run-indexed**
-> `my-job-runN.out` (SIESTA) and `my-job-runN.pyscf.log` (PySCF); the `.log`
-> family is geomeTRIC's own logging (§ 2.6).
+> `my-job-runN.out` (SIESTA) and `my-job-runN.pyscf.log` (PySCF); `my-job.log`
+> is PySCF's own logger (`mol.output`, `model/parse.md` § 5.5) and
+> geomeTRIC's is `_geom.log`. *(This note said "the `.log` family is
+> geomeTRIC's own logging" until 2026-10-04.)*
 
 **Why PySCF's stdout is `.pyscf.log` and not `.out`.** It used to be `.out`, and
 that collided with SIESTA's `.out` — which is not stdout at all, but a structured
@@ -469,8 +492,13 @@ is:
 | a label and a stage → **the part every role attaches to** (your tail is not a role: a log suffix, a directory) | `stem(label, stage=None)` |
 | a role, but the label only exists at **run time** (you are emitting it *into* a generated script, next to its own `JOB` / `SystemLabel`) | `tail(role, stage=None, run=None, **counters)` |
 | a name → **does it cross rungs?** | `is_carried(name_or_runfile, label="")` — takes a `RunFile` or a filename |
-| a label and a rung → **every file that will appear, with a line each** | `manifest(label, stage, engine, when, calculation)` |
+| a label and a rung → **every file that will appear, with a line each** | `manifest(label, stage, engine, when, calculation, shape)` |
 | **all the files molbuilder writes**, as globs | `patterns()` — and `identity.OUR_FILE_PATTERNS` already *is* this |
+| a folder and a label → **which of its files are that label's** | `find(directory, label, role=, stage=, run=)` — read back through `parse`; `latest_run` for the newest run index |
+| a folder and a dotted role, before anything has said whose it is | `find_by_role(directory, role)` |
+| **a file → the run it belongs to**, its label, stage and run index, and that run's other files | `run_of(path)` → `Run`, `Run.file(role)` — the run door (`architecture.md` § 3.2), which reads the label from the description, never from a deck or the name |
+| **a file → what it is**: its row, or *not written by molbuilder* | `about(path)`, on the run door |
+| a name you already know is one of your run's outputs → its role | `role_of(name)` — never for a name met in a folder: that one is read back with its label (`about`), or SIESTA's `fdf.<stamp>.log` reads as a log of ours |
 | a new kind of file | add a row to `WRITTEN`; do not spell its suffix at the call |
 | a new counter (`-try2`, `-seg3`) | add the keyword to `QUALIFIERS`; the parser needs no edit |
 
@@ -497,10 +525,14 @@ tail(role, stage=None, run=None, **counters) -> str       # for a script that
                                                           # knows its label only
                                                           # at run time
 is_carried(name_or_runfile, label="")       -> bool
+find(directory, label, role=, stage=, run=) -> list[(Path, RunFile)]
+find_by_role(directory, role)               -> list[Path]  # dotted roles only
+latest_run(directory, label, stage=, role=) -> int | None
+role_of(name)                               -> str | None  # a known output's
 WRITTEN                                     # the catalogue (§ 2.2)
 patterns()                                  -> tuple[str] # the glob family
-manifest(label, stage, engine, when, calculation) -> list # the names, with
-                                                          # a line each
+manifest(label, stage, engine, when, calculation, shape) -> list # the names,
+                                                          # with a line each
 ```
 
 `tail` exists because a generated deck names its own outputs from its own `JOB`
@@ -565,12 +597,16 @@ and **there is one convention for it**:
   ```
 
   > **The deck, the stdout and the monitor log all carry the same token.**
-  > `molwatch_log_basename` takes it, and the decoders read it back through
-  > `identity.parse_stage_token` — so a stage's files can always be matched to
-  > each other by name (`identity.stage_token`; § 6.3's Files table). **One
-  > reader still keeps a second regex**: the PySCF log parser's
-  > `_STAGE_TOKEN_RE` (`parse/engines/pyscf.py`), open as plan N5 ② (M2i).
-  > *(This said none did until 2026-09-29.)*
+  > `molwatch_log_basename` takes it, and every reader reads it back through
+  > § 2.2a's `parse`, with the run's label from the run door
+  > (`architecture.md` § 3.2) — so a stage's files can always be matched to
+  > each other by name (`identity.stage_token` composes the token). **There is
+  > no second grammar**: a reader that cuts the token out of a name its own
+  > way reads no stage from `<base>-run0.scf-timing.log`,
+  > `<base>.runwrap-<stamp>.log` or `<base>.continued-from`, and a stage
+  > `coarse_geom` from geomeTRIC's log *(measured 2026-10-04; the readers that
+  > still do are plan § 0c B11's)*. *(This named `identity.parse_stage_token`
+  > as the reader until 2026-10-04.)*
   >
   > **The underscore is load-bearing.** A hyphen announces *a counter follows*
   > on this document's own terms, and a stage is not a counter — it is a name
