@@ -17,20 +17,25 @@ and the free carbon sits ON the O...O line, so the surviving turn moves
 nothing and the answer is zero.  The rank gets that right without being
 told.
 
-WHY BOTH FUNCTIONS ARE SELF-CONTAINED.  The projection happens INSIDE the
-generated deck, at run time, on a machine where this package is not
-importable, so both functions travel into the deck as source text, the
-way ``pyscf.vibration_emitters.dipole_derivatives`` does.  Nothing here
-may read a module-level name: a constant referenced from module scope is
-a ``NameError`` in the deck.  Each function imports numpy under its own
-roof and takes everything else as an argument.  ``vibrational_modes``
-calls ``rigid_motions`` by name, so a deck splices the two in this order.
-
-TRAVELS in ``mb_vibration.pyz`` beside a SIESTA force-constant job
-(`runwrap.VIBRATION_COMPANIONS`, `engines/vibration.md` § 5.5), so it
-imports nothing of molbuilder at module level.
+TRAVELS AS ITSELF, in both bundles: the PySCF vibration script imports it
+from ``mb_pyscf.pyz`` and runs the projection inside its run
+(`runwrap.PYSCF_COMPANIONS`, `engines/pyscf.md` § 3), and a SIESTA
+force-constant job's finish runs it from ``mb_vibration.pyz``
+(`runwrap.VIBRATION_COMPANIONS`, `engines/vibration.md` § 5.5) -- both where
+this package is not installed, so it imports nothing of molbuilder.  Until
+2026-10-05 the PySCF deck carried its functions as source text, which is why
+each still imports numpy under its own roof and takes everything else as an
+argument.
 """
 from __future__ import annotations
+
+# TWO WAYS, because this module travels (above).
+try:                                        # inside molbuilder
+    from ..constants import (BOLTZMANN_HARTREE_K,
+                             CM1_PER_SQRT_HARTREE_BOHR2_AMU, HARTREE_CM1)
+except ImportError:                         # beside a job, in either bundle
+    from constants import (BOLTZMANN_HARTREE_K,
+                           CM1_PER_SQRT_HARTREE_BOHR2_AMU, HARTREE_CM1)
 
 
 def rigid_motions(positions, held, axis_kind, cell=None, tol_ang=1e-3):
@@ -212,36 +217,73 @@ def vibrational_modes(hessian, masses, positions, held, axis_kind, cell=None):
     return lam, L_cart, patterns
 
 
-def vibrational_thermo(freqs_cm1, temperature_K, kb_eh_per_k, eh_per_cm1):
+def signed_omega(eigenvalues):
+    """``sign(lambda) * sqrt(|lambda|)`` per mode, in atomic units: a
+    negative eigenvalue of the mass-weighted Hessian is an imaginary mode,
+    carried as a negative number.  The eigenvalues are
+    :func:`vibrational_modes`' own, in Eh/(Bohr^2 amu)."""
+    import numpy as _np
+    lam = _np.asarray(eigenvalues, dtype=float)
+    return _np.sign(lam) * _np.sqrt(_np.abs(lam))
+
+
+def frequencies_cm1(eigenvalues):
+    """Each mode's wavenumber, cm-1 -- :func:`signed_omega` through the one
+    constant (``constants.CM1_PER_SQRT_HARTREE_BOHR2_AMU``), an imaginary
+    mode negative.  Both routes report their modes through it."""
+    return signed_omega(eigenvalues) * CM1_PER_SQRT_HARTREE_BOHR2_AMU
+
+
+def display_form(canonical):
+    """Each mode rescaled so its largest component is 1 -- the form the
+    viewer animates and the per-mode probe displaces along; never for a
+    physical amplitude, which the canonical form carries.  A mode of zeros
+    stays zeros.  ``canonical`` is the modes' array, one mode per row."""
+    import numpy as _np
+    L = _np.asarray(canonical, dtype=float)
+    out = _np.zeros_like(L)
+    for k in range(L.shape[0]):
+        peak = float(_np.max(_np.abs(L[k]))) if L[k].size else 0.0
+        if peak > 0:
+            out[k] = L[k] / peak
+    return out
+
+
+def thermo_temperatures(temperature_K):
+    """The temperatures the viewer's curves run over -- :data:`THERMO_GRID_K`
+    with the headline temperature added, sorted, so the curve passes through
+    the headline number and the two cannot disagree."""
+    return sorted(set(float(t) for t in THERMO_GRID_K)
+                  | {float(temperature_K)})
+
+
+def vibrational_thermo(freqs_cm1, temperature_K):
     """The harmonic vibrational sums at one temperature: ``(zpe, u_vib, s_vib)``
     in Hartree, Hartree and Hartree/K.
 
     Over the frequencies given -- every one a vibration, none imaginary:
     the caller has already removed the whole-body motions (R3) and left
-    out an imaginary mode, which has no partition function.  The two
-    constants are passed in because this function travels into a deck as
-    source text and may read no module-level name; the caller takes them
-    from the one home (``constants.py``).  No frequencies give three
+    out an imaginary mode, which has no partition function.  The constants
+    are the one home's (``constants.py``).  No frequencies give three
     zeros; ``T <= 0`` gives the T -> 0 limit -- the zero-point energy,
     which no temperature removes, with no thermal energy and no entropy.
     """
     import numpy as _np
-    w = _np.asarray(freqs_cm1, dtype=float).reshape(-1) * float(eh_per_cm1)
+    w = _np.asarray(freqs_cm1, dtype=float).reshape(-1) * (1.0 / HARTREE_CM1)
     T = float(temperature_K)
     if w.size == 0:
         return 0.0, 0.0, 0.0
     zpe = float(0.5 * w.sum())
     if T <= 0.0:
         return zpe, 0.0, 0.0
-    x = _np.clip(w / (float(kb_eh_per_k) * T), 1e-12, 700.0)
+    x = _np.clip(w / (BOLTZMANN_HARTREE_K * T), 1e-12, 700.0)
     u = float((w / (_np.exp(x) - 1.0)).sum())
-    s = float(float(kb_eh_per_k) * ((x / (_np.exp(x) - 1.0)
-                                     - _np.log1p(-_np.exp(-x))).sum()))
+    s = float(BOLTZMANN_HARTREE_K * ((x / (_np.exp(x) - 1.0)
+                                      - _np.log1p(-_np.exp(-x))).sum()))
     return zpe, u, s
 
 
-def vibrational_thermo_grid(freqs_cm1, temperatures_K, e_ref_eh,
-                            kb_eh_per_k, eh_per_cm1):
+def vibrational_thermo_grid(freqs_cm1, temperatures_K, e_ref_eh):
     """The vibrational-only curves a viewer draws, at each temperature:
     ``{temperatures_K, zpe_eh, u_vib_eh, h_eh, s_eh_k, g_eh}`` as lists.
 
@@ -250,13 +292,13 @@ def vibrational_thermo_grid(freqs_cm1, temperatures_K, e_ref_eh,
     when it is not), with NO ``kT`` term -- that is the ideal gas's ``pV``,
     which a system with atoms held has no claim to.  One home for the
     assembly, so the deck's grid and the host-side derivation cannot
-    differ; self-contained for the same reason as `vibrational_thermo`.
+    differ.
     """
     grid = {"temperatures_K": [], "zpe_eh": [], "u_vib_eh": [],
             "h_eh": [], "s_eh_k": [], "g_eh": []}
     for T in temperatures_K:
         T = float(T)
-        z, u, s = vibrational_thermo(freqs_cm1, T, kb_eh_per_k, eh_per_cm1)
+        z, u, s = vibrational_thermo(freqs_cm1, T)
         h = float(e_ref_eh) + z + u
         grid["temperatures_K"].append(T)
         grid["zpe_eh"].append(z)
@@ -276,5 +318,6 @@ THERMO_GRID_K = tuple(float(x) for x in
                       __import__("numpy").linspace(50.0, 1500.0, 30))
 
 
-__all__ = ["rigid_motions", "vibrational_modes", "vibrational_thermo",
-           "vibrational_thermo_grid", "THERMO_GRID_K"]
+__all__ = ["rigid_motions", "vibrational_modes", "signed_omega",
+           "frequencies_cm1", "display_form", "thermo_temperatures",
+           "vibrational_thermo", "vibrational_thermo_grid", "THERMO_GRID_K"]

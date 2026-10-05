@@ -441,7 +441,7 @@ def _mode_count(struct: Structure, cfg: "VibrationConfigView"):
 
     The count is R2 -- ``3 N_free - n_rigid`` -- with
     ``n_rigid`` from the one derivation (R1): the rank rule in
-    ``spectra.normal_modes``, the same function the deck splices, so the
+    ``spectra.normal_modes``, the same function the deck imports, so the
     paragraph written into the deck header and the list the run produces
     agree by construction.  Straight molecules, a lone atom, held atoms
     on a line: none is a case here, because none is a case there.

@@ -502,13 +502,17 @@ travels**; its members import each other the same two ways.  The monitor's
 set stays stdlib-only: the bundles are built by one builder from their own
 tables, and nothing of the finish's reaches the monitor.
 
-**A third, imported rather than run.** A PySCF script imports molbuilder's
-own code from `mb_pyscf.pyz` (`runwrap.PYSCF_COMPANIONS`,
-`engines/pyscf.md` § 3): the progress-log writer, the structure codec and
-the mode selector, with what they import.  Its rule is **the standard
-library and numpy — which PySCF needs anyway — AND travels**, at load and in
-every function the script calls; its members import each other the same two
-ways.
+**A third, imported rather than run.** A PySCF script imports every molbuilder
+function it runs from `mb_pyscf.pyz` (`runwrap.PYSCF_COMPANIONS`,
+`engines/pyscf.md` § 3) -- the node's core count, the progress-log writer,
+the structure codec, the relaxation, and a vibration's rules, selector and
+writer.  Its rule is **the standard library and numpy at load; in the
+functions the script calls also ASE -- which the PySCF env carries for it
+(`envs/recipes.py`) -- and PySCF itself; AND travels**; its members import
+each other the same two ways.  The one member the script imports before
+numpy -- the core count's, `runtime_info` -- imports nothing that loads numpy
+(the standard library, and psutil inside the core count when the env has
+it), because the threading setup it serves must run before numpy loads.
 
 **What a missing module costs** — which only an incomplete bundle can cause:
 
@@ -517,6 +521,7 @@ ways.
 | `config_dir` | imported only when the channels are read; `load_channels` catches the `ModuleNotFoundError`, logs *reports off*, and the monitor keeps monitoring |
 | any reader the monitor imports at start | the monitor cannot start: the session log holds its `monitor: starting` line and the error, and no `started` (`execution/run-reports.md` § 2.6); and the ending cannot be read either -- no failure hint, no warm retry (`execution/job-contracts.md` § 2.6) |
 | the whole bundle | the wrapper logs *monitor: not started*, and `_mb_ending` answers that the ending cannot be read — no failure hint and no warm retry (`execution/job-contracts.md` § 2.6) |
+| a member of `mb_pyscf.pyz`, or the whole file | the PySCF script stops on its first lines, before PySCF computes anything: the import error, or the sentence saying the file is not beside it, is in the run's output, and the run reads failed (`engines/pyscf.md` § 3) |
 
 **Do not route these through the one writer.** They are the one place in this
 document where a truncated file is the cheaper risk, and the trade is

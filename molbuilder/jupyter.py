@@ -762,9 +762,9 @@ def prepare_lab_home(serve_port: int) -> Dict[str, str]:
 
     # THE CONFIG IS A FILE IN THE PACKAGE, COPIED -- never a string literal
     # here.  `data/jupyter_server_config.py`'s own docstring says why it is a
-    # file under `data/` rather than a module inlined with `inspect.getsource`
-    # (it must subclass jupyter_server's `AsyncCheckpoints`, which the HOST
-    # env does not have).  An ABSOLUTE `config_file` is then loaded INSTEAD of
+    # file under `data/` rather than a module of the package (it must
+    # subclass jupyter_server's `AsyncCheckpoints`, which the HOST env does
+    # not have).  An ABSOLUTE `config_file` is then loaded INSTEAD of
     # searching the config path, so the framed server does not read a personal
     # `~/.jupyter/jupyter_server_config.py` either.
     for opt, name in rules.lab_config.items():

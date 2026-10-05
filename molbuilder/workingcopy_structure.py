@@ -415,7 +415,8 @@ class StructureCodec:
         its comment line.  ``sidecar`` is the payload :meth:`pair` made for
         the structure before it moved -- its labels, cell and periodicity
         are the ones the run was given, never derived a second time -- and
-        only its ``structure_hash`` is replaced, pinned to the new document.
+        only its envelope is renewed: ``structure_hash`` pinned to the new
+        document, ``created_at`` the moment it is written.
         It is always written: it states the engine's origin
         (``engine_offset`` 0), which a document alone cannot.  Written
         through :meth:`write`'s own path: same order, same atomicity.  Until
@@ -424,8 +425,12 @@ class StructureCodec:
         """
         document = Structure(elements=list(elements),
                              positions=positions).to_xyz(comment=comment)
+        # THE ENVELOPE IS OF THIS WRITE: the hash pinned to the document
+        # written, and the time it was written -- `pair` stamped the moment
+        # the payload was made, which for a run's geometry is render time.
         payload = dict(sidecar,
-                       structure_hash=_sha256_bytes(document.encode("utf-8")))
+                       structure_hash=_sha256_bytes(document.encode("utf-8")),
+                       created_at=molstruct._now_iso_z())
         return self._write_pair(Path(target), document, payload)
 
     @staticmethod
@@ -438,12 +443,24 @@ class StructureCodec:
         sidecar_path = molstruct.sidecar_path_for(target)
 
         if atomic:
+            # THE SIDECAR'S RULE (`molstruct.save`), for both halves: fsync
+            # where the filesystem takes it -- tmpfs on some kernels refuses,
+            # and the bytes still land before the rename -- and no temp file
+            # left behind when the write fails.  This path runs inside jobs
+            # too (`write_moved`, the PySCF script's every saved geometry).
             tmp = target.with_suffix(target.suffix + ".tmp")
-            with open(tmp, "w", encoding="utf-8") as fh:
-                fh.write(document)
-                fh.flush()
-                os.fsync(fh.fileno())
-            os.replace(tmp, target)
+            try:
+                with open(tmp, "w", encoding="utf-8") as fh:
+                    fh.write(document)
+                    fh.flush()
+                    try:
+                        os.fsync(fh.fileno())
+                    except OSError:
+                        pass
+                os.replace(tmp, target)
+            finally:
+                if tmp.exists():
+                    tmp.unlink()
         else:
             with open(target, "w", encoding="utf-8") as fh:
                 fh.write(document)

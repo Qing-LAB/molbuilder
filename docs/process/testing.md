@@ -792,6 +792,9 @@ deliberately not installed there.
 
 - `test_monitor_bundle_runs_alone.py` — the monitor's shipped files read a real
   run with molbuilder absent (§ 2; the layer rule itself is review's).
+- `test_pyscf_bundle_runs_alone.py` — every module the PySCF script imports loads
+  from `mb_pyscf.pyz` with molbuilder absent, and writes a pair the package's
+  codec reads back.
 - `_node_esm.py` — the Node ESM load-sim harness the `*_js.py` tests use (§4).
 - `test_no_inline_scripts.py`, `test_negative_body_assert_lint.py` — the
   artifact lints (§ 6).

@@ -20,11 +20,11 @@ land in code form:
   * ONE harmonic analysis for free and held atoms alike: the free-free
     block of the true Hessian, mass-weighted, diagonalised in the
     complement of the whole-body motions that survive holding the frozen
-    set -- `spectra.normal_modes`, spliced into the deck as source
-    (science/normal-modes.md R1-R4);
-  * eigenvalue → cm⁻¹ via the PySCF helper
-    ``hessian.thermo._freq_from_force_constant`` (the conversion
-    factor that pins atomic-units frequencies to wavenumbers);
+    set -- `spectra.normal_modes`, which the deck imports from
+    ``mb_pyscf.pyz`` (science/normal-modes.md R1-R4);
+  * eigenvalue → cm⁻¹ through the one constant both routes share
+    (`spectra.normal_modes.frequencies_cm1`, the eigenvalues in
+    Eh/(Bohr²·amu));
   * Raman activity via finite-difference dα/dR_k (k over
     free Cartesians), projected onto the mass-weighted mode
     eigenvectors → Raman activity scalar via the standard
@@ -39,27 +39,28 @@ fragment is :func:`pyscf_methods_fragment` below) plus a bibliography
 listing -- so a user reading the file can distil a Methods section
 verbatim (spec § 11.2).
 
-The atomic JSON writer is spliced into every emitted deck as text;
-the mode selector, the progress-log writer and the structure codec
-are imported from ``mb_pyscf.pyz`` beside it (``engines/pyscf.md``
-§ 3).
+Every molbuilder function the deck runs is imported from ``mb_pyscf.pyz``
+beside it -- ``engines/pyscf.md`` § 3 lists them, and what stays written as
+text: the run itself, its values, its dressers and set-up, its per-run
+helpers and the branchless IR and Raman formulas.
 
 PROVENANCE -- WHERE EVERY NUMBER COMES FROM.  This module writes a script whose
 output is a quantitative result, so the chain from PySCF's own objects to each
 sidecar key is stated in `engines/vibration.md` § 6.4 and must be kept true here.  The
 distinction that matters:
 
-  * PASSED THROUGH -- `scf_energy_eh` is `mf.kernel()`'s return, `mo_energies_eh`
-    is `mf.mo_energy`, `frequency_cm1` is `harmonic_analysis`'s
-    `freq_wavenumber`.  These are PySCF's numbers.  What is ours is that they
-    reach the right key in the right unit, unrounded.
+  * PASSED THROUGH -- `scf_energy_eh` is `mf.kernel()`'s return,
+    `mo_energies_eh` is `mf.mo_energy`.  These are PySCF's numbers.  What is
+    ours is that they reach the right key in the right unit, unrounded.
+    `frequency_cm1` is ours: the eigenvalues of molbuilder's one harmonic
+    path (`spectra.normal_modes`), converted by its one constant.
   * DERIVED -- `homo_idx` (from `mf.mo_occ`), `ir_intensity_km_mol` (from
     `mf.dip_moment` at displaced geometries) and `raman_activity_a4_amu` (from
     the polarizability, in Bohr^3, converted once).  **These are ours to get
     wrong**, and they are what this module's tests can meaningfully guard.
 
-A DERIVED rule that has a BRANCH lives as a callable function and is spliced
-into the script from its own source (see :func:`homo_index`), so one
+A DERIVED rule that has a BRANCH lives as a callable function, which the
+script imports (see `spectra.pyscf_vibration.homo_index`), so one
 implementation runs and is tested.  A branchless one may stay inline; if it
 grows a branch, it moves.  That rule is stated once in
 `siesta/makov_payne.py` and applies here too.
@@ -86,25 +87,6 @@ from .end_lines import SPECTRUM_END_MARKER   # noqa: E402
 from ..spectra.results import SCHEMA_VERSION
 
 
-# Conversion factors used in the script.  Pinned here so the
-# string-emit and the unit-test cross-check from the same source.
-from molbuilder.constants import BOHR_ANGSTROM as _BOHR_TO_ANG
-from molbuilder.constants import DEBYE_E_ANGSTROM as _DEBYE_E_ANGSTROM
-from molbuilder.constants import (
-    CM1_PER_SQRT_HARTREE_BOHR2_AMU as _CM1_PER_SQRT_HARTREE_BOHR2_AMU)
-from molbuilder.constants import HARTREE_CM1 as _HARTREE_CM1
-
-# Hartree-to-cm⁻¹ for ω = sqrt(force constant / mass) follows the PySCF
-# convention (see pyscf.hessian.thermo).  The value is interpolated into
-# the emitted script so it reads explicitly there, and comes from the one
-# home so it cannot drift from the one every other reader uses.
-# AMU, NOT ELECTRON MASSES.  The deck weights its Hessian with the same
-# amu array PySCF's `harmonic_analysis` uses, so eigenvalues land in
-# Hartree/(Bohr²·amu) and this is their conversion.  It was `HARTREE_CM1`
-# -- true atomic units -- while the masses were electron masses, which is
-# self-consistent for FREQUENCIES and wrong for everything that reads the
-# eigenvectors' normalisation (2026-09-21).
-_CM1_PER_SQRT_EH_BOHR2_AMU = _CM1_PER_SQRT_HARTREE_BOHR2_AMU
 
 
 # Default finite-difference step for Raman dα/dR.
@@ -174,13 +156,23 @@ def _emit_header_docstring(struct: Structure,
         out.append("    -- the wrapper beside this deck activates the env and "
                    "logs the run.")
     out.append("A bare `python <this file>` also works from this directory for a")
-    out.append("manual run -- the deck is self-contained -- but nothing records it.")
+    out.append("manual run -- with mb_pyscf.pyz beside it, the molbuilder code it")
+    out.append("imports -- but nothing records it.")
     out.append("Layout: one job per directory (docs/execution/job-contracts.md);")
     out.append("this deck was written into its own by `prep`.")
     out.append("")
-    out.append("Outputs (atomic-replace at each phase boundary):")
-    out.append(f"    {cfg.job_name}.spectra.json     -- typed SpectraResults")
-    out.append("                                          (see spec § 5 / § 6)")
+    # THE OUTPUTS, the one list both decks write (`input.emit_outputs_block`).
+    from .input import emit_outputs_block
+    _relaxes = not bool(getattr(cfg, "already_relaxed", False))
+    out += emit_outputs_block(
+        cfg.job_name, stage_token or None, spectra=True,
+        log=bool(getattr(cfg, "log_file", False)),
+        chk=bool(getattr(cfg, "chkfile", False)),
+        initial=bool(getattr(cfg, "save_initial_xyz", False)),
+        optimized=_relaxes and bool(getattr(cfg, "save_optimized_xyz", False)),
+        trajectory=_relaxes and bool(getattr(cfg, "write_trajectory", False)),
+        progress_log=bool(getattr(cfg, "write_molwatch_log", False)),
+        held=_relaxes and bool(getattr(cfg, "frozen_indices", None)))
     out.append("")
     if cfg.compute_ir:
         out.append("*** IR INTENSITIES -- BAND-LEVEL VALIDATED ***")
@@ -231,10 +223,8 @@ def _emit_header_docstring(struct: Structure,
 
 def _emit_imports(cfg: "VibrationConfigView") -> List[str]:
     out: List[str] = []
-    out.append("import json")
-    out.append("import math")
-    out.append("import os")
-    out.append("import tempfile")
+    # `os` is the threading set-up's, at the script's head
+    # (`runtime_info.emit_threading_setup_lines`), before numpy loads.
     out.append("import time")
     out.append("from datetime import datetime, timezone")
     out.append("")
@@ -245,8 +235,7 @@ def _emit_imports(cfg: "VibrationConfigView") -> List[str]:
         out.append("from pyscf import gto, scf, dft")
     else:
         out.append("from pyscf import gto, scf")
-    out.append("from pyscf import hessian")
-    out.append("from pyscf.hessian import thermo as _mb_thermo")
+    out.append("from pyscf.hessian import thermo as _pyscf_thermo")
     out.append("")
     return out
 
@@ -348,13 +337,7 @@ def _emit_constants(struct: Structure,
     out.append(f"ES_N_HOMO_BELOW            = {int(cfg.es_n_homo_below)!r}")
     out.append(f"ES_N_LUMO_ABOVE            = {int(cfg.es_n_lumo_above)!r}")
     out.append("")
-    out.append("# Unit conversions (kept inline so the math in the script")
-    out.append("# is self-contained without needing molbuilder at runtime).")
-    out.append(f"CM1_PER_SQRT_EH_BOHR2_AMU  = "
-               f"{_CM1_PER_SQRT_EH_BOHR2_AMU!r}  "
-               f"# cm⁻¹ per sqrt(Eh/(Bohr²·amu))")
-    out.append(f"BOHR_TO_ANG                = {_BOHR_TO_ANG!r}")
-    out.append("")
+
     out.append("# Bibliography keys used in the Methods text + inline comments.")
     out.append("# Verified entries live in docs/science/references.bib.")
     out.append(f"BIBLIOGRAPHY_KEYS          = {list(bibliography_keys)!r}")
@@ -401,336 +384,6 @@ def _config_to_jsonable_dict(cfg: "VibrationConfigView") -> dict:
     import dataclasses
     out = dataclasses.asdict(cfg)
     out["electronic_state"] = cfg.state.as_dict()
-    return out
-
-
-# --------------------------------------------------------------------- #
-# Atomic JSON writer (inlined into the script)                          #
-# --------------------------------------------------------------------- #
-
-
-#: The HOMO rule, as a REAL FUNCTION so it can be called and tested.
-#:
-#: It lived only as emitted script text until 2026-09-09, and it has a BRANCH:
-#: PySCF gives `mo_occ` as a 1-D array for RHF/RKS and a 2-D (alpha, beta) array
-#: for UHF/UKS, which must be summed before the highest occupied level can be
-#: found.  Get that wrong and every OPEN-SHELL calculation reports the wrong
-#: HOMO -- and `web/spectra.md` § 3.1 records the level diagram, the gap and the
-#: gap shift all reading from this index, with shifts of ~0.018 meV, so a wrong
-#: index looks like a different answer rather than an error.
-#:
-#: The emitted script is built from THIS function's source (see
-#: `_emit_homo_rule`), so there is one implementation and the tests exercise the
-#: one that runs.  That is the trigger stated in `siesta/makov_payne.py`: copy a
-#: branchless formula if you must, but ship the source once it has a branch.
-def homo_index(mo_occ) -> int:
-    """Index of the highest occupied molecular orbital.
-
-    ``mo_occ`` is PySCF's occupation array: 1-D for a restricted reference,
-    2-D ``(alpha, beta)`` for an unrestricted one, which is summed to a total
-    occupancy first.  "Occupied" is occupancy above 0.5 -- half an electron --
-    which separates a filled level (1.0 unrestricted, 2.0 restricted) from an
-    empty one without assuming integer occupations.
-    """
-    import numpy as _np
-    occ = _np.asarray(mo_occ, dtype=float)
-    total = occ.sum(axis=0) if occ.ndim == 2 else occ
-    filled = _np.where(total > 0.5)[0]
-    if filled.size == 0:
-        raise ValueError(
-            "no molecular orbital has occupancy above 0.5: the reference has "
-            "no occupied levels, so there is no HOMO to index")
-    return int(_np.max(filled))
-
-
-#: Spliced into the deck by `_emit_dipole_derivative_rule`, for the reason
-#: `docs/engines/vibration.md` § 6.4 states: a derivation with a BRANCH ships as
-#: source so one implementation runs and the tests exercise the one that runs.
-#: The branch here is unavoidable and RUNTIME, not emit-time -- the deck is
-#: generated on the host and executed inside `molbuilder-pySCF`, so whether the
-#: analytic route exists is a property of the env it lands in, not of the
-#: machine that wrote it.
-def dipole_derivatives(mf, free_atom_idxs, want_ir):
-    """The Hessian, and -- when asked and available -- dmu/dR with it.
-
-    Returns ``(hessian, dmu_dr, route)``:
-
-    * ``hessian`` -- Hartree/Bohr^2, shape (n_atoms, n_atoms, 3, 3).
-      **With atoms held, only the free atoms' blocks are computed** (see
-      below); the held atoms' rows are zero and are never read.  The
-      SAME Hessian the no-IR path produces -- asking for IR must not
-      move the frequencies.  That is established by CONSTRUCTION, not
-      by sampling: ``Hessian.kernel()`` is ``hess_elec + hess_nuc``
-      plus a dispersion term when the functional has one, and the two
-      corrections below make this path compute that same sum with the
-      same object.  Verified to ~1e-12 with and without dispersion;
-    * ``dmu_dr``  -- Debye/Angstrom, shape (n_free, 3, 3) indexed
-      (free atom, Cartesian displacement, dipole component), or ``None``
-      when the caller must fall back to finite differences;
-    * ``route``   -- ``"analytic"``, ``"finite-difference"`` or
-      ``"none"``, recorded in the results so a reader can tell which
-      one produced the numbers.
-
-    WHY THE ANALYTIC ROUTE IS NEARLY FREE.  An analytic Hessian's
-    dominant cost is solving the CPHF equations for nuclear
-    displacement, and dmu/dR is those same solutions contracted with
-    dipole integrals.  ``pyscf.prop.infrared`` computes the Hessian as
-    a by-product of that contraction, so asking it for both costs one
-    CPHF solve, not two -- measured +14% over the Hessian alone, versus
-    +486% for the 6N extra SCFs a finite-difference dipole sweep needs
-    (NH3/PBE0/6-31G, 2026-09-11).  The gap widens with atom count: the
-    sweep grows as 6N full SCFs, this does not.
-
-    WHY IT CAN BE ABSENT.  ``pyscf.prop.infrared`` has never been
-    released to PyPI -- it exists only on the project's master branch
-    (see `docs/ops/installation.md` § 3.1).  An env installed from the
-    index has no analytic route, and that is a supported state: the
-    finite-difference path produces the SAME intensities (the two
-    dmu/dR tensors agree to 0.02%), just slowly.  So absence returns
-    ``None`` rather than raising.
-
-    The unit conversion is the one thing a reader cannot check by
-    eye: upstream returns d(mu)/d(R) in atomic units per Bohr, and the
-    deck's projection wants Debye per Angstrom.
-
-    THE REDUCED CALCULATION, which is what holding atoms is FOR.  With
-    atoms held, second derivatives are computed for the free atoms only:
-    PySCF's ``atmlst`` reaches the coupled-perturbed solve -- the expensive
-    step -- so its cost scales with the free atoms rather than with all
-    of them, while the held atoms still shape the energy through the
-    self-consistent field (the block is the free-free block of the TRUE
-    Hessian, Besley's partial Hessian).  ``kernel(atmlst=...)`` cannot be
-    used for it: the dispersion term it adds is full-size, so the three
-    pieces are summed here and the dispersion block is cut to the free
-    atoms.  The result is numbered by position in the list passed, so it
-    is placed back into a full-size table by index.  The analytic
-    dipole-derivative route takes no atom list, so infrared with held
-    atoms is by finite differences over the free atoms -- the same
-    numbers, more SCFs.  **The mean field handed in must not be density
-    fitted**: PySCF's density-fitted Hessian class takes no atom list (its
-    three-centre contraction fails on one), so the deck builds a plain
-    mean field for this route and the run states that the Hessian ran
-    without density fitting.  Measured against compute-everything-and-slice
-    (engines/vibration.md § 4.4): Hartree-Fock blocks agree to 1e-8 Hartree/Bohr^2; DFT
-    blocks to 1.5e-5, the held atoms' grid-weight response that the partial
-    list omits -- about 0.05 cm^-1 on a stretch.
-    """
-    import numpy as _np
-
-    # The elementary charge expressed in D/A -- the nuclear term
-    # de[a] = Z_a * I is a point charge, so the factor must be e.
-    _AU_BOHR_TO_DEBYE_ANG = _DEBYE_E_ANGSTROM
-
-    _n_atoms = int(mf.mol.natm)
-    _free = [int(i) for i in free_atom_idxs]
-    if len(_free) < _n_atoms:
-        _hobj = mf.Hessian()
-        _block = (_np.asarray(_hobj.hess_elec(atmlst=_free))
-                  + _np.asarray(_hobj.hess_nuc(mf.mol, atmlst=_free)))
-        if mf.do_disp():
-            _block = _block + _np.asarray(_hobj.get_dispersion())[_free][:, _free]
-        _full = _np.zeros((_n_atoms, _n_atoms, 3, 3))
-        _full[_np.ix_(_free, _free)] = _block
-        return _full, None, ("finite-difference" if want_ir else "none")
-
-    def _infrared_class(infrared, mf_):
-        """Upstream splits by reference, and so must we.
-
-        Unrestricted references carry a 2-D occupancy; a Kohn-Sham
-        object carries ``xc``.  Density fitting is NOT a split -- a
-        DF-RKS goes through the rks class and agrees with the non-DF
-        answer to 0.004 km/mol (measured 2026-09-11), unlike the
-        polarizability module, which has no DF implementation at all.
-        """
-        occ = _np.asarray(mf_.mo_occ)
-        unrestricted = occ.ndim == 2
-        is_ks = hasattr(mf_, "xc")
-        if unrestricted:
-            return infrared.uks.Infrared if is_ks else infrared.uhf.Infrared
-        return infrared.rks.Infrared if is_ks else infrared.rhf.Infrared
-
-    if want_ir:
-        try:
-            from pyscf.prop import infrared as _infrared
-            _cls = _infrared_class(_infrared, mf)
-            _mf_ir = _cls(mf)
-            # HAND IT THE SCF'S OWN HESSIAN OBJECT.  Upstream's
-            # ``hess_cls`` is hardcoded to the NON-DF class, so on a
-            # density-fitted SCF -- molbuilder's default -- it builds a
-            # non-DF Hessian of a DF density.  That is a real mismatch,
-            # not a rounding artifact: measured 7.2e-5 Hartree/Bohr^2
-            # against the SCF's own Hessian, shifting frequencies by
-            # 0.11 cm^-1.  Small, but it would mean asking for IR
-            # silently changed the frequencies, which is not a trade a
-            # user agreed to.  Injecting ``mf.Hessian()`` makes
-            # ``proc_hessian_`` solve CPHF with the SCF's own machinery:
-            # the Hessian then matches the no-IR path to 3.6e-12 -- and
-            # it is FASTER, because there is still only one solve
-            # (14.8 s versus 14.4 s for the Hessian alone).
-            _hobj = mf.Hessian()
-            _mf_ir.mf_hess = _hobj
-            _mf_ir.kernel_dipderiv()          # Hessian + dmu/dR, one CPHF solve
-            _hess = _np.asarray(_mf_ir.mf_hess.de)
-            # RESTORE THE DISPERSION TERM.  ``Hessian.kernel()`` is
-            #     hess_elec + hess_nuc + get_dispersion() if base.do_disp()
-            # while upstream's ``proc_hessian_`` computes only the first
-            # two and overwrites ``.de`` with them.  The paths therefore
-            # differ by EXACTLY the dispersion Hessian -- an omission,
-            # not a rounding difference, and invisible on any functional
-            # that carries no dispersion correction.  Measured on
-            # B3LYP-D3BJ: 7.2e-4 Hartree/Bohr^2, a 3.7 cm^-1 shift on
-            # every frequency; adding the term back reproduces
-            # ``kernel()`` to 5.7e-12.  molbuilder ships
-            # ``pyscf-dispersion``, so -D functionals are ordinary here.
-            if mf.do_disp():
-                _hess = _hess + _np.asarray(_hobj.get_dispersion())
-            _de = _np.asarray(_mf_ir.de)[list(free_atom_idxs)]
-            return _hess, _de * _AU_BOHR_TO_DEBYE_ANG, "analytic"
-        except ImportError:
-            print("  pyscf.prop.infrared not installed -- IR falls back to "
-                  "finite-difference dipoles (same intensities, 6N extra "
-                  "SCFs).  Install it: bash scripts/install-env.sh repair "
-                  "molbuilder-pySCF --include-optional")
-        except Exception as _exc:          # noqa: BLE001 -- see below
-            # Deliberately broad, and deliberately LOUD.  The analytic
-            # route is an optimisation over a working fallback, so no
-            # failure of it may cost the user their run -- but a silent
-            # swallow would hide a real defect behind a slow success,
-            # so the reason is printed and lands in the job log.
-            print(f"  analytic dmu/dR unavailable ({type(_exc).__name__}: "
-                  f"{_exc}) -- falling back to finite-difference dipoles")
-    return (_np.asarray(mf.Hessian().kernel()), None,
-            "finite-difference" if want_ir else "none")
-
-
-def _emit_dipole_derivative_rule() -> List[str]:
-    """The Hessian + dmu/dR rule, spliced from :func:`dipole_derivatives`.
-
-    **The constant travels as a VALUE, because the function does not travel
-    with its module.**  `inspect.getsource` lifts the body and nothing else,
-    so a name the body reads from module scope is simply undefined in the
-    deck -- and the deck runs under the job's own python, where this package
-    is not importable at all.
-
-    That is how `_DEBYE_E_ANGSTROM` broke every IR run between 2026-09-20 and
-    2026-09-21.  The line had been self-contained arithmetic,
-    ``2.541746473 / 0.52917721092``; unifying the constants replaced it with
-    the name -- right for every other reader of `constants.py`, and wrong for
-    the one function that is shipped as text.  `NameError` at runtime, the
-    deck exits 1, and six e2e tests fail on the empty result rather than on
-    the cause.
-
-    Emitted rather than interpolated into the source so the value still has
-    ONE home: it is read from `constants.py` here, exactly as `BOHR_TO_ANG`
-    and `MASSES_AMU` already are.
-    """
-    import inspect
-    src = inspect.getsource(dipole_derivatives)
-    return ([f"_DEBYE_E_ANGSTROM = {_DEBYE_E_ANGSTROM!r}", ""]
-            + [ln.rstrip() for ln in src.splitlines()])
-
-
-def _emit_homo_rule() -> List[str]:
-    """The HOMO rule, spliced from :func:`homo_index` rather than retyped."""
-    import inspect
-    src = inspect.getsource(homo_index)
-    return [ln.rstrip() for ln in src.splitlines()]
-
-
-def _emit_normal_mode_rules() -> List[str]:
-    """The rank rule and the one harmonic path, spliced from
-    :mod:`molbuilder.spectra.normal_modes` -- the one derivation of how many
-    whole-body motions a held system keeps (science/normal-modes.md R1) and
-    the one path that removes them before diagonalising (R3).  Both are
-    self-contained by that module's contract, so nothing travels with them;
-    `vibrational_modes` calls `rigid_motions` by name, hence the order."""
-    import inspect
-    from ..spectra import normal_modes as _nm
-    out: List[str] = []
-    for fn in (_nm.rigid_motions, _nm.vibrational_modes,
-               _nm.vibrational_thermo, _nm.vibrational_thermo_grid):
-        out += [ln.rstrip() for ln in inspect.getsource(fn).splitlines()]
-        out.append("")
-    return out
-
-
-def _emit_atomic_writer() -> List[str]:
-    """Inline the same atomic-write helper as
-    :func:`molbuilder.sidecars.spectra.dump_spectra_json` so
-    the script doesn't need molbuilder at runtime.
-
-    Safety rules (mirror the dump helper):
-      * allow_nan=False    -- a non-finite value raises before
-                              touching disk.
-      * ensure_ascii=False -- cm⁻¹ / Å survive verbatim.
-      * tempfile-in-same-dir + os.replace -- atomic on POSIX +
-        same-FS Windows.
-      * fsync before replace so a crash leaves either the prior
-        file or the new file intact, never a half-written one.
-    """
-    out: List[str] = []
-    out.append("")
-    out.append("# ============================================================")
-    out.append("#  Array bridge:  GPU (CuPy) <-> CPU (NumPy)")
-    out.append("# ============================================================")
-    out.append("# On GPU runs (gpu4pyscf) attributes such as mf.mo_energy,")
-    out.append("# mf.mo_occ, mf.Hessian().kernel() come back as CuPy arrays.")
-    out.append("# Modern CuPy refuses implicit conversion via __array__ and")
-    out.append("# raises TypeError; downstream code (pyscf.hessian.thermo,")
-    out.append("# np.linalg.eigh, np.where, json serialisation) is all CPU.")
-    out.append("# _as_numpy() does the explicit .get() round-trip ONCE at the")
-    out.append("# crossing point and is a no-op for NumPy arrays / lists /")
-    out.append("# scalars, so the same code runs unchanged on CPU and GPU.")
-    out.append("def _as_numpy(x):")
-    out.append("    '''Coerce a CuPy or NumPy array (or list / scalar) to NumPy.'''")
-    out.append("    # Detect CuPy by module name to avoid an unconditional")
-    out.append("    # `import cupy` (which would fail in pure-CPU envs).")
-    out.append("    if type(x).__module__.startswith('cupy'):")
-    out.append("        return x.get()")
-    out.append("    return np.asarray(x)")
-    out.append("")
-    out.append("# ============================================================")
-    out.append("#  Atomic JSON writer (inlined; mirrors molbuilder's helper)")
-    out.append("# ============================================================")
-    out.append("def _filter_finite(arr):")
-    out.append("    '''Replace NaN/Inf in a numeric array with None for JSON.")
-    out.append("    The dump helper rejects allow_nan, so we have to scrub")
-    out.append("    BEFORE handing the payload over.  None survives JSON as")
-    out.append("    null which the parser handles for optional fields.'''")
-    out.append("    a = np.asarray(arr, dtype=float)")
-    out.append("    if np.isfinite(a).all():")
-    out.append("        return a.tolist()")
-    out.append("    flat = [float(x) if math.isfinite(x) else None"
-               "\n            for x in a.flat]")
-    out.append("    shape = a.shape")
-    out.append("    # Re-shape via nested lists.  For 1-D this is trivial.")
-    out.append("    if a.ndim == 1:")
-    out.append("        return flat")
-    out.append("    return np.asarray(flat, dtype=object).reshape(shape).tolist()")
-    out.append("")
-    out.append("def _atomic_write_json(payload, path):")
-    out.append("    text = json.dumps(payload, indent=2, ensure_ascii=False,")
-    out.append("                      allow_nan=False, sort_keys=False)")
-    out.append("    parent = os.path.dirname(os.path.abspath(path)) or '.'")
-    out.append("    fd, tmp = tempfile.mkstemp(")
-    out.append("        prefix=os.path.basename(path) + '.',")
-    out.append("        suffix='.tmp',")
-    out.append("        dir=parent,")
-    out.append("    )")
-    out.append("    try:")
-    out.append("        with os.fdopen(fd, 'w', encoding='utf-8') as fh:")
-    out.append("            fh.write(text)")
-    out.append("            fh.flush()")
-    out.append("            try:")
-    out.append("                os.fsync(fh.fileno())")
-    out.append("            except OSError:")
-    out.append("                pass")
-    out.append("        os.replace(tmp, path)")
-    out.append("    except BaseException:")
-    out.append("        try: os.unlink(tmp)")
-    out.append("        except OSError: pass")
-    out.append("        raise")
-    out.append("")
     return out
 
 
@@ -807,7 +460,8 @@ def _emit_build_mol(struct: Structure, cfg: "VibrationConfigView",
         # spells "no ladder" as "" and the grammar spells it as None, and
         # the grammar refuses the empty string rather than reading it as
         # None -- the two produce different filenames.
-        _logsuf = _rf_tail(".log", stage_token or None)
+        from .input import ROLE_LOG
+        _logsuf = _rf_tail(ROLE_LOG, stage_token or None)
         out.append(f"    output     = str(_mb_outfile(JOB + {_logsuf!r})),")
     out.append("    verbose    = VERBOSE,")
     out.append("    max_memory = MAX_MEMORY_MB,")
@@ -893,12 +547,10 @@ def _emit_initial_state() -> List[str]:
     out.append("# and edited a coordinate -- the spectrum no longer applies).")
     out.append("# The hash is provenance / audit data; no production code")
     out.append("# enforces it today.")
-    # ONE spelling of the hash, spliced from the artifact writer's home so
-    # the SIESTA derivation and this deck cannot compute two different ones.
-    import inspect as _inspect
-    from ..sidecars.spectra import structure_hash_text as _sht
-    out += [ln.rstrip() for ln in _inspect.getsource(_sht).splitlines()]
-    out.append("STRUCTURE_HASH = structure_hash_text(")
+    # ONE spelling of the hash, the artifact writer's own, imported from
+    # mb_pyscf.pyz so the SIESTA derivation and this deck cannot compute two
+    # different ones.
+    out.append("STRUCTURE_HASH = _mb_structure_hash_text(")
     out.append("    N_ATOMS, JOB, ELEMENTS, [(a[1], a[2], a[3]) for a in ATOMS])")
     out.append("")
     out.append("# Read pyscf's installed version from packaging metadata --")
@@ -990,7 +642,8 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure) -> List
     # Newton wrap ride the EQUILIBRIUM mf only (render-time branches
     # on the config -- self-documenting in the emitted text).
     if getattr(cfg, "chkfile", False):
-        out.append("mf.chkfile = str(_mb_outfile(JOB + '.chk'))")
+        from .input import ROLE_CHK
+        out.append(f'mf.chkfile = _mb_outfile(JOB + "{ROLE_CHK}")')
     if getattr(cfg, "scf_soscf", False):
         out.append("# Second-order SCF (engines/pyscf.md § 7): Newton solver;")
         out.append("# DIIS/damp stop applying under it, by design.")
@@ -1016,19 +669,17 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure) -> List
     out.append("        f'increase scf_max_cycle or revisit '")
     out.append("        f'the input geometry'")
     out.append("    )")
-    out.append("MO_ENERGIES_EQ = _as_numpy(mf.mo_energy).copy()")
-    # THE HOMO RULE IS SPLICED, NOT RETYPED (2026-09-09).  It has a branch --
-    # RHF/RKS gives a 1-D mo_occ, UHF/UKS a 2-D (alpha, beta) that must be
-    # summed -- and a second copy of a branch is a second thing to get wrong.
-    # `homo_index` above is the one implementation and the one the tests call.
-    out.extend(_emit_homo_rule())
-    out.append("")
-    out.extend(_emit_dipole_derivative_rule())
-    out.append("HOMO_IDX = homo_index(_as_numpy(mf.mo_occ))")
+    out.append("MO_ENERGIES_EQ = _mb_as_numpy(mf.mo_energy).copy()")
+    # THE HOMO RULE IS IMPORTED, NOT RETYPED (2026-09-09; from mb_pyscf.pyz
+    # since 2026-10-05).  It has a branch -- RHF/RKS gives a 1-D mo_occ,
+    # UHF/UKS a 2-D (alpha, beta) that must be summed -- and a second copy of
+    # a branch is a second thing to get wrong.  `spectra.pyscf_vibration.
+    # homo_index` is the one implementation and the one the tests call.
+    out.append("HOMO_IDX = _mb_homo_index(_mb_as_numpy(mf.mo_occ))")
     out.append("")
     out.append("state['equilibrium'] = {")
     out.append("    'scf_energy_eh':  float(E_eq),")
-    out.append("    'mo_energies_eh': _filter_finite(MO_ENERGIES_EQ),")
+    out.append("    'mo_energies_eh': _mb_finite_or_none(MO_ENERGIES_EQ),")
     out.append("    'homo_idx':       HOMO_IDX,")
     out.append("    # THE GEOMETRY THE HESSIAN IS TAKEN AT -- the relaxed one when")
     out.append("    # this deck relaxed, the input otherwise (COORDS_EQ_ANG is")
@@ -1038,7 +689,7 @@ def _emit_equilibrium_scf(cfg: "VibrationConfigView", struct: Structure) -> List
     out.append("    'elements':       list(ELEMENTS),")
     out.append("    'positions_ang':  np.asarray(COORDS_EQ_ANG, dtype=float).tolist(),")
     out.append("}")
-    out.append("_atomic_write_json(state, JSON_PATH)")
+    out.append("_mb_write_spectra_payload(state, JSON_PATH)")
     out.append("print(f'Equilibrium SCF: E = {E_eq:.10f} Ha; HOMO index = {HOMO_IDX}')")
     out.append("")
     return out
@@ -1108,7 +759,7 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     """Analytic Hessian -> the one harmonic path -> frequencies +
     eigenvectors.
 
-    Free and held atoms take the SAME path: `vibrational_modes` (spliced
+    Free and held atoms take the SAME path: `vibrational_modes` (imported
     from `spectra.normal_modes`) keeps the free-free block of the true
     Hessian, mass-weights it, and diagonalises it in the complement of the
     whole-body motions that survive holding the frozen set -- six or five
@@ -1128,12 +779,11 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("# ============================================================")
     out.append("#  Phase 2: Hessian -> frequencies + eigenvectors")
     out.append("# ============================================================")
-    out += _emit_normal_mode_rules()
     out.append("print('=== Stage: analytic Hessian ===')")
     out.append("# Branch on the GPU-coverage probe set above:")
     out.append("#   _GPU_HAS_HESSIAN True   -> use mf directly, bridge CuPy -> NumPy")
     out.append("#                              right at the kernel() boundary so")
-    out.append("#                              harmonic_analysis (CPU-only) gets")
+    out.append("#                              the harmonic path (CPU-only) gets")
     out.append("#                              a NumPy array.")
     out.append("#   _GPU_HAS_HESSIAN False  -> rebuild mf on CPU and run Hessian")
     out.append("#                              there.  Costs one extra SCF but is")
@@ -1163,9 +813,9 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("    print('  rebuilding mf without density fitting for the free-atom Hessian')")
     out.append("    _mf_for_hess = _build_mf_at(COORDS_EQ_ANG, density_fit=False,")
     out.append("                                force_cpu=(not _GPU_HAS_HESSIAN))")
-    out.append("_HESS_RAW, DMU_DR, IR_ROUTE = dipole_derivatives(")
+    out.append("_HESS_RAW, DMU_DR, IR_ROUTE = _mb_dipole_derivatives(")
     out.append("    _mf_for_hess, FREE_ATOM_IDXS, _WANT_ANALYTIC_IR)")
-    out.append("HESS = _as_numpy(_HESS_RAW)")
+    out.append("HESS = _mb_as_numpy(_HESS_RAW)")
     out.append("# What the Hessian covered, recorded for the reader and the Methods text:")
     out.append("# 'free' -- second derivatives for the free atoms only (atoms are held);")
     out.append("# 'all'  -- every atom (nothing held; the free molecule).")
@@ -1196,7 +846,7 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("#       (mass in amu).  This is the form the standard")
     out.append("#       Placzek Raman-activity formula expects.  The 45 a^2 +")
     out.append("#       7 gamma^2 scalar comes out in (a.u. polarizability)² /")
-    out.append("#       (Å² · amu), which is rescaled by BOHR_TO_ANG**6 in")
+    out.append("#       (Å² · amu), which is rescaled by BOHR_ANGSTROM**6 in")
     out.append("#       Phase 3 to get the textbook Å^4/amu (see comments in")
     out.append("#       _emit_raman_block).  CONSUMED BY: the Raman projection")
     out.append("#       (dα/dQ = Σ_k dα/dR_k · L_cart_k).")
@@ -1230,30 +880,26 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("# invariant under are an isolated system's (AXIS_KIND).  A structure")
     out.append("# that repeats along an axis is computed as this cluster: its cell is")
     out.append("# not respected, and the settings check said so before this was written.")
-    out.append("_LAMBDA, NORM_MODES_CANONICAL, RIGID_PATTERNS = vibrational_modes(")
+    out.append("_LAMBDA, NORM_MODES_CANONICAL, RIGID_PATTERNS = _mb_vibrational_modes(")
     out.append("    HESS, MASSES_AMU, COORDS_EQ_ANG, FROZEN_ATOM_IDXS, AXIS_KIND)")
     out.append("N_RIGID = int(len(RIGID_PATTERNS))")
     out.append("# omega = sign(lambda) * sqrt(|lambda|): a negative eigenvalue of the")
     out.append("# mass-weighted Hessian is an imaginary mode, reported as a negative")
-    out.append("# wavenumber.  The eigenvalues are in Eh/(Bohr^2 amu); the one")
-    out.append("# constant converts them.")
-    out.append("_OMEGA_AU = np.sign(_LAMBDA) * np.sqrt(np.abs(_LAMBDA))")
-    out.append("FREQ_CM1  = _OMEGA_AU * CM1_PER_SQRT_EH_BOHR2_AMU")
+    out.append("# wavenumber -- the steps both routes take after diagonalising, from")
+    out.append("# their one home (spectra/normal_modes).")
+    out.append("_OMEGA_AU = _mb_signed_omega(_LAMBDA)")
+    out.append("FREQ_CM1  = _mb_frequencies_cm1(_LAMBDA)")
     out.append("HAS_IMAG  = [bool(f < 0) for f in FREQ_CM1]")
     out.append("print(f'  whole-body motions removed before diagonalising: {N_RIGID}; '")
     out.append("      f'{len(FREQ_CM1)} modes = 3*{N_FREE} - {N_RIGID}')")
     out.append("")
-    out.append("# Derive the DISPLAY form (max(|L|)=1 per mode) from the canonical")
-    out.append("# form.  Both forms ship in the JSON under explicit names so")
-    out.append("# consumers don't have to compute one from the other.")
-    out.append("NORM_MODES_DISPLAY = np.zeros_like(NORM_MODES_CANONICAL)")
-    out.append("for _k in range(NORM_MODES_CANONICAL.shape[0]):")
-    out.append("    _max = float(np.max(np.abs(NORM_MODES_CANONICAL[_k])))")
-    out.append("    if _max > 0:")
-    out.append("        NORM_MODES_DISPLAY[_k] = NORM_MODES_CANONICAL[_k] / _max")
+    out.append("# The DISPLAY form (max(|L|)=1 per mode), from the canonical form.")
+    out.append("# Both forms ship in the JSON under explicit names so consumers")
+    out.append("# don't have to compute one from the other.")
+    out.append("NORM_MODES_DISPLAY = _mb_display_form(NORM_MODES_CANONICAL)")
     out.append("")
     out.append("# Build the modes payload, one record per mode.  The JSON keys")
-    out.append("# below are the SCHEMA_VERSION=2 contract:")
+    out.append("# below are the SCHEMA_VERSION contract (spectra/results.py):")
     out.append("#")
     out.append("#   eigenvector_canonical -- (N_FREE, 3) Cartesian normal mode")
     out.append("#       with the canonical mass-weighted unit norm")
@@ -1269,19 +915,10 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("for _i, _f in enumerate(FREQ_CM1):")
     out.append("    _L_canonical = NORM_MODES_CANONICAL[_i]")
     out.append("    _L_display   = NORM_MODES_DISPLAY[_i]")
-    out.append("    # Defensive reshape: PySCF's all-free path returns")
-    out.append("    # norm_mode shape (N_ATOMS, 3) which equals (N_FREE, 3)")
-    out.append("    # here because N_FREE == N_ATOMS in that branch -- so the")
-    out.append("    # reshape is a no-op for normal-shaped returns.  Triggers")
-    out.append("    # only if a future PySCF version returns the flat")
-    out.append("    # (N_ATOMS * 3,) shape some upstream code uses.")
-    out.append("    if _L_canonical.shape[0] != N_FREE:")
-    out.append("        _L_canonical = _L_canonical.reshape(-1, 3)")
-    out.append("        _L_display   = _L_display.reshape(-1, 3)")
-    out.append("    # Serialise each eigenvector exactly once -- _filter_finite")
+    out.append("    # Serialise each eigenvector exactly once -- _mb_finite_or_none")
     out.append("    # converts NaN/Inf to JSON-safe None and returns a plain list.")
-    out.append("    _evec_canon_json = _filter_finite(_L_canonical)")
-    out.append("    _evec_disp_json  = _filter_finite(_L_display)")
+    out.append("    _evec_canon_json = _mb_finite_or_none(_L_canonical)")
+    out.append("    _evec_disp_json  = _mb_finite_or_none(_L_display)")
     out.append("    modes_payload.append({")
     out.append("        'index_1based':          int(_i + 1),")
     out.append("        'frequency_cm1':         float(_f),")
@@ -1299,10 +936,10 @@ def _emit_hessian_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("# difference was.")
     out.append("state['removed_motions'] = {")
     out.append("    'count':    N_RIGID,")
-    out.append("    'patterns': [_filter_finite(_p) for _p in RIGID_PATTERNS],")
+    out.append("    'patterns': [_mb_finite_or_none(_p) for _p in RIGID_PATTERNS],")
     out.append("}")
     out.append("state['phase_frequencies'] = PHASE_COMPLETE")
-    out.append("_atomic_write_json(state, JSON_PATH)")
+    out.append("_mb_write_spectra_payload(state, JSON_PATH)")
     out.append("print(f'Phase 2 done: {len(modes_payload)} modes; "
                "{sum(HAS_IMAG)} imaginary')")
     out.append("")
@@ -1349,7 +986,7 @@ def _emit_displaced_scf_helpers(cfg: "VibrationConfigView") -> List[str]:
     out.append("    _mol_new.atom = [[ELEMENTS[_i], tuple(coords[_i])]")
     out.append("                     for _i in range(N_ATOMS)]")
     out.append("    _mol_new.unit = 'Angstrom'")
-    out.append("    _mol_new.build()")
+    out.append("    _mol_new.build(dump_input=False)   # engines/pyscf.md § 3, (2)")
     # THE METHOD IS A RENDER-TIME FACT, so only the live arm is
     # emitted (the E-M4.7 shape, taken one step further at the U6
     # close): an HF deck used to carry the DFT arm as dead text, with
@@ -1481,7 +1118,7 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
     if cfg.compute_ir:
         # the dipole rides along the same displaced points (vibration.md 4.9)
         out.append("state['phase_ir'] = PHASE_RUNNING")
-    out.append("_atomic_write_json(state, JSON_PATH)")
+    out.append("_mb_write_spectra_payload(state, JSON_PATH)")
     out.append("")
     out.append("# Polarizability requires pyscf-properties, installed in the managed")
     out.append("# molbuilder-pySCF environment by bootstrap. Core PySCF doesn't ship")
@@ -1506,7 +1143,7 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("    # _mf is force_cpu=True for polarizability (gpu4pyscf")
     out.append("    # doesn't expose analytic CPHF), so this is CPU NumPy --")
     out.append("    # the bridge is defensive in case the call path changes.")
-    out.append("    return _as_numpy(_mf.Polarizability().polarizability())")
+    out.append("    return _mb_as_numpy(_mf.Polarizability().polarizability())")
     out.append("")
     if cfg.compute_ir:
         out.append("def _dipole_debye(_mf):")
@@ -1517,7 +1154,7 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
         out.append("    # verbose=0 suppresses the per-call print; the mf is")
         out.append("    # already converged so dip_moment() is essentially a")
         out.append("    # one-line integral, not another SCF.")
-        out.append("    return _as_numpy(_mf.dip_moment(unit='Debye', verbose=0))")
+        out.append("    return _mb_as_numpy(_mf.dip_moment(unit='Debye', verbose=0))")
         out.append("")
     out.append("def _displace(coords, atom_idx, direction, delta):")
     out.append("    '''Return a copy of coords with one Cartesian shifted.'''")
@@ -1525,18 +1162,14 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("    new[atom_idx, direction] += delta")
     out.append("    return new")
     out.append("")
-    out.append("# Build a non-DF mf at the equilibrium geometry for the")
-    out.append("# polarizability calculations.  See module-docstring note re:")
-    out.append("# DF + Polarizability incompatibility.")
-    out.append("# Polarizability needs CPU (gpu4pyscf doesn't expose")
-    out.append("# analytic CPHF polarizability) AND non-DF (pyscf-properties")
-    out.append("# doesn't have a DF implementation).  These two flags are")
-    out.append("# orthogonal but both kick in for the Raman FD step only.")
-    out.append("_mf_nodf_eq = _build_mf_at(COORDS_EQ_ANG, density_fit=False,")
-    out.append("                           force_cpu=True)")
-    out.append("alpha_eq = _polarizability(_mf_nodf_eq)")
-    out.append("")
+    # (An equilibrium polarizability was computed here and never read -- one
+    # non-density-fitted SCF and a CPHF solve per Raman run, for nothing;
+    # removed 2026-10-05, the M11 review's C21.)
     out.append("# Build dα/dR_kα by central difference for each free-atom Cartesian.")
+    out.append("# Each displaced mean field is built on the CPU (gpu4pyscf exposes")
+    out.append("# no analytic CPHF polarizability) and without density fitting")
+    out.append("# (pyscf-properties has no DF polarizability) -- the two flags are")
+    out.append("# orthogonal, and both apply to this step only.")
     out.append("DALPHA_DR = np.zeros((N_FREE, 3, 3, 3))   # (k, α_dir, i, j)")
     if cfg.compute_ir:
         out.append("# IR: dμ/dR_kα captured in the SAME displaced SCFs that")
@@ -1576,7 +1209,7 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("# with units (a.u. polarizability)² / (Å² · amu) -- NOT yet the")
     out.append("# textbook Å^4/amu -- because PySCF reports polarizability in")
     out.append("# atomic units (volume = Bohr³).  The conversion is exact and")
-    out.append("# global: multiply by (Bohr/Å)^6 = BOHR_TO_ANG^6 ≈ 0.02197.  We")
+    out.append("# global: multiply by (Bohr/Å)^6 = BOHR_ANGSTROM^6 ≈ 0.02197.  We")
     out.append("# apply that factor once on the final scalar (see the loop")
     out.append("# below), so what lands in JSON under 'raman_activity_a4_amu'")
     out.append("# is in genuine Å^4/amu -- comparable to Gaussian/ORCA Raman")
@@ -1604,7 +1237,7 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("def _raman_activity(d_alpha_d_Q):")
     out.append("    '''45 a² + 7 γ² in (a.u. polariz)² / (Å² · amu).")
     out.append("")
-    out.append("    The caller multiplies by BOHR_TO_ANG**6 to convert to the")
+    out.append("    The caller multiplies by BOHR_ANGSTROM**6 to convert to the")
     out.append("    standard Å^4/amu units used in literature reports.")
     out.append("    '''")
     out.append("    _a = (d_alpha_d_Q[0, 0] + d_alpha_d_Q[1, 1] +")
@@ -1620,8 +1253,9 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("# Conversion from (a.u. polariz)² / (Å²·amu) to Å^4/amu:")
     out.append("# polarizability has units of volume; PySCF reports a.u. (Bohr³),")
     out.append("# and the textbook Raman activity formula expects Å³.")
-    out.append("# (Bohr/Å)^6 = BOHR_TO_ANG^6  ≈ 0.02197 .")
-    out.append("_RAMAN_AU2_TO_A4AMU = BOHR_TO_ANG ** 6")
+    out.append("# (Bohr/Å)^6 = BOHR_ANGSTROM^6  ≈ 0.02197 -- the one home's")
+    out.append("# factor, imported with the constants module from mb_pyscf.pyz.")
+    out.append("_RAMAN_AU2_TO_A4AMU = _mb_constants.BOHR_ANGSTROM ** 6")
     out.append("")
     out.append("for _n in range(len(modes_payload)):")
     out.append("    # NORM_MODES_CANONICAL is the canonical mass-weighted form")
@@ -1645,7 +1279,7 @@ def _emit_raman_block(cfg: "VibrationConfigView") -> List[str]:
     out.append("# quote to be reproducible (SpectraResults.raman_route).")
     out.append("state['raman_route'] = 'finite-difference'")
     out.append("state['raman_fd_step_ang'] = RAMAN_FD_STEP_ANG")
-    out.append("_atomic_write_json(state, JSON_PATH)")
+    out.append("_mb_write_spectra_payload(state, JSON_PATH)")
     if cfg.compute_ir:
         out.append("print(f'Phase 3 done: Raman + IR for "
                    "{len(modes_payload)} modes')")
@@ -1675,7 +1309,7 @@ def _emit_es_loop(cfg: "VibrationConfigView") -> List[str]:
     out.append("# analysis [Galperin2007, Frederiksen2007].")
     out.append("print('=== Stage: per-mode electronic structure ===')")
     out.append("state['phase_es'] = PHASE_RUNNING")
-    out.append("_atomic_write_json(state, JSON_PATH)")
+    out.append("_mb_write_spectra_payload(state, JSON_PATH)")
     out.append("")
     # Which modes: molbuilder's own selector, imported from mb_pyscf.pyz at
     # the top of the deck (`engines/pyscf.md` § 3) -- a hand-written copy of
@@ -1686,42 +1320,14 @@ def _emit_es_loop(cfg: "VibrationConfigView") -> List[str]:
     out.append("    [m['frequency_cm1'] for m in modes_payload], ES_MODE_SELECTION,")
     out.append("    explicit=ES_EXPLICIT_INDICES,")
     out.append("    freq_min_cm1=FREQ_MIN_CM1, freq_max_cm1=FREQ_MAX_CM1)")
+    # A listed number that names no mode is dropped by the selector, and
+    # said here -- the mode count is known only now.
+    out.append("_dropped = [i for i in ES_EXPLICIT_INDICES if i not in _selected]")
+    out.append("if _dropped:")
+    out.append("    print(f'  WARN: no mode numbered {_dropped}; the modes are '")
+    out.append("          f'1..{len(modes_payload)}')")
     out.append("state['selected_mode_idxs_1based'] = list(_selected)")
     out.append("")
-    out.append("def _mo_window(_mf2):")
-    out.append("    '''Slice the MO array to [HOMO-N, LUMO+M] around the")
-    out.append("    equilibrium HOMO.  At a displaced geometry orbitals can")
-    out.append("    swap; the spec accepts that and lets downstream")
-    out.append("    EPC analysis handle alignment.'''")
-    out.append("    _mos = _as_numpy(_mf2.mo_energy)")
-    out.append("    _occ = _as_numpy(_mf2.mo_occ)")
-    out.append("    if _occ.ndim == 2:")
-    out.append("        _tot = _occ.sum(axis=0)")
-    out.append("    else:")
-    out.append("        _tot = _occ")
-    out.append("    _homo = int(np.max(np.where(_tot > 0.5)[0]))")
-    out.append("    _lo = max(0, _homo - ES_N_HOMO_BELOW)")
-    # The window is SYMMETRIC by contract (vibration.md § 4.8): the HOMO and
-    # n below it, the LUMO and n above it -- `_homo + 2 + n` ends one past
-    # the last orbital kept.  It read `+ 1 +` until 2026-09-24 and kept one
-    # unoccupied orbital fewer than the help text promised.
-    out.append("    _hi = min(len(_mos), _homo + 2 + ES_N_LUMO_ABOVE)")
-    out.append("    return _mos[_lo:_hi].copy(), _homo - _lo")
-    out.append("")
-    out.append("# Defensive: skip out-of-range explicit indices.  The")
-    out.append("# pre-render validator can't range-check explicit indices")
-    out.append("# because the mode count isn't known until L2 completes,")
-    out.append("# so a user typo (es_explicit_indices=\"1, 99\" on a 12-mode")
-    out.append("# system) would otherwise crash here with IndexError after")
-    out.append("# L2 + L3 already burned wall time.  Print + skip instead.")
-    out.append("_n_modes_available = len(modes_payload)")
-    out.append("_skipped_oor = [i for i in _selected")
-    out.append("                if not 1 <= i <= _n_modes_available]")
-    out.append("if _skipped_oor:")
-    out.append("    print(f'  WARN: skipping out-of-range mode indices "
-               "{_skipped_oor}; ' f'valid range is 1..{_n_modes_available}')")
-    out.append("_selected = [i for i in _selected")
-    out.append("             if 1 <= i <= _n_modes_available]")
     out.append("for _idx_1 in _selected:")
     out.append("    _mode_pos = _idx_1 - 1")
     out.append("    # ES displacement uses the DISPLAY form (max|L|=1) so the")
@@ -1744,14 +1350,19 @@ def _emit_es_loop(cfg: "VibrationConfigView") -> List[str]:
     out.append("    # internally via the _USING_GPU flag.")
     out.append("    _mfp = _build_mf_at(_disp_plus)")
     out.append("    _mfm = _build_mf_at(_disp_minus)")
-    out.append("    _mos_p, _homo_in_win_p = _mo_window(_mfp)")
-    out.append("    _mos_m, _homo_in_win_m = _mo_window(_mfm)")
+    # The window around each geometry's own HOMO -- the HOMO rule and the
+    # window rule, molbuilder's, imported (spectra/pyscf_vibration).
+    out.append("    _mos_p, _ = _mb_mo_window(_mb_as_numpy(_mfp.mo_energy),")
+    out.append("                              _mb_homo_index(_mb_as_numpy(_mfp.mo_occ)),")
+    out.append("                              ES_N_HOMO_BELOW, ES_N_LUMO_ABOVE)")
+    out.append("    _mos_m, _ = _mb_mo_window(_mb_as_numpy(_mfm.mo_energy),")
+    out.append("                              _mb_homo_index(_mb_as_numpy(_mfm.mo_occ)),")
+    out.append("                              ES_N_HOMO_BELOW, ES_N_LUMO_ABOVE)")
     out.append("    # Use the EQUILIBRIUM window for the 'eq' slice so the")
     out.append("    # three arrays share length even when an orbital swap")
     out.append("    # shifts the HOMO index at a displaced geometry.")
-    out.append("    _lo = max(0, HOMO_IDX - ES_N_HOMO_BELOW)")
-    out.append("    _hi = min(len(MO_ENERGIES_EQ), HOMO_IDX + 2 + ES_N_LUMO_ABOVE)")
-    out.append("    _mos_eq = MO_ENERGIES_EQ[_lo:_hi]")
+    out.append("    _mos_eq, _homo_in_eq = _mb_mo_window(MO_ENERGIES_EQ, HOMO_IDX,")
+    out.append("                                         ES_N_HOMO_BELOW, ES_N_LUMO_ABOVE)")
     out.append("    _n_win = len(_mos_eq)")
     out.append("    # Re-slice ± arrays to match the equilibrium window size.")
     out.append("    # If a displaced HOMO shifted, take the same-length slice.")
@@ -1763,10 +1374,10 @@ def _emit_es_loop(cfg: "VibrationConfigView") -> List[str]:
     out.append("    )")
     out.append("    modes_payload[_mode_pos]['electronic_structure'] = {")
     out.append("        'amplitude_ang':        float(DISPLACEMENT_AMPLITUDE_ANG),")
-    out.append("        'mo_energies_eq_eh':    _filter_finite(_mos_eq),")
-    out.append("        'mo_energies_minus_eh': _filter_finite(_mos_m),")
-    out.append("        'mo_energies_plus_eh':  _filter_finite(_mos_p),")
-    out.append("        'homo_index_in_window': int(HOMO_IDX - _lo),")
+    out.append("        'mo_energies_eq_eh':    _mb_finite_or_none(_mos_eq),")
+    out.append("        'mo_energies_minus_eh': _mb_finite_or_none(_mos_m),")
+    out.append("        'mo_energies_plus_eh':  _mb_finite_or_none(_mos_p),")
+    out.append("        'homo_index_in_window': int(_homo_in_eq),")
     out.append("        'scf_energy_eq_eh':     float(E_eq),")
     out.append("        'scf_energy_minus_eh':  float(_mfm.e_tot),")
     out.append("        'scf_energy_plus_eh':   float(_mfp.e_tot),")
@@ -1774,11 +1385,11 @@ def _emit_es_loop(cfg: "VibrationConfigView") -> List[str]:
     out.append("    # Per-mode checkpoint -- live-watch can show ES")
     out.append("    # incrementally as each mode completes.")
     out.append("    state['modes'] = modes_payload")
-    out.append("    _atomic_write_json(state, JSON_PATH)")
+    out.append("    _mb_write_spectra_payload(state, JSON_PATH)")
     out.append("    print(f'  Mode {_idx_1}: ES recorded')")
     out.append("")
     out.append("state['phase_es'] = PHASE_COMPLETE")
-    out.append("_atomic_write_json(state, JSON_PATH)")
+    out.append("_mb_write_spectra_payload(state, JSON_PATH)")
     out.append("print(f'Phase 4 done: {len(_selected)} modes with ES data')")
     out.append("")
     return out
@@ -1914,7 +1525,7 @@ def pyscf_methods_fragment(cfg: "VibrationConfigView") -> str:
     # prose above) so a non-Raman run's Methods never mentions Raman.
     if cfg.density_fit:
         df_note = (
-            f"Density fitting (RIJK) was used for the SCF"
+            "Density fitting (RIJK) was used for the SCF"
             + (" and analytic Hessian" if not frozen else
                "; the free-atom Hessian was evaluated without it, on a "
                "plain mean field at the same geometry, because PySCF's "

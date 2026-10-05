@@ -53,7 +53,7 @@ def test_stability_runs_before_the_geometry_optimization():
     t = _script(optimize=True)
     assert "_internal = _mb_stability()[0]" in t
     assert (t.index("_internal = _mb_stability()[0]")
-            < t.index("mol_eq, _GEOM_CONVERGED = relax(")), (
+            < t.index("mol_eq, _GEOM_CONVERGED = _mb_relax(")), (
         "the stability check must precede the optimizer")
 
 

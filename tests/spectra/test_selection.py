@@ -31,6 +31,8 @@ def test_all_selects_every_mode_inside_the_window():
 
 def test_explicit_selects_the_listed_modes_and_ignores_the_window():
     """Naming a mode is saying *that one*: the window, which would drop
-    mode 3, does not apply."""
+    mode 3, does not apply.  A number that names no mode -- 9, of six -- is
+    dropped (§ 4.8): nothing can be probed for it."""
     assert select_modes(FREQS, "explicit", explicit=[3, 5, 6],
                         freq_min_cm1=2000.0) == [3, 5, 6]
+    assert select_modes(FREQS, "explicit", explicit=[3, 9]) == [3]

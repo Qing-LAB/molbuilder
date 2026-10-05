@@ -139,10 +139,10 @@ def test_no_second_gto_M_call(small_struct):
 
 
 _OPTIMIZE_BLOCK_RE = re.compile(
-    # The one relaxation call, ``mol_eq, _GEOM_CONVERGED = relax(`` --
+    # The one relaxation call, ``mol_eq, _GEOM_CONVERGED = _mb_relax(`` --
     # a multi-line arg list, the geomeTRIC keywords among it
     # (`relax_policy.py`, `engines/pyscf.md` § 3).
-    r"^\s*[\w, ]+?\s*=\s*relax\s*\(\s*\n"
+    r"^\s*[\w, ]+?\s*=\s*_mb_relax\s*\(\s*\n"
     # Body lines: anything that ISN'T a bare ``)`` line.  Negative
     # lookahead lets body lines contain balanced parens (e.g. the
     # 2026-05-27 ``prefix = _mb_outfile(JOB + ".."),`` wrapping)

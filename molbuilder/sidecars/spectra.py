@@ -18,15 +18,16 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from typing import Any, Union
+from typing import TYPE_CHECKING, Any, Union
 
-# TWO WAYS: the SIESTA vibration's finish writes the file beside the job
-# (`runwrap.VIBRATION_COMPANIONS`) through this writer -- the one every
-# engine's result goes through -- where the package is not installed.
-try:                                        # inside molbuilder
+# THIS MODULE TRAVELS, and imports only the standard library at load: the
+# SIESTA vibration's finish writes the file beside the job through it
+# (`runwrap.VIBRATION_COMPANIONS`), and the PySCF vibration script does
+# (`runwrap.PYSCF_COMPANIONS`) -- the one writer every engine's result goes
+# through, where the package is not installed.  The results class is an
+# annotation here, nothing more.
+if TYPE_CHECKING:
     from ..spectra.results import SpectraResults
-except ImportError:                         # beside a job, in mb_vibration.pyz
-    from results import SpectraResults
 
 
 # --------------------------------------------------------------------- #
@@ -86,8 +87,8 @@ class SpectraJsonFieldError(SpectraJsonError):
 def structure_hash_text(n_atoms, label, elements, positions_ang):
     """The ``structure_hash`` an artifact carries: ``sha256:`` over the
     lines ``n_atoms``, ``label`` and one ``'<el:<3s> <x:14.8f> <y> <z>'``
-    per atom, joined by newlines, UTF-8.  Self-contained so the PySCF
-    deck can carry it as source; the SIESTA derivation calls it here.
+    per atom, joined by newlines, UTF-8.  The PySCF vibration script imports
+    it from ``mb_pyscf.pyz``; the SIESTA derivation calls it here.
     """
     import hashlib as _hashlib
     lines = [f"{int(n_atoms)}", f"{label}"]
@@ -96,21 +97,23 @@ def structure_hash_text(n_atoms, label, elements, positions_ang):
     return "sha256:" + _hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
 
 
-def dump_spectra_json(results: SpectraResults,
-                      path: Union[str, "os.PathLike[str]"],
-                      *,
-                      indent: int = 2) -> None:
-    """Write ``results`` to ``path`` via atomic rename.
+def write_spectra_payload(payload: dict,
+                          path: Union[str, "os.PathLike[str]"],
+                          *,
+                          indent: int = 2) -> None:
+    """Write a ``.spectra.json`` payload to ``path`` via atomic rename.
 
     The wire-format contract that every Spectra-tab writer follows
     — providing it as a helper here keeps engines from diverging on
-    the details (NaN handling, indent, BOM, atomicity).  The emitted
-    script template in ``spectra/<engine>_engine.py::render_script``
-    either imports this directly or inlines the equivalent.
+    the details (NaN handling, indent, BOM, atomicity).  Every writer
+    calls it: :func:`dump_spectra_json` with a results object, the SIESTA
+    finish through that, and the PySCF vibration script -- importing it from
+    ``mb_pyscf.pyz`` -- with the payload it builds phase by phase.  (The
+    script carried a copy of this until 2026-10-05.)
 
     Behaviour:
 
-      * ``results.to_dict()`` is encoded with ``allow_nan=False`` —
+      * ``payload`` is encoded with ``allow_nan=False`` —
         a non-finite scalar anywhere in the payload raises
         :class:`ValueError` BEFORE any bytes hit disk, so the engine
         is forced to filter or null out NaN/Inf SCF energies
@@ -118,15 +121,16 @@ def dump_spectra_json(results: SpectraResults,
         consumers can't read.
       * UTF-8 without a BOM (cm⁻¹ / Å survive verbatim thanks to
         ``ensure_ascii=False``).
-      * Atomic: write to ``<path>.tmp.<pid>`` first, then
-        :func:`os.replace` it on top of ``path``.  A reader opening
-        the path mid-write sees either the prior version (intact) or
-        the new version (intact) — never a half-written file.
+      * Atomic: write to a temp file beside ``path`` (``tempfile.mkstemp``,
+        named ``<name>.<random>.tmp``) first, then :func:`os.replace` it on
+        top of ``path``.  A reader opening the path mid-write sees either
+        the prior version (intact) or the new version (intact) — never a
+        half-written file.
 
     Parameters
     ----------
-    results
-        The :class:`SpectraResults` to serialise.
+    payload
+        The ``.spectra.json`` document, as a dict.
     path
         Destination path.  Parent directory must exist.
     indent
@@ -136,14 +140,13 @@ def dump_spectra_json(results: SpectraResults,
     Raises
     ------
     ValueError
-        ``results.to_dict()`` contains a non-finite float.  The
-        engine must filter NaN/Inf before calling this.
+        ``payload`` contains a non-finite float.  The engine must
+        filter NaN/Inf before calling this (:func:`finite_or_none`).
     OSError
         Path can't be written (permission / no such directory /
         disk full).  The temp file is cleaned up before re-raise.
     """
     p = os.fspath(path)
-    payload = results.to_dict()
 
     # ``allow_nan=False`` is the safety net: dataclass __post_init__
     # validates shapes but doesn't enforce finiteness on scalar
@@ -190,6 +193,34 @@ def dump_spectra_json(results: SpectraResults,
         raise
 
 
+def dump_spectra_json(results: "SpectraResults",
+                      path: Union[str, "os.PathLike[str]"],
+                      *,
+                      indent: int = 2) -> None:
+    """Write ``results`` to ``path`` -- :func:`write_spectra_payload` of its
+    ``to_dict()``, so a results object and a payload built field by field
+    (the PySCF script's, phase by phase) are written by the one writer."""
+    write_spectra_payload(results.to_dict(), path, indent=indent)
+
+
+def finite_or_none(values):
+    """``values`` -- a number array of any shape -- as nested lists, each
+    NaN or infinity as ``None``: what an optional field of the payload
+    holds where a number is not finite, since :func:`write_spectra_payload`
+    refuses one.  The PySCF vibration script scrubs every array it records
+    with it (imported from ``mb_pyscf.pyz``)."""
+    import math
+
+    import numpy as np
+    a = np.asarray(values, dtype=float)
+    if np.isfinite(a).all():
+        return a.tolist()
+    flat = [float(x) if math.isfinite(x) else None for x in a.flat]
+    if a.ndim == 1:
+        return flat
+    return np.asarray(flat, dtype=object).reshape(a.shape).tolist()
+
+
 def parse_spectra_json(path):
     """Read-side convenience re-export — delegates to
     :func:`molbuilder.parse.sidecars.spectra._parse_spectra_json`
@@ -209,7 +240,9 @@ def parse_spectra_json_dict(d):
 
 __all__ = [
     "structure_hash_text",
+    "write_spectra_payload",
     "dump_spectra_json",
+    "finite_or_none",
     "parse_spectra_json",
     "parse_spectra_json_dict",
     "SpectraJsonError",

@@ -2543,7 +2543,7 @@ root, told apart by `<base>`.
 | `calcdir.json` | what this folder is in its calculation — a container or a run — and where the calculation is | prep, in every folder it makes (`materialize.mark_run` -- a stage's attempt and a benchmark trial's -- and `jobset.engines._pseudo_dir`) | `calcdirs.read` | record |
 | `mb_monitor.pyz` | the monitor, and the readers it runs on — one file | prep, beside each run script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
 | `mb_vibration.pyz` *(SIESTA, vibration)* — only: a force-constant stage | a force-constant job's finish: the modes, from `.FC` | prep, beside the run script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
-| `mb_pyscf.pyz` *(PySCF)* | molbuilder's own code the PySCF script imports -- the progress-log writer, the structure codec, the mode selector | prep, beside the PySCF script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
+| `mb_pyscf.pyz` *(PySCF)* | molbuilder's own code the PySCF script runs, which it imports from here -- the core count, the progress-log writer, the structure codec, the relaxation, a vibration's rules | prep, beside the PySCF script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
 | `makov_payne_correction.py` *(SIESTA)* — only: a charged, isolated deck | the energy correction a charged, isolated deck asks a person to run afterwards | prep (`siesta.makov_payne.emit_correction_script`); a copy in each attempt | none | derived |
 <!-- /manifest -->
 

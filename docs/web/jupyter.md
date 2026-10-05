@@ -363,8 +363,8 @@ executed Python, which is why the class can live there rather than on
 `PYTHONPATH`. **A file under `data/`, not a module and not a string literal:**
 it must subclass jupyter-server's `AsyncCheckpoints` at class-definition time,
 and the shepherd runs in the HOST env, which does not have jupyter-server and
-must not need it — so it cannot be imported, and `inspect.getsource` (this
-project's pattern elsewhere) cannot reach it. Left as a string literal it was
+must not need it — so it cannot be imported, and `inspect.getsource`, which
+reads an imported class, cannot reach it. Left as a string literal it was
 invisible to every tool, and an edit deleted it on 2026-09-14 and shipped a
 `NameError` on every notebook start. Being an absolute path, it is loaded *instead of* searching the
 config path, so the framed server does not read a personal

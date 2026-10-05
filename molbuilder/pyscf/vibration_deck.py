@@ -9,7 +9,7 @@ one deck, one run — the relaxation as its mandatory first act (geomeTRIC
 straight into the Hessian, in-process; D3's final form), ONE harmonic
 analysis for free and held atoms (the whole-body motions that survive the
 frozen set projected out before diagonalising -- `spectra.normal_modes`,
-spliced), IR and Raman as
+imported), IR and Raman as
 INDEPENDENT toggles over shared machinery, RRHO thermochemistry into the
 artifact's v5 ``thermo`` block, the per-mode electronic-structure loop,
 and the phase-writing ``.spectra.json`` the viewer live-watches.
@@ -49,18 +49,17 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from ..constants import BOLTZMANN_HARTREE_K as _BOLTZMANN_HARTREE_K
-from ..constants import HARTREE_CM1 as _HARTREE_CM1
 from .. import script_emit as _sc
 from ..runfiles import tail as _rf_tail
 from ..structure import FROZEN_LABEL, Structure
-from .input import (GEOMETRIC_APPENDS, ROLE_CONSTRAINTS, emit_bundle_imports,
-                    emit_outfile_helper, ROLE_GEOM_TRAJ)
+from .input import (GEOMETRIC_APPENDS, emit_bundle_imports,
+                    emit_constraints_file, emit_save_call, emit_script_head,
+                    ROLE_GEOM_TRAJ, ROLE_INITIAL, ROLE_OPTIMIZED,
+                    ROLE_SPECTRA)
 
 # The lifted emitters — the old generator's proven blocks, composed anew.
 from .vibration_emitters import (
     pyscf_methods_fragment,
-    _emit_atomic_writer,
     _emit_build_mol,
     _emit_constants,
     _emit_displaced_scf_helpers,
@@ -76,17 +75,6 @@ from .vibration_emitters import (
     _emit_initial_state,
     _emit_raman_block,
 )
-
-#: The viewer's G/H/S curves run over this grid (plan § 2b: a documented
-#: presentation default, not a scientific knob — the headline (T, P) items
-#: are the knobs).  ONE home for the numbers -- `spectra/normal_modes.py`,
-#: which the SIESTA derivation reads too -- written into the deck as a
-#: literal list; the deck adds the headline temperature to it at run time.
-def _nm_thermo_grid_home():
-    from ..spectra.normal_modes import THERMO_GRID_K
-    return THERMO_GRID_K
-_THERMO_GRID_K = repr(list(_nm_thermo_grid_home()))
-
 
 class VibrationConfigView:
     # Public because it is the SHAPE, not an implementation detail: the
@@ -187,10 +175,19 @@ def science_view(cfg, struct: Structure) -> "VibrationConfigView":
 
 def _vib_constants(cfg) -> List[str]:
     """The vibration deck's own constants, beside the lifted ones."""
+    from ..sidecars.spectra import (finite_or_none, structure_hash_text,
+                                    write_spectra_payload)
+    from .. import constants
+    from ..spectra.normal_modes import (display_form, frequencies_cm1,
+                                        signed_omega, thermo_temperatures,
+                                        vibrational_modes, vibrational_thermo,
+                                        vibrational_thermo_grid)
+    from ..spectra.pyscf_vibration import (as_numpy, dipole_derivatives,
+                                           homo_index, mo_window)
     from ..spectra.selection import select_modes
     from ..trajectory_log.emitter import MolwatchEmitter
     from ..workingcopy_structure import StructureCodec
-    from .relax_policy import policy_of
+    from .relax_policy import policy_of, relax
     out = ["",
            "# ---- vibration-kind constants (framework deck) ----",
            f"ALREADY_RELAXED = {bool(cfg.already_relaxed)}",
@@ -210,16 +207,21 @@ def _vib_constants(cfg) -> List[str]:
            f"GEOM_CONTINUE_RETRIES = {policy_of(cfg)[1]}",
            f"THERMO_T_K     = {float(cfg.temperature_K)!r}",
            f"THERMO_P_ATM   = {float(cfg.pressure_atm)!r}",
-           f"THERMO_T_GRID  = {_THERMO_GRID_K}",
-           # Where every output lands: beside the script -- the one
-           # definition every PySCF deck carries (`input.emit_outfile_helper`).
-           *emit_outfile_helper(),
-           # And the molbuilder code the deck calls, from the file beside it
-           # (`engines/pyscf.md` § 3): the pair writer's codec, the
-           # progress-log writer and the mode selector (§ 4.8).
-           *emit_bundle_imports(StructureCodec, MolwatchEmitter,
-                                select_modes),
-           "JSON_PATH = _mb_outfile(JOB + '.spectra.json')",
+           # Every molbuilder function the deck runs, from the bundle its
+           # head put on the path (`engines/pyscf.md` § 3): the pair writer's
+           # codec, the progress-log writer, the relaxation, the HOMO and
+           # Hessian rules, the harmonic path and the thermochemistry, the
+           # hash, the result's writer and its scrub, and the mode selector
+           # (§ 4.8).
+           *emit_bundle_imports(
+               StructureCodec, MolwatchEmitter, relax, homo_index, mo_window,
+               dipole_derivatives, as_numpy, vibrational_modes,
+               signed_omega, frequencies_cm1, display_form,
+               thermo_temperatures, vibrational_thermo,
+               vibrational_thermo_grid, structure_hash_text,
+               write_spectra_payload, finite_or_none, select_modes,
+               constants),
+           f"JSON_PATH = _mb_outfile(JOB + {ROLE_SPECTRA!r})",
            ]
     return out
 
@@ -240,7 +242,7 @@ def _vib_state_init() -> List[str]:
         "# What the harmonic analysis removes before diagonalising, filled",
         "# beside the modes (science/normal-modes.md R7).",
         "state['removed_motions'] = {}",
-        "_atomic_write_json(state, JSON_PATH)",
+        "_mb_write_spectra_payload(state, JSON_PATH)",
     ]
 
 
@@ -272,7 +274,7 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
         "if not ALREADY_RELAXED:",
         "    print('=== Stage: relaxation (geomeTRIC) ===')",
         "    state['phase_relaxation'] = 'running'",
-        "    _atomic_write_json(state, JSON_PATH)",
+        "    _mb_write_spectra_payload(state, JSON_PATH)",
         "    _mf_relax = _build_mf_at(COORDS_EQ_ANG)",
     ]
     if getattr(cfg, "scf_soscf", False):
@@ -310,7 +312,7 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
         "        state['relaxation']['n_steps'] += 1",
         "        if _mx is not None:",
         "            state['relaxation']['max_force_eh_bohr'] = _mx",
-        "        _atomic_write_json(state, JSON_PATH)",
+        "        _mb_write_spectra_payload(state, JSON_PATH)",
     ]
     if getattr(cfg, "write_molwatch_log", False):
         out += [
@@ -334,8 +336,6 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
     _opt_kw = f"maxsteps=GEOM_MAX_STEPS, callback={_cb}"
     _frozen = list(getattr(cfg, "frozen_indices", []) or [])
     if _frozen:
-        from ..engine_atom_index import geometric_atom_index
-        _ids_1based = ",".join(str(geometric_atom_index(i)) for i in _frozen)
         out += [
             "    # Frozen atoms stay frozen through the pre-Hessian",
             "    # relaxation (frozen means frozen -- user ruling",
@@ -345,18 +345,12 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
             "    # there.  The SAME set is excluded from the Hessian below",
             "    # (partial Hessian), so the geometry the frequencies are",
             "    # computed at is one where the fixed atoms never moved.",
-            # ONE SPELLING of the frozen-set line, the optimization deck's
-            # (`pyscf/input.py`): the run wrapper reads the constraint back
-            # off the deck by that exact comment, so a second wording here
-            # made every held-atom vibration run report "no frozen_atoms --
-            # all atoms free" in its own header.
-            f"    # Source: Structure.frozen_atoms = {_frozen!r}  (0-based)",
-            "    _FROZEN_CONSTRAINTS_PATH = _mb_outfile(JOB "
-            f"+ {ROLE_CONSTRAINTS!r})",
-            "    with open(_FROZEN_CONSTRAINTS_PATH, 'w') as _fh:",
-            "        _fh.write('$freeze\\n')",
-            f"        _fh.write('xyz {_ids_1based}\\n')",
-        ]
+            # THE ONE WRITER both decks use (`input.emit_constraints_file`):
+            # the run wrapper reads the frozen set back off the deck by its
+            # comment line, and a second wording here once made every
+            # held-atom vibration run report "no frozen_atoms -- all atoms
+            # free" in its own header.
+        ] + emit_constraints_file(_frozen, indent="    ")
         _opt_kw += ", constraints=str(_FROZEN_CONSTRAINTS_PATH)"
     if getattr(cfg, "write_trajectory", False):
         out += [
@@ -376,14 +370,14 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
         _pfx = _rf_tail(ROLE_GEOM_TRAJ,
                         stage_token or None)[:-len(GEOMETRIC_APPENDS)]
         _opt_kw += f", prefix=str(_mb_outfile(JOB + {_pfx!r}))"
-    # THE ONE RELAXATION FUNCTION (`relax_policy.relax`, spliced above):
+    # THE ONE RELAXATION FUNCTION (`relax_policy.relax`, imported above):
     # it asks geomeTRIC whether it converged and applies this rung's
     # on_nonconvergence to the answer -- halt stops the run here, before
     # the Hessian; continue re-enters from the geometry reached; proceed
     # returns it with False.  The recorded verdict is the judged force at
     # that geometry (R5), the key's one meaning on every route.
     out += [
-        "    mol, _geometric_converged = relax(",
+        "    mol, _geometric_converged = _mb_relax(",
         "        _mf_relax, ON_NONCONVERGENCE, GEOM_CONTINUE_RETRIES,",
         f"        {_opt_kw}, **_conv)",
         "    _judged = state['relaxation']['max_force_eh_bohr']",
@@ -397,21 +391,18 @@ def _vib_relax_block(cfg, stage_token=None) -> List[str]:
         '            f"curvature there, not at the minimum")',
     ]
     if getattr(cfg, "save_optimized_xyz", False):
-        out += [
-            "    _save_structure(mol, _mb_outfile(JOB + '_optimized.xyz'),",
-            "              'Relaxed geometry (vibration deck)')",
-        ]
+        out.append(emit_save_call("mol", ROLE_OPTIMIZED, indent="    "))
     out += [
         "    COORDS_EQ_ANG = mol.atom_coords(unit='Angstrom')",
         "    state['phase_relaxation'] = 'complete'",
-        "    _atomic_write_json(state, JSON_PATH)",
+        "    _mb_write_spectra_payload(state, JSON_PATH)",
         "else:",
         "    # Complete-BY-ASSERTION: the user stated it; the gradient is",
         "    # still checked (after the equilibrium SCF below, where the",
         "    # mean field exists) and a warning -- never a refusal --",
         "    # carries the number.",
         "    state['phase_relaxation'] = 'complete'",
-        "    _atomic_write_json(state, JSON_PATH)",
+        "    _mb_write_spectra_payload(state, JSON_PATH)",
     ]
     return out
 
@@ -430,7 +421,7 @@ def _vib_gradient_check() -> List[str]:
         "if ALREADY_RELAXED:",
         "    print('=== gradient check (already_relaxed asserted) ===')",
         "    try:",
-        "        _g0 = _as_numpy(mf.nuc_grad_method().kernel())",
+        "        _g0 = _mb_as_numpy(mf.nuc_grad_method().kernel())",
         "        # Judged in the subspace that is diagonalised (science/",
         "        # normal-modes.md R5): a held atom carries the constraint",
         "        # force by definition, and that number says nothing about",
@@ -453,7 +444,7 @@ def _vib_gradient_check() -> List[str]:
         f"                  + {_remedy!r})",
         "            print('WARNING: ' + _w)",
         "            state['relaxation']['warning'] = _w",
-        "        _atomic_write_json(state, JSON_PATH)",
+        "        _mb_write_spectra_payload(state, JSON_PATH)",
         "    except Exception as _e:  # the check must never kill the run",
         "        print(f'gradient check skipped: {_e}')",
     ]
@@ -484,18 +475,12 @@ def _vib_thermo_block() -> List[str]:
         "_freqs_cm1 = np.array([m['frequency_cm1'] for m in",
         "                       state['modes'] if not m['has_imag']])",
         "_N_IMAG_EXCLUDED = int(sum(1 for m in state['modes'] if m['has_imag']))",
-        f"_KB_EH = {_BOLTZMANN_HARTREE_K!r}        # Boltzmann, Eh/K",
-        f"_CM1_TO_EH = 1.0 / {_HARTREE_CM1!r}",
-        "# The harmonic sums come from the one home both engines share",
-        "# (spectra/normal_modes.vibrational_thermo, spliced above).",
-        "def _vib_thermo_at(T):",
-        "    return vibrational_thermo(_freqs_cm1, T, _KB_EH, _CM1_TO_EH)",
+        "# The harmonic sums, and the grid the viewer draws with the headline",
+        "# temperature ON it, come from the one home both engines share",
+        "# (spectra/normal_modes, imported above).",
         "_regime = 'rrho' if not FROZEN_ATOM_IDXS else 'vibrational-only'",
-        "_zpe0, _u0, _s0 = _vib_thermo_at(THERMO_T_K)",
-        "# The grid the viewer draws, with the headline temperature ON it, so",
-        "# the curve passes through the headline number and the two cannot",
-        "# disagree.",
-        "_T_GRID = sorted(set(float(_t) for _t in THERMO_T_GRID) | {float(THERMO_T_K)})",
+        "_zpe0 = _mb_vibrational_thermo(_freqs_cm1, THERMO_T_K)[0]",
+        "_T_GRID = _mb_thermo_temperatures(THERMO_T_K)",
         "state['thermo'] = {",
         "    'regime': _regime,",
         "    'temperature_K': THERMO_T_K, 'pressure_atm': THERMO_P_ATM,",
@@ -521,7 +506,7 @@ def _vib_thermo_block() -> List[str]:
         "        def _rrho_at(_T):",
         "            # The same signed omega the modes were reported from;",
         "            # pyscf's thermo keeps the positive ones itself.",
-        "            _r = _mb_thermo.thermo(mf, _OMEGA_AU, float(_T),",
+        "            _r = _pyscf_thermo.thermo(mf, _OMEGA_AU, float(_T),",
         "                                   THERMO_P_ATM * 101325.0)",
         "            return (float(_r['ZPE'][0]),",
         "                    float(_r['E_vib'][0]) - float(_r['ZPE'][0]),",
@@ -555,8 +540,7 @@ def _vib_thermo_block() -> List[str]:
         "                         f'for this free molecule ({_e})')",
         "        _grid = None",
         "if _grid is None:",
-        "    _grid = vibrational_thermo_grid(_freqs_cm1, _T_GRID, float(E_eq),",
-        "                                    _KB_EH, _CM1_TO_EH)",
+        "    _grid = _mb_vibrational_thermo_grid(_freqs_cm1, _T_GRID, float(E_eq))",
         "    # No pressure enters the vibrational sums -- only the gas-phase",
         "    # translational term takes one (engines/vibration.md 4.7).",
         "    state['thermo']['pressure_atm'] = None",
@@ -577,7 +561,7 @@ def _vib_thermo_block() -> List[str]:
         "state['thermo']['s_eh_k'] = _grid['s_eh_k'][_k]",
         "state['thermo']['g_eh'] = _grid['g_eh'][_k]",
         "state['thermo']['grid'] = _grid",
-        "_atomic_write_json(state, JSON_PATH)",
+        "_mb_write_spectra_payload(state, JSON_PATH)",
     ]
 
 
@@ -588,8 +572,8 @@ def _vib_ir_only_block(cfg) -> List[str]:
     depends on the env the deck lands in, not the machine that wrote it:
 
     * ``dipole_derivatives`` already filled ``DMU_DR`` analytically, off
-      the Hessian's own CPHF solution -- see the spliced rule in
-      ``vibration_emitters``.  Nothing to do here but project.
+      the Hessian's own CPHF solution -- see
+      ``spectra.pyscf_vibration``.  Nothing to do here but project.
     * It could not (``pyscf.prop.infrared`` is absent, or the reference
       is one it does not cover), so the dipole is finite-differenced
       over the free Cartesians: 6N extra SCFs for the same numbers.
@@ -607,25 +591,25 @@ def _vib_ir_only_block(cfg) -> List[str]:
         "# The dipole sweep writes nothing until it ends, so the flag is what",
         "# tells a reader the intensities are still coming (vibration.md 4.9).",
         "state['phase_ir'] = PHASE_RUNNING",
-        "_atomic_write_json(state, JSON_PATH)",
+        "_mb_write_spectra_payload(state, JSON_PATH)",
         "if DMU_DR is None:",
         "    print('=== Stage: IR intensities (dipole finite differences) ===')",
         "    _h_ang = RAMAN_FD_STEP_ANG   # ONE step for both dmu/dR paths",
         "    DMU_DR = np.zeros((N_FREE, 3, 3))",
         "    for _k, _atom in enumerate(FREE_ATOM_IDXS):",
         "        for _a in range(3):",
-        "            _cp = np.array(COORDS_EQ_ANG, dtype=float)",
-        "            _cm = np.array(COORDS_EQ_ANG, dtype=float)",
-        "            _cp[_atom, _a] += _h_ang",
-        "            _cm[_atom, _a] -= _h_ang",
+        "            _coords_p = np.array(COORDS_EQ_ANG, dtype=float)",
+        "            _coords_m = np.array(COORDS_EQ_ANG, dtype=float)",
+        "            _coords_p[_atom, _a] += _h_ang",
+        "            _coords_m[_atom, _a] -= _h_ang",
         "            # _build_mf_at CONVERGES the SCF before returning (and",
         "            # halts if it cannot) -- a second kernel() here re-ran",
         "            # the whole SCF per displaced point, doubling the",
         "            # loop's cost for identical numbers.",
-        "            _mfp = _build_mf_at(_cp)",
-        "            _mfm = _build_mf_at(_cm)",
-        "            _dp = _as_numpy(_mfp.dip_moment(unit='Debye', verbose=0))",
-        "            _dm = _as_numpy(_mfm.dip_moment(unit='Debye', verbose=0))",
+        "            _mfp = _build_mf_at(_coords_p)",
+        "            _mfm = _build_mf_at(_coords_m)",
+        "            _dp = _mb_as_numpy(_mfp.dip_moment(unit='Debye', verbose=0))",
+        "            _dm = _mb_as_numpy(_mfm.dip_moment(unit='Debye', verbose=0))",
         "            DMU_DR[_k, _a, :] = (_dp - _dm) / (2.0 * _h_ang)",
         "else:",
         "    print('=== Stage: IR intensities (analytic dmu/dR, no extra SCFs) ===')",
@@ -639,7 +623,7 @@ def _vib_ir_only_block(cfg) -> List[str]:
     out.extend(_emit_ir_projection())
     out += [
         "state['phase_ir'] = PHASE_COMPLETE",
-        "_atomic_write_json(state, JSON_PATH)",
+        "_mb_write_spectra_payload(state, JSON_PATH)",
     ]
     return out
 
@@ -686,6 +670,9 @@ def vibration_spec(struct: Structure, cfg, *,
         out: List[str] = []
         out += _emit_header_docstring(struct, view, methods_md=methods_md,
                                       stage_token=stage_token)
+        # The deck's anchor and the bundle first: the threading setup takes
+        # the node's core count from it (`input.emit_script_head`).
+        out += emit_script_head()
         out += emit_threading_setup_lines(view.threads)
         out += emit_runtime_info_capture_lines(
             use_gpu=bool(view.use_gpu),
@@ -740,7 +727,6 @@ def vibration_spec(struct: Structure, cfg, *,
             out.append("    _dft = dft")
         else:
             out.append("    _dft = None")
-        out += _emit_atomic_writer()
         out += _emit_build_mol(struct, view, stage_token=stage_token or "",
                                positions=_frame.positions)
         # Category 3 (integration plan): the standalone-geometry writer
@@ -755,8 +741,7 @@ def vibration_spec(struct: Structure, cfg, *,
             out += emit_save_helper(bool(getattr(cfg, "verbose_comments", True)),
                                     _sidecar_for(struct))
         if getattr(cfg, "save_initial_xyz", False):
-            out.append("_save_structure(mol, _mb_outfile(JOB + '_initial.xyz'),")
-            out.append("          'Input geometry (pre-relaxation)')")
+            out.append(emit_save_call("mol", ROLE_INITIAL))
         if getattr(cfg, "write_molwatch_log", False):
             # THE SCF'S CRITERIA, read off a solver this deck's own dresser
             # configures -- every mf here is built through it -- so the
@@ -782,10 +767,6 @@ def vibration_spec(struct: Structure, cfg, *,
         out += _emit_initial_state()
         out += _vib_state_init()
         out += _emit_displaced_scf_helpers(view)
-        # The one relaxation function both PySCF decks run (`engines/pyscf.md`
-        # § 3), spliced before the phase that calls it.
-        from .relax_policy import emit_relax
-        out += [""] + emit_relax()
         # The VIEW, not the raw config: the relax block needs the frozen
         # set (a structure-side fact the view lifted), and the view
         # forwards every config field it does not bridge.
@@ -802,12 +783,12 @@ def vibration_spec(struct: Structure, cfg, *,
         else:
             out += ["", "state['phase_raman'] = PHASE_NOT_REQUESTED  "
                         "# neither IR nor Raman requested (vibration.md 4.9)",
-                    "_atomic_write_json(state, JSON_PATH)"]
+                    "_mb_write_spectra_payload(state, JSON_PATH)"]
         if view.es_mode_selection != "skip":
             out += _emit_es_loop(view)
         else:
             out += ["", "state['phase_es'] = PHASE_NOT_REQUESTED  # selector: skip -- nothing was asked (vibration.md 4.9)",
-                    "_atomic_write_json(state, JSON_PATH)"]
+                    "_mb_write_spectra_payload(state, JSON_PATH)"]
         out += _emit_final_summary()
         return "\n".join(out) + "\n"
 

@@ -230,7 +230,8 @@ These are load-bearing. Don't violate one without updating this document.
    (`mb_monitor.pyz`), a SIESTA force-constant job's finish
    (`mb_vibration.pyz`), and the code a PySCF script imports (`mb_pyscf.pyz`,
    [`engines/pyscf.md`](?doc=engines/pyscf.md) § 3). `scp -r` the folder to a
-   cluster with `pyscf + geometric` and it runs. See
+   cluster with the PySCF env — `pyscf`, `geometric` and `ase`
+   (`envs/recipes.py`) — and it runs. See
    [`execution/job-contracts.md`](?doc=execution/job-contracts.md).
 8. **Don't reinvent wheels.** CLI parsing → click; routing → Flask Blueprints;
    numerics → NumPy; form rendering → vanilla HTML + the existing 3Dmol viewer
@@ -286,7 +287,7 @@ now lives in full:
 
 | Date | Decision | Now documented in |
 |---|---|---|
-| 2026-10-05 | **The PySCF script imports molbuilder's progress-log writer, structure codec and mode selector instead of carrying copies of them.** They travel beside it in `mb_pyscf.pyz`, each module's own file, as the monitor's and the SIESTA finish's do — the three copies were tested only through the code generated from them (user: *"we could use one code base and maintain it rather than through generated python code"*) | [`engines/pyscf.md`](?doc=engines/pyscf.md) § 3 |
+| 2026-10-05 | **The PySCF script imports every molbuilder function it runs; none is copied into it.** The core count, the progress-log writer, the structure codec, the relaxation, the vibration's rules, writer and selector travel beside it in `mb_pyscf.pyz`, each module's own file, as the monitor's and the SIESTA finish's do; what stays written in the script is its anchor -- the folder it sits in, which finds the bundle -- and the run itself: its values, the dressers built from its settings, the set-up, the branchless IR and Raman formulas. The copies were tested only through the code generated from them (user: *"we could use one code base and maintain it rather than through generated python code"*; *"move the rest into the bundle"*) | [`engines/pyscf.md`](?doc=engines/pyscf.md) § 3 |
 | 2026-08-11 | **Everything is a job set, and there is no second way in.** `molbuilder run` and `molbuilder fdf` are **deleted, not deprecated** — each rendered a finished artifact straight from flags, skipping the description and finishing a deck on a machine that cannot know the rank count. One calculation and a hundred go through `jobset init → prep → launch`. 13 top-level commands at that point | [`process/conventions.md`](?doc=process/conventions.md) § 3 · [`execution/job-system.md`](?doc=execution/job-system.md) § 1 |
 | 2026-08-11 | **The deck template is one TOML file**, `<label>.template.toml` — every parameter with its value and a `kind` naming the layer that owns it. Replaces the `.fdf`-with-metadata-in-comments design, whose value was stored **twice** so the file could disagree with itself | [`engines/template.md`](?doc=engines/template.md) |
 | 2026-08-11 | **`BlockSize` is a tunable knob, not a derived value** — set it, leave it for `prep` to propose, or omit the keyword and let SIESTA use its own default. **Its bound is the ORBITAL count over ranks, not the atom count**; a contract had said atoms while its own PROVENANCE example said orbitals, a factor of ten apart | [`engines/tuning.md`](?doc=engines/tuning.md) § 2.11 |

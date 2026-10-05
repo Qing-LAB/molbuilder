@@ -1,11 +1,14 @@
 """The relaxation's outcome and its non-convergence policy — one function,
-spliced into both PySCF decks (`docs/engines/pyscf.md` § 3).
+imported by both PySCF decks (`docs/engines/pyscf.md` § 3).
 
 Two PySCF decks relax a geometry — the optimization deck, and the vibration
 deck for which relaxation is the measurement's precondition — and both honour
-``on_nonconvergence``.  **Both relax through :func:`relax`**, whose source is
-spliced verbatim into each deck (:func:`emit_relax`, the way the HOMO rule is),
-so one implementation runs and the tests exercise the one that runs.
+``on_nonconvergence``.  **Both relax through :func:`relax`**, which each
+imports from ``mb_pyscf.pyz`` beside it (``runwrap.PYSCF_COMPANIONS``), so one
+implementation runs and the tests exercise the one that runs.  This file
+travels as itself: the standard library at load, PySCF inside :func:`relax`.
+Until 2026-10-05 its source was pasted into each deck by
+``inspect.getsource``.
 
 **What it asks, and why it has to ask.**  geomeTRIC raises
 ``GeomOptNotConvergedError`` when its step cap is reached with its criteria
@@ -17,15 +20,13 @@ flag with the geometry.  ``geometric_solver.optimize`` returns ``kernel(...)[1]`
 ``geomopt/geometric_solver.py``): a rung that ran out of steps was recorded
 converged and handed on under every policy (the M11 review, plan § 5w K6).
 
-**Why a module of its own.**  `scf_setup.py` is the precedent: emitted PySCF
-code that both decks compose, living beside them rather than inside either —
-the SCF dresser there, the relaxation's policy here.  Value-free: everything
-it needs arrives as an argument, so it never learns which deck called it.
+**Why a module of its own.**  Code both decks run, living beside them rather
+than inside either.  Value-free: everything it needs arrives as an argument,
+so it never learns which deck called it.
 """
 from __future__ import annotations
 
-import inspect
-from typing import List, Tuple
+from typing import Tuple
 
 
 def policy_of(cfg) -> Tuple[str, int]:
@@ -93,9 +94,4 @@ def relax(mf, policy, retries, **geometric_kw):
         + ", and prep this stage again.")
 
 
-def emit_relax() -> List[str]:
-    """:func:`relax`, as deck lines — its source, spliced rather than retyped."""
-    return [ln.rstrip() for ln in inspect.getsource(relax).splitlines()]
-
-
-__all__ = ["policy_of", "relax", "emit_relax"]
+__all__ = ["policy_of", "relax"]

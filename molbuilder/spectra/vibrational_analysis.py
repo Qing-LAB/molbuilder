@@ -14,11 +14,11 @@ The science is `engines/vibration.md` § 4.5 and `science/normal-modes.md`:
 the free-free block of the TRUE second derivatives, mass-weighted and
 diagonalised in the complement of the whole-body motions the held geometry
 permits -- one harmonic path, `normal_modes.vibrational_modes` (R1-R4), which
-the PySCF deck carries as source and every other route calls here.  What this
-module adds is the rest of the ONE result both engines write (§ 6): the
-wavenumbers and both eigenvector forms, the removed motions, the vibrational
-thermochemistry, the stationarity verdict at the geometry the block belongs
-to, and every per-atom row in the person's order.
+the PySCF deck imports from `mb_pyscf.pyz` and every other route calls here,
+with the steps after it -- the wavenumbers, the display form, the thermo grid
+-- from the same module.  What this module adds is the rest of the ONE result
+both engines write (§ 6): the removed motions, the stationarity verdict at the
+geometry the block belongs to, and every per-atom row in the person's order.
 
 WHAT A CALLER HANDS IN, AND IN WHICH ORDER.  Everything per-atom -- the
 block, the masses, the positions, the elements, the held set, the reference
@@ -44,23 +44,21 @@ import numpy as np
 # TWO WAYS, because this module travels beside the job (see the header).
 try:                                        # inside molbuilder
     from ..atom_permutation import Permutation
-    from ..constants import (BOLTZMANN_HARTREE_K,
-                             CM1_PER_SQRT_HARTREE_BOHR2_AMU,
-                             HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_CM1)
+    from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE
     from ..sidecars.spectra import structure_hash_text
     from .methods import extract_citation_keys
-    from .normal_modes import (THERMO_GRID_K, vibrational_modes,
+    from .normal_modes import (display_form, frequencies_cm1,
+                               thermo_temperatures, vibrational_modes,
                                vibrational_thermo, vibrational_thermo_grid)
     from .results import (PHASE_COMPLETE, PHASE_NOT_REQUESTED,
                           SCHEMA_VERSION, ModeData, SpectraResults)
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from atom_permutation import Permutation
-    from constants import (BOLTZMANN_HARTREE_K,
-                           CM1_PER_SQRT_HARTREE_BOHR2_AMU,
-                           HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_CM1)
+    from constants import HARTREE_BOHR_EV_ANGSTROM_ASE
     from spectra_sidecar import structure_hash_text
     from methods import extract_citation_keys
-    from normal_modes import (THERMO_GRID_K, vibrational_modes,
+    from normal_modes import (display_form, frequencies_cm1,
+                              thermo_temperatures, vibrational_modes,
                               vibrational_thermo, vibrational_thermo_grid)
     from results import (PHASE_COMPLETE, PHASE_NOT_REQUESTED,
                          SCHEMA_VERSION, ModeData, SpectraResults)
@@ -130,8 +128,7 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
 
     lam, L_b, patterns_b = vibrational_modes(
         hessian, masses, R, held_b, tuple(axis_kind), cell=cell)
-    omega = np.sign(lam) * np.sqrt(np.abs(lam))
-    freqs_cm1 = omega * CM1_PER_SQRT_HARTREE_BOHR2_AMU
+    freqs_cm1 = frequencies_cm1(lam)
 
     # BACK TO THE INPUT ORDER, through the record's one inversion (I7): every
     # per-atom row this result carries follows the person's numbering.
@@ -144,32 +141,28 @@ def vibrational_analysis(hessian, masses_amu: Sequence[float],
         np.asarray(elements, dtype=object), everyone)
     elements_in = [str(e) for e in elements_in]
 
+    display = display_form(L)
     modes = []
     for k, f in enumerate(freqs_cm1):
-        canon = L[k]
-        peak = float(np.max(np.abs(canon))) if canon.size else 0.0
         modes.append(ModeData(
             index_1based=k + 1,
             frequency_cm1=float(f),
             raman_activity_a4_amu=None,
             ir_intensity_km_mol=None,
-            eigenvector_canonical=canon,
-            eigenvector_display=(canon / peak if peak > 0 else canon.copy()),
+            eigenvector_canonical=L[k],
+            eigenvector_display=display[k],
             has_imag=bool(f < 0),
         ))
 
     kept = np.array([m.frequency_cm1 for m in modes if not m.has_imag])
     n_imag = int(sum(1 for m in modes if m.has_imag))
-    eh_per_cm1 = 1.0 / HARTREE_CM1
-    zpe, _u0, _s0 = vibrational_thermo(kept, temperature_K,
-                                       BOLTZMANN_HARTREE_K, eh_per_cm1)
+    zpe = vibrational_thermo(kept, temperature_K)[0]
     # No total energy is reported by a route that hands in only a block, so
     # the curves are the vibrational contributions above the electronic
     # minimum (e_ref = 0), through the one grid home both writers share; the
     # headline temperature is on the grid, so the headline IS a grid row.
-    temps = sorted(set(THERMO_GRID_K) | {float(temperature_K)})
-    grid = vibrational_thermo_grid(kept, temps, 0.0, BOLTZMANN_HARTREE_K,
-                                   eh_per_cm1)
+    grid = vibrational_thermo_grid(kept, thermo_temperatures(temperature_K),
+                                   0.0)
     k_head = grid["temperatures_K"].index(float(temperature_K))
     n_rigid = int(len(patterns))
     thermo = {

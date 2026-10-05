@@ -7,6 +7,13 @@ a caller needs one import for both. Absorbed from the legacy
 is what ``model/parse.md`` § 4 requires (provenance:
 `docs/archive/old_docs/protocols/parse-module.md` § 8).
 
+TRAVELS beside every PySCF script, in ``mb_pyscf.pyz``
+(``runwrap.PYSCF_COMPANIONS``): the codec's ``write_moved`` saves a run's
+geometries through :func:`save` and :func:`sidecar_path_for`.  So it imports
+only the standard library at load; the functions that read through the
+package (``to_dict``, ``apply_to_structure``, ``load``) import it inside
+themselves, and the script calls none of them.
+
 Public surface here
 -------------------
 

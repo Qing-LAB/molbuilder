@@ -868,21 +868,17 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
 
     for fname in [job.script] + list(jobset.shared):
         _bring(fname)
-    # The monitor and what it imports, as ONE file (`runwrap.MONITOR_BUNDLE`,
-    # built from `MONITOR_COMPANIONS`): one file cannot be half-shipped, which
-    # is how `config_dir.py` once travelled with bench trials and not with run
-    # attempts, killing every run's monitor at import.
-    # makov_payne_correction.py: the post-run script a CHARGED deck's own
-    # header instructs the user to run "after SIESTA finishes" -- HERE,
-    # beside the .out.
-    # The FINISH, when the job has one (`Job.finish`): the bundle its wrapper
-    # runs after the engine, beside the deck -- `engines/vibration.md` § 5.5.
-    # mb_pyscf.pyz: the molbuilder code a PySCF script imports, beside every
-    # PySCF deck -- `engines/pyscf.md` § 3.
-    from ..runwrap import MONITOR_BUNDLE
-    from ..runfiles import MAKOV_PAYNE_SCRIPT, PYSCF_BUNDLE
-    for extra in (MONITOR_BUNDLE, MAKOV_PAYNE_SCRIPT, PYSCF_BUNDLE,
-                  *((job.finish,) if job.finish else ())):
+    # THE BUNDLES THAT TRAVEL BESIDE THE DECK -- the monitor's, the job's
+    # finish, a PySCF script's code -- from the one list the wrapper's
+    # writer reads too (`runwrap.bundles_for`): one file each, so none can
+    # be half-shipped.  And makov_payne_correction.py: the post-run script a
+    # CHARGED deck's own header instructs the user to run "after SIESTA
+    # finishes" -- HERE, beside the .out.
+    from ..runwrap import bundles_for
+    from ..runfiles import MAKOV_PAYNE_SCRIPT
+    for extra in (*(name for name, _build in bundles_for(job.script,
+                                                        job.finish)),
+                  MAKOV_PAYNE_SCRIPT):
         _bring(extra)
     stem = Path(job.script).stem
     for wrapper in (f"{stem}.run.sh", f"{stem}.sbatch"):

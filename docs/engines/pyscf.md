@@ -264,32 +264,62 @@ the reason, and the line is deleted (`template.RETIRED_ITEMS`).*
 
 **molbuilder's own code travels beside the script, in one file — `mb_pyscf.pyz`**
 *(since 2026-10-05)*. The script runs under `molbuilder-pySCF`, where molbuilder
-is not installed, and it calls three pieces of molbuilder: the progress-log
-writer (`MolwatchEmitter`, § 4), the structure codec for every geometry it saves
-(`StructureCodec.write_moved` — the pair, [`model/structure.md`](?doc=model/structure.md)
-§ 2.4), and, in a vibration deck, the mode selector (`select_modes`,
-[`vibration.md`](?doc=engines/vibration.md) § 4.8). It **imports** them, from
+is not installed, and everything of molbuilder's it runs it **imports** from
 `mb_pyscf.pyz`: a Python zip of those modules' own files
 (`runwrap.PYSCF_COMPANIONS`), built by the one builder the monitor's and the
-SIESTA finish's bundles come from. Prep writes it beside every PySCF script and
-copies it into every attempt with the script. On its first lines, before PySCF
-computes anything, the script puts that file on its import path — found beside
-the script, as its outputs are (`_mb_outfile`) — and imports from it: the codec
-and the progress-log writer in every PySCF script, the selector too in a
-vibration one. Each is bound as `_mb_<its name>` (`_mb_StructureCodec`):
-**every name molbuilder puts into a script carries its prefix** — `_mb_`, `_MB_`,
-`_mw_` — so it can never take a name the engine owns (`gto`, `scf`, `mol`, `mf`);
-the unprefixed names are PySCF's and the standard library's. When the file is not
-there, the script stops on that line and says so. A member
-imports only the standard library, numpy (which PySCF needs anyway) and the
-other members, each reaching the next two ways: the package first, the bundle
-second ([`configuration.md`](?doc=configuration.md) § 2.3). What moves is the job's
+SIESTA finish's bundles come from. Every PySCF script imports the node's core
+count (`runtime_info.physical_core_count`), which its threading setup asks;
+the progress-log writer (`MolwatchEmitter`, § 4), which also writes the log's
+end lines at exit; the structure codec — every geometry the run saves is a
+pair written by it (`StructureCodec.write_moved`,
+[`model/structure.md`](?doc=model/structure.md) § 2.4), and a run that continues
+reads the last one back through molbuilder's one XYZ reader
+(`Structure.from_xyz`); and the relaxation (`relax_policy.relax`, below). A
+vibration script imports, besides ([`vibration.md`](?doc=engines/vibration.md)
+§ 4): the HOMO rule and its orbital window, the Hessian with dμ/dR and the GPU
+array bridge (`spectra/pyscf_vibration.py`); the harmonic path, the
+wavenumbers, the display form and the thermochemistry with its temperature
+grid (`spectra/normal_modes.py`) — the steps the SIESTA route takes too; the
+structure hash, the result's writer and its non-finite scrub
+(`sidecars/spectra.py`); the mode selector (§ 4.8); and the `constants` module,
+for the one factor its Raman block converts with. Prep writes the file beside
+every PySCF script and copies it into every attempt with the script. Its first
+lines, right after its docstring, put that file on the import path — when the
+file is not there, the script stops on that line and says so — and import the
+core count, from a member that imports nothing that loads numpy: **the
+threading setup must run before numpy is imported**, or BLAS starts on every
+core, so everything else is imported after numpy's own import, still before
+PySCF computes anything. A script imports every piece its kind can call,
+whatever its settings call: the imports are its load check.
+
+**No molbuilder function is copied into a script.** What is still written in it
+as text is its anchor — the folder it sits in, found from its own path when it
+starts, before PySCF or geomeTRIC can change directory, and `_mb_outfile`, which
+puts every output there: the bundle is found through it, so it cannot come from
+the bundle — and the run itself: its values, the SCF and theory dressers built
+from its settings (§ 7a), the GPU and threading set-up, a vibration's per-run
+helpers, and the IR and Raman formulas, which have no branch
+([`vibration.md`](?doc=engines/vibration.md) § 6.4). **Each import from the
+bundle is bound as `_mb_<its name>`** (`_mb_StructureCodec`, `_mb_constants`),
+so an import of ours can never take a name the engine owns (`gto`, `scf`); the
+script's own names — `JOB`, `mol`, `mf`, `state` — are the run's, written as a
+person reads them. A member imports the standard library and numpy at load,
+and in the functions the script calls also ASE — which the PySCF env carries
+for it (`envs/recipes.py`) — and PySCF itself; nothing else but the other
+members, each reaching the next two ways: the package first, the bundle second
+([`configuration.md`](?doc=configuration.md) § 2.3). What moves is the job's
 folder — the script, its run script and the bundles beside it; a script copied
-on its own does not run. *(Until 2026-10-05 the script carried the three as
-text: the class's source pasted in with `inspect.getsource`, a hand-written copy
-of the selector held equal to the real one by a test, and a fifteen-line pair
-writer with its own number format and its own JSON settings. User: "we could use
-one code base and maintain it rather than through generated python code".)*
+on its own does not run. *(Until 2026-10-05 the script carried all of it as
+text: the progress-log writer, the relaxation, the HOMO and Hessian rules, the
+harmonic path, the thermochemistry and the hash pasted in by
+`inspect.getsource`; a hand-written copy of the selector, held equal to the real
+one by a test; and generated lines for the pair writer (with its own number
+format and JSON settings), the result's writer, the restart's XYZ reader, the
+log's end lines, two array helpers, the orbital window, the wavenumbers and the
+display form a second time beside the SIESTA route's, and copies of the core
+count and of four constants. User: "we could use one code base and maintain it
+rather than through generated python code"; "move the rest into the bundle";
+the fresh-eyes review the same day found what the first pass left.)*
 
 **Non-convergence policy.** A deck carries one rung's policy —
 `on_nonconvergence` ∈ {`proceed`, `continue`, `halt`} (default `halt`) — deciding
@@ -299,8 +329,8 @@ assumes it.** geomeTRIC raises `GeomOptNotConvergedError` at its step cap, PySCF
 driver catches it, and `geometric_solver.kernel` returns the flag with the geometry
 — while `optimize()` returns the geometry alone and drops the flag (PySCF 2.14
 `geomopt/geometric_solver.py`). So both decks relax through **one function**,
-`relax_policy.relax`, spliced verbatim into each (the way the HOMO rule is), which
-calls `kernel` and applies the policy to what it reports:
+`relax_policy.relax`, imported by each from `mb_pyscf.pyz` (above), which calls
+`kernel` and applies the policy to what it reports:
 
 - **`halt`** → the run stops with a `RuntimeError` naming the step budget and
   the policy (exit status 1), **before the relaxed geometry is written** — no
@@ -441,15 +471,15 @@ prefix, so there's no column-width fragility:
 # convergence.<key>: <value>             # optional, repeated -- the stage's targets
 
 ==== molwatch step 0 begin ====          # step 0 = the initial-state PREVIEW
-kind: initial_preview
 step_index: 0
-n_atoms:    <K>
+kind: initial_preview
+wall_time: <unix epoch seconds>
+n_atoms: <K>
 coordinates (Ang):
    <element>  <x>  <y>  <z>
 energy (eV): None
 forces (eV/Ang):
 max_force (eV/Ang): None
-wall_time: <unix epoch seconds>
 scf_history begin
 scf_history end                          # empty on step 0 (no header line)
 ==== molwatch step 0 end ====
@@ -472,12 +502,15 @@ says `gnorm(eV/Ang)` scaled it as a force, and the reader converts it back.
   rather than a plausible wrong number.
 
 - **Units are converted at write time** so the parser does zero conversion:
-  coordinates Å, energy eV (Ha × 27.211386245988), forces/gradient-norm eV/Å
-  (Ha/Bohr × 51.42208619).
+  coordinates Å, energy and the orbital-gradient norm eV (Ha ×
+  27.211386245988 -- the norm is an energy), forces eV/Å (Ha/Bohr ×
+  51.42208619).
 - **Step 0 is the initial-state preview** (coordinates only, `energy: None`) written
   *at emitter instantiation*, before the first SCF — so the Results tab renders the
   molecule immediately instead of waiting tens of seconds for the first (slowest)
-  SCF. Real opt steps start at step 1.
+  SCF. Real opt steps start at step 1. The header and step 0 have ONE writer,
+  `trajectory_log.emitter.header_and_preview`: prep's seed writes it before a run
+  starts and the emitter when its run does.
 - **Live-tail safe:** a `begin` with no matching `end` is the in-flight step and is
   dropped on parse; the emitter `flush()`es after each `end` marker so the last
   complete byte is always a step boundary.
@@ -523,6 +556,10 @@ in-script loop over stages, and no stage list in the engine config.
   `prep` when the next rung's `restart` says `continue` — the same pair SIESTA
   carries as `.XV` and `.DM`, declared in
   [`job-contracts.md` § 4.2a](?doc=execution/job-contracts.md)'s warm-file rules.
+  The script reads that geometry with molbuilder's one XYZ reader (§ 3); a file
+  it cannot read stops the run with the reader's words, rather than starting
+  again from the input geometry *(until 2026-10-05 a hand-written reader warned
+  and fell back to it)*.
 
   > **A `.chk` from somewhere else is not adopted** *(retired 2026-09-03, user:
   > "retire all of them")*. "Smart chkfile detection" — a `--warm-restart-any`

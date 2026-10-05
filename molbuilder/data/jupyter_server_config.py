@@ -21,11 +21,10 @@ which is why the class can live here rather than on ``PYTHONPATH``.
 inside a string literal in `jupyter.py` until 2026-09-15, where no linter,
 import or test could reach it -- and on 2026-09-14 an edit deleted it by
 accident and shipped a `NameError` on every notebook start, with nothing to
-catch it.  `inspect.getsource` is this project's pattern for generated code
-(`trajectory_log/emitter.py`, `pyscf/input.py`), but it cannot serve here:
-``NoCheckpoints`` must subclass jupyter_server's ``AsyncCheckpoints`` at
-class-definition time, and the shepherd runs in the HOST env, which does not
-have jupyter_server and must not need it.  A file under `data/` is never
+catch it.  It cannot be a module of the package: ``NoCheckpoints`` must
+subclass jupyter_server's ``AsyncCheckpoints`` at class-definition time, and
+the shepherd runs in the HOST env, which does not have jupyter_server and
+must not need it.  A file under `data/` is never
 imported by molbuilder, so it may name jupyter_server freely -- while
 pyflakes, an editor and `ast.parse` all still read it as Python.
 

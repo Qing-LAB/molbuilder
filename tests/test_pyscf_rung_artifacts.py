@@ -10,7 +10,8 @@ are what this file checks one by one:
      the previous rung's state;
   3. ``restart`` is both engines' now, and it GATES the reads;
   4. the warm-file declaration carries the geometry as well as the checkpoint;
-  5. the in-script ladder is gone.
+  5. the in-script ladder is gone, so the targets the deck records are this
+     rung's alone (its one relaxation call is pinned in `test_pyscf.py`).
 
 **These are deck-side facts, so they are read off rendered text**, not off the
 config that produced it.  Every one of them was invisible to the tests that
@@ -205,19 +206,6 @@ def test_the_write_flag_no_longer_decides_the_read():
 # --------------------------------------------------------------------- #
 #  Consequence 5 — one deck is one rung                                 #
 # --------------------------------------------------------------------- #
-
-def test_the_deck_runs_exactly_one_optimisation():
-    """The in-script ladder is gone: no loop over rungs, and one
-    relaxation, the spliced ``relax()`` (`engines/pyscf.md` § 3).  A deck that
-    ran several would end once, at the end -- and a ladder exists so that
-    somebody looks BETWEEN the rungs."""
-    tree = ast.parse(_deck(token="01_coarse"))
-    calls = [n for n in ast.walk(tree)
-             if isinstance(n, ast.Call)
-             and isinstance(n.func, ast.Name) and n.func.id == "relax"]
-    assert len(calls) == 1, f"{len(calls)} relax() calls"
-    assert not re.search(r"^STAGES\s*=", ast.unparse(tree), re.M)
-
 
 def test_the_convergence_record_describes_this_rung_and_no_other():
     """The molwatch log's ``_CONVERGENCE_TARGETS`` is one entry, keyed by the

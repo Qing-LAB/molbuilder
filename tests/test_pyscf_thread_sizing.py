@@ -1,6 +1,6 @@
 """The generated PySCF script sizes its threads from the ALLOCATION.
 
-`_mb_count_physical_cores()` counts the whole node.  On a workstation
+`_mb_physical_core_count()` counts the whole node.  On a workstation
 that is right -- the node IS the allocation.  Under a scheduler it is
 wrong and expensively so: a job given 8 cores of a 128-core node used to
 start 128 OpenMP threads, which the cgroup then time-slices onto the 8 it
@@ -22,10 +22,16 @@ from molbuilder.jobset.model import Resources
 
 _PROBE = "\nimport os\nprint(os.environ['OMP_NUM_THREADS'], _MB_THREADS_FROM, sep='|')\n"
 
+#: What the deck's head binds before the threading block runs -- the node's
+#: core count, `runtime_info.physical_core_count` (from `mb_pyscf.pyz` in a
+#: run, `pyscf.input.emit_script_head`; from the package here).
+_HEAD = ("from molbuilder.runtime_info import physical_core_count "
+         "as _mb_physical_core_count\n")
+
 
 def _resolve(env: dict, threads=None):
     """Execute the emitted setup under ``env``; return (threads, source)."""
-    src = "\n".join(emit_threading_setup_lines(threads)) + _PROBE
+    src = _HEAD + "\n".join(emit_threading_setup_lines(threads)) + _PROBE
     e = {k: v for k, v in os.environ.items()
          if k not in ("OMP_NUM_THREADS", "SLURM_CPUS_PER_TASK",
                       "PBS_NCPUS", "NSLOTS")}
@@ -167,7 +173,7 @@ def test_the_script_consults_the_whole_chain_in_order():
     text = "\n".join(emit_threading_setup_lines(threads=None))
     at = [text.index(f"'{v}'") for v in _CHAIN]
     assert at == sorted(at), "script chain out of order"
-    assert text.index("_mb_count_physical_cores(), 'node physical cores'") \
+    assert text.index("_mb_physical_core_count(), 'node physical cores'") \
         > max(at), "the node must be the last resort, not an early answer"
 
 

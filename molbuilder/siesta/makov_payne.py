@@ -198,11 +198,11 @@ def render_correction_script(
     # no branches and which a reviewer sees whole.
     #
     # IF IT EVER GROWS A BRANCH -- a non-cubic Madelung term, a second-order
-    # correction -- stop copying and ship the source instead:
-    # `runwrap._config_dir_source` is the pattern, and its own docstring gives
-    # the reason ("read rather than restated ... a comment is not a
-    # mechanism").  That is the moment, not before: the machinery to splice a
-    # function's source is more moving parts than four lines of arithmetic.
+    # correction -- stop copying and make it a callable that travels as its
+    # module's own file, the way the PySCF script imports its rules from
+    # `mb_pyscf.pyz` (`runwrap._zip_bundle`, `engines/pyscf.md` § 3).  That is
+    # the moment, not before: a bundle is more moving parts than four lines
+    # of arithmetic.
     return f'''#!/usr/bin/env python3
 """Makov-Payne post-process correction for SIESTA total energy.
 

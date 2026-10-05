@@ -459,11 +459,12 @@ def test_the_homo_is_the_highest_level_carrying_more_than_half_an_electron(
     inside the emitted PySCF script, where nothing could call it, and the
     sidecar it writes carries `homo_idx` WITHOUT the occupations it came from --
     so the read side cannot check it either, and `SpectraResults` validates only
-    that the index is in range. It is now a real function that the emitter
-    splices into the script, so the tests exercise the implementation that runs.
+    that the index is in range. It is now a real function that the script
+    imports from `mb_pyscf.pyz`, so the tests exercise the implementation that
+    runs.
     Recorded at `science/test-design-findings.md` § 7a.
     """
-    from molbuilder.pyscf.vibration_emitters import homo_index
+    from molbuilder.spectra.pyscf_vibration import homo_index
     assert homo_index(mo_occ) == expected, why
 
 
@@ -475,7 +476,7 @@ def test_a_reference_with_no_occupied_levels_is_refused_not_indexed():
     reduction, which reaches a person as a traceback naming numpy rather than
     their calculation. This says what is actually wrong.
     """
-    from molbuilder.pyscf.vibration_emitters import homo_index
+    from molbuilder.spectra.pyscf_vibration import homo_index
     with pytest.raises(ValueError, match="no occupied levels"):
         homo_index([0.0, 0.0, 0.0])
 

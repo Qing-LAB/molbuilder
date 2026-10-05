@@ -879,8 +879,10 @@ safe and small:
 **A job folder holds its own inputs, the shared package among them. Nothing
 else.** In particular it holds no link into a sibling's folder:
 
-Each stage folder holds its own deck, wrapper, pseudopotentials and
-`mb_monitor.pyz`, each a real copy; a `run-<n>/` attempt inside it holds its
+Each stage folder holds its own deck, wrapper, pseudopotentials and the
+bundles that travel beside the deck — `mb_monitor.pyz` always, a finish's,
+and beside a PySCF deck the code it imports, `mb_pyscf.pyz` (one list,
+`runwrap.bundles_for`) — each a real copy; a `run-<n>/` attempt inside it holds its
 `run.json` once launched and copies of what it continues from — the tree is
 [`project-layout.md § 1.1`](?doc=execution/project-layout.md)'s.
 

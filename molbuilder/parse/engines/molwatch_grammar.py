@@ -1,7 +1,7 @@
 """The molwatch log's lines -- header, step block, footer -- and ONE reader each.
 
 The ``.molwatch.log v1`` format is molbuilder's own: `trajectory_log`
-writes it (the PySCF deck inlines its emitter), and this is the grammar every
+writes it (the PySCF deck imports its writer), and this is the grammar every
 reader reads it with -- the reading pass (`molwatch_reader`, which the
 registered parser builds Frames from and the monitor reads a running job
 with), the PySCF parser's sibling-log enrichment, and the cheap ending scan

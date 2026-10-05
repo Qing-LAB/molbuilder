@@ -89,10 +89,11 @@ def test_default_render_compiles(h2o):
         'mf.xc = "B3LYP"',
         "mf = mf.density_fit()",
         'mf.disp = "d3bj"',
-        # The one relaxation function (relax_policy.py), spliced, and
-        # the call that applies this rung's policy to geomeTRIC's answer.
-        "def relax(mf, policy, retries, **geometric_kw):",
-        "mol_eq, _GEOM_CONVERGED = relax(",
+        # The one relaxation function (relax_policy.py), imported from the
+        # bundle, and the call that applies this rung's policy to
+        # geomeTRIC's answer.
+        "from relax_policy import relax as _mb_relax",
+        "mol_eq, _GEOM_CONVERGED = _mb_relax(",
         "_save_structure(",
     ):
         assert needle in text, f"missing {needle!r}"
@@ -120,7 +121,7 @@ def test_atom_block_format(h2o):
 
 def test_no_optimize_drops_geom_block(h2o):
     text = render_script(h2o, PySCFConfig(optimize=False, verbose_comments=False))
-    assert "= relax(" not in text
+    assert "= _mb_relax(" not in text
     assert "e = mf.kernel()" in text
     # The _save_structure call that WRITES <JOB>_optimized.xyz must not
     # appear -- there's no optimized geometry to save.  The
@@ -129,12 +130,12 @@ def test_no_optimize_drops_geom_block(h2o):
     # run with the same JOB), so don't assert ``_optimized.xyz``
     # is absent globally; assert only the WRITE site is gone.
     assert "_save_structure(mol_eq" not in text
-    assert 'JOB + "_optimized.xyz"), "Final optimized geometry"' not in text
 
 
 def test_one_optimize_call_site_carrying_this_rung_s_targets(h2o):
     """A deck is one rung, so there is one relaxation call in it -- the one
-    spliced ``relax(mf, ...)`` (`relax_policy.py`, `engines/pyscf.md` § 3).
+    imported ``relax(mf, ...)``, called as ``_mb_relax`` (`relax_policy.py`,
+    `engines/pyscf.md` § 3).
 
     `stages.md` § 1.1a retired the in-script ladder: the six convergence targets
     belong to THIS deck and arrive as named constants the single call reads.
@@ -143,9 +144,9 @@ def test_one_optimize_call_site_carrying_this_rung_s_targets(h2o):
     was for -- the guarantee outlived the loop.
     """
     text = render_script(h2o, PySCFConfig())
-    assert text.count("mol_eq, _GEOM_CONVERGED = relax(") == 1, (
+    assert text.count("mol_eq, _GEOM_CONVERGED = _mb_relax(") == 1, (
         f"expected exactly one relax() call; got "
-        f"{text.count('mol_eq, _GEOM_CONVERGED = relax(')}")
+        f"{text.count('mol_eq, _GEOM_CONVERGED = _mb_relax(')}")
     assert "optimize(mf" not in text, (
         "optimize() drops geomeTRIC's convergence flag; the deck relaxes "
         "through relax(), which asks for it")
@@ -168,26 +169,23 @@ def test_molwatch_log_instantiated_before_the_optimization(h2o):
     text = render_script(h2o, PySCFConfig())
     inst_at      = text.find('_molwatch = _mb_MolwatchEmitter(_mb_outfile(JOB')
     mf_callback  = text.find("mf.callback = _molwatch.scf_cycle_hook")
-    helper_def   = text.find("def relax(mf, policy, retries, **geometric_kw):")
-    opt_at       = text.find("mol_eq, _GEOM_CONVERGED = relax(")
+    opt_at       = text.find("mol_eq, _GEOM_CONVERGED = _mb_relax(")
     step_cb      = text.find("callback              = _molwatch.opt_step_hook")
     for name, off in [
         ("_molwatch instantiation", inst_at),
         ("mf.callback wiring",      mf_callback),
-        ("the relax() definition",  helper_def),
         ("the relaxation call",     opt_at),
         ("opt_step callback",       step_cb),
     ]:
         assert off >= 0, f"missing in script: {name}"
     # inst < mf_callback (sets the SCF-cycle hook on the prod mf)
-    #     < helper_def (the spliced relax(), defined before its call)
-    #         < opt_at (the one call)
-    #             < step_cb (opt_step_hook among the call's kwargs)
-    assert inst_at < mf_callback < helper_def < opt_at < step_cb, (
+    #     < opt_at (the one call; `relax` itself is imported at the top)
+    #         < step_cb (opt_step_hook among the call's kwargs)
+    assert inst_at < mf_callback < opt_at < step_cb, (
         "molwatch wiring out of order; expected inst < mf_callback < "
-        "relax def < relax call < step_cb.  "
+        "relax call < step_cb.  "
         f"Got: inst={inst_at}, mf_cb={mf_callback}, "
-        f"helper={helper_def}, call={opt_at}, step={step_cb}"
+        f"call={opt_at}, step={step_cb}"
     )
 
 
@@ -381,17 +379,13 @@ def test_geometry_warm_restart_block_emitted(h2o):
     # the variable before gto.M() consumes it.
     assert "_atom_block = '''" in text
     assert "atom       = _atom_block," in text
-    # The auto-detect shim: file existence + non-empty guard, XYZ
-    # parse, _atom_block override, continuation print.
+    # The auto-detect shim: the previous rung's geometry, when it is there,
+    # read through molbuilder's one XYZ reader from the bundle -- a file it
+    # cannot read stops the run (`engines/pyscf.md` § 5, what a rung hands
+    # the next; the hand-written parser's warn-and-fall-back went 2026-10-05).
     assert '_opt_path = _mb_outfile(JOB + "_optimized.xyz")' in text
-    assert ("_os.path.exists(_opt_path) and "
-            "_os.path.getsize(_opt_path) > 0") in text
+    assert "_mb_Structure.from_xyz(" in text
     assert 'continuation: loaded geometry from' in text
-    # Fall-through guard: a parse failure prints a warning and the
-    # literal _atom_block is used.  Without this, a malformed XYZ
-    # would silently feed garbage to gto.M().
-    assert "except (OSError, ValueError, IndexError)" in text
-    assert "could not parse" in text
 
 
 def test_geometry_warm_restart_block_precedes_gto_M(h2o):
@@ -405,16 +399,6 @@ def test_geometry_warm_restart_block_precedes_gto_M(h2o):
     assert opt_block_ix < gto_call_ix, (
         "warm-restart override must precede gto.M() so the literal "
         "_atom_block has been overridden by the time PySCF builds mol")
-
-
-def test_geometry_warm_restart_compiles(h2o):
-    """The generated script must compile to bytecode (no syntax
-    errors) -- the warm-restart block uses try/except/with/for which
-    are easy to mis-emit at the join.  Pins script-render correctness
-    end-to-end so a regression that breaks the template surfaces
-    immediately (rather than at PySCF launch time)."""
-    text = render_script(h2o, PySCFConfig())
-    compile(text, "<rendered-script>", "exec")
 
 
 # Retired 2026-10-04 (user: "any fucking faking tests should be retired"):

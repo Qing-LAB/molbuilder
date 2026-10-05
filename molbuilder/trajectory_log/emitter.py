@@ -44,8 +44,90 @@ import numpy as np
 # log's reader converts with (`constants` says why there are two).
 try:                                        # inside molbuilder
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
+    from ..pyscf.end_lines import FOOTER_CONCLUDED, FOOTER_ERROR
 except ImportError:                         # beside a job, in mb_pyscf.pyz
     from constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
+    from end_lines import FOOTER_CONCLUDED, FOOTER_ERROR
+
+
+#: The convergence targets a log's header states, one ``# convergence.
+#: [<stage>.]<key>: <value>`` line each -- the keys the reader asks for
+#: (`molwatch_grammar.parse_convergence_line`, `trajectory/core.js`), whose
+#: threshold lines the Results tab draws.  Force and displacement in eV/A and
+#: A, the energy step in eV, the two caps as counts.
+_LEAF_KEYS = (
+    "max_force_tol_eV_per_A",
+    "rms_force_tol_eV_per_A",
+    "max_displ_ang",
+    "rms_displ_ang",
+    "energy_step_tol_eV",
+    "max_scf_iter",
+    "max_geom_iter",
+)
+
+
+def _convergence_lines(targets) -> list:
+    """``targets`` flat (``{key: value}``) or nested by the stage's artifact
+    TOKEN (``{"01_coarse": {key: value}}`` -- digit-first, `job-contracts.md`
+    6.3, which the reader's key grammar accepts), as header lines."""
+    def flat(prefix, leaf):
+        return [f"# convergence.{prefix}{k}: "
+                + str(leaf[k]).replace("\n", " ").replace("\r", " ")
+                for k in _LEAF_KEYS if leaf.get(k) is not None]
+    if any(isinstance(v, dict) for v in targets.values()):
+        return [line for stage, leaf in targets.items()
+                if isinstance(leaf, dict) for line in flat(f"{stage}.", leaf)]
+    return flat("", targets)
+
+
+def header_and_preview(*, job, engine, generator, elements, coords_ang,
+                       frozen_atoms=(), runtime_info=None,
+                       convergence_targets=None) -> str:
+    """The text a ``.molwatch.log`` starts with: its header and the step-0
+    preview -- the structure, nothing computed yet.  THE ONE WRITER of both:
+    prep's seed writes it before a run starts (`format.write_initial_preview`)
+    and the PySCF script's :class:`MolwatchEmitter` when its run does.
+
+    ``frozen_atoms`` -- the atoms the run holds, 0-based -- is the line a
+    SIESTA run's ``.out`` states too, read as the log's own content
+    (`model/parse.md` § 5.3).  ``runtime_info`` writes one
+    ``# runtime.<key>: <value>`` line per key handed in, in its order, with
+    no whitelist: the reader accepts any key, and a writer that filtered
+    once dropped ``max_memory_mb`` on the way to disk.
+    """
+    lines = ["# molwatch trajectory log v1",
+             f"# generator: {generator}",
+             f"# engine: {engine}",
+             f"# job: {job}",
+             "# units: energy=eV, force=eV/Ang, coords=Ang",
+             f"# created: {time.strftime('%Y-%m-%dT%H:%M:%S')}"]
+    if frozen_atoms:
+        lines.append("# frozen_atoms: " + " ".join(
+            str(int(i)) for i in sorted(frozen_atoms)))
+    for k, v in (runtime_info or {}).items():
+        # a value cannot break the line-oriented parse
+        lines.append(f"# runtime.{k}: "
+                     + str(v).replace("\n", " ").replace("\r", " "))
+    if convergence_targets:
+        lines += _convergence_lines(convergence_targets)
+    lines += ["",
+              "==== molwatch step 0 begin ====",
+              "step_index: 0",
+              "kind: initial_preview",
+              f"wall_time: {time.time():.3f}",
+              f"n_atoms: {len(elements)}",
+              "coordinates (Ang):"]
+    for el, (x, y, z) in zip(elements, coords_ang):
+        lines.append(f"   {el:<2s}  {float(x):14.8f}  {float(y):14.8f}  "
+                     f"{float(z):14.8f}")
+    lines += ["energy (eV): None",
+              "forces (eV/Ang):",
+              "max_force (eV/Ang): None",
+              "scf_history begin",
+              "scf_history end",
+              "==== molwatch step 0 end ====",
+              ""]
+    return "\n".join(lines) + "\n"
 
 
 class MolwatchEmitter:
@@ -58,147 +140,19 @@ class MolwatchEmitter:
         self.path = path
         self.job  = job
         self._scf_buf   = []   # per-cycle dicts; reset each new SCF
-        self._step      = 0    # log block counter; step 0 reserved for preview
+        # The log opens with its header and the step-0 preview, written
+        # BEFORE any SCF runs -- coordinates only, energy / forces /
+        # scf_history null -- so molwatch can render the molecule the moment
+        # a person loads the log.  Through the one writer prep's seed uses
+        # too (:func:`header_and_preview`).
         with open(self.path, 'w') as fh:
-            fh.write("# molwatch trajectory log v1\n")
-            fh.write("# generator: molbuilder/pyscf_input\n")
-            fh.write("# engine: pyscf\n")
-            fh.write(f"# job: {self.job}\n")
-            fh.write("# units: energy=eV, force=eV/Ang, coords=Ang\n")
-            fh.write(f"# created: {time.strftime('%Y-%m-%dT%H:%M:%S')}\n")
-            # THE ATOMS THE RUN HOLDS, 0-based in the structure's order --
-            # the log states them as a SIESTA run's `.out` does, so its
-            # reader reads them as its own content (`model/parse.md`
-            # § 5.3).  The same line prep's preview writes.
-            if frozen_atoms:
-                fh.write("# frozen_atoms: " + " ".join(
-                    str(int(i)) for i in sorted(frozen_atoms)) + "\n")
-            # Runtime-info header: one ``# runtime.<key>: <value>`` line
-            # for EVERY key the caller handed us, in the order they
-            # populated it.  The trajectory-log parser reads these back
-            # into Trajectory.runtime_info; the /results trajectory
-            # inspector renders them as the same CPU/GPU/Host rows the
-            # spectra inspector uses.  Skipped when runtime_info is None
-            # (callers without the shared threading-setup block).
-            #
-            # NO WHITELIST HERE, deliberately.  This loop used to carry a
-            # literal tuple of eleven key names, and it had already
-            # drifted from molbuilder.runtime_info.RUNTIME_INFO_KEYS --
-            # ``max_memory_mb`` is IN the canonical list, was written by
-            # every script, and was silently dropped on the way to disk.
-            # Nothing could have caught it: the canonical tuple is
-            # imported by nobody, and the reader
-            # (parse/engines/molwatch.py) accepts any ``runtime.<key>``
-            # it finds, so the writer was the only closed door in an
-            # otherwise open pipe.  Write what you are given; let the
-            # caller decide what is worth recording.  RUNTIME_INFO_KEYS
-            # stays as documentation of the keys every engine SHOULD
-            # populate, which is a different job from filtering.
-            if runtime_info:
-                for k, v in runtime_info.items():
-                    # Strip newlines so a misbehaving value can't
-                    # break the line-oriented parse.
-                    v_str = str(v).replace("\n", " ").replace("\r", " ")
-                    fh.write(f"# runtime.{k}: {v_str}\n")
-            # Convergence-target header: one ``# convergence.<key>:
-            # <value>`` line per known target.  The trajectory-log
-            # parser reads these into ``runtime_info["convergence_
-            # targets"]``; the /results inspector renders the threshold
-            # line + "current vs target" readout from them.  Skipped
-            # when convergence_targets is None (older scripts) -- the
-            # parser tolerates absence and the inspector falls back to
-            # a "targets not found in source" hint.
-            if convergence_targets:
-                # Two header shapes share this format:
-                #
-                #   FLAT  (legacy, single-stage runs):
-                #     # convergence.max_force_tol_eV_per_A: 0.0231
-                #
-                #   NESTED  (staged runs, task #534):
-                #     # convergence.01_coarse.max_force_tol_eV_per_A: 0.103
-                #     # convergence.02_tight.max_force_tol_eV_per_A: 0.0231
-                # (the first segment is the stage's artifact TOKEN --
-                # digit-first, `job-contracts.md` 6.3 -- which is what the
-                # reader's key grammar must accept)
-                #
-                # Detection: any top-level value that's a dict tags
-                # the payload as nested-shape; otherwise flat.  Empty
-                # input falls through.  Stage names are constrained
-                # by the StageSpec validator to [A-Za-z0-9_]+ so they
-                # round-trip cleanly through the parser regex.
-                # Per-stage / per-engine convergence-target leaves.
-                # Names are stable cross-engine (PySCF + SIESTA both
-                # populate the subset that's meaningful for their
-                # own convergence-criteria scheme).  Post #534 7a:
-                # geomeTRIC's full 5-criteria set is plumbed end-to-end
-                # for PySCF staged-opt: max + RMS grad, max + RMS
-                # displ, energy-step + the legacy SCF / iter caps.
-                _LEAF_KEYS = (
-                    # Force / gradient thresholds (eV/Å convention)
-                    "max_force_tol_eV_per_A",
-                    "rms_force_tol_eV_per_A",
-                    # Displacement thresholds (Å convention)
-                    "max_displ_ang",
-                    "rms_displ_ang",
-                    # Energy step.  The SCF's own criteria are not
-                    # targets: the runtime block states what the solver
-                    # read back (`molwatch_grammar.scf_criteria`).
-                    "energy_step_tol_eV",
-                    # Iter caps (integers, surfaced for the UI)
-                    "max_scf_iter",
-                    "max_geom_iter",
-                )
-
-                def _is_nested(ct):
-                    return any(isinstance(v, dict)
-                               for v in ct.values())
-
-                def _write_flat(prefix, leaf_dict):
-                    for k in _LEAF_KEYS:
-                        v = leaf_dict.get(k)
-                        if v is None:
-                            continue
-                        v_str = str(v).replace("\n", " ").replace("\r", " ")
-                        fh.write(f"# convergence.{prefix}{k}: {v_str}\n")
-
-                if _is_nested(convergence_targets):
-                    for stage_name, leaf in convergence_targets.items():
-                        if not isinstance(leaf, dict):
-                            continue
-                        _write_flat(f"{stage_name}.", leaf)
-                else:
-                    _write_flat("", convergence_targets)
-            fh.write("\n")
-        # Step 0: initial-state preview, written BEFORE any SCF runs.
-        # Carries coordinates only; energy / forces / scf_history are
-        # null because none have been computed yet.  This guarantees
-        # molwatch can render the molecule the moment a user loads the
-        # log -- they don't have to wait for the first SCF to finish.
-        self._write_initial_preview(mol)
-
-    def _write_initial_preview(self, mol):
-        coords_A = mol.atom_coords(unit='Ang')
-        elements = [mol.atom_symbol(i) for i in range(mol.natm)]
-        idx = self._step
-        with open(self.path, 'a') as fh:
-            fh.write(f"==== molwatch step {idx} begin ====\n")
-            fh.write(f"step_index: {idx}\n")
-            fh.write("kind: initial_preview\n")
-            fh.write(f"wall_time: {time.time():.3f}\n")
-            fh.write(f"n_atoms: {mol.natm}\n")
-            fh.write("coordinates (Ang):\n")
-            for i, el in enumerate(elements):
-                x, y, z = coords_A[i]
-                fh.write(f"   {el:<2s}  {x:14.8f}  {y:14.8f}  {z:14.8f}\n")
-            fh.write("energy (eV): None\n")
-            fh.write("forces (eV/Ang):\n")
-            fh.write("max_force (eV/Ang): None\n")
-            fh.write("scf_history begin\n")
-            fh.write("scf_history end\n")
-            fh.write(f"==== molwatch step {idx} end ====\n")
-            fh.write("\n")
-            fh.flush()
-        self._step += 1
+            fh.write(header_and_preview(
+                job=job, engine="pyscf", generator="molbuilder/pyscf_input",
+                elements=[mol.atom_symbol(i) for i in range(mol.natm)],
+                coords_ang=mol.atom_coords(unit='Ang'),
+                frozen_atoms=frozen_atoms, runtime_info=runtime_info,
+                convergence_targets=convergence_targets))
+        self._step      = 1    # log block counter; step 0 was the preview
 
     # ----- SCF cycle hook (wired to mf.callback) -----
     def scf_cycle_hook(self, envs):
@@ -300,4 +254,40 @@ class MolwatchEmitter:
         self._step += 1
 
 
-__all__ = ["MolwatchEmitter"]
+    # ----- the end lines, at exit -----
+    def conclude_at_exit(self):
+        """Write the log's end lines when the process exits
+        (`engines/pyscf.md` § 4): ``# error: <the uncaught exception>`` when
+        one ended it, then ``# concluded: <time>`` -- on a clean exit, an
+        exception or Ctrl-C alike.  A process killed outright (SIGKILL, a
+        power loss) writes neither, which reads correctly as a run not
+        finished: not finished, whether slow or dead, which no file can tell
+        (`model/parse.md` § 2b, P-S1).  The words are the reader's own
+        (`end_lines`).  Installs an excepthook that remembers the exception
+        and hands it to Python's own, and an atexit hook; a failure to
+        write never breaks the exit.  Until 2026-10-05 these hooks were
+        written into the script as text."""
+        import atexit
+        import sys
+        error: list = []
+
+        def _remember(exc_type, exc_value, exc_tb):
+            error.append(f"{exc_type.__name__}: {exc_value}")
+            sys.__excepthook__(exc_type, exc_value, exc_tb)
+
+        def _finalize():
+            try:
+                with open(self.path, 'a') as fh:
+                    ts = time.strftime('%Y-%m-%dT%H:%M:%S')
+                    if error:
+                        fh.write(f"{FOOTER_ERROR} "
+                                 f"{error[-1].replace(chr(10), ' ')}\n")
+                    fh.write(f"{FOOTER_CONCLUDED} {ts}\n")
+            except Exception:
+                pass    # never break the person's exit on a logging issue
+
+        sys.excepthook = _remember
+        atexit.register(_finalize)
+
+
+__all__ = ["MolwatchEmitter", "header_and_preview"]

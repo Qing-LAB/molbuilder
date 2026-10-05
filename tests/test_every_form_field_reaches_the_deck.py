@@ -52,9 +52,9 @@ _NOT_IN_THE_DECK = {
         "keyword -- and this file compares what SIESTA reads",
     ("siesta", "write_molwatch_log"):
         "SIESTA honours it at the PROMISES sub-step (3.12), not in the deck: "
-        "`prep._seed_trajectory_log` and `convert()` skip seeding "
+        "`prep._seed_trajectory_log` skips seeding "
         "`<label>.molwatch.log` when it is off.  Exempt for SIESTA ONLY -- "
-        "PySCF's script carries the emitter, so its deck does change, and this "
+        "PySCF's script builds the emitter, so its deck does change, and this "
         "file checks that it does",
 }
 

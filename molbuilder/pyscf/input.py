@@ -5,11 +5,11 @@ Mirrors the molbuilder.siesta.input module:
 
     PySCFConfig      -- dataclass holding every parameter
     render_script    -- format an in-memory Structure as a Python script
-    convert          -- read XYZ/PDB, write .py, return summary
+    spec_for         -- the deck's spec, which `prep` renders and writes
 
-The generated script is fully self-contained: build mole -> SCF ->
+The generated script runs as `python <script>.py` beside `mb_pyscf.pyz`, the
+molbuilder code it imports (`engines/pyscf.md` § 3): build mole -> SCF ->
 (optional) pre-optimization -> main optimization -> save outputs.
-The user runs it with `python <script>.py`.
 
 We default to B3LYP+D3BJ/def2-SVP with density fitting -- the modern
 production default for organic chemistry / biomolecule work in PySCF.
@@ -25,7 +25,6 @@ module instead of the actual PySCF library).
 from __future__ import annotations
 
 import math
-from pathlib import Path
 from typing import List, Optional
 
 from ..config.pyscf import PySCFConfig
@@ -46,6 +45,8 @@ from ..structure import Structure
 #: warm-file declaration and the reader all say something else.  That is
 #: exactly how `_geom_optim.xyz` came to have six spellings.
 ROLE_CHK         = ".chk"
+ROLE_LOG         = ".log"                # PySCF's own log, a rung's own
+ROLE_SPECTRA     = ".spectra.json"       # a vibration's result
 ROLE_INITIAL     = "_initial.xyz"
 ROLE_OPTIMIZED   = "_optimized.xyz"
 ROLE_CONSTRAINTS = ".constraints.txt"
@@ -54,8 +55,7 @@ ROLE_GEOM_TRAJ   = "_geom_optim.xyz"     # geomeTRIC's trajectory, a rung's own
 #: THE LINE THIS DECK PRINTS WHEN IT REACHES ITS OWN END -- declared in
 #: `end_lines`, which the reader imports and which travels beside the job
 #: (`model/parse.md` § 5.5).
-from .end_lines import (END_MARKER, FOOTER_CONCLUDED,   # noqa: E402
-                        FOOTER_ERROR)
+from .end_lines import END_MARKER   # noqa: E402
 
 #: THE ROLE A PySCF RUN'S STDOUT HAS.  Imported, not spelled: the wrapper
 #: derives the same answer from the same catalogue row
@@ -302,31 +302,13 @@ def spec_for(struct: Structure,
         out.append("    killed.  (The .molwatch.log is written by this script")
         out.append("    either way, so a run started by hand is still watchable.)")
         out.append("")
-        out.append("Outputs:")
-        if cfg.log_file:
-            out.append(f"    {_rf(label, '.log', stage_token)}              -- pyscf verbose log")
-        if cfg.chkfile:
-            out.append(f"    {_rf(label, '.chk')}              -- checkpoint (DM, mol)")
-        if cfg.save_initial_xyz:
-            out.append(f"    {_rf(label, '_initial.xyz')}      -- input coordinates")
-        if cfg.save_optimized_xyz and cfg.optimize:
-            out.append(f"    {_rf(label, '_optimized.xyz')}    -- final relaxed coords")
-        if cfg.optimize and cfg.write_trajectory:
-            out.append(f"    {_rf(label, '_geom_optim.xyz', stage_token)}"
-                       f"   -- this rung's streaming")
-            out.append("                                          trajectory (multi-frame")
-            out.append("                                          XYZ).  A ladder is one")
-            out.append("                                          job per rung, so each")
-            out.append("                                          writes its own.")
-            out.append(f"    {_rf(label, '_geom.log', stage_token)}"
-                       f"         -- geomeTRIC's opt log")
-            out.append("                                          for this rung.")
-        if cfg.optimize and cfg.write_molwatch_log:
-            out.append(f"    {_rf(label, '.molwatch.log', stage_token)}     -- unified per-step log: marker-")
-            out.append("                                  delimited blocks containing")
-            out.append("                                  coords, energy (eV), forces")
-            out.append("                                  (eV/Ang), and SCF cycle history.")
-            out.append("                                  Single-file input for molwatch.")
+        out += emit_outputs_block(
+            label, stage_token, log=cfg.log_file, chk=cfg.chkfile,
+            initial=cfg.save_initial_xyz,
+            optimized=cfg.save_optimized_xyz and cfg.optimize,
+            trajectory=cfg.optimize and cfg.write_trajectory,
+            progress_log=cfg.optimize and cfg.write_molwatch_log,
+            held=cfg.optimize and bool(getattr(struct, "frozen_atoms", None)))
         out.append("")
         out.append("Environment:")
         out.append("    The wrapper activates it; this is how it gets built.")
@@ -349,6 +331,9 @@ def spec_for(struct: Structure,
             emit_runtime_info_capture_lines,
             emit_pyscf_post_import_lines,
         )
+        # The deck's anchor and the bundle first: the threading setup takes
+        # the node's core count from it (`emit_script_head`).
+        out += emit_script_head()
         out += emit_threading_setup_lines(cfg.threads)
         out += emit_runtime_info_capture_lines(
             use_gpu=bool(getattr(cfg, "use_gpu", False)),
@@ -410,15 +395,16 @@ def spec_for(struct: Structure,
         out.append("t0 = time.time()")
         out.append(f'JOB = "{label}"')
         out.append("")
-        # Where every output lands: beside the script (one definition,
-        # shared with the vibration deck -- `emit_outfile_helper`).
-        out += emit_outfile_helper()
-        # And the molbuilder code the script calls, from the file beside it
-        # (`engines/pyscf.md` § 3): the pair writer's codec and the
-        # progress-log writer -- both, whatever this deck's settings call.
+        # Every molbuilder function the script runs, from the bundle its head
+        # put on the path (`engines/pyscf.md` § 3): the pair writer's codec, the
+        # progress-log writer, the relaxation, and the one XYZ reader a
+        # continuing run reads its last geometry with -- all of them,
+        # whatever this deck's settings call.
         from ..trajectory_log.emitter import MolwatchEmitter
         from ..workingcopy_structure import StructureCodec
-        out += emit_bundle_imports(StructureCodec, MolwatchEmitter)
+        from .relax_policy import relax
+        out += emit_bundle_imports(StructureCodec, MolwatchEmitter, relax,
+                                   Structure)
 
         # ---- _save_structure helper (the PAIR writer), defined EARLY
         #      so the initial-geometry snapshot can be
@@ -472,10 +458,13 @@ def spec_for(struct: Structure,
         # (analog to SIESTA's automatic ``.XV`` read -- the per-engine
         # warm-file inventory, `execution/job-contracts.md` § 4.2).
         #
-        # Two guards: ``os.path.exists`` AND ``getsize > 0`` so a stale
-        # 0-byte file from a crashed prior run doesn't trigger a parse on
-        # an empty file.  A parse failure (malformed XYZ) falls through to
-        # the literal -- we never silently feed garbage to gto.M().
+        # READ WITH MOLBUILDER'S ONE XYZ READER (`Structure.from_xyz`,
+        # imported from mb_pyscf.pyz -- `engines/pyscf.md` § 3): the file is
+        # the previous run's own pair, written atomically by the codec, so a
+        # file that cannot be read is not one molbuilder wrote, and the run
+        # stops with the reader's words.  Until 2026-10-05 a hand-written
+        # parser here skipped an empty file and, on a parse failure, warned
+        # and fell back to the input geometry.
         out.append("_atom_block = '''")
         out.append(_atoms_block(struct, _frame.positions))
         out.append("'''")
@@ -488,34 +477,12 @@ def spec_for(struct: Structure,
         # do not resume from one"* unsayable: § 4's "present but not honoured".
         if continues(cfg):
             out.append(f'_opt_path = _mb_outfile(JOB + "{ROLE_OPTIMIZED}")')
-            out.append("if _os.path.exists(_opt_path) "
-                       "and _os.path.getsize(_opt_path) > 0:")
-            out.append("    try:")
-            out.append("        with open(_opt_path) as _mb_xyz_fh:")
-            out.append("            _xyz_lines = _mb_xyz_fh.read().splitlines()")
-            # XYZ format: line 0 = atom count, line 1 = comment, lines 2..N+1
-            # = "ELEM  X  Y  Z" rows.  We rebuild _atom_block as PySCF expects
-            # (4 cols, whitespace-separated, Ang) and re-prefix every row with
-            # the same 4-space indent the literal uses so a downstream reader
-            # sees a uniform block shape.
-            out.append("        _n_xyz = int(_xyz_lines[0].strip())")
-            out.append("        _rows = []")
-            out.append("        for _row in _xyz_lines[2:2 + _n_xyz]:")
-            out.append("            _parts = _row.split()")
-            out.append("            if len(_parts) < 4:")
-            out.append("                raise ValueError("
-                       "f\"malformed XYZ row: {_row!r}\")")
-            out.append("            _el = _parts[0]")
-            out.append("            _x, _y, _z = (float(_parts[1]), "
-                       "float(_parts[2]), float(_parts[3]))")
-            out.append("            _rows.append("
-                       "f\"    {_el:<2s}  {_x:14.8f}  {_y:14.8f}  {_z:14.8f}\")")
-            out.append("        _atom_block = \"\\n\".join(_rows)")
-            out.append('        print(f"[molbuilder] continuation: loaded '
-                       'geometry from {_opt_path} ({_n_xyz} atoms)")')
-            out.append("    except (OSError, ValueError, IndexError) as _mb_e:")
-            out.append('        print(f"[molbuilder] warning: could not parse '
-                       '{_opt_path} ({_mb_e}); using literal geometry from script")')
+            out.append("if _os.path.exists(_opt_path):")
+            out.append("    with open(_opt_path) as _mb_xyz_fh:")
+            out.append("        _atom_block = _mb_Structure.from_xyz("
+                       "_mb_xyz_fh.read()).to_pyscf()")
+            out.append('    print(f"[molbuilder] continuation: loaded '
+                       'geometry from {_opt_path} ({len(_atom_block)} atoms)")')
         out.append("mol = gto.M(")
         out.append("    atom       = _atom_block,")
         out.append(f'    basis      = "{cfg.basis}",')
@@ -541,7 +508,7 @@ def spec_for(struct: Structure,
             # supplies its own `JOB` at run time, so only what follows the
             # label can be emitted here -- and it is the end of the name
             # `compose` would build, not a second assembly of it.
-            _logname = _rf_tail(".log", stage_token)
+            _logname = _rf_tail(ROLE_LOG, stage_token)
             out.append(f'    output     = _mb_outfile(JOB + {_logname!r}),')
         # UNSET means no cap (`template-unification-plan.md` § 5.1): the line is
         # OMITTED rather than emitted as None, so PySCF uses its own default --
@@ -558,8 +525,7 @@ def spec_for(struct: Structure,
         if cfg.save_initial_xyz:
             if v:
                 out.append("# Snapshot the input geometry before any optimization runs.")
-            out.append(f'_save_structure(mol, _mb_outfile(JOB + "{ROLE_INITIAL}"), '
-                       f'"Initial geometry (input)")')
+            out.append(emit_save_call("mol", ROLE_INITIAL))
         out.append("")
 
         # ---------------- Unified molwatch log emitter (early, additive) ------
@@ -815,13 +781,7 @@ def spec_for(struct: Structure,
                         '# is 0-based so we shift below.  Without this block '
                         'geomeTRIC moves every atom.',
                     ]
-                from ..engine_atom_index import geometric_atom_index
-                ids_1based = ",".join(str(geometric_atom_index(i)) for i in frozen)
-                out.append(f'# Source: Structure.frozen_atoms = {frozen!r}  (0-based)')
-                out.append(f'_FROZEN_CONSTRAINTS_PATH = _mb_outfile(JOB + "{ROLE_CONSTRAINTS}")')
-                out.append('with open(_FROZEN_CONSTRAINTS_PATH, "w") as _fh:')
-                out.append('    _fh.write("$freeze\\n")')
-                out.append(f'    _fh.write("xyz {ids_1based}\\n")')
+                out += emit_constraints_file(frozen)
         return "\n".join(out) if out else None
 
     def _science_d(struct, cfg) -> Optional[str]:
@@ -868,8 +828,7 @@ def spec_for(struct: Structure,
         # we only write the FINAL geometry.
         if cfg.save_optimized_xyz and cfg.optimize:
             out.append("")
-            out.append(f'_save_structure(mol_eq, _mb_outfile(JOB + "{ROLE_OPTIMIZED}"), '
-                       f'"Optimized geometry (PySCF)")')
+            out.append(emit_save_call("mol_eq", ROLE_OPTIMIZED))
         out.append("")
         out.append('print(f"\\n' + END_MARKER + ' {time.time() - t0:.1f} s")')
 
@@ -967,9 +926,9 @@ def render_script(struct: Structure,
     """Format a Structure as a runnable PySCF script (Python text).
 
     **A thin call over :func:`spec_for`.**  The engine describes its deck; the
-    framework renders it.  This name survives because the test suite and the
-    ``convert`` route point at it -- what moved is what it does, not what it is
-    called (`archive/2026-08-18-preparation-backend-plan.md` § 3.1a).
+    framework renders it.  This name survives because the test suite points
+    at it -- what moved is what it does, not what it is called
+    (`archive/2026-08-18-preparation-backend-plan.md` § 3.1a).
 
     Prefer ``spec_for`` + ``script_emit.prepare_deck`` where a deck is being
     WRITTEN: that runs validate -> render -> write -> check in one place (§ 4.3).
@@ -1283,12 +1242,9 @@ def _emit_optimization(cfg: PySCFConfig,
         out.append("# so that a person can look at this geometry before")
         out.append("# spending anything on the next rung.")
     # THE ONE RELAXATION FUNCTION both PySCF decks run (`relax_policy.relax`,
-    # `engines/pyscf.md` § 3), spliced here: it asks geomeTRIC whether it
-    # converged -- `optimize()` cannot say -- and applies this rung's
-    # on_nonconvergence to the answer.
-    from .relax_policy import emit_relax
-    out += emit_relax()
-    out.append("")
+    # `engines/pyscf.md` § 3), imported at the top of the script: it asks
+    # geomeTRIC whether it converged -- `optimize()` cannot say -- and
+    # applies this rung's on_nonconvergence to the answer.
     from .relax_policy import policy_of
     policy, retries = policy_of(cfg)
     if v:
@@ -1297,7 +1253,7 @@ def _emit_optimization(cfg: PySCFConfig,
             out += _sc.parameter("geom_continue_retries", "pyscf").note()
     out.append(f"_ON_NONCONVERGENCE = {policy!r}")
     out.append(f"_GEOM_CONTINUE_RETRIES = {retries}")
-    out.append("mol_eq, _GEOM_CONVERGED = relax(")
+    out.append("mol_eq, _GEOM_CONVERGED = _mb_relax(")
     out.append("        mf, _ON_NONCONVERGENCE, _GEOM_CONTINUE_RETRIES,")
     out.extend(_layout.geom_kwargs())
     if emit_constraints:
@@ -1453,35 +1409,10 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
                f'convergence_targets=_CONVERGENCE_TARGETS, '
                f'frozen_atoms={sorted(int(i) for i in frozen_atoms)!r})')
     out.append("")
-    # Run-state markers.  The watch UI reads these to render a binary
-    # "Finished / Ongoing / Error" badge -- authoritative when present,
-    # not a stall heuristic (long-iteration runs would false-positive).
-    #
-    # Strategy: install excepthook to capture uncaught exceptions, then
-    # an atexit hook that always runs (clean exit OR exception OR Ctrl-C)
-    # to write the conclusion line.  SIGKILL / power loss leaves the
-    # file without markers, which correctly reads as "running" -- the
-    # process didn't have a chance to finalize: not finished, whether slow
-    # or dead, which no file can tell (`model/parse.md` § 2b, P-S1).
-    out.append("import atexit as _mw_atexit")
-    out.append("import sys as _mw_sys")
-    out.append("import time as _mw_time")
-    out.append("_molwatch_run = {'error': None}")
-    out.append("def _molwatch_excepthook(exc_type, exc_value, exc_tb):")
-    out.append("    _molwatch_run['error'] = f'{exc_type.__name__}: {exc_value}'")
-    out.append("    _mw_sys.__excepthook__(exc_type, exc_value, exc_tb)")
-    out.append("_mw_sys.excepthook = _molwatch_excepthook")
-    out.append("def _molwatch_finalize():")
-    out.append("    try:")
-    out.append("        with open(_molwatch.path, 'a') as _fh:")
-    out.append("            _ts = _mw_time.strftime('%Y-%m-%dT%H:%M:%S')")
-    out.append("            if _molwatch_run['error']:")
-    out.append("                _msg = _molwatch_run['error'].replace(chr(10), ' ')")
-    out.append("                _fh.write(f'" + FOOTER_ERROR + " {_msg}\\n')")
-    out.append("            _fh.write(f'" + FOOTER_CONCLUDED + " {_ts}\\n')")
-    out.append("    except Exception:")
-    out.append("        pass    # don't break the user's exit on a logging issue")
-    out.append("_mw_atexit.register(_molwatch_finalize)")
+    # THE END LINES the watch UI reads for its Finished / Error badge --
+    # authoritative when present, not a stall heuristic -- written at exit
+    # by the writer itself (`MolwatchEmitter.conclude_at_exit`).
+    out.append("_molwatch.conclude_at_exit()")
     out.append("")
     return out
 
@@ -1553,41 +1484,139 @@ def emit_outfile_helper() -> List[str]:
             ""]
 
 
-def emit_bundle_imports(*objects) -> List[str]:
-    """The script's molbuilder imports: ``mb_pyscf.pyz`` -- beside the
-    script, found as its outputs are (``_MB_SCRIPT_DIR``, which
-    :func:`emit_outfile_helper` defines and every deck emits first) -- put
-    on the import path, and each of ``objects`` imported from it
-    (`engines/pyscf.md` § 3).  Emitted near the top of every PySCF deck, so
-    a bundle that is missing or cannot load stops the run before PySCF
-    computes anything.
+def emit_script_head() -> List[str]:
+    """Every PySCF deck's first lines after its docstring: the deck's anchor
+    (:func:`emit_outfile_helper`), ``mb_pyscf.pyz`` on its import path
+    (:func:`emit_bundle_path`), and the one piece of molbuilder the threading
+    setup needs before numpy is imported -- the node's core count,
+    `runtime_info.physical_core_count`, from a member that imports only the
+    standard library.  Everything else the deck imports from the bundle comes
+    after numpy's own import (:func:`emit_bundle_imports`): a member importing
+    numpy ahead of the threading setup would start its BLAS on every core
+    (`engines/pyscf.md` § 3)."""
+    from ..runtime_info import physical_core_count
+    return (emit_outfile_helper() + emit_bundle_path()
+            + emit_bundle_imports(physical_core_count))
 
-    Each object is molbuilder's own, and the module it is imported from is
+
+def emit_bundle_path() -> List[str]:
+    """``mb_pyscf.pyz`` -- beside the script, found as its outputs are
+    (``_MB_SCRIPT_DIR``, :func:`emit_outfile_helper`) -- put on the import
+    path, or the run stopped right there with a sentence saying it is
+    missing (`engines/pyscf.md` § 3)."""
+    from ..runwrap import PYSCF_BUNDLE
+    return ["# molbuilder's own code this script runs, from the file beside it",
+            f"_MB_BUNDLE = _MB_SCRIPT_DIR / {PYSCF_BUNDLE!r}",
+            "if not _MB_BUNDLE.is_file():",
+            "    raise SystemExit(f'{_MB_BUNDLE} is missing: this script imports '",
+            "                     'molbuilder code from it, and it must sit '",
+            "                     'beside the script')",
+            "import sys as _mb_sys",
+            "_mb_sys.path.insert(0, str(_MB_BUNDLE))",
+            ""]
+
+
+def emit_bundle_imports(*objects) -> List[str]:
+    """Each of ``objects`` imported from ``mb_pyscf.pyz``, which
+    :func:`emit_script_head` has put on the import path.
+
+    Each object is molbuilder's own -- a function, a class, or a module
+    imported whole for its values -- and the module it is imported from is
     the one it TRAVELS as, read off `runwrap.PYSCF_COMPANIONS`: the line names
     exactly what the bundle holds, and an object that does not travel is
     refused here, at render, rather than on the machine that runs the job.
-    Each is bound as ``_mb_<its name>``, molbuilder's prefix in a deck, so a
-    name of ours never takes one the engine owns (`engines/pyscf.md` § 3).
+    Each is bound as ``_mb_<its name>``, molbuilder's prefix in a deck, so an
+    import of ours never takes a name the engine owns (`engines/pyscf.md`
+    § 3).
     """
+    import types
     from ..runwrap import PYSCF_BUNDLE, PYSCF_COMPANIONS
     shipped = {module: name[:-len(".py")]
                for name, module in PYSCF_COMPANIONS.items()}
-    out = ["# molbuilder's own code this script calls, from the file beside it",
-           f"_MB_BUNDLE = _MB_SCRIPT_DIR / {PYSCF_BUNDLE!r}",
-           "if not _MB_BUNDLE.is_file():",
-           "    raise SystemExit(f'{_MB_BUNDLE} is missing: this script imports '",
-           "                     'molbuilder code from it, and it must sit '",
-           "                     'beside the script')",
-           "import sys as _mb_sys",
-           "_mb_sys.path.insert(0, str(_MB_BUNDLE))"]
+    out: List[str] = []
     for obj in objects:
-        if obj.__module__ not in shipped:
+        # A MODULE is imported whole -- its values read by their own names
+        # (`_mb_constants.BOHR_ANGSTROM`); a function or class by its name.
+        module = (obj.__name__ if isinstance(obj, types.ModuleType)
+                  else obj.__module__)
+        if module not in shipped:
             raise ValueError(
-                f"{obj.__module__}.{obj.__name__} does not travel in "
-                f"{PYSCF_BUNDLE}: add its module to runwrap.PYSCF_COMPANIONS")
-        out.append(f"from {shipped[obj.__module__]} import {obj.__name__} "
+                f"{module} does not travel in {PYSCF_BUNDLE}: add it to "
+                f"runwrap.PYSCF_COMPANIONS")
+        out.append(f"import {shipped[module]} as _mb_{shipped[module]}"
+                   if isinstance(obj, types.ModuleType) else
+                   f"from {shipped[module]} import {obj.__name__} "
                    f"as _mb_{obj.__name__}")
     return out + [""]
+
+
+def emit_outputs_block(label: str, stage_token: Optional[str], *,
+                       log: bool, chk: bool, initial: bool, optimized: bool,
+                       trajectory: bool, progress_log: bool, held: bool,
+                       spectra: bool = False) -> List[str]:
+    """The ``Outputs:`` block of a PySCF deck's header: exactly the files
+    this run writes for its settings (`engines/pyscf.md` § 2), named as the
+    deck names them -- one list for both decks, each saying which of its
+    settings is on."""
+    from ..trajectory_log.format import molwatch_log_basename
+    out = ["Outputs:"]
+    if spectra:
+        out.append(f"    {_rf(label, ROLE_SPECTRA)}   -- the result, replaced "
+                   f"atomically at each phase")
+    if log:
+        out.append(f"    {_rf(label, ROLE_LOG, stage_token)}   -- pyscf verbose log")
+    if chk:
+        out.append(f"    {_rf(label, ROLE_CHK)}   -- checkpoint (DM, mol)")
+    if initial:
+        out.append(f"    {_rf(label, ROLE_INITIAL)} + .molstruct.json   -- the "
+                   f"input coordinates, as a pair")
+    if optimized:
+        out.append(f"    {_rf(label, ROLE_OPTIMIZED)} + .molstruct.json   -- the "
+                   f"relaxed coordinates, as a pair")
+    if trajectory:
+        out.append(f"    {_rf(label, ROLE_GEOM_TRAJ, stage_token)}   -- this "
+                   f"rung's trajectory (multi-frame XYZ)")
+        out.append(f"    {_rf(label, '_geom.log', stage_token)}   -- "
+                   f"geomeTRIC's log for this rung")
+    if held:
+        out.append(f"    {_rf(label, ROLE_CONSTRAINTS)}   -- the held atoms, in "
+                   f"geomeTRIC's format")
+    if progress_log:
+        out.append(f"    {molwatch_log_basename(label, stage_token)}   -- the "
+                   f"progress log: each step's coordinates, energy (eV), "
+                   f"forces (eV/Ang) and SCF cycles, read by the Results tab")
+    return out
+
+
+def emit_constraints_file(frozen, indent: str = "") -> List[str]:
+    """The lines that write the held atoms to ``<JOB>.constraints.txt`` in
+    geomeTRIC's own format -- ``$freeze`` / ``xyz <1-based>`` -- and bind
+    its path for the relaxation: one writer for both decks.  Its comment
+    line is the frozen set's ONE SPELLING, which the run script reads back
+    off the deck to name the held atoms in its header."""
+    from ..engine_atom_index import geometric_atom_index
+    ids = ",".join(str(geometric_atom_index(i)) for i in frozen)
+    return [f"{indent}# Source: Structure.frozen_atoms = {list(frozen)!r}  "
+            f"(0-based)",
+            f'{indent}_FROZEN_CONSTRAINTS_PATH = _mb_outfile(JOB + '
+            f'"{ROLE_CONSTRAINTS}")',
+            f'{indent}with open(_FROZEN_CONSTRAINTS_PATH, "w") as _fh:',
+            f'{indent}    _fh.write("$freeze\\n")',
+            f'{indent}    _fh.write("xyz {ids}\\n")']
+
+
+#: What each geometry a script saves says of itself on its ``.xyz`` comment
+#: line, by role: both decks save these two.
+_SAVED_AS = {ROLE_INITIAL:   "Initial geometry (input)",
+             ROLE_OPTIMIZED: "Optimized geometry (PySCF)"}
+
+
+def emit_save_call(mol: str, role: str, indent: str = "") -> str:
+    """The line that saves ``mol``'s geometry as ``role``'s pair through the
+    script's ``_save_structure`` (:func:`emit_save_helper`) -- one spelling of
+    the call, the file and its comment line for both decks."""
+    return (f'{indent}_save_structure({mol}, _mb_outfile(JOB + "{role}"), '
+            f'"{_SAVED_AS[role]}")')
 
 
 def emit_save_helper(v: bool, sidecar: dict) -> List[str]:

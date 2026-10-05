@@ -12,9 +12,10 @@ The namespace, from the deck itself rather than from a rule someone invented:
 
 * **The engine's, unprefixed** — ``gto``, ``scf``, ``dft``, ``geometric_solver``,
   ``mol``, ``mf``. This is the vocabulary a person reads the deck in and edits.
-* **molbuilder's, prefixed** — ``_mw_np``, ``_mw_time``, ``_mb_socket``,
-  ``_os``, ``_cp``, ``_pyscf_lib``. Prefixed *so that* molbuilder's machinery
-  can never take a name the engine owns.
+* **molbuilder's, prefixed** — ``_mb_socket``, ``_os``, ``_cp``,
+  ``_pyscf_lib``, and every import from ``mb_pyscf.pyz`` as ``_mb_<its name>``
+  (`engines/pyscf.md` § 3). Prefixed *so that* molbuilder's machinery can
+  never take a name the engine owns.
 
 The convention is already in the code. What was missing is anything that made
 it hold: ``molwatch``'s optimizer callback bound a bare ``scf``, rebinding
@@ -31,10 +32,10 @@ import dataclasses
 import itertools
 
 import numpy as np
-import pytest
 
+from molbuilder import script_emit as _sc
 from molbuilder.config.pyscf import PySCFConfig
-from molbuilder.pyscf.input import render_script
+from molbuilder.pyscf.input import spec_for
 from molbuilder.structure import Structure
 
 _STRUCT = Structure(
@@ -56,26 +57,40 @@ _AXES = {
     "use_gpu":             [False, True],
 }
 
+#: The same for the vibration deck, whose code turns on its own settings: the
+#: two spectra, the per-mode probe, the theory, the GPU shim.
+_VIB_AXES = {
+    "compute_ir":          [True, False],
+    "compute_raman":       [True, False],
+    "es_mode_selection":   ["skip", "all"],
+    "method":              ["DFT", "HF"],
+    "use_gpu":             [False, True],
+}
+
 
 def _decks():
-    """Every deck the generator emits over the code-shaping axes.
+    """Every deck the generator emits over the code-shaping axes, the
+    optimization deck's and the vibration deck's.
 
     A generator that refused EVERYTHING would make every consumer pass
     over nothing, so this raises if no combination rendered at all --
     the swallow is for individual refused combinations only."""
-    names, values = list(_AXES), [_AXES[k] for k in _AXES]
     yielded = 0
-    for combo in itertools.product(*values):
-        over = dict(zip(names, combo))
-        if over["spin_treatment"] == "unrestricted":
-            over["unpaired_electrons"] = 2       # water's even count
-        try:
-            cfg = dataclasses.replace(PySCFConfig(job_name="w"), **over)
-            deck = str(render_script(_STRUCT, cfg))
-        except Exception:            # a refused combination is not this
-            continue                 # test's subject; the gate owns that
-        yielded += 1
-        yield over, deck
+    for calculation, axes in (("optimization", _AXES),
+                              ("vibration", _VIB_AXES)):
+        for combo in itertools.product(*axes.values()):
+            over = dict(zip(axes, combo))
+            if over.get("spin_treatment") == "unrestricted":
+                over["unpaired_electrons"] = 2   # water's even count
+            try:
+                cfg = dataclasses.replace(PySCFConfig(job_name="w"), **over)
+                deck = str(_sc.render_deck(
+                    spec_for(_STRUCT, cfg, calculation=calculation),
+                    _STRUCT, cfg, verbose=cfg.verbose_comments))
+            except Exception:        # a refused combination is not this
+                continue             # test's subject; the gate owns that
+            yielded += 1
+            yield {"calculation": calculation, **over}, deck
     assert yielded, "every combination refused; the sweep rendered nothing"
 
 
@@ -143,29 +158,33 @@ def test_no_emitted_function_rebinds_a_name_the_deck_imported():
     assert n, "no decks were rendered -- the matrix is broken, not the rule"
     assert not offenders, (
         f"{len(offenders)} of {n} decks rebind a name the deck imports; "
-        f"molbuilder's emitted code is prefixed (`_mw_`, `_mb_`, `_`) so that "
-        f"it cannot:\n  " + "\n  ".join(sorted(set(offenders))[:8]))
+        f"molbuilder's emitted code is prefixed (`_mb_`, `_`) so that it "
+        f"cannot:\n  " + "\n  ".join(sorted(set(offenders))[:8]))
 
 
-def test_molbuilders_own_machinery_stays_in_its_own_prefix():
-    """The convention that makes the rule above hold by construction
-    (`engines/pyscf.md` § 3).
+def test_each_import_from_the_bundle_is_bound_under_molbuilders_prefix():
+    """The convention that makes the rule above hold by construction:
+    **each import from the bundle is bound as ``_mb_<its name>``**
+    (`engines/pyscf.md` § 3), so an import of ours can never take a name the
+    engine owns.  Checked over every deck, so the prefix stays a rule rather
+    than a habit that decays one import at a time; the bundle's members are
+    read off `runwrap.PYSCF_COMPANIONS`, the list prep ships.
 
-    Everything molbuilder imports into a deck is prefixed -- the code it
-    imports from `mb_pyscf.pyz` too, as ``_mb_<its name>``; the unprefixed
-    imports are the engine's and the standard library's, which the reader
-    knows by those names.  Checked so the prefix stays a rule rather than a
-    habit that decays one import at a time.
+    MUTATION THIS MUST FAIL AGAINST: an emitter writing its own
+    ``from relax_policy import relax`` beside the generated import lines.
     """
-    _, text = next(iter(_decks()))
-    imported = _imported(ast.parse(text))
-    #: The unprefixed imports a deck is ALLOWED to have -- the engine's own
-    #: surface and the stdlib names a reader expects to see spelled normally.
-    engine_surface = {"gto", "scf", "dft", "geometric_solver", "kernel",
-                      "gpu4pyscf",
-                      "os", "time", "psutil", "np", "numpy"}
-    stray = sorted(n for n in imported
-                   if not n.startswith("_") and n not in engine_surface)
+    from molbuilder.runwrap import PYSCF_COMPANIONS
+    members = {name[:-len(".py")] for name in PYSCF_COMPANIONS}
+    stray = set()
+    for _, text in _decks():
+        for n in ast.walk(ast.parse(text)):
+            if isinstance(n, ast.ImportFrom) and n.module in members:
+                if any(a.asname != f"_mb_{a.name}" for a in n.names):
+                    stray.add(ast.unparse(n))
+            elif isinstance(n, ast.Import):
+                if any(a.name in members and a.asname != f"_mb_{a.name}"
+                       for a in n.names):
+                    stray.add(ast.unparse(n))
     assert not stray, (
-        f"these imports are neither prefixed nor part of the engine surface, "
-        f"so nothing says who owns the name: {stray}")
+        f"imports from the bundle not bound as _mb_<its name>, so they can "
+        f"take a name the engine owns: {sorted(stray)}")

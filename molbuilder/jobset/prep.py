@@ -2140,7 +2140,7 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
         struct,
         base / molwatch_log_basename(label, token),
         job=label, engine=engine,
-        stage_name=token, convergence_targets=(targets or None),
+        convergence_targets=(targets or None),
         frame=frame,
         frozen_atoms=list(getattr(struct, "frozen_atoms", []) or []))
 

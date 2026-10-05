@@ -27,6 +27,14 @@ Result-file format: every emitted script also captures a
 copy into their on-disk output.  The /results inspector panels
 read these keys uniformly so the user sees the SAME
 "CPU / GPU / Host" rows regardless of which engine ran.
+
+TRAVELS beside every PySCF script, in ``mb_pyscf.pyz``
+(``runwrap.PYSCF_COMPANIONS``): the script's threading set-up asks
+:func:`physical_core_count` for the node's cores, and imports it BEFORE
+numpy -- the BLAS thread caps must be set before numpy loads
+(`engines/pyscf.md` § 3).  So this module imports nothing that loads numpy:
+the standard library at load, and psutil, when the env has it, inside that
+one function.
 """
 from __future__ import annotations
 
@@ -96,10 +104,13 @@ def emit_threading_setup_lines(threads: Optional[int]) -> List[str]:
     pyscf import).  ``threads=None`` -> auto-detect physical cores
     at run time.  ``threads=N`` -> use exactly N.
 
-    Defines two module-level names on the running script:
-      * ``_MB_REQUESTED_THREADS``    -- the N actually requested
-      * ``_mb_count_physical_cores`` -- the detection helper (also
-        used later in the runtime-info capture block)
+    Defines ``_MB_REQUESTED_THREADS`` -- the N actually requested -- and
+    ``_MB_PHYS_CORES`` on the running script.  The node's core count is
+    :func:`physical_core_count` itself, which the deck imports from
+    ``mb_pyscf.pyz`` as ``_mb_physical_core_count`` before this block
+    (`pyscf.input.emit_script_head`): this module imports only the standard
+    library, so it can load before numpy does.  The block carried a copy of
+    the function until 2026-10-05.
     """
     out: List[str] = []
     out.append("# ============================================================")
@@ -113,36 +124,11 @@ def emit_threading_setup_lines(threads: Optional[int]) -> List[str]:
     out.append("# in molbuilder/runtime_info.py.")
     out.append("import os")
     out.append("")
-    out.append("def _mb_count_physical_cores():")
-    out.append("    try:")
-    out.append("        import psutil")
-    out.append("        n = psutil.cpu_count(logical=False)")
-    out.append("        if n: return int(n)")
-    out.append("    except Exception:")
-    out.append("        pass")
-    out.append("    try:")
-    out.append("        with open('/proc/cpuinfo') as fp:")
-    out.append("            seen = set()")
-    out.append("            phys, core = None, None")
-    out.append("            for line in fp:")
-    out.append("                if line.startswith('physical id'):")
-    out.append("                    phys = line.split(':')[1].strip()")
-    out.append("                elif line.startswith('core id'):")
-    out.append("                    core = line.split(':')[1].strip()")
-    out.append("                    if phys is not None:")
-    out.append("                        seen.add((phys, core))")
-    out.append("                        phys = core = None")
-    out.append("            if seen: return len(seen)")
-    out.append("    except Exception:")
-    out.append("        pass")
-    out.append("    logical = os.cpu_count() or 1")
-    out.append("    return max(1, logical // 2) if logical >= 2 else logical")
-    out.append("")
     if threads is None:
         out.append("# threads not pinned -> ask the ALLOCATION first, the")
         out.append("# machine only as a last resort.")
         out.append("#")
-        out.append("# _mb_count_physical_cores() counts the whole NODE.  On a")
+        out.append("# _mb_physical_core_count() counts the whole NODE.  On a")
         out.append("# workstation that is right -- the node IS the allocation.")
         out.append("# Under a scheduler it is wrong and expensively so: a job")
         out.append("# given 8 of a 128-core node would start 128 OpenMP")
@@ -164,7 +150,7 @@ def emit_threading_setup_lines(threads: Optional[int]) -> List[str]:
         out.append("                continue")
         out.append("            if _n >= 1:")
         out.append("                return _n, _var")
-        out.append("    return _mb_count_physical_cores(), 'node physical cores'")
+        out.append("    return _mb_physical_core_count(), 'node physical cores'")
         out.append("")
         out.append("_MB_REQUESTED_THREADS, _MB_THREADS_FROM = _mb_resolve_threads()")
     else:
@@ -189,7 +175,7 @@ def emit_threading_setup_lines(threads: Optional[int]) -> List[str]:
     # _RUNTIME_INFO['physical_cores'] -- and each call re-imports psutil
     # or re-reads /proc/cpuinfo for an answer that cannot change during
     # a run.
-    out.append("_MB_PHYS_CORES = _mb_count_physical_cores()")
+    out.append("_MB_PHYS_CORES = _mb_physical_core_count()")
     out.append("print(")
     out.append("    f'molbuilder: requested {_MB_REQUESTED_THREADS} PySCF threads '")
     out.append("    f'from {_MB_THREADS_FROM} '")
@@ -221,7 +207,7 @@ def emit_runtime_info_capture_lines(use_gpu: bool,
     """Build the ``_RUNTIME_INFO`` dict in the running script.
 
     Assumes :func:`emit_threading_setup_lines` ran first (it relies
-    on ``_MB_REQUESTED_THREADS`` and ``_mb_count_physical_cores`` being
+    on ``_MB_REQUESTED_THREADS`` and ``_MB_PHYS_CORES`` being
     defined).  Engine-specific blocks (e.g. the GPU probe via
     :func:`emit_gpu_probe_lines`) later mutate this dict to record
     the GPU outcome.

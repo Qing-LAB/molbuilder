@@ -237,6 +237,9 @@ the calculation ([`generator.md § 4.3a`](?doc=execution/generator.md)).
 
 - `test_monitor_bundle_runs_alone.py` — the monitor's shipped files run beside a
   real run with molbuilder absent (the layering itself is review's).
+- `test_pyscf_bundle_runs_alone.py` — every module the PySCF script imports loads
+  from `mb_pyscf.pyz` with molbuilder absent, and writes a pair the package's codec
+  reads back.
 - `parse/test_scripts.py`, `parse/test_audit_gaps.py` — the parse-layer purity gates.
 - `test_negative_body_assert_lint.py` — the status-guarded-assert meta-lint.
 - `test_cli.py` (+ `test_cli_runtime_info.py`, `test_cli_tls.py`) — every

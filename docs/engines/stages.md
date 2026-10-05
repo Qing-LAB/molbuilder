@@ -1843,9 +1843,11 @@ A folder whose decks are correct on their own. Concretely, per rendered stage:
   `_anchor_sort_key` still has a number to sort on and the Results tab keeps its
   notion of *the active stage*.
 
-**The test:** the decks are portable — an engine with no molbuilder present runs
-them correctly. The wrappers are not, and are not meant to be: they are baked for
-a target (§ 8).
+**The test:** the decks are portable — an engine with no molbuilder installed
+runs them correctly, a PySCF deck with the bundle of molbuilder's code it imports
+beside it (`mb_pyscf.pyz`, [`engines/pyscf.md`](?doc=engines/pyscf.md) § 3),
+which is the same on every machine. The wrappers are not, and are not meant to
+be: they are baked for a target (§ 8).
 
 ### 7.1 The layout: portable above, machine-specific below
 

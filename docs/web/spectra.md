@@ -680,9 +680,10 @@ dropped it would answer a question you did not ask. So the form locks the
 window outside `all`, as it locks the explicit list outside `explicit`
 *(user, 2026-09-28)*.
 
-**A mode that already has its electronic structure is skipped on a resume**,
-whatever the selector says: the result persists, so re-running it buys
-nothing.
+**A run probes every mode its selection names** and takes nothing from an
+earlier run's file (`engines/vibration.md` § 4.8) *(a resume that skipped the
+modes already probed was written here until 2026-10-05; nothing ever did
+it)*.
 
 ### 9a.2 The Methods paragraph is composed, not written
 

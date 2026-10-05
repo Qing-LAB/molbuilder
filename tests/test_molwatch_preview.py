@@ -13,17 +13,14 @@ from __future__ import annotations
 
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-import molbuilder
 from molbuilder.trajectory_log import write_initial_preview
 from molbuilder.parse.engines._helpers import trajectory_to_legacy_dict
 from molbuilder.pyscf import PySCFConfig, render_script
-from molbuilder.siesta import SiestaConfig
 from molbuilder.structure import Structure
 
 
@@ -178,7 +175,8 @@ def test_preview_helper_marks_kind_and_nulls(tmp_path, water_struct):
 # found the preview writer's method names in the script's TEXT -- the class's
 # pasted source, which the script now imports from `mb_pyscf.pyz` instead
 # (`engines/pyscf.md` § 3).  Its other half, the writer built before the
-# relaxation, is the relaxation's own need: it is handed the writer's hook.
+# relaxation, is pinned with the SCF hook's wiring by
+# `test_pyscf.py::test_molwatch_log_instantiated_before_the_optimization`.
 
 
 @pytest.mark.engine

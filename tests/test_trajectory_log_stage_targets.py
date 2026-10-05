@@ -1,35 +1,20 @@
 """Tests for the per-stage convergence-target extension of the
 molwatch log format (#542 / C1.4).
 
-Pins:
-  * ``write_initial_preview`` accepts ``stage_name`` + ``convergence_
-    targets`` kwargs and emits them as ``# stage:`` /
-    ``# convergence.<key>:`` header lines.
-  * Backwards-compatible: omitting both kwargs produces the same
-    output as before the C1.4 change (no spurious headers).
-  * Invalid convergence-target keys (whitespace) raise ValueError at
-    write time rather than producing a malformed log that the
-    inspector would mis-parse.
-  * The SIESTA multi-stage CLI emits one ``<basename>-<stage>.
-    molwatch.log`` per enabled stage with the right per-stage target.
+Pins: prepping a SIESTA ladder seeds one ``<label>_<NN>_<name>.molwatch.log``
+per enabled stage, each carrying that stage's own targets as
+``# convergence.<key>:`` lines under the names the reader asks for.
 """
 from __future__ import annotations
 
 import textwrap
-from pathlib import Path
 
-import numpy as np
 import pytest
-from click.testing import CliRunner
-
-from molbuilder.cli import cli
-from molbuilder.structure import Structure
-from molbuilder.trajectory_log import write_initial_preview
 
 
 @pytest.fixture(autouse=True)
 def _isolated(monkeypatch, tmp_path_factory):
-    """CLI invocations here render real decks and wrappers, which
+    """Prep here renders real decks and wrappers, which
     resolve config from cwd + HOME/XDG (H-8, 2026-08-13): unsandboxed,
     the file ran against the repo root's molbuilder.json, so the emitted
     text under test varied with the developer's config."""
@@ -47,7 +32,7 @@ def _isolated(monkeypatch, tmp_path_factory):
 
 
 # A 3-D (non-linear) molecule so the derived vacuum cell isn't degenerate at
-# the default vacuum=0 (structure-periodicity.md).  These CLI tests exercise
+# the default vacuum=0 (structure-periodicity.md).  These prep tests exercise
 # stage/log mechanics, not geometry, so methane is fine.
 _XYZ = textwrap.dedent("""\
     5
@@ -67,91 +52,17 @@ def xyz(tmp_path):
     return p
 
 
-@pytest.fixture
-def h2():
-    return Structure(
-        elements=["H", "H"],
-        positions=np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]]),
-        vacuum=(12.0, 12.0, 12.0),   # non-degenerate cell for this linear molecule
-    )
+# Retired 2026-10-05: four tests of the seed writer's own arguments.  Its
+# ``stage_name`` and the ``# stage:`` line went (no reader read it); the
+# convergence keys are the closed set the reader asks for
+# (`trajectory_log.emitter._LEAF_KEYS`), so no key can carry whitespace; and
+# the header and step 0 come from one writer, `header_and_preview`, whatever
+# it is handed.
 
 
 # --------------------------------------------------------------------- #
-#  write_initial_preview kwargs                                          #
+#  Prep: a SIESTA ladder seeds one molwatch log per stage                #
 # --------------------------------------------------------------------- #
-
-
-def test_backwards_compat_no_kwargs_means_no_stage_or_convergence_headers(
-        h2, tmp_path):
-    """The pre-C1.4 callers don't pass stage_name / convergence_targets.
-    Their output must be byte-equivalent for the new header subset:
-    no ``# stage:``, no ``# convergence.``."""
-    p = tmp_path / "JOB.molwatch.log"
-    write_initial_preview(h2, p, job="JOB", engine="siesta")
-    text = p.read_text()
-    assert "# stage:" not in text
-    assert "# convergence." not in text
-
-
-def test_convergence_targets_with_whitespace_key_raises(h2, tmp_path):
-    """A key with internal whitespace would break the line-oriented
-    parser the inspector uses.  Reject at write time."""
-    p = tmp_path / "bad.molwatch.log"
-    with pytest.raises(ValueError, match="whitespace"):
-        write_initial_preview(h2, p, job="JOB", engine="siesta",
-                                convergence_targets={
-                                    "max force": 0.05,  # space in key
-                                })
-
-
-def test_stage_name_and_convergence_can_be_combined(h2, tmp_path):
-    p = tmp_path / "JOB_02_medium.molwatch.log"
-    write_initial_preview(h2, p, job="JOB", engine="siesta",
-                            stage_name="02_medium",
-                            convergence_targets={
-                                "max_force_tol_eV_per_A": 0.04,
-                            })
-    text = p.read_text()
-    assert "# stage: 02_medium" in text
-    assert "# convergence.max_force_tol_eV_per_A: 0.04" in text
-    # Headers appear before the step block.
-    stage_ix = text.find("# stage: 02_medium")
-    step_ix = text.find("==== molwatch step 0 begin ====")
-    assert 0 < stage_ix < step_ix
-
-
-def test_step_block_unchanged_by_new_kwargs(h2, tmp_path, monkeypatch):
-    """The step-0 preview body (coords, energy=None, scf_history)
-    must be byte-equivalent whether or not the new kwargs are set --
-    they only add HEADER lines, not body content.
-
-    Mock ``time.time`` so the two writes get the same wall_time
-    (without the mock the two calls land in different milliseconds
-    and the body's wall_time line diverges by microseconds when the
-    test runs as part of a larger suite)."""
-    monkeypatch.setattr(
-        "molbuilder.trajectory_log.format.time.time",
-        lambda: 1735000000.123,
-    )
-    p1 = tmp_path / "without.log"
-    p2 = tmp_path / "with.log"
-    write_initial_preview(h2, p1, job="J", engine="siesta")
-    write_initial_preview(h2, p2, job="J", engine="siesta",
-                            stage_name="01_coarse",
-                            convergence_targets={"max_force_tol_eV_per_A": 0.05})
-    body_marker = "==== molwatch step 0 begin ===="
-    body1 = p1.read_text().split(body_marker, 1)[1]
-    body2 = p2.read_text().split(body_marker, 1)[1]
-    assert body1 == body2
-
-
-# --------------------------------------------------------------------- #
-#  CLI: multi-stage SIESTA emits per-stage molwatch logs                #
-# --------------------------------------------------------------------- #
-
-
-def _invoke(*args):
-    return CliRunner().invoke(cli, list(args), catch_exceptions=False)
 
 
 def _staged(xyz, tmp_path, strategy):
@@ -238,10 +149,6 @@ def test_per_stage_molwatch_log_carries_stage_target(xyz, tmp_path):
     assert "# convergence.max_force_tol_eV_per_A: 0.05" in text1
     assert "# convergence.max_force_tol_eV_per_A: 0.04" in text2
     assert "# convergence.max_force_tol_eV_per_A: 0.01" in text3
-    # And each carries its own stage label.
-    assert "# stage: 01_coarse" in text1
-    assert "# stage: 02_medium" in text2
-    assert "# stage: 03_tight" in text3
 
 
 def test_per_stage_molwatch_log_carries_its_geometry_step_cap(xyz, tmp_path):

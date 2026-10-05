@@ -31,7 +31,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence, Tuple
 
 from .diagnostics import EXTENSION_TO_CATEGORY, get_capabilities
 # The channel-name rule, from the module that owns the file those names
@@ -1981,8 +1981,8 @@ def render_run_wrapper(script_path: Path, *,
                   ``.pyscf.log`` instead of ``.out`` (Phase C
                   rename, 2026-06-07) so the Results-tab inspector
                   dispatcher can distinguish PySCF stdout from
-                  SIESTA's.  The inlined ``_MolwatchEmitter`` handles
-                  its own log files independently.
+                  SIESTA's.  The script's own progress-log writer
+                  (``MolwatchEmitter``) writes the ``.molwatch.log``.
 
     Both wrappers accept ``--continue`` / ``-c`` and ``--force`` /
     ``-f``.  See the wrapper's ``-h`` for the full flag inventory.
@@ -4124,21 +4124,33 @@ _FINISH_BUNDLES = {VIBRATION_BUNDLE: vibration_bundle}
 
 #: Every file the PySCF script IMPORTS molbuilder's code from
 #: (`engines/pyscf.md` § 3), as ``{name beside the job: the module whose
-#: source it is}``: the progress-log writer and the unit factors it writes
-#: with, the structure codec with the structure and sidecar modules its
-#: ``write_moved`` reaches, and the mode selector.  The script imports them
-#: by these names -- `pyscf.input.emit_bundle_imports` reads them here.
+#: source it is}``: the node's core count, which the threading setup asks
+#: before numpy is imported (`runtime_info`, standard library only); the
+#: progress-log writer and the unit factors it writes with; the structure
+#: codec, with the structure module (its one XYZ reader among it) and the
+#: sidecar module its ``write_moved`` reaches; the relaxation; and a
+#: vibration's rules -- the PySCF route's, the harmonic path and
+#: thermochemistry, the result's hash and writer -- and its mode selector.
+#: The script imports them by these names -- `pyscf.input.emit_bundle_imports`
+#: reads them here.
 #:
 #: **Each module's own file, imported two ways**, like the monitor's and the
-#: finish's; the rule for joining is *imports only the standard library,
-#: numpy -- which PySCF needs anyway -- and the other members*, at load and
-#: in every function the script calls.
+#: finish's; the rule for joining is *imports the standard library and numpy
+#: at load, and in the functions the script calls also ASE -- which the
+#: PySCF env carries for it (`envs/recipes.py`) -- and PySCF itself; nothing
+#: else but the other members*.
 PYSCF_COMPANIONS: Dict[str, str] = {
+    "runtime_info.py":          "molbuilder.runtime_info",
     "molwatch_emitter.py":      "molbuilder.trajectory_log.emitter",
     "constants.py":             "molbuilder.constants",
     "workingcopy_structure.py": "molbuilder.workingcopy_structure",
     "structure.py":             "molbuilder.structure",
     "molstruct.py":             "molbuilder.sidecars.molstruct",
+    "relax_policy.py":          "molbuilder.pyscf.relax_policy",
+    "end_lines.py":             "molbuilder.pyscf.end_lines",
+    "pyscf_vibration.py":       "molbuilder.spectra.pyscf_vibration",
+    "normal_modes.py":          "molbuilder.spectra.normal_modes",
+    "spectra_sidecar.py":       "molbuilder.sidecars.spectra",
     "mode_selection.py":        "molbuilder.spectra.selection",
 }
 
@@ -4159,6 +4171,24 @@ _PYSCF_MAIN = (
 def pyscf_bundle() -> bytes:
     """The bytes of :data:`PYSCF_BUNDLE`, from the one builder."""
     return _zip_bundle(_PYSCF_MAIN, PYSCF_COMPANIONS)
+
+
+def bundles_for(script, finish: Optional[str] = None
+                ) -> Tuple[Tuple[str, Callable[[], bytes]], ...]:
+    """The bundles that travel beside a deck, each ``(its name, its
+    builder)`` -- THE ONE LIST: `render_wrappers` writes them beside the
+    deck and `materialize` brings them into every attempt.
+
+    The monitor's, beside every job (:data:`MONITOR_BUNDLE`); the job's
+    finish when it has one (`Job.finish`, `engines/vibration.md` § 5.5); and
+    beside a PySCF script, the molbuilder code it imports
+    (:data:`PYSCF_BUNDLE`, `engines/pyscf.md` § 3)."""
+    out = [(MONITOR_BUNDLE, monitor_bundle)]
+    if finish is not None:
+        out.append((finish, _FINISH_BUNDLES[finish]))
+    if EXTENSION_TO_CATEGORY.get(Path(script).suffix.lower()) == "pyscf":
+        out.append((PYSCF_BUNDLE, pyscf_bundle))
+    return tuple(out)
 
 
 @dataclass(frozen=True)
@@ -4267,24 +4297,15 @@ def render_wrappers(script_path: Path, *,
     # (`running-a-job.md` § 4.1, `run-reports.md` § 2.3).  It travelled only
     # beside a `.fdf` until 2026-09-26, so no PySCF run was ever watched.
     #
-    # ONE FILE, BUILT FROM ONE TABLE: the bundle holds every module of
-    # MONITOR_COMPANIONS, and every stager brings the bundle.  This writer and
-    # `materialize._bring`'s extras were two hand-kept lists of "what travels
-    # with the monitor" until 2026-08-28; `config_dir.py` was added here and
-    # never there, and every production run's monitor died at import, stderr
-    # to /dev/null.  A single file cannot be half-shipped.
-    blobs = ((MONITOR_BUNDLE, monitor_bundle()),)
-    # AND THE FINISH, when the job has one: the bundle its wrapper runs after
-    # the engine (`Job.finish`, `engines/vibration.md` § 5.5), built by the
-    # same builder from its own table.  `render_run_wrapper` has refused a
-    # name it cannot ship.
-    if finish is not None:
-        blobs += ((finish, _FINISH_BUNDLES[finish]()),)
-    # AND BESIDE A PYSCF SCRIPT, the molbuilder code it imports
-    # (`engines/pyscf.md` § 3) -- every PySCF script, whatever it computes.
-    # `render_run_wrapper` has refused a suffix it cannot run.
-    if EXTENSION_TO_CATEGORY[script_path.suffix.lower()] == "pyscf":
-        blobs += ((PYSCF_BUNDLE, pyscf_bundle()),)
+    # ONE FILE PER BUNDLE, AND ONE LIST OF THEM (`bundles_for`), which
+    # `materialize` asks too when it brings the bundles into the attempt.
+    # This writer and `materialize._bring`'s extras were two hand-kept lists
+    # of "what travels with the monitor" until 2026-08-28; `config_dir.py`
+    # was added here and never there, and every production run's monitor
+    # died at import, stderr to /dev/null.  `render_run_wrapper` has refused
+    # a finish it cannot ship and a suffix it cannot run.
+    blobs = tuple((name, build()) for name, build
+                  in bundles_for(script_path, finish))
 
     # The submission layer (`job-system.md` § 6): a ``.sbatch`` only when the
     # machine has a queue -- every value in it the job's own (its resources,

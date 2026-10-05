@@ -8,7 +8,9 @@ applied to a line.
 
 **Stdlib only, and nothing of ours**: this module travels beside every job
 (`runwrap.MONITOR_COMPANIONS`, `execution/run-reports.md` § 2.3), so the
-monitor reads how a PySCF run ended with the reader the Results tab uses.
+monitor reads how a PySCF run ended with the reader the Results tab uses --
+and beside every PySCF script (`runwrap.PYSCF_COMPANIONS`), whose
+progress-log writer writes the footer words from it.
 The two constants lived in the emitters themselves until 2026-09-26, where a
 reader that must run without molbuilder could not reach them.
 """

@@ -16,9 +16,6 @@ cleanly anywhere else.  Wall cost ~1 min total (water is 17 s a run).
 from __future__ import annotations
 
 import json
-import os
-from pathlib import Path
-
 import subprocess
 
 import numpy as np
@@ -36,6 +33,19 @@ pytestmark = [
 ]
 
 WATER = "3\nwater\nO 0.0 0.0 0.119\nH 0.0 0.757 -0.477\nH 0.0 -0.757 -0.477\n"
+
+
+def _bundle_head(folder, *objects) -> str:
+    """A probe's first lines, the way a PySCF script starts
+    (`engines/pyscf.md` § 3): ``mb_pyscf.pyz`` written into ``folder``, then
+    the script's own head and an import of each of ``objects`` from the
+    bundle, bound as ``_mb_<its name>`` -- so a probe runs the code a run
+    executes, under the env that runs it, where molbuilder is not
+    installed."""
+    from molbuilder.pyscf.input import emit_bundle_imports, emit_script_head
+    from molbuilder.runwrap import PYSCF_BUNDLE, pyscf_bundle
+    (folder / PYSCF_BUNDLE).write_bytes(pyscf_bundle())
+    return "\n".join([*emit_script_head(), *emit_bundle_imports(*objects)])
 
 
 def _describe(tmp_path, monkeypatch, *, frozen=()):
@@ -311,13 +321,12 @@ def test_asking_for_ir_does_not_move_the_frequencies(tmp_path):
     Runs inside ``molbuilder-pySCF`` like everything else in this file --
     pyscf lives only there.
     """
+    from molbuilder.spectra.pyscf_vibration import dipole_derivatives
     script = tmp_path / "hess_identity.py"
     script.write_text(
-        "import sys\n"
-        f"sys.path.insert(0, {str(Path(__file__).resolve().parent.parent)!r})\n"
-        "import numpy as np\n"
+        _bundle_head(tmp_path, dipole_derivatives)
+        + "import numpy as np\n"
         "from pyscf import gto, dft\n"
-        "from molbuilder.pyscf.vibration_emitters import dipole_derivatives\n"
         "mol = gto.Mole(atom='N 0 0 0; H 0.8 0 0; H 0 1 0; H 0 0 1.2',\n"
         "               basis='6-31G', verbose=0).build()\n"
         "for xc in ('PBE0', 'B3LYP-D3BJ'):\n"
@@ -326,7 +335,7 @@ def test_asking_for_ir_does_not_move_the_frequencies(tmp_path):
         "        if df: mf = mf.density_fit()\n"
         "        mf.run()\n"
         "        ref = np.asarray(mf.Hessian().kernel())\n"
-        "        h, dmu, route = dipole_derivatives(mf, [0,1,2,3], True)\n"
+        "        h, dmu, route = _mb_dipole_derivatives(mf, [0,1,2,3], True)\n"
         "        print('RESULT', xc, df, route,\n"
         "              float(np.max(np.abs(h - ref))),\n"
         "              None if dmu is None else list(dmu.shape))\n",
@@ -358,23 +367,20 @@ def test_the_rank_rule_reproduces_pyscf_on_free_molecules(tmp_path):
     methane (degenerate modes -- eigenvalues must agree, eigenvectors
     need not).
 
-    The two functions travel into the probe as SOURCE TEXT, the way the
-    deck will carry them, so a module-scope name either one leaned on
-    would fail here as a NameError rather than on the queue.
+    The probe imports the path from ``mb_pyscf.pyz`` beside it, through
+    the script's own head and import lines, the way the vibration script
+    does (`engines/pyscf.md` § 3) -- so what is checked is the code a run
+    executes, under the env that runs it.
     """
-    import inspect
-
-    from molbuilder.constants import CM1_PER_SQRT_HARTREE_BOHR2_AMU
-    from molbuilder.spectra import normal_modes as _nm
-
+    from molbuilder.spectra.normal_modes import (frequencies_cm1,
+                                                 vibrational_modes)
     script = tmp_path / "rank_gate.py"
     script.write_text(
-        "import json\n"
+        _bundle_head(tmp_path, vibrational_modes)
+        + "import json\n"
         "import numpy as np\n"
         "from pyscf import gto, scf\n"
         "from pyscf.hessian import thermo\n"
-        + inspect.getsource(_nm.rigid_motions) + "\n"
-        + inspect.getsource(_nm.vibrational_modes) + "\n"
         "SYSTEMS = {\n"
         " 'water': 'O 0 0 0.119; H 0 0.757 -0.477; H 0 -0.757 -0.477',\n"
         " 'co2': 'O 0 0 -1.16; C 0 0 0; O 0 0 1.16',\n"
@@ -388,7 +394,7 @@ def test_the_rank_rule_reproduces_pyscf_on_free_molecules(tmp_path):
         "    hess = np.asarray(mf.Hessian().kernel())\n"
         "    mass = np.asarray(mol.atom_mass_list(isotope_avg=True), dtype=float)\n"
         "    ref = thermo.harmonic_analysis(mol, hess, mass=mass)\n"
-        "    lam, modes, pats = vibrational_modes(\n"
+        "    lam, modes, pats = _mb_vibrational_modes(\n"
         "        hess, mass, mol.atom_coords(unit='Angstrom'), [],\n"
         "        ('isolated', 'isolated', 'isolated'))\n"
         "    ref_lam = np.asarray(ref['force_const_au'], dtype=float)\n"
@@ -424,7 +430,7 @@ def test_the_rank_rule_reproduces_pyscf_on_free_molecules(tmp_path):
         assert r["n_rigid"] == 3 * {"water": 3, "co2": 3, "hf": 2, "methane": 5}[name] - expected_modes[name]
         ref, ours = np.asarray(r["ref"]), np.asarray(r["ours"])
         assert np.allclose(ours, ref, rtol=1e-8, atol=1e-13), (name, ours - ref)
-        ours_cm1 = np.sign(ours) * np.sqrt(np.abs(ours)) * CM1_PER_SQRT_HARTREE_BOHR2_AMU
+        ours_cm1 = frequencies_cm1(ours)
         assert np.allclose(ours_cm1, np.asarray(r["ref_cm1"]), atol=1e-4), (name, ours_cm1, r["ref_cm1"])
         if name in ("water", "hf"):
             assert all(abs(o - 1.0) < 1e-6 for o in r["overlaps"]), (name, r["overlaps"])
@@ -498,13 +504,12 @@ def test_the_free_atom_hessian_is_the_free_block_of_the_full_one(tmp_path):
     dispersion correction, whose Hessian term is full-size and has to be
     cut to the free atoms by hand -- and it must come back numbered by
     position in the list, which is why the deck places it by index."""
+    from molbuilder.spectra.pyscf_vibration import dipole_derivatives
     script = tmp_path / "partial_hessian.py"
     script.write_text(
-        "import sys\n"
-        f"sys.path.insert(0, {str(Path(__file__).resolve().parent.parent)!r})\n"
-        "import numpy as np\n"
+        _bundle_head(tmp_path, dipole_derivatives)
+        + "import numpy as np\n"
         "from pyscf import gto, scf, dft\n"
-        "from molbuilder.pyscf.vibration_emitters import dipole_derivatives\n"
         "CASES = [\n"
         "  ('water-rhf', 'O 0 0 0.119; H 0 0.757 -0.477; H 0 -0.757 -0.477', 'sto-3g', None, [1, 2]),\n"
         "  ('nh3-b3lyp-d3bj', 'N 0 0 0; H 0.8 0 0; H 0 1 0; H 0 0 1.2', '6-31G', 'B3LYP-D3BJ', [0, 1]),\n"
@@ -513,7 +518,7 @@ def test_the_free_atom_hessian_is_the_free_block_of_the_full_one(tmp_path):
         "    mol = gto.M(atom=atom, basis=basis, verbose=0)\n"
         "    mf = (dft.RKS(mol, xc=xc) if xc else scf.RHF(mol)).run()\n"
         "    full = np.asarray(mf.Hessian().kernel())\n"
-        "    reduced, dmu, route = dipole_derivatives(mf, free, True)\n"
+        "    reduced, dmu, route = _mb_dipole_derivatives(mf, free, True)\n"
         "    held = [i for i in range(mol.natm) if i not in free]\n"
         "    drift = float(np.max(np.abs(reduced[np.ix_(free, free)] - full[np.ix_(free, free)])))\n"
         "    zeros = float(np.max(np.abs(reduced[held])))\n"

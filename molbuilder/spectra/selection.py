@@ -37,14 +37,15 @@ def select_modes(frequencies_cm1: Sequence[float], selection: str, *,
     ``[freq_min_cm1, freq_max_cm1]`` is closed, and either bound ``None``
     leaves that side open -- a negative minimum opts imaginary modes in.
 
-    A listed number with no mode is returned as listed: the mode count is
-    known only once the Hessian is done, and the script skips such a number
-    there, saying so.
+    A listed number that names no mode is dropped: nothing can be probed
+    for it, and the selection is what the run records.  The script says
+    which were dropped -- the mode count is known only once the Hessian is
+    done, so nothing before the run could refuse them.
     """
     if selection == "skip":
         return []
     if selection == "explicit":
-        return list(explicit)
+        return [n for n in explicit if 1 <= n <= len(frequencies_cm1)]
     if selection == "all":
         return [n for n, f in enumerate(frequencies_cm1, start=1)
                 if (freq_min_cm1 is None or f >= freq_min_cm1)

@@ -1350,9 +1350,10 @@ WRITTEN: "tuple[Artifact, ...]" = (
                     "(`runwrap.write_run_wrapper`); a copy in each attempt",
              only="a force-constant stage"),
     Artifact(name=PYSCF_BUNDLE,
-             what="molbuilder's own code the PySCF script imports -- the "
-                  "progress-log writer, the structure codec, the mode "
-                  "selector",
+             what="molbuilder's own code the PySCF script runs, which it "
+                  "imports from here -- the core count, the progress-log "
+                  "writer, the structure codec, the relaxation, a "
+                  "vibration's rules",
              engine="pyscf",
              when="prep", level="stage", kind="derived",
              writer="prep, beside the PySCF script "

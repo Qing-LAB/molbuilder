@@ -44,7 +44,7 @@ def test_c1_initial_xyz_captured_before_the_optimization(small_struct):
     assert save_pos != -1, "no _initial.xyz save call found"
 
     # The optimization comes after the SCF setup.
-    opt_pos = text.find("mol_eq, _GEOM_CONVERGED = relax(")
+    opt_pos = text.find("mol_eq, _GEOM_CONVERGED = _mb_relax(")
     assert opt_pos != -1, "no optimization call found"
 
     # The save MUST come before it.
