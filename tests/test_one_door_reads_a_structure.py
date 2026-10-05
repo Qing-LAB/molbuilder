@@ -26,8 +26,6 @@ the package's source for direct calls to the low-level readers until
 """
 from __future__ import annotations
 
-import json
-
 import numpy as np
 
 from conftest import write_pseudos
@@ -79,7 +77,7 @@ def test_what_the_author_set_on_the_structure_reaches_the_deck(tmp_path,
     ``Structure.from_xyz(path.read_text())`` instead of
     ``StructureCodec().load(path)``.
     """
-    from molbuilder.parse.dirs.atom_metadata import atom_metadata_json_for_run_dir
+    from molbuilder.runs import declared, run_of
     from molbuilder.projects import PROJECTS_ROOT_ENV
     from molbuilder.structure import Structure
     from molbuilder.workingcopy_structure import StructureCodec
@@ -127,6 +125,7 @@ def test_what_the_author_set_on_the_structure_reaches_the_deck(tmp_path,
     assert np.allclose(lattice, CELL, atol=1e-9), (
         f"the deck's lattice is not the cell the author stated:\n{lattice}")
 
-    carried = json.loads(atom_metadata_json_for_run_dir(attempt, 4) or "{}")
+    # THE RUN'S OWN DECK says what it carries (`runs.declared`).
+    carried = declared(run_of(attempt)).atom_metadata_for(4) or {}
     assert carried.get("regions", {}).get("anchor") == REGIONS["anchor"], (
         f"the region the author named did not reach the deck: {carried}")

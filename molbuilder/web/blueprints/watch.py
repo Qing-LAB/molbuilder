@@ -39,7 +39,7 @@ import os
 import sys
 import tempfile
 from threading import Lock
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from flask import Blueprint, jsonify, request
 
@@ -48,8 +48,7 @@ from molbuilder.parse import (
     detect as detect_parser,
 )
 from molbuilder.parse.contract import engine_of
-from molbuilder.runs import openable, run_answer, run_of
-from molbuilder.parse.dirs.atom_metadata import engine_frame_for_run_dir
+from molbuilder.runs import Declared, declared, openable, run_answer, run_of
 from molbuilder.parse.dirs.run_info import run_info_for_dir
 from molbuilder.parse.engines._helpers import (
     trajectory_result_to_legacy_dict as trajectory_to_legacy_dict,
@@ -163,21 +162,6 @@ def _remove_temp_quietly(path: str) -> None:
 # this pair was two of them.
 
 
-def _by_role(directory: str, role: str) -> "List[Any]":
-    """`runfiles.find_by_role`, taking this module's string directories.
-
-    **One call site now, not five.**  It was written for the directory
-    resolver's four roles plus the cell reader's fifth; the resolver left on
-    2026-09-18 and took its four with it, so what remains is the cell reader
-    asking for ``.source.xyz``.  Kept as a wrapper because converting this
-    module's ``str`` directories is still worth one place.
-    """
-    from pathlib import Path
-
-    from molbuilder.runfiles import find_by_role
-    return find_by_role(Path(directory), role)
-
-
 # `_resolve_run_directory` STOOD HERE until 2026-09-18 -- 132 lines, and with
 # the five helpers above it the whole four-rung discovery chain.  It moved to
 # `parse.dirs.rundir.openable_in` (`plan.md` § 5c step 2) VERBATIM, proved
@@ -190,27 +174,6 @@ def _by_role(directory: str, role: str) -> "List[Any]":
 # load in this directory*, which `jobset` and the Results tab need too, and
 # nothing below the web layer may import the web layer.  A private copy here is
 # a copy only this blueprint can ask.
-
-
-def _atom_metadata_json(
-    search_dir: Optional[str], data: Optional[Dict[str, Any]]
-) -> Optional[str]:
-    """Recover the run's embedded per-atom metadata (region labels /
-    frozen tags / annotation channels) as a JSON string, so the Results-tab
-    MolView carries it despite loading *coordinates* from the output logs.
-
-    All the real work -- finding the input script, parsing the
-    ATOM-METADATA block, guarding the atom count -- lives in
-    :func:`molbuilder.parse.dirs.atom_metadata.atom_metadata_json_for_run_dir`
-    (the directory-scoped recovery helper).  This is pure results-adapter
-    glue: it sources frame-0's atom count from the parsed trajectory and
-    hands it in as the guard.  ``None`` when the run carries no block."""
-    from molbuilder.parse.dirs.atom_metadata import (
-        atom_metadata_json_for_run_dir,
-    )
-    frames = (data or {}).get("frames")
-    n0 = len(frames[0]) if frames else None
-    return atom_metadata_json_for_run_dir(search_dir, n0)
 
 
 def _refuse_if_not_a_trajectory(parser_cls):
@@ -320,9 +283,8 @@ def _frame0_structure(
         from molbuilder.structure import Structure
         first = frames[0]
         # THE RUN'S BOX, set as the structure is built (plan § 5q D15): the
-        # block `engine_frame_for_run_dir` composed, under the structure's own
-        # field names -- the cell, the stated 0, the kinds, and a vacuum only
-        # for a run made before the deck record.
+        # block its deck answered (`runs.Declared.frame`), under the
+        # structure's own field names -- the cell, the stated 0, the kinds.
         per = meta.get("periodicity") or {}
         struct = Structure(
             elements=[str(a[0]) for a in first],
@@ -331,8 +293,6 @@ def _frame0_structure(
             engine_offset=per.get("engine_offset"),
             axis_kind=(tuple(per["axis_kind"]) if per.get("axis_kind")
                        else None),
-            vacuum=(tuple(per["vacuum"]) if per.get("vacuum") is not None
-                    else None),
         )
         meta_json = meta.get("atom_metadata")
         if meta_json:
@@ -378,20 +338,29 @@ def _run_metadata(
     structure it ran on?* -- and a new metadata category joins them as a
     KEY inside ``info`` (``parse.dirs.run_info``), not as a fourth field.
     """
+    # WHAT THE RUN DECLARED, FROM ITS OWN DECK -- the run the opened file
+    # belongs to (`runs.run_of`), its labels and its box both read from
+    # that one deck (`runs.declared`), never the first deck a search of
+    # the folder meets (plan B12).  No run of ours, as for an upload:
+    # nothing declared, the output's own lattice alone.
+    _run = run_of(output) if output else None
+    said = declared(_run) if _run is not None else Declared()
+    frames = (data or {}).get("frames")
+    md = said.atom_metadata_for(len(frames[0]) if frames else None)
+    import json as _json
     return {
         # Per-atom metadata (region labels / frozen tags / annotation
         # channels) the Build tab embedded in the run's input script:
         # coordinates come from the output logs, the labels from the
-        # .fdf / .py.  A JSON string, applied downstream through
-        # apply_to_structure; None when the run carries no block.
-        "atom_metadata": _atom_metadata_json(search_dir, data),
-        # The run's periodicity (the cell from the output logs, the axis
-        # kinds from the deck's ENGINE-OFFSET record -- the `.source` pair
-        # for a run made before it -- and the engine's origin, 0).  The
-        # viewer passes it through verbatim -- guessing periodicity in the
-        # browser is the one thing the Cell rules refuse.
-        "periodicity":   engine_frame_for_run_dir(
-            search_dir, (data or {}).get("lattice")),
+        # deck.  A JSON string, applied downstream through
+        # apply_atom_metadata; None when the run carries no block.
+        "atom_metadata": _json.dumps(md) if md else None,
+        # The run's box (the cell from the output logs, the axis kinds
+        # from the deck's ENGINE-OFFSET record, and the engine's origin,
+        # 0).  The viewer passes it through verbatim -- guessing
+        # periodicity in the browser is the one thing the Cell rules
+        # refuse.
+        "periodicity":   said.frame((data or {}).get("lattice")),
         # What the run says ABOUT itself: today the electronic contract
         # its deck records, as `info.calculation`.  Rides installMolecule
         # in and exportFile out (molview.md § 8.4a), so an export from a

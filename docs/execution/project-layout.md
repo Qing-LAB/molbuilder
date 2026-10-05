@@ -2590,7 +2590,7 @@ does not name (§ 5.3).
 | | SIESTA's files | the door |
 |---|---|---|
 | **read** | `<label>.XV` | the registry's `SiestaXVFileParser` (`read_xv_with_cell`) — the Results tab, the transport citation, `xv2xyz` |
-| | `<label>.xyz` | `StructureCodec.load`, the frame from the run's deck (`engine_frame_for_run_dir`, `model/structure-periodicity.md` § 6.0) |
+| | `<label>.xyz` | `StructureCodec.load`, the box from the run's own deck (`runs.declared`, `model/structure-periodicity.md` § 6.0) |
 | | `<label>.MD.nc` | `parse.engines.siesta_mdnc.sibling_md_nc` — the `.out`'s frames are upgraded from it |
 | | `fdf.<stamp>.log` | the run record's setup, paired with the `.out` by its stamp (`parse.dirs.record`) |
 | | `<El>.ion` | a transport calculation citing the run |

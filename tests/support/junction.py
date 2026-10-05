@@ -153,32 +153,13 @@ def spectra_sidecar(path):
 
 
 # --------------------------------------------------------------------- #
-#  A SIESTA run directory, and a .XV, both BUILT                        #
+#  A SIESTA .XV, BUILT                                                 #
 # --------------------------------------------------------------------- #
 
-def run_dir(tmp_path, label="junction"):
-    """Render a real SIESTA run directory for the junction; return its path.
-
-    Uses the application's OWN emitter, so the directory is whatever the app
-    produces today -- which is the point.  A run directory copied from
-    projects/ asserts against numbers captured on the day it was written, and
-    goes stale silently when the format moves.
-    """
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.siesta.input import render_fdf
-
-    run = tmp_path / f"{label}-run"
-    run.mkdir(parents=True, exist_ok=True)
-    # ``diag_algorithm`` is set explicitly: the parse tests assert that curated
-    # body keys survive as RAW STRINGS, and a key left at its default gives
-    # them nothing to check.  A fixture has to exercise what is asserted.
-    (run / f"{label}.fdf").write_text(
-        render_fdf(build_junction(),
-                   SiestaConfig(system_label=label,
-                                diag_algorithm="ELPA-2STAGE")),
-        encoding="utf-8")
-    return run
-
+# `run_dir` -- a deck rendered into a bare folder -- stood here until
+# 2026-10-04, for the one test that read a run's labels by searching
+# that folder; a run's labels are its own deck's, through the run door
+# (`runs.declared`, plan B12).
 
 #: SIESTA writes .XV in BOHR; the parser converts back on read.
 # THE one Bohr->Angstrom value (`molbuilder/constants.py`).  A literal

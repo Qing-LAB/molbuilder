@@ -170,11 +170,11 @@ about how a simulation runs.
 
 **Results-tab recovery bridge.** The trajectory inspector loads *coordinates*
 from a run's output logs (geometry only — the labels aren't there, they're in
-the input script's block). So `parse/dirs/atom_metadata.py::atom_metadata_json_for_run_dir(run_dir, n_atoms)`
-(the directory-scoped layer — the TextParser itself stays memory-only) finds
-the run's input script, extracts the block, guards it against the
-trajectory's atom count (mismatch → `None`, never breaks the load), and
-`/api/watch/load` surfaces it as `atom_metadata`. The inspector hands it to
+the input script's block). So `/api/watch/load` asks the run the opened file
+belongs to what ITS OWN deck declared (`runs.declared(run).atom_metadata_for(n_atoms)`
+— never the first deck a search of the folder meets), guards the block against
+the trajectory's atom count (mismatch → `None`, never breaks the load), and
+surfaces it as `atom_metadata`. The inspector hands it to
 `molview.data.installMolecule({text, atomMetadata})`; `/api/build/load` applies
 it via `apply_to_structure` — the same seam a sidecar uses. **Trusted fragment
 ≠ sidecar file:** the block omits the sidecar envelope's `structure_hash`, so

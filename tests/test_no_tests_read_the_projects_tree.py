@@ -34,11 +34,9 @@ versioned with the tests, reviewed when it changes.
 from __future__ import annotations
 
 import ast
-import json
 import re
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 
@@ -212,34 +210,12 @@ def test_the_shared_junction_fixture_builds():
     assert s.regions["frozen_atoms"] == sorted(frozen())
 
 
-def test_a_built_run_directory_round_trips_its_labels(tmp_path):
-    """End to end on constructed data: the application's own writer produces a
-    deck whose labels the LIVE reader recovers intact.
-
-    It said "the LIVE reader" while driving `_extract_script_source` until
-    2026-09-05 -- a door with no production caller, deleted that day. So the
-    one test claiming to cover how a finished run's labels are read was the
-    only thing keeping that path alive, and covered nothing that ships. It
-    now walks the real one: the run directory is scanned by
-    `parse/dirs/atom_metadata.py` and applied by `apply_atom_metadata`, which
-    is what `/api/build/load` and the transport composite both use.
-    """
-    import sys
-    sys.path.insert(0, str(TESTS))
-    from support.junction import frozen, run_dir
-    from molbuilder.parse.dirs.atom_metadata import atom_metadata_json_for_run_dir
-    from molbuilder.script_emit import apply_atom_metadata
-    from molbuilder.structure import FROZEN_LABEL, Structure
-
-    d = run_dir(tmp_path)
-    recovered = atom_metadata_json_for_run_dir(d)
-    assert recovered is not None, "the run dir's own deck yielded no label block"
-
-    payload = json.loads(recovered)
-    struct = Structure(elements=["C"] * payload["n_atoms_total"],
-                       positions=np.zeros((payload["n_atoms_total"], 3)))
-    assert apply_atom_metadata(struct, payload) is True
-    assert sorted(struct.regions[FROZEN_LABEL]) == frozen()
+# `test_a_built_run_directory_round_trips_its_labels` retired 2026-10-04
+# (W56 4b, plan B12): it read the labels of a deck rendered into a bare
+# folder by searching that folder (`parse/dirs/atom_metadata.py`, deleted).
+# A run's labels are its own deck's, read through the run door: pinned on
+# the road (`test_one_door_reads_a_structure.py`) and on a measured run
+# (`test_structure_info_bridge.py`).
 
 
 def test_the_built_xv_round_trips_through_the_real_parser(tmp_path):

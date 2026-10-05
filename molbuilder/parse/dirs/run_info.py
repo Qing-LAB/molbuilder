@@ -1,8 +1,7 @@
 """Run-directory ``info`` composition — what a run says ABOUT itself.
 
 Module: ``parse/dirs`` (directory-level composers — the ONE parse layer
-allowed to touch the filesystem), beside
-``atom_metadata_json_for_run_dir``.
+allowed to touch the filesystem).
 
 ``info`` is a structure's free store (`archive/2026-09-01-structure-info-plan.md`,
 `web/molview.md` § 8.4a): a dict of key -> value that DESCRIBES a

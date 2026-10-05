@@ -267,6 +267,38 @@ class Declared:
     atom_metadata: Optional[Dict[str, Any]] = None
     engine_offset: Optional[Dict[str, Any]] = None
 
+    def atom_metadata_for(self, n_atoms: Optional[int] = None
+                          ) -> Optional[Dict[str, Any]]:
+        """The atom-metadata block for a structure of ``n_atoms`` -- or
+        ``None`` when it labels nothing, or was written for another atom
+        count: its labels are indices, and would name the wrong atoms."""
+        md = self.atom_metadata
+        if not md or not (md.get("regions") or md.get("annotations")):
+            return None
+        if n_atoms is not None and md.get("n_atoms_total") != n_atoms:
+            return None
+        return md
+
+    def frame(self, lattice=None) -> Optional[Dict[str, Any]]:
+        """The box the engine had, for coordinates that came from it
+        (`model/structure-periodicity.md` § 6.0): the ``cell`` -- the
+        output's own ``lattice``, else the one the deck placed the atoms
+        in -- the ``axis_kind`` the deck recorded, and the engine's
+        origin, an ``engine_offset`` of 0, once a cell is known.  ``None``
+        when nothing says.  Both records are this run's deck's, read in
+        one place, so the box and the labels never come from two decks."""
+        out: Dict[str, Any] = {}
+        if isinstance(lattice, list) and len(lattice) == 3:
+            out["cell"] = lattice
+        rec = self.engine_offset or {}
+        if rec.get("axis_kind"):
+            out["axis_kind"] = [str(k) for k in rec["axis_kind"]]
+        if "cell" not in out and rec.get("cell") is not None:
+            out["cell"] = rec["cell"]
+        if "cell" in out:
+            out["engine_offset"] = [0.0, 0.0, 0.0]
+        return out or None
+
 
 def declared(run: Run) -> Declared:
     """WHAT ``run`` DECLARED ABOUT ITS ATOMS -- read from its own deck

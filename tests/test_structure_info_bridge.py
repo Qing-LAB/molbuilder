@@ -61,8 +61,7 @@ def client():
 
 def _register_tmp_as_picker_root(tmp_path, monkeypatch):
     """Watch's JSON-path mode constrains reads to the picker roots; point
-    them at tmp so the test's run dir is loadable (same helper shape as
-    ``test_atom_metadata_results_bridge``)."""
+    them at the test's tree so its run folder is loadable."""
     from molbuilder import diagnostics
     caps = diagnostics.Capabilities(
         runtime_config={}, conda_binary=None, conda_envs=frozenset())
@@ -190,6 +189,40 @@ class TestWatchLoadAnswersTheBlock:
     # folder no calculation claims holds no run of ours; what a run of ours
     # declared reaches the viewer through the run door, on the road
     # (`process/testing.md` § 6).
+
+    def test_a_flat_run_reads_its_own_deck_and_nothing_else(
+            self, client, monkeypatch):
+        """Each run of a flat calculation takes what it declared -- its labels
+        and its box -- from ITS OWN deck, both from that one deck: the Results
+        load of the flat H2 run shows atom 0 held in the isolated 10 Å box,
+        and each of the folder's two stages reads its own `.fdf` (user,
+        2026-10-04: *"make sure that it does make each run sees its own .fdf
+        and take information from there rather than mixing"*).
+
+        WHY API-LEVEL: a measured fixture, read where it was measured --
+        `tests/fixtures/siesta_flat_h2` (its README)."""
+        import numpy as np
+
+        from molbuilder.runs import declared, run_of
+        fixtures = Path(__file__).resolve().parent / "fixtures"
+        _register_tmp_as_picker_root(fixtures, monkeypatch)
+        flat = fixtures / "siesta_flat_h2"
+
+        d = client.post("/api/watch/load", json={"path": str(flat)}).get_json()
+        assert d["ok"] is True, d
+        held = json.loads(d["atom_metadata"])["regions"]["frozen_atoms"]
+        assert held == [0], d["atom_metadata"]
+        box = d["periodicity"]
+        assert box["axis_kind"] == ["isolated"] * 3, box
+        assert box["engine_offset"] == [0.0, 0.0, 0.0], box
+        np.testing.assert_allclose(box["cell"], np.eye(3) * 10.0, atol=1e-4)
+
+        # EACH RUN, ITS OWN DECK: the coarse run that wrote the output, and
+        # the medium stage prepped beside it in the same folder.
+        assert (declared(run_of(flat / "H2_01_coarse-run0.out")).deck.name
+                == "H2_01_coarse.fdf")
+        assert (declared(run_of(flat, stage="02_medium")).deck.name
+                == "H2_02_medium.fdf")
 
     def test_pointing_at_the_log_itself_finds_the_deck_beside_it(
             self, client, tmp_path, monkeypatch):

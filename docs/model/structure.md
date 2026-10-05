@@ -532,12 +532,12 @@ copy of any of them:
    writes. **An engine's own structure file** — SIESTA's `<label>.xyz`,
    written with no sidecar, read where its run is recorded — **takes that
    run's frame**: the cell and axis kinds its deck recorded and the
-   engine's origin, a stated 0, through the one composer
-   (`parse/dirs/atom_metadata.engine_frame_for_run_dir`), because
+   engine's origin, a stated 0, from that run's own deck
+   (`runs.declared(run).frame()`), because
    `structure-periodicity.md` § 6.0 asks it of every door that makes a
-   structure from an engine's output *(2026-09-27, plan § 0a M1)*. A file
-   `runfiles` declares, or one in a folder no run is recorded in, reads as
-   before. **Not** a periodicity gate: reading does not judge
+   structure from an engine's output *(2026-09-27, plan § 0a M1; from the
+   run's own deck since 2026-10-04, plan B12)*. A file molbuilder writes, or
+   one in a folder no calculation marks, reads as before. **Not** a periodicity gate: reading does not judge
    (`structure-periodicity.md` § 8.2) — see the `read` docstring below.
 
 **How it is shaped: one generator, and an adapter per destination.**

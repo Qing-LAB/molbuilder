@@ -183,24 +183,22 @@ class StructureCodec:
             # AN ENGINE'S OWN STRUCTURE FILE -- SIESTA's `<label>.xyz` in a run
             # folder -- has no sidecar, because molbuilder writes every
             # structure as a pair and the engine writes none.  Its frame is the
-            # run's: the cell and axis kinds that run's deck recorded, and the
-            # engine's origin, a stated 0 (`model/structure-periodicity.md`
-            # § 6.0: *"Every door that makes a structure from an engine's
-            # output states it"*).  A file molbuilder declares (`.source.xyz`
-            # and the rest, `runfiles.role_of`) is never one, and a folder no
-            # run is recorded in answers nothing, so every other read is as it
-            # was.
-            from .runfiles import role_of
-            if role_of(src.name) is None:
-                from .parse.dirs.atom_metadata import engine_frame_for_run_dir
-                frame = engine_frame_for_run_dir(src.parent)
+            # run's: the cell and axis kinds THAT RUN'S OWN DECK recorded
+            # (`runs.declared`), and the engine's origin, a stated 0
+            # (`model/structure-periodicity.md` § 6.0: *"Every door that makes
+            # a structure from an engine's output states it"*).  A file
+            # molbuilder writes (`runs.about`) is never one, and a file in a
+            # folder no calculation marks belongs to no run, so every other
+            # read is as it was.
+            from .runs import about, declared, run_of
+            run = run_of(src)
+            if run is not None and not about(src)["ours"]:
+                frame = declared(run).frame()
                 if frame and frame.get("cell") is not None:
                     changes = {"cell": frame["cell"],
                                "engine_offset": frame["engine_offset"]}
                     if frame.get("axis_kind"):
                         changes["axis_kind"] = tuple(frame["axis_kind"])
-                    if frame.get("vacuum") is not None:
-                        changes["vacuum"] = frame["vacuum"]
                     struct = struct.replace(**changes)
         # READING DOES NOT JUDGE (structure-periodicity.md § 8.2, decided
         # 2026-08-03).  A file whose sidecar holds an unusable box -- a

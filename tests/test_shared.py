@@ -174,9 +174,8 @@ class TestWorkspacePayloadCanonicalKeys:
 
 # A ``TestWorkspacePayloadRegionsAndFrozen`` class stood here with a
 # docstring and no test methods.  The rule it named -- the per-atom payload
-# carries regions + is_frozen -- is pinned in
-# `test_atom_metadata_results_bridge.py`, at the door that applies the
-# block (`/api/build/load`), which is where it can actually fail.
+# carries regions + is_frozen -- is pinned where a run's block is applied:
+# the Results load of a measured run (`test_structure_info_bridge.py`).
 
 
 class TestStructureToDictLegacyShim:
