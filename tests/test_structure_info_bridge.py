@@ -181,9 +181,10 @@ class TestWatchLoadAnswersTheBlock:
         """Each run of a flat calculation takes what it declared -- its labels
         and its box -- from ITS OWN deck, both from that one deck: the Results
         load of the flat H2 run shows atom 0 held in the isolated 10 Å box,
-        and each of the folder's two stages reads its own `.fdf` (user,
+        each of the folder's two stages reads its own `.fdf` (user,
         2026-10-04: *"make sure that it does make each run sees its own .fdf
-        and take information from there rather than mixing"*).
+        and take information from there rather than mixing"*), and SIESTA's
+        own ``H2.xyz``, opened as a structure, carries the same box.
 
         WHY API-LEVEL: a measured fixture, read where it was measured --
         `tests/fixtures/siesta_flat_h2` (its README)."""
@@ -220,6 +221,16 @@ class TestWatchLoadAnswersTheBlock:
                 == "H2_01_coarse.fdf")
         assert (declared(run_of(flat, stage="02_medium")).deck.name
                 == "H2_02_medium.fdf")
+
+        # THE ENGINE'S OWN STRUCTURE FILE has no sidecar -- SIESTA writes a
+        # bare XYZ -- so its box is its run's, from the same deck, at the
+        # engine's origin (`model/structure-periodicity.md` § 6.0).
+        from molbuilder.workingcopy_structure import StructureCodec
+        own = StructureCodec().load(flat / "H2.xyz")
+        assert own.cell is not None, "the run's box never reached its H2.xyz"
+        np.testing.assert_allclose(np.asarray(own.cell), np.eye(3) * 10.0,
+                                   atol=1e-4)
+        np.testing.assert_allclose(own.engine_offset, np.zeros(3))
 
     # `test_pointing_at_the_log_itself_finds_the_deck_beside_it` retired
     # 2026-10-04 (W56 review): a deck and a trajectory written into a bare

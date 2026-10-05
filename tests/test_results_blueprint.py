@@ -861,16 +861,20 @@ class TestTheContractEndpoint:
         * the folder speaks for the stage that ran, though two stages' decks
           lie in it (`model/parse.md` § 5.1): coarse's state and record;
         * the calculation decides what opens -- an optimization's engine
-          output, the run's own ``-run0.out`` (§ 5.2);
+          output, the run's own ``-run0.out``, offered before the progress
+          log prep seeded beside it, which SIESTA never writes into (§ 5.2,
+          § 5.5);
         * every name is read back with the run's label, to a declared role
           or to none (`job-contracts.md` § 2.2a, plan D24): SIESTA's
-          ``fdf.<stamp>.log``, ``H2.XV`` and ``H2.MD.nc`` are listed as the
-          engine's -- no role, not ours -- the decks as their stages' own.
+          ``fdf.<stamp>.log``, ``H2.XV``, ``H2.xyz`` and ``H2.MD.nc`` are
+          listed as the engine's -- no role, not ours -- the decks as their
+          stages' own.
 
         MUTATIONS THIS MUST FAIL AGAINST: a name with no label read back by
         its tail alone (`runfiles.role_of`: the fdf log as PySCF's ``.log``),
         or an engine file named on the label kept in the role its tail
-        spells (``.XV``) -- the listing until 2026-10-04.
+        spells (``.XV``) -- the listing until 2026-10-04; the seeded progress
+        log offered before the engine's output -- the door until 2026-09-24.
         """
         from pathlib import Path
 
@@ -884,7 +888,8 @@ class TestTheContractEndpoint:
         assert got["record"]["deck"]["path"] == "H2_01_coarse.fdf", (
             got["record"]["deck"])
         files = {f["name"]: f for f in got["files"]}
-        for name in ("fdf.20261004T082401.341.log", "H2.XV", "H2.MD.nc"):
+        for name in ("fdf.20261004T220618.285.log", "H2.XV", "H2.xyz",
+                     "H2.MD.nc"):
             assert (files[name]["role"], files[name]["about"]) == (
                 None, {"ours": False}), files[name]
         for name, stage in (("H2_01_coarse.fdf", "01_coarse"),

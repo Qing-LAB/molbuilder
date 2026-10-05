@@ -278,13 +278,13 @@ def test_a_run_of_ours_takes_the_history_siesta_names_by_its_label():
     """A run of ours names its output by stage and run index,
     ``H2_01_coarse-run0.out``, while SIESTA names the history by its
     ``SystemLabel``, ``H2.MD.nc`` -- so the exact stem never matches, and the
-    one ``.MD.nc`` in the folder is how the output finds its own
-    (`siesta_mdnc.sibling_md_nc`).
+    label the output prints, ``reinit: System Label: H2``, is how it finds
+    its own (`siesta_mdnc.sibling_md_nc`, `model/parse.md` § 5.3).
 
     API-LEVEL on a measured fixture: a real run of ours, read where it lies
     (`tests/fixtures/siesta_flat_h2`, `process/testing.md` § 6).
 
-    MUTATION THIS MUST FAIL AGAINST: the one-candidate rule removed -- the
+    MUTATION THIS MUST FAIL AGAINST: the label line not read -- the
     trajectory falls back to the output's four-decimal coordinates."""
     res = parse(str(_OURS / "H2_01_coarse-run0.out"))
     assert res.runtime_info.get("mdnc_source") == "H2.MD.nc", res.runtime_info

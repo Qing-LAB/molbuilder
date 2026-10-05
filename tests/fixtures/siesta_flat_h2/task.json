@@ -9,7 +9,7 @@
     "id": "H2_H2"
   },
   "structure": {
-    "source": "h2.source.xyz",
+    "source": "H2.source.xyz",
     "formula": "H2",
     "atoms": 2
   },
@@ -50,9 +50,5 @@
         "relax_max_displ": 0.02
       }
     }
-  ],
-  "execution": {
-    "mpi_np": 1,
-    "omp_threads": 1
-  }
+  ]
 }
