@@ -1,8 +1,8 @@
-"""``contract_of`` — the electronic contract a directory's deck records.
+"""``contract_of`` — the electronic contract a run's own deck records.
 
 The ONE interface behind the Results tab's contract recording
-(`archive/2026-09-01-structure-info-plan.md` I5): given a directory, find the one
-engine deck in it and answer the electronic contract it states, in the
+(`archive/2026-09-01-structure-info-plan.md` I5): given a run's own deck --
+its caller's, from the run door -- answer the electronic contract it states, in the
 catalogue's own names (:data:`RECORDED_FIELDS`) — so a recorded block
 (`info.calculation`) defaults a
 transport calculation's template when a pair carrying it is cited
@@ -17,9 +17,10 @@ Per-engine, behind one door:
   answers ``None`` for now (recorded on the plan's board — the
   interface is the point, the second engine drops in behind it).
 
-The same-directory rule as everywhere else (§ 4.1b): exactly one deck
-defines the answer; zero or several answer ``None`` — recording a
-guess would poison every consumer downstream.
+The deck is the run's own, handed by its caller (`runs.declared(run).deck`,
+`model/parse.md` § 5b), and this reads it and nothing else.  *(It took the
+one ``.fdf`` in a directory, or nothing, until 2026-10-04: a flat
+calculation, whose stages' decks share one folder, recorded none.)*
 """
 from __future__ import annotations
 
@@ -28,25 +29,25 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 
-def contract_of(directory) -> Optional[Dict[str, Any]]:
-    """The recorded-contract block for *directory*, or ``None``.
+def contract_of(deck) -> Optional[Dict[str, Any]]:
+    """The recorded-contract block of a run's own ``deck``, or ``None``:
+    no deck, a deck that states nothing, or a PySCF deck, which has no
+    extractor yet.
 
     Shape (the ``info.calculation`` block):
     ``{"engine", "contract": {catalogue name -> value},
     "source": <deck name>, "source_sha256"}`` — only fields the deck
     actually states appear in ``contract``.
     """
-    directory = Path(directory)
-    if not directory.is_dir():
+    if deck is None:
         return None
-    # THE ROLE COMES FROM THE CATALOGUE.  `"*.fdf"` is `runfiles.WRITTEN`'s
-    # `.fdf` spelled outside the module that declares it
-    # (`project-layout.md` § 4.5).
-    from ..runfiles import find_by_role
-    decks = find_by_role(directory, ".fdf")
-    if len(decks) == 1:
-        return _siesta_contract(decks[0])
-    return None
+    deck = Path(deck)
+    # THE ROLE COMES FROM THE CATALOGUE: SIESTA's deck role, not a
+    # suffix spelled here (`project-layout.md` § 4.5).
+    from ..runfiles import deck_roles, role_of
+    if not deck.is_file() or role_of(deck.name) not in deck_roles("siesta"):
+        return None
+    return _siesta_contract(deck)
 
 
 #: The settings the recorded contract carries, by their CATALOGUE names --

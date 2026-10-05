@@ -6,7 +6,7 @@ that DESCRIBES a structure without being part of it.  § 8.4a states it
 "rides ``installMolecule`` in and ``exportFile`` out"; this file pins the
 chain that makes that true, at every link:
 
-  1. **The composer** — ``parse.dirs.run_info.run_info_for_dir``: one
+  1. **The composer** — ``parse.dirs.run_info.run_info``: one
      answer to *what does this run directory say about itself*, so the
      two doors that ask cannot come to disagree.
   2. **The load door** — ``/api/build/load`` answers the store inside the
@@ -77,15 +77,10 @@ def _register_tmp_as_picker_root(tmp_path, monkeypatch):
 
 class TestTheComposer:
 
-    def test_a_deck_becomes_the_calculation_key(self, tmp_path):
-        from molbuilder.parse.dirs.run_info import run_info_for_dir
-        (tmp_path / "Relax.fdf").write_text(_DECK)
-        info = run_info_for_dir(tmp_path)
-        assert set(info) == {"calculation"}, (
-            "a deck with no run beside it says only what the deck states; "
-            "a new metadata category is a new key HERE and nowhere else")
-        assert info["calculation"]["contract"]["basis_size"] == "DZP"
-        assert info["calculation"]["source"] == "Relax.fdf"
+    # `test_a_deck_becomes_the_calculation_key` retired 2026-10-04 (W56
+    # review, ruling 1): it laid a deck in a bare folder for the composer to
+    # find; the composer is handed the run's own deck now, and both its keys
+    # are pinned on the measured runs below.
 
     def test_a_finished_run_answers_both_keys_at_both_doors(
             self, client, monkeypatch):
@@ -122,15 +117,15 @@ class TestTheComposer:
         assert record["held_atom_idxs"] == [0], record
         assert asked["relaxation"] == record
         assert (asked["calculation"] == loaded["info"]["calculation"]
-                == contract_of(run))
+                == contract_of(run / "H2_01_relax.fdf"))
 
     def test_nothing_to_say_is_none_not_an_empty_dict(self, tmp_path):
         """``None`` reads like its two siblings on the same response
         (``atom_metadata``, ``periodicity``): absent when there is nothing
         to say.  An empty dict would be a store the viewer then holds."""
-        from molbuilder.parse.dirs.run_info import run_info_for_dir
-        assert run_info_for_dir(tmp_path) is None
-        assert run_info_for_dir(None) is None
+        from molbuilder.parse.dirs.run_info import run_info
+        assert run_info() is None
+        assert run_info(deck=tmp_path / "absent.fdf") is None
 
     # `test_the_results_door_asks_the_composer_not_the_extractor` retired
     # 2026-10-04 (W56 review): it laid a deck and a structure in a bare
@@ -213,6 +208,11 @@ class TestWatchLoadAnswersTheBlock:
         rt = d["data"]["runtime_info"]
         assert rt.get("mdnc_source") == "H2.MD.nc", rt
         assert rt.get("frozen_atoms") == [0], rt
+        # ITS OWN DECK STATES ITS CONTRACT, though the folder holds two decks
+        # (ruling 1, 2026-10-04: a folder search found two and said none).
+        calc = d["info"]["calculation"]
+        assert calc["source"] == "H2_01_coarse.fdf", calc
+        assert calc["contract"]["basis_size"] == "DZP", calc
 
         # EACH RUN, ITS OWN DECK: the coarse run that wrote the output, and
         # the medium stage prepped beside it in the same folder.

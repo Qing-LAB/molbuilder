@@ -1668,7 +1668,7 @@ recorded WITH it (§ 11.2) — the same argument the frames won on.
 **WHICH SIDE FINDS IT.**  Never the viewer: it has no idea what
 describes the run on screen, and never looks.  The tab a viewer sits in
 does — and for a run directory that is ONE server-side composer,
-`parse.dirs.run_info.run_info_for_dir`, so the doors that ask cannot
+`parse.dirs.run_info.run_info`, so the doors that ask cannot
 come to disagree.  **A new metadata category is a new KEY in the block
 there, and nowhere else.**  That is the whole reason `info` is a free
 dict rather than a field per category: `atomMetadata` and

@@ -691,7 +691,7 @@ def test_a_load_parses_its_file_once_and_the_record_reads_that_parse(
     makes relaxations too, but this one is small, converged and pinned.
 
     MUTATION THIS MUST FAIL AGAINST: `_run_metadata` not handing the load's
-    parse to `run_info_for_dir`.
+    parse to `run_info`.
     """
     import shutil
 

@@ -150,16 +150,16 @@ def _relaxed_h2_with_record(*, shift_z: float = 0.0):
     measured fixture `tests/fixtures/siesta_relax` through the composer the
     Results tab uses -- no engine runs and nothing is invented.  The road
     that produced the fixture is the SIESTA e2e test."""
-    from molbuilder.parse.dirs.run_info import run_info_for_dir
-    from molbuilder.runs import openable
+    from molbuilder.parse.dirs.run_info import run_info
+    from molbuilder.runs import declared, openable, run_of
     s = Structure(elements=["H", "H"],
                   positions=np.array([[5.0, 5.0, 5.0],
                                       [5.0, 5.0, 5.774583 + shift_z]]),
                   regions={"frozen_atoms": [0]},
                   cell=np.diag([10.0, 10.0, 10.0]),
                   axis_kind=("isolated",) * 3)
-    s.apply_info_dict(run_info_for_dir(_RELAX_RUN,
-                                       output=openable(_RELAX_RUN)[0]))
+    s.apply_info_dict(run_info(deck=declared(run_of(_RELAX_RUN)).deck,
+                               output=openable(_RELAX_RUN)[0]))
     return s
 
 

@@ -561,7 +561,7 @@ class TestInspectorErrorCardRuntime:
 #  findings, so the next attempt starts here:                           #
 #                                                                       #
 #  THE FIXTURE.  A run directory needs no SIESTA to state a contract:    #
-#  `contract_of` answers from the single `*.fdf` in the directory, and   #
+#  `contract_of` answers from the run's own deck (`runs.declared`), and  #
 #  the trajectory can be the generic `*_geom_optim.xyz` fallback.  Two   #
 #  files, and `info.calculation` comes back on the load response.  The   #
 #  observable is the Metadata page -- `.molviewer-info-key` rows, which  #

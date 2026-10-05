@@ -1,9 +1,7 @@
 """``parse.contract.contract_of`` — the recorded-contract extractor.
 
-`model/parse.md` § 5b: one deck in the directory defines the answer; anything
-else is `None`, never a guess.  (Transport asks the same question as a
-REFUSAL, `transport.md` § 3.1 -- there you are citing the directory on
-purpose; here the caller is enriching a result it already has.)"""
+`model/parse.md` § 5b: the run's own deck, handed by its caller, defines the
+answer; a deck that states nothing, or none, is `None`, never a guess."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -27,7 +25,7 @@ ElectronicTemperature 200.0 K
 
 def test_one_siesta_deck_answers_the_contract(tmp_path):
     (tmp_path / "Relax.fdf").write_text(_DECK)
-    out = contract_of(tmp_path)
+    out = contract_of(tmp_path / "Relax.fdf")
     assert out["engine"] == "siesta"
     assert out["source"] == "Relax.fdf"
     assert len(out["source_sha256"]) == 64
@@ -40,18 +38,18 @@ def test_one_siesta_deck_answers_the_contract(tmp_path):
 
 
 def test_no_deck_is_none(tmp_path):
-    assert contract_of(tmp_path) is None
+    assert contract_of(None) is None
+    assert contract_of(tmp_path / "absent.fdf") is None
 
 
-def test_two_decks_are_none_never_a_guess(tmp_path):
-    (tmp_path / "a.fdf").write_text(_DECK)
-    (tmp_path / "b.fdf").write_text(_DECK)
-    assert contract_of(tmp_path) is None
+# `test_two_decks_are_none_never_a_guess` retired 2026-10-04 (W56 review,
+# ruling 1): nothing searches a folder for its decks -- the caller hands the
+# run's own (`runs.declared`).
 
 
 def test_a_deck_stating_nothing_is_none(tmp_path):
     (tmp_path / "empty.fdf").write_text("SystemLabel x\n")
-    assert contract_of(tmp_path) is None
+    assert contract_of(tmp_path / "empty.fdf") is None
 
 
 def test_the_record_speaks_the_catalogues_names(tmp_path):
@@ -65,7 +63,7 @@ def test_the_record_speaks_the_catalogues_names(tmp_path):
     from molbuilder.config.siesta import SiestaConfig
     names = {f.name for f in dataclasses.fields(SiestaConfig)}
     (tmp_path / "Relax.fdf").write_text(_DECK)
-    out = contract_of(tmp_path)
+    out = contract_of(tmp_path / "Relax.fdf")
     stray = set(out["contract"]) - names
     assert not stray, (
         f"contract_of records {sorted(stray)}, which are not the settings' "

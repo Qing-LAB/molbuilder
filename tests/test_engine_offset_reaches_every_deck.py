@@ -393,12 +393,13 @@ def test_a_relaxed_pairs_record_still_vouches_through_prep(
     keeps the fixture one the rule moves.
     """
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.parse.dirs.run_info import run_info_for_dir
+    from molbuilder.parse.dirs.run_info import run_info
     from molbuilder.pyscf.stages import vibration_stages
-    from molbuilder.runs import openable
+    from molbuilder.runs import declared, openable, run_of
     pair = _h2(z_moved=5.774583)
-    pair.apply_info_dict(run_info_for_dir(
-        _RELAX_RUN, output=openable(_RELAX_RUN)[0]))
+    pair.apply_info_dict(run_info(
+        deck=declared(run_of(_RELAX_RUN)).deck,
+        output=openable(_RELAX_RUN)[0]))
     assert np.linalg.norm(cellmod.engine_offset(pair)) > 0.1
     dest, stage, _text = _prep(
         isolated_projects_root, pair,

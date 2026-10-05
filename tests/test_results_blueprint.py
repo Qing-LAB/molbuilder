@@ -741,9 +741,9 @@ class TestSpectraIssuesPanelSeverityCoverage:
 
 
 class TestTheContractEndpoint:
-    """/api/results/contract (archive/2026-09-01-structure-info-plan.md I5): the one deck
-    beside a structure answers its recorded contract.  Isolated onto a
-    tmp projects root -- tests never touch the real tree."""
+    """/api/results/contract (archive/2026-09-01-structure-info-plan.md I5): the
+    contract a run's own deck states (`model/parse.md` § 5b).  Isolated onto
+    a tmp projects root -- tests never touch the real tree."""
 
     @pytest.fixture
     def isolated(self, tmp_path, monkeypatch):
@@ -754,21 +754,11 @@ class TestTheContractEndpoint:
         from molbuilder.web.app import create_app
         return root, create_app(config={}).test_client()
 
-    def test_a_deck_beside_the_structure_answers(self, isolated):
-        root, client = isolated
-        d = root / "run"
-        d.mkdir()
-        (d / "chain.xyz").write_text("1\n\nC 0 0 0\n")
-        (d / "Relax.fdf").write_text(
-            "SystemLabel Relax\nMeshCutoff 250.0 Ry\n"
-            "PAO.BasisSize SZ\n")
-        r = client.get("/api/results/contract?path="
-                       + str(d / "chain.xyz"))
-        out = r.get_json()
-        assert out["ok"] is True
-        assert out["calculation"]["engine"] == "siesta"
-        assert out["calculation"]["contract"]["basis_size"] == "SZ"
-
+    # `test_a_deck_beside_the_structure_answers` retired 2026-10-04 (W56
+    # review, ruling 1): it wrote a structure and a deck into a bare folder
+    # and read the contract off "the one deck beside it".  A run's contract
+    # is its own deck's, through the run door; both doors answering it for
+    # a measured run is `test_structure_info_bridge.py`'s.
 
     def test_a_directory_with_no_run_reports_no_run_state(self, isolated):
         """`run_status` cannot say *there is no run here*.

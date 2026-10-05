@@ -123,7 +123,7 @@ def api_results_contract():
     and records each answer through the viewer's ``data.info`` door, so an
     export carries them (`archive/2026-09-01-structure-info-plan.md` I5).
 
-    It asks ``run_info_for_dir`` -- the ONE composer of "what does this
+    It asks ``run_info`` -- the ONE composer of "what does this
     directory say about itself" -- rather than the ``contract_of``
     extractor beneath it, so this door and the trajectory load door
     cannot come to disagree about what a directory records."""
@@ -131,7 +131,7 @@ def api_results_contract():
 
     from flask import jsonify, request
 
-    from molbuilder.parse.dirs.run_info import run_info_for_dir
+    from molbuilder.parse.dirs.run_info import run_info
     from .files import _PickerError, _resolve_within_roots
 
     raw = str(request.args.get("path") or "")
@@ -142,12 +142,15 @@ def api_results_contract():
     except _PickerError as exc:
         return jsonify({"ok": False, "error": exc.message}), exc.status
     directory = Path(p) if Path(p).is_dir() else Path(p).parent
-    # THE RUN'S RECORD IS OF THE FILE THE RESULTS TAB OPENS in that folder
-    # -- the run door's choice, handed down because `parse/` cannot ask
-    # the door (`model/parse.md` § 5b.1).
-    from molbuilder.runs import openable
+    # THE RUN THAT FOLDER SPEAKS FOR: its contract from its own deck, its
+    # record of the file the Results tab opens there -- both the run door's,
+    # handed down because `parse/` cannot ask it (`model/parse.md` § 5b,
+    # § 5b.1).
+    from molbuilder.runs import declared, openable, run_of
     output, _trail = openable(directory)
-    info = run_info_for_dir(directory, output=output) or {}
+    run = run_of(directory)
+    info = run_info(deck=declared(run).deck if run is not None else None,
+                    output=output) or {}
     return jsonify({"ok": True, "calculation": info.get("calculation"),
                     "relaxation": info.get("relaxation")})
 

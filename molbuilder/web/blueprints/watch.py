@@ -49,7 +49,7 @@ from molbuilder.parse import (
 )
 from molbuilder.parse.contract import engine_of
 from molbuilder.runs import Declared, declared, openable, run_answer, run_of
-from molbuilder.parse.dirs.run_info import run_info_for_dir
+from molbuilder.parse.dirs.run_info import run_info
 from molbuilder.parse.engines._helpers import (
     trajectory_result_to_legacy_dict as trajectory_to_legacy_dict,
 )
@@ -310,7 +310,7 @@ def _frame0_structure(
 
 
 def _run_metadata(
-    search_dir: Optional[str], data: Optional[Dict[str, Any]], *,
+    data: Optional[Dict[str, Any]], *,
     output: Optional[str] = None, traj: Any = None,
 ) -> Dict[str, Any]:
     """The metadata block EVERY ``/api/watch/load`` answer carries.
@@ -369,8 +369,8 @@ def _run_metadata(
         # ``output`` -- the file this load opened, the one on screen -- so
         # the run's record is of it, and ``traj`` its parse, so the record
         # reads it rather than parsing it again.
-        "info":          run_info_for_dir(search_dir, output=output,
-                                         traj=traj),
+        "info":          run_info(deck=said.deck, output=output,
+                                 traj=traj),
     }
 
 
@@ -602,8 +602,7 @@ def api_load():
     # The parse rides only when it is of that file -- a load racing this
     # one can swap the state between the parse and here.
     _parsed = state.get("parsed")
-    meta = _run_metadata(resolved_from_dir or os.path.dirname(path),
-                         state["data"], output=path,
+    meta = _run_metadata(state["data"], output=path,
                          traj=(_parsed[1] if _parsed and _parsed[0] == path
                                else None))
     return jsonify({
@@ -698,7 +697,7 @@ def _api_load_multipart(uploaded_file):
     state, err = _refresh_if_changed()
     if err:
         return jsonify({"ok": False, "error": err}), 500
-    meta = _run_metadata(None, state["data"])
+    meta = _run_metadata(state["data"])
     return jsonify({
         "ok":               True,
         "path":             tmp_path,

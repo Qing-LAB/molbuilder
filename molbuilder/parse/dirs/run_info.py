@@ -19,7 +19,7 @@ the exported ``.molstruct.json`` pair without another line changing.
 
 Two keys:
 
-* ``calculation`` — the electronic contract the directory's deck records
+* ``calculation`` — the electronic contract the run's own deck records
   (``parse.contract.contract_of``), in the catalogue's own names
   (``parse.contract.RECORDED_FIELDS``),
   so a cited pair defaults a transport calculation's template
@@ -46,37 +46,37 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
 
-def run_info_for_dir(
-    directory: Union[str, Path, None], *,
-    output: Union[str, Path, None] = None,
-    traj: Any = None,
-) -> Optional[Dict[str, Any]]:
-    """The ``info`` block *directory* answers for itself, or ``None``.
+def run_info(*, deck: Union[str, Path, None] = None,
+             output: Union[str, Path, None] = None,
+             traj: Any = None) -> Optional[Dict[str, Any]]:
+    """The ``info`` block a run answers for itself, or ``None``.
 
-    ``None`` rather than ``{}`` when the directory says nothing, so this
-    reads exactly like its two siblings on the same load response
-    (``atom_metadata``, ``periodicity``): a field that is absent when
-    there is nothing to say.  A caller that wants a dict either way
-    writes ``or {}``; one that hands the answer to the viewer passes it
-    through, and the viewer's own load door substitutes ``{}``.
+    Its caller hands what it is shown from, both from the run door, because
+    `parse/` cannot ask the door: ``deck``, the run's own deck
+    (`runs.declared(run).deck`), whose stated contract is ``calculation``
+    (`contract.contract_of`); ``output``, the run output a viewer has open --
+    the run door's choice for a folder, or the file a person pointed at --
+    whose record is ``relaxation`` (`contract.relaxation_of`), ``traj`` its
+    parse when the caller holds one -- the viewer's load -- so the file is
+    not parsed again.  *(This was ``run_info_for_dir(directory)`` until
+    2026-10-04, and took ``calculation`` from the one ``.fdf`` in the
+    folder, or none.)*
 
-    Never raises: a directory that cannot be read is a directory with
-    nothing to say, not a failed load.
+    ``None`` rather than ``{}`` when the run says nothing, so this reads
+    exactly like its two siblings on the same load response
+    (``atom_metadata``, ``periodicity``): a field that is absent when there
+    is nothing to say.  A caller that wants a dict either way writes
+    ``or {}``; one that hands the answer to the viewer passes it through,
+    and the viewer's own load door substitutes ``{}``.
 
-    ``output`` is the run output the viewer has open -- the run door's
-    choice for the directory, or the file a person pointed at -- handed
-    down because `parse/` cannot ask the door: the relaxation is ITS
-    record, and there is none without one (`contract.relaxation_of`).
-    ``traj`` is its parse when the caller holds one -- the viewer's load
-    -- so the file is not parsed again.
+    Never raises: a file that cannot be read is a run with nothing to say,
+    not a failed load.
     """
-    if not directory:
-        return None
     from molbuilder.parse.contract import contract_of, relaxation_of
 
     out: Dict[str, Any] = {}
     try:
-        calculation = contract_of(directory)
+        calculation = contract_of(deck)
     except Exception:                                       # noqa: BLE001
         calculation = None
     if calculation is not None:

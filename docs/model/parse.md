@@ -538,7 +538,7 @@ molbuilder/parse/
     ├── rundir.py              # openable_in (a folder read without its run) · run_state_of
     ├── job.py                 # run_status → how a run directory is doing — stdlib, travels
     ├── record.py · setup.py   # run_record → the run record (§ 5d)
-    └── run_info.py            # run_info_for_dir → the `info` block (composer)
+    └── run_info.py            # run_info → the `info` block (composer)
 ```
 
 **Plain `.xyz` has no leaf FileParser (by design)** — `Structure.from_xyz` reads
@@ -1087,25 +1087,22 @@ disqualified by `process/` convention, and the scope is `molbuilder/**.py`
 only — a fixture must be allowed to spell a real filename.
 
 
-## 5b. The recorded contract — one deck defines the answer, or there is none
+## 5b. The recorded contract — the run's own deck defines the answer
 
-`contract.contract_of(directory)` reads back **what a finished calculation was
-actually run with** — the `info.calculation` block: the engine, the fields the
-deck states (and only those), the deck's name, and its `sha256`.
+`contract.contract_of(deck)` reads back **what a run was actually run with** —
+the `info.calculation` block: the engine, the fields the deck states (and only
+those), the deck's name, and its `sha256`.
 
-**Exactly one `.fdf` in the directory, or `None`.** Zero decks is nothing to
-read; two is a question the directory cannot answer, and picking one would be
-a guess wearing the look of a fact — the recorded contract's whole value is
-that it is *what ran*, so an answer that might be the other deck's is worth
-less than no answer.
-
-> **The same condition, two different answers, and both are right.** Transport
-> asks it as a REFUSAL ([`transport.md` § 3.1](?doc=engines/transport.md)):
-> you are citing that directory on purpose, so an ambiguous one is a mistake
-> to tell you about. Here it is a `None`: the caller is enriching a result it
-> already has, and a missing contract block is an ordinary state, not a
-> failure. A refusal would make every un-recordable directory an error at a
-> layer that is only ever adding detail.
+**The run's own deck, handed by its caller** — the run door's
+(`runs.declared(run).deck`, `execution/architecture.md` § 3.2), as the labels
+and the box are (§ 5.3): a flat calculation's stages share one folder and each
+run reads its own deck, never another stage's. A deck that states nothing, a
+PySCF deck (no extractor yet) or no run of ours is `None` — a missing contract
+block is an ordinary state, never a guess. *(Until 2026-10-04 this took the
+one `.fdf` in a directory, or nothing, so a flat calculation with two stages
+recorded none — plan W56, the review's ruling 1.)* Transport's citation still
+asks a cited folder for its one deck, as a refusal
+([`transport.md` § 3.1](?doc=engines/transport.md); open in the plan).
 
 **The record speaks the catalogue's names** *(user, 2026-10-02: "if only three
 readers for D2, i'd rather unify the names, rather than having a drift from
@@ -1154,8 +1151,8 @@ force tolerance and has **no record**; no output, or one that does not parse,
 is `None`, never a guess.
 
 **Read once per load.** The trajectory viewer's load hands the file it opened
-and its parse on (`run_info_for_dir(directory, output=path, traj=parse)`, which
-asks `relaxation_of(path, traj=parse)`) and composes the directory's metadata
+and its parse on (`run_info(deck=…, output=path, traj=parse)`, which asks
+`relaxation_of(path, traj=parse)`) and composes the run's metadata
 once, for the structure envelope and the answer alike; the record parses the
 file itself only for a caller that has not (the structure inspector's
 `/api/results/contract`, which hands the run door's choice for the structure's
