@@ -2069,9 +2069,9 @@ def test_prep_resolves_the_machine_before_it_writes_anything(tmp_path,
     order: list = []
     real_target, real_wrap = _prep.set_machine, _rw.write_run_wrapper
 
-    def spy_target(b):
+    def spy_target(*a, **k):
         order.append("1 machine")
-        return real_target(b)
+        return real_target(*a, **k)
 
     def spy_wrap(*a, **k):
         order.append("4 wrapper")

@@ -25,7 +25,8 @@ _NO_RECORD = (
 )
 
 
-def set_machine(base_dir, target: Optional[str] = None) -> Path:
+def set_machine(base_dir, target: Optional[str] = None, *,
+                plan=None) -> Path:
     """**Step 1 of the five: resolve the machine** (`project-layout.md`
     § 2.3.1) — read the machine's record (its cores, GPUs, scheduler and
     environment) and snapshot it as ``environment.json`` beside the bundle.
@@ -69,12 +70,15 @@ def set_machine(base_dir, target: Optional[str] = None) -> Path:
     it is the user's to run, so the record is always something they can point
     at and say where it came from.
 
+    ``plan`` (`jobset.planned.Plan`) receives the copy instead of the disk:
+    `prep` decides everything before it writes (`job-system.md` § 5.0).
+
     Returns the path to ``environment.json``.
     """
     from ..scheduler import machine_for, write_environment
     from ..scheduler.record import calculation_record
     out = calculation_record(base_dir)
-    if out.is_file():
+    if plan.is_file(out) if plan is not None else out.is_file():
         return out
     # `machine_for()` WITHOUT a bundle: the calculation has no record yet (we
     # just early-returned if it did), so this is the MACHINE scope -- what
@@ -94,8 +98,12 @@ def set_machine(base_dir, target: Optional[str] = None) -> Path:
     # `machine_for` refuses the question when another is on file.
     from dataclasses import replace
     from ..scheduler.record import LOCAL_TARGET
-    return write_environment(replace(env, machine=target or LOCAL_TARGET),
-                             out)
+    env = replace(env, machine=target or LOCAL_TARGET)
+    if plan is not None:
+        from ..persist import json_text
+        plan.text(out, json_text(env.to_dict()))
+        return out
+    return write_environment(env, out)
 
 
 def _no_record() -> PrepError:

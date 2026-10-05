@@ -71,6 +71,7 @@ def write_initial_preview(
     convergence_targets: Optional[Mapping[str, float]] = None,
     frame=None,
     frozen_atoms=(),
+    plan=None,
 ) -> None:
     """Write a ``<path>.molwatch.log`` holding its header and exactly one
     block: step 0, the structure's coordinates, no energy, no forces, no SCF
@@ -91,6 +92,8 @@ def write_initial_preview(
     the deck a box of its own (the vibration `freq` stage's), and step 0 is
     then what that deck writes, not a placement worked out again here.
 
+    ``plan`` (`jobset.planned.Plan`) receives the file instead of the disk.
+
     (A ``# stage:`` line was written here until 2026-10-05, from a
     ``stage_name`` argument; no reader read it -- the stage is the run's
     files' own.)
@@ -99,13 +102,17 @@ def write_initial_preview(
     from .emitter import header_and_preview
     positions = (frame if frame is not None
                  else to_engine(struct)).positions  # (N, 3), Angstrom
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(header_and_preview(
+    text = header_and_preview(
         job=job, engine=engine, generator=generator,
         elements=list(struct.elements), coords_ang=positions,
         frozen_atoms=frozen_atoms or (),
-        convergence_targets=convergence_targets), encoding="utf-8")
+        convergence_targets=convergence_targets)
+    if plan is not None:
+        plan.text(path, text)
+        return
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(text, encoding="utf-8")
 
 
 __all__ = ["write_initial_preview"]

@@ -1358,7 +1358,7 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
             # walk is a walk over the engine's functions, so an exception with
             # no owner on it is the ordinary failure here, not an exotic one.
             with _calling("line", engine=spec.engine,
-                          where=f"item {name!r}", log=log):
+                          where=f"item {name!r}"):
                 text = spec.line(param)
             if text is None:
                 silent.append(name)
@@ -1366,7 +1366,7 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
             spoke.append(name)
             if verbose:
                 with _calling("note_lead", engine=spec.engine,
-                              where=f"item {name!r}", log=log):
+                              where=f"item {name!r}"):
                     lead = spec.note_lead(param)
                 body.extend(param.note(*lead,
                                        extra=_FIXED_NOTE if fixed else ()))
@@ -1398,7 +1398,7 @@ def _render_sections(spec: "DeckSpec", cfg, *, verbose: bool = True,
             # sections could not share the spec, which is why one deck needed
             # eight of them.
             with _calling("section_title", engine=spec.engine,
-                          where=f"section {section.title!r}", log=log):
+                          where=f"section {section.title!r}"):
                 title = (spec.section_title(section.title)
                          if section.title else "")
             # A falsy title means the caller has already written its own
@@ -1451,7 +1451,7 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
     # It ran in TWO places until 2026-08-19: each engine called it inside
     # `spec_for` and `prepare_deck` called it again, on a different subject.
     from .validation import report as _report, validate as _validate
-    with _calling("validate_subject", engine=spec.engine, log=log):
+    with _calling("validate_subject", engine=spec.engine):
         _subject, _kw = ((spec.validate_subject(struct, cfg))
                          if spec.validate_subject else (struct, {}))
     _issues = _validate(_subject, cfg, calculation=spec.calculation,
@@ -1478,7 +1478,7 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
     for member in spec.layout:
         if isinstance(member, Block):
             with _calling("Block.render", engine=spec.engine,
-                          where=f"block {member.title!r}", log=log):
+                          where=f"block {member.title!r}"):
                 text = member.render(struct, cfg)
             if log is not None:
                 log.produced("Block", f"{member.title!r}  " + (
@@ -1507,7 +1507,7 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
         for _k in sorted(spec.derived):
             log.chose(_k, spec.derived[_k], "derived from (struct, cfg)")
 
-    with _calling("provenance_defaults", engine=spec.engine, log=log):
+    with _calling("provenance_defaults", engine=spec.engine):
         _defaults = (spec.provenance_defaults(cfg)
                      if spec.provenance_defaults else None)
     record: List[str] = [emit_provenance(
@@ -1520,7 +1520,7 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
     # and the first version of it got the answer wrong.
     in_record: List[str] = ["PROVENANCE"]
     if spec.bench_marks is not None:
-        with _calling("bench_marks", engine=spec.engine, log=log):
+        with _calling("bench_marks", engine=spec.engine):
             marks = spec.bench_marks(struct, cfg)
         if marks:
             record.append(emit_bench_marks(**marks))
@@ -1610,8 +1610,9 @@ _VALIDATION_HEADER = """\
 """
 
 
-def write_validation_report(deck_path, findings) -> "Path":
-    """Write the deck's companion validation file, and return its path.
+def write_validation_report(deck_path, findings, *, plan=None) -> "Path":
+    """Write the deck's companion validation file, and return its path --
+    or put it in ``plan`` (`jobset.planned.Plan`), with the deck.
 
     **A separate file, not a block inside the deck** (user, 2026-08-23), and
     that choice removes a real problem rather than being a matter of taste:
@@ -1635,7 +1636,18 @@ def write_validation_report(deck_path, findings) -> "Path":
     script"* is the two together, not whichever the caller happened to hold.
     """
     out = Path(deck_path).with_suffix(VALIDATION_SUFFIX)
-    lines = [_VALIDATION_HEADER.format(deck=Path(deck_path).name)]
+    text = validation_report_text(Path(deck_path).name, findings)
+    if plan is not None:
+        plan.text(out, text)
+    else:
+        out.write_text(text, encoding="utf-8")
+    return out
+
+
+def validation_report_text(deck_name: str, findings) -> str:
+    """The text of a deck's companion validation file
+    (:func:`write_validation_report`)."""
+    lines = [_VALIDATION_HEADER.format(deck=deck_name)]
     if not findings:
         lines.append("")
         lines.append("The checks had nothing to say about this deck.")
@@ -1649,12 +1661,12 @@ def write_validation_report(deck_path, findings) -> "Path":
             where = f"[{i.where}] " if i.where else ""
             lines.append("")
             lines.append(f"{i.severity.upper():<{width}}  {where}{i.message}")
-    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return out
+    return "\n".join(lines) + "\n"
 
 
 def check_deck(path, spec: "DeckSpec", rendered: "RenderedDeck",
-               struct=None, cfg=None, *, log=None) -> List["Issue"]:
+               struct=None, cfg=None, *,
+               text: Optional[str] = None) -> List["Issue"]:
     """Read the WRITTEN file back and report what is wrong with it.
 
     **The subject is the artifact, and that is what is new.**  Every other
@@ -1678,6 +1690,11 @@ def check_deck(path, spec: "DeckSpec", rendered: "RenderedDeck",
     one now and `prep` calls :func:`prepare_deck`, so that caller no longer
     exists; it was removed on 2026-08-19 rather than left as a public name with
     one internal caller and an expired reason.
+
+    ``text`` is the file as it WILL be written, for a deck `prep` has planned
+    and not yet written (`jobset.planned`): the text the file will hold, the
+    reader's section merged in -- so the gate still reads what the engine
+    will open (`job-system.md` § 5.0, checkpoint 4b).
     """
     from pathlib import Path as _P
     from .issues import Issue
@@ -1686,10 +1703,11 @@ def check_deck(path, spec: "DeckSpec", rendered: "RenderedDeck",
 
     out: List[Issue] = []
     p = _P(path)
-    if not p.is_file():
-        return [Issue("error", f"the deck was not written: {p}",
-                      where="deck.missing")]
-    text = p.read_text(encoding="utf-8")
+    if text is None:
+        if not p.is_file():
+            return [Issue("error", f"the deck was not written: {p}",
+                          where="deck.missing")]
+        text = p.read_text(encoding="utf-8")
 
     # BOTH markers, not just BEGIN.  A block is delimited by a PAIR, and
     # counting one end let a stray END through: the USER-CUSTOM round-trip
@@ -1746,15 +1764,14 @@ def check_deck(path, spec: "DeckSpec", rendered: "RenderedDeck",
                 where="deck.missing_line"))
 
     if rules is not None:
-        with _calling("check_rules", engine=spec.engine, where=p.name,
-                      log=log):
+        with _calling("check_rules", engine=spec.engine, where=p.name):
             out.extend(rules(text, struct, cfg) or [])
     return out
 
 
 def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
                  verbose: bool = True, log=None, dest_dir=None,
-                 findings: "Optional[list]" = None):
+                 findings: "Optional[list]" = None, plan=None):
     """**Validate → render → write → check**, in that order, for one deck.
 
     The shared spine of `script-preparation.md` § 3's per-deck sub-steps. The
@@ -1773,6 +1790,10 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
     ``findings``, when a caller hands in a list, receives both halves of the
     verdict too -- the one prep entry's answer carries them to the doors that
     cannot read stderr (`jobset/prep.prep_stage`, `job-system.md` § 5.3).
+
+    ``plan`` (`jobset.planned.Plan`) receives the deck and its report instead
+    of the disk, and the check reads the deck's text as the plan will write
+    it: `prep` decides everything before it writes (`job-system.md` § 5.0).
     """
     from .validation import report
     if log is not None:
@@ -1782,17 +1803,18 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
     # renders (`render_fdf` / `render_script` gate too, not just this one).
     rendered = render_deck(spec, struct, cfg, verbose=verbose, log=log,
                            dest_dir=dest_dir)
-    written = write_script(path, rendered.text)        # 3.10 write
+    written = write_script(path, rendered.text, plan=plan)     # 3.10 write
+    text = (plan.read_text(written) if plan is not None
+            else written.read_text(encoding="utf-8"))
     if log is not None:
         log.step("STEP 3.10 · WRITE")
         log.produced(written.name,
-                     f"{len(written.read_text(encoding='utf-8').splitlines())} "
-                     f"lines -> {written}")
+                     f"{len(text.splitlines())} lines -> {written}")
     issues = check_deck(written, spec, rendered, struct, cfg,
-                        log=log)                                # 3.11 check
+                        text=text)                              # 3.11 check
     if log is not None:
         log.step("STEP 3.11 · CHECK — the artifact gate")
-        log.received(written.name, "read back from disk")
+        log.received(written.name, "the text as it is written")
         log.produced("compared", f"{len(dict.fromkeys(rendered.emitted))} "
                                  f"distinct lines the parameters step wrote")
         log.produced("verdict", f"{len(issues)} issue(s)")
@@ -1801,7 +1823,8 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
     # The companion file, from BOTH halves of the verdict, and written before
     # `report` -- which raises on an error, and a refused run is the one whose
     # reasons most need to be on disk.
-    write_validation_report(written, list(rendered.findings) + list(issues))
+    write_validation_report(written, list(rendered.findings) + list(issues),
+                            plan=plan)
     if findings is not None:
         findings.extend(list(rendered.findings) + list(issues))
     report(issues)
@@ -2137,8 +2160,14 @@ def _extract_bench_marks_dict(text: str) -> Optional[Dict[str, Any]]:
 #  from the write half to the read half, and nothing crosses back.
 #  Nothing references them at import time, so the order is free.
 
-def write_script(path, text: str) -> "Path":
+def write_script(path, text: str, *, plan=None,
+                 mode: Optional[int] = None) -> "Path":
     """Write a generated script, KEEPING the reader's own USER-CUSTOM block.
+
+    ``plan`` (`jobset.planned.Plan`) receives the file instead of the disk,
+    merged with the text it will replace -- what the plan already holds
+    there, else the file on disk; ``mode`` is the file's, when it is not
+    the default.
 
     **Every writer of a generated script goes through here.**  The deck says,
     in its own words, *"Your own additions go here.  molbuilder will preserve
@@ -2161,7 +2190,13 @@ def write_script(path, text: str) -> "Path":
     """
     from pathlib import Path as _P
     p = _P(path)
+    if plan is not None:
+        plan.text(p, merge_user_custom(
+            text, plan.read_text(p) if plan.is_file(p) else None), mode=mode)
+        return p
     p.write_text(merge_user_custom_from_target(text, p), encoding="utf-8")
+    if mode is not None:
+        p.chmod(mode)
     return p
 
 
@@ -2316,7 +2351,16 @@ def merge_user_custom_from_target(rendered: str,
         old_text = target_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return rendered
-    old_inner = _extract_user_custom_inner(old_text)
+    return merge_user_custom(rendered, old_text)
+
+
+def merge_user_custom(rendered: str, old_text: Optional[str]) -> str:
+    """``rendered`` with the USER-CUSTOM block of ``old_text`` -- the file as
+    it stands -- carried into it: the merge itself, given the text (`prep`
+    reads it from its plan, `jobset.planned`).  ``None``, or a text with no
+    block, carries nothing."""
+    old_inner = (_extract_user_custom_inner(old_text)
+                 if old_text is not None else None)
     if old_inner is None:
         return rendered
     return replace_user_custom_inner(rendered, old_inner)

@@ -2004,13 +2004,19 @@ this contract about what a folder contains stops being true of it, and the run
 directory it half-occupies may already hold warm files from a previous
 calculation.
 
-So a produce is **transactional**: every deck, every wrapper and the description
-are built somewhere else and moved into place only when all of them succeeded. On
-failure nothing is moved, and the message names the stage that stopped it.
+So a produce is **transactional**: every deck, every wrapper and every other file
+it writes is decided first, with nothing written, and written only when all of
+them succeeded ([`execution/job-system.md`](?doc=execution/job-system.md) § 5.0,
+rule 3). On a refusal nothing is written, and the message names the stage that
+stopped it; a write that fails part way — a full disk — leaves the stage not
+prepped, and the folder's state saved before the prep is the way back.
+*(Until 2026-10-05 prep wrote as it went and put three files back when it
+refused, leaving the decks, wrappers and data files behind.)*
 
 This is the same discipline the sidecar and archive writers already use — build,
-verify, then `os.replace` ([`model/structure-molstruct.md`](?doc=model/structure-molstruct.md)'s
-atomicity rule) — applied to a directory rather than a file. What it must **not** do is remove warm files that were already
+verify, then write ([`model/structure-molstruct.md`](?doc=model/structure-molstruct.md)'s
+atomicity rule, which each file of a produce is still written by) — applied to a
+calculation rather than a file. What it must **not** do is remove warm files that were already
 there; producing twice is `execution/run-identity.md § 6`, and those files are
 the point.
 

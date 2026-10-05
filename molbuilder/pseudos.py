@@ -32,6 +32,7 @@ PseudoDojo PSML files we tested against (2024 release).
 """
 from __future__ import annotations
 
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Iterable
@@ -42,6 +43,32 @@ import xml.etree.ElementTree as ET
 #: Where a calculation's staged pseudopotentials live, relative to it
 #: (roadmap 7.10 M6: grouped in one folder rather than N loose `<El>.psml`).
 from .runfiles import PSEUDO_DIR as PSEUDO_DIRNAME  # noqa: E402 -- the catalogue's name
+
+
+#: THE FOLDER AS A PREP WILL LEAVE IT, while one is being planned -- a
+#: `jobset.planned.Plan`, read through ``is_file``, ``glob`` and
+#: ``source_of`` -- or ``None``, and the disk answers.  `prep` sets it for
+#: the steps it plans (`job-system.md` § 5.0: nothing is written until the
+#: whole plan stands), so every reader of a calculation's pseudopotentials --
+#: the data-files step's screening, the settings gate -- reads the files the
+#: plan will put there.  A context variable, as the gate's report stream is
+#: (`validation.REPORT_STREAM`): two preps at once each see their own.
+PLANNED: "ContextVar" = ContextVar("molbuilder.pseudos.planned",
+                                   default=None)
+
+
+def _is_file(path) -> bool:
+    view = PLANNED.get()
+    return view.is_file(path) if view is not None else Path(path).is_file()
+
+
+def where_bytes_are(path) -> Path:
+    """The file that holds ``path``'s bytes now: the path itself, or --
+    while a prep is planned (:data:`PLANNED`) -- what the plan will copy
+    or move there."""
+    view = PLANNED.get()
+    src = view.source_of(path) if view is not None else None
+    return Path(src) if src is not None else Path(path)
 
 
 def psml_sources(elements, *, dest_dir=None,
@@ -79,7 +106,7 @@ def psml_sources(elements, *, dest_dir=None,
         key = str(el).strip()
         if key not in out:
             out[key] = next((d for d in places
-                             if (d / f"{key}.psml").is_file()), None)
+                             if _is_file(d / f"{key}.psml")), None)
     return out
 
 
@@ -286,7 +313,9 @@ def parse_psml_header(path: Path) -> PsmlInfo:
     path = Path(path)
     warnings: List[str] = []
     try:
-        root = ET.parse(str(path)).getroot()
+        # WHERE THE BYTES ARE NOW (:func:`where_bytes_are`): a file a planned
+        # prep will copy here is read at its source and reported here.
+        root = ET.parse(str(where_bytes_are(path))).getroot()
     except (ET.ParseError, OSError) as exc:
         return PsmlInfo(
             path=path, element="", atomic_number=0,
@@ -552,7 +581,8 @@ def parse_psml_header(path: Path) -> PsmlInfo:
 
 def scan_psml_directory(directory: Path) -> Dict[str, PsmlInfo]:
     """Walk ``directory`` (non-recursive) and return ``{element:
-    PsmlInfo}`` for every parseable .psml file.
+    PsmlInfo}`` for every parseable .psml file -- as a prep will leave it,
+    while one is being planned (:data:`PLANNED`).
 
     When two files claim the same element (e.g. ``Fe.psml`` AND
     ``Fe_pbe.psml``), the FIRST one encountered wins.  The
@@ -562,9 +592,14 @@ def scan_psml_directory(directory: Path) -> Dict[str, PsmlInfo]:
     """
     directory = Path(directory)
     out: Dict[str, PsmlInfo] = {}
-    if not directory.is_dir():
+    view = PLANNED.get()
+    if view is not None:
+        listing = view.glob(directory, "*")
+    elif directory.is_dir():
+        listing = sorted(directory.iterdir())
+    else:
         return out
-    for p in sorted(directory.iterdir()):
+    for p in listing:
         if p.suffix.lower() != ".psml":
             continue
         info = parse_psml_header(p)

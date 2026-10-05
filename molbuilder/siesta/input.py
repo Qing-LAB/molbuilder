@@ -20,7 +20,7 @@ import dataclasses
 import shutil
 import sys
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -295,8 +295,11 @@ def find_psml(element: str, lib: Path) -> Optional[Path]:
 
 
 def copy_pseudopotentials(species: Sequence[str], lib: Path,
-                          dest_dir: Path) -> List[str]:
-    """Copy psml files for each species. Returns list of missing species."""
+                          dest_dir: Path, *, plan=None) -> List[str]:
+    """Copy psml files for each species. Returns list of missing species.
+
+    ``plan`` (`jobset.planned.Plan`) receives the copies instead of the
+    disk."""
     missing: List[str] = []
     for s in species:
         src = find_psml(s, lib)
@@ -309,7 +312,10 @@ def copy_pseudopotentials(species: Sequence[str], lib: Path,
         if src.resolve() == dst.resolve():
             print(f"  ok:   {dst.name} (already present)", file=sys.stderr)
             continue
-        shutil.copyfile(src, dst)
+        if plan is not None:
+            plan.copy(src, dst)
+        else:
+            shutil.copyfile(src, dst)
         print(f"  ok:   {src} -> {dst}", file=sys.stderr)
     return missing
 

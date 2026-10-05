@@ -24,7 +24,6 @@ if TYPE_CHECKING:                      # annotations only
     from ..paths import Shape
 
 import os
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -491,19 +490,27 @@ def stage_refs(jobset: JobSet) -> Dict[str, StageRef]:
     return out
 
 
-def materialize(jobset: JobSet, base_dir) -> List[Path]:
+def materialize(jobset: JobSet, base_dir, plan=None) -> List[Path]:
     """Create each job's directory under ``base_dir`` with its copies.
 
     Returns the list of created job directories (in JobSet order).  Idempotent:
     re-running refreshes the copies without duplicating anything.  Raises
     ``ValueError`` if the JobSet is structurally invalid (so a bad carry /
     duplicate name can't produce a broken tree).
+
+    ``plan`` (`jobset.planned.Plan`) receives the folders and copies instead
+    of the disk, and is read for the files it already holds -- `prep`
+    decides everything before it writes (`job-system.md` § 5.0); without one
+    they are written now.
     """
     errors = jobset.validate()
     if errors:
         raise ValueError(
             "cannot materialize an invalid JobSet:\n  - "
             + "\n  - ".join(errors))
+    from .planned import Plan
+    own = plan is None
+    plan = Plan() if own else plan
     base = Path(base_dir)
     created: List[Path] = []
     sh = shape_of(jobset, base_dir)
@@ -517,7 +524,7 @@ def materialize(jobset: JobSet, base_dir) -> List[Path]:
         d = base / dirs[job.name]
         if jobset.kind == "sweep":
             d = trial_work_dir(d, sh)
-        d.mkdir(parents=True, exist_ok=True)
+        plan.folder(d)
         created.append(d)
         if d.resolve() == base.resolve():
             # FLAT: depth 1 (`project-layout.md` § 1) -- the job runs in the
@@ -546,10 +553,10 @@ def materialize(jobset: JobSet, base_dir) -> List[Path]:
             # being true, so every flat SIESTA prep since that date rendered a
             # deck that dies in `initatom` with "Pseudopotential file not
             # found".  Hierarchical never reached this branch and never broke.
-            for _ps in sorted((base / PSEUDO_DIRNAME).glob("*.psml")):
+            for _ps in plan.glob(base / PSEUDO_DIRNAME, "*.psml"):
                 _dst = d / _ps.name
-                if not _dst.exists():
-                    shutil.copy2(_ps, _dst)
+                if not plan.is_file(_dst):
+                    plan.copy(_ps, _dst)
             continue
         # The static package arrives as REAL COPIES (user, 2026-08-24;
         # `project-layout.md` § 1.0: the run directory "holds everything",
@@ -559,21 +566,22 @@ def materialize(jobset: JobSet, base_dir) -> List[Path]:
         # pointers.  The deck is NOT in this list any more: it is born in
         # the directory (`prep_calculation` / step 1's adoption), so
         # there is no root copy to reach for.
-        import shutil as _sh
         for fname in list(jobset.shared):
             src = base / fname
             dst = d / os.path.basename(fname)
-            if not src.is_file():
+            if not plan.is_file(src):
                 continue          # prep's own missing-input gates report it
             if dst.is_symlink():
-                dst.unlink()      # a pre-2026-08-24 bundle's link, replaced
-            if not dst.is_file():
-                _sh.copy2(src, dst)
+                plan.remove(dst)  # a pre-2026-08-24 bundle's link, replaced
+            if not plan.is_file(dst):
+                plan.copy(src, dst)
         # NOTHING ELSE IS LINKED IN.  A second loop here laid the `Carry`
         # symlinks -- into a producer's directory, before the producer had
         # run, so they dangled by design.  Deleted 2026-08-10 with `Carry`
         # itself: what a stage continues from is a real file COPIED by
         # `prepare_attempt` from the attempt you name (project-layout.md 1.6).
+    if own:
+        plan.carry_out()
     return created
 
 
@@ -725,7 +733,7 @@ FLAT_HAS_NO_ATTEMPTS = (
     "run card's `restart: clean`, not by --cold.")
 
 
-def mark_run(base, run_dir) -> None:
+def mark_run(base, run_dir, plan=None) -> None:
     """SAY WHAT EACH DIRECTORY DOWN TO A RUN IS (`project-layout.md` § 1.4a,
     invariant 6b): every directory between the calculation root and the run
     a container, the run itself a run -- written by the code that makes
@@ -735,15 +743,22 @@ def mark_run(base, run_dir) -> None:
 
     *(Only a stage's attempt was marked until 2026-10-04: a trial's
     folders carried nothing, so the run door could not tell a trial was a
-    run of ours -- plan W56 3b.4.)*"""
+    run of ours -- plan W56 3b.4.)*
+
+    ``plan`` receives the stamps, as :func:`materialize`'s copies."""
+    from .planned import Plan
     base, run_dir = Path(base), Path(run_dir)
     if run_dir.resolve() == base.resolve():
         return
+    own = plan is None
+    plan = Plan() if own else plan
     for c in reversed(run_dir.parents):
         if c == base or base not in c.parents:
             continue
-        calcdirs.write(c, role=calcdirs.CONTAINER, root=base)
-    calcdirs.write(run_dir, role=calcdirs.RUN, root=base)
+        plan.text(*calcdirs.record(c, role=calcdirs.CONTAINER, root=base))
+    plan.text(*calcdirs.record(run_dir, role=calcdirs.RUN, root=base))
+    if own:
+        plan.carry_out()
 
 
 def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
@@ -751,8 +766,14 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                     cold: bool = False,
                     carry: Optional[List[str]] = None,
                     container: Optional[Path] = None,
-                    named: bool = True) -> "Attempt":
+                    named: bool = True, plan=None) -> "Attempt":
     """Set ONE stage up to run, and report what was done.
+
+    ``plan`` receives the attempt's folder and everything put in it, and is
+    read for the stage's files it already holds -- `prep` opens the attempt
+    as part of its plan, written after the save (`job-system.md` § 5.0); a
+    caller with none (`launch`, opening the next attempt of a launched
+    stage) has it written now.
 
     ``named`` says who chose ``continue_from``: the person, by ``--from``, or
     `prep`, by default (`job-system.md` § 5.4) -- so a refusal
@@ -818,11 +839,14 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # ruled 2026-08-29), and the point's directory already holds its own
     # deck + wrapper, so everything below reads it exactly like the
     # stage's own directory.  Default: the job's own, as ever.
+    from .planned import Plan
+    own = plan is None
+    plan = Plan() if own else plan
     stage_dir = (Path(container) if container is not None
                  else base / dir_of[stage_name])
-    stage_dir.mkdir(parents=True, exist_ok=True)
+    plan.folder(stage_dir)
     attempt, is_new = resolve_attempt(stage_dir)
-    attempt.mkdir(parents=True, exist_ok=True)
+    plan.folder(attempt)
 
     # WHAT EACH OF THESE DIRECTORIES IS, said by the code that just made them
     # (`project-layout.md` § 1.4a, invariant 6b), through the one marker
@@ -835,7 +859,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # `container=<...>/v0.2`, whose parent `04_device/` is then created by
     # `parents=True` and would be the one directory in the tree that never
     # answered.
-    mark_run(base, attempt)
+    mark_run(base, attempt, plan)
 
     # Inputs: the deck, wrappers and shared package, COPIED in -- real
     # files, per L2 (roadmap 7.10; `project-layout.md` § 1.0: the run
@@ -846,23 +870,20 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # before the layout repair).  Identical bytes for every attempt argued
     # for links once; a synced-back bundle whose links dangled on the
     # other machine is the argument that outranks it.
-    import shutil as _sh
     brought: List[str] = []
 
     def _bring(fname: str) -> None:
         bn = os.path.basename(fname)
         dst = attempt / bn
         for src in (stage_dir / bn, base / fname, base / bn):
-            if src.is_file() and src.resolve() != dst.resolve():
+            if plan.is_file(src) and src.resolve() != dst.resolve():
                 # REFRESHED every time, exactly as the old relink was
                 # (unlink + relay): a REUSED unlaunched attempt must see
                 # the re-prep's deck, not the first prep's -- skip-if-
                 # exists here kept a stale ELPA-2STAGE deck under a
                 # re-prep whose pin said otherwise (caught by
                 # test_a_declared_pin_reaches_the_run_deck..., 2026-08-24).
-                if dst.is_symlink() or dst.exists():
-                    dst.unlink()
-                _sh.copy2(src, dst)
+                plan.copy(src, dst)
                 brought.append(bn)
                 return
 
@@ -899,16 +920,16 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # own refusal, which left an attempt prepared a minute ago stripped of
     # what it was to start from (W52).
     marker = runrecord.continued_from_marker(attempt)
-    if not is_new and marker.is_file() and (cold or continue_from):
+    if not is_new and plan.is_file(marker) and (cold or continue_from):
         # The WHOLE declared set, not the pair-filtered one: the previous prep
         # may have named a different source and so copied a conditional file
         # this one would not, and a mind changed from `--from A` to `--cold`
         # that leaves A's `.CG` behind has changed nothing.
         for w in job.warm:
             f = attempt / w.name
-            if f.is_file() and not f.is_symlink():
-                f.unlink()
-        marker.unlink()
+            if plan.is_file(f) and not f.is_symlink():
+                plan.remove(f)
+        plan.remove(marker)
 
     copied: List[str] = []
     if continue_from and not cold:
@@ -916,7 +937,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
         for name in names:
             f = src / name
             if f.is_file():
-                shutil.copy2(f, attempt / name)
+                plan.copy(f, attempt / name)
                 copied.append(name)
 
     # Leave the provenance where ``launch`` can find it: prep is what knows
@@ -924,7 +945,9 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # marker file beats threading the value through a launch argument that
     # every caller would have to remember to pass.
     if copied:
-        marker.write_text(str(continue_from) + "\n", encoding="utf-8")
+        plan.text(marker, str(continue_from) + "\n")
+    if own:
+        plan.carry_out()
 
     return Attempt(
         stage=stage_name,

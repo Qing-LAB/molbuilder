@@ -27,7 +27,6 @@ overrides.
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -1790,12 +1789,12 @@ def _retry_texts(resumes: bool,
             "mode": None, "usage": None, "after": None}
 
 
-def _fdf_honours_restart(fdf_path: Path) -> Optional[bool]:
+def _fdf_honours_restart(text: Optional[str]) -> Optional[bool]:
     """Whether this deck lets SIESTA read the state a previous run left.
 
-    Reads the deck, because the deck is what SIESTA obeys.  ``None`` when it
-    says nothing — a non-SIESTA script, or one from before the restart group
-    was written out.
+    Reads the deck's text, because the deck is what SIESTA obeys.  ``None``
+    when it says nothing — a non-SIESTA script, an unreadable one, or one from
+    before the restart group was written out.
 
     **Why the wrapper has to ask rather than assert.** Its ``--continue`` help
     said *"SIESTA reads .DM/.CG/.XV automatically when present (generator emits
@@ -1809,9 +1808,7 @@ def _fdf_honours_restart(fdf_path: Path) -> Optional[bool]:
     First match wins, as libfdf does (`fdf_locate` stops at the first label).
     """
     from .script_emit import parameter
-    try:
-        text = fdf_path.read_text()
-    except OSError:
+    if text is None:
         return None
     # THE ONE DOOR, deck-backed.  Which keyword answers for `restart` is the
     # catalogue's to say (`[item.restart].expands`), not this function's -- it
@@ -1823,7 +1820,7 @@ def _fdf_honours_restart(fdf_path: Path) -> Optional[bool]:
     return answer.strip().lower() in _FDF_TRUTHY
 
 
-def _py_deck_reads_prior(script_path: Path) -> Optional[bool]:
+def _py_deck_reads_prior(text: Optional[str]) -> Optional[bool]:
     """Whether this PySCF deck reads prior state at start -- from the DECK.
 
     ``True``: the deck carries the restart-gated reads (the chkfile
@@ -1835,32 +1832,25 @@ def _py_deck_reads_prior(script_path: Path) -> Optional[bool]:
     deck text is what keeps the help from claiming reads the deck does
     not contain -- the same doctrine as ``_fdf_honours_restart``.
     """
-    try:
-        text = script_path.read_text()
-    except OSError:
+    if text is None:
         return None
     if ".spectra.json" in text:
         return None                     # the vibration deck
     return 'init_guess = "chkfile"' in text
 
 
-def _parse_fdf_n_atoms(fdf_path: Path) -> Optional[int]:
-    """Read the ``NumberOfAtoms`` line from a SIESTA .fdf, or None.
+def _fdf_n_atoms(text: str) -> Optional[int]:
+    """Read the ``NumberOfAtoms`` line off a SIESTA deck's text, or None.
 
-The wrapper needs the atom count to state its occupancy NOTICE
+    The wrapper needs the atom count to state its occupancy NOTICE
     (`_orbitals_per_rank_notice`); it clamps nothing with it since the
     2026-09-03 ruling.  Parsing the .fdf keeps the wrapper self-contained
     (the .fdf IS the source of truth for what SIESTA will see) and avoids
-    plumbing n_atoms through every caller.  Returns None if the file
-    can't be read or the line isn't found -- ``NumberOfAtoms`` is
-    OPTIONAL in SIESTA, the coordinates block being authoritative -- and
-    the notice is then simply not emitted.
+    plumbing n_atoms through every caller.  Returns None if the line isn't
+    found -- ``NumberOfAtoms`` is OPTIONAL in SIESTA, the coordinates block
+    being authoritative -- and the notice is then simply not emitted.
     """
     from molbuilder.parse.fdf import _parse_fdf
-    try:
-        text = fdf_path.read_text()
-    except OSError:
-        return None
     # THROUGH THE ONE READER (2026-09-17).  This was
     # `re.search(r"(?im)^\s*NumberOfAtoms\b\s+(\d+)")` with a comment saying
     # *"SIESTA FDF parsing is whitespace-insensitive + case-insensitive on
@@ -1954,7 +1944,8 @@ def render_run_wrapper(script_path: Path, *,
                         machine_record=None,
                         finish: Optional[str] = None,
                         resumes: bool = True,
-                        warm: Optional[Sequence[str]] = None) -> str:
+                        warm: Optional[Sequence[str]] = None,
+                        deck_text: Optional[str] = None) -> str:
     """Return the bash text for a wrapper running ``script_path``.
 
     **The allocation arrives whole** — `architecture.md` § 3.1, rule A8.  This
@@ -2000,7 +1991,16 @@ def render_run_wrapper(script_path: Path, *,
         ruling, 2026-09-03); it feeds the occupancy NOTICE, which needs an
         orbital estimate.  Auto-parsed from the .fdf by ``render_wrappers``
         when omitted; ``None`` simply means no notice can be stated.
+      deck_text: the deck as it will be written, for one `prep` has planned
+        and not yet written (`jobset.planned`); read from ``script_path``
+        when omitted, and ``None`` when that cannot be read -- the wrapper
+        then says what the deck instructs is the deck's to say.
     """
+    if deck_text is None:
+        try:
+            deck_text = Path(script_path).read_text()
+        except OSError:
+            deck_text = None
     r = resources
     mpi_np, omp_threads = r.mpi_np, r.cpus_per_task
     max_memory_mb, continue_retries = (r.max_memory_mb,
@@ -2197,14 +2197,14 @@ def render_run_wrapper(script_path: Path, *,
 
     # What this deck instructs about prior state -- read from the deck, so the
     # wrapper's own help cannot contradict the file it ships beside.
-    _restart_honoured = (_fdf_honours_restart(script_path)
+    _restart_honoured = (_fdf_honours_restart(deck_text)
                          if suffix == ".fdf" else None)
     # WHAT A RETRY OF THIS RUN DOES -- one description (`_retry_texts`), read
     # by every text that speaks of a retry: the banner's retry line, the
     # retry's own message, a retried run's Mode line, the --continue usage
     # and the line after the budget is spent (`running-a-job.md` § 3.5).
     _retry = _retry_texts(resumes, _restart_honoured)
-    _py_reads_prior = (_py_deck_reads_prior(script_path)
+    _py_reads_prior = (_py_deck_reads_prior(deck_text)
                        if suffix == ".py" else None)
 
     # THE BUDGET IS NOT OVERRIDDEN HERE, and that is deliberate.
@@ -4222,8 +4222,13 @@ def render_wrappers(script_path: Path, *,
                     machine_record=None,
                     finish: Optional[str] = None,
                     resumes: bool = True,
-                    warm: Optional[Sequence[str]] = None) -> RenderedWrapper:
+                    warm: Optional[Sequence[str]] = None,
+                    deck_text: Optional[str] = None) -> RenderedWrapper:
     """Render everything step 4 produces for *script_path*, and write nothing.
+
+    ``deck_text`` is the deck as it will be written, for one `prep` has
+    planned and not yet written (`jobset.planned`) -- the wrapper is
+    rendered from it, and the file need not exist yet.
 
     **W7 — floor 3 returns text.**  The deck writers hand back a string and the
     conductor writes it; step 4 held the opposite pattern until 2026-08-18,
@@ -4265,8 +4270,10 @@ def render_wrappers(script_path: Path, *,
     unterminated quote and the user found out by running it.
     """
     script_path = Path(script_path).resolve()
-    if not script_path.is_file():
-        raise WrapperError(f"script not found: {script_path}")
+    if deck_text is None:
+        if not script_path.is_file():
+            raise WrapperError(f"script not found: {script_path}")
+        deck_text = script_path.read_text()
     r = resources
     # TOLD FIRST, READ SECOND.  The count is `len(struct.elements)`, which
     # `prep` holds when it renders a deck; reading it back out of the file we
@@ -4274,11 +4281,11 @@ def render_wrappers(script_path: Path, *,
     # that has no structure to ask -- `prep_jobset` walks a job set of
     # scripts, not structures.
     if n_atoms is None and script_path.suffix.lower() == ".fdf":
-        n_atoms = _parse_fdf_n_atoms(script_path)
+        n_atoms = _fdf_n_atoms(deck_text)
     text = render_run_wrapper(
         script_path, label=label, resources=r, env=env, n_atoms=n_atoms,
         project_dir=project_dir, machine_record=machine_record,
-        finish=finish, resumes=resumes, warm=warm)
+        finish=finish, resumes=resumes, warm=warm, deck_text=deck_text)
     _validate_rendered_wrapper(text, script_path)
     # ``stem + ".run.sh"`` rather than ``with_suffix(".run.sh")``: the latter
     # replaces only the LAST suffix, so ``job.spectra.py`` would become
@@ -4337,8 +4344,13 @@ def write_run_wrapper(script_path: Path, *,
                       machine_record=None,
                       finish: Optional[str] = None,
                       resumes: bool = True,
-                      warm: Optional[Sequence[str]] = None) -> Path:
+                      warm: Optional[Sequence[str]] = None,
+                      plan=None) -> Path:
     """Write what :func:`render_wrappers` produced, and return the wrapper's path.
+
+    ``plan`` (`jobset.planned.Plan`) receives the files instead of the disk,
+    rendered from the deck the plan holds: `prep` decides everything before
+    it writes (`job-system.md` § 5.0).
 
     **This function renders nothing.**  It is the writing half of step 4, kept
     beside the rendering half so every writer of a wrapper set -- `jobset/prep`
@@ -4361,14 +4373,20 @@ def write_run_wrapper(script_path: Path, *,
                                machine_record=machine_record,
                                env=env, emit_sbatch=emit_sbatch,
                                project_dir=project_dir, finish=finish,
-                               resumes=resumes, warm=warm)
+                               resumes=resumes, warm=warm,
+                               deck_text=(plan.read_text(script_path)
+                                          if plan is not None else None))
     parent = Path(script_path).resolve().parent
     for name, text in rendered.files:
-        written = _sc_write.write_script(parent / name, text)
-        written.chmod(0o755 if name in rendered.executable else 0o644)
+        _sc_write.write_script(
+            parent / name, text, plan=plan,
+            mode=0o755 if name in rendered.executable else 0o644)
     for name, data in rendered.blobs:
-        (parent / name).write_bytes(data)
-        (parent / name).chmod(0o644)
+        if plan is not None:
+            plan.bytes(parent / name, data, mode=0o644)
+        else:
+            (parent / name).write_bytes(data)
+            (parent / name).chmod(0o644)
     return parent / rendered.wrapper_name
 
 
@@ -4612,9 +4630,12 @@ def _validate_rendered_wrapper(text: str, script_path: Path) -> None:
     """Run ``bash -n`` (parse-only) on the rendered wrapper text.
     Raises :exc:`WrapperError` if bash rejects it as malformed shell.
 
-    Writes the text to a tempfile (in the same dir so a quirky FS
-    can't surprise us) and runs ``bash -n`` against it.  No execution
-    happens; bash only checks shell-syntax validity.
+    The text goes to ``bash -n`` on its standard input -- nothing is
+    written anywhere: `prep` checks a wrapper it has planned and not yet
+    written (`job-system.md` § 5.0, rule 3), in a folder that may not exist
+    yet.  *(It went through a temp file in the script's own folder until
+    2026-10-05.)*  No execution happens; bash only checks shell-syntax
+    validity.
 
     Cheap: a few ms per render; the user's wait is dominated by the
     upstream form-submit roundtrip anyway.  The alternative — only
@@ -4623,25 +4644,8 @@ def _validate_rendered_wrapper(text: str, script_path: Path) -> None:
     request like the 2026-06-20 PDT incident).
     """
     import subprocess
-    import tempfile
-    parent = script_path.parent
-    fd, tmp = tempfile.mkstemp(
-        prefix=".runwrap-syntax-check-",
-        suffix=".sh",
-        dir=str(parent),
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(text)
-        cp = subprocess.run(
-            ["bash", "-n", tmp],
-            capture_output=True, text=True, timeout=15,
-        )
-    finally:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
+    cp = subprocess.run(["bash", "-n"], input=text,
+                        capture_output=True, text=True, timeout=15)
     if cp.returncode != 0:
         raise WrapperError(
             f"generator produced malformed shell for {script_path.name}; "

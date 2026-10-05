@@ -1518,14 +1518,12 @@ def api_task_setup_prep():
     except PrepError as exc:
         # Refused, not repaired -- the reader's own words, as the terminal
         # gives them -- WITH what the entry had found by then: the preflight's
-        # notes, what the inputs said (a bench's crossed-out cells, which a
-        # refusal may point at), and what was already written.
+        # notes and what the inputs said (a bench's crossed-out cells, which
+        # a refusal may point at).  A refused prep wrote nothing.
         return jsonify({
             "ok": False, "error": str(exc),
             "findings": [i.to_json() for i in exc.findings],
             "notes": list(exc.notes),
-            "partial": (exc.partial.as_dict(dest)
-                        if exc.partial is not None else None),
         }), 400
     except Exception as exc:                      # pragma: no cover
         return jsonify({"ok": False,

@@ -39,3 +39,7 @@ before = [["prep", "run", "coarse"],
 stage = "medium"
 card_written = [{ stage = "coarse", moments = ["prep", "launch", "run"] },
                 { stage = "medium", moments = ["prep"] }]
+
+[[case]]
+name = "a SIESTA calculation's pseudopotentials are where its run opens them: its one copy in pseudos/, and a real copy beside the deck in the stage's run folder -- SIESTA opens only its working directory"
+made = ["pseudos/H.psml", "01_coarse/run-0/H.psml"]

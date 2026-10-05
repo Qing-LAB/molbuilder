@@ -28,7 +28,7 @@ from molbuilder.config.siesta import SiestaConfig
 from molbuilder.jobset.model import Resources
 from molbuilder.jobset.engines import EngineSeam
 from molbuilder.jobset.prep import prep_calculation
-from molbuilder.pipeline_log import PipelineLog, log_name
+from molbuilder.pipeline_log import log_name
 from molbuilder.pyscf.stages import default_pyscf_stages
 from molbuilder.script_emit import Block, DeckSpec
 from molbuilder.siesta.stages import default_siesta_stages
@@ -254,28 +254,10 @@ def test_both_gates_report_their_verdict(tmp_path):
     assert re.search(r"out  compared\s+\d+ distinct lines", text), text
 
 
-def test_a_settings_refusal_is_in_the_log_with_its_reason(tmp_path):
-    """**Logged before reported.**  ``validate``'s report RAISES on an
-    error-severity issue; a log written afterwards would be missing exactly
-    the run that most needed explaining.
-
-    Driven through a real refusal: GPU without an ELPA diagonaliser.
-    """
-    from molbuilder.jobset.errors import PrepError
-    dest, stages = _calculation(tmp_path, "siesta", "flat")
-    tpl = dest / "BDT.template.toml"
-    head, sep, tail = tpl.read_text().partition("[item.use_gpu]")
-    assert sep, "the template lost its use_gpu item"
-    body, nxt, rest = tail.partition("\n[item.")
-    assert "value = false" in body, body
-    tpl.write_text(head + sep + body.replace("value = false", "value = true", 1)
-                   + nxt + rest)
-    with pytest.raises((PrepError, ValueError)):
-        _prep(dest, stages[0])
-    text = _the_log(dest)
-    # the file stops where the pipeline stopped, and the last thing in it is
-    # the step that refused
-    assert "STEP 3" in text, text
+# `test_a_settings_refusal_is_in_the_log_with_its_reason` retired 2026-10-05
+# with the rule it held (*logged before reported*): a refused prep writes no
+# log (`script-preparation.md` § 4.5, `job-system.md` § 5.0 rule 3) -- what
+# it leaves is the prep protocol's case table (`tests/data/prep_protocol.toml`).
 
 
 # --------------------------------------------------------------------- #
@@ -301,11 +283,11 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
     is where the next afternoon goes.
 
     Each hook of both seams is swapped, in turn, for one that raises, and a
-    real prep runs with the log on.  The three promises of `issues.calling`,
-    each asserted: the TYPE survives, the MESSAGE survives, and the
-    attribution is attached -- as a note on the exception, and as the `!!`
-    line of the pipeline log.  `relabel` is asked only of a TRIAL, so it is
-    reached through a benchmark prep.
+    real prep runs.  The three promises of `issues.calling`, each asserted:
+    the TYPE survives, the MESSAGE survives, and the attribution is attached
+    as a note on the exception -- the whole record, since a prep that raised
+    writes nothing (`script-preparation.md` § 4.5).  `relabel` is asked only
+    of a TRIAL, so it is reached through a benchmark prep.
 
     API-level: the hook is swapped in-process on `prep_calculation`, the
     conductor `jobset prep run` calls; the CLI adds nothing between them for
@@ -355,8 +337,6 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
     assert any(f"raised inside {owner}" in n for n in notes), (
         f"{owner} raised and the exception does not say whose it was: "
         f"{notes}")
-    assert f"!! {owner} RAISED — TypeError" in _the_log(dest), (
-        f"{owner} raised and the pipeline log does not say so")
 
 
 def test_an_engines_deliberate_refusal_survives_the_boundary(tmp_path):
@@ -398,25 +378,9 @@ def test_an_engines_deliberate_refusal_survives_the_boundary(tmp_path):
     assert "ELPA" in str(real.value), real.value
 
 
-def test_a_hook_failure_lands_in_the_log_with_its_traceback(tmp_path):
-    """The failure goes in its OWN column, so ``grep '^  !!'`` finds every
-    hook that blew up -- and the traceback goes in whole, because this is the
-    file someone opens *because* a run died."""
-    from molbuilder.pipeline_log import PipelineLog
-    from molbuilder.issues import calling
-
-    log = PipelineLog(tmp_path / "x.pipeline.log")
-    log.phase("STEP 3 · DECK")
-    with pytest.raises(TypeError):
-        with calling("line", engine="siesta", where="item 'mesh_cutoff'",
-                     log=log):
-            raise TypeError("boom")
-    log.close()
-    text = (tmp_path / "x.pipeline.log").read_text()
-    assert "!! siesta.line RAISED — TypeError" in text, text
-    assert [ln for ln in text.splitlines() if ln.startswith("  !!")], text
-    assert "at item 'mesh_cutoff'" in text, text
-    assert "Traceback (most recent call last)" in text, text
+# `test_a_hook_failure_lands_in_the_log_with_its_traceback` retired
+# 2026-10-05 with the log's `!!` column: a hook that raised ends the prep,
+# which then writes nothing (`script-preparation.md` § 4.5).
 
 
 def test_the_attribution_reaches_the_person_running_the_command(tmp_path):
@@ -551,19 +515,6 @@ def test_both_engines_traverse_the_same_sequence(tmp_path):
     assert seqs["siesta"], "no step banners at all"
 
 
-# --------------------------------------------------------------------- #
-#  7. It never breaks a prep                                             #
-# --------------------------------------------------------------------- #
-
-def test_an_unwritable_log_does_not_break_the_prep(tmp_path):
-    """``ledger.record``'s rule, inherited: *a run must not fail because its
-    logbook could not be written.*"""
-    log = PipelineLog(tmp_path / "no-such-dir" / "x.pipeline.log")
-    log.phase("STEP 1")
-    log.received("a", "b")
-    log.chose("c", 1, "template")
-    log.produced("d", "e")
-    log.text("multi\nline")
-    log.note("n")
-    log.close()          # every one of those is a no-op, and none raises
-    assert not (tmp_path / "no-such-dir").exists()
+# `test_an_unwritable_log_does_not_break_the_prep` retired 2026-10-05: the
+# log writes no file of its own -- its text is one of the plan's files,
+# written with the rest (`pipeline_log.PipelineLog`).

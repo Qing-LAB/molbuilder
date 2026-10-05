@@ -175,7 +175,7 @@ of "the record" is prose a new reader has to decode:
 | 3.8 | **reader section** | the one block a person is meant to edit |
 | 3.9 | **record** | provenance, benchmark anchors, atom labels, behind a do-not-edit banner |
 | 3.10 | **write** | one writer, which keeps whatever the reader put in their section |
-| 3.11 | **check** | read the written file back — **the exact text the engine will open** — and refuse if it is wrong |
+| 3.11 | **check** | read what the writer made — **the exact text the engine will open**, the reader's section merged in — and refuse if it is wrong |
 | 3.12 | **promises** | the files the deck's own text instructs someone to run |
 | 3.13 | **declare** | what this job may reuse, and what the wrapper must route on |
 
@@ -270,11 +270,13 @@ called from inside it. Everything upstream of the final script — the descripti
 the form, the resolved values — is already gated by that framework and by the
 UI's own modules, and **this layer does not re-check them**.
 
-**Check reads the written file, and that is deliberate.** The text handed to
+**Check reads what the writer made, and that is deliberate.** The text handed to
 **write** is not what the engine opens: `write_script` merges the reader's own
 section from whatever was already there, so the assembled text is an intermediate
-and the file is the artifact. Checking the intermediate would check something
-nobody runs.
+and the writer's output is the artifact. Checking the intermediate would check
+something nobody runs. Check reads that output as the plan holds it — the text
+the file will hold, decided before anything is written (§ 3.0). *(Until
+2026-10-05 it reopened the file from disk, after the write.)*
 
 It reuses the existing machinery rather than inventing a second one — the `Issue`
 type, its severity model, and `report()`, so a refusal here reads like every
@@ -664,8 +666,8 @@ spec is a small form the engine fills in, and it has twelve slots:
 | | **validate** | **check** |
 |---|---|---|
 | asks | *is this a sound calculation?* | *does this deck say what it was meant to say?* |
-| reads | the resolved settings and the structure | **the written file**, reopened from disk |
-| when | before a line of text exists | after the deck is written |
+| reads | the resolved settings and the structure | **the writer's output** — the text the file will hold |
+| when | before a line of text exists | after the writer has made the deck's text, before anything is on disk |
 | catches | a restricted treatment with unpaired electrons; a missing pseudopotential; a vacuum too thin | a generated program that does not parse; an identity that is not the one stamped; a keyword written twice, where libfdf silently takes the first; **a line the layout said to write that is not in the file, verbatim** — so a dropped setting AND a mangled value, both |
 | whose | the existing validation framework, shared with the form's preflight | the engine's `check_rules` plus the shared rules |
 
@@ -718,7 +720,7 @@ sequenceDiagram
     participant C as prep<br/>(the conductor)
     participant E as the engine<br/>siesta/ · pyscf/
     participant F as the framework<br/>script_emit
-    participant D as the deck<br/>on disk
+    participant D as the deck<br/>in the plan
 
     C->>C: resolve the values for THIS rung<br/>(template ⊕ the stage's overrides)
     C->>E: spec_for(structure, config, stage_token=…)
@@ -732,16 +734,17 @@ sequenceDiagram
     end
     F->>F: add the reader's section, the banner, the record blocks
     F->>D: write_script(path, text) — the one writer
-    F->>D: read it back
+    F->>D: read what it made
     F->>E: check_rules(text, structure, config)
     F-->>C: findings, or nothing
 ```
 
 **Read the arrows: the engine is never the caller.** It answers twice — *what
 is in this deck?* and *how is one setting spelled?* — and decides nothing about
-order. And the write and the read-back are adjacent, which is what lets the
-check gate be about the artifact rather than about the string that was handed
-to the writer.
+order. And the write and the read are adjacent, which is what lets the check
+gate be about the artifact rather than about the string that was handed to the
+writer. The deck is in the prep's plan here, and reaches the disk with
+everything else once the whole plan stands (§ 3.0).
 
 **What crosses the seam is the engine's FORM**, and the framework does the rest:
 `prepare_deck` runs validate → render → write → check, and is what every route
@@ -911,9 +914,9 @@ what it is once copied off the machine.
 
 **What it contains.** A banner per step, events indented under it, and every
 line saying what it is in its first column — `in` received, `⊕` decided, `out`
-produced, `!!` raised. So it reads top to bottom, and searching one column
-gives one answer across the whole file: every value with its source, or every
-hook that blew up.
+produced. So it reads top to bottom, and searching one column gives one answer
+across the whole file: every value with its source, or every input the run
+read.
 
 ```
 ═══════════════════════════════════════════════════════════════════════
@@ -946,10 +949,14 @@ already built this way:
 It also writes down the answers that are *nothing*: a `DeckSpec` slot
 answering `None` is recorded as `nothing (W5)`, not left blank.
 
-**A refusal ends the file at the step that refused.** Every line is flushed as
-it is written, and the settings gate is logged **before** it is reported —
-`report` raises on an error-severity issue, and a log written afterwards would
-be missing exactly the run that most needed explaining.
+**A refused prep writes no log.** The log is the plan's own account, written
+with the rest of the plan once every step has passed (§ 3.0), and a refusal
+writes nothing but its line in the ledger
+([`job-system.md`](?doc=execution/job-system.md) § 5.0, rule 3). Its sentence
+says which step refused and why; a hook that raised says whose it was in the
+error it raises (`issues.calling`). *(Until 2026-10-05 every line was flushed
+as it was told, so a refused prep left a log ending at the step that refused,
+and a hook that raised had its own `!!` column there, with its traceback.)*
 
 ## 5. Where space and time meet
 
@@ -1034,7 +1041,7 @@ sequenceDiagram
     participant P as prep — the conductor
     participant E as siesta (floor 3)
     participant W as script_emit (floor 3)
-    participant D as disk
+    participant D as the plan
     P->>E: identity — name it, bdt-e2e_01_coarse.fdf, SystemLabel bdt-e2e
     P->>E: spec_for — the deck's layout, and how SIESTA spells a setting
     P->>W: prepare_deck(spec, …)
@@ -1044,7 +1051,7 @@ sequenceDiagram
     W->>E: engine body — the post-processing templates (a Block)
     W->>W: reader section · banner · record blocks
     W->>D: write — merging any USER-CUSTOM already there
-    W->>D: read it back, and check what the layout said to write
+    W->>D: read what it made, and check what the layout said to write
     P->>E: promises — seed the trajectory log the deck just named
     P->>E: declare — warm files, GPU traits
 ```

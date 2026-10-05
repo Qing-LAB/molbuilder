@@ -262,12 +262,15 @@ def launch_record(where, basename: Optional[str] = None) -> Optional[dict]:
 GATHERED_FROM_FILE = _rf.GATHERED_FROM_FILE   # the catalogue's name
 
 
-def write_gathered_from(attempt_dir, gathered) -> None:
+def write_gathered_from(attempt_dir, gathered, *, plan=None) -> None:
     """``gathered`` -- ``[(source attempt, filename), ...]`` in the order
-    taken -- as the attempt's ``.gathered-from``, through `persist`."""
-    _persist().write_bytes(
-        Path(attempt_dir) / GATHERED_FROM_FILE,
-        "".join(f"{fn} <- {src}\n" for src, fn in gathered).encode("utf-8"))
+    taken -- as the attempt's ``.gathered-from``, through `persist`, or into
+    ``plan`` (`jobset.planned.Plan`)."""
+    data = "".join(f"{fn} <- {src}\n" for src, fn in gathered).encode("utf-8")
+    if plan is not None:
+        plan.bytes(Path(attempt_dir) / GATHERED_FROM_FILE, data)
+        return
+    _persist().write_bytes(Path(attempt_dir) / GATHERED_FROM_FILE, data)
 
 
 def read_gathered_from(attempt_dir) -> List[dict]:

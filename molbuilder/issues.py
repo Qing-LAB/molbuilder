@@ -143,7 +143,7 @@ class ValidationError(ValueError):
 
 
 @contextmanager
-def calling(hook: str, *, engine: str = "", where: str = "", log=None):
+def calling(hook: str, *, engine: str = "", where: str = ""):
     """Run an ENGINE-SUPPLIED callable, and make any exception say whose.
 
     **The failure this exists for is not a crash; it is an UNATTRIBUTED
@@ -166,17 +166,16 @@ def calling(hook: str, *, engine: str = "", where: str = "", log=None):
     written anyway is the defect class this layer exists to prevent.  The
     re-raise is unconditional -- the only thing gained here is knowing who.
 
-    ``log`` is the pipeline log when one is open (§ 4.5): the failure lands in
-    the file under the phase it happened in, with its traceback, so a run that
-    died is explained by the same file that explains a run that worked.
+    The note is the whole record: a prep that raised writes nothing, its
+    pipeline log included (`script-preparation.md` § 4.5).  *(Until
+    2026-10-05 the failure was also written into that log, with its
+    traceback -- into a file a refused prep no longer leaves.)*
     """
     try:
         yield
     except Exception as exc:
         owner = f"{engine}.{hook}" if engine else hook
         exc.add_note(f"raised inside {owner}" + (f" -- {where}" if where else ""))
-        if log is not None:
-            log.failed(owner, exc, where=where)
         raise
 
 

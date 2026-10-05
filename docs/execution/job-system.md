@@ -1173,11 +1173,13 @@ terminal, an unticked box on the tab; until 2026-10-02 the one question was
 *already under way here — re-render?*; user, 2026-10-03: "always save through
 checkpoint".)*
 
-**A refusal carries what the entry had found** (`PrepError`'s `findings`,
-`notes` and `partial`): the preflight's notes, what the inputs said — a bench
-refused because *no cell survived* points at its crossed-out cells — and what
-the five steps had already written. The command line prints them before the
-refusal's sentence; the tab's route returns them beside it. The plain
+**A refusal carries what the entry had found** (`PrepError`'s `findings` and
+`notes`): the preflight's notes and what the inputs said — a bench refused
+because *no cell survived* points at its crossed-out cells. A refused prep
+wrote nothing (§ 5.0, rule 3), so there is nothing else to show *(until
+2026-10-05 it carried `partial` too, what the steps had written before they
+were refused)*. The command line prints them before the refusal's sentence;
+the tab's route returns them beside it. The plain
 `ValueError` / `KeyError` the steps raise for what is the person's to fix (a
 template naming an item its schema does not declare) are refused the same way
 on both doors; a `TypeError` is a bug, and looks like one.

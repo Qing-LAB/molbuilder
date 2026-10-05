@@ -462,15 +462,18 @@ def emit_correction_script(
     system_label: str,
     q: int,
     epsilon_r: float = 1.0,
+    *,
+    plan=None,
 ) -> Optional[Path]:
-    """Write ``makov_payne_correction.py`` next to the FDF.
+    """Write ``makov_payne_correction.py`` next to the FDF -- or put it in
+    ``plan`` (`jobset.planned.Plan`), beside the deck the plan holds.
 
     Returns the path to the emitted script, or ``None`` if the
     FDF parent directory doesn't exist (rare; caller should
     write the FDF first).
     """
     parent = Path(fdf_path).parent
-    if not parent.is_dir():
+    if plan is None and not parent.is_dir():
         return None
     # THROUGH THE ONE WRITER (`script-preparation.md` § 3.2, W4).  This is a
     # generated script like any other -- the deck's own text tells a person to
@@ -481,4 +484,4 @@ def emit_correction_script(
     return _sc.write_script(parent / MAKOV_PAYNE_SCRIPT,
                             render_correction_script(
                                 system_label=system_label, q=q,
-                                epsilon_r=epsilon_r))
+                                epsilon_r=epsilon_r), plan=plan)

@@ -367,7 +367,8 @@ def test_the_gate_names_a_keyword_a_writer_bug_dropped(engine, tmp_path):
 
     real = se.write_script
     try:
-        se.write_script = lambda p, t: real(p, t.replace(victim, "MB_TYPO"))
+        se.write_script = lambda p, t, **k: real(
+            p, t.replace(victim, "MB_TYPO"), **k)
         with pytest.raises(ValidationError) as caught:
             se.prepare_deck(spec, struct, cfg, tmp_path / f"t{seam.suffix}")
     finally:

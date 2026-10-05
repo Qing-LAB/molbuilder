@@ -2762,16 +2762,11 @@ function _showPrepAnswer(wrap, say, r) {
                            r.notes.join("\n")));
     }
     if (!r.ok) {
-        /* A REFUSAL SHOWS WHAT IT POINTS AT: the preflight's notes, what
-         * the inputs said -- a bench's crossed-out cells -- and whatever
-         * was already written, beside its own sentence. */
+        /* A REFUSAL SHOWS WHAT IT POINTS AT: the preflight's notes and what
+         * the inputs said -- a bench's crossed-out cells -- beside its own
+         * sentence.  A refused prep wrote nothing (`job-system.md` § 5.0). */
         say.textContent = r.error;
         say.setAttribute("data-state", "bad");
-        const part = r.partial;
-        if (part) {
-            findingLines(part.deck_findings);
-            for (const d of (part.dirs || [])) line("wrote: " + d);
-        }
         if (box.childNodes.length) wrap.appendChild(box);
         return;
     }

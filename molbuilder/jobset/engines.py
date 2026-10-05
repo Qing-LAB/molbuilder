@@ -112,7 +112,7 @@ class EngineSeam:
 
 
 def _siesta_sibling_artifacts(struct, cfg, deck_path: Path, *,
-                              kind: str) -> None:
+                              kind: str, plan=None) -> None:
     """The sibling files a SIESTA deck's own text PROMISES.
 
     A charged deck instructs ``python3 makov_payne_correction.py`` in its
@@ -133,10 +133,11 @@ def _siesta_sibling_artifacts(struct, cfg, deck_path: Path, *,
     q = state.net_charge.value
     if q != 0 and state.finite:
         emit_correction_script(fdf_path=deck_path,
-                               system_label=cfg.system_label, q=q)
+                               system_label=cfg.system_label, q=q,
+                               plan=plan)
 
 
-def _pseudo_dir(base: Path) -> Path:
+def _pseudo_dir(base: Path, plan=None) -> Path:
     """THE PARENT'S DATA IS GROUPED (roadmap 7.10 M6): the calculation's
     pseudopotential copies live in ``pseudos/``, one folder, instead of
     N ``<El>.psml`` entries loose at the root.  Root strays -- put there
@@ -147,9 +148,15 @@ def _pseudo_dir(base: Path) -> Path:
 
     ONE rule, two providers: the SIESTA arm below and the transport
     composite's (which fetches from the citation instead of a library).
+
+    ``plan`` (`jobset.planned.Plan`) receives the folder, its stamp and the
+    adoptions instead of the disk; without one they happen now.
     """
+    from .planned import Plan
+    own = plan is None
+    plan = Plan() if own else plan
     pdir = base / PSEUDO_DIRNAME
-    pdir.mkdir(exist_ok=True)
+    plan.folder(pdir)
     # A container, and it says so (`project-layout.md` § 1.4a): the shared
     # package holds files, never a run.  Left unstamped it was the directory
     # that reported a calculation *running* because it had no result file in
@@ -157,17 +164,19 @@ def _pseudo_dir(base: Path) -> Path:
     # as *support* rather than a stage, because the naming authority maps no
     # job to it; that is derived, not stored.
     from .. import calcdirs
-    calcdirs.write(pdir, role=calcdirs.CONTAINER, root=base)
-    for stray in base.glob("*.psml"):
+    plan.text(*calcdirs.record(pdir, role=calcdirs.CONTAINER, root=base))
+    for stray in plan.glob(base, "*.psml"):
         target = pdir / stray.name
-        if not target.exists():
-            stray.replace(target)
+        if not plan.is_file(target):
+            plan.move(stray, target)
         else:
-            stray.unlink()
+            plan.remove(stray)
+    if own:
+        plan.carry_out()
     return pdir
 
 
-def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
+def _siesta_provide_pseudos(struct, cfg, base: Path, plan=None) -> None:
     """Put the pseudopotentials this deck needs into the calculation.
 
     SIESTA opens ``<element>.psml`` in the directory it runs from and has no
@@ -204,6 +213,10 @@ def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
     the run reads actually are — and refuses on the same ERROR statuses the
     preflight and `molbuilder pseudo check` refuse on, from the same shared
     constant.
+
+    ``plan`` (`jobset.planned.Plan`) receives the copies; the screening
+    reads the folder as the plan will leave it (`pseudos.PLANNED`): `prep`
+    decides everything before it writes (`job-system.md` § 5.0).
     """
     from ..pseudos import psml_sources, resolve_psml_lib
     from ..siesta.input import copy_pseudopotentials
@@ -212,7 +225,7 @@ def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
     species = species_order(struct.elements)
     if not species:
         return
-    pdir = _pseudo_dir(base)
+    pdir = _pseudo_dir(base, plan)
     # THE FOLDER WINS, by the one rule the settings gate asks too.
     want = [s for s, d in psml_sources(species, dest_dir=base).items()
             if d is None]
@@ -249,7 +262,7 @@ def _siesta_provide_pseudos(struct, cfg, base: Path) -> None:
             + describe_psml_anchor(str(lib_raw), dest_dir=base)
             + "  Put the .psml files there, or set `psml_lib` to a "
               "directory that has them.")
-    missing = copy_pseudopotentials(want, lib, pdir)
+    missing = copy_pseudopotentials(want, lib, pdir, plan=plan)
     if missing:
         raise PrepError(
             f"this calculation needs {', '.join(f'{m}.psml' for m in missing)}"
@@ -275,6 +288,8 @@ def _screen_pseudos(species, cfg, base: Path) -> None:
     or the wrong XC family.  The rest are advisory, and the settings gate
     reports them in the deck's report: it reads these same files
     (`pseudos.psml_sources`), so printing them here too said each one twice.
+    While a prep is planned it reads the folder as the plan will leave it
+    (`pseudos.PLANNED`).
     """
     from ..pseudos import ERROR_STATUSES, check_coverage, expected_xc_family
     entries = check_coverage(
@@ -333,7 +348,7 @@ def engine_seam(engine: str) -> EngineSeam:
         f"name.")
 
 
-def _siesta_shared_package(base: Path) -> List[str]:
+def _siesta_shared_package(base: Path, plan=None) -> List[str]:
     """SIESTA's shared package: the pseudopotentials it put in the folder,
     and the atom-permutation record when its decks are written from a sorted
     copy.
@@ -349,13 +364,17 @@ def _siesta_shared_package(base: Path) -> List[str]:
     one way back (`atom_permutation`, I7): every attempt holds its copy, so
     a SIESTA force-constant job's finish reads it beside the run it finishes
     (`engines/vibration.md` § 5.5).
+
+    ``plan`` -- the folder as a prep will leave it (`jobset.planned`).
     """
     from ..atom_permutation import PERMUTATION_FILE
+    from .planned import Plan
+    view = plan if plan is not None else Plan()
     grouped = sorted(f"{PSEUDO_DIRNAME}/{p.name}"
-                     for p in (base / PSEUDO_DIRNAME).glob("*.psml"))
-    pseudos = grouped or sorted(p.name for p in base.glob("*.psml"))
+                     for p in view.glob(base / PSEUDO_DIRNAME, "*.psml"))
+    pseudos = grouped or sorted(p.name for p in view.glob(base, "*.psml"))
     return pseudos + ([PERMUTATION_FILE]
-                      if (base / PERMUTATION_FILE).is_file() else [])
+                      if view.is_file(base / PERMUTATION_FILE) else [])
 
 
 __all__ = ["EngineSeam", "engine_seam"]

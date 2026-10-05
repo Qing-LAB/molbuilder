@@ -2635,7 +2635,6 @@ Each is removed when its write ends; only a kill in between leaves one.
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
 | `<random>.tmp` | a file being written; it replaces its target when the write ends | `persist` and the codec, writing whole or not at all | none | transient |
-| `.runwrap-syntax-check-<random>.sh` | a rendered run script, being checked with `bash -n` | prep (`runwrap`), removed after the check | none | transient |
 | `<random>.lock` | a sidecar's lock | `sidecars.molstruct.with_lock` | none | transient |
 <!-- /manifest -->
 

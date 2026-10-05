@@ -537,13 +537,16 @@ class JobSet:
             jobs=[Job.from_dict(j) for j in (d.get("jobs") or [])],
         )
 
-    def write(self, path) -> Path:
+    def write(self, path, *, plan=None) -> Path:
         """Persist to ``job-set.json`` -- the bundle's plan, carried
         host->target (the exchange vocabulary, `job-contracts.md` § 6.2;
         the persisted-artifacts registry is that document's § 6, absorbed
         from a doc retired in the 2026-07 migration).  Pretty JSON so a
-        human can read/diff the plan in the bundle."""
-        from ..persist import write_json
+        human can read/diff the plan in the bundle.  ``plan``
+        (`jobset.planned.Plan`) receives it instead of the disk."""
+        from ..persist import json_text, write_json
+        if plan is not None:
+            return plan.text(path, json_text(self.to_dict()))
         return write_json(path, self.to_dict())
 
     @classmethod

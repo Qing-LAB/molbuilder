@@ -23,8 +23,13 @@ rendered on its own -- holds ``None``, and ``None`` means the framework skips
 the calls.  Nothing about a generated artifact depends on it -- the log
 observes the pipeline, it is not a step in it.
 
-**Never fatal.**  A logbook that can break a prep is worse than no logbook
-(``ledger.record``'s rule, and the same ``except OSError: pass``).
+**Held, and written with the plan.**  It keeps what it is told, and `prep`
+puts its text in the plan beside every other file, written once the whole
+plan stands -- so a refused prep writes no log, and a hook that raised says
+whose it was in the error it raises (`issues.calling`; `script-preparation.md`
+§ 4.5).  *(Until 2026-10-05 every line was flushed as it was told, never
+fatal, and a refused prep left a log ending at the step that refused, with a
+``!!`` row for a hook that raised.)*
 
 Readable, and greppable, in that order
 --------------------------------------
@@ -46,7 +51,7 @@ from __future__ import annotations
 import dataclasses
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, List, Mapping
 
 from .runfiles import compose as _compose
 
@@ -85,15 +90,16 @@ def log_name(label: str, token: str, engine: str, shape: str) -> str:
 
 
 class PipelineLog:
-    """The one writer.  Six verbs, and nothing that decides anything."""
+    """The one writer.  Seven verbs, and nothing that decides anything.
+
+    Nothing is written as it is told -- the lines are kept, and
+    :meth:`held_text` is what `prep` puts in its plan, written with every
+    other file once the whole plan stands (`job-system.md` § 5.0, rule 3: a
+    refusal writes nothing but its line in the ledger)."""
 
     def __init__(self, path):
         self.path = Path(path)
-        self._fh = None
-        try:
-            self._fh = self.path.open("a", encoding="utf-8")
-        except OSError:
-            self._fh = None            # never fatal (ledger's rule)
+        self._held: List[str] = []
 
     # -- opening ------------------------------------------------------- #
 
@@ -112,6 +118,10 @@ class PipelineLog:
         self = cls(Path(record_dir) / log_name(label, token, engine, shape))
         self._banner(label, token, engine, shape)
         return self
+
+    def held_text(self) -> str:
+        """What the log has been told, as the text its file gets."""
+        return "".join(line + "\n" for line in self._held)
 
     def _banner(self, label, token, engine, shape) -> None:
         at = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -160,42 +170,13 @@ class PipelineLog:
             self._write(f"       {line}" if line.strip() else "")
 
     def note(self, message: str) -> None:
-        """A sentence about the phase itself — a refusal, or an absence."""
+        """A sentence about the phase itself — a finding, or an absence."""
         self._write(f"       {message}")
 
-    def failed(self, owner: str, exc: BaseException, where: str = "") -> None:
-        """A hook RAISED.  Its own banner, its own column, its traceback.
-
-        Its own column (``!!``) because a failure is not an event of the other
-        three kinds and a reader scanning for one should not have to notice a
-        word inside an ``out`` row.  ``grep '^  !!'`` finds every hook that
-        blew up, in every log on the machine.
-
-        The traceback goes in whole.  This is the file someone opens *because*
-        a run died; sparing it thirty lines helps nobody.
-        """
-        import traceback
-        self._write("")
-        self._write(_MINOR)
-        self._write(f"  !! {owner} RAISED — {type(exc).__name__}")
-        self._write(_MINOR)
-        self._row("!!", type(exc).__name__,
-                  (str(exc).splitlines() or [""])[0])
-        if where:
-            self._write(f"       at {where}")
-        self.text("".join(traceback.format_exception(
-            type(exc), exc, exc.__traceback__)))
-
     def close(self) -> None:
-        if self._fh is not None:
-            try:
-                self._fh.write("\n")
-                self._fh.close()
-            except OSError:
-                pass
-            self._fh = None
+        self._held.append("")
 
-    # -- the only two places that touch the file ------------------------ #
+    # -- the only two places that write a line -------------------------- #
 
     def _row(self, kind: str, name: str, detail: Any) -> None:
         d = _flat(detail)
@@ -208,15 +189,7 @@ class PipelineLog:
             f"  {kind:<{_W_KIND}}{str(name):<{_W_NAME}} {d}".rstrip())
 
     def _write(self, line: str) -> None:
-        if self._fh is None:
-            return
-        try:
-            self._fh.write(line + "\n")
-            self._fh.flush()       # a prep that dies mid-step still leaves the
-                                   # steps it finished -- which is when the log
-                                   # is wanted most
-        except OSError:
-            self._fh = None
+        self._held.append(line)
 
 
 def _flat(v: Any) -> str:

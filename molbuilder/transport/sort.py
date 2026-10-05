@@ -32,6 +32,7 @@ impossible.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -172,15 +173,19 @@ class SortResult:
         return out
 
 
-def write_permutation(directory, result: SortResult) -> "Path":
+def write_permutation(directory, result: SortResult, *,
+                      plan=None) -> "Path":
     """Record the permutation beside the calculation -- both directions,
     the schema, one file (`model/overview.md` § 2.2: recorded once).  The
     record, its class and its reader are `atom_permutation`'s, which travels
-    beside a job where this module cannot."""
-    from pathlib import Path
-    from ..persist import write_json
+    beside a job where this module cannot.  ``plan``
+    (`jobset.planned.Plan`) receives it instead of the disk."""
+    from ..persist import json_text, write_json
     out = Path(directory) / PERMUTATION_FILE
-    write_json(out, result.sidecar())
+    if plan is not None:
+        plan.text(out, json_text(result.sidecar()))
+    else:
+        write_json(out, result.sidecar())
     return out
 
 

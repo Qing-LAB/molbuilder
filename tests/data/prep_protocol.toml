@@ -4,10 +4,11 @@
 # saved before its prep, restored -- and a prep anew (user, 2026-10-02:
 # "refuse it, redo via rollback").  Before prep writes, it saves the folder's
 # state -- always, the note led by the time it was taken -- and says so
-# (`checkpointing.md` § 9; user, 2026-10-03).  A prep refused after it began
-# writing puts back what says what the calculation is: the stage is not
+# (`checkpointing.md` § 9; user, 2026-10-03).  Every check and every decision
+# is made before anything is written, so a refused prep writes nothing but its
+# line in the ledger and there is nothing to put back: the stage is not
 # counted prepped, the calculation is not set to the machine, the prep is not
-# recorded as prepped.
+# recorded as prepped (rule 3).
 #
 # `tests/test_prep_protocol.py` runs every case down the road a person runs,
 # through the one runner every contract table shares (`tests/support/road.py`,
@@ -74,12 +75,14 @@ before = [["prep", "bench", "coarse"]]
 refused = ["the benchmark of stage 'coarse' is already prepped", "molbuilder checkpoint list"]
 
 [[case]]
-name = "a first prep refused after it began writing puts back what it wrote -- not counted prepped, not set to the machine, not recorded as prepped, its shape still free: the build installed and the machine re-probed, as the refusal says, the prep is taken"
+name = "a first prep refused at its last step writes nothing -- no stage folder, no data files, no copy of the machine's record, no plan, no log; not counted prepped, not recorded as prepped, its shape still free: the build installed and the machine re-probed, as the refusal says, the prep is taken"
 template = { diag_algorithm = "ELPA-1STAGE" }
 run = { use_gpu = true, gpu_count = 1 }
 allocation = { domain = "gpu" }
 record = { conda_envs = ["molbuilder-siesta"] }
 refused = ["env is not installed", "re-probe that machine"]
+made_lacks = ["01_coarse", "pseudos", "environment.json", "job-set.json",
+              "STAGE-PLAN.md", "H2_01_coarse.siesta.hierarchical.pipeline.log"]
 status_says = ["First incomplete stage: coarse, not prepped yet"]
 ledger_lacks = ["prepped"]
 saved = { shape = "flat" }

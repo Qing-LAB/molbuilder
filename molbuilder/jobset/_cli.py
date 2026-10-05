@@ -1255,26 +1255,20 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
                          on_found=_show)
     except PrepError as e:
         _show(e.findings, e.notes)
-        if e.partial is not None:
-            _echo_prep_answer(e.partial, base, refused=True)
         raise click.ClickException(str(e))
     _echo_prep_answer(ans, base)
 
 
-def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
+def _echo_prep_answer(ans, base) -> None:
     """The prep report, from the entry's answer -- `job-system.md` § 5.3:
     *"prep prints what it resolved, which is what makes launch a plain
     yes"*.  Where the configuration came from, what was written, the attempt
     and what it carries, what it will launch with, whether the deck agrees
     -- then the next command, naming the bundle so it works from anywhere
     (job-contracts.md § 2.5b).  The Task setup tab shows the same answer.
-
-    ``refused``: this is what a prep had written before it refused -- the
-    same lines, and no next command.
     """
     def say_next(line):
-        if not refused:
-            click.echo(line)
+        click.echo(line)
 
     from ..runtime_config import format_provenance
     from .ledger import rel_to as _rel
@@ -1333,11 +1327,6 @@ def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
                  + block(launch_lines("run", stage, base=base)))
         return
     rep = ans.attempt
-    if rep is None:
-        # refused before the attempt opened: the folders are what was written
-        for d in ans.dirs:
-            click.echo(f"  wrote: {_rel(base, d)}")
-        return
     click.echo(f"prepared {rep.stage}: {rep.dir.relative_to(base)}"
                f"{'' if rep.fresh else '  (reused -- not launched yet)'}")
     click.echo(f"  brought in: {', '.join(rep.brought)}")

@@ -29,3 +29,7 @@ run_sh = ["NEWSTATE"]
 [[case]]
 name = "...and one molbuilder's list does not have, its run script does not"
 run_sh_lacks = ["NEWSTATE"]
+
+[[case]]
+name = "a run script says what its deck does with the state a run leaves, read off the deck as prep writes it -- a stage that continues (`running-a-job.md` § 3.5)"
+run_sh = ["This deck says 'start from: continue'"]
