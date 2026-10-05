@@ -369,6 +369,10 @@ notice at all** rather than one built on an invented number.
 -omp / -t flag   >   OMP_NUM_THREADS   >   SLURM_CPUS_PER_TASK   >   the stated value, baked at prep
 ```
 
+A run `jobset launch` starts always carries the flag, its own `-np` / `-omp`
+([`job-system.md` § 6.1](?doc=execution/job-system.md)); the rest of the order
+is for a script run by hand.
+
 The stated value is the run card's cores per rank — SIESTA's `omp_threads`,
 PySCF's `threads` — or prep's `--cpus-per-task`; a run that states none is **refused at
 prep**, like a rank count. There is no policy default: SIESTA's `OMP=1` and

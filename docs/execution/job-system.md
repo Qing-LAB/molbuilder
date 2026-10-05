@@ -1525,6 +1525,16 @@ system** adds is submission and routing:
   `prep`'s header had worked out for its own queue, and admitted nothing.)* The
   queue itself is named once, for the work being launched: `--domain`, else
   what `prep` baked for **this** stage — for `--mode ask` as for `submit`.
+- **Every run is handed its own ranks and threads.** Every launch passes each
+  run script its `-np` and `-omp` — a run here; a stage sent to the queue,
+  after the `.sbatch` name, which forwards them (`bash <base>.run.sh "$@"`);
+  each trial of a benchmark's shelf and each point of a bias scan, inside
+  their sequencer's script — so a launched run's counts are its own, never
+  the submitting shell's `OMP_NUM_THREADS` or the allocation's `SLURM_*`
+  ([`running-a-job.md` § 3.2](?doc=execution/running-a-job.md): the flag comes
+  first). *(A stage sent to the queue alone was the one launch that passed
+  neither, until 2026-10-05 — user: "Make all calling consistent with —omp
+  and settle it".)*
 - **Routing domains.** Instead of hard-coding a partition, you name a **domain**
   — in the description (`allocation.domain`, or the run card's `domain`), on
   `prep --domain`, or on `launch --domain`. A domain is a friendly name for a

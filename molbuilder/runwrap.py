@@ -4542,7 +4542,8 @@ def render_sbatch(script_path: Path, *,
         "# SLURM lands us in SLURM_SUBMIT_DIR = the project dir; the\n"
         "# launcher never cd's (running-a-job.md § 5).  The launcher's\n"
         "# preamble + activation are baked into it, so it needs nothing\n"
-        "# from the submitting shell.  \"$@\" forwards --cold / --continue.\n"
+        "# from the submitting shell.  \"$@\" forwards what `jobset launch`\n"
+        "# hands the run -- its own -np / -omp -- and --cold / --continue.\n"
         f"bash {basename}.run.sh \"$@\"\n"
     )
     return "\n".join(lines) + "\n" + body

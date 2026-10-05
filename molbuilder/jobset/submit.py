@@ -40,7 +40,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 # The record's one spelling for a wall, written in ONE place.  A second
 # formatter here would be a second answer to "what does a walltime look
@@ -214,7 +214,8 @@ def _no_sbatch(what: str, name: str, *, base) -> str:
 def _sbatch_request(base: Path, *, envelope: Resources,
                     domain: Optional[str], mem: Optional[str],
                     time_s: Optional[int], label: str, job_name: str,
-                    script: str) -> Tuple[Resources, object, List[str]]:
+                    script: str, run_args: Sequence[str]
+                    ) -> Tuple[Resources, object, List[str]]:
     """THE ONE REQUEST, for every door that hands work to the scheduler --
     a stage, a grouped bench's shelf, a bias chain (`job-system.md` § 6).
 
@@ -235,6 +236,13 @@ def _sbatch_request(base: Path, *, envelope: Resources,
     half of this alone until 2026-10-01: it sent the launch queue's
     ``-p/-q`` under the wall prep's header had worked out for another queue,
     and admitted nothing (W52).
+
+    ``run_args`` are the run script's own ``-np`` / ``-omp``
+    (`_run_sh_args`), set after the ``.sbatch`` name, which forwards them
+    (``bash <base>.run.sh "$@"``): every launch hands every run its own
+    counts (`job-system.md` § 6.1).  A submission whose script walks several
+    members -- a benchmark's shelf, a bias scan -- hands each member its own
+    inside that script, and passes none here.
     """
     from ..scheduler.quantities import parse_walltime
     if mem:
@@ -286,7 +294,8 @@ def _sbatch_request(base: Path, *, envelope: Resources,
            # inheritance alone is fragile (sites override SLURM's --export
            # policy), and the flag wins over site defaults, so the claim
            # reaches the job wherever it runs (job-contracts.md § 2.6).
-           + ["--export", "ALL,MB_LAUNCHED_BY=jobset-launch", script])
+           + ["--export", "ALL,MB_LAUNCHED_BY=jobset-launch", script]
+           + list(run_args))
     return envelope, placement, cmd
 
 
@@ -1296,7 +1305,7 @@ def _prepare_side_group(jobset: JobSet, base: Path, dirs, pending,
         base, envelope=envelope, domain=domain, mem=mem,
         time_s=time_s, label=name,
         job_name=_scheduler_job_name(jobset, name),
-        script=f"launch/{name}.sbatch")
+        script=f"launch/{name}.sbatch", run_args=())
 
     prepared = _Prepared(name=name, cmd=cmd, container=container,
                          pending=list(pending), placement=placement,
@@ -1578,7 +1587,7 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
         base, envelope=job.resources, domain=domain,
         mem=mem, time_s=time_s, label=name,
         job_name=_scheduler_job_name(jobset, name),
-        script=f"launch/{name}.sbatch")
+        script=f"launch/{name}.sbatch", run_args=())
     domain_name = getattr(getattr(placement, "domain", None), "name", None)
     if mode == "ask":
         return [_ask(name, cmd, attempts[0][1], domain=domain_name,
@@ -1873,7 +1882,7 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
             domain=(gpu_domain if gpu and gpu_domain else domain),
             mem=mem, time_s=time_s, label=p.job.name,
             job_name=_scheduler_job_name(jobset, p.job.name),
-            script=sbatch_name)
+            script=sbatch_name, run_args=_run_sh_args(p.job.resources))
 
     def _domain(p):
         return getattr(getattr(p.placement, "domain", None), "name", None)
