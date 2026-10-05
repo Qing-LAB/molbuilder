@@ -352,12 +352,12 @@ def _stage_before(base, task, stage: str) -> Optional[str]:
     one the description disables."""
     from ..identity import continues
     from ..resolve import resolved_ladder
-    from ..template import template_path
+    from ..template import find_template
     from .engines import engine_seam
     if not _independent(task):
         return None
-    tpl = template_path(Path(base), task.label)
-    if not tpl.is_file():
+    tpl = find_template(Path(base), task.label)
+    if tpl is None:
         return None
     ladder = resolved_ladder(tpl.read_text(encoding="utf-8"), task,
                              engine_seam(str(task.engine)).config_cls)

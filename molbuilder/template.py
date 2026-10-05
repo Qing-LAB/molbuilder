@@ -1064,18 +1064,19 @@ def template_path(base, label: str) -> "_Path":
     return _Path(base) / template_filename(label)
 
 
-def find_template(base) -> Optional["_Path"]:
-    """This calculation's template in *base* — or ``None`` when there is none.
+def find_template(base, label: str) -> Optional["_Path"]:
+    """This calculation's template in *base* -- **the one door every reader
+    asks** (`execution/architecture.md` § 3.2): the folder's one template,
+    named for the calculation's *label*, or ``None`` when there is none.
 
-    For the callers that have a folder and no label.  **A folder is one
-    calculation** (`project-layout.md` § 1.4), so exactly one template belongs
-    in it.
-
-    **Two templates raises rather than picking**, which is the whole reason
-    this is a function: ``sorted(glob(...))[0]`` answers an ambiguous question
-    confidently and differently from every label-derived caller.  *Nothing
-    here* and *I cannot tell which* are different answers and must not return
-    the same value (§ 8.0's rule, applied to a path).
+    **A folder is one calculation** (`project-layout.md` § 1.4), and its
+    template is ``<label>.template.toml`` -- the name :func:`template_path`
+    forms for the writers (`jobset init`, the hand-over, the Transport tab,
+    `jobset migrate`).  So two templates, or one under another name, is a
+    folder molbuilder did not leave, and it is refused by name rather than
+    read: ``sorted(glob(...))[0]`` answered that confidently and differently
+    from the label-built path, and the two doors stood side by side until
+    2026-10-05 (W38 M1).  *Nothing here* is ``None``, an answer.
     """
     # `.template.toml` IS a role `runfiles.WRITTEN` declares -- the answers
     # file, written once at the bundle root -- so the search is the
@@ -1089,9 +1090,13 @@ def find_template(base) -> Optional["_Path"]:
             f"{base} holds {len(found)} templates "
             f"({', '.join(p.name for p in found)}), so which one describes "
             f"this calculation is not answerable from the folder alone. A "
-            f"folder is ONE calculation (project-layout.md § 1.4); the extra "
-            f"file is a leftover -- remove it, or read the one named by "
-            f"task.json's label with template_path().")
+            f"folder is ONE calculation (project-layout.md § 1.4); this one's "
+            f"is {template_filename(label)} -- remove the other.")
+    if found[0].name != template_filename(label):
+        raise ValueError(
+            f"{found[0]} is not this calculation's template: a calculation "
+            f"labelled {label!r} keeps its parameters in "
+            f"{template_filename(label)}, the name it was described with.")
     return found[0]
 
 

@@ -1601,14 +1601,17 @@ def api_task_setup_save():
     # later.  Same function the CLI runs (`validation.task.preflight`),
     # so the two surfaces cannot disagree; the template beside the
     # description adds the sequence findings when it is already there.
-    from molbuilder.template import template_path as _template_path
+    from molbuilder.template import find_template as _find_template
     from molbuilder.validation.task import (preflight as _task_preflight,
                                             config_class_for as _cfg_cls_for)
-    _tpl_file = _template_path(dest, task.label)
+    try:
+        _tpl_file = _find_template(dest, task.label)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     _pf = _task_preflight(
         task,
         template_text=(_tpl_file.read_text(encoding="utf-8")
-                       if _tpl_file.is_file() else None))
+                       if _tpl_file is not None else None))
     # THE CONFIG CLASS RIDES WITH THE FINDINGS.  Without it `_issues_to_json`
     # omits `workflow_group` and the page has no card to put a finding on
     # (`web/ui-contract.md` Rule 2).  Both calls below passed nothing until
@@ -1894,12 +1897,14 @@ def api_task_setup_columns():
 # part (`template`, `provenance`, `attempts`) from the same helper.
 
 
-def _folder_template(folder) -> dict:
+def _folder_template(folder, label) -> dict:
     """What the folder's template answers -- the payload, not the response.
 
     Extracted so the per-card route and the folder door (§ 2.1's one answer)
     cannot come to differ: composing a second reading here is the very thing
-    the docstring above argues against one layer down.
+    the docstring above argues against one layer down.  ``label`` is the
+    calculation's -- its description's, else its hand-over's -- and ``None``
+    for a folder that is neither, which has no template to show.
     """
     # THE door, not a glob (`template.find_template`).  This took
     # ``sorted(glob(...))[0]`` until 2026-08-17 -- so a folder holding two
@@ -1908,8 +1913,10 @@ def _folder_template(folder) -> dict:
     # against one layer down: it shared `prep`'s PARSER and not its PATH.
     from molbuilder.template import (SOURCE_WORDS, find_template,
                                      read_template, select)
+    if label is None:
+        return {"ok": True, "name": None, "values": {}}
     try:
-        found = find_template(folder)
+        found = find_template(folder, label)
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
     if found is None:
@@ -2347,15 +2354,15 @@ def api_task_setup_folder():
 
     def _described():
         """The description, through its one reader (`read_task`,
-        `execution/architecture.md` § 3.2) -- the dict a molbuilder-written
-        `task.json` holds; one that does not read is said in its reader's
-        words.  *(Read as raw JSON until 2026-10-04, plan B14.)*"""
+        `execution/architecture.md` § 3.2) -- the `Task` a molbuilder-written
+        `task.json` holds, or the words its reader refused one with.  *(Read
+        as raw JSON until 2026-10-04, plan B14.)*"""
         from molbuilder.task import read_task
         f = folder / TASK_FILENAME
         if not f.is_file():
             return None
         try:
-            return read_task(f).to_dict()
+            return read_task(f)
         except Exception as exc:                  # noqa: BLE001
             return {"error": f"{TASK_FILENAME}: {exc}"}
 
@@ -2363,8 +2370,18 @@ def api_task_setup_folder():
     # writes the first and deletes the second (`task-setup.md` § 3), so the
     # page's MODE follows from which is here rather than from a flag it has
     # to keep.
-    described = _described()
+    _task = _described()
+    described = (_task.to_dict() if hasattr(_task, "to_dict") else _task)
     handover = None if described is not None else _read(TASK_HANDOVER_NAME)
+    # THE LABEL THE TEMPLATE IS NAMED ON: the description's, else the
+    # hand-over's name through the normaliser the hand-over named it with.
+    if hasattr(_task, "label"):
+        _label = _task.label
+    elif isinstance(handover, dict) and (handover.get("run") or {}).get("name"):
+        from molbuilder.identity import normalise_id
+        _label = normalise_id(handover["run"]["name"])
+    else:
+        _label = None
 
     return jsonify({
         "ok": True,
@@ -2381,7 +2398,7 @@ def api_task_setup_folder():
         # page listed the directory itself for it, which is one more call
         # that can land after you have moved on.
         "files": sorted(e.name for e in folder.iterdir() if e.is_file()),
-        "template": _folder_template(folder),
+        "template": _folder_template(folder, _label),
         "provenance": _folder_provenance(folder),
         # Only a described folder has stages, so only then is there anything
         # to count -- and `_folder_attempts` says so itself rather than this

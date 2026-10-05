@@ -161,6 +161,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     entry point whose docstring describes a deleted design misleads at the
     lines a caller actually reads.
     """
+    from ..paths import trial_label
     from ..runwrap import write_run_wrapper
 
     # The allocation is NOT a parameter here (U2, 2026-08-12; it was, and
@@ -260,7 +261,11 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 # of every file -- so the wrapper is TOLD the name its sweep
                 # keys on.  It opened the deck and read it back until
                 # 2026-09-17, which is re-deriving a value we are holding.
-                label=jobset.name,
+                # A benchmark trial's is the trial's own, the label its deck
+                # carries (`paths.trial_label`; the calculation's stood here
+                # until 2026-10-05, W38 M5).
+                label=(trial_label(jobset.name, job.name)
+                       if jobset.kind == "sweep" else jobset.name),
                 resources=job.resources,
                 env=env,
                 emit_sbatch=emit_sbatch,
@@ -656,7 +661,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     from ..resolve import ResolveError, resolve
     from ..task import FILENAME as TASK_FILENAME
     from ..task import read_task
-    from ..template import template_path as _template_path
+    from ..template import find_template, template_filename
     # The container spelling is materialize's (the naming authority): ONE
     # function places the sweep's record and the trials' directories, so the
     # two can never disagree (A-1/A-2).  The log's own home is the same
@@ -714,12 +719,15 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         from ..runtime_config import config_provenance, format_provenance
         log.produced("config", "which file supplied each setting")
         log.text(format_provenance(config_provenance(project_dir=base)))
-    # THE one place this name is formed (`template.template_path`).  Six
-    # call sites spelled it in two incompatible ways until 2026-08-17.
-    template_path = _template_path(base, task.label)
-    if not template_path.is_file():
+    # THE one template door (`template.find_template`, architecture.md
+    # § 3.2): the folder's one template, named for the label.
+    try:
+        template_path = find_template(base, task.label)
+    except ValueError as exc:
+        raise PrepError(str(exc)) from exc
+    if template_path is None:
         raise PrepError(
-            f"no {template_path.name} beside {TASK_FILENAME}. The portable "
+            f"no {template_filename(task.label)} beside {TASK_FILENAME}. The portable "
             f"folder is a template PLUS a description (project-layout.md § 2.1) "
             f"and `prep` rebuilds the config from the template.")
     seam = engine_seam(task.engine)
@@ -1302,7 +1310,10 @@ def _resolve_transport(base, task, stage: str, allocation,
     # by name.  This step asked transport's own copy of it until
     # 2026-09-30.
 
-    tmpl = find_template(base)
+    try:
+        tmpl = find_template(base, task.label)
+    except ValueError as exc:
+        raise PrepError(str(exc)) from exc
     if tmpl is None:
         raise PrepError(
             f"this transport calculation has no template, so there is "
@@ -2534,7 +2545,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
     """
     from ..scheduler import AmbiguousTarget, UnknownTarget
     from ..task import FILENAME as TASK_FILENAME, read_task
-    from ..template import find_template, template_path
+    from ..template import find_template
     from ..validation.task import preflight
     from .ledger import prepped as ledger_prepped
     from .ledger import record as ledger
@@ -2595,14 +2606,23 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         #     TR1) is refused by the transport door in its own words -- how
         #     to add the template -- rather than told to `init` again.  It has
         #     carried a template since (`engines/transport.md` § 2a).
-        is_transport = False
+        described = None
         if desc.is_file():
             try:
-                is_transport = read_task(desc).calculation == "transport"
+                described = read_task(desc)
             except Exception:                                 # noqa: BLE001
                 pass      # an unreadable description: the gate below owns it
-        if not (desc.is_file() and (is_transport
-                                    or find_template(base) is not None)):
+        is_transport = (described is not None
+                        and described.calculation == "transport")
+        try:
+            has_template = (described is not None and find_template(
+                base, described.label) is not None)
+        except ValueError as exc:
+            raise PrepError(str(exc)) from exc
+        # A description that does not read passes, and its reader refuses it
+        # below in its own words (`read_task`).
+        if not (desc.is_file() and (described is None or is_transport
+                                    or has_template)):
             # INSIDE A CALCULATION -- one of its stage or attempt folders --
             # the folder says which one it belongs to (`calcdirs.root_of`);
             # `init` there would describe a new calculation inside an
@@ -2686,9 +2706,12 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         #     look for it, which adds § 6.4/§ 6.6a's sequence warnings.  An
         #     error refuses -- carrying the notes beside it, and writing them
         #     to the ledger, as every refusal does.
-        tpl = template_path(base, task.label)
+        try:
+            tpl = find_template(base, task.label)
+        except ValueError as exc:
+            raise PrepError(str(exc)) from exc
         issues = preflight(task, template_text=(
-            tpl.read_text(encoding="utf-8") if tpl.is_file() else None))
+            tpl.read_text(encoding="utf-8") if tpl is not None else None))
         findings[:] = [i for i in issues if i.severity != "error"]
         errors = [i for i in issues if i.severity == "error"]
         if errors:

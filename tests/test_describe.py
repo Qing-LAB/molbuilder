@@ -338,8 +338,9 @@ def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path):
         "must travel with the calculation")
     # ...and the template says whose the folder is (`template.md` § 6.6).
     from molbuilder.template import find_template, one
+    calc = tree / "P" / "optimization" / "calc"
     written = read_template(find_template(
-        tree / "P" / "optimization" / "calc").read_text())
+        calc, read_task(calc / "task.json").label).read_text())
     assert one(written, "psml_lib").source == "person"
 
 
@@ -371,7 +372,8 @@ def test_init_writes_the_kinds_recommendations_and_reads_its_ladder_from_the_box
     assert [s.name for s in read_task(bundle / "task.json").stages] == ladder
 
     written = {it.name: it for it in select(read_template(
-        find_template(bundle).read_text()))}
+        find_template(bundle, read_task(bundle / "task.json").label)
+        .read_text()))}
     recommended = {it.name: recommended_for(it, "vibration")
                    for it in select(catalogue(), engine=engine)
                    if recommended_for(it, "vibration") is not None}

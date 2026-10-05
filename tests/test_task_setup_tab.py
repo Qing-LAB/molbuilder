@@ -428,7 +428,10 @@ def test_the_folder_template_is_what_an_empty_cell_names(web_client, isolated_pr
             _envelope(), engine="siesta", name="probe",
             params={"system_label": "probe", "kgrid": [4, 4, 1],
                     "mesh_cutoff": 450.0})).get_json()
+        # WHAT THE BROWSER WRITES: the hand-over's files, as the route
+        # returned them -- the template beside the hand-over that names it.
         (d / rendered["template_name"]).write_text(rendered["template_text"])
+        (d / rendered["handover_name"]).write_text(rendered["handover_text"])
 
         j = _folder(web_client, d)["template"]
         assert j["ok"], j
@@ -468,6 +471,7 @@ def test_each_template_value_says_whose_it_is(web_client, isolated_projects_root
     assert one(tmpl, "basis_size").source == "default"
 
     (d / rendered["template_name"]).write_text(rendered["template_text"])
+    (d / rendered["handover_name"]).write_text(rendered["handover_text"])
     said = _folder(web_client, d)["template"]["said"]
     assert said["mesh_cutoff"] == "you set this", said["mesh_cutoff"]
     assert said["relax_force_tol"] == "not chosen", said["relax_force_tol"]

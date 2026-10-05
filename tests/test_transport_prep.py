@@ -234,8 +234,9 @@ class TestFormBContract:
         # A pair has no deck, so the template starts from the catalogue's
         # defaults -- and the person changes it there.
         import dataclasses
+        from molbuilder.task import read_task
         from molbuilder.template import _emit, find_template, read_template
-        tmpl = find_template(dest)
+        tmpl = find_template(dest, read_task(dest / "task.json").label)
         assert tmpl is not None, (
             "a form-B transport calculation carries a template too -- "
             "without one there would be nowhere to state the basis")

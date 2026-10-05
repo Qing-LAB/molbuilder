@@ -263,6 +263,9 @@ test_read_system_degrades_on_a_missing_bundle        -> summarize._read_system
 
 All four are callers of `runfiles.find_by_role`. If the door is right they all
 pass; if it is wrong they all fail together — **four tests carrying one bit**.
+*(The first two are gone — retired 2026-10-04, it stood on outputs written
+by hand, and 2026-10-05, a duplicate of the refusal pinned where a person meets
+it; the example stands as the pattern.)*
 
 > **The first one stopped being an example on 2026-09-18, and the reason is
 > this section's own rule.** `openable_in` still calls `find_by_role`, so the

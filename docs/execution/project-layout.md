@@ -2502,7 +2502,7 @@ In the flat shape the root is also the run folder, so the files of § 5.2 and
 <!-- manifest:calculation -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `<label>.template.toml` | every parameter, with the value it was given | `jobset init`; the hand-over and the Transport tab, which the browser writes; `jobset migrate` | `template.template_path` | source |
+| `<label>.template.toml` | every parameter, with the value it was given | `jobset init`; the hand-over and the Transport tab, which the browser writes; `jobset migrate` | `template.find_template` -- the one template, named for the label, or refused by name; its writers form the name with `template.template_path` | source |
 | `<label>.source.xyz` | the structure the calculation is of | the hand-over and `jobset init` (`StructureCodec.source_files`) | `jobset.prep._structure_for` | input |
 | `<label>.source.molstruct.json` | its cell and its region labels | the hand-over and `jobset init` (`StructureCodec.source_files`) | `jobset.prep._structure_for` | input |
 | `<label>.template.toml.pre-m6` — only: a template migrated | the template as it was before `jobset migrate` rewrote it | `jobset migrate` | none | record |

@@ -328,6 +328,7 @@ def test_a_def2_basis_on_gold_asks_for_its_core_potential(tmp_path,
 
     from molbuilder.jobset._cli import jobset_group
     from molbuilder.projects import PROJECTS_ROOT_ENV
+    from molbuilder.task import read_task
     from molbuilder.template import _emit, find_template, read_template
     tree = tmp_path / "projects"
     (tree / "P" / "structure").mkdir(parents=True)
@@ -366,7 +367,7 @@ def test_a_def2_basis_on_gold_asks_for_its_core_potential(tmp_path,
     back = run.invoke(cli, ["checkpoint", "restore", before.id, "-p",
                             str(bundle), "--force"])
     assert back.exit_code == 0, back.output
-    tmpl = find_template(bundle)
+    tmpl = find_template(bundle, read_task(bundle / "task.json").label)
     tmpl.write_text(_emit(
         [dataclasses.replace(i, value={"ecp": "def2-SVP",
                                        "ecp_atoms": ["Au"]}[i.name])

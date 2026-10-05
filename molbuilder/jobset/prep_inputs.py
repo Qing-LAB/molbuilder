@@ -353,11 +353,14 @@ def run_gpu_request(base, task, stage, allocation, pins=None):
     the header.*
     """
     from ..resolve import resolve
-    from ..template import template_path
+    from ..template import find_template
     from .engines import engine_seam
     from .model import gpu_request
-    tpl = template_path(Path(base), task.label)
-    if not tpl.is_file():
+    try:
+        tpl = find_template(Path(base), task.label)
+    except ValueError as exc:
+        raise PrepError(str(exc)) from exc
+    if tpl is None:
         return None
     ps = resolve(tpl.read_text(encoding="utf-8"), task,
                  engine_seam(task.engine).config_cls,
@@ -632,7 +635,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     from ..bench.grid import _FALLBACK_KS, sweep_K, sweep_grid
     from ..resolve import MachineTranslation
     from ..task import FILENAME as TASK_FILENAME, read_task
-    from ..template import (read_template, template_path,
+    from ..template import (find_template, read_template, template_filename,
                             select as template_select)
     from .machine import machine_record
     task = read_task(Path(base) / TASK_FILENAME)
@@ -661,8 +664,15 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     gpn = getattr(topo, "gpus_per_node", None) or 0
     cps = getattr(topo, "cores_per_socket", None)
 
-    tmpl = read_template(
-        template_path(Path(base), task.label).read_text(encoding="utf-8"))
+    try:
+        _tpl = find_template(Path(base), task.label)
+    except ValueError as exc:
+        raise PrepError(str(exc)) from exc
+    if _tpl is None:
+        raise PrepError(f"no {template_filename(task.label)} beside "
+                        f"{TASK_FILENAME}: a benchmark reads its grid's values "
+                        f"from the template.")
+    tmpl = read_template(_tpl.read_text(encoding="utf-8"))
     # Through `select` -- `template.md` § 8.0 owns the rule.  What it cost
     # HERE: the hand-rolled comprehension ignored ``engines``, so on a PySCF
     # description it read the GPU flag as absent and enumerated a CPU grid,

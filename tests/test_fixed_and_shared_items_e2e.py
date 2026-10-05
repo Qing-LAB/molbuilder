@@ -47,8 +47,9 @@ def _template_says(dest, name, value):
     """The calculation's template with ``name`` answered ``value`` -- a hand
     edit, or a template written before the item became fixed -- through the
     product's own reader and writer."""
+    from molbuilder.task import read_task
     from molbuilder.template import _emit, find_template, read_template
-    tmpl = find_template(dest)
+    tmpl = find_template(dest, read_task(dest / "task.json").label)
     parsed = read_template(tmpl.read_text())
     tmpl.write_text(_emit(
         [dataclasses.replace(i, value=value) if i.name == name else i

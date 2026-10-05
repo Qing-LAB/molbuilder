@@ -245,19 +245,11 @@ def test_the_provenance_step_reads_the_wrapper_as_well_as_the_deck(tmp_path):
     assert not list(tmp_path.glob("*.fdf"))
 
 
-def test_find_template_still_refuses_two_answers(tmp_path):
-    """`template.find_template` raises rather than picking, and still does.
-
-    Two templates in one bundle is ambiguity a person must resolve; a finder
-    that silently returned the first would make the wrong run reproducible.
-    """
-    from molbuilder.template import SUFFIX, find_template
-    assert find_template(tmp_path) is None, "nothing here is not I cannot tell"
-    for stem in ("a", "b"):
-        (tmp_path / f"{stem}{SUFFIX}").write_text("", encoding="utf-8")
-    with pytest.raises(ValueError) as e:
-        find_template(tmp_path)
-    assert "holds 2 templates" in str(e.value)
+# `test_find_template_still_refuses_two_answers` retired 2026-10-05 (W38 M1):
+# the one template door takes the label now, and its refusal of two
+# templates is pinned where a person meets it -- the prep entry, both
+# doors (`test_prep_from_the_browser.py`), and the Task setup tab
+# (`test_doc_claims.py`).
 
 
 def test_the_geometry_picker_takes_its_pyscf_spellings_from_their_home():

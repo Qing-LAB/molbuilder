@@ -153,7 +153,10 @@ def migrate_state(base) -> List[str]:
     task = read_task(base / TASK_FILENAME)
     engine = task.engine
     kind = task.calculation or "optimization"
-    tmpl = _T.find_template(base)
+    try:
+        tmpl = _T.find_template(base, task.label)
+    except ValueError as exc:
+        raise MigrateError(str(exc)) from exc
     if tmpl is None:
         raise MigrateError(f"{base} holds no template to migrate.")
     text = tmpl.read_text(encoding="utf-8")
