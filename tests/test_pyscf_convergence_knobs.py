@@ -170,7 +170,8 @@ def test_soscf_wraps_after_the_gpu_promotion():
     this test would notice.
     """
     t = _script(scf_soscf=True)
-    assert t.index("_mb_to_gpu_if_enabled(mf)") < t.index("mf = mf.newton()")
+    assert t.index("mf = _mb_to_gpu(mf) if _USING_GPU else mf") < \
+        t.index("mf = mf.newton()")
 
 
 def test_soscf_still_reaches_the_stability_check():

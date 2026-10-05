@@ -1365,9 +1365,12 @@ def _pyscf(cuda_version: str) -> Recipe:
             "pyscf", "pyscf-dispersion", "geometric",
             # git: uniform across every env -- see _HOST for why.
             "git",
-            # ASE: in every job env, for the file IO later work may need, so
-            # which engine or switch a job runs under never changes what it
-            # can import (plan W36 ⑤; the SIESTA envs carry it for their
+            # ASE: the script reads the geometry the rung before it left
+            # through molbuilder's one XYZ reader, `Structure.from_xyz`,
+            # imported from `mb_pyscf.pyz` -- and that parse is ASE's
+            # (`engines/pyscf.md` § 3).  Every job env carries it, so which
+            # engine or switch a job runs under never changes what it can
+            # import (plan W36 ⑤; the SIESTA envs carry it for their
             # vibration's finish, `engines/vibration.md` § 5.5).
             "ase",
         ),

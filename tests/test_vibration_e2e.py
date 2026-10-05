@@ -45,7 +45,8 @@ def _bundle_head(folder, *objects) -> str:
     from molbuilder.pyscf.input import emit_bundle_imports, emit_script_head
     from molbuilder.runwrap import PYSCF_BUNDLE, pyscf_bundle
     (folder / PYSCF_BUNDLE).write_bytes(pyscf_bundle())
-    return "\n".join([*emit_script_head(), *emit_bundle_imports(*objects)])
+    return "\n".join([*emit_script_head(None),
+                      *emit_bundle_imports(*objects)])
 
 
 def _describe(tmp_path, monkeypatch, *, frozen=()):

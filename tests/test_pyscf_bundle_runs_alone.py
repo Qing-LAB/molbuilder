@@ -5,8 +5,8 @@ runs from `mb_pyscf.pyz` beside it (`runwrap.PYSCF_COMPANIONS`), under
 `molbuilder-pySCF`, where molbuilder is not installed.  This reproduces that -- the bundle in a folder with nothing
 else, a python that cannot import molbuilder, the script's own head and import
 lines (`pyscf.input.emit_script_head`, `emit_bundle_imports`) -- imports every
-member, and writes a geometry the way the script does, which the package's own
-codec reads back.
+member, sizes its threads as the script does, and writes a geometry the way the
+script does, which the package's own codec reads back.
 
 API-level, because the road's run of this needs PySCF: every PySCF run
 through `jobset launch` proves it too (`test_pyscf_relaxation_outcome_e2e.py`,
@@ -56,12 +56,12 @@ def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
                       regions={FROZEN_LABEL: [0]})
     relaxed = [[0.0, 0.0, 0.1173], [0.0, 0.7612, -0.4713],
                [0.0, -0.7612, -0.4713]]
-    # The script's own head -- its anchor, the bundle on the path, the core
-    # count -- then every member the bundle holds, each found where the
-    # script's imports find it.
+    # The script's own head -- its anchor, the bundle on the path, its
+    # threads sized -- then every member the bundle holds, each found where
+    # the script's imports find it.
     members = sorted(name[:-len(".py")] for name in PYSCF_COMPANIONS)
     script = "\n".join([
-        *emit_script_head(),
+        *emit_script_head(None),
         *emit_bundle_imports(StructureCodec, select_modes),
         "import importlib, json, os",
         f"_found = {{m: os.path.basename(os.path.dirname("
@@ -71,7 +71,7 @@ def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
         f"comment='Optimized geometry (PySCF)')",
         "print(json.dumps({",
         "    'from': sorted(set(_found.values())),",
-        "    'cores': _mb_physical_core_count() >= 1,",
+        "    'threads': _MB_REQUESTED_THREADS >= 1,",
         "    'selected': _mb_select_modes([412.3, 1023.4, 3656.0], 'all',",
         "                                 freq_min_cm1=800.0)}))",
     ])
@@ -82,7 +82,7 @@ def test_the_bundle_loads_alone_and_writes_a_pair_the_codec_reads(tmp_path):
         f"the PySCF bundle cannot be imported, or cannot write, without "
         f"molbuilder:\n{done.stdout}{done.stderr}")
     got = json.loads(done.stdout.strip().splitlines()[-1])
-    assert got == {"from": [PYSCF_BUNDLE], "cores": True,
+    assert got == {"from": [PYSCF_BUNDLE], "threads": True,
                    "selected": [2, 3]}, got
 
     # THE PACKAGE'S CODEC READS WHAT THE SHIPPED ONE WROTE: the moved

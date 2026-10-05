@@ -53,7 +53,8 @@ from .. import script_emit as _sc
 from ..runfiles import tail as _rf_tail
 from ..structure import FROZEN_LABEL, Structure
 from .input import (GEOMETRIC_APPENDS, emit_bundle_imports,
-                    emit_constraints_file, emit_save_call, emit_script_head,
+                    emit_constraints_file, emit_gpu_probe, emit_pyscf_threads,
+                    emit_runtime_facts, emit_save_call, emit_script_head,
                     ROLE_GEOM_TRAJ, ROLE_INITIAL, ROLE_OPTIMIZED,
                     ROLE_SPECTRA)
 
@@ -660,29 +661,20 @@ def vibration_spec(struct: Structure, cfg, *,
         methods_md = render_methods_md(
             view, fragment_md=pyscf_methods_fragment(view), struct=struct)
         bibliography_keys = extract_citation_keys(methods_md)
-        from ..runtime_info import (
-            emit_threading_setup_lines,
-            emit_runtime_info_capture_lines,
-            emit_pyscf_post_import_lines,
-            emit_gpu_probe_lines,
-            GPU4PYSCF_MIN_COMPUTE_CAPABILITY,
-        )
         out: List[str] = []
         out += _emit_header_docstring(struct, view, methods_md=methods_md,
                                       stage_token=stage_token)
-        # The deck's anchor and the bundle first: the threading setup takes
-        # the node's core count from it (`input.emit_script_head`).
-        out += emit_script_head()
-        out += emit_threading_setup_lines(view.threads)
-        out += emit_runtime_info_capture_lines(
+        # The deck's anchor and the bundle first, then its threads and what
+        # it records about itself -- the run's own set-up, from the bundle
+        # (`input.emit_script_head`, `engines/pyscf.md` § 3).
+        out += emit_script_head(view.threads)
+        out += emit_runtime_facts(
             use_gpu=bool(view.use_gpu),
             max_memory_mb=(int(view.max_memory_mb)
                            if view.max_memory_mb else None),
         )
         out += _emit_imports(view)
-        out += emit_pyscf_post_import_lines()
-        out.append("_RUNTIME_INFO['n_threads_pyscf'] = "
-                   "int(_pyscf_lib.num_threads())")
+        out += emit_pyscf_threads()
         out += _emit_constants(struct, view, methods_md=methods_md,
                                bibliography_keys=bibliography_keys)
         out += _vib_constants(cfg)
@@ -704,14 +696,12 @@ def vibration_spec(struct: Structure, cfg, *,
         out += emit_theory_configure_fn(cfg, verbose=bool(getattr(cfg, 'verbose_comments', True)))
         out += [""] + emit_density_fit_kw(cfg)
         out += emit_solvent_apply_fn(cfg)
-        # with_promotion_helper=False: this deck's ONE GPU mechanism is
-        # class selection (see runtime_info.emit_gpu_probe_lines).
-        out += emit_gpu_probe_lines(
-            use_gpu=bool(view.use_gpu),
-            min_compute_capability=int(
-                GPU4PYSCF_MIN_COMPUTE_CAPABILITY),
-            with_promotion_helper=False,
-        )
+        # THE GPU, probed at the run's start (`runtime_info.probe_gpu`);
+        # ``USE_GPU`` is one of this deck's values.  Its ONE way of using
+        # the device is class selection, below: every mf it builds is
+        # gpu4pyscf's when the probe found the GPU -- never the
+        # optimization deck's promotion (`to_gpu`).
+        out += emit_gpu_probe(None)
         out.append("if _USING_GPU:")
         out.append("    from gpu4pyscf import scf as _gpu_scf")
         if view.is_dft:

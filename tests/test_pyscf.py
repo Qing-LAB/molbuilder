@@ -229,20 +229,11 @@ def test_solvent_emits_pcm_block(h2o):
 
 
 def test_threads_emit_env_pin(h2o):
-    """The shared molbuilder.runtime_info emitter pins BLAS to 1
-    per worker and sets OMP_NUM_THREADS via ``setdefault`` to the
-    user's requested count (refactored 2026-05-22 from the old
-    inline format that emitted the threads value literally in the
-    env-export line)."""
+    """The run's own thread count reaches the set-up the script imports
+    (`runtime_info.cap_threads`, whose caps `test_pyscf_thread_sizing.py`
+    holds), and PySCF's pool is sized to it after PySCF loads."""
     text = render_script(h2o, PySCFConfig(threads=8))
-    # cfg.threads=8 -> _MB_REQUESTED_THREADS = 8 as a literal.
-    assert "_MB_REQUESTED_THREADS = 8" in text
-    # OMP pinned via setdefault (user-set value).
-    assert "os.environ.setdefault('OMP_NUM_THREADS',      str(_MB_REQUESTED_THREADS))" in text
-    # BLAS always pinned to 1 (canonical anti-oversubscription).
-    assert "os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')" in text
-    assert "os.environ.setdefault('MKL_NUM_THREADS',      '1')" in text
-    # Post-import num_threads(N) call to size the in-process pool.
+    assert "_MB_REQUESTED_THREADS, _MB_PHYS_CORES = _mb_cap_threads(8)" in text
     assert "_pyscf_lib.num_threads(_MB_REQUESTED_THREADS)" in text
 
 

@@ -223,8 +223,6 @@ def _emit_header_docstring(struct: Structure,
 
 def _emit_imports(cfg: "VibrationConfigView") -> List[str]:
     out: List[str] = []
-    # `os` is the threading set-up's, at the script's head
-    # (`runtime_info.emit_threading_setup_lines`), before numpy loads.
     out.append("import time")
     out.append("from datetime import datetime, timezone")
     out.append("")

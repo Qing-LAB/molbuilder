@@ -366,12 +366,17 @@ notice at all** rather than one built on an invented number.
 ### 3.2 OMP threads and BLAS
 
 ```
--omp / -t flag   >   OMP_NUM_THREADS   >   SLURM_CPUS_PER_TASK   >   the stated value, baked at prep
+-omp / -t flag   >   OMP_NUM_THREADS   >   SLURM_CPUS_PER_TASK   >   PBS_NCPUS   >   NSLOTS   >   the stated value, baked at prep
 ```
 
 A run `jobset launch` starts always carries the flag, its own `-np` / `-omp`
 ([`job-system.md` § 6.1](?doc=execution/job-system.md)); the rest of the order
-is for a script run by hand.
+is for a script run by hand. The four variables are one list,
+`runtime_info.THREAD_SOURCES`, and the run script's chain is built from it —
+as is a PySCF script's own, run without its run script, which ends on the
+node's physical cores instead ([`engines/pyscf.md`](?doc=engines/pyscf.md)
+§ 3). *(The two chains were kept in step by a comment until 2026-10-05; this
+diagram named two of the four.)*
 
 The stated value is the run card's cores per rank — SIESTA's `omp_threads`,
 PySCF's `threads` — or prep's `--cpus-per-task`; a run that states none is **refused at

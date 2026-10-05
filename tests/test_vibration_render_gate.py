@@ -22,7 +22,6 @@ from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.pyscf.input import spec_for
 from molbuilder.script_emit import render_deck
 from molbuilder.structure import Structure
-from tests.spectra._helpers import _spectra_cfg
 
 
 def _water() -> Structure:
@@ -295,11 +294,10 @@ def test_each_deck_carries_one_gpu_mechanism():
     the optimization deck promotes the assembled mf."""
     from molbuilder.pyscf.input import render_script
     vib = _render(PySCFConfig())
-    assert "_mb_to_gpu_if_enabled" not in vib
+    assert "_mb_to_gpu" not in vib
     assert "_gpu_scf" in vib, "the class-selection mechanism left too"
     opt = render_script(_water(), PySCFConfig())
-    assert "def _mb_to_gpu_if_enabled" in opt
-    assert "mf = _mb_to_gpu_if_enabled(mf)" in opt
+    assert "mf = _mb_to_gpu(mf) if _USING_GPU else mf" in opt
 
 
 def test_the_level_of_theory_has_one_spelling_per_deck():

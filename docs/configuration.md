@@ -504,15 +504,17 @@ tables, and nothing of the finish's reaches the monitor.
 
 **A third, imported rather than run.** A PySCF script imports every molbuilder
 function it runs from `mb_pyscf.pyz` (`runwrap.PYSCF_COMPANIONS`,
-`engines/pyscf.md` § 3) -- the node's core count, the progress-log writer,
-the structure codec, the relaxation, and a vibration's rules, selector and
-writer.  Its rule is **the standard library and numpy at load; in the
-functions the script calls also ASE -- which the PySCF env carries for it
-(`envs/recipes.py`) -- and PySCF itself; AND travels**; its members import
-each other the same two ways.  The one member the script imports before
-numpy -- the core count's, `runtime_info` -- imports nothing that loads numpy
-(the standard library, and psutil inside the core count when the env has
-it), because the threading setup it serves must run before numpy loads.
+`engines/pyscf.md` § 3) -- the thread and GPU set-up, the progress-log
+writer, the structure codec, the relaxation, and a vibration's rules,
+selector and writer.  Its rule is **the standard library and numpy at load;
+in the functions the script calls also ASE -- which the PySCF env carries for
+it (`envs/recipes.py`) -- and PySCF itself, with gpu4pyscf and cupy for a run
+on the GPU; AND travels**; its members import each other the same two ways.
+The one member the script imports before numpy -- the thread set-up's,
+`runtime_info` -- imports nothing that loads numpy (the standard library at
+load; psutil inside the core count when the env has it, and cupy and
+gpu4pyscf inside the GPU probe), because the thread caps must be set before
+numpy loads.
 
 **What a missing module costs** — which only an incomplete bundle can cause:
 

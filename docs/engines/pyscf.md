@@ -178,23 +178,21 @@ config — no under- or over-promising. `job_name` stays unsuffixed so
 > down until 2026-08-17 — which is why the GPU question kept being re-derived
 > from SIESTA's contract, where the answers are different.
 
-**`use_gpu` is a user flag, off by default** (G-1). Turning it on emits a probe
-and a helper, not a hard requirement:
+**`use_gpu` is a user flag, off by default** (G-1). Turning it on makes the
+script probe the GPU when it starts and move its SCF object onto it — both
+molbuilder's, imported from the bundle (`runtime_info.probe_gpu`,
+`runtime_info.to_gpu`, § 3):
 
 ```python
 USE_GPU = True                    # the literal config value
-_USING_GPU = False
-if USE_GPU:
-    try:
-        import cupy, gpu4pyscf    # present?
-        ...                       # a device, with compute capability >= 7.0?
-        _USING_GPU = True
-    except ImportError as e:
-        raise SystemExit(...)     # NO CPU FALLBACK -- the run stops
-    except Exception as e:
-        raise SystemExit(...)     # ditto: no device, or too old a card
-mf = _mb_to_gpu_if_enabled(mf)    # .to_gpu(); a failed promotion also stops
+_USING_GPU = _mb_probe_gpu(_RUNTIME_INFO) if USE_GPU else False
+#   cupy + gpu4pyscf importable, a device with compute capability >= 7.0 --
+#   or SystemExit: NO CPU FALLBACK, the run stops
+mf = _mb_to_gpu(mf) if _USING_GPU else mf    # a failed promotion also stops
 ```
+
+A vibration script builds every SCF object it needs on the device instead,
+from gpu4pyscf's own classes when `_USING_GPU` — one way per script.
 
 **Three things follow, and each is a rule rather than an implementation note.**
 
@@ -267,8 +265,10 @@ the reason, and the line is deleted (`template.RETIRED_ITEMS`).*
 is not installed, and everything of molbuilder's it runs it **imports** from
 `mb_pyscf.pyz`: a Python zip of those modules' own files
 (`runwrap.PYSCF_COMPANIONS`), built by the one builder the monitor's and the
-SIESTA finish's bundles come from. Every PySCF script imports the node's core
-count (`runtime_info.physical_core_count`), which its threading setup asks;
+SIESTA finish's bundles come from. Every PySCF script imports its thread and
+GPU set-up (`runtime_info`: the thread count and the BLAS caps, set before
+numpy loads; the facts a run records about itself; the GPU's probe, and for an
+optimization the promotion of its SCF object onto the device);
 the progress-log writer (`MolwatchEmitter`, § 4), which also writes the log's
 end lines at exit; the structure codec — every geometry the run saves is a
 pair written by it (`StructureCodec.write_moved`,
@@ -285,11 +285,16 @@ structure hash, the result's writer and its non-finite scrub
 for the one factor its Raman block converts with. Prep writes the file beside
 every PySCF script and copies it into every attempt with the script. Its first
 lines, right after its docstring, put that file on the import path — when the
-file is not there, the script stops on that line and says so — and import the
-core count, from a member that imports nothing that loads numpy: **the
-threading setup must run before numpy is imported**, or BLAS starts on every
-core, so everything else is imported after numpy's own import, still before
-PySCF computes anything. A script imports every piece its kind can call,
+file is not there, the script stops on that line and says so — and size its
+threads (`runtime_info.cap_threads`), from a member that imports only the
+standard library: **the thread caps must be set before numpy is imported**, or
+BLAS starts on every core, so everything else is imported after numpy's own
+import, still before PySCF computes anything. The thread count is the run's
+own when its settings state one; else what the run script exported or the
+scheduler allocated — the variables `runtime_info.THREAD_SOURCES` names, in
+that order, the list the run script's own chain is built from
+([`running-a-job.md`](?doc=execution/running-a-job.md) § 3.2); else the
+node's physical cores. A script imports every piece its kind can call,
 whatever its settings call: the imports are its load check.
 
 **No molbuilder function is copied into a script.** What is still written in it
@@ -297,15 +302,16 @@ as text is its anchor — the folder it sits in, found from its own path when it
 starts, before PySCF or geomeTRIC can change directory, and `_mb_outfile`, which
 puts every output there: the bundle is found through it, so it cannot come from
 the bundle — and the run itself: its values, the SCF and theory dressers built
-from its settings (§ 7a), the GPU and threading set-up, a vibration's per-run
-helpers, and the IR and Raman formulas, which have no branch
+from its settings (§ 7a), a vibration's per-run helpers and its choice of
+gpu4pyscf's classes, and the IR and Raman formulas, which have no branch
 ([`vibration.md`](?doc=engines/vibration.md) § 6.4). **Each import from the
 bundle is bound as `_mb_<its name>`** (`_mb_StructureCodec`, `_mb_constants`),
 so an import of ours can never take a name the engine owns (`gto`, `scf`); the
 script's own names — `JOB`, `mol`, `mf`, `state` — are the run's, written as a
 person reads them. A member imports the standard library and numpy at load,
 and in the functions the script calls also ASE — which the PySCF env carries
-for it (`envs/recipes.py`) — and PySCF itself; nothing else but the other
+for it (`envs/recipes.py`) — and PySCF itself, with gpu4pyscf and cupy for a
+run on the GPU; nothing else but the other
 members, each reaching the next two ways: the package first, the bundle second
 ([`configuration.md`](?doc=configuration.md) § 2.3). What moves is the job's
 folder — the script, its run script and the bundles beside it; a script copied
@@ -316,8 +322,9 @@ harmonic path, the thermochemistry and the hash pasted in by
 one by a test; and generated lines for the pair writer (with its own number
 format and JSON settings), the result's writer, the restart's XYZ reader, the
 log's end lines, two array helpers, the orbital window, the wavenumbers and the
-display form a second time beside the SIESTA route's, and copies of the core
-count and of four constants. User: "we could use one code base and maintain it
+display form a second time beside the SIESTA route's, copies of the core
+count and of four constants, and the thread and GPU set-up — the last moved
+the same day at the user's word, *"yes to #1"*. User: "we could use one code base and maintain it
 rather than through generated python code"; "move the rest into the bundle";
 the fresh-eyes review the same day found what the first pass left.)*
 

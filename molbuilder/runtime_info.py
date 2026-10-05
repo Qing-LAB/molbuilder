@@ -1,45 +1,37 @@
-"""Shared runtime-info emission helpers.
+"""A PySCF run's own set-up: its threads, what it records about itself, and
+its GPU.
 
-Every script molbuilder emits that does real compute (PySCF geom opt,
-PySCF spectra, future SIESTA wrappers) should run the SAME threading
-setup BEFORE numpy/pyscf import and capture the SAME runtime facts
-into a ``_RUNTIME_INFO`` dict that goes into the run's output file.
+THE SCRIPT IMPORTS IT, from ``mb_pyscf.pyz`` beside the job
+(``runwrap.PYSCF_COMPANIONS``, `engines/pyscf.md` § 3), and calls it on its
+first lines: :func:`cap_threads` sizes the run's threads and caps BLAS's
+before numpy is imported -- the variables are read when numpy loads -- so
+this module imports only the standard library at load: psutil, when the env
+has it, inside :func:`physical_core_count`, and cupy and gpu4pyscf inside
+:func:`probe_gpu`.  *(Until 2026-10-05 the thread set-up and the GPU probe
+were written into every script as text, emitted from here; user, "yes to
+#1".)*
 
-This is the cross-cutting "no oversubscription, and tell the user
-what happened" rule.  The user's observed load=40 on a 20-physical /
-40-logical host was the symptom of NOT having this in place; the
-fix is canonical:
+The rule it keeps -- no oversubscription, and the run says what it did.  A
+20-physical / 40-logical host ran at load 40 without it:
 
-  * Set ``OPENBLAS_NUM_THREADS=1`` + ``MKL_NUM_THREADS=1`` BEFORE
-    numpy import (env vars are read at import time).
-  * Set ``OMP_NUM_THREADS = physical_cores`` -- hyperthreading
-    rarely helps memory-bandwidth-bound QC kernels and can hurt
-    cache locality.
-  * Call ``pyscf.lib.num_threads(N)`` AFTER pyscf import (env vars
-    don't re-thread already-imported modules; this is the
-    canonical post-import setter per PySCF docs).
-  * Use ``os.environ.setdefault`` so a user's explicit pre-export
-    still wins -- our auto-detect is the default, not a hard cap.
+  * BLAS one thread (``OPENBLAS_NUM_THREADS`` / ``MKL_NUM_THREADS``) and
+    OpenMP the run's count, set before numpy is imported;
+  * the count the run's own, else the allocation's, the node's only last
+    (:func:`threads_for`, :data:`THREAD_SOURCES`);
+  * ``os.environ.setdefault``, so a value already exported wins;
+  * PySCF's own pool sized after PySCF is imported -- the script's
+    ``pyscf.lib.num_threads(N)``, the canonical post-import setter.
 
-Result-file format: every emitted script also captures a
-``_RUNTIME_INFO`` dict with canonical keys (see
-:data:`RUNTIME_INFO_KEYS`) that engine-specific result writers
-copy into their on-disk output.  The /results inspector panels
-read these keys uniformly so the user sees the SAME
-"CPU / GPU / Host" rows regardless of which engine ran.
-
-TRAVELS beside every PySCF script, in ``mb_pyscf.pyz``
-(``runwrap.PYSCF_COMPANIONS``): the script's threading set-up asks
-:func:`physical_core_count` for the node's cores, and imports it BEFORE
-numpy -- the BLAS thread caps must be set before numpy loads
-(`engines/pyscf.md` § 3).  So this module imports nothing that loads numpy:
-the standard library at load, and psutil, when the env has it, inside that
-one function.
+What a run records about itself is :func:`runtime_facts` -- the
+:data:`RUNTIME_INFO_KEYS` -- which the result writers copy into the files
+the Results tab reads, so a run shows the same CPU / GPU / host rows
+whichever engine ran it.
 """
 from __future__ import annotations
 
 import os
-from typing import List, Optional
+import socket
+from typing import Mapping, Optional, Tuple
 
 
 # Canonical keys that every engine's runtime_info should populate.
@@ -97,318 +89,196 @@ def physical_core_count() -> int:
     return max(1, logical // 2) if logical >= 2 else logical
 
 
-def emit_threading_setup_lines(threads: Optional[int]) -> List[str]:
-    """Emit Python source lines for the BLAS / OMP threading setup.
+#: WHERE A RUN'S THREAD COUNT COMES FROM when its settings state none, in
+#: order: what the run script exported, else what the scheduler allocated.
+#: ONE LIST, read by both chains (`execution/running-a-job.md` § 3.2): the
+#: script's own, :func:`threads_for`, which ends on the node's cores, and the
+#: run script's, which `runwrap` builds from it and ends on the count stated at
+#: prep.  *(Each chain spelled it until 2026-10-05, held in step by a comment
+#: -- which is how the run script came to lack the last two.)*
+THREAD_SOURCES = ("OMP_NUM_THREADS", "SLURM_CPUS_PER_TASK", "PBS_NCPUS",
+                  "NSLOTS")
 
-    Inserted at the TOP of the generated script (before numpy /
-    pyscf import).  ``threads=None`` -> auto-detect physical cores
-    at run time.  ``threads=N`` -> use exactly N.
 
-    Defines ``_MB_REQUESTED_THREADS`` -- the N actually requested -- and
-    ``_MB_PHYS_CORES`` on the running script.  The node's core count is
-    :func:`physical_core_count` itself, which the deck imports from
-    ``mb_pyscf.pyz`` as ``_mb_physical_core_count`` before this block
-    (`pyscf.input.emit_script_head`): this module imports only the standard
-    library, so it can load before numpy does.  The block carried a copy of
-    the function until 2026-10-05.
+def threads_for(pinned: Optional[int] = None,
+                environ: Optional[Mapping[str, str]] = None,
+                physical: Optional[int] = None) -> Tuple[int, str]:
+    """``(threads, where the count came from)`` for a PySCF run.
+
+    The run's own ``threads`` when its settings state one; else the first of
+    :data:`THREAD_SOURCES` set to a whole number of at least one -- read from
+    ``environ``, the process's own by default; else the node's physical cores
+    (``physical``, or :func:`physical_core_count`).
+
+    The node is the last resort, never an early answer.  It is right on a
+    workstation -- the node IS the allocation -- and wrong under a scheduler,
+    expensively: a job given 8 cores of a 128-core node that counted the node
+    started 128 OpenMP threads, which the cgroup then time-sliced onto the 8
+    it granted -- slower than an honest 8, and the thrashing charged to it.
     """
-    out: List[str] = []
-    out.append("# ============================================================")
-    out.append("#  Threading setup -- runs BEFORE numpy/pyscf import.")
-    out.append("# ============================================================")
-    out.append("# Cap BLAS to 1 thread per worker so OMP threads * BLAS")
-    out.append("# threads doesn't multiply.  PySCF does its own parallel")
-    out.append("# loops; we size them to PHYSICAL cores (not logical).")
-    out.append("# Hyperthreading rarely helps QC kernels (memory bandwidth")
-    out.append("# bound) and can hurt cache locality.  Shared recipe lives")
-    out.append("# in molbuilder/runtime_info.py.")
-    out.append("import os")
-    out.append("")
-    if threads is None:
-        out.append("# threads not pinned -> ask the ALLOCATION first, the")
-        out.append("# machine only as a last resort.")
-        out.append("#")
-        out.append("# _mb_physical_core_count() counts the whole NODE.  On a")
-        out.append("# workstation that is right -- the node IS the allocation.")
-        out.append("# Under a scheduler it is wrong and expensively so: a job")
-        out.append("# given 8 of a 128-core node would start 128 OpenMP")
-        out.append("# threads, which the cgroup then time-slices onto the 8")
-        out.append("# cores it granted.  The job runs slower than an honest 8")
-        out.append("# would, and the thrashing is charged to it.")
-        out.append("#")
-        out.append("# So: what the wrapper exported, else what the scheduler")
-        out.append("# allocated, else the node.  Each step is a better")
-        out.append("# statement of 'how much of this machine is mine'.")
-        out.append("def _mb_resolve_threads():")
-        out.append("    for _var in ('OMP_NUM_THREADS', 'SLURM_CPUS_PER_TASK',")
-        out.append("                 'PBS_NCPUS', 'NSLOTS'):")
-        out.append("        _v = os.environ.get(_var)")
-        out.append("        if _v:")
-        out.append("            try:")
-        out.append("                _n = int(_v)")
-        out.append("            except ValueError:")
-        out.append("                continue")
-        out.append("            if _n >= 1:")
-        out.append("                return _n, _var")
-        out.append("    return _mb_physical_core_count(), 'node physical cores'")
-        out.append("")
-        out.append("_MB_REQUESTED_THREADS, _MB_THREADS_FROM = _mb_resolve_threads()")
-    else:
-        out.append(f"# threads explicitly = {threads}; honor user choice.")
-        out.append(f"_MB_REQUESTED_THREADS = {int(threads)}")
-        out.append(f"_MB_THREADS_FROM = 'config (threads={int(threads)})'")
-    out.append("")
-    out.append("# setdefault so a user's pre-exported env var wins.")
-    out.append("os.environ.setdefault('OMP_NUM_THREADS',      str(_MB_REQUESTED_THREADS))")
-    out.append("os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')")
-    out.append("os.environ.setdefault('MKL_NUM_THREADS',      '1')")
-    out.append("os.environ.setdefault('NUMEXPR_NUM_THREADS',  str(_MB_REQUESTED_THREADS))")
-    out.append("os.environ.setdefault('VECLIB_MAXIMUM_THREADS', '1')  # macOS Accelerate")
-    out.append("")
-    # Say WHERE the number came from, not just what it is.  A run that
-    # sized itself from the node when it should have read the
-    # allocation is otherwise indistinguishable in the log from one
-    # that was told 128 -- and that is the failure this resolution
-    # order exists to prevent.
-    # Probe the node ONCE and reuse it.  The count is wanted in three
-    # places -- the resolver's last resort, this banner, and
-    # _RUNTIME_INFO['physical_cores'] -- and each call re-imports psutil
-    # or re-reads /proc/cpuinfo for an answer that cannot change during
-    # a run.
-    out.append("_MB_PHYS_CORES = _mb_physical_core_count()")
-    out.append("print(")
-    out.append("    f'molbuilder: requested {_MB_REQUESTED_THREADS} PySCF threads '")
-    out.append("    f'from {_MB_THREADS_FROM} '")
-    out.append("    f'(node physical={_MB_PHYS_CORES}, '")
-    out.append("    f'logical={os.cpu_count() or 1}, BLAS=1).  '")
-    out.append("    f'Override via OMP_NUM_THREADS env.'")
-    out.append(")")
-    out.append("")
-    return out
+    if pinned is not None:
+        return int(pinned), f"config (threads={int(pinned)})"
+    env = os.environ if environ is None else environ
+    for var in THREAD_SOURCES:
+        said = env.get(var)
+        if not said:
+            continue
+        try:
+            n = int(said)
+        except ValueError:
+            continue
+        if n >= 1:
+            return n, var
+    return (physical if physical is not None else physical_core_count(),
+            "node physical cores")
 
 
-def emit_pyscf_post_import_lines() -> List[str]:
-    """Emit the ``pyscf.lib.num_threads(N)`` call -- the canonical
-    post-import thread-pool sizer per PySCF docs.  Must come AFTER
-    ``from pyscf import ...`` because env vars are read at import
-    time and don't re-thread an already-imported module."""
-    out: List[str] = []
-    out.append("# PySCF post-import thread-pool size: env vars are read")
-    out.append("# at import time, so lib.num_threads(N) is the canonical")
-    out.append("# setter to use afterwards.")
-    out.append("from pyscf import lib as _pyscf_lib")
-    out.append("_pyscf_lib.num_threads(_MB_REQUESTED_THREADS)")
-    out.append("")
-    return out
+def cap_threads(pinned: Optional[int] = None) -> Tuple[int, int]:
+    """Size this run's threads and cap BLAS's -- what a PySCF script does on
+    its first lines, before numpy is imported (`engines/pyscf.md` § 3): the
+    variables are read when numpy and PySCF load, so a cap set later caps
+    nothing.
 
+    ``OMP_NUM_THREADS`` and ``NUMEXPR_NUM_THREADS`` take the count
+    :func:`threads_for` answers, and every BLAS one thread, so OpenMP's
+    threads and BLAS's own do not multiply (a 20-core host ran at load 40
+    without it) -- each by ``setdefault``, so a value already exported wins.
+    Says on stdout how many, and where the count came from: a run that sized
+    itself from the node when it should have read the allocation is otherwise
+    indistinguishable in its log from one that was told 128.
 
-def emit_runtime_info_capture_lines(use_gpu: bool,
-                                    max_memory_mb: Optional[int] = None) -> List[str]:
-    """Build the ``_RUNTIME_INFO`` dict in the running script.
-
-    Assumes :func:`emit_threading_setup_lines` ran first (it relies
-    on ``_MB_REQUESTED_THREADS`` and ``_MB_PHYS_CORES`` being
-    defined).  Engine-specific blocks (e.g. the GPU probe via
-    :func:`emit_gpu_probe_lines`) later mutate this dict to record
-    the GPU outcome.
-
-    ``max_memory_mb``: the per-run PySCF memory cap (set on
-    ``mol.max_memory`` in the script).  Recorded here so the
-    /results inspector can show "this run was capped to N MB" --
-    a useful resource-trace fact alongside CPU/GPU counts.  Pass
-    None if the script doesn't impose a cap.
+    Returns ``(threads, the node's physical cores)`` -- the node probed once.
+    PySCF's own pool is sized after its import, by the script
+    (``pyscf.lib.num_threads``).
     """
-    out: List[str] = []
-    out.append("# Runtime-info bag -- result-file writers (the molwatch")
-    out.append("# log header, the spectra.json final dump) copy this dict")
-    out.append("# into their on-disk output so the /results inspectors")
-    out.append("# can show 'this run used N threads, M MB, GPU ON/OFF, ...'.")
-    out.append("import socket as _mb_socket")
-    out.append("_RUNTIME_INFO = {")
-    out.append("    'n_threads_pyscf':         _MB_REQUESTED_THREADS,  # may be re-read post-import")
-    out.append("    'n_threads_omp':           int(os.environ['OMP_NUM_THREADS']),")
-    out.append("    'n_threads_blas':          int(os.environ['OPENBLAS_NUM_THREADS']),")
-    out.append("    'physical_cores':          _MB_PHYS_CORES,")
-    out.append("    'logical_cores':           os.cpu_count() or 1,")
-    out.append(f"    'max_memory_mb':           {int(max_memory_mb) if max_memory_mb is not None else None!r},")
-    out.append(f"    'gpu_requested':           {bool(use_gpu)!r},")
-    out.append("    'gpu_used':                False,        # set True by the GPU probe if it engages")
-    out.append("    'gpu_name':                None,")
-    out.append("    'gpu_compute_capability':  None,")
-    out.append("    'cuda_version':            None,")
-    out.append("    'hostname':                _mb_socket.gethostname(),")
-    out.append("}")
-    out.append("")
-    return out
+    physical = physical_core_count()
+    n, whence = threads_for(pinned, physical=physical)
+    os.environ.setdefault("OMP_NUM_THREADS", str(n))
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+    os.environ.setdefault("NUMEXPR_NUM_THREADS", str(n))
+    os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "1")    # macOS Accelerate
+    print(f"molbuilder: requested {n} PySCF threads from {whence} "
+          f"(node physical={physical}, logical={os.cpu_count() or 1}, "
+          f"BLAS=1).  Override via OMP_NUM_THREADS env.")
+    return n, physical
+
+
+def runtime_facts(threads: int, physical_cores: int, *,
+                  max_memory_mb: Optional[int] = None,
+                  gpu_requested: bool = False) -> dict:
+    """What a run records about itself as it starts -- the
+    :data:`RUNTIME_INFO_KEYS` -- read after :func:`cap_threads`, whose
+    variables it reports.  The script keeps it as ``_RUNTIME_INFO`` and adds
+    to it; the result writers (the progress log's header, the spectrum's
+    file) copy it out.  The GPU's four are :func:`probe_gpu`'s to fill."""
+    return {
+        "n_threads_pyscf": int(threads),     # read again after PySCF loads
+        "n_threads_omp": int(os.environ["OMP_NUM_THREADS"]),
+        "n_threads_blas": int(os.environ["OPENBLAS_NUM_THREADS"]),
+        "physical_cores": int(physical_cores),
+        "logical_cores": os.cpu_count() or 1,
+        "max_memory_mb": (int(max_memory_mb) if max_memory_mb is not None
+                          else None),
+        "gpu_requested": bool(gpu_requested),
+        "gpu_used": False,
+        "gpu_name": None,
+        "gpu_compute_capability": None,
+        "cuda_version": None,
+        "hostname": socket.gethostname(),
+    }
 
 
 # Minimum NVIDIA GPU compute capability gpu4pyscf supports.  7.0 = Volta;
-# below that the runtime imports of gpu4pyscf raise.  Defined as a module
-# constant so engine emitters (pyscf/input.py + pyscf/vibration_emitters.py)
-# import from one place instead of duplicating the literal.  The previous
-# arrangement had ``7`` hard-coded in pyscf/input.py + as a class constant
-# on PySCFSpectraEngine + as a default kwarg here -- three sources, easy
-# to drift.
+# below that the runtime imports of gpu4pyscf raise.
 GPU4PYSCF_MIN_COMPUTE_CAPABILITY = 7
 
 
-def emit_gpu_probe_lines(use_gpu: bool,
-                          min_compute_capability: int = GPU4PYSCF_MIN_COMPUTE_CAPABILITY,
-                          *, with_promotion_helper: bool = True) -> List[str]:
-    """Emit the GPU probe + to_gpu helper.
+def probe_gpu(facts: dict, min_compute_capability: int =
+              GPU4PYSCF_MIN_COMPUTE_CAPABILITY) -> bool:
+    """The GPU this run asked for, found -- or the run stops.
 
-    **No silent fallback** (user, 2026-08-17; `engines/overview.md` § 3a
-    G-5).  When ``use_gpu`` is set and the GPU is missing, unusable or too
-    old, the emitted script **raises SystemExit with an actionable
-    message** rather than continuing on the CPU.  All three former fallback
-    paths -- import failure, device failure, and a failed ``.to_gpu()``
-    promotion -- now stop.
+    cupy and gpu4pyscf importable, an NVIDIA device, its compute capability
+    at least ``min_compute_capability``: ``True``, with the device's name,
+    compute capability and CUDA version written into ``facts``
+    (:func:`runtime_facts`) and one line on stdout.  Anything else is a
+    ``SystemExit`` naming what is missing and the two ways out.
 
-    The reason is a measurement one as much as a correctness one: a trial
-    labelled *GPU* that quietly ran on the CPU puts a CPU time in a GPU
-    column, and `bench/result.py` would score it.
-
-    Defines these module-level names on the running script:
-      * ``USE_GPU``    -- the literal config value (True/False).
-      * ``_USING_GPU`` -- True iff gpu4pyscf + a usable NVIDIA GPU
-        (compute capability >= ``min_compute_capability``) were both
-        found at run start.  Since the failure paths now exit, this is
-        equal to ``USE_GPU`` for any script that gets past the probe.
-      * ``_mb_to_gpu_if_enabled(mf)`` -- helper used by callers to
-        promote an mf object to its gpu4pyscf equivalent when
-        ``_USING_GPU`` is True; pass-through when the user asked for CPU.
-        Emitted only when ``with_promotion_helper`` (the default): a deck
-        that consumes the GPU by class selection instead (the vibration
-        deck) passes False so its text carries ONE mechanism (M1.4).
-
-    Caller responsibility: invoke ``mf = _mb_to_gpu_if_enabled(mf)``
-    AFTER the mf is fully assembled (density-fit + dispersion +
-    PCM all applied) so ``.to_gpu()`` sees the complete CPU object.
-
-    Side-effects: writes ``gpu_used``, ``gpu_name``,
-    ``gpu_compute_capability``, ``cuda_version`` into the
-    ``_RUNTIME_INFO`` dict (which :func:`emit_runtime_info_capture_lines`
-    initialised with placeholder None / False values).
+    **No CPU fallback** (user, 2026-08-17; `engines/overview.md` § 3a G-5): a
+    run that silently changed where it ran would report a CPU time under a
+    GPU label, and a benchmark would score it.  Asked when the run starts,
+    never at prep: the device is the compute node's (`engines/pyscf.md`).
     """
-    out: List[str] = []
-    out.append("# ============================================================")
-    out.append("#  GPU probe (optional, NVIDIA via gpu4pyscf).")
-    out.append("# ============================================================")
-    out.append("# Probes cupy + gpu4pyscf at run start.  If both present AND")
-    out.append("# the local GPU has compute capability >=")
-    out.append(f"# {min_compute_capability}.0, sets _USING_GPU=True and the helper below")
-    out.append("# promotes mf objects via .to_gpu().")
-    out.append("#")
-    out.append("# THERE IS NO CPU FALLBACK.  You asked for the GPU; if it is")
-    out.append("# not here the run STOPS (no install, no GPU, too-old card).")
-    out.append("# A run that silently changed where it executed would report a")
-    out.append("# CPU time under a GPU label -- and a benchmark would score it.")
-    out.append(f"USE_GPU = {bool(use_gpu)!r}")
-    out.append("_USING_GPU = False")
-    out.append("if USE_GPU:")
-    out.append("    try:")
-    out.append("        import cupy as _cp")
-    out.append("        import gpu4pyscf  # noqa: F401")
-    out.append("        _n_dev = _cp.cuda.runtime.getDeviceCount()")
-    out.append("        if _n_dev == 0:")
-    out.append("            raise RuntimeError('no NVIDIA GPU detected')")
-    out.append("        _props = _cp.cuda.runtime.getDeviceProperties(0)")
-    out.append("        _gpu_name = _props.get('name', b'(unknown)')")
-    out.append("        if isinstance(_gpu_name, bytes):")
-    out.append("            _gpu_name = _gpu_name.decode('utf-8', errors='replace')")
-    out.append("        _maj = int(_props.get('major', 0))")
-    out.append("        _min = int(_props.get('minor', 0))")
-    out.append(f"        if _maj < {min_compute_capability}:")
-    out.append("            raise RuntimeError(")
-    out.append("                f'GPU {_gpu_name} compute capability "
-               "{_maj}.{_min}; '")
-    out.append(f"                f'gpu4pyscf requires >= {min_compute_capability}.0'")
-    out.append("            )")
-    out.append("        _USING_GPU = True")
-    out.append("        _RUNTIME_INFO['gpu_used'] = True")
-    out.append("        _RUNTIME_INFO['gpu_name'] = _gpu_name")
-    out.append("        _RUNTIME_INFO['gpu_compute_capability'] = f'{_maj}.{_min}'")
-    out.append("        try:")
-    out.append("            _cv = _cp.cuda.runtime.runtimeGetVersion()")
-    out.append("            _RUNTIME_INFO['cuda_version'] = f'{_cv // 1000}.{(_cv % 1000) // 10}'")
-    out.append("        except Exception:")
-    out.append("            pass")
-    out.append("        print(f'GPU acceleration ON (gpu4pyscf, {_gpu_name}, "
-               "CC {_maj}.{_min}).')")
-    # NO SILENT FALLBACK (user, 2026-08-17; `engines/overview.md` § 3a G-5).
-    #
-    # These two branches printed "CPU fallback" and carried on.  That made a
-    # GPU run and a CPU run indistinguishable except by reading the log, and
-    # it made a BENCHMARK dishonest: a trial labelled *GPU* that quietly ran
-    # on the CPU reports a CPU time in a GPU column, so the GPU looks slow for
-    # a reason that has nothing to do with the GPU.
-    #
-    # The user asked for the GPU.  Either they get it or the run stops --
-    # the same rule the boundary-condition contract states as *no silent
-    # absorption of config* (`engines/overview.md` § 3).
-    out.append("    except ImportError as _gpu_exc:")
-    out.append("        _RUNTIME_INFO['gpu_name'] = f'gpu4pyscf not installed: {_gpu_exc}'")
-    out.append("        raise SystemExit(")
-    out.append("            'molbuilder: this run asked for the GPU "
-               "(use_gpu = true) and\\n'")
-    out.append("            f'  gpu4pyscf is not importable here: {_gpu_exc}\\n'")
-    out.append("            '  There is no CPU fallback: a run that silently "
-               "changed where it\\n'")
-    out.append("            '  executed would report a CPU time under a GPU "
-               "label.\\n'")
-    out.append("            '  Fix: run in an env with gpu4pyscf + cupy, or "
-               "set use_gpu = false.')")
-    out.append("    except Exception as _gpu_exc:")
-    out.append("        _RUNTIME_INFO['gpu_name'] = f'GPU unusable: {_gpu_exc}'")
-    out.append("        raise SystemExit(")
-    out.append("            'molbuilder: this run asked for the GPU "
-               "(use_gpu = true) and\\n'")
-    out.append("            f'  the local GPU is not usable: {_gpu_exc}\\n'")
-    out.append("            '  There is no CPU fallback (see above).  Fix: run "
-               "on a node with a\\n'")
-    out.append(f"            '  supported NVIDIA GPU (compute capability >= "
-               f"{min_compute_capability}.0), or set use_gpu = false.')")
-    out.append("")
-    if not with_promotion_helper:
-        # ONE GPU mechanism per deck (M1.4, 2026-08-21).  The vibration
-        # deck consumes the GPU by CLASS SELECTION (_scf/_dft are the
-        # gpu4pyscf modules when _USING_GPU -- _build_mf_at constructs on
-        # the device, the right shape for a deck that rebuilds mol per
-        # geometry), so the promotion helper below was emitted DEAD into
-        # every vibration deck: a second mechanism the text carried and
-        # nothing called.
-        return out
-    out.append("def _mb_to_gpu_if_enabled(mf_obj):")
-    out.append("    \"\"\"Promote an mf object to its gpu4pyscf equivalent when")
-    out.append("    _USING_GPU is True; pass through unchanged on CPU.  Call")
-    out.append("    AFTER mf is fully assembled (density_fit + disp + PCM all")
-    out.append("    applied) so .to_gpu() mirrors the complete CPU state.\"\"\"")
-    out.append("    if not _USING_GPU:")
-    out.append("        return mf_obj")
-    # The third silent fallback, and the least visible of the three: the probe
-    # passed, so the run announced "GPU acceleration ON", and THEN the
-    # promotion failed and the work went to the CPU anyway.
-    out.append("    try:")
-    out.append("        return mf_obj.to_gpu()")
-    out.append("    except Exception as _e:")
-    out.append("        raise SystemExit(")
-    out.append("            'molbuilder: this run asked for the GPU and the "
-               "probe found one,\\n'")
-    out.append("            f'  but promoting the SCF object to gpu4pyscf "
-               "failed: {_e}\\n'")
-    out.append("            '  There is no CPU fallback: the run announced "
-               "GPU acceleration,\\n'")
-    out.append("            '  and finishing on the CPU would make that "
-               "announcement false.')")
-    out.append("")
-    return out
+    try:
+        import cupy as cp
+        import gpu4pyscf  # noqa: F401
+        if cp.cuda.runtime.getDeviceCount() == 0:
+            raise RuntimeError("no NVIDIA GPU detected")
+        props = cp.cuda.runtime.getDeviceProperties(0)
+        name = props.get("name", b"(unknown)")
+        if isinstance(name, bytes):
+            name = name.decode("utf-8", errors="replace")
+        major, minor = int(props.get("major", 0)), int(props.get("minor", 0))
+        if major < min_compute_capability:
+            raise RuntimeError(
+                f"GPU {name} compute capability {major}.{minor}; "
+                f"gpu4pyscf requires >= {min_compute_capability}.0")
+        facts["gpu_used"] = True
+        facts["gpu_name"] = name
+        facts["gpu_compute_capability"] = f"{major}.{minor}"
+        try:
+            v = cp.cuda.runtime.runtimeGetVersion()
+            facts["cuda_version"] = f"{v // 1000}.{(v % 1000) // 10}"
+        except Exception:
+            pass
+    except ImportError as exc:
+        facts["gpu_name"] = f"gpu4pyscf not installed: {exc}"
+        raise SystemExit(
+            "molbuilder: this run asked for the GPU (use_gpu = true) and\n"
+            f"  gpu4pyscf is not importable here: {exc}\n"
+            "  There is no CPU fallback: a run that silently changed where it\n"
+            "  executed would report a CPU time under a GPU label.\n"
+            "  Fix: run in an env with gpu4pyscf + cupy, or set use_gpu = "
+            "false.")
+    except Exception as exc:
+        facts["gpu_name"] = f"GPU unusable: {exc}"
+        raise SystemExit(
+            "molbuilder: this run asked for the GPU (use_gpu = true) and\n"
+            f"  the local GPU is not usable: {exc}\n"
+            "  There is no CPU fallback (see above).  Fix: run on a node with "
+            "a\n"
+            f"  supported NVIDIA GPU (compute capability >= "
+            f"{min_compute_capability}.0), or set use_gpu = false.")
+    print(f"GPU acceleration ON (gpu4pyscf, {name}, CC {major}.{minor}).")
+    return True
+
+
+def to_gpu(mf):
+    """``mf`` moved onto the GPU -- gpu4pyscf's ``.to_gpu()`` -- once an
+    optimization script has assembled it whole (density fitting, dispersion
+    and solvent applied), so the copy on the device is all of it.  A
+    promotion that fails stops the run: the probe announced GPU
+    acceleration, and finishing on the CPU would make that false.  (A
+    vibration script builds its SCF objects from gpu4pyscf's classes
+    instead, and never calls this.)"""
+    try:
+        return mf.to_gpu()
+    except Exception as exc:
+        raise SystemExit(
+            "molbuilder: this run asked for the GPU and the probe found one,\n"
+            f"  but promoting the SCF object to gpu4pyscf failed: {exc}\n"
+            "  There is no CPU fallback: the run announced GPU acceleration,\n"
+            "  and finishing on the CPU would make that announcement false.")
 
 
 __all__ = [
+    "GPU4PYSCF_MIN_COMPUTE_CAPABILITY",
     "RUNTIME_INFO_KEYS",
+    "THREAD_SOURCES",
+    "cap_threads",
     "physical_core_count",
-    "emit_threading_setup_lines",
-    "emit_pyscf_post_import_lines",
-    "emit_runtime_info_capture_lines",
-    "emit_gpu_probe_lines",
+    "probe_gpu",
+    "runtime_facts",
+    "threads_for",
+    "to_gpu",
 ]

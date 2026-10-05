@@ -38,6 +38,9 @@ from .diagnostics import EXTENSION_TO_CATEGORY, get_capabilities
 # have to match.  It cannot import upward -- it ships to a compute node
 # alone -- so it is the end of the exchange that gets to own the rule.
 from .config_dir import is_channel_name
+# The thread chain's rungs, one list for the script's chain and the run
+# script's (`running-a-job.md` § 3.2).
+from .runtime_info import THREAD_SOURCES
 # THE SESSION LOG'S LINES are its one module's, which travels beside the
 # job: the wrapper renders them, every reader reads with them.
 from .wrapper_log import LOG_CLOCK, LOG_LINE, RUN_INDEX_LINE, WRAPPER_LOG_START
@@ -3082,31 +3085,20 @@ def render_run_wrapper(script_path: Path, *,
             + _phys_cores_probe_block()
             + 'if [ -n "$_omp_flag" ]; then\n'
               '    _omp_threads="$_omp_flag"; _omp_from="-omp flag"\n'
-              'elif [ -n "${OMP_NUM_THREADS:-}" ]; then\n'
-              '    _omp_threads="$OMP_NUM_THREADS"; _omp_from="OMP_NUM_THREADS"\n'
-              'elif [ -n "${SLURM_CPUS_PER_TASK:-}" ]; then\n'
-              '    _omp_threads="$SLURM_CPUS_PER_TASK"\n'
-              '    _omp_from="SLURM_CPUS_PER_TASK"\n'
-              # PBS/Torque and SGE/UGE.  These two were MISSING while the
-              # comment above claimed the chains were identical, and the
-              # omission did more damage than a plain mismatch: because
-              # this branch EXPORTS OMP_NUM_THREADS, the script's own
-              # chain sees it already set and never reaches its PBS_NCPUS
-              # step.  So under qsub the wrapper handed the engine the
-              # whole node -- reintroducing, for PBS and SGE users only,
-              # the exact 128-cores-for-an-8-core-allocation bug this
-              # block exists to prevent, and doing it in the one
-              # configuration where running WITHOUT the wrapper would
-              # have been correct.  Keep the scheduler rungs in step with
-              # runtime_info._mb_resolve_threads -- one policy in two
-              # languages.  The last rung is this wrapper's alone: the
-              # count stated at prep, which the deck run by this wrapper
-              # always receives exported.
-              'elif [ -n "${PBS_NCPUS:-}" ]; then\n'
-              '    _omp_threads="$PBS_NCPUS"; _omp_from="PBS_NCPUS"\n'
-              'elif [ -n "${NSLOTS:-}" ]; then\n'
-              '    _omp_threads="$NSLOTS"; _omp_from="NSLOTS"\n'
-              'else\n'
+            # THE SAME RUNGS THE SCRIPT'S OWN CHAIN READS, from the one list
+            # (`runtime_info.THREAD_SOURCES`; `running-a-job.md` § 3.2).
+            # Spelled here by hand until 2026-10-05, it lacked PBS_NCPUS
+            # and NSLOTS while a comment called the chains identical -- and
+            # because this branch EXPORTS OMP_NUM_THREADS, the script's
+            # chain, which had them, never reached them: under qsub the
+            # engine got the whole node, the 128-threads-for-8-cores bug
+            # this block exists to prevent.  The last rung is this run
+            # script's alone: the count stated at prep, which the deck it
+            # runs always receives exported.
+            + "".join(f'elif [ -n "${{{var}:-}}" ]; then\n'
+                      f'    _omp_threads="${var}"; _omp_from="{var}"\n'
+                      for var in THREAD_SOURCES)
+            + 'else\n'
               f'    _omp_threads="{resolved_omp}"; _omp_from="stated at prep"\n'
               'fi\n'
               'export OMP_NUM_THREADS="$_omp_threads"\n'
@@ -3650,7 +3642,7 @@ def render_run_wrapper(script_path: Path, *,
                              # OpenMP only: `-np` is accepted and ignored.
                              cores="$_omp_threads",
                              # the run's GPU request, read above -- its
-                             # deck's GPU probe is emitted from the same value
+                             # script's GPU probe runs on the same value
                              gpu=gpus.uses,
                              unwatchable=unwatchable)
             # NOT `exec`: the shell has to outlive the engine to conclude.
@@ -4124,7 +4116,7 @@ _FINISH_BUNDLES = {VIBRATION_BUNDLE: vibration_bundle}
 
 #: Every file the PySCF script IMPORTS molbuilder's code from
 #: (`engines/pyscf.md` § 3), as ``{name beside the job: the module whose
-#: source it is}``: the node's core count, which the threading setup asks
+#: source it is}``: the run's thread and GPU set-up, its threads sized
 #: before numpy is imported (`runtime_info`, standard library only); the
 #: progress-log writer and the unit factors it writes with; the structure
 #: codec, with the structure module (its one XYZ reader among it) and the
@@ -4137,8 +4129,9 @@ _FINISH_BUNDLES = {VIBRATION_BUNDLE: vibration_bundle}
 #: **Each module's own file, imported two ways**, like the monitor's and the
 #: finish's; the rule for joining is *imports the standard library and numpy
 #: at load, and in the functions the script calls also ASE -- which the
-#: PySCF env carries for it (`envs/recipes.py`) -- and PySCF itself; nothing
-#: else but the other members*.
+#: PySCF env carries for it (`envs/recipes.py`) -- and PySCF itself, with
+#: gpu4pyscf and cupy for a run on the GPU; nothing else but the other
+#: members*.
 PYSCF_COMPANIONS: Dict[str, str] = {
     "runtime_info.py":          "molbuilder.runtime_info",
     "molwatch_emitter.py":      "molbuilder.trajectory_log.emitter",

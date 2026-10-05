@@ -318,24 +318,12 @@ def spec_for(struct: Structure,
         out.append('"""')
         out.append("")
 
-        # ---------------- Threading + runtime-info setup ---------------------
-        # Shared with the spectra script -- defined in
-        # molbuilder.runtime_info.  Pins BLAS to 1 thread per worker so
-        # OMP * BLAS doesn't oversubscribe (a 20-physical / 40-logical host
-        # otherwise sees load=40 from MKL/OpenBLAS spawning their own
-        # thread pool on top of PySCF's OMP).  Auto-detects physical
-        # cores at run time (cfg.threads=None) or honors the user's
-        # explicit choice (cfg.threads=N).
-        from ..runtime_info import (
-            emit_threading_setup_lines,
-            emit_runtime_info_capture_lines,
-            emit_pyscf_post_import_lines,
-        )
-        # The deck's anchor and the bundle first: the threading setup takes
-        # the node's core count from it (`emit_script_head`).
-        out += emit_script_head()
-        out += emit_threading_setup_lines(cfg.threads)
-        out += emit_runtime_info_capture_lines(
+        # ---------------- The run's own set-up, from the bundle ------------
+        # The deck's anchor and the bundle first, then its threads -- sized,
+        # and BLAS capped, before numpy loads -- and what it records about
+        # itself (`runtime_info`, `engines/pyscf.md` § 3).
+        out += emit_script_head(cfg.threads)
+        out += emit_runtime_facts(
             use_gpu=bool(getattr(cfg, "use_gpu", False)),
             max_memory_mb=(int(cfg.max_memory_mb) if cfg.max_memory_mb else None),
         )
@@ -356,24 +344,14 @@ def spec_for(struct: Structure,
             out.append("from pyscf import gto, scf")
         # Size pyscf's thread pool AFTER import: env vars don't re-thread
         # an already-imported module (PySCF docs).
-        out += emit_pyscf_post_import_lines()
-        out.append("_RUNTIME_INFO['n_threads_pyscf'] = int(_pyscf_lib.num_threads())")
+        out += emit_pyscf_threads()
         out.append("print(f'molbuilder: pyscf.lib.num_threads() "
                    "= {_RUNTIME_INFO[\"n_threads_pyscf\"]}')")
         out.append("")
 
-        # GPU probe + _mb_to_gpu_if_enabled helper -- shared with the
-        # spectra script via molbuilder.runtime_info so the cross-cutting
-        # "detect, fall back, record" recipe lives in ONE place.  Caller
-        # (this generator + spectra) decides WHERE to invoke the helper
-        # on its mf object(s); the helper itself is identical.
-        from ..runtime_info import (
-            emit_gpu_probe_lines, GPU4PYSCF_MIN_COMPUTE_CAPABILITY,
-        )
-        out += emit_gpu_probe_lines(
-            use_gpu=bool(getattr(cfg, "use_gpu", False)),
-            min_compute_capability=GPU4PYSCF_MIN_COMPUTE_CAPABILITY,
-        )
+        # THE GPU, when this run asks for it -- probed now, on the node that
+        # runs it, and moved onto below once the mf is assembled (`to_gpu`).
+        out += emit_gpu_probe(bool(getattr(cfg, "use_gpu", False)))
         if cfg.optimize:
             # geomeTRIC is the one optimizer (`engines/pyscf.md` § 3).  Its
             # import is checked HERE, before any SCF is paid for, with a
@@ -397,14 +375,15 @@ def spec_for(struct: Structure,
         out.append("")
         # Every molbuilder function the script runs, from the bundle its head
         # put on the path (`engines/pyscf.md` § 3): the pair writer's codec, the
-        # progress-log writer, the relaxation, and the one XYZ reader a
-        # continuing run reads its last geometry with -- all of them,
-        # whatever this deck's settings call.
+        # progress-log writer, the relaxation, the one XYZ reader a
+        # continuing run reads its last geometry with, and the move onto
+        # the GPU -- all of them, whatever this deck's settings call.
+        from ..runtime_info import to_gpu
         from ..trajectory_log.emitter import MolwatchEmitter
         from ..workingcopy_structure import StructureCodec
         from .relax_policy import relax
         out += emit_bundle_imports(StructureCodec, MolwatchEmitter, relax,
-                                   Structure)
+                                   Structure, to_gpu)
 
         # ---- _save_structure helper (the PAIR writer), defined EARLY
         #      so the initial-geometry snapshot can be
@@ -638,12 +617,11 @@ def spec_for(struct: Structure,
                            'SCF init guess from {_chk_path}")')
 
         # GPU patch: promote the fully-assembled production mf to its
-        # gpu4pyscf equivalent when the runtime probe at script-start
-        # succeeded (_USING_GPU=True).  No-op on CPU nodes.  Called
-        # AFTER density_fit / disp / PCM / chkfile / conv_tol so
-        # .to_gpu() sees the complete CPU mf and the GPU mirror has
-        # the same settings.
-        out.append("mf = _mb_to_gpu_if_enabled(mf)")
+        # gpu4pyscf equivalent when the probe at the script's start found
+        # the GPU (`runtime_info.to_gpu`; nothing on a CPU run).  AFTER
+        # density_fit / disp / PCM / chkfile / conv_tol, so the copy on the
+        # device has every setting the CPU mf has.
+        out.append("mf = _mb_to_gpu(mf) if _USING_GPU else mf")
 
         # Second-order (Newton-Raphson) SCF -- the last rung of the
         # convergence escalation, after DIIS and level shift / damping.
@@ -1484,19 +1462,68 @@ def emit_outfile_helper() -> List[str]:
             ""]
 
 
-def emit_script_head() -> List[str]:
+def emit_script_head(threads: Optional[int]) -> List[str]:
     """Every PySCF deck's first lines after its docstring: the deck's anchor
     (:func:`emit_outfile_helper`), ``mb_pyscf.pyz`` on its import path
-    (:func:`emit_bundle_path`), and the one piece of molbuilder the threading
-    setup needs before numpy is imported -- the node's core count,
-    `runtime_info.physical_core_count`, from a member that imports only the
-    standard library.  Everything else the deck imports from the bundle comes
-    after numpy's own import (:func:`emit_bundle_imports`): a member importing
-    numpy ahead of the threading setup would start its BLAS on every core
-    (`engines/pyscf.md` § 3)."""
-    from ..runtime_info import physical_core_count
+    (:func:`emit_bundle_path`), and the run's threads -- ``threads``, the
+    run's own count, or ``None`` to take the allocation's -- sized, with
+    BLAS capped, before numpy is imported (`runtime_info.cap_threads`), from
+    a member that imports only the standard library.  It imports the rest of
+    the run's set-up from that member here too: the facts the run records
+    (:func:`emit_runtime_facts`) and the GPU's probe (:func:`emit_gpu_probe`).
+    Everything else the deck imports from the bundle comes after numpy's own
+    import (:func:`emit_bundle_imports`): a member importing numpy ahead of
+    the caps would start its BLAS on every core (`engines/pyscf.md` § 3)."""
+    from ..runtime_info import cap_threads, probe_gpu, runtime_facts
+    stated = None if threads is None else int(threads)
     return (emit_outfile_helper() + emit_bundle_path()
-            + emit_bundle_imports(physical_core_count))
+            + emit_bundle_imports(cap_threads, runtime_facts, probe_gpu)
+            + ["# This run's threads, and every BLAS capped at one -- before "
+               "numpy loads",
+               f"_MB_REQUESTED_THREADS, _MB_PHYS_CORES = "
+               f"_mb_cap_threads({stated!r})",
+               ""])
+
+
+def emit_runtime_facts(*, use_gpu: bool,
+                       max_memory_mb: Optional[int]) -> List[str]:
+    """``_RUNTIME_INFO`` -- what the run records about itself as it starts
+    (`runtime_info.runtime_facts`), which the result writers copy out and
+    the steps after add to.  After :func:`emit_script_head`, whose thread
+    count it reports."""
+    return ["_RUNTIME_INFO = _mb_runtime_facts(",
+            "    _MB_REQUESTED_THREADS, _MB_PHYS_CORES,",
+            f"    max_memory_mb={max_memory_mb!r}, "
+            f"gpu_requested={bool(use_gpu)!r})",
+            ""]
+
+
+def emit_pyscf_threads() -> List[str]:
+    """PySCF's own thread pool sized to the run's count -- after PySCF is
+    imported, because the variables :func:`emit_script_head` set are read
+    when a module loads, and ``pyscf.lib.num_threads(N)`` is the setter for
+    one already loaded -- and the size it took, recorded."""
+    return ["# PySCF's own pool, sized after its import: the variables are",
+            "# read when a module loads; lib.num_threads(N) is the setter after.",
+            "from pyscf import lib as _pyscf_lib",
+            "_pyscf_lib.num_threads(_MB_REQUESTED_THREADS)",
+            "_RUNTIME_INFO['n_threads_pyscf'] = int(_pyscf_lib.num_threads())",
+            ""]
+
+
+def emit_gpu_probe(use_gpu: Optional[bool]) -> List[str]:
+    """``_USING_GPU`` -- the GPU this run asked for, probed when the run
+    starts, on the node that runs it (`runtime_info.probe_gpu`): found, or
+    the run stops, with no CPU fallback (`engines/overview.md` § 3a).
+    ``use_gpu`` states ``USE_GPU`` first; ``None`` for a deck whose values
+    state it already (the vibration deck)."""
+    out = ["# The GPU, when this run asks for it: found, or the run stops --",
+           "# no CPU fallback (`runtime_info.probe_gpu`)."]
+    if use_gpu is not None:
+        out.append(f"USE_GPU = {bool(use_gpu)!r}")
+    out += ["_USING_GPU = _mb_probe_gpu(_RUNTIME_INFO) if USE_GPU else False",
+            ""]
+    return out
 
 
 def emit_bundle_path() -> List[str]:
