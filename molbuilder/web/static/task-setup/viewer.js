@@ -403,7 +403,6 @@ function freshFolderState() {
         runs:         {},         // stage name -> attempts on disk (T5)
         tokens:       {},         // stage name -> its <NN>_<name>, from the server
         extraRunRows: new Map(),  // rows added to a run card, per stage
-        runFits:      new Map(),  // the admission answer per stage
         fitBench:     {},         // the bench card's last posted axes
         pendingDrop:  "",         // the armed column drop
         stepTab:      "",         // which rung's tab was open
@@ -664,7 +663,7 @@ function dropRunRow(name, stage) {
  *  what is worth deciding.  What it WRITES is this stage's `execution`
  *  block; it never touches `bench`.
  */
-function stageRunCard(task, stage, active) {
+function stageRunCard(task, stage) {
     const box = el("div", { class: "ts-runcard" });
     box.appendChild(el("h3", { class: "ts-reports-head" },
                        "What this run will use"));
@@ -673,9 +672,7 @@ function stageRunCard(task, stage, active) {
         + "own value; a launch value stated nowhere is refused at prep. A "
         + "benchmark reports here but never fills this in."));
     const rows = el("div", { class: "ts-rows" });
-    const fit = el("div", { class: "ts-fit", hidden: "" });
     box.appendChild(rows);
-    box.appendChild(fit);
 
     const bench = (task && task.bench) || {};
     // WHAT THE RUNG ITSELF SAYS is what the field holds; the calculation's
@@ -686,7 +683,6 @@ function stageRunCard(task, stage, active) {
     const own = (((task && task.stages) || [])
         .find((x) => x && x.name === stage) || {}).execution || {};
     const inherited = (task && task.execution) || {};
-    const stated = runConditionOf(task, stage);
     const names = runRowNames(task, stage);
 
     for (const name of names) {
@@ -772,65 +768,11 @@ function stageRunCard(task, stage, active) {
     // separately from the bench (`stages.md` § 6.8e).
     fillPicker(sel, (_sweep || []).concat(LANE_ASKS), names,
                "every setting is already listed");
-
-    // Only the OPEN tab asks the door; a hidden panel is rebuilt on every
-    // repaint and its answer could not be seen anyway.
-    // THE MERGE is what this rung will actually run at, so it is what the
-    // door is asked about -- the fields show where each value came from.
-    scheduleRunFit(stage, active ? fit : null, stated);
+    // WHETHER IT FITS THE MACHINE is the preview's to say, from the job the
+    // prep would write (`job-system.md` § 5.0's checkpoint 4): this card
+    // asked the bench grid with one-point axes until 2026-10-05, a second
+    // answer to a question the entry answers (W55 B3).
     return box;
-}
-
-/* THE SAME DOOR THE GRID CARD ASKS, over a grid of one (`generator.md` § 2).
- * There is no second endpoint: a `/run-fit` route was exactly this call with
- * a list of length one, and it was deleted rather than kept in step.
- *
- * ONE PENDING CHECK PER RUNG, holding the ELEMENT rather than an id: the
- * stage panels are rebuilt on every repaint, so an id would name a node that
- * no longer exists, while a detached one merely goes unseen. */
-
-function scheduleRunFit(stage, host, values) {
-    let f = _fs.runFits.get(stage);
-    if (!f) { f = { seq: 0, timer: null }; _fs.runFits.set(stage, f); }
-    if (f.timer) clearTimeout(f.timer);
-    f.timer = null;
-    f.host = host; f.values = values;
-    // NO HOST, NO ASK: every repaint rebuilds every rung's panel, and
-    // checking all of them would put one request per rung on the wire for
-    // answers nobody can see.  The open tab passes an element; the rest do
-    // not, and ask when they are opened.
-    if (!host) return;
-    f.timer = setTimeout(() => refreshRunFit(stage), 300);
-}
-
-async function refreshRunFit(stage) {
-    const f = _fs.runFits.get(stage);
-    if (!f || !f.host) return;
-    const host = f.host, values = f.values;
-    if (_mode !== "description" || !_dir || !values
-            || !Object.keys(values).length) {
-        host.hidden = true;
-        return;
-    }
-    const seq = ++f.seq;
-    let body;
-    try {
-        const r = await fetch("/api/task-setup/bench-grid", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                dest: _dir, target: _machine || "",
-                // ONE VALUE EACH, handed over as one-point axes -- which is
-                // what makes this the same question the grid card asks.
-                bench: Object.keys(values).reduce(
-                    (g, k) => { g[k] = [values[k]]; return g; }, {}) }),
-        });
-        body = await r.json();
-    } catch (e) { body = null; }
-    if (seq !== f.seq) return;
-    // AND HERE, for the run's grid of one.
-    if (!body || !body.ok) { sayUnknownFit(host, body && body.error); return; }
-    paintFit(host, body);
 }
 
 function renderMachine(task) {
@@ -1086,19 +1028,10 @@ async function setEditorText(text, opts) {
  * naming the new one.  Replacing the object cannot half-happen, and a field
  * added to `freshFolderState` is cleared without anyone touching this.
  *
- * THE TIMERS ARE CANCELLED, NOT DROPPED.  `runFits` holds pending debounce
- * handles; letting go of the Map leaves them armed to fire against the
- * folder you have moved to.  They are harmless today -- each re-reads its
- * entry and finds the new one -- but "harmless because of what the callback
- * happens to do" is the kind of reasoning this page is being cleared of.
- *
  * The two ask boxes are DOM, not state: they are inputs the person typed
  * into, and nothing owns their value but the element.
  */
 function _resetPerFolderState(keep) {
-    for (const f of _fs.runFits.values()) {
-        if (f && f.timer) clearTimeout(f.timer);
-    }
     const was = _fs;
     _fs = freshFolderState();
     /* THE SAME FOLDER, READ AGAIN keeps what the person was looking at:
@@ -2343,7 +2276,7 @@ function renderNext(task) {
          * designed for the run.  This is not mixed up with the existing
          * functional bench setup").  One value each, this rung's own, and it
          * writes `stages[i].execution` -- never `bench`. */
-        block.appendChild(stageRunCard(task, name, active));
+        block.appendChild(stageRunCard(task, name));
 
         block.appendChild(el("p", { class: "hint" },
             "Run it \u2014 at what the card above says. A launch value no "
@@ -2477,15 +2410,17 @@ function prepButton(kind, stage) {
                           "Preview " + kind);
     const btnWrite = el("button", { type: "button", class: "btn", disabled: "" },
                         "Prep " + kind + " here");
+    /* THE PLAN THE LAST PREVIEW SHOWED, by its identity -- what Prep names,
+     * so a prep that would write something else is refused. */
+    let planned = null;
 
     /* WHAT BOTH MUST ANSWER BEFORE EITHER RUNS.  Returns a reason, or null. */
     function blocked() {
         /* PREP READS `task.json` FROM DISK -- the door takes a FOLDER, not a
-         * document (`build.py`: `task = read_task(desc)`), because one
+         * document (the one prep entry, `prep.prep_stage`), because one
          * assembly serves the CLI and the browser alike (A12) and the CLI has
          * only the file.  An unsaved card is not in the document prep reads,
-         * which is why the fit line agreed with the card and the A13 block
-         * did not. */
+         * so its preview would show a plan the card does not say. */
         if (_cm && _cm.getValue() !== _diskText) {
             const ed = $("ts-editor-card");
             if (ed && ed.scrollIntoView) ed.scrollIntoView({ block: "center" });
@@ -2522,6 +2457,11 @@ function prepButton(kind, stage) {
         delete _fs.answers[kind + ":" + stage];
         btnPreview.disabled = true;
         try {
+            /* THE ENTRY'S PREVIEW (`job-system.md` § 5.0): the plan, stopped
+             * before the save -- or the refusal prep would give, in its own
+             * words: a stage already prepped, a run it cannot continue
+             * from, a launch value stated nowhere.  Prep is not offered for
+             * a plan prep refuses. */
             const r = await _prepCall(kind, stage, true);
             if (!r.ok) {
                 say.textContent = r.error;
@@ -2529,6 +2469,7 @@ function prepButton(kind, stage) {
                 btnWrite.disabled = true;
                 return;
             }
+            planned = r.plan_id || null;
             const bits = ["for " + r.machine];
             /* VARYING AND CHOSEN ARE DIFFERENT THINGS, and the length of a
              * row is which (`generator.md` § 4.3a).  Both come from the
@@ -2563,29 +2504,19 @@ function prepButton(kind, stage) {
             if (a.time) bits.push("time " + a.time);
             say.textContent = bits.join(" · ") + ".";
             say.setAttribute("data-state", "ok");
-            /* A STAGE ALREADY PREPPED is refused before anything else
-             * (`job-system.md` § 5.0): the entry's own sentence, the way
-             * back in it, and no Prep offered. */
-            if (r.prepped) {
-                say.textContent = String(r.prepped);
-                say.setAttribute("data-state", "warn");
-                btnWrite.disabled = true;
-                return;
-            }
-            /* WHAT IT WILL CONTINUE FROM, before anything is written (plan
-             * W37) -- or why prep will refuse it, whole, with the commands
-             * it names; Write is not offered for a plan prep refuses. */
+            /* WHAT IT BUILDS ON, before anything is written (plan W37): the
+             * line both doors print, with the files it carries. */
             if (r.continuation) {
                 say.textContent += "  " + r.continuation.line + ".";
-            } else if (r.continuation_refused) {
-                say.textContent = String(r.continuation_refused);
-                say.setAttribute("data-state", "warn");
-                btnWrite.disabled = true;
-                return;
             }
 
-            /* A13 -- THE END POINT, spelled out before anything is written. */
-            if ((r.emitted || []).length) {
+            /* A13 -- THE END POINT, as the header and the run script the
+             * plan holds carry it, line for line: nothing worked out again
+             * (`architecture.md` § 5.2). */
+            const launch = r.launch || {};
+            const lines = (launch.header || []).length
+                ? launch.header : (launch.run_script || []);
+            if (lines.length) {
                 const box = el("div", { class: "ts-emitted" });
                 box.appendChild(el("div", { class: "ts-emitted-head" },
                     "What this run will actually be launched with"));
@@ -2595,12 +2526,9 @@ function prepButton(kind, stage) {
                 box.appendChild(el("div", { class: "hint" },
                     "from the saved task.json — save the card above to "
                     + "change these"));
-                for (const row of r.emitted) {
-                    box.appendChild(el("div", { class: "ts-emitted-row" },
-                        el("code", { class: "ts-emitted-flag" }, row.flag),
-                        el("span", { class: "ts-emitted-val" },
-                           String(row.value)),
-                        el("span", { class: "ts-emitted-why" }, row.source)));
+                for (const line of lines) {
+                    box.appendChild(el("div", { class: "ts-emitted-line" },
+                        el("code", {}, line)));
                 }
                 wrap.appendChild(box);
             }
@@ -2620,7 +2548,7 @@ function prepButton(kind, stage) {
         try {
             say.textContent = "Preparing…";
             say.setAttribute("data-state", "ok");
-            const r = await _prepCall(kind, stage, false);
+            const r = await _prepCall(kind, stage, false, planned);
             _showPrepAnswer(wrap, say, r);
             if (r.ok) {
                 // KEPT, for the re-read below: it rebuilds this panel, and
@@ -2712,8 +2640,11 @@ function _syncPrepButtons() {
     }
 }
 
-async function _prepCall(kind, stage, plan) {
+async function _prepCall(kind, stage, plan, planId) {
     const body = { dest: _dir, kind, stage, plan };
+    // THE PREVIEW'S PLAN, NAMED: prep refuses a plan that differs from the
+    // one previewed -- the folder changed between (`job-system.md` § 5.0).
+    if (planId) body.plan_id = planId;
     // WHAT IT CONTINUES FROM, as chosen (plan W37) -- a run's only.
     if (kind === "run") Object.assign(body, continueBody(stage));
     // The local machine has a NAME, not just a label: the server maps

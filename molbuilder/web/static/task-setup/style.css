@@ -855,8 +855,8 @@
 
 /* ---------- what the run will be LAUNCHED with (architecture.md A13) ---- */
 /* THE END POINT, not the inputs.  A run is hours or days and a wrong width is
-   found when it finishes, so every launch parameter is shown with its value
-   and its source before the second click. */
+   found when it finishes, so the header and the run script the preview's plan
+   holds are shown line for line before the second click. */
 .ts-emitted {
     margin-top: var(--space-sm);
     padding: var(--space-sm) var(--space-md);
@@ -871,23 +871,13 @@
     letter-spacing: 0.04em;
     margin-bottom: var(--space-xs);
 }
-.ts-emitted-row {
-    display: grid;
-    grid-template-columns: 5rem 6rem minmax(0, 1fr);
-    gap: var(--space-sm);
-    align-items: baseline;
-    font-size: var(--text-sm);
-}
-@media (max-width: 700px) {
-    .ts-emitted-row { grid-template-columns: minmax(0, 1fr); }
-}
-.ts-emitted-flag { font-family: var(--font-mono); color: var(--text-muted); }
-.ts-emitted-val {
+.ts-emitted-line {
     font-family: var(--font-mono);
+    font-size: var(--text-sm);
     color: var(--text-primary);
     font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
 }
-.ts-emitted-why { color: var(--text-muted); font-size: var(--text-xs); }
 
 /* ---------- which channels this calculation reports to ---------- */
 /* NAMES ONLY.  The address-and-key form that used to sit here moved to the

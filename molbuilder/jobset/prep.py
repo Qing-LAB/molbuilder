@@ -833,10 +833,9 @@ def _resolve_stage(stage, *, task, template, template_text, environment,
     the pins and the machine's record.
 
     Asked by the prep entry at its checkpoint 4, where the job it makes is
-    placed (`job-system.md` § 5.0); by :func:`prep_calculation`, for a caller
-    that holds no answer (:func:`_read_and_resolve`); and by the Task setup
-    card's GPU answer (`prep_inputs.run_gpu_request`).  ``template`` ``None``
-    is refused: the folder is a template PLUS a description."""
+    placed (`job-system.md` § 5.0), and by :func:`prep_calculation` for a
+    caller that holds no answer (:func:`_read_and_resolve`).  ``template``
+    ``None`` is refused: the folder is a template PLUS a description."""
     from ..resolve import ResolveError, resolve
     from ..task import FILENAME as TASK_FILENAME
     from ..template import template_filename
@@ -1513,6 +1512,23 @@ def _what_this_prep_takes(stage: str, continuation, gather) -> List[str]:
             out.append(f"`{stage}`{at} gathers "
                        + ", ".join(f"{fn} <- {src}" for src, fn in inputs))
     return out or [f"`{stage}` takes nothing from another run"]
+
+
+def _launch_as_written(plan, run_dir, job) -> dict:
+    """What the job will be launched with, as its header and its run script
+    carry it -- A13's end point (`execution/architecture.md` § 5.2): the
+    header's ``#SBATCH`` lines and the run script's stated counts, read from
+    the text the plan holds by each writer's own reader, never worked out
+    again."""
+    from ..runwrap import stated_counts
+    from ..scheduler.emit import Directives
+    stem = Path(job.script).stem
+    header = Path(run_dir) / f"{stem}.sbatch"
+    script = Path(run_dir) / f"{stem}.run.sh"
+    return {"header": (Directives.lines_of(plan.read_text(header))
+                       if plan.is_file(header) else []),
+            "run_script": (stated_counts(plan.read_text(script))
+                           if plan.is_file(script) else [])}
 
 
 def _move_progress_channel_into(attempt: Path, plan) -> None:
@@ -2457,6 +2473,22 @@ class PrepAnswer:
     #: The person said ``--cold`` (the attempt's own ``cold`` says only that
     #: it started clean, which prep now states whenever nothing continues).
     cold: bool = False
+    #: What the description asks the scheduler for -- queue, wall, memory
+    #: -- as the allocation folded at step 2 holds it.
+    allocation: dict = dataclasses.field(default_factory=dict)
+    #: A run: the launch shape its card states (`prep_inputs`); a bench:
+    #: the axes it declares.
+    chosen: dict = dataclasses.field(default_factory=dict)
+    bench_axes: dict = dataclasses.field(default_factory=dict)
+    #: A13 -- what the job will be launched with, as its header and its run
+    #: script carry it (:func:`_launch_as_written`).
+    launch: Optional[dict] = None
+    #: A PREVIEW: the plan, stopped before the save, named by its identity
+    #: for the Prep that follows (`job-system.md` § 5.0), with what it would
+    #: write.
+    preview: bool = False
+    plan_id: Optional[str] = None
+    writes: List[str] = dataclasses.field(default_factory=list)
 
     def as_dict(self, base) -> dict:
         """The answer as JSON, paths relative to the calculation folder --
@@ -2507,6 +2539,13 @@ class PrepAnswer:
                              if self.continuation is not None else None),
             "linked": self.linked,
             "cold": self.cold,
+            "allocation": self.allocation,
+            "chosen": self.chosen,
+            "bench_axes": self.bench_axes,
+            "launch": self.launch,
+            "preview": self.preview,
+            "plan_id": self.plan_id,
+            "writes": list(self.writes),
         }
 
 
@@ -2567,7 +2606,8 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                target: Optional[str] = None, allocation=None,
                from_attempt: Optional[str] = None, cold: bool = False,
                env: Optional[str] = None, emit_sbatch: bool = True,
-               on_found=None) -> PrepAnswer:
+               on_found=None, preview: bool = False,
+               plan_id: Optional[str] = None) -> PrepAnswer:
     """**`prep`, the verb** -- what `molbuilder jobset prep` and the Task setup
     tab's Prep buttons both call (`job-system.md` § 5.3).
 
@@ -2599,6 +2639,14 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
     as the inputs are assembled -- before the save, and before anything is
     rendered -- so a terminal prints them ahead of what the decks say
     while they are written; the answer carries them either way.
+
+    ``preview`` stops before the save and answers the plan -- what it would
+    write, the launch the header and the run script would carry, what the
+    stage builds on -- or the refusal prep would give, with nothing saved,
+    written or recorded (`job-system.md` § 5.0: *a preview is the same
+    entry*).  ``plan_id`` is a preview's plan, named (`Plan.identity`):
+    a prep that makes a different one -- the folder changed between -- is
+    refused, saying to preview again.
     """
     from ..scheduler import AmbiguousTarget, UnknownTarget
     from ..task import FILENAME as TASK_FILENAME, read_task
@@ -2625,8 +2673,8 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         # The preflight's notes land in the ledger on the pass that ACTS or
         # REFUSES -- never on one that only asks, so the answering pass does
         # not write them twice -- and ahead of what follows them, the order
-        # the terminal prints them in.
-        if findings and not recorded:
+        # the terminal prints them in.  A preview only asks.
+        if findings and not recorded and not preview:
             ledger(base, "prep", "preflight-report", stage=stage,
                    notes=[i.message for i in findings])
             recorded.append(True)
@@ -2639,7 +2687,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         # decision the entry makes lands in the ledger) -- in a described
         # calculation only: a folder that is not one gets no ledger of ours
         # (W52: after a refusal the stage's last line read `prepped`).
-        if desc.is_file():
+        if desc.is_file() and not preview:
             ledger(base, "prep", "refused", kind=kind, stage=stage,
                    reason=str(exc))
         exc.findings, exc.notes = tuple(findings), tuple(notes)
@@ -2867,11 +2915,97 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                                 findings=deck_findings,
                                 continuation=continuation, gather=gather,
                                 plan=plan, resolved=resolved)
-        js = None
         flat = not resolved.shape.keeps_attempts_as_directories
+        # THE PLAN, NAMED -- and a preview's, held to: a prep that would
+        # write something else than the plan the person looked at refuses
+        # (`job-system.md` § 5.0).
+        identity = plan.identity()
+        if plan_id is not None and plan_id != identity:
+            raise PrepError(
+                "the folder changed since the preview -- what prep would "
+                "write now is not the plan you looked at.  Preview again "
+                "(job-system.md § 5.0).")
+
+        # THE ANSWER, from the plan -- what a preview shows and a prep
+        # records once it is written.
+        seen: set = set()
+        # ONE ENTRY PER FOLDER: on the flat layout every stage's folder is
+        # the calculation's one, and the answer listed it once per stage --
+        # "prepped 3 job dir(s)" for one stage (W52).
+        out = PrepAnswer(
+            kind, stage, findings=findings, notes=notes,
+            dirs=list(dict.fromkeys(dirs)),
+            # ONE OF EACH: a sweep's trials repeat one finding per deck, and
+            # the terminal said each once (`prep_calculation`).
+            deck_findings=[i for i in deck_findings
+                           if not (repr(i.to_json()) in seen
+                                   or seen.add(repr(i.to_json())))])
+        # THE PIPELINE LOG, which every prep writes (`script-preparation.md`
+        # § 4.5): where this one is.
+        from ..pipeline_log import log_name
+        out.pipeline_log = (container or base) / log_name(
+            task.label, stage_home(base, task, stage).token or "", task.engine,
+            task.shape)
+        a = resolved.allocation
+        out.allocation = {"domain": a.domain, "time": a.time, "mem": a.mem}
+        out.bench_axes = ({k: list(v) for k, v in (task.bench or {}).items()}
+                          if kind == "bench" else {})
+        out.chosen = dict(chosen) if kind == "run" else {}
+        rep_stage = run_dir = job = None
         if kind == "run":
             js = JobSet.from_dict(json.loads(plan.read_text(
                 base / JOBSET_FILENAME)))
+            # THE ATTEMPT -- opened once, with what it continues from
+            # (`_open_attempts`; until 2026-10-01 it was opened a second time
+            # here, and a refusal between the two left an earlier carry
+            # undone -- W52).  A later attempt is `launch`'s.  Flat keeps no
+            # attempt directories: the run is the calculation's folder.
+            from ..template import KIND_ROLES
+            out.linked = (getattr(task, "calculation", None)
+                          or "optimization") in KIND_ROLES
+            out.cold = bool(cold)
+            out.continuation = continuation
+            # WHAT EACH ATTEMPT GATHERED, as decided at 4a: the attempt
+            # opened in each container.
+            got = [(next((Path(at.dir) for at in opened
+                          if Path(at.dir).parent.resolve()
+                          == Path(c).resolve()), None), volts, inputs)
+                   for c, volts, inputs in (gather or ())]
+            from ..transport.stages import scan_points
+            if flat:
+                out.flat = True
+                run_dir, rep_stage = base, stage
+            elif is_transport and scan_points(task, stage):
+                out.points = got
+            else:
+                rep = opened[0]
+                out.attempt = rep
+                out.gathered = [pair for _a, _v, g in got for pair in g]
+                run_dir, rep_stage = rep.dir, rep.stage
+            # WHAT IT WILL LAUNCH WITH, and whether the deck agrees: `launch`
+            # refuses a deck rendered for another width, and prep is the step
+            # that exists so there are no surprises there (`agreement.py`).
+            # A13: the end point, as the header and the run script carry it.
+            job = next((j for j in js.jobs if j.name == rep_stage), None)
+            if job is not None:
+                r = job.resources
+                out.resources = {"mpi_np": r.mpi_np,
+                                 "cpus_per_task": r.cpus_per_task,
+                                 "continue_retries": r.continue_retries}
+                out.deck = Path(job.script).name
+                out.launch = _launch_as_written(plan, run_dir, job)
+                from .agreement import launch_agreement
+                agreement = launch_agreement(
+                    run_dir, job,
+                    text=plan.read_text(Path(run_dir) / out.deck))
+                if agreement.verdict != "silent":
+                    out.agreement = agreement
+        if preview:
+            out.preview = True
+            out.plan_id = identity
+            out.writes = [str(Path(w).relative_to(base))
+                          for w in plan.writes()]
+            return out
 
         # 5 · THE SAVE -- always, once the whole plan stands and before
         #     anything is written (`checkpointing.md` § 9; user, 2026-10-03:
@@ -2889,7 +3023,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         except CheckpointError as exc:
             raise PrepError(f"the folder's state could not be saved, so "
                             f"nothing was prepped: {exc}")
-        saved = kept.said()
+        out.saved = kept.said()
         ledger(base, "prep", "saved", stage=stage, state=kept.state.short,
                note=kept.state.note, new=kept.new)
 
@@ -2899,83 +3033,23 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         #     state just saved is the way back.
         plan.carry_out()
 
-        # 7 · THE RECORD, and the answer both doors show.
-        seen: set = set()
-        # ONE ENTRY PER FOLDER: on the flat layout every stage's folder is
-        # the calculation's one, and the answer listed it once per stage --
-        # "prepped 3 job dir(s)" for one stage (W52).
-        dirs = list(dict.fromkeys(dirs))
-        out = PrepAnswer(
-            kind, stage, findings=findings, notes=notes, dirs=list(dirs),
-            saved=saved,
-            # ONE OF EACH: a sweep's trials repeat one finding per deck, and
-            # the terminal said each once (`prep_calculation`).
-            deck_findings=[i for i in deck_findings
-                           if not (repr(i.to_json()) in seen
-                                   or seen.add(repr(i.to_json())))])
-        # THE PIPELINE LOG, which every prep writes (`script-preparation.md`
-        # § 4.5): where this one is.
-        from ..pipeline_log import log_name
-        out.pipeline_log = (container or base) / log_name(
-            task.label, stage_home(base, task, stage).token or "", task.engine,
-            task.shape)
-        if kind == "bench":
-            return _finish(out)
-
-        # THE ATTEMPT -- opened once, with what it continues from
-        # (`_open_attempts`; until 2026-10-01 it was opened a second time
-        # here, and a refusal between the two left an earlier carry undone
-        # -- W52).  A later attempt is `launch`'s.  Flat keeps no attempt
-        # directories: the run is the calculation's folder.
-        from ..template import KIND_ROLES
-        out.linked = (getattr(task, "calculation", None)
-                      or "optimization") in KIND_ROLES
-        out.cold = bool(cold)
-        out.continuation = continuation
-        # WHAT EACH ATTEMPT GATHERED, as decided at 4a: the attempt opened
-        # in each container.
-        got = [(next((Path(a.dir) for a in opened
-                      if Path(a.dir).parent.resolve()
-                      == Path(c).resolve()), None), volts, inputs)
-               for c, volts, inputs in (gather or ())]
-        if flat:
-            out.flat = True
-            run_dir, rep_stage, copied = base, stage, []
-        else:
-            from ..transport.stages import scan_points
-            if is_transport and scan_points(task, stage):
-                out.points = got
-                return _finish(out)
-            rep = opened[0]
-            out.attempt = rep
-            out.gathered = [pair for _a, _v, g in got for pair in g]
-            run_dir, rep_stage, copied = rep.dir, rep.stage, list(rep.copied)
-        if continuation is not None:
-            # THE DECISION, LOGGED (`job-system.md` § 5.4): which run, by
-            # default or named, what it was, and what came across.
-            ledger(base, "prep", "continues", stage=stage,
-                   **continuation.ledger_facts(), copied=copied)
-        elif cold:
-            ledger(base, "prep", "starts-cold", stage=stage)
-
-        # WHAT IT WILL LAUNCH WITH, and whether the deck agrees: `launch`
-        # refuses a deck rendered for another width, and prep is the step
-        # that exists so there are no surprises there (`agreement.py`).
-        job = next((j for j in js.jobs if j.name == rep_stage), None)
-        if job is not None:
-            r = job.resources
-            out.resources = {"mpi_np": r.mpi_np,
-                             "cpus_per_task": r.cpus_per_task,
-                             "continue_retries": r.continue_retries}
-            out.deck = Path(job.script).name
-            from .agreement import launch_agreement
-            agreement = launch_agreement(run_dir, job)
-            if agreement.verdict != "silent":
-                out.agreement = agreement
+        # 7 · THE RECORD: what it continues from, the deck's agreement with
+        #     its launch, *prepped* -- the answer both doors show.
+        if kind == "run":
+            if continuation is not None:
+                # THE DECISION, LOGGED (`job-system.md` § 5.4): which run,
+                # by default or named, what it was, and what came across.
+                ledger(base, "prep", "continues", stage=stage,
+                       **continuation.ledger_facts(),
+                       copied=list(out.attempt.copied)
+                       if out.attempt is not None else [])
+            elif cold:
+                ledger(base, "prep", "starts-cold", stage=stage)
+            if out.agreement is not None:
                 ledger(base, "prep", "launch-agreement", stage=rep_stage,
-                       verdict=agreement.verdict,
-                       rendered_for=agreement.rendered_text,
-                       launching_at=agreement.launch_text)
+                       verdict=out.agreement.verdict,
+                       rendered_for=out.agreement.rendered_text,
+                       launching_at=out.agreement.launch_text)
         return _finish(out)
     except PrepError as exc:
         raise _refused(exc)

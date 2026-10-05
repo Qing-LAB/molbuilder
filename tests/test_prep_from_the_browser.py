@@ -108,11 +108,14 @@ def test_it_refuses_a_folder_with_no_description(web_client, described,
 
 
 def test_silence_about_the_machine_is_still_refused(web_client, described):
-    """C1 unchanged: the browser cannot offer a default the CLI rejects."""
+    """C1 unchanged: the browser cannot offer a default the CLI rejects --
+    asked of a calculation prep would otherwise take, so the refusal is the
+    machine's (it also accepted a refusal naming `task.json` until
+    2026-10-05, and passed on a folder refused for having no template)."""
+    _make_preppable(Path(described))
     st, j = _post(web_client, dest=described, kind="run", stage="coarse",
                   plan=True)
-    assert st == 400
-    assert "none was named" in j["error"] or "task.json" in j["error"]
+    assert st == 400 and "none was named" in j["error"], j
 
 
 def test_the_local_machine_can_be_NAMED(web_client, described):
@@ -181,9 +184,10 @@ def test_the_reserved_name_cannot_be_taken_by_a_record():
 
 
 def test_an_unknown_machine_is_refused_by_name(web_client, described):
+    _make_preppable(Path(described))
     st, j = _post(web_client, dest=described, kind="run", stage="coarse",
                   target="no-such-box", plan=True)
-    assert st == 400 and "no-such-box" in j["error"]
+    assert st == 400 and "no-such-box" in j["error"], j
 
 
 def test_kind_must_be_run_or_bench(web_client, described):
@@ -296,6 +300,36 @@ def _a_ladder_the_preflight_warns_about(calc):
                    {"name": "tight", "enabled": True, "overrides": {},
                     "execution": {"restart": "clean"}}]
     desc.write_text(json.dumps(d))
+
+
+def test_the_preview_is_the_entry_and_prep_takes_only_the_plan_previewed(
+        web_client, described):
+    """`job-system.md` § 5.0 (W55 B3): a preview is the same entry, stopped
+    before the save -- nothing saved, written or recorded; a Prep naming the
+    preview's plan takes it, and one naming a plan the folder no longer
+    makes is refused, writing nothing but its ledger line.  The stage is the
+    entry's to resolve -- ``#1``, or the name in any case (D15).
+
+    API-LEVEL: the browser's door, which no `jobset` verb reaches; what the
+    plan holds is the entry's, and the prep protocol's table."""
+    calc = Path(described)
+    _make_preppable(calc)
+    before = sorted(p.relative_to(calc) for p in calc.rglob("*"))
+    st, pv = _post(web_client, dest=described, kind="run", stage="#1",
+                   target=LOCAL_TARGET, plan=True)
+    assert st == 200 and pv["preview"] and pv["stage"] == "coarse", pv
+    assert pv["plan_id"] and pv["writes"], pv
+    assert sorted(p.relative_to(calc) for p in calc.rglob("*")) == before, (
+        "the preview wrote")
+
+    st, j = _post(web_client, dest=described, kind="run", stage="COARSE",
+                  target=LOCAL_TARGET, plan_id="0" * 64)
+    assert st == 400 and "changed since the preview" in j["error"], j
+    assert not (calc / "01_coarse").exists(), "a refused prep wrote"
+
+    st, j = _post(web_client, dest=described, kind="run", stage="coarse",
+                  target=LOCAL_TARGET, plan_id=pv["plan_id"])
+    assert st == 200 and j["saved"] and not j["preview"], j
 
 
 def test_both_doors_give_the_same_answer_and_record_the_same_decisions(

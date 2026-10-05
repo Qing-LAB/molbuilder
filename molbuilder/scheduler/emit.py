@@ -82,6 +82,15 @@ class Directives:
 
     # ---- the two spellings -------------------------------------------- #
 
+    @staticmethod
+    def lines_of(header_text: str) -> List[str]:
+        """A rendered header's ``#SBATCH`` lines, as it carries them -- what
+        a surface shows for what a job will be launched with (A13,
+        `execution/architecture.md` § 5.2), read back by the writer's side
+        and never worked out again."""
+        return [ln.strip() for ln in header_text.splitlines()
+                if ln.startswith("#SBATCH")]
+
     def header_lines(self) -> List[str]:
         """``#SBATCH`` lines for the facts a command line also carries.
 

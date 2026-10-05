@@ -110,7 +110,7 @@ order, and each tier is answered on its own terms:
 |---|---|---|
 | the **folder** | one door — `/api/task-setup/folder?dir=` | the selection moves; **replaced whole** |
 | the **engine** | `columns` · `presets` · `sweepable`, keyed on the engine | the engine does — shared across folders |
-| the **pair** | `bench-grid{dest, target}`, each stage's command lines (`commands{dest, kind, stage, target, …}`, § 11) and the fit answers | *either* the folder or the machine moves |
+| the **pair** | `bench-grid{dest, target}`, each stage's command lines (`commands{dest, kind, stage, target, …}`, § 11) and each stage's preview (`prep{…, plan: true}`, § 11.1) | *either* the folder or the machine moves |
 
 Naming the tiers is what keeps the rule precise: "no state of its own" forbids
 remembering a *folder's* facts, not caching the engine's vocabulary, and the
@@ -571,21 +571,24 @@ inherited value shown as text is indistinguishable from one you typed, and
 `×` and clear-to-blank both write this rung's own block — so with the merged
 value in the field they would write nothing and the field would snap back.
 
-**And it is checked in the card, as you type** — the same admission door the
-grid card asks, over a grid of one.
+**Whether it fits the machine is the preview's to say** (§ 11.1): the one
+prep entry, stopped before the save, places the job the stage resolves to on
+the target's queues ([`job-system.md`](?doc=execution/job-system.md) § 5.0,
+checkpoint 4) and answers the plan, or the refusal naming what does not fit.
+*(Until 2026-10-05 this card asked the bench grid with one-point axes as you
+typed — a second answer to a question the entry answers; W55 B3.)*
 
 > **A check that cannot run says so.** *"I don't know, and here is why"* is
 > one of the three answers, beside *fits* and *does not fit* — never a blank.
-> Both fit panels used to hide themselves on any failure, on the reasoning
+> The grid card's panel used to hide itself on any failure, on the reasoning
 > that the rows above are the substance and the card must not break. That
 > produces the worst of the readings: an empty space where a verdict belongs
 > is indistinguishable from *everything fits* and from *this feature is
 > gone*, and the one thing it never says is the true one. The server's own
 > words carry the reason — it knows why, and a paraphrase here would be a
 > second author for one sentence. *(User, 2026-09-02: "we can't have a fit
-> on. I just said, I don't know. Lack of information.")* A run is a sweep of length one, so there
-is no second check to keep in step (`generator.md` § 2). Six combinations in
-the card above and one in this card is the ordinary picture: a plan to
+> on. I just said, I don't know. Lack of information.")* Six combinations in
+the grid card and one decision in this card is the ordinary picture: a plan to
 measure, and a decision, side by side.
 
 > **A single card served both for one day** (2026-09-01), on the rule that
@@ -753,15 +756,14 @@ sequenceDiagram
     Save->>Model: 4 · re-open the folder
 
     You->>Prep: Preview
-    Prep->>Disk: read_task(dir)
-    Prep-->>You: what the SAVED file would launch (A13)
-    You->>Prep: Prep run here (enabled only by Preview)
+    Prep->>Disk: the one prep entry, stopped before the save
+    Prep-->>You: the plan: what the SAVED file would launch (A13), what it builds on
+    You->>Prep: Prep run here (enabled only by Preview), naming that plan
     Prep->>Disk: the one prep entry (job-system.md § 5.3)
-    alt already under way here
-      Prep-->>You: the evidence, and Confirm (no deck rendered)
-      You->>Prep: Confirm (that evidence)
+    alt the folder changed since the preview
+      Prep-->>You: refused: preview again (nothing written)
     end
-    Prep->>Disk: decks + wrappers + run-N/
+    Prep->>Disk: the state saved, then decks + wrappers + run-N/
     Prep-->>You: the answer: notes, checks, attempt, agreement
 ```
 
@@ -1125,17 +1127,22 @@ one per mode where it sets none.
 
 ### 11.1 What a Prep button shows — the command line's answer, whole
 
-**Preview** asks what a prep would do — from the same assembly the prep uses
-(`jobset/prep_inputs.py`, [`architecture.md`](?doc=execution/architecture.md)
-A12) — and writes nothing; for a continuing rung it says what the rung will
-continue from, with the run's verdict — or, when the choice is the default and
-prep would refuse it, why, and Prep is not offered. A stage already prepped
-says so before any click — the folder's answer carries the prep entry's own
-sentence, the way back in it — and neither button is offered
-([`job-system.md`](?doc=execution/job-system.md) § 5.0). **Prep run here** / **Prep bench here** reach the
-one prep entry the command line calls
-([`job-system.md`](?doc=execution/job-system.md) § 5.3), so the tab shows what
-the terminal prints, from the same answer:
+**Preview is the one prep entry, stopped before the save**
+([`job-system.md`](?doc=execution/job-system.md) § 5.0, W55 B3): the plan —
+what the rung builds on, with the run's verdict and the files it carries; what
+the job will be launched with, line for line as the header and the run script
+the plan holds carry it (A13, [`architecture.md`](?doc=execution/architecture.md)
+§ 5.2); the queue, wall and memory asked — or the refusal prep would give, in
+its words, and Prep is not offered. Nothing is saved, written or recorded. A
+stage already prepped says so before any click — the folder's answer carries
+the prep entry's own sentence, the way back in it — and neither button is
+offered. **Prep run here** / **Prep bench here** reach the same entry
+([`job-system.md`](?doc=execution/job-system.md) § 5.3) **naming the preview's
+plan**: when the plan it makes now differs — the folder changed between — it is
+refused, saying to preview again. *(Until 2026-10-05 the route assembled its
+preview from pieces of the entry, and refused `#N` and a stage name in another
+case, which the entry takes — D15.)* So the tab shows what the terminal prints,
+from the same answer:
 
 * **the description's preflight notes**, each with its severity — an error
   refuses, in its own words, and nothing is written;
@@ -1158,10 +1165,10 @@ the terminal prints, from the same answer:
   agrees**: a deck rendered for another width is said here, before `launch`
   refuses it — and redone by going back to the state saved before this prep.
 
-**A refusal shows what it had found** — the preflight's notes, what the inputs
-said, and what was already written — beside its own sentence: a bench refused
-because *no cell survived* points at its crossed-out cells, and they are
-there.
+**A refusal shows what it had found** — the preflight's notes and what the
+inputs said — beside its own sentence: a bench refused because *no cell
+survived* points at its crossed-out cells, and they are there. A refused prep
+wrote nothing ([`job-system.md`](?doc=execution/job-system.md) § 5.0, rule 3).
 
 **The bench is offered on every stage `prep bench` takes**, with or without
 declared axes: with none, the target machine proposes the grid, as the command

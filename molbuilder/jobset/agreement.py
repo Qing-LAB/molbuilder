@@ -63,7 +63,7 @@ class LaunchAgreement:
         return self._fmt(self.launching_at)
 
 
-def launch_agreement(job_dir, job) -> LaunchAgreement:
+def launch_agreement(job_dir, job, *, text=None) -> LaunchAgreement:
     """Read the deck's launch claim and compare it with this job's.
 
     `project-layout.md § 2.3.1` states the five steps and says the order is
@@ -89,13 +89,17 @@ def launch_agreement(job_dir, job) -> LaunchAgreement:
     comparison, and a person is owed its answer at the moment they are still
     deciding (`prep`) — not only at the moment they are committing cluster
     time (`launch`).
+
+    ``text`` is the deck as it will be written, for one `prep` has planned
+    and not yet written (`jobset.planned`).
     """
-    deck = Path(job_dir) / os.path.basename(job.script)
-    if not deck.is_file():
-        return LaunchAgreement("silent")
+    if text is None:
+        deck = Path(job_dir) / os.path.basename(job.script)
+        if not deck.is_file():
+            return LaunchAgreement("silent")
+        text = deck.read_text(encoding="utf-8", errors="replace")
     from ..script_emit import _extract_bench_marks_dict
-    marks = _extract_bench_marks_dict(deck.read_text(encoding="utf-8",
-                                                     errors="replace"))
+    marks = _extract_bench_marks_dict(text)
     if not marks or "mpi_np" not in marks:
         # A deck with no BENCH-MARKS block says nothing about its launch, so
         # there is nothing to disagree with.  The check is an agreement between

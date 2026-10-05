@@ -1281,9 +1281,21 @@ def api_task_setup_prep():
     That line is the user's (2026-08-24) and it is where it is because
     the two verbs differ in what they cost to get wrong.
 
-    ``plan: true`` answers WITHOUT WRITING: which stage, which machine,
-    how many trials, where they would land.  Nothing is prepped unseen --
-    the same rule the launch door keeps (`submission.md` S4).
+    ``plan: true`` is the entry's PREVIEW (`job-system.md` § 5.0): the plan,
+    stopped before the save -- what it would write, the launch the header
+    and the run script would carry, what the stage builds on -- or the
+    refusal prep would give, with nothing saved, written or recorded.
+    Nothing is prepped unseen -- the rule the launch door keeps
+    (`submission.md` S4) -- and a Prep names the preview's plan
+    (``plan_id``) and is refused when the plan it makes now differs.
+
+    **Everything else is the entry's** (W55 B3, D15): the description, the
+    stage -- a name in any case, or ``#N`` -- the machine, what the stage
+    continues from, every refusal in its words.  *(Until 2026-10-05 this
+    route assembled its preview from pieces of the entry -- the run's
+    shape, the launch rows, the continuation, the prepped sentence -- and
+    refused ``#N`` and a stage name in another case, which the entry
+    takes.)*
     """
     body = request.get_json(silent=True) or {}
     dest_raw = body.get("dest")
@@ -1291,17 +1303,14 @@ def api_task_setup_prep():
     stage = (body.get("stage") or "").strip() or None
     target = (body.get("target") or "").strip() or None
     # WHAT IT CONTINUES FROM is the entry's (plan W37, `job-system.md`
-    # § 5.4): by default the newest attempt of the stage before it, which
-    # must have concluded -- the default the CLI takes too.  The page's
-    # **Continue from** choice is the CLI's two flags: `from`, a run of this
-    # calculation named by its folder (`01_coarse/run-0`), and `cold`.  What
-    # cannot be taken -- a path out of the calculation, both at once -- the
-    # one entry refuses, for both doors (`continuation._cannot_be_named`;
-    # this route refused those two on its own until 2026-10-01, W52).
+    # § 5.4): the page's **Continue from** choice is the CLI's two flags --
+    # `from`, a run of this calculation named by its folder
+    # (`01_coarse/run-0`), and `cold`.
     from_raw = body.get("from")
     from_attempt = (str(from_raw).strip() or None) if from_raw else None
     cold = bool(body.get("cold"))
-    plan_only = bool(body.get("plan"))
+    preview = bool(body.get("plan"))
+    plan_id = (str(body.get("plan_id") or "").strip() or None)
 
     if kind not in ("run", "bench"):
         return jsonify({"ok": False,
@@ -1317,204 +1326,28 @@ def api_task_setup_prep():
         return jsonify({"ok": False,
                         "error": f"not a directory: {dest_raw}"}), 400
 
-    from molbuilder.task import FILENAME as TASK_FILENAME
-    from molbuilder.task import read_task
-    desc = dest / TASK_FILENAME
-    if not desc.is_file():
-        return jsonify({"ok": False,
-                        "error": f"no {TASK_FILENAME} here -- save the "
-                                 f"description first"}), 400
-    try:
-        task = read_task(desc)
-    except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
-
-    # WHICH MACHINE, asked of the one door every prep asks
-    # (`scheduler.machine_for`), so the browser and the terminal refuse the
-    # same things in the same words -- a calculation that already holds its
-    # machine's record is not asked again (C1).
-    from molbuilder.scheduler import machine_for
-    from molbuilder.scheduler.record import (LOCAL_TARGET, AmbiguousTarget,
-                                             UnknownTarget)
     # The tab labels the local machine `(this machine)`, which is a label
     # and not a name; `LOCAL_TARGET` is the name.  Translated here so the
     # browser sends what it shows and the server speaks one vocabulary.
+    from molbuilder.scheduler.record import LOCAL_TARGET
     if target in ("(this machine)", LOCAL_TARGET):
         target = LOCAL_TARGET
-    try:
-        machine_for(dest, target=target)
-    except (AmbiguousTarget, UnknownTarget) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
 
-    stages = [s.name for s in (task.stages or ())]
-    if stage is None:
-        return jsonify({"ok": False,
-                        "error": "name a stage: " + ", ".join(stages)}), 400
-    if stage not in stages:
-        return jsonify({"ok": False,
-                        "error": f"{stage!r} is not a stage of this "
-                                 f"calculation: " + ", ".join(stages)}), 400
-
-    def _plan_chosen(dest, target, task):
-        """The shape for the PREVIEW -- THE SAME ASSEMBLY the write uses, so
-        what a person is shown before clicking is what clicking does.
-
-        It must never refuse, though: a preview is a person asking *what
-        would this do*, so a machine that cannot hold the condition, or a
-        target it cannot name, is something to SHOW rather than to fail on.
-        The write path refuses in its own words; this falls back to the
-        condition AS WRITTEN, so the card says a number instead of going
-        blank."""
-        from molbuilder.jobset.model import Resources
-        from molbuilder.jobset.prep_inputs import prep_run_inputs
-        try:
-            _alloc, _pins, chosen = prep_run_inputs(dest, task, stage,
-                                                    Resources())
-            return chosen
-        except Exception:                                     # noqa: BLE001
-            return task.run_condition(stage)
-
-    def _emitted_launch(dest, target, task, stage):
-        """What the launch will actually carry, per parameter, with sources.
-
-        Resolved through the same assembly `prep` uses -- A13 forbids a
-        surface working it out again.  **Every value is a stated one or a
-        refusal** (`architecture.md` § 5.2): a parameter nobody stated is
-        shown as the refusal prep will give, never as a number worked out
-        for it -- the target's width, a rank per GPU, a queue's ceiling and
-        a config default each stood here until 2026-10-02.
-        """
-        from molbuilder.jobset.model import GpuRequestError, Resources
-        from molbuilder.jobset.prep_inputs import (prep_run_inputs,
-                                                   run_gpu_request)
-        try:
-            alloc, pins, _chosen = prep_run_inputs(dest, task, stage,
-                                                   Resources())
-        except Exception:                                     # noqa: BLE001
-            return []
-        try:
-            from molbuilder.scheduler import machine_for
-            # READ, never probed (`configuration.md` M-4; W52): a machine
-            # with no record is the refusal Prep gives, not a measurement.
-            _rec = machine_for(dest, target=target)
-        except Exception:                                     # noqa: BLE001
-            _rec = None
-        header = getattr(_rec, "scheduler", None) == "slurm"
-        pyscf = str(getattr(task, "engine", "")) == "pyscf"
-        refused = "not stated -- prep refuses it"
-
-        def _row(name, flag, value, *, asked=True):
-            if not asked:
-                return {"name": name, "flag": flag, "value": "\u2014",
-                        "source": "not asked -- the target has no scheduler"}
-            return {"name": name, "flag": flag,
-                    "value": value if value not in (None, "") else "\u2014",
-                    "source": ("stated" if value not in (None, "")
-                               else refused)}
-
-        rows = [
-            ({"name": "MPI ranks", "flag": "-n", "value": 1,
-              "source": "one process -- PySCF is OpenMP-only"} if pyscf
-             else _row("MPI ranks", "-n", getattr(alloc, "mpi_np", None))),
-            _row("cores per rank", "-c", getattr(alloc, "cpus_per_task", None)),
-        ]
-        # THE DEVICES: the run's GPU request, from the door prep asks
-        # (`prep_inputs.run_gpu_request`) -- a run on the GPU shows its
-        # count, one on the CPU no row, and a request prep refuses shows
-        # the refusal.
-        gres = getattr(alloc, "gres", None)
-        try:
-            gpus = run_gpu_request(dest, task, stage, alloc, pins)
-        except GpuRequestError:
-            rows.append({"name": "devices", "flag": "--gres",
-                         "value": gres or "\u2014",
-                         "source": ("prep refuses it -- this run does not "
-                                    "use the GPU" if gres else refused)})
-        except Exception:                                     # noqa: BLE001
-            pass      # a stage that does not resolve: prep says why
-        else:
-            if gpus is not None and gpus.uses:
-                rows.append(_row("devices", "--gres", gpus.gres))
-        rows += [_row("memory", "--mem", getattr(alloc, "mem", None),
-                      asked=header),
-                 _row("wall", "-t", getattr(alloc, "time", None),
-                      asked=header),
-                 _row("queue", "-p", getattr(alloc, "domain", None),
-                      asked=header)]
-        return rows
-
-    # ---- the PLAN: what this would do, writing nothing ----------------- #
-    if plan_only:
-        # A DESCRIPTION WITH NO BENCH has no bench plan either -- the entry's
-        # own refusal, asked of the same function, so a preview cannot
-        # promise a grid the write refuses.
-        from molbuilder.jobset.prep_inputs import bench_refusal
-        why = bench_refusal(task) if kind == "bench" else None
-        if why:
-            return jsonify({"ok": False, "error": why}), 400
-        alloc = task.allocation
-        return jsonify({
-            "ok": True, "plan": True, "kind": kind, "stage": stage,
-            "machine": "(this machine)" if target == LOCAL_TARGET
-                       else (target or "(this machine)"),
-            # A13 IS THE RUN'S RULE.  Shown under a bench preview it named
-            # the run's condition -- `mpi_np=8` beside a grid of trials that
-            # use no such thing -- which is a surprise of exactly the kind
-            # the rule exists to prevent, told in the wrong card
-            # (`architecture.md` § 5.2, "why a run and not a bench").
-            "bench_axes": {k: list(v) for k, v in (task.bench or {}).items()}
-                          if kind == "bench" else {},
-            # WHAT THE RUN WILL ACTUALLY USE, on the run's own preview too
-            # (`generator.md` § 4.3a).  A bench preview shows the axes and
-            # could infer this from them; a RUN preview showed the queue,
-            # the wall and the memory and said nothing about the launch
-            # shape -- which is the number a person is checking before
-            # spending a queue slot.
-            "chosen": _plan_chosen(dest, target, task) if kind == "run"
-                      else {},
-            # A13 -- THE END POINT, not the inputs.  A run is hours or days
-            # and a wrong width is discovered when it finishes, so the card
-            # shows what the `.sbatch` will carry and where each number came
-            # from -- stated, or the refusal prep will give.
-            "emitted": (_emitted_launch(dest, target, task, stage)
-                        if kind == "run" else []),
-            # What the description asks the scheduler for -- shown because
-            # an unstated memory is the thing that killed five real jobs.
-            "allocation": {"domain": alloc.domain, "time": alloc.time,
-                           "mem": alloc.mem},
-            "writes_into": str(dest),
-            # WHAT IT WILL CONTINUE FROM, before anything is written (plan
-            # W37): the one answer prep acts on -- the run, or why prep
-            # would refuse -- for the choice as it stands.
-            **(_plan_continuation(dest, task, stage, from_attempt, cold)
-               if kind == "run" and stage else {}),
-            # ...AND A STAGE ALREADY PREPPED, which prep refuses first
-            # (`job-system.md` § 5.0, 2a): the entry's own sentence, so the
-            # preview cannot offer a Prep the entry will refuse.
-            **_plan_prepped(dest, task, kind, stage),
-        })
-
-    # ---- the real thing: THE ONE ENTRY (`job-system.md` § 5.3) --------- #
-    # The command line's own prep, called whole -- the preflight, the save
-    # it offers, the five steps, the attempt, the transport carry, the launch
-    # agreement and their ledger lines -- and its answer returned whole, for
-    # the tab to show (`task-setup.md` § 11.1).
-    # Until 2026-09-29 this door called the five steps alone and showed only
-    # the folders: no preflight, no question, no agreement, no ledger lines
-    # for them, and an axis-less bench refused that the command line preps
-    # as the machine's proposal (plan W38 F7).
-    #
-    # THE SAVE IS THE ENTRY'S OWN, and asks nothing (`checkpointing.md` § 9):
-    # the answer names the state saved before prep wrote.  (Until 2026-10-03
-    # it came back as an offer the page answered; until 2026-10-02 the
-    # question was *already under way here*.)
+    # ---- THE ONE ENTRY (`job-system.md` § 5.3), whole ------------------- #
+    # The command line's own prep: the preflight, the save, the steps, the
+    # attempt, the transport carry, the launch agreement and their ledger
+    # lines -- or, previewed, the same plan stopped before the save -- and
+    # its answer returned whole, for the tab to show (`task-setup.md`
+    # § 11.1).  The save is the entry's own and asks nothing
+    # (`checkpointing.md` § 9).
     from molbuilder.jobset.model import Resources
     from molbuilder.jobset.errors import PrepError
     from molbuilder.jobset.prep import prep_stage
     try:
         ans = prep_stage(dest, kind, stage, target=target,
                          allocation=Resources(),
-                         from_attempt=from_attempt, cold=cold)
+                         from_attempt=from_attempt, cold=cold,
+                         preview=preview, plan_id=plan_id)
     except PrepError as exc:
         # Refused, not repaired -- the reader's own words, as the terminal
         # gives them -- WITH what the entry had found by then: the preflight's
@@ -2204,27 +2037,6 @@ def _warm_in_effect(task, folder) -> "dict | None":
     return {"path": in_effect.path, "own": in_effect.own,
             "copy_to": (str(pathlib.Path(folder) / FILENAME)
                         if folder is not None else None)}
-
-
-def _plan_prepped(dest, task, kind, stage) -> dict:
-    """``{"prepped": why}`` when ``stage`` is already prepped -- the prep
-    entry's own refusal (`prep.prepped_already`) -- else ``{}``."""
-    from molbuilder.jobset.prep import prepped_already
-    why = prepped_already(dest, task, kind, stage) if stage else None
-    return {"prepped": why} if why else {}
-
-
-def _plan_continuation(dest, task, stage, from_attempt, cold) -> dict:
-    """The preview's ``continuation`` -- the run a prep with this choice
-    would continue from, with the line both doors print -- or
-    ``continuation_refused``: why prep would refuse it
-    (`continuation.continuation_answer`, the answer prep acts on)."""
-    from molbuilder.jobset.continuation import continuation_answer
-    got, refused = continuation_answer(dest, task, stage,
-                                       from_attempt=from_attempt, cold=cold)
-    if got is not None:
-        return {"continuation": dict(got.as_dict(), line=got.line())}
-    return {"continuation_refused": refused} if refused else {}
 
 
 def _folder_continue_from(dest) -> dict:

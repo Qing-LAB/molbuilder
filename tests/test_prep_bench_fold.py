@@ -749,9 +749,8 @@ class TestTheRunsOwnCondition:
           * `mem` is NOT among them and stays the calculation's
         """
         import json
-        from molbuilder.jobset.prep_inputs import prep_run_inputs
         from molbuilder.jobset.model import Resources
-        from molbuilder.jobset.prep import _under_description
+        from molbuilder.jobset.prep import _under_description, prep_stage
         from molbuilder.task import read_task
 
         d = json.loads((calc / "task.json").read_text())
@@ -763,16 +762,20 @@ class TestTheRunsOwnCondition:
         (calc / "task.json").write_text(json.dumps(d, indent=2))
         t = read_task(calc / "task.json")
 
-        run, _pins, _chosen = prep_run_inputs(calc, t, "coarse",
-                                              allocation=Resources())
-        assert run.time == "2-00:00:00", f"the run lost its wall: {run.time}"
-        assert run.domain == "public", f"the run lost its queue: {run.domain}"
-        assert run.mem == "256G", "mem does not ride `execution`"
+        # THE ALLOCATION EACH JOB WOULD BE WRITTEN WITH -- the entry's
+        # preview, the stage resolved and its allocation folded once
+        # (`prep._resolve_stage`).
+        run = prep_stage(calc, "run", "coarse", allocation=Resources(),
+                         emit_sbatch=False, preview=True).allocation
+        assert run["time"] == "2-00:00:00", f"the run lost its wall: {run}"
+        assert run["domain"] == "public", f"the run lost its queue: {run}"
+        assert run["mem"] == "256G", "mem does not ride `execution`"
 
-        other, _p, _c = prep_run_inputs(calc, t, "medium",
-                                        allocation=Resources())
-        assert other.time == "0-04:00:00", "a rung with no `execution` of its "\
-            "own must keep the calculation's"
+        other = prep_stage(calc, "run", "medium", allocation=Resources(),
+                           emit_sbatch=False, cold=True,
+                           preview=True).allocation
+        assert other["time"] == "0-04:00:00", "a rung with no `execution` "\
+            "of its own must keep the calculation's"
 
         # THE BENCH NEVER READS `execution` -- this is the half the whole
         # section exists for, and it is the half a refactor would break

@@ -238,17 +238,16 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
         "Prep was live before anything had been previewed")
     page.locator(f"{panel} .ts-prep button:has-text('Preview run')") \
         .first.click()
-    page.wait_for_selector(f"{panel} .ts-emitted-row", timeout=30000)
+    page.wait_for_selector(f"{panel} .ts-emitted-line", timeout=30000)
     assert not page.locator(prep_sel).first.is_disabled(), (
         "a successful preview did not enable Prep")
 
-    # ── A13: what the block says is what the header carries ────────────
-    rows = page.evaluate(
-        "() => Array.from(document.querySelectorAll('.ts-emitted-row'))"
-        " .map(r => [r.querySelector('.ts-emitted-flag').textContent,"
-        "            r.querySelector('.ts-emitted-val').textContent])")
-    said = {flag: val for flag, val in rows}
-    assert said.get("-n") == "8", f"the preview lost the rank count: {said}"
+    # ── A13: the block is the header the plan holds, line for line ─────
+    lines = page.evaluate(
+        "() => Array.from(document.querySelectorAll('.ts-emitted-line'))"
+        " .map(n => n.textContent.trim())")
+    assert "#SBATCH -n 8" in lines, (
+        f"the preview lost the rank count: {lines}")
 
     # ── PREP, and read what it produced ────────────────────────────────
     page.locator(prep_sel).first.click()
@@ -268,16 +267,14 @@ def test_the_buttons_produce_a_folder_that_carries_what_the_card_asked_for(
 
     assert header.get("-n") == "8", (
         f"the card asked for 8 ranks; the header carries {header.get('-n')!r}")
-    # EVERY NUMBER THE PREVIEW SHOWED IS THE ONE THE HEADER CARRIES.  The
-    # preview said `-c` was unset while the header took the config default,
-    # which is the lie A13 forbids -- and only comparing the two catches it.
-    for flag, shown in said.items():
-        if shown in ("—", "— cannot size"):
-            continue
-        if flag in header:
-            assert header[flag] == shown, (
-                f"the preview said {flag}={shown!r} and the .sbatch carries "
-                f"{header[flag]!r}")
+    # EVERY LINE THE PREVIEW SHOWED IS THE ONE THE HEADER CARRIES.  A
+    # preview once said `-c` was unset while the header took the config
+    # default, which is the lie A13 forbids -- and only comparing the two
+    # catches it.
+    written = [ln.strip() for ln in sbatch[0].read_text().splitlines()
+               if ln.startswith("#SBATCH")]
+    assert lines == written, (
+        f"the preview showed {lines} and the .sbatch carries {written}")
 
     # the deck and the wrapper came out too -- a folder you can actually run
     d = calc_dir / "01_coarse"
@@ -876,44 +873,48 @@ def test_a_check_that_cannot_run_SAYS_SO_rather_than_going_blank(
         page, flask_server, filled_dir):
     """**"I don't know" is an answer; a blank space is not.**
 
-    Both fit panels used to set `hidden` on any failure, on the reasoning
+    The fit panels used to set `hidden` on any failure, on the reasoning
     that the rows above are the substance and the card should not break.
     That produces the worst of the three readings: an empty space where a
     verdict belongs is indistinguishable from *everything fits* and from
     *this feature is gone*, and the one thing it never says is the true one
     — that the check could not run *(user, 2026-09-02: "we can't have a fit
-    on. I just said, I don't know. Lack of information.")*.
+    on. I just said, I don't know. Lack of information.")*.  Asked of the
+    bench grid card's panel -- the run card's went on 2026-10-05: whether a
+    run fits is the preview's to say (W55 B3).
 
     Driven by making the door fail, which is the only honest way to reach
     the branch: the server is what decides it cannot answer.
     """
-    _open(page, flask_server, filled_dir)
-    page.wait_for_selector(".ts-runcard .ts-row", timeout=20000)
-
-    # The door refuses, as it does on a folder whose machine has no record.
-    page.route("**/api/task-setup/bench-grid",
-               lambda route: route.fulfill(
-                   status=400, content_type="application/json",
-                   body=json.dumps({"ok": False,
-                                    "error": "no machine record for 'sol'"})))
-
-    # Nudge a value so the panel re-asks.
-    sel = '.ts-runcard input[aria-label="value for omp_threads"]'
-    page.fill(sel, "5")
-    page.dispatch_event(sel, "change")
-
-    page.wait_for_function(
-        "() => Array.from(document.querySelectorAll('.ts-fit'))"
-        " .some(n => !n.hidden && /Cannot say/.test(n.textContent))",
-        timeout=20000)
-
-    said = page.evaluate(
-        "() => Array.from(document.querySelectorAll('.ts-fit'))"
-        " .filter(n => !n.hidden).map(n => n.textContent).join(' | ')")
-    assert "Cannot say whether this fits" in said, said
-    # AND IT CARRIES THE SERVER'S REASON, not a paraphrase of our own.
-    assert "no machine record" in said, (
-        "the panel said it could not answer but not why: " + said)
+    # A GRID TO CHECK: two points to measure, stated for this test and put
+    # back after it -- the module's other tests share the folder.
+    tj = Path(filled_dir) / "task.json"
+    kept = tj.read_text()
+    d = json.loads(kept)
+    d["bench"] = {"mpi_np": [2, 4]}
+    tj.write_text(json.dumps(d, indent=2))
+    try:
+        # The door refuses, as it does on a folder whose machine has no
+        # record.
+        page.route("**/api/task-setup/bench-grid",
+                   lambda route: route.fulfill(
+                       status=400, content_type="application/json",
+                       body=json.dumps({"ok": False,
+                                        "error": "no machine record for "
+                                                 "'sol'"})))
+        _open(page, flask_server, filled_dir)
+        page.wait_for_function(
+            "() => { const n = document.getElementById('ts-machine-fit');"
+            " return n && !n.hidden && /Cannot say/.test(n.textContent); }",
+            timeout=20000)
+        said = page.evaluate(
+            "() => document.getElementById('ts-machine-fit').textContent")
+        assert "Cannot say whether this fits" in said, said
+        # AND IT CARRIES THE SERVER'S REASON, not a paraphrase of our own.
+        assert "no machine record" in said, (
+            "the panel said it could not answer but not why: " + said)
+    finally:
+        tj.write_text(kept)
 
 
 # ---------------------------------------------------------------------------

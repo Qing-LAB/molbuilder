@@ -1935,6 +1935,21 @@ def _preamble_source_targets(chunks) -> List[str]:
     return out
 
 
+#: The run script's stated launch counts, baked at prep -- the ranks and the
+#: threads per rank (`running-a-job.md` § 3.1-3.2) -- by these names, which
+#: :func:`stated_counts` reads back.
+_STATED_COUNTS = ("_mpi_np_default", "_omp_threads_default")
+
+
+def stated_counts(run_script_text: str) -> List[str]:
+    """A rendered run script's stated counts, ``name=value`` as it carries
+    them -- what a surface shows for what a job will be launched with on a
+    machine with no scheduler (A13, `execution/architecture.md` § 5.2), read
+    back by the writer's side and never worked out again."""
+    return [ln.strip() for ln in run_script_text.splitlines()
+            if ln.split("=", 1)[0].strip() in _STATED_COUNTS]
+
+
 def render_run_wrapper(script_path: Path, *,
                        label: str = "",
                         resources: "Resources",
@@ -2358,8 +2373,8 @@ def render_run_wrapper(script_path: Path, *,
         _mpi_np_default_assignment = (
             f"# The stated rank and thread counts, baked at prep\n"
             f"# (running-a-job.md § 3.1-3.2).\n"
-            f"_mpi_np_default={resolved_mpi}\n"
-            f"_omp_threads_default={resolved_omp}\n"
+            f"{_STATED_COUNTS[0]}={resolved_mpi}\n"
+            f"{_STATED_COUNTS[1]}={resolved_omp}\n"
         )
         siesta_args_block = (
             _continue_force_args_parser("SIESTA wrapper")

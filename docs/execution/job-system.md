@@ -793,13 +793,15 @@ A calculation is described **once**, and prep only ever reads that description.
 **A preview is the same entry, stopping before the save** *(W55 B3)*: the
 plan, shown — what it would write, the launch values the wrapper and the header
 would carry (A13, from the text it rendered), what the stage continues from —
-or the refusal prep would give, with nothing saved or written. Task setup's
-**Preview** is this, and its **Prep** runs the entry again with the preview's
-plan named: when the plan it makes now differs — the folder changed between —
-it refuses, saying to preview again. *(Until 2026-10-03 the tab's preview was
-assembled by its route from pieces of the entry, and disagreed with it on a
-missing record, an unlisted queue, a GPU run with no count and the queue it
-named.)*
+or the refusal prep would give, with nothing saved, written or recorded. Task
+setup's **Preview** is this, and its **Prep** runs the entry again with the
+preview's plan named — its identity, the plan less the moment it was made
+(`jobset.planned.Plan.identity`: every file it would write, its clock readings
+masked, and each copy's source): when the plan it makes now differs — the
+folder changed between — it refuses, saying to preview again. *(Until
+2026-10-05 the tab's preview was assembled by its route from pieces of the
+entry, and disagreed with it on a missing record, an unlisted queue, a GPU run
+with no count and the queue it named.)*
 
 #### After prep
 

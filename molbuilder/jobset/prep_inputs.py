@@ -6,8 +6,7 @@ Two tuples, one per kind:
     bench_inputs     ->  (points, pins, translation)      a benchmark sweep
 
 and the pieces they are made of: the run's condition (`Task.run_condition`,
-read by `declared_run_shape`, `run_inputs`), the run's GPU request as prep
-will write it (`run_gpu_request`, which the prep entry asks), the bench's
+read by `declared_run_shape`, `run_inputs`), the bench's
 declared pins and axes (`_declared_execution_pins`), and the bench grid --
 enumerated, checked cell by cell against the target's queues, and reported
 (`_cells_this_machine_holds`, `_rank_reasons`, `_local_refusals`, `_cell_*`).
@@ -333,40 +332,6 @@ from ..task import LANE_ASKS as _LANE_ASKS
 from .placement import AS_RESOURCE
 
 
-def run_gpu_request(base, task, stage, allocation, pins=None):
-    """The run's GPU request as prep will write it -- `gpu_request` of the
-    job the one step 2 makes for this stage (`prep._resolve_stage`), from
-    the template, the stage's overrides, the run card's pins and
-    ``allocation`` (the flags, with the run card's launch shape folded in --
-    :func:`prep_run_inputs`).  ``None`` when there is no template to
-    resolve: prep refuses that description, in its own words.
-
-    The Task setup card's answer: the prep entry asks the same of the job it
-    resolved at its checkpoint 4 (`job-system.md` § 5.0) and refuses before
-    anything is written.  Raises `GpuRequestError` when the request
-    disagrees with itself (`execution/gpu.md` G5), `PrepError` when the
-    stage does not resolve.
-
-    *Until 2026-10-03 a second reading answered here: the template's
-    ``use_gpu`` under the card's, read from the file -- and it dropped a
-    count stated for a run on the CPU, with a note, while ``--gpus`` reached
-    the header.*
-    """
-    from ..template import find_template
-    from .model import gpu_request
-    from .prep import _resolve_stage
-    try:
-        tpl = find_template(Path(base), task.label)
-    except ValueError as exc:
-        raise PrepError(str(exc)) from exc
-    if tpl is None:
-        return None
-    return gpu_request(_resolve_stage(
-        stage, task=task, template=tpl,
-        template_text=tpl.read_text(encoding="utf-8"), environment=None,
-        allocation=allocation, pins=pins or None).pset.elements[0].resources)
-
-
 def declared_run_shape(base, task, stage=None):
     """The run's LAUNCH SHAPE — the condition's machine items, as `Resources`
     fields.  ``{}`` when the condition states none.
@@ -397,7 +362,8 @@ def declared_run_shape(base, task, stage=None):
     looked up here, 2026-09-30 to 2026-10-01).  The count is the run card's
     own ``gpu_count``, on every engine, carried as stated: whether the run
     uses the GPU is its resolved ``use_gpu``, and the two are asked together
-    by the prep entry (:func:`run_gpu_request`, `execution/gpu.md` G5).
+    by the prep entry, of the job it resolves (`prep._resolve_stage`,
+    `execution/gpu.md` G5).
     """
     cond = task.run_condition(stage)
     from ..template import catalogue, select
@@ -446,7 +412,7 @@ def run_inputs(base, task, stage=None):
     # THE SHAPE EVEN WHEN THE CARD IS EMPTY: a template whose `use_gpu` is on
     # is a device run with nothing on its card, and its count is asked for
     # like any other's (`gpu.md` G5 -- refused, unstated, by the prep entry
-    # through `run_gpu_request`).  It returned before this, so that run
+    # of the job it resolves).  It returned before this, so that run
     # reached the header with no ask (the K5 review's B1).
     return declared_run_shape(base, task, stage), dict(pins or {})
 
@@ -502,24 +468,16 @@ def prep_run_inputs(base, task, stage, allocation=None):
     if patch:
         allocation = _dc.replace(allocation, **patch)
     # WHETHER A GPU RUN STATES HOW MANY, AND A CPU RUN NONE (`execution/
-    # gpu.md` G5) is the prep entry's to ask, of the request this assembly
-    # makes -- `run_gpu_request`, beside the launch values' refusal -- so
-    # the Task setup card can show the answer instead of losing the card.
+    # gpu.md` G5) is the prep entry's to ask, of the job it resolves from
+    # this assembly, beside the launch values' refusal -- and the Task
+    # setup card shows the entry's preview of it.
 
-    # 1b · AND THE CALCULATION'S SCHEDULER ASK, before the verdict for the
-    #      same reason: `architecture.md` § 5.2's scheduler ladder is
-    #      `unstated < allocation < flag` and has NO verdict rung.  Folded
-    #      after the verdict, a `run-config.toml` carrying `mem` would beat a
-    #      description that asked for more -- over the two fields whose
-    #      absence killed five Sol jobs.  `summarize` stopped writing them on
-    #      2026-08-24, so this closes a reader wider than any writer.
-    if getattr(task, "allocation", None):
-        _ask = task.allocation
-        _p = {n: v for n, v in (("domain", _ask.domain), ("time", _ask.time),
-                                ("mem", _ask.mem))
-              if v and getattr(allocation, n, None) in (None, "")}
-        if _p:
-            allocation = _dc.replace(allocation, **_p)
+    # 1b · THE CALCULATION'S SCHEDULER ASK is folded where the stage is
+    #      resolved, once (`prep._resolve_stage`, `prep._under_description`:
+    #      a flag, then the run card, then the description).  *(It was folded
+    #      here too until 2026-10-05 -- a second home of that rule, kept for
+    #      the Task setup card's rows; the card shows the entry's preview
+    #      now.)*
 
     # 2 · THERE IS NO SECOND RUNG.  A benchmark's verdict was folded in here
     #     until 2026-09-02, from an editable `run-config.toml`.  It is now a

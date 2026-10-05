@@ -322,20 +322,32 @@ def _plan(client, task):
                        json={"task": task}).get_json()
 
 
+def _runnable(bundle):
+    """The launch values a run states, or prep refuses it (`architecture.md`
+    § 5.2): its ranks and cores per rank, its GPU count -- the template runs
+    on the GPU -- and, on this machine with a scheduler, its queue, wall
+    and memory."""
+    import json
+    tj = bundle / "task.json"
+    d = json.loads(tj.read_text())
+    d["execution"] = {"mpi_np": 4, "omp_threads": 1, "gpu_count": 1}
+    d["allocation"] = {"domain": "short", "time": "01:00:00", "mem": "8G"}
+    tj.write_text(json.dumps(d, indent=2))
+
+
 def test_the_prep_door_reads_the_FILE_and_not_a_posted_document(client, bundle):
-    """`build.py` does `task = read_task(desc)`: the prep door takes a FOLDER.
+    """The prep door takes a FOLDER: the one entry reads its `task.json`.
 
     One assembly serves the CLI and the browser (A12), and the CLI has only
     the file -- so the document is not a channel here, and a browser holding
     unsaved edits is holding something prep cannot see.  That asymmetry is
     real and load-bearing; what it must never do is go unsaid, which is why
-    the page now refuses to prep while its buffer differs from disk
-    (2026-09-02: the run card's values reached the fit line, which IS posted
-    them, and not the A13 block, which is not).
+    the page refuses to prep while its buffer differs from disk.
 
     Asserted by CONTRADICTION: post a document that disagrees with the file
     and check the answer follows the file."""
     import json
+    _runnable(bundle)
     d = json.loads((bundle / "task.json").read_text())
     d["stages"][0]["execution"] = {"mpi_np": 7}
     (bundle / "task.json").write_text(json.dumps(d, indent=2))
@@ -355,81 +367,45 @@ def test_the_prep_door_reads_the_FILE_and_not_a_posted_document(client, bundle):
 class TestTheBenchPreviewSaysNothingAboutTheRun:
     """A13 is the RUN's rule, and it is told in the run's card.
 
-    The plan door returned `emitted` and `chosen` for `kind == "bench"` as
-    well, and the page renders them with no kind check -- so a **bench**
-    preview carried the heading "What this run will actually be launched
-    with" over the run condition's numbers, which no trial uses.  A surprise
-    of exactly the kind A13 exists to prevent, told in the wrong card."""
+    The plan door returned the run's launch and condition for a **bench**
+    too, and the page renders them with no kind check -- so a bench preview
+    carried the heading "What this run will actually be launched with" over
+    the run condition's numbers, which no trial uses.  The preview is the
+    entry's now, and a bench's answer carries neither."""
 
-    def test_a_bench_preview_carries_no_emitted_launch(self, client, bundle):
+    def test_a_bench_preview_carries_no_launch(self, client, bundle):
+        _runnable(bundle)
         r = client.post("/api/task-setup/prep", json={
             "dest": str(bundle), "kind": "bench", "stage": "coarse",
             "plan": True})
         assert r.status_code == 200, r.get_data(as_text=True)
         body = r.get_json()
-        assert body.get("emitted") == [], (
+        assert body.get("launch") is None, (
             "the bench preview named the run's launch: "
-            + repr(body.get("emitted")))
+            + repr(body.get("launch")))
         assert not body.get("chosen"), (
             "the bench preview named the run's condition: "
             + repr(body.get("chosen")))
 
-    def test_a_run_preview_still_carries_one(self, client, bundle):
-        """The other half -- the gate must not have emptied both cards."""
+    def test_a_run_preview_carries_its_header_line_for_line(self, client,
+                                                             bundle):
+        """The other half -- and A13's end point: the header the plan holds,
+        as it will be written."""
+        _runnable(bundle)
         r = client.post("/api/task-setup/prep", json={
             "dest": str(bundle), "kind": "run", "stage": "coarse",
             "plan": True})
         assert r.status_code == 200, r.get_data(as_text=True)
-        assert r.get_json().get("emitted"), "the run lost its A13 block"
+        header = (r.get_json().get("launch") or {}).get("header") or []
+        assert "#SBATCH -n 4" in header and "#SBATCH -p short" in header, (
+            "the run lost its A13 block: " + repr(header))
 
 
-#: (case, whether the calculation's run card keeps its `gpu_count: 1`, the
-#: stage's own run card over it, and the devices row the card shows --
-#: (value, source), or `None` for no row).  The template runs on the GPU.
-_DEVICE_ROWS = [
-    ("a run on the GPU shows the count it asks for",
-     True, {}, ("gpu:1", "stated")),
-    ("a count for a run on the CPU shows prep's refusal",
-     True, {"use_gpu": False},
-     ("gpu:1", "prep refuses it -- this run does not use the GPU")),
-    ("a run on the GPU stating no count shows prep's refusal",
-     False, {}, ("\u2014", "not stated -- prep refuses it")),
-    ("a run on the CPU asking none shows no row",
-     False, {"use_gpu": False}, None),
-]
-
-
-@pytest.mark.parametrize("case, count, stage_card, row", _DEVICE_ROWS,
-                         ids=[c[0] for c in _DEVICE_ROWS])
-def test_the_run_previews_devices_are_its_gpu_request(client, bundle, case,
-                                                      count, stage_card, row):
-    """The card's devices row is the run's GPU request -- the door prep asks
-    (`prep_inputs.run_gpu_request`, `execution/gpu.md` G5) -- and a request
-    prep refuses is shown as the refusal, beside the rest of the card.
-
-    API-LEVEL: the Task setup card is a door of the page's alone, which no
-    `jobset` verb reaches; what prep does with each request is the GPU
-    contract's table.
-
-    PREVENTS: the card asking a second reading of `use_gpu` (until
-    2026-10-03), and a refused request losing the card -- the assembly
-    raised, and the card showed nothing."""
-    tj = bundle / "task.json"
-    d = json.loads(tj.read_text())
-    if not count:
-        d["execution"].pop("gpu_count")
-    if stage_card:
-        d["stages"][0]["execution"] = {**d["stages"][0].get("execution", {}),
-                                       **stage_card}
-    tj.write_text(json.dumps(d, indent=2))
-    r = client.post("/api/task-setup/prep", json={
-        "dest": str(bundle), "kind": "run", "stage": "coarse", "plan": True})
-    assert r.status_code == 200, r.get_data(as_text=True)
-    rows = {e["flag"]: e for e in r.get_json()["emitted"]}
-    assert "-n" in rows, rows                       # the rest of the card
-    got = rows.get("--gres")
-    assert (None if got is None else (got["value"], got["source"])) == row, (
-        case, got)
+# `test_the_run_previews_devices_are_its_gpu_request` retired 2026-10-05
+# with the card's own devices row: the preview is the entry's (W55 B3), so a
+# request prep refuses is the preview's refusal, and its rows are the GPU
+# contract's (`tests/data/gpu_contract.toml`), while what a request writes
+# is the header's line the preview shows as written.
 
 
 class TestThePlanComesFromTheProducer:

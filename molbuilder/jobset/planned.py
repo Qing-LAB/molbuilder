@@ -22,7 +22,9 @@ had opened stayed behind; W55 D16.)*
 from __future__ import annotations
 
 import fnmatch
+import hashlib
 import os
+import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -69,6 +71,16 @@ class _Folder:
 #: What a path holds in the plan: bytes, a file on disk it copies, or
 #: ``None`` -- removed.
 _Held = Union[bytes, Path, None]
+
+#: THE CLOCK READINGS a planned file carries -- an ISO date-time stamp (a
+#: deck's and a run script's ``generated-at``, a record's ``created_at``,
+#: the pipeline log's banner) and the progress seed's ``wall_time`` -- which
+#: a plan made a moment later reads differently while deciding nothing
+#: differently (measured on two plans of one stage, 2026-10-05: every other
+#: byte the same).
+_CLOCK = re.compile(
+    rb"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?"
+    rb"|wall_time: [0-9.]+")
 
 
 class Plan:
@@ -164,6 +176,33 @@ class Plan:
                 else:
                     found.add(p)
         return sorted(found)
+
+    def identity(self) -> str:
+        """What this plan IS, less the moment it was made: every operation
+        in order, each file's bytes with its clock readings masked, and what
+        a copy or a move takes by its source's path, size and time -- so
+        two plans of one folder agree exactly when they would write the same
+        thing.  The preview's plan is named by it, and Prep refuses a plan
+        that differs (`job-system.md` § 5.0)."""
+        h = hashlib.sha256()
+        for op in self._ops:
+            h.update(type(op).__name__.encode() + b"\0")
+            h.update(str(op.path).encode() + b"\0")
+            if isinstance(op, _Put):
+                h.update(_CLOCK.sub(b"<clock>", op.data))
+                h.update(repr(op.mode).encode())
+            elif isinstance(op, (_Copy, _Move)):
+                held = self._source_on_disk(op.src)
+                h.update(str(op.src).encode() + b"\0")
+                if held is not None:
+                    st = held.stat()
+                    h.update(f"{st.st_size}:{st.st_mtime_ns}".encode())
+            h.update(b"\n")
+        return h.hexdigest()
+
+    def _source_on_disk(self, src: Path) -> Optional[Path]:
+        """The file a copy reads, when it is on disk rather than planned."""
+        return src if src not in self._held and src.is_file() else None
 
     def writes(self) -> List[Path]:
         """Every path this plan puts something in, in order, once each."""
