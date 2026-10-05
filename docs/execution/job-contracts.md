@@ -270,7 +270,7 @@ directory may hold *several inputs* (one per stage of a staged relaxation,
 **different** job (a different molecule, a different `SystemLabel`). This is
 not just tidiness — SIESTA's restart files (`<basename>.XV`, `.DM`, `.CG`)
 are unprefixed within the directory, so a second job's `SystemLabel` would
-overwrite them. PySCF inherits the same one-job rule through its inlined
+overwrite them. PySCF inherits the same one-job rule through its
 trajectory writer and checkpoint file.
 
 **Rule 2 — every file shares one basename.** Each file the generator writes

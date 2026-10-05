@@ -39,9 +39,10 @@ fragment is :func:`pyscf_methods_fragment` below) plus a bibliography
 listing -- so a user reading the file can distil a Methods section
 verbatim (spec § 11.2).
 
-The atomic JSON writer is INLINED into every emitted deck
-(no molbuilder import at runtime) so cluster nodes need only
-the PySCF stack.
+The atomic JSON writer is spliced into every emitted deck as text;
+the mode selector, the progress-log writer and the structure codec
+are imported from ``mb_pyscf.pyz`` beside it (``engines/pyscf.md``
+§ 3).
 
 PROVENANCE -- WHERE EVERY NUMBER COMES FROM.  This module writes a script whose
 output is a quantitative result, so the chain from PySCF's own objects to each
@@ -1676,25 +1677,15 @@ def _emit_es_loop(cfg: "VibrationConfigView") -> List[str]:
     out.append("state['phase_es'] = PHASE_RUNNING")
     out.append("_atomic_write_json(state, JSON_PATH)")
     out.append("")
-    out.append("# Resolve which modes to compute.  Logic mirrors")
-    out.append("# molbuilder.spectra.selection.select_modes so the script")
-    out.append("# behaves identically to the form-side preview.  We inline")
-    out.append("# the selector here instead of importing molbuilder at")
-    out.append("# runtime (cluster nodes don't need molbuilder).")
-    out.append("def _passes_freq_window(freq_cm1):")
-    out.append("    if FREQ_MIN_CM1 is not None and freq_cm1 < FREQ_MIN_CM1:")
-    out.append("        return False")
-    out.append("    if FREQ_MAX_CM1 is not None and freq_cm1 > FREQ_MAX_CM1:")
-    out.append("        return False")
-    out.append("    return True")
-    out.append("")
-    out.append("if ES_MODE_SELECTION == 'all':")
-    out.append("    _selected = [m['index_1based'] for m in modes_payload")
-    out.append("                 if _passes_freq_window(m['frequency_cm1'])]")
-    out.append("elif ES_MODE_SELECTION == 'explicit':")
-    out.append("    _selected = [int(i) for i in ES_EXPLICIT_INDICES]")
-    out.append("else:")
-    out.append("    _selected = []")
+    # Which modes: molbuilder's own selector, imported from mb_pyscf.pyz at
+    # the top of the deck (`engines/pyscf.md` § 3) -- a hand-written copy of
+    # it stood here until 2026-10-05, held equal to it by a test.
+    out.append("# Which modes get the probe (vibration.md 4.8): molbuilder's")
+    out.append("# own selector, imported at the top of this script.")
+    out.append("_selected = _mb_select_modes(")
+    out.append("    [m['frequency_cm1'] for m in modes_payload], ES_MODE_SELECTION,")
+    out.append("    explicit=ES_EXPLICIT_INDICES,")
+    out.append("    freq_min_cm1=FREQ_MIN_CM1, freq_max_cm1=FREQ_MAX_CM1)")
     out.append("state['selected_mode_idxs_1based'] = list(_selected)")
     out.append("")
     out.append("def _mo_window(_mf2):")

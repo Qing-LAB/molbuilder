@@ -787,9 +787,9 @@ class PySCFConfig:
     @property
     def explicit_modes(self) -> List[int]:
         """The modes ``es_explicit_indices`` names: 1-based, sorted, each once.
-        THE one reading of that text -- the deck's constant, the Methods
-        paragraph, the reference selector and the kind's check all take it
-        from here (`engines/vibration.md` § 4.8).  The grammar is the atom
+        THE one reading of that text -- the deck's constant (which the
+        script's selector reads), the Methods paragraph and the kind's check
+        all take it from here (`engines/vibration.md` § 4.8).  The grammar is the atom
         index list's (``selection.parse_index_list``): ``"3, 7, 12"``,
         ``"3-7, 12"``.  Raises ``SelectionError`` (a ``ValueError``) on text
         it cannot read; the kind's check turns that into a refusal at

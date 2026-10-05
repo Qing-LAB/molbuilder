@@ -182,41 +182,6 @@ def test_no_table_silently_returns_the_input():
         assert "notaunit" not in table
 
 
-# --------------------------------------------------------------------- #
-#  the copies the contract allows, pinned to the one home               #
-# --------------------------------------------------------------------- #
-#
-# `architecture.md` § 3 permits a second spelling in three mechanisms, and
-# the value still comes from `constants`.  A copy that cannot import --
-# a class body carried by `inspect.getsource` -- is pinned here instead,
-# because nothing else can notice it drifting.
-
-def test_the_getsource_copied_emitter_matches_the_one_home():
-    """`trajectory_log.emitter`'s conversion class is copied into the
-    generated wrapper by `inspect.getsource`, so a module-level import
-    would not travel with it and the literals must stay literals.  They
-    are still facts about the universe, and this is what keeps them
-    equal to the ones every other reader uses."""
-    from molbuilder.constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
-    from molbuilder.trajectory_log import emitter as em
-
-    holder = next(
-        (obj for obj in vars(em).values()
-         if isinstance(obj, type) and hasattr(obj, "HARTREE_TO_EV")), None)
-    assert holder is not None, (
-        "the emitter no longer carries HARTREE_TO_EV -- if it now imports "
-        "it, delete this test rather than loosening it")
-    assert holder.HARTREE_TO_EV == pytest.approx(HARTREE_EV, rel=0, abs=0)
-    assert hasattr(holder, "HARTREE_BOHR_TO_EV_ANG"), (
-        "the force factor is gone -- if the emitter no longer converts "
-        "forces, delete this half rather than letting it pass vacuously")
-    assert holder.HARTREE_BOHR_TO_EV_ANG == pytest.approx(
-        HARTREE_BOHR_EV_ANGSTROM_ASE, rel=0, abs=0), (
-        "the emitter's force factor and the one every other reader uses "
-        "must be the SAME number, or a force read back does not equal "
-        "the force emitted")
-
-
 def test_an_ARRAY_converts_elementwise():
     """A netCDF reader hands whole coordinate arrays through this door,
     so coercing to a scalar breaks it — which it did, taking 12 tests in

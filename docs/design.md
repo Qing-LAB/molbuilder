@@ -224,11 +224,14 @@ These are load-bearing. Don't violate one without updating this document.
    singular cell); everything a user might legitimately want (close contacts,
    unusual geometry, a sparse k-grid) is a warning, never a block. See
    [`science/validation.md`](?doc=science/validation.md).
-7. **Generated artifacts are self-contained.** The generated PySCF script does
-   **not** import molbuilder at runtime — `scp` it to a cluster with only
-   `pyscf + geometric` and it runs. The molwatch emitter is pasted verbatim via
-   `inspect.getsource(MolwatchEmitter)` (the class is the source of truth,
-   unit-tested directly). See [`execution/job-contracts.md`](?doc=execution/job-contracts.md).
+7. **A job's folder runs without molbuilder installed.** What a job runs is
+   in its folder: the deck, its run script, and molbuilder's own code the job
+   calls, shipped beside them as those modules' own files — the monitor
+   (`mb_monitor.pyz`), a SIESTA force-constant job's finish
+   (`mb_vibration.pyz`), and the code a PySCF script imports (`mb_pyscf.pyz`,
+   [`engines/pyscf.md`](?doc=engines/pyscf.md) § 3). `scp -r` the folder to a
+   cluster with `pyscf + geometric` and it runs. See
+   [`execution/job-contracts.md`](?doc=execution/job-contracts.md).
 8. **Don't reinvent wheels.** CLI parsing → click; routing → Flask Blueprints;
    numerics → NumPy; form rendering → vanilla HTML + the existing 3Dmol viewer
    (no SPA framework); validation → plain functions over field metadata. Adding
@@ -283,6 +286,7 @@ now lives in full:
 
 | Date | Decision | Now documented in |
 |---|---|---|
+| 2026-10-05 | **The PySCF script imports molbuilder's progress-log writer, structure codec and mode selector instead of carrying copies of them.** They travel beside it in `mb_pyscf.pyz`, each module's own file, as the monitor's and the SIESTA finish's do — the three copies were tested only through the code generated from them (user: *"we could use one code base and maintain it rather than through generated python code"*) | [`engines/pyscf.md`](?doc=engines/pyscf.md) § 3 |
 | 2026-08-11 | **Everything is a job set, and there is no second way in.** `molbuilder run` and `molbuilder fdf` are **deleted, not deprecated** — each rendered a finished artifact straight from flags, skipping the description and finishing a deck on a machine that cannot know the rank count. One calculation and a hundred go through `jobset init → prep → launch`. 13 top-level commands at that point | [`process/conventions.md`](?doc=process/conventions.md) § 3 · [`execution/job-system.md`](?doc=execution/job-system.md) § 1 |
 | 2026-08-11 | **The deck template is one TOML file**, `<label>.template.toml` — every parameter with its value and a `kind` naming the layer that owns it. Replaces the `.fdf`-with-metadata-in-comments design, whose value was stored **twice** so the file could disagree with itself | [`engines/template.md`](?doc=engines/template.md) |
 | 2026-08-11 | **`BlockSize` is a tunable knob, not a derived value** — set it, leave it for `prep` to propose, or omit the keyword and let SIESTA use its own default. **Its bound is the ORBITAL count over ranks, not the atom count**; a contract had said atoms while its own PROVENANCE example said orbitals, a factor of ten apart | [`engines/tuning.md`](?doc=engines/tuning.md) § 2.11 |
@@ -303,7 +307,7 @@ now lives in full:
 | 2026-06-07 | **Workspace state unification** — one client dispatcher, one server response shape, one sessionStorage key supersede the three drifting mirrors | [`web/workspace.md`](?doc=web/workspace.md), [`web/overview.md`](?doc=web/overview.md) |
 | 2026-05-01 | **Parser output is `Frame` / `Trajectory`, not `Structure`** — promoting parsers to yield `Structure` would silently drop energies/forces/lattice/scf | [`model/parse.md`](?doc=model/parse.md) |
 | 2026-05-01 | **Configs are L1 nouns** (`config/` package) — pure data + field metadata the CLI/form/validators all introspect, kept below the generators | [`web/form-schema.md`](?doc=web/form-schema.md), [`engines/overview.md`](?doc=engines/overview.md) |
-| 2026-05-01 | **click + Flask Blueprints, no custom framework**; **self-contained generated scripts** (emitter pasted, not imported) | [`process/conventions.md`](?doc=process/conventions.md), [`execution/job-contracts.md`](?doc=execution/job-contracts.md) |
+| 2026-05-01 | **click + Flask Blueprints, no custom framework**; **self-contained generated scripts** ~~(emitter pasted, not imported)~~ — **amended 2026-10-05**: what is self-contained is the job's folder; the PySCF script imports the emitter from `mb_pyscf.pyz` beside it | [`process/conventions.md`](?doc=process/conventions.md), [`execution/job-contracts.md`](?doc=execution/job-contracts.md) |
 | 2026-04-30 | **Merge `molwatch` into `molbuilder`** — already coupled by file format, web stack, and author; one repo removes the drift surface | *(history — see the archived log)* |
 
 New durable decisions are appended to `design.md` *and* recorded in full; open

@@ -1,11 +1,13 @@
 """Streaming emitter for the unified ``<JOB>.molwatch.log`` format.
 
 This module is the **single source of truth** for the
-``MolwatchEmitter`` class.  The PySCF script generator at
-``molbuilder/pyscf/input.py:_emit_molwatch_emitter`` inlines this
-class via :func:`inspect.getsource` into the user-runnable script,
-so the generated script stays self-contained -- the user's runtime
-environment doesn't need molbuilder installed.
+``MolwatchEmitter`` class, and the PySCF script imports it: the file
+travels beside every PySCF job inside ``mb_pyscf.pyz``
+(``runwrap.PYSCF_COMPANIONS``, ``engines/pyscf.md`` § 3), where molbuilder
+is not installed -- so it imports only the standard library, numpy and
+``constants``, the last the two ways a travelling module does.  Until
+2026-10-05 its source was pasted into the script by
+``inspect.getsource``.
 
 Why a real module instead of an inline list-of-strings:
 
@@ -15,8 +17,8 @@ Why a real module instead of an inline list-of-strings:
   generated script (review-fix D's smoke test).
 * The class can be **type-checked, linted, and read** as normal Python.
   The inline list-of-strings was opaque to every tool.
-* A single class definition feeds **both** the test fixtures AND the
-  emitted script -- no risk of drift.
+* The class the tests exercise is the class the run imports -- no
+  copy to drift.
 
 Format: see :mod:`molbuilder.trajectory_log.format` for the spec
 docstring (the same format the standalone ``write_initial_preview``
@@ -25,44 +27,31 @@ construction (so molwatch can render the molecule from second one,
 even before SCF starts) plus one block per accepted opt step.
 
 The class is named without a leading underscore here because it's
-the public surface of this module; the generated script also uses
-the same name (the inlined source is verbatim).  Treat it as a
-public spec contract -- changing the format breaks the molwatch
-parser at :mod:`molbuilder.parse.engines.molwatch`.
+the public surface of this module; the script imports it under this
+name.  Treat it as a public spec contract -- changing the format
+breaks the molwatch parser at :mod:`molbuilder.parse.engines.molwatch`.
 """
 
 from __future__ import annotations
 
-import time as _mw_time
+import time
 
-import numpy as _mw_np
+import numpy as np
+
+# TWO WAYS, because this module travels: the PySCF script imports it from
+# `mb_pyscf.pyz` beside the job (`runwrap.PYSCF_COMPANIONS`), where the
+# package is not installed.  The force factor is the ASE convention, as the
+# log's reader converts with (`constants` says why there are two).
+try:                                        # inside molbuilder
+    from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
+except ImportError:                         # beside a job, in mb_pyscf.pyz
+    from constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
 
 
 class MolwatchEmitter:
     """Streams ``<JOB>.molwatch.log`` with one marker-delimited
     block per opt step.  See molbuilder spec for the format.
     """
-    # Unit-conversion constants used at write time so ``.molwatch.log``
-    # is unit-self-consistent and the parser does zero conversion.
-    #
-    # A LITERAL, AND IT HAS TO BE.  This class body is copied VERBATIM into
-    # the standalone script the user runs on the cluster, where molbuilder is
-    # not importable -- so `from molbuilder.constants import ...` here becomes
-    # a NameError out there, several machines away from the edit.  (Tried it,
-    # 2026-08-30: the generated preview script died on exactly that line.)
-    # It is the same CODATA-2018 value `molbuilder/constants.py` holds; when
-    # one changes, change both.
-    #
-    # HARTREE_TO_EV is the CODATA-2018 value 27.211386245988 eV/Hartree.
-    # HARTREE_BOHR_TO_EV_ANG = 51.42208619 is the value used by ASE,
-    # NIST historical tables, and most quantum-chemistry packages; the
-    # CODATA-2018-derived value (27.211386245988 / 0.529177210903 =
-    # 51.422067476) differs by ~0.4 ppm.  We pick the ASE/literature
-    # convention so forces emitted here line up with what users see in
-    # ASE / VASP / QE log files; the difference is well below the SCF
-    # noise floor.
-    HARTREE_TO_EV          = 27.211386245988
-    HARTREE_BOHR_TO_EV_ANG = 51.42208619
 
     def __init__(self, path, job, mol, runtime_info=None,
                  convergence_targets=None, frozen_atoms=()):
@@ -76,7 +65,7 @@ class MolwatchEmitter:
             fh.write("# engine: pyscf\n")
             fh.write(f"# job: {self.job}\n")
             fh.write("# units: energy=eV, force=eV/Ang, coords=Ang\n")
-            fh.write(f"# created: {_mw_time.strftime('%Y-%m-%dT%H:%M:%S')}\n")
+            fh.write(f"# created: {time.strftime('%Y-%m-%dT%H:%M:%S')}\n")
             # THE ATOMS THE RUN HOLDS, 0-based in the structure's order --
             # the log states them as a SIESTA run's `.out` does, so its
             # reader reads them as its own content (`model/parse.md`
@@ -101,17 +90,10 @@ class MolwatchEmitter:
             # imported by nobody, and the reader
             # (parse/engines/molwatch.py) accepts any ``runtime.<key>``
             # it finds, so the writer was the only closed door in an
-            # otherwise open pipe.
-            #
-            # A whitelist cannot live here anyway: this class is inlined
-            # into the generated script verbatim via inspect.getsource,
-            # which copies the class body ONLY -- the script runs in an
-            # env where ``molbuilder`` is not importable, so the class
-            # can never reference the canonical tuple at runtime.  Write
-            # what you are given; let the caller decide what is worth
-            # recording.  RUNTIME_INFO_KEYS stays as documentation of the
-            # keys every engine SHOULD populate, which is a different job
-            # from filtering.
+            # otherwise open pipe.  Write what you are given; let the
+            # caller decide what is worth recording.  RUNTIME_INFO_KEYS
+            # stays as documentation of the keys every engine SHOULD
+            # populate, which is a different job from filtering.
             if runtime_info:
                 for k, v in runtime_info.items():
                     # Strip newlines so a misbehaving value can't
@@ -202,7 +184,7 @@ class MolwatchEmitter:
             fh.write(f"==== molwatch step {idx} begin ====\n")
             fh.write(f"step_index: {idx}\n")
             fh.write("kind: initial_preview\n")
-            fh.write(f"wall_time: {_mw_time.time():.3f}\n")
+            fh.write(f"wall_time: {time.time():.3f}\n")
             fh.write(f"n_atoms: {mol.natm}\n")
             fh.write("coordinates (Ang):\n")
             for i, el in enumerate(elements):
@@ -232,14 +214,14 @@ class MolwatchEmitter:
         norm_ddm  = envs.get('norm_ddm', None)
         if e_tot is None:
             return
-        e_eV    = float(e_tot)  * self.HARTREE_TO_EV
-        dE_eV   = (float(e_tot) - float(last_e)) * self.HARTREE_TO_EV \
+        e_eV    = float(e_tot)  * HARTREE_EV
+        dE_eV   = (float(e_tot) - float(last_e)) * HARTREE_EV \
                   if last_e is not None else 0.0
         # THE ORBITAL-GRADIENT NORM IS AN ENERGY: dE/d(kappa) over
         # dimensionless orbital rotations, in Hartree -- what PySCF compares
         # with `conv_tol_grad` -- so it converts as an energy, to eV.  It is
         # not a force (it was once scaled by Hartree/Bohr -> eV/Ang).
-        g_eV    = (float(norm_gorb) * self.HARTREE_TO_EV) \
+        g_eV    = (float(norm_gorb) * HARTREE_EV) \
                   if norm_gorb is not None else None
         ddm     = float(norm_ddm) if norm_ddm is not None else None
         # Snapshot wall-clock at the moment this SCF cycle finished.
@@ -253,7 +235,7 @@ class MolwatchEmitter:
         # absolute epoch, so the reader surfaces it under the name that
         # says so, ``wall_clock_s`` (docs/model/parse.md § 2a); the
         # translation is the parser's job, not this writer's.
-        wt      = _mw_time.time()
+        wt      = time.time()
         self._scf_buf.append({
             'cycle':     int(cycle) + 1,      # 1-indexed in our log
             'energy':    e_eV,
@@ -272,26 +254,17 @@ class MolwatchEmitter:
             return
         coords_A = mol.atom_coords(unit='Ang')
         elements = [mol.atom_symbol(i) for i in range(mol.natm)]
-        e_eV     = float(energy) * self.HARTREE_TO_EV
-        F        = -_mw_np.asarray(gradient).reshape(-1, 3) \
-                      * self.HARTREE_BOHR_TO_EV_ANG  # eV/Ang
-        f_mag    = _mw_np.sqrt((F * F).sum(axis=1))
+        e_eV     = float(energy) * HARTREE_EV
+        F        = -np.asarray(gradient).reshape(-1, 3) \
+                      * HARTREE_BOHR_EV_ANGSTROM_ASE  # eV/Ang
+        f_mag    = np.sqrt((F * F).sum(axis=1))
         max_f    = float(f_mag.max()) if f_mag.size else 0.0
-        # `_mw_`-PREFIXED LIKE EVERYTHING ELSE THIS CLASS BINDS.  The
-        # deck is a PROGRAM: it does `from pyscf import gto, scf, dft`,
-        # and a bare `scf` here rebinds that module to a list for the
-        # rest of this function.  Nothing in this function reads the
-        # module today, so nothing breaks today -- and that is exactly
-        # the state in which the next edit inside it reaches for
-        # `scf.RHF` and silently gets a list of dicts.  The convention
-        # this class already follows (`_mw_np`, `_mw_time`) exists so
-        # molbuilder's machinery cannot take a name the engine owns.
-        _mw_scf  = list(self._scf_buf)
+        cycles   = list(self._scf_buf)
         idx      = self._step
         with open(self.path, 'a') as fh:
             fh.write(f"==== molwatch step {idx} begin ====\n")
             fh.write(f"step_index: {idx}\n")
-            fh.write(f"wall_time: {_mw_time.time():.3f}\n")
+            fh.write(f"wall_time: {time.time():.3f}\n")
             fh.write(f"n_atoms: {mol.natm}\n")
             fh.write("coordinates (Ang):\n")
             for i, el in enumerate(elements):
@@ -305,7 +278,7 @@ class MolwatchEmitter:
             fh.write(f"max_force (eV/Ang): {max_f:.8f}\n")
             fh.write("scf_history begin\n")
             fh.write("#  cycle      energy(eV)         delta_E(eV)        gnorm(eV)                ddm        wall_time(s)\n")
-            for c in _mw_scf:
+            for c in cycles:
                 g_str = (f"{c['gnorm']:.8e}" if c['gnorm'] is not None
                          else 'None')
                 d_str = (f"{c['ddm']:.8e}" if c['ddm'] is not None

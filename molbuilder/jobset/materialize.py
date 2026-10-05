@@ -877,9 +877,11 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # beside the .out.
     # The FINISH, when the job has one (`Job.finish`): the bundle its wrapper
     # runs after the engine, beside the deck -- `engines/vibration.md` § 5.5.
+    # mb_pyscf.pyz: the molbuilder code a PySCF script imports, beside every
+    # PySCF deck -- `engines/pyscf.md` § 3.
     from ..runwrap import MONITOR_BUNDLE
-    from ..runfiles import MAKOV_PAYNE_SCRIPT
-    for extra in (MONITOR_BUNDLE, MAKOV_PAYNE_SCRIPT,
+    from ..runfiles import MAKOV_PAYNE_SCRIPT, PYSCF_BUNDLE
+    for extra in (MONITOR_BUNDLE, MAKOV_PAYNE_SCRIPT, PYSCF_BUNDLE,
                   *((job.finish,) if job.finish else ())):
         _bring(extra)
     stem = Path(job.script).stem

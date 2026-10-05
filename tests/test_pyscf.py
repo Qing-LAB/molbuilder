@@ -161,12 +161,12 @@ def test_molwatch_log_instantiated_before_the_optimization(h2o):
     """Critical UX guarantee: ``.molwatch.log`` exists from the moment
     the script starts running, BEFORE any stage's optimize() can take
     hours on a real molecule.  Pin the source ordering:
-    ``_molwatch = MolwatchEmitter(...)`` must appear before the optimization,
+    ``_molwatch = _mb_MolwatchEmitter(...)`` must appear before the optimization,
     ``mf.callback`` wiring before optimize() runs, and the opt-step callback
     INSIDE the optimize() kwargs.
     """
     text = render_script(h2o, PySCFConfig())
-    inst_at      = text.find('_molwatch = MolwatchEmitter(_mb_outfile(JOB')
+    inst_at      = text.find('_molwatch = _mb_MolwatchEmitter(_mb_outfile(JOB')
     mf_callback  = text.find("mf.callback = _molwatch.scf_cycle_hook")
     helper_def   = text.find("def relax(mf, policy, retries, **geometric_kw):")
     opt_at       = text.find("mol_eq, _GEOM_CONVERGED = relax(")

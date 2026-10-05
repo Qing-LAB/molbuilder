@@ -563,6 +563,16 @@ class StructureCodec:                       # L2 (may use the L2 sidecar codec)
         OLD-sidecar + NEW-geometry for a tiny window -- never a torn file.
         Owns both-or-neither."""
 
+    def write_moved(self, target, elements, positions, sidecar, *,
+                    comment) -> Path:
+        """TO DISK, FROM INSIDE A RUN. The pair for a structure whose atoms
+        MOVED, where only the new coordinates are at hand: they become the
+        document through `Structure.to_xyz`, and `sidecar` -- the payload
+        `pair` made for the structure before it moved -- goes beside it with
+        its `structure_hash` pinned to the new document, through `write`'s
+        own write path. The PySCF script calls it for every geometry it
+        saves, imported from `mb_pyscf.pyz` (`engines/pyscf.md` § 3)."""
+
     def read(self, source_path, *, frames_out=None) -> Structure:
         """BACK IN. Parse geometry (.pdb by extension, else .xyz) AND its
         paired sidecar, applying metadata via molstruct.apply_to_structure.

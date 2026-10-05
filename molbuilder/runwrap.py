@@ -4122,14 +4122,54 @@ def vibration_bundle() -> bytes:
 _FINISH_BUNDLES = {VIBRATION_BUNDLE: vibration_bundle}
 
 
+#: Every file the PySCF script IMPORTS molbuilder's code from
+#: (`engines/pyscf.md` § 3), as ``{name beside the job: the module whose
+#: source it is}``: the progress-log writer and the unit factors it writes
+#: with, the structure codec with the structure and sidecar modules its
+#: ``write_moved`` reaches, and the mode selector.  The script imports them
+#: by these names -- `pyscf.input.emit_bundle_imports` reads them here.
+#:
+#: **Each module's own file, imported two ways**, like the monitor's and the
+#: finish's; the rule for joining is *imports only the standard library,
+#: numpy -- which PySCF needs anyway -- and the other members*, at load and
+#: in every function the script calls.
+PYSCF_COMPANIONS: Dict[str, str] = {
+    "molwatch_emitter.py":      "molbuilder.trajectory_log.emitter",
+    "constants.py":             "molbuilder.constants",
+    "workingcopy_structure.py": "molbuilder.workingcopy_structure",
+    "structure.py":             "molbuilder.structure",
+    "molstruct.py":             "molbuilder.sidecars.molstruct",
+    "mode_selection.py":        "molbuilder.spectra.selection",
+}
+
+#: THE ONE FILE the PySCF script imports molbuilder's code from: a Python
+#: zip of :data:`PYSCF_COMPANIONS`.  `render_wrappers` writes it beside every
+#: PySCF script and `materialize` brings it into every attempt; the script
+#: puts it on its import path on its first lines.
+from .runfiles import PYSCF_BUNDLE  # noqa: E402 -- the catalogue's name
+
+#: Its entry, for a person who runs it: the bundle is imported, not run.
+_PYSCF_MAIN = (
+    "import sys\n"
+    f"sys.stderr.write({PYSCF_BUNDLE!r} + ' is not run: the PySCF script "
+    "beside it imports molbuilder code from it (engines/pyscf.md 3)\\n')\n"
+    "raise SystemExit(2)\n")
+
+
+def pyscf_bundle() -> bytes:
+    """The bytes of :data:`PYSCF_BUNDLE`, from the one builder."""
+    return _zip_bundle(_PYSCF_MAIN, PYSCF_COMPANIONS)
+
+
 @dataclass(frozen=True)
 class RenderedWrapper:
     """**Step 4's product, before anything reaches the disk** —
     `script-preparation.md` § 5, W7.
 
     Named texts in the order they are written, plus which of them the shell
-    must be able to execute, and the one binary file beside them: the monitor
-    with its readers (:data:`MONITOR_BUNDLE`).  The wrapper is always
+    must be able to execute, and the binary files beside them: the bundles
+    -- the monitor with its readers (:data:`MONITOR_BUNDLE`), a job's
+    finish, the code a PySCF script imports.  The wrapper is always
     ``files[0]``: it is what step 4 exists to produce, and the ``.sbatch`` and
     the bundle are things it needs beside it.
 
@@ -4141,7 +4181,7 @@ class RenderedWrapper:
     """
     files: Tuple[Tuple[str, str], ...]
     executable: Tuple[str, ...] = ()
-    #: Named BYTES -- the monitor's bundle, which is a zip and no text.
+    #: Named BYTES -- the bundles, which are zips and no text.
     blobs: Tuple[Tuple[str, bytes], ...] = ()
 
     @property
@@ -4240,6 +4280,11 @@ def render_wrappers(script_path: Path, *,
     # name it cannot ship.
     if finish is not None:
         blobs += ((finish, _FINISH_BUNDLES[finish]()),)
+    # AND BESIDE A PYSCF SCRIPT, the molbuilder code it imports
+    # (`engines/pyscf.md` § 3) -- every PySCF script, whatever it computes.
+    # `render_run_wrapper` has refused a suffix it cannot run.
+    if EXTENSION_TO_CATEGORY[script_path.suffix.lower()] == "pyscf":
+        blobs += ((PYSCF_BUNDLE, pyscf_bundle()),)
 
     # The submission layer (`job-system.md` § 6): a ``.sbatch`` only when the
     # machine has a queue -- every value in it the job's own (its resources,

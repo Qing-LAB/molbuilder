@@ -1,256 +1,36 @@
-"""L2 mode-selection tests: ``select_modes`` (the reference selector).
+"""``select_modes``: which modes the per-mode probe runs on.
 
-`web/spectra.md` § 9a.1 -- the three selectors, the frequency window that
-filters `all`, and the resume skip.  Pure functions, exhaustively
-tested:
-
-  * the three selectors (skip / all / explicit) on a 6-mode fixture;
-    `top_n` and `threshold` were removed 2026-09-28 (V1.6) with their
-    tests;
-  * the frequency-range filter restricts `all`, and `explicit` ignores it
-    (archived-spec § 8.1);
-  * priors / resume behaviour (archived-spec § 2.5.3);
-
-Also includes the cross-check that the emitted script's inlined
-selector matches the Python ``select_modes`` for the same (modes,
-cfg) inputs (``TestSelectorEquivalence``).  Lives here because the
-test's purpose is selector correctness; the deck's inlined selector is
-parity-tested below (``TestSelectorEquivalence``).
+`engines/vibration.md` § 4.8 -- the three selectors and the frequency window
+that filters `all`.  The PySCF vibration script imports this function from
+`mb_pyscf.pyz` (`engines/pyscf.md` § 3), so these test the selector a run
+uses.  Its hand-written copy in the script, and the test that held the two
+equal, went on 2026-10-05; so did the `prior` argument, which no caller
+passed, with its two tests.  The listed modes' TEXT is read by
+`PySCFConfig.explicit_modes` before it gets here, and is tested where it is
+read (`test_methods.py`, the end-to-end probe run).
 """
 
 from __future__ import annotations
 
-import numpy as np
-import pytest
+from molbuilder.spectra import select_modes
 
-from molbuilder.spectra import ModeData, SpectraResults
-from molbuilder.spectra.results import PHASE_COMPLETE, SCHEMA_VERSION
-
-from tests.spectra._helpers import (
-    _make_es,
-    _modes_fixture,
-    _spectra_cfg,
-    _struct_water,
-)
+#: Six modes' frequencies, cm⁻¹, in mode order.
+FREQS = [412.3, 745.0, 1023.4, 1612.0, 2956.0, 3656.0]
 
 
-class TestSelectModes:
-
-    def test_selector_none_returns_empty(self):
-        from molbuilder.spectra import select_modes
-        cfg = _spectra_cfg(es_mode_selection="skip")
-        assert select_modes(_modes_fixture(), cfg) == []
-
-    def test_selector_all_returns_every_mode(self):
-        from molbuilder.spectra import select_modes
-        cfg = _spectra_cfg(es_mode_selection="all")
-        assert select_modes(_modes_fixture(), cfg) == [1, 2, 3, 4, 5, 6]
-
-    def test_selector_all_respects_freq_window(self):
-        """Window [800, 2500] -> modes 3 (1023) and 4 (1612)."""
-        from molbuilder.spectra import select_modes
-        cfg = _spectra_cfg(es_mode_selection="all",
-                            freq_min_cm1=800.0, freq_max_cm1=2500.0)
-        assert select_modes(_modes_fixture(), cfg) == [3, 4]
-
-    def test_selector_explicit(self):
-        from molbuilder.spectra import select_modes
-        cfg = _spectra_cfg(es_mode_selection="explicit",
-                            es_explicit_indices="3, 5")
-        assert select_modes(_modes_fixture(), cfg) == [3, 5]
-
-    def test_selector_explicit_ignores_freq_window(self):
-        """archived-spec § 8.1: explicit IGNORES freq filter.  User asked
-        for modes 3 + 5 + 6; even though mode 3 is well below
-        any window, the explicit selector returns them all."""
-        from molbuilder.spectra import select_modes
-        cfg = _spectra_cfg(es_mode_selection="explicit",
-                            es_explicit_indices="3, 5, 6",
-                            # Window that would exclude 3 if applied
-                            freq_min_cm1=2000.0)
-        assert select_modes(_modes_fixture(), cfg) == [3, 5, 6]
-
-    def test_explicit_reads_ranges_and_repeats_as_modes(self):
-        """The list is TEXT, read by the one index-list reader
-        (`PySCFConfig.explicit_modes`, vibration.md § 4.8): a range
-        expands, a repeat counts once, and the modes come back in order."""
-        from molbuilder.spectra import select_modes
-        cfg = _spectra_cfg(es_mode_selection="explicit",
-                            es_explicit_indices="5, 2-3, 5")
-        assert select_modes(_modes_fixture(), cfg) == [2, 3, 5]
+def test_skip_selects_nothing():
+    assert select_modes(FREQS, "skip") == []
 
 
-class TestSelectModesWithPriorResume:
-    """archived-spec § 2.5.2 + § 6.1: when prior has ES data for some modes,
-    those modes are skipped on the next run (non-destructive L4)."""
-
-    def _prior_with_es_on_mode(self, idx: int) -> SpectraResults:
-        """Build a SpectraResults whose modes list contains the
-        requested mode, with electronic_structure populated.  The
-        other fields are irrelevant to select_modes (it only reads
-        prior.modes[*].electronic_structure)."""
-        return SpectraResults(
-            schema_version             = SCHEMA_VERSION,
-            engine                     = "pyscf",
-            engine_version             = "2.6.0",
-            molbuilder_version         = "1.2.0",
-            timestamp                  = "2026-05-11T12:00:00Z",
-            structure_hash             = "sha256:abc",
-            n_atoms_total              = 2,
-            free_atom_idxs             = [0, 1],
-            frozen_atom_idxs           = [],
-            equilibrium_scf_eh         = -1.0,
-            equilibrium_mo_energies_eh = np.zeros(5),
-            equilibrium_homo_idx       = 2,
-            modes                      = [
-                ModeData(
-                    index_1based          = idx,
-                    frequency_cm1         = 1000.0,
-                    raman_activity_a4_amu = 1.0,
-                    ir_intensity_km_mol   = None,
-                    eigenvector_canonical = np.zeros((2, 3)),
-                    eigenvector_display   = np.zeros((2, 3)),
-                    has_imag              = False,
-                    electronic_structure  = _make_es(),
-                ),
-            ],
-            selected_mode_idxs_1based  = [idx],
-            config                     = {},
-            methods_text               = "",
-            bibliography_keys          = [],
-            phase_frequencies          = PHASE_COMPLETE,
-            phase_raman                = PHASE_COMPLETE,
-            phase_es                   = PHASE_COMPLETE,
-        )
-
-    def test_prior_with_es_filters_out_completed_mode(self):
-        """User re-runs with selector=explicit="2, 3, 5" but mode 3
-        already has ES from a prior run.  select_modes returns
-        [2, 5] -- the engine will only compute ES for those."""
-        from molbuilder.spectra import select_modes
-        cfg = _spectra_cfg(es_mode_selection="explicit",
-                            es_explicit_indices="2, 3, 5")
-        prior = self._prior_with_es_on_mode(idx=3)
-        assert select_modes(_modes_fixture(), cfg, prior=prior) == [2, 5]
-
-    def test_prior_without_es_does_nothing(self):
-        """prior=None leaves the selection unchanged."""
-        from molbuilder.spectra import select_modes
-        cfg = _spectra_cfg(es_mode_selection="explicit",
-                            es_explicit_indices="2, 3")
-        assert select_modes(_modes_fixture(), cfg, prior=None) == [2, 3]
-
-# (TestValidateSelection retired 2026-08-21 with its subject -- see the
-#  tombstone in spectra/selection.py.)
+def test_all_selects_every_mode_inside_the_window():
+    """Window [800, 2500] -> modes 3 (1023) and 4 (1612)."""
+    assert select_modes(FREQS, "all") == [1, 2, 3, 4, 5, 6]
+    assert select_modes(FREQS, "all", freq_min_cm1=800.0,
+                        freq_max_cm1=2500.0) == [3, 4]
 
 
-class TestSelectorEquivalence:
-    """Pin the script's inlined selector against the canonical
-    Python `select_modes` for a fixture of (modes, cfg) pairs.
-
-    The script's selector is hand-rolled.  If someone changes the
-    Python version (e.g. tie-breaking rule) without updating the
-    script, this test catches the drift immediately.
-
-    We don't exec the full script (would need real PySCF + a
-    converged SCF); we exec ONLY the selector function out of the
-    emitted text by slicing the if/elif/else block + the helpers
-    it needs.
-    """
-
-    def _build_selector_namespace(self, cfg, modes_payload):
-        """Re-create the runtime environment the inlined selector
-        sees: the deck's OWN lines for ES_MODE_SELECTION /
-        ES_EXPLICIT_INDICES / FREQ_MIN_CM1 / FREQ_MAX_CM1, exec'd as
-        `_emit_constants` writes them, plus the modes_payload list.
-        The explicit list is text the emitter reads, so a namespace
-        built here by hand would test a deck nobody runs -- that is how
-        a deck reading "1, 3" character by character passed."""
-        from molbuilder.pyscf.vibration_emitters import _emit_constants
-        wanted = ("ES_MODE_SELECTION ", "ES_EXPLICIT_INDICES ",
-                  "FREQ_MIN_CM1 ", "FREQ_MAX_CM1 ")
-        lines = _emit_constants(_struct_water(), cfg, methods_md="",
-                                bibliography_keys=[])
-        ns = {"modes_payload": modes_payload}
-        exec("\n".join(ln for ln in lines if ln.startswith(wanted)), ns)
-        assert set(ns) >= {w.strip() for w in wanted}, sorted(ns)
-        return ns
-
-    def _modes_payload_for_fixture(self):
-        """A modes_payload list shaped like what the in-script
-        Hessian block builds (matching the wire form expected by
-        the inlined selector).  Same modes as `_modes_fixture()`."""
-        out = []
-        for m in _modes_fixture():
-            out.append({
-                "index_1based":          m.index_1based,
-                "frequency_cm1":         m.frequency_cm1,
-                "raman_activity_a4_amu": m.raman_activity_a4_amu,
-                "ir_intensity_km_mol":   m.ir_intensity_km_mol,
-                "eigenvector_display":      m.eigenvector_display.tolist(),
-                "has_imag":              m.has_imag,
-                "electronic_structure":  None,
-            })
-        return out
-
-    def _exec_inlined_selector(self, script: str, ns: dict) -> list:
-        """Slice the inlined selector out of the script + exec it
-        against the prepared namespace.  Returns the value of
-        `_selected` after execution."""
-        # The inlined selector starts at the "if ES_MODE_SELECTION"
-        # marker and ends at the "state['selected_mode_idxs_1based']"
-        # write that immediately follows it.
-        start = script.find("if ES_MODE_SELECTION == 'all':")
-        end   = script.find("state['selected_mode_idxs_1based']")
-        assert start != -1 and end != -1 and end > start, (
-            "could not locate inlined selector block in script"
-        )
-        body = script[start:end]
-        # The selector also references `_passes_freq_window`, defined
-        # just above.  Include from the "def _passes_freq_window" line.
-        helper_start = script.find("def _passes_freq_window")
-        assert helper_start != -1
-        helper = script[helper_start:start]
-        exec(helper + body, ns)
-        return list(ns["_selected"])
-
-    @pytest.mark.parametrize("cfg_overrides", [
-        # Each selector exercised on the same modes fixture.
-        dict(es_mode_selection="skip"),
-        dict(es_mode_selection="all"),
-        dict(es_mode_selection="all", freq_min_cm1=500.0, freq_max_cm1=3500.0),
-        dict(es_mode_selection="explicit", es_explicit_indices="1, 3, 5"),
-        dict(es_mode_selection="explicit", es_explicit_indices="2"),
-        dict(es_mode_selection="explicit", es_explicit_indices="4-6, 2"),
-    ])
-    def test_inlined_selector_matches_select_modes(self, cfg_overrides):
-        from molbuilder.spectra import select_modes
-        # P3: the generator retired; the inlined selector lives in the
-        # surviving emitter the vibration deck composes -- the drift
-        # gate now reads THAT (one selector, two spellings, still
-        # provably equal).
-        from molbuilder.pyscf.vibration_emitters import _emit_es_loop
-        cfg = _spectra_cfg(**cfg_overrides)
-        modes = _modes_fixture()
-
-        # Python canonical result.
-        py_selected = select_modes(modes, cfg, prior=None)
-
-        # When selector == "none", the L4 block isn't emitted at all
-        # so there's nothing to exec against -- Python and "script
-        # behaviour" trivially agree on the empty list.
-        if cfg.es_mode_selection == "skip":
-            assert py_selected == []
-            return
-
-        # The emitter's inlined result: emit, slice, exec.
-        script = "\n".join(_emit_es_loop(cfg))
-        ns = self._build_selector_namespace(
-            cfg, self._modes_payload_for_fixture()
-        )
-        script_selected = self._exec_inlined_selector(script, ns)
-
-        assert py_selected == script_selected, (
-            f"selector drift for cfg={cfg_overrides!r}: "
-            f"python={py_selected}, script={script_selected}"
-        )
+def test_explicit_selects_the_listed_modes_and_ignores_the_window():
+    """Naming a mode is saying *that one*: the window, which would drop
+    mode 3, does not apply."""
+    assert select_modes(FREQS, "explicit", explicit=[3, 5, 6],
+                        freq_min_cm1=2000.0) == [3, 5, 6]

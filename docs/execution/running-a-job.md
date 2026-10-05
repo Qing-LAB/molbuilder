@@ -106,7 +106,7 @@ What follows, and is checked in the rendered script:
 | the scheduler kills with `SIGTERM` at the time limit | `trap … TERM INT` → clean up, exit 143 |
 | the engine's exit code must be inspectable | the engine is **run, not `exec`'d**; `set +e` around it, `${PIPESTATUS[0]}` captured |
 | a run must be watchable while it runs | stdout is **teed**, never swallowed |
-| the engine env has no molbuilder in it | the monitor travels as one copied file, `mb_monitor.pyz`, not `python -m molbuilder monitor` — holding it and the framework modules it reads the run through, each a copy of its source (`runwrap.MONITOR_BUNDLE`, `run-reports.md` § 2.3) |
+| the engine env has no molbuilder in it | the monitor travels as one copied file, `mb_monitor.pyz`, not `python -m molbuilder monitor` — holding it and the framework modules it reads the run through, each a copy of its source (`runwrap.MONITOR_BUNDLE`, `run-reports.md` § 2.3); a PySCF script imports the molbuilder code it calls from `mb_pyscf.pyz` beside it, the same way (`engines/pyscf.md` § 3) |
 
 > **`set -e` stays ON across the preamble, and that is deliberate.**
 > A failed `module load` here means the job is about to run in the wrong

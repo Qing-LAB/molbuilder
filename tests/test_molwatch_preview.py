@@ -169,42 +169,16 @@ def test_preview_helper_marks_kind_and_nulls(tmp_path, water_struct):
                      text, re.MULTILINE)
 
 
-
-
 # --------------------------------------------------------------------- #
-#  SIESTA convert(): emits sibling .molwatch.log alongside the .fdf     #
+#  PySCF generated script: its emitter writes the preview block first   #
 # --------------------------------------------------------------------- #
 
 
-
-
-
-
-# --------------------------------------------------------------------- #
-#  PySCF generated script: inline emitter writes preview block first    #
-# --------------------------------------------------------------------- #
-
-
-def test_pyscf_generated_script_emits_preview_block_text():
-    """The generated script's MolwatchEmitter writes an initial-state
-    preview as its first action -- so the .molwatch.log has step 0
-    available before the first SCF runs."""
-    s = Structure(
-        elements=["H", "H"],
-        positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
-        title="h2",
-    )
-    text = render_script(s, PySCFConfig(job_name="h2"))
-    # The class definition must contain a method that writes a preview
-    # block, AND the constructor must call it.
-    assert "_write_initial_preview" in text
-    assert "kind: initial_preview" in text
-    # The preview block is emitted before optimize() is called -- the
-    # class instantiation line must appear before the optimize(...) call.
-    inst_pos = text.index("MolwatchEmitter(")
-    # The relaxation is the one `relax(...)` call (relax_policy.py).
-    opt_pos = text.index("mol_eq, _GEOM_CONVERGED = relax(")
-    assert inst_pos < opt_pos
+# Retired 2026-10-05: `test_pyscf_generated_script_emits_preview_block_text`
+# found the preview writer's method names in the script's TEXT -- the class's
+# pasted source, which the script now imports from `mb_pyscf.pyz` instead
+# (`engines/pyscf.md` § 3).  Its other half, the writer built before the
+# relaxation, is the relaxation's own need: it is handed the writer's hook.
 
 
 @pytest.mark.engine
@@ -247,6 +221,9 @@ def test_pyscf_generated_script_runs_and_produces_preview(tmp_path):
     text = render_script(s, cfg)
     script = tmp_path / "prev_e2e.py"
     script.write_text(text)
+    # the molbuilder code the script imports, beside it as prep writes it
+    from molbuilder.runwrap import PYSCF_BUNDLE, pyscf_bundle
+    (tmp_path / PYSCF_BUNDLE).write_bytes(pyscf_bundle())
     subprocess.run([str(pyscf_py), str(script)],
                    cwd=str(tmp_path), check=True,
                    capture_output=True, timeout=120)

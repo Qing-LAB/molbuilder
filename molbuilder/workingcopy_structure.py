@@ -25,9 +25,10 @@ the question gets asked rather than answered by counting callers.
 
 USED BY: ``/api/structure/save`` -> ``write`` · ``/api/structure/export`` ->
 ``files`` · ``/api/build/load`` -> ``read`` (web/blueprints/build.py) · and
-the task hand-over doors -> ``files``/``write``.  NOT yet by the CLI,
-which still writes geometry alone -- the last surface not obeying the rule
-(task #73).
+the task hand-over doors -> ``files``/``write`` · the PySCF script, from
+inside its run -> ``write_moved`` (imported from ``mb_pyscf.pyz``).  NOT
+yet by the CLI, which still writes geometry alone -- the last surface not
+obeying the rule (task #73).
 
 RETIRED 2026-07-31: ``scratch_blob`` / ``from_scratch``, which round-tripped a
 structure through an in-memory ``{xyz, sidecar}`` TEXT blob.  Their last caller
@@ -47,8 +48,17 @@ import os
 from pathlib import Path
 from typing import List, NamedTuple, Optional, Sequence, Tuple
 
-from .structure import Structure
-from .sidecars import molstruct
+# TWO WAYS, because this module travels: the PySCF script writes every
+# geometry it saves through it (`write_moved`), imported from `mb_pyscf.pyz`
+# beside the job (`runwrap.PYSCF_COMPANIONS`), where the package is not
+# installed.  What that call reaches imports only the standard library and
+# numpy; the rest of the codec reads through the package.
+try:                                        # inside molbuilder
+    from .structure import Structure
+    from .sidecars import molstruct
+except ImportError:                         # beside a job, in mb_pyscf.pyz
+    from structure import Structure
+    import molstruct
 
 
 class StructurePair(NamedTuple):
@@ -378,7 +388,6 @@ class StructureCodec:
         persisting AND a stale sidecar exists, it is removed so the pair can't
         disagree (``no .json == empty metadata``, matching :meth:`load`)."""
         target = Path(target)
-        target.parent.mkdir(parents=True, exist_ok=True)
         # The caller named the file, so the caller named the format.  `read`
         # dispatches on this same suffix, which is what makes write->read a
         # round trip rather than a coincidence.
@@ -390,22 +399,57 @@ class StructureCodec:
         made = self.pair(struct, frames=frames,
                          fmt=(fmt or ("pdb" if target.suffix.lower() == ".pdb"
                                       else "xyz")))   # the ONE generator
-        xyz_text = made.document
+        return self._write_pair(target, made.document,
+                                made.sidecar if made.keep_sidecar else None,
+                                atomic=atomic)
+
+    def write_moved(self, target, elements: Sequence[str], positions,
+                    sidecar: dict, *, comment: str) -> Path:
+        """The pair for a structure whose atoms MOVED, written where only the
+        new coordinates are at hand -- inside a PySCF run, whose script
+        imports this codec from ``mb_pyscf.pyz`` (`engines/pyscf.md` § 3) and
+        calls this for every geometry it saves.
+
+        ``elements`` and ``positions`` (Å) become the document through
+        :meth:`Structure.to_xyz`, the codec's own text, with ``comment`` as
+        its comment line.  ``sidecar`` is the payload :meth:`pair` made for
+        the structure before it moved -- its labels, cell and periodicity
+        are the ones the run was given, never derived a second time -- and
+        only its ``structure_hash`` is replaced, pinned to the new document.
+        It is always written: it states the engine's origin
+        (``engine_offset`` 0), which a document alone cannot.  Written
+        through :meth:`write`'s own path: same order, same atomicity.  Until
+        2026-10-05 the script wrote its pairs with a copy of its own -- its
+        own number format and its own JSON settings (`plans/plan.md` V1.10).
+        """
+        document = Structure(elements=list(elements),
+                             positions=positions).to_xyz(comment=comment)
+        payload = dict(sidecar,
+                       structure_hash=_sha256_bytes(document.encode("utf-8")))
+        return self._write_pair(Path(target), document, payload)
+
+    @staticmethod
+    def _write_pair(target: Path, document: str, sidecar: Optional[dict], *,
+                    atomic: bool = True) -> Path:
+        """Both halves to disk, in :meth:`write`'s order: the document first,
+        then the sidecar, or -- with ``sidecar`` None -- the removal of a
+        stale one, so the pair cannot disagree."""
+        target.parent.mkdir(parents=True, exist_ok=True)
         sidecar_path = molstruct.sidecar_path_for(target)
 
         if atomic:
             tmp = target.with_suffix(target.suffix + ".tmp")
             with open(tmp, "w", encoding="utf-8") as fh:
-                fh.write(xyz_text)
+                fh.write(document)
                 fh.flush()
                 os.fsync(fh.fileno())
             os.replace(tmp, target)
         else:
             with open(target, "w", encoding="utf-8") as fh:
-                fh.write(xyz_text)
+                fh.write(document)
 
-        if made.keep_sidecar:
-            molstruct.save(sidecar_path, made.sidecar)  # tempfile + os.replace
+        if sidecar is not None:
+            molstruct.save(sidecar_path, sidecar)  # tempfile + os.replace
         elif sidecar_path.exists():
             sidecar_path.unlink()
         return target

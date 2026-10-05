@@ -262,6 +262,35 @@ does take a step callback, `berny_solver.kernel(…, callback=…)`.) With one c
 `optimizer` item retired with it: a template that still names it is refused with
 the reason, and the line is deleted (`template.RETIRED_ITEMS`).*
 
+**molbuilder's own code travels beside the script, in one file — `mb_pyscf.pyz`**
+*(since 2026-10-05)*. The script runs under `molbuilder-pySCF`, where molbuilder
+is not installed, and it calls three pieces of molbuilder: the progress-log
+writer (`MolwatchEmitter`, § 4), the structure codec for every geometry it saves
+(`StructureCodec.write_moved` — the pair, [`model/structure.md`](?doc=model/structure.md)
+§ 2.4), and, in a vibration deck, the mode selector (`select_modes`,
+[`vibration.md`](?doc=engines/vibration.md) § 4.8). It **imports** them, from
+`mb_pyscf.pyz`: a Python zip of those modules' own files
+(`runwrap.PYSCF_COMPANIONS`), built by the one builder the monitor's and the
+SIESTA finish's bundles come from. Prep writes it beside every PySCF script and
+copies it into every attempt with the script. On its first lines, before PySCF
+computes anything, the script puts that file on its import path — found beside
+the script, as its outputs are (`_mb_outfile`) — and imports from it: the codec
+and the progress-log writer in every PySCF script, the selector too in a
+vibration one. Each is bound as `_mb_<its name>` (`_mb_StructureCodec`):
+**every name molbuilder puts into a script carries its prefix** — `_mb_`, `_MB_`,
+`_mw_` — so it can never take a name the engine owns (`gto`, `scf`, `mol`, `mf`);
+the unprefixed names are PySCF's and the standard library's. When the file is not
+there, the script stops on that line and says so. A member
+imports only the standard library, numpy (which PySCF needs anyway) and the
+other members, each reaching the next two ways: the package first, the bundle
+second ([`configuration.md`](?doc=configuration.md) § 2.3). What moves is the job's
+folder — the script, its run script and the bundles beside it; a script copied
+on its own does not run. *(Until 2026-10-05 the script carried the three as
+text: the class's source pasted in with `inspect.getsource`, a hand-written copy
+of the selector held equal to the real one by a test, and a fifteen-line pair
+writer with its own number format and its own JSON settings. User: "we could use
+one code base and maintain it rather than through generated python code".)*
+
 **Non-convergence policy.** A deck carries one rung's policy —
 `on_nonconvergence` ∈ {`proceed`, `continue`, `halt`} (default `halt`) — deciding
 what happens when the relaxation reaches `geom_max_steps` without meeting
@@ -392,8 +421,10 @@ one for me*.
 `<job>.molwatch.log` is the engine-agnostic per-step trajectory log — **this is the
 format spec [`engines/siesta.md`](?doc=engines/siesta.md) § 9 points to** (SIESTA
 writes the same format, distinguished by the `# engine:` header). It's **additive**:
-`molwatch_log=False` only suppresses this file, nothing else changes. Emitted by
-the inlined `MolwatchEmitter` (`_emit_molwatch_emitter`, `pyscf/input.py`).
+`molwatch_log=False` only suppresses this file, nothing else changes. Written by
+`MolwatchEmitter` (`trajectory_log/emitter.py`), which the script imports from
+`mb_pyscf.pyz` (§ 3); `pyscf/input.py::_emit_molwatch_emitter` writes the lines
+that construct it and close the log.
 
 Each opt step is one **marker-delimited** block — the parser locates markers by
 prefix, so there's no column-width fragility:

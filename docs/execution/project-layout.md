@@ -888,7 +888,7 @@ What an attempt holds, moment by moment (`running-a-job.md` § 4.2 reads each):
 
 | moment | the attempt holds | `run_status` |
 |---|---|---|
-| prepped | `calcdir.json`; copies of the deck, the wrapper (and its `.sbatch` on a machine with a queue), `mb_monitor.pyz`, the pseudopotentials (and `atom-permutation.json` when the decks come from a sorted copy); the job's finish bundle when it has one (`mb_vibration.pyz`); `makov_payne_correction.py` for a charged, isolated deck; the molwatch seed; the warm files and `.continued-from` if it continues — every one with its writer and door in § 5.3 | `pending` |
+| prepped | `calcdir.json`; copies of the deck, the wrapper (and its `.sbatch` on a machine with a queue), `mb_monitor.pyz`, the pseudopotentials (and `atom-permutation.json` when the decks come from a sorted copy); the job's finish bundle when it has one (`mb_vibration.pyz`); beside a PySCF deck, the code it imports (`mb_pyscf.pyz`); `makov_payne_correction.py` for a charged, isolated deck; the molwatch seed; the warm files and `.continued-from` if it continues — every one with its writer and door in § 5.3 | `pending` |
 | launched | + `run.json` | `queued` |
 | running | + `-run0.out` (PySCF: `-run0.pyscf.log`), the monitor's pair, the session log | `running` — and still `running` after the engine's output ended, until the job concludes: its finish deriving its result (its session log says the finish began), the wrapper's last lines |
 | concluded | + `-run0.concluded` | `finished` with exit code 0, `failed` with any other — the one door's answer (`runrecord.ending`, [`architecture.md`](?doc=execution/architecture.md) § 3.2) — or when its output states a stop. A marker naming a failed finish: the engine ended and the job did not, so `failed`. A job that cannot run its finish stops before its engine with a marker saying so and no output: `failed` |
@@ -2502,7 +2502,7 @@ In the flat shape the root is also the run folder, so the files of § 5.2 and
 <!-- manifest:calculation -->
 | file | what it is for | written by | the door | kind |
 |---|---|---|---|---|
-| `<label>.template.toml` | every parameter, with the value it was given | `jobset init`; the hand-over and the Transport tab, which the browser writes; `jobset migrate` | `template.find_template` -- the one template, named for the label, or refused by name; its writers form the name with `template.template_path` | source |
+| `<label>.template.toml` | every parameter, with the value it was given | `jobset init`; the hand-over and the Transport tab, which the browser writes; `jobset migrate` -- each naming it with `template.template_path` | `template.find_template` | source |
 | `<label>.source.xyz` | the structure the calculation is of | the hand-over and `jobset init` (`StructureCodec.source_files`) | `jobset.prep._structure_for` | input |
 | `<label>.source.molstruct.json` | its cell and its region labels | the hand-over and `jobset init` (`StructureCodec.source_files`) | `jobset.prep._structure_for` | input |
 | `<label>.template.toml.pre-m6` — only: a template migrated | the template as it was before `jobset migrate` rewrote it | `jobset migrate` | none | record |
@@ -2543,6 +2543,7 @@ root, told apart by `<base>`.
 | `calcdir.json` | what this folder is in its calculation — a container or a run — and where the calculation is | prep, in every folder it makes (`materialize.mark_run` -- a stage's attempt and a benchmark trial's -- and `jobset.engines._pseudo_dir`) | `calcdirs.read` | record |
 | `mb_monitor.pyz` | the monitor, and the readers it runs on — one file | prep, beside each run script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
 | `mb_vibration.pyz` *(SIESTA, vibration)* — only: a force-constant stage | a force-constant job's finish: the modes, from `.FC` | prep, beside the run script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
+| `mb_pyscf.pyz` *(PySCF)* | molbuilder's own code the PySCF script imports -- the progress-log writer, the structure codec, the mode selector | prep, beside the PySCF script (`runwrap.write_run_wrapper`); a copy in each attempt | none | derived |
 | `makov_payne_correction.py` *(SIESTA)* — only: a charged, isolated deck | the energy correction a charged, isolated deck asks a person to run afterwards | prep (`siesta.makov_payne.emit_correction_script`); a copy in each attempt | none | derived |
 <!-- /manifest -->
 

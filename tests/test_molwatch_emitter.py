@@ -1,8 +1,8 @@
 """Unit tests for molbuilder.trajectory_log.emitter.MolwatchEmitter.
 
 The class is the source-of-truth for the streaming ``<JOB>.molwatch.log``
-emitter that gets inlined into generated PySCF scripts.  Until this
-extraction (review-fix N), behaviour could only be verified by
+emitter, and the PySCF script imports it (from ``mb_pyscf.pyz``).  Until
+this extraction (review-fix N), behaviour could only be verified by
 subprocess-running a generated script with PySCF installed.
 
 These tests exercise the class directly with a minimal fake-mol stub
@@ -23,6 +23,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from molbuilder.constants import HARTREE_BOHR_EV_ANGSTROM_ASE, HARTREE_EV
 from molbuilder.trajectory_log import MolwatchEmitter
 
 
@@ -107,14 +108,14 @@ def test_scf_cycle_hook_buffers_per_cycle_data(tmp_path, h2_mol):
     assert em._scf_buf[0]["cycle"] == 1     # 1-indexed in our log
     assert em._scf_buf[1]["cycle"] == 2
     # Hartree -> eV conversion for energy
-    assert em._scf_buf[0]["energy"] == pytest.approx(-1.10 * MolwatchEmitter.HARTREE_TO_EV)
+    assert em._scf_buf[0]["energy"] == pytest.approx(-1.10 * HARTREE_EV)
     # Delta-E uses last_hf_e where available
     assert em._scf_buf[1]["delta_E"] == pytest.approx(
-        (-1.15 - -1.10) * MolwatchEmitter.HARTREE_TO_EV
+        (-1.15 - -1.10) * HARTREE_EV
     )
     # the orbital-gradient norm is an ENERGY (Hartree over dimensionless
     # orbital rotations): it converts as one, never as a force
-    assert em._scf_buf[0]["gnorm"] == pytest.approx(1.0e-2 * MolwatchEmitter.HARTREE_TO_EV)
+    assert em._scf_buf[0]["gnorm"] == pytest.approx(1.0e-2 * HARTREE_EV)
 
     # New SCF run starts: cycle=0 should reset the buffer.
     em.scf_cycle_hook({"cycle": 0, "e_tot": -1.16, "last_hf_e": None,
@@ -160,7 +161,7 @@ def test_opt_step_hook_writes_block_with_forces_and_scf_history(tmp_path,
     assert re.search(r"energy \(eV\): -3?\d\.\d{8}", block)
     # Forces are -gradient * (Hartree/Bohr -> eV/Ang) = -grad * 51.4221
     # H1's gradient was -0.05 Ha/Bohr, so its force is +0.05 * 51.42... eV/Ang
-    expected_F = 0.05 * MolwatchEmitter.HARTREE_BOHR_TO_EV_ANG
+    expected_F = 0.05 * HARTREE_BOHR_EV_ANGSTROM_ASE
     assert re.search(rf"H\s+{expected_F:.8f}\s+", block), (
         f"expected force {expected_F:.8f} eV/Ang for H1; block was:\n{block}"
     )

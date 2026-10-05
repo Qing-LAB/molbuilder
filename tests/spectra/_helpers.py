@@ -10,7 +10,7 @@ Plain module — import directly:
 
     from tests.spectra._helpers import (
         _make_es, _make_mode, _make_results,
-        _modes_fixture, _struct_water,
+        _struct_water,
     )
 
 (Not a pytest conftest fixture because the call sites use these as
@@ -100,40 +100,6 @@ def _make_results(complete: bool = True) -> SpectraResults:
         phase_raman                = phases[1],
         phase_es                   = phases[2],
     )
-
-
-def _modes_fixture() -> list[ModeData]:
-    """6-mode fixture with varied frequencies + Raman activities for
-    exercising the window / explicit selectors.
-
-      idx  freq (cm⁻¹)  raman_activity_a4_amu
-      ---  -----------  ---------------------
-        1       412.3                  3.2
-        2       745.0                  12.5    <- bright
-        3      1023.4                  87.2    <- brightest
-        4      1612.0                  None    (raman not computed)
-        5      2956.0                  45.0    <- bright, C-H stretch
-        6      3656.0                  18.5    (high-freq O-H)
-    """
-    def _m(idx, freq, raman):
-        _ev = np.zeros((2, 3))
-        return ModeData(
-            index_1based          = idx,
-            frequency_cm1         = freq,
-            raman_activity_a4_amu = raman,
-            ir_intensity_km_mol   = None,
-            eigenvector_canonical = _ev,
-            eigenvector_display   = _ev,
-            has_imag              = False,
-        )
-    return [
-        _m(1,  412.3,  3.2),
-        _m(2,  745.0, 12.5),
-        _m(3, 1023.4, 87.2),
-        _m(4, 1612.0, None),
-        _m(5, 2956.0, 45.0),
-        _m(6, 3656.0, 18.5),
-    ]
 
 
 def _struct_water() -> Structure:

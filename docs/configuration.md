@@ -499,8 +499,16 @@ job also carries its FINISH, `mb_vibration.pyz` (`runwrap.VIBRATION_COMPANIONS`,
 constants into its spectrum.  It needs arrays, so its rule is **the standard
 library, numpy and ASE — which the SIESTA job envs carry for it — AND
 travels**; its members import each other the same two ways.  The monitor's
-set stays stdlib-only: the two bundles are built by one builder from two
+set stays stdlib-only: the bundles are built by one builder from their own
 tables, and nothing of the finish's reaches the monitor.
+
+**A third, imported rather than run.** A PySCF script imports molbuilder's
+own code from `mb_pyscf.pyz` (`runwrap.PYSCF_COMPANIONS`,
+`engines/pyscf.md` § 3): the progress-log writer, the structure codec and
+the mode selector, with what they import.  Its rule is **the standard
+library and numpy — which PySCF needs anyway — AND travels**, at load and in
+every function the script calls; its members import each other the same two
+ways.
 
 **What a missing module costs** — which only an incomplete bundle can cause:
 

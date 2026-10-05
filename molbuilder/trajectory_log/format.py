@@ -9,10 +9,10 @@ preview file alongside their main output, giving molwatch something
 to render the moment a user loads it (no waiting for the engine to
 produce its first frame).
 
-The PySCF-side emitter is generated inline into the script (see
-``molbuilder/pyscf/input.py``: ``_emit_molwatch_emitter``) and writes
-to the same format with the same structural keys.  Keeping the two
-emitters in sync is a spec contract, not an import dependency.
+The PySCF-side emitter (``emitter.MolwatchEmitter``, which the PySCF
+script imports from ``mb_pyscf.pyz``) writes the same format with the
+same structural keys.  Keeping the two emitters in sync is a spec
+contract, not an import dependency.
 """
 
 from __future__ import annotations

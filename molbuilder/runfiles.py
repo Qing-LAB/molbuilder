@@ -896,6 +896,7 @@ CONTINUED_FROM_FILE = ".continued-from"
 GATHERED_FROM_FILE = ".gathered-from"
 MONITOR_BUNDLE = "mb_monitor.pyz"
 VIBRATION_BUNDLE = "mb_vibration.pyz"
+PYSCF_BUNDLE = "mb_pyscf.pyz"
 MAKOV_PAYNE_SCRIPT = "makov_payne_correction.py"
 BENCH_RESULT_FILE = "bench-result.json"
 LAUNCH_DIR = "launch"
@@ -931,8 +932,9 @@ WRITTEN: "tuple[Artifact, ...]" = (
              staged=False,
              when="setup", level="calculation", kind="source",
              writer="`jobset init`; the hand-over and the Transport tab, "
-                    "which the browser writes; `jobset migrate`",
-             door="template.template_path"),
+                    "which the browser writes; `jobset migrate` -- each "
+                    "naming it with `template.template_path`",
+             door="template.find_template"),
     # THE STRUCTURE THE CALCULATION IS OF, written into the bundle by the
     # hand-over (`web/handover-procedure.md`).  Added 2026-08-16, the same
     # day molbuilder started writing them: before that the pair did not
@@ -988,9 +990,10 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact("_initial.xyz", "the input geometry, echoed back before "
                              "anything ran", staged=False, engine="pyscf",
              kind="result", writer="the PySCF deck"),
-    # ITS SIDECAR, the pair's other half -- written by the deck's own pair
-    # writer (`pyscf/input.py`), and on no list until 2026-10-04 (plan D23):
-    # undeclared, `--cold` named it as engine state it would overwrite.
+    # ITS SIDECAR, the pair's other half -- written by the deck through the
+    # codec (`StructureCodec.write_moved`, imported from `mb_pyscf.pyz`), and
+    # on no list until 2026-10-04 (plan D23): undeclared, `--cold` named it
+    # as engine state it would overwrite.
     Artifact("_initial.molstruct.json", "the input geometry's cell and "
                                         "labels",
              staged=False, engine="pyscf", kind="result",
@@ -1346,6 +1349,14 @@ WRITTEN: "tuple[Artifact, ...]" = (
              writer="prep, beside the run script "
                     "(`runwrap.write_run_wrapper`); a copy in each attempt",
              only="a force-constant stage"),
+    Artifact(name=PYSCF_BUNDLE,
+             what="molbuilder's own code the PySCF script imports -- the "
+                  "progress-log writer, the structure codec, the mode "
+                  "selector",
+             engine="pyscf",
+             when="prep", level="stage", kind="derived",
+             writer="prep, beside the PySCF script "
+                    "(`runwrap.write_run_wrapper`); a copy in each attempt"),
     Artifact(name=MAKOV_PAYNE_SCRIPT,
              what="the energy correction a charged, isolated deck asks a "
                   "person to run afterwards",

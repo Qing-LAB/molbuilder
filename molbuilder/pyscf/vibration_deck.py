@@ -54,8 +54,8 @@ from ..constants import HARTREE_CM1 as _HARTREE_CM1
 from .. import script_emit as _sc
 from ..runfiles import tail as _rf_tail
 from ..structure import FROZEN_LABEL, Structure
-from .input import (GEOMETRIC_APPENDS, ROLE_CONSTRAINTS, emit_outfile_helper,
-                    ROLE_GEOM_TRAJ)
+from .input import (GEOMETRIC_APPENDS, ROLE_CONSTRAINTS, emit_bundle_imports,
+                    emit_outfile_helper, ROLE_GEOM_TRAJ)
 
 # The lifted emitters — the old generator's proven blocks, composed anew.
 from .vibration_emitters import (
@@ -187,6 +187,9 @@ def science_view(cfg, struct: Structure) -> "VibrationConfigView":
 
 def _vib_constants(cfg) -> List[str]:
     """The vibration deck's own constants, beside the lifted ones."""
+    from ..spectra.selection import select_modes
+    from ..trajectory_log.emitter import MolwatchEmitter
+    from ..workingcopy_structure import StructureCodec
     from .relax_policy import policy_of
     out = ["",
            "# ---- vibration-kind constants (framework deck) ----",
@@ -211,6 +214,11 @@ def _vib_constants(cfg) -> List[str]:
            # Where every output lands: beside the script -- the one
            # definition every PySCF deck carries (`input.emit_outfile_helper`).
            *emit_outfile_helper(),
+           # And the molbuilder code the deck calls, from the file beside it
+           # (`engines/pyscf.md` § 3): the pair writer's codec, the
+           # progress-log writer and the mode selector (§ 4.8).
+           *emit_bundle_imports(StructureCodec, MolwatchEmitter,
+                                select_modes),
            "JSON_PATH = _mb_outfile(JOB + '.spectra.json')",
            ]
     return out
@@ -739,7 +747,8 @@ def vibration_spec(struct: Structure, cfg, *,
         # and the live-watch emitter ride the same homes the
         # optimization deck uses -- emit_save_helper and
         # _emit_molwatch_emitter are input.py's own, imported, so the
-        # two decks cannot drift about either text.
+        # two decks cannot drift about either text; the code both call
+        # is imported from mb_pyscf.pyz at the top (_vib_constants).
         if getattr(cfg, "save_initial_xyz", False) or getattr(
                 cfg, "save_optimized_xyz", False):
             from .input import _sidecar_for, emit_save_helper

@@ -413,6 +413,12 @@ def spec_for(struct: Structure,
         # Where every output lands: beside the script (one definition,
         # shared with the vibration deck -- `emit_outfile_helper`).
         out += emit_outfile_helper()
+        # And the molbuilder code the script calls, from the file beside it
+        # (`engines/pyscf.md` § 3): the pair writer's codec and the
+        # progress-log writer -- both, whatever this deck's settings call.
+        from ..trajectory_log.emitter import MolwatchEmitter
+        from ..workingcopy_structure import StructureCodec
+        out += emit_bundle_imports(StructureCodec, MolwatchEmitter)
 
         # ---- _save_structure helper (the PAIR writer), defined EARLY
         #      so the initial-geometry snapshot can be
@@ -1338,7 +1344,11 @@ def _emit_optimization(cfg: PySCFConfig,
 def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
                            stage_token: Optional[str] = None,
                            frozen_atoms=()) -> List[str]:
-    """Inline streaming writer for this rung's ``.molwatch.log``.
+    """The lines that open this rung's ``.molwatch.log`` and close it: the
+    writer, molbuilder's own :class:`~molbuilder.trajectory_log.emitter.
+    MolwatchEmitter`, constructed -- the script imports the class from
+    ``mb_pyscf.pyz`` (:func:`emit_bundle_imports`) -- and the hooks that
+    write the log's end lines at exit.
 
     ``stage_token`` names the rung, and it reaches two things: the log's own
     filename and the one entry of its convergence-target map.  § 1.1a
@@ -1359,48 +1369,26 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
         accepted opt step)
 
     Block layout, parser tolerance, and other contract details are
-    documented on the source class
-    :class:`molbuilder.trajectory_log.emitter.MolwatchEmitter`.
-    The class source is inlined here verbatim via :func:`inspect.getsource`
-    so the generated script stays self-contained (no molbuilder runtime
-    dependency on the user's machine) while keeping a single source of
-    truth that's directly testable as a real Python module.
+    documented on the class itself.  Until 2026-10-05 its source was pasted
+    into the script here by :func:`inspect.getsource`.
     """
-    import inspect
-
-    from ..trajectory_log.emitter import MolwatchEmitter
-
     out: List[str] = []
     out.append("")
     out.append("# ============================================================")
     out.append("#  Unified molwatch log emitter (additive, single-file view)")
     out.append("# ============================================================")
     if v:
-        out.append("# This block defines a small helper that writes one self-")
-        out.append("# contained, marker-delimited record per accepted opt step")
-        out.append("# to the molwatch log named in the manifest above (the")
-        out.append("# rung's own <JOB>[_<NN>_<stage>].molwatch.log).  molwatch")
-        out.append("# reads this file directly")
-        out.append("# (no sibling-file discovery needed) and shows trajectory +")
-        out.append("# energy + force + per-cycle SCF residual plots.")
-        out.append("#")
-        out.append("# Source of truth: molbuilder.trajectory_log.emitter -- the")
-        out.append("# class below is inlined verbatim from there at script-")
-        out.append("# generation time so this script stays self-contained.  Do")
-        out.append("# NOT edit the inline copy; edit the module and regenerate.")
+        out.append("# molbuilder's MolwatchEmitter, imported at the top of this")
+        out.append("# script, writes one self-contained, marker-delimited")
+        out.append("# record per accepted opt step to the molwatch log named in")
+        out.append("# the manifest above (the rung's own")
+        out.append("# <JOB>[_<NN>_<stage>].molwatch.log).  molwatch reads this")
+        out.append("# file directly (no sibling-file discovery needed) and shows")
+        out.append("# trajectory + energy + force + per-cycle SCF residual plots.")
         out.append("#")
         out.append("# All standard PySCF/geomeTRIC outputs are kept untouched;")
         out.append("# this is purely additional.  Disable via cfg.write_molwatch_log =")
         out.append("# False at generation time if you don't want it.")
-    out.append("import time as _mw_time")
-    out.append("import numpy as _mw_np")
-    out.append("")
-    # Inline the class definition itself.  inspect.getsource includes
-    # the leading `class MolwatchEmitter:` line and full body, properly
-    # indented.  The script's globals supply `_mw_time` and `_mw_np`,
-    # which the methods reference at call time.
-    out.append(inspect.getsource(MolwatchEmitter).rstrip())
-    out.append("")
     # Instantiate as early as possible (BEFORE the relaxation) so
     # the log file -- with header + initial-preview block -- exists
     # the moment the script starts running.  Otherwise a long rung
@@ -1410,8 +1398,8 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     # This rung's log takes the basename of the deck that produced it, and
     # that is ONE rule rather than two (`stages.md` § 7) -- so the name comes
     # from ``molwatch_log_basename`` rather than being spelled again here.
-    # The generated script gets the resolved suffix as a literal so it stays
-    # self-contained at runtime (no molbuilder import on the user's machine).
+    # The script gets the resolved suffix as a literal: the name is decided
+    # here, at render, and the run only uses it.
     from ..trajectory_log.format import molwatch_log_basename
     _placeholder      = "_X_"
     _resolved_for_X   = molwatch_log_basename(_placeholder, stage_token)
@@ -1438,8 +1426,8 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     # geomeTRIC's gmax is in Ha/Bohr; convert to eV/Å (the unit the
     # Results-tab force plot uses) so the threshold lines land on
     # the right y-value.  The ASE convention, named in `constants` /
-    # NIST historical convention (matches MolwatchEmitter's
-    # HARTREE_BOHR_TO_EV_ANG).  dmax / drms are already in Angstrom
+    # NIST historical convention -- the factor MolwatchEmitter writes the
+    # forces with.  dmax / drms are already in Angstrom
     # (geomeTRIC's source, not its docs); etol is Hartree -> eV for
     # symmetry with the force plot.
     _ha_bohr_to_ev_ang = _HARTREE_BOHR_EV_ANG_ASE
@@ -1459,7 +1447,7 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     out.append("}")
     # THE ATOMS THIS RUN HOLDS go into its log's header (`model/parse.md`
     # § 5.3): the run states them, as a SIESTA run's `.out` does.
-    out.append(f'_molwatch = MolwatchEmitter('
+    out.append(f'_molwatch = _mb_MolwatchEmitter('
                f'_mb_outfile(JOB + {_suffix!r}), JOB, mol, '
                f'runtime_info=_RUNTIME_INFO, '
                f'convergence_targets=_CONVERGENCE_TARGETS, '
@@ -1477,6 +1465,7 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     # or dead, which no file can tell (`model/parse.md` § 2b, P-S1).
     out.append("import atexit as _mw_atexit")
     out.append("import sys as _mw_sys")
+    out.append("import time as _mw_time")
     out.append("_molwatch_run = {'error': None}")
     out.append("def _molwatch_excepthook(exc_type, exc_value, exc_tb):")
     out.append("    _molwatch_run['error'] = f'{exc_type.__name__}: {exc_value}'")
@@ -1564,8 +1553,48 @@ def emit_outfile_helper() -> List[str]:
             ""]
 
 
+def emit_bundle_imports(*objects) -> List[str]:
+    """The script's molbuilder imports: ``mb_pyscf.pyz`` -- beside the
+    script, found as its outputs are (``_MB_SCRIPT_DIR``, which
+    :func:`emit_outfile_helper` defines and every deck emits first) -- put
+    on the import path, and each of ``objects`` imported from it
+    (`engines/pyscf.md` § 3).  Emitted near the top of every PySCF deck, so
+    a bundle that is missing or cannot load stops the run before PySCF
+    computes anything.
+
+    Each object is molbuilder's own, and the module it is imported from is
+    the one it TRAVELS as, read off `runwrap.PYSCF_COMPANIONS`: the line names
+    exactly what the bundle holds, and an object that does not travel is
+    refused here, at render, rather than on the machine that runs the job.
+    Each is bound as ``_mb_<its name>``, molbuilder's prefix in a deck, so a
+    name of ours never takes one the engine owns (`engines/pyscf.md` § 3).
+    """
+    from ..runwrap import PYSCF_BUNDLE, PYSCF_COMPANIONS
+    shipped = {module: name[:-len(".py")]
+               for name, module in PYSCF_COMPANIONS.items()}
+    out = ["# molbuilder's own code this script calls, from the file beside it",
+           f"_MB_BUNDLE = _MB_SCRIPT_DIR / {PYSCF_BUNDLE!r}",
+           "if not _MB_BUNDLE.is_file():",
+           "    raise SystemExit(f'{_MB_BUNDLE} is missing: this script imports '",
+           "                     'molbuilder code from it, and it must sit '",
+           "                     'beside the script')",
+           "import sys as _mb_sys",
+           "_mb_sys.path.insert(0, str(_MB_BUNDLE))"]
+    for obj in objects:
+        if obj.__module__ not in shipped:
+            raise ValueError(
+                f"{obj.__module__}.{obj.__name__} does not travel in "
+                f"{PYSCF_BUNDLE}: add its module to runwrap.PYSCF_COMPANIONS")
+        out.append(f"from {shipped[obj.__module__]} import {obj.__name__} "
+                   f"as _mb_{obj.__name__}")
+    return out + [""]
+
+
 def emit_save_helper(v: bool, sidecar: dict) -> List[str]:
-    """The PAIR writer -- ``.xyz`` AND its ``.molstruct.json`` companion.
+    """``_save_structure(mol, path, comment)`` -- every geometry the run saves
+    is written as a PAIR, the ``.xyz`` and its ``.molstruct.json``, by the
+    structure codec itself (:meth:`StructureCodec.write_moved`), which the
+    script imports from ``mb_pyscf.pyz`` (:func:`emit_bundle_imports`).
 
     **A bare ``.xyz`` is never written** (user ruling, 2026-09-22: *"All
     structured data goes through the structure API, which never writes just
@@ -1574,28 +1603,14 @@ def emit_save_helper(v: bool, sidecar: dict) -> List[str]:
     PySCF run produced therefore landed with no labels, no cell and no
     identity beside it.
 
-    WHY THE WRITER IS SPLICED RATHER THAN IMPORTED.  The deck runs under
-    ``molbuilder-pySCF`` from a run directory, where **molbuilder is not
-    importable** (measured 2026-09-22: not installed in that env; the
-    source tree is only on ``sys.path`` when the cwd happens to be the
-    repo).  So the deck cannot call :class:`StructureCodec`, the same
-    constraint that makes the monitor ship as a stdlib-only copy.
-    Serialising a pair is ~15 lines, so it is spliced here beside the deck's
-    other travelling helpers rather than added to ``MONITOR_COMPANIONS`` --
-    that list is staged in two places, and the one time they diverged
-    *"every production run's monitor died at import"* (``runwrap.py``).  A
-    shipped module is the right answer the day the deck needs to **read** a
-    pair; writing one does not earn that risk.
-
-    THE SIDECAR IS NOT BUILT HERE.  ``sidecar`` is what
-    ``StructureCodec().pair(struct).sidecar`` produced at compose time -- the
-    one place either half of a pair is made -- so the labels, cell and
-    periodicity a run writes out are the ones it was given, not a second
-    derivation of them.  Only ``structure_hash`` is recomputed, because the
-    coordinates have moved: it is the SHA-256 of the document just written,
-    which is the same scheme (and the same bytes-of-the-file rule) the codec
-    itself uses.  ``keep_sidecar`` is deliberately ignored -- a companion is
-    optional for a structure nobody computes with, and this is not that.
+    THE SIDECAR IS NOT BUILT AT RUN TIME.  ``sidecar`` is what
+    ``StructureCodec().pair(struct).sidecar`` produced at compose time
+    (:func:`_sidecar_for`), so the labels, cell and periodicity a run
+    writes out are the ones it was given, not a second derivation of them;
+    ``write_moved`` re-pins only its ``structure_hash``, because the
+    coordinates have moved.  Until 2026-10-05 the writer itself was spliced
+    here, fifteen lines with their own number format and their own JSON
+    settings (`plans/plan.md` V1.10).
     """
     out: List[str] = []
     out.append("# ============================================================")
@@ -1606,37 +1621,15 @@ def emit_save_helper(v: bool, sidecar: dict) -> List[str]:
         out.append("# periodicity travel with every geometry this run produces,")
         out.append("# so the next calculation can read them back.  The payload")
         out.append("# below came from molbuilder's own structure codec at")
-        out.append("# compose time; only the hash is recomputed here, over the")
-        out.append("# document actually written.")
-    out.append("import hashlib as _mb_hashlib")
-    out.append("import json as _mb_json")
+        out.append("# compose time; the codec writes the pair, re-pinning the")
+        out.append("# hash to the document it writes.")
     out.append(f"_MB_SIDECAR = {sidecar!r}")
     out.append("")
     out.append("def _save_structure(mol_obj, path, comment='generated by molbuilder'):")
-    out.append("    coords = mol_obj.atom_coords(unit='Ang')")
-    out.append("    _lines = [f'{mol_obj.natm}', f'{comment}']")
-    out.append("    for i in range(mol_obj.natm):")
-    out.append("        sym = mol_obj.atom_symbol(i)")
-    out.append("        x, y, z = coords[i]")
-    out.append("        _lines.append(f'{sym:<2s}  {x:14.8f}  "
-               "{y:14.8f}  {z:14.8f}')")
-    out.append("    _doc = '\\n'.join(_lines) + '\\n'")
-    out.append("    _p = str(path)")
-    out.append("    with open(_p, 'w') as fh:")
-    out.append("        fh.write(_doc)")
-    out.append("    # The companion, beside it under the same stem.")
-    out.append("    _side = dict(_MB_SIDECAR)")
-    out.append("    _side['structure_hash'] = _mb_hashlib.sha256(")
-    out.append("        _doc.encode('utf-8')).hexdigest()")
-    # NO `_side['title']`.  `comment` is already the .xyz comment line two
-    # blocks up, and the geometry file is the title's home
-    # (``model/structure.md`` § 2.2c).  Writing it here too would put a
-    # RETIRED key into every sidecar a run emits.
-    out.append("    _stem = _p[:-4] if _p.lower().endswith('.xyz') else _p")
-    out.append("    with open(_stem + '.molstruct.json', 'w') as fh:")
-    out.append("        _mb_json.dump(_side, fh, indent=2)")
-    out.append("        fh.write('\\n')")
-    out.append("    print(f'Wrote {_p} + its .molstruct.json')")
+    out.append("    _mb_StructureCodec().write_moved(")
+    out.append("        path, [mol_obj.atom_symbol(i) for i in range(mol_obj.natm)],")
+    out.append("        mol_obj.atom_coords(unit='Ang'), _MB_SIDECAR, comment=comment)")
+    out.append("    print(f'Wrote {path} + its .molstruct.json')")
     out.append("")
     return out
 

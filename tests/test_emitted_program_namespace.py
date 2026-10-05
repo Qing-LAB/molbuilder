@@ -148,9 +148,11 @@ def test_no_emitted_function_rebinds_a_name_the_deck_imported():
 
 
 def test_molbuilders_own_machinery_stays_in_its_own_prefix():
-    """The convention that makes the rule above hold by construction.
+    """The convention that makes the rule above hold by construction
+    (`engines/pyscf.md` § 3).
 
-    Everything molbuilder imports into a deck is prefixed; the unprefixed
+    Everything molbuilder imports into a deck is prefixed -- the code it
+    imports from `mb_pyscf.pyz` too, as ``_mb_<its name>``; the unprefixed
     imports are the engine's and the standard library's, which the reader
     knows by those names.  Checked so the prefix stays a rule rather than a
     habit that decays one import at a time.

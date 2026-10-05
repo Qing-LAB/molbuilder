@@ -161,7 +161,7 @@ result and wrong by a fixed ratio in every number after it.
 | **An unknown word** | is refused, never passed through |
 | **Bare arithmetic** — `x * BOHR_ANGSTROM`, where the unit is fixed and known and no word is being read | fine, and the common case. The rule is about where the NUMBER came from, not about wrapping every multiplication: `units` is for reading a unit WORD out of a file |
 
-**A second spelling is legal in exactly three places, and each has one
+**A second spelling is legal in exactly two places, and each has one
 answer.** These are mechanisms, not exceptions — the value still comes from
 the one home:
 
@@ -181,10 +181,12 @@ the one home:
   copied into `lib/spectra/core.js` and held equal by a test that read the
   file, which `testing.md` gives no place; Boltzmann in Eh/K went on
   2026-09-28, when the thermochemistry panel stopped deriving its reference
-  energy and read the file's)*;
-* a **class body copied by `inspect.getsource`**, where a module-level
-  import would not travel with the copy → pin the literal to `constants`
-  with a test rather than letting it stand alone.
+  energy and read the file's)*.
+
+*(A third — a class body pasted into a script by `inspect.getsource`, its
+literals pinned to `constants` by a test — went on 2026-10-05: the class,
+`MolwatchEmitter`, travels beside the script as its own file and imports
+`constants` like any module, [`engines/pyscf.md`](?doc=engines/pyscf.md) § 3.)*
 
 A value enters `constants` **in the same change that routes its call
 sites**, or not at all — three did not, on 2026-09-21, and the diff was
@@ -217,7 +219,7 @@ concerns leak into each other — see
 |---|---|---|---|---|
 | `jobset/` | L2 | engine-agnostic **staged execution**: a set of related jobs sharing a package | `prep_stage` (the one prep entry, both doors); `prep_calculation` (the five steps); `prep_jobset`; `submit_jobset(mode=…)`; `jobset_status`; `render_plan`; `JobSet.write` / `load`; CLI `molbuilder jobset {init,prep,launch,status,summarize,probe,machines,migrate}` — *the chaining producers (`stages_to_jobset` / `sweep_to_jobset`) died in the 2026-08-12 fold* | [`execution/job-system.md`](?doc=execution/job-system.md) |
 | `bench/` | L2 | the two library modules the jobset sweep uses: the machine-probed grid (`sweep_grid`) and the `bench-result@1` reader (the legacy `siesta-gpu` stack was deleted 2026-08-13) | `sweep_grid` (shared grid) — the sweep itself is `molbuilder jobset prep bench` | [`execution/generator.md`](?doc=execution/generator.md), [`execution/job-system.md`](?doc=execution/job-system.md) |
-| `runwrap` | L2 | **launcher** emitter: `.run.sh` + `.sbatch` (env activation, MPI/OMP, memory, GPU pinning), and the bundles that travel beside a job — the monitor's, and a finish (`mb_vibration.pyz`, a SIESTA force-constant job's own last step, `engines/vibration.md` § 5.5) | `render_wrappers`, `write_run_wrapper`, `render_sbatch`; `monitor_bundle`, `vibration_bundle` | [`execution/running-a-job.md`](?doc=execution/running-a-job.md), [`execution/job-system.md`](?doc=execution/job-system.md) |
+| `runwrap` | L2 | **launcher** emitter: `.run.sh` + `.sbatch` (env activation, MPI/OMP, memory, GPU pinning), and the bundles that travel beside a job — the monitor's, a finish (`mb_vibration.pyz`, a SIESTA force-constant job's own last step, `engines/vibration.md` § 5.5), and the code a PySCF script imports (`mb_pyscf.pyz`, `engines/pyscf.md` § 3) | `render_wrappers`, `write_run_wrapper`, `render_sbatch`; `monitor_bundle`, `vibration_bundle`, `pyscf_bundle` | [`execution/running-a-job.md`](?doc=execution/running-a-job.md), [`execution/job-system.md`](?doc=execution/job-system.md) |
 | `runtime_config` | L2 | reader for `molbuilder.json` (launch / envs / paths / the server's sections), and the door to a record's queues | `get_launch_mode`, `get_envs`, `get_paths`, `get_routing`, `write_config_scope` | [`configuration.md`](?doc=configuration.md) § 4 |
 | `diagnostics` | L2 | host capability detection + env-for-category routing | `get_capabilities().env_for_category(...)` | [`execution/running-a-job.md`](?doc=execution/running-a-job.md) |
 | `monitor` | L2 | stdlib-only progress/utilization sampler for every engine, shipped next to each job in one file with the readers it reads through (`mb_monitor.pyz`, `runwrap.MONITOR_BUNDLE`) | `python mb_monitor.pyz …` (watch a run); `python mb_monitor.pyz ending OUTPUT [QUESTION]` (how it ended — the wrapper's `_mb_ending`); `molbuilder monitor` | [`execution/run-reports.md`](?doc=execution/run-reports.md) § 2–2.3 (what it reads and says), [`execution/running-a-job.md`](?doc=execution/running-a-job.md) § 4.1 |
