@@ -234,7 +234,8 @@ def test_a_transport_deck_refuses_a_render_argument_it_does_not_read():
     """`spec_for`'s transport arm dropped `cell=` (and `vibration`,
     `relaxed_by`, `trial`) in silence; it refuses them by name
     (`engines/transport.md` § 3.6a).  API-LEVEL because no road reaches it:
-    `prep._transport_spec`, the arm's only caller, passes none of them."""
+    prep's transport rung (`prep._transport_rung_of`) and the gather's
+    render (`prep._transport_spec`) pass none of them."""
     from molbuilder.siesta.input import spec_for
     struct = Structure(elements=["Au", "Au"],
                        positions=np.array([[0.0, 0.0, 0.0],

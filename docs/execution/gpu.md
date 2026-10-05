@@ -116,7 +116,7 @@ whole node.
 | `gres` | **derived at prep** | `Resources` | the `--gres=gpu:<n>` string — a count; molbuilder names no card (`scheduler.md` R2a) |
 | `gpu_binding` | **the person**, to turn it off | `task.json` · `allocation` → `Resources` | whether the ask carries `--gres-flags=enforce-binding` (G9) |
 | `Diag.ELPA.GPU` | *(rendered)* | the SIESTA deck | the keyword `use_gpu` becomes |
-| `gpu4pyscf` / `to_gpu()` | *(rendered)* | the PySCF deck | the same, for PySCF |
+| `gpu4pyscf` / `to_gpu()` | *(rendered)* | the PySCF deck: `_mb_to_gpu(mf)`, imported from its bundle (`runtime_info.to_gpu`) | the same, for PySCF |
 | `Device(type, per_node)` | **the probe** | `environment.json` · `Domain.gpu` | what one node of a queue **offers** — the ceiling; its `type` is shown, never compared |
 | `topology.gpus_per_node` · `gpu_type` | **the probe** | `environment.json` | what the probed node has — the count bounds a bench's GPU counts; the card is shown, never compared |
 
@@ -231,7 +231,7 @@ flowchart TB
     Q2 -->|SIESTA| Q3{"diag_algorithm<br/>is ELPA?"}
     Q3 -->|no| REFUSE1["<b>render refuses</b><br/>GPU + ScaLAPACK<br/><i>the emitter, not the UI</i>"]
     Q3 -->|yes| DECK["deck: Diag.ELPA.GPU .true."]
-    Q2 -->|PySCF| PYDECK["deck: mf.to_gpu()<br/><i>capability checked at RUN start (G8)</i>"]
+    Q2 -->|PySCF| PYDECK["deck: _mb_to_gpu(mf)<br/><i>capability checked at RUN start (G8)</i>"]
 
     DECK --> ENV{"molbuilder-siesta-gpu<br/>present?"}
     ENV -->|no| REFUSE2["<b>wrapper refuses to emit</b><br/>names the env + install (G6, G8)"]

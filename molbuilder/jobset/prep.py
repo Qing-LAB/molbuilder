@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from typing import List, Optional, Sequence, Tuple
+from typing import Callable, List, Optional, Sequence, Tuple
 
 from .. import script_emit as _sc
 from .materialize import (job_dir_names, shape_of, materialize, stage_home,
@@ -57,8 +57,7 @@ from ..runfiles import compose as _rf, stem as _rf_stem
 from ..pseudos import PSEUDO_DIRNAME
 from .errors import PrepError
 from .machine import machine_record, require_activation, set_machine
-from .engines import (EngineSeam, engine_seam, _pseudo_dir, _screen_pseudos,
-                      _siesta_shared_package)
+from .engines import EngineSeam, engine_seam, _pseudo_dir, _screen_pseudos
 
 
 from contextlib import contextmanager
@@ -123,8 +122,13 @@ def _flat_continued_from(base: Path, task, stage: str, continuation) -> None:
 def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 emit_sbatch: bool = True, record_dir=None,
                 log=None, machine_record=None,
-                render=None) -> List[Path]:
+                render=None, points=None) -> List[Path]:
     """Render launchers + lay out the per-job tree under ``base_dir``.
+
+    ``points`` names, per job, the folders that hold a copy of its deck
+    written at another point -- a scan's (`Rung.points`) -- each of which
+    gets the job's wrapper beside it, rendered by the one call the job's own
+    folder gets.
 
     ``render`` names the jobs whose run scripts this prep writes -- the
     stage it preps.  The plan it is handed is the calculation's, merged
@@ -238,7 +242,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
             raise PrepError(
                 f"job {job.name!r}: script {job.script!r} not in "
                 f"{_jd} (render the inputs before prep).")
-        with _user_error_as_prep():
+        def _wrap(script_path):
             # The ALLOCATION, whole (architecture.md § 3.1, rule A8).  This
             # call listed nine of the wrapper's eleven keyword arguments until
             # 2026-08-17 and omitted `omp_threads`, so every deck here shipped
@@ -296,6 +300,10 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 # (`running-a-job.md` § 3.5).
                 resumes=job.resumes,
             )
+        with _user_error_as_prep():
+            _wrap(script_path)
+            for _point in (points or {}).get(job.name, ()):
+                _wrap(Path(_point) / job.script)
         rendered[job.script] = _jd
         if log is not None:
             _stem = Path(job.script).stem
@@ -578,6 +586,209 @@ def _structure_for(task, base: Path):
     return struct
 
 
+# --------------------------------------------------------------------- #
+#  The rung -- what a kind adds to the one table of steps               #
+#  (`script-preparation.md` § 3.0)                                       #
+# --------------------------------------------------------------------- #
+
+def _at_no_point(cfg, volts):
+    return cfg
+
+
+@dataclass
+class Rung:
+    """What one rung's decks are written from -- the structure step's
+    answer, read by every step after it (`script-preparation.md` § 3.0).
+
+    A kind with steps of its own builds one (:data:`RUNGS`); every other
+    kind is a calculation of its described structure, one deck per element
+    (:func:`_described_rung`).  The conductor (:func:`prep_calculation`)
+    reads these and never asks which kind it is in."""
+    #: The structure the decks describe.
+    struct: object
+    #: The program each deck is -- `spec_for`'s ``calculation``: the
+    #: calculation's own, or the rung's (a SIESTA vibration's relax rung is
+    #: an optimisation, `_rung_kind`).
+    render_kind: str
+    #: ``cfg -> cfg``: the config an element renders from -- a lead's own
+    #: label, the junction's electronic state folded in.
+    configure: Callable = lambda cfg: cfg
+    #: ``(element, cfg) -> {keyword: value}``: what else `spec_for` is told
+    #: -- a vibration's block, the relaxation it builds on, the cell; the
+    #: junction's electronic state.
+    spec_extra: Callable = lambda element, cfg: {}
+    #: ``((folder, volts), ...)``: the folders each holding a deck written at
+    #: that point -- a scan's (`engines/transport.md` § 2a.10-11) -- each
+    #: with its own wrapper and attempt ladder; the element's own deck is
+    #: written at the first.  Empty: one deck, in the element's folder.
+    points: tuple = ()
+    #: ``(cfg, volts) -> cfg``: a deck's config at its point -- the rung
+    #: answers the bias, the one value the catalogue does not hold
+    #: (`engines/template.md` § 6.4).
+    at_point: Callable = _at_no_point
+    #: ``() -> None``: the data files, when the kind's come from somewhere
+    #: other than the engine's library (transport: the citation); ``None``
+    #: is the engine's own step (`EngineSeam.provide_data`).
+    provide_data: Optional[Callable] = None
+    #: ``job -> job``: what the rung's job carries forward and runs, where
+    #: the kind answers it per rung -- a transport rung's restart files, the
+    #: transmission's program.
+    job_facts: Callable = lambda job: job
+
+
+def _described_rung(base, task, pset, *, seam, template_path, sweep,
+                    log) -> Rung:
+    """A calculation of its described structure, one deck per element --
+    every kind with no steps of its own."""
+    return Rung(struct=_structure_for(task, base),
+                render_kind=task.calculation)
+
+
+def _siesta_vibration_rung(base, task, pset, *, seam, template_path, sweep,
+                           log) -> Rung:
+    """A SIESTA vibration's rung (`engines/vibration.md` § 5.2a, § 5.9).
+
+    The atoms in the order the force-constant run needs -- the held ones
+    first, so it nudges one contiguous range -- on a COPY, whose permutation
+    is recorded beside the calculation and inverted by the job's finish
+    (`model/overview.md` § 2.2); the input order never reaches the engine
+    and the sorted order never reaches a person.  The `relax` rung is the
+    relaxation deck; every other rung is written at the coordinates the
+    relax rung reached, in that run's own cell, so the force constants are
+    taken on the grid the geometry was relaxed on, with the relaxation
+    record its `vibration` block carries to the finish (§ 5.3)."""
+    # A DISPLACEMENT SWEEP NEEDS A DIRECTORY PER STAGE (§ 5.9): SIESTA names
+    # its force constants and the finish its spectrum by the label alone, so
+    # two force-constant stages sharing the flat layout's one directory
+    # would overwrite the first one's result -- counted over the stages the
+    # description runs: a disabled one is never prepped (plan W38 F5).
+    from ..spectra.displacement_sweep import stages_share_a_directory
+    if stages_share_a_directory(task, include_disabled=False):
+        from ..pyscf.stages import force_constant_stages
+        _fc = force_constant_stages(task, include_disabled=False)
+        raise PrepError(
+            f"this flat calculation describes "
+            f"{len(_fc)} force-constant stages "
+            f"({', '.join(_fc)}), and in the flat "
+            f"layout every stage writes the same <label>.FC and "
+            f"<label>.spectra.json -- each would overwrite the last one's "
+            f"result.  A displacement sweep needs the hierarchical layout "
+            f"(engines/vibration.md 5.9): describe it with --shape "
+            f"hierarchical, or keep one force-constant stage here.")
+    from ..transport.sort import sort_by, write_permutation
+    _sorted = sort_by(_structure_for(task, base), "held-first")
+    _perm_path = write_permutation(base, _sorted)
+    struct = _sorted.structure
+    log.step("the atom order the engine needs")
+    log.produced(_perm_path.name,
+                 f"key held-first, {struct.n_atoms} atoms -> {_perm_path.name}")
+    render_kind = _rung_kind(task, pset.stage)
+    struct, cell, relaxed_by = _vibration_stage_geometry(
+        base, task, pset, struct, log=log)
+    finishes = render_kind == "vibration"
+    # THE FINISH'S FORCE CRITERION IS THE RELAXATION'S OWN (plan § 5w K4,
+    # M11 SS-C6): `relax_force_tol` is read by the relaxation rung alone, so
+    # it is that rung's value -- the criterion the reference geometry was
+    # relaxed to -- and the template's when the structure is stated relaxed.
+    # The force-constant stage's own copy was read until 2026-09-30, so a
+    # preset that relaxed at 0.05 judged at 0.01.
+    from ..resolve import resolved_ladder
+    from ..template import stage_role
+    criterion = next(
+        (getattr(c, "relax_force_tol", None) for n, c in resolved_ladder(
+            template_path.read_text(encoding="utf-8"), task, seam.config_cls)
+         if stage_role(str(task.engine), "vibration", n) == "relaxation"),
+        getattr(pset[0].render_config(), "relax_force_tol", None))
+
+    def spec_extra(element, cfg):
+        return {**({"cell": cell} if cell is not None else {}),
+                # The finish's facts ride a force-constant deck -- never a
+                # benchmark trial's: a spectrum of capped SCFs is a spectrum
+                # of nothing (§ 5.5).
+                **({"vibration": _vibration_block(pset.stage, cfg,
+                                                   relaxed_by,
+                                                   criterion=criterion)}
+                   if finishes and not element.is_trial else {}),
+                # THE RELAX STAGE'S RECORD reaches every deck at its
+                # geometry -- a trial's too, which carries no finish (V1.36).
+                **({"relaxed_by": relaxed_by}
+                   if relaxed_by is not None else {})}
+    return Rung(struct=struct, render_kind=render_kind, spec_extra=spec_extra)
+
+
+def _transport_rung_of(base, task, pset, *, seam, template_path, sweep,
+                       log) -> Rung:
+    """A transport rung (`engines/transport.md`): its four steps of its own.
+
+    **compose** -- the junction and its leads, composed from the cited
+    relaxation, or read from the record that travelled beside ``task.json``
+    (:func:`_composed_for_prep`); the rung's structure is the junction or
+    the lead taken out of it (:func:`_transport_parts`).  **electronic
+    state** -- decided once, on the junction, folded into every rung.
+    **points** -- a scan's rung writes one deck per bias point, each in its
+    own folder (`transport.stages.rung_containers`).  Its data files come
+    from the citation, and its job carries the rung's own restart files and,
+    for the transmission, TBtrans's program.  The fifth, **gather** -- each
+    rung's inputs from the runs upstream -- is the entry's
+    (:func:`gather_for_stage`)."""
+    stage = pset.stage
+    if not stage:
+        from .commands import name_a_stage
+        from .materialize import described_refs
+        raise PrepError(
+            "a transport prep names its rung: the composite's stages render "
+            "separately, in dependency order (engines/transport.md); "
+            + name_a_stage("prep", "run", described_refs(base, task),
+                           base=base))
+    if sweep is not None:
+        raise PrepError(
+            "a transport calculation takes no parameter sweep or "
+            "translation.  Its parameters come from its own template and "
+            "each rung's run card, and its one axis is the bias -- a list "
+            "in task.json, rendered as one deck per point "
+            "(engines/transport.md 2a.10: single bias is the degenerate "
+            "case of that axis, one point at zero).")
+    composed = _composed_for_prep(base, task)
+    struct, configure, state = _transport_parts(task, stage, composed,
+                                                pset[0].render_config())
+    from ..transport.stages import rung_containers, warm_declaration
+    points = tuple((d, v) for d, v in rung_containers(base, task, stage)
+                   if v is not None)
+    citation = task.slots["junction"]
+
+    def provide_data():
+        # The pseudopotentials travel with the citation, screened against
+        # the config the rung's decks render from: what it checks is each
+        # file's XC family against the functional the run will ask for.
+        _transport_provide_pseudos(composed.sorted.structure,
+                                   configure(pset[0].render_config()), base,
+                                   citation)
+
+    def job_facts(job):
+        # The rung's own restart files (`transport.stages.warm_declaration`:
+        # the seed's and the device's; the leads and the transmission carry
+        # none) -- and TBtrans post-processes the device run from its own
+        # deck, its binary riding the allocation road into the wrapper
+        # (`model.Resources.program`, `engines/transport.md` § 6.1b).
+        return dataclasses.replace(
+            job, warm=warm_declaration(stage, task.label, base),
+            resources=(dataclasses.replace(job.resources, program="tbtrans")
+                       if stage == "transmission" else job.resources))
+    return Rung(struct=struct, render_kind="transport", configure=configure,
+                spec_extra=lambda element, cfg: {"state": state},
+                points=points, at_point=_at_bias, provide_data=provide_data,
+                job_facts=job_facts)
+
+
+#: THE KINDS WITH STEPS OF THEIR OWN, keyed by ``(engine, kind)``, each with
+#: the builder of its rung (`script-preparation.md` § 3.0) -- data the one
+#: conductor reads.  Every other kind is :func:`_described_rung`.
+RUNGS = {
+    ("siesta", "vibration"): _siesta_vibration_rung,
+    ("siesta", "transport"): _transport_rung_of,
+}
+
+
 def prep_calculation(base_dir, stage: Optional[str] = None, *,
                      allocation=None, env: str = None,
                      emit_sbatch: bool = True,
@@ -631,31 +842,6 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
 
     Returns the per-job directories. Raises :class:`PrepError`.
     """
-    # TRANSPORT IS THE COMPOSITE (archive/2026-09-01-transport-design.md § 4.2): no
-    # template, no structure reference -- its stages render from the
-    # composed junction, so it takes its own arm rather than crashing
-    # on the structure this calculation deliberately does not carry.
-    from ..task import FILENAME as _TASK_FILENAME
-    from ..task import read_task as _read_task_early
-    try:
-        _t_calc = _read_task_early(Path(base_dir) / _TASK_FILENAME).calculation
-    except Exception:
-        _t_calc = None   # no/invalid description: the named refusal below owns it
-    if _t_calc == "transport":
-        # `chosen` TRAVELS.  It is the run's launch shape -- what the person
-        # decided on the run card, or `--np` on the command line -- and this
-        # hand-off dropped it, so a transport run silently fell back to the
-        # target's own width while every other calculation honoured it.  Both
-        # sides have always declared the parameter; only the forwarding was
-        # missing, which is why nothing named it.
-        return _prep_transport(base_dir, stage, allocation=allocation,
-                               env=env, emit_sbatch=emit_sbatch,
-                               sweep=sweep, pins=pins,
-                               translation=translation, target=target,
-                               chosen=chosen,
-                               opened=opened, findings=findings,
-                               continue_from=continue_from, cold=cold,
-                               named=named)
     from ..pipeline_log import PipelineLog, config_rows
     from ..resolve import ResolveError, resolve
     from ..task import FILENAME as TASK_FILENAME
@@ -771,85 +957,29 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             log.chose(_n, _v, _s)
     log.produced("ParameterSet", f"{len(pset)} element(s) -> spec_for")
 
-    # ---- 3. render the deck(s) ----------------------------------------- #
-    struct = _structure_for(task, base)
-    # A KIND THAT NEEDS THE ATOMS IN AN ORDER THE INPUT DOES NOT HAVE sorts a
-    # COPY here, records the permutation beside the calculation, and renders
-    # from the copy (`model/overview.md` § 2.2).  The vibration kind on SIESTA
-    # is one: the force-constant run nudges one contiguous range, so the free
-    # atoms go last under the 'held-first' key.  The record is what the
-    # return leg -- the job's finish (`engines/vibration.md` § 5.5) --
-    # inverts, from its copy in the attempt; the input order never
-    # reaches the engine and the sorted order never reaches a person.
-    # WHICH DECK THIS RUNG RENDERS, and IN WHICH FRAME.  Both are the
-    # calculation's unless the kind says otherwise: the SIESTA vibration's
-    # `relax` stage is the relaxation deck (`engines/vibration.md` § 5.2a),
-    # and every force-constant stage -- every other stage, whatever its
-    # name (`pyscf/stages.vibration_render_kind`) -- is written at the
-    # coordinates the relax stage relaxed to, in that run's own cell, so the
-    # force constants are taken on the grid the geometry was relaxed on.
-    _render_kind = task.calculation
-    _render_cell = None
-    # A SIESTA force-constant deck carries a `vibration` block (below), built
-    # per element from its resolved config and the relax run read here.
-    _finishes, _relaxed_by, _criterion = False, None, None
-    if task.calculation == "vibration" and str(task.engine) == "siesta":
-        # A DISPLACEMENT SWEEP NEEDS A DIRECTORY PER STAGE (`engines/
-        # vibration.md` § 5.9): SIESTA names its force constants and the
-        # finish its spectrum by the label alone, so two force-constant
-        # stages sharing the flat layout's one directory would overwrite the
-        # first one's result.  Refused before any sort, permutation record or
-        # deck is written, at whichever stage the person preps first --
-        # counted over the stages the description runs: a disabled one is
-        # never prepped (`task.stage_disabled`; plan W38 F5 counted them
-        # while a stage named here was prepped either way).
-        from ..spectra.displacement_sweep import stages_share_a_directory
-        if stages_share_a_directory(task, include_disabled=False):
-            from ..pyscf.stages import force_constant_stages
-            _fc = force_constant_stages(task, include_disabled=False)
-            raise PrepError(
-                f"this flat calculation describes "
-                f"{len(_fc)} force-constant stages "
-                f"({', '.join(_fc)}), and in the flat "
-                f"layout every stage writes the same <label>.FC and "
-                f"<label>.spectra.json -- each would overwrite the last one's "
-                f"result.  A displacement sweep needs the hierarchical layout "
-                f"(engines/vibration.md 5.9): describe it with --shape "
-                f"hierarchical, or keep one force-constant stage here.")
-        from ..transport.sort import sort_by, write_permutation
-        _sorted = sort_by(struct, "held-first")
-        _perm_path = write_permutation(base, _sorted)
-        struct = _sorted.structure
-        log.step("the atom order the engine needs")
-        log.produced(_perm_path.name,
-                     f"key held-first, {struct.n_atoms} atoms -> {_perm_path.name}")
-        _render_kind = _rung_kind(task, pset.stage)
-        struct, _render_cell, _relaxed_by = _vibration_stage_geometry(
-            base, task, pset, struct, log=log)
-        _finishes = _render_kind == "vibration"
-        # THE FINISH'S FORCE CRITERION IS THE RELAXATION'S OWN (plan § 5w
-        # K4, M11 SS-C6): `relax_force_tol` is read by the relaxation rung
-        # alone, so it is that rung's value -- the criterion the reference
-        # geometry was relaxed to -- and the template's when the structure
-        # is stated relaxed.  The force-constant stage's own copy was read
-        # until 2026-09-30, so a preset that relaxed at 0.05 judged at 0.01.
-        from ..resolve import resolved_ladder
-        from ..template import stage_role
-        _criterion = next(
-            (getattr(c, "relax_force_tol", None) for n, c in resolved_ladder(
-                template_path.read_text(encoding="utf-8"), task,
-                seam.config_cls)
-             if stage_role(str(task.engine), "vibration", n) == "relaxation"),
-            getattr(pset[0].render_config(), "relax_force_tol", None))
+    # ---- 3. the structure: the kind's rung ----------------------------- #
+    # WHAT THE DECKS DESCRIBE, and what the kind adds to the steps after
+    # this one, from its one record (`script-preparation.md` § 3.0): the
+    # structure as described, unless the kind composes or reorders it -- a
+    # transport junction and its leads; a SIESTA vibration's held-first copy
+    # and the geometry its relax rung reached.
+    rung = RUNGS.get((str(task.engine), str(task.calculation)),
+                     _described_rung)(base, task, pset, seam=seam,
+                                      template_path=template_path,
+                                      sweep=sweep, log=log)
     # The DATA FILES the engine will open, before any deck is written: a
     # missing pseudopotential is a run that cannot start, and finding that out
     # here costs a second (project-layout.md § 2.6).  Idempotent -- what is
     # already in the folder is left alone.  The elements come from the
     # structure, which has just been checked against the description's witness.
-    if seam.provide_data is not None:
+    if rung.provide_data is not None:
         with _user_error_as_prep(), _calling(
                 "provide_data", engine=task.engine, log=log):
-            seam.provide_data(struct, pset[0].render_config(), base)
+            rung.provide_data()
+    elif seam.provide_data is not None:
+        with _user_error_as_prep(), _calling(
+                "provide_data", engine=task.engine, log=log):
+            seam.provide_data(rung.struct, pset[0].render_config(), base)
     token = stage_home(base, task, pset.stage).token
     jobs: List[Job] = []
     from ..paths import bench_container
@@ -940,7 +1070,10 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             # one calculation write to a single `<label>.molwatch.log`.  `prep`
             # holds the StageRef, so `prep` says the word; no config field carries
             # it, for either engine (`stages.md` § 1.1).
-            cfg = element.render_config()
+            # THE CONFIG THIS ELEMENT RENDERS FROM, as the kind's rung says
+            # (a lead's own label, the junction's state) -- identity for
+            # every kind with no steps of its own.
+            cfg = rung.configure(element.render_config())
             if element.is_trial:
                 # The deck's OWN identity line carries the trial label -- this,
                 # not the filename, is what keys SIESTA's warm files away from
@@ -972,44 +1105,46 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                                    + (f", stage_token={token}" if token else "")
                                    + (f", trial {element.label}"
                                       if element.is_trial else ""))
-            with _user_error_as_prep():
-                with _calling("spec_for", engine=task.engine,
-                              where=script, log=log):
-                    spec = seam.spec_for(struct, cfg,
-                                         stage_token=(token or None),
-                                         calculation=_render_kind,
-                                         **({"cell": _render_cell}
-                                            if _render_cell is not None else {}),
-                                         **({"vibration": _vibration_block(
-                                                pset.stage, cfg, _relaxed_by,
-                                                criterion=_criterion)}
-                                            if _finishes and not element.is_trial
-                                            else {}),
-                                         # THE RELAX STAGE'S RECORD reaches
-                                         # every deck at its geometry -- a
-                                         # trial's too, which carries no
-                                         # finish (V1.36).
-                                         **({"relaxed_by": _relaxed_by}
-                                            if _relaxed_by is not None
-                                            else {}),
-                                         # A TRIAL'S DECK NAMES ITS OWN
-                                         # LAUNCH (plan § 5w K12) -- the
-                                         # bench lane is SIESTA's alone.
-                                         **({"trial": _trial}
-                                            if _trial else {}))
-                _sc.prepare_deck(spec, struct, cfg, _jdir / script, log=log,
-                                 dest_dir=base, findings=findings)
+            # EVERY DECK THIS ELEMENT WRITES: the one in its own folder, and
+            # one in each folder of the rung's points, each written at its
+            # point -- the element's own at the first (`Rung.points`).
+            spec = None
+            for _out, _volts in ([(_jdir, rung.points[0][1] if rung.points
+                                   else None)] + list(rung.points)):
+                _out.mkdir(parents=True, exist_ok=True)
+                _at = rung.at_point(cfg, _volts)
+                with _user_error_as_prep():
+                    with _calling("spec_for", engine=task.engine,
+                                  where=script, log=log):
+                        _spec = seam.spec_for(
+                            rung.struct, _at, stage_token=(token or None),
+                            calculation=rung.render_kind,
+                            **rung.spec_extra(element, cfg),
+                            # A TRIAL'S DECK NAMES ITS OWN LAUNCH (plan § 5w
+                            # K12) -- the bench lane is SIESTA's alone.
+                            **({"trial": _trial} if _trial else {}))
+                    _sc.prepare_deck(_spec, rung.struct, _at, _out / script,
+                                     log=log, dest_dir=base,
+                                     findings=findings)
+                spec = spec or _spec
             if seam.sibling_artifacts is not None:
                 with _calling("sibling_artifacts", engine=task.engine,
                               where=script, log=log):
-                    seam.sibling_artifacts(struct, cfg, _jdir / script,
-                                           kind=_render_kind)
+                    seam.sibling_artifacts(rung.struct, cfg, _jdir / script,
+                                           kind=rung.render_kind)
             with _calling("label_of", engine=task.engine, log=log):
                 _label = seam.label_of(cfg)
-            _seed_trajectory_log(struct, cfg, _jdir, engine=task.engine,
-                                 label=_label, token=(token or None),
-                                 frame=spec.engine_frame,
-                                 relaxes=(_render_kind == "optimization"))
+            # THE PROGRESS LOG IS SEEDED WHERE ITS RUN WILL WRITE IT: beside
+            # each deck an attempt ladder runs -- the element's own, or for
+            # a scan each point's, never the stage folder above them, where
+            # nothing would ever write to it again.
+            for _seed_dir in ([d for d, _ in rung.points] or [_jdir]):
+                _seed_trajectory_log(rung.struct, cfg, _seed_dir,
+                                     engine=task.engine, label=_label,
+                                     token=(token or None),
+                                     frame=spec.engine_frame,
+                                     relaxes=(rung.render_kind
+                                              == "optimization"))
             log.step("what this deck's text PROMISES, kept")
             log.produced("sibling_artifacts",
                          "written" if seam.sibling_artifacts is not None
@@ -1020,16 +1155,15 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             # A BENCHMARK TRIAL IS NOT FINISHED: it measures how long a
             # setting takes under capped SCFs, and modes derived from those
             # would be a spectrum of nothing (`engines/vibration.md` § 5.5).
-            jobs.append(_job_for(element, script, task, pset.stage, seam,
-                                 base, log=log,
-                                 finish=(None if element.is_trial
-                                         else spec.finish)))
+            jobs.append(rung.job_facts(_job_for(
+                element, script, task, pset.stage, seam, base, log=log,
+                finish=(None if element.is_trial else spec.finish))))
     finally:
         REPORT_STREAM.reset(_scope)
     if _once.dropped:
         print(f"  (each warning shown once; {_once.dropped} repeat(s) "
-              f"across the other trials suppressed -- every trial's own "
-              f".validation.txt carries its full findings)",
+              f"across this prep's other decks suppressed -- every deck's "
+              f"own .validation.txt carries its full findings)",
               file=_sys.stderr)
 
     # ---- 4 + 5, and the record floor 3 leaves behind -------------------- #
@@ -1084,11 +1218,14 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     #
     # A record that does not state it was refused at step 1, before anything
     # was written (`machine.require_activation`) -- whichever machine it describes.
+    # A SCAN'S POINTS hold a deck each, so each gets the job's wrapper too.
+    _points = [d for d, _ in rung.points]
     dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
                        record_dir=record_dir, log=log,
                        machine_record=environment,
                        render=(None if kind == "sweep"
-                               else {j.name for j in jobs}))
+                               else {j.name for j in jobs}),
+                       points={j.name: _points for j in jobs})
 
     # ---- THE ATTEMPT, because PREP is what sets a stage up to run ------- #
     #
@@ -1118,7 +1255,12 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # § 1.5a gave trials attempts.  Only the ladder rung was left half-done --
     # the asymmetry was inside this function, not between two surfaces.
     if kind == "ladder" and stage:
-        reports = _open_attempts(js, base, stage, continue_from=continue_from,
+        # ONE ATTEMPT LADDER PER POINT for a scan (`04_device/v0.2/run-<n>`,
+        # layout ruled 2026-08-29), because the transmission at v reads the
+        # device at v; the stage's own folder otherwise.
+        reports = _open_attempts(js, base, stage,
+                                 containers=_points or (None,),
+                                 continue_from=continue_from,
                                  cold=cold, named=named)
         if opened is not None:
             opened.extend(reports)
@@ -1339,17 +1481,17 @@ def _resolve_transport(base, task, stage: str, allocation,
     return element
 
 
-def _transport_rung(base, task, stage: str, composed, allocation, *,
-                    pins=None, log=None):
-    """What one transport rung's decks render from --
-    ``(struct, config, state, element)``.
+def _transport_parts(task, stage: str, composed, config):
+    """``(struct, configure, state)`` of one transport rung: the structure its
+    decks describe, the config they render from, and the junction's
+    electronic state.
 
-    ONE DOOR, asked by `_prep_transport` to write the rung's decks and by
-    :func:`gather_transport_inputs` to render an upstream rung NOW, from the
-    current template, junction and run card (plan § 5w K11, T-F30): the
-    gather compared an upstream attempt with that stage folder's LAST render,
-    which a change since did not touch, so a stale result was carried
-    forward and recorded as consistent.
+    ONE DOOR, asked by the conductor through the rung
+    (:func:`_transport_rung_of`) and by the gather when it renders an
+    upstream rung NOW (:func:`_transport_rung`, plan § 5w K11, T-F30): the
+    gather compared an upstream attempt with that stage folder's LAST
+    render, which a change since did not touch, so a stale result was
+    carried forward and recorded as consistent.
     """
     from ..transport.transiesta import electrode_hs_stem
     # (i) THE STRUCTURE.  Two of them, out of the one cited file: the
@@ -1369,17 +1511,9 @@ def _transport_rung(base, task, stage: str, composed, allocation, *,
         # partition the NEGF block is built from.
         struct, label = composed.sorted.structure, task.label
 
-    # (iii) THE CONFIG: the template ⊕ this rung's overrides ⊕ its run card,
-    # with provenance recording which source set each value.
-    element = _resolve_transport(base, task, stage, allocation, pins=pins,
-                                 log=log)
-    # WHAT THE DECK WRITER IS HANDED is values ⊕ the allocation-marked fields
-    # (`ResolvedConfig.render_config`), the same object every other kind's
-    # emitter gets.  Rendering from bare `.values` left the emitter blind to
-    # the rank count and the memory ceiling it is supposed to record.
-    config = element.render_config()
-    if label != task.label:
-        config = dataclasses.replace(config, system_label=label)
+    def labelled(cfg):
+        return (cfg if label == task.label
+                else dataclasses.replace(cfg, system_label=label))
     # THE ELECTRONIC STATE BELONGS TO THE CALCULATION (ES1,
     # `science/chemistry-correctness.md` § 2a) -- and on a transport ladder
     # that is physics, not bookkeeping: TranSIESTA joins the leads'
@@ -1394,7 +1528,7 @@ def _transport_rung(base, task, stage: str, composed, allocation, *,
     # from, is handed to the deck writer, which says so in every rung
     # (§ 2a.5).  Folded alone, the rungs read it as *stated*.
     from ..electronic_state import electronic_state
-    state = electronic_state(composed.sorted.structure, config,
+    state = electronic_state(composed.sorted.structure, labelled(config),
                              kind="transport")
     # A STATE TRANSIESTA CANNOT RUN is refused HERE, on the junction, where
     # each value still says where it came from (`template.md` § 6.3a, ES4):
@@ -1402,15 +1536,99 @@ def _transport_rung(base, task, stage: str, composed, allocation, *,
     # recorded or detected value *stated*.
     from ..validation.chemistry import check_electronic_state
     refused = [i for i in check_electronic_state(
-        composed.sorted.structure, config, calculation="transport")
+        composed.sorted.structure, labelled(config), calculation="transport")
         if i.severity == "error"]
     if refused:
         raise PrepError(refused[0].message)
-    config = dataclasses.replace(
-        config,
-        spin_treatment=state.spin_treatment.value,
-        unpaired_electrons=state.unpaired_electrons.value)
-    return struct, config, state, element
+
+    def configure(cfg):
+        return dataclasses.replace(
+            labelled(cfg),
+            spin_treatment=state.spin_treatment.value,
+            unpaired_electrons=state.unpaired_electrons.value)
+    return struct, configure, state
+
+
+def _transport_rung(base, task, stage: str, composed, allocation, *,
+                    pins=None, log=None):
+    """``(struct, config, state, element)`` of one transport rung, resolved
+    NOW from the current template, junction and run card -- what the gather
+    renders an upstream rung from (:func:`_rung_deck_now`): the template ⊕
+    the rung's overrides ⊕ its run card (:func:`_resolve_transport`), then
+    the parts the conductor's rung reads too (:func:`_transport_parts`)."""
+    element = _resolve_transport(base, task, stage, allocation, pins=pins,
+                                 log=log)
+    struct, configure, state = _transport_parts(task, stage, composed,
+                                                element.render_config())
+    return struct, configure(element.render_config()), state, element
+
+
+def _at_bias(cfg, volts):
+    """A transport deck's config at its bias point: the point is the rung's
+    answer, the one `role` value the catalogue does not hold
+    (`engines/template.md` § 6.4) -- the list is the bias's only home
+    (`engines/transport.md` § 2a.10), and a deck with no point keeps the
+    0 V `resolve` laid on."""
+    return (cfg if volts is None
+            else dataclasses.replace(cfg, bias_voltage_v=float(volts)))
+
+
+def _composed_for_prep(base, task):
+    """The junction a transport calculation's rungs describe: the record
+    beside ``task.json`` when it is for THIS citation (the folder travels,
+    `project-layout.md` § 2.1), else composed afresh from the projects tree,
+    its record written -- and READ BACK from it."""
+    from ..atom_permutation import PermutationError
+    from ..projects import find_projects_root
+    from ..transport.compose import (ComposeError, compose_junction,
+                                     load_compose_record,
+                                     write_compose_record)
+    from ..transport.sort import SortError
+    citation = task.slots["junction"]
+    try:
+        # The tree root is resolved BEFORE the record is loaded: the
+        # reload re-runs the § 3 lead gates, and their principal-layer
+        # half reads the CITED directory's own .ion files, which the
+        # travelled folder does not carry.  Absent (the folder moved
+        # out of its tree), that half degrades to UNVERIFIED honestly.
+        root = find_projects_root(base)
+        why: list = []
+        composed = load_compose_record(base, citation=citation,
+                                       tree_root=root, why=why)
+        if composed is not None:
+            return composed
+        if root is None:
+            # NAME WHICH OF THE THREE: no record, one composed from another
+            # citation (a slot re-pointed after a re-relaxation), or one
+            # that does not read -- with the folder outside any tree, so
+            # nothing can be composed afresh.
+            raise PrepError(
+                f"this transport calculation cannot be composed here: "
+                f"{why[0] if why else 'there is no usable record'}.  "
+                f"And {base} is not inside a projects tree, so the "
+                f"citation {citation!r} cannot be resolved to compose "
+                f"afresh.  Prep once inside the tree that holds the "
+                f"cited junction -- the record then travels with the "
+                f"folder (archive/2026-09-01-transport-design.md 4.1).")
+        write_compose_record(base, compose_junction(citation, tree_root=root))
+        # RENDER FROM THE RECORD, on this prep as on every later one.  The
+        # fresh composition is the cited `.XV` at full float precision; the
+        # record is the codec's text of it, and every later prep -- the
+        # other rungs, a re-prep -- reads the record.  Rendering this one
+        # from the fresh copy gave two preps of the SAME calculation two
+        # sets of numbers ~1e-10 apart (measured 2026-09-25 on the
+        # ENGINE-OFFSET record), and the gather's `same_calculation`
+        # compares them as text: a value near a rounding boundary then
+        # flips, and a good seed is refused.  One source, not rounding luck.
+        composed = load_compose_record(base, citation=citation,
+                                       tree_root=root, why=why)
+        if composed is None:
+            raise PrepError(
+                f"the composed junction was written and could not be "
+                f"read back: {why[-1] if why else 'no reason given'}")
+        return composed
+    except (ComposeError, SortError, PermutationError) as exc:
+        raise PrepError(str(exc)) from exc
 
 
 def _transport_spec(task, stage: str, struct, config, state, volts=None, *,
@@ -1419,8 +1637,7 @@ def _transport_spec(task, stage: str, struct, config, state, volts=None, *,
     ``volts`` is given (the point is the rung's answer, `engines/template.md`
     § 6.4; a single-bias rung keeps the 0 V `resolve` laid on)."""
     from ..siesta.input import spec_for as _siesta_spec_for
-    cfg = (config if volts is None else
-           dataclasses.replace(config, bias_voltage_v=float(volts)))
+    cfg = _at_bias(config, volts)
     with _user_error_as_prep():
         try:
             spec = _siesta_spec_for(struct, cfg,
@@ -1434,324 +1651,6 @@ def _transport_spec(task, stage: str, struct, config, state, volts=None, *,
             # deliberately, so a TypeError still looks like the bug it is.
             raise PrepError(str(exc)) from exc
     return spec, cfg
-
-
-def _prep_transport(base_dir, stage: Optional[str] = None, *,
-                    allocation=None, env: str = None,
-                    emit_sbatch: bool = True,
-                    sweep=None, pins=None, translation=None,
-                    target: Optional[str] = None,
-                    chosen=None,
-                    opened: Optional[list] = None,
-                    findings: Optional[list] = None,
-                    continue_from: Optional[str] = None,
-                    cold: bool = False,
-                    named: bool = True) -> List[Path]:
-    """`prep` for the transport COMPOSITE — one rung of the ladder.
-
-    **The same five steps every kind takes**, with one step of its own.
-    Transport's genuinely new input is the CITATION: a finished relaxation
-    whose junction this calculation is built from. Composing it — copy,
-    sort, gate, extract the leads — is step 3a below and belongs to this
-    arm. Everything else is the shared machinery, un-forked::
-
-        1  the machine            `machine.machine_record`, then `machine.set_machine`
-        2  the description        `read_task`, and WHICH rung
-        3a the citation           compose  (transport's own)
-        3b the data files         the pseudos travel with the citation
-        3c the deck(s)            resolve -> spec_for -> prepare_deck
-        4  the wrappers           `prep_jobset`
-        5  the run directories    `prep_jobset`
-
-    Step 3c is the framework's, not this module's, and that is the point:
-    `engines/transport.md` § 3.2 measured what it cost when it was not —
-    a deck of 13 keywords against a template offering 45, with no
-    validation report and no check gate. Every rung renders through
-    `spec_for` → `DeckSpec` → `prepare_deck` now.
-    """
-    from ..task import FILENAME as TASK_FILENAME
-    from ..task import read_task
-    from ..transport.compose import (ComposeError, compose_junction,
-                                     load_compose_record,
-                                     write_compose_record)
-    from ..atom_permutation import PermutationError
-    from ..transport.sort import SortError
-    from ..transport.stages import warm_declaration
-    from ..runwrap import write_run_wrapper
-    from ..paths import Shape
-
-    base = Path(base_dir).resolve()
-    if not base.is_dir():
-        raise PrepError(f"calculation folder not found: {base}")
-    desc = base / TASK_FILENAME
-    if not desc.is_file():
-        raise PrepError(
-            f"no {TASK_FILENAME} in {base}. `prep` turns a DESCRIPTION into a "
-            f"runnable directory; write one first with `jobset init`.")
-    # A TRANSPORT RUNG TAKES ITS RUN CARD as every rung does (`stages.md`
-    # § 6.8d, plan § 5w K5, T-F3): the card's settings arrive as ``pins``
-    # and its machine items as ``chosen``.  Every pin was refused here until
-    # 2026-09-30, so a `use_gpu` the run card offered on a transport rung
-    # stopped the prep.  What it does not take is a sweep.
-    if sweep is not None or translation is not None:
-        raise PrepError(
-            "a transport calculation takes no parameter sweep or "
-            "translation.  Its parameters come from its own template and "
-            "each rung's run card, and its one axis is the bias -- a list "
-            "in task.json, rendered as one deck per point "
-            "(engines/transport.md 2a.10: single bias is the degenerate "
-            "case of that axis, one point at zero).")
-
-    # ---- 1. resolve the machine ---------------------------------------- #
-    # READ, CHECK, THEN WRITE.  A record that does not state how to enter the
-    # named machine's environment is refused before anything is on disk --
-    # the snapshot included, or the remedy's re-copied record would then
-    # contradict it (W52, and its fix's review).
-    environment = machine_record(base, target)
-    require_activation(target, environment, base=base)
-    set_machine(base, target)          # step 1 proper: the snapshot
-
-    # ---- 2. the description, and WHICH rung ---------------------------- #
-    task = read_task(desc)
-    if not stage:
-        from .commands import name_a_stage
-        from .materialize import described_refs
-        raise PrepError(
-            "a transport prep names its rung: the composite's stages render "
-            "separately, in dependency order (engines/transport.md); "
-            + name_a_stage("prep", "run", described_refs(base, task), base=base))
-    token = stage_home(base, task, stage).token          # refuses an unknown stage by name
-
-    # THE PIPELINE LOG (TR4).  This arm printed "not wired for the transport
-    # arm yet" until 2026-09-16 -- honest, and a documented no-op is still a
-    # no-op.  What made it possible was TR1: a transport calculation has a
-    # template now, so there IS a resolve step whose inputs and outputs are
-    # worth recording.  Opened here rather than at step 1 because it is named
-    # for the rung, and the rung is not known until the description is read.
-    from ..pipeline_log import PipelineLog as _PL
-    _tlog = _PL.open(base, label=task.label, token=token,
-                     engine=task.engine, shape=task.shape)
-    _tlog.phase("STEP 1 · MACHINE — where this job will run")
-    _tlog.received("calculation", str(base))
-    _tlog.received(TASK_FILENAME,
-                   f"{task.label} · transport · {task.shape} · "
-                   f"{len(task.stages or ())} stage(s)")
-    for _g, _l in _environment_rows(environment):
-        _tlog.produced(_g, _l)
-    # A STAGE TURNED OFF never reaches here: the entry refuses it first
-    # (`task.stage_disabled`, `prep_stage`) -- the seed is skippable by
-    # design (archive/2026-09-01-transport-design.md, ruling Q4).
-
-    # ---- 3a. compose the junction (or load the travelled copy) --------- #
-    # The record beside task.json answers first (the folder travels;
-    # `project-layout.md` § 2.1) -- but only for THIS citation.  A
-    # missing or re-pointed record composes fresh from the tree.
-    citation = task.slots["junction"]
-    try:
-        # The tree root is resolved BEFORE the record is loaded: the
-        # reload re-runs the § 3 lead gates, and their principal-layer
-        # half reads the CITED directory's own .ion files, which the
-        # travelled folder does not carry.  Absent (the folder moved
-        # out of its tree), that half degrades to UNVERIFIED honestly.
-        from ..projects import find_projects_root
-        root = find_projects_root(base)
-        why: list = []
-        composed = load_compose_record(base, citation=citation,
-                                       tree_root=root, why=why)
-        if composed is None:
-            if root is None:
-                # NAME WHICH OF THE THREE.  This asserted the first --
-                # "the record is not beside task.json" -- for all of them,
-                # and the likeliest here is the second: a slot re-pointed
-                # after a re-relaxation, prepped on a machine outside the
-                # tree, with the record sitting right there composed from
-                # the previous attempt.
-                raise PrepError(
-                    f"this transport calculation cannot be composed here: "
-                    f"{why[0] if why else 'there is no usable record'}.  "
-                    f"And {base} is not inside a projects tree, so the "
-                    f"citation {citation!r} cannot be resolved to compose "
-                    f"afresh.  Prep once inside the tree that holds the "
-                    f"cited junction -- the record then travels with the "
-                    f"folder (archive/2026-09-01-transport-design.md 4.1).")
-            composed = compose_junction(citation, tree_root=root)
-            write_compose_record(base, composed)
-            # RENDER FROM THE RECORD, on this prep as on every later one.  The
-            # fresh composition is the cited `.XV` at full float precision;
-            # the record is the codec's text of it, and every later prep --
-            # the other rungs, a re-prep -- reads the record.  Rendering this
-            # one from the fresh copy gave two preps of the SAME calculation
-            # two sets of numbers ~1e-10 apart (measured 2026-09-25 on the
-            # ENGINE-OFFSET record), and the gather's `same_calculation`
-            # compares them as text: a value near a rounding boundary then
-            # flips, and a good seed is refused.  One source, not rounding luck.
-            composed = load_compose_record(base, citation=citation,
-                                           tree_root=root, why=why)
-            if composed is None:
-                raise PrepError(
-                    f"the composed junction was written and could not be "
-                    f"read back: {why[-1] if why else 'no reason given'}")
-    except (ComposeError, SortError, PermutationError) as exc:
-        raise PrepError(str(exc)) from exc
-
-    # ---- 3b. render this rung's deck(s) -------------------------------- #
-    #
-    # ONE PATH, and every rung takes it:
-    #
-    #     the template ⊕ this rung's overrides  ->  resolve       -> config
-    #     the structure this rung describes     ->  spec_for      -> DeckSpec
-    #     the DeckSpec                          ->  prepare_deck  -> the .fdf
-    #
-    # Nothing below floor 3 asks which rung this is.  What differs between
-    # rungs is DATA -- WHICH structure it describes (i), and which layout
-    # its shape selects (`transport/deck.py::SHAPE_OF_RUNG`) -- and both are
-    # looked up rather than decided here.
-    shape = Shape.named(task.shape)
-    stage_dir = (base / shape.stage_dir(token)) if token else base
-    script = _rf(task.label, ".fdf", token or None)
-
-    # (ii) THE ALLOCATION, folded BEFORE the resolve and not after.
-    #
-    # The description's own queue/wall/memory ask and its reporting policy are
-    # part of the allocation `resolve` is handed -- that is the order the
-    # shared arm takes, and the reason is that `resolve` FOLDS RIDERS ONTO
-    # WHAT IT IS GIVEN (`_resolve_transport`'s own note).  Folding afterwards
-    # meant resolve saw a bare `Resources()` and the element's answer was
-    # thrown away, so the two mistakes cancelled and neither was visible.
-    allocation = _with_notify(
-        _under_description(allocation, task.allocation, chosen), task.notify)
-
-    # (i) + (iii) THE RUNG -- its structure, its config and the junction's
-    # electronic state, through the one door the gather asks too when it
-    # renders an upstream rung now (`_transport_rung`, plan § 5w K11).
-    struct, config, _junction_state, element = _transport_rung(
-        base, task, stage, composed, allocation or Resources(), pins=pins,
-        log=_tlog)
-    res = element.resources
-
-    # The pseudopotentials travel with the citation, and the screening runs
-    # against THIS config -- the one the deck renders from -- because what
-    # it checks is whether each file's XC family matches the functional the
-    # run will ask for.  Screening against a different config would be
-    # comparing the files to a calculation nobody is doing.
-    _transport_provide_pseudos(composed.sorted.structure, config, base,
-                               citation)
-
-    # (iv) THE DECKS.  A bias scan renders one per point, a single-bias
-    # calculation one -- and the stage directory always holds the FIRST
-    # point's, because that is where every generic reader looks for a job's
-    # script and § 2a.11 documents it as "the same deck v0/ holds".
-    #
-    # § 2a.10: *single bias is the degenerate case of the bias axis -- one
-    # point, at zero, where every list starts.*  One mechanism, so one loop:
-    # the description's list is the bias's only home, and each point's deck
-    # is written at that point (the rung fixes it, `engines/template.md`
-    # § 6.4); a single-bias rung renders the 0 V `resolve` laid on.
-    # ONE SPELLING of where a bias point lives, and of which rungs have one:
-    # the door every reader of a rung's attempts asks (`rung_containers`,
-    # `engines/transport.md` § 2a.11; plan § 5w K10).  Three steps below
-    # need it -- the deck, the wrapper and the attempt ladder.
-    from ..transport.stages import rung_containers
-    point_dirs = [(d, v) for d, v in rung_containers(base, task, stage)
-                  if v is not None]
-    points = tuple(v for _d, v in point_dirs)
-
-    for out_dir, volts in ([(stage_dir, points[0] if points else None)]
-                           + point_dirs):
-        out_dir.mkdir(parents=True, exist_ok=True)
-        # THE POINT IS THE RUNG'S ANSWER -- the one `role` answer the
-        # catalogue does not hold (`engines/template.md` § 6.4): the list is
-        # the bias's only home (`engines/transport.md` § 2a.10), and a
-        # single-bias rung keeps the answer `resolve` laid on, 0 V.
-        spec, cfg = _transport_spec(task, stage, struct, config,
-                                    _junction_state, volts, base=base)
-        with _user_error_as_prep():
-            _sc.prepare_deck(spec, struct, cfg, out_dir / script,
-                             log=_tlog, dest_dir=base, findings=findings)
-
-    # ---- 4 + 5, the shared tail ---------------------------------------- #
-    if stage == "transmission":
-        # TBtrans post-processes the device run from its own deck (the
-        # device's and the transmission's are two texts since 2026-09-29,
-        # `engines/transport.md` § 6.1b); which binary runs it is not
-        # read off the deck -- it rides the allocation road
-        # (`model.Resources.program`) into the wrapper.
-        res = dataclasses.replace(res, program="tbtrans")
-    job = Job(name=stage, script=script, resources=res,
-              warm=warm_declaration(stage, task.label, base),
-              resumes=warm_list(str(task.engine), _rung_kind(task, stage),
-                                base).resumes)
-
-    # The activation the wrappers below carry was checked at step 1, before
-    # anything was written: this check stood after the per-point wrapper
-    # loop until 2026-09-16, and then here -- after the decks, the compose
-    # record and the pseudos -- until 2026-10-01 (W52), while its own premise
-    # (`machine.require_activation`) is that no such file may exist.
-
-    # Each bias point's directory gets its own wrapper, beside its own deck
-    # -- the same render `prep_jobset` gives the stage directory, through
-    # the same one writer, so a point runs exactly as the stage would alone
-    # (the chain walker only cd's and bashes).
-    for point_dir, _v in point_dirs:
-        with _user_error_as_prep():
-            write_run_wrapper(point_dir / script,
-                              label=task.label,     # G7: told, not read
-                              n_atoms=len(struct.elements),
-                              resources=res, env=env,
-                              emit_sbatch=emit_sbatch, project_dir=base,
-                              machine_record=environment,
-                              # the job's own facts, as the ladder's
-                              # wrapper is given them (`prep_jobset`)
-                              finish=job.finish, resumes=job.resumes,
-                              warm=warm_list(str(task.engine), None,
-                                             base).suffixes)
-    js = JobSet(name=task.label, engine=task.engine, kind="ladder",
-                shared=_siesta_shared_package(base), jobs=[job])
-    js = _merge_run_jobset(base / JOBSET_FILENAME, js,
-                           ladder=frozenset(s.name for s in task.stages))
-    js.write(base / JOBSET_FILENAME)
-    dirs = prep_jobset(js, base, env=env, emit_sbatch=emit_sbatch,
-                       record_dir=base, log=_tlog, machine_record=environment,
-                       render={job.name})
-    # STEP 6, through the SAME door the shared arm uses.  `prep` is what sets
-    # a stage up to run: `_launch_dir` refuses a hierarchical stage with no
-    # attempt open precisely because opening one is not `launch`'s job, and
-    # this arm ended at `prep_jobset` until 2026-09-16 -- so a transport prep
-    # from the browser (`web/blueprints/build.py` called `prep_calculation`
-    # directly then; it calls `prep_stage` now) reported success and handed back a folder the launcher would
-    # not take, naming the command that had just run.  The CLI compensated
-    # and no other caller could.
-    #
-    # A scan's containers are this arm's one genuine difference -- one attempt
-    # ladder per point (`04_device/v0.2/run-<n>`), because the transmission at
-    # v reads the device at v -- and they are DATA on the call rather than a
-    # shape the helper re-derives.
-    #
-    # THE DAG GATHER IS NOT HERE, deliberately -- and it is not missing
-    # either.  `gather_transport_inputs` refuses an upstream that has not
-    # CONCLUDED, so calling it here would make `prep run device` fail until
-    # the leads had actually run, and you could no longer render the device
-    # deck to READ it before spending the queue.  That is the split
-    # `prepare_attempt` names in its own words ("preparing is still design and
-    # the split from starting is what gives you somewhere to look before
-    # committing cluster time"), and nineteen tests in `test_transport_prep`
-    # read a device deck without running a lead.  They are right to.
-    #
-    # It is a step of its own, `prep.gather_for_stage`, taken by the one
-    # entry (`prep_stage`) after this returns -- so both doors take it.  It
-    # ran on the CLI road alone until 2026-09-16, which was
-    # survivable only while this arm opened no attempt -- `launch` refused the
-    # folder by name and that refusal was accidentally the guard.  Opening the
-    # attempt (above, the same day) removed the symptom and left the gap, so a
-    # device job could reach the node and die for want of an electrode `.TSHS`.
-    reports = _open_attempts(js, base, stage,
-                             containers=[d for d, _ in point_dirs] or (None,),
-                             continue_from=continue_from, cold=cold,
-                             named=named)
-    if opened is not None:
-        opened.extend(reports)
-    _tlog.close()
-    return dirs
 
 
 def gather_transport_inputs(base_dir, task, stage: str,
@@ -1877,7 +1776,7 @@ def gather_transport_inputs(base_dir, task, stage: str,
 
 def _composed_junction(base, task):
     """The junction this calculation is composed from -- its record beside
-    ``task.json``, for the cited junction (`_prep_transport` step 3a writes
+    ``task.json``, for the cited junction (`_composed_for_prep` writes
     it before any rung's deck)."""
     from ..projects import find_projects_root
     from ..transport.compose import load_compose_record

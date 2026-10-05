@@ -1501,15 +1501,14 @@ There is deliberately almost none, and that is the contract:
 
 `write_script` performs the merge, and every deck-writing path that goes
 through `prepare_deck` reaches it: both engines' CLI entry points, `jobset
-prep`'s SIESTA/PySCF arm, and the wrapper writer. `web/blueprints/files.py`
+prep` for every kind, and the wrapper writer. `web/blueprints/files.py`
 additionally chains `merge_user_custom_from_target` on a fresh regenerate.
 
-**TRANSPORT DOES NOT.** `prep` branches at `jobset/prep.py:777` to
-`_prep_transport`, which renders through `transport/stages.py::render_stage_deck`
-and writes with a plain `write_text` (`prep.py:1322`, and once per bias point at
-`:1331`) — no `prepare_deck`, no `write_script`, no merge. And there is nothing
-to merge: **`molbuilder/transport/` never emits the zone at all**, so a
-TranSIESTA stage deck has no USER-CUSTOM section to type into.
+**Transport too.** Its rungs render through `spec_for` and `prepare_deck`
+like every other kind's, so the framework emits the zone in every TranSIESTA
+deck and `write_script` keeps it *(since 2026-09-16, TR4; before that its arm
+wrote plain text with no zone, and this paragraph said so until 2026-10-05,
+when that arm went — `script-preparation.md` § 3.0)*.
 
 | path | your text |
 |---|---|
@@ -1517,7 +1516,7 @@ TranSIESTA stage deck has no USER-CUSTOM section to type into.
 | the web Build tab, edit-save | **preserved** — the merge is skipped on purpose, because you are committing your own text and a merge would undo edits *inside* the zone |
 | `jobset prep` (SIESTA / PySCF), re-prepping over an existing deck | **preserved** — `prepare_deck` → `write_script` |
 | `jobset prep` (SIESTA / PySCF), into a directory with no previous deck | **empty** — there is nothing to read back |
-| `jobset prep` **(transport)** | **no zone exists** — and if you add the markers by hand, the next prep overwrites the file wholesale |
+| `jobset prep` **(transport)** | **preserved** — the same `prepare_deck` → `write_script` |
 
 > **This table listed `prep` and the CLI as LOSING the text until 2026-09-05,
 > and its first correction was wrong in the other direction.** The original

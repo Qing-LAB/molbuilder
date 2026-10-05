@@ -210,9 +210,23 @@ conductor:
 | ***the writing*** | every file of the plan written, the attempt opened, `job-set.json` last | — |
 
 **Transport is not a second conductor.** Its five rungs are prepped by these
-steps, with its four optional ones; until 2026-10-03 it had its own arm, a copy
+steps, with its four optional ones; until 2026-10-05 it had its own arm, a copy
 of the steps' opening and closing that had drifted from them — no progress
 seed, no once-per-line filter, no provenance in its log, its job built by hand.
+
+**What a kind declares is one record, its rung** (`jobset/prep.py`, `Rung`,
+built by the kind's entry in `RUNGS`, keyed by engine and kind): the structure
+step's answer, which every step after it reads. It says what the decks
+describe and which program each deck is; the config each element renders from
+(a lead's own label, the junction's electronic state folded in); what else the
+engine's `spec_for` is told (a vibration's block and the relaxation it builds
+on, the cell; the junction's state); the folders that hold a deck beside the
+stage's own — a scan's points — each of which gets its wrapper and its own
+attempt ladder; where the data files come from when the engine's library is
+not their source (the citation); and what its job carries forward and runs (a
+transport rung's restart files, the transmission's program). A kind with no
+entry is a calculation of its described structure, one deck per element. The
+conductor reads the record and never asks which kind it is in.
 
 **The pipeline log is the plan's own account** (§ 4.5): every step adds its
 lines as it decides, and the log is written with the rest — for every prep,

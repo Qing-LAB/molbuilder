@@ -15,7 +15,8 @@ actually ran is the truth about a result; user ruling 2026-08-28), and a
 cited pair's recorded contract.
 
 Pure composition: everything here reads the tree and returns objects;
-the caller (prep's transport arm, P4b) owns what lands on disk where.
+the caller (prep, `jobset.prep._composed_for_prep`) owns what lands on
+disk where.
 """
 from __future__ import annotations
 

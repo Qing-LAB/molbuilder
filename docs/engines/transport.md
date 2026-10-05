@@ -1469,7 +1469,7 @@ molbuilder jobset summarize run        # -> <label>.transport.json + the I-V tab
 | Command | Does | Code |
 |---|---|---|
 | `jobset init --calculation transport` | describe the composite: the junction citation, the bias list, the five fixed stages | `jobset/_cli.py::_init_transport` |
-| `jobset prep run <stage>` | compose (sort · gates · extract) on first contact, then render THIS rung's deck + gather its inputs | `jobset/prep.py::_prep_transport` |
+| `jobset prep run <stage>` | compose (sort · gates · extract) on first contact, then render THIS rung's deck + gather its inputs | `jobset/prep.py::prep_calculation`, the rung `_transport_rung_of` |
 | `jobset launch run <stage>` | the ordinary launch; a bias scan's device/transmission go as one walker job | `jobset/submit.py::submit_transport_chain` |
 | `jobset summarize run` | parse TBtrans output → `<label>.transport.json`, print the I–V table | `transport/record.py` |
 | ~~`transport electrode`~~ · ~~`transport preflight`~~ | **DELETED 2026-09-17** with the `transport` verb group — the hand-assembly pair. A lead is derived from the citation at prep, and § 5's invariants are held by construction or by the validation pass |
@@ -1904,8 +1904,10 @@ cannot be done first.** Each line is falsifiable.
    — it is the one genuinely new input model — and hands to `resolve`, so a
    transport run has a `ParameterSet` with provenance and `--pipeline-log`
    stops being a no-op. **✅ DONE 2026-09-16** (§ 2a.14): it prints the resolve
-   step and every value's source. The arm still conducts the compose and the
-   gather, which are transport's own and belong to it.
+   step and every value's source. **There is no arm since 2026-10-05**: the
+   compose, the electronic state and the points are the transport rung's
+   own steps in prep's one table, and the gather the entry's
+   ([`script-preparation.md`](?doc=execution/script-preparation.md) § 3.0).
 
 **Floor 2 — hold what the person asked for.**
 

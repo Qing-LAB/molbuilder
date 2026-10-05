@@ -204,8 +204,8 @@ question kept being re-derived, and re-derived differently each time.*
 > comparison is meaningful. Nothing else licenses sweeping a parameter.
 
 > **G-4 — How the engine *consumes* it never leaves that engine.** SIESTA emits
-> `Diag.ELPA.GPU` and gates it on an ELPA solver (§ 7); PySCF emits
-> `mf = mf.to_gpu()` behind a helper. Neither spelling reaches any shared
+> `Diag.ELPA.GPU` and gates it on an ELPA solver (§ 7); PySCF's script calls
+> `mf.to_gpu()` through molbuilder's `runtime_info.to_gpu`. Neither spelling reaches any shared
 > layer — which is what `kind`'s vocabulary means by *the engine's own keyword*.
 
 > **G-5 — Asked for and not available means the run STOPS. There is no CPU

@@ -194,7 +194,7 @@ engine = "pyscf"
 run = { use_gpu = true, gpu_count = 2, threads = 4 }
 header = ["#SBATCH -n 1", "#SBATCH -c 4", "#SBATCH -p gpu",
           "#SBATCH --gres=gpu:2"]
-deck = ["to_gpu()"]
+deck = ["mf = _mb_to_gpu(mf) if _USING_GPU else mf"]
 
 [[case]]
 name = "use_gpu in the template and the count on the card"

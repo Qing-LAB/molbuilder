@@ -2313,13 +2313,13 @@ than a special case:**
 > **Where the read-back merge actually runs today, counted rather than
 > assumed (re-counted 2026-08-19; re-confirmed 2026-09-05, and
 > `job-contracts.md` § 3.5 -- which said `prep` and the CLI LOSE the
-> text -- was corrected to match this).  ONE ARM IS STILL MISSING
-> below: `prep`'s TRANSPORT branch (`jobset/prep.py:777` ->
-> `_prep_transport`) reaches neither `prepare_deck` nor
-> `write_script`, and `molbuilder/transport/` never emits the zone at
-> all -- so a TranSIESTA stage deck has no USER-CUSTOM section.
-> "Every generated file goes through it" counts callers of one
-> function, which answers who calls it, not what happens to a deck.** The merge lives in `write_script`, and
+> text -- was corrected to match this).  Transport's rungs reach it too:
+> they render through `prepare_deck` like every kind's (since
+> 2026-09-16), and since 2026-10-05 its prep is the same steps
+> (`script-preparation.md` § 3.0).  This note said one arm was still
+> missing until then -- "every generated file goes through it" counts
+> callers of one function, which answers who calls it, not what happens
+> to a deck.** The merge lives in `write_script`, and
 > since the seam migration **every generated file goes through it** —
 > `prepare_deck` writes each deck that way (so every `jobset prep` preserves
 > the zone — and `molbuilder pyscf`, named here until its deletion on

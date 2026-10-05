@@ -168,9 +168,4 @@ def require_activation(target: Optional[str], environment,
         f"is edited by hand.")
 
 
-# --------------------------------------------------------------------- #
-#  The transport arm — the composite's prep (archive/2026-09-01-transport-design.md § 4.2)  #
-# --------------------------------------------------------------------- #
-
-
 __all__ = ["set_machine", "machine_record", "require_activation"]
