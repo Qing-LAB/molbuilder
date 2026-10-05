@@ -15,9 +15,6 @@ from pathlib import Path
 import pytest
 
 from molbuilder.siesta.makov_payne import (
-    MADELUNG_CUBIC,
-    BOHR_ANGSTROM,
-    HARTREE_EV,
     compute_correction,
     effective_L,
     render_correction_script,
@@ -114,59 +111,9 @@ class TestScriptGeneration:
         assert "NET_CHARGE   = -2" in s
         assert "DEFAULT_EPS  = 4.0" in s
 
-    def test_script_runs_on_synthetic_out(self):
-        """End-to-end: write a tiny fake SIESTA .out with a known
-        E_KS + LatticeVectors block, run the script, parse its
-        stdout, verify the corrected energy is E_raw - ΔE_MP."""
-        s = render_correction_script(system_label="job", q=1)
-        with tempfile.TemporaryDirectory() as d:
-            d = Path(d)
-            (d / "makov_payne_correction.py").write_text(s)
-            # Fake .out with the two lines the script needs.
-            fake_out = (
-                "siesta: ----- Final results -----\n"
-                "siesta: E_KS(eV) =       -123.4567\n"
-                "outcell: Unit cell vectors (Ang):\n"
-                "       15.0000  0.0000  0.0000\n"
-                "        0.0000 15.0000  0.0000\n"
-                "        0.0000  0.0000 15.0000\n"
-            )
-            (d / "job.out").write_text(fake_out)
-            result = subprocess.run(
-                [sys.executable, "makov_payne_correction.py"],
-                cwd=str(d),
-                capture_output=True, text=True, timeout=10,
-            )
-            assert result.returncode == 0, (
-                "script failed:\nstdout:\n" + result.stdout
-                + "\nstderr:\n" + result.stderr
-            )
-            out = result.stdout
-            assert "E_total (raw, eV)" in out
-            assert "E_total (corrected, eV)" in out
-
-            def _val(tag):
-                ln = [l for l in out.splitlines() if tag in l]
-                assert ln, f"expected a {tag!r} line in:\n{out}"
-                return float(ln[0].split("=")[-1].strip())
-
-            raw       = _val("E_total (raw")
-            correction = _val("DeltaE_MP")
-            corrected = _val("E_total (corrected")
-
-            # THE DIRECTION, which is the defect that shipped.  Until 2026-07
-            # the correction was SUBTRACTED, moving the energy the wrong way by
-            # 2*dE -- worse than not correcting at all.  Makov & Payne Eq. 15:
-            # the charged periodic cell sits against a compensating background
-            # whose Madelung self-energy is negative, so the raw energy is
-            # spuriously too LOW and the correction must RAISE it.
-            assert correction > 0, f"the correction is not positive: {correction}"
-            assert corrected > raw, (
-                f"the correction LOWERED the energy ({raw} -> {corrected}); "
-                f"Makov-Payne raises it (Eq. 15, sign fixed 2026-07)")
-            assert corrected == pytest.approx(raw + correction, abs=1e-6), (
-                f"the script's own three numbers do not add up: "
-                f"{raw} + {correction} != {corrected}")
+    # Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+    # 4 tests here ran the generated script on a SIESTA output
+    # invented as text (`process/testing.md` § 6).
 
     def test_script_handles_missing_out(self):
         s = render_correction_script(system_label="job", q=1)
@@ -181,65 +128,6 @@ class TestScriptGeneration:
             assert result.returncode != 0
             assert "not found" in result.stderr
 
-    def test_script_handles_unparseable_out(self):
-        s = render_correction_script(system_label="job", q=1)
-        with tempfile.TemporaryDirectory() as d:
-            d = Path(d)
-            (d / "makov_payne_correction.py").write_text(s)
-            (d / "job.out").write_text("garbage no E_KS or outcell\n")
-            result = subprocess.run(
-                [sys.executable, "makov_payne_correction.py"],
-                cwd=str(d),
-                capture_output=True, text=True, timeout=10,
-            )
-            assert result.returncode != 0
-
-    def test_outcell_parser_tolerates_blank_line(self):
-        """6th-review A1: the outcell parser must skip a blank line
-        between the marker and the lattice rows (some SIESTA builds
-        print one).  Before the fix the script bailed out with
-        'could not parse outcell' on a perfectly-good .out.
-        """
-        s = render_correction_script(system_label="job", q=1)
-        with tempfile.TemporaryDirectory() as d:
-            d = Path(d)
-            (d / "makov_payne_correction.py").write_text(s)
-            (d / "job.out").write_text(
-                "siesta: E_KS(eV) =       -100.0\n"
-                "outcell: Unit cell vectors (Ang):\n"
-                "\n"  # blank line — was the bug
-                "       15.0 0.0 0.0\n"
-                "        0.0 15.0 0.0\n"
-                "        0.0  0.0 15.0\n"
-            )
-            r = subprocess.run(
-                [sys.executable, "makov_payne_correction.py"],
-                cwd=str(d), capture_output=True, text=True,
-                timeout=10,
-            )
-            assert r.returncode == 0, r.stderr
-            assert "E_total (corrected, eV)" in r.stdout
-
-    def test_outcell_parser_case_insensitive(self):
-        """6th-review A2: real SIESTA builds emit OUTCELL or
-        outcell.  The script must match either."""
-        s = render_correction_script(system_label="job", q=1)
-        with tempfile.TemporaryDirectory() as d:
-            d = Path(d)
-            (d / "makov_payne_correction.py").write_text(s)
-            (d / "job.out").write_text(
-                "siesta: E_KS(eV) =       -100.0\n"
-                "OUTCELL: Unit cell vectors (Ang):\n"
-                "       15.0 0.0 0.0\n"
-                "        0.0 15.0 0.0\n"
-                "        0.0  0.0 15.0\n"
-            )
-            r = subprocess.run(
-                [sys.executable, "makov_payne_correction.py"],
-                cwd=str(d), capture_output=True, text=True,
-                timeout=10,
-            )
-            assert r.returncode == 0, r.stderr
 
     # `test_script_header_warns_about_slab_crystal` stood here and checked an
     # APPLICABILITY DOMAIN as VOCABULARY: four keyword probes ("slab",
@@ -296,4 +184,3 @@ class TestEmitScript:
 #  sibling-artifact question belongs to `prep`, which owns
 #  `_siesta_sibling_artifacts`.
 # --------------------------------------------------------------------- #
-

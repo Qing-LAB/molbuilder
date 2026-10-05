@@ -19,9 +19,6 @@ Properties under guard, each named for its failure:
 """
 from __future__ import annotations
 
-import json
-import os
-from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
@@ -129,10 +126,10 @@ def tree(tmp_path, monkeypatch):
     attempt = (root / "BDT-Au" / "optimization" / "JunctionRelax"
                / "01_coarse" / "run-2")
     attempt.mkdir(parents=True)
-    # Citable per 4.1b form A: one .fdf + one .XV together (init
-    # classifies at the door; content is prep's business).
-    (attempt / "Relax.fdf").write_text("SystemLabel Relax\n")
-    (attempt / "Relax.XV").write_text("stub\n")
+    # Its deck and a `.XV` written by hand, to stand for a finished
+    # relaxation the one citing test read, went with that test 2026-10-04
+    # (`process/testing.md` § 6); the refusals below fire before a citation
+    # is read.
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
     return root
 
@@ -143,30 +140,8 @@ class TestInitCLI:
         from molbuilder.jobset._cli import jobset_group
         return CliRunner().invoke(jobset_group, ["init"] + args)
 
-    def test_happy_path_writes_the_five_stage_task(self, tree):
-        r = self._invoke([
-            "--calculation", "transport", "--shape", "hierarchical",
-            "--bundle", "BDT-Au/transport/BDTTrans",
-            "--slot", f"junction={_CITE}", "--bias", "0.0,0.2"])
-        assert r.exit_code == 0, r.output
-        raw = json.loads((tree / "BDT-Au" / "transport" / "BDTTrans"
-                          / "task.json").read_text())
-        assert raw["calculation"] == "transport"
-        assert raw["slots"] == {"junction": _CITE}
-        assert [s["name"] for s in raw["stages"]] == list(_STAGES)
-        assert "structure" not in raw
-        # FLOOR 2 IS THE DESCRIPTION: task.json AND a template, like every
-        # other kind.  This asserted `== ["task.json"]` until 2026-09-16,
-        # with the comment "floor 2 is task.json ALONE" -- which was the
-        # sealed design, where the electronic description was read from the
-        # cited run at every prep and so had nowhere to be written down.
-        # `engines/transport.md` § 2a.7 ruled the other way: the cited run
-        # DEFAULTS those values into a template the person may then change,
-        # everywhere at once.  A shared baseline needs a file to live in.
-        written = sorted(p.name for p in
-                         (tree / "BDT-Au" / "transport" / "BDTTrans"
-                          ).iterdir())
-        assert written == ["BDTTrans.template.toml", "task.json"]
+    # Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+    # 1 test here cited a relaxation whose `.XV` was written by hand (`process/testing.md` § 6).
 
     def test_the_cited_calculation_must_exist_in_the_tree(self, tree):
         r = self._invoke([

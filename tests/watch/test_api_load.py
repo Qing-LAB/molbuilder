@@ -9,21 +9,10 @@ parseable response and that uploaded files come back tagged
 from __future__ import annotations
 
 import io
-from pathlib import Path
 
 import pytest
 
 from molbuilder.web.app import create_app
-
-
-_SIESTA_HEAD = (
-    "Welcome to SIESTA -- v4.1\n"
-    "redata: prelude\n"
-    "outcoor: Atomic coordinates (Ang):\n"
-    "   1.00000000    2.00000000    3.00000000   1       1  C\n"
-    "\n"
-    "siesta: E_KS(eV) =          -50.0000\n"
-)
 
 
 @pytest.fixture
@@ -67,14 +56,9 @@ def client_with_default_roots():
 # --------------------------------------------------------------------- #
 
 
-def test_load_by_json_path(client, tmp_path):
-    p = tmp_path / "run.out"
-    p.write_text(_SIESTA_HEAD)
-    r = client.post("/api/watch/load", json={"path": str(p)})
-    body = r.get_json()
-    assert body["ok"] is True
-    assert body["uploaded"] is False
-    assert body["format"] == "siesta"
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 8 tests here loaded a SIESTA output, a progress log or a PySCF
+# product typed by hand, or a copy of the measured relaxation outside its folder (`process/testing.md` § 6).
 
 
 def test_load_by_json_path_missing_file(client, tmp_path):
@@ -149,20 +133,6 @@ def test_load_by_json_path_rejects_dot_dot_traversal(
 # --------------------------------------------------------------------- #
 
 
-def test_load_by_multipart(client):
-    fd = {
-        "file": (io.BytesIO(_SIESTA_HEAD.encode()), "run.out"),
-    }
-    r = client.post("/api/watch/load",
-                    data=fd,
-                    content_type="multipart/form-data")
-    body = r.get_json()
-    assert body["ok"] is True, body
-    assert body["uploaded"] is True
-    assert body["uploaded_filename"] == "run.out"
-    assert body["format"] == "siesta"
-
-
 def test_load_by_multipart_unrecognised_format(client):
     """An upload that no parser claims should 400 cleanly and not
     leave a stale temp file referenced in _state."""
@@ -176,22 +146,6 @@ def test_load_by_multipart_unrecognised_format(client):
     assert r.status_code == 400
     body = r.get_json()
     assert body["ok"] is False
-
-
-def test_load_by_multipart_persists_path_for_data_polls(client):
-    """After an upload, /api/data must still return the parsed payload.
-    The temp file lingers (we don't delete it on the same request) so
-    the existing _refresh_if_changed machinery handles it normally."""
-    fd = {"file": (io.BytesIO(_SIESTA_HEAD.encode()), "polled.out")}
-    client.post("/api/watch/load",
-                data=fd,
-                content_type="multipart/form-data")
-
-    r = client.get("/api/watch/data")
-    body = r.get_json()
-    assert body["ok"] is True
-    assert body["uploaded"] is True
-    assert body["data"]["source_format"] == "siesta"
 
 
 # --------------------------------------------------------------------- #
@@ -239,78 +193,6 @@ def test_the_siesta_parser_reads_convergence_targets_from_the_input_echo():
     assert crit["dDmax"]["tolerance"] == 1e-4
 
 
-_SIESTA_WITH_REDATA = (
-    "Welcome to SIESTA -- v4.1\n"
-    "redata: Force tolerance              =        0.0400 eV/Ang\n"
-    "redata: DM tolerance for SCF          =     0.000100\n"
-    "redata: Max. number of SCF Iter        =          500\n"
-    "redata: Max atomic displ per move      =        0.1000 Ang\n"
-    "redata: Maximum number of optimization moves        =       80\n"
-    "outcoor: Atomic coordinates (Ang):\n"
-    "   1.00000000    2.00000000    3.00000000   1       1  C\n"
-    "\n"
-    "siesta: E_KS(eV) =          -50.0000\n"
-)
-
-
-def test_watch_data_surfaces_runtime_info_convergence_targets(client):
-    """``/api/watch/data`` MUST carry ``data.runtime_info.convergence_targets``
-    when the SIESTA parser extracted it from the input echo.
-
-    Documented contract: docs/web/web-api.md
-    ("runtime_info: per-stage CPU/MPI/GPU report — see types/parsers.md")
-    + docs/web/results.md (the convergence_targets
-    sub-shape with per-key units and parser sources).
-
-    Frontend consumer: lib/trajectory/core.js::_renderConvergenceSummary
-    reads ``data.runtime_info.convergence_targets`` to render the
-    threshold lines on the force plot + the "Convergence targets"
-    summary band in the trajectory inspector.
-
-    Pre-2026-06-13 the parser → traj link had a test, and the
-    traj → partial link had a test, but the HTTP-layer link
-    (parser → traj → HTTP /api/watch/data → frontend) was unpinned.
-    A silent removal of the field at the serializer layer would
-    have silently disabled the threshold lines.
-    """
-    fd = {"file": (io.BytesIO(_SIESTA_WITH_REDATA.encode()),
-                   "with_redata.out")}
-    client.post("/api/watch/load",
-                data=fd,
-                content_type="multipart/form-data")
-    r = client.get("/api/watch/data")
-    body = r.get_json()
-    assert body["ok"] is True
-    data = body["data"]
-    assert "runtime_info" in data, (
-        "data.runtime_info missing from /api/watch/data response — "
-        "web-api.md § 4 documents it as part of the contract")
-    runtime_info = data["runtime_info"]
-    assert "convergence_targets" in runtime_info, (
-        "runtime_info.convergence_targets missing — the SIESTA parser "
-        "captured the redata: lines but the serializer dropped the "
-        "field on the way to the HTTP response.  Threshold lines on "
-        "the trajectory inspector force plot will be missing.")
-    ct = runtime_info["convergence_targets"]
-    # Every key the threshold lines need, + the source tag
-    # (`web/trajectory.md` § 3: the targets come from the run's own
-    # output, and the label says which reader found them).
-    for key in ("max_force_tol_eV_per_A",
-                "max_scf_iter", "max_geom_iter", "max_displ_ang", "source"):
-        assert key in ct, (
-            f"convergence_targets missing documented key {key!r}: "
-            f"{sorted(ct)}")
-    assert ct["source"] == "siesta_input_echo"
-    # THE SCF'S CRITERIA reach the page too -- the residual plot's line is
-    # drawn from them (`web/trajectory.md` § 3).
-    assert (runtime_info["scf_criteria"]["periodic"]["dDmax"]["tolerance"]
-            == 1e-4), runtime_info.get("scf_criteria")
-    # max_geom_iter is the optimization-step cap (MD.NumCGsteps);
-    # added 2026-06-13 after the user reported the gap in the
-    # trajectory inspector's convergence summary.
-    assert ct["max_geom_iter"] == 80
-
-
 # --------------------------------------------------------------------- #
 #  Directory mode (job-layout v1)                                       #
 #                                                                       #
@@ -319,13 +201,6 @@ def test_watch_data_surfaces_runtime_info_convergence_targets(client):
 #  These tests pin the route's half of it, so a regression at the      #
 #  protocol boundary fails here rather than as "load failed".          #
 # --------------------------------------------------------------------- #
-
-
-_MOLWATCH_HEAD = (
-    "# molwatch trajectory log v1\n"
-    "# engine: siesta\n"
-    "# step: 0\n"
-)
 
 
 # `test_load_directory_picks_molwatch_log_first` RETIRED 2026-09-25.  It
@@ -353,86 +228,6 @@ def test_load_directory_empty_returns_chain_error(client, tmp_path):
     # `*.fdf` among them, until 2026-10-04, plan B11.)*
     assert "docs/model/parse.md" in body["error"]
     assert "no file here is one a run of ours writes" in body["error"]
-
-
-# --------------------------------------------------------------------- #
-#  A directory resolves to ONE log (job-contracts.md 2.3/2.4)           #
-#                                                                       #
-#  Stages are separate runs. A ladder is separated by filename in a     #
-#  flat directory, and the person picks the stage to inspect. A merge   #
-#  stood behind this door from 2026-05-10 until 2026-09-05.             #
-# --------------------------------------------------------------------- #
-
-
-_MOLWATCH_TWO_STEPS = (
-    "# molwatch trajectory log v1\n"
-    "# engine: pyscf\n"
-    "==== molwatch step 0 begin ====\n"
-    "step_index: 0\n"
-    "n_atoms: 3\n"
-    "coordinates (Ang):\n"
-    "   O   0.00000000   0.00000000   0.00000000\n"
-    "   H   0.95700000   0.00000000   0.00000000\n"
-    "   H  -0.23900000   0.92700000   0.00000000\n"
-    "energy (eV): -76.40000000\n"
-    "==== molwatch step 0 end ====\n"
-    "==== molwatch step 1 begin ====\n"
-    "step_index: 1\n"
-    "n_atoms: 3\n"
-    "coordinates (Ang):\n"
-    "   O   0.00000000   0.00000000   0.00000000\n"
-    "   H   0.95700000   0.00000000   0.00000000\n"
-    "   H  -0.23900000   0.92700000   0.00000000\n"
-    "energy (eV): -76.50000000\n"
-    "==== molwatch step 1 end ====\n"
-)
-
-
-def test_a_directory_resolves_to_one_log_and_never_merges(client, tmp_path):
-    """A DIRECTORY RESOLVES TO ONE FILE — including a staged run.
-
-    Stages are separate runs (user ruling, 2026-09-05). A ladder is
-    separated by filename in a flat directory or by directory name in a
-    hierarchical one, and the person picks one stage and judges it. There
-    is no combined view: comparison is what the bench summary is for.
-
-    A merge stood behind this door from 2026-05-10 until 2026-09-05,
-    firing whenever a directory held more than one `*.molwatch.log`. It
-    stitched them into a single trajectory ordered by file mtime — which
-    is not ladder order, because prep seeds every stage's log up front, so
-    the stages that had not run yet sorted FIRST. A three-stage run with
-    stage 1 finished opened with two empty frames and its dividers
-    labelled `02 | 03 | 01`.
-
-    The generated deck tells the user to point Watch at the run directory
-    and states the contract this test pins: "the loader resolves it to
-    <job>.molwatch.log".
-    """
-    # Three stage logs, each carrying TWO frames, written OLDEST FIRST with
-    # distinct mtimes -- so "which one" is answerable, not a coin flip.
-    import os
-    for i, name in enumerate(("h2o_01_coarse", "h2o_02_medium", "h2o_03_tight")):
-        p = tmp_path / f"{name}.molwatch.log"
-        p.write_text(_MOLWATCH_TWO_STEPS)
-        os.utime(p, (1_700_000_000 + i * 100, 1_700_000_000 + i * 100))
-
-    r = client.post("/api/watch/load", json={"path": str(tmp_path)})
-    body = r.get_json()
-    assert body["ok"] is True, body.get("error")
-
-    # ONE log's worth of frames, not three stitched together.
-    assert len(body["data"]["frames"]) == 2, (
-        f"three 2-frame logs produced {len(body['data']['frames'])} frames; "
-        "one log's worth is 2 -- anything more means they were merged")
-
-    # ...and a NAMED one: newest wins (job-contracts.md 2.4, rung 1).  Without
-    # this the test passes for any of the three, so a resolver that picked the
-    # oldest -- or picked at random -- would look correct.
-    assert os.path.basename(body["path"]) == "h2o_03_tight.molwatch.log", (
-        f"resolved to {body['path']!r}; the chain says newest wins")
-
-    # And no merge vocabulary survives on the wire.
-    assert "stages" not in body or not body["stages"]
 
 
 # --------------------------------------------------------------------- #
@@ -552,169 +347,3 @@ def test_an_upload_never_asks_the_temp_directory_which_engine_ran(
         f"the load says the engine is {load['format']!r} and the poll says "
         f"{poll['format']!r}. The poll is asking the shared temp directory, "
         f"where an unrelated '.fdf' is sitting.")
-
-
-def test_a_single_geometry_is_refused_by_name_not_by_crashing(
-        client, isolated_projects_root):
-    """`<job>_optimized.xyz` must answer 400 with a sentence, never 500.
-
-    PySCF writes this file for every optimization, and it was TWO bugs
-    stacked, both measured through this route:
-
-    1. Two parsers claimed it -- `pyscf` accepts any structurally valid
-       XYZ, `pyscf-geom` accepts any `*_optimized.xyz` -- so `detect()`,
-       which is exactly-one-or-raise, raised `AmbiguousFormatError`.
-       That is the SIBLING of `UnknownFormatError`, not its subclass,
-       and all five detection call sites caught only the latter: an
-       unhandled exception, HTTP 500, HTML body.  `pyscf-geom`'s own
-       `can_parse` already documented the division of labour; only one
-       side of it had been written.
-    2. Underneath that, `/api/watch/*` is the TRAJECTORY route and never
-       checked what the detected parser produces, so a `StructureResult`
-       reached code that reads `.frames`.
-
-    The file is normally ABSORBED into the run's `.molwatch.log` entry
-    (`results.md` § 2.3) so the picker does not offer it -- but
-    absorption narrows the MENU, not what can be opened.
-
-    The `_geom_optim.xyz` control is load-bearing: a fix that refused
-    every `.xyz` would pass the first assertion and break the viewer.
-    """
-    d = isolated_projects_root / "optim_refusal"
-    d.mkdir(parents=True)
-    xyz = "3\nCO2\nO 0 0 -1.16\nC 0 0 0\nO 0 0 1.16\n"
-
-    final = d / "bdt_optimized.xyz"
-    final.write_text(xyz)
-    r = client.post("/api/watch/load", json={"path": str(final)})
-    assert r.status_code == 400, (
-        f"a single-geometry file must be refused with a message; got "
-        f"{r.status_code} ({r.headers.get('Content-Type')})")
-    err = r.get_json()["error"]
-    assert "trajectory" in err and "molwatch" in err, (
-        f"the refusal must say what the file is and where the trajectory "
-        f"lives; got: {err}")
-
-    traj = d / "bdt_geom_optim.xyz"
-    traj.write_text(xyz)
-    assert client.post("/api/watch/load",
-                       json={"path": str(traj)}).status_code == 200, (
-        "the trajectory file must still load -- refusing every .xyz would "
-        "satisfy the assertion above and break the viewer")
-
-
-# --------------------------------------------------------------------- #
-#  A registry overlap must not become an HTTP 500                       #
-# --------------------------------------------------------------------- #
-
-
-def test_two_parsers_claiming_one_file_is_a_clean_refusal(client, tmp_path):
-    """`AmbiguousFormatError` is a SIBLING of `UnknownFormatError`.
-
-    On 2026-09-04 two parsers both claimed `<job>_optimized.xyz` and
-    this route caught only `UnknownFormatError`, so the overlap surfaced
-    as an unhandled exception -- HTTP 500 with an HTML body -- on a file
-    both parsers could read.  The fix widened five call sites to
-    `ParseError`; **only the other half of that fix (the `can_parse`
-    narrowing) was tested**, and once the overlap is gone nothing can
-    reach the widened catch.  Measured 2026-09-05: narrowing all five
-    catches back to `UnknownFormatError` left 421 tests passing.
-
-    Three suffix parsers were registered the same day, so the next
-    overlap is a live possibility.  This drives a REAL one -- a second
-    parser registered to claim `.out` -- rather than patching the raise,
-    so it also proves `detect` still raises on a genuine collision.
-    """
-    from molbuilder.parse import registry
-    from molbuilder.parse.base import FileParser
-    from molbuilder.parse.types import TrajectoryResult
-
-    class _GreedyOut(FileParser):
-        name = "greedy-out-for-test"
-        label = "Greedy"
-        hint = "claims every .out, to collide with the SIESTA parser"
-
-        @classmethod
-        def can_parse(cls, path):
-            return str(path).endswith(".out")
-
-        @classmethod
-        def parse(cls, path):                       # pragma: no cover
-            raise AssertionError("must never be reached — detect refuses first")
-
-    p = tmp_path / "run.out"
-    p.write_text(_SIESTA_HEAD)
-
-    saved = list(registry._FILE_PARSERS)
-    registry.register(_GreedyOut)
-    try:
-        r = client.post("/api/watch/load", json={"path": str(p)})
-        assert r.status_code == 400, (
-            f"a registry overlap returned HTTP {r.status_code}; the contract "
-            "is a 400 carrying the clash, not a 500 carrying a stack trace")
-        assert r.mimetype == "application/json", (
-            f"the refusal came back as {r.mimetype}, an HTML error page")
-        body = r.get_json()
-        assert body["ok"] is False, body
-        # The message NAMES the clashing parsers -- that is what makes a
-        # 400 useful where a 500 was not.
-        assert "greedy-out-for-test" in body.get("error", ""), (
-            f"the refusal does not say which parsers collided: {body}")
-    finally:
-        registry._FILE_PARSERS[:] = saved
-
-    # The overlap is gone again, so the same file loads normally — or the
-    # assertion above passed because the route was broken for every file.
-    ok = client.post("/api/watch/load", json={"path": str(p)}).get_json()
-    assert ok["ok"] is True and ok["format"] == "siesta", ok
-
-
-# --------------------------------------------------------------------- #
-#  The Results door states what the engine had (plan § 5q, T2)          #
-# --------------------------------------------------------------------- #
-
-#: The measured H2 relaxation (its README says what each file pins).
-_RELAX_RUN = (Path(__file__).resolve().parents[1]
-              / "fixtures" / "siesta_relax" / "01_relax" / "run-0")
-
-
-def test_a_load_parses_its_file_once_and_the_record_reads_that_parse(
-        client, tmp_path, monkeypatch):
-    """Loading a run folder parses its result ONCE: the directory's
-    relaxation record (`contract.relaxation_of`, the ``info`` a load carries)
-    reads the load's own parse instead of parsing the same file again.  A
-    25 MB `.out` takes seconds to parse and holds the server while it does
-    (`_refresh_if_changed`), and every load of a relaxation paid it twice.
-    The record is the one a fresh read gives.
-
-    On the measured H2 relaxation (`tests/fixtures/siesta_relax`): the road
-    makes relaxations too, but this one is small, converged and pinned.
-
-    MUTATION THIS MUST FAIL AGAINST: `_run_metadata` not handing the load's
-    parse to `run_info`.
-    """
-    import shutil
-
-    from molbuilder.parse.contract import relaxation_of
-    from molbuilder.parse.engines.siesta_reader import SiestaReader
-
-    run = tmp_path / "01_relax" / "run-0"
-    shutil.copytree(Path(__file__).resolve().parents[1] / "fixtures"
-                    / "siesta_relax" / "01_relax" / "run-0", run)
-    expected = relaxation_of(run / "H2_01_relax-run0.out")
-    assert expected is not None and expected["converged"] is True
-
-    finished = []
-    real_finish = SiestaReader.finish
-
-    def counting_finish(self):
-        finished.append(1)
-        return real_finish(self)
-
-    monkeypatch.setattr(SiestaReader, "finish", counting_finish)
-    body = client.post("/api/watch/load", json={"path": str(run)}).get_json()
-    assert body["ok"] is True, body
-    assert body["info"]["relaxation"] == expected
-    assert len(finished) == 1, (
-        f"the load read its .out {len(finished)} times -- the relaxation "
-        f"record parsed the file the load had just parsed")

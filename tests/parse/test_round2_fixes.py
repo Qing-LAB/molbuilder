@@ -23,22 +23,15 @@ import pytest
 from molbuilder.parse import (
     AmbiguousFormatError,
     SidecarResult,
-    TrajectoryResult,
-    UnknownFormatError,
     detect,
     parse,
     register,
 )
 from molbuilder.parse.base import FileParser
-from molbuilder.parse.registry import (
-    _FILE_PARSERS,
-    _registered_file_parsers,
-)
+from molbuilder.parse.registry import _FILE_PARSERS
 
 
 REPO = Path(__file__).resolve().parents[1].parent
-SIESTA_OUT = REPO / "tests" / "watch" / "fixtures" / "siesta_frozen" \
-    / "hemeC-stage2-run3-finished-42fr.out"
 MOLSTRUCT_FX = REPO / "tests" / "data" / "au_bdt_au.molstruct.json"
 # NO PATH INTO projects/.  The spectra fixture was
 # projects/BDT/spectrum/BDT-only/spectra.spectra.json -- the user's scientific
@@ -75,10 +68,6 @@ def _need(p: Path) -> Path:
 
 
 # ---- Envelope-field drift ------------------------------------------ #
-
-
-
-
 
 
 # ---- AmbiguousFormatError code path ----------------------------- #

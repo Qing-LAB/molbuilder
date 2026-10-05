@@ -356,9 +356,9 @@ forgets.
   `or "restored structure"`, `or (filename or fmt)`.
 * **JS:** `lib/molview/ui.js` (11), `lib/projects/dialogs.js`,
   `lib/projects/checkpoint.js`, `modify/viewer.js`, `lib/projects/list.js`.
-* **Tests:** 11 assertions across 8 files, incl.
+* **Tests:** assertions across several files, incl.
   `test_structure_pair_one_generator.py`, `test_structure_envelope_protocol.py`,
-  `test_parsers_pyscf_struct.py`, `test_workingcopy_structure.py`
+  `test_workingcopy_structure.py`
   (`test_it_writes_utf8_regardless_of_the_platform_locale` round-trips a
   non-ASCII title through the codec).
 

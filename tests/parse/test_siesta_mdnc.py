@@ -22,7 +22,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from molbuilder.frame import Frame
 from molbuilder.parse import parse
@@ -67,12 +66,9 @@ def test_it_declines_the_out_that_sits_beside_it():
     assert not SiestaMdNcFileParser.can_parse(_need(OUT))
 
 
-def test_it_declines_a_file_that_only_has_the_name(tmp_path):
-    """Name alone is not evidence.  Without the magic-number check a text
-    file called ``x.MD.nc`` would be claimed and then blow up in parse()."""
-    fake = tmp_path / "notreally.MD.nc"
-    fake.write_text("this is not netCDF\n")
-    assert not SiestaMdNcFileParser.can_parse(fake)
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 7 tests here read the measured pair copied away from where it
+# was measured, or an .MD.nc written by hand (`process/testing.md` § 6).
 
 
 def test_the_registry_routes_a_md_nc_here():
@@ -241,35 +237,6 @@ def test_alignment_is_empty_when_there_is_nothing_to_align():
 # ---- the merge: .out stays the trajectory ------------------------ #
 
 
-def _merged(tmp_path, *, with_nc=True, extra_nc=False, corrupt=False):
-    """A private copy of the fixture pair, parsed through the .out."""
-    import shutil
-    shutil.copy(_need(OUT), tmp_path / "offsetH2.out")
-    if with_nc:
-        dest = tmp_path / "offsetH2.MD.nc"
-        shutil.copy(_need(MDNC), dest)
-        if corrupt:
-            dest.write_bytes(b"CDF\x01" + b"\x00" * 64)
-    if extra_nc:
-        shutil.copy(_need(MDNC), tmp_path / "otherrun.MD.nc")
-    return parse(str(tmp_path / "offsetH2.out"))
-
-
-def test_the_merge_upgrades_precision_without_reshaping_the_trajectory(tmp_path):
-    plain = parse(str(_need(OUT)))          # fixture dir has the sibling too
-    merged = _merged(tmp_path)
-    assert len(merged.frames) == len(plain.frames)
-    assert merged.runtime_info["mdnc_coords_upgraded"] >= 3
-    assert merged.runtime_info["mdnc_energies_upgraded"] >= 3
-    # An upgraded energy carries more significant digits than the .out's
-    # four decimals -- that IS the upgrade.
-    upgraded = [f.energy for f in merged.frames
-                if f.energy is not None and abs(f.energy * 1e4
-                                                - round(f.energy * 1e4)) > 1e-6]
-    assert upgraded, ("no frame gained precision; the merge did not run or "
-                      "took the text values")
-
-
 #: A flat calculation of ours, measured on the road (its README says how).
 _OURS = Path(__file__).resolve().parents[1] / "fixtures" / "siesta_flat_h2"
 
@@ -290,51 +257,6 @@ def test_a_run_of_ours_takes_the_history_siesta_names_by_its_label():
     assert res.runtime_info.get("mdnc_source") == "H2.MD.nc", res.runtime_info
     assert res.runtime_info.get("mdnc_coords_upgraded", 0) >= 1, (
         res.runtime_info)
-
-
-def test_the_merge_keeps_the_input_geometry_as_step_0(tmp_path):
-    """The user's requirement, at the level that actually ships it.
-
-    .MD.nc has no row for the submitted structure, so the merged result must
-    still open with the .out's own frame 0 -- geometry and energy intact."""
-    merged = _merged(tmp_path)
-    first = merged.frames[0]
-    bond = float(np.linalg.norm(first.structure.positions[1]
-                                - first.structure.positions[0]))
-    assert abs(bond - 0.95) < 1e-6, (
-        f"step 0 is {bond} A, not the 0.95 A input geometry -- the starting "
-        f"frame was replaced or dropped")
-    assert first.energy is not None
-
-
-def test_the_merge_never_touches_what_only_the_out_knows(tmp_path):
-    merged = _merged(tmp_path)
-    plain = _merged(tmp_path, with_nc=False)
-    assert merged.run_state == plain.run_state == "ended"
-    for a, b in zip(merged.frames, plain.frames):
-        assert (a.forces is None) == (b.forces is None)
-        if a.forces is not None:
-            assert np.allclose(a.forces, b.forces)
-        assert (a.scf_history or []) == (b.scf_history or [])
-
-
-def test_no_sibling_parses_exactly_as_before(tmp_path):
-    """A SIESTA built without -DCDF, or a run with WriteMDhistory off,
-    writes no .MD.nc at all.  That must cost nothing."""
-    res = _merged(tmp_path, with_nc=False)
-    assert len(res.frames) == 6
-    assert res.run_state == "ended"
-    assert not [k for k in res.runtime_info if k.startswith("mdnc_")]
-
-
-def test_an_unreadable_sibling_is_recorded_not_raised(tmp_path):
-    """A truncated netCDF must not cost the user their results -- the .out
-    still describes the whole run."""
-    res = _merged(tmp_path, corrupt=True)
-    assert len(res.frames) == 6
-    assert res.run_state == "ended"
-    assert "mdnc_error" in res.runtime_info
-    assert "mdnc_coords_upgraded" not in res.runtime_info
 
 
 def test_it_reads_the_same_data_without_netCDF4(monkeypatch):
@@ -365,25 +287,3 @@ def test_it_reads_the_same_data_without_netCDF4(monkeypatch):
         assert (a.energy is None) == (b.energy is None)
         if a.energy is not None:
             assert abs(a.energy - b.energy) < 1e-12
-
-
-def test_an_unknown_unit_is_refused_not_assumed(tmp_path):
-    """A future SIESTA writing Angstrom would otherwise be scaled by 1.89
-    with nothing to show for it."""
-    netCDF4 = pytest.importorskip("netCDF4")
-    p = tmp_path / "weird.MD.nc"
-    ds = netCDF4.Dataset(str(p), "w", format="NETCDF3_CLASSIC")
-    ds.createDimension("xyz", 3)
-    ds.createDimension("atom", 1)
-    ds.createDimension("step", None)
-    v = ds.createVariable("xa", "f8", ("step", "atom", "xyz"))
-    v.unit = "furlongs"
-    v[0, 0, :] = [0.0, 0.0, 0.0]
-    e = ds.createVariable("etot", "f8", ("step",))
-    e.unit = "Ry"
-    e[0] = -1.0
-    z = ds.createVariable("iza", "i4", ("atom",))
-    z[0] = 1
-    ds.close()
-    with pytest.raises(ValueError, match="furlongs"):
-        SiestaMdNcFileParser.parse(p)

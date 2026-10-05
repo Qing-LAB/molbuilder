@@ -30,8 +30,6 @@ from molbuilder import monitor
 _H2 = (Path(__file__).parent / "fixtures" / "siesta_relax" / "01_relax"
        / "run-0")
 _H2_OUT = "H2_01_relax-run0.out"
-_TS_FIXTURE = (Path(__file__).parent / "parse" / "fixtures" / "transiesta"
-               / "device-diverging.out")
 
 
 @pytest.fixture(autouse=True)
@@ -130,28 +128,9 @@ def test_when_the_pid_goes_the_verdict_is_run_status_s(tmp_path):
     assert "job ended" in (run / "H2_01_relax-run0.monitor.log").read_text()
 
 
-def test_a_killed_job_is_failed_stopped_before_its_end(tmp_path):
-    """A forced stop (§ 2.4): the PID is gone, the output records no ending
-    and the process no goodbye.  The monitor's closing record is then the
-    one word that the run is over, and `run_status` reads it -- so the
-    monitor's finish and the Results tab both say `failed`, stopped before
-    its end, and why.  The run is the H2 relaxation cut mid-step with its
-    `.concluded` taken away, which is what a walltime leaves.
-
-    Before the monitor has closed, the same files read *running*: nothing
-    in them tells a slow step from a stopped one."""
-    from molbuilder.parse.dirs import run_status
-    run, watched, _grow = _replay(tmp_path, upto=476)
-    (run / "H2_01_relax-run0.concluded").unlink()
-    assert run_status(run, "H2_01_relax").state == "running"
-    final = monitor.run_monitor(
-        watched, interval=1, watch_pid=999_999_999,
-        sleep=lambda s: None, clock=_fake_clock([0.0, 0.0, 1.0]))
-    assert final.state == "failed", final.as_text()
-    assert "stopped before its end" in final.detail, final.detail
-    assert "no exit recorded" in final.detail
-    rs = run_status(run, "H2_01_relax")
-    assert (rs.state, rs.detail) == (final.state, final.detail)
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 4 tests here watched a measured output cut short (its marker
+# deleted) or the trimmed TranSIESTA device output under a new name (`process/testing.md` § 6).
 
 
 # --------------------------------------------------------------------- #
@@ -253,122 +232,3 @@ def test_a_failing_notifier_does_not_break_the_loop(tmp_path):
 def test_pid_alive_self():
     assert monitor._pid_alive(os.getpid()) is True
     assert monitor._pid_alive(0) is True             # 0 => not watching
-
-
-# --------------------------------------------------------------------- #
-#  A TranSIESTA device's NEGF loop, and the closing lines                #
-#  (`model/parse.md` § 5d.5; plan W35)                                   #
-# --------------------------------------------------------------------- #
-
-def _rendered_tee(tmp_path):
-    """The timing tee as the wrapper renders it -- extracted from a real
-    wrapper, never re-typed."""
-    from molbuilder.jobset.model import Resources
-    from molbuilder.runwrap import render_run_wrapper
-    deck = tmp_path / "JOB.fdf"
-    deck.write_text("SystemLabel JOB\n")
-    # The activation is the machine record's (conftest's autouse one).
-    text = render_run_wrapper(
-        deck, resources=Resources(mpi_np=1, cpus_per_task=1), env="e")
-    start = text.index("_mb_scf_tee() {")
-    return text[start:text.index("\n}\n", start) + 3]
-
-
-def _device_run(tmp_path):
-    """The diverging device's real output, teed into a run directory the way
-    the wrapper tees it -- named for a label, a stage and a run index, which
-    is the layout's business, not the output's."""
-    import subprocess
-    run = tmp_path / "run"
-    run.mkdir()
-    tee = tmp_path / "tee.sh"
-    tee.write_text(_rendered_tee(tmp_path))
-    subprocess.run(["bash", "-c", f'source "{tee}"; _mb_scf_tee '
-                                  f'"{run}/DEV_03_device-run0.out" '
-                                  f'"{run}/DEV_03_device-run0.scf-timing.log"'],
-                   stdin=_TS_FIXTURE.open("rb"), check=True)
-    return run
-
-
-def test_the_rendered_timing_tee_stamps_every_negf_iteration(tmp_path):
-    """The wrapper's instrument counts TranSIESTA's ``ts-scf:`` rows as well
-    as SIESTA's ``scf:`` rows -- it counted 7 of a device's 1007 iterations
-    and timed them at "4049.94 s/iter" (2026-09-25).  Runs the tee the
-    wrapper actually writes over a real device output."""
-    import subprocess
-    tee = tmp_path / "tee.sh"
-    tee.write_text(_rendered_tee(tmp_path))
-    out, log = tmp_path / "copy.out", tmp_path / "timing.log"
-    subprocess.run(["bash", "-c", f'source "{tee}"; _mb_scf_tee "{out}" "{log}"'],
-                   stdin=_TS_FIXTURE.open("rb"), check=True)
-    prefixes = [line.split()[2] for line in log.read_text().splitlines()]
-    assert prefixes.count("scf:") == 7
-    assert prefixes.count("ts-scf:") == 8
-    assert out.read_bytes() == _TS_FIXTURE.read_bytes()
-
-
-def test_the_monitor_follows_a_negf_loop(tmp_path):
-    """Where a device is, read by the SIESTA family's own reader: the NEGF
-    phase and its iteration, E_KS, each residual beside the NEGF loop's own
-    criterion, the charge off its target -- and the timing instrument's NEGF
-    rows.  It reported "no SCF progress" for 7.6 hours of NEGF iterations,
-    and then the Eharris column for E_KS."""
-    run = _device_run(tmp_path)
-    watched = monitor.WatchedRun(label="DEV", stage="03_device", run=0,
-                                 directory=run)
-    st = watched.read(0.0, 150.0)
-    assert (st.phase, st.cycle, st.n_iters) == ("negf", 1000, 8)
-    assert st.energy == -205444.335258
-    assert st.residuals["dQ"][:2] == (-584.0, 2.09), st.residuals
-    assert st.residuals["dHmax"][1] == 0.001, st.residuals
-    assert "negf SCF iteration 1000" in st.as_text()
-
-
-@pytest.mark.parametrize("sig,ended", [("SIGTERM", True), ("SIGUSR1", False)],
-                         ids=["the-job-ended", "a-retry-in-place"])
-def test_the_shipped_monitor_closes_on_the_wrapper_s_signal(tmp_path, sig,
-                                                            ended):
-    """The monitor as a compute node runs it -- its one shipped file,
-    `mb_monitor.pyz`, holding it and the framework it reads through,
-    molbuilder unimportable -- follows a
-    real device's NEGF rows and, when the wrapper stops it, writes its
-    closing lines at once however long its interval.  SIGTERM is the job's
-    end and sends "it ended"; SIGUSR1 is a warm retry in the same process,
-    and sends nothing (`run-reports.md` § 2)."""
-    import signal
-    import subprocess
-    import sys
-    import time
-    from molbuilder.runwrap import MONITOR_BUNDLE, monitor_bundle
-    run = _device_run(tmp_path)
-    (run / MONITOR_BUNDLE).write_bytes(monitor_bundle())
-    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
-    assert subprocess.run([sys.executable, "-c", "import molbuilder"],
-                          cwd=run, env=env).returncode != 0, (
-        "molbuilder is importable here, so this is not a compute node")
-    log = run / "DEV_03_device-run0.monitor.log"
-    watched, mon = subprocess.Popen(["sleep", "120"]), None
-    try:
-        mon = subprocess.Popen(
-            [sys.executable, MONITOR_BUNDLE, "--label", "DEV",
-             "--stage", "03_device", "--run", "0", "--util",
-             "--interval", "60", "--watch-pid", str(watched.pid),
-             "--nice", "0"], cwd=run, env=env)
-        for _ in range(300):
-            if log.exists() and "[MONITOR] start" in log.read_text():
-                break
-            time.sleep(0.1)
-        mon.send_signal(getattr(signal, sig))
-        assert mon.wait(timeout=10) == 0, "the stop waited out the interval"
-    finally:
-        watched.kill()
-        if mon is not None and mon.poll() is None:
-            mon.kill()
-    text = log.read_text()
-    closing = [line for line in text.splitlines() if "[STATUS]" in line][-1]
-    assert "negf SCF iteration 1000" in closing, closing
-    assert "E -205444.335258 eV" in closing, closing
-    assert "[UTIL-SUMMARY]" in text
-    assert ("(stopped by SIGTERM)" in text) is ended
-    assert ("retrying this attempt in place" in text) is not ended
-    assert ("finish:" in text) is ended

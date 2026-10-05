@@ -37,8 +37,10 @@ Files, and which of them the RUN wrote:
   `../../task.json` -- prep's and launch's.
 
 Read by `tests/parse/test_contract.py` (the relaxation record, § 5b.1 of
-`model/parse.md`), `tests/parse/dirs/test_rundir.py` and
-`tests/test_path_framework_doors.py` (what opens), `tests/test_results_blueprint.py`
-and `tests/test_structure_info_bridge.py` (the composer and its door), and
-`tests/test_siesta_vibration_deck.py` (the record table of
-`engines/vibration.md` § 2.2).
+`model/parse.md`), `tests/test_structure_info_bridge.py` (the composer and its
+door), `tests/test_siesta_vibration_deck.py` (the record table of
+`engines/vibration.md` § 2.2), `tests/test_engine_offset_reaches_every_deck.py`,
+and the monitor's tests -- `tests/test_monitor.py`,
+`tests/test_monitor_notify_policy.py`, `tests/test_monitor_bundle_runs_alone.py`
+and `tests/test_machine_identity.py` -- which replay the run's own files under
+their own names (`process/testing.md` § 6).

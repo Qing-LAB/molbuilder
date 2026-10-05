@@ -25,11 +25,9 @@ from __future__ import annotations
 import pytest
 
 from molbuilder.config.siesta import SIESTA_RESTART_GROUP, SiestaConfig
-from molbuilder.issues import ValidationError
 from molbuilder.structure import Structure
 from molbuilder.task import Stage
 from molbuilder.validation.identity import warm_files_present
-from molbuilder.validation.task import refuse_on_error
 
 
 ID = "BDT_Au_relax_C6H4S2Au38"
@@ -139,24 +137,8 @@ def test_a_fresh_directory_reports_nothing_underway(tmp_path):
     assert warm_files_present(tmp_path, ID, "siesta") == []
 
 
-def test_warm_files_are_reported_by_name(tmp_path):
-    """§ 6's surviving rule: before writing, say WHAT is in the folder."""
-    (tmp_path / f"{ID}.XV").write_text("relaxed coords\n")
-    assert warm_files_present(tmp_path, ID, "siesta") == [f"{ID}.XV"]
-
-
-def test_saying_never_renames_and_never_touches_the_warm_files(tmp_path):
-    """*"and never renames"* -- the non-negotiable half of § 6's sentence:
-    the warm files are what the next run continues from, so "make the
-    name unique" would throw away the geometry the user is keeping.
-    Asserted on disk, not on a message."""
-    xv = tmp_path / f"{ID}.XV"
-    xv.write_text("relaxed coords\n")
-    before = sorted(p.name for p in tmp_path.iterdir())
-    warm_files_present(tmp_path, ID, "siesta")
-    assert sorted(p.name for p in tmp_path.iterdir()) == before
-    assert xv.read_text() == "relaxed coords\n"
-    assert not list(tmp_path.glob("*-restart-aside-*"))
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 2 tests here reported a `.XV` written by hand as engine state (`process/testing.md` § 6).
 
 
 # ``test_the_cli_produce_path_refuses_a_second_time`` was RETIRED 2026-08-11.

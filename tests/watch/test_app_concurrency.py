@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any, Dict
 
 import pytest
 
@@ -66,9 +65,9 @@ def test_stale_parse_doesnt_clobber_swapped_state(tmp_path):
     The eventual return value of the first parse must NOT overwrite
     /tmp/B's _state because path / parser changed under us."""
     file_a = tmp_path / "a.out"
-    file_a.write_text("Welcome to SIESTA -- A\n")
+    file_a.write_text("a\n")
     file_b = tmp_path / "b.out"
-    file_b.write_text("Welcome to SIESTA -- B\n")
+    file_b.write_text("b\n")
 
     with app_module._lock:
         app_module._state["path"]   = str(file_a)
@@ -110,7 +109,7 @@ def test_concurrent_polls_dont_serialize_on_parse(tmp_path):
     parses (slow), the other sees the cached state and returns fast.
     The fast one shouldn't have to wait for the slow parse to finish."""
     file_a = tmp_path / "a.out"
-    file_a.write_text("Welcome to SIESTA -- A\n")
+    file_a.write_text("a\n")
 
     # Prime the cache with a parse first (synchronous, mtime=now).
     SlowParser.release.set()      # let the priming parse run through
@@ -131,7 +130,7 @@ def test_concurrent_polls_dont_serialize_on_parse(tmp_path):
     # unconditionally (None != any float), independent of FS quirks.
     SlowParser.release.clear()
     SlowParser.parse_started.clear()
-    file_a.write_text("Welcome to SIESTA -- A (modified)\n")
+    file_a.write_text("a, modified\n")
     with app_module._lock:
         app_module._state["mtime"] = None
 

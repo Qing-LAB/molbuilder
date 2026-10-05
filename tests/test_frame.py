@@ -1,114 +1,21 @@
-"""Frame and Trajectory dataclass smoke tests.
+"""The Frame dataclass takes plain lists for its arrays.
 
-These tests exercise the parsers' primary API (Iterator[Frame] via
-Trajectory) directly, without going through the legacy-dict
-adapter.  Most of the existing parser tests in tests/watch/ assert
-on the legacy dict shape via trajectory_to_legacy_dict; this file
-is the explicit Frame-shape coverage.
-
-Spec: docs/design.md "Frame and Trajectory (parser output type)".
+Spec: docs/design.md "Frame and Trajectory (parser output type)".  The
+Trajectory tests that parsed outputs typed by hand were retired 2026-10-04
+(`process/testing.md` § 6).
 """
 
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
-from molbuilder.frame import Frame, Trajectory
-from molbuilder.parse.engines.molwatch import MolwatchLogParser
-from molbuilder.parse.engines.siesta import SiestaParser
+from molbuilder.frame import Frame
 from molbuilder.structure import Structure
 
 
-_MW_SAMPLE = """\
-# molwatch trajectory log v1
-# engine: pyscf
-# job: water_relax
-# units: energy=eV, force=eV/Ang, coords=Ang
-
-==== molwatch step 0 begin ====
-step_index: 0
-n_atoms: 3
-coordinates (Ang):
-   O      0.00000000      0.00000000      0.00000000
-   H      0.95700000      0.00000000      0.00000000
-   H     -0.23900000      0.92700000      0.00000000
-energy (eV): -76.12345600
-forces (eV/Ang):
-   O     -0.00100000     -0.00200000      0.00000000
-   H      0.00050000      0.00100000      0.00000000
-   H      0.00050000      0.00100000      0.00000000
-max_force (eV/Ang): 0.00240000
-scf_history begin
-#  cycle  energy(eV)  delta_E(eV)  gnorm  ddm
-       1   -76.0      0.00         0.05   0.1
-       2   -76.1     -0.10         0.005  0.01
-scf_history end
-==== molwatch step 0 end ====
-"""
-
-
-def test_trajectory_is_a_frame_container(tmp_path):
-    p = tmp_path / "x.molwatch.log"
-    p.write_text(_MW_SAMPLE)
-    traj = MolwatchLogParser.parse(str(p))
-    assert isinstance(traj, Trajectory)
-    assert traj.source_format == "pyscf"   # from "# engine: pyscf" header
-    assert traj.lattice is None
-    # Trajectory supports len(), iteration, and indexing.
-    assert len(traj) == 1
-    assert traj[0] is traj.frames[0]
-    assert list(traj) == traj.frames
-
-
-def test_frame_carries_structure_and_physics(tmp_path):
-    p = tmp_path / "x.molwatch.log"
-    p.write_text(_MW_SAMPLE)
-    traj = MolwatchLogParser.parse(str(p))
-    f = traj[0]
-    assert isinstance(f, Frame)
-    assert isinstance(f.structure, Structure)
-    assert f.structure.elements == ["O", "H", "H"]
-    np.testing.assert_allclose(f.structure.positions[0], [0.0, 0.0, 0.0])
-    assert f.step_index == 0
-    assert f.energy == pytest.approx(-76.123456)
-    assert f.max_force == pytest.approx(0.0024)
-    # Forces survive as an (N, 3) ndarray.
-    assert isinstance(f.forces, np.ndarray)
-    assert f.forces.shape == (3, 3)
-    # SCF history is a list of dicts with the unified key set.
-    assert f.scf_history is not None
-    assert len(f.scf_history) == 2
-    assert {"cycle", "energy", "delta_E", "gnorm", "ddm"} <= set(
-        f.scf_history[0].keys()
-    )
-
-
-def test_siesta_trajectory_lattice(tmp_path):
-    """SIESTA puts the cell on Trajectory.lattice (3x3 ndarray), not
-    on per-Frame lattice -- it's constant across frames."""
-    sample = (
-        "Welcome to SIESTA\n"
-        "outcoor: Atomic coordinates (Ang):\n"
-        "   1.0  2.0  3.0   1   1  C\n"
-        "\n"
-        "outcell: Unit cell vectors (Ang):\n"
-        "       10.0    0.0    0.0\n"
-        "        0.0   10.0    0.0\n"
-        "        0.0    0.0   10.0\n"
-        "\n"
-        "siesta: E_KS(eV) =          -100.0\n"
-    )
-    p = tmp_path / "run.out"
-    p.write_text(sample)
-    traj = SiestaParser.parse(str(p))
-    assert traj.lattice is not None
-    assert isinstance(traj.lattice, np.ndarray)
-    assert traj.lattice.shape == (3, 3)
-    np.testing.assert_allclose(np.diag(traj.lattice), [10.0, 10.0, 10.0])
-    # All frames inherit the trajectory-level lattice; per-frame
-    # Frame.lattice is reserved for variable-cell trajectories.
-    assert all(f.lattice is None for f in traj.frames)
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 7 tests here parsed a progress log, a SIESTA output or a
+# geomeTRIC trajectory typed by hand (`process/testing.md` § 6).
 
 
 # --------------------------------------------------------------------- #
@@ -126,83 +33,6 @@ def test_siesta_trajectory_lattice(tmp_path):
 #  shape that the JS client uses to decide whether to hide the SCF       #
 #  panel.  These tests pin both sides of the contract.                   #
 # --------------------------------------------------------------------- #
-
-
-_PREVIEW_LOG = """\
-# molwatch trajectory log v1
-# engine: siesta
-# job: h2
-
-==== molwatch step 0 begin ====
-step_index: 0
-n_atoms: 1
-kind: initial_preview
-coordinates (Ang):
-   H      0.00000000      0.00000000      0.00000000
-energy (eV): None
-forces (eV/Ang):
-   H      0.00000000      0.00000000      0.00000000
-max_force (eV/Ang): None
-scf_history begin
-scf_history end
-==== molwatch step 0 end ====
-"""
-
-
-def test_molwatch_preview_block_has_empty_scf_not_none(tmp_path):
-    """A preview block carries an scf_history section that is
-    intentionally empty.  The molwatch parser must record `[]`, not
-    `None` -- the file IS tracking SCF data; it just has no cycles
-    yet."""
-    p = tmp_path / "preview.molwatch.log"
-    p.write_text(_PREVIEW_LOG)
-    traj = MolwatchLogParser.parse(str(p))
-    assert len(traj) == 1
-    assert traj[0].scf_history == []          # intentional empty
-    assert traj[0].scf_history is not None    # not the None signal
-
-
-def test_pyscf_no_log_yields_scf_history_none(tmp_path):
-    """A PySCF trajectory with no companion .log should mark every
-    Frame's scf_history as None -- the parser has no SCF data
-    source, not "scf data with no cycles"."""
-    from molbuilder.parse.engines.pyscf import PySCFParser
-    sample = (
-        "1\nIteration 0 Energy   -0.5\nH 0.0 0.0 0.0\n"
-        "1\nIteration 1 Energy   -0.6\nH 0.01 0.0 0.0\n"
-    )
-    p = tmp_path / "no_log_geom_optim.xyz"
-    p.write_text(sample)
-    traj = PySCFParser.parse(str(p))
-    assert all(f.scf_history is None for f in traj.frames)
-
-
-def test_legacy_adapter_collapses_all_none_to_top_level_empty(tmp_path):
-    """When every Frame's scf_history is None, trajectory_to_legacy_dict
-    collapses the per-frame [[], [], ...] to a top-level [] -- the
-    legacy JS client uses this signal to hide the SCF panel."""
-    from molbuilder.parse.engines._helpers import trajectory_to_legacy_dict
-    from molbuilder.parse.engines.pyscf import PySCFParser
-    sample = (
-        "1\nIteration 0 Energy   -0.5\nH 0.0 0.0 0.0\n"
-        "1\nIteration 1 Energy   -0.6\nH 0.01 0.0 0.0\n"
-    )
-    p = tmp_path / "no_log_geom_optim.xyz"
-    p.write_text(sample)
-    legacy = trajectory_to_legacy_dict(PySCFParser.parse(str(p)))
-    assert legacy["scf_history"] == []        # collapsed
-    assert legacy["frames"] != []             # frames still present
-
-
-def test_legacy_adapter_keeps_per_frame_empty_lists(tmp_path):
-    """Contrast: when frames legitimately carry empty scf_history (the
-    preview block case), the adapter does NOT collapse -- per-frame
-    `[]` entries are preserved."""
-    from molbuilder.parse.engines._helpers import trajectory_to_legacy_dict
-    p = tmp_path / "preview.molwatch.log"
-    p.write_text(_PREVIEW_LOG)
-    legacy = trajectory_to_legacy_dict(MolwatchLogParser.parse(str(p)))
-    assert legacy["scf_history"] == [[]]      # preserved, NOT collapsed
 
 
 def test_frame_post_init_coerces_list_inputs():

@@ -60,7 +60,6 @@ import pytest
 from molbuilder.identity import is_ours
 from molbuilder.jobset.model import Job, JobSet, Resources
 from molbuilder.jobset.prep import prep_jobset
-from molbuilder.monitor import run_monitor
 
 LABEL = "J_01_coarse"
 STAGE_DIR = "01_01_coarse"
@@ -69,7 +68,7 @@ STAGE_DIR = "01_01_coarse"
 #: at least one sample before the wrapper's cleanup stops it.  A run that ends
 #: instantly is not the case this file is about: the artifacts only collide
 #: when a run lasts long enough to be measured.
-_ENGINE = '#!/bin/bash\nsleep 2\necho "Job completed"\n'
+_ENGINE = '#!/bin/bash\nsleep 2\necho "stand-in engine"\n'
 _CONDA = "#!/bin/bash\nexit 0\n"
 
 
@@ -124,44 +123,8 @@ def _run_the_wrapper(stage: Path) -> None:
 # --------------------------------------------------------------- the wrapper
 
 
-def test_a_rerun_writes_new_monitor_files_and_never_touches_the_first(tmp_path):
-    """The claim in this file's title, run rather than read.
-
-    Two attempts in one prepped directory.  Both monitor artifacts must land
-    on the SECOND attempt's index, and the first attempt's must still hold
-    their own bytes afterwards -- which is precisely what was false before
-    2026-08-27, when `util.csv` had one name and `write_text` truncated it.
-
-    MUTATION THIS MUST FAIL AGAINST: pin `_run_n=0` so the index never
-    advances, or build the monitor's `--util` path from something other than
-    the resolved index.  Both leave every f-string in `runwrap.py`
-    byte-identical, so the retired spelling-pin passed through either one.
-    """
-    stage = _a_prepared_calculation(tmp_path)
-
-    _run_the_wrapper(stage)
-    first_log = stage / f"{LABEL}-run0.monitor.log"
-    first_csv = stage / f"{LABEL}-run0.util.csv"
-    assert first_log.exists() and first_csv.exists(), (
-        "the first attempt wrote no indexed monitor artifacts: "
-        f"{sorted(p.name for p in stage.iterdir())}")
-
-    first_csv.write_text("t,cpu\n0,MEASURED\n")      # the earlier measurement
-    keep = first_log.read_text()
-
-    _run_the_wrapper(stage)
-    assert (stage / f"{LABEL}-run1.monitor.log").exists(), (
-        "the re-run did not advance the monitor log's index: "
-        f"{sorted(p.name for p in stage.iterdir())}")
-    assert (stage / f"{LABEL}-run1.util.csv").exists(), (
-        "the re-run did not advance util.csv's index -- the benchmark "
-        "measurement is what this destroys")
-
-    assert first_csv.read_text() == "t,cpu\n0,MEASURED\n", (
-        "the re-run overwrote the FIRST attempt's util.csv, which is the "
-        "whole defect project-layout.md 1.5a exists to close")
-    assert first_log.read_text() == keep, (
-        "the re-run appended to (or truncated) the first attempt's monitor log")
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 1 test here wrote a monitor record over the run's own by hand (`process/testing.md` § 6).
 
 
 def test_a_run_that_printed_nothing_keeps_its_index(tmp_path):

@@ -1,16 +1,14 @@
-"""What the engine says it used, and how long each phase took.
+"""What the engine says it used.
 
 `model/parse.md` § 5d.2-5d.3.  The run record's setup column is read from the
 ENGINE's own account -- SIESTA's ``fdf.<timestamp>.log`` -- never echoed from
-the deck; and a device's seconds per iteration are its phases', not one
-average of two.
+the deck.
 
 API-level.  ``fdf.20260925T194936.695.log`` is the whole fdf log of the
-diverged 42-pole device run of 2026-09-25 -- measured.  The timing test's ROWS
-are that run's own (``device-diverging.out``); its EPOCHS are constructed, at
-the rates that run measured, because no wrapper wrote a two-phase timing log
-before the tee read both phases -- the first device run through the road
-replaces them (plan § 5t, P3).
+diverged 42-pole device run of 2026-09-25 -- measured.  The per-phase timing
+test stood on that run's output cut short and on epochs made up for it, and
+was retired 2026-10-04 (`process/testing.md` § 6); the first device run
+through the road times its phases (plan § 5t, P3).
 """
 from __future__ import annotations
 
@@ -19,7 +17,6 @@ from pathlib import Path
 import pytest
 
 from molbuilder.parse import detect
-from molbuilder.parse.instruments.scf_timing_rows import scf_timing_metrics
 
 _HERE = Path(__file__).parent / "fixtures" / "transiesta"
 
@@ -71,27 +68,7 @@ def test_one_setting_read_in_two_cases_is_one_reading():
     assert [r["value"] for r in readings] == ["none", "CG"]
 
 
-def test_each_phase_is_timed_on_its_own():
-    """A device's periodic iterations and its NEGF iterations are timed
-    separately, the step between them -- TranSIESTA's switch and the whole
-    first NEGF iteration -- is timed as neither, and the headline is the
-    NEGF loop's."""
-    from molbuilder.parse.engines.siesta_grammar import PHASE_NEGF, scf_row
-    rows = [(line, scf_row(line)) for line in
-            (_HERE / "device-diverging.out").read_text().splitlines()]
-    t, log = 1000.0, []
-    for line, row in rows:
-        if row is None:
-            continue
-        log.append(f"{t:.3f} {row.iscf} {line}")
-        t += 27.5 if row.phase == PHASE_NEGF else 97.0
-        if row.phase != PHASE_NEGF and row.iscf == 7:
-            t += 600.0                         # the switch + NEGF iteration 1
-    m = scf_timing_metrics("\n".join(log))
-    assert m["s_per_iter_periodic"] == pytest.approx(97.0)
-    assert m["s_per_iter_negf"] == pytest.approx(27.5)
-    assert (m["rows_periodic"], m["rows_negf"]) == (7, 8)
-    # 7 and 8 rows give 6 and 7 intervals WITHIN each phase, less the first
-    # (warm-up) -- the cross-phase step is none of them.
-    assert (m["iters_measured_periodic"], m["iters_measured_negf"]) == (5, 6)
-    assert (m["s_per_iter"], m["iters_measured"]) == (pytest.approx(27.5), 6)
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# `test_each_phase_is_timed_on_its_own` timed the device output cut to its
+# first 1453 and last 35 lines, on epochs made up for it (`process/testing.md`
+# § 6).

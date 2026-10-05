@@ -18,7 +18,11 @@ It is current by construction, it is readable in source -- twelve lines and you
 can count the atoms -- and a test written on it exercises the real
 write-then-read path instead of trusting a snapshot of one.
 
-Used by ``tests/test_junction_sidecar_roundtrip.py`` (the sidecar pair).
+Used by ``tests/test_fdf_generator_roundtrip.py``, ``tests/test_script_emit.py``
+and ``tests/test_no_tests_read_the_projects_tree.py`` (the structure), and its
+spectrum sidecar by ``tests/parse/test_sidecars.py`` and
+``tests/parse/test_round2_fixes.py`` (written by our writer, read back by our
+reader).
 
 *(It also named ``tests/parse/dirs/test_bundle.py`` until 2026-09-06.  That
 file does not exist and neither does a bundle DirParser -- the pointer
@@ -152,58 +156,9 @@ def spectra_sidecar(path):
     return path
 
 
-# --------------------------------------------------------------------- #
-#  A SIESTA .XV, BUILT                                                 #
-# --------------------------------------------------------------------- #
-
 # `run_dir` -- a deck rendered into a bare folder -- stood here until
 # 2026-10-04, for the one test that read a run's labels by searching
 # that folder; a run's labels are its own deck's, through the run door
-# (`runs.declared`, plan B12).
-
-#: SIESTA writes .XV in BOHR; the parser converts back on read.
-# THE one Bohr->Angstrom value (`molbuilder/constants.py`).  A literal
-# here would be a second home: three of them had already drifted to
-# THREE different values by 2026-09-09 (0.5291772108, 0.529177249 --
-# CODATA 1986 -- and 0.529177).  Importing is not circular: every use
-# below WRITES a fixture in Bohr, and the assertion is on the Angstrom
-# value that comes back.
-from molbuilder.constants import BOHR_ANGSTROM as _ANGSTROM_PER_BOHR
-
-
-def xv_file(path, struct=None):
-    """Write a valid SIESTA ``.XV`` for ``struct`` (default: the junction).
-
-    The format, straight from what the parser reads: three lattice rows (vector
-    then its velocity), the atom count, then one row per atom of
-    ``species_index Z x y z vx vy vz`` -- all lengths in Bohr.
-
-    Hand-written because the application has no .XV WRITER (it only ever reads
-    them; SIESTA is the writer in production).  So this fixture is verified the
-    only honest way -- by parsing it back and comparing to the structure it was
-    built from; see the round-trip test beside its consumers.
-    """
-    # The one door from a species label to its atomic number
-    # (`chemistry.resolve_element`; docs/model/chemistry.md § 3).
-    from molbuilder.chemistry import atomic_number
-
-    s = struct if struct is not None else build_junction()
-    cell = s.resolve_cell() / _ANGSTROM_PER_BOHR
-    pos = s.positions / _ANGSTROM_PER_BOHR
-
-    species = {}
-    for el in s.elements:
-        species.setdefault(el, len(species) + 1)
-
-    rows = []
-    for i in range(3):
-        rows.append("  {:16.9f}{:16.9f}{:16.9f}    {:16.9f}{:16.9f}{:16.9f}".format(
-            *cell[i], 0.0, 0.0, 0.0))
-    rows.append(f"{len(s.elements):8d}")
-    for el, xyz in zip(s.elements, pos):
-        rows.append("{:3d}{:6d}{:18.9f}{:18.9f}{:18.9f}    "
-                    "{:16.9f}{:16.9f}{:16.9f}".format(
-                        species[el], atomic_number(el),
-                        *xyz, 0.0, 0.0, 0.0))
-    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
-    return path
+# (`runs.declared`, plan B12).  `xv_file`, a SIESTA `.XV` written by a
+# hand-rolled writer, went the same day: a `.XV` is SIESTA's, and a test
+# reads one a real run wrote (`tests/fixtures/siesta_flat_h2/H2.XV`).

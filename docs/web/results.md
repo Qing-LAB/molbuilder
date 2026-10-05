@@ -710,38 +710,26 @@ Two consequences worth stating, because they are the point:
 old shape and all three failed on the correction, one of them because a
 non-greedy regex stopped at the new guard's `return`.*
 
-**Both halves are proven.** Removing `path` from either caller fails a
-test:
+**Neither half has a test now.** Removing `path` from either caller was
+caught by an e2e test that computed CO2 itself --
+`test_the_viewer_draws_the_run_this_suite_just_optimised` (a relaxation,
+~4 s) and `test_the_viewer_reads_a_run_this_suite_just_computed` (a
+frequency job, ~2 s) -- and both were retired 2026-10-04 with their files:
+each ran its deck by hand, outside `init → prep → launch`, and opened that
+folder as a run of ours (`process/testing.md` § 6). A relaxation and a
+spectrum made on the road and opened in the browser are what prove the two
+halves again; until then the load path is uncovered. The calculation is
+still the proof *(user ruling, 2026-09-03: "e2e means you can calculate a CO2
+molecule within 5 min and use that output to do this. Why do you need
+anything copied? That would be true e2e.")* -- the road is how it is made.
 
-| core | the test that catches it | what it drives |
-|---|---|---|
-| trajectory | `test_the_viewer_draws_the_run_this_suite_just_optimised` | a CO2 relaxation, run by the test (~4 s) |
-| spectra | `test_the_viewer_reads_a_run_this_suite_just_computed` | a CO2 frequency job, run by the test (~2 s) |
+The **no-new-content** arm of the trajectory's `APPLY`, which runs only on a
+watch tick that finds the file unchanged, was never exercised: reaching it
+needs a run that is still going while the page watches it.
 
-One branch stays unexercised and is named rather than implied: the
-**no-new-content** arm of the trajectory's `APPLY`, which runs only on a
-watch tick that finds the file unchanged. Reaching it needs a run that is
-still going while the page watches it, which neither test above sets up.
-
-The spectra half was unprovable for a day, and the reason is worth keeping:
-**no test in this suite had ever loaded a real spectra result.** Every
-spectra e2e mounted a `job.spectra.json` that did not exist, took the 404
-and stopped in `ERROR` without reaching `APPLY` — so the viewer's entire
-load path was uncovered, and a defect in it could not have been caught by
-anything.
-
-What closed it was not a fixture. *(User ruling, 2026-09-03: "e2e means you
-can calculate a CO2 molecule within 5 min and use that output to do this.
-Why do you need anything copied? That would be true e2e.")*
-`tests/test_spectra_from_a_real_run_e2e.py` builds CO2, renders the
-vibration deck through the production door, runs it in the env the four-env
-model routes PySCF to, and opens the result in the browser — **2.3 seconds
-of compute**, and the answer is checked against the physics CO2 actually
-has: four modes for a linear triatomic, the two bends degenerate, bend <
-symmetric < antisymmetric stretch.
-
-A copied artifact would have proved the viewer can read one file from one
-day. Running the calculation proves the chain still works today.
+*(Before the CO2 runs, no test in this suite had ever loaded a real spectra
+result: every spectra e2e mounted a `job.spectra.json` that did not exist,
+took the 404 and stopped in `ERROR` without reaching `APPLY`.)*
 
 `derived` is the one the prose above folds into "the parsed file", and it is a
 separate bucket for a reason: it is **recomputed**, never written by a
@@ -923,7 +911,6 @@ presenters pass (see [`presenters.md`](?doc=web/presenters.md)).
 
 - `test_results_blueprint.py` — the page + the registered presenter set + script
   order.
-- `test_results_folder_dispatch_e2e.py` — the pick → mount dispatch end to end.
 - `test_inspector_pageshow_refresh_e2e.py` — the re-scan on tab return.
 - `test_results_file_picker_e2e.py` — the picker: one scan per visit (§ 2.2),
   the re-read on a restore and on tab return, Reload, and the folder it owns

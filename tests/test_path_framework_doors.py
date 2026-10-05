@@ -155,103 +155,9 @@ def test_find_by_role_still_refuses_a_role_the_catalogue_does_not_declare():
 # run's.
 
 
-# --------------------------------------------------------------------------- #
-# 2.  runstatus: the narrowing must keep PySCF's own output visible.           #
-# --------------------------------------------------------------------------- #
-
-def test_a_pyscf_rung_that_only_wrote_pyscf_log_is_not_reported_queued(tmp_path):
-    """§ 1.6's forbidden line, in the shape the migration could have caused.
-
-    PySCF under the wrapper writes ``.pyscf.log`` — the catalogue says so
-    explicitly: *"the same, for PySCF under the wrapper — it writes here and
-    not to .out."*  So narrowing the existence check to the exact roles ``.out``
-    and ``.log`` would have made a finished PySCF rung answer *"queued"*, which
-    is the one answer status is not allowed to invent.  The check asks for the
-    role FAMILIES for that reason.
-    """
-    from molbuilder.jobset.runstatus import _stage_state
-    _touch(tmp_path, "bdt_01_relax.pyscf.log")
-    state, _detail = _stage_state(tmp_path, {"job_id": 481923},
-                                  "bdt_01_relax")
-    assert state != "queued", (
-        "a rung whose engine wrote .pyscf.log has produced output; reporting "
-        "it queued is § 1.6's exact forbidden line")
-
-
-def test_molbuilder_reading_a_directory_does_not_make_a_rung_look_started(tmp_path):
-    """"Has the ENGINE produced anything" is the CATALOGUE'S question, and the
-    catalogue answers it with a column (`runfiles.Artifact.output`).
-
-    Derived from the role FAMILIES `.out` / `.log` it came to 11 roles, eight
-    of which no engine writes -- and one of them is `.parse.log`, molbuilder's
-    own log of READING the run's output.  The parser opens one beside whatever
-    it reads, on by default, so a single `jobset status` or Watch poll creates
-    it.  A queued rung therefore flipped to `running` the moment molbuilder
-    looked at its directory, and the rung's real answer -- "queued as job N",
-    the job id a person needs -- was replaced by "no result file yet".
-
-    Latent when found (0 in `projects/`, because the sweep that would create
-    them is the same sweep that reads them) and one Watch poll away.
-
-    The others are the same class: `.runwrap-{stamp}.log` is written at LAUNCH
-    before the engine starts, `.monitor.log` by the monitor beside it.
-    """
-    from molbuilder.jobset.runstatus import _stage_state
-    _touch(tmp_path, "bdt_01_relax.parse.log")       # molbuilder read this dir
-    state, detail = _stage_state(tmp_path, {"job_id": 481923},
-                                 "bdt_01_relax")
-    assert state == "queued", (
-        f"got {state!r} ({detail!r}) -- molbuilder's own reading log was "
-        f"counted as the engine having produced output")
-    assert "481923" in detail
-
-    # ...and the wrapper's session log, written at launch, is not output either.
-    _touch(tmp_path, "bdt_01_relax.runwrap-20260918-090000.log")
-    assert _stage_state(tmp_path, {"job_id": 481923},
-                        "bdt_01_relax")[0] == "queued"
-
-
-def test_a_prepped_rung_that_was_never_launched_is_not_running(tmp_path):
-    """"Has the ENGINE produced anything" means a file that exists BECAUSE THE
-    PROCESS STARTED — the catalogue's `output == "stdout"` column, and only it.
-
-    A progress log is SEEDED at prep, before the engine exists
-    (`jobset/prep.py::_seed_trajectory_log`), so counting it as output makes a
-    rung you prepared and never launched report `running`.  Measured against a
-    CO2 job prepped through the UI and deliberately not launched: `jobset
-    status` said *"running / no result file yet"* where the true answer is
-    *"prepped, not launched"* — a state this function HAS and could not reach.
-
-    MUTATION THIS MUST FAIL AGAINST: widen the gate back to
-    `run_output_roles()`, which includes the seeded progress log.
-    """
-    from molbuilder.jobset.runstatus import _stage_state
-    _touch(tmp_path, "bdt_01_relax.molwatch.log")     # the prep seed, nothing else
-    state, detail = _stage_state(tmp_path, None, "bdt_01_relax")
-    assert state == "pending", (
-        f"got {state!r} ({detail!r}) -- the prep-time seed was counted as the "
-        f"engine having produced output")
-
-    # ...and once the engine's own stdout exists, it HAS started.
-    _touch(tmp_path, "bdt_01_relax-run0.out")
-    assert _stage_state(tmp_path, {"job_id": 7},
-                        "bdt_01_relax")[0] != "pending"
-
-
-def test_a_flat_rung_that_never_ran_does_not_read_its_siblings_output(tmp_path):
-    """One directory, two rungs: the token in the filename is what selects.
-
-    This is the defect the rung's narrowing was added for (a glob then, the
-    run's name since 2026-10-03), re-asserted against the grammar-based
-    narrowing that replaced it — the failure is silent and reads as
-    *success*, which is why it needs its own test.
-    """
-    from molbuilder.jobset.runstatus import _stage_state
-    _touch(tmp_path, "bdt_01_coarse.out")            # only the FIRST rung ran
-    state, detail = _stage_state(tmp_path, None, "bdt_02_fine")
-    assert state == "pending", (
-        f"rung 02_fine has written nothing; got {state!r} ({detail!r}) — it "
-        f"has read its sibling's .out")
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 8 tests here decided a run's state, or what opens, from outputs
+# and launch records written by hand (`process/testing.md` § 6).
 
 
 # `test_a_hierarchical_rung_is_found_although_the_shape_names_no_run` stood
@@ -327,7 +233,6 @@ def test_the_provenance_step_reads_the_wrapper_as_well_as_the_deck(tmp_path):
     what this test first tripped over.
     """
     from molbuilder import deck_record as dr
-    from molbuilder import script_emit as se
     from molbuilder.parse.contract import _declared_in_provenance
     # THE BLOCK IS WRITTEN THROUGH THE EMITTER'S OWN MARKERS, so this fixture
     # cannot drift from what a real wrapper carries.
@@ -338,58 +243,6 @@ def test_the_provenance_step_reads_the_wrapper_as_well_as_the_deck(tmp_path):
     assert _declared_in_provenance(tmp_path) == {"siesta"}
     # ...and the deck-less case is the point: nothing but the wrapper is here.
     assert not list(tmp_path.glob("*.fdf"))
-
-
-#: The least SIESTA output `SiestaOutFileParser.can_parse` will claim.  These
-#: tests used `_touch` -- EMPTY files -- until 2026-09-18, which worked only
-#: while the door offered a name without looking inside it.  It now offers
-#: only what the registry claims (`model/parse.md` § 5.5: *what can a person
-#: open* is the registry's question), so a stand-in has to be a real artifact.
-_MIN_OUT = ("Siesta Version: 5.4.2\n"
-            "siesta: System type = molecule\n"
-            "siesta: iscf   Eharris(eV)\n"
-            "scf:    1   -100.0  -100.0  -100.0  0.9  0.5  30.0\n")
-
-#: The least molwatch log that is one -- and it is what PREP seeds, header
-#: and all, so this is the real shape of a run that has not written a step yet.
-_MIN_MOLWATCH = ("# molwatch trajectory log v1\n"
-                 "# engine: siesta\n"
-                 "# job: bdt\n"
-                 "# units: energy=eV, force=eV/Ang, coords=Ang\n")
-
-
-def test_the_watch_resolver_finds_a_molwatch_log_first(tmp_path):
-    """The progress channel answers for a run whose engine's stdout no parser
-    claims -- PySCF's `.pyscf.log` (`model/parse.md` § 5.5).
-
-    *This trio followed the chain out of `web/blueprints/watch.py` into
-    `parse.dirs.rundir.openable_in` on 2026-09-18 (§ 5c step 2).*  The chain
-    became a delegation the same day: the CALCULATION decides, and an
-    optimization -- which names no product -- is opened at its trajectory,
-    which for a PySCF run is the log its deck writes step by step.
-    """
-    from molbuilder.parse.dirs import openable_in
-    (tmp_path / "bdt.molwatch.log").write_text(
-        _MIN_MOLWATCH.replace("engine: siesta", "engine: pyscf"), encoding="utf-8")
-    (tmp_path / "bdt-run0.pyscf.log").write_text("PySCF stdout\n", encoding="utf-8")
-    chosen, attempts = openable_in(str(tmp_path))
-    assert chosen is not None and chosen.endswith("bdt.molwatch.log"), attempts
-    assert any("molwatch" in a for a in attempts)
-
-
-def test_the_engines_own_output_outranks_the_seed_it_never_writes_into(tmp_path):
-    """SIESTA prints every geometry step into its stdout and never writes the
-    molwatch log prep seeded, so beside a `.out` the seed is a stub and the
-    `.out` is the trajectory (`model/parse.md` § 5.5; measured 2026-09-24 on
-    every SIESTA relaxation in the fixture project -- a 613-byte seed beside
-    a 34 KB `.out`, and the door offered the seed).  A lone `.out` with no
-    progress log and no readable deck is the same rule's easier case and is
-    covered by this one."""
-    from molbuilder.parse.dirs import openable_in
-    (tmp_path / "bdt.molwatch.log").write_text(_MIN_MOLWATCH, encoding="utf-8")
-    (tmp_path / "bdt.out").write_text(_MIN_OUT, encoding="utf-8")
-    chosen, attempts = openable_in(str(tmp_path))
-    assert chosen is not None and chosen.endswith("bdt.out"), attempts
 
 
 def test_find_template_still_refuses_two_answers(tmp_path):
@@ -422,24 +275,6 @@ def test_the_geometry_picker_takes_its_pyscf_spellings_from_their_home():
     assert "*.STRUCT_OUT" in pats, "SIESTA's own name has no home of ours"
 
 
-def test_stage_state_cannot_be_asked_without_its_rung(tmp_path):
-    """No default for the rung's name, because the flat shape's answer must be
-    named: a default would let one caller answer for every rung of a folder at
-    once, or -- a name matching nothing -- report *"prepped, not launched"*
-    for a rung that has finished, which is § 1.6's forbidden line reached by a
-    signature rather than by a bug.  Asserted as the outcome pair: the call is
-    refused without the name, and answers with it, on the same directory.
-    """
-    from molbuilder.jobset.runstatus import _stage_state
-    _touch(tmp_path, "bdt_01_tight.out")
-    with pytest.raises(TypeError):
-        _stage_state(tmp_path, None)                       # no rung named
-    state, _d = _stage_state(tmp_path, None, "bdt_01_tight")
-    assert state != "pending", (
-        "with the rung named, its .out is visible — which is exactly what a "
-        "name matching nothing would have hidden")
-
-
 def test_read_system_degrades_on_a_missing_bundle():
     """It is a REPORTER: absence degrades rather than raises.
 
@@ -454,37 +289,6 @@ def test_read_system_degrades_on_a_missing_bundle():
     from molbuilder.jobset.summarize import _read_system
     assert _read_system(Path("/nonexistent/bundle/no-such-thing")) == {
         "engine": "siesta"}
-
-
-def test_the_watch_resolver_survives_a_dotted_script_filename(tmp_path):
-    """A dot in a filename must not 500 the Watch tab.
-
-    `openable_in` reads `JOB` and `SystemLabel` through regexes
-    bounded to ``[A-Za-z0-9_-]+`` — deliberately, so a malformed deck cannot
-    inject a path. But ``py_stem`` is the deck's FILENAME stem, taken off disk
-    and unbounded, and it goes into `runfiles.compose`: ``my.job.py`` gives
-    ``my.job``, which § 2.1 refuses (rightly — a dotted label cannot be read
-    back out of a filename).
-
-    A resolver's contract is to try each step, SAY what it tried, and fall
-    through. Raising there turns "I could not resolve this directory" into a
-    server error at somebody who used a dot. Introduced by ``3dfa76c9`` when
-    these names moved onto the composer; measured 2026-09-08.
-    """
-    from molbuilder.parse.dirs import openable_in
-    (tmp_path / "my.job.py").write_text("JOB = 'myjob'\n", encoding="utf-8")
-    (tmp_path / "run.out").write_text(_MIN_OUT, encoding="utf-8")
-    chosen, attempts = openable_in(str(tmp_path))
-    assert chosen is not None and chosen.endswith("run.out"), (
-        "the resolver should fall through to its generic step, not raise")
-    # HOW it survives changed on 2026-09-18 and the outcome did not.  The
-    # stem no longer reaches `compose` at all: the search asks
-    # `runfiles.find`, which READS names rather than building one, so a
-    # dotted stem simply matches nothing instead of raising a `RunFileError`
-    # the resolver then had to catch and report.  Nothing to say, because
-    # nothing went wrong.
-    assert not any("not a run-file label" in a for a in attempts), (
-        f"the dotted stem should no longer reach a composer at all: {attempts}")
 
 
 # ── N4: the two sites that stopped spelling the layout ───────────────────────

@@ -500,17 +500,10 @@ def test_the_structure_pair_is_not_reported_as_engine_state():
             (base / n).write_text("x")
         assert warm_files_present(base, "slab", "siesta") == [], (
             "the hand-over's own files are reported as engine warm files")
-        (base / "slab.XV").write_text("x")
-        assert warm_files_present(base, "slab", "siesta") == ["slab.XV"], (
-            "a real warm file stopped being detected")
-        # Post-reservation the bare `<label>.xyz` is the ENGINE's name --
-        # WriteCoorXmol writes it at the root of a flat run, which is the
-        # file the 2026-08-19 clobber overwrote the input with.  The
-        # subtraction must report it as run state now, not claim it.
-        (base / "slab.xyz").write_text("x")
-        assert "slab.xyz" in warm_files_present(base, "slab", "siesta"), (
-            "a bare <label>.xyz is WriteCoorXmol's output and is engine "
-            "state under the .source reservation")
+        # Its two engine-file halves -- a `slab.XV` and a bare `slab.xyz`
+        # written by hand to stand for a run -- retired 2026-10-04 (user:
+        # "any fucking faking tests should be retired"; `process/testing.md`
+        # § 6).
 
 
 from conftest import write_pseudos as _pseudos_for
@@ -1037,7 +1030,6 @@ class TestTheMachineChoiceIsAskedNotGuessed:
             self, web_client, tmp_path, monkeypatch):
         """Shown rather than hidden: a record the user wrote and molbuilder
         cannot read is a thing to fix, and hiding it leaves them waiting."""
-        import json as _json
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
         # ...and the box is probed: this moves the machine scope, and
@@ -1147,34 +1139,6 @@ class TestTheTabShowsWhatAPrepWouldResolve:
 _T_CITE = "transport/optimization/Relax/01_only/run-0"
 
 
-def _cited_junction(root, *, concluded=True):
-    """A minimal citable directory (4.1b form A: one .fdf + one .XV
-    together).  ``concluded=False`` writes a run RECORD that does not
-    conclude (mid-run / force-stopped); the classification itself
-    never needs molbuilder's layout."""
-    calc = root / "transport/optimization/Relax"
-    attempt = calc / "01_only" / "run-0"
-    attempt.mkdir(parents=True, exist_ok=True)
-    (attempt / "Relax_01_only.fdf").write_text(
-        "SystemLabel Relax\nMeshCutoff 250.0 Ry\nPAO.BasisSize SZ\n"
-        "XC.functional GGA\nXC.authors PBE\n")
-    from molbuilder.constants import BOHR_ANGSTROM
-    bohr = 1.0 / BOHR_ANGSTROM
-    (attempt / "Relax.XV").write_text(
-        f"  {10*bohr:.8f} 0.0 0.0  0.0 0.0 0.0\n"
-        f"  0.0 {10*bohr:.8f} 0.0  0.0 0.0 0.0\n"
-        f"  0.0 0.0 {10*bohr:.8f}  0.0 0.0 0.0\n"
-        "  2\n"
-        f"  1  6  0.0 0.0 0.0  0.0 0.0 0.0\n"
-        f"  1  6  0.0 0.0 {1.3*bohr:.8f}  0.0 0.0 0.0\n")
-    if concluded:
-        (attempt / "Relax_01_only-run0.concluded").write_text("rc=0\n")
-    else:
-        from molbuilder.runrecord import write_launch
-        write_launch(attempt, mode="direct", command=["bash", "x"])
-    return calc
-
-
 def test_the_handover_door_refuses_transport_by_name(web_client):
     r = web_client.post("/api/task-setup/handover", json=dict(
         engine="siesta", calculation="transport", name="T",
@@ -1196,7 +1160,6 @@ def test_describe_attempt_stays_inside_the_tree(web_client):
     assert r.status_code == 400
 
 
-import re as _re
 
 
 def test_the_sheet_writes_no_raw_palette_colour():
@@ -1403,9 +1366,7 @@ class TestTheFolderDoor:
 def _labelled_au_lead_junction(root, n_layers):
     """A form-B citable pair (§ 4.1b) whose leads are real fcc(111) Au.
 
-    `_cited_junction` above is two carbon atoms with no regions, so it
-    never reaches the electrode models -- the seam note needs a junction
-    that actually has leads.
+    The seam note needs a junction that actually has leads.
     """
     import numpy as np
     from ase.build import fcc111

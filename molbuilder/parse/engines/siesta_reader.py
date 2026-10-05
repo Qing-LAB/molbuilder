@@ -318,8 +318,7 @@ class SiestaReader:
         })
         # The preamble Etot is kept for display: each commit writes its
         # step's, so the LAST committed step wins for a finished run and the
-        # in-flight step for an ongoing one
-        # (tests/test_siesta_frame_energy_fallback.py).
+        # in-flight step for an ongoing one.
         if (self._step_initial_etot is not None
                 and math.isfinite(self._step_initial_etot)):
             self.runtime_info["initial_etot"] = float(self._step_initial_etot)

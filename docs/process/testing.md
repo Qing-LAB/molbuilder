@@ -612,14 +612,22 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   hands on or shows makes that run with the engine, through `init → prep →
   launch`. Everything else is a run that never happened, and a test built on
   one is not written: an output copied into a stage's folder, renamed, cut
-  or edited; an output invented as text; a conclusion marker, launch record,
-  monitor record, restart or product file written by hand; a structure
-  carrying the record of a calculation nothing ran. A measured fixture is
-  read where it was measured, as itself — a parser on the file, the monitor
-  replaying the measured run's own files under their own names — never
-  called another run's result. *(282 tests and 10 case-table rows were
-  retired for it that day, the transport suite's citation fixture and the
-  run-ending and viewer cases of plan W55 9b among them.)*
+  or edited; an output invented as text — handed straight to a parser as
+  much as laid in a folder; a conclusion marker, launch record, monitor
+  record, restart or product file written by hand, or one of ours edited by
+  hand into a shape our writer never writes; a structure carrying the record
+  of a calculation nothing ran. A measured fixture is read where it was
+  measured, as itself — a parser on the file, the monitor replaying the
+  measured run's own files under their own names — never called another
+  run's result. *(282 tests and 10 case-table rows were retired for it that
+  day, the transport suite's citation fixture and the run-ending and viewer
+  cases of plan W55 9b among them. The rest went on 2026-10-04 — user: "any
+  fucking faking tests should be retired"; "if you find any such tests, need
+  to carefuly justify why we need them" — 446 tests in 72 files, 16 of them
+  deleted whole: parser tests on made-up output text, refusals of
+  hand-edited result files, restart files planted for the cold start and the
+  carry, and the two fixtures that had been cut from their runs.)* **A test
+  that fakes output is kept only with its reason stated to the user first.**
 - **Framework and API tests; end-to-end only when the user asks** *(user,
   2026-10-04: "you have to rely on more api and framework test rather than
   fucking e2e test. e2e test is only necessary when i say so")*. A run a

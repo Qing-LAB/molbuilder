@@ -36,7 +36,7 @@ def _doors():
     Each returns True/None for good input and raises or returns False for bad.
     Normalised to a predicate so one table drives them all.
     """
-    from molbuilder import projects, checkpoint, config_dir, monitor, selection
+    from molbuilder import projects, checkpoint, config_dir
     from molbuilder.web.blueprints import workspace_storage
 
     def _raises(fn):
@@ -84,12 +84,5 @@ def test_a_stage_name_with_a_newline_cannot_reach_a_filename():
         Stage(name="coarse\n")
 
 
-def test_the_line_scanners_are_deliberately_left_alone():
-    """The other half of the rule, stated so nobody 'finishes the job'.
-
-    A parser matching a line from a file relies on `$`'s carve-out, because
-    iterating a file hands back lines that still end in `\\n`.
-    """
-    from molbuilder.parse.engines import molwatch_grammar
-    assert molwatch_grammar.ERROR.match("# error: boom\n") is not None
-    assert molwatch_grammar.ERROR.fullmatch("# error: boom\n") is None
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 1 test here matched a progress-log footer typed by hand (`process/testing.md` § 6).

@@ -61,8 +61,8 @@ pytestmark = [
         reason="needs the molbuilder-siesta env + a detectable conda hook"),
 ]
 
-#: named, as in `test_spectra_from_a_real_run_e2e.py`: a hidden Plotly node
-#: resized on load logs this, and nothing else may.
+#: named: a hidden Plotly node resized on load logs this, and nothing else
+#: may.
 _PLOTLY_HIDDEN_RESIZE = "Resize must be passed a displayed plot div"
 
 

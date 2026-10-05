@@ -63,7 +63,9 @@ Coverage matrix:
   *Both were named ``propor_error`` until 2026-09-26, after the reading the
   parser gave them: it matched its fatal markers inside SIESTA's echo of the
   deck (`siesta_grammar.INPUT_ECHO_BEGIN`).  Neither contains a propor
-  error; the rule path is held by `test_siesta_parser_exit_status.py`.*
+  error, and no real output here holds one: the fatal-marker path's tests
+  read invented text and were retired 2026-10-04 (`process/testing.md`
+  § 6).*
 
 Together these touch every section rule in the SIESTA parser's list and
 both terminal ``run_state`` values the corpus can hold -- ``ended`` and

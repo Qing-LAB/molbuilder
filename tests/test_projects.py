@@ -6,13 +6,9 @@ The module under test is filesystem-pure: every test runs against
 
 from __future__ import annotations
 
-import os
-import time
-from pathlib import Path
 
 import pytest
 
-from molbuilder import projects
 from molbuilder.projects import (CANONICAL_TOPICS, InvalidName,
                                    PROJECTS_ROOT_NAME, ensure_structure_dir,
                                    find_geom_candidates, list_projects,
@@ -207,67 +203,13 @@ def test_list_structures_empty_when_topic_missing(tmp_path):
 # --------------------------------------------------------------------- #
 
 
-def _touch_with_mtime(path: Path, t: float) -> None:
-    """Create the file and set its mtime to `t` (seconds since epoch)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.touch()
-    os.utime(path, (t, t))
-
-
 def test_find_geom_candidates_empty_when_no_projects(tmp_path):
     assert find_geom_candidates(base=tmp_path) == []
 
 
-def test_find_geom_candidates_picks_known_patterns(tmp_path):
-    sd = ensure_structure_dir("p", "optimization", "Au-S", base=tmp_path)
-    _touch_with_mtime(sd / "Au-S_optimized.xyz", 100.0)
-    _touch_with_mtime(sd / "Au-S.STRUCT_OUT",   100.0)
-    _touch_with_mtime(sd / "random.txt",        100.0)
-    found = find_geom_candidates(base=tmp_path)
-    names = {p.name for p in found}
-    assert "Au-S_optimized.xyz" in names
-    assert "Au-S.STRUCT_OUT"    in names
-    assert "random.txt"         not in names
-
-
-def test_find_geom_candidates_sorted_newest_first(tmp_path):
-    sd1 = ensure_structure_dir("p", "optimization", "old", base=tmp_path)
-    sd2 = ensure_structure_dir("p", "optimization", "new", base=tmp_path)
-    _touch_with_mtime(sd1 / "old_optimized.xyz", 100.0)
-    _touch_with_mtime(sd2 / "new_optimized.xyz", 200.0)
-    found = find_geom_candidates(base=tmp_path)
-    assert [p.name for p in found] == ["new_optimized.xyz", "old_optimized.xyz"]
-
-
-def test_find_geom_candidates_ignores_generic_xyz_and_pdb(tmp_path):
-    """Patterns are deliberately specific -- generic ``*.xyz`` /
-    ``*.pdb`` would catch user inputs, intermediate frames, and other
-    noise the picker shouldn't surface.  Only files matching one of
-    the documented output conventions appear in the list."""
-    sd = ensure_structure_dir("p", "optimization", "x", base=tmp_path)
-    _touch_with_mtime(sd / "x_optimized.xyz", 100.0)
-    _touch_with_mtime(sd / "starting_input.xyz", 100.0)
-    _touch_with_mtime(sd / "reference.pdb", 100.0)
-    names = {p.name for p in find_geom_candidates(base=tmp_path)}
-    assert names == {"x_optimized.xyz"}
-
-
-def test_find_geom_candidates_scoped_to_one_project(tmp_path):
-    sda = ensure_structure_dir("alpha", "optimization", "x", base=tmp_path)
-    sdb = ensure_structure_dir("beta",  "optimization", "y", base=tmp_path)
-    _touch_with_mtime(sda / "x_optimized.xyz", 100.0)
-    _touch_with_mtime(sdb / "y_optimized.xyz", 100.0)
-    only_alpha = find_geom_candidates(base=tmp_path, project="alpha")
-    names = {p.name for p in only_alpha}
-    assert names == {"x_optimized.xyz"}
-
-
-def test_find_geom_candidates_alphabetical_when_not_newest_first(tmp_path):
-    sd = ensure_structure_dir("p", "optimization", "x", base=tmp_path)
-    _touch_with_mtime(sd / "z_optimized.xyz", 100.0)
-    _touch_with_mtime(sd / "a_optimized.xyz", 200.0)
-    found = find_geom_candidates(base=tmp_path, newest_first=False)
-    assert [p.name for p in found] == ["a_optimized.xyz", "z_optimized.xyz"]
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 5 tests here offered empty files named as an engine's converged
+# geometry as the next job's start (`process/testing.md` § 6).
 
 
 class TestTheProjectsRootIsOneConfigurableDoor:

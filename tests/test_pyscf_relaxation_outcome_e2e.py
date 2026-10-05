@@ -16,7 +16,6 @@ one or two geometry steps cannot relax it.
 from __future__ import annotations
 
 import dataclasses
-import json
 
 import numpy as np
 import pytest
@@ -45,7 +44,7 @@ _H2 = (["H", "H"], [[5.0, 5.0, 5.0], [5.0, 5.0, 5.95]])
 
 
 def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
-         molecule=_H2, info=None, execution=None):
+         molecule=_H2, execution=None):
     """``molecule``, its one stage carrying ``overrides``, its run card
     ``execution`` (`stages.md` § 6.8d: a run setting lives there alone) and
     its template ``template``'s values -- written by the hand-over's own writer
@@ -65,8 +64,6 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
     (tree / "P" / "structure").mkdir(parents=True)
     struct = Structure(elements=list(molecule[0]),
                        positions=np.array(molecule[1], dtype=float))
-    for key, value in (info or {}).items():
-        struct.set_info(key, value)
     StructureCodec().write(struct, tree / "P" / "structure" / "h2.xyz")
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tree))
     monkeypatch.chdir(tree.parent)
@@ -248,39 +245,9 @@ def test_an_open_shell_run_on_the_gpu_says_its_stability_was_not_checked(
     assert state == "finished", said[-3000:]
 
 
-def test_the_runs_own_pair_carries_no_record_of_the_inputs_run(tmp_path,
-                                                              monkeypatch):
-    """The input arrives as a SIESTA run's export -- its relaxation record
-    and its level of theory in ``info`` -- and a PySCF relaxation writes its
-    own ``_optimized.xyz`` pair: that pair is this run's geometry, so the
-    input's run records stay behind (`engines/pyscf.md` § 2).
-
-    MUTATION THIS MUST FAIL AGAINST: the input's ``info`` copied onto the
-    run's pair -- the deck before 2026-09-29, which handed a PySCF-relaxed
-    geometry a SIESTA run's tolerance, force and level of theory (PS-C10).
-    """
-    from molbuilder.workingcopy_structure import StructureCodec
-
-    siesta_run = {
-        "relaxation": {"engine": "siesta", "source": "elsewhere.out",
-                       "n_steps": 7, "force_tolerance_ev_ang": 0.04,
-                       "max_force_ev_ang": 0.03,
-                       "max_force_free_ev_ang": 0.03, "held_atom_idxs": [],
-                       "held_atom_keys": [], "converged": True,
-                       "run_state": "finished",
-                       "geometry_sha256": "sha256:" + "0" * 64},
-        "calculation": {"engine": "siesta", "source": "elsewhere.fdf",
-                        "contract": {"net_charge": 0,
-                                     "spin_treatment": "restricted",
-                                     "unpaired_electrons": 0}}}
-    bundle, state, said = _run(
-        tmp_path, monkeypatch, calculation="optimization",
-        overrides={"geom_max_steps": 1, "on_nonconvergence": "proceed"},
-        info=siesta_run)
-    assert state == "finished", said[-3000:]
-    written = StructureCodec().read(next(bundle.glob("*_optimized.xyz")))
-    assert not {"relaxation", "calculation"} & set(written.info or {}), (
-        written.info)
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 1 test here gave the input structure the record of a SIESTA
+# relaxation nothing ran (`process/testing.md` § 6).
 
 
 def test_a_structure_stated_relaxed_is_measured_not_relaxed(tmp_path,

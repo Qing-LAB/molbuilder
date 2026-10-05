@@ -13,7 +13,6 @@ import re
 import numpy as np
 import pytest
 
-import molbuilder
 from molbuilder.pyscf import (
     PySCFConfig,
     render_script,
@@ -418,54 +417,9 @@ def test_geometry_warm_restart_compiles(h2o):
     compile(text, "<rendered-script>", "exec")
 
 
-def test_geometry_warm_restart_overrides_literal_when_xyz_exists(h2o, tmp_path):
-    """End-to-end behavior of the warm-restart block, exercised
-    WITHOUT launching PySCF.  We render the script, save it, write
-    a fake ``<JOB>_optimized.xyz`` with deliberately-distinct
-    coordinates, then execute ONLY the warm-restart block in
-    isolation (stripped down to its dependencies) and confirm
-    ``_atom_block`` has been overridden with the fake-file
-    contents.
-
-    Catches the "branch present but never fires" class of bug
-    from the design.md "Required tests" table.
-    """
-    text = render_script(h2o, PySCFConfig(restart="continue"))
-
-    # Extract just the warm-restart slice we want to exercise.  We
-    # want everything from the _atom_block initial assignment up to
-    # (but not including) the gto.M() call -- that's the literal +
-    # override block.  We then prepend the JOB literal and a fake
-    # _mb_outfile so the slice runs standalone.
-    block_start = text.index("_atom_block = '''")
-    block_end   = text.index("mol = gto.M(")
-    slice_text  = text[block_start:block_end]
-
-    # Write a fake _optimized.xyz with He instead of O/H/H so we can
-    # tell from the override result whether the warm-restart fired.
-    job = "test_job"
-    opt_xyz = tmp_path / f"{job}_optimized.xyz"
-    opt_xyz.write_text(
-        "1\n"
-        "fake geometry\n"
-        "He   1.23000000   4.56000000   7.89000000\n"
-    )
-
-    # Stub the helpers the slice depends on.
-    ns = {
-        "_os": __import__("os"),
-        "JOB": job,
-        "_mb_outfile": lambda name: str(tmp_path / name),
-    }
-    exec(slice_text, ns)
-
-    # The override fired: _atom_block now contains the He literal,
-    # not the original H2O literal.
-    assert "He" in ns["_atom_block"]
-    assert "1.23" in ns["_atom_block"]
-    assert "4.56" in ns["_atom_block"]
-    # And the original O/H literal is gone.
-    assert "O " not in ns["_atom_block"]
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 2 tests here warm-started from a PySCF `_optimized.xyz` written by
+# hand (`process/testing.md` § 6).
 
 
 def test_geometry_warm_restart_falls_through_when_xyz_absent(h2o, tmp_path):
@@ -490,39 +444,6 @@ def test_geometry_warm_restart_falls_through_when_xyz_absent(h2o, tmp_path):
     assert " O " in ns["_atom_block"]
     assert " H " in ns["_atom_block"]
     assert "He" not in ns["_atom_block"]
-
-
-def test_geometry_warm_restart_falls_through_on_malformed_xyz(h2o, tmp_path):
-    """Defense in depth: a malformed XYZ (bad atom count, missing
-    columns) MUST not crash the script -- the try/except keeps the
-    literal block intact and prints a warning.  Without this guard,
-    a corrupted file from a crashed prior run would block re-runs
-    until manually deleted."""
-    text = render_script(h2o, PySCFConfig())
-    block_start = text.index("_atom_block = '''")
-    block_end   = text.index("mol = gto.M(")
-    slice_text  = text[block_start:block_end]
-
-    job = "broken_job"
-    opt_xyz = tmp_path / f"{job}_optimized.xyz"
-    # Missing coordinate columns: parser should raise + we fall
-    # through to the literal.
-    opt_xyz.write_text(
-        "2\n"
-        "malformed (missing columns)\n"
-        "H\n"
-        "H\n"
-    )
-
-    ns = {
-        "_os": __import__("os"),
-        "JOB": job,
-        "_mb_outfile": lambda name: str(tmp_path / name),
-    }
-    exec(slice_text, ns)
-    # Literal survives despite the malformed file.
-    assert " O " in ns["_atom_block"]
-    assert " H " in ns["_atom_block"]
 
 
 # --------------------------------------------------------------------- #

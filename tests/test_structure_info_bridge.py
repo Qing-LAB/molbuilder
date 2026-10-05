@@ -38,20 +38,6 @@ from tests._node_esm import run_node
 
 _LIB = Path(__file__).resolve().parents[1] / "molbuilder" / "web" / "static" / "lib"
 
-_DECK = """SystemLabel Relax
-MeshCutoff 250.0 Ry
-PAO.BasisSize DZP
-XC.functional GGA
-XC.authors PBE
-"""
-
-_XYZ_3 = "".join(
-    "3\n"
-    f"Iteration {i} Energy {-76.41 + i * 0.001:.6f}\n"
-    f"O 0 0 {i * 0.01:.4f}\nH 0.957 0 0\nH -0.239 0.927 0\n"
-    for i in range(3)
-)
-
 
 @pytest.fixture()
 def client():
@@ -134,34 +120,9 @@ class TestTheComposer:
     # `test_a_finished_run_answers_both_keys_at_both_doors`.
 
 
-# --------------------------------------------------------------------- #
-#  2. The load door -- the store rides installMolecule IN                #
-# --------------------------------------------------------------------- #
-
-class TestTheLoadDoorTakesIt:
-
-    def test_a_pair_on_disk_brings_its_store_back(
-            self, client, tmp_path, monkeypatch):
-        """THE ROUND TRIP § 8.4a claims.  A saved pair carries the store in
-        its ``.molstruct.json``; re-opening it must answer the same store,
-        inside the canonical envelope -- which is where the browser reads
-        it from."""
-        _register_tmp_as_picker_root(tmp_path, monkeypatch)
-        from molbuilder.structure import Structure
-        from molbuilder.workingcopy_structure import StructureCodec
-
-        s = Structure(elements=["H", "H"],
-                      positions=[[0, 0, 0], [0, 0, 0.74]])
-        s.info = {"calculation": {"engine": "siesta",
-                                  "contract": {"basis_size": "DZP"}}}
-        StructureCodec().write(s, tmp_path / "pair.xyz")
-        side = json.loads((tmp_path / "pair.molstruct.json").read_text())
-        assert side["info"] == s.info, "the store must reach the sidecar"
-
-        d = client.post("/api/build/load",
-                        json={"path": str(tmp_path / "pair.xyz")}).get_json()
-        assert d["ok"] is True, d
-        assert d["structure"]["info"] == s.info
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 2 tests here uploaded a geomeTRIC trajectory typed by hand, or
+# saved a structure carrying the record of a calculation nothing ran (`process/testing.md` § 6).
 
 
 # --------------------------------------------------------------------- #
@@ -236,22 +197,6 @@ class TestWatchLoadAnswersTheBlock:
     # 2026-10-04 (W56 review): a deck and a trajectory written into a bare
     # folder -- the state the note above retires.  A run of ours, loaded by
     # its own file, is the flat H2 test above.
-
-    def test_an_upload_states_that_it_has_nothing_to_say(self, client):
-        """One route, one response shape: the upload builder has no run
-        directory, and answers so in the same three fields the other two
-        answer -- rather than leaving a caller to notice they are missing.
-        (Omission means KEEP on this route: the browser's APPLY rule is
-        keep-on-undefined, which is what lets the 200 ms poll re-send the
-        frames without re-sending the metadata.)"""
-        import io
-        d = client.post("/api/watch/load", data={
-            "file": (io.BytesIO(_XYZ_3.encode()), "run.xyz"),
-        }, content_type="multipart/form-data").get_json()
-        assert d["ok"] is True
-        for field in ("info", "atom_metadata", "periodicity"):
-            assert field in d, f"the upload builder must answer {field}"
-            assert d[field] is None
 
 
 # --------------------------------------------------------------------- #
@@ -380,7 +325,6 @@ class TestTheBrowserSide:
     # made the code MORE correct, which is exactly the failure mode a pin has.
     # The behaviour it reached for is covered above, against what the viewer
     # actually ends up holding.
-
 
     def test_an_export_carries_the_store_out(self):
         """The inverse: what the Metadata pane shows is what the pair carries.

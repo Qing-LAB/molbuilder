@@ -480,59 +480,9 @@ def test_a_flat_calculation_refuses_a_second_force_constant_stage(
         assert not list(bundle.glob(written)), f"{written} before refusing"
 
 
-
-def test_a_finish_that_fails_fails_the_job(tmp_path, monkeypatch):
-    """I22's other half (`engines/vibration.md` § 5.5): when the finish cannot
-    derive the result, the JOB failed -- the conclusion marker names the
-    failed finish and `run_status` reads failed although SIESTA's output
-    ended.  The finish fails the way a real attempt can: its copy of the
-    permutation record is gone.
-
-    The same attempt then stands for the two states no launch can be made to
-    leave on demand (`execution/running-a-job.md` § 4.2): its marker taken
-    away is a job stopped INSIDE its finish -- a walltime, a kill: the output
-    ended, the session log says the finish began, the monitor saw the process
-    go, and no marker came -- which reads failed; and the monitor's closing
-    record taken away too is a finish still at work, which reads running.
-
-    MUTATIONS THIS MUST FAIL AGAINST: the wrapper concluding rc=0 after a
-    failed finish; `run_status` taking the output's ending over the marker's
-    words -- every surface read such a job "finished" until 2026-09-28
-    (M2b′'s review); an ended output with no marker read as finished while
-    the finish works, or after a kill inside it (the review of 51590fa6).
-    """
-    from molbuilder.parse.dirs import run_status
-    from molbuilder.parse.dirs.job import FINISH_FAILED, MONITOR_ENDED
-    from molbuilder.runfiles import compose
-    tree = tmp_path / "projects"
-    bundle = _describe(tree, monkeypatch, [[5.0, 5.0, 5.77446], [5.0, 5.0, 5.0]])
-    task = json.loads((bundle / "task.json").read_text())
-    task["stages"] = [s for s in task["stages"] if s["name"] == "freq"]
-    (bundle / "task.json").write_text(json.dumps(task, indent=2))
-    _tick_already_relaxed(bundle)
-    r = _jobset("prep", "run", "freq", "--bundle", str(bundle), "--target", "this")
-    assert r.exit_code == 0, r.output
-    attempt = bundle / "01_freq" / "run-0"
-    (attempt / "atom-permutation.json").unlink()
-    _jobset("launch", "run", "freq", "--bundle", str(bundle),
-            "--mode", "direct", "--yes")
-    assert (attempt / "H2.FC").is_file(), "SIESTA's own run did finish"
-    assert not (attempt / "H2.spectra.json").exists()
-    concluded = (attempt / compose("H2", ".concluded", "01_freq", run=0)).read_text()
-    assert FINISH_FAILED in concluded and not concluded.startswith("rc=0"), concluded
-    st = run_status(attempt, "H2_01_freq")
-    assert st.state == "failed" and "finish" in st.detail, (st.state, st.detail)
-
-    (attempt / compose("H2", ".concluded", "01_freq", run=0)).unlink()
-    st = run_status(attempt, "H2_01_freq")
-    assert st.state == "failed" and "stopped before it concluded" in st.detail, \
-        (st.state, st.detail)
-    mon = attempt / compose("H2", ".monitor.log", "01_freq", run=0)
-    mon.write_text("".join(ln for ln in mon.read_text().splitlines(True)
-                           if MONITOR_ENDED not in ln))
-    st = run_status(attempt, "H2_01_freq")
-    assert st.state == "running" and "finish is deriving" in st.detail, \
-        (st.state, st.detail)
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 1 test here deleted a real run's conclusion marker and cut its
+# monitor log to stand for a run stopped in its finish (`process/testing.md` § 6).
 
 
 def test_a_job_that_cannot_finish_itself_stops_before_the_engine(

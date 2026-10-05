@@ -151,23 +151,9 @@ def test_a_transport_record_is_read_by_a_parser_not_by_the_browser(tmp_path):
     assert got.payload["iv"]["voltages_v"] == [0.0]
 
 
-def test_it_refuses_a_json_that_is_not_a_transport_record(tmp_path):
-    """The schema is checked, not the suffix -- which is the predecessor's
-    lesson pointing the other way.  `check_schema` compares the NAME as well
-    as the major, so another `@1` artifact cannot sail through.
-
-    MUTATION THIS MUST FAIL AGAINST: drop the `check_schema` call.
-    """
-    import json
-
-    from molbuilder.parse import detect
-    from molbuilder.parse.errors import UnknownFormatError
-
-    foreign = tmp_path / "other.transport.json"
-    foreign.write_text(json.dumps({"schema": "molbuilder/task@1",
-                                   "label": "x"}), encoding="utf-8")
-    with pytest.raises(UnknownFormatError):
-        detect(str(foreign))
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 2 tests here refused a transport record or a job set written by
+# hand (`process/testing.md` § 6).
 
 
 def test_the_catalogue_row_lets_the_door_offer_it(tmp_path):
@@ -244,39 +230,3 @@ def test_an_ordinary_ladder_is_refused_though_the_filename_matches(tmp_path):
 
     with pytest.raises(UnknownFormatError):
         detect(str(_job_set(tmp_path, "ladder")))
-
-
-def test_a_damaged_sweep_says_damaged_not_ladder(tmp_path):
-    """A refusal has to name its OWN cause.
-
-    `_load_sweep` answered `None` for every failure and `parse` turned
-    all of them into one sentence about `kind: ladder`.  So a plan
-    truncated by a killed write reported as a healthy ladder, the bench
-    directory listed as "no result files yet" -- the symptom this parser
-    exists to remove -- and nothing said the file was damaged.
-
-    ASKED THROUGH `parse`, NOT `detect`, and the difference is the point.
-    `detect` fans a boolean `can_parse` over every registered parser, so
-    it cannot attribute a refusal to one of them and answers its own
-    generic "no registered file parser knows how to handle ...".  That
-    is by construction and this test does not pretend otherwise: what it
-    pins is that the parser ITSELF, asked directly, says which of its
-    seven failure modes it hit.  The picker path still shows only an
-    absence -- see the note in `job_set.py`.
-
-    MUTATION THIS MUST FAIL AGAINST: collapse `_load_sweep`'s raises
-    back into a single `return None`.
-    """
-    from molbuilder.parse.errors import UnknownFormatError
-    from molbuilder.parse.sidecars import JobSetSweepFileParser
-
-    f = tmp_path / "job-set.json"
-    f.write_text('{"schema": "molbuilder/job-set@1", "kind": "swe',
-                 encoding="utf-8")
-    assert JobSetSweepFileParser.can_parse(f) is False
-    with pytest.raises(UnknownFormatError) as e:
-        JobSetSweepFileParser.parse(f)
-    said = str(e.value)
-    assert "JSON" in said, said
-    assert "ladder" not in said, (
-        "a damaged file is reported as an ordinary ladder: " + said)

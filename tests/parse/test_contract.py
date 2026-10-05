@@ -96,74 +96,9 @@ from molbuilder.parse.contract import engine_of      # noqa: E402
 # no test dramatising a user who does not exist.
 
 
-def _prov(engine: str) -> str:
-    """A PROVENANCE block from the REAL EMITTER, never typed here.
-
-    These cases build directory shapes a real run cannot easily be made
-    to have (two decks disagreeing, litter beside a fresh deck), so they
-    have to construct the file. What they must NOT do is invent its
-    FORMAT: a hand-typed block is a literal, and a literal cannot
-    regress. Every test of this mechanism fed the reader a typed string
-    until 2026-09-04, which is how the emitters came to have no coverage
-    at all -- an adversarial review deleted the declaration from both
-    writers and watched 853 tests stay green.
-
-    Going through `emit_provenance` means the day the block's shape
-    changes, these fail too, instead of quietly testing a format nothing
-    writes any more.
-    """
-    from molbuilder.script_emit import emit_provenance
-
-    return emit_provenance(generator_version="git deadbee",
-                           generated_at="2026-09-04T00:00:00-07:00",
-                           engine=engine) + "\n"
-
-
-def test_a_pyscf_run_directory_says_pyscf(tmp_path):
-    """The regression this whole mechanism exists for."""
-    (tmp_path / "co2.pyscf.log").write_text("...\n")
-    assert engine_of(tmp_path) == "pyscf"
-
-
-def test_the_molwatch_header_outranks_the_file_cluster(tmp_path):
-    """A `.fdf` present would sniff as SIESTA; the log's own header wins.
-
-    This is the rung that carries every run prepared before the
-    PROVENANCE key shipped -- both generators have written
-    `# engine: <name>` at file-emission time for far longer.
-    """
-    (tmp_path / "j.fdf").write_text("SystemLabel j\n")
-    (tmp_path / "j.molwatch.log").write_text("# engine: pyscf\n# step 0\n")
-    assert engine_of(tmp_path) == "pyscf"
-
-
-
-def test_the_wrapper_alone_carries_a_transiesta_run(tmp_path):
-    """TranSIESTA is the same engine as SIESTA -- a different TASK.
-
-    A transport deck gets no PROVENANCE at all (`jobset/prep.py` writes
-    it with a bare `write_text`, bypassing `prepare_deck`), so the
-    `.run.sh` is the ONLY artifact declaring the engine. Hence the
-    second assertion, and it is the point of this test: with the deck
-    removed the answer must still be `siesta`, which is what proves the
-    WRAPPER was read.
-
-    Without it this test was vacuous -- an earlier version asserted only
-    the first line, which passes against a `.fdf` cluster sniff, against
-    a provenance rung that ignores `*.run.sh`, and against the literal
-    constant `"siesta"` this whole mechanism replaced. It was caught in
-    an adversarial review the day it was written.
-    """
-    deck = tmp_path / "j.fdf"
-    deck.write_text("%block TS.Elec.Left\n%endblock TS.Elec.Left\n")
-    (tmp_path / "j.run.sh").write_text(_prov("siesta"))
-    assert engine_of(tmp_path) == "siesta"
-
-    deck.unlink()                       # nothing left to sniff
-    assert engine_of(tmp_path) == "siesta", (
-        "with no deck to sniff, only the wrapper's PROVENANCE can answer "
-        "-- if this fails, the provenance rung is not reading *.run.sh "
-        "and a transport run has no declaration at all")
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 4 tests here named a folder's engine from a PySCF log, progress
+# logs or a run script written by hand (`process/testing.md` § 6).
 
 
 def test_a_bare_py_file_is_not_an_engine_signal(tmp_path):
@@ -173,15 +108,6 @@ def test_a_bare_py_file_is_not_an_engine_signal(tmp_path):
     says nothing about which engine ran.
     """
     (tmp_path / "mb_monitor.py").write_text("print(1)\n")
-    assert engine_of(tmp_path) == "unknown"
-
-
-def test_molwatch_is_a_format_and_is_refused_as_an_engine(tmp_path):
-    """A log with no `# engine:` header parses to `source_format`
-    ``"molwatch"``.  That is the FORMAT, and reading it as the engine is
-    the substitution § 4.2 forbids -- it is how the wire reported
-    ``format: "molwatch"`` for every molbuilder run."""
-    (tmp_path / "j.molwatch.log").write_text("# engine: molwatch\n")
     assert engine_of(tmp_path) == "unknown"
 
 
@@ -236,4 +162,3 @@ def test_a_run_that_relaxed_nothing_has_no_record():
     fc = Path(__file__).resolve().parents[1] / "fixtures" / "siesta_fc"
     assert (fc / "h2_fc.out").is_file()
     assert relaxation_of(fc / "h2_fc.out") is None
-

@@ -19,7 +19,6 @@ nothing:
 """
 import os
 from pathlib import Path
-import subprocess
 
 import pytest
 
@@ -94,25 +93,9 @@ def test_no_tool_and_no_device_read_the_same(monkeypatch):
 
 # ------------------------------------------------------------- line format
 
-def test_machine_line_puts_the_model_last(monkeypatch):
-    """Device models contain spaces, so the reader takes everything after
-    ``gpu=`` as the model list — legal only while gpu stays the last field.
-
-    **Asked of the REAL reader.** This carried its own copy of the
-    reader's regex until 2026-09-04 — a third spelling of one pattern,
-    beside the writer and the parser — so a change to the READER left it
-    green while every trial silently lost its machine. The parser is
-    `parse/instruments/monitor.py`; feeding it the writer's own output is
-    the only form of this test that fails in both directions.
-    """
-    from molbuilder.parse.instruments.monitor import monitor_metrics
-
-    monkeypatch.setattr(monitor, "_gpu_models",
-                        lambda: ["NVIDIA A100-SXM4-80GB"])
-    line = monitor.machine_line()
-    m = monitor_metrics(f"[2026-01-01T00:00:00] [MACHINE] {line}")["machine"]
-    assert m, f"un-parseable [MACHINE] payload: {line!r}"
-    assert m["gpu"] == "NVIDIA A100-SXM4-80GB"
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 1 test here parsed a monitor line typed by hand around the
+# writer's payload (`process/testing.md` § 6).
 
 
 def _real_run(tmp_path):

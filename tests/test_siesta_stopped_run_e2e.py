@@ -13,11 +13,9 @@ cascade after it; the wrapper retries once, warm, as run 1 (`job-contracts.md`
 What each reader must say (`running-a-job.md` § 4.2, `model/parse.md` § 2b):
 the folder is ``failed``, its detail quoting the line that stopped it -- the
 SCF's, not the cascade's; the viewer's stop reason is that cause in the
-table's words; the run's session log is found as the run's; and a rank other
-than 0 that dies says why only on stderr -- so the same run with its output
-cut before the stopping lines, as node 0's missing flush leaves it, still
-reads stopped, from the session log.  The Results tab's Run panel
-(`web/results.md` § 3a) says the same, from the run's record, in a browser.
+table's words; and the run's session log is found as the run's.  The Results
+tab's Run panel (`web/results.md` § 3a) says the same, from the run's record,
+in a browser.
 
 They replace two checks that read frozen outputs of older runs -- the
 viewer's stop reason on a hemeC stage, and the setup's ``in_deck`` on a
@@ -212,35 +210,9 @@ def test_each_run_is_paired_with_its_own_session_log(stopped):
     assert log_of_run(stopped, "H2", 0, None) is None
 
 
-def test_a_rank_that_said_why_only_on_stderr_is_still_heard(stopped,
-                                                             tmp_path):
-    """SIESTA's ``die`` writes its message to stderr too, and flushes stdout
-    on node 0 alone: a rank other than 0 that dies may leave the output with
-    no ending and say why only on stderr, which the wrapper keeps in its
-    session log.  The run above, its latest output cut before the first
-    line that stopped it, is that: it must still read stopped, from that
-    run's log.
-
-    MUTATION THIS MUST FAIL AGAINST: ``run_status`` reading the output alone.
-    """
-    from molbuilder.parse.dirs import run_status
-    from molbuilder.parse.engines import siesta_grammar as G
-    from molbuilder.wrapper_log import log_of_run
-
-    run = tmp_path / "01_coarse" / "run-0"
-    shutil.copytree(stopped, run)
-    out = run / "H2_01_coarse-run1.out"
-    text = out.read_text(errors="replace")
-    cut = text.index(G.SCF_NOT_CONV_MARKER.upper())
-    out.write_text(text[:cut])
-    log = log_of_run(run, "H2", 1, "01_coarse")
-    assert G.SCF_NOT_CONV_MARKER.upper() in log.read_text(errors="replace"), (
-        "SIESTA's stderr did not reach the session log -- this run cannot "
-        "show a rank's stderr, and the premise of the test is wrong")
-
-    st = run_status(run, "H2_01_coarse")
-    assert st.state == "failed", st
-    assert st.detail.startswith("stopped before its end: SCF_NOT_CONV"), st
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 1 test here copied the real stopped run and cut its output to
+# stand for a rank whose output was never flushed (`process/testing.md` § 6).
 
 
 def test_the_setup_tells_a_key_the_engine_read_alone_from_the_decks(stopped):

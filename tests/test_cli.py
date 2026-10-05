@@ -19,8 +19,6 @@ round-trip (``tests/test_template_roundtrip.py``).
 
 from __future__ import annotations
 
-import contextlib
-import sys
 
 import numpy as np
 import pytest
@@ -187,14 +185,6 @@ def test_pyscf_atom_block_emits_to_stdout(monkeypatch, capsys, tmp_path):
 #  The stdin helper is shared, so the sniff stays gated through pyscf.
 
 
-
-
-
-
-
-
-
-
 # --------------------------------------------------------------------- #
 #  Phase 5c: validate subcommand (Issue JSON to stdout)                 #
 # --------------------------------------------------------------------- #
@@ -309,120 +299,9 @@ def test_modify_electrode_spec_key_case_insensitive():
 # --------------------------------------------------------------------- #
 
 
-_MW_LOG = """\
-# molwatch trajectory log v1
-# engine: pyscf
-# created: 2026-04-25T11:00:00
-
-==== molwatch step 0 begin ====
-step_index: 0
-kind: initial_preview
-wall_time: 1700000000.0
-n_atoms: 2
-coordinates (Ang):
-   H  0.0  0.0  0.0
-   H  0.74 0.0  0.0
-energy (eV): None
-forces (eV/Ang):
-max_force (eV/Ang): None
-scf_history begin
-scf_history end
-==== molwatch step 0 end ====
-
-==== molwatch step 1 begin ====
-step_index: 1
-wall_time: 1700000005.0
-n_atoms: 2
-coordinates (Ang):
-   H  0.0  0.0  0.0
-   H  0.75 0.0  0.0
-energy (eV): -32.5
-forces (eV/Ang):
-   H  0.0 0.0 0.0
-   H  0.0 0.0 0.0
-max_force (eV/Ang): 0.0
-scf_history begin
-scf_history end
-==== molwatch step 1 end ====
-
-# concluded: 2026-04-25T11:00:05
-"""
-
-
-
-
-def test_watch_parse_frames_only_drops_atom_arrays(capsys, tmp_path):
-    """--frames-only emits the per-frame summary without the heavy
-    coordinates / forces arrays.  Useful for piping a long trajectory
-    into jq / grep without slurping megabytes of coordinates."""
-    import json
-    p = tmp_path / "run.molwatch.log"
-    p.write_text(_MW_LOG)
-    rc = cli.main(["watch", "parse", str(p), "--frames-only"])
-    assert rc == 0
-    body = json.loads(capsys.readouterr().out)
-    assert "frames"  not in body
-    assert "forces"  not in body
-    assert body["energies"]   == [None, -32.5]
-    # The .molwatch.log carries epochs, so the epoch series is the
-    # one that is populated -- and the elapsed series is derived from
-    # it once, in the payload builder (parse.md § 2a, P-T3).
-    assert body["wall_clock_s"] == [1700000000.0, 1700000005.0]
-    assert body["elapsed_s"]    == [0.0, 5.0]
-
-
-@contextlib.contextmanager
-def _must_return_within(seconds, what):
-    """Turn a hang into a failure.
-
-    `watch tail` polls until the run is concluded, so a bug in *that*
-    decision does not fail the test -- it spins.  On 2026-08-25 it did:
-    the § 2b rename retired the state names the loop compared against,
-    and the lane stalled at 22% for eleven hours until the process was
-    killed.  A test that cannot fail is worse than no test, because it
-    takes the rest of the suite down with it.
-
-    ``pytest-timeout`` is not installed; SIGALRM is stdlib and pytest
-    runs tests on the main thread, which is all this needs.
-    """
-    import signal
-
-    def _boom(signum, frame):
-        raise AssertionError(f"{what} did not return within {seconds}s")
-
-    prev = signal.signal(signal.SIGALRM, _boom)
-    signal.setitimer(signal.ITIMER_REAL, seconds)
-    try:
-        yield
-    finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, prev)
-
-
-def test_watch_tail_emits_ndjson_one_per_frame(capsys, tmp_path):
-    """`watch tail` emits NDJSON: one JSON object per line, one line
-    per new frame.  Stops when the run is concluded.  This file is
-    already finished, so we get all 2 frames immediately.
-
-    ``--max-frames`` is deliberately set ABOVE the frame count: the
-    frame cap must not be what ends the loop, or the test would pass
-    while `watch tail` had lost the ability to notice a finished run.
-    Termination here is the run_state decision and nothing else.
-    """
-    import json
-    p = tmp_path / "run.molwatch.log"
-    p.write_text(_MW_LOG)
-    with _must_return_within(10, "watch tail on a concluded run"):
-        rc = cli.main(["watch", "tail", str(p), "--poll-ms", "10",
-                       "--max-frames", "10"])
-    assert rc == 0
-    out = capsys.readouterr().out.strip()
-    # NDJSON: one JSON object per line.
-    lines = [json.loads(ln) for ln in out.splitlines() if ln]
-    assert len(lines) == 2
-    assert lines[0]["step"]   == 0
-    assert lines[1]["step"]   == 1
-    assert lines[1]["energy"] == -32.5
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 3 tests here read a progress log or a PySCF product typed by
+# hand (`process/testing.md` § 6).
 
 
 def test_watch_tail_rejects_stdin(capsys):
@@ -774,42 +653,3 @@ def test_electrode_registry_is_per_slab_and_reaches_the_builder(tmp_path):
     assert step > 1.0, (
         f"the registry never reached the builder: the starting layer moved "
         f"{step:.4f} Å")
-
-
-# --------------------------------------------------------------------- #
-#  The trajectory verbs refuse what is not a trajectory                 #
-# --------------------------------------------------------------------- #
-
-
-#: `watch parse` and `runtime-info` are the SAME path -- detect, then read
-#: `.frames` -- so one of them stands for both.  `watch tail` is here on its
-#: own merits: it calls the guard inside a poll loop, where the failure is a
-#: HANG rather than a traceback.
-@pytest.mark.parametrize("verb", [["watch", "parse"], ["watch", "tail"]])
-def test_the_trajectory_verbs_refuse_a_single_geometry(verb, tmp_path,
-                                                       capsys):
-    """These three read `.frames` after detection, so a file whose parser
-    answers a `StructureResult` crashed with
-    `AttributeError: 'StructureResult' object has no attribute 'frames'`.
-
-    The guard written for this asked `is_dir()` -- which catches a
-    directory and not this, the file PySCF writes at the end of every
-    optimization.  `/api/watch/*` had the right rule a layer up
-    (`_refuse_if_not_a_trajectory`); both now ask
-    `parse.types.answers_a_trajectory`.
-
-    `watch tail` is in the list deliberately: it calls the guard INSIDE a
-    poll loop that retries `ParseError` and sleeps, so a refusal raised as
-    one hangs for ever instead of printing.
-    """
-    p = tmp_path / "x_optimized.xyz"
-    p.write_text("2\nfinal\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74\n")
-    with _must_return_within(15, f"{' '.join(verb)} on a single geometry"):
-        with pytest.raises(SystemExit) as exc:
-            cli.main(verb + [str(p)])
-    assert exc.value.code == 2
-    err = capsys.readouterr().err
-    assert "not a trajectory" in err, err
-    assert "pyscf-geom" in err, (
-        "the refusal must name the parser that DID read the file, so the "
-        f"reader knows it is not a detection failure: {err!r}")

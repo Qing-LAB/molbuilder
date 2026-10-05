@@ -116,11 +116,9 @@ def test_an_advancing_job_notifies_nothing_by_default(tmp_path):
         f"a quiet policy still notified: {seen}")
 
 
-def test_finish_always_fires_whatever_the_policy_says(tmp_path):
-    """A run ending is the message the hook exists to deliver, so it is not
-    settable and not conditional."""
-    seen = _events(tmp_path, watch_pid=999_999_999)
-    assert "finish" in seen
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 3 tests here concluded the measured relaxation's output cut
+# short, once called a single point (`process/testing.md` § 6).
 
 
 # --------------------------------------------------------------------- #
@@ -140,17 +138,6 @@ def test_one_message_per_geometry_step(tmp_path):
                    max_ticks=3, notify_on_scf=True,
                    clock=_clock([0, 1, 2, 3, 4, 5]))
     assert seen.count("scf_converged") == 3, seen
-
-
-def test_a_single_point_says_nothing_until_it_finishes(tmp_path):
-    """No geometry moves means no steps to report, so the finish message is
-    the whole report -- which is what it should be.  A single point that
-    fired a 'converged' notice AND a 'finished' notice would be telling
-    you the same thing twice."""
-    seen = _events(tmp_path, upto=394, watch_pid=999_999_999,
-                   notify_on_scf=True)
-    assert "scf_converged" not in seen
-    assert "finish" in seen
 
 
 # --------------------------------------------------------------------- #
@@ -584,30 +571,6 @@ def test_the_users_secret_is_never_echoed_into_the_log(tmp_path, monkeypatch):
     M.load_channels(log=log)
     assert "SECRET" not in log.read_text()
     assert "hooks.slack.com" not in log.read_text()
-
-
-def test_running_twice_in_one_process_registers_one_webhook(tmp_path,
-                                                            monkeypatch):
-    """``_NOTIFIERS`` is module state and ``run_monitor`` installs into it
-    on every call, so a second run in one process added a second copy of
-    the same webhook and POSTed every event twice.
-
-    The shipped monitor runs one job per process and would never have
-    shown this; anything embedding the module would.  Found by reading.
-    """
-    monkeypatch.setenv("MB_NOTIFY_URL", "http://127.0.0.1:9/nowhere")
-    watched, _grow = _replay(tmp_path, 400)
-
-    M.clear_notifiers()
-    try:
-        for _ in range(3):
-            M.run_monitor(watched, interval=1,
-                          watch_pid=999_999_999, sleep=lambda s: None)
-            hooks = [f for f in M._NOTIFIERS
-                     if getattr(f, "__name__", "") == "webhook_notifier"]
-            assert len(hooks) == 1, f"registered {len(hooks)} copies"
-    finally:
-        M.clear_notifiers()
 
 
 # --------------------------------------------------------------------- #

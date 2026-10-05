@@ -114,34 +114,8 @@ class TestItAnswersFromTheAtoms:
     # the second-shell error stated as a number, not as a percentage in a
     # sentence.
 
-    def test_a_siesta_XV_reads_the_same_as_the_xyz(self, client, picker_root):
-        """§ 3.3 names both readers, so both are driven.  A `.XV` is what a
-        SIESTA relax actually leaves behind, and it must give the same answer
-        as the same crystal written as extended XYZ — otherwise the route has
-        two behaviours and the user has to know which file they picked."""
-        # THE READER'S OWN CONSTANT, imported rather than retyped: a second
-        # copy here would make the test measure the difference between two
-        # Bohr radii instead of between two readers.  (It did, at 1.6e-6 Å,
-        # which is how the five-spellings finding surfaced.)
-        from molbuilder.parse.coords.siesta_xv import _ANGSTROM_PER_BOHR as BOHR
-        struct = _au_supercell(2, 2, 2)
-        pos_bohr = struct.positions / BOHR
-        cell_bohr = np.asarray(struct.cell) / BOHR
-        rows = ["  ".join(f"{v:.9f}" for v in row) + "   0.0 0.0 0.0"
-                for row in cell_bohr]
-        rows.append(f"  {len(pos_bohr)}")
-        for p_ in pos_bohr:
-            rows.append("  1  79  " + "  ".join(f"{v:.9f}" for v in p_)
-                        + "  0.0 0.0 0.0")
-        xv = picker_root / "Au.XV"
-        xv.write_text("\n".join(rows) + "\n")
-
-        from_xv = _ask(client, xv)
-        from_xyz = _ask(client, _write(picker_root, struct, "same.xyz"))
-        assert from_xv["ok"] is True, from_xv
-        assert abs(from_xv["a"] - from_xyz["a"]) < 1e-6, (from_xv, from_xyz)
-        assert abs(from_xv["a"] - A) < 1e-6
-        assert from_xv["coordination"] == 12
+    # Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+    # 1 test here read a `.XV` written by hand as what a relaxation left (`process/testing.md` § 6).
 
 
 class TestTheNotesTheUserReads:

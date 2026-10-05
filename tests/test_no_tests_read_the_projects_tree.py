@@ -218,20 +218,8 @@ def test_the_shared_junction_fixture_builds():
 # (`test_structure_info_bridge.py`).
 
 
-def test_the_built_xv_round_trips_through_the_real_parser(tmp_path):
-    """The .XV writer is hand-rolled -- the application only ever READS one --
-    so it is verified the only honest way: parse it back and compare."""
-    import sys
-    import numpy as np
-    sys.path.insert(0, str(TESTS))
-    from support.junction import build_junction, xv_file
-    from molbuilder.parse import parse
-
-    s = build_junction()
-    result = parse(xv_file(tmp_path / "j.XV"))
-    assert list(result.structure.elements) == list(s.elements)
-    assert np.allclose(result.structure.positions, s.positions, atol=1e-6)
-    assert np.allclose(result.cell, s.resolve_cell(), atol=1e-6)
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 1 test here parsed a .XV written by a hand-rolled writer (`process/testing.md` § 6).
 
 
 def test_the_built_spectra_sidecar_round_trips(tmp_path):

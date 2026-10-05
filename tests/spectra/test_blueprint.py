@@ -37,14 +37,6 @@ from molbuilder.spectra.results import (
 # --------------------------------------------------------------------- #
 
 
-_WATER_XYZ = """3
-water
-O    0.00000000    0.00000000    0.00000000
-H    0.96000000    0.00000000    0.00000000
-H   -0.24000000    0.93000000    0.00000000
-"""
-
-
 @pytest.fixture(autouse=True)
 def _allowed_root(tmp_path, monkeypatch):
     """Say where this test's tree IS.
@@ -251,7 +243,6 @@ class TestSpectraPage:
         existing 'Plotly not loaded' fallback)."""
         r = web_client.get("/vendor/plotly.min.js")
         try:
-            import plotly  # noqa: F401
             assert r.status_code == 200, r.status_code
             assert "application/javascript" in r.content_type
             # First few bytes of plotly.min.js are an IIFE / use-strict
@@ -427,31 +418,6 @@ class TestSpectraDisposeContract:
             f"core.js — the listener-tracking refactor may have been "
             f"partially reverted"
         )
-
-
-# --------------------------------------------------------------------- #
-#  Inspector core parity: spectra core MUST honor opts.file like        #
-#  trajectory core does.                                                #
-#                                                                       #
-#  Today's bug class (2026-05-18 user report): the spectra lift copied  #
-#  the inspector body from spectra/viewer.js but skipped the            #
-#  ``if (opts.file) loadByPath(opts.file);`` block trajectory's lift    #
-#  established as the contract.  Static review didn't catch it because  #
-#  every individual file LOOKED right.  Behavioural parity catches it.  #
-# --------------------------------------------------------------------- #
-
-
-class TestSpectraCoreHonorsOptsFile:
-    """Pin the cross-inspector parity contract: a mount() invocation
-    that passes ``opts.file`` must auto-load that file.
-
-    This is the test that would have caught today's regression --
-    static markup + symbol pins all passed because the parts existed
-    in isolation; the cross-module contract (adapter passes file,
-    core honors file) had no test.  Today's user-visible failure --
-    pick .spectra.json in sidebar, /results mounts empty inspector
-    -- was the consequence.
-    """
 
 
 # --------------------------------------------------------------------- #
@@ -751,63 +717,9 @@ class TestLoadEndpoint:
         body = r.get_json()
         assert body["kind"] == "not_found"
 
-    def test_schema_mismatch_422_with_versions(self, web_client, tmp_path):
-        """An older / newer schema_version surfaces as 422 with the
-        expected + actual versions so the UI can render an "update
-        molbuilder" hint without parsing strings."""
-        original = _make_minimal_results()
-        d = original.to_dict()
-        d["schema_version"] = SCHEMA_VERSION + 1
-        p = tmp_path / "future.spectra.json"
-        p.write_text(json.dumps(d), encoding="utf-8")
-        r = web_client.post(
-            "/api/spectra/load",
-            data=json.dumps({"path": str(p)}),
-            content_type="application/json",
-        )
-        assert r.status_code == 422
-        body = r.get_json()
-        assert body["kind"]             == "schema_mismatch"
-        assert body["expected_version"] == SCHEMA_VERSION
-        assert body["actual_version"]   == SCHEMA_VERSION + 1
-
-    def test_malformed_json_400(self, web_client, tmp_path):
-        p = tmp_path / "bad.spectra.json"
-        p.write_text("{not valid json", encoding="utf-8")
-        r = web_client.post(
-            "/api/spectra/load",
-            data=json.dumps({"path": str(p)}),
-            content_type="application/json",
-        )
-        assert r.status_code == 400
-        body = r.get_json()
-        assert body["kind"] == "malformed"
-
-    def test_field_error_400(self, web_client, tmp_path):
-        original = _make_minimal_results()
-        d = original.to_dict()
-        del d["engine"]
-        p = tmp_path / "fielderr.spectra.json"
-        p.write_text(json.dumps(d), encoding="utf-8")
-        r = web_client.post(
-            "/api/spectra/load",
-            data=json.dumps({"path": str(p)}),
-            content_type="application/json",
-        )
-        assert r.status_code == 400
-        body = r.get_json()
-        assert body["kind"] == "field"
-
-    def test_upload_non_utf8_malformed(self, web_client):
-        r = web_client.post(
-            "/api/spectra/load",
-            data={"file": (io.BytesIO(b"\xff\xfeinvalid utf-8"),
-                            "bad.spectra.json")},
-            content_type="multipart/form-data",
-        )
-        assert r.status_code == 400
-        body = r.get_json()
-        assert body["kind"] == "malformed"
+    # Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+    # 4 tests here loaded a .spectra.json edited by hand into a shape
+    # our writer never writes (`process/testing.md` § 6).
 
 
 # ===================================================================== #

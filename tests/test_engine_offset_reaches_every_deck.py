@@ -19,7 +19,6 @@ from __future__ import annotations
 import ast
 import json
 import re
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -364,52 +363,9 @@ def test_the_renderer_refuses_coordinates_that_still_carry_an_offset():
                     struct, cfg)
 
 
-#: The measured relaxation of `tests/fixtures/siesta_relax` (its README says
-#: what each file pins): H2 in a 10 Å box, the held atom first.
-_RELAX_RUN = (Path(__file__).parent / "fixtures" / "siesta_relax"
-              / "01_relax" / "run-0")
-
-
-def _h2(z_moved=5.741, frozen=(0,)):
-    return Structure(elements=["H", "H"],
-                     positions=np.array([[5.0, 5.0, 5.0], [5.0, 5.0, z_moved]]),
-                     regions={"frozen_atoms": list(frozen)},
-                     cell=np.diag([10.0, 10.0, 10.0]),
-                     axis_kind=("isolated",) * 3)
-
-
-def test_a_relaxed_pairs_record_still_vouches_through_prep(
-        isolated_projects_root):
-    """The relaxation record a pair carries is judged against the pair.
-
-    GOAL: the record's geometry fingerprint was compared with the deck's
-    PLACED copy, so on the road every relaxed pair's record "does not vouch"
-    and its level-of-theory and force checks were skipped (found by review,
-    2026-09-25).  CONTRACT: `engines/vibration.md` § 2.2 (the record table);
-    `validation.validate`'s ``design``.
-
-    It can fail only because the pair states no offset -- an export from
-    before the rule -- so its placed copy differs from it; the guard below
-    keeps the fixture one the rule moves.
-    """
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.parse.dirs.run_info import run_info
-    from molbuilder.pyscf.stages import vibration_stages
-    from molbuilder.runs import declared, openable, run_of
-    pair = _h2(z_moved=5.774583)
-    pair.apply_info_dict(run_info(
-        deck=declared(run_of(_RELAX_RUN)).deck,
-        output=openable(_RELAX_RUN)[0]))
-    assert np.linalg.norm(cellmod.engine_offset(pair)) > 0.1
-    dest, stage, _text = _prep(
-        isolated_projects_root, pair,
-        SiestaConfig(system_label="H2", already_relaxed=True,
-                     relax_force_tol=0.01),
-        vibration_stages("siesta", already_relaxed=True), "siesta",
-        calculation="vibration", name="H2")
-    report = next(next(dest.glob(f"*_{stage}")).glob("*.validation.txt")).read_text()
-    assert "relaxed on siesta to 0.01 eV/Å" in report, report
-    assert "does not vouch" not in report, report
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 1 test here prepped a relaxed pair assembled by hand, not
+# exported from its run (`process/testing.md` § 6).
 
 
 def test_an_atom_past_a_periodic_face_is_a_warning_in_the_report(
@@ -480,4 +436,3 @@ def test_the_renderer_refuses_a_spec_that_carries_no_frame():
     spec = spec_for(struct, cfg)
     with pytest.raises(ValueError, match="carries no engine frame"):
         render_deck(dataclasses.replace(spec, engine_frame=None), struct, cfg)
-

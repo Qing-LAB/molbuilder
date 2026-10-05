@@ -5,34 +5,23 @@
 # A test that mutates an instance to watch Python raise tests Python.
 
 Pins:
-  * SiestaXVFileParser claims .XV, returns StructureResult with
-    BOTH structure AND cell (the field that was missing in
-    Phase 1 — closing the legacy Structure-is-geometry-only gap).
-  * Cell vectors are in Å (legacy reads Bohr internally then
-    discards; the wrapper now converts + surfaces).
-  * Cell matches the actual file's lattice vectors (round-trip
-    against a synthetic .XV with a known cell).
-  * PySCFGeomFileParser claims _optimized.xyz, cell stays None.
-  * detect() dispatches files to the new parsers.
+  * SiestaXVFileParser claims .XV by its name, and not an XML file;
+  * PySCFGeomFileParser claims _optimized.xyz, not a plain .xyz;
+  * a PDB is read, its sidecar kept, one holding no coordinates refused.
+
+The .XV readings -- the cell in Å, the elements from atomic numbers -- read a
+.XV written by hand and were retired 2026-10-04 (`process/testing.md` § 6); a
+.XV a real run wrote is read in place by `tests/test_xv2xyz.py`.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import pytest
 
-from molbuilder.parse import (
-    StructureResult,
-    detect,
-    parse,
-)
-from molbuilder.parse.coords import (
-    PdbFileParser,
-    PySCFGeomFileParser,
-    SiestaXVFileParser,
-)
+from molbuilder.parse import detect
+from molbuilder.parse.coords import PySCFGeomFileParser, SiestaXVFileParser
 from molbuilder.parse.errors import UnknownFormatError
 from molbuilder.parse.registry import _registered_file_parsers
 
@@ -41,18 +30,6 @@ REPO = Path(__file__).resolve().parents[2]
 # BUILT, NOT FOUND.  The fixture was a real run under projects/, behind a
 # `pytest.skip("fixture absent")` -- so it read the user's scientific record
 # on this machine and SKIPPED (green, proving nothing) anywhere else.
-
-
-def _xv(tmp_path):
-    """A valid SIESTA .XV written from the junction defined in source."""
-    import sys, pathlib
-    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-    from support.junction import xv_file
-    return xv_file(tmp_path / "junction.XV")
-
-
-
-
 
 
 # Registration --------------------------------------------------------- #
@@ -209,87 +186,9 @@ def test_pyscf_geom_doesnt_claim_plain_xyz(tmp_path: Path):
 # Real-file parse + cell surface ---------------------------------- #
 
 
-def test_xv_parse_returns_structureresult_with_cell(tmp_path):
-    """End-to-end: parse a real .XV via the registry, get back a
-    StructureResult with structure + cell + source_format set."""
-    result = parse(_xv(tmp_path))
-    assert isinstance(result, StructureResult)
-    assert result.result_kind == "structure"
-    assert result.parser_name == "siesta-xv"
-    assert result.source_format == "siesta-xv"
-    assert result.structure is not None
-    assert len(result.structure.elements) > 0
-    # Cell is the load-bearing fix this phase brings.
-    assert result.cell is not None
-    assert result.cell.shape == (3, 3)
-    # Cell is in Å, not Bohr; a typical molbuilder Au junction has
-    # cell entries 30-60 Å (vacuum-padded supercell).
-    diag = (abs(result.cell[0, 0]),
-            abs(result.cell[1, 1]),
-            abs(result.cell[2, 2]))
-    assert all(d > 1.0 and d < 1000.0 for d in diag), (
-        f"cell diagonal {diag} looks suspicious; expected Å scale")
-
-
-def test_xv_cell_round_trip_against_synthetic_file(tmp_path: Path):
-    """Build a synthetic .XV with a known cell (5.43 Å cube,
-    silicon's lattice constant), parse it, confirm we get 5.43 Å.
-
-    The wrapper converts Bohr → Å internally; this test pins the
-    conversion + the surface (so a future "I forgot to convert"
-    regression fails loudly).
-    """
-    # 5.43 Å = 5.43 / BOHR_ANGSTROM Bohr ≈ 10.2626 Bohr.  Imported, not
-    # retyped: this WRITES the fixture, so it is input, and the assertion
-    # below is on the 5.43 that comes back.
-    from molbuilder.constants import BOHR_ANGSTROM as ang_per_bohr
-    a_bohr = 5.43 / ang_per_bohr
-    xv = tmp_path / "si.XV"
-    # Cell rows: 6 numbers each (3 vector + 3 velocity); we only
-    # read the first 3 of each row.
-    xv.write_text(
-        f"{a_bohr} 0 0 0 0 0\n"
-        f"0 {a_bohr} 0 0 0 0\n"
-        f"0 0 {a_bohr} 0 0 0\n"
-        "2\n"
-        "1 14 0.0 0.0 0.0 0 0 0\n"
-        "1 14 1.0 1.0 1.0 0 0 0\n"
-    )
-    result = parse(xv)
-    assert result.cell is not None
-    # 1e-3 Å is not a precision claim -- it discriminates the failure this
-    # test names: a FORGOTTEN conversion returns 10.26 Å, a factor of 1.9.
-    # Constant precision is not observable through a round trip at all
-    # (the same value goes in and comes out); that needs an external
-    # reference, and CODATA owns it, not us.
-    assert abs(result.cell[0, 0] - 5.43) < 1e-3
-    assert abs(result.cell[1, 1] - 5.43) < 1e-3
-    assert abs(result.cell[2, 2] - 5.43) < 1e-3
-    # Off-diagonals zero.
-    assert abs(result.cell[0, 1]) < 1e-9
-    assert abs(result.cell[1, 0]) < 1e-9
-
-
-def test_xv_structure_elements_match_atomic_numbers(tmp_path: Path):
-    """Z=79 → 'Au' via the ase mapping the legacy reader uses."""
-    a = 10.0
-    xv = tmp_path / "au.XV"
-    xv.write_text(
-        f"{a} 0 0 0 0 0\n"
-        f"0 {a} 0 0 0 0\n"
-        f"0 0 {a} 0 0 0\n"
-        "1\n"
-        "1 79 0.0 0.0 0.0 0 0 0\n"
-    )
-    result = parse(xv)
-    assert result.structure.elements == ["Au"]
-
-
-def test_detect_routes_xv_to_siesta_xv_parser(tmp_path):
-    cls = detect(_xv(tmp_path))
-    assert cls is SiestaXVFileParser
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 4 tests here parsed a .XV written by hand; the measured flat H2
+# run's `H2.XV` is read in place by `tests/test_xv2xyz.py` (`process/testing.md` § 6).
 
 
 # Frozen invariant ------------------------------------------------- #
-
-

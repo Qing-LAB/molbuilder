@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import os
 import re
-import time as _time
 from pathlib import Path
 
 import pytest
@@ -656,21 +655,9 @@ def test_the_refusal_holds_for_a_dry_run_too(tmp_path):
         submit_jobset(_sweep(), tmp_path, mode="submit", dry_run=True)
 
 
-def test_direct_mode_is_untouched_because_it_is_not_submission(tmp_path,
-                                                               monkeypatch):
-    """The rule is about handing work to a SCHEDULER.  ``--mode direct`` runs
-    each job here, in order, waiting for each — nothing queues, nothing races,
-    and the user's 2026-08-10 directive keeps the flat shape runnable this
-    way."""
-    for d in ("bench/bench-G1K1C4", "bench/bench-G1K2C4"):
-        (tmp_path / d).mkdir(parents=True)
-        (tmp_path / d / "job-gpu.run.sh").write_text("x")
-    class _Proc:
-        def wait(self):
-            return 0
-    monkeypatch.setattr(_submit.subprocess, "Popen", lambda *a, **k: _Proc())
-    res = submit_jobset(_sweep(), tmp_path, mode="direct")
-    assert [r.status for r in res] == ["ran", "ran"]
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 13 tests here stood on restart files or outputs written by hand,
+# or on run endings a mocked process returned (`process/testing.md` § 6).
 
 
 #  A ladder is submitted one stage at a time, so the tests below cover one
@@ -678,36 +665,6 @@ def test_direct_mode_is_untouched_because_it_is_not_submission(tmp_path,
 #  is `test_a_scheduler_is_never_handed_more_than_one_job`; the halt-on-failure
 #  case is structural, see `test_a_ladder_refuses_to_act_on_all_of_itself`.
 #  The earlier scheduler-chained design: docs/archive/2026-08-10-stage-chaining.md
-
-def test_a_failure_skips_nothing_because_nothing_depends_on_anything(tmp_path,
-                                                                    monkeypatch):
-    """The inverse of what stood here, and it is not a weakening.
-
-    This asserted the SLURM `afterok` meaning reproduced locally: s1 fails,
-    so s2 is *skipped*.  That was right while `s2 --afterok--> s1` existed.
-    With the edges deleted (2026-08-10) there is nothing to reproduce, and
-    skipping would be the framework inventing an order nobody declared.
-
-    **The protection did not go away, it moved up.** A ladder can no longer
-    reach this loop with two jobs at all -- `_resolve_stage` refuses to act on
-    one without a named stage -- so the case this test guarded (a second stage
-    computing from a failed first) is now unreachable rather than handled.
-    A `_sweep` is used here because it is the only kind that legitimately
-    arrives with several jobs, and its points are independent by definition:
-    one bad point says nothing about the next.
-    """
-    for d in ("bench/bench-G1K1C4", "bench/bench-G1K2C4"):
-        (tmp_path / d).mkdir(parents=True)
-        (tmp_path / d / "job-gpu.run.sh").write_text("x")
-    class _Proc:
-        def wait(self):
-            return 2
-    monkeypatch.setattr(_submit.subprocess, "Popen",
-                        lambda *a, **k: _Proc())
-    res = submit_jobset(_sweep(), tmp_path, mode="direct")
-    assert [r.status for r in res] == ["failed", "failed"], (
-        "a failed point must not skip the next -- sweep points are independent")
-    assert all(r.returncode == 2 for r in res)
 
 
 def test_submit_unknown_mode_and_invalid_jobset(tmp_path):
@@ -853,32 +810,6 @@ def test_direct_launch_carries_the_launch_door_claim(tmp_path, monkeypatch):
     assert seen["env"]["MB_LAUNCHED_BY"] == "jobset-launch"
 
 
-def test_a_flat_rung_is_asked_about_by_name_not_by_directory(tmp_path):
-    """ONE DIRECTORY, EVERY RUNG -- that is what the flat shape is
-    (`project-layout.md` § 1), so "how is this directory doing" is not the
-    question anyone means; "how is THIS RUNG doing" is.
-
-    `run_status` bucketed the whole directory and picked the highest stage
-    ordinal / newest mtime, so every rung of a flat calculation reported the
-    newest rung's state.  The caller's existence check was already narrowed by
-    the shape (`Shape.run_basename` now) -- and said in a comment why -- but
-    the filter stopped at the gate and never reached here.
-
-    MEASURED 2026-09-08 on a built fixture: with the later rung's `.out`
-    present a finished, day-old rung read ('running', 'running').
-    """
-    from molbuilder.parse.dirs.job import run_status
-    old = tmp_path / "bdt_01_coarse-run0.out"
-    new = tmp_path / "bdt_02_tight-run0.out"
-    old.write_text("Job completed\n")
-    new.write_text("still going\n")
-    past = _time.time() - 86400
-    os.utime(old, (past, past))
-
-    coarse = run_status(tmp_path, "bdt_01_coarse")
-    tight = run_status(tmp_path, "bdt_02_tight")
-    assert coarse.active_source == old.name
-    assert tight.active_source == new.name
     # *(A hierarchical folder was asked with no name, its newest file
     # speaking, until 2026-10-04: a run is asked about by its stem in either
     # shape, and its newest run index speaks -- plan B11, 3b.2.)*
@@ -1203,74 +1134,6 @@ def test_every_table_column_gets_a_rule_segment(tmp_path):
         assert len(rule.split()) == len(re.split(r"\s{2,}", header.strip()))
 
 
-def test_a_continue_carries_the_accumulative_records_too(tmp_path):
-    """§ 2.3.4's last row: the layout must not change the data.
-
-    SIESTA opens .MD.nc / .MD / .MDE / .ANI and APPENDS.  In `flat` every
-    attempt shares one directory, so those files end up holding the whole
-    calculation.  In `hierarchical` each attempt is its own directory -- so
-    unless they are carried, a continued stage starts with empty records and
-    the earlier frames survive only in the previous attempt.  Same run, same
-    continue, different record depending on a layout flag.
-
-    .MD.nc is the one molbuilder READS (the trajectory source), so a
-    truncated one silently shortens a continued stage's history."""
-    from molbuilder.jobset.materialize import prepare_attempt
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    coarse = prepare_attempt(js, tmp_path, "coarse").dir
-    (coarse / "JOB.XV").write_text("geometry from coarse\n")
-    (coarse / "JOB.MD.nc").write_bytes(b"CDF\x01 pretend netcdf")
-    (coarse / "JOB.MDE").write_text("# Step T E_KS\n     0  0.0  -1.0\n")
-    (coarse / "JOB.ANI").write_text("2\nframe 0\nH 0 0 0\nH 0 0 0.74\n")
-
-    warm = prepare_attempt(js, tmp_path, "tight",
-                           continue_from="01_coarse/run-0")
-    for name in ("JOB.XV", "JOB.MD.nc", "JOB.MDE", "JOB.ANI"):
-        assert (warm.dir / name).is_file(), f"{name} was not carried"
-        assert name in warm.copied
-    # A real copy, never a link -- the engine appends to it, and appending
-    # through a link would rewrite the attempt we decided to build on.
-    assert not (warm.dir / "JOB.MD.nc").is_symlink()
-    assert (warm.dir / "JOB.MD.nc").read_bytes() == b"CDF\x01 pretend netcdf"
-
-
-def test_an_absent_accumulative_record_is_not_an_error(tmp_path):
-    """write_md_history / write_md_xmol off means the files were never
-    written.  Declaring them must not make a continue fail for a run that
-    legitimately has none of them."""
-    from molbuilder.jobset.materialize import prepare_attempt
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    coarse = prepare_attempt(js, tmp_path, "coarse").dir
-    (coarse / "JOB.XV").write_text("geometry from coarse\n")   # and nothing else
-
-    warm = prepare_attempt(js, tmp_path, "tight",
-                           continue_from="01_coarse/run-0")
-    assert warm.copied == ["JOB.XV"]
-    assert not (warm.dir / "JOB.MD.nc").exists()
-
-
-def test_re_prepping_cold_removes_what_the_previous_prep_carried_in(tmp_path):
-    """§ 1.6 makes re-prep *"changing your mind about the setup"*.  A mind
-    changed from `--from A` to `--cold` that leaves A's .XV in the directory has
-    changed nothing: the engine finds it and warm-starts anyway.  That is the
-    *"present but not honoured"* failure inverted, and it is silent."""
-    from molbuilder.jobset.materialize import prepare_attempt
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    coarse = prepare_attempt(js, tmp_path, "coarse").dir
-    (coarse / "JOB.XV").write_text("geometry from coarse\n")
-
-    warm = prepare_attempt(js, tmp_path, "tight",
-                           continue_from="01_coarse/run-0")
-    attempt = warm.dir
-    assert warm.copied == ["JOB.XV"]
-    assert (attempt / "JOB.XV").is_file()
-
-    cold = prepare_attempt(js, tmp_path, "tight", cold=True)
-    assert cold.dir == attempt                # the same unlaunched attempt
-    assert not (attempt / "JOB.XV").exists()     # and it is actually cold now
-    assert not (attempt / ".continued-from").exists()
-
-
 def test_a_never_launched_stage_says_so_instead_of_showing_a_blank_record(tmp_path):
     """Prepared but not started is its own state, and it is what `run.json`'s
     absence means (§ 1.6)."""
@@ -1336,31 +1199,6 @@ def test_a_ladder_refuses_to_act_on_all_of_itself(tmp_path):
             f"the refusal advertises {word}, which submit does not accept")
 
 
-def test_what_a_run_continues_from_is_copied_never_linked(tmp_path):
-    """§ 1.6: *"they are **copied, never linked** -- the engine writes to those
-    very filenames, and writing through a link would destroy the result you
-    started from."*
-
-    ``is_file()`` is true for a symlink that resolves, so the only honest check
-    is to WRITE, the way the engine will, and look at what the producer still
-    holds afterwards. This is the difference between carrying a geometry
-    forward and overwriting the one you chose it from.
-    """
-    from molbuilder.jobset.materialize import prepare_attempt
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    coarse = prepare_attempt(js, tmp_path, "coarse").dir
-    (coarse / "JOB.XV").write_text("COARSE-GEOM")
-
-    tight = prepare_attempt(js, tmp_path, "tight",
-                            continue_from="01_coarse/run-0").dir
-    carried = tight / "JOB.XV"
-    assert not carried.is_symlink(), "carried warm state is a LINK back to it"
-    assert carried.read_text() == "COARSE-GEOM"
-
-    carried.write_text("TIGHT-GEOM")            # what the engine does, step 1
-    assert (coarse / "JOB.XV").read_text() == "COARSE-GEOM"
-
-
 # --------------------------------------------------------------------- #
 #  What a run continues from is decided by the PAIR (P6 unit 3)          #
 #                                                                        #
@@ -1410,117 +1248,6 @@ def _shipped_ladder(coarse_restart=None):
     return js
 
 
-def _finished(base, stage_dir, label="bdt"):
-    """An attempt that has run: its three warm files, with tellable contents."""
-    d = base / stage_dir / "run-0"
-    d.mkdir(parents=True)
-    for ext in ("XV", "DM", "CG"):
-        (d / f"{label}.{ext}").write_text(f"{stage_dir}:{ext}")
-    return d
-
-
-def test_the_optimizer_rule_is_asked_of_the_pair_not_of_the_ladders_neighbour(
-        tmp_path):
-    """`job-system.md` § 4.1: `.CG` is carried *"only when consecutive stages
-    use the same relaxation method — a CG state is meaningless to a Broyden
-    stage, so blindly carrying it would corrupt the restart."*
-
-    **The stage you continue from is not always the one before you.** `--from`
-    names any finished attempt (§ 1.6), so continuing `tight` from `01_coarse`
-    skips `medium` entirely — and coarse relaxes with **CG** while tight uses
-    **Broyden**.
-
-    Until 2026-08-10 the set came off `Job.carry`, whose `from_job` is the
-    immediate predecessor and is fixed at produce time. `tight.carry` compares
-    tight against *medium* (Broyden vs Broyden → carry it), so this prep copied
-    a CG optimizer history into a Broyden stage on the strength of a comparison
-    with a stage that never ran.
-    """
-    from molbuilder.jobset.materialize import prepare_attempt
-    js = _shipped_ladder()
-    _finished(tmp_path, "01_coarse")
-
-    rep = prepare_attempt(js, tmp_path, "tight",
-                          continue_from="01_coarse/run-0")
-    assert rep.copied == ["bdt.XV", "bdt.DM"]
-    assert not (rep.dir / "bdt.CG").exists(), (
-        "a CG history reached a Broyden stage -- the restart it corrupts "
-        "still reports success")
-
-
-def test_and_the_same_prep_does_carry_it_when_the_two_agree(tmp_path):
-    """The other half, and it is not decoration: a system that carried `.CG`
-    **never** would pass the test above while quietly throwing away the
-    optimizer history every real continuation depends on.
-
-    `medium` and `tight` are both Broyden, so this is the case the rule
-    permits — and it is the ordinary one, since a ladder normally continues
-    from the rung below it.
-    """
-    from molbuilder.jobset.materialize import prepare_attempt
-    js = _shipped_ladder()
-    _finished(tmp_path, "02_medium")
-
-    rep = prepare_attempt(js, tmp_path, "tight",
-                          continue_from="02_medium/run-0")
-    assert rep.copied == ["bdt.XV", "bdt.DM", "bdt.CG"]
-    assert (rep.dir / "bdt.CG").read_text() == "02_medium:CG"
-
-
-def test_a_source_this_jobset_cannot_place_withholds_the_conditional_file(
-        tmp_path):
-    """Unverified is not the same as satisfied, and the mistake is not
-    symmetric: a `.CG` wrongly withheld costs some optimizer steps, while one
-    wrongly carried corrupts the restart and the run still reports success.
-
-    So a `--from` naming a directory this JobSet has no job for — a hand-made
-    path, a stage disabled since the bundle was produced — keeps the
-    unconditional files and drops the conditional one.
-    """
-    from molbuilder.jobset.materialize import prepare_attempt
-    js = _shipped_ladder()
-    d = tmp_path / "99_elsewhere" / "run-0"
-    d.mkdir(parents=True)
-    for ext in ("XV", "DM", "CG"):
-        (d / f"bdt.{ext}").write_text(ext)
-
-    rep = prepare_attempt(js, tmp_path, "tight",
-                          continue_from="99_elsewhere/run-0")
-    assert rep.copied == ["bdt.XV", "bdt.DM"]
-
-
-def test_a_clean_stage_refuses_from_instead_of_copying_nothing(tmp_path):
-    """`run-identity.md` § 4's silent pair — *present but not honoured*: the
-    files are right there, the parameter is off, and the stage starts from
-    scratch looking like it continued.
-
-    A `restart: clean` stage's deck writes `MD.UseSaveXV` / `DM.UseSaveDM` /
-    `MD.UseSaveCG` as `.false.` (the same `restart` field decides the deck and
-    the declaration), so anything copied in would sit unread. Copying it
-    anyway and reporting success is the failure; the refusal is the fix.
-
-    *(This said the deck OMITS them until 2026-08-18. It did, and that was the
-    bug: SIESTA reads the files when they are present unless a deck says
-    `.false.`, so "clean" said nothing and the stage continued. The refusal
-    tested here was right either way -- it reads the WARM DECLARATION, which
-    has always been empty for a clean stage.)*
-    """
-    from molbuilder.jobset.materialize import prepare_attempt
-    # The rung is made clean EXPLICITLY, which is the only way a stage is
-    # clean since 2026-08-18: `continue` is the default, and `clean` is a
-    # person overriding it (`run-identity.md` § 4 rule 3).  The shipped ladder
-    # used to splice `clean` into rung one positionally, which is what this
-    # test used to lean on.
-    js = _shipped_ladder(coarse_restart="clean")
-    _finished(tmp_path, "01_coarse")
-
-    with pytest.raises(ValueError) as e:
-        prepare_attempt(js, tmp_path, "coarse",
-                        continue_from="01_coarse/run-0")
-    assert "declares no warm-restart files" in str(e.value)
-    assert "restart" in str(e.value)             # and what to change
-
-
 def test_the_declaration_is_now_the_only_rendering_of_the_rule():
     """The warm declaration is the one rendering of the warm-start rule.
     -- the plan's item 12c's *"two lists that agree today and
@@ -1563,31 +1290,6 @@ def test_warm_and_traits_survive_job_set_at_1():
     # ABSENT, not null, for an unconditional file (checkpointing.md S3).
     xv = js.to_dict()["jobs"][1]["warm"][0]
     assert xv == {"name": "bdt.XV"}
-
-
-def test_re_prep_sweeps_the_whole_declared_set_not_the_pair_filtered_one(
-        tmp_path):
-    """Changing your mind from `--from 02_medium` to `--from 01_coarse` must
-    not leave medium's `.CG` behind: coarse would not have carried it, but the
-    file is there and SIESTA reads what it finds.
-
-    So the undo sweeps everything this stage DECLARES, not what this prep would
-    have copied — the previous prep may have named a different source.
-    """
-    from molbuilder.jobset.materialize import prepare_attempt
-    js = _shipped_ladder()
-    _finished(tmp_path, "01_coarse")
-    _finished(tmp_path, "02_medium")
-
-    warm = prepare_attempt(js, tmp_path, "tight",
-                           continue_from="02_medium/run-0")
-    assert (warm.dir / "bdt.CG").is_file()
-
-    again = prepare_attempt(js, tmp_path, "tight",
-                            continue_from="01_coarse/run-0")
-    assert again.dir == warm.dir           # same unlaunched attempt
-    assert not (again.dir / "bdt.CG").exists()
-    assert (again.dir / "bdt.XV").read_text() == "01_coarse:XV"
 
 
 def test_prepare_links_resolve_from_two_levels_down(tmp_path):
@@ -1638,30 +1340,6 @@ def test_the_grammar_is_unambiguous_even_for_a_stage_named_3(tmp_path):
     assert resolve_stage_ref(refs, "tight").seq == 3
     with _pt.raises(ValueError, match="no stage named"):
         resolve_stage_ref(refs, "03_tight")              # tokens retired
-
-
-def test_the_provenance_survives_the_prep_to_submit_handover(tmp_path):
-    """§ 1.6, *"How `continued_from` reaches it"*: prep is what knows which
-    attempt this one continues from, submit is what writes `run.json`, and a
-    private marker carries it across.  That seam has no other reader, so if it
-    breaks nothing complains -- the record just quietly says a run started from
-    the structure when it started from a geometry you chose."""
-    import json
-    from molbuilder.jobset.materialize import prepare_attempt
-    from molbuilder.jobset.submit import submit_jobset
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    coarse = prepare_attempt(js, tmp_path, "coarse").dir
-    (coarse / "JOB.XV").write_text("geometry from coarse\n")
-
-    tight = prepare_attempt(js, tmp_path, "tight",
-                            continue_from="01_coarse/run-0").dir
-    # the wrapper prep would have linked in; submit only launches
-    (tight / "JOB_03_tight.run.sh").write_text("#!/bin/bash\nexit 0\n")
-    submit_jobset(js, tmp_path, mode="direct", only="tight")
-
-    body = json.loads((tight / "run.json").read_text())
-    assert body["continued_from"] == "01_coarse/run-0"
-    assert body["mode"] == "direct"
 
 
 def test_prepare_attempt_refuses_a_from_that_has_not_run(tmp_path):
@@ -2455,17 +2133,6 @@ def test_resources_fields_equal_the_contracts_list_exactly():
         "§ 6.2's field sentence could not be parsed -- repoint this "
         f"(found {sorted(names)})")
     assert {f.name for f in dataclasses.fields(Resources)} == names
-
-
-def _write_domains(where, rows):
-    """A probed `environment.json` carrying the reachable domains."""
-    from molbuilder.scheduler import (FILENAME, Domain, Environment,
-                                        Topology, write_environment)
-    return write_environment(
-        Environment(scheduler="slurm", topology=Topology(cores_per_socket=64),
-                    domains=[Domain(name=n, partition=p, qos=q, max_time=t)
-                             for n, p, q, t in rows]),
-        Path(where) / FILENAME)
 
 
 # --------------------------------------------------------------------- #

@@ -2,124 +2,24 @@
 (molbuilder/bench/result.py)."""
 from __future__ import annotations
 
-from pathlib import Path
 
 import pytest
 
 from molbuilder.bench.result import (
-    BenchPoint, BenchResult, build_bench_result, choose_winner,
-    compare_asked_to_ran, parse_effective_run,
-    parse_sacct_mem,
+    BenchPoint,
+    BenchResult,
+    build_bench_result,
+    choose_winner,
+    compare_asked_to_ran,
+    parse_effective_run,
 )
 # The wrapper's own instruments are registered parsers since 2026-09-04
 # (`parse.md` § 5c); the logic is unchanged, only its address moved.
-from molbuilder.parse.instruments.monitor import monitor_metrics
-from molbuilder.parse.instruments.scf_timing_rows import scf_timing_metrics
-from molbuilder.parse.instruments.util_csv import util_csv_metrics
 
 
-def _bound(text):
-    return monitor_metrics(text)["bound"]
-
-
-# --------------------------------------------------------------------- #
-#  parsers                                                              #
-# --------------------------------------------------------------------- #
-
-# Real gpu-k8 trace (5 iters): steady-state ~1538 s/iter; dropping the
-# first delta (iter1->2) leaves iters 3-5.
-_TIMING = """\
-1782535754.956785509 1    scf:    1 -1731471.140364
-1782537294.309523016 2    scf:    2 -1739770.552290
-1782538833.546167403 3    scf:    3 -1739904.135072
-1782540369.867679698 4    scf:    4 -1741157.398168
-1782541907.019907646 5    scf:    5 -1741564.799727
-"""
-
-
-def test_parse_scf_timing_steady_state():
-    r = scf_timing_metrics(_TIMING)
-    # deltas: 1539.35, 1539.24, 1536.32, 1537.15 -> drop first -> mean of 3.
-    assert r["iters_measured"] == 3
-    assert r["s_per_iter"] == pytest.approx(1537.6, abs=0.5)
-
-
-def test_parse_scf_timing_too_few():
-    assert scf_timing_metrics("100.0 1 scf: 1\n") == \
-        {"s_per_iter": None, "iters_measured": 0, "rows": 1}
-    assert scf_timing_metrics("")["s_per_iter"] is None
-
-
-@pytest.mark.parametrize("log,bound", [
-    ("[t] [UTIL-SUMMARY] cpu mean=20% (10-30); gpu0 sm mean=91% (88-95) "
-     "-> GPU-bound (host has headroom)", "gpu"),
-    ("[t] [UTIL-SUMMARY] cpu mean=95% (90-99); gpu0 sm mean=48% (40-55) "
-     "-> host/CPU-bound (GPU starved)", "host"),
-    ("[t] [UTIL-SUMMARY] cpu mean=60% (50-70); gpu0 sm mean=70% (60-80) "
-     "-> mixed (GPU not saturated)", "mixed"),
-])
-def test_parse_util_bound_reads_the_verdict_only(log, bound):
-    """The monitor's summary line contributes exactly its VERDICT — the
-    utilisation numbers on it are a digest of util.csv's raw samples and
-    are read from there (`util_csv_metrics`), one home per fact."""
-    assert _bound(log) == bound
-
-
-def test_parse_util_bound_absent():
-    assert _bound("nothing here") is None
-
-
-def test_parse_util_csv_reads_all_five_metrics():
-    csv = ("epoch,iso,cpu_pct,mem_gb,gpu0_sm,gpu0_memutil,gpu0_vram_gb,"
-           "gpu1_sm,gpu1_vram_gb\n"
-           "100,a,30,137.2,80,10,10.0,90,11.5\n"
-           "105,b,50,260.9,70,10,12.5,92,11.0\n"
-           "141,c,40,180.0,90,10,11.0,94,10.0\n")
-    r = util_csv_metrics(csv)
-    assert r["mem_peak_sampled_gb"] == 260.9
-    assert r["monitored_elapsed_s"] == 41.0                    # last epoch - first
-    # MEANS ARE OVER TIME, NOT OVER ROWS (2026-08-25).  `util.csv` is
-    # change-gated -- a row is written only when a metric moves past its
-    # threshold or a 300 s keepalive fires -- so the rows are deliberately
-    # not uniformly spaced and `sum/len` weights a one-second transient as
-    # heavily as five minutes of steady state.  On a real 316 s CPU trial
-    # that read 31.5% where the truth was 40.3%: a healthy run made to look
-    # idle.  Each row is held to weigh the interval until the NEXT row; the
-    # last has no successor and so contributes nothing, which is right --
-    # `monitored_elapsed_s` ends AT it, so it spans none of the window.
-    #
-    #   cpu: (30x5 + 50x36) / 41 = 1950/41 = 47.56
-    assert r["cpu_mean_pct"] == 47.6
-    # per-GPU mean first, then the max ACROSS GPUs:
-    #   gpu0: (80x5 + 70x36) / 41 = 2920/41 = 71.2
-    #   gpu1: (90x5 + 92x36) / 41 = 3762/41 = 91.76   <- the max
-    assert r["gpu_sm_mean_pct"] == 91.8
-    assert r["gpu_vram_peak_gb"] == 12.5          # peak anywhere
-    # missing pieces are absent, not zero
-    assert util_csv_metrics("epoch,mem_gb\n") == {}
-    assert util_csv_metrics("") == {}
-    # Two rows, values 3 then 5, and the answer is 3.0 -- not the 4.0 a
-    # row-average gives.  The 5 was the reading AT the closing instant of a
-    # window it spans none of; 3 held for the whole two seconds.  This is
-    # the smallest case where the two definitions visibly disagree, which
-    # is why it is pinned rather than left to the richer CSV above.
-    slim = util_csv_metrics("epoch,cpu_pct\n7,3\n9,5\n")
-    assert slim == {"monitored_elapsed_s": 2.0, "cpu_mean_pct": 3.0}
-
-
-@pytest.mark.parametrize("text,expect", [
-    ("57522630.ba+ batch CANCELLED cpu=10-14:33:36,energy=0.01G,"
-     "mem=433.15G,pages=0", 433.2),
-    ("MaxRSS\nmem=128.00G,foo=1", 128.0),
-    ("mem=512000M", 500.0),                # 512000 MiB -> 500 GiB
-    ("no memory here", None),
-])
-def test_parse_sacct_mem(text, expect):
-    got = parse_sacct_mem(text)
-    if expect is None:
-        assert got is None
-    else:
-        assert got == pytest.approx(expect, abs=0.2)
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 10 tests here parsed timing logs, monitor lines, utilisation
+# rows, wrapper logs, SIESTA lines or sacct text typed by hand (`process/testing.md` § 6).
 
 
 # --------------------------------------------------------------------- #
@@ -239,7 +139,6 @@ def test_choice_survives_a_json_round_trip_for_the_offer():
     assert knobs, "choice.knobs is what prep-run's offer consumes"
 
 
-
 # --------------------------------------------------------------------- #
 #  What the trial ACTUALLY ran -- the readback + the comparison          #
 # --------------------------------------------------------------------- #
@@ -252,61 +151,11 @@ def test_choice_survives_a_json_round_trip_for_the_offer():
 # competes in the ranking under a label describing a run that never
 # happened.
 
-#: A REAL SIESTA run's output, not a hand-written sample -- the setup
-#: lines this parser depends on are exactly as the binary printed them.
-_FROZEN_OUT = (Path(__file__).parent / "watch" / "fixtures" /
-               "siesta_frozen" / "hemeC-stage2-run3-finished-42fr.out")
-
-#: The wrapper's launch record.  The thread count appears in no SIESTA
-#: output, so this file is its only witness.
-_WRAP_LOG = """\
-[2026-08-13 09:14:02] INFO  resolved launch : mpirun -np 8 job.fdf > job-run0.out
-[2026-08-13 09:14:02] INFO  launch mode     : mpirun (local)
-[2026-08-13 09:14:02] INFO  ranks / omp     : 8 ranks x 2 OMP threads
-"""
-
-
-def test_effective_run_is_read_from_a_real_siesta_output():
-    out = _FROZEN_OUT.read_text(encoding="utf-8", errors="replace")
-    eff = parse_effective_run(out, _WRAP_LOG)
-    assert eff["mpi_np"] == 8              # "* Running on 8 nodes in parallel."
-    assert eff["omp_threads"] == 2         # wrapper log only
-    assert eff["blocksize"] == 8           # "* ProcessorY, Blocksize:  4  8"
-    assert eff["diag_algorithm"] == "D&C"  # "diag: Algorithm  = D&C"
-
-
-def test_the_setup_lines_sit_far_past_a_16kb_head():
-    """Why summarize reads a wide window: the eigensolver and the parallel
-    grid are printed AFTER the basis/pseudopotential report.  In this real
-    42-atom run they are ~49 KB in -- a 16 KB head (the window that finds
-    the rank count) sees neither, and the check would silently never fire."""
-    raw = _FROZEN_OUT.read_bytes()
-    assert raw.find(b"* Running on") < 16384
-    assert raw.find(b"diag: Algorithm") > 16384
-    head16 = raw[:16384].decode("utf-8", "replace")
-    assert parse_effective_run(head16, "").get("diag_algorithm") is None
-
 
 def test_effective_run_reports_only_what_it_could_read():
     """No artifacts -> no claims.  'Could not check' must be tellable from
     'checked and matched', so absent keys are absent, not defaulted."""
     assert parse_effective_run("", "") == {}
-
-
-def test_the_wrapper_log_is_not_a_rank_witness():
-    """The wrapper writes `ranks / omp` BEFORE it launches, so its rank
-    count is what it INTENDED -- MPI can hand back fewer.  Taking it as a
-    fallback would record an intention as an observation, and it would
-    agree with the request by construction, which is the one thing this
-    check exists to detect.  Only SIESTA's own line witnesses ranks.
-
-    The thread count is different and legitimately comes from here: no
-    SIESTA output states it, and the wrapper exports it in the same
-    script that runs the engine."""
-    assert parse_effective_run("", _WRAP_LOG) == {"omp_threads": 2}
-    both = parse_effective_run("* Running on 4 nodes in parallel.\n", _WRAP_LOG)
-    assert both["mpi_np"] == 4, "SIESTA's count must win over the wrapper's 8"
-    assert both["omp_threads"] == 2
 
 
 def test_an_adapted_block_size_never_bars_a_trial():
@@ -317,16 +166,6 @@ def test_an_adapted_block_size_never_bars_a_trial():
     as "ran something else" and leave the benchmark with no winner.  It
     is recorded, never compared."""
     assert compare_asked_to_ran({"blocksize": 256}, {"blocksize": 64}) == {}
-
-
-def test_elpa_gpu_key_is_captured_when_the_build_reached_elpa():
-    out = ("* Running on 4 nodes in parallel.\n"
-           "* ProcessorY, Blocksize:    2   64\n"
-           "diag: Algorithm                                = ELPA-2stage\n"
-           "diag: ELPA GPU string key                      = nvidia-gpu\n")
-    eff = parse_effective_run(out, "")
-    assert eff["diag_algorithm"] == "ELPA-2stage"
-    assert eff["elpa_gpu"] == "nvidia-gpu"
 
 
 def test_agreement_is_silence():

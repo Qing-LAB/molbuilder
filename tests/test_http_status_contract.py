@@ -30,7 +30,6 @@ success path returns ``ok: true``; the ``Endpoint index`` count in
 """
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 
@@ -126,57 +125,8 @@ class TestKnownServerFaultSitesAreHTTP500:
         assert body["ok"] is False
         assert "the builder fell over" in body["error"], body
 
-    def test_a_trajectory_that_stops_parsing_is_answered_500(
-            self, web_client, isolated_projects_root, monkeypatch):
-        """**A poll of a file that no longer parses is a server fault, 500.**
-
-        `web-api.md` § 1 (d); the sibling ``/api/watch/load`` answers the same
-        failure class 500, and until the 1b audit this poll answered it 200 --
-        so anything gating on the status (curl, monitoring) saw a healthy
-        reply carrying an error.
-
-        A small SIESTA-like ``.out`` is loaded through ``/api/watch/load``;
-        then the file moves on (its mtime advances) and its parser fails,
-        and ``/api/watch/data`` is polled.
-
-        MUTATION THIS MUST FAIL AGAINST: the poll's parse-error return
-        answering ``, 200`` (or no status).
-        """
-        from molbuilder.web.blueprints import watch
-
-        # The route keeps ONE loaded file in module state; this test gets its
-        # own, and the suite's is back when it ends.
-        monkeypatch.setattr(watch, "_state", dict(
-            watch._state, path=None, mtime=None, data=None, parser=None,
-            uploaded=False, run_dir=None))
-
-        out = isolated_projects_root / "run" / "run.out"
-        out.parent.mkdir(parents=True)
-        out.write_text(
-            "Welcome to SIESTA -- v4.1\n"
-            "redata: prelude\n"
-            "outcoor: Atomic coordinates (Ang):\n"
-            "   1.00000000    2.00000000    3.00000000   1       1  C\n"
-            "\n"
-            "siesta: E_KS(eV) =          -50.0000\n")
-        r = web_client.post("/api/watch/load", json={"path": str(out)})
-        assert r.status_code == 200 and r.get_json()["ok"], r.get_json()
-
-        def _no_longer_parses(_path):
-            raise ValueError("the file stopped making sense")
-
-        monkeypatch.setattr(watch._state["parser"], "parse",
-                            staticmethod(_no_longer_parses))
-        st = out.stat()
-        os.utime(out, (st.st_atime, st.st_mtime + 10))
-
-        r = web_client.get("/api/watch/data")
-        body = r.get_json()
-        assert r.status_code == 500, (
-            f"a poll whose file no longer parses was answered "
-            f"{r.status_code}: {body}")
-        assert body["ok"] is False
-        assert body["error"].startswith("Parse error"), body
+    # Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+    # 1 test here loaded a SIESTA output invented as text (`process/testing.md` § 6).
 
 
 class TestRouteCountDocMatchesReality:

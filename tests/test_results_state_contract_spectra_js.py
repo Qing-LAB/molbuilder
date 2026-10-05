@@ -333,10 +333,10 @@ class TestRenderResultsUsesTransition:
     # fetchSeq", "loadByPath captures mySeq", "the guard compares them".
     # None could survive the mechanism being replaced by a better one, and
     # none was checking the property -- that a late answer cannot be
-    # painted under the wrong file -- which is pinned behaviourally by
-    # test_spectra_from_a_real_run_e2e.py and
-    # test_trajectory_from_a_real_run_e2e.py, both mutation-verified
-    # against APPLY's path requirement.
+    # painted under the wrong file -- which two CO2 e2e tests pinned
+    # behaviourally until 2026-10-04, when they were retired for running
+    # their decks by hand (`web/results.md` § 4.2: neither half has a test
+    # now).
 # --------------------------------------------------------------------- #
 #  Refresh listener wired ONCE at mount                                 #
 # --------------------------------------------------------------------- #

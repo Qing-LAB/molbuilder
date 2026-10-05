@@ -27,7 +27,6 @@ import subprocess
 import time
 from pathlib import Path
 
-import pytest
 
 from molbuilder.runrecord import ending
 from molbuilder.jobset.model import Resources
@@ -71,7 +70,7 @@ def _run_wrapper(d: Path, *, background: bool = False):
 
 
 def test_a_clean_end_writes_the_marker_with_rc0(tmp_path):
-    d = _wrapper_dir(tmp_path, 'echo "Job completed"\nexit 0\n')
+    d = _wrapper_dir(tmp_path, 'echo "stand-in engine"\nexit 0\n')
     _run_wrapper(d)
     mark = ending(d, "J_01_coarse").line
     assert mark is not None and mark.startswith("rc=0"), (
@@ -114,29 +113,8 @@ def test_no_out_at_all_reads_unconcluded(tmp_path):
     assert not ending(tmp_path, "J").concluded
 
 
-class TestTheEnginesOwnMarkCountsForACitation:
-    """SIESTA writes `0_NORMAL_EXIT` as its last act on a clean exit and
-    deletes it as one of its first (`siesta_end.F`, `siesta_init.F`), so a
-    folder no wrapper of ours ran in, holding one deck, ran to its own end
-    when it carries one -- `engines/transport.md`: *"evidence is FILES, never
-    a marker spelling of ours."*  API-level: a cited relaxation is a person's
-    own folder, which no road of ours writes.
-
-    **This guards a regression that shipped and broke a citation.**  The
-    2026-09-18 migration deleted the fallback, and the revert restored the
-    call and not the fallback: measured, 5 of 5 citable directories in the
-    checkout refused to compose, the Transport tab printing "NOT CONCLUDED"
-    for a finished relaxation.
-    """
-
-
-    def test_without_it_the_same_directory_is_not_concluded(self, tmp_path):
-        """Anti-vacuity: the assertion above must not pass by calling
-        everything concluded."""
-        from molbuilder.transport.compose import classify_citation
-        (tmp_path / "relax.fdf").write_text("SystemLabel relax\n")
-        (tmp_path / "relax.XV").write_text("x\n")
-        assert classify_citation(tmp_path).concluded is None
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 1 test here classified a citation by a .XV written by hand (`process/testing.md` § 6).
 
 
 # The launch gate over these markers -- a launched run that concluded is

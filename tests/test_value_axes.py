@@ -402,61 +402,11 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
     assert "no restart group" in r.output
 
 
-# --------------------------------------------------------------------- #
-#  summarize: the coordinate rides the record and the proposal           #
-# --------------------------------------------------------------------- #
-
-def test_the_winners_value_coordinates_reach_the_report(sol_calc):
-    """The winner's VALUE coordinates must reach the report, and reach it in
-    the vocabulary `execution` accepts -- a value axis is the whole subject
-    of this file, and a report that named the winner's ranks but dropped its
-    `block_size` would send a person to run at a shape nobody measured.
-
-    *(It asserted these landed in `run-config.toml`'s `[pins]` and read back
-    through `read_run_config` until 2026-09-02.  That lane is gone -- a
-    benchmark reports, a person writes `execution` (`architecture.md`
-    § 5.2) -- so what is asserted is that the REPORT carries them.)*"""
-    from molbuilder.jobset._cli import _load_bench_set
-    from molbuilder.jobset.materialize import job_dir_names, shape_of
-    from molbuilder.jobset.summarize import (
-                                             run_summarize_jobset)
-    _declare(sol_calc, _small_matrix())
-    _prep(sol_calc)
-    js, base = _load_bench_set(str(sol_calc), "coarse")
-    dirs = job_dir_names(js, shape_of(js, sol_calc))
-    winner = "G0K4C1block_size128"
-    # THE LATEST ATTEMPT WHERE THERE IS ONE (project-layout.md 1.5a):
-    # a trial keeps attempts since 2026-08-27, so its artifacts are one
-    # level down.  Same rule `runstatus` and `summarize` use.
-    _c = sol_calc / dirs[winner]
-    d = latest_attempt(_c) or _c
-    stem = next(d.glob("*.fdf")).name[:-4]
-    (d / f"{stem}-run0.out").write_text(
-        "* Running on 4 nodes in parallel\nx\n"
-        # `>> End of run` is THE end marker (`model/parse.md` 2b) --
-        # not `Job completed`, which SIESTA prints beside it, and not a
-        # final energy.  Until 2026-08-25 `jobset/summarize.py` kept a
-        # private marker tuple that accepted the loose forms, so this
-        # fixture read as finished while the engine parser said running.
-        "siesta: Final energy (eV):\nJob completed\n>> End of run:\n")
-    t0 = 1000000.0
-    (d / f"{stem}-run0.scf-timing.log").write_text(
-        "\n".join(f"{t0 + i * 2.0} iter" for i in range(6)) + "\n")
-
-    res, _out, report = run_summarize_jobset(
-        js, sol_calc, now_iso="2026-08-21T00:00:00Z", stage="coarse")
-    assert report is not None
-    assert res.choice["label"] == winner
-    assert res.choice["point"]["block_size"] == 128
-    by_label = {p.label: p for p in res.points}
-    assert by_label[winner].point["block_size"] == 128
-    assert by_label[winner].point["use_gpu"] is False
-
-    text = report          # PRINTED now, not written (`job-system.md` § 7.1)
-    assert '"block_size": 128' in text, text
-    assert '"diag_algorithm": "ELPA-1STAGE"' in text, text
-    # and it hands over a block `task.json` accepts, not the record's names
-    assert "cpus_per_task" not in text, text
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# `test_the_winners_value_coordinates_reach_the_report`:
+# it wrote a SIESTA output and an SCF-timing log by hand into benchmark
+# trial folders that never ran, so the summary had a winner to pick: an
+# output invented as text (`process/testing.md` § 6).
 
 
 # --------------------------------------------------------------------- #
@@ -551,58 +501,11 @@ def test_gpu_count_alone_filters_the_proposed_grid(sol_calc):
     assert len({p["K"] for p in points}) > 1,         "K must still range over the machine's proposal"
 
 
-def test_summarize_mid_flight_lists_unfinished_and_refreshes(sol_calc):
-    """User rule, 2026-08-21: summarize works WHILE the bench runs -- the
-    finished trials are summarized consistently, the unfinished ones are
-    listed as unfinished (never a failure of the set), the coverage clause
-    says how partial the verdict is, and a later summarize refreshes the
-    record over the fuller evidence."""
-    from molbuilder.jobset._cli import _load_bench_set, _stage_bench_dir
-    from molbuilder.jobset.materialize import job_dir_names, shape_of
-    from molbuilder.jobset.summarize import run_summarize_jobset, summary_text
-    _declare(sol_calc, _small_matrix())
-    _prep(sol_calc)
-    js, base = _load_bench_set(str(sol_calc), "coarse")
-    _container, _tok2 = _stage_bench_dir(sol_calc, "coarse")
-    _out_kw = {"out": _container / "bench-result.json"}
-    dirs = job_dir_names(js, shape_of(js, sol_calc))
-
-    def finish(name, spi):
-        _c = sol_calc / dirs[name]
-        d = latest_attempt(_c) or _c
-        stem = next(d.glob("*.fdf")).name[:-4]
-        (d / f"{stem}-run0.out").write_text(
-            "* Running on 4 nodes in parallel\nx\n"
-            # `>> End of run` is THE end marker -- see the note above.
-            "siesta: Final energy (eV):\nJob completed\n>> End of run:\n")
-        t0 = 1000000.0
-        (d / f"{stem}-run0.scf-timing.log").write_text(
-            "\n".join(f"{t0 + i * spi} iter" for i in range(4)) + "\n")
-
-    finish("G0K4C1block_size64", 5.0)
-    res, out_path, rc = run_summarize_jobset(
-        js, sol_calc, now_iso="2026-08-21T00:00:00Z", stage="coarse",
-        **_out_kw)
-    text = summary_text(res, out_path, report=rc, stage="coarse")
-    states = {p.label: p.state for p in res.points}
-    assert states["G0K4C1block_size64"] == "completed"
-    assert sum(1 for s in states.values() if s != "completed") == 7
-    assert "coverage: 1 of 8 prepped points measured" in text
-    assert "the verdict ranks what ran" in text
-
-    # more evidence lands; the RECORD refreshes on the next summarize
-    finish("G0K4C1block_size128", 3.0)
-    res2, _o, rc2 = run_summarize_jobset(
-        js, sol_calc, now_iso="2026-08-21T01:00:00Z", stage="coarse",
-        **_out_kw)
-    assert res2.choice["label"] == "G0K4C1block_size128"
-    # THE REPORT REFLECTS THE NEW EVIDENCE.  It was a file kept-once-written
-    # (the user's to edit), then always-refreshed (nobody edits a report),
-    # and since 2026-09-04 it is printed -- so "is it stale" cannot arise:
-    # you get the answer to the question you just asked.
-    assert rc2 is not None and "G0K4C1block_size128" in rc2
-    assert "bench recommendation" in summary_text(
-        res2, _o, report=rc2, stage="coarse")
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# `test_summarize_mid_flight_lists_unfinished_and_refreshes`:
+# it wrote a SIESTA output and an SCF-timing log by hand into benchmark
+# trial folders that never ran, so the summary had a winner to pick: an
+# output invented as text (`process/testing.md` § 6).
 
 
 # --------------------------------------------------------------------- #
@@ -709,52 +612,8 @@ def test_a_grouped_bench_on_a_flat_calculation(flat_sol_calc):
     assert sum("bench-group-gpu-" in l for l in plans) == 3
 
 
-def test_a_gpu_winner_rides_run_config_on_a_mixed_sweep(sol_calc):
-    """R2-8's second gap: the GPU-side winner was covered only on a
-    GPU-only grid.  On a MIXED sweep (both families prepped), a GPU
-    trial finishing fastest must become the verdict, and the run's
-    config must apply ITS pins — use_gpu=true included — not the CPU
-    family's."""
-    from molbuilder.jobset._cli import (_load_bench_set,
-                                        _stage_bench_dir)
-    from molbuilder.jobset.materialize import job_dir_names, shape_of
-    from molbuilder.jobset.model import Resources
-    from molbuilder.jobset.summarize import run_summarize_jobset
-    _declare(sol_calc, _small_matrix())
-    _prep(sol_calc)
-    js, base = _load_bench_set(str(sol_calc), "coarse")
-    container, _tok = _stage_bench_dir(sol_calc, "coarse")
-    dirs = job_dir_names(js, shape_of(js, sol_calc))
-
-    def finish(name, spi):
-        _c = sol_calc / dirs[name]
-        d = latest_attempt(_c) or _c
-        stem = next(d.glob("*.fdf")).name[:-4]
-        (d / f"{stem}-run0.out").write_text(
-            "* Running on 4 nodes in parallel\nx\n"
-            # `>> End of run` is THE end marker -- see the note above.
-            "siesta: Final energy (eV):\nJob completed\n>> End of run:\n")
-        t0 = 1000000.0
-        (d / f"{stem}-run0.scf-timing.log").write_text(
-            "\n".join(f"{t0 + i * spi} iter" for i in range(4)) + "\n")
-
-    # G0 IS the CPU family and G>=1 the GPU family -- the rider no longer
-    # appears in names (roadmap 7.10 M2); the coordinate states it.
-    cpu_label = next(l for l in dirs if l.startswith("G0"))
-    gpu_label = next(l for l in dirs if l.startswith("G1"))
-    finish(cpu_label, 9.0)
-    finish(gpu_label, 2.0)          # the GPU family wins
-    # `out=` is the CLI's own plumbing (`summarize bench <stage>` writes
-    # the record into the stage's container, where `prep run` looks).
-    res, _out, rc = run_summarize_jobset(
-        js, sol_calc, out=container / "bench-result.json",
-        now_iso="2026-08-21T00:00:00Z", stage="coarse")
-    assert res.choice["label"] == gpu_label
-    assert rc is not None
-    text = rc             # PRINTED now, not written (`job-system.md` § 7.1)
-    assert '"use_gpu": true' in text, (
-        f"the report does not carry the winner's family: {text}")
-    # AND ITS DEVICE COUNT, in `execution`'s vocabulary -- the record holds a
-    # `gres` string, which `task.json` would refuse.
-    assert '"gpu_count":' in text, (
-        f"the report names no device count to write: {text}")
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# `test_a_gpu_winner_rides_run_config_on_a_mixed_sweep`:
+# it wrote a SIESTA output and an SCF-timing log by hand into benchmark
+# trial folders that never ran, so the summary had a winner to pick: an
+# output invented as text (`process/testing.md` § 6).

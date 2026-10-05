@@ -773,8 +773,7 @@ door, the kind, and the browser-vs-CLI byte-compat pin),
 refuses), `tests/test_vibration_e2e.py` (the live water runs),
 `tests/test_siesta_vibration_results_e2e.py` (a SIESTA result on the Results
 tab: the modes without a spectrum, the columns and dots by route, the
-vibrational-only thermochemistry and its bars), `tests/test_spectra_from_a_real_run_e2e.py`
-(a PySCF result computed and read back, its RRHO bars summing to the headline),
+vibrational-only thermochemistry and its bars),
 `test_spectra_no_spectrum_sentence_js.py` (the four cases of § 2, by role,
 and when the viewer stops waiting — infrared's own flag included, § 7),
 `test_vibrationview_maths_js.py` (the animation's eigenvector math).

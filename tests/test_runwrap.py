@@ -124,43 +124,9 @@ def test_render_siesta_always_uses_mpirun():
     assert text.startswith("#!/usr/bin/env bash\n")
 
 
-def test_the_node_it_ran_on_is_recorded_on_EVERY_path():
-    """**The node's shape is provenance for any trial, not a GPU extra.**
-
-    The wrapper measures ``phys_cores`` / ``n_sockets`` /
-    ``cores_per_socket`` with ``lscpu`` and echoes them, and
-    ``bench/result.py::parse_effective_run`` reads that line into
-    ``node_phys_cores`` -- the field that exists so a sweep whose trials
-    landed on different node types can SAY so instead of quoting a number
-    none of them used (Au-BDT-Au ran on a 2x24 node while the probed record
-    said 2x32).
-
-    Until 2026-09-03 the echo lived inside ``_gpu_runtime_defaults_block``,
-    so a **CPU** sweep -- which is most sweeps, and the one this field was
-    written for -- recorded no node shape at all and the field could never
-    be filled.  The probe now reports what it measured, on every path.
-
-    The GPU wrapper must carry it exactly ONCE: the probe was hoisted out
-    of the GPU block rather than duplicated, and a second copy would give
-    the reader two answers.
-    """
-    _bind()
-    cpu = render_run_wrapper(Path("/somewhere/cpu-job.fdf"),
-                             machine_record=_MACHINE,
-                             resources=Resources(mpi_np=4, cpus_per_task=2))
-    assert cpu.count("detected phys_cores=") == 1, (
-        "a CPU trial records no node shape -- `node_phys_cores` cannot be "
-        "filled for it, and a sweep spread over two node types reads as one")
-    assert "mps_available=" not in cpu, (
-        "the CPU wrapper reports an MPS capability that only matters on a GPU")
-
-    # And the field the parser wants really comes out of that line.
-    from molbuilder.bench.result import parse_effective_run
-    line = [ln for ln in cpu.splitlines() if "detected phys_cores=" in ln][0]
-    eff = parse_effective_run("", line.replace("$_phys_cores", "20")
-                                     .replace("$_n_sockets", "2")
-                                     .replace("$_cps", "10"))
-    assert eff["node_phys_cores"] == 20 and eff["node_sockets"] == 2, eff
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 11 tests here stood on earlier runs' outputs, restart files or a
+# session log written by hand, or a measured output cut and renamed (`process/testing.md` § 6).
 
 
 def test_render_siesta_with_mpi_ranks():
@@ -252,70 +218,6 @@ def test_render_siesta_emits_propor_diagnostic():
     assert "Spin.Total" not in text, "the retracted spin cause is back"
     # Re-exit with SIESTA's code.
     assert 'exit "$_siesta_exit"' in text
-
-
-def test_the_wrapper_asks_how_the_run_ended_over_both_channels(tmp_path):
-    """THE WRAPPER ASKS, IT DOES NOT GREP (`run-reports.md` § 2.3): its failure
-    hint and its warm retries ask `_run_ending`, shipped beside the job in
-    `mb_monitor.pyz`, through the rendered ``_mb_ending`` -- run here in bash,
-    as the wrapper runs it.
-
-    Over BOTH of SIESTA's channels: its ``die`` writes the message to stdout
-    and stderr and flushes stdout on node 0 alone (``Src/siesta_handlers_m
-    .F90``), so a rank other than 0 that dies may say why in this wrapper's
-    log only -- and a run that died before its first line has no output at
-    all.  A measured fixture, API-level by necessity (a death on a chosen
-    rank cannot be produced on demand): the frozen hemeC run's own ending --
-    ``SCF_NOT_CONV: ... (required).``, then eight nodes'
-    ``ABNORMAL_TERMINATION`` / ``Stopping Program from Node`` -- whole, and
-    with the dying lines reaching the wrapper's log alone.
-
-    The cause is what SIESTA SAYS stopped it: ``(required)`` makes the SCF's
-    failure fatal (`siesta_grammar.SCF_NOT_CONV_REQUIRED`), and ``die``'s
-    lines after it are the cascade -- the warm retry asks for exactly that."""
-    import subprocess
-    from molbuilder.parse.engines.siesta_grammar import SCF_NOT_CONV_MARKER
-    from molbuilder.runwrap import MONITOR_BUNDLE, monitor_bundle
-
-    _bind()
-    text = render_run_wrapper(Path("/x/hemeC.fdf"), machine_record=_MACHINE,
-                              resources=Resources(mpi_np=8, cpus_per_task=1))
-    start = text.index("_mb_ending_able() {")
-    func = text[start:text.index("\n}\n", text.index("_mb_ending() {")) + 3]
-    (tmp_path / MONITOR_BUNDLE).write_bytes(monitor_bundle())
-    real = (Path(__file__).parent / "watch" / "fixtures" / "siesta_frozen"
-            / "hemeC-stage3-scf_not_conv-1fr.out").read_text(errors="replace")
-    cut = real.index("ABNORMAL_TERMINATION")
-    (tmp_path / "whole-run0.out").write_text(real)
-    (tmp_path / "rank-run0.out").write_text(real[:cut])
-    (tmp_path / "wrapper.log").write_text(real[cut:])
-    (tmp_path / "empty.log").write_text("")
-
-    def ask(out, log, *question):
-        script = ("_log() { :; }\n_mb_py=python3\n"
-                  f"_out_file={out}\n_runwrap_log={log}\n{func}"
-                  "_mb_ending " + " ".join(f"'{q}'" for q in question)
-                  + "\n")
-        return subprocess.run(["bash", "-c", script], cwd=tmp_path,
-                              capture_output=True, text=True, timeout=60)
-
-    for out, log in (("whole-run0.out", "empty.log"),
-                     ("rank-run0.out", "wrapper.log")):
-        said = ask(out, log)
-        assert said.returncode == 0, said.stderr
-        assert said.stdout.startswith("stopped -- SCF_NOT_CONV:"), (
-            out, said.stdout)
-        assert ask(out, log, "stopped-by", SCF_NOT_CONV_MARKER
-                   ).returncode == 0, out
-        for cascade in ("abnormal_termination", "stopping program from node"):
-            assert ask(out, log, "stopped-by", cascade).returncode == 1, (
-                out, cascade)
-    # with no word from the dying ranks the output alone proves no death
-    said = ask("rank-run0.out", "empty.log")
-    assert said.stdout.startswith("the output states no ending"), said.stdout
-    # and with no output at all, the log is still heard
-    assert ask("absent-run0.out", "wrapper.log", "stopped-by",
-               "abnormal_termination").returncode == 0
 
 
 def test_render_siesta_emits_build_probe_block():
@@ -882,66 +784,6 @@ def test_continue_first_run_is_run0(tmp_path):
     assert "_run_n=0" in stdout
 
 
-def test_continue_advances_when_prior_run_exists(tmp_path):
-    """With -run0.out already present, --continue produces -run1.out."""
-    w = _emit_truncated_wrapper(tmp_path, "myjob")
-    # Pretend -run0 already exists from a previous invocation.
-    (tmp_path / "myjob-run0.out").write_text("prior result")
-    stdout, _stderr, code = _run_wrapper(w, "--continue")
-    assert code == 0
-    assert "_out_file=myjob-run1.out" in stdout
-    assert "_run_n=1" in stdout
-
-
-def test_continue_picks_max_plus_one(tmp_path):
-    """When -run0 and -run2 both exist (e.g. -run1 was manually
-    deleted), --continue uses max(N)+1 = 3.  Pin the max-not-count
-    behaviour."""
-    w = _emit_truncated_wrapper(tmp_path, "myjob")
-    (tmp_path / "myjob-run0.out").write_text("r0")
-    (tmp_path / "myjob-run2.out").write_text("r2")
-    stdout, _stderr, code = _run_wrapper(w, "--continue")
-    assert code == 0
-    assert "_out_file=myjob-run3.out" in stdout
-
-
-def test_no_flag_with_prior_run_auto_continues(tmp_path):
-    """DEFAULT (2026-06-26): no flag + a prior run exists -> AUTO-ADVANCE
-    to the next -runN.  Never errors, never overwrites.  This replaced
-    the old refuse-with-exit-1 gate (the #1 resubmit papercut -- OOM /
-    propor / walltime resubmits kept tripping it)."""
-    w = _emit_truncated_wrapper(tmp_path, "myjob")
-    (tmp_path / "myjob-run0.out").write_text("prior")
-    stdout, stderr, code = _run_wrapper(w)
-    assert code == 0, (stdout, stderr)
-    assert "_out_file=myjob-run1.out" in stdout
-    assert "auto-continuing" in stderr            # informs, does not fail
-    assert "--force" in stderr                    # names how to restart at run0
-
-
-def test_force_overwrites_run0(tmp_path):
-    """--force restarts from -run0 even when -run0 exists.  Old
-    file is NOT deleted by the wrapper; only the run-index sequence
-    resets (and SIESTA's stdout will overwrite the existing -run0.out
-    when it launches)."""
-    w = _emit_truncated_wrapper(tmp_path, "myjob")
-    (tmp_path / "myjob-run0.out").write_text("prior")
-    stdout, _stderr, code = _run_wrapper(w, "--force")
-    assert code == 0
-    assert "_out_file=myjob-run0.out" in stdout
-    # The prior file is still on disk (we didn't delete it).
-    assert (tmp_path / "myjob-run0.out").exists()
-
-
-def test_continue_short_form_works(tmp_path):
-    """``-c`` is the short form of ``--continue``."""
-    w = _emit_truncated_wrapper(tmp_path, "myjob")
-    (tmp_path / "myjob-run0.out").write_text("prior")
-    stdout, _stderr, code = _run_wrapper(w, "-c")
-    assert code == 0
-    assert "_out_file=myjob-run1.out" in stdout
-
-
 def test_continue_without_prior_starts_run0(tmp_path):
     """--continue with no prior -runN -> just start at -run0 (the
     'no prior' branch is a fresh run; --continue only adds an engine
@@ -1044,44 +886,6 @@ def test_pyscf_wrapper_emits_continue_args_block(tmp_path):
     assert "--continue, -c" in text
     assert "--force, -f" in text
     assert "--cold," in text and "--from-scratch" in text
-
-
-def test_pyscf_wrapper_continue_advances_run_index(tmp_path):
-    """End-to-end bash check on PySCF wrapper (same resolver code as
-    SIESTA, but PySCF outputs land in ``.pyscf.log`` instead of
-    ``.out``)."""
-    w = _emit_truncated_wrapper(tmp_path, "myjob", suffix=".py")
-    (tmp_path / "myjob-run0.pyscf.log").write_text("prior")
-    stdout, _stderr, code = _run_wrapper(w, "--continue")
-    assert code == 0
-    assert "_out_file=myjob-run1.pyscf.log" in stdout
-
-
-def test_pyscf_wrapper_auto_continues_without_flag(tmp_path):
-    """No flag, prior run exists -> AUTO-ADVANCE (same default as SIESTA;
-    shared resolver)."""
-    w = _emit_truncated_wrapper(tmp_path, "myjob", suffix=".py")
-    (tmp_path / "myjob-run0.pyscf.log").write_text("prior")
-    stdout, stderr, code = _run_wrapper(w)
-    assert code == 0, (stdout, stderr)
-    assert "_out_file=myjob-run1.pyscf.log" in stdout
-    assert "auto-continuing" in stderr
-
-
-def test_pyscf_wrapper_does_not_collide_with_siesta_out(tmp_path):
-    """No run takes an index an earlier run's file holds, whichever engine
-    wrote it: the monitor log, `util.csv` and the conclusion marker are
-    named alike for both engines, so a PySCF run at -run0 beside a SIESTA
-    run's -run0 would overwrite that run's marker and truncate its
-    measurement.  It advances instead, and the earlier file is untouched
-    (`project-layout.md` § 1.6.1)."""
-    w = _emit_truncated_wrapper(tmp_path, "myjob", suffix=".py")
-    prior = tmp_path / "myjob-run0.out"
-    prior.write_text("SIESTA-style prior")
-    stdout, _stderr, code = _run_wrapper(w)
-    assert code == 0, "a PySCF run starts beside an earlier SIESTA run"
-    assert "_out_file=myjob-run1.pyscf.log" in stdout
-    assert prior.read_text() == "SIESTA-style prior"
 
 
 def test_pyscf_wrapper_banner_mentions_pyscf_log_not_out(tmp_path):
@@ -1209,18 +1013,6 @@ def test_siesta_wrapper_passes_bash_n(tmp_path):
 # --------------------------------------------------------------------- #
 
 
-# What a PySCF optimization leaves under its id that a re-run overwrites: the
-# warm state `pyscf/warm-files.toml` declares, and geomeTRIC's trajectory and
-# scratch, which are not warm state (`engines/stages.md` § 1.1a, consequence
-# 4) and are overwritten all the same.
-_PYSCF_WARM_RESTART_INVENTORY = (
-    ".chk",                # SCF DM init guess
-    "_optimized.xyz",      # geometry warm-restart hook (#539 generator)
-    "_geom_optim.xyz",     # geomeTRIC trajectory
-    "_geom.tmp",           # geomeTRIC scratch
-)
-
-
 def test_pyscf_cold_block_sweeps_by_name_not_by_inventory():
     """U17 (job-contracts § 4.1): the two tests that stood here pinned the
     per-suffix glob list -- one entry per warm-restart inventory row, plus
@@ -1262,76 +1054,6 @@ def test_pyscf_wrapper_with_full_inventory_passes_bash_n(tmp_path):
         f"PySCF wrapper with full warm-restart inventory failed "
         f"bash -n syntax check.  bash stderr:\n{cp.stderr}"
     )
-
-
-def test_pyscf_cold_names_every_warm_file_it_would_overwrite(tmp_path):
-    """End-to-end behavior: extract the cold-restart bash block from the
-    runwrap emitter, plant every file a re-run would overwrite (each with a
-    distinct sentinel), run the block with ``_cold=1`` under bash, and assert
-    every one of them is NAMED in the refusal -- and that none of them is
-    touched.
-
-    **``--cold`` reports and refuses; ``--force`` proceeds** *(user,
-    2026-08-18)*.  It moved the files into a dated aside directory until then;
-    keeping a state is ``molbuilder checkpoint save`` and it is never
-    automatic.  What this test protects is unchanged: that the sweep reaches
-    every one of them, run against the real bash rather than a model of it
-    -- the "branch present but never fires" class from design.md's Required
-    tests table.
-
-    Uses bash subprocess directly (not the truncated wrapper helper
-    -- that cuts at the run-index resolver, BEFORE the cold block
-    runs in the rendered wrapper, so it can't exercise this path).
-    """
-    from molbuilder.runwrap import _cold_restart_block
-    job = "myjob"
-    block = _cold_restart_block(job, engine="pyscf", label=job)
-
-    # The block reads JOB= from the .py script to populate
-    # _warm_label.  Plant a minimal script alongside the warm-
-    # restart files.
-    (tmp_path / f"{job}.py").write_text(f'JOB = "{job}"\n')
-
-    # Plant the warm-restart inventory.
-    for suffix in _PYSCF_WARM_RESTART_INVENTORY:
-        (tmp_path / f"{job}{suffix}").write_text(f"sentinel-{suffix}")
-
-    # Wrap the block with the minimal harness it expects: ``_cold=1``
-    # to trigger the move + the same ``set -euo pipefail`` shape the
-    # real wrapper uses.  The block uses ``shopt -s nullglob``
-    # internally so non-matching globs don't trip ``set -e``.
-    harness = (
-        "#!/usr/bin/env bash\n"
-        "set -euo pipefail\n"
-        "_cold=1\n"
-        f"{block}\n"
-    )
-    script_path = tmp_path / "cold_block.sh"
-    script_path.write_text(harness)
-    script_path.chmod(0o755)
-
-    bash = shutil.which("bash") or "/bin/bash"
-    proc = subprocess.run(
-        [bash, str(script_path)],
-        cwd=str(tmp_path),
-        capture_output=True, text=True, timeout=15,
-        env={**os.environ, **_MANUAL},
-    )
-    assert proc.returncode == 1, (
-        f"--cold with prior state must refuse;\n"
-        f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
-
-    named = {ln.split()[-1] for ln in proc.stderr.splitlines()
-             if ln.startswith("[molbuilder]     ") and "checkpoint" not in ln}
-    for suffix in _PYSCF_WARM_RESTART_INVENTORY:
-        assert f"{job}{suffix}" in named, (
-            f"--cold did not name {job}{suffix}; it would be overwritten "
-            f"with no warning")
-        assert (tmp_path / f"{job}{suffix}").is_file(), (
-            f"{job}{suffix} was touched -- a refusal changes nothing")
-    assert not list(tmp_path.glob(f"{job}-restart-aside-*")), (
-        "the launcher kept a copy; keeping a state is the checkpoint tool's "
-        "job and is never automatic (checkpointing.md § 2)")
 
 
 # --------------------------------------------------------------------- #

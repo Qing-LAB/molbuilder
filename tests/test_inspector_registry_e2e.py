@@ -18,8 +18,6 @@ driven /results architecture.
 """
 from __future__ import annotations
 
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -31,96 +29,6 @@ pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-# It runs a real PySCF optimisation, so a test that asks for it carries
-# `@pytest.mark.engine` (`docs/process/testing.md` § 6.1a).
-@pytest.fixture(scope="module")
-def ongoing_trajectory(isolated_projects_root_module) -> str:
-    """A multi-frame `*_geom_optim.xyz` from a REAL optimisation, mid-run.
-
-    **This was hand-written until 2026-09-04**, and replacing it is the point.
-    The old version built frames with `Structure.to_xyz()` and a comment line
-    I guessed at.  The guess was close, which is worse than wrong: what the
-    test then proved was my expectation of geomeTRIC's output, not the
-    program's.  It also could not show what a real run directory shows -- the
-    viewer prefers a `.molwatch.log` when one sits beside the trajectory, and
-    a fixture with no log beside it hid that preference entirely.
-
-    So this runs CO2 stretched to 1.30 A, which relaxes to about 1.19 in
-    ~4 seconds, and keeps ONLY the trajectory file it wrote.
-
-    Only the `.xyz` of what the run wrote, deliberately, beside the run's
-    launch record: a viewer follows a run while it is LIVE -- launched and
-    not over (`web/results.md` § 4.1) -- and a finished run's log and
-    conclusion say it is over, which stops the poll this fixture exists to
-    start.  A launched run with no ending yet is the state a run is
-    genuinely in while it is still going, and it is the state whose timer
-    must not survive dispose.  *(The `.xyz` alone stood for it until
-    2026-10-03, when the viewer read the file's own ending; with no run
-    around it, a file is a run never launched, which is not followed.)*
-    """
-    env = _pyscf_env()
-    if env is None:
-        pytest.skip("no conda env routes PySCF on this machine")
-
-    import numpy as np
-
-    from molbuilder.config.pyscf import PySCFConfig
-    from molbuilder.pyscf.input import spec_for
-    from molbuilder.script_emit import prepare_deck
-    from molbuilder.structure import Structure
-
-    root = isolated_projects_root_module / "timer_e2e"
-    work = root / "_run"
-    live = root / "optimization"
-    work.mkdir(parents=True)
-    live.mkdir(parents=True)
-    try:
-        struct = Structure(
-            elements=["C", "O", "O"],
-            positions=np.array([[0.0, 0.0, 0.0],
-                                [0.0, 0.0, 1.30],
-                                [0.0, 0.0, -1.30]]))
-        cfg = PySCFConfig(job_name="probe", method="HF", basis="STO-3G")
-        deck = work / "probe.py"
-        prepare_deck(spec_for(struct, cfg, calculation="optimization"),
-                     struct, cfg, deck, verbose=False)
-        proc = subprocess.run(
-            ["conda", "run", "-n", env, "python", deck.name],
-            cwd=str(work), capture_output=True, text=True, timeout=900)
-        src = work / "probe_geom_optim.xyz"
-        assert src.exists(), (
-            f"the optimisation ran (exit {proc.returncode}) but wrote no "
-            f"trajectory.\n{proc.stdout[-1500:]}\n{proc.stderr[-1500:]}")
-        dest = live / "probe_geom_optim.xyz"
-        shutil.copy2(src, dest)          # the trajectory ALONE -- see above
-        from molbuilder.runrecord import write_launch
-        write_launch(live, mode="direct", command=["bash", "probe.run.sh"])
-        yield str(dest.resolve())
-    finally:
-        # No rmtree: the tree lives under `tmp_path_factory`, which pytest
-        # removes.  It used to sit in the developer's real `projects/`, so a
-        # crashed run left a folder behind in their own data.
-        pass
-
-
-def _pyscf_env():
-    """The env molbuilder routes PySCF to, if it exists here.
-
-    `env_for_category`, not `routed_env`: PySCF is a CATEGORY in the four-env
-    model and `TOOL_TO_CATEGORY` maps executables, so `routed_env("pyscf")`
-    answers None and the whole thing skips on a machine where the env is
-    right there.  And `detect()`, not `Capabilities()`, whose env set
-    defaults to empty.
-    """
-    from molbuilder.diagnostics import detect
-    try:
-        caps = detect()
-        env = caps.env_for_category("pyscf")
-        return env if env and caps.env_available(env) else None
-    except Exception:
-        return None
 
 
 @pytest.fixture(scope="module")

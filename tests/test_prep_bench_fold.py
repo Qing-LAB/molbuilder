@@ -469,121 +469,9 @@ def test_the_launch_plan_states_gpu_sharing(calc):
     assert any("rank(s)/GPU" in l for l in ratios)
 
 
-def test_the_group_sequencer_runs_every_trial_and_survives_failures(
-        calc, monkeypatch):
-    """The generated bash, EXECUTED: every pending trial runs in its own
-    directory in order; a failing trial does not stop the walk; a trial
-    that hits the per-trial bound is killed (rc=124, named in the log) and
-    the rest still run; the script exits nonzero because something failed;
-    and every included trial's run.json carries the ONE job id."""
-    import json as _json
-    import stat
-    import subprocess as _sp
-    from pathlib import Path
-
-    from molbuilder.jobset._cli import _load_bench_set
-    from molbuilder.jobset.materialize import job_dir_names, shape_of
-    from molbuilder.runrecord import launch_record
-    from molbuilder.jobset.submit import _trial_run_dir, submit_bench_group
-
-    # A DECLARED one-shelf sweep (one machine point x a block_size value
-    # axis): the walk story needs several trials in ONE group, and since
-    # the shelf split (2026-08-21) only same-ask trials share a group --
-    # exactly what a value axis produces.
-    _declare_bench(calc, {"mpi_np": [4], "omp_threads": [1],
-                          "block_size": [16, 32, 64]})
-    _prep_bench(calc)
-    js, base = _load_bench_set(calc, "coarse")
-    dirs = job_dir_names(js, shape_of(js, base))
-
-    # Stub each trial's wrapper: first succeeds and leaves a marker,
-    # second fails, third (if any) sleeps past the bound.
-    # WHERE `prep` ACTUALLY PUT THE WRAPPER -- the attempt, when the shape
-    # keeps one (`project-layout.md` § 1.6).  This wrote the stub into the
-    # trial CONTAINER until 2026-08-30, which is the very place the
-    # sequencer's bug looked, so the walk was proved against a layout prep
-    # does not produce and Sol job 62372574 died at rc=127 with this test
-    # green.  A fixture that builds its own layout cannot test a layout
-    # question.
-    behaviours = ["ok", "fail", "sleep"]
-    for n, job in enumerate(js.jobs):
-        d = _trial_run_dir(base / dirs[job.name])
-        wrapper = d / (Path(job.script).stem + ".run.sh")
-        kind = behaviours[min(n, 2)]
-        body = {"ok":    "#!/usr/bin/env bash\ntouch ran.marker\nexit 0\n",
-                "fail":  "#!/usr/bin/env bash\ntouch ran.marker\nexit 3\n",
-                "sleep": "#!/usr/bin/env bash\ntouch ran.marker\nsleep 30\n",
-                }[kind]
-        wrapper.write_text(body)
-        wrapper.chmod(wrapper.stat().st_mode | stat.S_IEXEC)
-
-    # sbatch is faked; the sequencer is then run HERE with bash.
-    calls = {}
-
-    def fake_run(cmd, **kw):
-        calls["cmd"] = cmd
-        calls["cwd"] = kw.get("cwd")
-        class R:
-            returncode = 0
-            stdout = "Submitted batch job 4242"
-            stderr = ""
-        return R()
-    # Rebind ONLY the submit module's `subprocess` name -- patching the
-    # global module would also fake the REAL bash run below.
-    import types
-
-    import molbuilder.jobset.submit as submod
-    monkeypatch.setattr(submod, "subprocess",
-                        types.SimpleNamespace(run=fake_run))
-    # This box has no queue, so the real header render answers None (and
-    # the group rightly refuses).  The header is not under test here -- the
-    # sequencer is -- so stub the emitter the way sbatch is stubbed.
-    import molbuilder.runwrap as _rw
-    monkeypatch.setattr(_rw, "_render_sbatch_for",
-                        lambda *a, **k: "#!/bin/bash\n"
-                        "#SBATCH -o slurm.%j.out\n#SBATCH -e slurm.%j.err\n"
-                        "bash bench-group.run.sh \"$@\"\n")
-
-    results = submit_bench_group(js, base, dry_run=False, trial_timeout_s=2)
-    assert results[0].name == "bench-group"
-    assert results[0].job_id == "4242"
-
-    container = Path(calls["cwd"])
-    script = container / "launch" / "bench-group.run.sh"
-    assert script.is_file(), (
-        "the sequencer lives in launch/ (L3, roadmap 7.10)")
-    assert container.name == "bench", (
-        f"the group runs at the parent that sees every trial: {container}"
-    )
-
-    # EXECUTE the generated bash for real -- from the container, exactly
-    # as the sbatch body does (`bash launch/<name>.run.sh`), so the trial
-    # dirs resolve relative to the container and the log lands in launch/.
-    proc = _sp.run(["bash", f"launch/{script.name}"], cwd=str(container),
-                   capture_output=True, text=True, timeout=120)
-    log = (container / "launch" / "bench-group.log").read_text()
-    # The marker lands in the trial's CWD, which is where it runs.
-    ran = [job.name for job in js.jobs
-           if (_trial_run_dir(base / dirs[job.name]) / "ran.marker").exists()]
-    assert ran == [j.name for j in js.jobs], (
-        f"a failure stopped the walk: only {ran} ran\n{log}"
-    )
-    assert proc.returncode != 0, "a sweep with failures must say so"
-    if len(js.jobs) >= 3:
-        assert "hit the 2s per-trial bound" in log, log
-    # The explicit record (user, 2026-08-20): when each trial started,
-    # finished, with what rc and duration -- and the allocation the group
-    # ran in, so an env-inheritance question is answered by the log itself.
-    assert "alloc_ntasks=" in log and "job=" in log, log
-    for job in js.jobs:
-        assert f"-> {job.name} starts" in log, log
-        assert f"<- {job.name} finished rc=" in log, log
-    assert "took=" in log and "s" in log
-    for job in js.jobs:
-        where = _trial_run_dir(base / dirs[job.name])
-        assert launch_record(where) is not None, f"{job.name} has no launch record"
-        rec = _json.loads((where / "run.json").read_text())
-        assert rec.get("job_id") == "4242"
+# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
+# 5 tests here stood on restart files written by hand, trial
+# scripts replaced by hand-written stubs, or a retired verdict file (`process/testing.md` § 6).
 
 def test_prep_run_of_a_second_stage_merges_the_root_plan(calc):
     """The root ``job-set.json`` is the RUN plan and MERGES per stage
@@ -673,33 +561,6 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
 # `test_prep_underway_with_no_answer_proceeds_and_says_so` retired 2026-10-02
 # with the question they pinned: a prepped stage is refused now, and the one
 # question is the save (`tests/data/prep_protocol.toml`; `job-system.md` § 5.0).
-
-
-def test_a_trial_is_cold_by_construction(calc):
-    """§ 2.3.2's forced-cold half, pinned at its mechanism (U20): the
-    RELABEL is what makes a trial cold -- its deck's SystemLabel names
-    warm files that never exist, and nothing links the real run's warm
-    state into a trial's directory.  A benchmark that warm-started from
-    the production run would measure the wrong thing silently."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    r = CliRunner().invoke(jobset_group, ["prep", "run", "coarse",
-                                          "--bundle", str(calc),
-                                          "--no-sbatch"])
-    assert r.exit_code == 0, r.output
-    # the production run leaves warm state under the BASE label
-    (calc / "01_coarse" / "JOB.DM").write_text("warm density")
-    (calc / "01_coarse" / "JOB.XV").write_text("warm coords")
-    js = _prep_bench(calc)
-    for j in js["jobs"]:
-        d = _artifacts(calc, j['name'])
-        # no file or link under the BASE label reaches the trial
-        assert not list(d.glob("JOB.*")), list(d.iterdir())
-        # and the deck's own label is the trial's, so SIESTA's UseSave*
-        # looks for JOB-<point>.DM -- which never exists
-        import re
-        deck = (d / f"JOB-{j['name']}_01_coarse.fdf").read_text()
-        assert re.search(rf"^SystemLabel\s+JOB-{j['name']}\s*$", deck, re.M)
 
 
 def test_each_trials_wrapper_carries_its_own_translated_launch(calc):
@@ -848,35 +709,6 @@ class TestTheRunsOwnCondition:
         deck = next((calc / "01_coarse").glob("*.fdf")).read_text()
         assert "Diag.Algorithm     ELPA-2STAGE" in deck
 
-    def test_the_calculations_wall_and_memory_outrank_the_verdict(self, calc):
-        """`architecture.md` § 5.2's scheduler ladder is
-        `unstated < allocation < flag` -- there is NO verdict rung, because
-        `summarize` stopped proposing a wall and a memory on 2026-08-24:
-        "the two asks stay the person's".
-
-        The reader stayed wider than the writer, and the fold ran after it,
-        so a hand-edited `run-config.toml` silently beat the description --
-        over exactly the two fields whose absence killed five Sol jobs
-        (62039301-05)."""
-        from molbuilder.paths import bench_container
-        from molbuilder.jobset.materialize import stage_home
-        from molbuilder.paths import Shape
-        from molbuilder.task import read_task
-
-        d = json.loads((calc / "task.json").read_text())
-        d["allocation"] = {"time": "2-00:00:00", "mem": "256G"}
-        d["execution"] = {"mpi_np": 2, "omp_threads": 1, "use_gpu": False}
-        (calc / "task.json").write_text(json.dumps(d, indent=2))
-        t = read_task(calc / "task.json")
-        cont = calc / bench_container(Shape.named(t.shape),
-                                      stage_home(calc, t, "coarse").token)
-        cont.mkdir(parents=True, exist_ok=True)
-        (cont / "run-config.toml").write_text(
-            'schema = "molbuilder/run-config@1"\n'
-            '[resources]\nmem = "128G"\ntime = "0-00:10:00"\n')
-        r = self._run(calc)["resources"]
-        assert r["mem"] == "256G", "the verdict overrode the person's memory ask"
-        assert r["time"] == "2-00:00:00", "…and the wall"
 
     def test_a_surface_with_no_flags_passes_an_EMPTY_ask(self, calc):
         """§ 6.0a's contract, and the crash it was written after.
@@ -1024,30 +856,6 @@ def test_stage_plan_records_the_config_provenance(calc):
     assert "molbuilder.json" in plan
 
 
-def test_the_two_stage_sequence_carries_the_geometry_forward(calc):
-    """The cross-stage story end-to-end: prep+launch-record coarse, then
-    prep medium --from coarse's attempt -- the carried warm files land
-    in medium's attempt, which is what the root plan's MERGE (U1) keeps
-    verifiable."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    r = CliRunner()
-    res = r.invoke(jobset_group, ["prep", "run", "coarse",
-                                  "--bundle", str(calc), "--no-sbatch"])
-    assert res.exit_code == 0, res.output
-    attempt = calc / "01_coarse" / "run-0"
-    (attempt / "JOB.XV").write_text("relaxed coords")
-    res = r.invoke(jobset_group, ["prep", "run", "medium",
-                                  "--bundle", str(calc), "--no-sbatch",
-                                  "--from", "01_coarse/run-0"])
-    assert res.exit_code == 0, res.output
-    carried = list((calc / "02_medium").rglob("JOB.XV"))
-    assert carried, "the geometry did not carry"
-    assert carried[0].read_text() == "relaxed coords"
-    js = json.loads((calc / "job-set.json").read_text())
-    assert [j["name"] for j in js["jobs"]] == ["coarse", "medium"]
-
-
 def test_the_verb_renders_the_trial_decks_it_promises(calc):
     """I5 (2026-08-13): every earlier deck-content pin supplied the
     grid, pins and translation itself through library internals
@@ -1117,55 +925,6 @@ def test_a_fine_tuned_vocabulary_copy_wins_and_is_named(calc):
         "carry, and the engine default answered anyway")
     plan = (calc / "STAGE-PLAN.md").read_text()
     assert f"warm-files: {calc / 'warm-files.toml'}" in plan
-
-
-def test_the_cg_pair_rule_holds_both_ways_on_a_live_bundle(calc):
-    """G2 I-list (2026-08-13): project-layout § 2.3.4 row 3 driven
-    through the VERBS on a real described bundle, both directions.  The
-    shipped ladder is coarse=CG, medium=Broyden, tight=Broyden -- so
-    coarse->medium must WITHHOLD `.CG` (a CG history is meaningless to
-    Broyden; carrying it would corrupt the restart) while medium->tight
-    must CARRY it (same optimizer, verified through the merged plan the
-    A11-era merge keeps whole).  The first version of this test asserted
-    a blind carry and the SYSTEM was right to refuse it.  The shipped
-    `publishable` ladder disables tight, and a disabled stage is never
-    prepped (`engines/stages.md` § 6.2), so tight is enabled first -- as a
-    person enables it."""
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    desc = json.loads((calc / "task.json").read_text())
-    for st in desc["stages"]:
-        st["enabled"] = True
-    (calc / "task.json").write_text(json.dumps(desc, indent=2))
-    r = CliRunner()
-    res = r.invoke(jobset_group, ["prep", "run", "coarse",
-                                  "--bundle", str(calc), "--no-sbatch"])
-    assert res.exit_code == 0, res.output
-    a1 = calc / "01_coarse" / "run-0"
-    (a1 / "JOB.XV").write_text("relaxed coords")
-    (a1 / "JOB.CG").write_text("cg history")
-    res = r.invoke(jobset_group, ["prep", "run", "medium",
-                                  "--bundle", str(calc), "--no-sbatch",
-                                  "--from", "01_coarse/run-0"])
-    assert res.exit_code == 0, res.output
-    a2 = calc / "02_medium" / "run-0"
-    carried = {p.name for p in a2.glob("JOB.*") if not p.is_symlink()}
-    assert "JOB.XV" in carried
-    assert "JOB.CG" not in carried, (
-        "a CG-optimizer history crossed into a Broyden stage -- the "
-        "corrupting carry § 2.3.4 row 3 exists to prevent")
-    (a2 / "JOB.XV").write_text("more relaxed")
-    (a2 / "JOB.CG").write_text("broyden history")
-    res = r.invoke(jobset_group, ["prep", "run", "tight",
-                                  "--bundle", str(calc), "--no-sbatch",
-                                  "--from", "02_medium/run-0"])
-    assert res.exit_code == 0, res.output
-    a3 = calc / "03_tight" / "run-0"
-    carried = {p.name for p in a3.glob("JOB.*") if not p.is_symlink()}
-    assert "JOB.XV" in carried
-    assert "JOB.CG" in carried, (
-        "same-optimizer pair (broyden->broyden) withheld the history -- "
-        "the pair verification broke on the live path")
 
 
 def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
