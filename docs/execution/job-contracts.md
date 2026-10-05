@@ -889,11 +889,10 @@ not a second option with its own semantics.
 `molbuilder/projects.py` exposes the tree API: `validate_name`,
 `validate_topic`, `project_dir` / `topic_dir` / `structure_dir`,
 `ensure_structure_dir` (mkdir -p), `projects_root` / `find_projects_root`,
-`list_projects` / `list_topics` / `list_structures`, and
-`find_geom_candidates(project=…)`. The last scans the
-tree for reusable geometries matching `*_optimized.xyz`, `*.STRUCT_OUT`, and
-`*_geom_optim.xyz` (sorted newest-first) — deliberately **not** bare `*.xyz` /
-`*.pdb`, which would sweep up user inputs and noise.
+and `list_projects` / `list_topics` / `list_structures`. *(A
+`find_geom_candidates` scanned the tree for files named like a converged
+geometry until 2026-10-05; no surface called it, and a run's files are read
+through its run door, never by name across the tree.)*
 
 ### 2.6 The run wrapper — `.run.sh` and `.sbatch`
 

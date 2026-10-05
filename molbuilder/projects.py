@@ -21,9 +21,6 @@ Categories of work in this module:
     only function here that touches the filesystem to *write*.
   * **Discovery** — :func:`list_projects` / :func:`list_topics` /
     :func:`list_structures`; read-only.
-  * **Output detection by convention + mtime** —
-    :func:`find_geom_candidates` scans the tree for files matching
-    known output-name patterns, sorted by recency.
 
 This module does not know about scripts, conda envs, run wrappers, or
 the web UI.  Those concerns live in their own modules
@@ -556,84 +553,11 @@ def list_structures(project: str, topic: str, *,
                    if p.is_dir() and _NAME_PATTERN.fullmatch(p.name))
 
 
-# ---------------------------------------------------------------- #
-#  Output detection by name convention + mtime                      #
-# ---------------------------------------------------------------- #
-
-
-# File patterns that look like "a converged geometry output".  These
-# are deliberately specific -- generic *.xyz / *.pdb would catch user
-# inputs, intermediate frames, and other noise the picker shouldn't
-# surface.  Add new patterns here if a new engine ships its own output
-# naming convention.
-def _geom_output_patterns() -> Tuple[str, ...]:
-    """The picker's patterns, with the two PySCF roles taken from their home.
-
-    ``_optimized.xyz`` and ``_geom_optim.xyz`` are declared once, in
-    `pyscf/input.py` -- and that module's own
-    comment names the cost of a second copy: *"that is exactly how
-    `_geom_optim.xyz` came to have six spellings."*  This was the fourth.
-
-    ``.STRUCT_OUT`` stays a literal because it is SIESTA's, and molbuilder
-    declares no vocabulary for what an engine writes (`job-contracts.md`
-    § 4.2).  WHICH of those files is a startable geometry is this picker's own
-    curation -- the rules file has no field for it -- so the SELECTION lives
-    here and only the SPELLINGS are asked for.
-    """
-    from .pyscf.input import ROLE_GEOM_TRAJ, ROLE_OPTIMIZED
-    return ("*" + ROLE_OPTIMIZED,    # PySCF geomopt final-frame export
-            "*.STRUCT_OUT",          # SIESTA final relaxed coords
-            "*" + ROLE_GEOM_TRAJ)    # geomeTRIC trajectory (last frame is opt)
-
-
-def find_geom_candidates(*, base: Optional[Path] = None,
-                          project: Optional[str] = None,
-                          newest_first: bool = True) -> List[Path]:
-    """Return paths matching known "starting geometry" name conventions.
-
-    Scans either the whole ``projects/`` tree (``project=None``) or
-    just one project subtree.  Returns paths matching one of
-    :func:`_geom_output_patterns`, sorted by mtime descending (newest
-    first) when ``newest_first``, alphabetically otherwise.
-
-    Pure read; returns ``[]`` if the scanned root doesn't exist.
-
-    Design intent (see ``docs/design.md`` decisions-log entry
-    2026-05-14, "Four-env model" + "Projects hierarchy"): no metadata
-    DB, no lineage tracker -- the picker shows files matching
-    output-name conventions, sorted by recency.  A user picking a
-    starting geometry for a new spectrum job sees the most recently
-    optimised structures first.
-    """
-    if project is None:
-        root = projects_root(base)
-    else:
-        root = project_dir(project, base=base)
-    if not root.is_dir():
-        return []
-
-    # Patterns in _geom_output_patterns() are deliberately non-overlapping
-    # (no bare *.xyz / *.pdb fallback) -- one file matches at most one
-    # pattern, so we don't need dedup.
-    found: List[Path] = []
-    for pattern in _geom_output_patterns():
-        found.extend(root.rglob(pattern))
-
-    if newest_first:
-        # Race-safe key: if a file is deleted between rglob enumeration
-        # and stat (e.g. by a SLURM scratch-cleaner), treat it as
-        # "infinitely old" instead of crashing the whole sort.  Such
-        # files end up at the end of the list; the caller can ignore
-        # them (they'll fail again when read).
-        def _mtime_or_neg_inf(p):
-            try:
-                return p.stat().st_mtime
-            except OSError:
-                return float("-inf")
-        found.sort(key=_mtime_or_neg_inf, reverse=True)
-    else:
-        found.sort()
-    return found
+# `find_geom_candidates` -- a scan of the tree for files NAMED like a
+# converged geometry (`*_optimized.xyz`, `*.STRUCT_OUT`,
+# `*_geom_optim.xyz`), newest first -- stood here until 2026-10-05: no
+# surface called it.  A run's files are read through its run door
+# (`runs.run_of`), never by name across the tree.
 
 
 __all__ = [
@@ -653,5 +577,4 @@ __all__ = [
     "list_projects",
     "list_topics",
     "list_structures",
-    "find_geom_candidates",
 ]

@@ -11,7 +11,7 @@ import pytest
 
 from molbuilder.projects import (CANONICAL_TOPICS, InvalidName,
                                    PROJECTS_ROOT_NAME, ensure_structure_dir,
-                                   find_geom_candidates, list_projects,
+                                   list_projects,
                                    list_structures, list_topics, project_dir,
                                    projects_root, structure_dir, topic_dir,
                                    validate_name, validate_topic)
@@ -198,18 +198,10 @@ def test_list_structures_empty_when_topic_missing(tmp_path):
     assert list_structures("p", "spectrum", base=tmp_path) == []
 
 
-# --------------------------------------------------------------------- #
-#  find_geom_candidates -- name conventions + mtime                     #
-# --------------------------------------------------------------------- #
-
-
-def test_find_geom_candidates_empty_when_no_projects(tmp_path):
-    assert find_geom_candidates(base=tmp_path) == []
-
-
-# Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
-# 5 tests here offered empty files named as an engine's converged
-# geometry as the next job's start (`process/testing.md` § 6).
+# `find_geom_candidates` went 2026-10-05 with the function: no surface
+# called it.  Its five name-pattern tests had gone the day before (they
+# offered empty files named as an engine's converged geometry), the
+# empty-tree one with it.
 
 
 class TestTheProjectsRootIsOneConfigurableDoor:

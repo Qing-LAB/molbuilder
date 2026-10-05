@@ -145,13 +145,8 @@ _OVERRIDES: dict[tuple[str, str, str], tuple[str, str]] = {
 
     # -- DOOR-FED: the pattern is a PARAMETER, and its one producer is a door.
     #    A survey that reads syntax cannot see that; each of these was read.
-    ("molbuilder/projects.py", "find_geom_candidates", "pattern"):
-        ("door-fed - the pattern comes from a door",
-         "`_geom_output_patterns()` takes both PySCF spellings from "
-         "`pyscf.input.ROLE_OPTIMIZED` / `ROLE_GEOM_TRAJ` (their one home, "
-         "from `pyscf/warm-files.toml`).  WHICH engine outputs count as a "
-         "startable geometry is this picker's own curation -- the rules file "
-         "has no field for it -- so the selection stays and the spellings ask"),
+    # `projects.py::find_geom_candidates` stood here until 2026-10-05, when
+    # the function went: no surface called it.
     # `parse/dirs/rundir.py::openable_in`'s `'*' + ROLE_GEOM_TRAJ` stood here
     # until 2026-10-04: a folder no calculation claims is searched by dotted
     # role alone (`model/parse.md` § 5.2), so the site and its reason went.

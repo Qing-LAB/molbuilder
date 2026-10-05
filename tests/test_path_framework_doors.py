@@ -252,19 +252,9 @@ def test_the_provenance_step_reads_the_wrapper_as_well_as_the_deck(tmp_path):
 # (`test_doc_claims.py`).
 
 
-def test_the_geometry_picker_takes_its_pyscf_spellings_from_their_home():
-    """`projects._geom_output_patterns` asks `pyscf.input`, not a fourth copy.
-
-    Asserted as an equality with the declared constants, because the failure is
-    a spelling drifting apart — which is how ``_geom_optim.xyz`` came to have
-    six of them.
-    """
-    from molbuilder.projects import _geom_output_patterns
-    from molbuilder.pyscf.input import ROLE_GEOM_TRAJ, ROLE_OPTIMIZED
-    pats = _geom_output_patterns()
-    assert "*" + ROLE_OPTIMIZED in pats
-    assert "*" + ROLE_GEOM_TRAJ in pats
-    assert "*.STRUCT_OUT" in pats, "SIESTA's own name has no home of ours"
+# `test_the_geometry_picker_takes_its_pyscf_spellings_from_their_home`
+# retired 2026-10-05 with its subject: `projects.find_geom_candidates`
+# and its pattern helper went, no surface having called them.
 
 
 def test_read_system_degrades_on_a_missing_bundle():
