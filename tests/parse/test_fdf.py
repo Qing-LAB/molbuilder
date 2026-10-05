@@ -70,8 +70,7 @@ class TestTheAbsentCases:
         assert system_label("MeshCutoff 300 Ry\n") is None
 
     def test_an_empty_value_is_not_a_label(self):
-        """`None`, not `""` — its sibling `pyscf.input.job_name` answers the
-        same question the same way, so a caller cannot need two idioms."""
+        """`None`, not `""` — an empty value is not a label."""
         assert system_label('SystemLabel ""\n') is None
 
 

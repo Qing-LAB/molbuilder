@@ -25,7 +25,6 @@ module instead of the actual PySCF library).
 from __future__ import annotations
 
 import math
-import re
 from pathlib import Path
 from typing import List, Optional
 
@@ -1703,36 +1702,7 @@ def _emit_troubleshooting_block(cfg: PySCFConfig) -> List[str]:
 # surface.
 
 
-# --------------------------------------------------------------------- #
-#  The read-back of what this module writes                              #
-# --------------------------------------------------------------------- #
-
-
-_JOB_LITERAL_RE = re.compile(
-    r"""^[ \t]*JOB[ \t]*=[ \t]*(['"])([^'"]*)\1""", re.MULTILINE)
-
-
-def job_name(text: str) -> Optional[str]:
-    """The ``JOB`` a generated PySCF deck declares, or ``None``.
-
-    **The writer reads back what it wrote** (`model/parse.md` § 1a: *"a block
-    belongs to its writer"*).  This module emits ``JOB = "<label>"`` at
-    :func:`render_script`; PySCF names its log, checkpoint and trajectory from
-    it -- the label the ENGINE names its files on, which the run door reads
-    from the deck (`execution/architecture.md` § 3.2; plan W56 3b).  The
-    wrapper's cold-restart sweep and the Results search each hand-rolled a
-    regex for it until 2026-09-17.
-
-    It is a **Python string literal**, not an fdf keyword — which is why this
-    lives here and not beside `parse/fdf.py::system_label`.  The quotes are
-    syntax, so they are not part of the value; the LHS is anchored so an
-    incidental ``JOB`` further down the script cannot match.
-    """
-    m = _JOB_LITERAL_RE.search(text)
-    if m is None:
-        return None
-    # `or None` for the same reason `parse.fdf.system_label` has it: an empty
-    # value is not a label, and two sibling readers of one question must not
-    # answer it differently -- one `""` and one `None` is a caller writing
-    # `x is not None` against one and `if x` against the other.
-    return m.group(2) or None
+# `job_name` -- the ``JOB`` a generated deck declares, read back -- stood here
+# until 2026-10-04, kept for a run-door reader of the engine's label that no
+# reader turned out to need: a run's engine files are found from the
+# output's own name or line, never from its deck (plan W56 4d).

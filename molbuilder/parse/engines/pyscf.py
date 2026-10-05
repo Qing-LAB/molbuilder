@@ -41,9 +41,7 @@ import math
 import os
 
 from ..errors import ParseError
-from ...runfiles import (compose as _rf_compose, find as _rf_find,
-                         parse as _rf_parse,
-                         stem as _rf_stem)
+from ...runfiles import compose as _rf_compose
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -90,13 +88,6 @@ _SCF_CONVERGED_RE = re.compile(
     r"converged SCF energy\s*=\s*(-?[\d.eE+-]+)"
 )
 
-# geomeTRIC progress line: ``Step    0 : Gradient = ... Energy = -1028.231``
-_GEOMETRIC_STEP_RE = re.compile(
-    r"^Step\s+(\d+)\s*:[^\n]*?Energy\s*=\s*(-?[\d.eE+-]+)",
-    re.MULTILINE,
-)
-# ANSI escape codes geomeTRIC uses to color its progress lines.
-_ANSI_ESC_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 # Bounded sanity-check on line-0 atom count when detecting an XYZ.
@@ -155,104 +146,44 @@ def _can_parse_xyz(path: str) -> bool:
         return False
 
 
-#: A stage's artifact token leads with its zero-padded ordinal
-#: (``01_coarse`` -- `identity.stage_token`, `job-contracts.md` § 6.3).
-_STAGE_TOKEN_RE = re.compile(r"\d+_[A-Za-z0-9_]+$")
+#: geomeTRIC's trajectory, named on its run's stem --
+#: ``<label>_<token>_geom_optim.xyz`` (`pyscf/input.py` ``ROLE_GEOM_TRAJ``,
+#: the role's home, which this reader sits below and does not import).  What
+#: precedes it is the stem every other file of the run is named on.
+_GEOM_TRAJ = "_geom_optim.xyz"
 
 
-def _resolve_job_token(base: str, fname: str) -> Tuple[str, Optional[str]]:
-    """``(job, token)`` for a PySCF artifact filename -- THE inverse of
-    the generator's naming, in one place.
-
-    The writer's grammar (``pyscf/input.py``; the token sits immediately
-    after the label, never inside the role -- `job-contracts.md` § 2.2a.
-    These two rows said ``<job>_geom[_<token>]...`` until 2026-09-08,
-    contradicting this module's own header two paragraphs up):
-
-      * trajectory        ``<job>[_<token>]_geom_optim.xyz``
-      * geomeTRIC log     ``<job>[_<token>]_geom.log`` / ``.qdata``
-      * pyscf stdout      ``<job>[_<token>].log``
-      * molwatch          ``<job>[_<token>].molwatch.log``
-      * wrapper stdout    ``<job>[_<token>]-run<N>.pyscf.log``
-      * tokenless         ``<job>_initial.xyz`` / ``<job>_optimized.xyz``
-
-    A trajectory name carries the token itself (split at the RIGHTMOST
-    ``_geom`` -- a job name may legally contain ``_geom``).  A tokenless
-    artifact resolves its token from the molwatch logs beside it: the
-    bare ``<job>.molwatch.log`` means an unstaged run; otherwise the
-    ``<job>_<token>.molwatch.log`` beside it names the token -- newest
-    mtime wins when a flat folder holds several stages' logs, because
-    the tokenless artifact was itself written by whichever rung ran
-    last.  No molwatch log at all leaves the token ``None``, which
-    reproduces the unstaged spelling.
-    """
-    stem = fname
-    if stem.endswith("_optim.xyz"):
-        stem = stem[: -len("_optim.xyz")]
-        cut = stem.rfind("_geom")
-        if cut != -1:
-            job = stem[:cut]
-            rest = stem[cut + len("_geom"):]
-            if rest == "":
-                return job, None
-            if rest.startswith("_") and _STAGE_TOKEN_RE.fullmatch(rest[1:]):
-                return job, rest[1:]
-        return stem, None
-    for suffix in ("_initial.xyz", "_optimized.xyz", ".xyz"):
-        if stem.endswith(suffix):
-            stem = stem[: -len(suffix)]
-            break
-    # ASKED THROUGH THE GRAMMAR (`job-contracts.md` § 2.2a), not by slicing.
-    # This split the name itself -- `entry[len(stem) + 1 : -len(".molwatch.log")]`
-    # -- which works only while the role has no underscores and the token sits
-    # exactly one separator in.  Both were true HERE and neither is true of
-    # every run file, which is how sites that did the same arithmetic on
-    # `_geom_optim.xyz` disagreed about where the label ended.
-    if os.path.isfile(os.path.join(base, _rf_compose(stem, ".molwatch.log"))):
-        return stem, None
-    tokens = []
-    try:
-        for entry in os.listdir(base):
-            got = _rf_parse(entry, stem)
-            if got and got.stage and got.role == ".molwatch.log":
-                tokens.append((os.path.getmtime(
-                    os.path.join(base, entry)), got.stage))
-    except OSError:
-        pass
-    if tokens:
-        return stem, max(tokens)[1]
-    return stem, None
-
-
-def _stemmed(job: str, token: Optional[str]) -> str:
-    """``<job>[_<token>]`` -- the stem every token-carrying sibling
-    (stdout log, molwatch log, wrapper stdout) is named under.
-
-    One line, because the grammar owns the rule (`runfiles.stem`): this
-    reader spelled it itself until 2026-09-07, which is how a reader ends up
-    looking for a name no writer produces."""
-    return _rf_stem(job, token or None)
+def _run_stem_of(traj_path: str) -> Optional[str]:
+    """The stem of the run whose geomeTRIC trajectory ``traj_path`` is --
+    ``H2_01_coarse`` for ``H2_01_coarse_geom_optim.xyz`` -- or ``None`` for
+    any other XYZ this reader is handed: the trajectory names its run's
+    other files itself, and a file that names no run reads only itself
+    (`model/parse.md` § 5.3).  *(`_resolve_job_token` split the name into a
+    label and a stage with a stage pattern of its own, and took a stageless
+    file's stage from the newest progress log in its folder, until
+    2026-10-04: plan W56 4d.)*"""
+    name = os.path.basename(traj_path)
+    if len(name) <= len(_GEOM_TRAJ) or not name.endswith(_GEOM_TRAJ):
+        return None
+    return name[:-len(_GEOM_TRAJ)]
 
 
 def _sibling_molwatch_log(traj_path: str) -> Optional[str]:
-    """Return the path of the sibling molwatch log for ``traj_path``,
-    or None when no candidate exists.
+    """The run's progress log, ``<stem>.molwatch.log`` beside the
+    trajectory (:func:`_run_stem_of`), or None when there is none.
 
-    ``<job>[_<token>].molwatch.log`` via :func:`_resolve_job_token`.
     Used by :func:`_read_molwatch_metadata` to surface
     convergence_targets + run_state + error_message onto PySCF-parser
     Trajectories — which the molwatch parser already extracts but is
     otherwise lost when the user is viewing the trajectory file
     instead of the .molwatch.log.
     """
-    base, fname = os.path.split(traj_path)
-    if not base:
-        base = "."
-    job, token = _resolve_job_token(base, fname)
-    candidate = os.path.join(base, _stemmed(job, token) + ".molwatch.log")
-    if os.path.isfile(candidate):
-        return candidate
-    return None
+    stem = _run_stem_of(traj_path)
+    if stem is None:
+        return None
+    base = os.path.dirname(traj_path) or "."
+    candidate = os.path.join(base, _rf_compose(stem, ".molwatch.log"))
+    return candidate if os.path.isfile(candidate) else None
 
 
 # Marker regexes scoped to the header / footer scan.  Header lines
@@ -338,57 +269,11 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
     return out
 
 
-def _read_initial_energy_from_log(traj_path: str) -> Optional[float]:
-    """Return the geomeTRIC ``Step 0`` energy (eV) from the sibling
-    ``.pyscf.log`` / ``-run<N>.pyscf.log`` file, or None when no log
-    exists / no Step-0 line is found.
-
-    Strips ANSI escapes; picks the LAST Step-0 match (multiple
-    geom-opt restarts within one log re-emit Step 0).  Highest-N
-    ``-run<N>.pyscf.log`` wins; bare ``<stem>.pyscf.log`` fallback.
-    """
-    base, fname = os.path.split(traj_path)
-    if not base:
-        base = "."
-    # ``<job>[_<token>]-run<N>.pyscf.log`` -- the wrapper stems its
-    # redirect on the DECK's name, which carries the token.
-    job, token = _resolve_job_token(base, fname)
-    stem = _stemmed(job, token)
-    # ONE CALL, and it already carries the order this needs.  This listed the
-    # directory itself, matched `stem + "-run"` by prefix, then pulled N back
-    # out with a regex of its own -- in a module that imports `runfiles`'
-    # composer AND its parser two lines below.  Composing through the door and
-    # reading by hand is the asymmetry `project-layout.md` § 4.5 names, and
-    # here it sat in one function.
-    #
-    # NUMERIC run order with the bare log at the FRONT, so `reversed` reads it
-    # LAST -- the docstring's rule (fixed 2026-08-13: a lexicographic sort put
-    # run10 before run3, and appending the bare log after the sort made the
-    # FALLBACK beat every -run<N>).  `runfiles.find` sorts by run index with
-    # the counterless name first, which IS that rule; it is not re-imposed
-    # here.
-    candidates: List[str] = [str(path) for path, _rf
-                             in _rf_find(base, stem, role=".pyscf.log")]
-
-    for log_path in reversed(candidates):
-        try:
-            with open(log_path, "r", errors="replace") as fh:
-                text = fh.read()
-        except OSError:
-            continue
-        text = _ANSI_ESC_RE.sub("", text)
-        last = None
-        for m in _GEOMETRIC_STEP_RE.finditer(text):
-            if int(m.group(1)) == 0:
-                last = m
-        if last is None:
-            continue
-        try:
-            ha = float(last.group(2))
-        except (TypeError, ValueError):
-            continue
-        return ha * _HARTREE_TO_EV
-    return None
+# `_read_initial_energy_from_log` -- a lone ``<JOB>_initial.xyz``'s energy,
+# from the newest ``<JOB>-run<N>.pyscf.log`` beside it -- stood here until
+# 2026-10-04.  The initial geometry names no run (its name carries no
+# stage), so it reads only itself, and geomeTRIC's trajectory carries its
+# own energies (plan W56 4d).
 
 
 def _read_qdata_forces(
@@ -478,15 +363,15 @@ def _read_scf_history(
     """Parse ``<prefix>.log`` for per-cycle SCF data.  Returns a list
     of runs (one per geom-opt step); each run is a list of per-cycle
     dicts.  Empty list when no log is present."""
-    base, fname = os.path.split(traj_path)
-    if not base:
-        base = "."
-    # ``<job>[_<token>].log`` -- the pyscf stdout carries the token
+    base = os.path.dirname(traj_path) or "."
+    # ``<stem>.log`` -- the pyscf stdout carries the run's stem
     # (`pyscf/input.py`: ``_logname``); the ``_geom``-strip that stood
     # here reproduced only the unstaged spelling, so a staged
     # trajectory read the geomeTRIC opt log (no SCF cycles) instead.
-    job, token = _resolve_job_token(base, fname)
-    log_path = os.path.join(base, _stemmed(job, token) + ".log")
+    stem = _run_stem_of(traj_path)
+    if stem is None:
+        return []
+    log_path = os.path.join(base, stem + ".log")
     if not os.path.isfile(log_path):
         return []
 
@@ -621,24 +506,6 @@ def _parse_pyscf_xyz(path: str) -> Trajectory:
                 if i < len(max_forces_constrained) else None),
             scf_history = scf_for_step,
         ))
-
-    # Early-window fallback: a single frame with no energy may be the
-    # ``<JOB>_initial.xyz`` of a fresh run.  Pull the geomeTRIC Step 0
-    # energy from the sibling .pyscf.log so the plot has a data point.
-    if (len(frames) == 1 and frames[0].energy is None):
-        fallback_energy = _read_initial_energy_from_log(path)
-        if (fallback_energy is not None
-                and math.isfinite(fallback_energy)):
-            f = frames[0]
-            frames[0] = Frame(
-                structure   = f.structure,
-                step_index  = f.step_index,
-                energy      = fallback_energy,
-                forces      = f.forces,
-                max_force   = f.max_force,
-                max_force_constrained = f.max_force_constrained,
-                scf_history = f.scf_history,
-            )
 
     # THE ATOMS THE RUN HOLDS, as its own progress log states them -- the
     # field the SIESTA and molwatch parsers fill from their own files
@@ -806,7 +673,7 @@ class PySCFOutFileParser(FileParser):
         #
         # Wrapped HERE rather than at each compose site, because fixing them
         # one at a time is what this codebase calls a second implementation:
-        # the first patch moved the raise from `_resolve_job_token` to
+        # the first patch moved the raise from the name splitter to
         # `_read_scf_history`, and there are more.  The boundary is the one
         # place the promise can be kept.
         from molbuilder.runfiles import RunFileError

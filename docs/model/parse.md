@@ -857,7 +857,10 @@ the message cannot drift from it.
 **A file parser reads its own file.** It may open a companion only where the
 engine names that companion from something the file itself states — SIESTA's
 `<SystemLabel>.MD.nc`, its label read from the `.out`'s own `reinit: System
-Label:` line (§ 5a). That is reading, not searching, and it stays in the parser:
+Label:` line (§ 5a); a geomeTRIC trajectory's run files, named on the stem its
+own name begins with (`<stem>_geom_optim.xyz`: `<stem>.molwatch.log`,
+`<stem>.log`, `<stem>-run<N>.pyscf.log`). A file that names no run reads only
+itself. That is reading, not searching, and it stays in the parser:
 a FileParser never depends on the directory composer.
 
 **What a run DECLARED is not a companion, and no parser looks for it.** The held
