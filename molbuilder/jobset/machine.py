@@ -26,7 +26,7 @@ _NO_RECORD = (
 
 
 def set_machine(base_dir, target: Optional[str] = None, *,
-                plan=None) -> Path:
+                environment=None, plan=None) -> Path:
     """**Step 1 of the five: resolve the machine** (`project-layout.md`
     § 2.3.1) — read the machine's record (its cores, GPUs, scheduler and
     environment) and snapshot it as ``environment.json`` beside the bundle.
@@ -70,6 +70,10 @@ def set_machine(base_dir, target: Optional[str] = None, *,
     it is the user's to run, so the record is always something they can point
     at and say where it came from.
 
+    ``environment`` is the record the caller read, once -- `prep` reads it
+    at its checkpoint 4 and checks its activation there (`job-system.md`
+    § 5.0); the copy is made from it.  With none it is read here.
+
     ``plan`` (`jobset.planned.Plan`) receives the copy instead of the disk:
     `prep` decides everything before it writes (`job-system.md` § 5.0).
 
@@ -90,7 +94,8 @@ def set_machine(base_dir, target: Optional[str] = None, *,
     #
     # NO `probe=`.  Nothing here detects anything: a record is read or the
     # prep stops.
-    env = machine_for(target=target)
+    env = environment if environment is not None else machine_for(
+        target=target)
     if env is None:
         raise _no_record()
     # THE MACHINE IT IS SET TO, named in the copy (M-3): a later prep's

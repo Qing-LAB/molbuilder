@@ -290,8 +290,8 @@ def gpu_request(resources) -> GpuRequest:
     from the job's own values -- what its deck renders -- and the count in
     ``gres``.  An unstated ``use_gpu`` is the item's default, no GPU
     (`gpu.md` § 1.1).  Raises :class:`GpuRequestError` when the two
-    disagree; prep asks before anything is written (`prep_inputs.
-    run_gpu_request`), so a job it wrote never does.
+    disagree; prep asks, of the job its stage resolves to, before anything
+    is written (`prep._resolve_stage`), so a job it wrote never does.
 
     *Until 2026-10-03 the header counted a GPU job by its count OR by
     ``use_gpu``, launch the same, and the run script by ``use_gpu`` alone

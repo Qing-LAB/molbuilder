@@ -30,8 +30,8 @@ from pathlib import Path
 from .errors import PrepError
 
 
-def _declared_execution_pins(base, engine, bench_override=None):
-    """`task.json` ``bench``, read as the OVERRIDE LANE it is (user rule,
+def _declared_execution_pins(task, bench_override=None):
+    """The description's ``bench``, read as the OVERRIDE LANE it is (user rule,
     2026-08-20; `generator.md` § 4.3a): every non-machine entry overrides
     the template -- several points = an axis to try, ONE point = the value
     the bench's trials run with, applied at prep as a pin for them alone
@@ -68,12 +68,13 @@ def _declared_execution_pins(base, engine, bench_override=None):
     Point SHAPES are `read_task`'s (task.py `_bench_from_obj`): every
     value arrives as a non-empty tuple of scalars, so no scalar/empty
     arms exist here.
+
+    ``task`` is the description its caller holds -- read once by the prep
+    that asks (W55 B1); this read it again until 2026-10-05.
     """
-    from ..task import FILENAME as TASK_FILENAME, read_task
     from ..validation.task import _bench_points_fit_their_items
     from .. import template as _T
 
-    task = read_task(Path(base) / TASK_FILENAME)
     if bench_override is not None:
         # THE AXES AS THEY ARE BEING EDITED, not as they were last saved.
         # The task-setup card resolves its grid live, and its edits live in
@@ -96,9 +97,8 @@ def _declared_execution_pins(base, engine, bench_override=None):
     if shape_errors:
         raise PrepError(shape_errors[0].message)
 
-    # THE ENGINE IS THE DESCRIPTION'S OWN (task.engine): the caller
-    # passed the same value, but reading it here keeps this door and
-    # the shape checker it calls keyed on one source.
+    # THE ENGINE IS THE DESCRIPTION'S OWN (task.engine), so this door and
+    # the shape checker it calls are keyed on one source.
     items = {i.name: i
              for i in _T.select(_T.catalogue(), engine=str(task.engine))
              if "execution" in (i.category or ())}
@@ -335,37 +335,36 @@ from .placement import AS_RESOURCE
 
 def run_gpu_request(base, task, stage, allocation, pins=None):
     """The run's GPU request as prep will write it -- `gpu_request` of the
-    job `resolve` makes for this stage, from what prep resolves it from: the
-    template, the stage's overrides, the run card's pins, and ``allocation``
-    (the flags, with the run card's launch shape folded in --
+    job the one step 2 makes for this stage (`prep._resolve_stage`), from
+    the template, the stage's overrides, the run card's pins and
+    ``allocation`` (the flags, with the run card's launch shape folded in --
     :func:`prep_run_inputs`).  ``None`` when there is no template to
-    resolve: the five steps refuse that description, in its kind's own
-    words.
+    resolve: prep refuses that description, in its own words.
 
-    Raises `GpuRequestError` when the request disagrees with itself
-    (`execution/gpu.md` G5) -- the prep entry refuses on it before anything
-    is written, and the Task setup card shows it -- and `ResolveError` when
-    the stage does not resolve.
+    The Task setup card's answer: the prep entry asks the same of the job it
+    resolved at its checkpoint 4 (`job-system.md` § 5.0) and refuses before
+    anything is written.  Raises `GpuRequestError` when the request
+    disagrees with itself (`execution/gpu.md` G5), `PrepError` when the
+    stage does not resolve.
 
     *Until 2026-10-03 a second reading answered here: the template's
     ``use_gpu`` under the card's, read from the file -- and it dropped a
     count stated for a run on the CPU, with a note, while ``--gpus`` reached
     the header.*
     """
-    from ..resolve import resolve
     from ..template import find_template
-    from .engines import engine_seam
     from .model import gpu_request
+    from .prep import _resolve_stage
     try:
         tpl = find_template(Path(base), task.label)
     except ValueError as exc:
         raise PrepError(str(exc)) from exc
     if tpl is None:
         return None
-    ps = resolve(tpl.read_text(encoding="utf-8"), task,
-                 engine_seam(task.engine).config_cls,
-                 allocation=allocation, stage=stage, pins=pins or None)
-    return gpu_request(ps.elements[0].resources)
+    return gpu_request(_resolve_stage(
+        stage, task=task, template=tpl,
+        template_text=tpl.read_text(encoding="utf-8"), environment=None,
+        allocation=allocation, pins=pins or None).pset.elements[0].resources)
 
 
 def declared_run_shape(base, task, stage=None):
@@ -443,7 +442,7 @@ def run_inputs(base, task, stage=None):
     pins = {}
     if cond:
         pins, _axes, _value_axes = _declared_execution_pins(
-            base, task.engine, {k: [v] for k, v in cond.items()})
+            task, {k: [v] for k, v in cond.items()})
     # THE SHAPE EVEN WHEN THE CARD IS EMPTY: a template whose `use_gpu` is on
     # is a device run with nothing on its card, and its count is asked for
     # like any other's (`gpu.md` G5 -- refused, unstated, by the prep entry
@@ -578,7 +577,8 @@ def bench_refusal(task):
 
 
 def bench_inputs(base, target, *, bench_override=None, report=None,
-                 notes=None):
+                 notes=None, task=None, environment=None,
+                 template_text=None):
     """The benchmark specialisation's three inputs — `project-layout.md`
 
     ``target`` is REQUIRED, and that is the point (2026-08-24).  It read
@@ -627,6 +627,11 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     the grid enumerates once per flag, G=0 holding the CPU family's
     device coordinate.  See the section for the cap, naming, and
     split-submission halves of the rule.
+
+    ``task``, ``environment`` and ``template_text`` are the description,
+    the target's record and the template's text, when the caller has read
+    them: the prep entry reads each once and hands them over (W55 B1).  The
+    bench card's route has not, and they are read here.
     """
     # WHAT A PERSON IS TOLD comes back to the caller, never printed here:
     # the command line prints it, the Task setup tab shows it
@@ -638,7 +643,8 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     from ..template import (find_template, read_template, template_filename,
                             select as template_select)
     from .machine import machine_record
-    task = read_task(Path(base) / TASK_FILENAME)
+    if task is None:
+        task = read_task(Path(base) / TASK_FILENAME)
     # A DESCRIPTION WITH NO BENCH is refused before any machine is read: a
     # refusal about the target would otherwise answer a question the
     # description never asks.
@@ -653,7 +659,8 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # `prep bench` writes its snapshot at step 1 of the five, after the
     # under-way question (W52: every edit tied the calculation to the
     # machine on the picker).
-    environment = machine_record(base, target)
+    if environment is None:
+        environment = machine_record(base, target)
     # THE TARGET'S MENU, from the record in hand -- its probed queues -- for
     # every check below (`runtime_config.routing_of`;
     # W52: the cells read the folder's menu, which a calculation not yet
@@ -664,15 +671,17 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     gpn = getattr(topo, "gpus_per_node", None) or 0
     cps = getattr(topo, "cores_per_socket", None)
 
-    try:
-        _tpl = find_template(Path(base), task.label)
-    except ValueError as exc:
-        raise PrepError(str(exc)) from exc
-    if _tpl is None:
-        raise PrepError(f"no {template_filename(task.label)} beside "
-                        f"{TASK_FILENAME}: a benchmark reads its grid's values "
-                        f"from the template.")
-    tmpl = read_template(_tpl.read_text(encoding="utf-8"))
+    if template_text is None:
+        try:
+            _tpl = find_template(Path(base), task.label)
+        except ValueError as exc:
+            raise PrepError(str(exc)) from exc
+        if _tpl is None:
+            raise PrepError(f"no {template_filename(task.label)} beside "
+                            f"{TASK_FILENAME}: a benchmark reads its grid's "
+                            f"values from the template.")
+        template_text = _tpl.read_text(encoding="utf-8")
+    tmpl = read_template(template_text)
     # Through `select` -- `template.md` § 8.0 owns the rule.  What it cost
     # HERE: the hand-rolled comprehension ignored ``engines``, so on a PySCF
     # description it read the GPU flag as absent and enumerated a CPU grid,
@@ -690,7 +699,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # answer below, which is what makes the machine card's choice reach
     # the sweep without touching the template file.
     declared_pins, declared_axes, value_axes = _declared_execution_pins(
-        base, task.engine, bench_override)
+        task, bench_override)
 
     on_gpu = any(i.name == "use_gpu" and bool(i.value)
                  for i in template_select(tmpl, engine=task.engine))

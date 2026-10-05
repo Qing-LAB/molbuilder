@@ -490,7 +490,8 @@ def stage_refs(jobset: JobSet) -> Dict[str, StageRef]:
     return out
 
 
-def materialize(jobset: JobSet, base_dir, plan=None) -> List[Path]:
+def materialize(jobset: JobSet, base_dir, plan=None, *,
+                shape=None) -> List[Path]:
     """Create each job's directory under ``base_dir`` with its copies.
 
     Returns the list of created job directories (in JobSet order).  Idempotent:
@@ -501,7 +502,8 @@ def materialize(jobset: JobSet, base_dir, plan=None) -> List[Path]:
     ``plan`` (`jobset.planned.Plan`) receives the folders and copies instead
     of the disk, and is read for the files it already holds -- `prep`
     decides everything before it writes (`job-system.md` § 5.0); without one
-    they are written now.
+    they are written now.  ``shape`` is the layout as the caller read it
+    (:func:`shape_of`); with none it is asked here.
     """
     errors = jobset.validate()
     if errors:
@@ -513,7 +515,7 @@ def materialize(jobset: JobSet, base_dir, plan=None) -> List[Path]:
     plan = Plan() if own else plan
     base = Path(base_dir)
     created: List[Path] = []
-    sh = shape_of(jobset, base_dir)
+    sh = shape if shape is not None else shape_of(jobset, base_dir)
     dirs = job_dir_names(jobset, sh)
     for job in jobset.jobs:
         # A TRIAL KEEPS ATTEMPTS EXACTLY AS A STAGE DOES, and the shape
@@ -766,14 +768,16 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
                     cold: bool = False,
                     carry: Optional[List[str]] = None,
                     container: Optional[Path] = None,
-                    named: bool = True, plan=None) -> "Attempt":
+                    named: bool = True, plan=None,
+                    shape=None) -> "Attempt":
     """Set ONE stage up to run, and report what was done.
 
     ``plan`` receives the attempt's folder and everything put in it, and is
     read for the stage's files it already holds -- `prep` opens the attempt
     as part of its plan, written after the save (`job-system.md` § 5.0); a
     caller with none (`launch`, opening the next attempt of a launched
-    stage) has it written now.
+    stage) has it written now.  ``shape`` is the layout as the caller read
+    it (:func:`shape_of`); with none it is asked here.
 
     ``named`` says who chose ``continue_from``: the person, by ``--from``, or
     `prep`, by default (`job-system.md` § 5.4) -- so a refusal
@@ -814,7 +818,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     gap decision 28 names, and a second listing format is how it comes back.
     """
     base = Path(base_dir)
-    sh = shape_of(jobset, base_dir)
+    sh = shape if shape is not None else shape_of(jobset, base_dir)
     if sh is not None and not sh.keeps_attempts_as_directories:
         raise ValueError(FLAT_HAS_NO_ATTEMPTS)
     dir_of = job_dir_names(jobset, sh)
@@ -830,7 +834,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # left a fresh attempt behind it.
     names: List[str] = (
         continuation_files(jobset, base, stage_name, continue_from,
-                           named=named, carry=carry)
+                           named=named, carry=carry, shape=sh)
         if continue_from and not cold else [])
 
     # ``container`` overrides WHERE the run-<n> opens -- the transport
@@ -963,7 +967,8 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
 
 def continuation_files(jobset: JobSet, base_dir, stage_name: str,
                        continue_from: str, *, named: bool,
-                       carry: Optional[List[str]] = None) -> List[str]:
+                       carry: Optional[List[str]] = None,
+                       shape=None) -> List[str]:
     """The files ``stage_name`` would carry from ``continue_from`` --
     CHECKED, never copied: that attempt exists, the stage declares warm
     files for this pair (:func:`warm_carry`), and the attempt holds at least
@@ -974,6 +979,8 @@ def continuation_files(jobset: JobSet, base_dir, stage_name: str,
     ONE CHECK, asked by :func:`prepare_attempt` before it writes anything
     and by `launch` before it shows what it will send -- so a run that
     cannot be continued is refused before the question, not after the yes.
+    ``shape`` is the layout as the caller read it (:func:`shape_of`); with
+    none it is asked here.
     """
     base = Path(base_dir)
     said = (f"--from {continue_from!r}" if named else
@@ -987,7 +994,8 @@ def continuation_files(jobset: JobSet, base_dir, stage_name: str,
     job = next(j for j in jobset.jobs if j.name == stage_name)
     # The pair, resolved here and nowhere else -- `--from` is what names
     # the source, so this is the first moment both stages are known.
-    dir_of = job_dir_names(jobset, shape_of(jobset, base))
+    dir_of = job_dir_names(jobset, shape if shape is not None
+                           else shape_of(jobset, base))
     names = (carry if carry is not None
              else warm_carry(job, _source_job(jobset, dir_of, continue_from)))
     if not names:
