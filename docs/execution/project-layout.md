@@ -2591,7 +2591,7 @@ does not name (§ 5.3).
 |---|---|---|
 | **read** | `<label>.XV` | the registry's `SiestaXVFileParser` (`read_xv_with_cell`) — the Results tab, the transport citation, `xv2xyz` |
 | | `<label>.xyz` | `StructureCodec.load`, the box from the run's own deck (`runs.declared`, `model/structure-periodicity.md` § 6.0) |
-| | `<label>.MD.nc` | `parse.engines.siesta_mdnc.sibling_md_nc` — the `.out`'s frames are upgraded from it |
+| | `<label>.MD.nc` | `parse.engines.siesta_mdnc.sibling_md_nc`, by the label the `.out` prints (`reinit: System Label:`) — the `.out`'s frames are upgraded from it |
 | | `fdf.<stamp>.log` | the run record's setup, paired with the `.out` by its stamp (`parse.dirs.record`) |
 | | `<El>.ion` | a transport calculation citing the run |
 | | every row of `siesta/warm-files.toml` | for presence only: the run script's banner, and which engine a folder holds |

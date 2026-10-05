@@ -516,8 +516,7 @@ molbuilder/parse/
 │   ├── _run_ending.py         # HOW A RUN ENDED — one reader per role (§ 2b) ─┘
 │   ├── tbtrans.py             # TBtrans's .out and transmission files — not registered
 │   ├── siesta_fc.py           # SIESTA's .FC force constants, for the vibration kind
-│   ├── _helpers.py            # Trajectory → TrajectoryResult adapters
-│   └── _sidecar.py            # a parser finding its own companion (§ 5.3)
+│   └── _helpers.py            # Trajectory → TrajectoryResult adapters
 │
 ├── coords/        # geometry files → StructureResult (FileParsers)
 │   ├── siesta_xv.py           # .XV / .STRUCT_OUT (+ cell)
@@ -867,8 +866,21 @@ atoms, the regions, the axis kinds and the cell the atoms were placed in are the
 run's deck's records, read through the run's one door, `declared(run)`
 (`execution/architecture.md` § 3.2), by the door that builds a view — the
 trajectory load, the codec reading an engine's own structure file, `xv2xyz`.
-A SIESTA output's own `Constraints applied` echo is what the engine applied, and
-its parser reads it as its own content.
+
+**The atoms a run holds are stated by its own output, the same for both
+engines** *(user, 2026-10-04: "there is no reason why siesta can manage to
+store the information while pyscf fails to do that")*. A SIESTA run's `.out`
+echoes what the engine held — `siesta: Constraint (N): pos` and the ranges
+below it, which SIESTA 5.4.2 prints with no `Constraints applied` header above
+them — and a run's progress log carries `# frozen_atoms: <i> <j> …`, 0-based in
+the structure's order: prep's preview writes it for either engine, and a PySCF
+run's script writes the same line when it starts. Each reader reads them as its
+own content (`runtime_info.frozen_atoms`); a reader of a PySCF trajectory file
+takes them from the run's progress log it already reads. *(A sidecar beside the
+output, then a deck in its folder, were tried until 2026-10-04 — plan B12, W56
+4c: no run folder holds a sidecar, so a PySCF run reported no held atom, and a
+SIESTA run's held atoms came from the deck guess, the echo reader having never
+read 5.4.2's headerless form.)*
 
 > **What this replaced** *(plan B12, user, 2026-10-04)*. This section licensed
 > a lookup by name: compose the exact name beside the artifact, then fall back to

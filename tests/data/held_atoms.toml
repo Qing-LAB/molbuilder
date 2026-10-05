@@ -1,0 +1,35 @@
+# THE ATOMS A RUN HOLDS, STATED BY ITS OWN OUTPUT -- `docs/model/parse.md`
+# § 5.3.  Both engines are handed the same structure, and each run states the
+# atoms it holds in its own output: a SIESTA run in its `.out` (SIESTA's own
+# `Constraints applied` echo), a run of either engine in its progress log,
+# from the preview prep writes, and a PySCF run's script writes the same line
+# when it starts.  Each reader reads them as its own content; nothing is
+# looked for beside an output (user, 2026-10-04: "there is no reason why
+# siesta can manage to store the information while pyscf fails to do that").
+#
+# Every row is prepped on the road -- `jobset init` of a held H2, `prep` --
+# so each file is the one our code writes (`process/testing.md` § 6).
+# `tests/test_held_atoms.py` runs every case through the one runner every
+# contract table shares (`tests/support/road.py`, `run_road_case`, whose
+# header names each key).
+#
+# A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
+
+machine = "workstation"
+
+[run_base.siesta]
+mpi_np = 1
+omp_threads = 1
+
+[run_base.pyscf]
+threads = 1
+
+[[case]]
+name = "a PySCF run states the atom it holds in its progress log -- the preview prep writes, and the script's own writer"
+engine = "pyscf"
+deck = ["frozen_atoms=[0])"]
+progress_log_holds = [0]
+
+[[case]]
+name = "...a SIESTA run's preview states it too, before its engine's .out does"
+progress_log_holds = [0]

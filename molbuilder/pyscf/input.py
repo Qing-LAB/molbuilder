@@ -752,7 +752,10 @@ def spec_for(struct: Structure,
         # So the rule is: _RUNTIME_INFO is populated FIRST, the emitter is
         # built AFTER.  Any future runtime fact belongs above this line.
         if cfg.optimize and cfg.write_molwatch_log:
-            out += _emit_molwatch_emitter(v, cfg, stage_token)
+            out += _emit_molwatch_emitter(
+                v, cfg, stage_token,
+                frozen_atoms=list(getattr(struct, "frozen_atoms", [])
+                                  or []))
             out.append(_emit_molwatch_callback_wire("mf"))
         out.append("")
 
@@ -1334,7 +1337,8 @@ def _emit_optimization(cfg: PySCFConfig,
 
 
 def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
-                           stage_token: Optional[str] = None) -> List[str]:
+                           stage_token: Optional[str] = None,
+                           frozen_atoms=()) -> List[str]:
     """Inline streaming writer for this rung's ``.molwatch.log``.
 
     ``stage_token`` names the rung, and it reaches two things: the log's own
@@ -1454,10 +1458,13 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig",
     out.append(f"        'max_geom_iter':          {int(cfg.geom_max_steps)!r},")
     out.append("    },")
     out.append("}")
+    # THE ATOMS THIS RUN HOLDS go into its log's header (`model/parse.md`
+    # § 5.3): the run states them, as a SIESTA run's `.out` does.
     out.append(f'_molwatch = MolwatchEmitter('
                f'_mb_outfile(JOB + {_suffix!r}), JOB, mol, '
                f'runtime_info=_RUNTIME_INFO, '
-               f'convergence_targets=_CONVERGENCE_TARGETS)')
+               f'convergence_targets=_CONVERGENCE_TARGETS, '
+               f'frozen_atoms={sorted(int(i) for i in frozen_atoms)!r})')
     out.append("")
     # Run-state markers.  The watch UI reads these to render a binary
     # "Finished / Ongoing / Error" badge -- authoritative when present,

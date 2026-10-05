@@ -117,6 +117,9 @@ class TestTheComposer:
         assert record["source"] == Path(loaded["path"]).name, (
             "the record is of the file on screen", record)
         assert record["converged"] is True, record
+        # THE ATOM IT HELD, as the run's own output states it -- SIESTA's
+        # `Constraints applied` echo, `position 1` (`model/parse.md` § 5.3).
+        assert record["held_atom_idxs"] == [0], record
         assert asked["relaxation"] == record
         assert (asked["calculation"] == loaded["info"]["calculation"]
                 == contract_of(run))
@@ -216,6 +219,12 @@ class TestWatchLoadAnswersTheBlock:
         assert box["axis_kind"] == ["isolated"] * 3, box
         assert box["engine_offset"] == [0.0, 0.0, 0.0], box
         np.testing.assert_allclose(box["cell"], np.eye(3) * 10.0, atol=1e-4)
+        # ITS OWN OUTPUT NAMES ITS COMPANIONS AND ITS HELD ATOMS: the history
+        # SIESTA wrote under the label the `.out` states, and the atom its
+        # echo says the engine held (`model/parse.md` § 5.3).
+        rt = d["data"]["runtime_info"]
+        assert rt.get("mdnc_source") == "H2.MD.nc", rt
+        assert rt.get("frozen_atoms") == [0], rt
 
         # EACH RUN, ITS OWN DECK: the coarse run that wrote the output, and
         # the medium stage prepped beside it in the same folder.

@@ -302,6 +302,8 @@ def calls_made(calls: Path):
 # server answers a viewer about a stage's newest run (`run_answer`: `stage`,
 # `state`, `live` -- `_road_run_answer`), which file speaks for a stage's
 # run in the folder it ran in (`speaks`: `stage`, `file` -- `_road_speaks`),
+# the atoms each of its progress logs states the run holds, read back by
+# the log's own reader (`progress_log_holds` -- `_road_progress_log_holds`),
 # the
 # folder's saved states, newest first
 # (`saved_states`, their notes -- `{stamp}` standing for the time a note
@@ -558,6 +560,17 @@ def _road_speaks(want, bundle) -> None:
     assert got and got["active_source"] == want["file"], got
 
 
+def _road_progress_log_holds(want, bundle) -> None:
+    """The atoms each progress log the prep wrote states the run holds,
+    as its own reader reads them (`model/parse.md` § 5.3)."""
+    from molbuilder.parse import detect
+    logs = _road_runs(bundle, "*.molwatch.log")
+    assert logs, "the prep wrote no progress log"
+    for log in logs:
+        got = detect(log).parse(str(log)).runtime_info.get("frozen_atoms")
+        assert got == list(want), (log.relative_to(bundle), got)
+
+
 def _road_after_prep(case, bundle) -> None:
     """What the row's prep left, refused or not: the folder's saved states,
     newest first (`saved_states`), what `status` says of the calculation
@@ -586,6 +599,8 @@ def _road_after_prep(case, bundle) -> None:
         _road_run_answer(case["run_answer"], bundle)
     if "speaks" in case:
         _road_speaks(case["speaks"], bundle)
+    if "progress_log_holds" in case:
+        _road_progress_log_holds(case["progress_log_holds"], bundle)
     if "status_says" in case or "status_lacks" in case:
         st = jobset("status", "--bundle", bundle)
         assert st.exit_code == 0, _one_line(st)

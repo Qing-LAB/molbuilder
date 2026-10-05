@@ -891,9 +891,9 @@ import { molviewFiles } from "../projects/molview-doors.js";
     // #show-cell / #show-indices control — those retired with the MolView
     // migration (task #34).
 
-    // Frozen-atom indices from runtime_info.frozen_atoms (sidecar-driven; see
-    // parse/.../_sidecar.py).  Returns a Set<number> for O(1) membership; null
-    // when no sidecar / no frozen field.  Used ONLY to filter the force-arrow
+    // Frozen-atom indices from runtime_info.frozen_atoms -- as the run's own
+    // output states them (model/parse.md 5.3).  Returns a Set<number> for O(1)
+    // membership; null when it states none.  Used ONLY to filter the force-arrow
     // overlay now — atom HIDING in the viewer is MolView's job (its
     // selection/isolate render pipeline), not this inspector's.
     function _frozenSet() {

@@ -2130,7 +2130,8 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
         base / molwatch_log_basename(label, token),
         job=label, engine=engine,
         stage_name=token, convergence_targets=(targets or None),
-        frame=frame)
+        frame=frame,
+        frozen_atoms=list(getattr(struct, "frozen_atoms", []) or []))
 
 
 def _job_for(element, script: str, task, stage_name: Optional[str],

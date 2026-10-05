@@ -112,6 +112,13 @@ class MolwatchReader:
     def _on_runtime(self, line: str, line_no: int) -> None:
         _MG.parse_runtime_line(line, self.runtime_info)
 
+    def _on_frozen_atoms(self, line: str, line_no: int) -> None:
+        """``# frozen_atoms: ...`` into ``runtime_info["frozen_atoms"]`` --
+        the atoms the run holds, as its own log states them."""
+        held = _MG.parse_frozen_atoms_line(line)
+        if held is not None:
+            self.runtime_info["frozen_atoms"] = held
+
     def _on_convergence(self, line: str, line_no: int) -> None:
         """``# convergence.<key>: <value>`` into
         ``runtime_info["convergence_targets"]``, flat or staged (#534), the
@@ -231,6 +238,9 @@ class MolwatchReader:
             SectionRule(name="runtime", aliases=["# runtime.<key>: ..."],
                         start=matches_regex_ci(_MG.RUNTIME.pattern),
                         on_start=self._on_runtime),
+            SectionRule(name="frozen_atoms", aliases=["# frozen_atoms: ..."],
+                        start=matches_regex_ci(_MG.FROZEN_ATOMS.pattern),
+                        on_start=self._on_frozen_atoms),
             SectionRule(name="convergence",
                         aliases=["# convergence.<key>: ...",
                                  "# convergence.<stage>.<key>: ..."],

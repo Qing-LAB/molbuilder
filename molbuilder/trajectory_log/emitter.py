@@ -65,7 +65,7 @@ class MolwatchEmitter:
     HARTREE_BOHR_TO_EV_ANG = 51.42208619
 
     def __init__(self, path, job, mol, runtime_info=None,
-                 convergence_targets=None):
+                 convergence_targets=None, frozen_atoms=()):
         self.path = path
         self.job  = job
         self._scf_buf   = []   # per-cycle dicts; reset each new SCF
@@ -77,6 +77,13 @@ class MolwatchEmitter:
             fh.write(f"# job: {self.job}\n")
             fh.write("# units: energy=eV, force=eV/Ang, coords=Ang\n")
             fh.write(f"# created: {_mw_time.strftime('%Y-%m-%dT%H:%M:%S')}\n")
+            # THE ATOMS THE RUN HOLDS, 0-based in the structure's order --
+            # the log states them as a SIESTA run's `.out` does, so its
+            # reader reads them as its own content (`model/parse.md`
+            # § 5.3).  The same line prep's preview writes.
+            if frozen_atoms:
+                fh.write("# frozen_atoms: " + " ".join(
+                    str(int(i)) for i in sorted(frozen_atoms)) + "\n")
             # Runtime-info header: one ``# runtime.<key>: <value>`` line
             # for EVERY key the caller handed us, in the order they
             # populated it.  The trajectory-log parser reads these back

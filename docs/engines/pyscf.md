@@ -405,6 +405,7 @@ prefix, so there's no column-width fragility:
 # job: <job_name>
 # units: energy=eV, force=eV/Ang, coords=Ang
 # created: <ISO8601 local timestamp>
+# frozen_atoms: <i> <j> ...              # optional -- the atoms the run holds, 0-based
 # runtime.<key>: <value>                 # optional, repeated (threads, gpu, host, ...)
 # convergence.<key>: <value>             # optional, repeated -- the stage's targets
 

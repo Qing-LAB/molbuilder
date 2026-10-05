@@ -19,30 +19,22 @@ The fix: SIESTA ALREADY echoes the resolved constraints into the
       [ start -- end, start -- end ]
 
 So the parser reads them directly from the .out -- ZERO filename
-heuristics.  The data lives in the same file the Results-tab UI
-reads.  These tests pin:
-
-  1. The .out-direct extractor returns the right indices for the
-     real BDT-stage-1 format (multi-range comma-separated).
-  2. The full SiestaParser populates ``runtime_info.frozen_atoms``
-     when the .out has the echo -- regardless of what the .fdf
-     filename is or whether a paired .fdf exists at all.
-  3. An empty / absent constraints section returns the empty set
-     (toggle correctly hidden).
-  4. The .out-direct path is preferred over both the sidecar and
-     the .fdf-pairing fallback.
+heuristics, and since 2026-10-04 nothing else: the sidecar and the
+paired-.fdf fallbacks went with plan B12 (W56 4c), the .out being the
+run's own statement of what the engine held (`model/parse.md` § 5.3).
+These tests pin the echo's grammar: the real BDT-stage-1 format
+(multi-range, comma-separated), and an empty or absent section read as
+the empty set (toggle correctly hidden).  The parser filling
+``runtime_info.frozen_atoms`` from it is pinned on a measured run
+(`test_structure_info_bridge.py`).
 """
 from __future__ import annotations
 
-from pathlib import Path
 from textwrap import dedent
 
-import pytest
-
-from molbuilder.parse.engines._sidecar import (
+from molbuilder.parse.engines.siesta import (
     read_frozen_atoms_from_siesta_out,
 )
-from molbuilder.parse.engines.siesta import SiestaParser
 
 
 # Real SIESTA v5 echo, verified verbatim against the BDT-stage-1
@@ -122,7 +114,7 @@ class TestExtractFromOut:
         read 0 and the slurp regression it guarded sailed through --
         false-passing in exactly the dangerous direction -- while a
         160 MB fixture was written on every run to feed it."""
-        from molbuilder.parse.engines import _sidecar
+        from molbuilder.parse.engines import siesta as _siesta
         body_head = dedent("""\
             siesta: Constraints applied in the following order:
             siesta: Constraint (3): pos
@@ -169,7 +161,7 @@ class TestExtractFromOut:
             f = real_open(file, *a, **k)
             return _Counting(f) if str(file) == str(out) else f
 
-        monkeypatch.setattr(_sidecar, "open", counting_open, raising=False)
+        monkeypatch.setattr(_siesta, "open", counting_open, raising=False)
         result = read_frozen_atoms_from_siesta_out(str(out))
         # 0-based 4, 5, 6.
         assert result == {4, 5, 6}, f"expected {{4,5,6}}; got {result}"
@@ -202,258 +194,11 @@ class TestExtractFromOut:
         assert result == {0, 1, 4, 5, 6}
 
 
-class TestFullParserNoFilenameHeuristic:
-    """End-to-end: the full SiestaParser populates
-    ``runtime_info.frozen_atoms`` from the .out's echo, regardless
-    of what the file is named.  No paired .fdf required."""
-
-    def _make_minimal_out(self, tmp_path: Path, name: str) -> Path:
-        # Synthesize the absolute minimum a SIESTA .out needs for
-        # SiestaParser to run + the constraints echo it should pick
-        # up.  We don't need real frames -- just the runtime_info
-        # population path.
-        out = tmp_path / name
-        out.write_text(dedent("""\
-            * Running on    1 nodes in parallel.
-            siesta: Constraints applied in the following order:
-            siesta: Constraint (3): pos
-              [ 5 -- 7 ]
-
-            other content
-        """))
-        return out
-
-    def test_run_index_suffix_in_name_does_not_matter(self, tmp_path):
-        """The pre-fix bug: ``foo-stage1-run3.out`` failed to pair
-        with ``foo-stage1.fdf``.  Now the parser doesn't care --
-        the data comes from the .out itself."""
-        out = self._make_minimal_out(
-            tmp_path,
-            "foo-stage1-run3.out"
-        )
-        traj = SiestaParser.parse(str(out))
-        frozen = traj.runtime_info.get("frozen_atoms")
-        assert frozen is not None, (
-            "runtime_info[frozen_atoms] must be populated from the "
-            ".out echo even when the filename has the wrapper's "
-            "-run<N> suffix"
-        )
-        assert sorted(frozen) == [4, 5, 6]
-
-    def test_no_fdf_in_directory_at_all(self, tmp_path):
-        """The pre-fix bug also failed when there was NO .fdf
-        anywhere.  .out-direct path is unaffected."""
-        out = self._make_minimal_out(tmp_path, "lonely.out")
-        traj = SiestaParser.parse(str(out))
-        frozen = traj.runtime_info.get("frozen_atoms")
-        assert frozen is not None
-        assert sorted(frozen) == [4, 5, 6]
-
-    def test_multi_fdf_in_directory(self, tmp_path):
-        """Three .fdf siblings (staged-relaxation layout) used to
-        break the multi-fdf-fallback heuristic.  .out-direct path
-        is unaffected."""
-        for s in (1, 2, 3):
-            (tmp_path / f"foo-stage{s}.fdf").write_text("")
-        out = self._make_minimal_out(
-            tmp_path,
-            "foo-stage1-run0.out"
-        )
-        traj = SiestaParser.parse(str(out))
-        frozen = traj.runtime_info.get("frozen_atoms")
-        assert frozen is not None
-        assert sorted(frozen) == [4, 5, 6]
-
-
-class TestArchitecturalContract:
-    """Documents the source-of-truth ordering for the parser.
-
-    These tests are part of the regression pin's *contract* layer:
-    they pin not just behaviour but the rule ``the .out's echo is
-    authoritative, fallbacks are emergency-only.``"""
-
-    def test_out_echo_wins_over_paired_fdf_disagreement(self, tmp_path):
-        """If the .out and the .fdf disagree on which atoms are
-        frozen (e.g. user edited the .fdf after the run finished),
-        the .out's data is the truth."""
-        # .out says [5, 6, 7] are frozen (1-based -> 0-based 4,5,6).
-        out = tmp_path / "foo-stage1-run0.out"
-        out.write_text(dedent("""\
-            * Running on    1 nodes in parallel.
-            siesta: Constraints applied in the following order:
-            siesta: Constraint (3): pos
-              [ 5 -- 7 ]
-        """))
-        # .fdf disagrees -- says [10, 11, 12] are frozen.
-        (tmp_path / "foo-stage1.fdf").write_text(dedent("""\
-            NumberOfAtoms 20
-            %block Geometry.Constraints
-            position 10 11 12
-            %endblock Geometry.Constraints
-        """))
-        traj = SiestaParser.parse(str(out))
-        frozen = traj.runtime_info.get("frozen_atoms")
-        # .out wins -> 0-based 4,5,6 (NOT 9,10,11).
-        assert sorted(frozen) == [4, 5, 6], (
-            "The .out's constraints echo MUST win over a disagreeing "
-            ".fdf; .fdf is a fallback for when the .out lacks the echo, "
-            "not a co-equal source.  If you got the .fdf's [9,10,11], "
-            "the source-of-truth ordering regressed."
-        )
-
-    def test_fdf_fallback_when_out_has_no_echo(self, tmp_path):
-        """Defensive: when the .out somehow lacks the constraints
-        echo (truncated, mid-run flush), the .fdf fallback still
-        works.  Belt-and-suspenders."""
-        out = tmp_path / "truncated-foo.out"
-        out.write_text("* Running on 1 nodes\nsome content but no echo\n")
-        (tmp_path / "truncated-foo.fdf").write_text(dedent("""\
-            NumberOfAtoms 20
-            %block Geometry.Constraints
-            position 10 11 12
-            %endblock Geometry.Constraints
-        """))
-        traj = SiestaParser.parse(str(out))
-        frozen = traj.runtime_info.get("frozen_atoms")
-        # .fdf path -> 1-based 10,11,12 -> 0-based 9,10,11.
-        assert sorted(frozen) == [9, 10, 11]
-
-
-class TestTheSidecarPathLearnsTheSameLesson:
-    """The 2026-06-14 fix above cured the `.fdf` pairing by reading the
-    constraints out of the `.out` itself.  **The SIDECAR lookup beside it kept
-    the broken stem logic** and nobody noticed, because it is a fallback: when
-    it finds nothing the viewer simply shows no frozen atoms, which is exactly
-    what an unconstrained calculation looks like.
-
-    A run artifact carries the rung and the attempt; the sidecar carries
-    neither — it is written once for the calculation, stemmed on the bare
-    label, because it CARRIES (`job-contracts.md` § 2.2a).  MEASURED
-    2026-09-08 before the fix: `bdt.out` → {0, 2}; `bdt_01_coarse.out` →
-    set(), i.e. every staged run.
-
-    **And the label is required to strip the rung.**  The first fix guessed it
-    by stripping any `_<NN>_<name>` tail, which is not decidable from a
-    filename: `bdt_01_coarse.out` and `sample_02_test.out` (an UNSTAGED
-    calculation whose label reads that way) are the same shape.  That guess
-    handed the second one a different calculation's sidecar — wrong data, which
-    is worse than the missing data it replaced.  So the strip now happens only
-    when the caller knows the label, and the tests say so both ways.
-    """
-
-    @staticmethod
-    def _sidecar(d, name, frozen):
-        """Write a REAL sidecar at ``name``, through the API.
-
-        This hand-wrote ``{"regions": {FROZEN_LABEL: [...]}}`` -- a shape
-        nothing has ever put on disk. It survived because the reader hand-read
-        the JSON too, so the test and the code agreed with each other and
-        neither agreed with the format: no ``schema_version``, no
-        ``n_atoms_total``, no ``structure_hash``. When the reader was routed
-        through `molstruct.load` (2026-09-22) the envelope check refused it,
-        which is the check EXISTING to stop a v3 file loading with its frozen
-        atoms silently dropped.
-
-        So the payload comes off the codec now. A structure big enough to hold
-        the indices, the indices declared on it, and the pair generator makes
-        the sidecar -- the same bytes a save writes.
-        """
-        from molbuilder.sidecars import molstruct
-        from molbuilder.structure import Structure
-        from molbuilder.workingcopy_structure import StructureCodec
-        n = max(frozen) + 1 if frozen else 1
-        struct = Structure(elements=["C"] * n,
-                           positions=[[float(i), 0.0, 0.0] for i in range(n)],
-                           frozen_atoms=list(frozen))
-        molstruct.save(d / name, StructureCodec().pair(struct).sidecar)
-
-    @pytest.mark.parametrize("artifact", [
-        "bdt.out",                            # unstaged — worked before
-        "bdt_01_coarse.out",                  # a rung
-        "bdt_01_coarse-run0.out",             # a rung's attempt
-        "bdt_01_coarse-run0.pyscf.log",       # PySCF's stdout role
-        "bdt_02_electrode_L-run3.out",        # a stage name carrying `_`
-        "bdt_01_coarse_geom_optim.xyz",       # geomeTRIC's trajectory
-    ])
-    @pytest.mark.parametrize("label", [None, "bdt"],
-                             ids=["no-label", "label-known"])
-    def test_a_run_artifact_finds_the_sidecar(
-            self, tmp_path, artifact, label):
-        """BOTH WAYS ROUND, and the no-label half is the fix of 2026-09-17.
-
-        Passing the label was the only way through until then, and **three of
-        the function's four production callers do not pass one**
-        (`parse/engines/molwatch.py`, `pyscf.py`, `siesta.py`) -- so "Hide
-        frozen atoms" and `runtime_info["frozen_atoms"]` were empty for every
-        laddered calculation while this test was green.  A test whose fixture
-        supplies what production omits proves the code works for the test.
-        """
-        from molbuilder.parse.engines._sidecar import read_frozen_atoms
-        self._sidecar(tmp_path, "bdt.molstruct.json", [0, 2])
-        (tmp_path / artifact).touch()
-        args = (str(tmp_path / artifact),) + ((label,) if label else ())
-        assert read_frozen_atoms(*args) == {0, 2}
-
-    def test_it_still_refuses_to_guess_from_the_NAME(self, tmp_path):
-        """THE REGRESSION PIN, and it survives the 2026-09-17 fix intact.
-
-        `sample_02_test` is a whole label, not `sample` + rung `02_test`, and
-        **nothing in the filename says which** -- measured: `runfiles.parse`
-        reads a stage token off BOTH spellings.  So no rule over the name may
-        strip a rung, and passing the artifact's real label still yields
-        nothing, because its own sidecar does not exist and a neighbour's is
-        not a substitute.
-        """
-        from molbuilder.parse.engines._sidecar import read_frozen_atoms
-        self._sidecar(tmp_path, "sample_02_test.molstruct.json", [1, 4])
-        self._sidecar(tmp_path, "sample.molstruct.json", [5, 6, 7])
-        (tmp_path / "sample_02_test.out").touch()
-        # its OWN sidecar is taken, never the shorter neighbour's
-        assert read_frozen_atoms(str(tmp_path / "sample_02_test.out")) == {1, 4}
-        assert read_frozen_atoms(str(tmp_path / "sample_02_test.out"),
-                                 "sample_02_test") == {1, 4}
-
-    def test_an_unrelated_lone_sidecar_is_refused(self, tmp_path):
-        """THE GUARD ON THE FIX.  The rung fallback takes a lone sidecar only
-        when its label is a prefix of the artifact's on a `_` boundary, so a
-        sidecar that simply happens to be the only one in the folder is not
-        handed over.  Without this the fallback would be the old guess with a
-        wider net."""
-        from molbuilder.parse.engines._sidecar import read_frozen_atoms
-        self._sidecar(tmp_path, "other.molstruct.json", [5, 6, 7])
-        (tmp_path / "bdt_01_coarse.out").touch()
-        assert read_frozen_atoms(str(tmp_path / "bdt_01_coarse.out")) == set()
-
-    def test_two_candidate_sidecars_decline_rather_than_pick(self, tmp_path):
-        """AMBIGUITY DECLINES.  The fallback is licensed by
-        `project-layout.md` § 1.4 -- a run directory holds one invocation's
-        output, so ONE sidecar beside the artifact is that run's.  Two is not
-        that directory, and picking would be guessing again."""
-        from molbuilder.parse.engines._sidecar import read_frozen_atoms
-        self._sidecar(tmp_path, "bdt.molstruct.json", [5, 6, 7])
-        self._sidecar(tmp_path, "bdt_other.molstruct.json", [1, 2])
-        (tmp_path / "bdt_01_coarse.out").touch()
-        assert read_frozen_atoms(str(tmp_path / "bdt_01_coarse.out")) == set()
-
-    def test_a_prepped_bundle_spells_it_source_and_that_is_also_found(
-            self, tmp_path):
-        """A prepped bundle holds `<label>.source.molstruct.json` (the
-        hand-over's reserved name); a structure folder holds
-        `<label>.molstruct.json`.  Both are real and both are tried."""
-        from molbuilder.parse.engines._sidecar import read_frozen_atoms
-        self._sidecar(tmp_path, "bdt.source.molstruct.json", [3, 4])
-        (tmp_path / "bdt_01_coarse.molwatch.log").touch()
-        assert read_frozen_atoms(
-            str(tmp_path / "bdt_01_coarse.molwatch.log"), "bdt") == {3, 4}
-
-    def test_an_exact_stem_still_wins_over_a_stripped_one(self, tmp_path):
-        """The stripped form is APPENDED to the candidates, never
-        substituted, so a directory where the exact stem does match keeps the
-        answer it had."""
-        from molbuilder.parse.engines._sidecar import read_frozen_atoms
-        self._sidecar(tmp_path, "bdt_01_coarse.molstruct.json", [7])
-        self._sidecar(tmp_path, "bdt.molstruct.json", [9])
-        (tmp_path / "bdt_01_coarse.out").touch()
-        assert read_frozen_atoms(str(tmp_path / "bdt_01_coarse.out"),
-                                 "bdt") == {7}
-
+# `TestFullParserNoFilenameHeuristic`, `TestArchitecturalContract` and
+# `TestTheSidecarPathLearnsTheSameLesson` retired 2026-10-04 (W56 4c, plan
+# B12): they pinned the precedence among the .out echo, a sidecar beside
+# the output and the paired .fdf, and the sidecar lookup's own guards -- on
+# outputs, decks and sidecars a test wrote.  The .out's echo is now the
+# one source, its grammar pinned above and the parser's reading of it on a
+# measured run (`test_structure_info_bridge.py`); a PySCF run states its
+# own in its progress log (`tests/data/held_atoms.toml`).

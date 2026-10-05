@@ -72,6 +72,7 @@ def write_initial_preview(
     stage_name: Optional[str] = None,
     convergence_targets: Optional[Mapping[str, float]] = None,
     frame=None,
+    frozen_atoms=(),
 ) -> None:
     """Write a ``<path>.molwatch.log`` containing exactly one preview
     block: step 0 with the structure's coordinates, no energy, no
@@ -114,6 +115,11 @@ def write_initial_preview(
         molwatch inspector renders only the engine's defaults).
         Used by the watch-tab live plot to draw the right horizontal
         threshold line per stage on the max-force-vs-step trace.
+    frozen_atoms : sequence of int, optional
+        The atoms the run holds, 0-based in the structure's order --
+        written ``# frozen_atoms: <i> <j> ...``, the line the script's own
+        writer puts in the same place, so the log states them before the
+        run starts as after (`model/parse.md` § 5.3).  None held, no line.
     """
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -145,6 +151,11 @@ def write_initial_preview(
     # the watch-tab panel correctly.
     if stage_name:
         lines.append(f"# stage: {stage_name}")
+    # THE ATOMS THE RUN HOLDS, stated by its own log as a SIESTA run's `.out`
+    # states them (`model/parse.md` § 5.3).
+    if frozen_atoms:
+        lines.append("# frozen_atoms: " + " ".join(
+            str(int(i)) for i in sorted(frozen_atoms)))
     # Optional convergence-target dict.  One header line per key
     # under the ``convergence.`` namespace so the inspector can
     # consume them generically without an engine switch.

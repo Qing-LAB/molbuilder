@@ -363,38 +363,45 @@ def align_to_reference(reference: Sequence, candidate: Sequence, *,
 #  The merge — what the .out parser calls                               #
 # --------------------------------------------------------------------- #
 
-def sibling_md_nc(out_path: Path) -> Optional[Path]:
-    """The ``.MD.nc`` belonging to *out_path*, or None.
+#: How far into an output its setup lines -- the SystemLabel among them --
+#: can sit.  Measured at line 36; the setup is short and comes first.
+_LABEL_WINDOW = 2000
 
-    Two ways to find it, because the .out's NAME and SIESTA's ``SystemLabel``
-    need not agree -- and in a run of ours they never do: the output is
-    ``<label>_<token>-run<N>.out`` while SIESTA names its history by
-    ``SystemLabel``, ``<label>.MD.nc`` (`write_md_history` is on by default):
 
-      1. the exact stem (``x.out`` -> ``x.MD.nc``);
-      2. failing that, the only ``*.MD.nc`` in the same directory -- how a
-         run of ours finds its own.
-
-    **Exactly one, or nothing.**  Two .MD.nc files in a directory means two
-    runs, and guessing which belongs to this .out would attach one run's
-    geometry to another's energies -- the precise failure this whole module
-    exists to prevent, arrived at from a different direction.
-    """
-    out_path = Path(out_path)
-    directory = out_path.parent
-    stem = out_path.name
-    for suffix in (".out", ".log"):
-        if stem.endswith(suffix):
-            stem = stem[: -len(suffix)]
-            break
-    exact = directory / f"{stem}.MD.nc"
-    if exact.is_file():
-        return exact
+def _system_label_of(out_path: Path) -> Optional[str]:
+    """The SystemLabel the output states on its own ``reinit: System
+    Label:`` line (`siesta_grammar.SYSTEM_LABEL`), read from its head, or
+    ``None`` when it states none."""
+    from .siesta_grammar import SYSTEM_LABEL
     try:
-        found = sorted(directory.glob("*.MD.nc"))
+        with open(out_path, "r", encoding="utf-8", errors="replace") as fh:
+            for n, line in enumerate(fh):
+                m = SYSTEM_LABEL.match(line)
+                if m:
+                    return m.group(1)
+                if n >= _LABEL_WINDOW:
+                    break
     except OSError:
         return None
-    return found[0] if len(found) == 1 else None
+    return None
+
+
+def sibling_md_nc(out_path: Path) -> Optional[Path]:
+    """The ``.MD.nc`` belonging to *out_path*, or None: ``<label>.MD.nc``
+    beside it, ``<label>`` being the SystemLabel the output states itself
+    (:func:`_system_label_of`).  SIESTA names its history from that label,
+    while a run of ours names the output ``<label>_<token>-run<N>.out``, so
+    the output's own line is what pairs the two -- read from the file,
+    never the lone ``.MD.nc`` of a folder (`model/parse.md` § 5.3) *(the
+    exact stem, then the only ``*.MD.nc`` in the directory, until
+    2026-10-04)*.
+    """
+    out_path = Path(out_path)
+    label = _system_label_of(out_path)
+    if not label:
+        return None
+    nc = out_path.parent / f"{label}.MD.nc"
+    return nc if nc.is_file() else None
 
 
 def upgrade_frames(frames: Sequence, out_path: Path, *,

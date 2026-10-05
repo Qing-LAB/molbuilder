@@ -15,6 +15,7 @@ Format reference (.molwatch.log):
 
     # molwatch trajectory log
     # engine: pyscf
+    # frozen_atoms: <i> <j> ...        (optional -- the atoms the run holds)
     # runtime.<key>: <value>           (optional, repeated)
     # convergence.<key>: <value>       (optional, repeated)
     ==== molwatch step 0 begin ====
@@ -56,7 +57,6 @@ from molbuilder.parse.types import TrajectoryResult
 from molbuilder.structure import Structure
 
 from ._helpers import wrap_trajectory
-from ._sidecar import read_frozen_atoms
 
 
 # THE GRAMMAR IS `molwatch_grammar`'s -- header, step block and footer, each
@@ -111,11 +111,9 @@ def _parse_molwatch_log_impl(path: str, _scan_log) -> Trajectory:
             # is not here (P-T3 -- trajectory_result_to_legacy_dict does).
             wall_clock_s = block["wall_clock_s"],
         ))
-    # Surface the .molstruct.json sidecar's frozen_atoms list (same contract
-    # as the SIESTA + PySCF parsers) for the "Hide frozen atoms" overlay.
-    frozen = sorted(read_frozen_atoms(path))
-    if frozen:
-        runtime_info["frozen_atoms"] = frozen
+    # THE ATOMS THE RUN HOLDS are its log's own header line, read with its
+    # other runtime facts (`molwatch_reader`) -- nothing is looked for beside
+    # the log (`model/parse.md` § 5.3; a sidecar was, until 2026-10-04).
 
     _scan_log.info(
         f"parsed {len(frames)} frames, run_state={read['run_state']}")

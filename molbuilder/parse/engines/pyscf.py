@@ -55,7 +55,6 @@ from molbuilder.parse.types import TrajectoryResult
 from molbuilder.structure import Structure
 
 from ._helpers import wrap_trajectory
-from ._sidecar import read_frozen_atoms
 
 
 # Hartree -> eV
@@ -283,6 +282,8 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
         keys (max_force_tol_eV_per_A, scf_energy_tol, etc.) plus a
         ``"source": "molwatch_header"`` stamp matching what the
         molwatch parser surfaces.
+      * ``"frozen_atoms"``  — the atoms the run holds, as its log's
+        ``# frozen_atoms:`` line states them (`model/parse.md` § 5.3).
       * ``"run_state"``     — "ended" | "stopped" when the
         corresponding marker is present.
       * ``"error_message"`` — when ``# error:`` is present.
@@ -310,6 +311,10 @@ def _read_molwatch_metadata(traj_path: str) -> Dict[str, object]:
             for line in fh:
                 if _MG.BLOCK_BEGIN.search(line):
                     break
+                held = _MG.parse_frozen_atoms_line(line.rstrip("\n"))
+                if held is not None:
+                    out["frozen_atoms"] = held
+                    continue
                 (_MG.parse_convergence_line(line.rstrip("\n"), convergence)
                  or _MG.parse_runtime_line(line.rstrip("\n"), runtime))
     except OSError:
@@ -386,7 +391,7 @@ def _read_initial_energy_from_log(traj_path: str) -> Optional[float]:
 
 
 def _read_qdata_forces(
-    traj_path: str, n_frames: int,
+    traj_path: str, n_frames: int, frozen=(),
 ) -> Tuple[List[Optional[float]], List[Optional[float]]]:
     """Read ``<prefix>.qdata{,.txt}`` and return per-step (max,
     max_excluding_frozen) force magnitudes in eV/Ang.
@@ -394,9 +399,10 @@ def _read_qdata_forces(
     The constrained variant exists because ``MD.MaxForceTol``-style
     convergence thresholds apply to FREE atoms only — a forever-
     pinned frozen atom keeps the unconstrained max above threshold
-    and the user can't tell when their run converged.  ``None`` for
-    a step when the sidecar isn't present or the qdata entry is
-    missing.
+    and the user can't tell when their run converged.  ``frozen`` is
+    the run's held atoms, as its own progress log states them
+    (:func:`_read_molwatch_metadata`); ``None`` for a step when it holds
+    none or the qdata entry is missing.
     """
     base, fname = os.path.split(traj_path)
     stem = fname
@@ -410,11 +416,7 @@ def _read_qdata_forces(
     if qpath is None:
         return [None] * n_frames, [None] * n_frames
 
-    # THE LABEL IS FREE HERE -- `_resolve_job_token` already worked it out,
-    # so the sidecar lookup can strip this artifact's rung exactly instead
-    # of guessing at it (see `_sidecar.read_frozen_atoms`).
-    frozen_set = read_frozen_atoms(traj_path,
-                                   _resolve_job_token(base, os.path.basename(traj_path))[0])
+    frozen_set = set(frozen or ())
 
     max_forces:             List[Optional[float]] = []
     max_forces_constrained: List[Optional[float]] = []
@@ -590,8 +592,11 @@ def _parse_pyscf_xyz(path: str) -> Trajectory:
             energies.append(energy_eV)
             iterations.append(step_idx)
 
+    # THE RUN'S OWN PROGRESS LOG, read once: its held atoms decide the
+    # free-atom force below, and its targets and ending enrich the frames.
+    mw_meta = _read_molwatch_metadata(path)
     max_forces, max_forces_constrained = _read_qdata_forces(
-        path, len(frames_raw))
+        path, len(frames_raw), mw_meta.get("frozen_atoms") or ())
     scf_history = _read_scf_history(path)
 
     if not iterations:
@@ -634,12 +639,12 @@ def _parse_pyscf_xyz(path: str) -> Trajectory:
                 scf_history = f.scf_history,
             )
 
-    # Surface the sidecar's frozen_atoms list (same contract as
-    # the SIESTA + molwatch parsers).
+    # THE ATOMS THE RUN HOLDS, as its own progress log states them -- the
+    # field the SIESTA and molwatch parsers fill from their own files
+    # (`model/parse.md` § 5.3; a sidecar was looked for until 2026-10-04).
     runtime_info: Dict[str, object] = {}
-    frozen = sorted(read_frozen_atoms(path))
-    if frozen:
-        runtime_info["frozen_atoms"] = frozen
+    if mw_meta.get("frozen_atoms"):
+        runtime_info["frozen_atoms"] = list(mw_meta["frozen_atoms"])
 
     # Sibling-log enrichment.  The user may load the geomeTRIC
     # ``_geom_optim.xyz`` directly; that file carries no convergence
@@ -650,8 +655,7 @@ def _parse_pyscf_xyz(path: str) -> Trajectory:
     # / "Error" instead of "Ongoing").  Symmetric with how the
     # molwatch parser surfaces these when the user loads the .log
     # directly — same data, same field names, just sourced via the
-    # sibling file.
-    mw_meta = _read_molwatch_metadata(path)
+    # sibling file (read once, above).
     for key in ("convergence_targets", "scf_criteria"):
         if key in mw_meta:
             runtime_info[key] = mw_meta[key]
