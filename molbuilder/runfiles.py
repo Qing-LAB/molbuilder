@@ -1219,9 +1219,9 @@ WRITTEN: "tuple[Artifact, ...]" = (
     Artifact(".continued-from", "the run whose restart files were carried "
                                 "in, for launch's record",
              hierarchical=CONTINUED_FROM_FILE, when="prep", kind="record",
-             writer="prep (`materialize.prepare_attempt`; in the flat shape "
-                    "`prep._flat_continued_from`); launch, on a re-launch",
-             door="runrecord.continued_from_marker",
+             writer="prep and launch, on a re-launch, through "
+                    "`runrecord.write_continued_from`",
+             door="runrecord.read_continued_from",
              only="it continues from an earlier run"),
     # ---- written on the label, beside any file of ours ---------------------
     Artifact(".runtime_info.json", "what a file of the run says about the "
@@ -1369,7 +1369,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
              what="what a rung took, from which upstream run",
              calculation="transport", when="prep", level="run",
              kind="record",
-             writer="prep (`jobset.prep.gather_transport_inputs`)",
+             writer="prep (`jobset.prep.transport_inputs`, through "
+                    "`runrecord.write_gathered_from`)",
              door="runrecord.read_gathered_from"),
     Artifact(name="slurm.{jobid}.out", what="SLURM's own stdout for the job",
              level="run", kind="record",

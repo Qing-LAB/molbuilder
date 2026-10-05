@@ -1,5 +1,7 @@
 """What a stage continues from -- which run, and what that run was
-(`execution/job-system.md` § 5.4, plan W37).
+(`execution/job-system.md` § 5.4, plan W37): the stage before it in an
+independent ladder, and the `relax` run a vibration's force-constant stage
+builds on (`engines/vibration.md` § 5.2a, W38 F9).
 
 **Module:** L2 (jobset).  ONE answer, asked by `prep` before it writes a stage
 -- the default, or what a run named by ``--from`` is -- and by `status` for the
@@ -35,6 +37,14 @@ class Continuation:
     state: Optional[str]
     #: The relaxation's verdict, ``None`` when the run relaxed nothing.
     converged: Optional[bool]
+    #: A force-constant stage building on its `relax` (`engines/vibration.md`
+    #: § 5.2a), not a stage continuing from the one before it.
+    linked: bool = False
+    #: The files it carries into the attempt, by the pair's rule
+    #: (`model.warm_carry`) of what the run holds -- counted where the plan's
+    #: row is (`prep`), ``None`` until then.  On the flat layout nothing is
+    #: copied: the files lie in the folder.
+    carries: Optional[Tuple[str, ...]] = None
 
     def where(self) -> str:
         """The run, as a person reads it: its attempt, or -- on the flat
@@ -46,10 +56,17 @@ class Continuation:
         """``continues from 01_coarse/run-0 (the stage before it; concluded
         rc=0 at ...; converged): copied H2.XV, ...`` -- what both doors
         print."""
-        facts = ["the stage before it" if self.by_default else "named",
+        facts = [("named" if not self.by_default else
+                  "the relaxation it builds on" if self.linked else
+                  "the stage before it"),
                  _what_it_is(self.concluded, self.state)]
         if self.converged is not None:
+            # NOT CONVERGED, said for what it costs: a force-constant stage
+            # measured off a stationary point reports imaginary frequencies
+            # (W38 F9).
             facts.append("converged" if self.converged else
+                         "NOT converged -- expect imaginary frequencies"
+                         if self.linked else
                          "NOT converged -- taken as it stands")
         return (f"continues from {self.where()} ({'; '.join(facts)})"
                 + (f": copied {', '.join(copied)}" if copied else ""))
@@ -59,9 +76,11 @@ class Continuation:
 
     def ledger_facts(self) -> dict:
         """The decision-ledger line's facts -- the run's stage as
-        ``from_stage``, beside the stage being prepped."""
+        ``from_stage``, beside the stage being prepped.  What came across is
+        the line's ``copied``, read off the attempt opened."""
         d = self.as_dict()
         d["from_stage"] = d.pop("stage")
+        d.pop("carries", None)
         return d
 
 
@@ -176,12 +195,14 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
                                                attempt.parent, verdict=verdict)
         return Continuation(stage=named, source=str(Path(from_attempt)),
                             by_default=False, concluded=concluded, state=state,
-                            converged=converged), None
+                            converged=converged,
+                            linked=force_constant_stage(task, stage)), None
     try:
-        prev = _stage_before(base, task, stage)
+        prev, linked = _source_stage(base, task, stage)
         if prev is None:
             return None, None
-        return _by_default(base, task, stage, prev, verdict=verdict)
+        return _by_default(base, task, stage, prev, verdict=verdict,
+                           linked=linked)
     except Exception as exc:                             # noqa: BLE001
         # RAISES NOTHING, as this module promises: a template prep would
         # refuse is a refusal here too, said -- `status` printed a traceback
@@ -239,13 +260,40 @@ def _cannot_be_named(base: Path, task, stage: str, from_attempt,
         why = stage_disabled(task, named)
         if why:
             return f"--from {from_attempt!r}: {why}"
+    # A FORCE-CONSTANT STAGE BUILDS ON ITS LADDER'S `relax`, or on nothing
+    # (`engines/vibration.md` § 5.2a's table): a run of `relax` may be
+    # named; no other run, and no start from the structure while there is a
+    # `relax` to measure at.
+    if force_constant_stage(task, stage):
+        relax = relax_stage_of(task)
+        if relax is None:
+            if from_attempt:
+                return (f"--from {from_attempt!r}: nothing in this ladder "
+                        f"relaxes -- `{stage}` measures the structure as "
+                        f"given, stated relaxed (engines/vibration.md "
+                        f"5.2a).  To build on a relaxation, add the "
+                        f"`relax` stage before it and run it first.")
+        elif cold:
+            return (f"--cold: `{stage}` builds on `{relax}` -- it measures "
+                    f"at the geometry `{relax}` reached.  To measure the "
+                    f"structure as given, disable `{relax}` and state the "
+                    f"structure relaxed (`already_relaxed` in the "
+                    f"template) (engines/vibration.md 5.2a).")
+        elif from_attempt and named != relax:
+            return (f"--from {from_attempt!r}: `{stage}` builds on "
+                    f"`{relax}` -- name one of its runs, "
+                    f"<NN>_{relax}/run-<n> (engines/vibration.md 5.2a).")
     return None
 
 
-def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool
+def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
+                linked: bool = False
                 ) -> Tuple[Optional[Continuation], Optional[str]]:
-    """The default for ``stage``, whose stage before it is ``prev`` -- the
-    newest attempt, or the refusal (`continuation_answer`)."""
+    """The default for ``stage``, which builds on ``prev`` -- the stage
+    before it, or (``linked``) the `relax` a force-constant stage builds on:
+    the newest attempt, or the refusal (`continuation_answer`).  A linked
+    stage is offered no start from the structure (`engines/vibration.md`
+    § 5.2a)."""
     from ..paths import Shape
     from ..paths import attempt_dir as _adir
     from ..runfiles import compose as rf_compose
@@ -270,32 +318,35 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool
     # THE WAY OUT THAT WORKS HERE (the W37 review's first finding): `--cold`
     # names an attempt-less start, which the flat layout -- one folder, no
     # attempts -- refuses; there a stage starts clean by its run card.
-    clean = (f"or start `{stage}` clean: set its run card's `restart` to "
-             f"`clean` (Task setup, or task.json)" if flat else
+    clean = ("" if linked else
+             f"or start `{stage}` clean: set its run card's `restart` to "
+             f"`clean` (Task setup, or task.json)\n" if flat else
              f"or start `{stage}` from the calculation's structure --\n"
              + block([command("prep", "run", stage, base=base,
-                              flags=("--cold",))]))
-    rule = "(job-system.md § 5.4)"
+                              flags=("--cold",))]) + "\n")
+    rule = ("(engines/vibration.md § 5.2a)" if linked
+            else "(job-system.md § 5.4)")
+    # WHAT IT BUILDS ON, in the words of the ladder's kind.
+    lead = (f"`{stage}` builds on `{prev}`" if linked else
+            f"`{stage}` continues from the stage before it, `{prev}`")
 
     if flat:
         if not (base / rf_compose(task.label, seam.suffix, token)).is_file():
-            return None, (f"`{stage}` continues from the stage before it, "
-                          f"`{prev}`, which has not run yet.  Run it "
-                          f"first --\n{run_prev}\n{clean}\n{rule}")
+            return None, (f"{lead}, which has not run yet.  Run it "
+                          f"first --\n{run_prev}\n{clean}{rule}")
         attempt, source = base, None
     else:
         latest = latest_attempt(container) if container.is_dir() else None
         if latest is None:
-            return None, (f"`{stage}` continues from the stage before it, "
-                          f"`{prev}`, which has not run yet.  Run it "
-                          f"first --\n{run_prev}\n{clean}\n{rule}")
+            return None, (f"{lead}, which has not run yet.  Run it "
+                          f"first --\n{run_prev}\n{clean}{rule}")
         attempt, source = latest, str(latest.relative_to(base))
     concluded, state, converged = read_run(base, task, prev, attempt,
                                            container, verdict=verdict)
     if usable(attempt, stem):
         return Continuation(stage=prev, source=source, by_default=True,
                             concluded=concluded, state=state,
-                            converged=converged), None
+                            converged=converged, linked=linked), None
 
     # REFUSED -- worded by what the run's state says, with a command for
     # each way on (§ 5.3: what molbuilder prints, you can type).
@@ -330,15 +381,48 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool
            + block([command("prep", "run", stage, base=base,
                             flags=("--from", other))]) + "\n"
            if other else "")
-    return None, (f"`{stage}` continues from {what} {why}.  {first}\n"
-                  f"{alt}{clean}\n{rule}")
+    return None, (f"`{stage}` {'builds on' if linked else 'continues from'} "
+                  f"{what} {why}.  {first}\n{alt}{clean}{rule}")
+
+
+def force_constant_stage(task, stage: str) -> bool:
+    """A force-constant stage of a SIESTA vibration -- `freq`, or any stage
+    after `relax` in a displacement sweep, asked of its role and never of a
+    name (`pyscf.stages.vibration_render_kind`, `engines/vibration.md`
+    § 5.2a).  A PySCF vibration's one rung relaxes inside its deck."""
+    if (str(getattr(task, "engine", "")) != "siesta"
+            or getattr(task, "calculation", None) != "vibration"):
+        return False
+    from ..pyscf.stages import vibration_render_kind
+    return vibration_render_kind(stage) == "vibration"
+
+
+def relax_stage_of(task) -> Optional[str]:
+    """The ladder's enabled relaxation rung, which every force-constant stage
+    builds on, or ``None`` -- the structure is then measured as given, and
+    must be stated relaxed (`engines/vibration.md` § 5.2a).  By the one role
+    rule, the name in any case (plan § 5w K12)."""
+    from ..pyscf.stages import vibration_render_kind
+    return next((s.name for s in task.stages
+                 if getattr(s, "enabled", True)
+                 and vibration_render_kind(s.name) != "vibration"), None)
+
+
+def _source_stage(base, task, stage: str) -> Tuple[Optional[str], bool]:
+    """``(the stage whose run ``stage`` builds on by default, linked)``: the
+    stage before it in an independent ladder (:func:`_stage_before`), or the
+    `relax` a force-constant stage builds on (linked) -- ``(None, ...)``
+    when it builds on none."""
+    if force_constant_stage(task, stage):
+        return relax_stage_of(task), True
+    return _stage_before(base, task, stage), False
 
 
 def _independent(task) -> bool:
     """An INDEPENDENT ladder, whose stages continue one from another: a kind
     without rung roles (`template.KIND_ROLES`).  A linked stage's input is
-    prep's own (`prep._vibration_stage_geometry`,
-    `prep.gather_transport_inputs`)."""
+    its kind's: a transport rung's gather (`prep.gather_sources`),
+    and a force-constant stage builds on `relax` (:func:`_source_stage`)."""
     from ..template import KIND_ROLES
     return (getattr(task, "calculation", None)
             or "optimization") not in KIND_ROLES
@@ -385,10 +469,11 @@ def continue_from_choices(base, task, stage: str) -> Optional[dict]:
     from ..paths import attempts_in
     from .materialize import stage_home
     base = Path(base)
-    prev = _stage_before(base, task, stage)
+    prev, linked = _source_stage(base, task, stage)
     if prev is None:
         return None
-    got, refused = _by_default(base, task, stage, prev, verdict=False)
+    got, refused = _by_default(base, task, stage, prev, verdict=False,
+                               linked=linked)
     sh = Shape.named(task.shape)
     runs = []
     if sh.keeps_attempts_as_directories:
@@ -404,4 +489,7 @@ def continue_from_choices(base, task, stage: str) -> Optional[dict]:
             "default": (dict(got.as_dict(), line=got.line())
                         if got is not None else None),
             "refused": refused, "runs": runs,
-            "cold": sh.keeps_attempts_as_directories}
+            # THE STRUCTURE, where the layout keeps attempts and the stage
+            # may start from it -- a force-constant stage may not while
+            # it builds on `relax` (`engines/vibration.md` § 5.2a).
+            "cold": sh.keeps_attempts_as_directories and not linked}

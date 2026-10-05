@@ -1279,7 +1279,7 @@ failure it exists to prevent:
 | **Class C · Stage-local** | `Stage.overrides`, with **`stages = [...]`** on the catalogue row saying which rungs may own each item |
 | **Class D · Role-fixed** | **`role = [...]`** on the row — the third answerer after `allocation` (the scheduler) and `citation` (a cited run). A `role` item is not a form field, not a stage-table column, carries no value in a template of that kind, and no stage override, pin or sweep may set it. **Its answer is put into the rung's config by `resolve`** — the catalogue's `value`, or the rung's own in `role_values` (the device's `transiesta`), or the bias point it renders — so the section writes it like any other item *(since 2026-09-29, K1; until then the walk skipped it and the rung's block typed the line)* |
 | **Class E · Machine** | `allocation` items, unchanged |
-| the results that propagate | unchanged — the DAG in `stage_inputs`, copied at prep by `gather_transport_inputs` |
+| the results that propagate | unchanged — the DAG in `stage_inputs`, taken at prep by `transport_inputs` |
 
 #### Every rung renders through the framework
 
@@ -2011,7 +2011,7 @@ fixed.**
 | | |
 |---|---|
 | the `atom-metadata` fence was emitted **twice** | The framework emits it into the record; lifting `_render_seed`'s own call reproduced it in the body, and the reader stops at the first END marker — so the poorer copy won and the framework's was dead text. Two on-disk sources of truth for the region partition. No engine module calls that emitter; transport's must not either |
-| the DAG gate compared **bytes**, and a framework-rendered deck carries a timestamp | `gather_transport_inputs` only carries a concluded rung's output forward if that rung ran *the deck this composition renders*, and it compared full text. Once the seed gained a record section, re-prepping a concluded seed — or merely committing between two preps, which moves the generator sha — made the device's gather refuse with *"the junction citation or its contract changed"*. False, and it pointed the reader at the science. `script_emit.same_calculation` now masks exactly `generated-at`, `generator-version` and `created_at` and keeps every other byte, the region partition included |
+| the DAG gate compared **bytes**, and a framework-rendered deck carries a timestamp | `transport_inputs` only carries a concluded rung's output forward if that rung ran *the deck this composition renders*, and it compared full text. Once the seed gained a record section, re-prepping a concluded seed — or merely committing between two preps, which moves the generator sha — made the device's gather refuse with *"the junction citation or its contract changed"*. False, and it pointed the reader at the science. `script_emit.same_calculation` now masks exactly `generated-at`, `generator-version` and `created_at` and keeps every other byte, the region partition included |
 
 **What it did NOT do, stated so nobody reads more into it.**
 
@@ -2822,8 +2822,10 @@ flowchart TB
 
 **The bold arrows are the integration, and they are not free.**  Each one is
 a row in `stages.py::stage_inputs` — the DAG as data, not as control flow —
-and `prep` walks it in `jobset/prep.py::gather_transport_inputs`, which
-copies an upstream file only if **three gates** all pass:
+and `prep` walks it at its checkpoint 4a, with what every stage continues
+from ([`job-system.md`](?doc=execution/job-system.md) § 5.0), in
+`jobset/prep.py::transport_inputs`, which takes an upstream file only if
+**three gates** all pass — then copies it into the attempt it opens:
 
 | gate | what it refuses |
 |---|---|

@@ -949,7 +949,7 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     # marker file beats threading the value through a launch argument that
     # every caller would have to remember to pass.
     if copied:
-        plan.text(marker, str(continue_from) + "\n")
+        runrecord.write_continued_from(attempt, continue_from, plan=plan)
     if own:
         plan.carry_out()
 

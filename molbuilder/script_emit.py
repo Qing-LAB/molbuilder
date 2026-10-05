@@ -156,7 +156,7 @@ def same_calculation(a: str, b: str) -> bool:
     invocation", which is a different and much narrower question.
 
     This exists because the transport DAG asks the useful one.
-    ``jobset/prep.py::gather_transport_inputs`` will only carry a concluded
+    ``jobset/prep.py::transport_inputs`` will only carry a concluded
     rung's output forward if that rung ran *the deck this composition renders*,
     and it compared full text: the moment transport's seed rung joined the
     render pipeline (2026-09-15) and so gained a record section, re-prepping a

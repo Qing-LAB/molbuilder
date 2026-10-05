@@ -592,11 +592,11 @@ def _send(jobset: JobSet, base: Path, p: _Plan, *, mode: str) -> List[JobResult]
         # marker prep left names what the stage's FIRST launch continued
         # from, the stage before it, and was recorded again (W55 D5).
         from ..runfiles import latest_run, run_name
-        from ..runrecord import continued_from_marker
+        from ..runrecord import write_continued_from
         n = latest_run(where, basename)
         if n is not None:
-            continued_from_marker(where, basename).write_text(
-                run_name(basename, None, n) + "\n", encoding="utf-8")
+            write_continued_from(where, run_name(basename, None, n),
+                                 basename=basename)
     domain = getattr(getattr(p.placement, "domain", None), "name", None)
     if mode == "direct":
         # The launch-door claim rides the child ENV here: inheritance
@@ -1662,11 +1662,8 @@ def _record_launch(attempt: Path, *, mode: str, command: List[str],
     the opposite reason: submission is what knows where the job went, and
     nothing downstream should have to work it out from a command line.
     """
-    from ..runrecord import continued_from_marker, write_launch
-    src = None
-    marker = continued_from_marker(attempt, basename)
-    if marker.is_file():
-        src = marker.read_text(encoding="utf-8").strip() or None
+    from ..runrecord import read_continued_from, write_launch
+    src = read_continued_from(attempt, basename)
     write_launch(attempt, mode=mode, command=command, job_id=job_id,
                  continued_from=src, placed_on=_placed_on(placement),
                  basename=basename)

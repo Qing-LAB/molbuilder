@@ -1054,18 +1054,20 @@ decides for, which reads as part of the bench setup.
 **What the rung continues from is chosen in its tab too** *(plan W37,
 2026-10-01)*. A rung that continues from the stage before it — a continuing
 stage of an independent ladder ([`job-system.md`](?doc=execution/job-system.md)
-§ 5.4) — shows a **Continue from** choice above its `prep run` line: *the stage
-before it, its newest run* (the default), each run of that stage with what it
-was, or the calculation's structure (`--cold`, where the layout has one). Under
+§ 5.4), or a vibration's force-constant stage, which builds on `relax` — shows
+a **Continue from** choice above its `prep run` line: *the stage before it, its
+newest run* (the default), each run of that stage with what it was, or the
+calculation's structure (`--cold`, where the layout has one and the stage may
+start from it — a force-constant stage may not while the ladder holds a
+`relax`, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a). Under
 it, what the choice means: the default's own line — *continues from
 01_coarse/run-1 (the stage before it; concluded rc=0 …)* — or, while prep would
 refuse it, why, whole, with the commands it names. It is the folder's answer
 (`continue_from`), the one prep acts on, given each time the folder is opened
 and so without the run's relaxation verdict, which Preview reads; the command
 line follows the choice (`--from <run>`, `--cold`), and Preview and Prep send
-it to the same prep. A linked rung — a vibration's
-`freq`, a transport rung — and a rung that starts clean show no choice: prep
-takes their input itself, or none.
+it to the same prep. A transport rung and a rung that starts clean show no
+choice: prep takes their input itself, or none.
 
 **So a tab is about doing, not deciding**: what this rung will produce, and the
 two commands that produce it. The decision is above, made once, and visible in

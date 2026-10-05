@@ -45,3 +45,37 @@ before = [["prep", "run", "coarse"],
 stage = "medium"
 said = ["continues from 01_coarse/run-0"]
 run_answer = { stage = "coarse", state = "finished", live = false }
+
+[[case]]
+name = "what the hand-over carried is said under STAGE-PLAN.md's table, whose column is each stage's declaration"
+stand_in = { leaves_restart = true }
+before = [["prep", "run", "coarse"],
+          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+stage = "medium"
+plan = ["restart files it declares",
+        "This prep: `medium` continues from 01_coarse/run-0 (the stage before it; concluded rc=0",
+        ": copied H2.XV"]
+made = ["02_medium/run-0/H2.XV", "02_medium/run-0/.continued-from"]
+
+[[case]]
+name = "a vibration's force-constant stage builds on its relax: refused while relax's newest run has not been launched, naming the command"
+calculation = "vibration"
+before = [["prep", "run", "relax"]]
+stage = "freq"
+refused = ["`freq` builds on the newest attempt of `relax`, 01_relax/run-0, which has not been launched", "Launch it"]
+
+[[case]]
+name = "...and while it failed -- a relaxation that ended with an error is never measured at"
+calculation = "vibration"
+stand_in = { rc = 1, leaves_restart = true }
+before = [["prep", "run", "relax"],
+          ["launch", "run", "relax", "--mode", "direct", "--yes"]]
+stage = "freq"
+refused = ["`freq` builds on the newest attempt of `relax`, 01_relax/run-0, which failed (rc=1"]
+
+[[case]]
+name = "...and it never starts from the structure while the ladder holds a relax: --cold refused, saying how to measure the structure as given"
+calculation = "vibration"
+stage = "freq"
+prep = ["--cold"]
+refused = ["--cold: `freq` builds on `relax`", "disable `relax` and state the structure relaxed"]

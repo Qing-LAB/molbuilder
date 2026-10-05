@@ -112,9 +112,9 @@ def _flat_continued_from(base: Path, task, stage: str, continuation,
     `clean` -- takes the old one away, or the launch would record a source
     it did not read.  Into ``plan``, with the rest of the prep."""
     from ..runfiles import latest_run, run_name, stem as rf_stem
-    from ..runrecord import continued_from_marker
-    marker = continued_from_marker(base, rf_stem(task.label,
-                                                 stage_home(base, task, stage).token))
+    from ..runrecord import continued_from_marker, write_continued_from
+    stem = rf_stem(task.label, stage_home(base, task, stage).token)
+    marker = continued_from_marker(base, stem)
     if continuation is None:
         if plan.is_file(marker):
             plan.remove(marker)
@@ -123,14 +123,15 @@ def _flat_continued_from(base: Path, task, stage: str, continuation,
     n = latest_run(base, task.label, stage=token)
     if n is None:
         return                     # concluded with no run file: name none
-    plan.text(marker, run_name(task.label, token, n) + "\n")
+    write_continued_from(base, run_name(task.label, token, n),
+                         basename=stem, plan=plan)
 
 
 def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 emit_sbatch: bool = True, record_dir=None,
                 log=None, machine_record=None,
                 render=None, points=None, plan=None,
-                shape=None) -> List[Path]:
+                shape=None, this_prep=None) -> List[Path]:
     """Render launchers + lay out the per-job tree under ``base_dir``.
 
     ``plan`` (`jobset.planned.Plan`) receives what this writes, and is read
@@ -139,7 +140,8 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
 
     ``shape`` is the layout as the caller read it from the description --
     a layer below takes it (`materialize.shape_of`); with none it is asked
-    here.
+    here.  ``this_prep`` is what this prep's hand-over takes, which
+    `STAGE-PLAN.md` says under its table (`plan.render_plan`).
 
     ``points`` names, per job, the folders that hold a copy of its deck
     written at another point -- a scan's (`Rung.points`) -- each of which
@@ -382,7 +384,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     except Exception:
         _vocab = ""    # an engine without a rules file has no line to print
     plan.text(plan_dir / _PLAN_FILE,
-              render_plan(jobset) + "\n\n" + _vocab
+              render_plan(jobset, this_prep) + "\n\n" + _vocab
               + format_provenance(config_provenance(project_dir=base)) + "\n")
     if log is not None:
         log.produced(_PLAN_FILE, str(plan_dir / _PLAN_FILE))
@@ -421,7 +423,8 @@ def _vibration_block(stage: str, cfg, relaxed_by, *, criterion) -> dict:
         molbuilder_version=str(_mb_version))
 
 
-def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
+def _vibration_stage_geometry(base, task, pset, struct, *, builds_on=None,
+                              log=None):
     """``(structure, cell, relaxation)`` a force-constant stage of a SIESTA
     vibration is written with -- `freq`, or any stage after `relax` in a
     displacement sweep, asked of `vibration_render_kind` and never of a name
@@ -430,9 +433,11 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
     input): the sorted
     copy as given, and no cell or record of its own, when the ladder holds no
     `relax` stage; the coordinates that stage relaxed to, in the cell it ran
-    in, when it does -- read from its newest attempt, which must be one to
-    build on (`continuation.usable`: ended on its own with exit code 0),
-    through the one SIESTA output parser -- with that run's
+    in, when it does -- read from the run the stage builds on,
+    ``builds_on``, the `Continuation` prep decided at its checkpoint 4a
+    (`relax`'s newest attempt that is one to build on, or the `relax` run
+    named with ``--from``, `engines/vibration.md` § 5.2a's table), through
+    the one SIESTA output parser -- with that run's
     relaxation record (`parse.contract.relaxation_of_output`), of the same
     output and the same parse, which the deck's `vibration` block carries to
     the finish (§ 5.3) so nothing re-picks the attempt later -- and the
@@ -443,22 +448,23 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
     against the real-space grid is not stationary on that grid any more.
     Every other rung comes back unchanged.
 
-    Two refusals, each naming what to do first.  A force-constant stage
-    before `relax` has ended on its own with exit code 0: the job set's own
-    order, not a guess at which geometry the force constants belong to.  And one with no `relax`
-    stage while the structure is not stated relaxed: the box says *relax
-    first* and the ladder holds nothing that would, so the description
-    contradicts itself and is refused with the two ways out rather than
-    measured at a geometry nobody chose (§ 2.2).
+    A force-constant stage before `relax` has ended on its own with exit
+    code 0 is refused where that is decided, naming what to do first
+    (`continuation.continuation_answer`, the one door -- asked here too when
+    a caller hands no answer).  Refused here: a stage with no `relax` while
+    the structure is not stated relaxed -- the box says *relax first* and
+    the ladder holds nothing that would, so the description contradicts
+    itself and is refused with the two ways out rather than measured at a
+    geometry nobody chose (§ 2.2) -- and a run whose output holds no
+    geometry this calculation's.
     """
     from ..pyscf.stages import VIBRATION_RELAX_STAGE, vibration_render_kind
+    from .continuation import relax_stage_of
     if vibration_render_kind(pset.stage) != "vibration":
         return struct, None, None
     # THE LADDER'S RELAXATION, by the one role rule -- the name in any case
     # (`engines/stages.md` § 2), never an exact string (plan § 5w K12).
-    relax = next((s for s in task.stages
-                  if s.enabled and vibration_render_kind(s.name) != "vibration"),
-                 None)
+    relax = relax_stage_of(task)
     if relax is None:
         if not bool(getattr(pset[0].render_config(), "already_relaxed", False)):
             raise PrepError(
@@ -473,48 +479,31 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
                 f"the finish then measures the forces at this geometry "
                 f"and says whether the statement held.")
         return struct, None, None
-    from ..paths import Shape
-    from .materialize import run_dir
     from ..runs import run_of
-    from ..runrecord import ending
-    from .continuation import usable
-    token = stage_home(base, task, relax.name).token
-    container = base / Shape.named(task.shape).stage_dir(token)
-    stem = _rf_stem(task.label, token)
+    if builds_on is None:
+        # ASKED WITH NO ANSWER from the entry: the same door its checkpoint
+        # 4a asks -- the default, `relax`'s newest attempt that is one to
+        # build on, or the refusal naming what to do first.
+        from .continuation import continuation_answer
+        builds_on, refused = continuation_answer(base, task, pset.stage)
+        if refused:
+            raise PrepError(refused)
+    token = stage_home(base, task, relax).token
     # THE COMMANDS, from the one composer: the calculation named, the mode
     # stated where its config sets none (`commands.run_first`).
-    from .commands import block, command, launch_lines
+    from .commands import block
     from .commands import run_first as _run_first
-    run_first = block(_run_first(relax.name, base=base))
-    # THE NEWEST ATTEMPT, and it must be one to build on -- ended on its own
-    # with exit code 0 (`continuation.usable`): a `relax` re-launched to
-    # tighten is the geometry the person means, so an older attempt never
-    # stands in for one still running, and a relaxation that failed is not
-    # measured at (it was, by its conclusion alone, until 2026-10-03).
-    attempt = run_dir(container)
-    if not usable(attempt, stem):
-        said = ending(attempt, stem).line
-        if said is not None:
-            raise PrepError(
-                f"the `{pset.stage}` stage takes its geometry from the "
-                f"`{relax.name}` stage, whose newest attempt failed "
-                f"({said}) -- a run that ended with an error is never "
-                f"built on (job-system.md 5.4).  Look at it, then launch it "
-                f"again --\n"
-                f"{block(launch_lines('run', relax.name, base=base))}")
-        raise PrepError(
-            f"the `{pset.stage}` stage takes its geometry from the "
-            f"`{relax.name}` stage, whose newest attempt has not concluded -- "
-            f"it was never launched, is still running, or was force-stopped "
-            f"-- `{command('status', relax.name, base=base)}` says which "
-            f"(project-layout.md 1.6).  Let it finish, or run it first --\n"
-            f"{run_first}")
+    run_first = block(_run_first(relax, base=base))
+    # THE RUN IT BUILDS ON -- its attempt, or on the flat layout the folder
+    # its files lie in.
+    attempt = (base / builds_on.source if builds_on.source is not None
+               else base)
     _run = run_of(attempt, stage=token)
     out = _run.stdout if _run is not None else None
     if out is None:
         raise PrepError(
-            f"{attempt.relative_to(base)} concluded without the engine's "
-            f"output for `{relax.name}`; there is no geometry to read.  "
+            f"{builds_on.where()} holds no engine output of `{relax}`; "
+            f"there is no geometry to read.  "
             f"Re-run it --\n{run_first}")
     from ..parse.engines.siesta import SiestaParser
     from ..parse.errors import ParseError
@@ -523,11 +512,11 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
     except ParseError as e:
         raise PrepError(
             f"{out.relative_to(base)} could not be read as a SIESTA run: {e}.  "
-            f"Re-run the `{relax.name}` stage --\n{run_first}") from e
+            f"Re-run the `{relax}` stage --\n{run_first}") from e
     frames = [fr for fr in traj.frames if fr.structure is not None]
     if not frames:
         raise PrepError(
-            f"{out.name} holds no coordinate block: the `{relax.name}` "
+            f"{out.name} holds no coordinate block: the `{relax}` "
             f"run never reached its first geometry.  Re-run it --\n"
             f"{run_first}")
     last = frames[-1]
@@ -535,7 +524,7 @@ def _vibration_stage_geometry(base, task, pset, struct, *, log=None):
         raise PrepError(
             f"{out.name} describes {last.structure.formula} in an order "
             f"that is not this calculation's sorted copy ({struct.formula}): "
-            f"the `{relax.name}` stage ran a different structure.  Re-run "
+            f"the `{relax}` stage ran a different structure.  Re-run "
             f"it --\n{run_first}")
     cell = last.lattice if last.lattice is not None else traj.lattice
     if log is not None:
@@ -657,7 +646,7 @@ class Rung:
 
 
 def _described_rung(base, task, pset, *, seam, template_text, sweep,
-                    log, plan) -> Rung:
+                    log, plan, continuation) -> Rung:
     """A calculation of its described structure, one deck per element --
     every kind with no steps of its own."""
     return Rung(struct=_structure_for(task, base),
@@ -665,7 +654,7 @@ def _described_rung(base, task, pset, *, seam, template_text, sweep,
 
 
 def _siesta_vibration_rung(base, task, pset, *, seam, template_text, sweep,
-                           log, plan) -> Rung:
+                           log, plan, continuation) -> Rung:
     """A SIESTA vibration's rung (`engines/vibration.md` § 5.2a, § 5.9).
 
     The atoms in the order the force-constant run needs -- the held ones
@@ -704,7 +693,7 @@ def _siesta_vibration_rung(base, task, pset, *, seam, template_text, sweep,
                  f"key held-first, {struct.n_atoms} atoms -> {_perm_path.name}")
     render_kind = _rung_kind(task, pset.stage)
     struct, cell, relaxed_by = _vibration_stage_geometry(
-        base, task, pset, struct, log=log)
+        base, task, pset, struct, builds_on=continuation, log=log)
     finishes = render_kind == "vibration"
     # THE FINISH'S FORCE CRITERION IS THE RELAXATION'S OWN (plan § 5w K4,
     # M11 SS-C6): `relax_force_tol` is read by the relaxation rung alone, so
@@ -737,7 +726,7 @@ def _siesta_vibration_rung(base, task, pset, *, seam, template_text, sweep,
 
 
 def _transport_rung_of(base, task, pset, *, seam, template_text, sweep,
-                       log, plan) -> Rung:
+                       log, plan, continuation) -> Rung:
     """A transport rung (`engines/transport.md`): its four steps of its own.
 
     **compose** -- the junction and its leads, composed from the cited
@@ -749,8 +738,9 @@ def _transport_rung_of(base, task, pset, *, seam, template_text, sweep,
     own folder (`transport.stages.rung_containers`).  Its data files come
     from the citation, and its job carries the rung's own restart files and,
     for the transmission, TBtrans's program.  The fifth, **gather** -- each
-    rung's inputs from the runs upstream -- is the entry's
-    (:func:`gather_for_stage`)."""
+    rung's inputs from the runs upstream -- is decided with what every stage
+    continues from, at the entry's checkpoint 4a (:func:`gather_sources`),
+    and copied into the attempts the steps open."""
     stage = pset.stage
     if not stage:
         from .commands import name_a_stage
@@ -932,18 +922,22 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                      chosen=None,
                      opened: Optional[list] = None,
                      findings: Optional[list] = None,
-                     continue_from: Optional[str] = None,
-                     cold: bool = False,
-                     named: bool = True,
+                     continuation=None,
+                     gather=None,
                      plan=None,
                      resolved: Optional["Resolved"] = None) -> List[Path]:
     """**`prep`, entire** — the five steps of `project-layout.md` § 2.3.1, in
     the order it calls *forced rather than chosen*.
 
-    ``continue_from`` / ``cold`` / ``named`` are what the stage continues
-    from, as :func:`prep_stage` decided it before anything was written: the
-    attempt is opened ONCE, with its carry (`materialize.prepare_attempt`).
-    Saying neither leaves a reused attempt's carry as it is.
+    ``continuation`` is what the stage builds on, as :func:`prep_stage`
+    decided it at checkpoint 4a (`continuation.Continuation`, `job-system.md`
+    § 5.4) -- the run a stage continues from, or the `relax` run a
+    force-constant stage takes its geometry from -- or ``None``: it starts
+    from the calculation's structure.  The files it carries are counted
+    where the plan's row is (:func:`_carrying`), and the attempt is opened
+    ONCE, with them (`materialize.prepare_attempt`).  ``gather`` is a
+    transport rung's inputs from the runs upstream, decided at 4a too
+    (:func:`gather_sources`), copied into the attempts opened.
 
     1. **resolve the machine** — READ its record, persist the snapshot as
        ``environment.json``; refuse when no record answers (§ 3.1);
@@ -1009,7 +1003,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         dirs = _plan_calculation(
             base, stage, resolved, env=env, emit_sbatch=emit_sbatch,
             sweep=sweep, target=target, opened=opened, findings=findings,
-            continue_from=continue_from, cold=cold, named=named, plan=plan)
+            continuation=continuation, gather=gather, plan=plan)
     finally:
         PLANNED.reset(scope)
     if own:
@@ -1024,9 +1018,8 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                       target: Optional[str] = None,
                       opened: Optional[list] = None,
                       findings: Optional[list] = None,
-                      continue_from: Optional[str] = None,
-                      cold: bool = False,
-                      named: bool = True,
+                      continuation=None,
+                      gather=None,
                       plan) -> List[Path]:
     """The steps of :func:`prep_calculation`, planned into ``plan``: nothing
     is written here.  Steps 1 and 2 arrive answered (``resolved``): this
@@ -1101,7 +1094,8 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     rung = RUNGS.get((str(task.engine), str(task.calculation)),
                      _described_rung)(base, task, pset, seam=seam,
                                       template_text=resolved.template_text,
-                                      sweep=sweep, log=log, plan=plan)
+                                      sweep=sweep, log=log, plan=plan,
+                                      continuation=continuation)
     # The DATA FILES the engine will open, before any deck is written: a
     # missing pseudopotential is a run that cannot start, and finding that out
     # here costs a second (project-layout.md § 2.6).  Idempotent -- what is
@@ -1329,6 +1323,15 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
             # `Task` refuses an empty tuple, so the stage-less fallback
             # arms that stood here were unreachable -- U6 close.)
             ladder=frozenset(s.name for s in task.stages))
+    # WHAT THE HAND-OVER CARRIES, counted where the plan's row is: the run
+    # was decided at 4a, and its files follow from the job this prep writes
+    # against the one that run belongs to (`job-system.md` § 5.4).
+    this_prep = None
+    if kind == "ladder" and stage:
+        if continuation is not None:
+            continuation = _carrying(js, base, stage, continuation,
+                                     resolved.shape)
+        this_prep = _what_this_prep_takes(stage, continuation, gather)
     log.phase("FLOOR 3 · THE JOB-SET — what was declared to the runner")
     log.received("kind", kind)
     for _j in js.jobs:
@@ -1362,7 +1365,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                        render=(None if kind == "sweep"
                                else {j.name for j in jobs}),
                        points={j.name: _points for j in jobs}, plan=plan,
-                       shape=resolved.shape)
+                       shape=resolved.shape, this_prep=this_prep)
 
     # ---- THE ATTEMPT, because PREP is what sets a stage up to run ------- #
     #
@@ -1397,11 +1400,22 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
         # device at v; the stage's own folder otherwise.
         reports = _open_attempts(js, base, stage,
                                  containers=_points or (None,),
-                                 continue_from=continue_from,
-                                 cold=cold, named=named, plan=plan,
+                                 continuation=continuation, plan=plan,
                                  shape=resolved.shape)
         if opened is not None:
             opened.extend(reports)
+        if not resolved.shape.keeps_attempts_as_directories:
+            # THE FLAT LAYOUT keeps no attempt: the stage's own record of
+            # what it continues from, beside its files (§ 1.6.3).
+            _flat_continued_from(base, task, stage, continuation, plan)
+        # A TRANSPORT RUNG'S GATHER, into the attempt opened in each
+        # container -- one per bias point for a scan.
+        for container, _volts, inputs in (gather or ()):
+            att = next((Path(a.dir) for a in reports
+                        if Path(a.dir).parent.resolve()
+                        == Path(container).resolve()), None)
+            if att is not None:
+                _gather_into(base, att, inputs, plan)
 
     # THE LOG, then THE PLAN'S ROW LAST -- the moment the stage is prepped
     # (`job-system.md` § 5.0, checkpoint 6): a prep that stops before this
@@ -1415,8 +1429,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
 
 def _open_attempts(js: JobSet, base: Path, stage: str,
                    containers: Sequence[Optional[Path]] = (None,), *,
-                   continue_from: Optional[str], cold: bool,
-                   named: bool, plan, shape) -> List:
+                   continuation, plan, shape) -> List:
     """Open this rung's attempt(s) — **step 6, and both arms take it.**
 
     Returns the :class:`~molbuilder.jobset.materialize.Attempt` reports, in
@@ -1436,24 +1449,70 @@ def _open_attempts(js: JobSet, base: Path, stage: str,
     description's, is read here and the refusal never has to fire.
 
     Idempotent by ``resolve_attempt``'s rule — reuse the last attempt until it
-    has been launched, then open the next.  ``continue_from`` / ``cold`` /
-    ``named`` -- REQUIRED, they decide which run the attempt starts from
-    (`code-audit.md` D1) -- are prep's decision, so the attempt is opened
-    once, with its carry: it was opened with none and then again with it
-    until 2026-10-01, and a refusal between the two left an earlier carry
-    undone (W52).
+    has been launched, then open the next.  ``continuation`` -- REQUIRED, it
+    decides which run the attempt starts from and what it carries
+    (`code-audit.md` D1); ``None`` starts it clean -- is prep's decision, so
+    the attempt is opened once, with its carry: it was opened with none and
+    then again with it until 2026-10-01, and a refusal between the two left
+    an earlier carry undone (W52).
     """
     from .materialize import prepare_attempt
 
     if shape is None or not shape.keeps_attempts_as_directories:
         return []
+    took = continuation
     reports = [prepare_attempt(js, base, stage, container=c,
-                               continue_from=continue_from, cold=cold,
-                               named=named, plan=plan, shape=shape)
+                               continue_from=(took.source if took is not None
+                                              else None),
+                               cold=took is None,
+                               named=not (took is not None and took.by_default),
+                               carry=(list(took.carries) if took is not None
+                                      and took.carries is not None else None),
+                               plan=plan, shape=shape)
                for c in containers]
     for rep in reports:
         _move_progress_channel_into(rep.dir, plan)
     return reports
+
+
+def _carrying(js: JobSet, base: Path, stage: str, continuation, shape):
+    """``continuation`` with the files it carries -- by the pair's rule, the
+    job this prep writes against the one its run belongs to
+    (`materialize.continuation_files`, the one check), of what that run
+    holds; refused as that check refuses, nothing declared or nothing there
+    (`job-system.md` § 5.4).  On the flat layout nothing is copied: the
+    files lie in the folder."""
+    if continuation.source is None:
+        return dataclasses.replace(continuation, carries=())
+    from .materialize import continuation_files
+    try:
+        names = continuation_files(js, base, stage, continuation.source,
+                                   named=not continuation.by_default,
+                                   shape=shape)
+    except ValueError as exc:
+        raise PrepError(str(exc)) from None
+    held = Path(base) / continuation.source
+    return dataclasses.replace(
+        continuation,
+        carries=tuple(n for n in names if (held / n).is_file()))
+
+
+def _what_this_prep_takes(stage: str, continuation, gather) -> List[str]:
+    """What this prep's hand-over takes, as `STAGE-PLAN.md` says it under
+    its table (`job-system.md` § 5.4; D28: the table alone, each stage's
+    declared restart files, read as what was copied): the line both doors
+    print, with the files carried; a transport rung's gather, point by
+    point; or nothing taken from another run."""
+    out: List[str] = []
+    if continuation is not None:
+        out.append(f"`{stage}` "
+                   + continuation.line(copied=continuation.carries or ()))
+    for _container, volts, inputs in (gather or ()):
+        if inputs:
+            at = "" if volts is None else f" at {volts:g} V"
+            out.append(f"`{stage}`{at} gathers "
+                       + ", ".join(f"{fn} <- {src}" for src, fn in inputs))
+    return out or [f"`{stage}` takes nothing from another run"]
 
 
 def _move_progress_channel_into(attempt: Path, plan) -> None:
@@ -1810,12 +1869,14 @@ def _transport_spec(task, stage: str, struct, config, state, volts=None, *,
     return spec, cfg
 
 
-def gather_transport_inputs(base_dir, task, stage: str,
-                            attempt_dir, *,
-                            bias: Optional[float] = None,
-                            plan=None) -> List[tuple]:
-    """Copy the § 4.2 DAG's inputs into ``attempt_dir`` — the composite's
-    other half of *"warm files are COPIED in at prep"*.
+def transport_inputs(base_dir, task, stage: str, *,
+                     bias: Optional[float] = None) -> List[tuple]:
+    """What one attempt of ``stage`` takes from the runs upstream -- the
+    § 4.2 DAG's inputs, the composite's other half of *"warm files are
+    COPIED in at prep"*: ``[(source attempt, filename)]``, decided at
+    prep's checkpoint 4a with what every stage continues from
+    (`job-system.md` § 5.0) and copied in where the attempt is planned
+    (:func:`_gather_into`).
 
     ``--from`` carries within ONE stage (an attempt continuing an
     earlier attempt of itself); this carries BETWEEN stages, and the
@@ -1835,18 +1896,13 @@ def gather_transport_inputs(base_dir, task, stage: str,
     The newest qualifying attempt wins (identical decks → identical
     single-point results).  What was taken from where lands in
     ``.gathered-from`` beside the copies, so a result can always say
-    which electrode run fed it.  Returns ``[(source_rel, filename)]``.
-
-    ``plan`` (`jobset.planned.Plan`) receives the copies and the record
-    instead of the disk -- the attempt itself may be planned and not yet
-    written (`job-system.md` § 5.0).
+    which electrode run fed it.
     """
     from ..transport.stages import (per_point_rungs, rung_container,
                                      stage_inputs)
     from .continuation import usable
 
     base = Path(base_dir)
-    attempt_dir = Path(attempt_dir)
     enabled = {s.name for s in task.stages if s.enabled}
     inputs = stage_inputs(stage, task.label,
                           seed_enabled=("seed" in enabled))
@@ -1928,15 +1984,18 @@ def gather_transport_inputs(base_dir, task, stage: str,
                 f"{matching[0].relative_to(base)} did not write "
                 f"{filename} -- the run concluded without producing what "
                 f"the {stage} stage consumes.  Re-{run_first}")
-        if plan is not None:
-            plan.copy(src, attempt_dir / filename)
-        else:
-            import shutil as _sh
-            _sh.copy2(src, attempt_dir / filename)
         gathered.append((str(matching[0].relative_to(base)), filename))
-    if gathered:
-        write_gathered_from(attempt_dir, gathered, plan=plan)
     return gathered
+
+
+def _gather_into(base: Path, attempt_dir, inputs, plan) -> None:
+    """``inputs`` -- :func:`transport_inputs`' decision -- copied into
+    ``attempt_dir`` with the record of what came from where
+    (`.gathered-from`), into ``plan``."""
+    for src, filename in inputs:
+        plan.copy(Path(base) / src / filename, Path(attempt_dir) / filename)
+    if inputs:
+        write_gathered_from(attempt_dir, inputs, plan=plan)
 
 
 def _composed_junction(base, task):
@@ -1976,73 +2035,35 @@ def _rung_deck_now(base, task, stage: str, composed, *, volts=None) -> str:
                                dest_dir=base).text
 
 
-def gather_for_stage(base_dir, task, stage: str, *, opened=None,
-                     plan=None) -> List[Tuple[Path, Optional[float], List[tuple]]]:
-    """Carry the DAG's inputs into **every attempt this rung has open**.
+def gather_sources(base_dir, task, stage: str
+                   ) -> List[Tuple[Path, Optional[float], List[tuple]]]:
+    """What every attempt of this rung takes from the runs upstream --
+    ``[(container, volts, [(source attempt, filename), ...]), ...]``, one
+    entry per attempt container: the stage's own folder, or each point of a
+    bias scan, gathered against **its own** voltage (the transmission at *v*
+    reads the device at *v*, never another point's converged state).
+    ``volts`` is ``None`` for a rung with no bias axis, CARRIED rather than
+    parsed back out of a folder's name, which `bias_token` owns.
 
-    Returns ``[(attempt_dir, volts, [(source_rel, filename), ...]), ...]`` —
-    one entry per attempt, so a caller can report what landed where and say
-    which bias point it was. ``volts`` is ``None`` for a rung with no bias
-    axis, and it is CARRIED rather than parsed back out of the directory name:
-    this function already knows it, and a caller re-deriving it would be a
-    second reader of a spelling `bias_token` owns.
-
-    A bias scan has one attempt per point and each is gathered against **its
-    own** voltage: the transmission at *v* reads the device at *v*, never
-    another point's converged state.
-
-    **THE STEP THAT MAKES A PREPPED ATTEMPT RUNNABLE, and it is not `prep`'s.**
-    `prep_calculation` renders the decks and opens the attempt without asking
-    whether the rungs before it have finished, deliberately: a deck is the
-    reviewable artifact, and *"preparing is still design and the split from
-    starting is what gives you somewhere to look before committing cluster
-    time."* Nineteen tests read a device deck without running a lead, and they
-    are right to.
-
-    Carrying the inputs is the other half, and it cannot be folded into that
-    one because :func:`gather_transport_inputs` refuses an upstream that has
-    not CONCLUDED — which is correct, and would make the decks unreadable
-    until the whole chain had run.
-
-    So it is a step of its own, and **the point of this function is that there
-    is now ONE of it.** It ran only on the CLI road until 2026-09-16 (twice,
-    hand-written, once per layout), so `web/blueprints/build.py` — the
-    browser's Prep button — opened an attempt and carried nothing into it. That
-    used to be survivable: the folder had no attempt at all, so `launch`
-    refused it by name, and the refusal was accidentally the guard. Opening the
-    attempt removed the symptom and left the gap, so a device job could reach
-    the node and die for want of an electrode `.TSHS` — after the queue wait.
-
-    ``opened`` -- the attempts this prep has PLANNED (`materialize.Attempt`)
-    -- stands for the folders' own newest attempts, and ``plan`` receives
-    the copies: the gather is decided with the rest of the prep, before
-    anything is written (`job-system.md` § 5.0).
+    **Decided at prep's checkpoint 4a, with what every stage continues
+    from** (`job-system.md` § 5.0; the hand-over is one `Continuation`, and a
+    transport rung's is this, recorded as `.gathered-from`): refused before
+    anything is written when an upstream run has not concluded, or ran
+    another deck (:func:`transport_inputs`'s gates; strict composition,
+    ruling Q2).  The steps copy each entry into the attempt they open in its
+    container (:func:`_gather_into`).  *(It was a step of its own, run after
+    the five, until 2026-10-05; before 2026-09-16 it ran on the CLI road
+    alone, so the browser's Prep opened an attempt and carried nothing into
+    it, and a device job could reach the node without an electrode's
+    `.TSHS`.)*  `prep_calculation` asked directly renders the decks without
+    it: a deck is the reviewable artifact, whether or not the rungs before it
+    have run.
     """
-    from ..paths import attempt_dir as _adir
-    from ..paths import attempts_in as _ain
     from ..transport.stages import rung_containers
-
     base = Path(base_dir)
-    # A point's ladder lives under its own v-dir; a single-bias rung's lives
-    # under the stage directory -- the same folders the deck and the wrapper
-    # were written into, from the one door.
-    containers = rung_containers(base, task, stage)
-    out: List[Tuple[Path, Optional[float], List[tuple]]] = []
-    for container, volts in containers:
-        if opened is not None:
-            att = next((Path(a.dir) for a in opened
-                        if Path(a.dir).parent.resolve()
-                        == Path(container).resolve()), None)
-        else:
-            ns = _ain(container)
-            att = _adir(container, ns[-1]) if ns else None
-        if att is None:
-            continue          # nothing open here: prep has not run for it
-        out.append((att, volts,
-                    gather_transport_inputs(base, task, stage, att,
-                                            bias=volts, plan=plan)))
-    return out
-
+    return [(Path(container), volts,
+             transport_inputs(base, task, stage, bias=volts))
+            for container, volts in rung_containers(base, task, stage)]
 
 def _merge_run_jobset(path: Path, new: JobSet,
                       ladder: Optional[frozenset] = None) -> JobSet:
@@ -2412,7 +2433,7 @@ class PrepAnswer:
     #: The attempt opened or reused (`materialize.Attempt`).
     attempt: Optional[object] = None
     #: A transport bias scan: ``(attempt, volts, [(source, file), ...])``
-    #: per point (`gather_for_stage`).
+    #: per point (`gather_sources`).
     points: List[tuple] = dataclasses.field(default_factory=list)
     #: A transport rung's carry into its one attempt: ``(source, file)``.
     gathered: List[tuple] = dataclasses.field(default_factory=list)
@@ -2808,26 +2829,27 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         if why:
             raise PrepError(why)
 
-        # 4a · WHAT IT CONTINUES FROM (`job-system.md` § 5.4, plan W37): which run an
-        #      independent stage continues from -- the stage before it,
-        #      newest, by default -- read BEFORE anything is written, so a
-        #      refusal leaves nothing behind.  A named run is taken as said.
-        continuation = None
-        if kind == "run" and stage is not None:
-            from .continuation import continuation_answer
+        # 4a · WHAT IT BUILDS ON (`job-system.md` § 5.4, plan W37): the run
+        #      a stage continues from -- the stage before it, newest, by
+        #      default -- or the `relax` run a force-constant stage takes its
+        #      geometry from (`engines/vibration.md` § 5.2a); a transport
+        #      rung's inputs from the runs upstream.  Read BEFORE anything is
+        #      written, so a refusal leaves nothing behind; a named run is
+        #      taken as said.
+        from .continuation import continuation_answer, force_constant_stage
+        continuation = gather = None
+        if stage is not None and (kind == "run"
+                                  or force_constant_stage(task, stage)):
+            # A BENCHMARK of a force-constant stage writes every trial at
+            # the geometry `relax` reached, as its run is (§ 5.2a's table):
+            # the default, and nothing carried -- a trial measures from its
+            # deck.
             continuation, refused = continuation_answer(
                 base, task, stage, from_attempt=from_attempt, cold=cold)
             if refused:
                 raise PrepError(refused)
-        # WHAT THE ATTEMPT IS OPENED WITH, decided here and handed to the
-        # five steps, which open it once: the run it continues from, or --
-        # when it continues from nothing -- clean, so a carry an earlier
-        # prep left is taken away rather than read by an engine that was
-        # not told to (`materialize.prepare_attempt`).
-        continue_from = (continuation.source if continuation is not None
-                         else None)
-        start_clean = continuation is None
-        named = not (continuation is not None and continuation.by_default)
+        if kind == "run" and is_transport:
+            gather = gather_sources(base, task, stage)
         if on_found is not None:
             on_found(findings, notes)
 
@@ -2843,31 +2865,13 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                                 emit_sbatch=emit_sbatch, sweep=sweep,
                                 target=target, opened=opened,
                                 findings=deck_findings,
-                                continue_from=continue_from,
-                                cold=start_clean, named=named, plan=plan,
-                                resolved=resolved)
-        js = flat = None
-        points: list = []
-        gathered: list = []
+                                continuation=continuation, gather=gather,
+                                plan=plan, resolved=resolved)
+        js = None
+        flat = not resolved.shape.keeps_attempts_as_directories
         if kind == "run":
             js = JobSet.from_dict(json.loads(plan.read_text(
                 base / JOBSET_FILENAME)))
-            flat = not resolved.shape.keeps_attempts_as_directories
-            from ..transport.stages import scan_points
-            if flat:
-                _flat_continued_from(base, task, stage, continuation, plan)
-            elif is_transport:
-                # THE GATHER, planned with the rest: each rung's inputs from
-                # the runs upstream, into the attempt(s) just planned -- one
-                # per bias point for a scan, each against its own voltage --
-                # refused, before anything is saved, when an upstream run
-                # has not concluded (strict composition, ruling Q2).
-                got = gather_for_stage(base, task, stage, opened=opened,
-                                       plan=plan)
-                if scan_points(task, stage):
-                    points = got
-                else:
-                    gathered = [pair for _a, _v, g in got for pair in g]
 
         # 5 · THE SAVE -- always, once the whole plan stands and before
         #     anything is written (`checkpointing.md` § 9; user, 2026-10-03:
@@ -2928,16 +2932,23 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                       or "optimization") in KIND_ROLES
         out.cold = bool(cold)
         out.continuation = continuation
+        # WHAT EACH ATTEMPT GATHERED, as decided at 4a: the attempt opened
+        # in each container.
+        got = [(next((Path(a.dir) for a in opened
+                      if Path(a.dir).parent.resolve()
+                      == Path(c).resolve()), None), volts, inputs)
+               for c, volts, inputs in (gather or ())]
         if flat:
             out.flat = True
             run_dir, rep_stage, copied = base, stage, []
         else:
-            if points:
-                out.points = points
+            from ..transport.stages import scan_points
+            if is_transport and scan_points(task, stage):
+                out.points = got
                 return _finish(out)
             rep = opened[0]
             out.attempt = rep
-            out.gathered = gathered
+            out.gathered = [pair for _a, _v, g in got for pair in g]
             run_dir, rep_stage, copied = rep.dir, rep.stage, list(rep.copied)
         if continuation is not None:
             # THE DECISION, LOGGED (`job-system.md` § 5.4): which run, by

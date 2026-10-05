@@ -392,7 +392,7 @@ def test_render_plan_shows_warm_files_and_no_order():
     assert "JOB-SET PLAN -- demo (siesta, ladder)" in txt
     assert "C.psml" in txt                 # shared package
     assert "demo.XV" in txt                # the warm declaration
-    assert "warm files" in txt             # ...under its own heading
+    assert "restart files it declares" in txt  # ...headed as declared
     assert "afterok" not in txt            # no dependency kind survives
     assert "s1 -> s2" not in txt           # and no order it waits on
     # It still says how to run them, because a ladder IS ordered for a person.

@@ -140,4 +140,5 @@ def test_a_relax_stage_renamed_in_another_case_is_still_the_relaxation(
     r = _jobset("prep", "run", "freq", "--bundle", bundle,
                 "--target", "this")
     assert r.exit_code != 0, r.output
-    assert "takes its geometry from the `Relax` stage" in r.output, r.output
+    assert "`freq` builds on the newest attempt of `Relax`" in r.output, \
+        r.output

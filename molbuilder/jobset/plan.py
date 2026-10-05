@@ -19,7 +19,7 @@ from __future__ import annotations
 #: every file molbuilder writes is a row there.
 from ..runfiles import PLAN_FILE as FILENAME  # noqa: E402
 
-from typing import List
+from typing import List, Optional
 
 from .materialize import stage_refs
 from .model import JobSet
@@ -47,13 +47,17 @@ def resources_text(r) -> str:
     return ", ".join(bits) if bits else "(none stated)"
 
 
-def render_plan(jobset: JobSet) -> str:
-    """Render the plan: one row per job — its seq, input deck, warm files
-    and resources.  Reads only the JobSet -- no IO.
+def render_plan(jobset: JobSet, this_prep: Optional[List[str]] = None) -> str:
+    """Render the plan: one row per job — its seq, input deck, the restart
+    files it declares it may take, and resources -- and, under the table,
+    ``this_prep``: what this prep's hand-over takes, the line both doors
+    print (`job-system.md` § 5.4).  Reads only what it is handed -- no IO.
 
     Nothing here orders anything, so no column claims an order: a carry is
-    a COPY ``prep --from`` makes, read from the attempt's marker, not a
-    relation between rows."""
+    a COPY a hand-over makes, recorded in the attempt's marker, not a
+    relation between rows.  *(The column was headed "warm files" until
+    2026-10-05 and read as what was copied -- D28: `medium` listed `H2.CG`,
+    which its carry withheld.)*"""
     js = jobset
     lines: List[str] = [
         f"JOB-SET PLAN -- {js.name} ({js.engine}, {js.kind})",
@@ -61,7 +65,7 @@ def render_plan(jobset: JobSet) -> str:
         f"{', '.join(js.shared) or '(none)'}",
         "",
     ]
-    hdr = ("seq", "job", "input", "warm files", "resources")
+    hdr = ("seq", "job", "input", "restart files it declares", "resources")
     rows = []
     # The column is the stage's SEQ, never its row.  A row index is the
     # stage's POSITION, which `engines/stages.md` R5 forbids as an identifier
@@ -86,6 +90,9 @@ def render_plan(jobset: JobSet) -> str:
     lines.append("  " + fmt(hdr))
     lines.append("  " + "  ".join("-" * n for n in w))
     lines += ["  " + fmt(r) for r in rows]
+    if this_prep:
+        lines.append("")
+        lines += [f"This prep: {line}" for line in this_prep]
 
     # How these are launched.  NEVER "submit in parallel", which is the one
     # thing that never happens: a scheduler is handed ONE job per invocation

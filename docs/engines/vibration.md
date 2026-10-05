@@ -1117,20 +1117,24 @@ them, and a preset that relaxed at 0.05 eV/Å left 0.01 on `freq` — M11 SS-C6.
 On PySCF the one `freq` rung relaxes inside its deck, so its `geom_*` settings
 are read there.
 
-**The relaxed geometry travels as coordinates, not as a restart file.** When
-`prep` prepares a force-constant stage — `freq`, or any other stage after `relax` in a displacement sweep (§ 5.9); which stages those are is asked of `vibration_render_kind`, never of a name — and the ladder holds a `relax` stage, it reads the
-relaxed geometry from that stage's **newest attempt, which must have ended
-on its own with exit code 0** — the one rule for a run to build on
-([`execution/job-system.md`](?doc=execution/job-system.md) § 5.4; a
-relaxation that failed was measured at until 2026-10-03) — a `relax`
-re-launched to tighten is the geometry the person means, so an older attempt
-never stands in for one still running
-— the last coordinate block of the stage's own output, through the one SIESTA
-output parser (the run door finds it — `runs.run_of(attempt, stage)`,
-`Run.stdout`: the stage's own output at its run's index, so a flat bundle
-answers with this stage's file), in the sorted
-order both decks share, **and the cell that run used**
-— and writes it as the force-constant deck's coordinates, in that cell
+**The relaxed geometry travels as coordinates; the hand-over carries the rest.**
+A force-constant stage — `freq`, or any other stage after `relax` in a
+displacement sweep (§ 5.9); which stages those are is asked of
+`vibration_render_kind`, never of a name — **builds on the ladder's `relax`
+stage, and that is a hand-over like any other**
+([`execution/job-system.md`](?doc=execution/job-system.md) § 5.4, W38 F9;
+user, 2026-10-05: *"copy like any hand-over"*): one `Continuation`, decided at
+prep's checkpoint 4a — by default `relax`'s **newest attempt, which must have
+ended on its own with exit code 0** (a `relax` re-launched to tighten is the
+geometry the person means, so an older attempt never stands in for one still
+running), or the `relax` run named with `--from`, taken as said — and recorded
+as the attempt's `.continued-from`, so the run says which relaxation it was
+measured at. From that run prep reads the **last coordinate block of the
+stage's own output**, through the one SIESTA output parser (the run door finds
+it — `runs.run_of(attempt, stage)`, `Run.stdout`: the stage's own output at its
+run's index, so a flat bundle answers with this stage's file), in the sorted
+order both decks share, **and the cell that run used** — and writes it as the
+force-constant deck's coordinates, in that cell
 (`jobset/prep.py::_vibration_stage_geometry`). The output rather than
 `<label>.XV`, because on the flat shape both stages share one `.XV` and the
 force-constant run overwrites it with its last displacement, while the output
@@ -1138,17 +1142,39 @@ carries the stage's token in its name; the cell rather than a re-derived
 vacuum box, and the offset stated `0` with it (`model/structure-periodicity.md`
 § 6.0: coordinates from an engine state its origin), because otherwise the
 deck re-centres the atoms in their new span, and a relaxed geometry moved
-against the real-space grid is not stationary on that grid any more. The FC deck's start
-state stays the kind's (§ 5.3: `MD.UseSaveXV .false.`), because honouring a
-found `.XV` is exactly what would take a displaced geometry as the stationary
-point on a re-run. `prep` **refuses to prepare a force-constant stage before `relax` has
-ended on its own with exit code 0** when the ladder has one, naming the stage
-to run first — or, when it failed, to launch it again — the job set's own
-order, not a guess — and **refuses a force-constant stage when the box is unticked
-and the ladder holds no enabled `relax` stage**: the box says *relax first*
-and the ladder holds nothing that would, so the description contradicts
-itself, and the refusal names the two ways out (add the stage, or state the
-structure relaxed) rather than measuring at a geometry nobody chose.
+against the real-space grid is not stationary on that grid any more.
+
+**And the hand-over carries that run's restart files, as every hand-over
+does**: its density, which the force-constant deck reads (`DM.UseSaveDM
+.true.`, § 5.3), so the reference step's SCF starts from the relaxed density —
+fewer iterations, the same answer — and its records, which the run appends to,
+as on the flat layout, where the two stages share a folder and the files are
+simply there. The `.XV` is copied and never read: the FC deck's start state
+stays the kind's (§ 5.3: `MD.UseSaveXV .false.`), because honouring a found
+`.XV` is exactly what would take a displaced geometry as the stationary point
+on a re-run. *(Until 2026-10-05 the stage read `relax`'s newest attempt on its
+own and recorded nothing; by default it copied nothing, and a `--from` naming a
+`relax` run copied that run's files while the geometry still came from the
+newest attempt.)*
+
+**Every situation, and what prep does** — the force-constant stage of a SIESTA
+vibration:
+
+| the ladder | asked | the geometry | the files | recorded |
+|---|---|---|---|---|
+| an enabled `relax` — whatever the box says (§ 2.2) | nothing: the default | `relax`'s newest attempt, which must have ended on its own with exit code 0 — refused while it has not (not launched, queued, running, stopped without its marker, failed), naming the command, and the newest earlier run of `relax` that did when there is one | that run's, by the hand-over's rule | `.continued-from`, the ledger's `continues`, `run.json` at launch |
+| | `--from <a run of relax>` | that run, taken as said — prep states what it is (failed, not concluded, not converged: *expect imaginary frequencies*), and refuses only an output that holds no geometry | that run's | the same |
+| | `--from` a run of another stage | refused: the stage builds on `relax` | — | — |
+| | `--cold` | refused: the stage measures at the geometry `relax` reached; to measure the structure as given, disable `relax` and state the structure relaxed | — | — |
+| no enabled `relax`, the structure stated relaxed (`already_relaxed`) | nothing, or `--cold` | the structure as given; its relaxation record is shown and checked against this calculation (§ 2.2) | none | none |
+| | `--from` | refused: nothing in this ladder relaxes — the stage measures the structure as given | — | — |
+| no enabled `relax`, the structure not stated relaxed | anything | refused, naming the two ways out — add `relax` before the stage and run it first, or state the structure relaxed: the box says *relax first* and the ladder holds nothing that would, so the description contradicts itself, and it is refused rather than measured at a geometry nobody chose | — | — |
+| the flat layout | nothing (`--from` and `--cold` name attempts, which flat keeps none of) | `relax`'s latest run in the folder, which must have ended on its own with exit code 0 | nothing copied: they lie in the folder | the stage's `<basename>.continued-from` |
+| a benchmark of the stage | — | `relax`'s newest attempt, as a run's default — every trial's deck at that geometry (§ 5.8) | none: a trial measures from its deck | none |
+
+A displacement sweep's stages each take the same rows; a stage prepped is not
+prepped again ([`job-system.md`](?doc=execution/job-system.md) § 5.0), so the
+`relax` run a stage was measured at is the one its record names.
 
 **The relaxed geometry leaves the input's relaxation record behind.** The
 record a structure arrives with (`info.relaxation`, § 2.2) is about the

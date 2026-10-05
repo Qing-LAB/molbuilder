@@ -863,6 +863,11 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
                          ("run_sh", "*.run.sh")):
         if key in case or f"{key}_lacks" in case:
             _road_lines(case, key, _the_runs(bundle, pattern).read_text())
+    # ...and the plan the prep wrote, `STAGE-PLAN.md`, which says under its
+    # table what this prep's hand-over took (`job-system.md` § 5.4)
+    if "plan" in case or "plan_lacks" in case:
+        from molbuilder.jobset.plan import FILENAME as PLAN_FILE
+        _road_lines(case, "plan", (bundle / PLAN_FILE).read_text())
     # ...a benchmark's trials, when the row names them
     if kind == "bench" and ("bench_gres" in case
                             or "bench_header_lacks" in case):

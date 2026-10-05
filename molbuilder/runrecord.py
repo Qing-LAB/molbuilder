@@ -60,6 +60,36 @@ def continued_from_marker(where: Path, basename: Optional[str] = None
                           else basename + _rf.tail(".continued-from"))
 
 
+def write_continued_from(where, run, *, basename: Optional[str] = None,
+                         plan=None) -> Path:
+    """THE ONE WRITER of the run a stage continues from -- every hand-over is
+    one `Continuation`, and this is its record beside the run
+    (`job-system.md` § 5.4): ``run``, an attempt from the calculation folder
+    -- or on the flat layout the run's own name -- as
+    :func:`continued_from_marker`'s file, through `persist`, or into
+    ``plan`` (`jobset.planned.Plan`).  *(Three writers wrote it by hand
+    until 2026-10-05: the attempt's opener, prep's flat arm and launch's
+    flat re-launch.)*"""
+    marker = continued_from_marker(where, basename)
+    data = (str(run) + "\n").encode("utf-8")
+    if plan is not None:
+        plan.bytes(marker, data)
+        return marker
+    _persist().write_bytes(marker, data)
+    return marker
+
+
+def read_continued_from(where, basename: Optional[str] = None
+                        ) -> Optional[str]:
+    """The run :func:`write_continued_from` recorded, or ``None``."""
+    try:
+        text = continued_from_marker(where, basename).read_text(
+            encoding="utf-8")
+    except OSError:
+        return None
+    return text.strip() or None
+
+
 def read_concluded(text: Optional[str]) -> Optional[dict]:
     """The conclusion marker's first line, ``rc=<N> at <when>[; <note>]`` as
     the wrapper writes it (`runwrap.py`), as ``{"code": N, "at": when,
@@ -289,4 +319,4 @@ def read_gathered_from(attempt_dir) -> List[dict]:
     return out
 
 
-__all__ = ["RUN_LAUNCH_SCHEMA", "RUN_LAUNCH_FILE", "LaunchRecordError", "continued_from_marker", "read_concluded", "Ending", "ending", "launch_record_path", "write_launch", "launch_record", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]
+__all__ = ["RUN_LAUNCH_SCHEMA", "RUN_LAUNCH_FILE", "LaunchRecordError", "continued_from_marker", "write_continued_from", "read_continued_from", "read_concluded", "Ending", "ending", "launch_record_path", "write_launch", "launch_record", "GATHERED_FROM_FILE", "write_gathered_from", "read_gathered_from"]
