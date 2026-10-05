@@ -402,7 +402,13 @@ def _read_scf_history(
                             "cycle":   cy,
                             "energy":  float(e)  * _HARTREE_TO_EV,
                             "delta_E": float(de) * _HARTREE_TO_EV,
-                            "gnorm":   float(g)  * _HA_BOHR_TO_EV_ANG,
+                            # |g| is PySCF's orbital-gradient norm, an
+                            # ENERGY (Hartree over dimensionless orbital
+                            # rotations, `web/trajectory.md` § 3), converted
+                            # as the progress log's writer converts it -- the
+                            # force factor stood here until 2026-10-05, 1.89x
+                            # too large against its own tolerance.
+                            "gnorm":   float(g)  * _HARTREE_TO_EV,
                             "ddm":     float(ddm),
                         })
                         prev_cycle = cy
