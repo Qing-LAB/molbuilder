@@ -1233,8 +1233,8 @@ WRITTEN: "tuple[Artifact, ...]" = (
              "what each step of a prep received, decided and produced",
              fields=("engine", "shape"), when="prep", level="calculation",
              kind="record",
-             writer="`jobset prep --pipeline-log` (`pipeline_log.PipelineLog`)",
-             only="`--pipeline-log`"),
+             writer="every prep, from either door, beside its "
+                    "`STAGE-PLAN.md` (`pipeline_log.PipelineLog`)"),
     # ---- NOT named on the label: fixed names, and families of them --------
     # A FIXED NAME'S OWNER TAKES IT FROM HERE (`job-contracts.md` § 2.2): the
     # constants above are the one spelling.
@@ -1618,7 +1618,9 @@ def manifest(label: str, stage: Optional[str] = None,
     ``run.json`` in the hierarchy where a flat stage writes
     ``<base>.run.json`` (:attr:`Artifact.hierarchical`).  *(The card named the
     flat spelling for every calculation until 2026-10-04, plan D22.)*  A
-    file written only sometimes carries its condition, ``only``.
+    file written only sometimes carries its condition, ``only``; each row
+    says the folder it lands in, ``level`` -- a rung's pipeline log is the
+    calculation's, at its root.
 
     Every name comes out of :func:`compose`, so a card cannot show a spelling
     the writers do not use -- which is the failure this module exists for.
@@ -1644,6 +1646,7 @@ def manifest(label: str, stage: Optional[str] = None,
         rows.append({"name": name,
                      "what": a.what,
                      "when": a.when,
+                     "level": a.level,
                      "carries_attempt": a.attempt != "never",
                      "only": a.only})
     return rows

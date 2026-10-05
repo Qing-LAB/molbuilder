@@ -623,8 +623,10 @@ def _road_card_written(specs, bundle) -> None:
     """Every name the Task setup card gives a stage -- the catalogue's
     `manifest`, in the calculation's shape, for the moments asked -- is a file
     in that stage's folder or its attempts (the hierarchy), or in the folder
-    itself (flat).  A name written only sometimes (`only`) is not promised;
-    a field (`<stamp>`) stands for any value."""
+    itself (flat); a file the catalogue places at the calculation's level --
+    the stage's pipeline log -- in the calculation's folder, whatever the
+    shape.  A name written only sometimes (`only`) is not promised; a field
+    (`<stamp>`) stands for any value."""
     import fnmatch
     import re
     from molbuilder.jobset.materialize import stage_home
@@ -633,17 +635,17 @@ def _road_card_written(specs, bundle) -> None:
     task = read_task(bundle / "task.json")
     for spec in specs:
         token = stage_home(bundle, task, spec["stage"]).token
-        if task.shape == "hierarchical":
-            held = [p.name for p in (bundle / token).rglob("*") if p.is_file()]
-        else:
-            held = [p.name for p in bundle.iterdir() if p.is_file()]
+        at_root = [p.name for p in bundle.iterdir() if p.is_file()]
+        held = ([p.name for p in (bundle / token).rglob("*") if p.is_file()]
+                if task.shape == "hierarchical" else at_root)
         for row in manifest(task.label, token, task.engine,
                             tuple(spec["moments"]), task.calculation,
                             task.shape):
             if row["only"]:
                 continue
             pattern = re.sub(r"<[a-z_]+>", "*", row["name"])
-            assert any(fnmatch.fnmatchcase(n, pattern) for n in held), (
+            where = at_root if row["level"] == "calculation" else held
+            assert any(fnmatch.fnmatchcase(n, pattern) for n in where), (
                 f"the card names {row['name']} for {spec['stage']}, and "
                 f"no such file is there: {sorted(held)}")
 

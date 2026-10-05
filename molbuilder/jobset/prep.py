@@ -584,7 +584,6 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                      sweep=None, pins=None, translation=None,
                      target: Optional[str] = None,
                      chosen=None,
-                     pipeline_log: bool = False,
                      opened: Optional[list] = None,
                      findings: Optional[list] = None,
                      continue_from: Optional[str] = None,
@@ -614,10 +613,11 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     steps 1 and 3 are now on the same side of the split, which is what
     § 2.3.1's *"step 3 cannot precede step 1"* was always about.
 
-    ``pipeline_log`` writes a step-by-step record of what each step received,
-    decided and produced, beside this prep's ``STAGE-PLAN.md``. Off by
-    default: it is an observer of the pipeline, never a step in it, and no
-    generated artifact differs either way (`script-preparation.md` § 4.5).
+    Every prep writes the PIPELINE LOG -- what each step received, decided
+    and produced -- beside this prep's ``STAGE-PLAN.md``: an observer of the
+    pipeline, never a step in it (`script-preparation.md` § 4.5; until
+    2026-10-05 only ``--pipeline-log`` wrote it, and the Task setup tab never
+    did).
 
     ``opened``, when given, receives the :class:`~molbuilder.jobset.materialize.Attempt`
     reports of the attempts this prep opened.  A caller reporting on the
@@ -653,7 +653,6 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                                sweep=sweep, pins=pins,
                                translation=translation, target=target,
                                chosen=chosen,
-                               pipeline_log=pipeline_log,
                                opened=opened, findings=findings,
                                continue_from=continue_from, cold=cold,
                                named=named)
@@ -696,29 +695,27 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     # It is not closed on a refusal and does not need to be: every line is
     # flushed as it is written, so a prep that dies leaves a file ending at the
     # step that refused -- which is the step a reader is looking for.
-    log = None
-    if pipeline_log:
-        _token = stage_home(base, task, stage).token
-        _record = (base / bench_container(Shape.named(task.shape), _token)
-                   if sweep is not None else base)
-        _record.mkdir(parents=True, exist_ok=True)
-        log = PipelineLog.open(_record, label=task.label, token=_token,
-                               engine=task.engine, shape=task.shape)
-        log.phase("STEP 1 · MACHINE — where this job will run")
-        log.received("calculation", str(base))
-        log.received(TASK_FILENAME, f"{task.label} · {task.engine} · "
-                                    f"{task.shape} · "
-                                    f"{len(task.stages or ())} stage(s)")
-        for _group, _line in _environment_rows(environment):
-            log.produced(_group, _line)
-        # WHICH FILE supplied each execution setting -- through the ONE
-        # formatter that already answers this, not a second table of the same
-        # facts.  It is also the security boundary: `config_provenance`
-        # publishes only the sections marked provenance-safe
-        # (`configuration.md` § 4), so nothing else may be printed here.
-        from ..runtime_config import config_provenance, format_provenance
-        log.produced("config", "which file supplied each setting")
-        log.text(format_provenance(config_provenance(project_dir=base)))
+    _token = stage_home(base, task, stage).token
+    _record = (base / bench_container(Shape.named(task.shape), _token)
+               if sweep is not None else base)
+    _record.mkdir(parents=True, exist_ok=True)
+    log = PipelineLog.open(_record, label=task.label, token=_token,
+                           engine=task.engine, shape=task.shape)
+    log.phase("STEP 1 · MACHINE — where this job will run")
+    log.received("calculation", str(base))
+    log.received(TASK_FILENAME, f"{task.label} · {task.engine} · "
+                                f"{task.shape} · "
+                                f"{len(task.stages or ())} stage(s)")
+    for _group, _line in _environment_rows(environment):
+        log.produced(_group, _line)
+    # WHICH FILE supplied each execution setting -- through the ONE
+    # formatter that already answers this, not a second table of the same
+    # facts.  It is also the security boundary: `config_provenance`
+    # publishes only the sections marked provenance-safe
+    # (`configuration.md` § 4), so nothing else may be printed here.
+    from ..runtime_config import config_provenance, format_provenance
+    log.produced("config", "which file supplied each setting")
+    log.text(format_provenance(config_provenance(project_dir=base)))
     # THE one template door (`template.find_template`, architecture.md
     # § 3.2): the folder's one template, named for the label.
     try:
@@ -758,22 +755,21 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                        translation=translation, environment=environment)
     except ResolveError as exc:
         raise PrepError(str(exc)) from exc
-    if log is not None:
-        log.phase("STEP 2 · RESOLVE — the values for this rung")
-        log.received(template_path.name, f"{len(pset[0].provenance)} fields")
-        log.received("stage", pset.stage or "(no ladder)")
-        log.received("allocation", _flat_resources(allocation or Resources()))
-        for _el in pset:
-            _rows = config_rows(_el.values, _el.provenance,
-                                _el.render_config())
-            _decided = [r for r in _rows if r[2] != "template"]
-            log.step(f"{_el.label} — what this rung decided")
-            for _n, _v, _s in _decided:
-                log.chose(_n, _v, _s)
-            log.step(f"{_el.label} — the rest, as the template declares")
-            for _n, _v, _s in _rows[len(_decided):]:
-                log.chose(_n, _v, _s)
-        log.produced("ParameterSet", f"{len(pset)} element(s) -> spec_for")
+    log.phase("STEP 2 · RESOLVE — the values for this rung")
+    log.received(template_path.name, f"{len(pset[0].provenance)} fields")
+    log.received("stage", pset.stage or "(no ladder)")
+    log.received("allocation", _flat_resources(allocation or Resources()))
+    for _el in pset:
+        _rows = config_rows(_el.values, _el.provenance,
+                            _el.render_config())
+        _decided = [r for r in _rows if r[2] != "template"]
+        log.step(f"{_el.label} — what this rung decided")
+        for _n, _v, _s in _decided:
+            log.chose(_n, _v, _s)
+        log.step(f"{_el.label} — the rest, as the template declares")
+        for _n, _v, _s in _rows[len(_decided):]:
+            log.chose(_n, _v, _s)
+    log.produced("ParameterSet", f"{len(pset)} element(s) -> spec_for")
 
     # ---- 3. render the deck(s) ----------------------------------------- #
     struct = _structure_for(task, base)
@@ -824,10 +820,9 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         _sorted = sort_by(struct, "held-first")
         _perm_path = write_permutation(base, _sorted)
         struct = _sorted.structure
-        if log is not None:
-            log.step("the atom order the engine needs")
-            log.produced(_perm_path.name,
-                         f"key held-first, {struct.n_atoms} atoms -> {_perm_path.name}")
+        log.step("the atom order the engine needs")
+        log.produced(_perm_path.name,
+                     f"key held-first, {struct.n_atoms} atoms -> {_perm_path.name}")
         _render_kind = _rung_kind(task, pset.stage)
         struct, _render_cell, _relaxed_by = _vibration_stage_geometry(
             base, task, pset, struct, log=log)
@@ -972,12 +967,11 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             # block), then read the file back and refuse one that does not say what
             # it was meant to say.  The conductor says WHEN; the framework owns the
             # order (`script-preparation.md` § 4.3).
-            if log is not None:
-                log.phase(f"STEP 3 · DECK — {script}")
-                log.received("config", f"{type(cfg).__name__}"
-                                       + (f", stage_token={token}" if token else "")
-                                       + (f", trial {element.label}"
-                                          if element.is_trial else ""))
+            log.phase(f"STEP 3 · DECK — {script}")
+            log.received("config", f"{type(cfg).__name__}"
+                                   + (f", stage_token={token}" if token else "")
+                                   + (f", trial {element.label}"
+                                      if element.is_trial else ""))
             with _user_error_as_prep():
                 with _calling("spec_for", engine=task.engine,
                               where=script, log=log):
@@ -1016,14 +1010,13 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
                                  label=_label, token=(token or None),
                                  frame=spec.engine_frame,
                                  relaxes=(_render_kind == "optimization"))
-            if log is not None:
-                log.step("what this deck's text PROMISES, kept")
-                log.produced("sibling_artifacts",
-                             "written" if seam.sibling_artifacts is not None
-                             else "nothing (W5)")
-                log.produced("trajectory log",
-                             "seeded" if getattr(cfg, "write_molwatch_log", False)
-                             else "not asked for")
+            log.step("what this deck's text PROMISES, kept")
+            log.produced("sibling_artifacts",
+                         "written" if seam.sibling_artifacts is not None
+                         else "nothing (W5)")
+            log.produced("trajectory log",
+                         "seeded" if getattr(cfg, "write_molwatch_log", False)
+                         else "not asked for")
             # A BENCHMARK TRIAL IS NOT FINISHED: it measures how long a
             # setting takes under capped SCFs, and modes derived from those
             # would be a spectrum of nothing (`engines/vibration.md` § 5.5).
@@ -1066,13 +1059,12 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
             # arms that stood here were unreachable -- U6 close.)
             ladder=frozenset(s.name for s in task.stages))
     js.write(record_dir / JOBSET_FILENAME)
-    if log is not None:
-        log.phase("FLOOR 3 · THE JOB-SET — what was declared to the runner")
-        log.received("kind", kind)
-        for _j in js.jobs:
-            log.produced(_j.name, f"{_j.script}  "
-                                  f"{_flat_resources(_j.resources)}")
-        log.produced(JOBSET_FILENAME, str(record_dir / JOBSET_FILENAME))
+    log.phase("FLOOR 3 · THE JOB-SET — what was declared to the runner")
+    log.received("kind", kind)
+    for _j in js.jobs:
+        log.produced(_j.name, f"{_j.script}  "
+                              f"{_flat_resources(_j.resources)}")
+    log.produced(JOBSET_FILENAME, str(record_dir / JOBSET_FILENAME))
     # The allocation is NOT passed on: every job already carries its own
     # resolved resources, per element (generator.md § 5).  Passing it made
     # prep_jobset re-apply the BASE allocation over every job — the review's
@@ -1131,8 +1123,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
         if opened is not None:
             opened.extend(reports)
 
-    if log is not None:
-        log.close()
+    log.close()
     return dirs
 
 
@@ -1279,7 +1270,7 @@ def _resolve_transport(base, task, stage: str, allocation,
     Returns the rung's :class:`~molbuilder.resolve.ResolvedConfig` — **the
     whole element, not just its values**. What is gained over assembling it by
     hand is **provenance**: every value says whether the template, the stage or
-    a pin set it, which is the whole of what `--pipeline-log` had nothing to
+    a pin set it, which is the whole of what the pipeline log had nothing to
     print.
 
     THE RESOURCES RIDE ON THE ELEMENT, and returning ``element.values`` alone
@@ -1451,7 +1442,6 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                     sweep=None, pins=None, translation=None,
                     target: Optional[str] = None,
                     chosen=None,
-                    pipeline_log: bool = False,
                     opened: Optional[list] = None,
                     findings: Optional[list] = None,
                     continue_from: Optional[str] = None,
@@ -1538,18 +1528,16 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
     # template now, so there IS a resolve step whose inputs and outputs are
     # worth recording.  Opened here rather than at step 1 because it is named
     # for the rung, and the rung is not known until the description is read.
-    _tlog = None
-    if pipeline_log:
-        from ..pipeline_log import PipelineLog as _PL
-        _tlog = _PL.open(base, label=task.label, token=token,
-                         engine=task.engine, shape=task.shape)
-        _tlog.phase("STEP 1 · MACHINE — where this job will run")
-        _tlog.received("calculation", str(base))
-        _tlog.received(TASK_FILENAME,
-                       f"{task.label} · transport · {task.shape} · "
-                       f"{len(task.stages or ())} stage(s)")
-        for _g, _l in _environment_rows(environment):
-            _tlog.produced(_g, _l)
+    from ..pipeline_log import PipelineLog as _PL
+    _tlog = _PL.open(base, label=task.label, token=token,
+                     engine=task.engine, shape=task.shape)
+    _tlog.phase("STEP 1 · MACHINE — where this job will run")
+    _tlog.received("calculation", str(base))
+    _tlog.received(TASK_FILENAME,
+                   f"{task.label} · transport · {task.shape} · "
+                   f"{len(task.stages or ())} stage(s)")
+    for _g, _l in _environment_rows(environment):
+        _tlog.produced(_g, _l)
     # A STAGE TURNED OFF never reaches here: the entry refuses it first
     # (`task.stage_disabled`, `prep_stage`) -- the seed is skippable by
     # design (archive/2026-09-01-transport-design.md, ruling Q4).
@@ -1762,8 +1750,7 @@ def _prep_transport(base_dir, stage: Optional[str] = None, *,
                              named=named)
     if opened is not None:
         opened.extend(reports)
-    if _tlog is not None:
-        _tlog.close()
+    _tlog.close()
     return dirs
 
 
@@ -2512,7 +2499,6 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                target: Optional[str] = None, allocation=None,
                from_attempt: Optional[str] = None, cold: bool = False,
                env: Optional[str] = None, emit_sbatch: bool = True,
-               pipeline_log: bool = False,
                on_found=None) -> PrepAnswer:
     """**`prep`, the verb** -- what `molbuilder jobset prep` and the Task setup
     tab's Prep buttons both call (`job-system.md` § 5.3).
@@ -2820,8 +2806,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                                 emit_sbatch=emit_sbatch, sweep=sweep,
                                 pins=pins, translation=translation,
                                 target=target, chosen=chosen,
-                                pipeline_log=pipeline_log, opened=opened,
-                                findings=deck_findings,
+                                opened=opened, findings=deck_findings,
                                 continue_from=continue_from,
                                 cold=start_clean, named=named)
         seen: set = set()
@@ -2837,11 +2822,12 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             deck_findings=[i for i in deck_findings
                            if not (repr(i.to_json()) in seen
                                    or seen.add(repr(i.to_json())))])
-        if pipeline_log:
-            from ..pipeline_log import log_name
-            out.pipeline_log = (container or base) / log_name(
-                task.label, stage_home(base, task, stage).token or "", task.engine,
-                task.shape)
+        # THE PIPELINE LOG, which every prep writes (`script-preparation.md`
+        # § 4.5): where this one is.
+        from ..pipeline_log import log_name
+        out.pipeline_log = (container or base) / log_name(
+            task.label, stage_home(base, task, stage).token or "", task.engine,
+            task.shape)
         if kind == "bench":
             return _finish(out)
 

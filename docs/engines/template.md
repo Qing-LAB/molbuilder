@@ -2008,9 +2008,10 @@ Five obligations, each naming the reader it binds.
   state and written, never left to the engine
   ([`science/chemistry-correctness.md`](?doc=science/chemistry-correctness.md)
   § 2a);
-* the per-parameter trace (`config_rows`) is written only when a person passes
-  `jobset prep --pipeline-log` on the CLI; the browser road writes none
-  (`plan.md` W20). Obligation 5 holds on one road of two.
+* ~~the per-parameter trace (`config_rows`) is written only when a person
+  passes `jobset prep --pipeline-log` on the CLI; the browser road writes none
+  (`plan.md` W20)~~ — **closed 2026-10-05** (M2e): every prep writes the
+  pipeline log, from either door, so obligation 5 holds on both roads.
 
 **Three mechanism choices are open and are the user's**, each with the
 proposal the 2026-09-22 structure-API audit made:

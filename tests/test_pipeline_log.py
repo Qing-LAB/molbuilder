@@ -1,18 +1,17 @@
 """The pipeline provenance log — `script-preparation.md` § 4.5.
 
-**What these tests are about is the log's CONTRACT, not its wording.**  Three
+**What these tests are about is the log's CONTRACT, not its wording.**  Two
 promises make it worth having and each is pinned here:
 
-1. it changes nothing (off by default, and on it produces no different
-   artifact) — a debugging aid that perturbs the thing it observes is worse
-   than none;
-2. it answers *where did this value come from* — every value written with
+1. it answers *where did this value come from* — every value written with
    the source it came from, not just the number it ended up being;
-3. it says what a ``Block`` produced — the visibility the check gate
+2. it says what a ``Block`` produced — the visibility the check gate
    structurally cannot give (W11).
 
 Plus the one the flat layout forces: **two rungs of one calculation prep into
-the same directory, and their logs must not be the same file.**
+the same directory, and their logs must not be the same file.**  Every prep
+writes it (M2e, 2026-10-05); that it is on disk where the card says is the
+catalogue's case table (`tests/data/the_catalogue.toml`).
 """
 from __future__ import annotations
 
@@ -77,9 +76,9 @@ def _calculation(tmp_path, engine: str, shape: str, name: str = "BDT"):
     return dest, [s.name for s in stages]
 
 
-def _prep(dest, stage, *, log=True):
-    return prep_calculation(dest, stage, allocation=Resources(mpi_np=8, cpus_per_task=1),
-                            pipeline_log=log)
+def _prep(dest, stage):
+    return prep_calculation(dest, stage,
+                            allocation=Resources(mpi_np=8, cpus_per_task=1))
 
 
 def _the_log(dest):
@@ -88,68 +87,11 @@ def _the_log(dest):
     return found[0].read_text(encoding="utf-8")
 
 
-# --------------------------------------------------------------------- #
-#  1. It changes nothing                                                 #
-# --------------------------------------------------------------------- #
-
-@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
-def test_no_log_is_written_unless_it_is_asked_for(tmp_path, engine):
-    """**W13**: off by default, and off means no file — not an empty one.
-
-    The flag exists because this is an observer of the pipeline; a run that
-    did not ask for one must be unable to tell it exists.
-    """
-    dest, stages = _calculation(tmp_path, engine, "flat")
-    _prep(dest, stages[0], log=False)
-    assert list(dest.rglob("*.pipeline.log")) == []
-
-
-@pytest.mark.parametrize("engine", ["siesta", "pyscf"])
-def test_the_log_changes_no_generated_artifact(tmp_path, engine):
-    """**W13**, and the whole premise.  Every file `prep` writes must be identical
-    with the log on and off — a record that perturbs what it records is
-    worse than no record, and this is the assertion that keeps it true when
-    someone later reaches for a value the log does not yet have.
-
-    Normalised for the two things that differ between ANY two preps: the
-    generation timestamp, and the calculation's own path (which
-    ``STAGE-PLAN.md`` prints).  Getting that normalisation wrong is how this
-    check first reported a false failure.
-    """
-    def _fingerprint(dest):
-        out = {}
-        for p in sorted(dest.rglob("*")):
-            if not p.is_file() or p.name.endswith(".pipeline.log"):
-                continue
-            t = p.read_text(encoding="utf-8", errors="replace")
-            # The PARENT too, not only the calculation: `task.json` records
-            # the structure file it was described from, and that sits beside
-            # the calculation.  Normalising one and not the other reported
-            # `task.json` -- a file `prep` never writes -- as changed by the
-            # log.  The harness, not the product; the same class of mistake
-            # this whole record exists to make findable.
-            t = t.replace(str(dest.parent), "<PARENT>")
-            t = t.replace(str(dest), "<DEST>").replace(dest.name, "<NAME>")
-            t = re.sub(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}"
-                       r"(?:[.+\-]\S*)?", "<T>", t)
-            t = re.sub(r"\b1[0-9]{9}\.[0-9]+\b", "<W>", t)   # epoch clock
-            out[p.relative_to(dest).as_posix()
-                .replace(dest.name, "<NAME>")] = t
-        return out
-
-    # SEPARATE parents, IDENTICAL leaf name: the two preps must not share a
-    # directory, and the calculation's own name must not be what differs --
-    # it reaches the deck's identity line, the wrapper and STAGE-PLAN.md.
-    (tmp_path / "a").mkdir()
-    (tmp_path / "b").mkdir()
-    off, off_stages = _calculation(tmp_path / "a", engine, "flat")
-    on, on_stages = _calculation(tmp_path / "b", engine, "flat")
-    _prep(off, off_stages[0], log=False)
-    _prep(on, on_stages[0], log=True)
-    a, b = _fingerprint(off), _fingerprint(on)
-    assert sorted(a) == sorted(b), "the log added or removed a file"
-    differ = [k for k in a if a[k] != b[k]]
-    assert differ == [], f"the log changed {differ}"
+# Retired 2026-10-05, when every prep began writing the log (M2e): two tests
+# of the switch that turned it on -- that a prep without it wrote none, and
+# that a prep with it wrote every other file byte for byte as one without.
+# There is no prep without it now; W13, that it decides nothing, is held by
+# its one writer (`script-preparation.md` § 4.5).
 
 
 # --------------------------------------------------------------------- #
@@ -403,8 +345,7 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
             from molbuilder.jobset.prep_inputs import bench_inputs
             sweep, pins, translation = bench_inputs(dest, None)
             prep_calculation(dest, stages[0], allocation=Resources(mpi_np=8),
-                             sweep=sweep, pins=pins, translation=translation,
-                             pipeline_log=True)
+                             sweep=sweep, pins=pins, translation=translation)
         else:
             _prep(dest, stages[0])
 

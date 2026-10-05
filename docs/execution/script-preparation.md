@@ -865,8 +865,8 @@ which is what you need when one rung of a ladder converges and the next does
 not.
 
 Every prep writes that record, from either door *(W20, ruled 2026-09-27;
-written into the framework 2026-10-03 — `--pipeline-log` was a flag, and the
-Task setup tab never wrote one)*.
+written into the contract 2026-10-03 and built 2026-10-05 — `--pipeline-log`
+was a flag, and the Task setup tab never wrote one)*.
 
 > **W13 · The log observes the pipeline; it is never a step in it.** Every
 > generated artifact is **byte-identical** to what a prep without the log

@@ -16,10 +16,12 @@ from the values the steps already return.  That is the same layering
 that acted on it appends the line*.  A ``print`` per engine would be two
 writers and, within a month, two formats.
 
-**Off unless asked.**  ``prep_calculation`` builds one only when the caller
-passes ``pipeline_log=True``; every other route holds ``None``, and ``None``
-means the framework skips the calls.  Nothing about a generated artifact
-changes either way -- the log observes the pipeline, it is not a step in it.
+**Every prep writes one**, from either door (`script-preparation.md` § 4.5;
+until 2026-10-05 only a caller passing ``pipeline_log=True`` -- the command
+line's ``--pipeline-log`` -- got one).  A route that is not a prep -- a deck
+rendered on its own -- holds ``None``, and ``None`` means the framework skips
+the calls.  Nothing about a generated artifact depends on it -- the log
+observes the pipeline, it is not a step in it.
 
 **Never fatal.**  A logbook that can break a prep is worse than no logbook
 (``ledger.record``'s rule, and the same ``except OSError: pass``).

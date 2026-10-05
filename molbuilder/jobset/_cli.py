@@ -1194,15 +1194,9 @@ def _resolve_stage(js, stage, verb: str, *, base):
                    "target's record says `workstation` -- job-system.md "
                    "§ 6).  --no-sbatch writes none, and then no queue, wall "
                    "or memory is asked for.")
-@click.option("--pipeline-log", "pipeline_log", is_flag=True, default=False,
-              help="write a step-by-step record of what each step received, "
-                   "decided and produced, beside this prep's STAGE-PLAN.md. "
-                   "Answers 'where did this value come from?' without "
-                   "re-running anything. Off by default; no generated file "
-                   "differs either way.")
 def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
              mpi_np, cpus_per_task, gres, time_, mem, max_memory_mb,
-             domain, target, emit_sbatch: bool, pipeline_log: bool) -> None:
+             domain, target, emit_sbatch: bool) -> None:
     """Set a stage up to run, and report what was done.
 
     Renders the deck and its wrappers, makes that stage's next ``run-<n>``,
@@ -1258,7 +1252,7 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
         ans = prep_stage(base, kind, stage, target=target,
                          allocation=allocation, from_attempt=from_attempt,
                          cold=cold, env=env, emit_sbatch=emit_sbatch,
-                         pipeline_log=pipeline_log, on_found=_show)
+                         on_found=_show)
     except PrepError as e:
         _show(e.findings, e.notes)
         if e.partial is not None:
@@ -1395,9 +1389,13 @@ def _echo_prep_answer(ans, base, *, refused: bool = False) -> None:
 
 
 def _echo_pipeline_log(ans, base) -> None:
-    """Where the step-by-step record went, when one was asked for."""
+    """Where this prep's pipeline log is -- every prep writes one
+    (`script-preparation.md` § 4.5); a refused prep's answer may not say.
+    A line of its own, not indented under what the prep listed: the log is
+    the prep's record, beside its `STAGE-PLAN.md`, not one of the trials or
+    a fact of the attempt."""
     if ans.pipeline_log is not None:
-        click.echo(f"  pipeline log: {Path(ans.pipeline_log).relative_to(base)}")
+        click.echo(f"pipeline log: {Path(ans.pipeline_log).relative_to(base)}")
 
 
 @jobset_group.command("summarize",
