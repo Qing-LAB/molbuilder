@@ -10,10 +10,11 @@ box.
 
 TWO MODES. A bare ``.XV`` states the geometry and the lattice, and
 everything else is written at `Structure`'s default -- applied by
-`Structure`, never restated by the verb. ``--from-run`` says a metadata
-source sits beside it: a sidecar is applied WHOLE (axis kinds, labels, held
-atoms, padding), and with no sidecar the run still declares its held atoms
-in the ``.out`` echo or the ``.fdf``.
+`Structure`, never restated by the verb. ``--from-run`` says the ``.XV``
+is a run of ours: what that run declared -- its labels, held atoms and
+axis kinds -- comes from its own deck, through the run door
+(`runs.declared`; plan B12, D19), and a ``.XV`` no run of ours holds is
+refused.
 
 The axis kinds are the half that matters most and the half a ``.XV`` cannot
 state: ``periodic``, ``isolated`` and ``transport`` are three different
@@ -148,74 +149,55 @@ def test_xv2xyz_leaves_frozen_atoms_alone_without_the_flag(xv, tmp_path):
     assert StructureCodec().load(out).frozen_atoms == []
 
 
-def test_xv2xyz_from_run_recovers_the_declared_frozen_atoms(xv, tmp_path):
-    (tmp_path / "j.fdf").write_text(_FDF)
-    out = tmp_path / "j.xyz"
+# `test_xv2xyz_from_run_recovers_the_declared_frozen_atoms`,
+# `test_xv2xyz_from_run_with_nothing_to_find_is_not_an_error` and
+# `test_xv2xyz_from_run_applies_the_sidecar_whole` retired 2026-10-04 (W56
+# 4a; plan B12, D19): each laid a folder by hand -- a `.XV`, a deck and a
+# sidecar written beside it by the test -- and pinned the lookup by name that
+# `--from-run` no longer makes.  What a run declared comes from its own deck,
+# through the run door: the two tests below, on a measured run of ours and on
+# a `.XV` no run holds.
+
+#: A flat calculation of ours, measured through the road (its README): H2,
+#: isolated on every axis, the first atom held.
+_FLAT_H2 = Path(__file__).parent / "fixtures" / "siesta_flat_h2"
+
+
+def test_from_run_takes_what_the_run_declared_from_its_own_deck(tmp_path):
+    """D19's measured failure, turned round: the flat H2 run's ``H2.XV``,
+    converted with ``--from-run``, keeps the atom its deck holds and the axes
+    its deck records -- isolated, an H2 in a 10 Å box -- on the ``.XV``'s own
+    cell and the engine's origin.  Its folder holds two decks; the run's is
+    the one the run door names (`runs.run_of`, `runs.declared`).
+
+    WHY API-LEVEL: a measured fixture, read where it was measured -- the
+    road that produced it is in its README."""
+    out = tmp_path / "h2.xyz"
     res = CliRunner().invoke(
-        cli.cli, ["xv2xyz", str(xv), str(out), "--from-run"])
+        cli.cli, ["xv2xyz", str(_FLAT_H2 / "H2.XV"), str(out), "--from-run"])
     assert res.exit_code == 0, res.output
+    assert "H2_01_coarse.fdf" in res.output, res.output
 
     from molbuilder.workingcopy_structure import StructureCodec
-    # 1-based `position 1` / `position 3` in the deck -> 0-based on the
-    # Structure, through `engine_atom_index`, never a bare `n - 1`.
-    assert StructureCodec().load(out).frozen_atoms == [0, 2]
-
-
-def test_xv2xyz_from_run_with_nothing_to_find_is_not_an_error(xv, tmp_path):
-    out = tmp_path / "j.xyz"
-    res = CliRunner().invoke(
-        cli.cli, ["xv2xyz", str(xv), str(out), "--from-run"])
-    assert res.exit_code == 0, res.output
-    # It SAYS there was nothing, rather than writing defaults in silence.
-    assert "no sidecar and no constraints declared" in res.output
-
-
-def test_xv2xyz_from_run_applies_the_sidecar_whole(xv, tmp_path):
-    """A sidecar is a whole metadata source, so all of it is applied --
-    not the frozen atoms with the rest left behind.
-
-    The AXIS KINDS are the point. A `.XV` cannot tell a bulk axis from a
-    slab's vacuum from a junction's leads, and the three drive different
-    physics: `validation/siesta.py` warns that k > 1 on a `transport` axis
-    "imposes a fake periodicity", and the hand-off refuses an atom outside the
-    cell along a transport axis where it wraps one along a periodic axis
-    (`model/structure-periodicity.md` § 6.0, check 3). Guessing `periodic`
-    here silently disables both.
-
-    THE ONE THING NOT APPLIED IS THE SIDECAR's OFFSET. The authoring
-    structure's origin belonged to its own coordinates; the `.XV`'s are the
-    engine's, at offset 0. Carried over, an authoring corner of (49, 49, 49)
-    put every atom of a `.XV` at -48 Å (measured 2026-09-22).
-    """
-    (tmp_path / "j.fdf").write_text(_FDF)
-    from molbuilder.cell import to_engine
-    from molbuilder.structure import Structure
-    from molbuilder.workingcopy_structure import StructureCodec
-    # THROUGH THE DOOR, in the test too -- the sidecar beside `j.XV` is
-    # written by the codec, not hand-packed here. A junction: periodic in
-    # plane, the leads along z, its origin assigned at the atoms' corner.
-    StructureCodec().write(
-        Structure(elements=["C", "H", "Au"],
-                  positions=[[49, 49, 49], [50, 49, 49], [49, 51, 49]],
-                  cell=[[9.0, 0, 0], [0, 9.0, 0], [0, 0, 9.0]],
-                  engine_offset=[-49.0, -49.0, -49.0],
-                  axis_kind=("periodic", "periodic", "transport"),
-                  regions={"L-electrode": [2]},
-                  frozen_atoms=[1]),
-        tmp_path / "j.xyz")
-
-    out = tmp_path / "out.xyz"
-    res = CliRunner().invoke(
-        cli.cli, ["xv2xyz", str(xv), str(out), "--from-run"])
-    assert res.exit_code == 0, res.output
-
     got = StructureCodec().load(out)
-    assert got.frozen_atoms == [1]                 # the sidecar's, not the deck's
-    assert got.axis_kind == ("periodic", "periodic", "transport")
-    assert got.regions["L-electrode"] == [2]
-    # THE `.XV`'s CELL SURVIVES the apply: the sidecar's 9 A box does not
-    # overrule the lattice the run actually ended on.
-    assert got.cell[2][2] == pytest.approx(10.0 * _ANG, rel=1e-6)
-    # And its origin: the engine gets the run's coordinates, where it put them.
-    np.testing.assert_allclose(to_engine(got).positions, read_xv(xv).positions,
-                               atol=1e-6, err_msg="the sidecar's origin was applied")
+    assert got.frozen_atoms == [0]
+    assert got.axis_kind == ("isolated", "isolated", "isolated")
+    np.testing.assert_allclose(np.asarray(got.cell), np.eye(3) * 10.0,
+                               atol=1e-4)
+    np.testing.assert_allclose(got.engine_offset, np.zeros(3))
+
+
+def test_from_run_refuses_a_xv_no_run_of_ours_holds(xv, tmp_path):
+    """The flag says a run is there.  A ``.XV`` in a folder no calculation
+    marks has nothing declaring its atoms, so it is refused by name -- never
+    written at the defaults as if the run had said so.
+
+    WHY API-LEVEL: a refusal the road cannot reach -- every ``.XV`` a road
+    run leaves is in a run of ours."""
+    out = tmp_path / "j.xyz"
+    res = CliRunner().invoke(
+        cli.cli, ["xv2xyz", str(xv), str(out), "--from-run"])
+    assert res.exit_code != 0
+    assert "no run of ours holds" in res.output, res.output
+    assert not out.exists()
+

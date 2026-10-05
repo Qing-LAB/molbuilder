@@ -1080,9 +1080,9 @@ def cmd_modify(input_path, output_path,
                 type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.argument("xyz_path", metavar="output.xyz", type=click.Path(path_type=Path))
 @click.option("--from-run", "from_run", is_flag=True, default=False,
-              help="Take the metadata from the run beside input.XV: the "
-                   "sidecar if one is there, else the frozen atoms the "
-                   ".out echo or the .fdf declares.")
+              help="Take what the run that wrote input.XV declared about "
+                   "its atoms -- its own deck's labels, held atoms and "
+                   "axis kinds.  Refused for a .XV no run of ours holds.")
 def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
     """Convert a SIESTA ``.XV`` final-coordinates file to a structure pair.
 
@@ -1099,12 +1099,9 @@ def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
     stated lattice means periodic axes; no regions, no held atoms, no
     isolation padding.
 
-    ``--from-run`` says a metadata source is available beside it.  A sidecar
-    is the whole of one, so it is applied whole through
-    ``molstruct.apply_to_structure`` -- the axis kinds, the region labels,
-    the held atoms, the padding, all of it.  With no sidecar, the run still
-    declares the held atoms in its ``.out`` echo or its ``.fdf``, and those
-    are read in SIESTA's own precedence.
+    ``--from-run`` says the ``.XV`` is a run of ours: what that run declared
+    about its atoms -- the labels, the held atoms, the axis kinds -- is
+    taken from its own deck, through the run door (:func:`_apply_run_metadata`).
 
     A FLAG, NOT A SNIFF: picking metadata out of a directory because it
     looked like a run is hard to notice when it is wrong.
@@ -1113,13 +1110,13 @@ def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
     from .workingcopy_structure import StructureCodec
 
     try:
-        struct, cell = read_xv_with_cell(xv_path)
+        struct, _cell = read_xv_with_cell(xv_path)
     except SiestaXVError as exc:
         raise click.ClickException(str(exc)) from exc
 
     note = "defaults (a bare .XV states only the geometry and the lattice)"
     if from_run:
-        note = _apply_run_metadata(struct, xv_path, cell)
+        struct, note = _apply_run_metadata(struct, xv_path)
 
     StructureCodec().write(struct, xyz_path)
     click.echo(f"Wrote the pair at {xyz_path}: {struct.n_atoms} atoms, "
@@ -1128,67 +1125,62 @@ def cmd_xv2xyz(xv_path: Path, xyz_path: Path, from_run: bool) -> int:
     return 0
 
 
-def _apply_run_metadata(struct, xv_path: Path, xv_cell) -> str:
-    """``--from-run``: put the run's own metadata onto ``struct`` in place,
-    and say in one line where it came from.
+def _apply_run_metadata(struct, xv_path: Path):
+    """``--from-run``: ``(struct, note)`` -- ``struct`` with what the run that
+    wrote ``xv_path`` declared about its atoms, and one line saying where it
+    came from.
 
-    THE SIDECAR IS APPLIED WHOLE, through the one door.  Picking `axis_kind`
-    out of it and leaving the labels would be a second, narrower reader of a
-    file that already has one -- and the kinds are the half a `.XV` most
-    needs, since it cannot tell a bulk axis from a slab's vacuum from a
-    junction's leads.
+    THE RUN'S OWN DECK, THROUGH THE RUN DOOR (`model/structure-periodicity.md`
+    § 6.0; plan B12, D19): the run that holds the ``.XV`` (`runs.run_of`) and
+    what its deck declared (`runs.declared`) -- its atom-metadata block (the
+    labels, the held atoms, the annotations), applied by that block's one
+    reader, and its engine-offset record's axis kinds.  Nothing is looked for
+    beside the ``.XV`` by its name *(a sidecar beside it, then the ``.out``
+    echo or a lone ``.fdf``, until 2026-10-04: in a flat folder, which holds
+    two decks, that found nothing and wrote an isolated molecule's held atom
+    away and its axes periodic -- D19)*.
 
-    THE `.XV`'s CELL IS KEPT.  `apply_metadata_dict` sets `cell` from the
-    payload unconditionally, so a sidecar carrying none would erase the very
-    lattice this verb exists to preserve -- and where both state one, the
-    `.XV` is the run's OUTPUT and the sidecar its input, so a variable-cell
-    relaxation makes the `.XV` the later word.  The sidecar supplies what the
-    `.XV` cannot say; it does not overrule what it does.
+    THE ``.XV``'s CELL AND THE ENGINE'S ORIGIN: these coordinates are the
+    engine's own, so the cell is the one the run ended on and the offset a
+    stated 0 -- the deck's record says where prep placed the atoms, not
+    where these are.
+
+    A ``.XV`` no run of ours holds is refused: the flag says a run is there,
+    and nothing declares this file's atoms.
     """
-    from .parse.engines._sidecar import read_frozen_atoms_for_siesta
-    from .sidecars import molstruct
+    import numpy as _np
+    from .runs import declared, run_of
+    from .script_emit import apply_atom_metadata
+    from .sidecars.molstruct import MolstructPairingError
 
-    sidecar_path = molstruct.sidecar_path_for(xv_path)
-    if sidecar_path.exists():
+    run = run_of(xv_path)
+    if run is None:
+        raise click.ClickException(
+            f"--from-run: no run of ours holds {xv_path} -- nothing marks its "
+            f"folder as part of a calculation (calcdir.json, or task.json "
+            f"above it; project-layout.md § 1.4a), so nothing declares its "
+            f"atoms.  Without --from-run the .XV converts on its own.")
+    said = declared(run)
+    if said.atom_metadata:
         try:
-            data = molstruct.load(sidecar_path)
-            molstruct.apply_to_structure(struct, data)
-        except ValueError as exc:      # MolstructJsonError / PairingError
+            apply_atom_metadata(struct, said.atom_metadata)
+        except MolstructPairingError as exc:
             raise click.ClickException(
-                f"{sidecar_path.name} sits beside the .XV but could not be "
-                f"applied: {exc}") from exc
-        struct.cell = xv_cell
-        # THE ORIGIN IS SIESTA'S, SET WITH ITS COORDINATES: a `.XV` is the
-        # engine's own frame, the cell at (0,0,0), so the structure states an
-        # offset of 0 and its next deck applies nothing
-        # (`model/structure-periodicity.md` § 6.0).  An authoring sidecar's
-        # placement belonged to different coordinates and does not travel --
-        # measured 2026-09-22, an authoring corner of (49, 49, 49) carried
-        # over a `.XV` whose atoms sit at (1, 1, 1) emitted every atom at
-        # -48 Å.
-        import numpy as _np
-        struct.engine_offset = _np.zeros(3)
-        # The `axis_kind` guard that stood here was DEAD.  It read
-        # `if data.get("axis_kind") is None`, but `molstruct.load`
-        # normalises the payload through a scratch `Structure`, and
-        # `__post_init__` always fills the kinds -- so a sidecar that states
-        # none arrives as `["isolated"] * 3` and the branch could not fire.
-        # The same dead pattern was found in `compose.py` on the same day,
-        # where it was not harmless.
-        struct.__post_init__()
-        return (f"from {sidecar_path.name} — axes "
-                f"{','.join(struct.axis_kind)}, "
-                f"{len(struct.frozen_atoms)} frozen, "
-                f"{len(struct.regions)} label(s) in the region store")
-
-    frozen = sorted(read_frozen_atoms_for_siesta(str(xv_path)))
-    if frozen:
-        struct.frozen_atoms = frozen
-        return (f"no sidecar beside it; {len(frozen)} frozen atoms from the "
-                f"run's own declaration, axes at their default "
-                f"({','.join(struct.axis_kind)})")
-    return (f"no sidecar and no constraints declared beside it; "
-            f"defaults ({','.join(struct.axis_kind)})")
+                f"--from-run: {said.deck.name} declares other atoms than "
+                f"{xv_path.name} holds: {exc}") from exc
+    kinds = (said.engine_offset or {}).get("axis_kind")
+    struct = struct.replace(
+        engine_offset=_np.zeros(3),
+        **({"axis_kind": tuple(kinds)} if kinds else {}))
+    if said.atom_metadata or kinds:
+        return struct, (f"from the run's deck {said.deck.name} — axes "
+                        f"{','.join(struct.axis_kind)}, "
+                        f"{len(struct.frozen_atoms)} held, "
+                        f"{len(struct.regions)} label(s) in the region store")
+    where = (f"its deck {said.deck.name}" if said.deck is not None
+             else "no deck of its run here")
+    return struct, (f"the run declares nothing about its atoms ({where}); "
+                    f"defaults (axes {','.join(struct.axis_kind)})")
 
 
 @cli.command("monitor",

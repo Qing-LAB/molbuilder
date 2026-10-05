@@ -252,6 +252,42 @@ def run_of(path, stage: Optional[str] = None) -> Optional[Run]:
                run=run)
 
 
+# --------------------------------------------------------------------- #
+#  What a run declared about its atoms (B12)                            #
+# --------------------------------------------------------------------- #
+
+@dataclass(frozen=True)
+class Declared:
+    """What a run of ours declared about its atoms -- its own deck's records
+    (`architecture.md` § 3.2): the ``deck`` that says it, its
+    ``atom_metadata`` block (labels, held atoms, annotations) and its
+    ``engine_offset`` record (the axis kinds, the cell prep placed the atoms
+    in); ``None`` for a record the deck does not carry."""
+    deck: Optional[Path] = None
+    atom_metadata: Optional[Dict[str, Any]] = None
+    engine_offset: Optional[Dict[str, Any]] = None
+
+
+def declared(run: Run) -> Declared:
+    """WHAT ``run`` DECLARED ABOUT ITS ATOMS -- read from its own deck
+    (:attr:`Run.deck`) by the readers of molbuilder's blocks, never from a
+    file looked for beside an output by its name (`model/parse.md` § 5.3,
+    plan B12).  A run with no deck here, or one whose deck carries neither
+    record, declares nothing."""
+    deck = run.deck
+    if deck is None:
+        return Declared()
+    try:
+        text = deck.read_text(encoding="utf-8-sig", errors="replace")
+    except OSError:
+        return Declared(deck=deck)
+    from molbuilder.deck_record import extract_engine_offset
+    from molbuilder.script_emit import _extract_atom_metadata_dict
+    return Declared(deck=deck,
+                    atom_metadata=_extract_atom_metadata_dict(text),
+                    engine_offset=extract_engine_offset(text))
+
+
 def about(path) -> Dict[str, Any]:
     """WHAT A FILE IS -- its row of the catalogue, read back with its run's
     label (`runfiles.row_for`): ``{ours: True, what, writer, when, kind}``;
