@@ -56,6 +56,12 @@ htmlcov/
 # reads, not a fixture.  It regenerates on every run and would show up as a
 # spurious diff.
 tests/parse/fixtures/**/*.parse.log
+# And for tests/fixtures/: the measured runs of ours (`process/testing.md`
+# § 6), recorded once on the road and read where they lie, and the H
+# pseudopotential SIESTA starts on.  Without this line `git add` skipped
+# their decks, outputs, `.XV`s and the `.psml` without a word -- twice
+# (2026-09-06, 2026-10-04) -- and a fresh clone's tests had nothing to read.
+!tests/fixtures/**
 
 # 3DNA archive / extracted tree if a user drops it next to the package
 # during local install.  3DNA is distributed under a non-commercial-use
