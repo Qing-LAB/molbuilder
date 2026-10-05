@@ -223,11 +223,12 @@ def test_unticked_the_ladder_relaxes_first_and_freq_measures_at_the_relaxed_bond
     task = json.loads((bundle / "task.json").read_text())
     assert [s["name"] for s in task["stages"]] == ["relax", "freq"]
 
-    # THE JOB SET'S OWN ORDER: freq before relax has concluded is refused,
-    # naming the stage to run first.
+    # THE JOB SET'S OWN ORDER: freq before relax has run is refused by the
+    # one hand-over door, naming the stage to run first and how
+    # (`continuation`, vibration.md § 5.2a's table).
     r = _jobset("prep", "run", "freq", "--bundle", str(bundle), "--target", "this")
-    assert r.exit_code != 0 and "`relax` stage" in r.output \
-        and "concluded" in r.output, r.output
+    assert r.exit_code != 0 and "`freq` builds on `relax`" in r.output \
+        and "Run it first" in r.output, r.output
 
     r = _jobset("prep", "run", "relax", "--bundle", str(bundle), "--target", "this")
     assert r.exit_code == 0, r.output
