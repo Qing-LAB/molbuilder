@@ -7,9 +7,9 @@ held H2, `prep`.  The files are the ones our code writes; a test lays none
 (`process/testing.md` § 6).
 
 PREVENTS: a PySCF run whose held atoms nothing states -- its reader looked
-for a sidecar beside the output, which no run folder holds, so the Results
-tab's arrows and the relaxation record counted the held atom too (plan B12,
-W56 4c).
+for a sidecar beside the output by names a run of ours never gives one, so
+the Results tab's arrows and the relaxation record counted the held atom too
+(plan B12, W56 4c).
 """
 from __future__ import annotations
 

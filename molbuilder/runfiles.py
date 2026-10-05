@@ -598,9 +598,10 @@ def find(directory, label: str, *,
     walks in order.  **The parsing is :func:`parse`'s**, not a second reader:
     a name that does not read back with this label -- another label's, a
     file foreign to the run -- is left out, which is what keeps a foreign
-    file in the same directory from being reported as an attempt.  A
-    question with a ``stage`` never meets an engine's file: those carry no
-    token.
+    file in the same directory from being reported as an attempt.  An
+    engine's file can carry a stage too -- geomeTRIC's trajectory is named
+    on its rung's token (``<label>_<NN>_<stage>_geom_optim.xyz``) -- so a
+    caller asks by role as well when it wants one of molbuilder's.
 
     ``role`` narrows to one, and it is an EQUALITY on the declared role -- pass
     the catalogue's spelling, template and all (``".runwrap-{stamp}.log"``).
@@ -1415,17 +1416,6 @@ _ATTEMPT_GLOBS = {"never": ("",), "maybe": ("", "-run*"), "always": ("-run*",)}
 #: THE FIRST ATTEMPT IS ZERO (`runwrap`: ``_run_n=0   # first run``), so this
 #: is the real name the first launch writes -- not a placeholder.
 FIRST_ATTEMPT = 0
-
-
-def is_stage_token(name: str) -> bool:
-    """Whether *name* has the shape of a stage token (``01_coarse``).
-
-    The reader half of the shape :data:`_STAGE` declares, so a caller asking
-    *is this directory a rung* does not carry the pattern.  It answers about
-    the SHAPE only -- `identity.StageRef` owns whether a token names a rung
-    this description actually has, which needs the description.
-    """
-    return bool(_STAGE.fullmatch(name))
 
 
 def roles(*, engines: bool = True) -> "tuple[str, ...]":

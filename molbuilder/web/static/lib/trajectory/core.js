@@ -2234,7 +2234,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
     }
 
     // Fingerprint of the EXCLUDED (frozen) atom set -- if it changes between polls
-    // (e.g. a sidecar with frozen_atoms lands mid-run), the excluded arrows change
+    // (e.g. a reload of a log whose held atoms differ), the excluded arrows change
     // for EVERY frame, so the incremental arrow-append must fall back to a full
     // rebuild.  Stable string so ordering doesn't produce false diffs.
     function _frozenFingerprint(data) {
@@ -2574,7 +2574,7 @@ import { molviewFiles } from "../projects/molview-doors.js";
             } else {
                 // Re-hand the filtered per-frame forces (now including the appended tail).
                 // setForces re-bakes the arrow overlay IN PLACE (no movie reload), so ONE call
-                // covers both a plain append AND a frozen-set change (a sidecar landing).
+                // covers both a plain append AND a frozen-set change.
                 // (Perf note: this re-bakes every frame's arrows per poll; an incremental
                 // force-append is a future optimisation if long live trajectories need it.)
                 drawForces();

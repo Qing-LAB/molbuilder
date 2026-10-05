@@ -115,10 +115,11 @@ _RANGE_PIECE_RE = re.compile(r"(\d+)\s*--\s*(\d+)")
 
 def read_frozen_atoms_from_siesta_out(out_path: str) -> Set[int]:
     """Return 0-based frozen-atom indices from the .out's own echo of
-    them -- ``siesta: Constraint (N): pos`` and the ranges below it, under a
-    ``siesta: Constraints applied in the following order:`` header or, as
-    SIESTA 5.4.2 prints it, under none (measured on both recorded H2 runs;
-    the header is the earlier v5 output this reader was written against).
+    them -- ``siesta: Constraint (N): pos`` and the ranges below it.  SIESTA
+    5.4.2 heads several such blocks with ``siesta: Constraints applied in the
+    following order:`` and a single one with nothing (measured: the H2 runs'
+    one block bare, the Au-BDT-Au runs' eight and eleven under the header),
+    so the section starts at whichever comes first.
 
     AUTHORITATIVE source of truth for SIESTA constraints — the data
     lives in the same file the Results-tab UI reads, so there's no

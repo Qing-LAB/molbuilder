@@ -326,7 +326,8 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
         resumes=job.resumes,
         # THE SAME LABEL THE STATE WAS READ WITH.  This asked for
         # `jobset.name` while everything else in the loop had moved to
-        # `job_label` -- so the fix `_label_of` exists for was applied to
+        # `job_label` -- so a trial's own label (`paths.trial_label`;
+        # `_label_of` until 2026-10-04) was applied to
         # the `.out` and not to the warm files beside it.  Measured on a
         # staged sweep trial: `siesta-AuBDTAu-G0K20C1.XV` on disk, warm
         # files reported `[]`, and `jobset status` told a person there

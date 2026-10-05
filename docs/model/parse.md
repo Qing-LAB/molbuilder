@@ -538,8 +538,7 @@ molbuilder/parse/
     ├── rundir.py              # openable_in (a folder read without its run) · run_state_of
     ├── job.py                 # run_status → how a run directory is doing — stdlib, travels
     ├── record.py · setup.py   # run_record → the run record (§ 5d)
-    ├── run_info.py            # run_info_for_dir → the `info` block (composer)
-    └── atom_metadata.py       # ATOM-METADATA for a run dir (read by web/watch)
+    └── run_info.py            # run_info_for_dir → the `info` block (composer)
 ```
 
 **Plain `.xyz` has no leaf FileParser (by design)** — `Structure.from_xyz` reads
@@ -760,7 +759,7 @@ newest run index while `openable_in` took the newest file.)*
 
 > **What this paragraph used to claim, and why it was withdrawn.** It named
 > `summarize._latest_run_file`'s highest-`-runN` rule as a *competing* rule
-> that "loses". It is not competing: `_latest_run_file` is handed a basename
+> that "loses". It was not competing: `_latest_run_file` was handed a basename
 > that **already carries the stage** (`Path(job.script).stem`), so the stage
 > is not a variable there and the run index is the only remaining choice.
 > `plan.md` § 5c withdrew that row on 2026-09-04 as one of two mappings
@@ -871,16 +870,19 @@ trajectory load, the codec reading an engine's own structure file, `xv2xyz`.
 engines** *(user, 2026-10-04: "there is no reason why siesta can manage to
 store the information while pyscf fails to do that")*. A SIESTA run's `.out`
 echoes what the engine held — `siesta: Constraint (N): pos` and the ranges
-below it, which SIESTA 5.4.2 prints with no `Constraints applied` header above
-them — and a run's progress log carries `# frozen_atoms: <i> <j> …`, 0-based in
+below it, which SIESTA 5.4.2 heads with `Constraints applied in the following
+order:` when there are several blocks and with nothing above a single one —
+and a run's progress log carries `# frozen_atoms: <i> <j> …`, 0-based in
 the structure's order: prep's preview writes it for either engine, and a PySCF
 run's script writes the same line when it starts. Each reader reads them as its
 own content (`runtime_info.frozen_atoms`); a reader of a PySCF trajectory file
 takes them from the run's progress log it already reads. *(A sidecar beside the
 output, then a deck in its folder, were tried until 2026-10-04 — plan B12, W56
-4c: no run folder holds a sidecar, so a PySCF run reported no held atom, and a
-SIESTA run's held atoms came from the deck guess, the echo reader having never
-read 5.4.2's headerless form.)*
+4c: the lookup's names missed the `_initial` / `_optimized` pairs a PySCF run
+writes, and two of them made its lone-sidecar fallback decline, so a PySCF run
+reported no held atom; and a SIESTA run holding a single constraint block -- an
+H2 with one atom held -- had its held atoms from the deck guess, the echo
+reader waiting for a header 5.4.2 prints only above several.)*
 
 > **What this replaced** *(plan B12, user, 2026-10-04)*. This section licensed
 > a lookup by name: compose the exact name beside the artifact, then fall back to
@@ -1183,7 +1185,7 @@ Three parsers do this today:
 | primary | sibling | what the sibling supplies |
 |---|---|---|
 | `engines/pyscf.py` | `<prefix>.qdata.txt` | per-step max force |
-| `engines/pyscf.py` | `<base>.molwatch.log` | convergence targets, run state |
+| `engines/pyscf.py` | `<base>.molwatch.log` | convergence targets, run state, the atoms the run holds (§ 5.3) |
 | `engines/siesta.py` | `<label>.MD.nc` | coordinates + per-step energy, in full precision |
 
 **The rules, which are what keep this from becoming a second source of truth:**

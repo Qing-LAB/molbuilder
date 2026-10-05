@@ -118,7 +118,7 @@ class TestTheComposer:
             "the record is of the file on screen", record)
         assert record["converged"] is True, record
         # THE ATOM IT HELD, as the run's own output states it -- SIESTA's
-        # `Constraints applied` echo, `position 1` (`model/parse.md` § 5.3).
+        # constraints echo, `position 1` (`model/parse.md` § 5.3).
         assert record["held_atom_idxs"] == [0], record
         assert asked["relaxation"] == record
         assert (asked["calculation"] == loaded["info"]["calculation"]
@@ -132,23 +132,11 @@ class TestTheComposer:
         assert run_info_for_dir(tmp_path) is None
         assert run_info_for_dir(None) is None
 
-    def test_the_results_door_asks_the_composer_not_the_extractor(
-            self, client, tmp_path, monkeypatch):
-        """``/api/results/contract`` answers the composer's ``calculation``
-        key, so the structure inspector's door and the trajectory load
-        door cannot disagree about what a directory records."""
-        _register_tmp_as_picker_root(tmp_path, monkeypatch)
-        run = tmp_path / "run"
-        run.mkdir()
-        (run / "Relax.fdf").write_text(_DECK)
-        (run / "Relax.xyz").write_text("1\n\nH 0 0 0\n")
-
-        d = client.get("/api/results/contract",
-                       query_string={"path": str(run / "Relax.xyz")}).get_json()
-        assert d["ok"] is True
-
-        from molbuilder.parse.dirs.run_info import run_info_for_dir
-        assert d["calculation"] == run_info_for_dir(run)["calculation"]
+    # `test_the_results_door_asks_the_composer_not_the_extractor` retired
+    # 2026-10-04 (W56 review): it laid a deck and a structure in a bare
+    # folder and compared the route with the very function the route
+    # calls; both doors answering one record of one run is
+    # `test_a_finished_run_answers_both_keys_at_both_doors`.
 
 
 # --------------------------------------------------------------------- #
@@ -233,20 +221,10 @@ class TestWatchLoadAnswersTheBlock:
         assert (declared(run_of(flat, stage="02_medium")).deck.name
                 == "H2_02_medium.fdf")
 
-    def test_pointing_at_the_log_itself_finds_the_deck_beside_it(
-            self, client, tmp_path, monkeypatch):
-        """The single-FILE builder searches the file's own directory --
-        the same rule the directory builder uses, now spelled once."""
-        _register_tmp_as_picker_root(tmp_path, monkeypatch)
-        run = tmp_path / "single"
-        run.mkdir()
-        (run / "Relax.fdf").write_text(_DECK)
-        log = run / "run_geom_optim.xyz"
-        log.write_text(_XYZ_3)
-
-        d = client.post("/api/watch/load", json={"path": str(log)}).get_json()
-        assert d["ok"] is True
-        assert d["info"]["calculation"]["contract"]["basis_size"] == "DZP"
+    # `test_pointing_at_the_log_itself_finds_the_deck_beside_it` retired
+    # 2026-10-04 (W56 review): a deck and a trajectory written into a bare
+    # folder -- the state the note above retires.  A run of ours, loaded by
+    # its own file, is the flat H2 test above.
 
     def test_an_upload_states_that_it_has_nothing_to_say(self, client):
         """One route, one response shape: the upload builder has no run

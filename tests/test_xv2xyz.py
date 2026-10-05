@@ -47,18 +47,6 @@ _XV = (
     "  3  79   0.0 2.0 0.0   0.0 0.0 0.0\n"
 )
 
-# The deck that drove the run, holding the constraint block `--from-run`
-# must recover. 1-based on disk (SIESTA's convention); {0, 2} once routed
-# through the engine index API.
-_FDF = (
-    "SystemLabel j\n"
-    "%block Geometry.Constraints\n"
-    "  position 1\n"
-    "  position 3\n"
-    "%endblock Geometry.Constraints\n"
-)
-
-
 @pytest.fixture
 def xv(tmp_path) -> Path:
     p = tmp_path / "j.XV"
@@ -138,15 +126,10 @@ def test_xv2xyz_cell_and_origin_reach_the_siesta_reader(xv, tmp_path):
                                err_msg="the engine would not get the run's coordinates")
 
 
-def test_xv2xyz_leaves_frozen_atoms_alone_without_the_flag(xv, tmp_path):
-    """The flag is the whole point: the deck is RIGHT THERE and unread."""
-    (tmp_path / "j.fdf").write_text(_FDF)
-    out = tmp_path / "j.xyz"
-    assert CliRunner().invoke(
-        cli.cli, ["xv2xyz", str(xv), str(out)]).exit_code == 0
-
-    from molbuilder.workingcopy_structure import StructureCodec
-    assert StructureCodec().load(out).frozen_atoms == []
+# `test_xv2xyz_leaves_frozen_atoms_alone_without_the_flag` retired
+# 2026-10-04 (W56 review): it wrote a deck beside the `.XV` to show the
+# plain conversion leaves it unread -- and no mode reads a deck beside a
+# `.XV` since 4a, so it pinned what `test_xv2xyz_writes_the_pair` does.
 
 
 # `test_xv2xyz_from_run_recovers_the_declared_frozen_atoms`,

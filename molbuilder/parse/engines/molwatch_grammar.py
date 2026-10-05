@@ -45,8 +45,8 @@ CONV_KEY = r"[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)?"
 CONVERGENCE = re.compile(r"^#\s*convergence\.(" + CONV_KEY + r"):\s*(.*)$")
 #: ``# frozen_atoms: 0 3`` -- the atoms the run holds, 0-based in the
 #: structure's own order.  The progress log is the run's own output, so it
-#: states them as a SIESTA run's ``.out`` does in its ``Constraints applied``
-#: echo, and its reader reads them as its own content (`model/parse.md`
+#: states them as a SIESTA run's ``.out`` does in its constraints echo,
+#: and its reader reads them as its own content (`model/parse.md`
 #: § 5.3).  Written by prep's preview and by the script's writer
 #: (`trajectory_log`); absent when the run holds nothing.
 FROZEN_ATOMS = re.compile(r"^#\s*frozen_atoms:\s*(.*)$")

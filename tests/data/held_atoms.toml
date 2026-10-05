@@ -1,7 +1,7 @@
 # THE ATOMS A RUN HOLDS, STATED BY ITS OWN OUTPUT -- `docs/model/parse.md`
 # § 5.3.  Both engines are handed the same structure, and each run states the
 # atoms it holds in its own output: a SIESTA run in its `.out` (SIESTA's own
-# `Constraints applied` echo), a run of either engine in its progress log,
+# constraints echo), a run of either engine in its progress log,
 # from the preview prep writes, and a PySCF run's script writes the same line
 # when it starts.  Each reader reads them as its own content; nothing is
 # looked for beside an output (user, 2026-10-04: "there is no reason why
@@ -27,6 +27,14 @@ threads = 1
 [[case]]
 name = "a PySCF run states the atom it holds in its progress log -- the preview prep writes, and the script's own writer"
 engine = "pyscf"
+deck = ["frozen_atoms=[0])"]
+progress_log_holds = [0]
+
+[[case]]
+name = "...and a PySCF vibration's, whose script relaxes before its frequencies"
+engine = "pyscf"
+calculation = "vibration"
+stage = "freq"
 deck = ["frozen_atoms=[0])"]
 progress_log_holds = [0]
 

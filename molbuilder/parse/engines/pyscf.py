@@ -30,8 +30,9 @@ the SIESTA parser) so the energy plot is unit-consistent across
 formats.  geomeTRIC's ``_optim.xyz`` carries no per-frame forces;
 when the companion ``<prefix>.qdata`` is present we additionally pull
 the maximum force per step (Hartree/Bohr -> eV/Ang) + a constrained
-variant that masks out the indices listed in the sidecar's
-``frozen_atoms`` field (SIESTA analog of ``MD.MaxForceTol`` semantics).
+variant that masks out the atoms the run holds, as its progress log's
+``# frozen_atoms:`` line states them (SIESTA analog of
+``MD.MaxForceTol`` semantics).
 """
 
 from __future__ import annotations

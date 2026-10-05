@@ -637,8 +637,9 @@ opting out. *(User, 2026-08-27: re-running a benchmark must be possible —
 > reason. Found 2026-08-27 by reading the write mode.
 >
 > **Fixed the same day**: the wrapper now writes `-run${_run_n}.monitor.log`
-> and `-run${_run_n}.util.csv` (`runwrap.py`), and `jobset/summarize.py` globs
-> `<basename>-run*.<suffix>` for all three. *This note stood in the present
+> and `-run${_run_n}.util.csv` (`runwrap.py`), and `jobset/summarize.py` read
+> the newest `<basename>-run*.<suffix>` of each (through the run door since
+> 2026-10-04, at the run's one index). *This note stood in the present
 > tense until 2026-09-04 — it told a reader the destruction still happens.*
 
 **No conversion, and no reader for the old layout** (user: *"new dir becomes

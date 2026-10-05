@@ -762,9 +762,13 @@ def vibration_spec(struct: Structure, cfg, *,
                        f"{scf_module(view.state)}.{view.scf_class}(mol))")
             out += emit_scf_criteria_readback("_mb_scf_probe")
             out.append("del _mb_scf_probe")
+            # THE ATOMS THIS RUN HOLDS -- the set its relaxation freezes
+            # (`_vib_relax_block`) -- go into its log's header, as the
+            # optimization deck's do (`model/parse.md` § 5.3).
             out += _emit_molwatch_emitter(
                 bool(getattr(cfg, "verbose_comments", True)), cfg,
-                stage_token=stage_token)
+                stage_token=stage_token,
+                frozen_atoms=list(view.frozen_indices))
         out += _emit_frozen_mask()
         out += _emit_initial_state()
         out += _vib_state_init()

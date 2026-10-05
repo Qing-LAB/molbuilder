@@ -577,17 +577,19 @@ RELAXED_MARKER = "outcoor: relaxed atomic coordinates"
 UNRELAXED_MARKER = "outcoor: final (unrelaxed) atomic coordinates"
 
 
-# ---- The launch lines, SIESTA and TBtrans alike -------------------------------
-#: ``Src/runinfo_m.F90``, which TBtrans's ``tbt_init.F90`` calls too: the
-#: ranks MPI gave the run, or serial mode -- one rank, whether the build has
-#: MPI (``(only 1 MPI rank)``) or not.  Multiline, so a caller holding the
-#: whole text can search it.
 #: ``reinit: System Label: H2`` -- the SystemLabel the run read, which SIESTA
 #: names its own files from (``<label>.MD.nc``, ``<label>.XV``): an output
 #: of ours is named otherwise (``<label>_<token>-run<N>.out``), so its own
 #: line is how it names its companions (`model/parse.md` § 5.3).  Measured:
 #: line 36 of both recorded H2 outputs, among the setup lines.
 SYSTEM_LABEL = re.compile(r"^reinit:\s*System Label:\s*(\S+)")
+
+
+# ---- The launch lines, SIESTA and TBtrans alike -------------------------------
+#: ``Src/runinfo_m.F90``, which TBtrans's ``tbt_init.F90`` calls too: the
+#: ranks MPI gave the run, or serial mode -- one rank, whether the build has
+#: MPI (``(only 1 MPI rank)``) or not.  Multiline, so a caller holding the
+#: whole text can search it.
 RUNNING_ON = re.compile(r"^\s*\*\s*Running on\s+(\d+)\s+nodes? in parallel",
                         re.IGNORECASE | re.MULTILINE)
 RUNNING_SERIAL = re.compile(r"^\s*\*\s*Running in serial mode",

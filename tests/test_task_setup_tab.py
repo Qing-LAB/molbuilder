@@ -106,8 +106,8 @@ def _fresh_calc_dir(root):
     """A directory inside the configured root — the picker refuses anything
     outside it, which is the guard working, not a test problem.
 
-    Takes the root, like `tests/support/junction.py::run_dir(tmp_path)`, so
-    the tree is wherever the caller's `isolated_projects_root` put it.  It was
+    Takes the root, so the tree is wherever the caller's
+    `isolated_projects_root` put it.  It was
     `ROOT / "projects/_t_handover/..."` until 2026-09-06 -- inside the
     developer's own data, which a crashed run left behind.
     """

@@ -825,9 +825,9 @@ def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,
     attempt.mkdir(parents=True, exist_ok=True)
 
     # WHAT EACH OF THESE DIRECTORIES IS, said by the code that just made them
-    # (`project-layout.md` § 1.4a, invariant 6b).  This is the one place both
-    # kinds are created, so it is the one place that knows which is which --
-    # and knowing is not recoverable later: a bench trial's directory is
+    # (`project-layout.md` § 1.4a, invariant 6b), through the one marker
+    # (`mark_run`) prep also calls where it makes a trial's folder -- and
+    # knowing is not recoverable later: a bench trial's directory is
     # structurally identical to a stage's own, and § 1.4 calls one a run and
     # the other a container.
     #

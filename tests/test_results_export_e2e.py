@@ -211,7 +211,7 @@ def test_a_siesta_trajectory_saves_the_box_its_output_states(
     writes ``mine.xyz``), with the frame it holds.
 
     MUTATIONS THIS MUST FAIL AGAINST: the one composer not stating the
-    engine's origin (`parse/dirs/atom_metadata.engine_frame_for_run_dir`);
+    engine's origin (`runs.Declared.frame`);
     the viewer naming its install after the parser's label, which offered
     " .log_frame6" and saved a hidden ``.log_frame6.xyz`` until 2026-09-27.
     """

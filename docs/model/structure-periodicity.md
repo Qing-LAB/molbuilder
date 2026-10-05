@@ -538,8 +538,9 @@ engine-offset` block: the cell, the correction applied (`applied_offset`),
 whether it was stated or computed, and the axis kinds, in neutral terms, to 8
 decimals (PySCF and the transport rungs write their coordinates to 8, SIESTA
 to 10: the record is inside every tolerance either way). It is the provenance clause 5 promised, and it is what a reader
-of a run asks, so the Results tab reads the axis kinds from it, and falls back
-to the `.source` pair only for a run made before the record. **The Results tab shows those axis kinds** — the
+of a run asks, so the Results tab reads the axis kinds from the run's own deck
+(`runs.declared`; a `.source` pair stood in for a run made before the record
+until 2026-10-04). **The Results tab shows those axis kinds** — the
 structure's, as the deck was written — rather than the engine's own treatment
 *(user, 2026-09-25: "we should show the axis_info as in structure. siesta is
 always periodic, true, but the isolate axis get our additional gate of vacuum

@@ -192,9 +192,10 @@ def test_qdata_max_forces_constrained_empty_without_sidecar(tmp_path):
 
 
 def test_qdata_max_forces_constrained_masks_frozen_atoms(tmp_path):
-    """2026-06-12: when the sidecar lists frozen atoms, the
-    constrained max excludes them from the per-atom magnitude
-    pool.  This is the PySCF analog of SIESTA's "Max <val>
+    """2026-06-12: when the run holds atoms, the constrained max
+    excludes them from the per-atom magnitude pool -- the held atoms
+    as the run's own progress log states them (`# frozen_atoms:`,
+    `model/parse.md` § 5.3; a sidecar was read until 2026-10-04).  This is the PySCF analog of SIESTA's "Max <val>
     constrained" line — the convergence-meaningful series the
     Results plot renders alongside the unconstrained "Max |F|"
     trace.
@@ -220,31 +221,15 @@ def test_qdata_max_forces_constrained_masks_frozen_atoms(tmp_path):
         # atom 1 gradient = (0.005, 0, 0) → magnitude 0.005
         "GRADIENT 0.30 0.0 0.0 0.005 0.0 0.0\n"
     )
-    # THE SIDECAR IS WRITTEN BY THE CODEC, not hand-packed.
-    #
-    # This declared `"schema_version": 3` and hand-built the payload. It
-    # worked only for as long as the reader hand-read the JSON too: once
-    # `read_frozen_atoms` was routed through `molstruct.load` (2026-09-22)
-    # the version check refused it -- correctly, because a v3 sidecar keeps
-    # its frozen atoms under a top-level key this reader does not name, so
-    # reading one would return a payload that looks complete and is not.
-    #
-    # The refusal reappeared as exactly the symptom the comment below
-    # records from 2026-08-03: no frozen atoms found, an empty constrained
-    # list, and an IndexError instead of the masking assertion. Same
-    # symptom, different cause, and the fix is the same either way -- let
-    # the writer that owns the format write it.
-    #
-    # ONE LABEL STORE: frozen atoms are a LABEL INSIDE `regions`, not a
-    # sibling key. The fixture said `regions: {}, frozen_atoms: [0]` until
-    # 2026-08-03 -- "nothing is labelled" and "atom 0 is frozen" at once.
+    # THE RUN'S PROGRESS LOG, written by its own writer -- the preview prep
+    # puts down, the line the script's writer repeats -- never hand-packed.
     from molbuilder.structure import Structure
-    from molbuilder.workingcopy_structure import StructureCodec
-    StructureCodec().write(
+    from molbuilder.trajectory_log.format import write_initial_preview
+    write_initial_preview(
         Structure(elements=["H", "H"],
-                  positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
-                  frozen_atoms=[0]),
-        tmp_path / "myjob.xyz")
+                  positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]),
+        tmp_path / "myjob.molwatch.log", job="myjob", engine="pyscf",
+        frozen_atoms=[0])
 
     result = trajectory_to_legacy_dict(PySCFParser.parse(str(traj)))
     # Unconstrained tracks atom 0 (the frozen one with huge force).

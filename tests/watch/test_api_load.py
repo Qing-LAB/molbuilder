@@ -701,7 +701,7 @@ def test_a_load_parses_its_file_once_and_the_record_reads_that_parse(
     run = tmp_path / "01_relax" / "run-0"
     shutil.copytree(Path(__file__).resolve().parents[1] / "fixtures"
                     / "siesta_relax" / "01_relax" / "run-0", run)
-    expected = relaxation_of(run)
+    expected = relaxation_of(run / "H2_01_relax-run0.out")
     assert expected is not None and expected["converged"] is True
 
     finished = []

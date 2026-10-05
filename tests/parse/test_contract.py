@@ -204,7 +204,7 @@ def test_a_finished_siesta_relaxation_answers_its_record():
     from molbuilder.parse.contract import relaxation_of
     from molbuilder.structure import Structure
 
-    rec = relaxation_of(_RELAX / "01_relax" / "run-0")
+    rec = relaxation_of(_RELAX / "01_relax" / "run-0" / "H2_01_relax-run0.out")
     assert rec is not None
     assert rec["engine"] == "siesta"
     assert rec["source"].endswith(".out")
@@ -233,9 +233,9 @@ def test_a_finished_siesta_relaxation_answers_its_record():
 def test_a_run_that_relaxed_nothing_has_no_record():
     """A force-constant run echoes no force tolerance and moves nothing on
     purpose (`tests/fixtures/siesta_fc`): no record -- `None`, never a
-    guess.  (A directory with only a deck is pinned by
-    `test_structure_info_bridge.py`.)"""
+    guess."""
     from molbuilder.parse.contract import relaxation_of
     fc = Path(__file__).resolve().parents[1] / "fixtures" / "siesta_fc"
-    assert relaxation_of(fc) is None
+    assert (fc / "h2_fc.out").is_file()
+    assert relaxation_of(fc / "h2_fc.out") is None
 

@@ -883,7 +883,7 @@ the log is a trajectory-class file, and auto-selects it. The controller mounts t
 **trajectory** viewer — a 3D movie of the relaxation plus energy and max-force
 plots. The structure the viewer holds carries the run's own periodicity,
 composed on the server (`/api/watch/load`: the cell from the output logs, the
-axis kinds from the run's `.source` pair when one exists) — so what the Cell
+axis kinds from the run's own deck, `runs.declared`) — so what the Cell
 page shows, and what an Export → Data writes, is the run's stated intent
 rather than a browser guess *(2026-08-20; before this, every trajectory
 export claimed all-isolated beside its own lattice)*. Because the run is
