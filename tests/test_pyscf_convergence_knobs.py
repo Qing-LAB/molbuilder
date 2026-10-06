@@ -231,20 +231,13 @@ def test_the_default_config_renders_at_all():
     assert "gto.M(" in text and "mol.natm" in text
 
 
-def test_unset_memory_omits_the_keyword_rather_than_passing_none():
-    """No cap = PySCF's own default, which reads the machine.
-
-    Emitting ``max_memory = None`` would hand the engine a Python None where
-    it expects megabytes; omitting the line lets PySCF decide, which is what
-    *"the maximum available"* means (§ 5.1).  PROVENANCE still records the
-    state, because a run must be able to say what it was given.
-    """
-    from molbuilder.pyscf.input import render_script
-    cfg = PySCFConfig()
-    assert cfg.max_memory_mb is None, "the default is UNSET -- no cap"
-    text = render_script(_h2(), cfg)
-    assert "max_memory =" not in text
-    assert "max_memory_mb  no cap" in text
+# `test_unset_memory_omits_the_keyword_rather_than_passing_none` retired
+# 2026-10-06: it pinned the line's ABSENCE, a form no live document states,
+# for two reasons PySCF's source contradicts -- `Mole.build` reads
+# `max_memory=None` as not given (`gto/mole.py`), and its own setting is
+# `PYSCF_MAX_MEMORY` or 4000 MB, not the machine.  A cap left unset is no cap
+# (`template.md` § 2): `tests/data/launch_values.toml` states it for both
+# PySCF decks, down the road.
 
 
 def test_an_explicit_cap_is_emitted_and_recorded():
@@ -259,7 +252,7 @@ def test_memory_is_one_item_across_both_engines():
     """§ 6.3's merge, and the reason PySCF's declaration had to change.
 
     Both engines answer *"how much memory may this run use"* the same way --
-    unset means the machine's maximum, resolved at prep.  Under § 5.6's
+    unset is no cap, and nothing fills one (`template.md` § 2).  Under § 5.6's
     mechanism they are one item by being spelled the same, so their
     declarations must agree; they disagreed on six attributes until this fix.
     """

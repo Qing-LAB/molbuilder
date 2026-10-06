@@ -218,6 +218,18 @@ run_sh = ["_omp_threads_default=6",
           '_omp_threads="$_omp_threads_default"; _omp_from="stated at prep"']
 
 [[case]]
+name = "a memory cap left unset is no cap -- nothing fills one in: the PySCF deck says it is not stated, and the run's facts record none"
+engine = "pyscf"
+deck = ["max_memory = None, # not stated: PySCF's own setting", "max_memory_mb=None"]
+
+[[case]]
+name = "...and the PySCF vibration deck alike"
+engine = "pyscf"
+calculation = "vibration"
+stage = "freq"
+deck = ["MAX_MEMORY_MB = None # not stated: PySCF's own setting", "max_memory_mb=None"]
+
+[[case]]
 name = "a run's placement is recorded at prep, each value with its source, and said"
 said = ["placed on cpu (cpu/public)", "queue, wall, memory from the description", "ranks, cores per rank from the run card"]
 

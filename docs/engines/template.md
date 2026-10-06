@@ -1878,7 +1878,7 @@ help       = "How many MPI ranks to run with."
 
 | the item | what it means | unset → | may it carry a value? |
 |---|---|---|---|
-| `allocation = true` | ranks, threads, memory — **stated for the run, not the template** | the run states its ranks and threads — on its run card or as a prep flag — or prep refuses the run (`architecture.md` § 5.2); a memory cap left unset is no cap. Nothing fills one *(prep filled them from what the machine granted until 2026-10-02)* | **no.** A reader refuses one (§ 2, G1) |
+| `allocation = true` | ranks, threads, memory — **stated for the run, not the template** | the run states its ranks and threads — on its run card or as a prep flag — or prep refuses the run (`architecture.md` § 5.2); a memory cap left unset is no cap -- a PySCF deck writes `max_memory = None`, which PySCF reads as not given, keeping its own setting (`PYSCF_MAX_MEMORY`, else 4000 MB); the vibration deck wrote 4000 for the blank until 2026-10-06. Nothing fills one *(prep filled them from what the machine granted until 2026-10-02)* | **no.** A reader refuses one (§ 2, G1) |
 | `optional = true`, no value | *unset is a legal answer* | the engine's own default, or `prep` proposes | yes |
 
 **Three items carry it** — `mpi_np`, `omp_threads`, `max_memory_mb` — and

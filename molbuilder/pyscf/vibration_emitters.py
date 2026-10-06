@@ -290,7 +290,14 @@ def _emit_constants(struct: Structure,
     # No grid under Hartree-Fock either -- the same rule as FUNCTIONAL's.
     out.append(f"GRID_LEVEL                 = "
                f"{(int(cfg.grid_level) if cfg.is_dft else None)!r}")
-    out.append(f"MAX_MEMORY_MB              = {int(cfg.max_memory_mb)!r}")
+    # A CAP LEFT UNSET IS NO CAP (`template.md` § 2), and the deck says so:
+    # `None`, which PySCF's `Mole.build` reads as not given, keeping its own
+    # setting.  4000 stood in for the blank until 2026-10-06, and the run's
+    # recorded facts said it was asked for.
+    out.append(f"MAX_MEMORY_MB              = "
+               f"{(int(cfg.max_memory_mb) if cfg.max_memory_mb else None)!r}"
+               + ("" if cfg.max_memory_mb else
+                  "  # not stated: PySCF's own setting"))
     out.append(f"VERBOSE                    = {int(cfg.verbose)!r}")
     out.append(f"USE_GPU                    = {bool(cfg.use_gpu)!r}  "
                f"# probe gpu4pyscf at run start; STOP if unusable "

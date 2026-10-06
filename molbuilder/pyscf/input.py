@@ -489,11 +489,15 @@ def spec_for(struct: Structure,
             # `compose` would build, not a second assembly of it.
             _logname = _rf_tail(ROLE_LOG, stage_token)
             out.append(f'    output     = _mb_outfile(JOB + {_logname!r}),')
-        # UNSET means no cap (`template-unification-plan.md` § 5.1): the line is
-        # OMITTED rather than emitted as None, so PySCF uses its own default --
-        # which reads the machine -- instead of being handed a Python None.
-        if cfg.max_memory_mb:
-            out.append(f"    max_memory = {cfg.max_memory_mb},   # MB")
+        # A CAP LEFT UNSET IS NO CAP (`template.md` § 2), and the deck says
+        # so: `None`, which PySCF's `Mole.build` reads as not given, keeping
+        # its own setting (`PYSCF_MAX_MEMORY`, else 4000 MB -- a figure it
+        # plans its work by).  The line was left out when unset until
+        # 2026-10-06, its comment saying PySCF's own default "reads the
+        # machine", which it does not.
+        out.append(f"    max_memory = {cfg.max_memory_mb},   # MB"
+                   if cfg.max_memory_mb else
+                   "    max_memory = None,   # not stated: PySCF's own setting")
         out.append("    unit       = 'Ang',")
         out.append(")")
         out.append('print(f"Built mol: {mol.natm} atoms, {mol.nelectron} electrons, '

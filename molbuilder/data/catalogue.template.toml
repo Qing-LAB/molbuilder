@@ -904,9 +904,9 @@ null_label = "(no cap)"
 optional = true
 tier = "advanced"
 help = """
-How much memory this run may use.  Left blank -- the normal state -- it is the machine's maximum, resolved at prep on the node that granted it; set a number only when you need a ceiling.
+How much memory this run may use.  Left blank -- the normal state -- there is no cap: nothing fills one in.  Set a number only when you need a ceiling.
 
-Each engine applies it its own way: SIESTA emits a SystemMemory hint into the deck and caps the wrapper, PySCF passes it to mol.max_memory, which is what it consults to choose in-core versus out-of-core.
+Each engine applies a number its own way: SIESTA's run script caps the run with `ulimit -v` (the deck records the number in a comment); PySCF's deck passes it to mol.max_memory, which PySCF consults to choose in-core versus out-of-core.  Blank, the PySCF deck writes `max_memory = None` and PySCF keeps its own setting (PYSCF_MAX_MEMORY, else 4000 MB).
 """
 [item.use_gpu]
 # MERGED 2026-08-23, following `net_charge`'s worked example (2026-08-19).

@@ -152,16 +152,6 @@ class VibrationConfigView:
         from .layout import scf_class
         return scf_class(self.state)
 
-    @property
-    def max_memory_mb(self) -> int:
-        # The lifted constants emitter takes an int only; the shared
-        # item's UNSET means "the engine's own default", which for PySCF
-        # is 4000 MB (gto.M's max_memory).  Supplied at the lift boundary
-        # rather than invented in the deck.  (P3 kept the adapter; teaching
-        # the emitter the unset state remains open and small.)
-        v = self._cfg.max_memory_mb
-        return int(v) if v else 4000
-
     def __getattr__(self, name):
         return getattr(self._cfg, name)
 
