@@ -1275,7 +1275,8 @@ that command will continue from, or with why its prep would refuse, whole, its
 commands included (§ 5.4). A prepped one is told what its state calls for: not
 launched — launch it; queued or running — let it finish; stopped or failed —
 launch it again, which continues from its own latest run, or, for a stage that
-does not continue from a run of its own, go back to the state saved before its
+does not continue from a run of its own — the one fact `launch` asks too
+(§ 5.4, *A stage launched again*) — go back to the state saved before its
 prep and prep it anew *(each a command that works; until 2026-10-01 every
 state was told to "re-submit", and until 2026-10-02 the second was "prep it
 again")*. `status
@@ -1391,6 +1392,35 @@ copied)*. `.continued-from` has one writer, `runrecord.write_continued_from`
 and its flat re-launch), and one reader, `read_continued_from` — launch's,
 writing `run.json`.
 
+**A stage launched again** *(unit 11c, 2026-10-05)*. A stage whose run
+stopped — the queue's wall, a kill, an error — is launched again, never
+prepped again (§ 5.0), and continues from **its own latest run** —
+whatever its end: one that failed is taken, as launching it again means; one
+that never concluded only on your judgement — when it continues from a run at
+all: its kind resumes (the restart-file list's
+`resumes`, [`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a — a
+force-constant run's does not: a rerun restarts at `FC.First`,
+[`engines/vibration.md`](?doc=engines/vibration.md) § 5.3) and it takes
+something from a run (what it declares; a stage set `restart: clean` takes
+nothing). `status` and `launch` ask that one fact of the stage's job
+(`Job.relaunch_continues`). The hand-over is one `Continuation`, as prep's is —
+the run, what it was, what it carried — and lands as prep's does: on the
+hierarchical layout the next `run-<n>`, opened through the one opener with the
+restart files that run left, and a transport rung's gathered inputs copied
+with their record (`.gathered-from`) — what its kind gathered for it at prep,
+never gathered again; on the flat layout the run again, where its files lie;
+`.continued-from` written, copied into `run.json`, recorded in the ledger
+(`continues`) — and sent only on your judgement when that run never concluded
+(§ 6.0). **A stage that does not continue from a run of its own is not launched
+again**: a second launch would start it over, and what it starts from was
+decided at its prep — a force-constant stage's relaxation, a clean stage's
+structure. `launch` refuses it as `status` words it: its redo is the state
+saved before its prep, restored, and a prep anew (§ 5.0). *(Until 2026-10-05
+launch continued a force-constant stage from its own stopped run while status
+told it to prep anew; a flat stage set `restart: clean` was launched again in
+place and recorded as continuing; a transport rung's next attempt was opened
+without the inputs its kind gathered.)*
+
 **What an independent stage continues from** *(W37, agreed 2026-09-27; built
 2026-10-01)*. **By default** a continuing stage — `restart` is `continue`
 unless its run card says `clean` — continues from **the newest attempt** of the
@@ -1495,7 +1525,7 @@ anything is sent, and the send decides nothing.**
 
 | # | step | what happens |
 |:--:|---|---|
-| 1 | **the plan** — nothing is written | the work: a prepped stage, a benchmark's pending trials, a bias scan's points. Its **submissions** — each one scheduler job, or one process here, walking one or more **members**, each a prepared attempt: a run is one member; a benchmark's resource shelf, its pending trials; a bias scan, its points; a transport ladder's seed and leads, one submission ([`engines/transport.md`](?doc=engines/transport.md) § 2a.7). For each member: the attempt it runs in (a re-launch's next one), what it continues from — the `Continuation` prep makes, by the same rule for a run to build on (§ 5.4) — and whether it follows a run that never concluded. The gates: the deck agrees with its launch; a trial starts cold. The placement — the job's own, recorded at prep, under what a launch flag changes, admitted. The exact lines and scripts to send |
+| 1 | **the plan** — nothing is written | the work: a prepped stage, a benchmark's pending trials, a bias scan's points. Its **submissions** — each one scheduler job, or one process here, walking one or more **members**, each a prepared attempt: a run is one member; a benchmark's resource shelf, its pending trials; a bias scan, its points; a transport ladder's seed and leads, one submission ([`engines/transport.md`](?doc=engines/transport.md) § 2a.7). For each member: the attempt it runs in (a re-launch's next one), what it continues from — one `Continuation`, as prep's: a stage launched again, its own latest run, and a stage that does not continue from a run of its own refused (§ 5.4, *A stage launched again*) — and whether it follows a run that never concluded. The gates: the deck agrees with its launch; a trial starts cold. The placement — the job's own, recorded at prep, under what a launch flag changes, admitted. The exact lines and scripts to send |
 | 2 | **show** | the exact command of every submission (S4, [`submission.md`](?doc=execution/submission.md)) |
 | 3 | **ask** | one question for the whole plan — its default *no* when a member follows a run that never concluded; `--yes` is the answer given in advance. `--dry-run` stops here and writes nothing, the ledger included — a refused dry run too, as a refused preview (§ 5.0). `--mode ask` puts the plan's lines to the scheduler instead (`sbatch --test-only`) and writes down what it asked |
 | 4 | **send** — nothing is decided | the folder is checked against the one the plan was made from — the plan made again from the folder as it is, and compared line by line: each submission's line and where it runs, each member and what it follows and how that run ended, every file the send writes or copies and every file read where it lies, each by its size and write time. A member launched, a run ended or a file changed since is refused, saying which and to launch again to see the new plan. Then each attempt is opened through the one opener ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.2), a submission with several members gets its sequencer's script, every script on disk before anything goes, and each submission goes out — `sbatch`, or the process here — through one function, each member's `run.json` written by the one writer |

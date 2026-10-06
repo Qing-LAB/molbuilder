@@ -288,7 +288,8 @@ def calls_made(calls: Path):
 # folder, paths under the calculation, as a copy or a restore leaves a
 # folder's times; `own_warm_files` -- the calculation's own restart-file
 # list, the engine's
-# copied beside `task.json` with `withhold` / `add` (`_road_own_warm_files`),
+# copied beside `task.json` with `withhold` / `add` / `resumes`
+# (`_road_own_warm_files`),
 # before anything is prepped; `stage` -- the
 # stage the
 # row's prep names, `coarse` unless given; `answers` -- what
@@ -312,9 +313,9 @@ def calls_made(calls: Path):
 # (`saved_states`, their notes -- `{stamp}` standing for the time a note
 # leads with, `2026-10-03 14:05:12`), what `status` says of the calculation
 # (`status_says`, and what it does not, `status_lacks`), and the decisions
-# its ledger holds and does not hold
-# (`ledger_holds`, `ledger_lacks`); a prep that was not refused says nothing
-# of `said_lacks`.
+# its ledger holds and does not hold (`ledger_holds`, `ledger_lacks` -- a
+# decision, or a verb's, `"launch continues"`); a prep that was not refused
+# says nothing of `said_lacks`.
 # THEN, refused or not: the description saved through Task setup's Save with
 # `saved`'s fields changed (`{shape = "flat"}`) -- refused, with
 # `save_refused`'s words, or taken.  A REFUSED prep, its remedy done: this
@@ -496,7 +497,8 @@ def _road_own_warm_files(case, bundle) -> None:
     the shipped file says to make it (`job-contracts.md` § 4.2a): the
     engine's file copied beside ``task.json`` and edited -- ``withhold``
     takes the ``carry`` off those suffixes' rows, ``add`` appends a row
-    known and not carried for each."""
+    known and not carried for each, ``resumes`` states its one
+    section-level fact for every kind, in ``[base]``."""
     import re
     from molbuilder.task import read_task
     from molbuilder.warmfiles import FILENAME, warm_list
@@ -510,6 +512,11 @@ def _road_own_warm_files(case, bundle) -> None:
         assert n == 1, f"no carried row for {suffix} to withhold"
     for suffix in own.get("add", []):
         text += f'\n[[base.file]]\nsuffix = "{suffix}"\n'
+    if "resumes" in own:
+        first = text.index("[[base.file]]")
+        text = (text[:first]
+                + f"[base]\nresumes = {str(own['resumes']).lower()}\n\n"
+                + text[first:])
     (bundle / FILENAME).write_text(text)
 
 
@@ -624,9 +631,13 @@ def _road_after_prep(case, bundle) -> None:
         import json
         from molbuilder.jobset.ledger import LEDGER_FILE
         log = bundle / LEDGER_FILE
-        decided = [json.loads(x)["decision"] for x in
-                   (log.read_text().splitlines() if log.is_file() else [])
-                   if x.strip()]
+        lines = [json.loads(x) for x in
+                 (log.read_text().splitlines() if log.is_file() else [])
+                 if x.strip()]
+        # A DECISION, or a verb's decision (``launch continues``): prep and
+        # launch both record what a stage continues from.
+        decided = ({e["decision"] for e in lines}
+                   | {f"{e['verb']} {e['decision']}" for e in lines})
         for decision in case.get("ledger_lacks", []):
             assert decision not in decided, f"the ledger holds: {decided}"
         for decision in case.get("ledger_holds", []):

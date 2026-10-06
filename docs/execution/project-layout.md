@@ -1644,7 +1644,10 @@ right name.
 > runs is launched again — `launch` opens its next attempt from where the last
 > reached: the coordinates it got to, not the ones it started from — and needs
 > no prep (`job-system.md` § 5.4); both that and continuing to the next stage
-> are *"copy this finished run's warm files into a new attempt"*. A stage
+> are *"copy this finished run's warm files into a new attempt"*. A stage that
+> does not continue from its own runs — set `restart: clean`, or a kind whose
+> rerun starts over — is not launched again (§ 5.4 there, *A stage launched
+> again*). A stage
 > prepped is not prepped again: a redo of its prep is the state saved before
 > it, restored ([`job-system.md`](?doc=execution/job-system.md) § 5.0).
 > *(This offered `--from 02_tight/run-0`, a prep of the same stage, until

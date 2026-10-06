@@ -68,6 +68,7 @@ from .agreement import (DeckLaunchMismatch, check_launch_matches_deck,
                         check_trial_starts_cold)
 from .model import Job, JobSet, Resources
 from .placement import one_process
+from .continuation import Continuation
 from .planned import Plan, found
 from ..paths import attempt_dir
 from ..runfiles import LAUNCH_DIR
@@ -412,17 +413,16 @@ class _Member:
     #: What the results and the ledger call it when the job's name does not
     #: -- a bias point's ``<stage>@<point>``.
     label: Optional[str] = None
-    #: The launched attempt a ladder stage launched again continues from --
-    #: "the natural workflow" (user, 2026-08-21).
-    continues: Optional[str] = None
-    #: The files that continuation copies, as the opener planned them.
+    #: What it continues from when it is a stage launched again -- its own
+    #: latest run, one `Continuation` from the one door
+    #: (`continuation.relaunch`; `job-system.md` § 5.4) -- or ``None``.
+    continuation: Optional[Continuation] = None
+    #: The restart files that continuation copies, as the opener planned
+    #: them -- what that run holds of what the stage declares.
     carries: List[str] = field(default_factory=list)
-    #: A flat stage launched again: its files lie where it reads them.
-    again: bool = False
-    #: The line what it follows concluded with (`runrecord.ending`) --
-    #: ``None`` when that run was launched and never ended on its own, which
-    #: the person judges, never molbuilder (`project-layout.md` § 1.6.4).
-    concluded: Optional[str] = None
+    #: The inputs a transport rung's kind gathered for that run, copied with
+    #: their record (`.gathered-from`) -- never gathered again.
+    gathered: List[str] = field(default_factory=list)
     #: The calculation's folder, so what the plan says names it.
     base: Optional[Path] = None
 
@@ -432,8 +432,8 @@ class _Member:
 
     @property
     def follows(self) -> bool:
-        """It follows a launched run of its own stage."""
-        return bool(self.continues or self.again)
+        """It is a stage launched again, following a run of its own."""
+        return self.continuation is not None
 
     def record_at(self) -> Tuple[Path, Optional[str]]:
         """Where its launch is recorded -- the one answer
@@ -442,27 +442,29 @@ class _Member:
         return launch_record_at(self.kind, self.job, self.container,
                                 self.run_dir if self.has_attempt else None)
 
+    def _where(self) -> str:
+        """Where it runs again: its next attempt, or its folder."""
+        return (f"into {self.run_dir.name}" if self.has_attempt
+                else "in the same folder, where its files are")
+
+    def _copied(self) -> List[str]:
+        return list(self.carries) + list(self.gathered)
+
     def said(self) -> str:
         """The member as the plan holds it, in one line: where it runs, what
-        it follows, and how that run ended."""
+        it follows, how that run ended and what is copied from it."""
         line = f"{self.name}: runs in {_rel(self.run_dir, self.base)}"
-        if self.continues:
-            line += (f", continuing {self.continues} (carrying "
-                     f"{', '.join(self.carries) or 'nothing'})")
-        elif self.again:
-            line += ", again where its files are"
-        if self.follows:
-            line += (f"; that run ended: {self.concluded}"
-                     if self.concluded is not None
-                     else "; that run never concluded")
+        if self.continuation is not None:
+            line += "; it " + self.continuation.line(self._copied(),
+                                                     would=True)
         return line
 
     def judgement(self) -> Optional[str]:
         """What only the person can decide before this goes, or ``None``."""
-        if not self.follows or self.concluded is not None:
+        c = self.continuation
+        if c is None or c.concluded is not None:
             return None
-        what = self.continues or "its last run, in this folder"
-        return (f"{self.name}: {what} was launched and never "
+        return (f"{self.name}: {c.where()} was launched and never "
                 f"CONCLUDED -- it may still be RUNNING, or it was "
                 f"force-stopped (walltime, kill).\n"
                 f"  Continuing reads its warm files AS THEY ARE: valid after "
@@ -472,26 +474,20 @@ class _Member:
 
     def would(self) -> str:
         """What it follows, said before anything is sent."""
-        if self.continues:
-            return (f"WOULD continue {self.continues} into "
-                    f"{self.run_dir.name} (carrying "
-                    f"{', '.join(self.carries) or 'nothing'}), then launch it")
-        return "WOULD launch it again in the same folder, where its files are"
+        return (f"WOULD launch it again {self._where()}: it "
+                + self.continuation.line(self._copied(), would=True))
 
     def note(self) -> Optional[str]:
         """The line that says what this launch follows, once it is sent, or
         ``None``."""
-        if not self.follows:
+        c = self.continuation
+        if c is None:
             return None
-        how = (f"concluded ({self.concluded})" if self.concluded is not None
-               else "NOT concluded -- continued on your judgement")
-        if self.again:
-            return (f"{how}: launching it again in the same folder, where "
-                    f"its files are")
-        return (f"{how}: continuing {self.continues} -> {self.run_dir.name} "
-                f"(carrying {', '.join(self.carries) or 'nothing'}).  To "
-                f"start it afresh instead (from the stage before it, or "
-                f"--cold from the structure): "
+        judged = ("" if c.concluded is not None else
+                  " -- on your judgement: that run never concluded")
+        return (f"launched again {self._where()}{judged}: it "
+                + c.line(self._copied()) + ".  To start it afresh instead "
+                "-- from the stage before it, or the structure: "
                 + rollback("its prep", base=self.base))
 
 
@@ -649,12 +645,11 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
     from ..paths import attempts_in
     from .materialize import (bench_stage_of, job_dir_names, launch_record_at,
                               prepare_attempt, shape_of)
-    from ..runrecord import ending, launch_record_path, write_continued_from
+    from ..runrecord import launch_record_path, write_continued_from
     _member = functools.partial(_Member, kind=jobset.kind, base=base)
     sh = shape_of(jobset, base)
     container = base / job_dir_names(jobset, sh)[job.name]
     ns = attempts_in(container)
-    stem = Path(job.script).stem
     if jobset.kind == "sweep":
         run = _trial_run_dir(container)
         where, basename = launch_record_at("sweep", job, container,
@@ -700,21 +695,22 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
         if not _launched(where, basename):
             return _member(job, container, container, False, container)
         # A FLAT STAGE LAUNCHED AGAIN continues from its own latest run,
-        # where its files are (`job-system.md` § 5.0, row 7), and its record
-        # says so -- as the hierarchy's next attempt names its own.  The
-        # marker prep left names what the stage's FIRST launch continued
+        # where its files are, and its record says so -- as the hierarchy's
+        # next attempt names its own; one that does not continue from a run
+        # of its own is refused (the one door, `continuation.relaunch`).
+        # The marker prep left names what the stage's FIRST launch continued
         # from, the stage before it, and was recorded again (W55 D5).
-        from ..runfiles import latest_run, run_name
-        n = latest_run(where, basename)
-        if n is not None:
-            write_continued_from(where, run_name(basename, None, n),
-                                 basename=basename, plan=writes)
+        cont = _relaunched(base, job)
+        if cont.run is not None:
+            write_continued_from(where, cont.run, basename=basename,
+                                 plan=writes)
         return _member(job, container, container, False, container,
-                       again=True, concluded=ending(container, stem).line)
+                       continuation=cont)
     last = attempt_dir(container, ns[-1])
     if not _launched(last):
         return _member(job, container, last, True, last)
-    source = str(last.relative_to(base))
+    cont = _relaunched(base, job)
+    source = cont.source
     try:
         # THE ONE OPENER, planned (`project-layout.md` § 1.6.2): the next
         # attempt, the stage's files and what it carries from ``source`` --
@@ -733,9 +729,58 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
             f"  Look at that run's logs.  To run the stage anew -- a "
             f"prepped stage is not prepped again (job-system.md § 5.0) -- "
             + rollback("its prep", base=base)) from e
-    return _member(job, container, opened.dir, True, last, continues=source,
+    return _member(job, container, opened.dir, True, last, continuation=cont,
                    carries=list(opened.copied),
-                   concluded=ending(last, stem).line)
+                   gathered=_carry_the_gather(last, opened.dir, writes,
+                                              base=base))
+
+
+def _relaunched(base: Path, job) -> Continuation:
+    """What ``job``'s stage, launched again, continues from -- the one door
+    (`continuation.relaunch`), asked with the calculation's description;
+    its refusal, a stage that does not continue from a run of its own, is
+    the launch's (`job-system.md` § 5.4, *A stage launched again*)."""
+    from ..task import FILENAME, read_task
+    from .continuation import relaunch
+    desc = base / FILENAME
+    try:
+        task = read_task(desc)
+    except Exception as exc:                                  # noqa: BLE001
+        raise SubmitError(
+            f"{job.name} was launched, and launching it again reads what it "
+            f"continues from through its description -- {desc}: "
+            f"{exc}") from None
+    cont, why = relaunch(base, task, job)
+    if why:
+        raise SubmitError(why)
+    return cont
+
+
+def _carry_the_gather(source: Path, attempt: Path, writes: Plan, *,
+                      base: Path) -> List[str]:
+    """A transport rung launched again takes the inputs its kind gathered
+    for ``source`` -- each file, copied from it into ``attempt``, with the
+    record (`.gathered-from`) that says where each came from: what a stage
+    builds on is decided once, at its prep, and never gathered again
+    (`job-system.md` § 5.4).  ``[]`` for a run that gathered nothing.
+    *(Until 2026-10-05 the next attempt of a single-bias device was opened
+    without its electrodes' `.TSHS`.)*"""
+    from ..runrecord import read_gathered_from, write_gathered_from
+    took = read_gathered_from(source)
+    for g in took:
+        f = source / g["file"]
+        if not f.is_file():
+            raise SubmitError(
+                f"{_rel(source, base)}: {g['file']}, gathered for it from "
+                f"{g['from']}, is not there -- launched again, the stage "
+                f"takes the inputs gathered for its run, and they are gone.  "
+                f"A prepped stage is not prepped again: "
+                + rollback("its prep", base=base))
+        writes.copy(f, attempt / g["file"])
+    if took:
+        write_gathered_from(attempt, [(g["from"], g["file"]) for g in took],
+                            plan=writes)
+    return [g["file"] for g in took]
 
 
 def _trial_run_dir(container):
@@ -965,6 +1010,17 @@ def send_launch(plan: LaunchPlan, *, said=None) -> List[JobResult]:
         plan.record("refused", reason=str(exc))
         raise
     plan.writes.carry_out()
+    # WHAT EACH STAGE LAUNCHED AGAIN CONTINUES FROM, recorded as prep's
+    # hand-over is (`continues`; `job-system.md` § 5.4) -- its attempt
+    # opened, what came across.
+    for s in plan.submissions:
+        for m in s.members:
+            if m.continuation is not None:
+                plan.record("continues", stage=m.name,
+                            **m.continuation.ledger_facts(),
+                            copied=list(m.carries),
+                            **({"gathered": list(m.gathered)}
+                               if m.gathered else {}))
     results: List[JobResult] = list(plan.skipped)
     refused: List[str] = []
     for s in plan.submissions:
@@ -1024,7 +1080,6 @@ def _go(s: Submission, record) -> List[JobResult]:
     refusal.)*"""
     env = {**os.environ, "MB_LAUNCHED_BY": "jobset-launch"}
     names = [m.name for m in s.members]
-    follows = {m.name: m.note() for m in s.members if m.follows}
     if s.direct:
         # The launch-door claim rides the child ENV here: inheritance
         # survives forks and backgrounding, so a detached local run
@@ -1043,7 +1098,7 @@ def _go(s: Submission, record) -> List[JobResult]:
             _record_launch(where, mode="direct", command=s.command,
                            basename=basename)
         record("launched", submission=s.name, command=s.command,
-               members=names, **({"follows": follows} if follows else {}))
+               members=names)
         rc = proc.wait()
         return ([JobResult(s.name, s.command, "ran" if rc == 0 else "failed",
                            returncode=rc)]
@@ -1069,8 +1124,7 @@ def _go(s: Submission, record) -> List[JobResult]:
         _record_launch(where, mode="submit", command=s.command, job_id=jid,
                        placement=s.placement, basename=basename)
     record("launched", submission=s.name, command=s.command, job_id=jid,
-           domain=s.domain, members=names,
-           **({"follows": follows} if follows else {}))
+           domain=s.domain, members=names)
     return ([JobResult(s.name, s.command, "submitted", job_id=jid,
                        domain=s.domain)]
             + ([JobResult(m.name, [], s.rides, job_id=jid)

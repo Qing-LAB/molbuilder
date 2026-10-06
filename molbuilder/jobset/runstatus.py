@@ -102,10 +102,11 @@ class StageStatus:
     #: the record without a SECOND reader of the same file -- the schema is
     #: versioned (``molbuilder/run-launch@1``) and may grow fields.
     launch: Optional[Dict[str, Any]] = None
-    #: Whether a re-run of this stage continues from what the last one left
-    #: -- the job's own fact (`Job.resumes`, `job-contracts.md` § 4.2a), so
-    #: the status says what re-submitting it will do.
-    resumes: bool = True
+    #: Whether this stage, launched again, continues from its own latest run
+    #: -- the job's one fact (`Job.relaunch_continues`), which `launch`
+    #: asks too, so the status says what launching it again will do
+    #: (`job-system.md` § 5.4, *A stage launched again*).
+    relaunch_continues: bool = True
     #: Whether anything has prepped it -- a description's stage before its
     #: first prep is listed all the same (`job-system.md` § 5.3).
     prepped: bool = True
@@ -324,7 +325,7 @@ def _job_status(base: Path, jobset: JobSet, job, task, *, dirs,
         attempt=where,
         attempts=attempts_in(home),
         launch=launch,
-        resumes=job.resumes,
+        relaunch_continues=job.relaunch_continues,
         # THE SAME LABEL THE STATE WAS READ WITH.  This asked for
         # `jobset.name` while everything else in the loop had moved to
         # `job_label` -- so a trial's own label (`paths.trial_label`;
@@ -566,15 +567,18 @@ def next_step(s: Optional[StageStatus], name: str, *, base) -> str:
     # A PREPPED STAGE IS NOT PREPPED AGAIN (user, 2026-10-02): what it
     # said here until then -- "prep it again for a fresh attempt", and
     # "or change its parameters first" -- is a rollback now.
-    if s is not None and s.resumes and s.carries:
+    if s is not None and s.relaunch_continues:
         how = ("launch it again -- it continues from its own latest run:\n"
                + block(launch_lines("run", name, base=base))
                + "\n  or, to change it first, " + rollback("its prep",
                                                           base=base))
     else:
-        how = ("it does not continue from a run of its own, and a prepped "
-               "stage is not prepped again -- " + rollback("its prep",
-                                                           base=base))
+        # THE SAME SENTENCE `launch` refuses a second launch with -- one
+        # fact (`Job.relaunch_continues`), one answer (C10: a stopped
+        # force-constant stage was told to prep anew here while launch
+        # continued it).
+        from .continuation import no_relaunch
+        how = no_relaunch(s is None or not s.carries, base=base)
     return (f"First incomplete stage: {name}, {state}.  molbuilder does NOT "
             f"auto-resume -- you decide: {how}")
 

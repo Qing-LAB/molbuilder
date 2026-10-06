@@ -49,6 +49,9 @@ class Continuation:
     #: (`runfiles.run_name`, ``H2_01_coarse-run1``) -- what the stage's own
     #: ``.continued-from`` records -- or ``None``: an attempt names it.
     run: Optional[str] = None
+    #: The stage's OWN latest run: a stage launched again (:func:`relaunch`;
+    #: `job-system.md` § 5.4, *A stage launched again*).
+    own: bool = False
 
     def where(self) -> str:
         """The run, as a person reads it: its attempt, or -- on the flat
@@ -64,6 +67,7 @@ class Continuation:
         rc=0 at ...; converged): copied H2.XV, ...`` -- what both doors
         print; ``would``, a preview's: what it would copy."""
         facts = [("named" if not self.by_default else
+                  "its own latest run" if self.own else
                   "the relaxation it builds on" if self.linked else
                   "the stage before it"),
                  _what_it_is(self.concluded, self.state)]
@@ -465,6 +469,58 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
            if other else "")
     return None, (f"`{stage}` {'builds on' if linked else 'continues from'} "
                   f"{what} {why}.  {first}\n{alt}{clean}{rule}")
+
+
+def no_relaunch(takes_nothing: bool, *, base) -> str:
+    """Why a stage that does not continue from a run of its own is not
+    launched again, and the way back -- `status`'s next step for it and
+    `launch`'s refusal, one sentence (`job-system.md` § 5.4, *A stage
+    launched again*).  ``takes_nothing``: it takes nothing from a run (set
+    ``restart: clean``); otherwise its kind's rerun starts over."""
+    from .commands import rollback
+    why = ("it takes nothing from a run (`restart: clean`)" if takes_nothing
+           else "a rerun of its kind starts over (its restart-file list's "
+                "`resumes`)")
+    return (f"it does not continue from a run of its own -- {why} -- and a "
+            f"prepped stage is not prepped again: "
+            + rollback("its prep", base=base))
+
+
+def relaunch(base, task, job) -> Tuple[Optional[Continuation], Optional[str]]:
+    """``(continuation, refusal)`` for ``job``'s stage LAUNCHED AGAIN -- the
+    door `launch` asks for a re-launch's hand-over, as prep asks
+    :func:`continuation_answer` (`job-system.md` § 5.4, *A stage launched
+    again*).  A stage that continues from a run of its own
+    (`Job.relaunch_continues`) continues from its OWN latest run: its newest
+    attempt, or on the flat layout its latest run in the folder, by the name
+    every file of it carries -- what it was read in the run door's order
+    (:func:`read_run`), one `Continuation` as prep's is.  One that does not
+    is refused, worded as `status` words it (:func:`no_relaunch`)."""
+    from ..paths import Shape
+    from ..runfiles import latest_run, run_name
+    from .materialize import latest_attempt, stage_home
+    base = Path(base)
+    stage = job.name
+    if not job.relaunch_continues:
+        return None, (f"`{stage}` was launched, and "
+                      + no_relaunch(not job.warm, base=base))
+    home = stage_home(base, task, stage)
+    if Shape.named(task.shape).keeps_attempts_as_directories:
+        latest = latest_attempt(home.dir)
+        if latest is None:
+            return None, None                        # never launched
+        concluded, state, converged = read_run(base, task, stage, latest,
+                                               home.dir)
+        return Continuation(stage=stage, source=str(latest.relative_to(base)),
+                            by_default=True, concluded=concluded, state=state,
+                            converged=converged, own=True), None
+    n = latest_run(base, task.label, stage=home.token)
+    concluded, state, converged = read_run(base, task, stage, base, base)
+    return Continuation(stage=stage, source=None, by_default=True,
+                        concluded=concluded, state=state, converged=converged,
+                        own=True,
+                        run=(run_name(task.label, home.token, n)
+                             if n is not None else None)), None
 
 
 def state_remedy(concluded: Optional[str], state: Optional[str],

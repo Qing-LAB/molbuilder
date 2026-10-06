@@ -397,6 +397,16 @@ class Job:
     #: ``None`` with no queue: a trial, a machine with no scheduler.
     placement:  Optional[Dict[str, Any]] = None
 
+    @property
+    def relaunch_continues(self) -> bool:
+        """Whether this stage, launched again, continues from its own latest
+        run -- its kind resumes (:attr:`resumes`) and it takes something
+        from a run (:attr:`warm`; a stage set ``restart: clean`` takes
+        nothing).  The one fact `status` words a stopped stage's next step
+        by and `launch` refuses a second launch by (`job-system.md` § 5.4,
+        *A stage launched again*)."""
+        return self.resumes and bool(self.warm)
+
     def to_dict(self) -> Dict[str, Any]:
         d = {
             "name": self.name,
