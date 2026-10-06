@@ -238,6 +238,7 @@ def calls_made(calls: Path):
 #      launch (`launch_refused`, the same; `listing`) -- a dry run, unless
 #      `launch_sends` sends it (answered `--yes`); what the launch left
 #      (`launch_writes_nothing`: every file under the calculation as it was;
+#      `walk`, `walk_lacks`: the walk it wrote, `launch/<name>.run.sh`;
 #      `after_launch`: the after-prep checks below, asked again);
 #   2. WHAT IS PRODUCED -- the `.sbatch` header (`header`, or
 #      `header_absent`), the deck (`deck`), the run script (`run_sh`), each
@@ -936,6 +937,12 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         if case.get("launch_writes_nothing"):
             now = _all_written(bundle)
             assert now == was, sorted(set(now.items()) ^ set(was.items()))
+        if "walk" in case or "walk_lacks" in case:
+            # THE WALK the launch wrote -- one submission's sequencer,
+            # `launch/<name>.run.sh` (`job-system.md` § 6.0)
+            walks = sorted(bundle.rglob("launch/*.run.sh"))
+            assert len(walks) == 1, walks
+            _road_lines(case, "walk", walks[0].read_text())
         if "after_launch" in case:
             _road_after_prep(case["after_launch"], bundle)
 

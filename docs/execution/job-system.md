@@ -1540,13 +1540,22 @@ was never asked for, so a launch to a queue on a machine with none printed a
 line nobody could send; and the refusals the verb said before the send, and a
 run here until it had ended, left no line — W55 B5, D14.)*
 
-**One sequencer.** A submission of several members runs them through one
-script, written from data: which members in what order, what each hands the
-next — from the restart-file list in effect for the calculation, never a name
-typed in code — and whether a member that fails stops the rest, declared by
-the kind and its axis (a bias scan stops at a failed point; a benchmark's shelf
-goes on). The shelf's script and the bias chain were two such scripts until
-2026-10-03, differing in five ways, one a hand-typed `{label}.TSDE`.
+**A benchmark's walk.** A benchmark's trials sent together — a resource shelf
+on a queue ([`generator.md`](?doc=execution/generator.md) § 4.3a), or its
+unlaunched trials run here — go as one submission walking them in order, through
+the benchmark's own script (`launch/<name>.run.sh`, written by
+`submit._bench_walk`): each trial `cd`ed into and its own run script run with its
+own counts, timed, under the per-trial bound when one is given
+(`--trial-timeout`, here as on a queue); a trial that fails leaves the rest to
+run, and the walk exits nonzero when any failed. *(Built 2026-10-05, unit 11d:
+the trials run here went as one process after another from Python until then.)*
+**A transport bias scan is not a benchmark** *(user, 2026-10-05: "bias scan is
+its own mechanism — this is parameter sweep, not some … computation resource
+experiment")*: it is one calculation swept over a parameter, with its own walk
+and its own record of which points are done
+([`engines/transport.md`](?doc=engines/transport.md)), and shares nothing with
+this. *(This paragraph made the two one script, "one sequencer", from
+2026-10-03; the bias scan's walk was never moved onto it.)*
 
 **The placement is decided once, at prep, and recorded** *(W38 F1/F6, restated
 2026-10-03 against [`architecture.md`](?doc=execution/architecture.md) § 5.2)*.
@@ -1983,7 +1992,7 @@ Where each responsibility lives, for someone extending the framework:
 | A run's own records — `run.json` read and written through `persist`, how a run ended (its conclusion marker), `.continued-from`, `.gathered-from` | `molbuilder/runrecord.py` |
 | What a prep receives, assembled once (A12) — the run's `(allocation, pins, chosen)` and the bench's `(points, pins, translation)`, the bench grid's cell checks, and the notes a person is told; the conductor's own assembly, beside it | `molbuilder/jobset/prep_inputs.py` |
 | The human-readable plan table | `molbuilder/jobset/plan.py` |
-| The launch verb's one entry — the plan (`plan_launch` → `LaunchPlan`: submissions, members, attempts, continuations, placements, the exact lines), then the send: the one sender, the one sequencer, the one launch request (`_sbatch_request`) and the refusal to hand the scheduler more than one at a time (§ 6.0) | `molbuilder/jobset/submit.py` |
+| The launch verb's one entry — the plan (`plan_launch` → `LaunchPlan`: submissions, members, attempts, continuations, placements, the exact lines), then the send: the one sender, a benchmark's walk, the one launch request (`_sbatch_request`); a sweep sent to a scheduler goes one job per shelf, never one per trial (§ 6.0) | `molbuilder/jobset/submit.py` |
 | Per-stage status roll-up (reuses `run_status`) | `molbuilder/jobset/runstatus.py` |
 | What a run continues from — the default, a named run, or why prep refuses — as one `Continuation`, the files it carries included; the one rule for a run to build on (§ 5.4) | `molbuilder/jobset/continuation.py` |
 | Every command a verb or a refusal prints for a person to type; a launch as a text read later says it (a deck's header, a result's remedy) | `molbuilder/jobset/commands.py`; `molbuilder/identity.py::launch_as_typed` |

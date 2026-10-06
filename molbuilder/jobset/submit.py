@@ -867,8 +867,9 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
     (`generator.md` § 4.3a) -- never as one job per trial, which would hand
     the scheduler a sweep at once: *"SLURM should never submit jobs in
     parallel.  Submission is manual and one by one"* (user, 2026-08-10); a
-    transport scan's per-point rung goes as one job walking its points; a
-    stage, a named trial and a sweep run here, one submission each.
+    sweep run here walks its unlaunched trials in one submission, as a
+    shelf does on a queue; a transport scan's per-point rung goes as one
+    job walking its points; a stage and a named trial, one submission each.
     """
     base = Path(base_dir).resolve()
     try:
@@ -925,6 +926,9 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
         plan = _plan_shelves(jobset, base, mode=mode, domain=domain,
                              gpu_domain=gpu_domain, side=side, mem=mem,
                              time_s=time_s, trial_timeout_s=trial_timeout_s)
+    elif jobset.kind == "sweep" and only is None:
+        plan = _plan_bench_here(jobset, base,
+                                trial_timeout_s=trial_timeout_s)
     else:
         task = _a_scan(jobset, base, only) if only is not None else None
         plan = (_plan_chain(jobset, base, task, mode=mode, stage=only,
@@ -1492,6 +1496,69 @@ def submitted_cap_notes(plans) -> List[str]:
     return notes
 
 
+def _bench_walk(name: str, trials, *, where: str,
+                bound_s: Optional[int] = None) -> str:
+    """A BENCHMARK'S WALK -- the script that runs its trials one after
+    another in one submission: a resource shelf sent to a queue
+    (`generator.md` § 4.3a), or its unlaunched trials run here
+    (`job-system.md` § 6.0).  ``trials`` are ``(name, folder, run script,
+    its arguments)``, the folder from where the walk runs; ``bound_s`` the
+    per-trial bound, a trial past it killed and read incomplete.  A trial
+    that fails leaves the rest to run -- one bad point says nothing about
+    the next -- and the walk exits nonzero when any failed.  THE TWO-LAYER
+    MODEL HOLDS (`job-system.md` § 6): this file orders and bounds; each
+    trial's own ``.run.sh`` activates its environment and launches its
+    engine, exactly as when it runs alone.  The benchmark's own: a
+    transport bias scan's walk is transport's, and shares nothing with it
+    (user, 2026-10-05)."""
+    when = "$(date '+%Y-%m-%dT%H:%M:%S')"
+    lines = [
+        "#!/usr/bin/env bash",
+        f"# {name}.run.sh -- {where}, in sequence",
+        "# (generator.md § 4.3a; job-system.md § 6.0).  Regenerated at each",
+        "# launch.  THE TWO-LAYER MODEL HOLDS (job-system.md § 6): this file",
+        "# is the launcher layer only -- ordering and bounds.  Env activation",
+        "# and the engine launch stay in each trial's own .run.sh, exactly as",
+        "# when a trial runs alone; nothing here re-implements module load /",
+        "# source activate.",
+        "set -u",
+        f'LOG="launch/{name}.log"',
+        f'echo "[group] {when} start trials={len(trials)} per-trial-bound='
+        f'{f"{bound_s}s" if bound_s else "none"} '
+        'job=${SLURM_JOB_ID:-none} node=$(hostname) '
+        'alloc_ntasks=${SLURM_NTASKS:-unset} '
+        'alloc_cpus=${SLURM_CPUS_PER_TASK:-unset}" >> "$LOG"',
+        "fails=0",
+        "run_trial() {",
+        '    _name="$1"; _dir="$2"; shift 2',
+        "    _t0=$(date +%s)",
+        f'    echo "[group] {when} -> ${{_name}} starts" >> "$LOG"',
+        (f'    ( cd "${{_dir}}" && timeout -k 30 {bound_s} '
+         'bash "$@" ) >> "$LOG" 2>&1'
+         if bound_s else
+         '    ( cd "${_dir}" && bash "$@" ) >> "$LOG" 2>&1'),
+        "    _rc=$?",
+        '    if [ "${_rc}" -eq 124 ]; then',
+        (f'        echo "[group] ${{_name}} hit the {bound_s}s '
+         'per-trial bound -- killed; its artifacts read incomplete" >> "$LOG"'
+         if bound_s else
+         '        echo "[group] ${_name} killed (124)" >> "$LOG"'),
+        "    fi",
+        '    if [ "${_rc}" -ne 0 ]; then fails=$((fails+1)); fi',
+        "    _t1=$(date +%s)",
+        f'    echo "[group] {when} <- ${{_name}} finished rc=${{_rc}} '
+        'took=$(( _t1 - _t0 ))s" >> "$LOG"',
+        "    return 0    # one bad point says nothing about the next",
+        "}",
+    ]
+    for trial, folder, run_sh, args in trials:
+        lines.append(f'run_trial "{trial}" "{folder}" "{run_sh}"'
+                     + (f" {args}" if args else ""))
+    lines += [f'echo "[group] {when} done fails=${{fails}}" >> "$LOG"',
+              "exit $(( fails > 0 ))", ""]
+    return "\n".join(lines)
+
+
 def sides_of(jobset: JobSet) -> Dict[str, List[Job]]:
     """A sweep's trials by the side they run on -- ``{"cpu": [...],
     "gpu": [...]}`` -- each trial's GPU request (`model.gpu_request`, the one
@@ -1503,6 +1570,66 @@ def sides_of(jobset: JobSet) -> Dict[str, List[Job]]:
         sides["gpu" if _gpus(j.resources, f"trial {j.name!r}").uses
               else "cpu"].append(j)
     return sides
+
+
+def _plan_bench_here(jobset: JobSet, base: Path, *,
+                     trial_timeout_s: Optional[int]) -> LaunchPlan:
+    """A benchmark's trials run HERE (``--mode direct``, no trial named):
+    one submission walking every trial not yet launched, in the sweep's
+    order, through the benchmark's walk (:func:`_bench_walk`) -- as a shelf
+    walks its trials on a queue -- each under the per-trial bound when one
+    is given; a trial launched before is passed over by name.  *(Each
+    trial ran as its own process, one after another from Python, until
+    2026-10-05.)*"""
+    plan = LaunchPlan(base, "direct", [])
+    pending: List[_Member] = []
+    for job in jobset.jobs:
+        m = _plan_member(jobset, base, job, mode="direct", writes=plan.writes)
+        if isinstance(m, JobResult):
+            plan.skipped.append(m)          # measured before
+            continue
+        try:
+            check_launch_matches_deck(m.read_from, job)
+            check_trial_starts_cold(m.read_from, job)
+        except DeckLaunchMismatch as e:
+            raise SubmitError(str(e)) from e
+        run_name = _wrapper_name(job.script, ".run.sh")
+        if not (m.read_from / run_name).exists():
+            raise SubmitError(
+                f"trial {job.name!r}: {run_name} is not in {m.read_from}, "
+                f"and a prepped benchmark is not prepped again: "
+                + rollback("the benchmark's prep", base=base))
+        plan.reads += [_as_found(m.read_from / f, base)
+                       for f in (job.script, run_name)]
+        pending.append(m)
+    if not pending:
+        from .materialize import bench_stage_of, job_dir_names, shape_of
+        dirs = job_dir_names(jobset, shape_of(jobset, base))
+        stage = bench_stage_of(base, base / dirs[jobset.jobs[0].name])
+        raise SubmitError(
+            f"all {len(jobset.jobs)} trials are launched.  next:\n    "
+            + (_cmd("summarize", "bench", stage, base=base) if stage else
+               "`summarize bench` on the sweep's stage"))
+    # THE ONE PARENT THAT SEES EVERY TRIAL -- the benchmark's container,
+    # as a shelf's walk runs from it on a queue.
+    containers = {m.container.parent for m in pending}
+    if len(containers) != 1:
+        raise SubmitError(
+            "the sweep's trials do not share one container -- a walk of "
+            f"them needs the one parent that sees them all; found "
+            f"{sorted(str(c) for c in containers)}")
+    container = next(iter(containers))
+    name = "bench-group"
+    plan.writes.text(container / LAUNCH_DIR / f"{name}.run.sh", _bench_walk(
+        name, [(m.name, str(m.run_dir.relative_to(container)),
+                _wrapper_name(m.job.script, ".run.sh"),
+                " ".join(_run_sh_args(m.job.resources))) for m in pending],
+        where="this benchmark's unlaunched trials, run here",
+        bound_s=trial_timeout_s))
+    plan.submissions.append(Submission(
+        name, ["bash", f"launch/{name}.run.sh"], container, True, pending,
+        rides="rides the group"))
+    return plan
 
 
 def _plan_shelf(jobset: JobSet, base: Path, dirs, pending, name: str,
@@ -1588,73 +1715,20 @@ def _plan_shelf(jobset: JobSet, base: Path, dirs, pending, name: str,
 
     envelope = _group_envelope(pending)
 
-    lines = [
-        "#!/usr/bin/env bash",
-        f"# {name}.run.sh -- ONE allocation, this shelf's unlaunched",
-        "# trials in sequence (project-layout.md § 2.3.2, user 2026-08-20;",
-        "# split per resource shelf 2026-08-21, generator.md § 4.3a).",
-        "# Regenerated at each grouped submission.  THE TWO-LAYER MODEL",
-        "# HOLDS (job-system.md § 6): this file is the launcher layer only",
-        "# -- ordering and bounds.  Env activation and the engine launch",
-        "# stay in each trial's own .run.sh, exactly as when a trial runs",
-        "# alone; nothing here re-implements module load / source activate.",
-        "set -u",
-        f'LOG="launch/{name}.log"',
-        f'echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') start '
-        f'trials={len(pending)} per-trial-bound='
-        f'{f"{trial_timeout_s}s" if trial_timeout_s else "none"} '
-        'job=${SLURM_JOB_ID:-none} node=$(hostname) '
-        'alloc_ntasks=${SLURM_NTASKS:-unset} '
-        'alloc_cpus=${SLURM_CPUS_PER_TASK:-unset}" >> "$LOG"',
-        "fails=0",
-        "run_trial() {",
-        '    _name="$1"; _dir="$2"; shift 2',
-        "    _t0=$(date +%s)",
-        '    echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') -> ${_name} starts" >> "$LOG"',
-        (f'    ( cd "${{_dir}}" && timeout -k 30 {trial_timeout_s} '
-         'bash "$@" ) >> "$LOG" 2>&1'
-         if trial_timeout_s else
-         '    ( cd "${_dir}" && bash "$@" ) >> "$LOG" 2>&1'),
-        "    _rc=$?",
-        '    if [ "${_rc}" -eq 124 ]; then',
-        (f'        echo "[group] ${{_name}} hit the {trial_timeout_s}s '
-         'per-trial bound -- killed; its artifacts read incomplete" >> "$LOG"'
-         if trial_timeout_s else
-         '        echo "[group] ${_name} killed (124)" >> "$LOG"'),
-        "    fi",
-        '    if [ "${_rc}" -ne 0 ]; then fails=$((fails+1)); fi',
-        "    _t1=$(date +%s)",
-        '    echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') <- ${_name} '
-        'finished rc=${_rc} took=$(( _t1 - _t0 ))s" >> "$LOG"',
-        "    return 0    # one bad point says nothing about the next",
-        "}",
-    ]
-    for j in pending:
-        run_name = _wrapper_name(j.script, ".run.sh")
-        # THE ATTEMPT, NOT THE TRIAL.  The wrapper lives in `run-<n>` since
-        # the attempt layer landed (`project-layout.md` § 1.5a, 2026-08-27),
-        # and this line went on naming the trial DIRECTORY -- so every
-        # grouped bench `cd`ed one level too high and every trial died
-        # instantly with *"No such file or directory"* (rc=127).  Sol job
-        # 62372574, and every grouped bench since 2026-08-27.
-        #
-        # `_artifacts` is the one answer to "where are this trial's files",
-        # and the gates above already ask it.  A ``trial_dirs`` list was
-        # computed here for exactly this purpose, carrying the comment
-        # *"the sequencer `cd`s into these, so they are the attempt too"* --
-        # and nothing read it.  The intent was recorded, the value was
-        # built, and the line that needed it went on computing its own.
-        rel = _artifacts(j).relative_to(container)
-        args = " ".join(_run_sh_args(j.resources))
-        lines.append(
-            f'run_trial "{j.name}" "{rel}" "{run_name}"'
-            + (f" {args}" if args else ""))
-    lines += [
-        'echo "[group] $(date \'+%Y-%m-%dT%H:%M:%S\') done '
-        'fails=${fails}" >> "$LOG"',
-        'exit $(( fails > 0 ))',
-        "",
-    ]
+    # THE ATTEMPT, NOT THE TRIAL.  The wrapper lives in `run-<n>` since the
+    # attempt layer landed (`project-layout.md` § 1.5a, 2026-08-27), and the
+    # sequencer went on naming the trial DIRECTORY -- so every grouped bench
+    # `cd`ed one level too high and every trial died instantly with *"No
+    # such file or directory"* (rc=127; Sol job 62372574).  `_artifacts` is
+    # the one answer to "where are this trial's files", and the gates above
+    # already ask it.  Each trial is handed its own -np / -omp: the shield
+    # against the envelope's SLURM_* variables.
+    script = _bench_walk(
+        name, [(j.name, str(_artifacts(j).relative_to(container)),
+                _wrapper_name(j.script, ".run.sh"),
+                " ".join(_run_sh_args(j.resources))) for j in pending],
+        where="ONE allocation, this shelf's unlaunched trials",
+        bound_s=trial_timeout_s)
     # THE ONE REQUEST (`_sbatch_request`): prep's envelope, what was said at
     # launch, admitted on this side's queue (R9), every value stated.  The
     # side IS the envelope's GPU request -- every trial on the shelf shares
@@ -1685,7 +1759,7 @@ def _plan_shelf(jobset: JobSet, base: Path, dirs, pending, name: str,
         if header is None:
             raise SubmitError(_no_sbatch(name, f"launch/{name}.sbatch",
                                          base=base))
-        plan.writes.text(launch_dir / f"{name}.run.sh", "\n".join(lines))
+        plan.writes.text(launch_dir / f"{name}.run.sh", script)
         plan.writes.text(launch_dir / f"{name}.sbatch",
                          _into_launch(header, name))
 

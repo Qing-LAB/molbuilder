@@ -1557,7 +1557,10 @@ def _refuse_flags_without_effect(*, kind: str, mode: str, trial,
         return [n for n in names if flags[n] is not None]
 
     if mode == "direct":
-        got = said(*flags)
+        # A BENCHMARK'S PER-TRIAL BOUND IS ITS WALK'S, here as on a queue
+        # (`job-system.md` § 6.0, *One sequencer*) -- the rest are what a
+        # scheduler is asked.
+        got = said("--domain", "--time", "--mem", "--gpu-domain", "--only")
         if got:
             raise click.ClickException(
                 f"{', '.join(got)}: what a scheduler is asked for -- "
@@ -1678,11 +1681,12 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
                    "and never concluded (project-layout.md § 1.6.4).")
 @click.option("--trial-timeout", "trial_timeout_min", default=None,
               type=click.IntRange(min=1), metavar="MINUTES",
-              help="a grouped bench (`launch bench <stage>`, submit mode): "
-                   "kill any single trial after this many minutes so the "
-                   "rest of the group still runs; the killed trial reads "
-                   "incomplete.  Unstated, no per-trial bound exists -- each "
-                   "trial runs until the job's wall.")
+              help="a benchmark's walk (`launch bench <stage>`, here or "
+                   "on a queue): kill any single trial after this many "
+                   "minutes so the rest of the walk still runs; the killed "
+                   "trial reads incomplete.  Unstated, no per-trial bound "
+                   "exists -- each trial runs until it ends, or the job's "
+                   "wall.")
 @click.option("--only", "only_side", default=None,
               type=click.Choice(["cpu", "gpu"]),
               help="a grouped bench: send just this side of a sweep that "
@@ -1784,7 +1788,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         only = stage = said["stage"] = _resolve_stage(js, stage, "launch",
                                                       base=base)
     launching = [j for j in js.jobs if only is None or j.name == only]
-    grouped = kind == "bench" and trial is None and mode in ("submit", "ask")
+    grouped = kind == "bench" and trial is None
     mem = _memory(mem_text)
     time_s = _duration(time_text)
 
