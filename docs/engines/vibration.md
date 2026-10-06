@@ -1166,11 +1166,12 @@ vibration:
 | | `--from <a run of relax>` | that run, taken as said — prep states what it is (failed, not concluded, not converged: *expect imaginary frequencies*), and refuses only what cannot be done: a run holding none of the files the hand-over carries, an output that holds no geometry, or one whose atoms are not this calculation's in this order | that run's | the same |
 | | `--from` a run of another stage | refused: the stage builds on `relax` | — | — |
 | | `--cold` | refused: the stage measures at the geometry `relax` reached; to measure the structure as given, disable `relax` and state the structure relaxed | — | — |
+| | `--from` naming a run, at `relax` itself | refused: `relax` is the kind's first rung and builds on the structure — a run of another stage (a `freq` run's displaced `.XV`) is not its input | — | — |
 | no enabled `relax`, the structure stated relaxed (`already_relaxed`) | nothing, or `--cold` | the structure as given; its relaxation record is shown and checked against this calculation (§ 2.2) | none | none |
 | | `--from` | refused: nothing in this ladder relaxes — the stage measures the structure as given | — | — |
 | no enabled `relax`, the structure not stated relaxed | anything | refused where every hand-over is decided (`continuation.continuation_answer`, so `status` says it before the prep), naming the two ways out — add `relax` before the stage and run it first, or state the structure relaxed: the box says *relax first* and the ladder holds nothing that would, so the description contradicts itself, and it is refused rather than measured at a geometry nobody chose | — | — |
 | the flat layout | nothing (`--from` and `--cold` name attempts, which flat keeps none of) | `relax`'s latest run in the folder, which must have ended on its own with exit code 0 | nothing copied: they lie in the folder | the stage's `<basename>.continued-from` |
-| a benchmark of the stage | — | `relax`'s newest attempt, as a run's default — every trial's deck at that geometry (§ 5.8) | none: a trial measures from its deck | none |
+| a benchmark of the stage | — | `relax`'s newest attempt, as a run's default — every trial's deck at that geometry (§ 5.8) | none: a trial measures from its deck | the ledger's `continues`, and both doors say which run |
 
 A displacement sweep's stages each take the same rows; a stage prepped is not
 prepped again ([`job-system.md`](?doc=execution/job-system.md) § 5.0), so the
@@ -1466,10 +1467,15 @@ number is the **largest absolute Cartesian component** over the free atoms, the
 convention the PySCF deck's own check uses (§ 4.3). Above it the block carries a warning naming the number and
 the one remedy for how the geometry was reached — **one text,
 `vibrational_analysis.nonstationary_remedy`, which `prep` (§ 5.8) and the
-PySCF deck (§ 4.3) write too**: when the ladder's stage relaxed it (the block's
-`relaxation_stage`), continue that stage and run this one again; when the person
-stated it relaxed, relax first — or keep the run knowing that. The finish says
-it in the session log, and the viewer's relaxation row shows the force.
+PySCF deck (§ 4.3) write too**, each leading with the step that can always
+be taken first — if this stage is prepped, go back to the state saved before
+its prep (a prepped stage is not prepped again,
+[`job-system.md`](?doc=execution/job-system.md) § 5.0): when the ladder's stage
+relaxed it (the block's `relaxation_stage`), launch that stage again — it
+continues from its newest attempt — and prep this one once it has concluded;
+when the person stated it relaxed, relax first — or keep the run knowing that.
+The finish says it in the session log, and the viewer's relaxation row shows
+the force.
 *(Until 2026-09-29 the finish told a laddered run to untick `already_relaxed`,
 which the ladder had already done — the M11 review, plan § 5w K6.)* And the block's honesty about its own numerics:
 `engine_metadata.fc_asymmetry_max_ev_ang2` is `max |H_ij − H_ji|` over the
@@ -1570,11 +1576,12 @@ not said in those words — the box's two states and the input's record are
 moot once the `relax` stage has run — and the stage is told that stage's
 outcome instead (§ 5.2a): its largest remaining force on the moved atoms
 against this calculation's tolerance, as information when within it and as a
-**warning** when above it, naming the one remedy (`vibrational_analysis.nonstationary_remedy`, the same text the finish writes, § 5.5) — in the order it can be done: go
-back to the state saved before this stage's prep (a prepped stage is not
-prepped again, [`job-system.md`](?doc=execution/job-system.md) § 5.0), launch
-the `relax` stage again — it continues from its newest attempt, at the
-geometry it stopped at — and prep this stage once it has concluded; and a
+**warning** when above it, naming the one remedy (`vibrational_analysis.nonstationary_remedy`, the same text the finish writes, § 5.5) — in the order it can be done: if
+this stage is prepped, go back to the state saved before its prep (a prepped
+stage is not prepped again, [`job-system.md`](?doc=execution/job-system.md)
+§ 5.0; a preview's has not been), launch the `relax` stage again — it
+continues from its newest attempt, at the geometry it stopped at — and prep
+this stage once it has concluded; and a
 held set changed between the two stages, which leaves free atoms that
 relaxation never balanced *(plan V1.36, the user's word 2026-09-29)*. A bench
 trial of that stage is written at the same geometry and told the same

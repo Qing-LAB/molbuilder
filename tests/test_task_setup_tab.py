@@ -1104,8 +1104,11 @@ class TestTheTabShowsWhatAPrepWouldResolve:
         b = self._folder(tmp_path, monkeypatch)
         r = _folder(web_client, b)["provenance"]
         assert r["ok"], r
-        # the shape config_provenance produces, not a re-description of it
-        assert {s["scope"] for s in r["sources"]} >= {"machine", "environment"}
+        # the shape config_provenance produces, not a re-description of it --
+        # this machine's molbuilder.json.  WHICH MACHINE RECORD answers is the
+        # prep answer's, a preview's too: it depends on the machine a prep
+        # names (`test_prep_from_the_browser`).
+        assert {s["scope"] for s in r["sources"]} == {"machine"}
         assert "launch.mode" in r["effective"]
         assert "from" in r["effective"]["launch.mode"]
 

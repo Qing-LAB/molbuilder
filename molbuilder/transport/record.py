@@ -356,8 +356,10 @@ def collect_record(base_dir, task) -> Dict:
     points_out: List[Dict] = []
     pending: List[Dict] = []
     token = stage_home(base, task, "transmission").token
+    opened = False                        # an attempt open: it is prepped
     for v, container in _point_dirs(base, task):
         att = latest_attempt(container)   # None is the ANSWER: prepared?
+        opened = opened or att is not None
         where = run_dir(container)        # ...and this is where to look
         avtrans = sorted(where.glob(f"{task.label}.TBT.AVTRANS_*"))
         if att is None or not avtrans:
@@ -388,11 +390,19 @@ def collect_record(base_dir, task) -> Dict:
             "spin": spin,
         })
     if not points_out:
-        from ..jobset.commands import block, run_first
+        # THE WAY ON, by what the stage's state says: prepped (an attempt is
+        # open), it is launched or let finish; else prepped, then launched.
+        # It printed the prep either way until 2026-10-05, which a prepped
+        # stage refuses (`job-system.md` § 5.0).
+        from ..jobset.commands import block, launch_lines, run_first
         raise RecordError(
-            "no transmission point has produced output yet -- run the "
-            "transmission stage first:\n"
-            + block(run_first("transmission", base=base_dir)) + "\n"
+            "no transmission point has produced output yet -- "
+            + ("launch the transmission stage, or let it finish:\n"
+               + block(launch_lines("run", "transmission", base=base_dir))
+               if opened else
+               "run the transmission stage first:\n"
+               + block(run_first("transmission", base=base_dir)))
+            + "\n"
             + ("  (pending: "
                + "; ".join(f"{p['bias_v']:g} V ({p['why']})"
                            for p in pending) + ")" if pending else ""))

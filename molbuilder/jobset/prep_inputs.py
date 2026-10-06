@@ -179,12 +179,11 @@ def _cells_this_machine_holds(base, plan, *,
     The check is `scheduler.admits` over `scheduler.place.candidates` --
     the same pair `place` itself walks, so "some queue admits it" here and
     "placeable" at launch are one verdict, not two.  What is NOT done here
-    is CHOOSING one: the choice depends on the wall, and R7 says `prep`
-    knows the shape and the device but not the wall or the memory.  Naming
-    a winner anyway put ``-> debug`` beside every GPU cell -- the queue
-    with the tightest ceiling wins when no wall is stated, and debug's
-    ceiling is fifteen minutes.  So the row lists WHERE IT COULD GO and
-    lets `launch` pick once the wall is known.
+    is CHOOSING one: the queue each of a benchmark's sides goes to is named
+    at its launch (`--domain`, `--gpu-domain`; `scheduler.md` R7).  Naming
+    a winner here put ``-> debug`` beside every GPU cell -- the queue with
+    the tightest ceiling wins when no wall is stated, and debug's ceiling is
+    fifteen minutes.  So the row lists WHERE IT COULD GO.
 
     A machine with no queue menu at all is answered by ``local_cores`` /
     ``local_gpus`` -- the probed topology of the box this runs on, which
@@ -292,6 +291,30 @@ def _local_refusals(cell, fam, cores_total, gpus_per_node):
         why.append(Refusal("gpus", "this machine",
                            asked=g, allowed=gpus_per_node, unit="GPUs"))
     return tuple(why)
+
+
+def _past_the_ask(fam, cell, ask) -> list:
+    """Why a cell is past what this prep allows -- its ranks, its cores per
+    rank, its GPUs against the ask's (`generator.md` § 4.1) -- as the
+    findings a queue's refusal is (`admit.Refusal`); empty when it fits or
+    nothing was asked."""
+    if ask is None:
+        return []
+    from ..scheduler.admit import Refusal
+    from ..scheduler.quantities import parse_gres_flag
+    g, k, c = cell
+    gpus = g if (fam and g) else 0
+    out = []
+    for limit, asked, allowed, unit in (
+            ("ranks", _cell_ranks(fam, g, k), ask.mpi_np, "ranks"),
+            ("cpus_per_task", c, ask.cpus_per_task, "cores per rank"),
+            ("gpus", gpus,
+             parse_gres_flag(ask.gres) if ask.gres not in (None, "")
+             else None, "GPUs")):
+        if allowed is not None and asked > int(allowed):
+            out.append(Refusal(limit, "this prep's ask", asked=asked,
+                               allowed=int(allowed), unit=unit))
+    return out
 
 
 def _cell_ranks(fam, g, k) -> int:
@@ -533,7 +556,7 @@ def bench_refusal(task):
 
 def bench_inputs(base, target, *, bench_override=None, report=None,
                  notes=None, task=None, environment=None,
-                 template_text=None):
+                 template_text=None, ask=None):
     """The benchmark specialisation's three inputs — `project-layout.md`
 
     ``target`` is REQUIRED, and that is the point (2026-08-24).  It read
@@ -587,6 +610,12 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     the target's record and the template's text, when the caller has read
     them: the prep entry reads each once and hands them over (W55 B1).  The
     bench card's route has not, and they are read here.
+
+    ``ask`` is what the person allows this prep -- its flags' ranks, cores
+    per rank and GPUs (`generator.md` § 4.1, the allocation the sweep must
+    fit inside): a cell past it is crossed out by name with the cells no
+    queue holds, and the prep refused only when none is left (§ 4.3a: a
+    cell that fits is never denied by a sibling that does not).
     """
     # WHAT A PERSON IS TOLD comes back to the caller, never printed here:
     # the command line prints it, the Task setup tab shows it
@@ -833,6 +862,15 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     checked = _cells_this_machine_holds(base, plan,
                                         local_cores=cores_total,
                                         local_gpus=gpn, routing=menu)
+    # ...AND WHAT THIS PREP DOES NOT ALLOW: a cell past the person's own ask
+    # is crossed out by name, beside the ones no queue holds.  Until
+    # 2026-10-05 the ask bounded the trials in `resolve` alone, which
+    # refused the whole prep over a cell the machine had proposed.
+    marked = []
+    for fam, cell, doms, why in checked:
+        past = _past_the_ask(fam, cell, ask)
+        marked.append((fam, cell, () if past else doms, past + list(why)))
+    checked = marked
     _axes = ("G", "K", "C") if (mixed or on_gpu) else ("K", "C")
 
     kept    = [(f, cell, doms) for f, cell, doms, why in checked if not why]
@@ -872,8 +910,8 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
              f"{_cell_shape(g, k, c):<37}"
              + (f"  fits: {where}" if where else ""))
     if crossed:
-        note(f"  crossed out ({len(crossed)}) -- no queue takes "
-             f"them:")
+        note(f"  crossed out ({len(crossed)}) -- no queue takes them, or "
+             f"this prep's ask does not allow them:")
         for fam, (g, k, c), why in crossed:
             # `.message`, NOT the Refusal itself.  These became findings on
             # 2026-09-11 (`_local_refusals`, so the task-setup card could stop

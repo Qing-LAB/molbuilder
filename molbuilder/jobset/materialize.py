@@ -494,8 +494,9 @@ def stage_refs(jobset: JobSet) -> Dict[str, StageRef]:
 
 
 def materialize(jobset: JobSet, base_dir, plan=None, *,
-                shape=None) -> List[Path]:
-    """Create each job's directory under ``base_dir`` with its copies.
+                shape=None, only=None) -> List[Path]:
+    """Create each job's directory under ``base_dir`` with its copies --
+    the jobs named in ``only`` (a set of job names), or every job.
 
     Returns the list of created job directories (in JobSet order).  Idempotent:
     re-running refreshes the copies without duplicating anything.  Raises
@@ -521,6 +522,8 @@ def materialize(jobset: JobSet, base_dir, plan=None, *,
     sh = shape if shape is not None else shape_of(jobset, base_dir)
     dirs = job_dir_names(jobset, sh)
     for job in jobset.jobs:
+        if only is not None and job.name not in only:
+            continue
         # A TRIAL KEEPS ATTEMPTS EXACTLY AS A STAGE DOES, and the shape
         # decides (`project-layout.md` § 1.5a).  `trial_work_dir` is the
         # one answer to *where do this trial's files go*, and `prep` asks

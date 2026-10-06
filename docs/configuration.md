@@ -365,7 +365,8 @@ and frequent diagnosis. Two rules make it a readable one:
   prep names with `--target`, this machine's own), and then which file
   supplied each effective value. A prep builds it once, with the record it
   reads at its checkpoint 4 — whose queues it lists — and `STAGE-PLAN.md`,
-  the pipeline log and the ledger's *prepped* line all carry that one table
+  the pipeline log, the ledger's *prepped* line and the answer both doors show
+  (a Task setup preview's too) all carry that one table
   *(each read the files again, at different moments, until 2026-10-05: at a
   first `prep --target sol` the plan named this machine's record, and never
   sol's, which had answered)*. It is safe for logs by construction: paths and

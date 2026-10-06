@@ -749,7 +749,7 @@ class TestTheRunsOwnCondition:
         """
         import json
         from molbuilder.jobset.model import Resources
-        from molbuilder.jobset.prep import _under_description, prep_stage
+        from molbuilder.jobset.prep import _under_description
         from molbuilder.task import read_task
 
         d = json.loads((calc / "task.json").read_text())
@@ -761,18 +761,15 @@ class TestTheRunsOwnCondition:
         (calc / "task.json").write_text(json.dumps(d, indent=2))
         t = read_task(calc / "task.json")
 
-        # THE ALLOCATION EACH JOB WOULD BE WRITTEN WITH -- the entry's
-        # preview, the stage resolved and its allocation folded once
+        # THE ALLOCATION EACH JOB IS WRITTEN WITH -- its row in the plan,
+        # `job-set.json`, the stage resolved and its allocation folded once
         # (`prep._resolve_stage`).
-        run = prep_stage(calc, "run", "coarse", allocation=Resources(),
-                         emit_sbatch=False, preview=True).allocation
+        run = self._run(calc, "coarse")["resources"]
         assert run["time"] == "2-00:00:00", f"the run lost its wall: {run}"
         assert run["domain"] == "public", f"the run lost its queue: {run}"
         assert run["mem"] == "256G", "mem does not ride `execution`"
 
-        other = prep_stage(calc, "run", "medium", allocation=Resources(),
-                           emit_sbatch=False, cold=True,
-                           preview=True).allocation
+        other = self._run(calc, "medium", "--cold")["resources"]
         assert other["time"] == "0-04:00:00", "a rung with no `execution` "\
             "of its own must keep the calculation's"
 
@@ -796,9 +793,10 @@ class TestTheRunsOwnCondition:
         assert r["gres"] == "gpu:1", "the flag erased the device ask"
 
     def test_prep_writes_a_big_ask_and_does_not_second_guess_it(self, calc):
-        """`generator.md` § 4.3a: an over-large condition is refused where
-        every other over-large ask is -- at `launch`, by the admission door,
-        which is the one floor that knows what a queue takes.
+        """`generator.md` § 4.3: what you asked for is written, or refused --
+        never trimmed.  Where a header is written, the queue it names admits
+        it or prep refuses it (`job-system.md` § 5.0, checkpoint 4); with no
+        header, as here (`--no-sbatch`), nothing is admitted, and
 
         `prep` writes what you asked for, exactly as it does for `--np 999`.
         It refused here for one afternoon on 2026-09-02, because the run's

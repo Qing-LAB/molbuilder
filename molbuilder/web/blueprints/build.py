@@ -1298,6 +1298,14 @@ def api_task_setup_prep():
     takes.)*
     """
     body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"ok": False, "error": "the body is a JSON object"}), 400
+    # WORDS, as the page sends them: a field of another type is refused in
+    # words, never a 500 (it reached `.strip()` until 2026-10-05).
+    for key in ("dest", "kind", "stage", "target", "from", "plan_id"):
+        if body.get(key) is not None and not isinstance(body.get(key), str):
+            return jsonify({"ok": False,
+                            "error": f"`{key}` is a string"}), 400
     dest_raw = body.get("dest")
     kind = str(body.get("kind") or "").strip()
     stage = (body.get("stage") or "").strip() or None
@@ -1369,11 +1377,14 @@ def api_task_setup_prep():
     except Exception as exc:                      # pragma: no cover
         return jsonify({"ok": False,
                         "error": f"{type(exc).__name__}: {exc}"}), 500
+    # THE MACHINE IT IS FOR, in the tab's word: the entry's answer -- the
+    # one named, else the one the calculation's copy of its record names
+    # (it said "(this machine)" whenever none was sent until 2026-10-05).
+    said = ans.as_dict(dest)
     return jsonify({
-        "ok": True,
-        "machine": "(this machine)" if target == LOCAL_TARGET
-                   else (target or "(this machine)"),
-        **ans.as_dict(dest),
+        "ok": True, **said,
+        "machine": ("(this machine)" if said.get("machine") == LOCAL_TARGET
+                    else said.get("machine")),
     })
 
 
@@ -1783,13 +1794,17 @@ def _folder_template(folder, label) -> dict:
 
 
 def _folder_provenance(dest) -> dict:
-    """`prep`'s own provenance block for this folder -- the payload."""
+    """This machine's `molbuilder.json` -- which file it is, what it supplies,
+    and what is wrong with where it was read from -- for the folder card.
+
+    THE MACHINE RECORD IS NOT HERE.  Which record answers depends on the
+    machine a prep names, and at a calculation's first prep on whether its
+    copy exists yet: the prep entry reads it once, at its checkpoint 4, and
+    its answer -- a preview's too -- carries that table
+    (`job-system.md` § 5.0).  This card listed the record's scopes asked
+    with no machine until 2026-10-05, and on a fresh calculation named this
+    box's record while the preview read the one picked."""
     from molbuilder.runtime_config import config_provenance
-    # NO `target` PARAMETER.  It existed only to feed the bootstrap warning
-    # retired 2026-08-25; provenance itself is a property of the FOLDER --
-    # which files were read and what each supplied -- and does not change
-    # with the machine you are preparing for.  Parsing an argument nothing
-    # reads is how a dead parameter survives a deletion.
     try:
         prov = config_provenance(project_dir=dest)
     except Exception as exc:                      # a malformed config
@@ -1803,9 +1818,9 @@ def _folder_provenance(dest) -> dict:
     # while the file they are editing is ignored.
     return {
         "ok": True,
-        "sources": prov.get("sources") or [],
+        "sources": [s for s in prov.get("sources") or []
+                    if s.get("scope") != "environment"],
         "effective": prov.get("effective") or {},
-        "domains": prov.get("domains") or [],
         "shadow": prov.get("shadow"),
         "mode_warning": prov.get("mode_warning"),
     }

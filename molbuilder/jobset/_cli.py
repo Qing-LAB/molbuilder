@@ -1293,6 +1293,11 @@ def _echo_prep_answer(ans, base) -> None:
             # attempt layer every trial's dir ENDS in run-<n> (user,
             # 2026-08-28)
             click.echo(f"  {_rel(base, d)}")
+        if ans.continuation is not None:
+            # A FORCE-CONSTANT STAGE'S TRIALS are written at the geometry of
+            # the relax run it builds on -- which one, said (§ 5.2a).
+            click.echo("  every trial's geometry: "
+                       + ans.continuation.line())
         _echo_pipeline_log(ans, base)
         # ONE COMMAND A LINE, prose after `#` (W52: a `(note)` after the
         # command, which bash cannot parse; and the report described as a
@@ -1307,47 +1312,49 @@ def _echo_prep_answer(ans, base) -> None:
                                   base=base)]))
         return
     next_line = "next:\n" + block(launch_lines("run", stage, base=base))
+    # THE LAYOUT'S OWN LINES first -- the folder, the attempt or the points
+    # -- then what every layout says alike: the resources, whether the deck
+    # agrees with its launch, the pipeline log, what to do next.  The flat
+    # and the scan answers returned before the shared lines until
+    # 2026-10-05, and said neither the resources nor the agreement.
     if ans.flat:
         click.echo(f"prepped {len(ans.dirs)} job dir(s) under {base}  "
                    "(flat: no attempt to open; runs are told apart by "
                    "the wrapper's output index)")
         if ans.continuation is not None:
             click.echo("  " + ans.continuation.line())
-        _echo_pipeline_log(ans, base)
-        say_next(next_line)
-        return
-    if ans.points:
+    elif ans.points:
         from ..task import bias_token as _bias_token
         for att, v, got in ans.points:
             at = f" @ {_bias_token(v)}" if v is not None else ""
             click.echo(f"prepared {stage}{at}: {Path(att).relative_to(base)}")
             for src, fn in got:
                 click.echo(f"  gathered: {fn} <- {src}")
-        _echo_pipeline_log(ans, base)
-        say_next("next -- one job walks the points in order:\n"
-                 + block(launch_lines("run", stage, base=base)))
-        return
-    rep = ans.attempt
-    click.echo(f"prepared {rep.stage}: {rep.dir.relative_to(base)}"
-               f"{'' if rep.fresh else '  (reused -- not launched yet)'}")
-    click.echo(f"  brought in: {', '.join(rep.brought)}")
-    # WHAT IT STARTS FROM, said (`job-system.md` § 5.4) -- one line, read off
-    # the answer both doors print: the run it continues from (which, by
-    # default or named, what it was, what came across); a cold start asked
-    # for; the files a transport rung gathered (said below); or nothing from
-    # another run -- a linked stage's too: its kind's first rung, or the
-    # structure as given ("its input is prep's own" stood here until
-    # 2026-10-05, for rungs that take nothing).
-    if ans.continuation is not None:
-        click.echo("  " + ans.continuation.line(rep.copied))
-    elif ans.cold:
-        click.echo("  cold start -- nothing copied in")
-    elif not ans.gathered:
-        click.echo("  takes nothing from another run"
-                   + ("" if ans.linked else
-                      " (the first stage, or one that starts clean)"))
-    for src, fn in ans.gathered:
-        click.echo(f"  gathered: {fn} <- {src}")
+        next_line = ("next -- one job walks the points in order:\n"
+                     + block(launch_lines("run", stage, base=base)))
+    else:
+        rep = ans.attempt
+        click.echo(f"prepared {rep.stage}: {rep.dir.relative_to(base)}"
+                   f"{'' if rep.fresh else '  (reused -- not launched yet)'}")
+        click.echo(f"  brought in: {', '.join(rep.brought)}")
+        # WHAT IT STARTS FROM, said (`job-system.md` § 5.4) -- one line,
+        # read off the answer both doors print: the run it continues from
+        # (which, by default or named, what it was, what came across); a
+        # cold start asked for; the files a transport rung gathered (said
+        # below); or nothing from another run -- a linked stage's too: its
+        # kind's first rung, or the structure as given ("its input is
+        # prep's own" stood here until 2026-10-05, for rungs that take
+        # nothing).
+        if ans.continuation is not None:
+            click.echo("  " + ans.continuation.line(rep.copied))
+        elif ans.cold:
+            click.echo("  cold start -- nothing copied in")
+        elif not ans.gathered:
+            click.echo("  takes nothing from another run"
+                       + ("" if ans.linked else
+                          " (the first stage, or one that starts clean)"))
+        for src, fn in ans.gathered:
+            click.echo(f"  gathered: {fn} <- {src}")
     if ans.resources is not None:
         r = ans.resources
         # WHAT IS STATED, and nothing else: no launch value is left for

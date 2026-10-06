@@ -201,8 +201,8 @@ conductor:
 
 | step | every calculation | an optional step, declared by the kind |
 |---|---|---|
-| **1 · machine** | the record read once (`machine_for`), its activation checked, the job's placement admitted | — |
-| **2 · parameters** | each element resolved (`resolve`): a run is one, a benchmark's grid is N | a benchmark — **grid**: its points, from the declared axes or the machine's proposal |
+| **1 · machine** | the record read once (`machine_for`), its activation checked, which config files answered (`config_provenance`) | — |
+| **2 · parameters** | each element resolved (`resolve`): a run is one, a benchmark's grid is N — and a run's placement admitted on the queue it names, with the request it resolved to (`placement.admission_refusal`) | a benchmark — **grid**: its points, from the declared axes or the machine's proposal |
 | **3 · structure** (*load*) | the structure loaded and checked against what was described | transport — **compose**: the junction and its leads, every rung's structure, composed and round-tripped through the record's codec in a scratch folder outside the calculation, removed at once — so this prep renders from the record every later one reads — and the record's text kept in the plan; transport — **electronic state**: decided once on the junction, carried into every rung; a SIESTA vibration's frequency stage — **relaxed geometry**: the relax run it builds on (a `Continuation`), its coordinates and the atom order |
 | **3 · decks** (*data files* … *declare*) | the data files listed and screened; each deck rendered, validated, merged with the reader's own section as it stands on disk, and checked — the very text that will be written | transport — **points**: one deck per bias point |
 | **4 · wrappers** | `.run.sh` and `.sbatch` rendered from the deck's text and the job's placement | — |

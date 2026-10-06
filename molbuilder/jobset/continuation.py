@@ -45,17 +45,24 @@ class Continuation:
     #: row is (`prep`), ``None`` until then.  On the flat layout nothing is
     #: copied: the files lie in the folder.
     carries: Optional[Tuple[str, ...]] = None
+    #: On the flat layout, the run by the name every file of it carries
+    #: (`runfiles.run_name`, ``H2_01_coarse-run1``) -- what the stage's own
+    #: ``.continued-from`` records -- or ``None``: an attempt names it.
+    run: Optional[str] = None
 
     def where(self) -> str:
         """The run, as a person reads it: its attempt, or -- on the flat
-        layout -- the stage's latest run in the folder."""
-        return (self.source if self.source is not None else
-                f"{self.stage}'s latest run, whose files lie in this folder")
+        layout -- the stage's latest run in the folder, by its name."""
+        if self.source is not None:
+            return self.source
+        return (f"{self.stage}'s latest run"
+                + (f", {self.run}," if self.run else "")
+                + " whose files lie in this folder")
 
-    def line(self, copied=()) -> str:
+    def line(self, copied=(), *, would: bool = False) -> str:
         """``continues from 01_coarse/run-0 (the stage before it; concluded
         rc=0 at ...; converged): copied H2.XV, ...`` -- what both doors
-        print."""
+        print; ``would``, a preview's: what it would copy."""
         facts = [("named" if not self.by_default else
                   "the relaxation it builds on" if self.linked else
                   "the stage before it"),
@@ -69,7 +76,8 @@ class Continuation:
                          if self.linked else
                          "NOT converged -- taken as it stands")
         return (f"continues from {self.where()} ({'; '.join(facts)})"
-                + (f": copied {', '.join(copied)}" if copied else ""))
+                + (f": {'would copy' if would else 'copied'} "
+                   f"{', '.join(copied)}" if copied else ""))
 
     def as_dict(self) -> dict:
         return dataclasses.asdict(self)
@@ -143,10 +151,15 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     rec = None
     if verdict:
         # THIS STAGE'S RUN, the run door's, in either shape -- an attempt's
-        # own, or this stage's among a flat folder's: its progress log,
-        # then its engine output at the run's index.
+        # own, or this stage's among a flat folder's -- read in the order the
+        # run door reads a run (`runfiles.result_roles`): its engine output
+        # at the run's index, then its progress log, which a SIESTA run never
+        # writes into and a PySCF run's output no parser reads.  The
+        # force-constant stage reads its relax run's record from that same
+        # output (`prep._vibration_stage_geometry`), so the line and the deck
+        # say one verdict (the progress log was read first until 2026-10-05).
         _run = run_of(attempt, stage=token)
-        paths = ([_run.file(".molwatch.log"), _run.stdout]
+        paths = ([_run.stdout, _run.file(".molwatch.log")]
                  if _run is not None else [])
         for path in (q for q in paths if q is not None):
             try:
@@ -178,8 +191,8 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
     what the run's state says and naming the commands that work on this
     layout.  ``(None, None)`` for ``--cold``, a linked kind's default, the
     first stage, a stage that starts clean, and one the description disables
-    (prepped by name, it has no stage before it).  ``verdict=False`` leaves
-    the relaxation unread -- for a reader that never prints it.
+    (which prep refuses at its checkpoint 2).  ``verdict=False`` leaves the
+    relaxation unread -- for a reader that never prints it.
 
     A force-constant stage with no `relax` before it builds on nothing: the
     structure as given, when it is stated relaxed -- else refused, whatever
@@ -301,6 +314,16 @@ def _cannot_be_named(base: Path, task, stage: str, from_attempt,
                 "transport rung takes its inputs from the rungs upstream, "
                 "gathered by its kind (engines/transport.md § 6.1), and is "
                 "not prepped again once prepped (job-system.md § 5.0).")
+    if (from_attempt and not _independent(task)
+            and not force_constant_stage(task, stage)):
+        # A LINKED KIND'S FIRST RUNG -- a vibration's `relax`, PySCF's one
+        # rung -- builds on the calculation's structure; a run of another
+        # stage is not its input (a `freq` run's `.XV` is a displaced
+        # geometry).  Taken as said until 2026-10-05.
+        return (f"--from {from_attempt!r}: `{stage}` builds on the "
+                f"calculation's structure, its kind's first rung -- no run "
+                f"of another stage is its input (engines/vibration.md "
+                f"5.2a).")
     if from_attempt:
         p = PurePosixPath(str(from_attempt))
         if p.is_absolute() or ".." in p.parts:
@@ -395,11 +418,18 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
     lead = (f"`{stage}` builds on `{prev}`" if linked else
             f"`{stage}` continues from the stage before it, `{prev}`")
 
+    run = None
     if flat:
         if not (base / rf_compose(task.label, seam.suffix, token)).is_file():
             return None, (f"{lead}, which has not run yet.  Run it "
                           f"first --\n{run_prev}\n{clean}{rule}")
         attempt, source = base, None
+        # THE RUN BY ITS NAME, which every file of it carries -- what the
+        # line says and the stage's `.continued-from` records, one answer
+        # (`prep._flat_continued_from` asked again until 2026-10-05).
+        from ..runfiles import latest_run, run_name
+        n = latest_run(base, task.label, stage=token)
+        run = run_name(task.label, token, n) if n is not None else None
     else:
         latest = latest_attempt(container) if container.is_dir() else None
         if latest is None:
@@ -411,27 +441,14 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
     if usable(attempt, stem):
         return Continuation(stage=prev, source=source, by_default=True,
                             concluded=concluded, state=state,
-                            converged=converged, linked=linked), None
+                            converged=converged, linked=linked,
+                            run=run), None
 
     # REFUSED -- worded by what the run's state says, with a command for
     # each way on (§ 5.3: what molbuilder prints, you can type).
     what = (f"the newest attempt of `{prev}`, {source}," if source
             else f"`{prev}`'s latest run,")
-    if concluded is not None:
-        # ENDED ON ITS OWN WITH AN ERROR -- never built on by default.  A
-        # FAILED RUN IS LAUNCHED AGAIN -- a prepped stage is not prepped
-        # again (`job-system.md` § 5.0); its re-prep was offered here until
-        # 2026-10-02.
-        why, first = (f"which failed ({concluded})",
-                      f"Launch it again --\n{launch_prev}")
-    elif state == "pending":
-        why, first = "which has not been launched", f"Launch it --\n{launch_prev}"
-    elif state in ("queued", "running"):
-        why, first = f"which is {state}", "Let it finish"
-    else:
-        why = ("which stopped without its conclusion marker -- killed, or "
-               "out of time (project-layout.md § 1.6)")
-        first = f"Launch it again --\n{launch_prev}"
+    why, first = state_remedy(concluded, state, launch_prev)
     other = None
     if not (flat or bench):
         # AN EARLIER RUN THAT CAN STAND IN WHEN ASKED FOR: the newest one
@@ -448,6 +465,26 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
            if other else "")
     return None, (f"`{stage}` {'builds on' if linked else 'continues from'} "
                   f"{what} {why}.  {first}\n{alt}{clean}{rule}")
+
+
+def state_remedy(concluded: Optional[str], state: Optional[str],
+                 launch_block: str) -> Tuple[str, str]:
+    """``(why, what to do first)`` for a run a stage would build on and may
+    not: worded by what the run's state says, the way on a command you can
+    type (`job-system.md` § 5.3) -- the hand-over's default and a transport
+    rung's gather say it alike.  A run that ended with an error, or stopped,
+    is LAUNCHED again: a prepped stage is not prepped again
+    (`job-system.md` § 5.0; its re-prep was offered until 2026-10-02)."""
+    if concluded is not None:
+        return (f"which failed ({concluded})",
+                f"Launch it again --\n{launch_block}")
+    if state == "pending":
+        return "which has not been launched", f"Launch it --\n{launch_block}"
+    if state in ("queued", "running"):
+        return f"which is {state}", "Let it finish"
+    return ("which stopped without its conclusion marker -- killed, or out "
+            "of time (project-layout.md § 1.6)",
+            f"Launch it again --\n{launch_block}")
 
 
 def force_constant_stage(task, stage: str) -> bool:
@@ -524,7 +561,8 @@ def _stage_before(base, task, stage: str,
     before it in the ladder, resolved as `prep` resolves it (template ⊕
     stage overrides ⊕ the run card, so a card's ``restart: clean`` is read)
     -- or ``None``: a linked kind, the first stage, one that starts clean,
-    one the description disables."""
+    one the description disables (which prep refuses at its checkpoint
+    2)."""
     from ..identity import continues
     if not _independent(task):
         return None
@@ -553,6 +591,15 @@ def continue_from_choices(base, task, stage: str) -> Optional[dict]:
     from ..paths import attempts_in
     from .materialize import stage_home
     base = Path(base)
+    if force_constant_stage(task, stage) and relax_stage_of(task) is None:
+        # NO `relax` TO BUILD ON: the structure as given when it is stated
+        # relaxed -- nothing to choose -- else the refusal prep gives, here
+        # before anything is written (`engines/vibration.md` § 5.2a; the card
+        # said nothing until 2026-10-05).
+        _got, why = continuation_answer(base, task, stage, verdict=False)
+        return ({"from_stage": None, "linked": True, "default": None,
+                 "refused": why, "runs": [], "cold": False}
+                if why else None)
     prev, linked = _source_stage(base, task, stage)
     if prev is None:
         return None

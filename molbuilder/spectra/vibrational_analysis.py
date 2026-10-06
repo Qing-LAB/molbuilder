@@ -272,10 +272,9 @@ def nonstationary_remedy(relaxation_stage: Optional[str],
         # (it said "launch, then prep this stage again" until 2026-10-05).
         from ..identity import LAUNCH_MODE_NOTE, launch_as_typed
         s = str(relaxation_stage)
-        return (f"Go back to the state saved before this stage's prep "
-                f"(`molbuilder checkpoint list`, then `molbuilder checkpoint "
-                f"restore` with its id); launch the `{s}` stage again from "
-                f"the calculation's folder -- `{launch_as_typed(s)}` "
+        return (f"If this stage is prepped, first go back to the state saved "
+                f"before its prep{_RESTORE}; launch the `{s}` stage again "
+                f"from the calculation's folder -- `{launch_as_typed(s)}` "
                 f"{LAUNCH_MODE_NOTE} -- it continues from its newest "
                 f"attempt, at the geometry it stopped at; then prep this "
                 f"stage once it has concluded.")
@@ -283,9 +282,20 @@ def nonstationary_remedy(relaxation_stage: Optional[str],
              "this one (Task setup, or task.json)"
              if str(engine).lower() == "siesta" else
              "untick `already_relaxed` so the calculation relaxes first")
-    return (f"Relax first -- {first}, or relax elsewhere at this level of "
-            f"theory and hand the result over -- or keep this run knowing "
-            f"that.")
+    return (f"Relax first -- if this stage is prepped, first go back to the "
+            f"state saved before its prep{_RESTORE}; then {first}, or relax "
+            f"elsewhere at this level of theory and hand the result over -- "
+            f"or keep this run knowing that.")
+
+
+#: How the state saved before a prep is restored -- the words both remedies
+#: say, a text read later naming no folder.  A prepped stage is not prepped
+#: again (`job-system.md` § 5.0), and a preview of one has not been: so the
+#: restore is said conditionally (it led unconditionally until 2026-10-05,
+#: and a preview's findings told a person to restore a state that did not
+#: exist yet).
+_RESTORE = (" (`molbuilder checkpoint list`, then `molbuilder checkpoint "
+            "restore` with its id)")
 
 
 def _stationarity(reference_forces_ev_ang, n: int, free: Sequence[int],

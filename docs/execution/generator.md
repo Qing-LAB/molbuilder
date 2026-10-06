@@ -269,7 +269,11 @@ sweep         the points a benchmark tries    must FIT INSIDE the allocation
 ```
 
 > **The rule:** a sweep point that exceeds the allocation is refused, **not**
-> silently clamped and **not** checked against capability instead. *"The sweep …
+> silently clamped and **not** checked against capability instead — refused
+> by name, crossed out beside the cells no queue holds, the prep refused only
+> when no cell is left (§ 4.3a: *a cell that fits is never denied by a sibling
+> that does not*; the whole prep was refused over one such point until
+> 2026-10-05). *"The sweep …
 > should not exceed that allowable resource. It should be compatible."*
 >
 > **Which allocation?** The one for *this* `prep`. A benchmark and the run it
@@ -579,8 +583,11 @@ framework rule, not a script patch)*:
   The check is `scheduler.admits` over `place.candidates` — the same pair
   `place` itself walks — so *"some queue admits it"* here and *"placeable"*
   at `launch` are one verdict rather than two.  What is deliberately **not**
-  done is choosing a queue: that depends on the wall, which R7 says `prep`
-  does not know, so the row lists where a cell *could* go.  For a device
+  done is choosing a queue: the queue each of a benchmark's sides goes to is
+  named at its launch (`--domain`, `--gpu-domain`; `scheduler.md` R7), so the
+  row lists where a cell *could* go.  A cell past this prep's own ask — its
+  `--np`, `--cpus-per-task`, `--gpus` (§ 4.1) — is crossed out the same way,
+  by name.  For a device
   cell the pool is the gpu-capable rows (a cpu-only row states no inventory
   and R3 would read that silence as permission); for a CPU cell it is the
   **whole menu**, because `candidates` narrows CPU work to cpu-only queues

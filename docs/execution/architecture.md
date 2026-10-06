@@ -747,8 +747,11 @@ from the text the plan holds: the header's `#SBATCH` lines
 (`scheduler.emit.Directives.lines_of`) where a scheduler runs the job — the
 run script takes its counts from the allocation there — and on a machine
 without one the run script's stated counts (`runwrap.stated_counts`), which it
-runs with. A value stated nowhere is not shown blank: the preview is **the
-refusal prep will give**, naming where to state it. *(Until 2026-10-05
+runs with. A transport bias scan shows its first point's header: every point
+launches the one job, and the chain that walks them is written when it is sent
+(`submit`), with the same counts, queue, wall and memory. A value stated
+nowhere is not shown blank: the preview is **the refusal prep will give**,
+naming where to state it. *(Until 2026-10-05
 the run card showed each value with the rung of § 5.2's ladder that supplied
 it, assembled beside the entry.)*
 

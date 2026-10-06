@@ -358,10 +358,10 @@ def test_the_prep_door_reads_the_FILE_and_not_a_posted_document(client, bundle):
         "task": {"stages": [{"name": "coarse", "execution": {"mpi_np": 999}}]},
     })
     assert r.status_code == 200, r.get_data(as_text=True)
-    chosen = r.get_json().get("chosen") or {}
-    assert chosen.get("mpi_np") == 7, (
+    header = (r.get_json().get("launch") or {}).get("header") or []
+    assert "#SBATCH -n 7" in header, (
         "the prep door honoured a POSTED document -- it must read the file, "
-        f"or the CLI and the browser are two assemblies: {chosen}")
+        f"or the CLI and the browser are two assemblies: {header}")
 
 
 class TestTheBenchPreviewSaysNothingAboutTheRun:
@@ -383,22 +383,29 @@ class TestTheBenchPreviewSaysNothingAboutTheRun:
         assert body.get("launch") is None, (
             "the bench preview named the run's launch: "
             + repr(body.get("launch")))
-        assert not body.get("chosen"), (
-            "the bench preview named the run's condition: "
-            + repr(body.get("chosen")))
 
     def test_a_run_preview_carries_its_header_line_for_line(self, client,
                                                              bundle):
         """The other half -- and A13's end point: the header the plan holds,
-        as it will be written."""
+        as it will be written: every line the preview shows is the line the
+        Prep of that plan writes, and no other."""
         _runnable(bundle)
         r = client.post("/api/task-setup/prep", json={
             "dest": str(bundle), "kind": "run", "stage": "coarse",
             "plan": True})
         assert r.status_code == 200, r.get_data(as_text=True)
-        header = (r.get_json().get("launch") or {}).get("header") or []
+        pv = r.get_json()
+        header = (pv.get("launch") or {}).get("header") or []
         assert "#SBATCH -n 4" in header and "#SBATCH -p short" in header, (
             "the run lost its A13 block: " + repr(header))
+        r = client.post("/api/task-setup/prep", json={
+            "dest": str(bundle), "kind": "run", "stage": "coarse",
+            "plan_id": pv["plan_id"]})
+        assert r.status_code == 200, r.get_data(as_text=True)
+        written = [ln.strip() for sb in bundle.rglob("01_coarse/*.sbatch")
+                   for ln in sb.read_text().splitlines()
+                   if ln.startswith("#SBATCH")]
+        assert header == written, (header, written)
 
 
 # `test_the_run_previews_devices_are_its_gpu_request` retired 2026-10-05

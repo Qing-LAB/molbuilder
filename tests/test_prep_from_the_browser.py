@@ -330,13 +330,27 @@ def test_the_preview_is_the_entry_and_prep_takes_only_the_plan_previewed(
                    target=LOCAL_TARGET, plan=True)
     assert st == 200 and pv["preview"] and pv["stage"] == "coarse", pv
     assert pv["plan_id"] and pv["writes"], pv
+    # ...and WHICH FILES ANSWERED, as the prep read them -- on the preview
+    # too, so the page can say it before anything is written.
+    assert any(s["found"] for s in (pv["provenance"] or {}).get("sources")
+               or ()), pv["provenance"]
     assert sorted(p.relative_to(calc) for p in calc.rglob("*")) == before, (
         "the preview wrote")
 
+    # WHAT THE PLAN IS MADE FROM, CHANGED between the preview and the Prep
+    # -- the run card's thread count, which the run script states -- and put
+    # back: the plan it makes then differs, and is refused; the same again,
+    # and it is taken.
+    from molbuilder.task import FILENAME as TASK_FILENAME
+    was = (calc / TASK_FILENAME).read_text()
+    d = json.loads(was)
+    d["execution"]["omp_threads"] = 2
+    (calc / TASK_FILENAME).write_text(json.dumps(d))
     st, j = _post(web_client, dest=described, kind="run", stage="COARSE",
-                  target=LOCAL_TARGET, plan_id="0" * 64)
+                  target=LOCAL_TARGET, plan_id=pv["plan_id"])
     assert st == 400 and "differs from the plan you previewed" in j["error"], j
     assert not (calc / "01_coarse").exists(), "a refused prep wrote"
+    (calc / TASK_FILENAME).write_text(was)
     # ...and a Prep that names no plan at all is not taken: nothing is
     # prepped unseen.
     st, j = _post(web_client, dest=described, kind="run", stage="coarse",
@@ -520,6 +534,11 @@ def test_a_deck_that_makes_no_claim_gets_no_agreement_on_either_door(
                   target=LOCAL_TARGET)
     assert st == 200, j
     assert j["agreement"] is None and j["attempt"], j
+    # ...AND ITS END POINT, A13, on a machine with no scheduler: the run
+    # script's stated count, read back by its writer's reader -- a PySCF
+    # run's was spelled where none read it until 2026-10-05.
+    assert j["launch"]["header"] == [], j["launch"]
+    assert "_omp_threads_default=1" in j["launch"]["run_script"], j["launch"]
     r = _cli("prep", "run", "coarse", "--bundle", str(cli),
              "--target", LOCAL_TARGET)
     assert r.exit_code == 0, r.output

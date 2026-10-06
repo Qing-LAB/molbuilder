@@ -552,8 +552,8 @@ property of the data model rather than of this page.
 **Blank is a state, and prep refuses it for a launch value.** The ranks, the
 cores per rank, a GPU run's count — and on a target with a scheduler the
 queue, wall and memory — stated in no row and on no flag are refused at prep,
-and the card shows that refusal, naming where to state the value
-(`architecture.md` § 5.2). **A benchmark never fills a blank row**: it
+and the Preview below the card shows that refusal, naming where to state the
+value (`architecture.md` § 5.2). **A benchmark never fills a blank row**: it
 reports, you decide.
 
 **Three states, and a row shows which one it is in.** They are the visible
@@ -751,7 +751,7 @@ sequenceDiagram
     Note over Model: the unsaved marker appears.<br/>PREP CANNOT SEE THIS YET.
 
     You->>Save: Save to this folder
-    Save->>Save: 1 · checkpoint, if ticked (needs a note)
+    Save->>Disk: 1 · the folder's state saved, always (§ 8)
     Save->>Disk: 2 · POST the BUFFER
     Disk-->>Save: written
     Save->>You: 3 · "Saved task.json into this folder"
@@ -769,8 +769,8 @@ sequenceDiagram
     Prep-->>You: the answer: notes, checks, attempt, agreement
 ```
 
-**And the window is covered while any of it runs.** A card edit, and the
-save, both claim the page-wide fence
+**And the window is covered while any of it runs.** A card edit, the save, a
+Preview and a Prep all claim the page-wide fence
 ([`ui-contract.md` § 10](?doc=web/ui-contract.md)) — so nothing else on the
 page can start while a parameter is being written, and a save cannot begin
 inside an edit. **That is not a timing tolerance, it is a barrier**: a card
@@ -1060,7 +1060,8 @@ decides for, which reads as part of the bench setup.
 stage of an independent ladder ([`job-system.md`](?doc=execution/job-system.md)
 § 5.4), or a vibration's force-constant stage, which builds on `relax` — shows
 a **Continue from** choice above its `prep run` line: *the stage before it, its
-newest run* (the default), each run of that stage with what it was, or the
+newest run* (the default — *the relaxation it builds on* for a force-constant
+stage), each run of that stage with what it was, or the
 calculation's structure (`--cold`, where the layout has one and the stage may
 start from it — a force-constant stage may not while the ladder holds a
 `relax`, [`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a). Under
@@ -1071,7 +1072,10 @@ refuse it, why, whole, with the commands it names. It is the folder's answer
 and so without the run's relaxation verdict, which Preview reads; the command
 line follows the choice (`--from <run>`, `--cold`), and Preview and Prep send
 it to the same prep. A transport rung and a rung that starts clean show no
-choice: prep takes their input itself, or none.
+choice: prep takes their input itself, or none — and a choice the folder no
+longer offers (a stage set clean since) is dropped, never sent. A
+force-constant stage with no `relax` shows, instead of a choice, why prep
+refuses it while its structure is not stated relaxed.
 
 **So a tab is about doing, not deciding**: what this rung will produce, and the
 two commands that produce it. The decision is above, made once, and visible in
@@ -1134,19 +1138,26 @@ one per mode where it sets none.
 what the rung builds on, with the run's verdict and the files it carries; what
 the job will be launched with, line for line as the plan holds it — the header
 where a scheduler runs it, else the run script's stated counts (A13,
-[`architecture.md`](?doc=execution/architecture.md) § 5.2); the queue, wall and memory asked; every file it would write, folded
-under their count — or the refusal prep would give, in its words, with what it
-had found (below), and Prep is not offered. Nothing is saved, written or
+[`architecture.md`](?doc=execution/architecture.md) § 5.2); every file it would write, folded under their count — all of it the
+answer a Prep gives, through the same renderer, said as what it would do: what
+the description's checks and each deck's own found, the attempt it would open
+and what it would bring in, what a transport rung would gather, whether the
+deck agrees with its launch, and which config files answered (the first found
+is the record that won, [`configuration.md`](?doc=configuration.md) § 2.2) —
+or the refusal prep would give, in its words, with what it had found (below),
+and Prep is not offered. Nothing is saved, written or
 recorded. A new Preview retires the last one's answer, and Prep with it until
 it answers. A stage already prepped says so before any click — the folder's
 answer carries the prep entry's own sentence, the way back in it — and neither
-button is enabled. **Prep run here** / **Prep bench here** reach the same entry
+button is enabled. Preview and Prep each hold the page's fence while they run
+(§ 7a): a Save, a stage tab or another folder cannot be taken under them. A
+calculation already set to its machine is prepped with no machine named — its
+own copy of the record answers, as the terminal's prep with no `--target`.
+**Prep run here** / **Prep bench here** reach the same entry
 ([`job-system.md`](?doc=execution/job-system.md) § 5.3) **naming the preview's
 plan**: when the plan it makes now differs — the folder, the machine's record or
 a library file it takes, or molbuilder itself, changed between — it is refused,
-saying to preview again; the door takes no Prep that names none. An answer that
-lands after another folder was opened is not shown, nor kept, for that one
-(§ 2.1). *(Until 2026-10-05 the route assembled its
+saying to preview again; the door takes no Prep that names none. *(Until 2026-10-05 the route assembled its
 preview from pieces of the entry, and refused `#N` and a stage name in another
 case, which the entry takes — D15.)* So the tab shows what the terminal prints,
 from the same answer:
@@ -1158,7 +1169,8 @@ from the same answer:
   have passed and before it writes, always
   ([`checkpointing.md`](?doc=execution/checkpointing.md) § 9): the state and
   its note, led by the time it was taken. Unsaved edits are not in the
-  `task.json` prep reads, so the tab asks what Prep asks first (§ 7a). A stage
+  `task.json` prep reads, so the tab refuses a Preview or a Prep while the
+  editor holds them — "Save first" (§ 7a). A stage
   already prepped is refused instead, naming the way back
   ([`job-system.md`](?doc=execution/job-system.md) § 5.0);
 * **the folders written**, **what each deck's checks said**, and **the

@@ -284,10 +284,18 @@ bench = { use_gpu = [true], mpi_np = [8], gpu_count = [1, 2] }
 bench_gres = ["gpu:1", "gpu:2"]
 
 [[case]]
-name = "a benchmark's GPU ask bounds its trials, as its rank ask does (generator.md 4.1)"
+name = "a benchmark's GPU ask bounds its trials, as its rank ask does: a declared cell past it is crossed out by name (generator.md 4.1, 4.3a)"
 bench = { use_gpu = [true], mpi_np = [8], gpu_count = [1, 2] }
 prep = ["--gpus", "1"]
-refused = "asks for GPUs=2, which exceeds this prep's allocation of GPUs=1"
+said = ["needs 2 GPUs but this prep's ask allows 1 GPUs"]
+bench_gres = ["gpu:1"]
+
+[[case]]
+name = "...and a cell the machine proposed past it, the same way -- the prep is not refused over a cell nobody declared"
+bench = { use_gpu = [true], mpi_np = [8] }
+prep = ["--gpus", "2"]
+said = ["needs 4 GPUs but this prep's ask allows 2 GPUs"]
+bench_gres = ["gpu:1", "gpu:2"]
 
 [[case]]
 name = "...and a trial on the CPU asks no GPU, whatever the benchmark was allowed"

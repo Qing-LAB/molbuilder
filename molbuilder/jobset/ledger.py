@@ -15,9 +15,9 @@ VERB that acted on it appends the line — policy stays at the verb, the
 ledger only records.  A verb with one door appends at that surface; a verb
 whose doors share ONE ENTRY appends in the entry, once, whichever door
 called — `prep`'s, `jobset/prep.prep_stage` (`job-system.md` § 5.3), writes
-its lines (`saved`, `preflight-report`, `continues` or `starts-cold`,
-`gathers`, `launch-agreement`, `prepped`, and `refused`) for the command
-line and the Task setup tab alike.  `launch` writes each question it asks and its
+its lines (`preflight-report`, `saved`, `continues` or `starts-cold`,
+`gathers`, `launch-agreement`, `prepped`, and `refused`), after its save,
+for the command line and the Task setup tab alike.  `launch` writes each question it asks and its
 answer (`question`, a *no* too) before what it did.
 What a line consists of, where more than one caller records the same
 decision, lives here as a named function (:func:`prepped`), so the recipe
@@ -77,9 +77,9 @@ def prepped(base, *, kind: str, stage, dirs, provenance):
 
     So the recipe has one home and the entry has one call.
 
-    ``provenance`` is which config files answered, as the prep read them
-    with the machine's record (`prep._resolve_stage`) -- the table
-    `STAGE-PLAN.md` and the pipeline log carry.  It comes back because the
+    ``provenance`` is which config files answered, as the prep entry read
+    them with the machine's record at its checkpoint 4 (`prep.prep_stage`)
+    -- the table `STAGE-PLAN.md` and the pipeline log carry.  It comes back because the
     answer carries it: the command line PRINTS it (`format_provenance`) and
     the Task setup tab receives it -- the same table, read once, recorded
     and displayed from the answer.  *(It was read again here, after the

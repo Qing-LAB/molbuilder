@@ -69,11 +69,23 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
     from ..template import catalogue, select
     missing = []
     if shape:
-        for item in select(catalogue(), engine=engine):
-            if item.name in _SHAPE_ITEMS:
-                field = AS_RESOURCE.get(item.name, item.name)
-                if getattr(allocation, field, None) in (None, "", 0):
-                    missing.append((field, item.name))
+        items = [item for item in select(catalogue(), engine=engine)
+                 if item.name in _SHAPE_ITEMS]
+        for item in items:
+            field = AS_RESOURCE.get(item.name, item.name)
+            if getattr(allocation, field, None) in (None, "", 0):
+                missing.append((field, item.name))
+        # A RANK COUNT FOR AN ENGINE THAT RUNS ONE PROCESS names nothing it
+        # runs: its header asks one task, and launch would have sent the
+        # count (`submit._sbatch_request`).  `--np` on a PySCF run passed
+        # silently until 2026-10-05.
+        if (getattr(allocation, "mpi_np", None) not in (None, "", 0)
+                and "mpi_np" not in {i.name for i in items}):
+            return (f"{'stage ' + repr(stage) + ' ' if stage else ''}states "
+                    f"a rank count (--np) for {engine}, which runs one "
+                    f"process -- a rank count names nothing it runs; the "
+                    f"cores it runs on are its threads (the run card's "
+                    f"`threads`, or --cpus-per-task).")
     if header:
         for field in ("domain", "time", "mem"):
             if getattr(allocation, field, None) in (None, ""):

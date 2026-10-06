@@ -103,9 +103,9 @@ def _compare(row, *, cores: Optional[int] = None,
 
     Four facts, four different treatments, three different moments, one never
     implemented.  That is not four bugs; it is one missing function, and this
-    is it.  Callers ask what they know and leave the rest ``None``: `prep`
-    knows cores and devices but not duration, `launch` knows all of them, and
-    a caller asking about capability alone passes nothing.
+    is it.  Callers ask what they know and leave the rest ``None``
+    (`scheduler.md` R7): `prep` what a job states, `launch` all of it, and a
+    caller asking about capability alone passes nothing.
 
     Returns REASONS rather than a bool because every caller has to explain
     itself to a user — a refusal that cannot say what was too big sends them
@@ -313,10 +313,10 @@ class Request:
     """What one job asks of a queue, in the units a domain states.
 
     Fields the caller does not know are ``None``, and ``None`` is never a
-    refusal (R7): `prep` knows cores and devices but not duration, `launch`
-    knows all of them, and a caller asking about capability alone passes
-    nothing.  That is what lets one admission serve every caller instead of
-    each growing its own variant.
+    refusal (R7): `prep` asks what a job states (`jobset.placement.
+    request_of`), `launch` all of it, and a caller asking about capability
+    alone passes nothing.  That is what lets one admission serve every
+    caller instead of each growing its own variant.
 
     ``mem_gb`` is a NUMBER because the record's ceiling is one; build it with
     :func:`parse_mem_gb` from whatever SLURM text the caller holds.

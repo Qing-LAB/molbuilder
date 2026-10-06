@@ -225,16 +225,17 @@ def stage_inputs(stage: str, task_label: str, *,
 
 
 def warm_declaration(stage: str, task_label: str, base_dir=None):
-    """What a transport rung takes from a run it CONTINUES (``--from``
-    an earlier attempt of the SAME stage) — the § 4.2a vocabulary rows
-    for the transport type, on the stages where continuing means
+    """What a transport rung takes from a run of itself it CONTINUES --
+    `launch` opening its next attempt after a stop -- the § 4.2a vocabulary
+    rows for the transport type, on the stages where continuing means
     anything: the seed (its ``.DM``) and the device (its ``.TSDE``, the
-    NEGF density; read by presence, no deck keyword).
+    NEGF density; read by presence, no deck keyword).  A rung takes no
+    ``--from`` at prep (`continuation._cannot_be_named`).
 
     The electrode single-points and the transmission post-processing
     declare NOTHING — re-running them is cheaper than reasoning about a
-    half-finished copy, and an empty declaration is what makes
-    ``--from`` refuse there by name instead of copying dead weight.
+    half-finished copy, and an empty declaration is what makes a re-launch
+    of one refuse by name instead of copying dead weight.
     """
     if stage not in ("seed", "device"):
         return []

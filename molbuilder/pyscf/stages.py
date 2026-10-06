@@ -156,10 +156,9 @@ def force_constant_stages(task, *, include_disabled: bool = False
     and two or more are a displacement sweep (`engines/vibration.md` § 5.9);
     each measures at the relax stage's geometry (§ 5.2a).
 
-    ``include_disabled`` is the layout's question: `prep` preps a stage
-    named on its command line whether or not it is enabled (plan W38 F5), so
-    whether two force-constant stages would share a directory is asked of
-    every one described."""
+    ``include_disabled`` says whether a stage the description disables is
+    counted: one is never prepped (`prep` refuses it at its checkpoint 2),
+    so the layout's question asks of the enabled ones."""
     return [s.name for s in task.stages
             if (include_disabled or getattr(s, "enabled", True))
             and vibration_render_kind(s.name) == "vibration"]

@@ -601,8 +601,8 @@ def render_stage_status(status: JobSetStatus, stage_name: str,
     s = next(x for x in status.stages if x.name == stage_name)
     if not s.prepped:
         # WHAT YOU CAN TYPE (`job-system.md` § 5.3): a disabled stage's prep
-        # is refused on a transport ladder, so it is told how to enable it;
-        # one whose prep would refuse is told why, with the commands.
+        # is refused, so it is told how to enable it; one whose prep would
+        # refuse is told why, with the commands.
         cont = (continuation if continuation is not None else
                 {"resume_from": status.resume_from,
                  "resume_refused": status.resume_refused}

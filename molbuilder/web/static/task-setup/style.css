@@ -865,6 +865,7 @@
    a scheduler runs the job, else the run script's counts -- is shown line for
    line before the second click. */
 .ts-emitted {
+    flex-basis: 100%;
     margin-top: var(--space-sm);
     padding: var(--space-sm) var(--space-md);
     background: var(--bg-input);

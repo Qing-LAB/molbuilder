@@ -1277,6 +1277,17 @@ async function loadFolder(projects, dir, opts) {
      * its default, the runs of the stage before it, `--cold` where it is a
      * choice.  The same answer prep acts on, served before it does. */
     _fs.continueFrom = said.continue_from || {};
+    /* A CHOICE THE FOLDER NO LONGER OFFERS IS DROPPED -- a stage set clean
+     * since, or one whose stage before it was turned off, offers none -- or
+     * every Preview sent it, and its command printed it, with no select
+     * left to clear it (until 2026-10-05). */
+    for (const [name, chose] of Object.entries(_fs.continueChoice)) {
+        const cf = _fs.continueFrom[name];
+        const offered = !!(cf && cf.from_stage) && (chose === ""
+            || (chose === "--cold" ? !!cf.cold
+                : (cf.runs || []).some((r) => r.source === chose)));
+        if (!offered) delete _fs.continueChoice[name];
+    }
     /* THE MACHINE IT IS SET TO, and the stages prepped -- the folder's own
      * answer (W55 B4): a calculation's machine is its first prep's and does
      * not change (`configuration.md` M-3), so the card shows it fixed. */
@@ -2310,6 +2321,17 @@ function renderNext(task) {
  *  means: the default's own line, or why prep refuses it for now. */
 function continueFromChoice(task, name, cf) {
     const wrap = el("div", { class: "ts-continue-from" });
+    if (!cf.from_stage) {
+        /* NOTHING TO CHOOSE, AND WHY PREP REFUSES: a force-constant stage
+         * with no `relax` and a structure not stated relaxed -- the one
+         * hand-over door's answer, here before anything is written
+         * (`engines/vibration.md` § 5.2a). */
+        const note = el("p", { class: "hint ts-continue-note" },
+                        String(cf.refused || ""));
+        note.setAttribute("data-state", "warn");
+        wrap.append(note);
+        return wrap;
+    }
     const sel = el("select", { "aria-label": "continue " + name + " from" });
     const add = (value, text) => sel.appendChild(el("option", { value }, text));
     // WHAT IT BUILDS ON BY DEFAULT, in its kind's words: a force-constant
@@ -2442,176 +2464,145 @@ function prepButton(kind, stage) {
         return null;
     }
 
+    /* WHAT A NEW ANSWER REPLACES: the last answer, its end point (A13) and
+     * what it would write -- each of a plan the new one replaces, or of
+     * none.  A refusal left the last preview's box beside it until
+     * 2026-10-05. */
+    function retire() {
+        for (const sel of [".ts-prep-answer", ".ts-emitted", ".ts-prep-writes"]) {
+            const stale = wrap.querySelector(sel);
+            if (stale) stale.remove();
+        }
+    }
+
     function refuse(msg) {
+        retire();
         say.textContent = msg;
         say.setAttribute("data-state", "warn");
         btnWrite.disabled = true;
     }
 
-    btnPreview.addEventListener("click", async () => {
+    btnPreview.addEventListener("click", () => {
         const no = blocked();
         if (no) return refuse(no);
-        /* A NEW PREVIEW RETIRES THE LAST ANSWER, the last preview's end
-         * point (A13) and what it would write -- and the Prep that named its
-         * plan, until this one answers: all were of a plan this preview
-         * replaces (Prep stayed enabled on the old plan, its box gone, until
-         * 2026-10-05). */
-        for (const sel of [".ts-prep-answer", ".ts-emitted", ".ts-prep-writes"]) {
-            const stale = wrap.querySelector(sel);
-            if (stale) stale.remove();
-        }
+        /* A NEW PREVIEW RETIRES THE LAST ANSWER -- its lines, its end point,
+         * what it would write -- and the Prep that named its plan, until this
+         * one answers (Prep stayed enabled on the old plan, its box gone,
+         * until 2026-10-05). */
+        retire();
         delete _fs.answers[kind + ":" + stage];
         btnWrite.disabled = true;
         planned = null;
+        say.textContent = "Previewing\u2026";
+        say.setAttribute("data-state", "ok");
         btnPreview.disabled = true;
-        try {
-            /* THE ENTRY'S PREVIEW (`job-system.md` § 5.0): the plan, stopped
-             * before the save -- or the refusal prep would give, in its own
-             * words: a stage already prepped, a run it cannot continue
-             * from, a launch value stated nowhere.  Prep is not offered for
-             * a plan prep refuses. */
-            const r = await _prepCall(kind, stage, true);
-            if (!r.ok) {
-                /* THE REFUSAL WITH WHAT IT POINTS AT -- the preflight's
-                 * notes, a bench's crossed-out cells -- through the one
-                 * renderer of an answer (`task-setup.md` § 11.1); only the
-                 * sentence was shown until 2026-10-05, and a refusal that
-                 * pointed at "the crossed-out list above" pointed at
-                 * nothing. */
+        /* UNDER THE PAGE'S FENCE, as every write is (`task-setup.md` § 7a):
+         * a Save, a stage tab or another folder taken mid-call would plan,
+         * or show, something other than what the person is looking at. */
+        return underFence("Previewing " + kind + " " + stage + "\u2026",
+                          async () => {
+            try {
+                /* THE ENTRY'S PREVIEW (`job-system.md` § 5.0): the plan,
+                 * stopped before the save -- or the refusal prep would give,
+                 * in its own words.  SHOWN AS PREP'S ANSWER IS, through the
+                 * one renderer, worded as a preview: what it found (the
+                 * deck's own checks among it), what the stage builds on,
+                 * what the attempt would receive, whether the deck agrees
+                 * with its launch -- or the refusal with what it pointed at
+                 * (only the sentence, and a summary of the page's own, were
+                 * shown until 2026-10-05).  Prep is not offered for a plan
+                 * prep refuses. */
+                const r = await _prepCall(kind, stage, true);
                 _showPrepAnswer(wrap, say, r);
-                btnWrite.disabled = true;
-                return;
-            }
-            planned = r.plan_id || null;
-            const bits = ["for " + r.machine];
-            /* VARYING AND CHOSEN ARE DIFFERENT THINGS, and the length of a
-             * row is which (`generator.md` § 4.3a).  Both come from the
-             * SERVER, so this line and the allocation the prep builds cannot
-             * disagree. */
-            const varying = [];
-            for (const k of Object.keys(r.bench_axes || {})) {
-                if ((r.bench_axes[k] || []).length > 1) varying.push(k);
-            }
-            const chosen = Object.keys(r.chosen || {})
-                .map((k) => k + "=" + r.chosen[k]);
-            if (varying.length) bits.push("varying " + varying.join(", "));
-            else if (kind === "bench") {
-                /* A one-point declaration IS the grid -- that cell, exactly
-                 * (`generator.md` § 4.3a); only an absent one leaves the
-                 * target to propose. */
-                const cell = Object.keys(r.bench_axes || {})
-                    .map((k) => k + "=" + (r.bench_axes[k] || []).join(""));
-                bits.push(cell.length
-                    ? "the declared cell " + cell.join(", ")
-                    : "no axes declared — the target proposes the grid");
-            }
-            if (chosen.length) bits.push("at " + chosen.join(", "));
-            /* WHAT IS STATED, and nothing for what is not: a run handed to a
-             * scheduler states its queue, wall and memory or prep refuses
-             * it, and one on a machine without a scheduler is asked for none
-             * (`architecture.md` § 5.2).  This said "the scheduler's own
-             * default decides" until 2026-10-03, a rule retired (W55 D2). */
-            const a = r.allocation || {};
-            if (a.domain) bits.push("queue " + a.domain);
-            if (a.mem) bits.push("memory " + a.mem);
-            if (a.time) bits.push("time " + a.time);
-            say.textContent = bits.join(" · ") + ".";
-            say.setAttribute("data-state", "ok");
-            /* WHAT IT BUILDS ON, before anything is written (plan W37): the
-             * line both doors print, with the files it carries. */
-            if (r.continuation) {
-                say.textContent += "  " + r.continuation.line + ".";
-            }
+                if (!r.ok) return;
+                planned = r.plan_id || null;
 
-            /* A13 -- THE END POINT, as the plan holds it, line for line:
-             * the header where a scheduler runs the job -- the run script
-             * takes its counts from the allocation there -- else the run
-             * script's stated counts.  Nothing worked out again
-             * (`architecture.md` § 5.2). */
-            const launch = r.launch || {};
-            const lines = (launch.header || []).length
-                ? launch.header : (launch.run_script || []);
-            if (lines.length) {
-                const box = el("div", { class: "ts-emitted" });
-                box.appendChild(el("div", { class: "ts-emitted-head" },
-                    "What this run will actually be launched with"));
-                // NAME THE DOCUMENT.  These come from `task.json` ON DISK,
-                // and saying so is the difference between a contradiction
-                // and a fact.
-                box.appendChild(el("div", { class: "hint" },
-                    "from the saved task.json — save the card above to "
-                    + "change these"));
-                for (const line of lines) {
-                    box.appendChild(el("div", { class: "ts-emitted-line" },
-                        el("code", {}, line)));
+                /* A13 -- THE END POINT, as the plan holds it, line for line:
+                 * the header where a scheduler runs the job -- the run script
+                 * takes its counts from the allocation there -- else the run
+                 * script's stated counts.  Nothing worked out again
+                 * (`architecture.md` § 5.2). */
+                const launch = r.launch || {};
+                const lines = (launch.header || []).length
+                    ? launch.header : (launch.run_script || []);
+                if (lines.length) {
+                    const box = el("div", { class: "ts-emitted" });
+                    box.appendChild(el("div", { class: "ts-emitted-head" },
+                        "What this run will actually be launched with"));
+                    // NAME THE DOCUMENT.  These come from `task.json` ON DISK,
+                    // and saying so is the difference between a contradiction
+                    // and a fact.
+                    box.appendChild(el("div", { class: "hint" },
+                        "from the saved task.json — save the card above to "
+                        + "change these"));
+                    for (const line of lines) {
+                        box.appendChild(el("div", { class: "ts-emitted-line" },
+                            el("code", {}, line)));
+                    }
+                    wrap.appendChild(box);
                 }
-                wrap.appendChild(box);
-            }
-            /* WHAT IT WOULD WRITE, every file the plan leaves (`job-system.md`
-             * § 5.0), folded: the count is the glance, the list the check. */
-            const writes = r.writes || [];
-            if (writes.length) {
-                const det = el("details", { class: "ts-prep-writes" });
-                det.appendChild(el("summary", {}, "writes " + writes.length
-                    + " file" + (writes.length === 1 ? "" : "s")));
-                det.appendChild(el("pre", { class: "ts-prep-answer-notes" },
-                                   writes.join("\n")));
-                wrap.appendChild(det);
-            }
+                /* WHAT IT WOULD WRITE, every file the plan leaves
+                 * (`job-system.md` § 5.0), folded: the count is the glance,
+                 * the list the check. */
+                const writes = r.writes || [];
+                if (writes.length) {
+                    const det = el("details", { class: "ts-prep-writes" });
+                    det.appendChild(el("summary", {}, "writes " + writes.length
+                        + " file" + (writes.length === 1 ? "" : "s")));
+                    det.appendChild(el("pre", { class: "ts-prep-answer-notes" },
+                                       writes.join("\n")));
+                    wrap.appendChild(det);
+                }
 
-            btnWrite.disabled = false;
-        } finally {
-            btnPreview.disabled = false;
-        }
+                btnWrite.disabled = false;
+            } finally {
+                btnPreview.disabled = false;
+            }
+        });
     });
 
     /* THE ONE ENTRY'S ANSWER, WHOLE (`task-setup.md` § 11.1): the same
      * answer `molbuilder jobset prep` prints -- the state it saved first
-     * among it (`checkpointing.md` § 9). */
-    async function write() {
+     * among it (`checkpointing.md` § 9).  Under the page's fence, as the
+     * preview is: the folder, the description and the stage cannot change
+     * under it (an answer landing after another folder was opened was
+     * guarded on its own until 2026-10-05). */
+    function write() {
         btnWrite.disabled = true;
         btnPreview.disabled = true;
-        try {
-            say.textContent = "Preparing…";
-            say.setAttribute("data-state", "ok");
-            /* THE FOLDER IT WAS ASKED OF: an answer that lands after another
-             * folder was opened is that folder's no longer -- the write is
-             * announced for the folder it changed, and nothing of it is kept
-             * or shown here (`task-setup.md` § 2.1; until 2026-10-05 it was
-             * stored under, and shown for, the folder open now). */
-            const dir = _dir;
-            const r = await _prepCall(kind, stage, false, planned);
-            if (_dir !== dir) {
-                const p = window.molbuilder && window.molbuilder.projects;
-                if (r.ok && p && typeof p.publishFolderChanged === "function") {
-                    p.publishFolderChanged(dir);
+        return underFence("Prepping " + kind + " " + stage + "\u2026",
+                          async () => {
+            try {
+                say.textContent = "Preparing\u2026";
+                say.setAttribute("data-state", "ok");
+                const r = await _prepCall(kind, stage, false, planned);
+                if (!r.ok) retire();
+                _showPrepAnswer(wrap, say, r);
+                if (r.ok) {
+                    // KEPT, for the re-read below: it rebuilds this panel,
+                    // and the new one shows it again.
+                    _fs.answers[kind + ":" + stage] = r;
+                    // The folder now holds decks and wrappers it did not
+                    // before -- the same announcement a restore makes, so
+                    // every other open view re-reads rather than showing the
+                    // folder as it was; this page re-reads it here, keeping
+                    // the answer.
+                    const p = window.molbuilder && window.molbuilder.projects;
+                    if (p && typeof p.publishFolderChanged === "function") {
+                        _ownPublish = true;
+                        try { p.publishFolderChanged(_dir); }
+                        finally { _ownPublish = false; }
+                    }
+                    if (p) await loadFolder(p, _dir, { retire: false });
                 }
-                return;
+            } finally {
+                btnPreview.disabled = false;
+                // STAYS DISABLED after a write: what was previewed has been
+                // written, so the next write needs a fresh preview to
+                // describe it.  Re-enabling would offer a second write of a
+                // plan nobody has looked at since.
             }
-            _showPrepAnswer(wrap, say, r);
-            if (r.ok) {
-                // KEPT, for the re-read below: it rebuilds this panel, and
-                // the new one shows it again.
-                _fs.answers[kind + ":" + stage] = r;
-                // The folder now holds decks and wrappers it did not before --
-                // the same announcement a restore makes, so every other open
-                // view re-reads rather than showing the folder as it was;
-                // this page re-reads it here, keeping the answer.
-                const p = window.molbuilder && window.molbuilder.projects;
-                if (p && typeof p.publishFolderChanged === "function") {
-                    _ownPublish = true;
-                    try { p.publishFolderChanged(_dir); }
-                    finally { _ownPublish = false; }
-                }
-                if (p) await loadFolder(p, _dir, { retire: false });
-            }
-        } finally {
-            btnPreview.disabled = false;
-            // STAYS DISABLED after a write: what was previewed has been
-            // written, so the next write needs a fresh preview to describe
-            // it.  Re-enabling would offer a second write of a plan nobody
-            // has looked at since.
-        }
+        });
     }
 
     btnWrite.addEventListener("click", () => {
@@ -2621,22 +2612,23 @@ function prepButton(kind, stage) {
     });
 
     wrap.append(btnPreview, btnWrite, say);
-    /* PREPPED ALREADY (W55 B4): the prep entry's own sentence, from the
-     * folder's answer, the way back in it -- and neither button, since a
-     * prepped stage is not prepped again (`job-system.md` § 5.0).  Its lines
-     * above are its launch. */
-    const prepped = (_fs.prepped[kind] || {})[stage];
-    if (prepped) {
-        btnPreview.disabled = true;
-        say.textContent = String(prepped);
-        say.setAttribute("data-state", "warn");
-    }
     /* THE ANSWER THIS PANEL LAST GAVE, again: a write's own announcement
      * re-reads the folder and rebuilds the panel, and so does every repaint
      * -- the answer stays until a new preview, a Save or a restore retires
      * it, or another folder is opened (`_resetPerFolderState`). */
     const kept = _fs.answers[kind + ":" + stage];
     if (kept) _showPrepAnswer(wrap, say, kept);
+    /* PREPPED ALREADY (W55 B4): the prep entry's own sentence, from the
+     * folder's answer, the way back in it -- and neither button, since a
+     * prepped stage is not prepped again (`job-system.md` § 5.0).  Its lines
+     * above are its launch.  It is said over a kept answer, whose lines stay
+     * below it: the kept "Prepared for" hid the way back until 2026-10-05. */
+    const prepped = (_fs.prepped[kind] || {})[stage];
+    if (prepped) {
+        btnPreview.disabled = true;
+        say.textContent = String(prepped);
+        say.setAttribute("data-state", "warn");
+    }
     /* ONLY THE PREVIEW IS REGISTERED.  `_syncPrepButtons` sets
      * `disabled = !machine` on everything it holds -- so registering the
      * write button would hand its enabled-ness a SECOND owner, and picking a
@@ -2688,8 +2680,11 @@ async function _prepCall(kind, stage, plan, planId) {
     if (kind === "run") Object.assign(body, continueBody(stage));
     // The local machine has a NAME, not just a label: the server maps
     // `(this machine)` to it, so sending the label is enough and the two
-    // surfaces keep one vocabulary.
-    if (_machine) body.target = _machine;
+    // surfaces keep one vocabulary.  A FOLDER SET TO ITS MACHINE names none:
+    // its own copy of the record answers (`configuration.md` M-3), as the
+    // terminal's prep with no --target -- naming it was refused on a server
+    // holding no record by that name (until 2026-10-05).
+    if (_machine && !_fs.setTo) body.target = _machine;
     try {
         const r = await fetch("/api/task-setup/prep", {
             method: "POST",
@@ -2741,13 +2736,19 @@ function _showPrepAnswer(wrap, say, r) {
         return;
     }
     findingLines(r.deck_findings);
+    /* A PREVIEW IS SAID AS ONE: what prep WOULD do, nothing yet written
+     * (`job-system.md` § 5.0) -- the same lines, from the same answer. */
+    const would = !!r.preview;
     // THE STATE A REDO RESTORES, named where the person reads it -- saved
     // now, or the one the folder already stood at (`checkpointing.md` § 9).
     if (r.saved) line(r.saved);
     const dirs = r.dirs || [];
-    say.textContent = "Prepared for " + r.machine + " — "
-        + dirs.length + " director" + (dirs.length === 1 ? "y" : "ies")
-        + ": " + dirs.slice(0, 3).join(", ") + (dirs.length > 3 ? ", …" : "");
+    say.textContent = would
+        ? "Previewed for " + r.machine + " — nothing is written until Prep."
+        : "Prepared for " + r.machine + " — "
+          + dirs.length + " director" + (dirs.length === 1 ? "y" : "ies")
+          + ": " + dirs.slice(0, 3).join(", ")
+          + (dirs.length > 3 ? ", …" : "");
     say.setAttribute("data-state", "ok");
     const a = r.attempt;
     /* WHAT IT CONTINUES FROM, AS THE TERMINAL SAYS IT (`job-system.md`
@@ -2757,8 +2758,10 @@ function _showPrepAnswer(wrap, say, r) {
      * continues. */
     if (r.continuation) line(r.continuation.line);
     if (a) {
-        line("Attempt " + a.dir + (a.fresh ? "" : " (reused — not launched yet)"));
-        line("brought in: " + (a.brought || []).join(", "));
+        line((would ? "would open attempt " : "Attempt ") + a.dir
+             + (a.fresh ? "" : " (reused — not launched yet)"));
+        line((would ? "would bring in: " : "brought in: ")
+             + (a.brought || []).join(", "));
         // WHAT IT STARTS FROM when it continues from no run -- the
         // terminal's own words, off the same answer: a cold start asked
         // for, the files a transport rung gathered (said below), or nothing
@@ -2771,11 +2774,13 @@ function _showPrepAnswer(wrap, say, r) {
                    + (r.linked ? "" : " (the first stage, or one that starts clean)"));
         }
     }
+    const took = would ? "would gather: " : "gathered: ";
     for (const p of (r.points || [])) {
-        line("Attempt " + p.attempt + (p.bias === null ? "" : " @ " + p.bias + " V"));
-        for (const g of (p.gathered || [])) line("gathered: " + g.file + " ← " + g.from);
+        line((would ? "would open attempt " : "Attempt ") + p.attempt
+             + (p.bias === null ? "" : " @ " + p.bias + " V"));
+        for (const g of (p.gathered || [])) line(took + g.file + " ← " + g.from);
     }
-    for (const g of (r.gathered || [])) line("gathered: " + g.file + " ← " + g.from);
+    for (const g of (r.gathered || [])) line(took + g.file + " ← " + g.from);
     if (r.resources) {
         const rs = r.resources;
         // WHAT IS STATED, and nothing else -- the terminal's line
@@ -2796,7 +2801,20 @@ function _showPrepAnswer(wrap, say, r) {
              + " — launch WILL REFUSE this: " + g.note, "warn");
         say.setAttribute("data-state", "warn");
     }
-    if (r.pipeline_log) line("pipeline log: " + r.pipeline_log);
+    /* WHICH FILES ANSWERED, as the prep read them with the machine's record
+     * (`configuration.md` § 2.2): the first found is the record that won.
+     * The terminal prints the table; the page said it nowhere until
+     * 2026-10-05, and its folder card named a record asked with no machine. */
+    const prov = r.provenance;
+    if (prov && (prov.sources || []).length) {
+        const found = prov.sources.filter((s) => s.found)
+            .map((s) => s.path + (s.via ? " (" + s.via + ")" : ""));
+        if (found.length) line("read from: " + found.join(", "));
+        if ((prov.domains || []).length) {
+            line("its queues: " + prov.domains.join(", "));
+        }
+    }
+    if (r.pipeline_log && !would) line("pipeline log: " + r.pipeline_log);
     if (box.childNodes.length) wrap.appendChild(box);
 }
 
@@ -2958,14 +2976,12 @@ function setMachine(name) {
     _fs.queue = "";
     renderQueues();
     _syncPrepButtons();      // the prep buttons wait on this answer
-    /* THE PROVENANCE CARD IS NOT REPAINTED HERE, and the line that did was
-     * refetching identical bytes on every machine click.  Its comment read
-     * "the warning depends on WHICH machine"; the endpoint's own docstring
-     * says the opposite -- *"provenance itself is a property of the FOLDER
-     * ... and does not change with the machine you are preparing for"* --
-     * and the route takes no `target` to make it depend on one.  The
-     * `target` it once sent fed only the bootstrap warning, retired
-     * 2026-08-25, and the comment outlived it. */
+    /* THE CONFIG CARD IS NOT REPAINTED HERE: it shows this machine's
+     * `molbuilder.json`, which no machine choice changes.  Which machine
+     * RECORD answers does depend on the choice -- and on whether the
+     * calculation has its copy yet -- so it is the prep answer's, a
+     * preview's too (`_showPrepAnswer`), never this card's (it listed the
+     * record's scopes asked with no machine until 2026-10-05). */
     /* AND THE COMMANDS THEMSELVES.  The machine reaches each stage's
      * lines at RENDER time (`commandsFor` asks the server with it), and
      * `renderNext` runs from `loadFolder` -- which finishes before anyone
@@ -3618,10 +3634,11 @@ function paintNotifyNote() {
  * `/api/task-setup/resolved` itself, asked `projects.getCurrentDir()` for
  * WHICH folder — a second source for the thing `loadFolder` already had in
  * hand — and was fired `setTimeout(..., 0)`, fire-and-forget, so its answer
- * could land after a move with nothing to check it against.  Provenance is
- * a property of the FOLDER (the `target` it used to send fed only the
- * bootstrap warning, retired 2026-08-25), so it comes with the rest of them
- * from the tagged answer.
+ * could land after a move with nothing to check it against.  This
+ * machine's `molbuilder.json` is the same whatever the folder is prepped
+ * for, so it comes with the rest of the folder's answer; which machine
+ * RECORD answers is the prep answer's (`_showPrepAnswer`), since it turns
+ * on the machine a prep names.
  *
  * Caught 2026-09-19 by asking which parts of the door's payload anything
  * reads: `provenance` was sent and nobody took it, while the page went on

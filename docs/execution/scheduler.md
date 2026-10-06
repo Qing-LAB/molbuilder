@@ -347,11 +347,18 @@ existing `job-system.md` § 6 rule, now with somewhere to live. A machine whose
 record lists **no** domains is a different situation: nothing was promised,
 and the header stands.
 
-**R7 — Callers ask what they know.** `prep` knows cores and devices but not
-duration; `launch` knows all of them; a caller asking about *capability* asks
-about nothing else. An unasked constraint is `None`, and `None` is never a
-refusal. This is what lets one admission function serve every caller without
-each growing its own variant.
+**R7 — Callers ask what they know.** `prep` knows what a job states — its
+cores and devices, and where it writes a header the wall and memory it is
+refused without ([`submission.md`](?doc=execution/submission.md) S1, S2) — and
+admits a run on the queue it names with all of them
+([`job-system.md`](?doc=execution/job-system.md) § 5.0, checkpoint 4); the
+benchmark grid asks each cell's shape of every queue, since the queue each of
+a benchmark's sides goes to is named at its launch; `launch` knows all of them;
+a caller asking about *capability* asks about nothing else. An unasked
+constraint is `None`, and `None` is never a refusal. This is what lets one
+admission function serve every caller without each growing its own variant.
+*(It said `prep` knows no duration until 2026-10-05; a wall has been stated at
+prep since 2026-10-02.)*
 
 **R8 — Measurements from the record, the queue from the job.** M-1
 (`configuration.md` § 5) is not relaxed here. What a queue *allows* is a

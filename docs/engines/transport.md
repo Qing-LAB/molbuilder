@@ -1407,11 +1407,12 @@ five decks carries an `MD` block, by design (§ 4.2 stage 1).
 rungs write no restart keyword at all, and SIESTA reads `<label>.DM` whenever
 the file is there whatever the deck omits — so in principle a lead could
 warm-start from stale state without being asked. In practice every attempt is
-opened **fresh** — by `prep` once, by `launch` for each launch after — and a
-transport rung takes nothing but its kind's gather, so there is nothing in the
-directory to pick up (a rung takes no `--from`, [`job-system.md`](?doc=execution/job-system.md)
-§ 5.4). The exposure is a hand-run wrapper inside an already-used attempt,
-which is outside the ladder.
+opened **fresh**: by `prep`, holding its kind's gather and nothing else (a rung
+takes no `--from`, [`job-system.md`](?doc=execution/job-system.md) § 5.4); by
+`launch`, after a stop, holding what the rung's own newest run left of the
+restart files it declares — the seed's `.DM`, the device's `.TSDE` — and the
+leads declare none. Nothing stale is there to pick up. The exposure is a
+hand-run wrapper inside an already-used attempt, which is outside the ladder.
 
 **Does the lead need `TS.DE.Save`? No — settled from the source**
 *(`Src/m_ts_options.F90`, SIESTA 5.4.2)*. The binary carries a message this
@@ -1477,9 +1478,12 @@ molbuilder jobset summarize run        # -> <label>.transport.json + the I-V tab
 | ~~`transport electrode`~~ · ~~`transport preflight`~~ | **DELETED 2026-09-17** with the `transport` verb group — the hand-assembly pair. A lead is derived from the citation at prep, and § 5's invariants are held by construction or by the validation pass |
 
 **Gotchas:** the citation names a DIRECTORY explicitly (§ 3.1 below) —
-nothing is ever picked for you; a re-pointed citation recomposes and makes
-every stale upstream attempt refuse by deck-mismatch; `--bias` must start at
-`0.0` (the chain starts from equilibrium).  *(The old `transport bundle`
+nothing is ever picked for you; a citation re-pointed after a rung is prepped
+is refused at the next rung's gather, which cannot read the junction its
+record was composed from — the way on is the state saved before the first
+rung's prep, which composes it anew (a prepped rung is not prepped again,
+[`job-system.md`](?doc=execution/job-system.md) § 5.0); `--bias` must start
+at `0.0` (the chain starts from equilibrium).  *(The old `transport bundle`
 three-run driver and its `run-transport.sh` were deleted 2026-08-29 —
 deriving and running the pieces is the composite's job.)*
 

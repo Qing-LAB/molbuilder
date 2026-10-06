@@ -206,6 +206,13 @@ run_sh = ["_omp_threads_default=6",
           '_omp_threads="$_omp_threads_default"; _omp_from="stated at prep"']
 
 [[case]]
+name = "a PySCF run takes no rank count: it runs one process"
+engine = "pyscf"
+run = { threads = 2 }
+prep = ["--np", "4"]
+refused = "which runs one process"
+
+[[case]]
 name = "the run card's wall and queue beat allocation's"
 run = { time = "00:10:00", domain = "debug" }
 header = ["#SBATCH -t 0-00:10:00", "#SBATCH -q debug"]
