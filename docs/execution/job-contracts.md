@@ -900,7 +900,7 @@ through its run door, never by name across the tree.)*
 the described route it is the only thing that does.  *(One recorded sibling writes beside it: a transport bias SCAN's launch
 regenerates the chain-walker script `launch/<stem>-chain.run.sh` — the one
 submission that walks the points — through the same emit conventions
-(`jobset/submit.py::submit_transport_chain`).  The old side doors — the
+(`jobset/submit.py::_plan_chain`, written by the launch's send).  The old side doors — the
 pre-composite transport driver and the web install-wrapper endpoint —
 retired 2026-08-29 / 2026-08-21.)*  The wrapper activates the
 routed conda env and

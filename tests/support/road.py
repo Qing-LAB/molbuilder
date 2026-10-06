@@ -235,7 +235,10 @@ def calls_made(calls: Path):
 #
 #   1. ALLOWED OR REFUSED, in its words -- at prep (`refused`, a sentence or a
 #      list of them; `said`) or at
-#      launch (`launch_refused`, the same; `listing`);
+#      launch (`launch_refused`, the same; `listing`) -- a dry run, unless
+#      `launch_sends` sends it (answered `--yes`); what the launch left
+#      (`launch_writes_nothing`: every file under the calculation as it was;
+#      `after_launch`: the after-prep checks below, asked again);
 #   2. WHAT IS PRODUCED -- the `.sbatch` header (`header`, or
 #      `header_absent`), the deck (`deck`), the run script (`run_sh`), each
 #      with a `_lacks` twin; the `sbatch` line launch shows (`line`,
@@ -281,7 +284,7 @@ def calls_made(calls: Path):
 # stages then removed, or added (`{name, at}`, `at` the place, the end when
 # absent), through the same Save; `stand_in` -- what the suite's stand-in
 # engine does on the row's launches (`_road_stand_in`: `rc`,
-# `leaves_restart`); `touched` -- files then made the newest in their
+# `leaves_restart`, `waits_for`); `touched` -- files then made the newest in their
 # folder, paths under the calculation, as a copy or a restore leaves a
 # folder's times; `own_warm_files` -- the calculation's own restart-file
 # list, the engine's
@@ -309,8 +312,9 @@ def calls_made(calls: Path):
 # (`saved_states`, their notes -- `{stamp}` standing for the time a note
 # leads with, `2026-10-03 14:05:12`), what `status` says of the calculation
 # (`status_says`, and what it does not, `status_lacks`), and the decisions
-# its ledger does not hold
-# (`ledger_lacks`); a prep that was not refused says nothing of `said_lacks`.
+# its ledger holds and does not hold
+# (`ledger_holds`, `ledger_lacks`); a prep that was not refused says nothing
+# of `said_lacks`.
 # THEN, refused or not: the description saved through Task setup's Save with
 # `saved`'s fields changed (`{shape = "flat"}`) -- refused, with
 # `save_refused`'s words, or taken.  A REFUSED prep, its remedy done: this
@@ -509,16 +513,24 @@ def _road_own_warm_files(case, bundle) -> None:
     (bundle / FILENAME).write_text(text)
 
 
-def _road_stand_in(asked, monkeypatch) -> None:
+def _road_stand_in(asked, monkeypatch, bundle) -> None:
     """What the suite's stand-in engine does on this row's launches
     (`conftest._STUB_BODIES`): end with exit code ``rc``, and -- with
     ``leaves_restart`` -- leave the restart file SIESTA leaves, empty, so a
-    run can be continued.  The run's records are our wrapper's, written as
-    it concludes; nothing is laid by hand."""
+    run can be continued; with ``waits_for``, run only once the
+    calculation's ledger holds that decision, ending with exit code 124
+    when it does not within ten seconds -- what a launch has written down
+    while its run runs.  The run's records are our wrapper's, written as it
+    concludes; nothing is laid by hand."""
     if "rc" in asked:
         monkeypatch.setenv("MB_STAND_IN_RC", str(asked["rc"]))
     if asked.get("leaves_restart"):
         monkeypatch.setenv("MB_STAND_IN_LEAVES_XV", "1")
+    if "waits_for" in asked:
+        from molbuilder.jobset.ledger import LEDGER_FILE
+        monkeypatch.setenv(
+            "MB_STAND_IN_WAITS_FOR",
+            f'{bundle / LEDGER_FILE}|"decision": "{asked["waits_for"]}"')
 
 
 def _road_run_answer(want, bundle) -> None:
@@ -572,11 +584,11 @@ def _road_progress_log_holds(want, bundle) -> None:
 
 
 def _road_after_prep(case, bundle) -> None:
-    """What the row's prep left, refused or not: the folder's saved states,
-    newest first (`saved_states`), what `status` says of the calculation
+    """What the row's prep left, refused or not -- or, given a row's
+    `after_launch`, what its launch left: the folder's saved states, newest
+    first (`saved_states`), what `status` says of the calculation
     (`status_says`, and what it does not, `status_lacks`), and the decisions
-    its ledger does not hold
-    (`ledger_lacks`)."""
+    its ledger holds and does not hold (`ledger_holds`, `ledger_lacks`)."""
     if "saved_states" in case:
         import re
         from molbuilder.checkpoint import Repo
@@ -608,15 +620,17 @@ def _road_after_prep(case, bundle) -> None:
             assert words in st.output, _one_line(st)
         for words in case.get("status_lacks", []):
             assert words not in st.output, _one_line(st)
-    if "ledger_lacks" in case:
+    if "ledger_lacks" in case or "ledger_holds" in case:
         import json
         from molbuilder.jobset.ledger import LEDGER_FILE
         log = bundle / LEDGER_FILE
         decided = [json.loads(x)["decision"] for x in
                    (log.read_text().splitlines() if log.is_file() else [])
                    if x.strip()]
-        for decision in case["ledger_lacks"]:
+        for decision in case.get("ledger_lacks", []):
             assert decision not in decided, f"the ledger holds: {decided}"
+        for decision in case.get("ledger_holds", []):
+            assert decision in decided, f"the ledger holds: {decided}"
 
 
 def _road_card_written(specs, bundle) -> None:
@@ -656,6 +670,14 @@ def _as_written(path: Path):
     again, which is what `kept` rows are about."""
     assert path.is_file(), f"{path} is not there to keep"
     return path.read_bytes(), path.stat().st_mtime_ns
+
+
+def _all_written(bundle: Path) -> dict:
+    """Every file under the calculation, by its size and write time -- what a
+    step that writes nothing leaves as it was."""
+    return {str(p.relative_to(bundle)): (p.stat().st_size,
+                                         p.stat().st_mtime_ns)
+            for p in sorted(bundle.rglob("*")) if p.is_file()}
 
 
 def _road_holds(got, want, where) -> None:
@@ -805,7 +827,7 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
                                        str(bundle), "-m", "set up"])
         assert got.exit_code == 0, _one_line(got)
     if "stand_in" in case:
-        _road_stand_in(case["stand_in"], monkeypatch)
+        _road_stand_in(case["stand_in"], monkeypatch, bundle)
     for words in case.get("before", []):
         # A machine is named at prep; the other verbs read the one prep set.
         got = jobset(*words, "--bundle", bundle,
@@ -882,9 +904,11 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
     # benchmark -- or its refusal
     if "launch" in case:
         mode = case.get("launch_mode", "submit")
+        was = _all_written(bundle)
         r = jobset("launch", kind, case.get("launch_stage", "coarse"),
                    "--bundle", bundle, *(("--mode", mode) if mode else ()),
-                   "--dry-run", "--yes", *case["launch"])
+                   *(() if case.get("launch_sends") else ("--dry-run",)),
+                   "--yes", *case["launch"])
         if "launch_refused" in case:
             said = case["launch_refused"]
             assert r.exit_code != 0, _one_line(r)
@@ -893,11 +917,16 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
         else:
             assert r.exit_code == 0, _one_line(r)
             sent = [ln for ln in r.output.splitlines() if "sbatch" in ln.split()]
-            assert sent, _one_line(r)
+            assert sent or mode == "direct", _one_line(r)
             for ln in sent:
                 _road_lines(case, "line", " ".join(sbatch_line(ln)))
         for words in case.get("listing", []):
             assert words in r.output, _one_line(r)
+        if case.get("launch_writes_nothing"):
+            now = _all_written(bundle)
+            assert now == was, sorted(set(now.items()) ^ set(was.items()))
+        if "after_launch" in case:
+            _road_after_prep(case["after_launch"], bundle)
 
     # 3 · WHAT THE RUN SCRIPT DOES HERE -- its dry run, given the case's GPUs
     if "given_gpus" in case:

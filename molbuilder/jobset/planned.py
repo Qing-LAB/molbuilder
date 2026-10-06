@@ -26,6 +26,7 @@ import hashlib
 import os
 import shutil
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
@@ -50,8 +51,9 @@ class _Put:
 class _Copy:
     src: Path
     path: Path
-    #: The file on disk its bytes come from, by path, size and time, as it
-    #: was when the copy was planned -- ``None`` when they are the plan's own.
+    #: The file on disk its bytes come from, by size and time (:func:`found`),
+    #: as it was when the copy was planned -- ``None`` when they are the
+    #: plan's own.
     stamp: Optional[str] = None
 
 
@@ -77,14 +79,29 @@ class _Folder:
 _Held = Union[bytes, Path, None]
 
 
+def found(path) -> str:
+    """A file as it is now, in words -- ``1234 bytes, written 2026-10-05
+    10:00:01.123456789``, or ``absent``.  Two readings agree exactly when
+    nothing wrote the file between them: what a plan's copy is stamped with,
+    and what `launch` reads in place and compares at its send
+    (`job-system.md` § 6.0, step 4)."""
+    try:
+        st = Path(path).stat()
+    except FileNotFoundError:
+        return "absent"
+    secs, ns = divmod(st.st_mtime_ns, 10 ** 9)
+    when = datetime.fromtimestamp(secs).strftime("%Y-%m-%d %H:%M:%S")
+    return f"{st.st_size} bytes, written {when}.{ns:09d}"
+
+
 def _stamp(held: _Held) -> Optional[str]:
-    """What a copy or a move takes, when it is a file on disk: its path,
-    size and time, read when the step is planned -- the moment the plan
-    describes, whatever a later step of the same plan does to the file."""
+    """What a copy or a move takes, when it is a file on disk: its size and
+    time (:func:`found`), read when the step is planned -- the moment the
+    plan describes, whatever a later step of the same plan does to the
+    file."""
     if not isinstance(held, Path):
         return None
-    st = held.stat()
-    return f"{held}:{st.st_size}:{st.st_mtime_ns}"
+    return found(held)
 
 
 class Plan:
@@ -181,27 +198,42 @@ class Plan:
                     found.add(p)
         return sorted(found)
 
-    def identity(self) -> str:
-        """What this plan IS, less the moment it was made: every operation
-        in order, each file's bytes with its stamps masked (when and by which
+    def described(self) -> List[str]:
+        """Every operation in words, in order: a folder made; a file written,
+        by a digest of its bytes with their stamps masked (when and by which
         build it was written -- `deck_record.without_stamps`, the rule two
-        decks are compared by), and what a copy or a move takes by its file's
-        path, size and time as they were when it was planned -- so two plans
-        of one folder agree exactly when they would write the same thing.
-        The preview's plan is named by it, and Prep refuses a plan that
-        differs (`job-system.md` § 5.0)."""
-        h = hashlib.sha256()
+        decks are compared by) and its mode; a file copied or moved, from
+        where, and that file's size and time as they were when the step was
+        planned; a file removed.  Two plans of one folder describe the same
+        lines exactly when they would write the same thing -- what
+        :meth:`identity` names, and what `launch`'s send compares line by
+        line (`job-system.md` § 6.0, step 4)."""
+        out: List[str] = []
         for op in self._ops:
-            h.update(type(op).__name__.encode() + b"\0")
-            h.update(str(op.path).encode() + b"\0")
-            if isinstance(op, _Put):
-                h.update(without_stamps(op.data))
-                h.update(repr(op.mode).encode())
-            elif isinstance(op, (_Copy, _Move)):
-                h.update(str(op.src).encode() + b"\0")
-                h.update((op.stamp or "").encode())
-            h.update(b"\n")
-        return h.hexdigest()
+            if isinstance(op, _Folder):
+                out.append(f"makes the folder {op.path}")
+            elif isinstance(op, _Remove):
+                out.append(f"removes {op.path}")
+            elif isinstance(op, _Put):
+                digest = hashlib.sha256(without_stamps(op.data)).hexdigest()
+                out.append(f"writes {op.path} (its text {digest[:16]}"
+                           + ("" if op.mode is None else f", mode {op.mode:o}")
+                           + ")")
+            else:
+                out.append(("copies " if isinstance(op, _Copy) else "moves ")
+                           + f"{op.src} to {op.path} "
+                           + (f"({op.stamp})" if op.stamp
+                              else "(as this plan holds it)"))
+        return out
+
+    def identity(self) -> str:
+        """What this plan IS, less the moment it was made -- its
+        :meth:`described` lines, hashed: two plans of one folder agree
+        exactly when they would write the same thing.  The preview's plan is
+        named by it, and Prep refuses a plan that differs (`job-system.md`
+        § 5.0)."""
+        return hashlib.sha256(
+            "\n".join(self.described()).encode("utf-8")).hexdigest()
 
     def writes(self) -> List[Path]:
         """Every path this plan leaves holding a file, in the order it was
@@ -247,4 +279,4 @@ class Plan:
         self._ops.clear()
 
 
-__all__ = ["Plan"]
+__all__ = ["Plan", "found"]

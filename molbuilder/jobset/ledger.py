@@ -17,8 +17,12 @@ whose doors share ONE ENTRY appends in the entry, once, whichever door
 called — `prep`'s, `jobset/prep.prep_stage` (`job-system.md` § 5.3), writes
 its lines (`preflight-report`, `saved`, `continues` or `starts-cold`,
 `gathers`, `launch-agreement`, `prepped`, and `refused`), after its save,
-for the command line and the Task setup tab alike.  `launch` writes each question it asks and its
-answer (`question`, a *no* too) before what it did.
+for the command line and the Task setup tab alike.  `launch`'s, likewise
+(`jobset/submit.py`: `plan_launch`, `ask_launch`, `send_launch`), writes
+its refusals, the question it put and its answer (`question`, a *no* too),
+what it asked a scheduler (`asked`) and each submission as it goes
+(`launched`, a run here when it starts); its verb, the refusals it says
+before it calls the entry.  A dry run writes nothing.
 What a line consists of, where more than one caller records the same
 decision, lives here as a named function (:func:`prepped`), so the recipe
 is never something each caller has to remember.  Per-job launch provenance already

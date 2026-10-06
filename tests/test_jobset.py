@@ -26,8 +26,7 @@ def _sandbox(tmp_path_factory, monkeypatch):
 from molbuilder.jobset.materialize import materialize
 from molbuilder.paths import trial_name
 from molbuilder.jobset.plan import render_plan
-from molbuilder.jobset import submit as _submit
-from molbuilder.jobset.submit import submit_jobset, SubmitError
+from molbuilder.jobset.submit import SubmitError, plan_launch
 from molbuilder.jobset.prep import prep_jobset
 from molbuilder.jobset.runstatus import jobset_status, render_status
 
@@ -43,12 +42,6 @@ def _tmp_is_the_projects_tree(tmp_path, monkeypatch):
     """
     from molbuilder.projects import PROJECTS_ROOT_ENV
     monkeypatch.setenv(PROJECTS_ROOT_ENV, str(tmp_path))
-
-
-class _CP:
-    """Minimal stand-in for subprocess.CompletedProcess."""
-    def __init__(self, returncode=0, stdout="", stderr=""):
-        self.returncode, self.stdout, self.stderr = returncode, stdout, stderr
 
 
 # --------------------------------------------------------------------- #
@@ -572,90 +565,16 @@ def test_render_plan_surfaces_per_job_ranks_and_cores():
 #  submit engine                                                        #
 # --------------------------------------------------------------------- #
 
-def test_submit_dry_run_sweep_per_job_flags_vary(tmp_path):
-    """The F2 fix: a SHARED-script sweep must still get per-job ``-n`` via the
-    CLI flags, so one rendered ``.sbatch`` serves every point.
-
-    Exercised one point per invocation (a named trial's lane; points also
-    reach the scheduler as riders of their shelf's grouped job) — and the
-    invariant is the same one: the flags are per-JOB, so two points of one
-    sweep must come out different.
-    """
-    cmds = {}
-    for name, want in (("G1K1C4", "1"), ("G1K2C4", "2")):
-        res = submit_jobset(_sweep(), tmp_path, mode="submit", dry_run=True,
-                            only=name)
-        assert len(res) == 1
-        cmds[name] = res[0].command
-        assert not any(a.startswith("--dependency=") for a in res[0].command)
-        assert "--gres=gpu:1" in res[0].command
-        assert res[0].command[res[0].command.index("-n") + 1] == want
-    assert cmds["G1K1C4"] != cmds["G1K2C4"], "per-job flags did not vary"
-
-
-def test_submit_slurm_parses_the_id_and_records_the_launch(tmp_path,
-                                                           monkeypatch):
-    """The id comes back from ``sbatch`` stdout and lands on the result.
-
-    Paired with the threaded-dependency assertion until 2026-08-10; that half
-    went with batch submission, and this half is what `status` reads back.
-    """
-    js = _ladder()
-    (tmp_path / "bench-s1").mkdir()
-    (tmp_path / "bench-s1" / "demo_s1.sbatch").write_text("x")
-    monkeypatch.setattr(_submit.subprocess, "run",
-                        lambda *a, **k: _CP(stdout="Submitted batch job 111"))
-    res = submit_jobset(js, tmp_path, mode="submit", only="s1")
-    assert [(r.job_id, r.status) for r in res] == [("111", "submitted")]
-
-
-def test_submit_slurm_raises_on_sbatch_failure(tmp_path, monkeypatch):
-    """A non-zero `sbatch` exit is raised, carrying the scheduler's own stderr.
-
-    The failure this prevents is the silent one: a submit path ignoring the return
-    code reports the job as launched, records no id, and leaves a person watching
-    a queue for something that was never queued. `sbatch` refuses for ordinary
-    reasons -- a bad QOS, an over-limit time request (`asu-sol.md`) -- and its
-    own message is the only thing that says which.
-    """
-    js = _ladder()
-    (tmp_path / "bench-s1").mkdir()
-    (tmp_path / "bench-s1" / "demo_s1.sbatch").write_text("x")
-    monkeypatch.setattr(_submit.subprocess, "run",
-                        lambda *a, **k: _CP(returncode=1, stderr="boom"))
-    with pytest.raises(SubmitError, match="sbatch failed"):
-        submit_jobset(js, tmp_path, mode="submit", only="s1")
-
-
-# --------------------------------------------------------------------- #
-#  A scheduler is handed ONE job at a time (user rule, 2026-08-10)       #
-# --------------------------------------------------------------------- #
-
-def test_a_scheduler_is_never_handed_more_than_one_job(tmp_path):
-    """*"SLURM should never submit jobs in parallel.  Submission is manual and
-    one by one.  It is a disaster to do parallel job submission on HPC."*
-
-    `_submit_slurm` looped over every job, and its own docstring called the
-    result intended: *"a sweep submits with no dependency, so its jobs queue in
-    parallel."*  One command, N ``sbatch`` calls, all racing for the same
-    nodes.  For a **benchmark** that is not merely antisocial — points running
-    concurrently contend for the same cores and interconnect, so the sweep
-    measures contention and the numbers are quietly wrong.
-    """
-    with pytest.raises(SubmitError) as e:
-        submit_jobset(_sweep(), tmp_path, mode="submit", dry_run=True)
-    msg = str(e.value)
-    assert "G1K1C4" in msg and "G1K2C4" in msg      # WHICH jobs it refused
-    assert "one at a time" in msg
-    assert "--mode direct" in msg                   # ...and what still works
-
-
-def test_the_refusal_holds_for_a_dry_run_too(tmp_path):
-    """A dry run previews the real thing.  Printing the commands for a launch
-    that would be refused is a preview of something that cannot happen."""
-    with pytest.raises(SubmitError):
-        submit_jobset(_sweep(), tmp_path, mode="submit", dry_run=True)
-
+# Retired 2026-10-05 with the doors they called (`submit_jobset`'s
+# dry run and send; `job-system.md` § 6.0, one entry): the job id
+# read off `sbatch` and recorded (`test_launch_door.py`, through the
+# road), the scheduler's refusal carried in its own words (the
+# shelf test in `test_prep_bench_fold.py`, the one sender's), the
+# per-trial flags (every benchmark row's line), `--exclusive` over
+# `--mem` (`test_one_emitter.py`), and the one-job-at-a-time refusal
+# -- a sweep sent to a scheduler goes one job per shelf, by the
+# entry's own dispatch, so no door is left to refuse it.  Each stood
+# on a hand-built job set with no files the plan reads.
 
 # Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
 # 13 tests here stood on restart files or outputs written by hand,
@@ -663,10 +582,9 @@ def test_the_refusal_holds_for_a_dry_run_too(tmp_path):
 
 
 #  A ladder is submitted one stage at a time, so the tests below cover one
-#  launch each.  The scheduler rule that survives -- one job per invocation --
-#  is `test_a_scheduler_is_never_handed_more_than_one_job`; the halt-on-failure
-#  case is structural, see `test_a_ladder_refuses_to_act_on_all_of_itself`.
-#  The earlier scheduler-chained design: docs/archive/2026-08-10-stage-chaining.md
+#  launch each; the halt-on-failure case is structural, see
+#  `test_a_ladder_refuses_to_act_on_all_of_itself`.  The earlier
+#  scheduler-chained design: docs/archive/2026-08-10-stage-chaining.md
 
 
 def test_submit_unknown_mode_and_invalid_jobset(tmp_path):
@@ -678,29 +596,11 @@ def test_submit_unknown_mode_and_invalid_jobset(tmp_path):
     therefore the verb most likely to meet a file the current code did not write.
     """
     with pytest.raises(SubmitError, match="unknown mode"):
-        submit_jobset(_sweep(), tmp_path, mode="bogus", dry_run=True)
+        plan_launch(_sweep(), tmp_path, mode="bogus")
     bad = _ladder()
     bad.jobs[1].name = "s1"                         # duplicate
     with pytest.raises(SubmitError, match="invalid JobSet"):
-        submit_jobset(bad, tmp_path, mode="submit", dry_run=True)
-
-
-def test_submit_exclusive_suppresses_mem(tmp_path):
-    """`--exclusive` and `--mem` are never both emitted -- exclusive wins.
-
-    A whole-node allocation already grants the node's memory; passing `--mem`
-    alongside it caps the job BELOW what it was given, so a request meant to take
-    a whole node quietly runs constrained and the benchmark measures the cap.
-    `job-contracts.md` § 6.2 maps the config vocabulary onto scheduler
-    flags; this is where two of them conflict.
-    """
-    js = JobSet("x", "siesta", "sweep",
-                jobs=[Job("j", "j.fdf",
-                          resources=Resources(exclusive=True, mem="120G",
-                                              time="0-01:00:00"))])
-    cmd = submit_jobset(js, tmp_path, mode="submit", dry_run=True)[0].command
-    assert "--exclusive" in cmd
-    assert not any(a.startswith("--mem") for a in cmd)   # exclusive wins
+        plan_launch(bad, tmp_path, mode="submit")
 
 
 # --------------------------------------------------------------------- #
@@ -790,31 +690,10 @@ def test_submit_accepts_exactly_these_options(tmp_path):
         "trial_timeout_min", "only_side"}
 
 
-def test_direct_launch_carries_the_launch_door_claim(tmp_path, monkeypatch):
-    """`submit --mode direct` sets MB_LAUNCHED_BY in the child env — the
-    claim the wrapper's launch-door gate checks (job-contracts.md § 2.6).
-    Env inheritance survives forks, so a backgrounded local run launched
-    through the verb never meets the gate's prompt."""
-    import molbuilder.jobset.submit as sub
-    seen = {}
-
-    def fake_popen(cmd, **kw):
-        seen["env"] = kw.get("env")
-        class _Proc:
-            def wait(self):
-                return 0
-        return _Proc()
-    js = _sweep()
-    _decks_where_prep_writes_them(tmp_path, js)
-    prep_jobset(js, tmp_path, emit_sbatch=False)
-    monkeypatch.setattr(sub.subprocess, "Popen", fake_popen)
-    sub.submit_jobset(js, tmp_path, mode="direct", only=js.jobs[0].name)
-    assert seen["env"]["MB_LAUNCHED_BY"] == "jobset-launch"
-
-
-    # *(A hierarchical folder was asked with no name, its newest file
-    # speaking, until 2026-10-04: a run is asked about by its stem in either
-    # shape, and its newest run index speaks -- plan B11, 3b.2.)*
+# `test_direct_launch_carries_the_launch_door_claim` retired
+# 2026-10-05: a run launched here without the claim is refused by
+# its own run script (exit 2, `job-contracts.md` § 2.6), so every
+# road row that launches here and builds on the run asserts it.
 
 
 def test_status_fresh_bundle_all_not_started(tmp_path):
@@ -1362,18 +1241,10 @@ def test_prepare_attempt_refuses_a_from_that_has_not_run(tmp_path):
     assert "no such attempt" in str(e.value)
 
 
-def test_submit_only_takes_the_same_two_spellings_as_every_surface(tmp_path):
-    """`only` is a library entry point, and it had its own lookup and its own
-    listing -- the same defect prepare_attempt had (§ 8f).  The grammar is
-    the one resolver's: name, or #N (user-settled 2026-08-21)."""
-    from molbuilder.jobset.submit import submit_jobset, SubmitError
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    res = submit_jobset(js, tmp_path, mode="direct", dry_run=True, only="#3")
-    assert [r.name for r in res] == ["tight"]
-
-    with pytest.raises(SubmitError) as e:
-        submit_jobset(js, tmp_path, mode="direct", dry_run=True, only="bogus")
-    assert "coarse ('#1'), tight ('#3')" in str(e.value)
+# `test_submit_only_takes_the_same_two_spellings_as_every_surface`
+# retired 2026-10-05: `launch` takes `#N` through the road now
+# (`test_stage_names.py`), and the one resolver's listing is
+# asserted above.
 
 
 def test_a_number_resolves_to_the_seq_and_never_to_the_row():
@@ -1671,11 +1542,10 @@ def test_a_deck_rendered_for_no_rank_count_refuses_an_explicit_one(tmp_path):
     P4 unit 5 put `mpi_np` INTO the deck, which is why the failure was
     diagnosable.  Recording is not agreeing -- this is the agreement.
     """
-    from molbuilder.jobset.submit import submit_jobset, SubmitError
     js = _one_stage_bundle(tmp_path, mpi_np_deck=None, mpi_np_launch=14)
 
     with pytest.raises(SubmitError) as e:
-        submit_jobset(js, tmp_path, mode="direct", dry_run=True)
+        plan_launch(js, tmp_path, mode="direct")
     msg = str(e.value)
     assert "auto" in msg and "14" in msg          # BOTH numbers named
     assert "BlockSize" in msg                     # ...and what depends on it
@@ -1685,11 +1555,10 @@ def test_a_deck_and_a_launch_that_agree_are_not_refused(tmp_path):
     """Both spellings of agreement: an explicit match, and both deferring to
     the wrapper.  A check that refused these would make every ordinary bundle
     unlaunchable."""
-    from molbuilder.jobset.submit import submit_jobset
     for deck, launch in ((8, 8), (None, None)):
         d = tmp_path / f"{deck}-{launch}"; d.mkdir()
         js = _one_stage_bundle(d, mpi_np_deck=deck, mpi_np_launch=launch)
-        res = submit_jobset(js, d, mode="direct", dry_run=True)
+        res = plan_launch(js, d, mode="direct").shown()
         assert [r.status for r in res] == ["planned"]
 
 
@@ -1705,10 +1574,9 @@ def test_two_explicit_rank_counts_that_differ_are_refused(tmp_path):
     parameter that depends on the launch cannot be decided before the launch is
     known.
     """
-    from molbuilder.jobset.submit import submit_jobset, SubmitError
     js = _one_stage_bundle(tmp_path, mpi_np_deck=8, mpi_np_launch=32)
     with pytest.raises(SubmitError) as e:
-        submit_jobset(js, tmp_path, mode="direct", dry_run=True)
+        plan_launch(js, tmp_path, mode="direct")
     assert "8" in str(e.value) and "32" in str(e.value)
 
 
@@ -1717,14 +1585,13 @@ def test_a_deck_with_no_bench_marks_says_nothing_and_is_not_refused(tmp_path):
     check is an agreement between two statements, not a demand that every deck
     make one."""
     from molbuilder.jobset.model import Job, JobSet, Resources
-    from molbuilder.jobset.submit import submit_jobset
     _describe(tmp_path, "flat", names=("coarse",))
     (tmp_path / "JOB_01_coarse.fdf").write_text("SystemLabel JOB\n")
     (tmp_path / "JOB_01_coarse.run.sh").write_text("#!/bin/bash\nexit 0\n")
     js = JobSet(name="JOB", engine="siesta", kind="ladder",
                 jobs=[Job(name="coarse", script="JOB_01_coarse.fdf",
                           resources=Resources(mpi_np=99))])
-    assert submit_jobset(js, tmp_path, mode="direct", dry_run=True)
+    assert plan_launch(js, tmp_path, mode="direct").submissions
 
 
 # --------------------------------------------------------------------- #
@@ -1754,12 +1621,12 @@ def test_the_prep_warning_and_the_submit_refusal_cannot_disagree(
     has, rather than checking each surface's wording in isolation.
     """
     from molbuilder.jobset.agreement import launch_agreement
-    from molbuilder.jobset.submit import submit_jobset, SubmitError
+    from molbuilder.jobset.submit import SubmitError, plan_launch
 
     js = _one_stage_bundle(tmp_path, mpi_np_deck=deck, mpi_np_launch=launch)
     warns = launch_agreement(tmp_path, js.jobs[0]).verdict == "differs"
     try:
-        submit_jobset(js, tmp_path, mode="direct", dry_run=True)
+        plan_launch(js, tmp_path, mode="direct")
         refuses = False
     except SubmitError:
         refuses = True
@@ -2094,12 +1961,13 @@ def test_prep_resolves_the_machine_before_it_writes_anything(tmp_path,
 
 def test_the_library_itself_refuses_a_whole_ladder(tmp_path):
     """U5: the no-chain rule lives at the SEAM, not only in the CLI's
-    stage resolution -- a library caller handing submit_jobset a two-stage
-    ladder with no `only` is refused in EVERY mode, because direct-running
-    stages in order would be local chaining (project-layout.md § 1.6)."""
+    stage resolution -- a library caller handing the launch entry a
+    two-stage ladder with no `only` is refused in EVERY mode, because
+    direct-running stages in order would be local chaining
+    (project-layout.md § 1.6).  API-LEVEL because the road cannot reach it:
+    `launch run` always names one stage."""
     import pytest as _pytest
     from molbuilder.jobset.model import Job, JobSet, Resources
-    from molbuilder.jobset.submit import SubmitError, submit_jobset
     js = JobSet(name="JOB", engine="siesta", kind="ladder",
                 jobs=[Job(name="coarse", script="JOB_01_coarse.fdf",
                           resources=Resources()),
@@ -2107,11 +1975,7 @@ def test_the_library_itself_refuses_a_whole_ladder(tmp_path):
                           resources=Resources())])
     for mode in ("direct", "submit"):
         with _pytest.raises(SubmitError, match="ONE stage at a time"):
-            submit_jobset(js, tmp_path, mode=mode, dry_run=True)
-    # named, it proceeds to a single planned launch
-    res = submit_jobset(js, tmp_path, mode="direct", dry_run=True,
-                        only="coarse")
-    assert [r.name for r in res] == ["coarse"]
+            plan_launch(js, tmp_path, mode=mode)
 
 
 def test_resources_fields_equal_the_contracts_list_exactly():

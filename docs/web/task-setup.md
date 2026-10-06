@@ -1110,7 +1110,8 @@ tab's lines come from the server — `/api/task-setup/commands`, composed by
 ([`job-system.md`](?doc=execution/job-system.md) § 5.3, *what molbuilder
 prints, you can type*): the calculation named from the projects root, what the
 rung continues from and the machine as chosen, and a launch line per mode
-where this machine's `molbuilder.json` sets no `launch.mode`. The page composed
+the calculation's machine takes where this machine's `molbuilder.json` sets no
+`launch.mode` — the queue's only where that machine names one. The page composed
 them itself until 2026-10-03, and its one launch line, with no mode, was
 refused when typed (D11). **A stage already prepped** shows the prep entry's
 own sentence under its two buttons, neither enabled — the way back in it —
@@ -1134,7 +1135,7 @@ two-day reservation is the cost of forgetting that, not a missing field.
 **It works the same on a workstation and against a cluster.** The admission
 check is the target's, *which* machine is § 6's question, answered once above,
 and the launch line is the terminal's: one, in this machine's `launch.mode`, or
-one per mode where it sets none.
+one per mode the calculation's machine takes where it sets none.
 
 ### 11.1 What a Prep button shows — the command line's answer, whole
 

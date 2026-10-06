@@ -37,7 +37,7 @@ P5 added the launch half, whose facts also live here: the § 4.2 DAG
 ``.TSDE``), and the bias scan's points (:func:`bias_points`; their folder
 names are the codec's one spelling, ``task.bias_token`` — plain v-dirs,
 ruled 2026-08-29).  The chain
-walker itself is `jobset/submit.submit_transport_chain`.
+walker itself is planned by `jobset/submit._plan_chain`, the launch entry's.
 """
 from __future__ import annotations
 

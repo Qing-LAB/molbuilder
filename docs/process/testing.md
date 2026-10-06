@@ -636,8 +636,10 @@ These are the durable patterns — follow them and the e2e tests stay stable:
   fucking e2e test. e2e test is only necessary when i say so")*. A run a
   framework test needs is made on the road with the suite's **stand-in
   engine** (`conftest._STUB_BODIES`), which plays the engine's part and no
-  other: a road row says how it ends (`stand_in`: the exit code, and whether
-  it leaves the restart file SIESTA leaves, empty), and our wrapper, running
+  other: a road row says how it ends (`stand_in`: the exit code, whether it
+  leaves the restart file SIESTA leaves, empty, and whether it waits until
+  the calculation's ledger holds a decision — what a launch has written
+  down while its run runs), and our wrapper, running
   it, writes the run's records as it concludes — so what a stage builds on,
   what it continues from and whether a viewer follows a run are tested
   through our own code with no engine (`tests/data/hand_overs.toml`). What

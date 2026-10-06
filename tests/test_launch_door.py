@@ -111,12 +111,13 @@ def test_a_stage_is_shown_asked_and_sent_with_its_own_queues_wall(cluster):
     ten minutes on either queue, never one queue's ceiling.
 
     The question and its answer are written down, a *no* included
-    (`job-system.md` § 5.0, agreement 6).
+    (`job-system.md` § 5.0, agreement 6); a dry run writes nothing, the
+    ledger included (§ 6.0, step 3).
 
     MUTATIONS THIS MUST FAIL AGAINST: the stage's door putting a queue's
     ceiling in place of the stated wall; sending without asking; the ledger
-    calling a declined or a dry run a launch; a declined launch leaving no
-    line (W55 D6)."""
+    calling a declined launch a launch; a declined launch leaving no line
+    (W55 D6); a dry run writing one (D14)."""
     bundle, calls = cluster
     r = jobset("launch", "run", "coarse", "--bundle", bundle,
                "--mode", "submit", "--domain", "htc")
@@ -144,11 +145,12 @@ def test_a_stage_is_shown_asked_and_sent_with_its_own_queues_wall(cluster):
     assert (asked["decision"], asked["answer"]) == (
         "question", "no answer (not a terminal): nothing sent"), asked
 
+    was = _ledger(bundle)
     r = jobset("launch", "run", "coarse", "--bundle", bundle,
                "--mode", "submit", "--domain", "htc", "--dry-run")
     assert r.exit_code == 0, r.output
     assert calls_made(calls) == [] and not (attempt / "run.json").exists()
-    assert _ledger(bundle)[-1]["decision"] == "planned"
+    assert _ledger(bundle) == was, "the dry run wrote to the ledger"
 
     r = jobset("launch", "run", "coarse", "--bundle", bundle,
                "--mode", "submit", "--domain", "htc", "--yes")
@@ -315,3 +317,50 @@ def test_a_flat_stage_still_unconcluded_is_asked_like_an_attempt(
     assert r.exit_code == 0, r.output
     assert "never CONCLUDED" in r.output, r.output
     assert len(calls_made(calls)) == 1, "sent again over a run in the queue"
+
+
+def test_a_send_over_a_folder_changed_since_its_plan_is_refused(cluster):
+    """`job-system.md` § 6.0, step 4: the send checks the folder against the
+    one its plan was made from -- a file the plan read, written since, or
+    the stage launched since by another launch, is refused, saying to
+    launch again; nothing is sent, nothing recorded.
+
+    API-LEVEL because the road cannot reach it: one `launch` makes its plan
+    and sends it in one command, and the folder changes in between only
+    while the person reads the question.  The plan and the send are the
+    entry's own two calls (`submit.plan_launch`, `submit.send_launch`); the
+    change between them is a person's.
+
+    MUTATION THIS MUST FAIL AGAINST: the send comparing nothing."""
+    import os
+
+    from molbuilder.jobset.model import JobSet
+    from molbuilder.jobset.submit import SubmitError, plan_launch, send_launch
+    bundle, calls = cluster
+    _prep(bundle, "coarse", "--domain", "debug", "--time", "10m")
+    js = JobSet.load(bundle / "job-set.json")
+    attempt = bundle / "01_coarse" / "run-0"
+
+    def plan():
+        return plan_launch(js, bundle, mode="submit", only="coarse",
+                           domain="debug")
+
+    shown = plan()
+    deck = next(attempt.glob("*.fdf"))
+    st = deck.stat()
+    os.utime(deck, ns=(st.st_atime_ns, st.st_mtime_ns + 10 ** 9))
+    with pytest.raises(SubmitError) as e:
+        send_launch(shown)
+    said = str(e.value)
+    assert "the folder changed since this launch was planned" in said, said
+    assert deck.name in said and "Launch again" in said, said
+    assert calls_made(calls) == [] and not (attempt / "run.json").exists()
+
+    shown = plan()
+    r = jobset("launch", "run", "coarse", "--bundle", bundle,
+               "--mode", "submit", "--yes")
+    assert r.exit_code == 0, r.output
+    with pytest.raises(SubmitError) as e:
+        send_launch(shown)
+    assert "the folder changed since this launch was planned" in str(e.value)
+    assert len(calls_made(calls)) == 1, "the stage was sent twice"

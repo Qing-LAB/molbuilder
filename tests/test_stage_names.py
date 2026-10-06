@@ -83,6 +83,10 @@ def test_the_launch_line_a_deck_prints_is_one_launch_takes(
     it is still that stage, and the decision ledger records it by the
     description's spelling.
 
+    A dry run writes nothing (`job-system.md` § 6.0, step 3), so the line
+    the ledger holds by the description's name is a launch's own -- here a
+    refused one: on this workstation prep wrote no scheduler header.
+
     MUTATIONS THIS MUST FAIL AGAINST: a header printing the token again; the
     resolver comparing exact strings; `launch` recording what was typed."""
     from molbuilder.jobset.ledger import LEDGER_FILE
@@ -95,17 +99,20 @@ def test_the_launch_line_a_deck_prints_is_one_launch_takes(
     deck = next(p for p in (bundle / token).iterdir()
                 if p.suffix in (".fdf", ".py"))
     typed = re.search(r"jobset launch run (\S+)", deck.read_text()).group(1)
-    for spelling in (typed, typed.upper()):
+    for spelling in (typed, typed.upper(), f"#{int(token.split('_')[0])}"):
         r = _jobset("launch", "run", spelling, "--bundle", bundle,
                     "--mode", "direct", "--dry-run")
         assert r.exit_code == 0, (spelling, r.output)
         assert re.search(rf"WOULD run\s+{stage}\s+bash H2_{token}\.run\.sh",
                          r.output), (spelling, r.output)
-        # A dry run is ledgered as planned (W52) -- by the stage's name.
-        planned = [json.loads(ln) for ln in
-                   (bundle / LEDGER_FILE).read_text().splitlines()
-                   if '"planned"' in ln][-1]
-        assert planned["stage"] == stage, (spelling, planned)
+    ledger = bundle / LEDGER_FILE
+    assert '"launch"' not in ledger.read_text(), "a dry run was recorded"
+    r = _jobset("launch", "run", typed.upper(), "--bundle", bundle,
+                "--mode", "submit")
+    assert r.exit_code != 0 and "no scheduler header" in r.output, r.output
+    last = json.loads(ledger.read_text().splitlines()[-1])
+    assert (last["verb"], last["decision"], last["stage"]) == (
+        "launch", "refused", stage), last
 
 
 def test_a_relax_stage_renamed_in_another_case_is_still_the_relaxation(

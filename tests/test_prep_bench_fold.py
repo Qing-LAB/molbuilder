@@ -163,6 +163,27 @@ def _prep_bench(calc):
         (calc / "01_coarse" / "bench" / "job-set.json").read_text())
 
 
+def _on_a_queue(calc):
+    """The calculation's machine names a queue -- a cluster's record, the
+    topology the grid is enumerated on kept, one GPU queue its node fits --
+    and the description names that queue.  A benchmark launched to a
+    scheduler is planned whole, its shelves' headers with it, so a launch
+    the machine could not take is refused, its dry run too (`job-system.md`
+    § 6.0); on the workstation `calc` describes, `--mode submit` is."""
+    rec = json.loads((calc / "environment.json").read_text())
+    rec["scheduler"] = "slurm"
+    rec["domains"] = [{"name": "gpu", "partition": "gpu", "qos": "public",
+                       "max_time": "1-00:00:00", "max_cores": 4,
+                       "gpu": {"a100": 1},
+                       "node_types": [{"cores": 4, "nodes": 1,
+                                       "gpu": {"a100": 1}}]}]
+    (calc / "environment.json").write_text(json.dumps(rec, indent=2) + "\n")
+    tj = calc / "task.json"
+    d = json.loads(tj.read_text())
+    d["allocation"]["domain"] = "gpu"
+    tj.write_text(json.dumps(d, indent=2))
+
+
 def test_the_grid_becomes_a_sweep_jobset_of_relabelled_trials(calc):
     js = _prep_bench(calc)
     assert js["kind"] == "sweep"
@@ -301,10 +322,10 @@ def test_a_trials_deck_prints_the_launch_of_that_trial(calc):
     import re
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
+    _on_a_queue(calc)
     r = CliRunner().invoke(jobset_group,
                            ["prep", "bench", "coarse", "--bundle", str(calc),
-                            "--np", "8", "--cpus-per-task", "8",
-                            "--no-sbatch"])
+                            "--np", "8", "--cpus-per-task", "8"])
     assert r.exit_code == 0, r.output
     js = json.loads((calc / "01_coarse" / "bench" / "job-set.json")
                     .read_text())
@@ -355,9 +376,15 @@ def test_cli_submit_bench_groups_the_sweep_by_shelf(calc):
     refuses."""
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
-    js = _prep_bench(calc)
-    trial = js["jobs"][0]["name"]
+    _on_a_queue(calc)
     runner = CliRunner()
+    r = runner.invoke(jobset_group, ["prep", "bench", "coarse",
+                                     "--bundle", str(calc), "--np", "8",
+                                     "--cpus-per-task", "8"])
+    assert r.exit_code == 0, r.output
+    js = json.loads((calc / "01_coarse" / "bench" / "job-set.json")
+                    .read_text())
+    trial = js["jobs"][0]["name"]
     r = runner.invoke(jobset_group, ["launch", "bench", "--bundle", str(calc),
                                      "--mode", "submit", "--dry-run", "--yes"])
     assert r.exit_code != 0 and "name one" in r.output
@@ -419,15 +446,16 @@ def test_launch_bench_mem_reaches_the_grouped_sbatch_command(calc):
     mpi_np/cpus_per_task/gres/exclusive, so the actual `sbatch` command
     asked for no memory no matter what a person typed.
 
-    Fixed by threading `Ask.mem_gb` through `submit_bench_group` ->
-    `_prepare_side_group`, applied to the envelope the same way
-    `_dc_replace_time` already applies the wall (`jobset/submit.py`).
+    Fixed by threading the memory through the shelf's planner
+    (`submit._plan_shelf`, then the one request, `_sbatch_request`),
+    applied to the envelope the same way the wall is (`jobset/submit.py`).
     This is the CLI end to end, `--dry-run` so nothing real is submitted --
     the same entry point `test_cli_submit_bench_groups_the_sweep_by_shelf`
     proves the shelf-grouping through, with one flag added.
     """
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
+    _on_a_queue(calc)
     _prep_bench(calc)
     r = CliRunner().invoke(jobset_group, [
         "launch", "bench", "coarse", "--bundle", str(calc),
@@ -456,6 +484,7 @@ def test_the_launch_plan_states_gpu_sharing(calc):
     """
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
+    _on_a_queue(calc)
     _prep_bench(calc)
     r = CliRunner().invoke(jobset_group, [
         "launch", "bench", "coarse", "--bundle", str(calc),
@@ -531,20 +560,28 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
     assert res.exit_code == 0, res.output
     res = r.invoke(jobset_group, ["launch", "bench", "coarse",
                                   "--bundle", str(calc),
-                                  "--mode", "submit", "--dry-run", "--yes"])
+                                  "--mode", "direct", "--dry-run"])
     assert res.exit_code == 0, res.output
+    # ...and sent to a queue this workstation has none of: refused, and the
+    # refusal written down with the mode and where it came from
+    res = r.invoke(jobset_group, ["launch", "bench", "coarse",
+                                  "--bundle", str(calc),
+                                  "--mode", "submit", "--yes"])
+    assert res.exit_code != 0 and "no scheduler header" in res.output, \
+        res.output
     res = r.invoke(jobset_group, ["summarize", "bench", "coarse",
                                   "--bundle", str(calc)])
     assert res.exit_code == 0, res.output
     lines = [json.loads(l) for l in
              (calc / LEDGER_FILE).read_text().splitlines()]
     got = [(e["verb"], e["decision"]) for e in lines]
-    # A DRY RUN IS RECORDED AS WHAT IT IS -- planned, nothing sent (W52: it
-    # was ledgered as a grouped launch and a launch until 2026-10-01).  The
-    # state prep saved first comes first (`checkpointing.md` § 9).
+    # A DRY RUN WRITES NOTHING, the ledger included (`job-system.md` § 6.0,
+    # step 3: it was ledgered as `planned` from 2026-10-01 until
+    # 2026-10-05).  The state prep saved first comes first
+    # (`checkpointing.md` § 9).
     assert got == [("prep", "saved"),
                    ("prep", "prepped"),
-                   ("launch", "planned"),
+                   ("launch", "refused"),
                    ("summarize", "verdict-written")]
     assert lines[0]["new"] is True and " · before prep bench coarse" in \
         lines[0]["note"], lines[0]
@@ -554,7 +591,7 @@ def test_every_verb_records_its_decisions_in_the_ledger(calc):
     launch = lines[2]
     assert launch["mode"] == "submit"
     assert launch["mode_source"] == "--mode flag"
-    assert launch["jobs"][0]["status"] == "planned"
+    assert "no scheduler header" in launch["reason"], launch
 
 
 # `test_prep_over_a_launched_attempt_asks_and_no_stops_it` and
@@ -1675,8 +1712,9 @@ def test_the_group_refuses_a_trial_without_an_explicit_shape(calc):
     import pytest as _pytest
 
     from molbuilder.jobset._cli import _load_bench_set
-    from molbuilder.jobset.submit import SubmitError, submit_bench_group
+    from molbuilder.jobset.submit import SubmitError, plan_launch
 
+    _on_a_queue(calc)
     _prep_bench(calc)
     js, base = _load_bench_set(calc, "coarse")
     stripped = js.jobs[0]
@@ -1684,7 +1722,7 @@ def test_the_group_refuses_a_trial_without_an_explicit_shape(calc):
         stripped, resources=dataclasses.replace(stripped.resources,
                                                 cpus_per_task=None))
     with _pytest.raises(SubmitError, match=stripped.name):
-        submit_bench_group(js, base, dry_run=True)
+        plan_launch(js, base, mode="submit", domain="gpu")
 
 
 def test_a_bench_row_never_reaches_the_run_deck(calc):
@@ -2011,7 +2049,7 @@ def test_every_shelf_is_written_before_any_is_sent(calc, monkeypatch):
     from molbuilder.jobset._cli import _load_bench_set
     from molbuilder.jobset.materialize import job_dir_names, shape_of
     from molbuilder.runrecord import launch_record
-    from molbuilder.jobset.submit import submit_bench_group
+    from molbuilder.jobset.submit import plan_launch, send_launch
 
     _describe_cpu(calc)
     _declare_bench(calc, {"mpi_np": [2, 4], "omp_threads": [1]})
@@ -2047,7 +2085,7 @@ def test_every_shelf_is_written_before_any_is_sent(calc, monkeypatch):
                         "#SBATCH -o slurm.%j.out\n#SBATCH -e slurm.%j.err\n"
                         f"bash {Path(path).stem}.run.sh \"$@\"\n")
 
-    results = submit_bench_group(js, base, dry_run=False)
+    results = send_launch(plan_launch(js, base, mode="submit"))
 
     assert len(seen) == 2, (
         "a refused shelf must not cancel the shelf behind it -- both were "
@@ -2100,7 +2138,7 @@ def test_the_sequencer_cds_where_the_wrapper_ACTUALLY_is(calc, monkeypatch):
     from pathlib import Path
 
     from molbuilder.jobset._cli import _load_bench_set
-    from molbuilder.jobset.submit import submit_bench_group
+    from molbuilder.jobset.submit import plan_launch, send_launch
 
     _describe_cpu(calc)
     _declare_bench(calc, {"mpi_np": [2], "omp_threads": [1],
@@ -2127,7 +2165,7 @@ def test_the_sequencer_cds_where_the_wrapper_ACTUALLY_is(calc, monkeypatch):
                         "#SBATCH -o slurm.%j.out\n#SBATCH -e slurm.%j.err\n"
                         f"bash {Path(path).stem}.run.sh \"$@\"\n")
 
-    submit_bench_group(js, base, dry_run=False)
+    send_launch(plan_launch(js, base, mode="submit"))
 
     container = Path(seen["cwd"])
     scripts = list((container / "launch").glob("*.run.sh"))
@@ -2164,7 +2202,8 @@ def test_a_grouped_launch_records_where_the_launched_door_LOOKS(calc,
     from molbuilder.jobset._cli import _load_bench_set
     from molbuilder.jobset.materialize import job_dir_names, shape_of
     from molbuilder.runrecord import launch_record
-    from molbuilder.jobset.submit import _trial_run_dir, submit_bench_group
+    from molbuilder.jobset.submit import (_trial_run_dir, plan_launch,
+                                          send_launch)
 
     _describe_cpu(calc)
     _declare_bench(calc, {"mpi_np": [2], "omp_threads": [1]})
@@ -2188,7 +2227,7 @@ def test_a_grouped_launch_records_where_the_launched_door_LOOKS(calc,
                         "#SBATCH -o slurm.%j.out\n#SBATCH -e slurm.%j.err\n"
                         f"bash {Path(path).stem}.run.sh \"$@\"\n")
 
-    submit_bench_group(js, base, dry_run=False)
+    send_launch(plan_launch(js, base, mode="submit"))
 
     for job in js.jobs:
         where = _trial_run_dir(base / dirs[job.name])

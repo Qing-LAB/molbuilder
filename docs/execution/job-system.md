@@ -964,7 +964,8 @@ trial's deck names its own launch, `launch bench <stage> <trial>`.
 `jobset/commands.py` for what the verbs and their refusals print — the
 calculation named by its address from the projects root (`--bundle`, quoted
 as a shell needs it) unless the reader stands in it; a launch's mode stated
-where this calculation's config sets none, as one line per mode; a refusal
+where this calculation's config sets none, as one line per mode its machine
+takes — the queue's only where the machine names one; a refusal
 that asks for a stage offering the stages the verb takes (`'#N'` quoted) and
 the command for the first — a bench verb's, the stages with a prepped
 benchmark, and a calculation that has no benchmark says so before it asks; one
@@ -1070,8 +1071,9 @@ meaning.
 > one stage per invocation, refusing more by name; for a BENCH, one grouped
 > job per resource shelf (`generator.md § 4.3a`) — never a queue flood. **`--mode direct` is untouched**: it
 > runs each job here, in order, waiting for each, which is not submission at
-> all. The refusal lives in `submit_jobset`, not in the CLI, so the web surface
-> and any other caller get it too.
+> all. The rule lives in the launch entry (`submit.plan_launch`), not in the
+> CLI — a whole ladder is refused there, and a sweep sent to a scheduler
+> planned by shelf — so any other caller meets it too.
 >
 > The benchmark already worked this way by hand — the old `bench generate`
 > emitted `job-cpu.sbatch` and told you to `sbatch` it yourself — so the rule
@@ -1329,8 +1331,9 @@ nothing"* (`checkpointing.md` S3).
     `sbatch`, one invocation, no dependency flag, nothing queued behind it.
   - **`direct`** runs that one job **locally** (`bash …run.sh`) and waits for
     it. This is the workstation path.
-  - `--dry-run` prints the exact command it *would* run, without launching —
-    the safe way to see what will happen.
+  - `--dry-run` prints the exact command it *would* run — or the refusal the
+    launch would meet — without launching and writing nothing: the safe way to
+    see what will happen (§ 6.0).
 - **`status`** reads the run directory (asking `run_status`,
   [`running-a-job.md § 4.2`](?doc=execution/running-a-job.md)) and reports each
   stage of the description — its state, its restart files — and the first
@@ -1494,9 +1497,18 @@ anything is sent, and the send decides nothing.**
 |:--:|---|---|
 | 1 | **the plan** — nothing is written | the work: a prepped stage, a benchmark's pending trials, a bias scan's points. Its **submissions** — each one scheduler job, or one process here, walking one or more **members**, each a prepared attempt: a run is one member; a benchmark's resource shelf, its pending trials; a bias scan, its points; a transport ladder's seed and leads, one submission ([`engines/transport.md`](?doc=engines/transport.md) § 2a.7). For each member: the attempt it runs in (a re-launch's next one), what it continues from — the `Continuation` prep makes, by the same rule for a run to build on (§ 5.4) — and whether it follows a run that never concluded. The gates: the deck agrees with its launch; a trial starts cold. The placement — the job's own, recorded at prep, under what a launch flag changes, admitted. The exact lines and scripts to send |
 | 2 | **show** | the exact command of every submission (S4, [`submission.md`](?doc=execution/submission.md)) |
-| 3 | **ask** | one question for the whole plan — its default *no* when a member follows a run that never concluded; `--yes` is the answer given in advance. `--dry-run` stops here and writes nothing, the ledger included |
-| 4 | **send** — nothing is decided | the folder is checked against the one the plan was made from — a member launched, a run ended or a file changed since is refused, saying to launch again to see the new plan; then each attempt is opened through the one opener ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.2), a submission with several members gets its sequencer's script, and each submission goes out — `sbatch`, or the process here — through one function, each member's `run.json` written by the one writer |
-| 5 | **the record** | the ledger: every refusal, the question and its answer, each submission sent and its job id — a run here when it starts |
+| 3 | **ask** | one question for the whole plan — its default *no* when a member follows a run that never concluded; `--yes` is the answer given in advance. `--dry-run` stops here and writes nothing, the ledger included — a refused dry run too, as a refused preview (§ 5.0). `--mode ask` puts the plan's lines to the scheduler instead (`sbatch --test-only`) and writes down what it asked |
+| 4 | **send** — nothing is decided | the folder is checked against the one the plan was made from — the plan made again from the folder as it is, and compared line by line: each submission's line and where it runs, each member and what it follows and how that run ended, every file the send writes or copies and every file read where it lies, each by its size and write time. A member launched, a run ended or a file changed since is refused, saying which and to launch again to see the new plan. Then each attempt is opened through the one opener ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.2), a submission with several members gets its sequencer's script, every script on disk before anything goes, and each submission goes out — `sbatch`, or the process here — through one function, each member's `run.json` written by the one writer |
+| 5 | **the record** | the ledger: every refusal, the question and its answer, each submission sent and its job id — a run here when it starts — with what the verb was told on each line (the kind, the stage, the mode and where it came from, the queue's source, which config files answered). The entry writes them (`submit.plan_launch`, `send_launch`, `ask_launch`, [`architecture.md`](?doc=execution/architecture.md) § 2.1); the verb writes the refusals it says before it calls the entry — a flag that means nothing for the mode, a stage not prepped |
+
+*(Built 2026-10-05, unit 11b. Until then each of the three doors — a stage, a
+benchmark's shelves, a bias chain — planned once to show and again to send,
+the second plan compared with nothing; four places sent, each with its own
+record; a dry run wrote `trial-picked` and `planned` lines and opened no
+attempt only because it planned less than a launch — a header it would need
+was never asked for, so a launch to a queue on a machine with none printed a
+line nobody could send; and the refusals the verb said before the send, and a
+run here until it had ended, left no line — W55 B5, D14.)*
 
 **One sequencer.** A submission of several members runs them through one
 script, written from data: which members in what order, what each hands the
@@ -1603,9 +1615,9 @@ system** adds is submission and routing:
   > group behind it was *neither written nor sent*, though its ask was
   > perfectly valid. The printed recovery command then answered *Unable to
   > open file*, because the script it named had never been written.
-  > `--dry-run` still writes nothing at all; its documented meaning is
-  > *print the exact command without launching*, and the confirm preview
-  > walks that path before the person has said yes.
+  > `--dry-run` still writes nothing at all: it is the launch's plan, shown
+  > and dropped (§ 6.0), and the question shows the same plan before the
+  > person has said yes.
 - **Job names read well.** A job's `-J` is `<calculation>/<job>` —
   `bdt_au/coarse`, `bdt_au/G1K2C4`, `bdt_au/bench-group-cpu` — on every door,
   so a `squeue` listing tells you which of your calculations each row belongs

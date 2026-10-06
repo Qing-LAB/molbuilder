@@ -230,7 +230,7 @@ flowchart LR
       K["<code>script_emit.prepare_deck(spec, …)</code><br/><i>the engine's input file — validate,<br/>render, write, then check what the writer made</i>"]
       H["<code>runwrap.write_run_wrapper(script, resources=)</code><br/><i>the wrapper AND the submission</i>"]
       I["<code>materialize.materialize(jobset, base)</code><br/><i>makes the directories</i>"]
-      J["<code>submit.submit_jobset(...)</code>"]
+      J["<code>submit.plan_launch(...)</code> → <code>send_launch</code><br/><i>the plan, shown and asked, then sent as shown</i>"]
     end
     READ --> MAKE
     WRITE --> MAKE

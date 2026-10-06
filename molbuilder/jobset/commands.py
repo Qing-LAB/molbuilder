@@ -12,7 +12,7 @@ composed here is ONE command:
 * the calculation named by its address from the projects root, unless the
   reader is standing in it (:func:`bundle_flag`);
 * a launch's mode stated where this calculation's config sets none -- one
-  line per mode, each typeable (:func:`launch_lines`);
+  line per mode its machine takes, each typeable (:func:`launch_lines`);
 * any prose after ``#``.
 
 What a text read LATER says about a launch -- a deck's header, a result's
@@ -75,17 +75,41 @@ def configured_mode() -> Optional[str]:
         return None          # a malformed config is `launch`'s to refuse
 
 
-def launch_lines(kind: str, *words, base) -> List[str]:
+def takes_a_queue(base, target: Optional[str] = None) -> bool:
+    """Whether a launch of this calculation can go to a queue: the machine
+    it launches on names one -- its record says ``slurm``, the test a
+    header is written on (`runwrap._render_sbatch_for`) -- so a launch to it
+    can be sent.  The calculation's own copy of its machine's record answers
+    once it is set to one; before that, the record of the machine named for
+    its first prep (``target``).  A machine that cannot be told -- no record
+    yet, or several on file and none named -- is taken to have one: the prep
+    that sets it answers first."""
+    from ..scheduler import AmbiguousTarget, UnknownTarget, machine_for
+    try:
+        rec = machine_for(base, target=target)
+    except (AmbiguousTarget, UnknownTarget):
+        return True                     # the prep that sets it refuses first
+    return rec is None or rec.scheduler == "slurm"
+
+
+def launch_lines(kind: str, *words, base,
+                 target: Optional[str] = None) -> List[str]:
     """The launch of ``words`` as a person types it: the bare line where this
     machine's config names a mode -- `launch` takes it -- else one line per
-    mode, each a command (never ``--mode submit|direct``, which bash reads as
-    a pipe)."""
+    mode the calculation's machine takes (:func:`takes_a_queue`), each a
+    command (never ``--mode submit|direct``, which bash reads as a pipe).
+    *(The line to the queue was printed on a machine with none until
+    2026-10-05: typed, its launch was refused -- no header was ever
+    written -- and only a dry run, which planned less than a launch, let it
+    pass.)*"""
     if configured_mode():
         return [command("launch", kind, *words, base=base)]
-    return [command("launch", kind, *words, base=base,
-                    flags=("--mode", "direct")) + "   # here",
-            command("launch", kind, *words, base=base,
-                    flags=("--mode", "submit")) + "   # to the queue"]
+    here = command("launch", kind, *words, base=base,
+                   flags=("--mode", "direct")) + "   # here"
+    if not takes_a_queue(base, target):
+        return [here]
+    return [here, command("launch", kind, *words, base=base,
+                          flags=("--mode", "submit")) + "   # to the queue"]
 
 
 def lines(verb: str, kind: str, *words, base) -> List[str]:
@@ -176,7 +200,7 @@ def stage_lines(kind: str, stage: str, *, base, from_attempt=None,
                  + (("--cold",) if cold else ())
                  + target_flags(base, target))
         out.append(command("prep", kind, stage, base=base, flags=flags))
-    out += launch_lines(kind, stage, base=base)
+    out += launch_lines(kind, stage, base=base, target=target)
     if kind == "bench":
         out.append(command("summarize", "bench", stage, base=base))
     return out
@@ -184,5 +208,5 @@ def stage_lines(kind: str, stage: str, *, base, from_attempt=None,
 
 __all__ = ["PROG", "bundle_flag", "command", "configured_mode",
            "launch_lines", "lines", "run_first", "name_a_stage",
-           "block", "rollback", "stage_lines",
+           "block", "rollback", "stage_lines", "takes_a_queue",
            "target_flags"]

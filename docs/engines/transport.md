@@ -1473,7 +1473,7 @@ molbuilder jobset summarize run        # -> <label>.transport.json + the I-V tab
 |---|---|---|
 | `jobset init --calculation transport` | describe the composite: the junction citation, the bias list, the five fixed stages | `jobset/_cli.py::_init_transport` |
 | `jobset prep run <stage>` | compose (sort · gates · extract) on first contact, then render THIS rung's deck + gather its inputs | `jobset/prep.py::prep_calculation`, the rung `_transport_rung_of` |
-| `jobset launch run <stage>` | the ordinary launch; a bias scan's device/transmission go as one walker job | `jobset/submit.py::submit_transport_chain` |
+| `jobset launch run <stage>` | the ordinary launch; a bias scan's device/transmission go as one walker job | `jobset/submit.py::_plan_chain` |
 | `jobset summarize run` | parse TBtrans output → `<label>.transport.json`, print the I–V table | `transport/record.py` |
 | ~~`transport electrode`~~ · ~~`transport preflight`~~ | **DELETED 2026-09-17** with the `transport` verb group — the hand-assembly pair. A lead is derived from the citation at prep, and § 5's invariants are held by construction or by the validation pass |
 
@@ -2665,7 +2665,7 @@ flowchart LR
 ```
 
 > **A bias scan is one submission, and the two walks over its points fail
-> in opposite directions** (`jobset/submit.py::submit_transport_chain`).
+> in opposite directions** (`jobset/submit.py::_plan_chain`).
 > Both are launcher layers — each `cd`s into the point's prepared attempt
 > and runs that point's own `.run.sh`. What differs is whether the points
 > depend on each other:

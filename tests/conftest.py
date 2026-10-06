@@ -209,6 +209,17 @@ _STUB_BODIES = {
         # `<SystemLabel>.XV`, EMPTY -- the carry copies it and never reads it
         # -- and end with the exit code the row gives.  Our wrapper, running
         # this, writes the run's records itself; a test never lays them.
+        # ...and, with `waits_for`, run only once the calculation's ledger
+        # holds the decision the row names: what a launch has written down
+        # while its run runs (`job-system.md` § 6.0, step 5).
+        'if [ -n "${MB_STAND_IN_WAITS_FOR:-}" ]; then\n'
+        '    _f="${MB_STAND_IN_WAITS_FOR%%|*}"; _w="${MB_STAND_IN_WAITS_FOR#*|}"\n'
+        "    _n=0\n"
+        '    until grep -qF "$_w" "$_f" 2>/dev/null; do\n'
+        '        _n=$((_n + 1)); [ "$_n" -ge 100 ] && exit 124\n'
+        "        sleep 0.1\n"
+        "    done\n"
+        "fi\n"
         'if [ -n "${MB_STAND_IN_LEAVES_XV:-}" ] && [ -f "${1:-}" ]; then\n'
         "    _label=$(awk 'tolower($1)==\"systemlabel\"{print $2; exit}' \"$1\")\n"
         '    [ -n "$_label" ] && : > "$_label.XV"\n'

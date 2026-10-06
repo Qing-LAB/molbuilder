@@ -1,0 +1,59 @@
+# THE LAUNCH PROTOCOL -- `docs/execution/job-system.md` § 6.0.
+#
+# `launch` is built as `prep` is: one plan, made with nothing written, shown
+# and asked, then sent as it was shown -- and every decision written down in
+# the calculation's ledger: every refusal, the question and its answer, each
+# submission as it goes (a run here when it starts).  A dry run stops at the
+# question and writes nothing, the ledger included.
+#
+# Every run here is made on the road: `jobset prep` and `jobset launch`, our
+# wrapper running the suite's stand-in engine, which ends as a row says
+# (`stand_in`).  `tests/test_launch_protocol.py` runs every case through the
+# one runner every contract table shares (`tests/support/road.py`,
+# `run_road_case`, whose header names each key).  What no row can reach --
+# the folder changing between a launch's plan and its send, inside one
+# command -- is the API-level check beside the launch door's tests
+# (`tests/test_launch_door.py`).
+#
+# A RULE CHANGES, ITS ROWS CHANGE.  A case is a row here, never a function.
+
+machine = "workstation"
+
+[run_base.siesta]
+mpi_np = 1
+omp_threads = 1
+
+[[case]]
+name = "a dry run of a launch again writes nothing: no attempt opened, no record, no line"
+stand_in = { leaves_restart = true }
+before = [["prep", "run", "coarse"],
+          ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
+stage = "medium"
+launch = []
+launch_mode = "direct"
+listing = ["WOULD continue 01_coarse/run-0 into run-1 (carrying H2.XV)"]
+launch_writes_nothing = true
+
+[[case]]
+name = "a refusal is written down -- one the verb says before anything is planned too"
+launch = ["--time", "1h"]
+launch_mode = "direct"
+launch_sends = true
+launch_refused = "--time: what a scheduler is asked for"
+after_launch = { ledger_holds = ["refused"] }
+
+[[case]]
+name = "a refused dry run writes nothing"
+launch = ["--time", "1h"]
+launch_mode = "direct"
+launch_refused = "--time: what a scheduler is asked for"
+launch_writes_nothing = true
+
+[[case]]
+name = "a run here is written down as it starts, while it runs"
+stand_in = { waits_for = "launched" }
+launch = []
+launch_mode = "direct"
+launch_sends = true
+listing = ["[ran]"]
+after_launch = { ledger_holds = ["launched"] }

@@ -112,10 +112,15 @@ prep = ["--no-sbatch"]
 allocation_unset = ["domain", "time", "mem"]
 header_absent = true
 
+# A run prepped with no header is not sent to a queue at all -- its launch is
+# refused for the header it lacks, a dry run too (`job-system.md` § 6.0: the
+# plan shown is the plan sent).  The header a benchmark's shelf is sent with
+# is written at its launch, and states only what was stated.
 [[case]]
-name = "...and launch fills none in: what it sends to a queue states its wall and memory"
+name = "...and launch fills none in: a benchmark's shelf, its header written at launch, states its wall and memory"
 prep = ["--no-sbatch"]
 allocation_unset = ["time", "mem"]
+bench = { mpi_np = [1, 2] }
 launch = []
 launch_refused = "states no wall (time), memory (mem)"
 

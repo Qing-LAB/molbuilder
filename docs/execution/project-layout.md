@@ -825,7 +825,9 @@ holds is refused, and a redo goes back to the state saved before its prep and
 prepares it anew ([`job-system.md`](?doc=execution/job-system.md) § 5.0).
 **The next attempt is `launch`'s**: launching a stage whose attempt has run
 opens `run-<n+1>`, continuing from its own latest run, so a launched attempt is
-untouchable (§ 1.5). *(Until 2026-10-02 preparing again was allowed: until
+untouchable (§ 1.5) — planned with the launch and opened by its send, after
+the yes, never by a dry run ([`job-system.md`](?doc=execution/job-system.md)
+§ 6.0). *(Until 2026-10-02 preparing again was allowed: until
 launch the last attempt was reused and its inputs refreshed, and after it the
 next prep opened a new one.)*
 
