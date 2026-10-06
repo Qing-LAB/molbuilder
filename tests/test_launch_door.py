@@ -331,6 +331,7 @@ def test_a_send_over_a_folder_changed_since_its_plan_is_refused(cluster):
 
     from molbuilder.jobset.model import JobSet
     from molbuilder.jobset.submit import SubmitError, plan_launch, send_launch
+    from molbuilder.jobset.ask import Said
     bundle, calls = cluster
     _prep(bundle, "coarse", "--domain", "debug", "--time", "10m")
     js = JobSet.load(bundle / "job-set.json")
@@ -344,7 +345,7 @@ def test_a_send_over_a_folder_changed_since_its_plan_is_refused(cluster):
     st = deck.stat()
     os.utime(deck, ns=(st.st_atime_ns, st.st_mtime_ns + 10 ** 9))
     with pytest.raises(SubmitError) as e:
-        send_launch(shown)
+        send_launch(shown, said=Said(True, "yes (--yes)"))
     said = str(e.value)
     assert "the folder changed since this launch was planned" in said, said
     assert deck.name in said and "Launch again" in said, said
@@ -356,6 +357,6 @@ def test_a_send_over_a_folder_changed_since_its_plan_is_refused(cluster):
                "--mode", "submit", "--yes")
     assert r.exit_code == 0, r.output
     with pytest.raises(SubmitError) as e:
-        send_launch(shown)
+        send_launch(shown, said=Said(True, "yes (--yes)"))
     assert "the folder changed since this launch was planned" in str(e.value)
     assert len(calls_made(calls)) == 1, "the stage was sent twice"

@@ -1828,8 +1828,9 @@ filename for an answer, and an engine-version change becomes one labeled edit.
 decision 2026-08-13)*: what a SIESTA **optimization** hands forward (`.XV`,
 `.DM`, `.CG`) is not what a SIESTA **transport** run does (`.TSHS`, `.TSDE`
 — the TranSIESTA self-energy and NEGF density), and a PySCF **vibration**
-shares the checkpoint story of a PySCF optimization while another PySCF
-calculation may write different result files entirely.  So the file holds a
+writes the checkpoint a PySCF optimization reads but reads none back
+(`resumes = false`) while another PySCF calculation may write different
+result files entirely.  So the file holds a
 `[base]` section — what every calculation of this engine shares — plus one
 section per calculation type, extending it:
 

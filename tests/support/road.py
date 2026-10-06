@@ -250,7 +250,8 @@ def calls_made(calls: Path):
 #      machine hands it (`given_gpus`, `run_args`, `runs`).
 #
 # INPUTS: `engine` (siesta | pyscf); `run` -- the run card, task.json
-# `execution`, over the table's `run_base` for the engine; `allocation` --
+# `execution`, over the table's `run_base` for the engine (a row with
+# `bench`: its own `run` alone); `allocation` --
 # task.json `allocation`, over the table's `allocation_base` where the
 # machine has a scheduler; `run_unset` / `allocation_unset` -- base keys a row
 # takes away; `template` -- values in the template (SIESTA's over the

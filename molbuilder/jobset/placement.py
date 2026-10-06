@@ -39,7 +39,8 @@ _LAUNCH_WORDS = {
 
 
 def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
-                   stage=None, queues=(), base=None, target=None):
+                   stage=None, queues=(), base=None, target=None,
+                   at_launch: bool = False):
     """**Why this launch cannot be written** -- ``None`` when every value it
     needs is stated (`execution/architecture.md` § 5.2; user, 2026-10-02:
     *"explicit job config is the only way allowed"*).
@@ -115,6 +116,12 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
     where = []
     for field, key in missing:
         words, flag = _LAUNCH_WORDS[field]
+        if at_launch:
+            # LAUNCH READS NO DESCRIPTION: what it can still be told is a
+            # flag on this launch (it named task.json until 2026-10-06,
+            # which launch never reads -- the unit 11 review).
+            where.append(f"  {words:<15} {flag} on this launch")
+            continue
         if field in ("domain", "time"):
             card = (f'"allocation": {{"{key}": ...}} in task.json'
                     + (f' or "execution": {{"{key}": ...}} (this run)'
@@ -132,7 +139,10 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
     return (f"{'stage ' + repr(stage) + ' ' if stage else ''}states no "
             f"{what} -- and nothing fills one in "
             f"(docs/execution/architecture.md § 5.2).  State each:\n"
-            + "\n".join(where))
+            + "\n".join(where)
+            + ("\n  (the description's values are read at prep: to state "
+               "one there, go back to the state saved before the prep and "
+               "prep anew)" if at_launch else ""))
 
 
 def request_of(resources, *, one_process: bool):

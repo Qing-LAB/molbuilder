@@ -39,17 +39,29 @@ def policy_of(cfg) -> Tuple[str, int]:
     return policy, retries
 
 
-def relax(mf, policy, retries, **geometric_kw):
+def relax(mf, policy, retries, *, keep=None, resumable=False,
+          **geometric_kw):
     """Relax ``mf``'s molecule with geomeTRIC and apply this rung's
     ``on_nonconvergence`` to what geomeTRIC reports — ``(mol, converged)``,
     ``converged`` geomeTRIC's own verdict on all of its criteria.
 
     ``policy``  ``halt`` · ``continue`` · ``proceed`` (`engines/pyscf.md` § 3):
-                ``halt`` stops the run before the caller can write the relaxed
-                geometry; ``continue`` re-enters from the geometry reached, up
+                ``halt`` stops the run, an error -- so no later rung builds
+                on it: a hand-over takes only a run that ended on its own
+                with exit code 0 (`job-system.md` § 5.4); ``continue``
+                re-enters from the geometry reached, up
                 to ``retries`` more batches, then stops as ``halt`` does;
                 ``proceed`` returns the geometry reached with ``False``.
     ``retries`` further batches of the step budget, under ``continue`` only.
+    ``keep``    writes the geometry each step reached -- the molecule
+                geomeTRIC's callback is handed after every step's energy
+                and gradient (PySCF's ``geometric_solver``: ``callback(
+                locals())``, its ``mol`` at the step's coordinates) -- so a
+                run stopped at its step limit or its wall leaves where it
+                got to, as SIESTA's ``.XV`` does (user, 2026-10-06).
+    ``resumable`` whether launching the stage again reads that geometry
+                back (its ``restart`` is ``continue``): what the stop's
+                message tells the person to do.
     ``geometric_kw`` what geomeTRIC is handed — ``maxsteps`` (required: the
                 step budget the messages name), the five ``convergence_*``
                 criteria, ``constraints``, ``prefix``, ``callback`` — the same
@@ -68,6 +80,17 @@ def relax(mf, policy, retries, **geometric_kw):
     last batch's steps.
     """
     from pyscf.geomopt.geometric_solver import kernel
+    if keep is not None:
+        given = geometric_kw.get("callback")
+
+        def _each_step(envs):
+            if given is not None:
+                given(envs)
+            reached = envs.get("mol") if isinstance(envs, dict) else None
+            if reached is not None:
+                keep(reached)
+
+        geometric_kw = {**geometric_kw, "callback": _each_step}
     steps = int(geometric_kw["maxsteps"])
     batches = 1 + (int(retries) if policy == "continue" else 0)
     for batch in range(1, batches + 1):
@@ -84,14 +107,21 @@ def relax(mf, policy, retries, **geometric_kw):
               f"{steps} steps; on_nonconvergence = proceed keeps the "
               f"geometry it reached")
         return mol, False
+    # THE WAY ON, as `status` and `launch` say it: a prepped stage is not
+    # prepped again, so a setting changes from the state saved before its
+    # prep (`job-system.md` § 5.0) -- "prep this stage again" stood here
+    # until 2026-10-06, a command prep refuses.
+    change = ("geom_max_steps or geom_continue_retries" if policy == "continue"
+              else "geom_max_steps, or on_nonconvergence = continue")
+    back = (f"to change {change}, go back to the state saved before this "
+            f"stage's prep and prep it anew")
     raise RuntimeError(
         f"the relaxation did not meet geomeTRIC's criteria in "
-        f"{steps * batches} steps (on_nonconvergence = {policy}), so the "
-        f"relaxed geometry is not written and nothing can start from it.  "
-        + ("Raise geom_max_steps or geom_continue_retries"
-           if policy == "continue" else
-           "Raise geom_max_steps or choose on_nonconvergence = continue")
-        + ", and prep this stage again.")
+        f"{steps * batches} steps (on_nonconvergence = {policy}).  "
+        + (f"The geometry it reached is kept: launch this stage again to "
+           f"continue from it -- or, {back}."
+           if keep is not None and resumable else
+           f"Nothing continues from it: {back}."))
 
 
 __all__ = ["policy_of", "relax"]

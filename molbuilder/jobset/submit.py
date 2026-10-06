@@ -318,7 +318,8 @@ def _sbatch_request(base: Path, *, envelope: Resources,
         envelope = dataclasses.replace(envelope, domain=placement.domain.name)
         why = launch_refusal(
             envelope, engine=None, header=True, shape=False,
-            queues=[d.name for d in _rc.get_routing(project_dir=base)])
+            queues=[d.name for d in _rc.get_routing(project_dir=base)],
+            at_launch=True)
         if why:
             raise SubmitError(f"{label or 'this job'} {why}")
     cmd = (["sbatch", "-J", job_name]
@@ -529,6 +530,9 @@ class Submission:
     ask_script: Optional[str] = None
     #: What a refusal by the scheduler adds to the scheduler's own words.
     refusal_hint: str = ""
+    #: Where a walk's trials write their output -- the one path its script
+    #: writes and the plan shows (:func:`_bench_walk`).
+    log: Optional[Path] = None
 
     @property
     def domain(self) -> Optional[str]:
@@ -570,7 +574,7 @@ class LaunchPlan:
     #: plan the send makes again to compare.
     records: bool = True
     #: The queue the work goes to and where that came from -- --domain,
-    #: or the queue its prep admitted (:func:`_the_queue`); ``(None,
+    #: or the queue its prep recorded (:func:`_the_queue`); ``(None,
     #: None)`` for a run here or a machine with no queues.
     queue: Tuple[Optional[str], Optional[str]] = (None, None)
 
@@ -655,8 +659,9 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
     run that never concluded is followed only on the person's judgement.
     A TRIAL is immutable once launched: a walk here and a question to the
     scheduler pass the measured ones over by name; one the person NAMED
-    (``named``) is refused, in every mode -- a run here passed it over,
-    exit 0, until 2026-10-05 (the unit 11 review).
+    (``named``) is refused when it is sent or run here -- a run here passed
+    it over, exit 0, until 2026-10-05 (the unit 11 review) -- and a
+    question to the scheduler says it already ran.
     """
     import functools
     from .commands import command
@@ -835,22 +840,28 @@ def _gpus(resources, what: str):
 
 
 def _the_queue(jobs) -> Tuple[Optional[str], Optional[str]]:
-    """``(queue, its source)`` the work's prep admitted and recorded -- a
-    run's placement, a trial's resources (`job-system.md` § 6.0, the
-    placement) -- or ``(None, None)`` when it recorded none.  Several are
+    """``(queue, its source)`` the work's prep recorded -- a run's
+    placement, which prep admitted; a trial's resources, the queue its
+    prep was told (`job-system.md` § 6.0, the placement) -- or ``(None,
+    None)`` when it recorded none.  Several are
     refused: one launch goes to one queue (a benchmark's GPU side names its
     own, ``--gpu-domain``).  *(The verb worked this out itself until
     2026-10-05: floor 7, which never works out a launch, `architecture.md`
     § 2.1.)*"""
     named = {(j.placement or {}).get("domain") or j.resources.domain
              for j in jobs} - {None, ""}
+    # ADMITTED only where prep admitted it -- a run's placement; a
+    # benchmark's trials carry the queue their prep was told, which is
+    # admitted at this launch (`job-system.md` § 6.0, the placement)
+    admitted = any((j.placement or {}).get("domain") for j in jobs)
     if len(named) > 1:
         raise SubmitError(
             f"the work being sent names more than one domain "
             f"({', '.join(sorted(named))}).  Name the one to use with "
             f"--domain, and --gpu-domain if a benchmark's GPU side differs.")
     if named:
-        return named.pop(), "its prep (the queue it admitted)"
+        return named.pop(), ("its prep (the queue it admitted)" if admitted
+                             else "its prep (the queue it named)")
     return None, None
 
 
@@ -998,8 +1009,8 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
                            told=told, record=False)
 
     # THE QUEUE, decided here and nowhere else (`job-system.md` § 6.0, the
-    # placement): --domain when typed, else the one the work's prep admitted
-    # and recorded.  Each door refuses a queue named nowhere at its own
+    # placement): --domain when typed, else the one the work's prep
+    # recorded.  Each door refuses a queue named nowhere at its own
     # moment -- a stage after its header is found.
     told_q = domain
     source = "--domain flag" if domain else None
@@ -1073,36 +1084,43 @@ def ask_launch(plan: LaunchPlan) -> List[JobResult]:
     return out
 
 
-def send_launch(plan: LaunchPlan, *, said=None) -> List[JobResult]:
+def send_launch(plan: LaunchPlan, *, said) -> List[JobResult]:
     """STEPS 4 and 5 of `job-system.md` § 6.0 -- the plan, sent as it was
     shown, and written down; nothing is decided here.
 
-    ``said`` is the person's answer to the one question the verb put
-    (`ask.Said`), or ``None`` where none was asked -- a run here that
-    follows nothing unconcluded.  The question and its answer are written
-    down, a *no* too, and a *no* sends nothing.  Then the folder is checked
-    against the one the plan was made from (:func:`_same_folder`); a member
-    that follows a run that never concluded goes only on the person's yes
-    (S4); the plan's writes are carried out -- every attempt opened and
-    every script on disk before anything goes, so a scheduler's refusal
-    costs one submission, never the scripts of those behind it -- and each
-    submission goes out through ONE function (:func:`_go`), written down
-    the moment it goes.  A shelf the scheduler refuses leaves the rest to
-    go (``plan.tolerant``): its trials keep no launch record, so the next
-    launch picks up exactly them.  Every refusal is written down."""
-    if said is not None:
-        plan.record("question", about=("send" if plan.mode == "submit" else
-                                       "follow a run that never concluded"),
-                    answer=said.words)
-        if not said:
-            return []
+    ``said`` is the person's answer to the one question the verb put --
+    every launch is asked, a run here as a submission is (`ask.Said`;
+    ``--yes`` the answer given in advance).  The question is written down
+    as what was asked, with its answer, a *no* too, and a *no* sends
+    nothing; with nobody to ask (``said.asked`` false) nothing goes and the
+    launch is refused, written down (`project-layout.md` § 1.6.4).  Then
+    the folder is checked against the one the plan was made from
+    (:func:`_same_folder`); the plan's writes are carried out -- every
+    attempt opened and every script on disk before anything goes, so a
+    scheduler's refusal costs one submission, never the scripts of those
+    behind it -- and each submission goes out through ONE function
+    (:func:`_go`), written down the moment it goes.  A shelf the scheduler
+    refuses leaves the rest to go (``plan.tolerant``): its trials keep no
+    launch record, so the next launch picks up exactly them.  Every refusal
+    is written down."""
+    # WHAT WAS ASKED, as asked: the question was keyed on the mode until
+    # 2026-10-06, so every run here read "follow a run that never
+    # concluded" once a run here was asked at all (the unit 11 review).
+    plan.record("question",
+                about=(("submit" if plan.mode == "submit" else "run here")
+                       + ("; follows a run that never concluded"
+                          if plan.judgements() else "")),
+                answer=said.words)
+    if not said.asked:
+        why = ("not a terminal, so there is nobody to ask -- nothing was "
+               "sent.  Pass --yes to go ahead with what is printed above "
+               "without being asked.")
+        plan.record("refused", reason=why)
+        raise SubmitError(why)
+    if not said:
+        return []
     try:
         _same_folder(plan)
-        if not said:
-            for why in plan.judgements():
-                raise SubmitError(
-                    why + "\n  Then: re-run this launch with --yes to record "
-                    "your judgement and continue.")
     except SubmitError as exc:
         plan.record("refused", reason=str(exc))
         raise
@@ -1475,9 +1493,10 @@ def _reject_if_this_machine_says_no(placed, want, gpu_side: bool,
             + "\n    ".join(i.message for i in why)
             + f"\n  This machine's record of the queue {mine[0].name!r} "
               f"differs from the one the calculation was prepared against, "
-              f"and its limits are the ones enforced here.  Change what is "
-              f"asked for (--time, --mem; the ranks and cores at prep), or "
-              f"name another of the record's queues with --domain -- or, to "
+              f"and its limits are the ones enforced here.  Change the wall "
+              f"or the memory with --time / --mem, or name another of the "
+              f"record's queues with --domain (the ranks and cores are its "
+              f"prep's, and a prepped stage is not prepped again) -- or, to "
               f"prepare against this machine's record (configuration.md "
               f"M-3), " + rollback("the calculation's first prep", base=base))
 
@@ -1597,7 +1616,7 @@ def submitted_cap_notes(plans) -> List[str]:
     return notes
 
 
-def _bench_walk(name: str, trials, *, where: str,
+def _bench_walk(name: str, trials, *, where: str, log: str,
                 bound_s: Optional[int] = None) -> str:
     """A BENCHMARK'S WALK -- the script that runs its trials one after
     another in one submission: a resource shelf sent to a queue
@@ -1625,7 +1644,7 @@ def _bench_walk(name: str, trials, *, where: str,
         "# when a trial runs alone; nothing here re-implements module load /",
         "# source activate.",
         "set -u",
-        f'LOG="launch/{name}.log"',
+        f'LOG="{log}"',
         f'echo "[group] {when} start trials={len(trials)} per-trial-bound='
         f'{f"{bound_s}s" if bound_s else "none"} '
         'job=${SLURM_JOB_ID:-none} node=$(hostname) '
@@ -1673,8 +1692,8 @@ def _bench_walk(name: str, trials, *, where: str,
 def sides_of(jobset: JobSet) -> Dict[str, List[Job]]:
     """A sweep's trials by the side they run on -- ``{"cpu": [...],
     "gpu": [...]}`` -- each trial's GPU request (`model.gpu_request`, the one
-    door), read off the trial itself.  The grouped door splits on it, and
-    the launch verb asks it which queue each side needs.  *(It read each
+    door), read off the trial itself.  The grouped door splits on it.
+    *(It read each
     trial's deck where the trial runs until 2026-10-03.)*"""
     sides: Dict[str, List[Job]] = {"cpu": [], "gpu": []}
     for j in jobset.jobs:
@@ -1731,15 +1750,16 @@ def _plan_bench_here(jobset: JobSet, base: Path, *,
             f"{sorted(str(c) for c in containers)}")
     container = next(iter(containers))
     name = "bench-group"
+    log = f"{LAUNCH_DIR}/{name}.log"
     plan.writes.text(container / LAUNCH_DIR / f"{name}.run.sh", _bench_walk(
         name, [(m.name, str(m.run_dir.relative_to(container)),
                 _wrapper_name(m.job.script, ".run.sh"),
                 " ".join(_run_sh_args(m.job.resources))) for m in pending],
-        where="this benchmark's unlaunched trials, run here",
+        where="this benchmark's unlaunched trials, run here", log=log,
         bound_s=trial_timeout_s))
     plan.submissions.append(Submission(
         name, ["bash", f"launch/{name}.run.sh"], container, True, pending,
-        rides="rides the group"))
+        rides="rides the group", log=container / log))
     return plan
 
 
@@ -1839,7 +1859,7 @@ def _plan_shelf(jobset: JobSet, base: Path, dirs, pending, name: str,
                 _wrapper_name(j.script, ".run.sh"),
                 " ".join(_run_sh_args(j.resources))) for j in pending],
         where="ONE allocation, this shelf's unlaunched trials",
-        bound_s=trial_timeout_s)
+        log=f"{LAUNCH_DIR}/{name}.log", bound_s=trial_timeout_s)
     # THE ONE REQUEST (`_sbatch_request`): prep's envelope, what was said at
     # launch, admitted on this side's queue (R9), every value stated.  The
     # side IS the envelope's GPU request -- every trial on the shelf shares
@@ -1873,6 +1893,20 @@ def _plan_shelf(jobset: JobSet, base: Path, dirs, pending, name: str,
         plan.writes.text(launch_dir / f"{name}.run.sh", script)
         plan.writes.text(launch_dir / f"{name}.sbatch",
                          _into_launch(header, name))
+    elif plan.mode == "ask":
+        # ASKED WITH THE FIRST TRIAL'S HEADER, the shelf's being written
+        # only when it is sent: a benchmark prepped with --no-sbatch has
+        # none, and a question about a file that does not exist answers
+        # nothing -- refused, saying why (the scheduler's "Unable to open
+        # file" stood here until 2026-10-06, the unit 11 review).
+        first = pending[0]
+        if not (_artifacts(first)
+                / _wrapper_name(first.script, ".sbatch")).exists():
+            raise SubmitError(
+                f"{name}: there is no header to ask the scheduler about -- "
+                f"the benchmark was prepped with --no-sbatch, and a "
+                f"shelf's own header is written when it is sent.  Send "
+                f"it with --mode submit.")
 
     # A SHELF THE SCHEDULER REFUSES keeps its trials pending -- no launch
     # record -- so launching the benchmark again sends exactly them; a

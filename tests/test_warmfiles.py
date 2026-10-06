@@ -102,12 +102,6 @@ def test_transport_has_its_own_vocabulary_and_no_optimizer_history():
     assert rows[".TSHS"].carry is None
 
 
-def test_an_empty_section_is_base_only():
-    """[vibration] with no rows IS a statement — the smallest expansion
-    the § 4.2a growth rule allows."""
-    assert [r.suffix for r in W.warm_list("pyscf", "vibration").rules] == [".chk"]
-
-
 # --------------------------------------------------------------------- #
 #  The growth rule's refusal                                             #
 # --------------------------------------------------------------------- #

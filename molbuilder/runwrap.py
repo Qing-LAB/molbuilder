@@ -1766,10 +1766,10 @@ def _retry_texts(resumes: bool,
                        "does not resume (warm-files: resumes = false), so an "
                        "SCF that stopped the first step continues and one "
                        "that stopped later meets the same SCF again"),
-            # one Mode line for both engines, so it says only what is true
-            # of both: a SIESTA force-constant run reads back its first
-            # step's density, a PySCF vibration nothing (the usage and the
-            # retry lines, SIESTA's alone, say the rest)
+            # what is true of every kind that does not resume: a SIESTA
+            # force-constant run reads back its first step's density, and
+            # the usage and retry lines say so (PySCF's wrapper words its
+            # own, from the deck it ships beside)
             "mode": ("RE-RUN FROM THE START (--continue; this kind of run "
                      "does not resume)"),
             "usage": ("This kind of run does not resume (warm-files:\n"
@@ -1781,15 +1781,27 @@ def _retry_texts(resumes: bool,
             "after": ("revisit mixing/smearing -- a re-run of this run "
                       "starts again from its first step"),
         }
+    # THE LINE AFTER THE BUDGET, for every case, in molbuilder's own road:
+    # a stage is launched again, never re-run inside its attempt, and a
+    # setting changes from the state saved before its prep -- "re-run
+    # with --continue to extend" stood here until 2026-10-06, false for a
+    # deck that declines prior state (the unit 11 review).
+    back = ("to change a setting, go back to the state saved before its "
+            "prep and prep it anew")
     if restart_honoured is False:
         return {"does": "re-running cold -- this deck declines prior state",
                 "policy": ("COLD, because this deck sets DM.UseSaveDM "
                            ".false.: a retry re-runs from the deck's "
                            "coordinates, it does not resume"),
-                "mode": None, "usage": None, "after": None}
+                "mode": None, "usage": None,
+                "after": ("this deck reads no prior state, so a re-run "
+                          "starts again from its own coordinates -- "
+                          + back)}
     return {"does": "warm-restarting",
             "policy": "each resumes warm from what the run banked (--continue)",
-            "mode": None, "usage": None, "after": None}
+            "mode": None, "usage": None,
+            "after": ("launch the stage again to continue from this run -- "
+                      "or, " + back)}
 
 
 def _fdf_honours_restart(text: Optional[str]) -> Optional[bool]:
@@ -3603,9 +3615,7 @@ def render_run_wrapper(script_path: Path, *,
                f'       && _mb_ending stopped-by "{_G.SCF_NOT_CONV_MARKER}"; then\n'
                f'        echo "SCF still unconverged after '
                f'$_siesta_retry_max retry(s); '
-               + (f'{_retry["after"]}.' if not resumes else
-                  're-run with --continue to extend, or revisit '
-                  'mixing/smearing.')
+               + f'{_retry["after"]}.'
                + '" >&2\n'
                f'    fi\n'
                if continue_retries and continue_retries > 0 else "")
@@ -3634,8 +3644,7 @@ def render_run_wrapper(script_path: Path, *,
                f'unconverged"\n'
                f'elif _mb_ending relaxation-capped; then\n'
                f'    echo "WARNING: geometry still unconverged after '
-               f'$_siesta_retry_max retry(s); re-run with --continue '
-               f'to extend the relaxation." >&2\n'
+               f'$_siesta_retry_max retry(s); {_retry["after"]}." >&2\n'
                f'elif [ "$_siesta_retry" -gt 0 ]; then\n'
                f'    echo "SIESTA converged after $_siesta_retry '
                f'retry(s)."\n'

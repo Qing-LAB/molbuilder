@@ -387,7 +387,8 @@ class Job:
     #: the rung's kind's one section-level fact in its warm-files
     #: (`job-contracts.md` § 4.2a), read by `prep` and baked into the
     #: wrapper, which says a retry of a run that cannot resume repeats it
-    #: (`running-a-job.md` § 3.5).  False for a SIESTA force-constant rung.
+    #: (`running-a-job.md` § 3.5).  False for a SIESTA force-constant rung
+    #: and a PySCF vibration.
     resumes:    bool            = True
     #: WHERE IT WAS ADMITTED: a run prepped for a queue -- the queue its
     #: request was admitted on at prep (``domain``, ``partition``, ``qos``,

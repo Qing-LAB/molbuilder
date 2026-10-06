@@ -2014,6 +2014,7 @@ def test_every_shelf_is_written_before_any_is_sent(calc, monkeypatch):
     from molbuilder.jobset.materialize import job_dir_names, shape_of
     from molbuilder.runrecord import launch_record
     from molbuilder.jobset.submit import plan_launch, send_launch
+    from molbuilder.jobset.ask import Said
 
     _describe_cpu(calc)
     _declare_bench(calc, {"mpi_np": [2, 4], "omp_threads": [1]})
@@ -2049,7 +2050,8 @@ def test_every_shelf_is_written_before_any_is_sent(calc, monkeypatch):
                         "#SBATCH -o slurm.%j.out\n#SBATCH -e slurm.%j.err\n"
                         f"bash {Path(path).stem}.run.sh \"$@\"\n")
 
-    results = send_launch(plan_launch(js, base, mode="submit"))
+    results = send_launch(plan_launch(js, base, mode="submit"),
+                said=Said(True, "yes (--yes)"))
 
     assert len(seen) == 2, (
         "a refused shelf must not cancel the shelf behind it -- both were "
@@ -2103,6 +2105,7 @@ def test_the_sequencer_cds_where_the_wrapper_ACTUALLY_is(calc, monkeypatch):
 
     from molbuilder.jobset._cli import _load_bench_set
     from molbuilder.jobset.submit import plan_launch, send_launch
+    from molbuilder.jobset.ask import Said
 
     _describe_cpu(calc)
     _declare_bench(calc, {"mpi_np": [2], "omp_threads": [1],
@@ -2129,7 +2132,8 @@ def test_the_sequencer_cds_where_the_wrapper_ACTUALLY_is(calc, monkeypatch):
                         "#SBATCH -o slurm.%j.out\n#SBATCH -e slurm.%j.err\n"
                         f"bash {Path(path).stem}.run.sh \"$@\"\n")
 
-    send_launch(plan_launch(js, base, mode="submit"))
+    send_launch(plan_launch(js, base, mode="submit"),
+                said=Said(True, "yes (--yes)"))
 
     container = Path(seen["cwd"])
     scripts = list((container / "launch").glob("*.run.sh"))
@@ -2168,6 +2172,7 @@ def test_a_grouped_launch_records_where_the_launched_door_LOOKS(calc,
     from molbuilder.runrecord import launch_record
     from molbuilder.jobset.submit import (_trial_run_dir, plan_launch,
                                           send_launch)
+    from molbuilder.jobset.ask import Said
 
     _describe_cpu(calc)
     _declare_bench(calc, {"mpi_np": [2], "omp_threads": [1]})
@@ -2191,7 +2196,8 @@ def test_a_grouped_launch_records_where_the_launched_door_LOOKS(calc,
                         "#SBATCH -o slurm.%j.out\n#SBATCH -e slurm.%j.err\n"
                         f"bash {Path(path).stem}.run.sh \"$@\"\n")
 
-    send_launch(plan_launch(js, base, mode="submit"))
+    send_launch(plan_launch(js, base, mode="submit"),
+                said=Said(True, "yes (--yes)"))
 
     for job in js.jobs:
         where = _trial_run_dir(base / dirs[job.name])

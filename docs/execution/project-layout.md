@@ -1154,12 +1154,13 @@ machine's parameters*:
 |---|---|
 | measuring, before committing | the stage, and *benchmark this* |
 | the real run, using what you measured | the stage — and what you wrote into `task.json` from the benchmark's report (§ 2.3.3: `prep` never reads a verdict) |
-| a redo of that run | the stage, and one of its own runs to continue from — or `launch` it again, which continues from its newest by itself |
+| a redo of that run | nothing — `launch` it again, which continues from its newest run by itself; with a change, the state saved before its prep, restored, and a prep anew (`job-system.md` § 5.0) |
 | the next stage | that stage — it continues from the previous stage's newest run by default (`job-system.md` § 5.4) |
 
-**Nothing distinguishes those four in the machinery.** "Continue from `run-0`"
-and "continue from `01_coarse/run-0`" are the same instruction pointing at
-different directories; "use this benchmark result" is the same kind of input as
+**Nothing distinguishes those in the machinery.** "Continue from
+`01_coarse/run-0`" and "continue from `02_tight/run-0`" are the same
+instruction pointing at different directories; "use this benchmark result" is
+the same kind of input as
 "use this geometry". That is why it is one command with arguments rather than
 four commands.
 

@@ -1233,6 +1233,18 @@ def _emit_optimization(cfg: PySCFConfig,
     out.append(f"_GEOM_CONTINUE_RETRIES = {retries}")
     out.append("mol_eq, _GEOM_CONVERGED = _mb_relax(")
     out.append("        mf, _ON_NONCONVERGENCE, _GEOM_CONTINUE_RETRIES,")
+    if cfg.save_optimized_xyz:
+        # EVERY STEP'S GEOMETRY, KEPT, as SIESTA keeps its `.XV` (user,
+        # 2026-10-06): a rung stopped at its step limit or its wall leaves
+        # where it got to, and launching it again continues from it -- the
+        # `_optimized.xyz` read above.  The converged one is written over
+        # it at the end.  A rung that stopped hands nothing to the next: a
+        # hand-over takes only a run that ended on its own with exit code
+        # 0 (`job-system.md` § 5.4).
+        out.append("        keep = lambda _m: _save_structure("
+                   f"_m, _mb_outfile(JOB + {ROLE_OPTIMIZED!r}), "
+                   "'Geometry reached (PySCF, relaxing)'),")
+        out.append(f"        resumable = {bool(continues(cfg))},")
     out.extend(_layout.geom_kwargs())
     if emit_constraints:
         out.append("        constraints           = _FROZEN_CONSTRAINTS_PATH,")

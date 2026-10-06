@@ -1566,7 +1566,7 @@ def _refuse_flags_without_effect(*, kind: str, mode: str, trial,
                 f"{', '.join(got)}: what a scheduler is asked for -- "
                 f"`--mode direct` runs it here, where "
                 f"{'it means' if len(got) == 1 else 'they mean'} nothing.")
-        if said("--only"):
+        if said("--only") and kind == "bench" and trial is None:
             raise click.ClickException(
                 "--only: sends one side of a benchmark to a queue -- a "
                 "walk here runs every unlaunched trial.")
@@ -1886,9 +1886,8 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     # WHERE A WALK'S OUTPUT GOES: each trial's into the walk's log, so the
     # terminal shows nothing while it runs (the unit 11 review)
     from .ledger import rel_to
-    walks = ["  the walk's output: "
-             + rel_to(base, s.cwd / "launch" / f"{s.name}.log")
-             for s in plan.submissions if s.direct and s.rides]
+    walks = ["  the walk's output: " + rel_to(base, s.log)
+             for s in plan.submissions if s.direct and s.log]
     footer = walks + (["  per-trial bound: "
                + (f"{_bound_s // 60} min" if _bound_s else
                   "none -- each trial runs until it ends"
@@ -1900,15 +1899,10 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     else:
         # EVERY LAUNCH IS SHOWN AND ASKED, a run here as a submission is
         # (user, 2026-10-05) -- `--yes` the answer given in advance.  With
-        # nobody to ask, nothing goes and the launch is REFUSED, so a
-        # script is never told it went (`project-layout.md` § 1.6.4).
+        # nobody to ask the entry refuses it, written down, so a script is
+        # never told it went (`project-layout.md` § 1.6.4).
         said = _show_and_ask(shown, dry_run=False, auto_yes=auto_yes,
                              footer=footer, here=(mode == "direct"))
-        if not said.asked:
-            raise click.ClickException(
-                "not a terminal, so there is nobody to ask -- nothing was "
-                "sent.  Pass --yes to go ahead with what is printed above "
-                "without being asked.")
         # 4 · THE SEND, and 5 · THE RECORD -- the answer written down, a *no*
         # too (W55 D6), and each submission the moment it goes: a run here
         # when it starts, a scheduler job when it has its id.

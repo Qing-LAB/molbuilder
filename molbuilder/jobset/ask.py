@@ -522,9 +522,10 @@ def prediction_table(preds: Sequence[Prediction]) -> str:
     lines.append("  a time is an ESTIMATE from the queue as it is right now; "
                  "it moves.")
     # FLAGS THAT EXIST: `launch` takes --domain, --time and --mem; the
-    # ranks and cores are prep's (--np, --cpus-per-task).  This said
-    # "--cores", which no verb takes (W52).
-    lines.append("  change --domain, --time or --mem and ask again (ranks and "
-                 "cores: prep's --np / --cpus-per-task), or launch when you "
-                 "are happy.")
+    # ranks and cores are prep's, and a prepped stage is not prepped
+    # again (this pointed at prep's --np until 2026-10-06; "--cores",
+    # which no verb takes, before that, W52).
+    lines.append("  change --domain, --time or --mem and ask again, or launch "
+                 "when you are happy (the ranks and cores are fixed at "
+                 "prep).")
     return "\n".join(lines)

@@ -122,7 +122,7 @@ prep = ["--no-sbatch"]
 allocation_unset = ["time", "mem"]
 bench = { mpi_np = [1, 2] }
 launch = []
-launch_refused = "states no wall (time), memory (mem)"
+launch_refused = ["states no wall (time), memory (mem)", "--time 2-00:00:00 on this launch"]
 
 [[case]]
 name = "a target whose record says nothing of its activation is refused"
@@ -252,6 +252,17 @@ line = ["-t 0-03:00:00", "-p cpu", "-q public"]
 name = "the record checks the wall: one longer than the queue allows is refused at prep"
 allocation = { domain = "debug" }
 refused = "but debug allows 00:15:00"
+
+# A benchmark keeps the calculation's ask -- `allocation` is the
+# calculation's and the benchmark's, `execution` this run's (`stages.md`
+# § 6.8e): a run card's two-day wall on every trial would queue each
+# ten-minute measurement behind everything (the unit 11 review).
+[[case]]
+name = "a benchmark keeps the calculation's wall and queue, never a run card's"
+bench = { mpi_np = [1] }
+run = { time = "2-00:00:00", domain = "debug" }
+launch = []
+line = ["-t 0-01:00:00", "-p cpu", "-q public"]
 
 # A queue named nowhere reaches launch only for a benchmark, whose shelves'
 # queue is named when they are sent: a run prepped for a queue has its

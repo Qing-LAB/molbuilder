@@ -1375,11 +1375,14 @@ is guessed at on the node:
 
 **When the finish fails**, the session log names the reason and the
 attempt reads failed. Fix the cause — most often the job env, which needs
-numpy and ASE — and launch the stage again: a new attempt re-runs the force
-constants. The finish can also be run by hand in the failed attempt, with the
+numpy and ASE. The finish can be run by hand in the failed attempt, with the
 job's env active — `python mb_vibration.pyz <deck> <output>` — which writes
 the spectrum in seconds; the attempt still reads failed, because its launch
-did. An attempt prepared before 2026-09-28 carries neither the bundle nor
+did. To run the force constants again, go back to the state saved before
+the stage's prep and prep it anew — a force-constant stage is not launched
+again, its rerun restarting at `FC.First`
+([`job-system.md`](?doc=execution/job-system.md) § 5.4; "launch the stage
+again" stood here until 2026-10-06). An attempt prepared before 2026-09-28 carries neither the bundle nor
 the deck's `vibration` block: prepare the stage anew from the state saved
 before its preparation ([`execution/job-system.md`](?doc=execution/job-system.md)
 § 5.0), and launch it. **A benchmark

@@ -340,8 +340,14 @@ driver catches it, and `geometric_solver.kernel` returns the flag with the geome
 `kernel` and applies the policy to what it reports:
 
 - **`halt`** → the run stops with a `RuntimeError` naming the step budget and
-  the policy (exit status 1), **before the relaxed geometry is written** — no
-  `_optimized.xyz`, so no later rung can start from a geometry nobody accepted.
+  the policy (exit status 1), so no later rung can start from a geometry nobody
+  accepted: a hand-over takes only a run that ended on its own with exit code 0
+  ([`job-system.md`](?doc=execution/job-system.md) § 5.4). **The geometry each
+  step reached is kept** in `_optimized.xyz`, written after every geomeTRIC step
+  as SIESTA writes its `.XV` *(user, 2026-10-06)* — so the rung launched again
+  continues from where it got to, the step limit's stop and the wall's alike;
+  the converged geometry is written over it at the end. *(Until then nothing was
+  written before the end, and a rung launched again started from its input.)*
   An error, as PySCF's own failures are, and not a `SystemExit`: Python hands a
   `SystemExit` to no `excepthook`, so the live log (§ 4) would have closed with
   `# concluded:` — a clean end — where it now writes `# error:`.
@@ -377,7 +383,7 @@ never had such an override; the setting the user gave stands, for both engines.
 ```mermaid
 flowchart TD
     ST["geomeTRIC reports its criteria unmet<br/>at geom_max_steps (kernel's flag)"] --> P{"on_nonconvergence?"}
-    P -->|halt| H["HALT — the run stops, exit status 1,<br/>before the relaxed geometry is written.<br/>The job ends without an answer<br/>nobody accepted"]
+    P -->|halt| H["HALT — the run stops, exit status 1.<br/>The geometry it reached is kept;<br/>no later rung builds on it,<br/>launched again it continues"]
     P -->|continue| C["re-enter from the geometry reached,<br/>same targets, up to geom_continue_retries<br/>more batches — then as halt"]
     P -->|proceed| PR["keep the geometry reached, record<br/>'not converged', exit 0.<br/>A person decides whether the<br/>next rung starts from it"]
 ```

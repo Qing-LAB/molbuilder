@@ -184,7 +184,7 @@ def test_optimize_call_carries_this_rung_s_trajectory_prefix(small_struct):
         f"Expected exactly 1 relax() call, found {len(bodies)}")
     body = bodies[0]
     assert "prefix" in body
-    m = re.search(r"_mb_outfile\(JOB \+ '([^']+)'\)", body)
+    m = re.search(r"prefix\s*=\s*_mb_outfile\(JOB \+ '([^']+)'\)", body)
     assert m, f"relax() has no composed prefix.  Body was:\n{body}"
     # geomeTRIC appends `_optim.xyz` to the prefix, so THAT is the filename.
     produced = "my-job" + m.group(1) + "_optim.xyz"

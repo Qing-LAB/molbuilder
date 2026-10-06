@@ -48,7 +48,8 @@ carry  = "when-continuing"      # the one file a continuing PySCF run
 # ---- optimization (geomeTRIC) ---------------------------------------
 
 [[optimization.file]]
-suffix = "_optimized.xyz"       # latest converged geometry
+suffix = "_optimized.xyz"       # the geometry reached: every geomeTRIC step,
+                                # the converged one at the end
 carry  = "when-continuing"      # WHAT A RUNG HANDS THE NEXT ONE.  Under one
                                 # process nothing was ever copied between
                                 # rungs; a ladder is N jobs now, so this is

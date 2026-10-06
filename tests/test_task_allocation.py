@@ -202,9 +202,11 @@ def test_a_queue_this_machine_never_heard_of_is_ACCEPTED():
 
 
 # What prep does with it -- a flag wins FIELD by field, an unstated one
-# leaving the file's answer standing -- is held through prep itself
-# (`test_prep_bench_fold.py`, a flag winning beside the run card); the four
-# tests of the fold's private wrapper went with it (2026-10-05, unit 11).
+# leaving the file's answer standing -- is held through prep itself: the
+# launch table's "a prep flag states what the description does not"
+# (`launch_values.toml`) and the launch door's `--time 10m` sent as
+# `-t 0-00:10:00` (`test_launch_door.py`); the four tests of the fold's
+# private wrapper went with it (2026-10-05, unit 11).
 
 
 # --------------------------------------------------------------------- #

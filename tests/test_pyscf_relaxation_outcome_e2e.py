@@ -107,19 +107,22 @@ def _run(tmp_path, monkeypatch, *, calculation, overrides, template=None,
     return bundle, row.state, said
 
 
-def test_halt_stops_the_rung_before_its_geometry_is_written(tmp_path,
-                                                            monkeypatch):
-    """One step cannot relax H2 from 0.95 Å: ``halt`` stops the job, saying
-    the budget and the policy, and no ``_optimized.xyz`` is written — so no
-    later rung can start from a geometry nobody accepted.
+def test_halt_stops_the_rung_and_keeps_the_geometry_it_reached(tmp_path,
+                                                               monkeypatch):
+    """One step cannot relax H2 from 0.95 Å: ``halt`` stops the job, an
+    error -- so no later rung builds on it -- saying the budget and the
+    policy, and the geometry it reached is kept in ``_optimized.xyz``, as
+    SIESTA keeps its ``.XV`` (user, 2026-10-06), so the rung launched again
+    continues from it -- which the message says.
 
     And the run's live log says it stopped, not that it ended: the product's
     own reader of that log reads ``stopped``.
 
     MUTATION THIS MUST FAIL AGAINST: ``relax`` taking the geometry without
     asking geomeTRIC (``optimize``, or ``return mol, True`` after the first
-    call) — the decks before 2026-09-29, which exited 0 and wrote the
-    unconverged geometry for the next rung; and a stop raised as a
+    call) — the decks before 2026-09-29, which exited 0 and handed the
+    unconverged geometry to the next rung; the geometry reached not kept;
+    and a stop raised as a
     ``SystemExit``, which no ``excepthook`` sees, so the log closed as a
     clean end (the K6 review, R1).
     """
@@ -133,8 +136,10 @@ def test_halt_stops_the_rung_before_its_geometry_is_written(tmp_path,
     assert state == "failed", said[-3000:]
     assert ("did not meet geomeTRIC's criteria in 1 steps "
             "(on_nonconvergence = halt)") in said, said[-3000:]
-    assert not list(bundle.glob("*_optimized.xyz")), (
-        "a halted rung left a relaxed geometry for the next rung to read")
+    assert "launch this stage again to continue from it" in said, (
+        said[-3000:])
+    assert list(bundle.glob("*_optimized.xyz")), (
+        "a halted rung kept no geometry to continue from")
     log = parse(Path(next(bundle.glob("*.molwatch.log"))))
     assert log.run_state == "stopped", log.run_state
 
@@ -146,8 +151,8 @@ def test_continue_reenters_from_the_geometry_reached(tmp_path, monkeypatch):
     bond more than 0.2 Å, and three steps cannot cover the 0.86 Å to its
     minimum.  So the run says each re-entry, each batch starts where the last
     one stopped and never at the input geometry, and at the end of the
-    budget it stops as ``halt`` does, naming the whole budget and writing no
-    relaxed geometry.
+    budget it stops as ``halt`` does, naming the whole budget and keeping the
+    geometry it reached.
 
     MUTATION THIS MUST FAIL AGAINST: a re-entry from the input geometry (no
     ``reset`` to the geometry reached) -- the live log returns to 1.6 Å; a
@@ -168,7 +173,10 @@ def test_continue_reenters_from_the_geometry_reached(tmp_path, monkeypatch):
         said[-3000:])
     assert ("did not meet geomeTRIC's criteria in 3 steps "
             "(on_nonconvergence = continue)") in said, said[-3000:]
-    assert not list(bundle.glob("*_optimized.xyz"))
+    kept = next(bundle.glob("*_optimized.xyz")).read_text().split("\n")
+    z = [float(ln.split()[3]) for ln in kept[2:4]]
+    assert round(abs(z[1] - z[0]), 4) != 1.6, (
+        f"the geometry kept is the input's, not the one reached: {kept}")
     # The live log keeps every step of every batch.  A re-entry evaluates
     # the geometry it starts from, so it shows as a frame repeating the one
     # before it; after the first move nothing is back at the input's bond.
