@@ -209,7 +209,7 @@ def _scheduler_job_name(jobset: JobSet, name: str) -> str:
 #: rest are named as unasked rather than silently dropped.
 ASK_MAX_QUERIES = 24
 
-def _no_sbatch(what: str, name: str, *, base) -> str:
+def _no_sbatch(what: str, name: str, *, base, told) -> str:
     """The one answer to *there is no scheduler header*, whichever door
     finds it missing (`job-system.md` § 6.1): prep withholds the
     ``.sbatch`` where the machine it prepped for names no queue, or where
@@ -219,21 +219,29 @@ def _no_sbatch(what: str, name: str, *, base) -> str:
     scheduler block" -- a premise § 6 retired -- and one to "run
     prep_jobset" (W52).  A machine with a queue is another machine, and a
     calculation is set to the machine of its first prep (`configuration.md`
-    M-3): the way there is the state saved before that prep."""
-    from .commands import takes_a_queue
+    M-3): the way there is the state saved before that prep.
+
+    THE RUN HERE AS A COMMAND -- the launch ``told`` names, with its flags
+    as typed that a run here reads (`commands.launch_with`).  It said "Run
+    it here with --mode direct" until 2026-10-06: an edit to a line that a
+    bare launch, its mode from config, never had."""
+    from .commands import block, launch_with, takes_a_queue
+    here = block([launch_with(told["kind"], told["stage"], told["trial"],
+                              base=base, mode="direct",
+                              typed=told["flags"])])
     if takes_a_queue(base):
         # THE MACHINE NAMES A QUEUE, so prep was told to write no header
         # (`prep --no-sbatch`, `job-system.md` § 6.1's second answer) --
         # this blamed the machine until 2026-10-05 (the unit 11 review).
         return (f"{what}: there is no scheduler header ({name}) -- it was "
-                f"prepped with --no-sbatch.  Run it here with --mode "
-                f"direct; to send it to a queue, prep it again without "
+                f"prepped with --no-sbatch.  To run it here:\n{here}\n"
+                f"  To send it to a queue, prep it again without "
                 f"--no-sbatch -- a prepped stage is not prepped again: "
                 + rollback("its prep", base=base))
     return (f"{what}: there is no scheduler header ({name}) -- the "
             f"machine it was prepped for names no queue (its record "
-            f"says `workstation`, job-system.md § 6.1).  Run it here with "
-            f"--mode direct.  For a machine with a queue, prep it for that "
+            f"says `workstation`, job-system.md § 6.1).  To run it here:\n"
+            f"{here}\n  For a machine with a queue, prep it for that "
             f"machine (--target, its record's name) -- a calculation is "
             f"set to the machine of its first prep, so "
             + rollback("its first prep", base=base))
@@ -936,7 +944,7 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
                 mem: Optional[str] = None,
                 time_s: Optional[int] = None,
                 trial_timeout_s: Optional[int] = None,
-                told: Optional[Dict[str, object]] = None,
+                told: Dict[str, object],
                 record: bool = True) -> LaunchPlan:
     """STEP 1 of `job-system.md` § 6.0 -- the whole launch of a prepped
     ``jobset`` rooted at ``base_dir``, planned with nothing written: the
@@ -953,9 +961,13 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
     side goes to when it differs; ``mem`` -- SLURM text, ``0`` for the whole
     node -- and ``time_s`` are what the person said at launch; ``side``
     (``"cpu"`` / ``"gpu"``) and ``trial_timeout_s`` are a grouped bench's.
-    ``told`` is what the verb was told, written on each of the launch's
-    lines in the ledger; ``record`` is false for a dry run, which writes
-    nothing (§ 6.0, step 3) -- a refusal is written down otherwise.
+    ``told`` is what the verb was told -- the launch's ``kind``, ``stage``
+    and ``trial``, and its ``flags`` as typed among it -- written on each of
+    the launch's lines in the ledger, and said again by a refusal that
+    offers the launch in another mode; required, so a library caller says
+    what it launches as the verb does.  ``record`` is false for a dry run,
+    which writes nothing (§ 6.0, step 3) -- a refusal is written down
+    otherwise.
 
     THE WORK IS READ OFF WHAT IS LAUNCHED.  A sweep with no trial named,
     sent to (or asked of) a scheduler, goes as ONE job per resource shelf
@@ -976,7 +988,7 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
         if record:
             _record(base, told, "refused", reason=str(exc))
         raise
-    plan.told, plan.records = dict(told or {}), record
+    plan.told, plan.records = dict(told), record
     # the queue's source is the entry's decision, on every line
     plan.told.update(domain=plan.queue[0], domain_source=plan.queue[1])
     return plan
@@ -1027,7 +1039,8 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
     if jobset.kind == "sweep" and only is None and mode in ("submit", "ask"):
         plan = _plan_shelves(jobset, base, mode=mode, domain=domain,
                              gpu_domain=gpu_domain, side=side, mem=mem,
-                             time_s=time_s, trial_timeout_s=trial_timeout_s)
+                             time_s=time_s, trial_timeout_s=trial_timeout_s,
+                             told=told)
     elif jobset.kind == "sweep" and only is None:
         plan = _plan_bench_here(jobset, base,
                                 trial_timeout_s=trial_timeout_s)
@@ -1041,11 +1054,12 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
             if why:
                 raise SubmitError(why)
         plan = (_plan_chain(jobset, base, task, mode=mode, stage=only,
-                            domain=domain, mem=mem, time_s=time_s)
+                            domain=domain, mem=mem, time_s=time_s,
+                            told=told)
                 if task is not None else
                 _plan_stage(jobset, base, mode=mode, domain=domain,
                             gpu_domain=gpu_domain, only=only, mem=mem,
-                            time_s=time_s))
+                            time_s=time_s, told=told))
     plan.remake = again
     plan.queue = (domain, source)
     return plan
@@ -1319,7 +1333,7 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
                   domain: Optional[str], gpu_domain: Optional[str],
                   side: Optional[str], mem: Optional[str],
                   time_s: Optional[int],
-                  trial_timeout_s: Optional[int]) -> LaunchPlan:
+                  trial_timeout_s: Optional[int], told) -> LaunchPlan:
     """ONE scheduler job per RESOURCE SHELF of the sweep (grouped
     2026-08-20; split per side, then per shelf, 2026-08-21 --
     `generator.md` § 4.3a).
@@ -1397,7 +1411,8 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
                 jobset, base, pending, name, plan,
                 gpu_side=(this == "gpu"),
                 domain=named,
-                trial_timeout_s=trial_timeout_s, mem=mem, time_s=time_s))
+                trial_timeout_s=trial_timeout_s, told=told, mem=mem,
+                time_s=time_s))
 
     if not plan.submissions:
         from .materialize import bench_stage_of
@@ -1818,7 +1833,8 @@ def _plan_bench_here(jobset: JobSet, base: Path, *,
 def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
                 name: str, plan: LaunchPlan, *, gpu_side: bool,
                 domain: Optional[str],
-                trial_timeout_s: Optional[int], mem: Optional[str] = None,
+                trial_timeout_s: Optional[int], told,
+                mem: Optional[str] = None,
                 time_s: Optional[int] = None) -> Submission:
     """One shelf's submission, checked and placed, its sequencer and header
     planned in ``plan`` -- written by the send, never before.  ``pending``
@@ -1899,7 +1915,7 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
                                                if placement else None))
         if header is None:
             raise SubmitError(_no_sbatch(name, f"launch/{name}.sbatch",
-                                         base=base))
+                                         base=base, told=told))
         plan.writes.text(launch_dir / f"{name}.run.sh", script)
         plan.writes.text(launch_dir / f"{name}.sbatch",
                          _into_launch(header, name))
@@ -1934,7 +1950,7 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
 
 
 def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
-                domain: Optional[str] = None, mem: Optional[str] = None,
+                told, domain: Optional[str] = None, mem: Optional[str] = None,
                 time_s: Optional[int] = None) -> LaunchPlan:
     """ONE submission that walks a transport bias scan's points in
     order (`archive/2026-09-01-transport-design.md` § 4.3; layout ruled 2026-08-29: plain
@@ -2118,7 +2134,7 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
                                                if placement else None))
         if header is None:
             raise SubmitError(_no_sbatch(name, f"launch/{name}.sbatch",
-                                         base=base))
+                                         base=base, told=told))
         plan.writes.text(launch_dir / f"{name}.sbatch",
                          _into_launch(header, name))
     plan.submissions.append(Submission(
@@ -2177,7 +2193,7 @@ def _record_launch(attempt: Path, *, mode: str, command: List[str],
 def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
                 domain: Optional[str], gpu_domain: Optional[str],
                 only: Optional[str], mem: Optional[str],
-                time_s: Optional[int]) -> LaunchPlan:
+                time_s: Optional[int], told) -> LaunchPlan:
     """The stage door's plan -- a ladder's stage, or a sweep's named
     trial: one submission.
 
@@ -2248,7 +2264,7 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
         if ((mode == "submit" or sbatch_here)
                 and not (m.read_from / sbatch_name).exists()):
             raise SubmitError(_no_sbatch(f"job {job.name!r}", sbatch_name,
-                                         base=base))
+                                         base=base, told=told))
         gpu = _gpus(job.resources, f"job {job.name!r}").uses
         named = gpu_domain if gpu and gpu_domain else domain
         if named is None:

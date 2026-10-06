@@ -97,6 +97,29 @@ def launches_here(base, target: Optional[str] = None) -> bool:
             or LOCAL_TARGET) == LOCAL_TARGET
 
 
+#: The launch flags only a queue reads -- what a scheduler is asked for,
+#: and the side of a benchmark sent to one.  A run here refuses each by name
+#: (`_cli._refuse_flags_without_effect`), and a line that offers the launch
+#: here leaves them off (:func:`launch_with`).
+QUEUE_FLAGS = ("--domain", "--time", "--mem", "--gpu-domain", "--only")
+
+
+def launch_with(kind: str, *words, base, mode: str, typed=()) -> str:
+    """The launch of ``words`` with ``mode`` stated, and the flags it was
+    typed with (``typed``, ``(flag, value)`` pairs as the verb records them)
+    that ``mode`` reads -- a run here leaves off :data:`QUEUE_FLAGS`.  What a
+    line says when it offers a launch again in another mode: the whole
+    command, never *"the same command with --mode X"*, an edit to a line the
+    person may never have typed -- a bare launch takes its mode from config
+    (`job-system.md` § 5.3; such lines stood in four places until
+    2026-10-06)."""
+    kept = [x for flag, value in typed
+            if not (mode == "direct" and flag in QUEUE_FLAGS)
+            for x in (flag, shlex.quote(str(value)))]
+    return command("launch", kind, *words, base=base,
+                   flags=(*kept, "--mode", mode))
+
+
 def launch_lines(kind: str, *words, base,
                  target: Optional[str] = None) -> List[str]:
     """The launch of ``words`` as a person types it: the bare line where the
@@ -113,12 +136,11 @@ def launch_lines(kind: str, *words, base,
     let it pass.)*"""
     if configured_mode() and launches_here(base, target):
         return [command("launch", kind, *words, base=base)]
-    here = command("launch", kind, *words, base=base,
-                   flags=("--mode", "direct")) + "   # here"
+    here = launch_with(kind, *words, base=base, mode="direct") + "   # here"
     if not takes_a_queue(base, target):
         return [here]
-    return [here, command("launch", kind, *words, base=base,
-                          flags=("--mode", "submit")) + "   # to the queue"]
+    return [here, launch_with(kind, *words, base=base, mode="submit")
+            + "   # to the queue"]
 
 
 def lines(verb: str, kind: str, *words, base) -> List[str]:

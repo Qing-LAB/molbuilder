@@ -976,7 +976,12 @@ only where the machine names one; a refusal
 that asks for a stage offering the stages the verb takes (`'#N'` quoted) and
 the command for the first — a bench verb's, the stages with a prepped
 benchmark, and a calculation that has no benchmark says so before it asks; one
-command a line, any prose after `#`; a name only the person knows (a machine's)
+command a line, any prose after `#`; a launch offered again in another mode —
+an ask's answer, a refusal for want of a mode or of a header — as the whole
+command, its flags as typed that the mode reads (`commands.launch_with`), never
+*"the same command with `--mode X`"*, an edit to a line a bare launch, its mode
+from config, never had *(four such lines stood until 2026-10-06, `probe`'s
+"Re-run with --write" among them)*; a name only the person knows (a machine's)
 asked for in words, never a `<placeholder>`. A text read later — a deck's
 header, a result's remedy — says a launch through `identity.launch_as_typed`,
 the same for every engine: as typed from the calculation's folder — it is read

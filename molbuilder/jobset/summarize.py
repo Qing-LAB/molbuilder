@@ -185,11 +185,11 @@ def parse_point(label: str, run, engine: str,
                      else "incomplete")
         except OSError:
             pass
-    if engine == "cpu" and "mpi_np" not in knobs:
-        from ..parse.engines.siesta_grammar import mpi_ranks
-        n = mpi_ranks(out_head)
-        if n is not None:
-            knobs["mpi_np"] = n
+    # THE KNOBS ARE WHAT WAS ASKED, and only that: the ranks the run got
+    # are `effective`'s (below, SIESTA's own count).  A trial asking none
+    # had its `.out`'s count written here until 2026-10-06 -- a measurement
+    # in the asked slot, for a trial prep now refuses (every trial states
+    # its counts, `generator.md` § 4.3a).
 
     # What the trial REALLY ran with, and whether that is what it was
     # asked to run.  Until 2026-08-13 nothing compared the two: the
@@ -640,7 +640,10 @@ def _point_table(points: List[BenchPoint]):
           if machined else []),
         ("np", "r", lambda p: _num(p.knobs.get("mpi_np"))),
         ("thr", "r", lambda p: _num(p.knobs.get("cpus_per_task"))),
-        *([("gpu", "l", lambda p: str(p.knobs.get("gres") or "--"))]
+        # A TRIAL THAT ASKED FOR NO GPU says so, as the page does
+        # (`bench-summary.js`): `--` is a value nothing measured, and this
+        # is an asked column -- it printed `--` until 2026-10-06.
+        *([("gpu", "l", lambda p: str(p.knobs.get("gres") or "no gpu"))]
           if gpu else []),
         ("algorithm", "l",
          lambda p: str(p.effective.get("diag_algorithm") or "--")),

@@ -331,10 +331,15 @@ def _cell_ranks(fam, g, k) -> int:
 
 
 def _cell_label(g, k, c) -> str:
-    """A cell's name, spelled the way its trial directory will be
-    (`job-contracts.md` § 6.3) -- so the fit list and the directory
-    listing name the same thing: ``G0`` for a CPU cell, on every machine."""
-    return f"G{g}K{k}C{c}"
+    """A cell's name: the machine part of its trials' names, built by the
+    one builder (`resolve.point_token` -- `job-contracts.md` § 6.3: "and by
+    nothing else"), ``G0`` for a CPU cell on every machine.  A sweep with
+    value axes crosses each cell with them, so its trials' names go on past
+    this one (``G0K48C1ELPA1stage``): the fit list names the cell, the
+    directories its trials.  *(Spelled by hand here until 2026-10-06, its
+    docstring saying the two names were one.)*"""
+    from ..resolve import point_token
+    return point_token({"G": g, "K": k, "C": c})
 
 
 def _cell_shape(g, k, c) -> str:

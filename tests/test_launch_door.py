@@ -338,7 +338,9 @@ def test_a_send_over_a_folder_changed_since_its_plan_is_refused(cluster):
     attempt = bundle / "01_coarse" / "run-0"
 
     def plan():                  # the queue its prep admitted: `debug`
-        return plan_launch(js, bundle, mode="submit", only="coarse")
+        return plan_launch(js, bundle, mode="submit", only="coarse",
+                           told=dict(kind="run", stage="coarse", trial=None,
+                                     mode="submit", flags=[]))
 
     shown = plan()
     deck = next(attempt.glob("*.fdf"))

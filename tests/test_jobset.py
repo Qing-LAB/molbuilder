@@ -1535,7 +1535,9 @@ def test_the_library_itself_refuses_a_whole_ladder(tmp_path):
                           resources=Resources())])
     for mode in ("direct", "submit"):
         with _pytest.raises(SubmitError, match="ONE stage at a time"):
-            plan_launch(js, tmp_path, mode=mode)
+            plan_launch(js, tmp_path, mode=mode,
+                        told=dict(kind="run", stage=None, trial=None,
+                                  mode=mode, flags=[]))
 
 
 def test_resources_fields_equal_the_contracts_list_exactly():

@@ -650,15 +650,6 @@ def read_launch_line(line: str, facts: dict) -> Optional[str]:
     return None
 
 
-def mpi_ranks(text: str) -> Optional[int]:
-    """The ranks a whole ``.out`` states, or ``None`` when it states none."""
-    facts: dict = {}
-    for line in text.splitlines():
-        if read_launch_line(line, facts) == "n_mpi_processes":
-            break
-    return facts.get("n_mpi_processes")
-
-
 # ---- The build header, SIESTA and TBtrans alike --------------------------------
 #: Both programs open their ``.out`` with it (``Src/version-info-template.inc``),
 #: so :func:`read_build_line` is the one reader of both.

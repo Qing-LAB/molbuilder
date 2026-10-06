@@ -1559,8 +1559,10 @@ def _refuse_flags_without_effect(*, kind: str, mode: str, trial,
     if mode == "direct":
         # A BENCHMARK'S PER-TRIAL BOUND IS ITS WALK'S, here as on a queue
         # (`job-system.md` § 6.0, *A benchmark's walk*) -- the rest are what a
-        # scheduler is asked.
-        got = said("--domain", "--time", "--mem", "--gpu-domain")
+        # scheduler is asked (`commands.QUEUE_FLAGS`, whose `--only` is
+        # said apart below).
+        from .commands import QUEUE_FLAGS
+        got = said(*(f for f in QUEUE_FLAGS if f != "--only"))
         if got:
             raise click.ClickException(
                 f"{', '.join(got)}: what a scheduler is asked for -- "
@@ -1739,33 +1741,14 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     description spells it."""
     mode_source = "--mode flag"
     domain_source = "--domain flag" if domain else None
-    # This machine's `launch.mode` when no --mode is given (running-a-job
-    # § 5.4).
-    if mode is None:
-        from ..runtime_config import get_launch_mode
-        try:
-            mode = get_launch_mode()
-        except Exception as exc:
-            # A malformed config is ITS OWN error.  Swallowing it here told
-            # the user to set a value they may already have set.
-            raise click.ClickException(
-                f"the launch block could not be resolved from config: "
-                f"{exc}\n  Fix the config (running-a-job.md § 5.4).") from exc
-        if not mode:
-            # Unset is a refusal, never a derivation: deciding `submit` from
-            # a DETECTED scheduler would gate submission on detection, which
-            # running-a-job.md § 5.4 forbids.
-            raise click.ClickException(
-                "no --mode, and molbuilder.json sets no `launch.mode`.\n"
-                "  'direct' runs it here with bash; 'submit' hands it to the "
-                "scheduler.  Set launch.mode once for this machine, or pass "
-                "--mode for this call (running-a-job.md § 5.4).")
-        mode_source = "launch.mode (config)"
-    said.update(mode=mode, mode_source=mode_source)
-    _refuse_flags_without_effect(
-        kind=kind, mode=mode, trial=trial, domain=domain,
-        time_text=time_text, mem_text=mem_text, gpu_domain=gpu_domain,
-        trial_timeout_min=trial_timeout_min, only_side=only_side)
+    # THE FLAGS AS TYPED, ``(flag, value)`` in the help's order -- recorded
+    # with what the verb was told, and carried by every line that offers
+    # this launch again in another mode (`commands.launch_with`).
+    typed = [[f, v] for f, v in (
+        ("--domain", domain), ("--gpu-domain", gpu_domain),
+        ("--time", time_text), ("--mem", mem_text),
+        ("--trial-timeout", trial_timeout_min), ("--only", only_side))
+        if v is not None]
 
     # ------------------------------------------------------------------ #
     #  Which work -- before which queue, which is read off this work      #
@@ -1794,6 +1777,41 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         only = stage = said["stage"] = _resolve_stage(js, stage, "launch",
                                                       base=base)
     grouped = kind == "bench" and trial is None
+    # This machine's `launch.mode` when no --mode is given (running-a-job
+    # § 5.4) -- asked once the work is known, so the refusal can say the
+    # launch with each mode, its stage by name.
+    if mode is None:
+        from ..runtime_config import get_launch_mode
+        try:
+            mode = get_launch_mode()
+        except Exception as exc:
+            # A malformed config is ITS OWN error.  Swallowing it here told
+            # the user to set a value they may already have set.
+            raise click.ClickException(
+                f"the launch block could not be resolved from config: "
+                f"{exc}\n  Fix the config (running-a-job.md § 5.4).") from exc
+        if not mode:
+            # Unset is a refusal, never a derivation: deciding `submit` from
+            # a DETECTED scheduler would gate submission on detection, which
+            # running-a-job.md § 5.4 forbids.  THE WAY ON AS COMMANDS, one
+            # per mode the machine takes -- "pass --mode for this call"
+            # until 2026-10-06, an edit to the line typed.
+            from .commands import block, launch_with, takes_a_queue
+            modes = (("direct", "submit") if takes_a_queue(base)
+                     else ("direct",))
+            raise click.ClickException(
+                "no --mode, and molbuilder.json sets no `launch.mode`.\n"
+                "  'direct' runs it here with bash; 'submit' hands it to the "
+                "scheduler.  Set launch.mode once for this machine "
+                "(running-a-job.md § 5.4), or say the mode on the line:\n"
+                + block([launch_with(kind, stage, trial, base=base, mode=m,
+                                     typed=typed) for m in modes]))
+        mode_source = "launch.mode (config)"
+    said.update(mode=mode, mode_source=mode_source)
+    _refuse_flags_without_effect(
+        kind=kind, mode=mode, trial=trial, domain=domain,
+        time_text=time_text, mem_text=mem_text, gpu_domain=gpu_domain,
+        trial_timeout_min=trial_timeout_min, only_side=only_side)
     mem = _memory(mem_text)
     time_s = _duration(time_text)
 
@@ -1821,7 +1839,7 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     # entry writes its own decisions down, with what this verb was told on
     # each line; a dry run writes nothing.
     told = dict(kind=kind, stage=stage, trial=trial, mode=mode,
-                mode_source=mode_source, domain=domain,
+                mode_source=mode_source, flags=typed, domain=domain,
                 domain_source=domain_source, provenance=prov,
                 # A LAUNCH FLAG'S WALL AND MEMORY, as typed: the values it
                 # changes are recorded in `run.json` too (§ 6.0).
@@ -1875,13 +1893,19 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         # "nothing to wait for" followed by an sbatch preview reads as a
         # contradiction (user, 2026-08-28): on a scheduler-less machine
         # nothing WOULD be sent, so nothing is previewed.
+        # THE LAUNCH AS A COMMAND, its flags as typed (`commands.
+        # launch_with`) -- "the same command and `--mode submit`" until
+        # 2026-10-06, an edit to a line in the person's history.
+        from .commands import block, launch_with
         if not all(p.no_scheduler for p in preds):
             click.echo("  would send: " + " ".join(asked.command))
-            click.echo("  launch it with the same command and "
-                       "`--mode submit` when the answer suits you.")
+            click.echo("  to send it, when the answer suits you:\n"
+                       + block([launch_with(kind, stage, trial, base=base,
+                                            mode="submit", typed=typed)]))
         else:
-            click.echo("  run it here instead: the same command with "
-                       "`--mode direct`.")
+            click.echo("  run it here instead:\n"
+                       + block([launch_with(kind, stage, trial, base=base,
+                                            mode="direct", typed=typed)]))
         return
 
     # 2 · SHOWN, and 3 · ASKED -- once, for the whole plan.  A dry run stops
@@ -2367,8 +2391,17 @@ def cmd_probe(do_write: bool, name, yes: bool,
             click.echo(f"  - {n}")
 
     if not do_write:
-        click.echo(f"\n(dry run -- nothing written. Re-run with --write to "
-                   f"record this in {target / fname}.)")
+        # THE LINE THAT WRITES WHAT WAS SHOWN, its flags as typed -- "Re-run
+        # with --write" until 2026-10-06, an edit to the line typed
+        # (`job-system.md` § 5.3).
+        import shlex
+        from ..scheduler.record import probe_command
+        again = (probe_command(name)
+                 + "".join(f" --set {shlex.quote(s)}" for s in sets)
+                 + (f" --scheduler {scheduler_flag}" if scheduler_flag else "")
+                 + (" --yes" if yes else ""))
+        click.echo(f"\n(dry run -- nothing written.  To record this in "
+                   f"{target / fname}:)\n    {again}")
         return
 
     if before is None:

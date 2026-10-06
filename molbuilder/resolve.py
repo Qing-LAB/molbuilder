@@ -1055,8 +1055,11 @@ def point_token(point: Mapping[str, Any]) -> str:
 
 
 #: One rendered part of the token. ``-`` is excluded on purpose: it is the
-#: qualifier separator (§ 6.3), so a value carrying one (``-2``, ``a100:1``)
-#: is refused rather than smuggled into a SystemLabel.
+#: qualifier separator (§ 6.3).  A VALUE never reaches this check with one
+#: -- ``_flat`` drops it (``ELPA-1Stage`` -> ``ELPA1Stage``, and ``-2`` ->
+#: ``2``), the collision guard refusing two points that then read alike --
+#: so what it refuses is an AXIS name outside the charset.  *(It said a
+#: value carrying one was refused until 2026-10-06: true until 2026-08-21.)*
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_]+\Z")
 
 

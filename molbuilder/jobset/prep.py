@@ -1209,15 +1209,20 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                               where=script):
                     seam.sibling_artifacts(rung.struct, cfg, _jdir / script,
                                            kind=rung.render_kind, plan=plan)
-            with _calling("label_of", engine=task.engine):
-                _label = seam.label_of(cfg)
             # THE PROGRESS LOG IS SEEDED WHERE ITS RUN WILL WRITE IT: beside
             # each deck an attempt ladder runs -- the element's own, or for
             # a scan each point's, never the stage folder above them, where
-            # nothing would ever write to it again.
+            # nothing would ever write to it again.  AND NAMED FOR ITS DECK
+            # (`job-contracts.md` § 6.3: the trajectory log takes the deck's
+            # basename): the element's label, the deck's own.  It took the
+            # engine's label (`label_of`) until 2026-10-06 -- the same, but
+            # for an electrode rung, whose SystemLabel is its `.TSHS` stem:
+            # its seed was `bdt_L-electrode_02_electrode_L.molwatch.log`
+            # beside `bdt_02_electrode_L.fdf`, and the run door never found
+            # it.
             for _seed_dir in ([d for d, _ in rung.points] or [_jdir]):
                 _seed_trajectory_log(rung.struct, cfg, _seed_dir,
-                                     engine=task.engine, label=_label,
+                                     engine=task.engine, label=element.label,
                                      token=(token or None),
                                      frame=spec.engine_frame,
                                      relaxes=(rung.render_kind
