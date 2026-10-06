@@ -213,7 +213,7 @@
             .filter((p) => p.series.length);
         if (!live.length) return false;
 
-        const won = (data.choice || {}).label;
+        const won = data.choice.label;
         const traces = [];
         // ONE key entry per group across the WHOLE figure.  Keying per
         // panel put the same two names up three times.
@@ -556,10 +556,10 @@
                           .join(" \u00b7 ")));
         }
 
-        /* The verdict, whole -- including its absence, which is a real
-         * answer: choose_winner returns {} when nothing was timed, OR
-         * when every timed trial ran something other than its label. */
-        const choice = data.choice || {};
+        /* The verdict, whole -- the winner, or the server's one sentence
+         * saying why there is none (`choice.none`, `choose_winner`).  This
+         * guessed the reason from `n_done` until 2026-10-06. */
+        const choice = data.choice;
         const verdict = el("div", "bench-verdict");
         if (choice.label) {
             verdict.classList.add("is-decided");
@@ -572,10 +572,7 @@
             else verdict.appendChild(el("strong", null, choice.label));
         } else {
             verdict.appendChild(document.createTextNode(
-                data.n_done
-                    ? "No winner: nothing timed, or every timed trial ran "
-                      + "something other than what it was asked for."
-                    : "No verdict yet — no trial has finished."));
+                "No winner: " + choice.none + "."));
         }
         wrap.appendChild(verdict);
 

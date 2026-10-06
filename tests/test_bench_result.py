@@ -20,6 +20,13 @@ from molbuilder.bench.result import (
 # Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
 # 10 tests here parsed timing logs, monitor lines, utilisation
 # rows, wrapper logs, SIESTA lines or sacct text typed by hand (`process/testing.md` § 6).
+#
+# Retired 2026-10-06 (MEMORY gate 5: a failing test fed a hand-built record
+# is retired, never updated): three tests hand-built `BenchPoint`s -- one in
+# a knob vocabulary (`gpus`, `ranks_per_gpu`, `ranks`) no trial writes --
+# and pinned `choose_winner`'s `{}`, which now states why there is no
+# winner (`project-layout.md` § 2.3).  The no-winner sentence is read down
+# the road by `test_prep_bench_fold.py::test_a_verdictless_summarize_prints_no_report`.
 
 
 # --------------------------------------------------------------------- #
@@ -49,13 +56,6 @@ def test_choose_winner_fastest_completed():
     assert "vs gpu-k4" in c["rationale"]
 
 
-def test_choose_winner_ignores_non_completed_and_timeless():
-    # only the timed-out CPU point -> no winner
-    pts = [BenchPoint("cpu", "cpu", {}, {"s_per_iter": None},
-                      state="timeout")]
-    assert choose_winner(pts) == {}
-
-
 def test_a_sweep_proposes_no_wall_and_no_memory():
     """Replaces `test_recommend_from_winner_peak_rss` and
     `test_recommend_mem_uses_true_ceil` (deleted 2026-08-24, user).
@@ -81,24 +81,6 @@ def test_a_sweep_proposes_no_wall_and_no_memory():
                              "scheduler": "slurm"}, system={})
     assert not hasattr(res, "recommend")
     assert "recommend" not in res.to_dict()
-
-
-def test_run_config_proposes_no_wall_and_no_memory():
-    """The other end of the same path: whatever the sweep measured, the
-    report must recommend no `time` and no `mem`.
-
-    A benchmark measures how fast a shape runs; it has no evidence about how
-    long *your* job needs or how much it will hold, and those two asks stay
-    the person's (2026-08-24).  The rule outlived the file it was written
-    for -- it was `run-config.toml`, which `prep` folded into an allocation,
-    and it is now a report nobody reads but you (`architecture.md` § 5.2)."""
-    from molbuilder.jobset.summarize import recommendation_text
-    res = build_bench_result(
-        _pts(), environment={"schema": "molbuilder/environment@1",
-                             "scheduler": "slurm"}, system={})
-    text = recommendation_text(res, stage="tight") or ""
-    assert '"time"' not in text, text
-    assert '"mem"' not in text, text
 
 
 def test_build_and_round_trip():
@@ -211,15 +193,6 @@ def test_a_trial_that_ran_something_else_cannot_win_even_if_fastest():
     assert c["label"] == "gpu-k4", "the fastest row measured another machine"
     assert "excluded" in c["rationale"] and "gpu-k8" in c["rationale"]
     assert "asked ELPA-1STAGE, ran D&C" in c["rationale"]
-
-
-def test_no_winner_when_every_timed_trial_ran_something_else():
-    """Better no recommendation than the least-wrong of a bad table."""
-    pts = [BenchPoint(f"p{i}", "gpu", {}, {"s_per_iter": float(i + 1)},
-                      state="completed",
-                      mismatch={"mpi_np": {"asked": 8, "ran": 4}})
-           for i in range(3)]
-    assert choose_winner(pts) == {}
 
 
 def test_the_readback_survives_the_json_round_trip():

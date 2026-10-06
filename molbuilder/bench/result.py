@@ -371,7 +371,9 @@ def mismatch_phrase(mismatch: Dict) -> str:
 
 def choose_winner(points: List[BenchPoint]) -> Dict:
     """The portable ``choice`` (§ 5.4): the fastest COMPLETED point by
-    steady-state s/iter.  Returns ``{}`` if no point produced a time.
+    steady-state s/iter -- or, when no point can win, ``{"none": <why>}``,
+    the one sentence the terminal, the page and the ledger all say.  ``{}``
+    stood for both reasons until 2026-10-06, and each reader guessed which.
 
     **A trial that did not run what it was asked to run cannot win.**  Its
     time is real, but it measures a different configuration than its label
@@ -381,14 +383,27 @@ def choose_winner(points: List[BenchPoint]) -> Dict:
     would be advice about a machine nobody used.  Such points stay in the
     record (with their ``mismatch`` on their face) and are named in the
     rationale; they are only barred from winning.  If every timed point
-    disagrees with its request, there is no winner -- ``{}`` rather than
-    the least-wrong of them."""
+    disagrees with its request, there is no winner -- the reason, rather
+    than the least-wrong of them."""
     timed = [p for p in points
              if p.state == "completed" and p.s_per_iter() is not None]
     ranked = [p for p in timed if not p.mismatch]
     excluded = [p for p in timed if p.mismatch]
+    if not timed:
+        by_state: Dict[str, int] = {}
+        for p in points:
+            by_state[p.state] = by_state.get(p.state, 0) + 1
+        census = ", ".join(f"{n} {s}" for s, n in sorted(by_state.items()))
+        return {"none": f"no completed, timed trial to rank ({census}) -- "
+                        f"launch the trials and summarize again"}
     if not ranked:
-        return {}
+        return {"none": "every timed trial ran something other than it was "
+                        "asked to -- "
+                        + ", ".join(f"{p.label} [{mismatch_phrase(p.mismatch)}]"
+                                    for p in excluded)
+                        + ".  The times are real, but they do not measure "
+                          "the settings on their labels: fix the cause and "
+                          "re-run before trusting a choice"}
     win = min(ranked, key=lambda p: p.s_per_iter())
     others = sorted((p for p in ranked if p is not win),
                     key=lambda p: p.s_per_iter())

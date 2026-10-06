@@ -110,7 +110,8 @@ def test_a_saved_structure_with_no_run_behind_it_leaves_the_rows_unanswered_on_b
 
     def cli(slot, bundle):
         r = CliRunner().invoke(jobset_group, [
-            "init", "--calculation", "transport", "--shape", "hierarchical",
+            "init", "--calculation", "transport", "--engine", "siesta",
+            "--shape", "hierarchical",
             "--bundle", bundle, "--slot", f"junction={slot}"])
         assert r.exit_code == 0, r.output
         return read_template(
@@ -182,7 +183,8 @@ def test_a_cited_run_brings_its_spin_and_a_charged_one_is_refused_on_both_roads(
 
     def cli(slot, bundle):
         return CliRunner().invoke(jobset_group, [
-            "init", "--calculation", "transport", "--shape", "hierarchical",
+            "init", "--calculation", "transport", "--engine", "siesta",
+            "--shape", "hierarchical",
             "--bundle", bundle, "--slot", f"junction={slot}"])
 
     def browser(slot):

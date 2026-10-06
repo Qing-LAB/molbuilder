@@ -7,7 +7,8 @@ Subcommands:
     molbuilder smiles "c1ccccc1" --out benzene.xyz
     molbuilder name "1,4-benzenedithiol" --out bdt.xyz
     molbuilder jobset init --structure P/structure/in.xyz \
-        --bundle P/optimization/calc --shape flat --stage-strategy publishable
+        --bundle P/optimization/calc --engine siesta --shape flat \
+        --stage-strategy publishable
     molbuilder pyscf in.xyz out.py --functional B3LYP
     molbuilder serve start --port 8000
     molbuilder watch parse run.molwatch.log
@@ -450,7 +451,7 @@ def cmd_validate(input_path, engine, exit_on_error, pretty):
         molbuilder dna ATGC | molbuilder validate -
 
         molbuilder validate run.xyz --engine siesta --exit-on-error \\
-            && molbuilder jobset init --structure P/structure/run.xyz --bundle P/optimization/calc --shape flat
+            && molbuilder jobset init --structure P/structure/run.xyz --bundle P/optimization/calc --engine siesta --shape flat
     """
     from .validation import validate, validate_geometry
 

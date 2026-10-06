@@ -1558,45 +1558,14 @@ def _mk_point(label, state="completed", spi=None, knobs=None):
                       metrics=({"s_per_iter": spi} if spi is not None else {}))
 
 
-def test_the_summary_closes_with_the_verdict_and_the_commands():
-    """B5: the summary ends with WHAT TO DO, and the coverage clause keeps a
-    partial sweep honest.
-
-    What to do changed on 2026-09-02.  It was *edit the proposal file, prep,
-    submit* -- prep folded the file in.  It is now *read the report, write
-    the decision, prep* -- because a benchmark reports and a person decides
-    (`architecture.md` § 5.2).  The rule this asserts is unchanged: a summary
-    that named a winner and stopped left you to guess the next command."""
-    from pathlib import Path
-    from molbuilder.bench.result import build_bench_result
-    from molbuilder.jobset.summarize import recommendation_text, summary_text
-    res = build_bench_result(
-        [_mk_point("G0K1C1", spi=1.9, knobs={"mpi_np": 1}),
-         _mk_point("G0K2C1", spi=1.1, knobs={"mpi_np": 2}),
-         _mk_point("G0K5C1", state="unknown")])
-    out = summary_text(
-        res, Path("/x/bench-result.json"),
-        report=recommendation_text(res, stage="tight"), stage="tight")
-    # THE REPORT IS IN THE ANSWER, not named as a file to go and open.
-    assert "molbuilder bench recommendation -- tight" in out
-    assert "NOTHING APPLIES THIS" in out
-    assert "execution" in out                     # what you WRITE
-    assert "prep run tight" in out                # the stage, by name
-    assert "coverage: 2 of 3" in out              # the honesty clause
-
-
-def test_a_verdictless_summary_says_so_with_the_census():
-    """B3/B4's surface: 'no winner' and 'nothing ran yet' are different
-    situations, and the census is what separates them."""
-    from pathlib import Path
-    from molbuilder.bench.result import build_bench_result
-    from molbuilder.jobset.summarize import summary_text
-    res = build_bench_result([_mk_point("G0K1C1", state="incomplete"),
-                              _mk_point("G0K2C1", state="unknown")])
-    out = summary_text(res, Path("/x/bench-result.json"))
-    assert "NO VERDICT" in out
-    assert "1 incomplete" in out and "1 unknown" in out
-    assert "prep run <stage>" not in out          # no command without a verdict
+# Retired 2026-10-06 (MEMORY gate 5: a failing test fed a hand-built record
+# is retired, never updated): `test_the_summary_closes_with_the_verdict_and_the_commands`,
+# `test_a_verdictless_summary_says_so_with_the_census`,
+# `test_the_table_measures_beside_the_ask_and_gates_gpu_columns` and
+# `test_no_winner_speaks_only_about_the_timed_set` each hand-built the
+# `BenchPoint`s or `BenchResult` they summarized.  The summary's one shape
+# and its no-winner sentence are `project-layout.md` § 2.3's; the road reads
+# the sentence below.
 
 
 def test_a_verdictless_summarize_prints_no_report(calc):
@@ -1609,42 +1578,9 @@ def test_a_verdictless_summarize_prints_no_report(calc):
     r = CliRunner().invoke(jobset_group, ["summarize", "bench", "coarse",
                                           "--bundle", str(calc)])
     assert r.exit_code == 0, r.output
-    assert "NO VERDICT" in r.output
+    # `project-layout.md` § 2.3: no winner is said, with why
+    assert "no winner: no completed, timed trial to rank (" in r.output
     assert "bench recommendation" not in r.output
-
-
-def test_the_table_measures_beside_the_ask_and_gates_gpu_columns():
-    """The summary table: knobs beside measurements, `--` where nothing
-    was measured, and GPU columns only when the sweep ASKED for a GPU —
-    the monitor samples gpu0_* as zeros on GPU-less runs and three
-    columns of 0 on a CPU sweep are noise."""
-    from pathlib import Path
-    from molbuilder.bench.result import BenchPoint, build_bench_result
-    from molbuilder.jobset.summarize import _fmt_duration, summary_text
-    cpu = BenchPoint(
-        label="G0K2C1", engine="cpu",
-        knobs={"mpi_np": 2, "cpus_per_task": 1},
-        metrics={"s_per_iter": 1.0, "iters_measured": 3, "monitored_elapsed_s": 41,
-                 "mem_peak_gb": 24.73, "cpu_mean_pct": 96.2},
-        bound="host", state="completed",
-        effective={"diag_algorithm": "D&C"})
-    out = summary_text(build_bench_result([cpu]), Path("/x/b.json"))
-    row = next(l for l in out.splitlines() if "G0K2C1" in l)
-    for cell in ("2", "1", "D&C", "3", "41s", "24.7G", "96", "host",
-                 "completed"):
-        assert cell in row.split(), (cell, row)
-    assert "gpu-sm%" not in out and "vram" not in out
-    gpu = BenchPoint(
-        label="G1K4C6", engine="gpu",
-        knobs={"mpi_np": 4, "cpus_per_task": 6, "gres": "gpu:1"},
-        metrics={"s_per_iter": 2.3}, state="completed")
-    out = summary_text(build_bench_result([cpu, gpu]), Path("/x/b.json"))
-    assert "gpu-sm%" in out and "vram" in out
-    row = next(l for l in out.splitlines() if "G1K4C6" in l)
-    assert row.split().count("--") >= 4      # unmeasured cells say so
-    assert _fmt_duration(41) == "41s"
-    assert _fmt_duration(245) == "4m05s"
-    assert _fmt_duration(7523) == "2h05m"
 
 
 def test_a_bench_row_never_reaches_the_run_deck(calc):
@@ -1747,44 +1683,6 @@ def test_a_pyscf_runs_threads_reach_the_launch_shape(tmp_path):
         "the run card asked for 3 threads and the job records something "
         "else", job["resources"])
 
-
-def test_no_winner_speaks_only_about_the_timed_set():
-    """R2-2: the "every timed trial ran something other than asked"
-    verdict scanned ALL points -- one unfinished point carrying mismatch
-    data made the summary assert a census of timed trials it never took.
-    With nothing timed, the honest sentence is the NO VERDICT census;
-    the every-timed-mismatched sentence needs a non-empty timed set."""
-    from pathlib import Path
-    from molbuilder.bench.result import build_bench_result
-    from molbuilder.jobset.summarize import summary_text
-    # Nothing timed at all; one incomplete point carries mismatch data.
-    p = _mk_point("G0K1C1", state="incomplete")
-    p.mismatch = {"mpi_np": {"asked": 4, "ran": 2}}
-    res = build_bench_result([p, _mk_point("G0K2C1", state="unknown")])
-    out = summary_text(res, Path("/x/bench-result.json"))
-    assert "every timed trial" not in out, (
-        "the summary asserts a census of timed trials it never took")
-    assert "NO VERDICT" in out
-    # And the sentence still fires when the timed set really is all
-    # mismatched.
-    q = _mk_point("G0K4C1", spi=2.0, knobs={"mpi_np": 4})
-    q.mismatch = {"mpi_np": {"asked": 4, "ran": 2}}
-    res2 = build_bench_result([q])
-    out2 = summary_text(res2, Path("/x/bench-result.json"))
-    assert "every timed trial" in out2
-
-
-# ===================================================================== #
-#  `sweep_view` — the whole sweep composed for a reader                 #
-#                                                                       #
-#  Contract: docs/web/bench-summary.md.  Its B1 -- NOT this file's other  #
-#  B1 (roadmap § 0.1, the declared grid) -- is the property under        #
-#  test: this composes what four doors already produce and computes      #
-#  nothing.  B2 says why -- submission.md § 3's summary that showed      #
-#  "170 minutes" for five 38-minute jobs got there by working out its    #
-#  own total a second way, and a view comparing six trials has six       #
-#  chances to repeat that.                                              #
-# ===================================================================== #
 
 def _bench_dir(calc):
     return calc / "01_coarse" / "bench"

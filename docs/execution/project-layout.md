@@ -1442,10 +1442,24 @@ what the monitor measured — so the scaling is visible in one look rather
 than one JSON dig per trial:
 
 ```
-  point   np  thr  gpu         algorithm    s/iter  iters  wall  peak-mem  cpu%  gpu-sm%   vram  bound  state
-  G1K4C6   4    6  gpu:1       ELPA-1stage     2.3      3   41s     83.5G    34       91  18.2G  gpu    completed
-  G1K8C2   8    2  gpu:1       ELPA-1stage     3.1      3   58s     85.1G    52       64  18.9G  mixed  completed
+  point   machine  np  thr  gpu    algorithm    s/iter  iters  monitored  peak-mem  cpu%  gpu-sm%   vram  bound  state
+  G1K4C6  --        4    6  gpu:1  ELPA-1stage     2.3      3        41s     83.5G    34       91  18.2G  gpu    completed
+  G0K8C2  --        8    2  no gpu ELPA-1stage     3.1      3        58s     85.1G    52       --     --  cpu    completed
 ```
+
+**Every column, every sweep.** A trial that asked for no GPU says `no gpu`,
+and its GPU measurements `--` (a value nothing measured); a trial whose run
+recorded no machine shows `--` under `machine`.  The knobs carry all three
+keys on every trial -- `gres` null on a CPU one.  *(The GPU and machine
+columns appeared only when some trial had one, and the knobs carried `gres`
+on GPU trials alone, until 2026-10-06: a CPU sweep printed another table.)*
+
+**No winner is said, with why.**  When no trial can win, `choice` is
+`{"none": "<why>"}` -- *no completed, timed trial to rank (`<census>`)*, or
+*every timed trial ran something other than it was asked to* with the
+trials named -- and the terminal says `no winner: <why>`, the Results page
+the same sentence, the ledger's verdict line the same `choice`.  *(`{}`
+stood for both until 2026-10-06, and each reader guessed which.)*
 
 *(columns come from the record: `s/iter` is the steady-state SCF mean;
 `wall`, `peak-mem`, `cpu%` and the GPU columns are the monitor's raw

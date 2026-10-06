@@ -337,16 +337,15 @@ def discover_points_from_jobset(bundle, jobset) -> List[BenchPoint]:
         # were renamed to grid words here (ranks/cores_per_rank) and
         # renamed BACK by the offer: two renames for nothing, and a third
         # vocabulary for one fact (job-contracts § 6 note: one language).
-        knobs: Dict = {}
-        if j.resources.mpi_np:
-            knobs["mpi_np"] = j.resources.mpi_np
-        if j.resources.cpus_per_task:
-            knobs["cpus_per_task"] = j.resources.cpus_per_task
-        # THE TRIAL'S GPU REQUEST, through the one door (`model.
-        # gpu_request`): its side and its count are one answer.
+        # ALL THREE, every trial -- a CPU trial's `gres` is null, not
+        # absent: the knobs had a GPU key on GPU trials alone until
+        # 2026-10-06, one more shape for one fact.  The GPU request goes
+        # through the one door (`model.gpu_request`): its side and its
+        # count are one answer.
         gpus = gpu_request(j.resources)
-        if gpus.uses:
-            knobs["gres"] = gpus.gres
+        knobs: Dict = {"mpi_np": j.resources.mpi_np,
+                       "cpus_per_task": j.resources.cpus_per_task,
+                       "gres": gpus.gres if gpus.uses else None}
         # THE LATEST ATTEMPT WHERE THERE IS ONE, the container otherwise --
         # `runstatus`'s own rule, and shape-agnostic, so it answered for a
         # hierarchical stage long before a trial had attempts to find
@@ -512,10 +511,10 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
     measurement stops one step short of the launch, and that step is a person
     deciding, visibly, in the file that records decisions.
     """
-    choice = res.choice or {}
-    if not choice:
+    if not res.choice.get("label"):
         return None
-    knobs = choice.get("knobs") or {}
+    choice = res.choice
+    knobs = choice["knobs"]
     mech = choice.get("mechanism") or {}
     stage_word = stage or "<stage>"
 
@@ -542,14 +541,14 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
         block["mpi_np"] = int(knobs["mpi_np"])
     if knobs.get("cpus_per_task") is not None:
         block["omp_threads"] = int(knobs["cpus_per_task"])
-    if knobs.get("gres"):
-        try:
-            from ..scheduler.quantities import parse_gres
-            n = sum(parse_gres(str(knobs["gres"])).values())
-            if n:
-                block["gpu_count"] = int(n)
-        except Exception:                                     # noqa: BLE001
-            pass
+    if knobs["gres"]:
+        # The trial's own request, written by prep (`gpu:<n>`): it parses,
+        # or the record is not ours -- a parse error is said, never passed
+        # over (it was, until 2026-10-06).
+        from ..scheduler.quantities import parse_gres
+        n = sum(parse_gres(str(knobs["gres"])).values())
+        if n:
+            block["gpu_count"] = int(n)
     # THE VALUE AXES TOO, from the winner's own POINT -- not only from
     # `mechanism`.  `mechanism` is HOW the winner computed (the eigensolver,
     # the device); a value axis like `block_size` is a coordinate of the
@@ -568,7 +567,7 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
     # non-SIESTA description by name (`prep_inputs.bench_inputs`) -- but this report is
     # written for a person to read, so the day that lane admits PySCF it
     # would offer SIESTA's pin vocabulary for a PySCF run.
-    vocab = _pins_vocabulary((res.system or {}).get("engine") or "siesta")
+    vocab = _pins_vocabulary(res.system["engine"])
     for src in ((choice.get("point") or {}), (mech or {})):
         for name, val in sorted(src.items()):
             if name in vocab:
@@ -618,33 +617,25 @@ def _point_table(points: List[BenchPoint]):
     was MEASURED (s/iter, wall, peak memory, mean utilisation) so the
     scaling is readable across rows; ``algorithm`` is what the trial
     ACTUALLY ran (``effective``), so a silent eigensolver fallback shows
-    in the table itself.  A value nothing measured prints ``--``; the
-    GPU columns appear only when the sweep has any GPU signal.
+    in the table itself.  A value nothing measured prints ``--``.  EVERY
+    COLUMN, EVERY SWEEP: a CPU trial's GPU columns say ``no gpu`` and
+    ``--``, and a trial with no recorded machine ``--`` -- the GPU and
+    machine columns appeared only when some trial had one until
+    2026-10-06, so a CPU sweep printed another table.
     """
-    # GPU columns key off what the sweep ASKED to be (engine/gres), not
-    # off metric presence: the monitor samples gpu0_* as zeros on a
-    # GPU-less run, and three columns of 0 on a CPU sweep are noise --
-    # while a genuine GPU trial showing sm% 0 is exactly worth seeing.
-    gpu = any(p.engine == "gpu" or p.knobs.get("gres") for p in points)
-    # The machine column keys off signal the same way: present when any
-    # trial recorded one (`generator.md` § 4.4b -- shown per trial), absent
-    # for records predating the [MACHINE] line rather than a column of --.
-    machined = any(p.machine for p in points)
 
     def _num(v, fmt="{:g}"):
         return fmt.format(v) if isinstance(v, (int, float)) else "--"
 
     cols = [
         ("point", "l", lambda p: p.label or "--"),
-        *([("machine", "l", lambda p: machine_brief(p.machine) or "--")]
-          if machined else []),
+        ("machine", "l", lambda p: machine_brief(p.machine) or "--"),
         ("np", "r", lambda p: _num(p.knobs.get("mpi_np"))),
         ("thr", "r", lambda p: _num(p.knobs.get("cpus_per_task"))),
         # A TRIAL THAT ASKED FOR NO GPU says so, as the page does
         # (`bench-summary.js`): `--` is a value nothing measured, and this
         # is an asked column -- it printed `--` until 2026-10-06.
-        *([("gpu", "l", lambda p: str(p.knobs.get("gres") or "no gpu"))]
-          if gpu else []),
+        ("gpu", "l", lambda p: str(p.knobs["gres"] or "no gpu")),
         ("algorithm", "l",
          lambda p: str(p.effective.get("diag_algorithm") or "--")),
         ("s/iter", "r", lambda p: _num(p.s_per_iter())),
@@ -663,11 +654,10 @@ def _point_table(points: List[BenchPoint]):
          lambda p: _num(p.metrics.get("mem_peak_gb"), "{:.1f}G")),
         ("cpu%", "r",
          lambda p: _num(p.metrics.get("cpu_mean_pct"), "{:.0f}")),
-        *([("gpu-sm%", "r",
-            lambda p: _num(p.metrics.get("gpu_sm_mean_pct"), "{:.0f}")),
-           ("vram", "r",
-            lambda p: _num(p.metrics.get("gpu_vram_peak_gb"), "{:.1f}G"))]
-          if gpu else []),
+        ("gpu-sm%", "r",
+         lambda p: _num(p.metrics.get("gpu_sm_mean_pct"), "{:.0f}")),
+        ("vram", "r",
+         lambda p: _num(p.metrics.get("gpu_vram_peak_gb"), "{:.1f}G")),
         ("bound", "l", lambda p: p.bound or "--"),
         ("state", "l", lambda p: p.state),
     ]
@@ -723,37 +713,17 @@ def summary_text(res: BenchResult, out_path: Path, *,
         lines.append(
             f"  trials ran on {len(census)} kinds of node: {parts}")
 
-    # "Every timed trial" must be a claim about the TIMED set (R2-2):
-    # `any(p.mismatch)` over ALL points fired this sentence when nothing
-    # had been timed at all -- one unfinished point with mismatch data
-    # and the summary asserted a census it never took.
-    # "timed" is choose_winner's own definition (completed AND timed):
-    # a mid-flight point can carry a parsed s_per_iter while still
-    # incomplete, and counting it here once flipped the verdict line to
-    # "no completed, timed trial" beside a mismatch row it had just
-    # printed.
-    _timed = [p for p in res.points
-              if p.state == "completed" and p.s_per_iter() is not None]
-    if res.choice:
-        lines.append(f"  winner: {res.choice.get('rationale')}")
-    elif _timed and all(p.mismatch for p in _timed):
-        lines.append("  NO WINNER: every timed trial ran something other "
-                     "than it was asked to.  The times are real but they do "
-                     "not measure the settings on their labels -- fix the "
-                     "cause and re-run before trusting a choice.")
+    # THE VERDICT AS THE RECORD SAYS IT -- the winner, or the one sentence
+    # saying why there is none (`bench.result.choose_winner`).  This line
+    # worked the reason out again from the points until 2026-10-06, and the
+    # page a third way, from a count of finished runs.
+    if res.choice.get("label"):
+        lines.append(f"  winner: {res.choice['rationale']}")
     else:
-        # B4's sibling on THIS surface: an empty verdict is said, with the
-        # state census that explains it -- "no winner" and "no trial has
-        # run yet" are different situations wearing one empty dict.
-        by_state = {}
-        for p_ in res.points:
-            by_state[p_.state] = by_state.get(p_.state, 0) + 1
-        census = ", ".join(f"{n} {s}" for s, n in sorted(by_state.items()))
-        lines.append(f"  NO VERDICT: no completed, timed trial to rank "
-                     f"({census}).  Launch the trials and summarize again.")
+        lines.append(f"  no winner: {res.choice['none']}.")
     # The coverage clause (honesty on a partial sweep): a verdict drawn
     # from three of eleven prepped points says so on its face.
-    if res.choice:
+    if res.choice.get("label"):
         timed = sum(1 for p_ in res.points
                     if p_.state == "completed" and p_.s_per_iter() is not None)
         if timed < len(res.points):
@@ -763,7 +733,7 @@ def summary_text(res: BenchResult, out_path: Path, *,
     # THE CONNECTION SURFACE (roadmap § 0.1 B5): the summary ends with what
     # to do, not only what was found.  What to do is WRITE THE DECISION --
     # the report says what, and nothing applies it for you (§ 2.3.2).
-    if res.choice:
+    if res.choice.get("label"):
         stage_word = stage or "<stage>"
         # THE REPORT ITSELF, here on stdout.  It used to be written beside
         # the record and this block told you to go and read it; nobody ever
@@ -929,8 +899,7 @@ def sweep_view(jobset, bundle) -> Dict:
         "generated_at": res.generated_at,
         "environment":  res.environment,
         "system":       res.system,
-        # The verdict, whole -- including the empty {} that means "nothing
-        # timed, or every timed trial ran something other than its label".
+        # The verdict, whole -- the winner, or `none`: why there is none.
         "choice":       res.choice,
         "varied":       swept_coordinates(points),
         "machines":     machines,

@@ -1795,7 +1795,8 @@ flowchart LR
   > that configuration. A mismatched point stays in the record and is named in
   > the rationale; it is barred only from winning, and if **every** timed
   > point mismatches there is no winner at all rather than the least-wrong of
-  > them. *(This restores, on the current design, the `effective_np` /
+  > them -- `choice` then says why (`{"none": ...}`, `project-layout.md`
+  > § 2.3's summary). *(This restores, on the current design, the `effective_np` /
   > `effective_omp` / `effective_bs` / `effective_diag` readback that the
   > deleted legacy `bench` module carried.)*
 

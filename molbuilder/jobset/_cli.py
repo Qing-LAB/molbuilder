@@ -535,9 +535,11 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
 @click.option("--name", default=None, metavar="NAME",
               help="what you call this calculation; the label and the run id "
                    "derive from it. Default: the destination folder's name.")
-@click.option("--engine", default="siesta",
+@click.option("--engine", required=True,
               type=click.Choice(("siesta", "pyscf")),
-              help="whose parameters these are.")
+              # STATED, as the shape is: a PySCF calculation described
+              # without it became a SIESTA one, silently, until 2026-10-06.
+              help="whose parameters these are. REQUIRED -- never assumed.")
 @click.option("--psml-lib", default=None, metavar="DIR",
               # NO click-level exists check, deliberately (2026-08-28): the
               # anchor rule lives in pseudos.resolve_psml_lib (job-contracts
@@ -1537,7 +1539,7 @@ def summarize_cmd(kind: str, stage, bundle: str,
                             base=base))
     _ledger(base, "summarize", "verdict-written", stage=stage,
             out=str(out_path), points=len(res.points),
-            choice=(res.choice or None),
+            choice=res.choice,
             reported=report is not None)
 
 
