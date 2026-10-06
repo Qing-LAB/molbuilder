@@ -87,9 +87,12 @@ def _make_minimal_results(complete: bool = True) -> SpectraResults:
     )
 
 
-def _write_json(tmp_path: Path, payload: dict, name: str = "spectra.json") -> Path:
+def _write_json(tmp_path: Path, results, name: str = "spectra.json") -> Path:
+    """The result as a run's file: through our ONE writer,
+    `dump_spectra_json` -- a payload dumped by hand stood here until
+    2026-10-06 (W57 T2: our own file through our own writer)."""
     p = tmp_path / name
-    p.write_text(json.dumps(payload), encoding="utf-8")
+    dump_spectra_json(results, p)
     return p
 
 
@@ -114,7 +117,7 @@ class TestParseSpectraJsonHappyPath:
         existing `.spectra.json`); the wire shape is `spectra/results.py`.
         """
         original = _make_minimal_results()
-        p = _write_json(tmp_path, original.to_dict())
+        p = _write_json(tmp_path, original)
         loaded = parse_spectra_json(p)
         assert loaded.engine == "pyscf"
         assert loaded.n_atoms_total == 2
@@ -130,7 +133,7 @@ class TestParseSpectraJsonHappyPath:
         """os.PathLike (e.g. pathlib.Path) should work directly --
         the live-watch poller hands us Paths, not strings."""
         original = _make_minimal_results()
-        p = _write_json(tmp_path, original.to_dict())
+        p = _write_json(tmp_path, original)
         # Passing the Path object directly:
         loaded = parse_spectra_json(p)
         assert loaded.engine == "pyscf"
@@ -141,7 +144,7 @@ class TestParseSpectraJsonHappyPath:
         trips cleanly -- the parser doesn't reject incomplete runs,
         only malformed ones."""
         partial = _make_minimal_results(complete=False)
-        p = _write_json(tmp_path, partial.to_dict())
+        p = _write_json(tmp_path, partial)
         loaded = parse_spectra_json(p)
         assert loaded.phase_frequencies == PHASE_COMPLETE
         assert loaded.phase_raman       == PHASE_EMPTY
@@ -215,14 +218,13 @@ class TestParseSpectraJsonForwardCompat:
         """``engine_metadata`` is a free-form dict -- engines can
         stuff anything in there and it round-trips intact."""
         original = _make_minimal_results()
-        # Stuff some engine-specific metadata in.
-        d = original.to_dict()
-        d["engine_metadata"] = {
+        # Engine-specific metadata, set on the result as an engine sets it.
+        original.engine_metadata = {
             "pyscf_xc_grid_radial": 75,
             "custom_engine_flag":   True,
             "list_of_things":       [1, 2, 3],
         }
-        p = _write_json(tmp_path, d)
+        p = _write_json(tmp_path, original)
         loaded = parse_spectra_json(p)
         assert loaded.engine_metadata["pyscf_xc_grid_radial"] == 75
         assert loaded.engine_metadata["custom_engine_flag"]   is True
@@ -1011,34 +1013,12 @@ class TestComprehensiveRoundTrip:
 # --------------------------------------------------------------------- #
 
 
-class TestNumericFormats:
-    """Robustness against the numeric-literal flavors that engines
-    or hand-edited files might produce."""
-
-    def test_scientific_notation_lowercase_e(self, tmp_path):
-        """PLUMBING. A small energy written in scientific notation loads as the number
-        it spells.
-
-        Catches `parse_float` -- the hook the non-finite check is installed
-        through -- mangling ordinary exponent notation. The hook replaces
-        CPython's float conversion for EVERY float literal in the document, so a
-        mistake in it does not fail loudly; it changes values.
-
-        Contract: `parse/sidecars/spectra.py::_strict_finite_float`.
-
-        NOTE: this writes the value through `json.dumps`, so the literal actually
-        on disk is whatever Python chose to emit -- the notation the name promises
-        is only guaranteed by the uppercase-E sibling, which hand-writes its JSON.
-        """
-        payload = _make_minimal_results().to_dict()
-        # Replace SCF energy with a scientific-notation literal.
-        # We can't easily inject the textual literal via to_dict
-        # (Python json picks the form on emit), so write the JSON
-        # by hand for this case.
-        payload["equilibrium"]["scf_energy_eh"] = -1.5e-10
-        p = _write_json(tmp_path, payload)
-        loaded = parse_spectra_json(p)
-        assert loaded.equilibrium_scf_eh == pytest.approx(-1.5e-10)
+# `TestNumericFormats` retired 2026-10-06 (W57 T2): it tested "the numeric-
+# literal flavors that engines or hand-edited files might produce" -- a
+# `.spectra.json` written by hand.  The file is our writer's
+# (`dump_spectra_json`), read back by our reader; handcrafted input is not
+# molbuilder's to support (MEMORY: build molbuilder, don't clean up
+# handcrafted input).
 
 
 class TestComplexNumbersNotInWireFormat:
