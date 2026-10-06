@@ -1983,7 +1983,8 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         # 2026-10-05, which a prepped rung refuses.
         from .commands import (block, launch_lines, rollback,
                                run_first as _run_first)
-        from .continuation import read_run, state_remedy
+        from .continuation import (not_launched_again, read_run,
+                                   state_remedy)
         q2 = ("\n  (strict composition, ruling Q2: transport never runs its "
               "pieces for you.)")
         redo = rollback(f"`{upstream}`'s prep", base=base)
@@ -2013,7 +2014,8 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
                                  verdict=False)
                         if newest is not None else (None, "pending", None))
             why, first = state_remedy(
-                c, s, block(launch_lines("run", upstream, base=base)))
+                c, s, block(launch_lines("run", upstream, base=base)),
+                refused=not_launched_again(base, upstream))
             raise PrepError(
                 f"the {stage} stage consumes {filename} from {upstream}, "
                 f"and {upstream} has no attempt that ended on its own with "
@@ -2374,41 +2376,22 @@ def _rung_kind(task, stage_name: Optional[str]) -> str:
     return str(task.calculation)
 
 
-def _under_description(flags, declared, chosen=None) -> "Resources":
-    """The caller's allocation over the description's -- FIELD by field.
-
-    Two things come out of `task.json`, and they are two because they answer
-    two questions:
-
-      * ``allocation`` -- the queue, the wall, the memory and the GPU
-        binding this calculation asks the SCHEDULER for (`stages.md`
-        § 6.8a).
-      * the run card's machine items -- the launch SHAPE the person chose:
-        *"run it at eight"* (``chosen``, `stages.md` § 6.8d).  A ``bench``
-        entry is a question to measure at any length, never an ask.
-
-    A flag is what the person is asking for right now, so a stated flag wins
-    and an unstated one leaves the file's answer standing.  Whole-object
-    precedence would make `--np 8` erase a memory ask nobody mentioned, which
-    is the class of silent loss this whole round has been about.
-
-    **A PURE FOLD**: the two pieces arrive as arguments, so this function
-    reads no file and no enumerator and can be exercised with two objects.
-    The SHAPE's producer is `prep_inputs.declared_run_shape`: a direct map
-    of the condition's machine items onto `Resources` fields, which leaves
-    every field the condition does not name to the chain that already
-    answers it (`running-a-job.md` § 3.1).
-    """
-    return _fold_allocation(flags, declared, chosen)[0]
-
-
 def _fold_allocation(flags, declared, chosen=None):
-    """``(Resources, where each value came from)`` -- the fold of
-    :func:`_under_description`, with each field it holds named by its source:
+    """``(Resources, where each value came from)`` -- the caller's
+    allocation over the description's, with each field it holds named by
+    its source:
     ``flag``, ``run card`` or ``description`` -- what a run's placement
     records beside the queue it was admitted on (`job-system.md` § 6.0).
     ONE fold: the sources are read off the same precedence that fills the
-    values, never worked out a second way."""
+    values, never worked out a second way.
+
+    FIELD BY FIELD: a flag is what the person asks for now, so a stated
+    one wins and an unstated one leaves the file's answer standing --
+    whole-object precedence would make ``--np 8`` erase a memory ask
+    nobody mentioned.  ``declared`` is the description's ``allocation``
+    (`stages.md` § 6.8a); ``chosen``, the run card's launch shape
+    (§ 6.8d, `prep_inputs.declared_run_shape`).  *(Its value half was
+    `_under_description` until 2026-10-05.)*"""
     out = flags or Resources()
     import dataclasses as _dc
     known = {f.name for f in _dc.fields(Resources)}

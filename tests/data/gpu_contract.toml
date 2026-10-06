@@ -97,15 +97,16 @@ name = "one node must hold the GPUs asked for -- refused at prep, on the queue t
 run = { use_gpu = true, gpu_count = 8, mpi_np = 8 }
 refused = "needs 8 GPUs but gpu allows 4 GPUs"
 
+# A queue named nowhere reaches launch only for a benchmark, whose shelves'
+# queue is named when they are sent (the unit 11 review, 2026-10-05).
 [[case]]
 name = "the queue list checks the job's own GPU count"
-run = { use_gpu = true, gpu_count = 8, mpi_np = 8 }
+bench = { use_gpu = [true], gpu_count = [2], mpi_np = [2] }
 prep = ["--no-sbatch"]
 allocation_unset = ["domain"]
 launch = []
 launch_refused = "no --domain"
-listing = ["needs 8 GPUs but gpu allows 4 GPUs",
-           "needs 8 GPUs but cpu allows 0 GPUs (its record lists no GPUs)"]
+listing = ["needs 2 GPUs but cpu allows 0 GPUs (its record lists no GPUs)"]
 
 [[case]]
 name = "a GPU job's cores fit the widest node that has GPUs"

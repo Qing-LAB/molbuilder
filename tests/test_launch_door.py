@@ -104,20 +104,20 @@ def test_a_stage_is_shown_asked_and_sent_with_its_own_queues_wall(cluster):
     refused, naming the prep; after it, the exact line is shown -- the
     calculation's name first in `-J`, the queue named at launch, the wall
     prep's flag STATED, the launch-door claim -- and asked about; with no
-    one to answer nothing is sent or recorded.  With `--yes` that very line
-    is sent and recorded.  `prep`'s header named `debug`, the queue that
+    one to answer nothing is sent and the launch is REFUSED, written down
+    (`project-layout.md` § 1.6.4: a script is never told it went).  With
+    `--yes` that very line is sent and recorded.  `prep`'s header named `debug`, the queue that
     prep named, under a wall it admits (prep admits the run on the queue
     it names, `job-system.md` § 5.0 checkpoint 4); the wall is the stated
     ten minutes on either queue, never one queue's ceiling.
 
-    The question and its answer are written down, a *no* included
-    (`job-system.md` § 5.0, agreement 6); a dry run writes nothing, the
-    ledger included (§ 6.0, step 3).
+    The question and its answer are written down (`job-system.md` § 5.0,
+    agreement 6), and so is the refusal.  *(A dry run writing nothing is
+    the launch protocol's rows, `launch_protocol.toml`.)*
 
     MUTATIONS THIS MUST FAIL AGAINST: the stage's door putting a queue's
-    ceiling in place of the stated wall; sending without asking; the ledger
-    calling a declined launch a launch; a declined launch leaving no line
-    (W55 D6); a dry run writing one (D14)."""
+    ceiling in place of the stated wall; sending without asking; a launch
+    with nobody to ask exiting 0, or leaving no line."""
     bundle, calls = cluster
     r = jobset("launch", "run", "coarse", "--bundle", bundle,
                "--mode", "submit", "--domain", "htc")
@@ -130,7 +130,7 @@ def test_a_stage_is_shown_asked_and_sent_with_its_own_queues_wall(cluster):
 
     r = jobset("launch", "run", "coarse", "--bundle", bundle,
                "--mode", "submit", "--domain", "htc")
-    assert r.exit_code == 0, r.output
+    assert r.exit_code != 0, r.output
     shown = _line(r.output)
     assert "about to submit" in r.output, r.output
     assert _flag(shown, "-J") == "H2/coarse", shown
@@ -138,19 +138,12 @@ def test_a_stage_is_shown_asked_and_sent_with_its_own_queues_wall(cluster):
     assert _flag(shown, "-t") == "0-00:10:00", (
         "sent under a wall nobody stated: " + " ".join(shown))
     assert "ALL,MB_LAUNCHED_BY=jobset-launch" in shown, shown
-    assert "nothing submitted" in r.output, r.output
+    assert "nobody to ask" in r.output, r.output
     assert calls_made(calls) == [], "sent without the person's yes"
     assert not (attempt / "run.json").exists()
-    asked = _ledger(bundle)[-1]
-    assert (asked["decision"], asked["answer"]) == (
-        "question", "no answer (not a terminal): nothing sent"), asked
-
-    was = _ledger(bundle)
-    r = jobset("launch", "run", "coarse", "--bundle", bundle,
-               "--mode", "submit", "--domain", "htc", "--dry-run")
-    assert r.exit_code == 0, r.output
-    assert calls_made(calls) == [] and not (attempt / "run.json").exists()
-    assert _ledger(bundle) == was, "the dry run wrote to the ledger"
+    refused = _ledger(bundle)[-1]
+    assert (refused["decision"], "nobody to ask" in refused["reason"]) == (
+        "refused", True), refused
 
     r = jobset("launch", "run", "coarse", "--bundle", bundle,
                "--mode", "submit", "--domain", "htc", "--yes")
@@ -301,7 +294,9 @@ def test_a_flat_stage_still_unconcluded_is_asked_like_an_attempt(
         tmp_path, monkeypatch):
     """On the flat layout a stage's launch is its `<basename>.run.json`:
     launched and not concluded, launching it again asks first, as the
-    hierarchy does -- nothing is sent over a run that may still be going.
+    hierarchy does -- nothing is sent over a run that may still be going,
+    and with nobody to ask the launch is refused (`project-layout.md`
+    § 1.6.4: "Non-interactive: refused with the same story").
 
     MUTATION THIS MUST FAIL AGAINST: "was it launched" reading an attempt's
     `run.json` only (a flat stage always reads never launched)."""
@@ -314,7 +309,7 @@ def test_a_flat_stage_still_unconcluded_is_asked_like_an_attempt(
     assert (bundle / "H2_01_coarse.run.json").is_file()
     r = jobset("launch", "run", "coarse", "--bundle", bundle,
                "--mode", "submit", "--domain", "htc")
-    assert r.exit_code == 0, r.output
+    assert r.exit_code != 0 and "nobody to ask" in r.output, r.output
     assert "never CONCLUDED" in r.output, r.output
     assert len(calls_made(calls)) == 1, "sent again over a run in the queue"
 
@@ -323,7 +318,7 @@ def test_a_send_over_a_folder_changed_since_its_plan_is_refused(cluster):
     """`job-system.md` § 6.0, step 4: the send checks the folder against the
     one its plan was made from -- a file the plan read, written since, or
     the stage launched since by another launch, is refused, saying to
-    launch again; nothing is sent, nothing recorded.
+    launch again; nothing is sent, and the refusal is written down.
 
     API-LEVEL because the road cannot reach it: one `launch` makes its plan
     and sends it in one command, and the folder changes in between only
@@ -341,9 +336,8 @@ def test_a_send_over_a_folder_changed_since_its_plan_is_refused(cluster):
     js = JobSet.load(bundle / "job-set.json")
     attempt = bundle / "01_coarse" / "run-0"
 
-    def plan():
-        return plan_launch(js, bundle, mode="submit", only="coarse",
-                           domain="debug")
+    def plan():                  # the queue its prep admitted: `debug`
+        return plan_launch(js, bundle, mode="submit", only="coarse")
 
     shown = plan()
     deck = next(attempt.glob("*.fdf"))
@@ -355,6 +349,7 @@ def test_a_send_over_a_folder_changed_since_its_plan_is_refused(cluster):
     assert "the folder changed since this launch was planned" in said, said
     assert deck.name in said and "Launch again" in said, said
     assert calls_made(calls) == [] and not (attempt / "run.json").exists()
+    assert _ledger(bundle)[-1]["decision"] == "refused"
 
     shown = plan()
     r = jobset("launch", "run", "coarse", "--bundle", bundle,

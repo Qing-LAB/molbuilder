@@ -168,6 +168,24 @@ def one_process(engine) -> bool:
 #: and memory, its ranks, cores per rank and GPUs (`job-system.md` § 6.0).
 _PLACED = ("domain", "time", "mem", "mpi_np", "cpus_per_task", "gres")
 
+#: The values each limit a queue refuses is asked against
+#: (`scheduler.admit.Refusal.limit`).
+_REFUSED = {"walltime": ("time",), "mem": ("mem",),
+            "cores": ("mpi_np", "cpus_per_task"),
+            "cpus_per_job": ("mpi_np", "cpus_per_task"),
+            "gpus": ("gres",)}
+
+
+def _stated_at(field: str, source: str) -> str:
+    """Where a launch value was stated, as the person changes it: the
+    flag on this prep, the run card, or the description."""
+    words, flag = {**_LAUNCH_WORDS, "gres": ("GPUs", "--gpus N")}[field]
+    if source == "flag":
+        return f"{words}: {flag.split()[0]} on this prep"
+    if source == "run card":
+        return f"{words}: the run card (`execution` in task.json)"
+    return f"{words}: the description (`allocation` in task.json)"
+
 
 def admitted(resources, environment, *, one_process: bool, stage=None,
              sources=None):
@@ -190,12 +208,31 @@ def admitted(resources, environment, *, one_process: bool, stage=None,
                       request_of(resources, one_process=one_process),
                       prefer_gpu=gpu_request(resources).uses, named=named)
     except Unplaceable as exc:
+        # WHERE EACH REFUSED VALUE WAS STATED, read off the fold that
+        # filled it (`job-system.md` § 5.0, checkpoint 4: "the file and key
+        # where each value is stated") -- this named fixed places until
+        # 2026-10-05, the unit 11 review.
+        said, at = sources or {}, []
+        for r in exc.reasons:
+            for f in _REFUSED.get(r.limit, ()):
+                if (getattr(resources, f, None) not in (None, "", 0)
+                        and f in said):
+                    line = _stated_at(f, said[f])
+                    if line not in at:
+                        at.append(line)
+        other = "name another of the record's queues"
+        if any(r.limit == "gpus" for r in exc.reasons):
+            from ..scheduler import domain_serves_gpu
+            able = [d.name for d in (environment.domains or ())
+                    if domain_serves_gpu(d)]
+            other = (f"name a queue with GPUs: {', '.join(able)}" if able
+                     else "the target's record lists no queue with GPUs")
         return None, (f"{'stage ' + repr(stage) + ' ' if stage else ''}does "
                       f"not fit the queue {named!r} on the target's record:\n    "
                       + "\n    ".join(r.message for r in exc.reasons)
-                      + "\n  Ask for less -- the run card's ranks, cores and "
-                        "GPU count; the description's wall and memory -- or "
-                        "name another of the record's queues.")
+                      + ("\n  Ask for less where it is stated:\n    "
+                         + "\n    ".join(at) if at else "")
+                      + f"\n  -- or {other}.")
     if bound is None:
         return None, None
     said = sources or {}

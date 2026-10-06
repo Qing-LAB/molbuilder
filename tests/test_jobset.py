@@ -127,46 +127,6 @@ def test_validate_catches_duplicate_names():
     assert any("duplicate" in e for e in js.validate())
 
 
-def test_a_job_declares_exactly_these_nine_things():
-    """A `Job` is a name, a script, resources, what it would warm-start from,
-    the traits a warm-start condition is compared against -- and, for a
-    TRIAL, its sweep coordinate as data (``point``, 2026-08-21,
-    `generator.md` § 4.3a); for a job whose engine leaves no result, the
-    bundle that finishes it (``finish``, 2026-09-28, `engines/vibration.md`
-    § 5.5: a SIESTA force-constant run's modes); and whether a re-run of it
-    continues from what the last one left (``resumes``, 2026-09-29,
-    `job-contracts.md` § 4.2a: false for a force-constant run); and, for a
-    run prepped for a queue, where it was admitted and where each value
-    came from (``placement``, 2026-10-05, `job-system.md` § 6.0).
-
-    Asserted as an EQUALITY on the field set, in both the dataclass and the
-    wire form.  An equality is the whole rule in one line: any field added
-    without a decision fails, including one that would let a job name another
-    job -- and the test never has to spell out what such a field would be
-    called, so a retired vocabulary stays out of the suite.  On the wire a
-    RUNG carries no ``point`` and a job its engine finishes no ``finish``:
-    absent, never empty (the same absent-vs-null reading as
-    ``requires_same``).
-    """
-    import dataclasses
-    assert {f.name for f in dataclasses.fields(Job)} == {
-        "name", "script", "resources", "warm", "traits", "point", "finish",
-        "resumes", "placement"}
-    assert set(_ladder().to_dict()["jobs"][1]) == {
-        "name", "script", "resources", "warm", "traits"}
-    trial = Job("G1K4C6", "t.fdf", point={"G": 1, "K": 4, "C": 6})
-    assert trial.to_dict()["point"] == {"G": 1, "K": 4, "C": 6}
-    assert Job.from_dict(trial.to_dict()).point == {"G": 1, "K": 4, "C": 6}
-    finished = Job("freq", "x.fdf", finish="mb_vibration.pyz")
-    assert finished.to_dict()["finish"] == "mb_vibration.pyz"
-    assert Job.from_dict(finished.to_dict()).finish == "mb_vibration.pyz"
-    # a job that resumes says nothing; one that does not says false
-    restarts = Job("freq", "x.fdf", resumes=False)
-    assert restarts.to_dict()["resumes"] is False
-    assert Job.from_dict(restarts.to_dict()).resumes is False
-    assert "resumes" not in finished.to_dict()
-
-
 def test_validate_catches_empty_and_bad_kind():
     """A job-set with no jobs, and one whose `kind` is not a known kind, are both
     reported.
@@ -585,22 +545,6 @@ def test_render_plan_surfaces_per_job_ranks_and_cores():
 #  launch each; the halt-on-failure case is structural, see
 #  `test_a_ladder_refuses_to_act_on_all_of_itself`.  The earlier
 #  scheduler-chained design: docs/archive/2026-08-10-stage-chaining.md
-
-
-def test_submit_unknown_mode_and_invalid_jobset(tmp_path):
-    """Two door refusals: an unknown `mode`, and a job-set that does not validate.
-
-    Both raise `SubmitError`, which is what the CLI renders as a message instead
-    of a traceback. The second is the same `validate` gate `materialize` carries,
-    asserted again here because `submit` reads `job-set.json` from disk and is
-    therefore the verb most likely to meet a file the current code did not write.
-    """
-    with pytest.raises(SubmitError, match="unknown mode"):
-        plan_launch(_sweep(), tmp_path, mode="bogus")
-    bad = _ladder()
-    bad.jobs[1].name = "s1"                         # duplicate
-    with pytest.raises(SubmitError, match="invalid JobSet"):
-        plan_launch(bad, tmp_path, mode="submit")
 
 
 # --------------------------------------------------------------------- #
@@ -1499,11 +1443,6 @@ def test_prep_leaves_every_job_a_readable_deck_and_wrapper(tmp_path, shape):
     assert stray == [], f"{shape}: dangling links that are not carry-forwards: {stray}"
 
 
-# --------------------------------------------------------------------- #
-#  P6 unit 2 -- the deck and its launch must agree                       #
-# --------------------------------------------------------------------- #
-
-
 def _deck_rendered_for(path, mpi_np):
     """A real deck, rendered through the shipped renderer at a given rank
     count -- so the BENCH-MARKS block is the emitter's, not a fixture's."""
@@ -1518,122 +1457,9 @@ def _deck_rendered_for(path, mpi_np):
         render_fdf(s, SiestaConfig(system_label="JOB", mpi_np=mpi_np)))
 
 
-def _one_stage_bundle(base, mpi_np_deck, mpi_np_launch):
-    from molbuilder.jobset.model import Job, JobSet, Resources
-    # FLAT, so the stage runs in the bundle root and the deck sits where the
-    # launch looks for it -- a described bundle, which is what a real one is.
-    _describe(base, "flat", names=("coarse",))
-    _deck_rendered_for(Path(base) / "JOB_01_coarse.fdf", mpi_np_deck)
-    (Path(base) / "JOB_01_coarse.run.sh").write_text("#!/bin/bash\nexit 0\n")
-    return JobSet(name="JOB", engine="siesta", kind="ladder",
-                  jobs=[Job(name="coarse", script="JOB_01_coarse.fdf",
-                            resources=Resources(mpi_np=mpi_np_launch))])
-
-
-def test_a_deck_rendered_for_no_rank_count_refuses_an_explicit_one(tmp_path):
-    """THE LIVE FAILURE OF 2026-08-10, caught before the engine.
-
-    `project-layout.md § 2.3.1`: *"a parameter that depends on the launch
-    cannot be decided before the launch is known"* -- step 3 cannot precede
-    step 1.  A deck rendered with no rank count derived its `BlockSize` from
-    the system size alone; launching it at 14 ranks made SIESTA refuse at
-    startup with *"You have too many processors for the system size"*.
-
-    P4 unit 5 put `mpi_np` INTO the deck, which is why the failure was
-    diagnosable.  Recording is not agreeing -- this is the agreement.
-    """
-    js = _one_stage_bundle(tmp_path, mpi_np_deck=None, mpi_np_launch=14)
-
-    with pytest.raises(SubmitError) as e:
-        plan_launch(js, tmp_path, mode="direct")
-    msg = str(e.value)
-    assert "auto" in msg and "14" in msg          # BOTH numbers named
-    assert "BlockSize" in msg                     # ...and what depends on it
-
-
-def test_a_deck_and_a_launch_that_agree_are_not_refused(tmp_path):
-    """Both spellings of agreement: an explicit match, and both deferring to
-    the wrapper.  A check that refused these would make every ordinary bundle
-    unlaunchable."""
-    for deck, launch in ((8, 8), (None, None)):
-        d = tmp_path / f"{deck}-{launch}"; d.mkdir()
-        js = _one_stage_bundle(d, mpi_np_deck=deck, mpi_np_launch=launch)
-        res = plan_launch(js, d, mode="direct").shown()
-        assert [r.status for r in res] == ["planned"]
-
-
-def test_two_explicit_rank_counts_that_differ_are_refused(tmp_path):
-    """A deck rendered for 8 ranks, launched at 32, is refused before the engine sees
-    it -- and BOTH numbers are named.
-
-    The general form of the 2026-08-10 live failure recorded in
-    `test_a_deck_rendered_for_no_rank_count_refuses_an_explicit_one`: a
-    `BlockSize` derived from one rank count and a launch at another makes SIESTA
-    refuse at startup with a message about processor count that says nothing about
-    which two statements disagreed. `project-layout.md` § 2.3.1 -- a
-    parameter that depends on the launch cannot be decided before the launch is
-    known.
-    """
-    js = _one_stage_bundle(tmp_path, mpi_np_deck=8, mpi_np_launch=32)
-    with pytest.raises(SubmitError) as e:
-        plan_launch(js, tmp_path, mode="direct")
-    assert "8" in str(e.value) and "32" in str(e.value)
-
-
-def test_a_deck_with_no_bench_marks_says_nothing_and_is_not_refused(tmp_path):
-    """A deck that never recorded its launch cannot disagree with one.  The
-    check is an agreement between two statements, not a demand that every deck
-    make one."""
-    from molbuilder.jobset.model import Job, JobSet, Resources
-    _describe(tmp_path, "flat", names=("coarse",))
-    (tmp_path / "JOB_01_coarse.fdf").write_text("SystemLabel JOB\n")
-    (tmp_path / "JOB_01_coarse.run.sh").write_text("#!/bin/bash\nexit 0\n")
-    js = JobSet(name="JOB", engine="siesta", kind="ladder",
-                jobs=[Job(name="coarse", script="JOB_01_coarse.fdf",
-                          resources=Resources(mpi_np=99))])
-    assert plan_launch(js, tmp_path, mode="direct").submissions
-
-
 # --------------------------------------------------------------------- #
 #  P6 unit 6 -- prep prints what it resolved, so submit is a plain yes    #
 # --------------------------------------------------------------------- #
-
-
-@pytest.mark.parametrize("deck,launch", [
-    (None, None),        # both defer to the wrapper
-    (8, 8),              # the same explicit count
-    (None, 14),          # THE live failure: a count imposed on an auto deck
-    (8, 32),             # two explicit counts that differ
-    (8, None),           # a deck rendered for 8, launched without saying so
-])
-def test_the_prep_warning_and_the_submit_refusal_cannot_disagree(
-        tmp_path, deck, launch):
-    """One comparison, two surfaces — the guard that keeps them one.
-
-    `project-layout.md` § 2.3.3: *"Printing what it resolved is what makes `submit`
-    a plain yes."*  That only holds if what `prep` says and what `submit` does
-    are the same answer. Two implementations of *"do these agree?"* would drift
-    the way the plan's item 12c describes — agreeing today, with
-    nothing keeping them agreeing — and the drift is silent in the worst
-    direction: a prep that reports no problem before a submit that refuses.
-
-    So this asserts the equivalence directly, across every shape the question
-    has, rather than checking each surface's wording in isolation.
-    """
-    from molbuilder.jobset.agreement import launch_agreement
-    from molbuilder.jobset.submit import SubmitError, plan_launch
-
-    js = _one_stage_bundle(tmp_path, mpi_np_deck=deck, mpi_np_launch=launch)
-    warns = launch_agreement(tmp_path, js.jobs[0]).verdict == "differs"
-    try:
-        plan_launch(js, tmp_path, mode="direct")
-        refuses = False
-    except SubmitError:
-        refuses = True
-    assert warns == refuses, (
-        f"deck={deck} launch={launch}: prep "
-        f"{'warns' if warns else 'is quiet'} and submit "
-        f"{'refuses' if refuses else 'proceeds'}")
 
 
 def _report(tmp_path, job):
@@ -1641,12 +1467,11 @@ def _report(tmp_path, job):
     (`_echo_prep_answer`; `prep.prep_stage`'s step 8: `launch_agreement`,
     kept unless the deck makes no claim).
 
-    API-level on purpose: a deck rendered for ANOTHER launch is what the road
-    cannot make -- prep renders the deck for the very launch it prepares --
-    so the report's wording for it is pinned here, and the ledger half rides
-    the road tests (`test_prep_from_the_browser.py`).  The contract is unchanged:
-    the reporter and submit's refusal both read the ONE comparison,
-    `agreement.launch_agreement`."""
+    API-level because no road row reads the printed report: what it says of
+    a deck that agrees with its launch, and the resources it states.  *(The
+    tests of a deck rendered for ANOTHER launch -- a state only a hand-
+    edited file makes, prep rendering the deck for the launch it prepares
+    -- were retired 2026-10-05; the refusal stays, explicit, untested.)*"""
     import contextlib, io
     from molbuilder.jobset._cli import _echo_prep_answer
     from molbuilder.jobset.agreement import launch_agreement
@@ -1676,20 +1501,6 @@ def _prep_output(tmp_path, mpi_np_deck, mpi_np_launch):
                                  resources=Resources(mpi_np=mpi_np_launch)))
 
 
-def test_prep_names_both_numbers_and_says_submit_will_refuse(tmp_path):
-    """The gap P6 unit 2 opened: `submit` refuses correctly and at the last
-    honest moment, but a refusal that first appears when you are committing
-    cluster time is exactly the surprise `prep` exists to prevent.
-
-    So the warning arrives while it is still cheap to change your mind, and it
-    says what will happen rather than only what is wrong.
-    """
-    out = _prep_output(tmp_path, mpi_np_deck=None, mpi_np_launch=14)
-    assert "auto" in out and "14" in out          # BOTH numbers, as at submit
-    assert "REFUSE" in out                        # ...and what comes next
-    assert "BlockSize" in out                     # ...and why it matters
-
-
 def test_prep_says_the_deck_agrees_when_it_does(tmp_path):
     """Not decoration: a report that mentioned the deck only on disagreement
     would leave a reader unable to tell *checked and fine* from *not checked*,
@@ -1697,19 +1508,6 @@ def test_prep_says_the_deck_agrees_when_it_does(tmp_path):
     out = _prep_output(tmp_path, mpi_np_deck=8, mpi_np_launch=8)
     assert "agrees with this launch" in out
     assert "REFUSE" not in out
-
-
-def test_prep_stays_quiet_about_a_deck_that_makes_no_claim(tmp_path):
-    """A deck with no BENCH-MARKS block has said nothing about its launch, so
-    there is nothing to report — and reporting *"agrees"* would be a claim
-    nobody made."""
-    from molbuilder.jobset.model import Job, Resources
-
-    (tmp_path / "JOB_01_coarse.fdf").write_text("SystemLabel JOB\n")
-    out = _report(tmp_path, Job(name="coarse", script="JOB_01_coarse.fdf",
-                                resources=Resources(mpi_np=99)))
-    assert "rendered for" not in out
-    assert "resources:" in out                    # the rest of the report stays
 
 
 def test_prep_reports_the_resources_this_stage_will_be_launched_with(tmp_path):

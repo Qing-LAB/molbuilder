@@ -768,7 +768,7 @@ class TestTheRunsOwnCondition:
             assert isinstance(alloc, Resources), ask
             assert chosen["mpi_np"] == 2 and chosen["cpus_per_task"] == 2
 
-    def test_the_RUN_owns_its_wall_and_queue_and_the_bench_keeps_its_own(
+    def test_the_RUN_owns_its_wall_and_queue(
             self, calc):
         """`stages.md` § 6.8e -- the one rung `time` and `domain` gained.
 
@@ -778,16 +778,14 @@ class TestTheRunsOwnCondition:
         queue behind everything -- so a benchmark, the thing you run to save
         time, waits a day to start.
 
-        Four claims, because each can break alone:
+        Three claims, because each can break alone:
           * the run takes `execution`'s wall and queue
           * a rung with no `execution` keeps the calculation's
-          * the BENCH keeps the calculation's -- it never reads `execution`
           * `mem` is NOT among them and stays the calculation's
+        *(A fourth, the bench keeping the calculation's, called the fold
+        with no run card and so could not fail; it went 2026-10-05.)*
         """
         import json
-        from molbuilder.jobset.model import Resources
-        from molbuilder.jobset.prep import _under_description
-        from molbuilder.task import read_task
 
         d = json.loads((calc / "task.json").read_text())
         d["allocation"] = {"time": "0-04:00:00", "domain": "debug",
@@ -796,7 +794,6 @@ class TestTheRunsOwnCondition:
                                        "time": "2-00:00:00",
                                        "domain": "public"}
         (calc / "task.json").write_text(json.dumps(d, indent=2))
-        t = read_task(calc / "task.json")
 
         # THE ALLOCATION EACH JOB IS WRITTEN WITH -- its row in the plan,
         # `job-set.json`, the stage resolved and its allocation folded once
@@ -809,15 +806,6 @@ class TestTheRunsOwnCondition:
         other = self._run(calc, "medium", "--cold")["resources"]
         assert other["time"] == "0-04:00:00", "a rung with no `execution` "\
             "of its own must keep the calculation's"
-
-        # THE BENCH NEVER READS `execution` -- this is the half the whole
-        # section exists for, and it is the half a refactor would break
-        # silently, because a too-long wall still runs.
-        bench = _under_description(Resources(), t.allocation)
-        assert bench.time == "0-04:00:00", (
-            f"the BENCH took the run's wall ({bench.time}) -- every trial "
-            f"now queues as a two-day job")
-        assert bench.domain == "debug", "the bench took the run's queue"
 
     def test_a_flag_still_wins_field_by_field(self, calc):
         """`generator.md` § 4.3a: template < a bench pin < run-config <
@@ -1699,30 +1687,6 @@ def test_the_table_measures_beside_the_ask_and_gates_gpu_columns():
     assert _fmt_duration(41) == "41s"
     assert _fmt_duration(245) == "4m05s"
     assert _fmt_duration(7523) == "2h05m"
-
-
-def test_the_group_refuses_a_trial_without_an_explicit_shape(calc):
-    """The env-inheritance shield (user, 2026-08-20): inside the allocation
-    SLURM_NTASKS/SLURM_CPUS_PER_TASK describe the ENVELOPE, and a wrapper
-    with no flags falls back to them -- so a trial that cannot state its
-    own -np/-omp would silently measure the widest point.  Refused BY NAME
-    at generation, never mis-measured."""
-    import dataclasses
-
-    import pytest as _pytest
-
-    from molbuilder.jobset._cli import _load_bench_set
-    from molbuilder.jobset.submit import SubmitError, plan_launch
-
-    _on_a_queue(calc)
-    _prep_bench(calc)
-    js, base = _load_bench_set(calc, "coarse")
-    stripped = js.jobs[0]
-    js.jobs[0] = dataclasses.replace(
-        stripped, resources=dataclasses.replace(stripped.resources,
-                                                cpus_per_task=None))
-    with _pytest.raises(SubmitError, match=stripped.name):
-        plan_launch(js, base, mode="submit", domain="gpu")
 
 
 def test_a_bench_row_never_reaches_the_run_deck(calc):

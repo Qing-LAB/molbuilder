@@ -644,9 +644,10 @@ framework rule, not a script patch)*:
   trend (`bench-group*.log`; `summarize` mid-flight) and stop early — an
   early `scancel` of the remaining shelves still summarizes to a verdict
   over what completed, and the queue may even run shelves concurrently.
-  *(An early stop's un-run riders are already stamped `launched`, so the
-  remainder is re-measured per trial by name — the move-aside path —
-  never by re-submitting the group.)*
+  *(An early stop's un-run riders are already stamped `launched`; to
+  measure them, restore the state saved before the benchmark's prep and
+  prep it anew — the summary of what completed is read first. The
+  move-aside path this named was retired 2026-08-18.)*
 - **`summarize` is unchanged in kind** — allocation-blind, spanning
   whichever trials have landed.  What it gains is data: `job-set.json`
   records each trial's point (the coordinate as data, never parsed back

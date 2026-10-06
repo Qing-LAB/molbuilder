@@ -570,9 +570,11 @@ which is why there is no migration step and nothing to reindex.
 
 ### 1.5 An attempt is immutable
 
-**A run directory is written once and never modified.** Running a stage a second
-time — a `--continue`, a redo after a change — makes `run-1`, carrying what it
-needs from `run-0` and leaving `run-0` exactly as it was.
+**A run directory is written once and never modified.** Launching a stage again
+after it stopped makes `run-1`, carrying what it needs from `run-0` and leaving
+`run-0` exactly as it was. A redo after a change is not a run: it is the
+state saved before the stage's prep, restored, and a prep anew
+([`job-system.md`](?doc=execution/job-system.md) § 5.0).
 
 **A transport rung is the one exception, by design** *(user, 2026-10-05;
 [`engines/transport.md`](?doc=engines/transport.md) § 2a.11)*: launching it
@@ -755,12 +757,13 @@ place it.
 `02_tight/run-0`; within a stage it lands in `01_coarse/run-1`. Same decision,
 same `continued_from` record, different depth.
 
-> **The one case the rule does not name, extended rather than left silent.** A
-> **cold** redo — running a stage again from scratch after a crash that left
-> nothing worth keeping — is still a `run-x`, with `continued_from` **empty** and
-> no warm files copied. Otherwise § 1.5's *"a redo is `run-2`"* would have
-> nowhere to land. Continuation is why a `run-x` normally exists; the record is
-> what says when it did not.
+> **A redo from scratch is not a run.** Running a stage again from nothing —
+> after a crash that left nothing worth keeping — is the state saved before
+> its prep, restored, and a prep anew; continuation is the one reason a
+> `run-x` exists (user, 2026-10-05: a failed execution is recovered from the
+> checkpoint, never patched in place). *(Until then this section kept a cold
+> `run-x`, `continued_from` empty, which no verb has made since a prepped
+> stage stopped being prepped again, 2026-10-02.)*
 
 > ✅ **The one violation is gone (2026-08-10).** `runwrap.py`'s `attempt_dirs`
 > prologue created and arranged an attempt in shell — scanning for run
@@ -921,7 +924,7 @@ over a launched attempt**, reads the marker:
 
 | the latest attempt's latest run | behaviour |
 |---|---|
-| carries the marker | continue, saying so: *"concluded (rc=0 at …): continuing 01_coarse/run-1 -> run-2"* |
+| carries the marker | continue, saying so: *"WOULD launch it again into run-2: it continues from 01_coarse/run-1 (its own latest run; concluded rc=0 …)"* — when its kind continues from a run of its own; one that does not is refused, its redo the rollback ([`job-system.md`](?doc=execution/job-system.md) § 5.4) |
 | launched, **no marker** | **warn and ask.** It may still be running (continuing would copy torn warm files under a live engine) — or it was force-stopped, in which case the saved state is *valid* and continuing is exactly what a person wants after a walltime kill. **The user judges; molbuilder never decides over them.** Interactive: a confirm that states both possibilities. Non-interactive: refused with the same story; `--yes` is the recorded judgement |
 
 > **This answers a PROCESS question, never a chemistry one.** *Did the
@@ -957,13 +960,17 @@ This is the same shape one level down: a redo of a stage — `run-1` after
 > **Re-submitting continues by default** *(user, 2026-08-21: "you submit
 > again and by default it continues")*: re-submitting a stage whose latest
 > attempt has been launched opens the next `run-<n>` warm from that attempt,
-> says so, and launches it — after the marker check of § 1.6.4. The same
+> says so, and launches it — after the marker check of § 1.6.4 — when its
+> kind continues from a run of its own; one that does not (a force-constant
+> run, a stage set `restart: clean`) is refused, its redo the rollback
+> ([`job-system.md`](?doc=execution/job-system.md) § 5.4). The same
 > stage's *latest* attempt is the one source that is never a guess: a
-> wall-killed run's newest state *is* the state. Everything else is `prep`'s
-> — the stage before it by default, an older attempt or another stage by
-> `--from`, a fresh start by `prep run <stage> --cold` — and a launched run that left no state to
-> continue (it likely died at startup) is refused with that story, never
-> silently started fresh. Benchmark trials keep § 1.5's immutability refusal.
+> wall-killed run's newest state *is* the state. Everything else is the
+> stage's first `prep` — the stage before it by default, an older attempt or
+> another stage by `--from`, a fresh start by `--cold` — and a launched run
+> that left no state to continue (it likely died at startup) is refused with
+> that story: recover from the state saved before its prep, never silently
+> started fresh. Benchmark trials keep § 1.5's immutability refusal.
 
 > **What this removes.** Nothing has to point at a file that does not exist yet,
 > so there are no dangling links to resolve, no question of *which attempt will

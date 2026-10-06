@@ -336,16 +336,20 @@ def gpu_share_notes(gpu_count: Optional[int], mpi_np: Optional[int], *,
 class Said:
     """A question's answer: whether to go, and the words the ledger keeps --
     each question and its answer is written down, a *no* too (`job-system.md`
-    § 5.0, agreement 6).  True when the answer is yes."""
+    § 5.0, agreement 6).  True when the answer is yes.  ``asked`` is false
+    when there was nobody to ask -- no terminal and no ``--yes`` -- which
+    the launch refuses (`project-layout.md` § 1.6.4)."""
     yes: bool
     words: str
+    asked: bool = True
 
     def __bool__(self) -> bool:
         return self.yes
 
 
 def confirm(text: str, *, auto_yes: bool = False, echo=None,
-            prompt=None, default: bool = True) -> Said:
+            prompt=None, default: bool = True,
+            question: str = "submit this?") -> Said:
     """**The one interface** — show it, then act on the answer.
 
     ``auto_yes`` is how a person says *I have decided to trust this*; its
@@ -355,6 +359,8 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
     Enter gives: "no" where the question carries a judgement only the
     person can make -- following a run that may still be running
     (`project-layout.md` § 1.6.4) -- so a bare Enter does not make it.
+    ``question`` is what is asked: a run here is asked as a submission is
+    (`submission.md` S4).
     """
     import click
     # THROUGH THE GUARDED DOOR.  This was a bare `sys.stdin.isatty()`, which
@@ -371,13 +377,12 @@ def confirm(text: str, *, auto_yes: bool = False, echo=None,
         return Said(True, "yes (--yes)")
     if prompt is None and not stdin_can_answer():
         # NO TERMINAL TO ASK.  S4 says the absence of `--yes` is not
-        # permission, so this declines -- but it declines by SAYING WHY and
-        # naming the flag, because a scripted run that aborts with no
-        # explanation is a worse failure than the one the gate prevents.
-        echo("  not a terminal, so there is nobody to ask -- pass --yes to "
-             "submit what is printed above without confirming.")
-        return Said(False, "no answer (not a terminal): nothing sent")
-    prompt = prompt or (lambda: click.confirm("  submit this?",
+        # permission: nothing goes, and the launch REFUSES -- naming the
+        # flag -- so a script reading the exit code is not told it went
+        # (`project-layout.md` § 1.6.4: "Non-interactive: refused").
+        return Said(False, "no answer (not a terminal): nothing sent",
+                    asked=False)
+    prompt = prompt or (lambda: click.confirm(f"  {question}",
                                               default=default))
     yes = bool(prompt())
     return Said(yes, "yes" if yes else "no")

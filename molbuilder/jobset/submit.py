@@ -13,13 +13,14 @@ order § 6.0 states:
    line and every script the send will write.  Three shapes of work, one
    plan (:class:`LaunchPlan`):
 
-   * **a stage** -- a ladder's stage, a sweep's named trial, or (direct) a
-     sweep's trials in turn.  A stage launched before is launched again by
+   * **a stage** -- a ladder's stage, or a sweep's named trial.  A stage
+     launched before is launched again by
      CONTINUING it (user, 2026-08-21): the next attempt opens from its
      latest, and a run that never concluded is followed only on the
      person's judgement;
-   * **a grouped bench** -- ONE job per resource shelf of a sweep, its
-     trials in sequence (`generator.md` § 4.3a);
+   * **a benchmark's walk** -- ONE job per resource shelf of a sweep sent
+     to a queue, or its unlaunched trials run here, the trials in sequence
+     (`generator.md` § 4.3a, `_bench_walk`);
    * **a bias chain** -- one job walking a transport scan's points;
 
 2. **shown** (:meth:`LaunchPlan.shown`) and 3. **asked**, by the verb --
@@ -210,20 +211,31 @@ ASK_MAX_QUERIES = 24
 
 def _no_sbatch(what: str, name: str, *, base) -> str:
     """The one answer to *there is no scheduler header*, whichever door
-    finds it missing (`job-system.md` § 6): prep withholds the ``.sbatch``
-    only where the machine it prepped for names no queue.  Three doors
+    finds it missing (`job-system.md` § 6.1): prep withholds the
+    ``.sbatch`` where the machine it prepped for names no queue, or where
+    it was told to (``prep --no-sbatch``) -- each said with its own way
+    back.  Three doors
     worded it three ways until 2026-10-01, one telling a person to "add a
     scheduler block" -- a premise § 6 retired -- and one to "run
     prep_jobset" (W52).  A machine with a queue is another machine, and a
     calculation is set to the machine of its first prep (`configuration.md`
     M-3): the way there is the state saved before that prep."""
-    return (f"{what}: there is no scheduler header ({name}) -- prep writes "
-            f"one only where the machine it prepped for names a queue "
-            f"(job-system.md § 6: a record saying `workstation`, or no "
-            f"(partition, qos) pair to name).  Run it here with --mode "
-            f"direct.  For a machine with a queue, prep it for that machine "
-            f"(--target, its record's name) -- a calculation is set to the "
-            f"machine of its first prep, so "
+    from .commands import takes_a_queue
+    if takes_a_queue(base):
+        # THE MACHINE NAMES A QUEUE, so prep was told to write no header
+        # (`prep --no-sbatch`, `job-system.md` § 6.1's second answer) --
+        # this blamed the machine until 2026-10-05 (the unit 11 review).
+        return (f"{what}: there is no scheduler header ({name}) -- it was "
+                f"prepped with --no-sbatch.  Run it here with --mode "
+                f"direct; to send it to a queue, prep it again without "
+                f"--no-sbatch -- a prepped stage is not prepped again: "
+                + rollback("its prep", base=base))
+    return (f"{what}: there is no scheduler header ({name}) -- the "
+            f"machine it was prepped for names no queue (its record "
+            f"says `workstation`, job-system.md § 6.1).  Run it here with "
+            f"--mode direct.  For a machine with a queue, prep it for that "
+            f"machine (--target, its record's name) -- a calculation is "
+            f"set to the machine of its first prep, so "
             + rollback("its first prep", base=base))
 
 
@@ -557,6 +569,10 @@ class LaunchPlan:
     #: nothing, the ledger included (§ 6.0, step 3), and neither does the
     #: plan the send makes again to compare.
     records: bool = True
+    #: The queue the work goes to and where that came from -- --domain,
+    #: or the queue its prep admitted (:func:`_the_queue`); ``(None,
+    #: None)`` for a run here or a machine with no queues.
+    queue: Tuple[Optional[str], Optional[str]] = (None, None)
 
     def record(self, decision: str, **facts) -> None:
         """One of this launch's decisions, written down (§ 6.0, step 5;
@@ -615,7 +631,7 @@ def _launched(where, basename: Optional[str] = None) -> bool:
 
 
 def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
-                 writes: Plan):
+                 writes: Plan, named: bool = False):
     """Where ``job`` runs and what it follows -- read, never written: a
     :class:`_Member`, or the result of a trial passed over by name.  A
     re-launch's next attempt is opened in ``writes`` by the one opener
@@ -637,8 +653,10 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
     opens the next attempt from the latest -- the one source that is never a
     guess -- and the flat layout simply runs again where its files are.  A
     run that never concluded is followed only on the person's judgement.
-    A TRIAL is immutable once launched: under direct and ask the measured
-    ones are passed over by name, and a named one is refused.
+    A TRIAL is immutable once launched: a walk here and a question to the
+    scheduler pass the measured ones over by name; one the person NAMED
+    (``named``) is refused, in every mode -- a run here passed it over,
+    exit 0, until 2026-10-05 (the unit 11 review).
     """
     import functools
     from .commands import command
@@ -656,7 +674,7 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
                                            run if ns else None)
         if not _launched(where, basename):
             return _member(job, container, run, bool(ns), run)
-        if mode in ("direct", "ask"):
+        if mode == "ask" or (mode == "direct" and not named):
             return JobResult(job.name, [],
                              "already run" if mode == "ask"
                              else "skipped -- already launched")
@@ -816,6 +834,66 @@ def _gpus(resources, what: str):
         raise SubmitError(f"{what}: {exc}") from None
 
 
+def _the_queue(jobs) -> Tuple[Optional[str], Optional[str]]:
+    """``(queue, its source)`` the work's prep admitted and recorded -- a
+    run's placement, a trial's resources (`job-system.md` § 6.0, the
+    placement) -- or ``(None, None)`` when it recorded none.  Several are
+    refused: one launch goes to one queue (a benchmark's GPU side names its
+    own, ``--gpu-domain``).  *(The verb worked this out itself until
+    2026-10-05: floor 7, which never works out a launch, `architecture.md`
+    § 2.1.)*"""
+    named = {(j.placement or {}).get("domain") or j.resources.domain
+             for j in jobs} - {None, ""}
+    if len(named) > 1:
+        raise SubmitError(
+            f"the work being sent names more than one domain "
+            f"({', '.join(sorted(named))}).  Name the one to use with "
+            f"--domain, and --gpu-domain if a benchmark's GPU side differs.")
+    if named:
+        return named.pop(), "its prep (the queue it admitted)"
+    return None, None
+
+
+def _no_queue_named(base: Path, jobs, *, mem: Optional[str],
+                    time_s: Optional[int], one_proc: bool,
+                    gpu: bool) -> Optional[str]:
+    """The refusal for work sent to a queue that is named nowhere -- no
+    ``--domain``, and none recorded at its prep -- with this machine's
+    queues listed against what the work asks (the request the door admits,
+    `placement.request_of`), so one can be named.  ``None`` on a machine
+    with no queues, where the door's own answer stands (`scheduler.md`
+    R6)."""
+    from ..runtime_config import get_routing
+    rows = get_routing(project_dir=base)
+    if not rows:
+        return None
+    from ..scheduler import parse_mem_gb
+    from ..scheduler.quantities import parse_walltime
+    from .ask import Ask, queue_table
+    from .placement import request_of
+    cores = max((request_of(j.resources, one_process=one_proc).cores or 0
+                 for j in jobs), default=0) or None
+    gpus = (max((_gpus(j.resources, f"job {j.name!r}").count or 0
+                 for j in jobs), default=0) or None) if gpu else None
+
+    def most(read, field):
+        got = []
+        for j in jobs:
+            v = getattr(j.resources, field, None)
+            try:
+                got.append(read(str(v)) if v else None)
+            except ValueError:            # the door refuses it, by name
+                got.append(None)
+        return max((g for g in got if g is not None), default=None)
+
+    wall = time_s if time_s is not None else most(parse_walltime, "time")
+    gb = parse_mem_gb(mem) if mem else most(parse_mem_gb, "mem")
+    return (queue_table(rows, Ask(time_s=wall, mem_gb=gb), cores=cores,
+                        gpus=gpus)
+            + "\nno --domain was given, and its prep recorded no queue: "
+              "name one from the list above with `--domain`.")
+
+
 # --------------------------------------------------------------------- #
 #  the entry: plan, ask, send (`job-system.md` § 6.0)                   #
 # --------------------------------------------------------------------- #
@@ -882,6 +960,8 @@ def plan_launch(jobset: JobSet, base_dir, *, mode: str,
             _record(base, told, "refused", reason=str(exc))
         raise
     plan.told, plan.records = dict(told or {}), record
+    # the queue's source is the entry's decision, on every line
+    plan.told.update(domain=plan.queue[0], domain_source=plan.queue[1])
     return plan
 
 
@@ -898,11 +978,6 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
         raise SubmitError(
             f"unknown mode {mode!r}: must be 'submit' (SLURM), 'ask' (submit "
             f"nothing, report when it would start) or 'direct' (local)")
-    if mode == "direct" and (domain or gpu_domain or mem
-                             or time_s is not None):
-        raise SubmitError(
-            "--domain, --mem and --time are what a scheduler is asked for; "
-            "'direct' runs it here, where none of them means anything.")
     if only is not None:
         # Through the ONE resolver, so a name and a #N number reach the same
         # job here as at every other surface, and the refusal carries the
@@ -917,10 +992,20 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
             raise SubmitError(str(e))
 
     def again() -> LaunchPlan:
-        return plan_launch(jobset, base, mode=mode, only=only, domain=domain,
+        return plan_launch(jobset, base, mode=mode, only=only, domain=told_q,
                            gpu_domain=gpu_domain, side=side, mem=mem,
                            time_s=time_s, trial_timeout_s=trial_timeout_s,
                            told=told, record=False)
+
+    # THE QUEUE, decided here and nowhere else (`job-system.md` § 6.0, the
+    # placement): --domain when typed, else the one the work's prep admitted
+    # and recorded.  Each door refuses a queue named nowhere at its own
+    # moment -- a stage after its header is found.
+    told_q = domain
+    source = "--domain flag" if domain else None
+    if mode in ("submit", "ask") and not domain:
+        domain, source = _the_queue(
+            [j for j in jobset.jobs if only is None or j.name == only])
 
     if jobset.kind == "sweep" and only is None and mode in ("submit", "ask"):
         plan = _plan_shelves(jobset, base, mode=mode, domain=domain,
@@ -931,6 +1016,13 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
                                 trial_timeout_s=trial_timeout_s)
     else:
         task = _a_scan(jobset, base, only) if only is not None else None
+        if task is not None and mode in ("submit", "ask") and not domain:
+            why = _no_queue_named(
+                base, [j for j in jobset.jobs if j.name == only], mem=mem,
+                time_s=time_s, one_proc=one_process(jobset.engine),
+                gpu=False)
+            if why:
+                raise SubmitError(why)
         plan = (_plan_chain(jobset, base, task, mode=mode, stage=only,
                             domain=domain, mem=mem, time_s=time_s)
                 if task is not None else
@@ -938,6 +1030,7 @@ def _planned(jobset: JobSet, base: Path, *, mode, only, domain, gpu_domain,
                             gpu_domain=gpu_domain, only=only, mem=mem,
                             time_s=time_s))
     plan.remake = again
+    plan.queue = (domain, source)
     return plan
 
 
@@ -1260,11 +1353,18 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
                     + (f"-{this}" if mixed else "")
                     + (f"-{_shelf_token(key, shelves[key])}"
                        if multi else ""))
+            named = (gpu_domain or domain) if this == "gpu" else domain
+            if named is None:
+                why = _no_queue_named(
+                    base, pending, mem=mem, time_s=time_s,
+                    one_proc=one_process(jobset.engine),
+                    gpu=(this == "gpu"))
+                if why:
+                    raise SubmitError(why)
             plan.submissions.append(_plan_shelf(
                 jobset, base, dirs, pending, name, plan,
                 gpu_side=(this == "gpu"),
-                domain=((gpu_domain or domain) if this == "gpu"
-                        else domain),
+                domain=named,
                 trial_timeout_s=trial_timeout_s, mem=mem, time_s=time_s))
 
     if not plan.submissions:
@@ -1323,9 +1423,10 @@ def _place(base: Path, want, *, gpu_side: bool, named=None,
             # so an unplaceable group lost both the reasons and the remedies.
             + "\n    ".join(r.message for r in exc.reasons)
             + "\n  Nothing was submitted -- the scheduler would refuse it.  "
-              "Change what is asked for (--time, --mem; the ranks and cores "
-              "at prep), or name another of the record's queues with "
-              "--domain.") from None
+              "Change the wall or the memory with --time / --mem, or name "
+              "another of the record's queues with --domain.  The ranks "
+              "and cores are its prep's, and a prepped stage is not "
+              "prepped again: " + rollback("its prep", base=base)) from None
 
 
 def _reject_if_this_machine_says_no(placed, want, gpu_side: bool,
@@ -1505,7 +1606,9 @@ def _bench_walk(name: str, trials, *, where: str,
     its arguments)``, the folder from where the walk runs; ``bound_s`` the
     per-trial bound, a trial past it killed and read incomplete.  A trial
     that fails leaves the rest to run -- one bad point says nothing about
-    the next -- and the walk exits nonzero when any failed.  THE TWO-LAYER
+    the next -- and the walk exits nonzero when any failed; stopped by the
+    person (Ctrl-C, a lost terminal, a cancel), it starts no further trial.
+    THE TWO-LAYER
     MODEL HOLDS (`job-system.md` § 6): this file orders and bounds; each
     trial's own ``.run.sh`` activates its environment and launches its
     engine, exactly as when it runs alone.  The benchmark's own: a
@@ -1529,6 +1632,14 @@ def _bench_walk(name: str, trials, *, where: str,
         'alloc_ntasks=${SLURM_NTASKS:-unset} '
         'alloc_cpus=${SLURM_CPUS_PER_TASK:-unset}" >> "$LOG"',
         "fails=0",
+        # STOPPED BY THE PERSON -- Ctrl-C, a lost terminal, a scancel --
+        # the walk starts no further trial (bash runs this after the
+        # running trial returns; one under a per-trial bound ends at it).
+        # Until 2026-10-05 the walk went on with the rest unseen (the
+        # unit 11 review).
+        f'_walk_stopped() {{ echo "[group] {when} stopped -- no further '
+        'trial" >> "$LOG"; exit 130; }',
+        "trap _walk_stopped INT TERM HUP",
         "run_trial() {",
         '    _name="$1"; _dir="$2"; shift 2',
         "    _t0=$(date +%s)",
@@ -1763,29 +1874,12 @@ def _plan_shelf(jobset: JobSet, base: Path, dirs, pending, name: str,
         plan.writes.text(launch_dir / f"{name}.sbatch",
                          _into_launch(header, name))
 
-    hint = ""
-    if gpu_side and not domain:
-        # Failure-time teaching, not a decision: when the default
-        # directives cannot place a GPU group, name the menu rows that
-        # could (generator.md § 4.3a) -- choosing one stays the user's
-        # call, via --domain.
-        from ..scheduler import domain_serves_gpu
-        from .. import runtime_config as _rc
-        able = [d.name for d in _rc.get_routing(project_dir=base)
-                if domain_serves_gpu(d)]
-        if able:
-            hint = (f"\n  The GPU group used the header's default "
-                    f"directives; gpu-capable domains reachable here: "
-                    f"{', '.join(able)} -- retry naming one with --domain.  "
-                    f"The other side's launch stands; this side stays "
-                    f"pending.")
-    # Every shelf is written before any is sent, so the scripts a by-hand
-    # retry needs are all on disk -- which they were not on 2026-08-30,
-    # when one shelf's failure took its successor's .sbatch down with it
-    # and `sbatch launch/...` answered "Unable to open file".
-    hint += (f"\n  Every shelf's scripts are written under "
-             f"{container}/launch/ -- this one can be re-sent by hand once "
-             f"the ask fits.")
+    # A SHELF THE SCHEDULER REFUSES keeps its trials pending -- no launch
+    # record -- so launching the benchmark again sends exactly them; a
+    # shelf sent by hand would write no record, and the next launch would
+    # measure its trials twice (the unit 11 review, 2026-10-05).
+    hint = ("\n  Its trials stay pending: launch the benchmark again once "
+            "the ask fits -- the shelves already queued are skipped.")
     first = pending[0]
     return Submission(
         name, cmd, container, False,
@@ -2038,8 +2132,8 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
                 domain: Optional[str], gpu_domain: Optional[str],
                 only: Optional[str], mem: Optional[str],
                 time_s: Optional[int]) -> LaunchPlan:
-    """The stage door's plan -- a ladder's stage, a sweep's named trial, or
-    (direct) a sweep's trials in turn: one submission each.
+    """The stage door's plan -- a ladder's stage, or a sweep's named
+    trial: one submission.
 
     For every job, before anything is written: where it runs and what it
     follows (:func:`_plan_member`), the deck/launch agreement and a trial's
@@ -2067,7 +2161,8 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
     plan = LaunchPlan(base, mode, [])
     sbatch_here = shutil.which("sbatch") is not None
     for job in jobset.jobs:
-        m = _plan_member(jobset, base, job, mode=mode, writes=plan.writes)
+        m = _plan_member(jobset, base, job, mode=mode, writes=plan.writes,
+                         named=only is not None)
         if isinstance(m, JobResult):
             plan.skipped.append(m)             # a trial measured before
             continue
@@ -2109,9 +2204,16 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
             raise SubmitError(_no_sbatch(f"job {job.name!r}", sbatch_name,
                                          base=base))
         gpu = _gpus(job.resources, f"job {job.name!r}").uses
+        named = gpu_domain if gpu and gpu_domain else domain
+        if named is None:
+            why = _no_queue_named(base, [job], mem=mem, time_s=time_s,
+                                  one_proc=one_process(jobset.engine),
+                                  gpu=gpu)
+            if why:
+                raise SubmitError(why)
         _env, placement, cmd = _sbatch_request(
             base, envelope=job.resources,
-            domain=(gpu_domain if gpu and gpu_domain else domain),
+            domain=named,
             mem=mem, time_s=time_s, label=job.name,
             job_name=_scheduler_job_name(jobset, job.name),
             script=sbatch_name, run_args=_run_sh_args(job.resources),

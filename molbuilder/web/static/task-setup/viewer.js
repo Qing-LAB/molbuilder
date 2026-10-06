@@ -3250,12 +3250,20 @@ function paintAskNotes() {
             state = "bad";
             msg = "not a value I can read";
         } else if (val === null) {
+            // EMPTY, AND THE LIMIT STILL SHOWN: what the queue allows is
+            // what helps choose a value (`submission.md` S5; it was shown
+            // only once a value was typed until 2026-10-05).
             state = "unset";
-            msg = "left blank \u2014 stated nowhere, prep refuses it "
-                + "for a job sent to a queue";
+            msg = "left blank \u2014 stated nowhere"
+                + (d ? ", prep refuses it for a job sent to a queue" : "")
+                + (cap ? "; " + (d ? _fs.queue + " allows"
+                                  : "this machine has")
+                       + " up to " + fmt(cap) : "");
         } else if (cap && val > cap) {
             state = "bad";
-            msg = "more than " + _fs.queue + " allows (" + fmt(cap) + ")";
+            msg = (d ? "more than " + _fs.queue + " allows"
+                     : "more than this machine has")
+                + " (" + fmt(cap) + ")";
         } else if (cap) {
             msg = "allowed here: up to " + fmt(cap);
         } else {

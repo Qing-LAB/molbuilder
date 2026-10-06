@@ -452,7 +452,8 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
     # each way on (§ 5.3: what molbuilder prints, you can type).
     what = (f"the newest attempt of `{prev}`, {source}," if source
             else f"`{prev}`'s latest run,")
-    why, first = state_remedy(concluded, state, launch_prev)
+    why, first = state_remedy(concluded, state, launch_prev,
+                              refused=not_launched_again(base, prev))
     other = None
     if not (flat or bench):
         # AN EARLIER RUN THAT CAN STAND IN WHEN ASKED FOR: the newest one
@@ -478,7 +479,13 @@ def no_relaunch(takes_nothing: bool, *, base) -> str:
     launched again*).  ``takes_nothing``: it takes nothing from a run (set
     ``restart: clean``); otherwise its kind's rerun starts over."""
     from .commands import rollback
-    why = ("it takes nothing from a run (`restart: clean`)" if takes_nothing
+    # NOTHING TO TAKE has two causes, and the job cannot tell them apart:
+    # a stage set `restart: clean`, or a kind that declares no restart
+    # files (a transport lead, the transmission) -- so both are named
+    # (this named `restart: clean` alone until 2026-10-05, a setting a
+    # transport rung cannot have).
+    why = ("it takes nothing from a run -- it is set `restart: clean`, or "
+           "its kind declares no restart files" if takes_nothing
            else "a rerun of its kind starts over (its restart-file list's "
                 "`resumes`)")
     return (f"it does not continue from a run of its own -- {why} -- and a "
@@ -523,24 +530,44 @@ def relaunch(base, task, job) -> Tuple[Optional[Continuation], Optional[str]]:
                              if n is not None else None)), None
 
 
+def not_launched_again(base, stage: str) -> Optional[str]:
+    """Why ``stage``, prepped, is not launched again (:func:`no_relaunch`,
+    the one sentence `status` and `launch` say) -- or ``None`` when it is,
+    or is not prepped.  Read off its job (`Job.relaunch_continues`), so
+    the way on another stage's refusal names is the one launch takes."""
+    from .model import JobSet
+    path = Path(base) / "job-set.json"
+    if not path.is_file():
+        return None
+    job = next((j for j in JobSet.load(path).jobs if j.name == stage), None)
+    if job is None or job.relaunch_continues:
+        return None
+    return no_relaunch(not job.warm, base=base)
+
+
 def state_remedy(concluded: Optional[str], state: Optional[str],
-                 launch_block: str) -> Tuple[str, str]:
+                 launch_block: str, *,
+                 refused: Optional[str] = None) -> Tuple[str, str]:
     """``(why, what to do first)`` for a run a stage would build on and may
     not: worded by what the run's state says, the way on a command you can
     type (`job-system.md` § 5.3) -- the hand-over's default and a transport
     rung's gather say it alike.  A run that ended with an error, or stopped,
     is LAUNCHED again: a prepped stage is not prepped again
-    (`job-system.md` § 5.0; its re-prep was offered until 2026-10-02)."""
+    (`job-system.md` § 5.0; its re-prep was offered until 2026-10-02) --
+    unless it is not launched again either (``refused``,
+    :func:`not_launched_again`), when the way back is its rollback, said
+    as `status` and `launch` say it ("Launch it again" was said of every
+    stage until 2026-10-05, launch then refusing it)."""
+    again = (f"It is not launched again: {refused}" if refused else
+             f"Launch it again --\n{launch_block}")
     if concluded is not None:
-        return (f"which failed ({concluded})",
-                f"Launch it again --\n{launch_block}")
+        return f"which failed ({concluded})", again
     if state == "pending":
         return "which has not been launched", f"Launch it --\n{launch_block}"
     if state in ("queued", "running"):
         return f"which is {state}", "Let it finish"
     return ("which stopped without its conclusion marker -- killed, or out "
-            "of time (project-layout.md § 1.6)",
-            f"Launch it again --\n{launch_block}")
+            "of time (project-layout.md § 1.6)", again)
 
 
 def force_constant_stage(task, stage: str) -> bool:

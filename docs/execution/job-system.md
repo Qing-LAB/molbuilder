@@ -821,7 +821,8 @@ named.)*
 name, with its prep and its launch, as `status` says of it. It is built as prep
 is — a plan, shown, asked, then sent (§ 6.0): it shows the exact command of
 everything it will send — for `submit`, the `sbatch` line with the queue, wall
-and memory as sent — and asks before sending it
+and memory as sent; for a run here, the line it runs — and asks before sending
+it
 ([`submission.md`](?doc=execution/submission.md) S4); `--yes` skips the
 question, never the output. One job per invocation (§ 5.3). Then you look —
 `status`, the Results tab — and decide what to prep next.
@@ -1400,7 +1401,8 @@ that never concluded only on your judgement — when it continues from a run at
 all: its kind resumes (the restart-file list's
 `resumes`, [`job-contracts.md`](?doc=execution/job-contracts.md) § 4.2a — a
 force-constant run's does not: a rerun restarts at `FC.First`,
-[`engines/vibration.md`](?doc=engines/vibration.md) § 5.3) and it takes
+[`engines/vibration.md`](?doc=engines/vibration.md) § 5.3; nor a PySCF
+vibration's, whose deck reads no checkpoint back) and it takes
 something from a run (what it declares; a stage set `restart: clean` takes
 nothing). `status` and `launch` ask that one fact of the stage's job
 (`Job.relaunch_continues`). The hand-over is one `Continuation`, as prep's is —
@@ -1531,9 +1533,9 @@ anything is sent, and the send decides nothing.**
 
 | # | step | what happens |
 |:--:|---|---|
-| 1 | **the plan** — nothing is written | the work: a prepped stage, a benchmark's pending trials, a bias scan's points. Its **submissions** — each one scheduler job, or one process here, walking one or more **members**, each a prepared attempt: a run is one member; a benchmark's resource shelf, its pending trials; a bias scan, its points; a transport ladder's seed and leads, one submission ([`engines/transport.md`](?doc=engines/transport.md) § 2a.7). For each member: the attempt it runs in (a re-launch's next one), what it continues from — one `Continuation`, as prep's: a stage launched again, its own latest run, and a stage that does not continue from a run of its own refused (§ 5.4, *A stage launched again*) — and whether it follows a run that never concluded. The gates: the deck agrees with its launch; a trial starts cold. The placement — the job's own, recorded at prep, under what a launch flag changes, admitted. The exact lines and scripts to send |
+| 1 | **the plan** — nothing is written | the work: a prepped stage, a benchmark's pending trials, a bias scan's points. Its **submissions** — each one scheduler job, or one process here, walking one or more **members**, each a prepared attempt: a run is one member; a benchmark's resource shelf, its pending trials; a bias scan, its points; a transport ladder's seed and leads, one submission ([`engines/transport.md`](?doc=engines/transport.md) § 2a.7). For each member: the attempt it runs in (a re-launch's next one), what it continues from — one `Continuation`, as prep's: a stage launched again, its own latest run, and a stage that does not continue from a run of its own refused (§ 5.4, *A stage launched again*) — and whether it follows a run that never concluded. The gates: the deck agrees with its launch; a trial starts cold. The placement — the job's own, recorded at prep, under what a launch flag changes, admitted: its queue the one `--domain` names, else the one its prep admitted, decided here and refused here when named nowhere *(the verb worked it out until 2026-10-05)*. The exact lines and scripts to send |
 | 2 | **show** | the exact command of every submission (S4, [`submission.md`](?doc=execution/submission.md)) |
-| 3 | **ask** | one question for the whole plan — its default *no* when a member follows a run that never concluded; `--yes` is the answer given in advance. `--dry-run` stops here and writes nothing, the ledger included — a refused dry run too, as a refused preview (§ 5.0). `--mode ask` puts the plan's lines to the scheduler instead (`sbatch --test-only`) and writes down what it asked |
+| 3 | **ask** | one question for the whole plan — a run here asked as a submission is *(user, 2026-10-05)* — its default *no* when a member follows a run that never concluded; `--yes` is the answer given in advance, and with nobody to ask (no terminal) nothing goes and the launch is refused, so a script is never told it went. `--dry-run` stops here and writes nothing, the ledger included — a refused dry run too, as a refused preview (§ 5.0). `--mode ask` puts the plan's lines to the scheduler instead (`sbatch --test-only`) and writes down what it asked |
 | 4 | **send** — nothing is decided | the folder is checked against the one the plan was made from — the plan made again from the folder as it is, and compared line by line: each submission's line and where it runs, each member and what it follows and how that run ended, every file the send writes or copies and every file read where it lies, each by its size and write time. A member launched, a run ended or a file changed since is refused, saying which and to launch again to see the new plan. Then each attempt is opened through the one opener ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.2), a submission with several members gets its sequencer's script, every script on disk before anything goes, and each submission goes out — `sbatch`, or the process here — through one function, each member's `run.json` written by the one writer |
 | 5 | **the record** | the ledger: every refusal, the question and its answer, each submission sent and its job id — a run here when it starts — with what the verb was told on each line (the kind, the stage, the mode and where it came from, the queue's source, which config files answered). The entry writes them (`submit.plan_launch`, `send_launch`, `ask_launch`, [`architecture.md`](?doc=execution/architecture.md) § 2.1); the verb writes the refusals it says before it calls the entry — a flag that means nothing for the mode, a stage not prepped |
 
@@ -1553,7 +1555,10 @@ the benchmark's own script (`launch/<name>.run.sh`, written by
 `submit._bench_walk`): each trial `cd`ed into and its own run script run with its
 own counts, timed, under the per-trial bound when one is given
 (`--trial-timeout`, here as on a queue); a trial that fails leaves the rest to
-run, and the walk exits nonzero when any failed. *(Built 2026-10-05, unit 11d:
+run, and the walk exits nonzero when any failed. Stopped by the person —
+Ctrl-C, a lost terminal, a cancel — it starts no further trial (one under a
+per-trial bound ends at it); what it did not reach is measured again from the
+state saved before the benchmark's prep. *(Built 2026-10-05, unit 11d:
 the trials run here went as one process after another from Python until then.)*
 **A transport bias scan is not a benchmark** *(user, 2026-10-05: "bias scan is
 its own mechanism — this is parameter sweep, not some … computation resource
@@ -1812,7 +1817,8 @@ what that rule removes.)*
 > is the open follow-up."* The fold retired the inline path — and `bench prep`
 > itself — in step 6 u5: a trial now executes only through `jobset launch
 > bench` (since 2026-08-21 as a rider of its resource shelf's grouped job,
-> or alone when named), with its launch recorded in the trial's
+> or alone when named; since 2026-10-05, run here, in the benchmark's one
+> walk), with its launch recorded in the trial's
 > own `run.json`.
 
 ---

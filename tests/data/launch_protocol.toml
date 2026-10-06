@@ -51,12 +51,12 @@ launch_refused = "--time: what a scheduler is asked for"
 launch_writes_nothing = true
 
 [[case]]
-name = "a run here is written down as it starts, while it runs"
+name = "a run here is shown and asked as a submission is, and written down as it starts"
 stand_in = { waits_for = "launched" }
 launch = []
 launch_mode = "direct"
 launch_sends = true
-listing = ["[ran]"]
+listing = ["about to run here:", "bash H2_01_coarse.run.sh", "(--yes)", "[ran]"]
 after_launch = { ledger_holds = ["launched"] }
 
 # ---- A BENCHMARK'S WALK (job-system.md § 6.0, *A benchmark's walk*)

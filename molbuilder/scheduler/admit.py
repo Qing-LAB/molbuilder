@@ -288,8 +288,10 @@ def domain_ceiling_s(row) -> Optional[int]:
     """This domain's stated wall in seconds, or ``None`` when it states none.
 
     The one place ``max_time`` is parsed for a caller that needs the NUMBER
-    rather than a verdict — the header emitter, which must state a time the
-    queue it names will accept.
+    rather than a verdict — the machine listing and the launch's queue
+    table, which show each queue's ceiling.  *(It named the header emitter
+    until 2026-10-05; the header states the run's own wall since
+    2026-10-02, never a queue's ceiling.)*
     """
     from .quantities import parse_walltime
     if not row or not row.max_time:

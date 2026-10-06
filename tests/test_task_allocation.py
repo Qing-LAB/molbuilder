@@ -201,46 +201,10 @@ def test_a_queue_this_machine_never_heard_of_is_ACCEPTED():
         == "no-such-queue"
 
 
-# --------------------------------------------------------------------- #
-#  what prep does with it -- FIELD by field                              #
-# --------------------------------------------------------------------- #
-
-def test_the_description_supplies_what_no_flag_states():
-    from molbuilder.jobset.prep import _under_description
-    got = _under_description(None, Allocation(domain="htc", time="2:00:00",
-                                              mem="200GB"))
-    assert (got.domain, got.time, got.mem) == (
-        "htc", "0-02:00:00", "200G")
-
-
-def test_a_stated_flag_wins():
-    """A person typing `--mem` now is answering about now."""
-    from molbuilder.jobset.model import Resources
-    from molbuilder.jobset.prep import _under_description
-    got = _under_description(Resources(mem="64G"),
-                             Allocation(time="2:00:00", mem="200GB"))
-    assert got.mem == "64G" and got.time == "0-02:00:00"
-
-
-def test_an_UNRELATED_flag_erases_nothing():
-    """**The reason precedence is per-field.**  Whole-object precedence would
-    make `--np 8` silently drop a memory ask nobody mentioned -- the exact
-    class of loss this whole round of work was about."""
-    from molbuilder.jobset.model import Resources
-    from molbuilder.jobset.prep import _under_description
-    got = _under_description(Resources(mpi_np=8),
-                             Allocation(domain="htc", time="2:00:00",
-                                        mem="200GB"))
-    assert got.mpi_np == 8
-    assert (got.domain, got.time, got.mem) == (
-        "htc", "0-02:00:00", "200G")
-
-
-def test_no_declaration_leaves_the_flags_alone():
-    from molbuilder.jobset.model import Resources
-    from molbuilder.jobset.prep import _under_description
-    got = _under_description(Resources(mpi_np=4), Allocation())
-    assert got.mpi_np == 4 and got.mem is None and got.time is None
+# What prep does with it -- a flag wins FIELD by field, an unstated one
+# leaving the file's answer standing -- is held through prep itself
+# (`test_prep_bench_fold.py`, a flag winning beside the run card); the four
+# tests of the fold's private wrapper went with it (2026-10-05, unit 11).
 
 
 # --------------------------------------------------------------------- #

@@ -1771,7 +1771,10 @@ same idea, generated control flow instead of declared keys — as
 
 **PySCF:** the authoritative rows are `pyscf/warm-files.toml` (§ 4.2a) —
 the checkpoint in `[base]`, the optimized geometry under `[optimization]`,
-`[vibration]` deliberately empty (base only). geomeTRIC's trajectory and its
+and `[vibration]` stating `resumes = false` — its deck writes the checkpoint
+and reads none back, so a stopped run is not continued and its redo is the
+rollback (`job-system.md` § 5.4; empty until 2026-10-05, when a stopped one
+was "continued" and recomputed from scratch). geomeTRIC's trajectory and its
 scratch are not warm state — the trajectory is rewritten every run, the
 scratch is never read back — and have no row
 ([`engines/stages.md`](?doc=engines/stages.md) § 1.1a, consequence 4).  Unlike SIESTA, the
@@ -2127,7 +2130,7 @@ exchange file said `cpus_per_task`/`time`). One language prevents that.
 | Workflow handoff | `<stem>.xyz` + `<stem>.molstruct.json` — the structure→execution pair (a built/modified structure travelling into a description); the run→calculation use of this pair retired 2026-08-29 with `bundle_writer.py` (§ 5 — citations replaced it) | *(sidecar pair, bare-int `schema_version` from `sidecars/molstruct.SCHEMA_VERSION` — never typed in a doc)* | `workingcopy_structure.StructureCodec`, `sidecars/molstruct.py` | geometry; `regions` (frozen atoms are a label inside it) / `structure_hash` |
 | Checkpoint archive | `.binsnapshots/<digest>/MANIFEST.do_not_edit` | *(3-col tab-separated `<sha256>\t<bytes>\t<key>`)* | `checkpoint.py` | the directory is the sha256 of this file (§ 6.1) |
 | Run launch record | `<attempt>/run.json` — a trial keeps attempts as a stage does (`project-layout.md` § 1.5a), so a launched trial's attempt carries one too; a flat stage's own `<basename>.run.json` beside its deck (`project-layout.md` § 1.6.3); written at process **start** (a running job must read as launched) | `molbuilder/run-launch@1` | `runrecord.py` (`write_launch`, through `persist`; read by `launch_record` — one that does not read is an error naming the file) | `mode`, `command`, `job_id`, `launched_at`, `continued_from` |
-| Decision ledger | `jobset-decisions.log` — append-only JSONL at the bundle root; every verb records each decision it makes (config provenance, mode + its source, trial pick, the run's declared condition), so a machine's behaviour is explained by reading the file, hours later, without the terminal | *(one JSON object per line, `at`/`verb`/`decision` + facts)* | `jobset/ledger.py` | `at`, `verb`, `decision` |
+| Decision ledger | `jobset-decisions.log` — append-only JSONL at the bundle root; every verb records each decision it makes (config provenance, the mode and its source, the queue and its source, each question and its answer, each refusal, what a stage continues from), so a machine's behaviour is explained by reading the file, hours later, without the terminal | *(one JSON object per line, `at`/`verb`/`decision` + facts)* | `jobset/ledger.py` | `at`, `verb`, `decision` |
 | Pipeline log | `<label>_<token>.<engine>.<flat\|hierarchical>.pipeline.log` — beside this prep's `STAGE-PLAN.md` (bundle root for a run, the stage's `bench/` container for a sweep). **Written by every prep, from either door**; it observes the steps and no generated artifact depends on it. What each step RECEIVED, DECIDED and PRODUCED, so *where did this value come from* is answered by reading one file rather than re-running ([`script-preparation.md`](?doc=execution/script-preparation.md) § 4.5) | *(text; `in` / `⊕` / `out` in the first column, banner per step — W14)* | `pipeline_log.py` | `⊕ <name> <value> <- <source>` is the row that carries it |
 | Slot provenance | `slot-provenance.json` at the transport calculation's root — which attempt the composed junction came from, with content hashes; part of the § 4.1 travelling copy (`transport-design.md`). `files` names **every** file the junction was composed from, the one carrying its electrode labels included — on a form-A citation those may live in a `.molstruct.json` beside the deck, which is in none of the other slots and is the file the label rename rewrites | `molbuilder/slot-provenance@1` | `transport/compose.py` | `slot`, `citation`, `form`, `files` (name → sha256), `evidence` |
 | Vibration result | `<label>.spectra.json` in the attempt that computed it — frequencies, both eigenvector forms, the removed motions, the strengths the engine computes, thermochemistry, the stationarity verdict; written by the run itself on both engines (`engines/vibration.md` § 5.5, § 6, where § 6.8 says how to read it) | `schema_version` 6 | `spectra/results.py` (`SpectraResults`), `sidecars/spectra.py` (`dump_spectra_json`, `parse_spectra_json`) | § 6.2 of `engines/vibration.md` |
@@ -2336,10 +2339,14 @@ equality test now holds it to the dataclass in both directions.)*  `partition`
 and `qos` are **not** `Resources` fields; they are the target record's,
 resolved from `domain`.
 
-**Everything else a `Job` carries is `resources`, `warm` and `traits`** — which files it
-would take from a run it is continued from, and the values a condition on one is
-compared against. Neither is a resource, and neither names another job: which
-run this one continues is named by a person at `prep`.
+**Besides its name, script and `resources`, a `Job` carries `warm` and `traits`** — which
+files it would take from a run it is continued from, and the values a condition
+on one is compared against — and `point` (a trial's sweep coordinate), `finish`
+(the bundle that finishes a run its engine leaves unfinished), `resumes` (whether
+a re-run of its kind continues, § 4.2a) and `placement` (the queue its prep
+admitted, and where each value came from, [`job-system.md`](?doc=execution/job-system.md)
+§ 6.0). None is a resource, and none names another job: which run this one
+continues is named by a person at `prep`.
 
 ### 6.3 Identifier & path conventions — every name in the system
 

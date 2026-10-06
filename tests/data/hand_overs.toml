@@ -143,5 +143,5 @@ launch = []
 launch_stage = "coarse"
 launch_mode = "direct"
 launch_sends = true
-launch_refused = "it takes nothing from a run (`restart: clean`)"
+launch_refused = "it takes nothing from a run -- it is set `restart: clean`"
 after_launch = { made_lacks = ["H2_01_coarse.continued-from"] }

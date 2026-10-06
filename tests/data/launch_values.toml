@@ -253,10 +253,15 @@ name = "the record checks the wall: one longer than the queue allows is refused 
 allocation = { domain = "debug" }
 refused = "but debug allows 00:15:00"
 
+# A queue named nowhere reaches launch only for a benchmark, whose shelves'
+# queue is named when they are sent: a run prepped for a queue has its
+# queue recorded, and one prepped with --no-sbatch is refused for its
+# header first (the unit 11 review, 2026-10-05).
 [[case]]
 name = "the queues launch lists ask what its door admits -- the wall and memory prep baked, when launch states none"
 prep = ["--no-sbatch"]
 allocation_unset = ["domain"]
+bench = { mpi_np = [1] }
 queues = [
     { name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] },
     { name = "debug", partition = "cpu", qos = "debug", max_time = "00:15:00", max_cores = 64, max_mem_gb = 4, node_types = [{ cores = 64, nodes = 2 }] },

@@ -76,12 +76,15 @@ is theirs to make.
 > the comparison (`generator.md` § 4.4b). Same fact, two stances, and the
 > difference is whether a human is in the loop at that moment.
 
-**S4 — Nothing is submitted unseen.** The full request, before the
-irreversible step — on every door: a stage, a grouped bench, a bias chain
+**S4 — Nothing is submitted unseen**, and nothing run here unseen *(user,
+2026-10-05: a run here is shown and asked as a submission is)*. The full
+request, before the irreversible step — on every door: a stage, a grouped
+bench, a bias chain, a run here
 *(the stage's door sent straight away until 2026-10-01, on the premise that
 `prep`'s printout had been the look; a launch flag can change the queue and
 the wall after it, so the line as sent was never seen — ruled that day)*. `--yes` is how a person
-says *I have decided to trust this*; its absence is not permission. A
+says *I have decided to trust this*; its absence is not permission — with
+nobody to ask (no terminal), nothing goes and the launch is refused. A
 question that carries a judgement only the person can make — following a run
 that was launched and never concluded — takes **no** as Enter's answer.
 
@@ -100,7 +103,7 @@ with the reason: hiding it answers *"why is my queue not an option?"* with
 silence. **And a page that offers queues proposes no value**: choosing a queue
 on the Task setup card fills neither the wall nor the memory — its limits are
 shown beside the fields, and an empty field stays empty until it is stated
-*(it wrote the queue's ceiling and 95 % of its memory until 2026-10-03, which a
+*(it wrote the queue's ceiling and 95 % of its memory until 2026-10-05, which a
 Save made "stated" — S1's default wearing a number's clothes)*.
 
 *There is no queue given once for a whole machine: `execution.domain` in

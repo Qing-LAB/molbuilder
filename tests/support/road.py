@@ -241,7 +241,8 @@ def calls_made(calls: Path):
 #      `walk`, `walk_lacks`: the walk it wrote, `launch/<name>.run.sh`;
 #      `after_launch`: the after-prep checks below, asked again);
 #   2. WHAT IS PRODUCED -- the `.sbatch` header (`header`, or
-#      `header_absent`), the deck (`deck`), the run script (`run_sh`), each
+#      `header_absent`), the deck (`deck`), the run script (`run_sh`), the
+#      plan the prep wrote, `STAGE-PLAN.md` (`plan`), each
 #      with a `_lacks` twin; the `sbatch` line launch shows (`line`,
 #      `line_lacks`); a benchmark's trials (`bench_gres`,
 #      `bench_header_lacks`);

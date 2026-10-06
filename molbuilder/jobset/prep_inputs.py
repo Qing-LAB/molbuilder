@@ -483,7 +483,7 @@ def prep_run_inputs(base, task, stage, allocation=None):
 
     # 1 · THE CONDITION -- the run card, the launch-shape ladder's first rung,
     #     under a flag (`architecture.md` § 5.2) -- folded where the rest of
-    #     the allocation is, once, at step 2 (`prep._under_description`: a
+    #     the allocation is, once, at step 2 (`prep._fold_allocation`: a
     #     flag, then the run card, then the description).  *(It was folded
     #     here too until 2026-10-05, the same answer twice.)*
     chosen, cond_pins = run_inputs(base, task, stage)
@@ -493,7 +493,7 @@ def prep_run_inputs(base, task, stage, allocation=None):
     # setup card shows the entry's preview of it.
 
     # 1b · THE CALCULATION'S SCHEDULER ASK is folded where the stage is
-    #      resolved, once (`prep._resolve_stage`, `prep._under_description`:
+    #      resolved, once (`prep._resolve_stage`, `prep._fold_allocation`:
     #      a flag, then the run card, then the description).  *(It was folded
     #      here too until 2026-10-05 -- a second home of that rule, kept for
     #      the Task setup card's rows; the card shows the entry's preview

@@ -67,8 +67,16 @@ carry  = "when-continuing"      # WHAT A RUNG HANDS THE NEXT ONE.  Under one
 # in memory and has no `read_result`, and the decks ask for no Hessian
 # (engine.py `calc`, normal_modes.py `calc_cartesian_hessian`).
 
-# ---- vibration: shares the checkpoint story -------------------------
-# (an empty section IS a statement: base only, nothing type-specific --
-#  the § 4.2a growth rule's smallest expansion)
+# ---- vibration: a re-run starts over ----------------------------------
+# The vibration deck writes its checkpoint and reads none back: each run
+# relaxes and computes its Hessian from the start (the wrapper's own
+# reading of the deck, `runwrap._py_deck_reads_prior`; vibration.md
+# § 3.1).  So nothing a stopped run left is a state to continue from,
+# and a stage of it is not launched again -- its redo is the rollback
+# (job-system.md § 5.4).  *(This section was empty until 2026-10-05, so
+# a stopped PySCF vibration was "continued" -- its .chk copied, the run
+# recomputed from scratch; the unit 11 review.)*
 
 [vibration]
+resumes = false                 # A RE-RUN DOES NOT CONTINUE: the deck
+                                # reads no checkpoint at start

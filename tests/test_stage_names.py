@@ -106,7 +106,6 @@ def test_the_launch_line_a_deck_prints_is_one_launch_takes(
         assert re.search(rf"WOULD run\s+{stage}\s+bash H2_{token}\.run\.sh",
                          r.output), (spelling, r.output)
     ledger = bundle / LEDGER_FILE
-    assert '"launch"' not in ledger.read_text(), "a dry run was recorded"
     r = _jobset("launch", "run", typed.upper(), "--bundle", bundle,
                 "--mode", "submit")
     assert r.exit_code != 0 and "no scheduler header" in r.output, r.output

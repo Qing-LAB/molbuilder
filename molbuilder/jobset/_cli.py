@@ -1558,14 +1558,18 @@ def _refuse_flags_without_effect(*, kind: str, mode: str, trial,
 
     if mode == "direct":
         # A BENCHMARK'S PER-TRIAL BOUND IS ITS WALK'S, here as on a queue
-        # (`job-system.md` § 6.0, *One sequencer*) -- the rest are what a
+        # (`job-system.md` § 6.0, *A benchmark's walk*) -- the rest are what a
         # scheduler is asked.
-        got = said("--domain", "--time", "--mem", "--gpu-domain", "--only")
+        got = said("--domain", "--time", "--mem", "--gpu-domain")
         if got:
             raise click.ClickException(
                 f"{', '.join(got)}: what a scheduler is asked for -- "
                 f"`--mode direct` runs it here, where "
                 f"{'it means' if len(got) == 1 else 'they mean'} nothing.")
+        if said("--only"):
+            raise click.ClickException(
+                "--only: sends one side of a benchmark to a queue -- a "
+                "walk here runs every unlaunched trial.")
     if kind != "bench":
         got = said("--gpu-domain", "--trial-timeout", "--only")
         if got:
@@ -1581,7 +1585,7 @@ def _refuse_flags_without_effect(*, kind: str, mode: str, trial,
 
 
 def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
-                  footer=()):
+                  footer=(), here: bool = False):
     """**Nothing is submitted unseen** (`submission.md` S4): the exact
     ``sbatch`` line of every job about to be sent -- by the code that sends
     it -- what each follows, what only the person can judge, and what the
@@ -1592,11 +1596,12 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
     seen).  Under ``--dry-run`` the commands are printed by the results that
     follow, so only what the plan alone carries is said here, and nothing
     is asked: ``None``.  Otherwise the answer (`ask.Said`).  ``--yes``
-    skips the question, never the output."""
+    skips the question, never the output.  A run ``here`` is shown and
+    asked as a submission is (user, 2026-10-05)."""
     from .ask import confirm, gpu_share_notes
     from ..scheduler.quantities import parse_gres_flag
     planned = [r for r in plan if r.status == "planned"]
-    lines = ["about to submit:"]
+    lines = ["about to run here:" if here else "about to submit:"]
     for r in plan:
         if r.status == "planned":
             # NAME THE DOMAIN, not only the flags: where several domains
@@ -1633,7 +1638,8 @@ def _show_and_ask(plan, *, dry_run: bool, auto_yes: bool,
         return None
     # A JUDGEMENT ONLY THE PERSON CAN MAKE is not made by Enter.
     return confirm("\n".join(lines), auto_yes=auto_yes,
-                   default=not judged)
+                   default=not judged,
+                   question="run this here?" if here else "submit this?")
 
 
 @jobset_group.command("launch", short_help="launch a prepped stage")
@@ -1787,113 +1793,20 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
         _refuse_unprepped(base, stage)
         only = stage = said["stage"] = _resolve_stage(js, stage, "launch",
                                                       base=base)
-    launching = [j for j in js.jobs if only is None or j.name == only]
     grouped = kind == "bench" and trial is None
     mem = _memory(mem_text)
     time_s = _duration(time_text)
 
-    # ------------------------------------------------------------------ #
-    #  Which queue -- asked ONCE, of everyone who already answered        #
-    # ------------------------------------------------------------------ #
-    # NOBODY GUESSES THE QUEUE (user, 2026-08-23; `submission.md` S5).  In
-    # order, most specific first: --domain on this call; the work's own
-    # resources -- what prep baked for THIS stage (W52: every stage's row
-    # was read, so a queue named at one stage's prep routed another).  There
-    # is no machine-wide queue: `execution.domain` in molbuilder.json stood
-    # in for one until 2026-10-02.  For `ask` as for `submit`, so the line
-    # asked about is the line that would be sent (W52: ask resolved no queue
-    # at all).  Reading the baked value is not inferring it -- a person put
-    # it there -- and it is ADMITTED like any other: a bundle prepped
-    # elsewhere may name a queue this machine lacks.
-    slurm = mode in ("submit", "ask")
-    if slurm and domain is None:
-        # THE QUEUE PREP ADMITTED, as each job records it -- a run's
-        # placement (`job-system.md` § 6.0); a trial's, the domain its
-        # resources carry.
-        _baked = {(j.placement or {}).get("domain") or j.resources.domain
-                  for j in launching}
-        _baked.discard(None)
-        _baked.discard("")
-        if len(_baked) == 1:
-            domain = _baked.pop()
-            domain_source = "the bundle (prep admitted it)"
-        elif len(_baked) > 1:
-            raise click.ClickException(
-                "the trials being sent name more than one domain ("
-                + ", ".join(sorted(_baked)) + ").  Name the one to use with "
-                "--domain, and --gpu-domain if the GPU side differs.")
-    if slurm and domain is None:
-        # A queue is needed unless the only side being sent is named by
-        # --gpu-domain.
-        from .submit import sides_of
-        try:
-            _gpu_only = bool(gpu_domain) and kind == "bench" and (
-                (grouped and (only_side == "gpu"
-                              or not sides_of(js)["cpu"]))
-                or (only is not None
-                    and any(j.name == only for j in sides_of(js)["gpu"])))
-        except SubmitError as e:          # the verb's own: it is written down
-            raise click.ClickException(str(e))
-        from ..runtime_config import get_routing
-        _rows = [] if _gpu_only else get_routing(
-            project_dir=Path(base) if base else None)
-        if _rows:
-            from .ask import Ask, queue_table
-            from ..scheduler import parse_mem_gb
-            # THE SAME REQUEST the door will admit (`placement.request_of`,
-            # prep's and the door's one) -- the cores and the GPU side
-            # included, a PySCF run's one process counted -- so the table
-            # cannot say yes where the submission says no (`submission.md`
-            # § 3).
-            from .placement import one_process, request_of
-            _one = one_process(js.engine)
-            _cores = max((request_of(j.resources, one_process=_one).cores
-                          or 0 for j in launching), default=0) or None
-            # ...each job's GPU REQUEST, through the one door the
-            # submission asks (`model.gpu_request`) -- whether, and how many;
-            # never a stand-in of one.
-            from .submit import _gpus as _request
-            try:
-                _asks = [_request(j.resources, f"job {j.name!r}")
-                         for j in launching]
-            except SubmitError as e:
-                raise click.ClickException(str(e))
-            _gpu = only_side == "gpu" or (bool(_asks)
-                                          and all(a.uses for a in _asks))
-            _gpus = (max((a.count or 0 for a in _asks), default=0) or None
-                     if _gpu else None)
-            # ...and the WALL AND MEMORY the door admits: what launch
-            # states, else what prep baked (`submit._sbatch_request`) -- the
-            # flags alone showed a queue as fitting that the door then
-            # refused (W55 D7).  The most any job being sent asks.
-            from ..scheduler.quantities import parse_walltime
-
-            def _most(read, field):
-                got = []
-                for j in launching:
-                    v = getattr(j.resources, field, None)
-                    try:
-                        got.append(read(str(v)) if v else None)
-                    except ValueError:        # the door refuses it, by name
-                        got.append(None)
-                return max((g for g in got if g is not None), default=None)
-            _wall = (time_s if time_s is not None
-                     else _most(parse_walltime, "time"))
-            _mem = parse_mem_gb(mem) if mem else _most(parse_mem_gb, "mem")
-            click.echo(queue_table(_rows, Ask(time_s=_wall, mem_gb=_mem),
-                                   cores=_cores, gpus=_gpus))
-            raise click.ClickException(
-                "no --domain, so no queue was chosen.  Name one from the "
-                "list above with `--domain` -- a queue named in the "
-                "description's `allocation.domain` reaches a stage at its "
-                "prep.")
+    # THE QUEUE is the entry's to decide -- --domain as typed, else the one
+    # the work's prep admitted (`submit.plan_launch`; floor 7 never works
+    # out a launch, `architecture.md` § 2.1).  It was decided here until
+    # 2026-10-05.
     # The same provenance line prep printed, at the LAST moment before the
     # launch -- the mode above may have come from config, and this names
     # which file said so (user request 2026-08-12).
     from ..runtime_config import config_provenance, format_provenance
     prov = config_provenance(project_dir=base)
     click.echo(format_provenance(prov))
-    from .ask import confirm
     from .submit import ask_launch, plan_launch, send_launch
 
     # A grouped bench's per-trial bound.  NOTHING IS DERIVED (user
@@ -1970,29 +1883,37 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     # 2 · SHOWN, and 3 · ASKED -- once, for the whole plan.  A dry run stops
     # here and writes nothing, the ledger included (§ 6.0, step 3).
     shown = plan.shown()
-    footer = (["  per-trial bound: "
+    # WHERE A WALK'S OUTPUT GOES: each trial's into the walk's log, so the
+    # terminal shows nothing while it runs (the unit 11 review)
+    from .ledger import rel_to
+    walks = ["  the walk's output: "
+             + rel_to(base, s.cwd / "launch" / f"{s.name}.log")
+             for s in plan.submissions if s.direct and s.rides]
+    footer = walks + (["  per-trial bound: "
                + (f"{_bound_s // 60} min" if _bound_s else
-                  "none -- each trial runs until the wall")]
+                  "none -- each trial runs until it ends"
+                  + ("" if mode == "direct" else ", or the job's wall"))]
               if grouped else [])
     if dry_run:
         _show_and_ask(shown, dry_run=True, auto_yes=auto_yes, footer=footer)
         results = shown
     else:
-        said = None
-        if mode == "submit":
-            said = _show_and_ask(shown, dry_run=False, auto_yes=auto_yes,
-                                 footer=footer)
-        elif plan.judgements():
-            # DIRECT runs what was typed, here -- the question S4 puts is the
-            # scheduler's.  What only the person can judge is still asked:
-            # following a run that may still be running.
-            said = confirm("\n".join(plan.judgements()), auto_yes=auto_yes,
-                           default=False)
+        # EVERY LAUNCH IS SHOWN AND ASKED, a run here as a submission is
+        # (user, 2026-10-05) -- `--yes` the answer given in advance.  With
+        # nobody to ask, nothing goes and the launch is REFUSED, so a
+        # script is never told it went (`project-layout.md` § 1.6.4).
+        said = _show_and_ask(shown, dry_run=False, auto_yes=auto_yes,
+                             footer=footer, here=(mode == "direct"))
+        if not said.asked:
+            raise click.ClickException(
+                "not a terminal, so there is nobody to ask -- nothing was "
+                "sent.  Pass --yes to go ahead with what is printed above "
+                "without being asked.")
         # 4 · THE SEND, and 5 · THE RECORD -- the answer written down, a *no*
         # too (W55 D6), and each submission the moment it goes: a run here
         # when it starts, a scheduler job when it has its id.
         results = send_launch(plan, said=said)
-        if said is not None and not said:
+        if not said:
             click.echo("nothing submitted." if mode == "submit"
                        else "nothing launched.")
             return

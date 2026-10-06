@@ -1766,9 +1766,12 @@ def _retry_texts(resumes: bool,
                        "does not resume (warm-files: resumes = false), so an "
                        "SCF that stopped the first step continues and one "
                        "that stopped later meets the same SCF again"),
-            "mode": ("RE-RUN FROM THE FIRST STEP (--continue; this kind of "
-                     "run does not resume -- only what its first step saved "
-                     "is read back)"),
+            # one Mode line for both engines, so it says only what is true
+            # of both: a SIESTA force-constant run reads back its first
+            # step's density, a PySCF vibration nothing (the usage and the
+            # retry lines, SIESTA's alone, say the rest)
+            "mode": ("RE-RUN FROM THE START (--continue; this kind of run "
+                     "does not resume)"),
             "usage": ("This kind of run does not resume (warm-files:\n"
                       "                   resumes = false): --continue "
                       "re-runs it from\n"

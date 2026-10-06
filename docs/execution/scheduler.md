@@ -338,9 +338,10 @@ machines` shows it — and nothing compares it.
 end.
 
 **R5 — A header must be submittable on its own.** If it names a queue it
-states a wall that queue accepts. When nothing else supplies one, the queue's
-own ceiling is the value — the only number that queue can never reject as too
-long.
+states a wall that queue accepts — the wall stated for the run; an unstated
+one is refused at prep, never filled in ([`submission.md`](?doc=execution/submission.md)
+S2). *(Until 2026-10-02 the queue's own ceiling was the value when nothing
+else supplied one.)*
 
 **R6 — Refuse before submitting, when the record already says so.** The
 existing `job-system.md` § 6 rule, now with somewhere to live. A machine whose
@@ -664,7 +665,7 @@ scheduler/
   record.py   Machine · Domain · Topology · Site; read/write; scopes; named targets
   probe.py    detection (sinfo / scontrol / lscpu) -> a record
   admit.py    admits(domain, request) -> [reasons]        # R2, R3, R4, R7
-  place.py    place(machine, request, *, prefer_gpu) -> Placement   # R6
+  place.py    place(routing, request, *, prefer_gpu, named) -> Placement  # R6
   emit.py     Directives(placement) -> header_lines() · sbatch_flags()   # R1, R5
 ```
 
@@ -692,10 +693,11 @@ and be wrong the first time anything else appears.
 req = Request(ranks=64, cpus_per_task=1, gpus=2,
               mem_gb=390, walltime_s=38 * 60)
 
-placement = place(machine, req, prefer_gpu=True)
-#   -> htc/public          (debug is skipped: 15 min < 38 min, R3 not engaged)
-#   -> Unplaceable(reasons=[...]) when nothing admits it (R6), each reason
-#      naming its numbers (R4)
+placement = place(routing, req, prefer_gpu=True, named="htc")
+#   -> htc/public          the queue the job names, admitted on its row
+#   -> Unplaceable(reasons=[...]) when it cannot take the job, or the job
+#      names none on a machine that has queues (R6), each reason naming
+#      its numbers (R4)
 
 d = Directives(placement)
 d.header_lines()    # what the .sbatch carries, wall included (R5)
@@ -703,7 +705,8 @@ d.sbatch_flags()    # what the command line carries
 #   the same placement, twice (R1)
 ```
 
-`--domain NAME` names the placement instead of choosing one. It is still
+**The job names its queue; `place` chooses none** *(since 2026-10-02)* — the
+description, the run card or `--domain` names it, and it is still
 **admitted**: naming a queue that cannot hold the job earns R4's refusal, not
 silent acceptance — the user's explicit choice is honoured as a choice, not as
 permission to skip the check.
