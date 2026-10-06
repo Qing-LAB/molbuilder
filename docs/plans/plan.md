@@ -449,6 +449,10 @@ each broken once; an agent reads the full code text when unit 5 closes.
 4. **The road's machine record** (T3): **A** -- a row states the machine it needs in molbuilder's own format (`tests/conftest.py`'s default record, the tables' `[[queues]]`), never a scheduler's text; reading a real machine stays the field tier's *(user: "A")*.
 5. **T2 -- settled by the 2026-10-04 rule, not a decision:** the spectra tests that exist for "numeric-literal flavors that engines or hand-edited files might produce" (`test_parsers_json.py`, the scientific-notation pair) retire -- handcrafted input; the rest write through the one writer, `dump_spectra_json`, instead of `json.dumps(to_dict())` (`_write_json`) -- "our own file through our own writer".
 
+6. **One launch, several runs** (found building decision 2: a SIESTA warm retry re-starts the run script, and the retry takes the next run number): **A** -- every run number has its own launch record; `launch` decides the first number and hands it to the run script, so the two cannot disagree; a retry writes its own record with `"retry_of": <n>` *(user: "A")*.
+
+7. **Calculations prepped before the record fixes** (R9, R10, D6 make `job-set.json`, `task.json`'s `calculation` and the notify channels written whole; the reader is strict): **A** -- such a file is refused naming `molbuilder jobset migrate --bundle <calc>`, which rewrites it, every value kept, each change printed, the old file kept beside the new -- the verb's existing pattern for older templates *(user: "A. go ahead")*.
+
 **Every decision answered** (2026-10-06). To build, one commit each with its rows and mutations: P7, R10's `every_hours: 0`, D6; R9, R10's `calculation`, R4, R3; N5, N9, N8's old monitor names; decision 2 (the flat per-run files' run numbers); T1 and T2. Then the milestone's two automated review rounds, then unit 12. Decision 1 is the Q2f session's.
 
 #### The user's word on § 0c *(2026-10-03, verbatim)*
