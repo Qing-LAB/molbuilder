@@ -150,7 +150,7 @@ def test_the_structure_travels_as_the_calculations_own_pair(tmp_path):
     try:
         res = CliRunner().invoke(jobset_group, [
             "init", "--structure", "P/structure/h2.xyz",
-            "--bundle", "P/optimization/calc",
+            "--bundle", "P/optimization/calc", "--engine", "siesta",
             "--shape", "hierarchical", "--vacuum", "8", "--name", "JOB"])
     finally:
         os.environ.pop(PROJECTS_ROOT_ENV, None)
@@ -327,7 +327,7 @@ def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path):
         # NOT exist here, which is exactly the papercut's shape.
         res = CliRunner().invoke(jobset_group, [
             "init", "--structure", "P/structure/h2.xyz",
-            "--bundle", "P/optimization/calc",
+            "--bundle", "P/optimization/calc", "--engine", "siesta",
             "--shape", "hierarchical", "--vacuum", "8", "--name", "JOB",
             "--psml-lib", "pseudopotential"])
     finally:

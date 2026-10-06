@@ -68,21 +68,21 @@ def stages():
 
 
 def test_fdfs_returns_one_per_enabled_stage(h2, cfg, stages):
-    fdfs = _live_ladder_decks(h2, cfg, stages)
+    fdfs = _live_ladder_decks(h2, cfg, stages, label=cfg.system_label)
     assert sorted(fdfs) == ["JOB_01_coarse.fdf", "JOB_02_medium.fdf"]
 
 
-def test_fdfs_filename_uses_system_label(h2, stages):
-    cfg = SiestaConfig(system_label="TJ-BDT-Au111")
-    fdfs = _live_ladder_decks(h2, cfg, stages)
-    assert all(name.startswith("TJ-BDT-Au111_") for name in fdfs)
+# `test_fdfs_filename_uses_system_label` retired 2026-10-06: it checked that
+# the test helper named its decks by the config's SystemLabel -- the helper's
+# own rule, not prep's, which names a deck by the calculation's label
+# (`element.label`).  The helper now takes the label it is given.
 
 
 def test_fdfs_share_systemlabel_for_warm_restart(h2, cfg, stages):
     """Each emitted fdf must declare the SAME SystemLabel as cfg --
     that's the mechanism by which SIESTA auto-reads <label>.XV across
     stage invocations."""
-    fdfs = _live_ladder_decks(h2, cfg, stages)
+    fdfs = _live_ladder_decks(h2, cfg, stages, label=cfg.system_label)
     for body in fdfs.values():
         assert f"SystemLabel       {cfg.system_label}" in body
 
@@ -91,7 +91,7 @@ def test_fdfs_per_stage_md_block_uses_stage_values(h2, cfg, stages):
     """stage1 = CG / 600 / 0.05 / 0.20, 02_medium = Broyden / 200 / 0.04
     / 0.05.  Each fdf's MD block reflects its own stage's values, NOT
     the cfg.relax_* default."""
-    fdfs = _live_ladder_decks(h2, cfg, stages)
+    fdfs = _live_ladder_decks(h2, cfg, stages, label=cfg.system_label)
     s1 = fdfs["JOB_01_coarse.fdf"]
     s2 = fdfs["JOB_02_medium.fdf"]
 
@@ -110,14 +110,14 @@ def test_fdfs_disabled_stages_drop_out(h2, cfg, stages):
     # Disable stage2; enable stage3.
     stages[1] = dataclasses.replace(stages[1], enabled=False)
     stages[2] = dataclasses.replace(stages[2], enabled=True)
-    fdfs = _live_ladder_decks(h2, cfg, stages)
+    fdfs = _live_ladder_decks(h2, cfg, stages, label=cfg.system_label)
     assert sorted(fdfs) == ["JOB_01_coarse.fdf", "JOB_03_tight.fdf"]
 
 
 def test_fdfs_single_enabled_stage_is_still_emitted(h2, cfg, stages):
     for i in (1, 2):
         stages[i] = dataclasses.replace(stages[i], enabled=False)
-    fdfs = _live_ladder_decks(h2, cfg, stages)
+    fdfs = _live_ladder_decks(h2, cfg, stages, label=cfg.system_label)
     assert list(fdfs) == ["JOB_01_coarse.fdf"]
 
 

@@ -16,7 +16,8 @@ knowing either answer itself.
 from __future__ import annotations
 
 
-def _live_ladder_decks(struct, template, stages, engine: str = "siesta"):
+def _live_ladder_decks(struct, template, stages, *, label: str,
+                       engine: str = "siesta"):
     """The decks the LIVE route renders: each ENABLED stage through the one
     seam, one deck per element, exactly as `prep` builds them (repointed
     2026-08-12, u5, from the deleted ``render_siesta_stage_fdfs``).  The
@@ -29,8 +30,10 @@ def _live_ladder_decks(struct, template, stages, engine: str = "siesta"):
     from molbuilder.identity import stage_token
     from molbuilder.jobset.engines import engine_seam
     from molbuilder.resolve import effective_config
+    # THE LABEL IS THE CALLER'S, as prep's deck name is the calculation's
+    # (`element.label`): the seam's `label_of`, which read it off the
+    # config, left the seam 2026-10-06 when prep stopped asking it.
     seam = engine_seam(engine)
-    label = seam.label_of(template)
     out = {}
     for i, st in enumerate(stages, start=1):
         if not getattr(st, "enabled", True):

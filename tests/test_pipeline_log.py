@@ -116,9 +116,9 @@ def test_the_name_says_engine_and_shape(tmp_path):
     directory it came from no longer says what it was."""
     assert log_name("BDT", "01_coarse", "siesta", "flat") == \
         "BDT_01_coarse.siesta.flat.pipeline.log"
-    # a calculation with no ladder has no token, and gets no dangling "_"
-    assert log_name("BDT", "", "pyscf", "hierarchical") == \
-        "BDT.pyscf.hierarchical.pipeline.log"
+    # (a stageless name, "BDT.pyscf.hierarchical.pipeline.log", was pinned
+    # here until 2026-10-06: every description has a stage, and an empty
+    # token is refused)
 
 
 # --------------------------------------------------------------------- #

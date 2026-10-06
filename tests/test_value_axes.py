@@ -285,7 +285,8 @@ def _submit_dry(calc, *extra):
 def test_split_submission_one_group_per_side_and_shelf(sol_calc):
     """One grouped job per side AND resource shelf (user rulings,
     2026-08-21): the CPU side is one shelf here (one exact-fit group,
-    named by side alone); the GPU side spans three device counts, so it
+    named in full, its side and its cell -- `generator.md` § 4.3a); the
+    GPU side spans three device counts, so it
     submits three exact-fit groups -- a G1 trial never idles inside a
     gres:4 envelope.  The CPU group prefers the cpu-only domain, every
     GPU group the gpu-capable one, and only GPU groups ask for devices."""
@@ -294,7 +295,7 @@ def test_split_submission_one_group_per_side_and_shelf(sol_calc):
     out = _submit_dry(sol_calc)
     plans = [l for l in out.splitlines() if "WOULD run" in l]
     assert len(plans) == 4
-    cpu = next(l for l in plans if "bench-group-cpu " in l)
+    cpu = next(l for l in plans if "bench-group-cpu-G0K4C1 " in l)
     assert "-p htc" in cpu and "--gres" not in cpu
     # The shelf token is the SAME spelling its trials carry (2026-08-24):
     # `G<gpus>K<ranks-per-gpu>C<cores>`, where 4 ranks over g devices is
@@ -357,8 +358,9 @@ def test_the_shelves_submit_widest_first(sol_calc):
     # (`G<gpus>K<ranks-per-gpu>C<cores>`, 2026-08-24) -- it was
     # `g<gpus>n<TOTAL-ranks>c<cores>` while the directories that
     # same job launches were named the other way.
-    assert "bench-group-G0K4C1" in plans[0] and " -n 4 " in plans[0]
-    assert "bench-group-G0K2C1" in plans[1] and " -n 2 " in plans[1]
+    # Named in full, side and cell (`generator.md` § 4.3a).
+    assert "bench-group-cpu-G0K4C1" in plans[0] and " -n 4 " in plans[0]
+    assert "bench-group-cpu-G0K2C1" in plans[1] and " -n 2 " in plans[1]
     riders = [l.split()[1] for l in out.splitlines() if "rides the group" in l]
     assert riders == ["G0K4C1", "G0K2C1"], riders
 
@@ -608,7 +610,7 @@ def test_a_grouped_bench_on_a_flat_calculation(flat_sol_calc):
     out = _submit_dry(flat_sol_calc)
     plans = [l for l in out.splitlines() if "WOULD run" in l]
     assert len(plans) == 4, out    # one CPU shelf + three GPU shelves
-    assert any("bench-group-cpu " in l for l in plans)
+    assert any("bench-group-cpu-G0K4C1 " in l for l in plans)
     assert sum("bench-group-gpu-" in l for l in plans) == 3
 
 

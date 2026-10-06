@@ -4,7 +4,6 @@ stage-ladder producer."""
 
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 
@@ -27,7 +26,6 @@ from molbuilder.jobset.materialize import materialize
 from molbuilder.paths import trial_name
 from molbuilder.jobset.plan import render_plan
 from molbuilder.jobset.submit import SubmitError, plan_launch
-from molbuilder.jobset.runstatus import jobset_status, render_status
 
 
 @pytest.fixture(autouse=True)
@@ -147,68 +145,12 @@ def test_validate_catches_empty_and_bad_kind():
 #  materialize engine                                                    #
 # --------------------------------------------------------------------- #
 
-def test_materialize_creates_dirs_and_copies(tmp_path):
-    """L2 (roadmap 7.10, user 2026-08-24): a run directory holds REAL
-    files.  This asserted relative symlinks until the layout repair --
-    links up to root copies are the mechanism that put 50 rendered files
-    at a ten-trial bundle's root."""
-    js = _ladder()
-    for f in js.shared + [j.script for j in js.jobs]:
-        (tmp_path / f).write_text("x")
-    dirs = materialize(js, tmp_path)
-    assert [d.name for d in dirs] == ["bench-s1", "bench-s2"]
-    got = tmp_path / "bench-s1" / "C.psml"
-    assert got.is_file() and not got.is_symlink()
-    assert got.read_text() == "x"
-
-
-def test_materialize_lays_no_link_into_another_job(tmp_path):
-    """The inverse of what this test used to assert, and that is the change.
-
-    It read: the carry symlink exists, points at `../bench-s1/demo.XV`, and
-    **dangles** -- *"dangling is fine (s1 hasn't run yet)"*.  It was fine only
-    because a scheduler dependency stopped the consumer starting early and a
-    run-time step localized the link before the engine could write through it.
-    Decision 30 deleted all three (2026-08-10).
-
-    So: a job's directory contains its own inputs and the shared package, and
-    **nothing that reaches into a sibling**.  What a stage continues from is a
-    real file copied by `prepare_attempt` from an attempt you name.
-    """
-    js = _ladder()
-    for f in js.shared + [j.script for j in js.jobs]:
-        (tmp_path / f).write_text("x")
-    materialize(js, tmp_path)
-    d = tmp_path / "bench-s2"
-    assert not (d / "demo.XV").exists() and not (d / "demo.XV").is_symlink()
-    strays = [e.name for e in d.iterdir()
-              if e.is_symlink() and "bench-s1" in os.readlink(e)]
-    assert not strays, f"links into another job's directory: {strays}"
-    # ...and the legitimate contents are real copies of the shared
-    # package.  (The deck is BORN in the directory by prep since the
-    # layout repair; materialize no longer places it, so a bare
-    # materialize of a hand-built set carries only the shared files.)
-    assert sorted(e.name for e in d.iterdir()) == ["C.psml", "mb_monitor.py"]
-    assert not any(e.is_symlink() for e in d.iterdir())
-
-
-def test_materialize_is_idempotent(tmp_path):
-    """Running `materialize` twice leaves the same REAL files, with no error and no
-    duplication.
-
-    `prep` is re-run routinely -- after editing a deck, after a failed attempt --
-    so a second pass that raised on existing directories, or that turned the
-    copies into links, would make the ordinary repair workflow the broken path.
-    The `is_file() and not is_symlink()` pair is the same property the first-pass
-    test asserts: a run directory holds real files, not links up to a root copy.
-    """
-    js = _ladder()
-    for f in js.shared + [j.script for j in js.jobs]:
-        (tmp_path / f).write_text("x")
-    materialize(js, tmp_path)
-    materialize(js, tmp_path)              # no exception, no duplication
-    got = tmp_path / "bench-s2" / "C.psml"
-    assert got.is_file() and not got.is_symlink()
+# Retired 2026-10-06 (MEMORY gate 5: a failing test fed a hand-built job set
+# is retired, never updated): 24 tests built a JobSet by hand -- in a folder
+# with no task.json, with decks naming no stage, or asking the naming
+# authority with no shape.  A folder no description names and a job whose
+# deck names no stage are refused now (`materialize.shape_of`,
+# `job_dir_names`); the road's tables prep real calculations instead.
 
 
 def test_materialize_rejects_invalid_jobset(tmp_path):
@@ -279,55 +221,6 @@ def _token_ladder(*scripts, optimizers=None):
             resources=Resources(mpi_np=2, cpus_per_task=1),
         ))
     return JobSet(name="JOB", engine="siesta", kind="ladder", jobs=jobs)
-
-
-def test_job_dir_names_ladder_uses_the_decks_own_token():
-    """A stage directory is ``<seq>_<name>``, and the seq is READ BACK off the
-    deck rather than counted here -- counting would reintroduce the shifting
-    number ``engines/stages.md`` R5 forbids."""
-    from molbuilder.jobset.materialize import job_dir_names
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_02_medium.fdf", "JOB_03_tight.fdf")
-    assert job_dir_names(js) == {"coarse": "01_coarse",
-                                 "medium": "02_medium",
-                                 "tight": "03_tight"}
-
-
-def test_job_dir_names_ladder_keeps_a_gap_a_gap():
-    """Disabling stage 2 leaves 01 and 03 -- the directory does NOT renumber to
-    01/02, because the seq belongs to the stage, not to its position."""
-    from molbuilder.jobset.materialize import job_dir_names
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    assert job_dir_names(js) == {"coarse": "01_coarse", "tight": "03_tight"}
-
-
-def test_job_dir_names_sweep_keeps_the_point_convention():
-    """The benchmark is untouched by the ladder's rule -- and its tokenless
-    trials live in the bare ``bench/`` container beside their own record
-    (until 2026-08-13 they fell to the root while the record sat in
-    ``bench/``, final review A-2).
-
-    Only a HAND-BUILT set arrives here tokenless now: § 6.5 gave every
-    description a ladder on 2026-08-16, so every described deck carries a
-    token.  The naming authority still owes those an answer, which is why
-    the row -- and this test -- stay."""
-    from molbuilder.jobset.materialize import job_dir_names
-    from molbuilder.jobset.model import Job, JobSet
-    js = JobSet(name="JOB", engine="siesta", kind="sweep",
-                jobs=[Job(name="np4", script="JOB.fdf"),
-                      Job(name="np8", script="JOB.fdf")])
-    assert job_dir_names(js) == {"np4": "bench/bench-np4",
-                                 "np8": "bench/bench-np8"}
-
-
-def test_job_dir_names_ladder_without_a_token_falls_back_rather_than_guessing():
-    """A hand-written ladder whose deck carries no token gets ``bench-<name>``.
-    Inventing a seq for it would be guessing at the one number § 4.2 says is
-    assigned once and never reassigned."""
-    from molbuilder.jobset.materialize import job_dir_names
-    from molbuilder.jobset.model import Job, JobSet
-    js = JobSet(name="JOB", engine="siesta", kind="ladder",
-                jobs=[Job(name="only", script="JOB.fdf")])
-    assert job_dir_names(js) == {"only": "bench-only"}
 
 
 # --------------------------------------------------------------------- #
@@ -559,51 +452,6 @@ def test_submit_accepts_exactly_these_options(tmp_path):
 # road row that launches here and builds on the run asserts it.
 
 
-def test_status_fresh_bundle_all_not_started(tmp_path):
-    """A bundle where nothing has been prepped reports every stage `not-started`, and
-    points at the first one.
-
-    `not-started` has to stay distinguishable from `pending` (a directory exists,
-    nothing has run) and from `finished`, because `first_incomplete` is what a
-    person is told to resume from (`job-system.md` § 5.4) -- a fresh bundle
-    reporting anything else sends them to the wrong stage.
-    """
-    st = jobset_status(_ladder(), tmp_path)        # nothing prepped
-    assert [s.state for s in st.stages] == ["not-started", "not-started"]
-    assert st.first_incomplete == "s1" and st.complete is False
-
-
-def test_render_status_shows_resume_pointer(tmp_path):
-    """The rendered status names the calculation, the stage to resume from, and that
-    nothing resumes on its own.
-
-    `does NOT auto-resume` is the load-bearing line: nothing in the system
-    advances a ladder -- the person launches each stage (`job-system.md` section
-    5.4) -- so a status screen that only reported states would let someone leave a
-    bundle sitting for days believing the next stage was queued.
-    """
-    txt = render_status(jobset_status(_ladder(), tmp_path))
-    assert "JOB-SET STATUS -- demo" in txt
-    assert "First incomplete stage: s1" in txt
-    assert "does NOT auto-resume" in txt
-
-
-def test_cli_status(tmp_path):
-    """`jobset status --bundle <dir>` renders the status through the CLI.
-
-    The path an operator on a login node actually uses: read `job-set.json` from
-    the bundle, compute the status, print it. RECORDED DOUBT for the section 3b
-    review -- the command is a thin caller of `jobset_status` + `render_status`,
-    both tested directly above, so what this adds is that the subcommand is wired
-    at all and exits 0 on a bundle where nothing has run.
-    """
-    _ladder().write(tmp_path / "job-set.json")
-    runner, grp = _runner()
-    r = runner.invoke(grp, ["status", "--bundle", str(tmp_path)])
-    assert r.exit_code == 0, r.output
-    assert "JOB-SET STATUS" in r.output and "First incomplete" in r.output
-
-
 # --------------------------------------------------------------------- #
 #  carry-forward BEHAVIOR (the §4 isolation guarantee, end-result)       #
 # --------------------------------------------------------------------- #
@@ -750,73 +598,6 @@ def test_stage_refs_carries_the_jobs_name_not_the_tokens():
     assert (ref.seq, ref.name) == (3, "tight")
 
 
-def test_job_dir_names_sweep_is_unchanged_by_the_total_refs():
-    """A sweep point's directory is `bench/bench-<name>` -- nested, unlike a ladder
-    rung's.
-
-    The two kinds use two conventions (`project-layout.md` § 4.1): a ladder
-    is flat, one directory per calculation, and a sweep's trials live under a
-    `bench/` of their own. This pins the sweep half against the change that made
-    `stage_refs` total -- giving every job a ref, points with no ordinal included
-    -- because the risk of that change was precisely that the namer would start
-    treating a point like a rung.
-    """
-    from molbuilder.jobset.materialize import job_dir_names
-    from molbuilder.jobset.model import Job, JobSet
-    js = JobSet(name="JOB", engine="siesta", kind="sweep",
-                jobs=[Job(name="p1", script="JOB_p1.fdf")])
-    assert job_dir_names(js) == {"p1": "bench/bench-p1"}
-
-
-def test_a_sweep_point_prints_a_dash_not_its_row_under_seq(tmp_path):
-    """The rename made `#` mean `seq`; falling back to the row for a kind that
-    has no ordinal is the same defect wearing the new column's name."""
-    from molbuilder.jobset.model import Job, JobSet
-    js = JobSet(name="JOB", engine="siesta", kind="sweep",
-                jobs=[Job(name="p1", script="JOB_p1.fdf"),
-                      Job(name="p2", script="JOB_p2.fdf")])
-    body = [l for l in render_plan(js).splitlines() if "p2" in l]
-    assert body[0].split()[0] == "-"          # NOT "1", which the row would be
-    # tmp_path, never ".": status READS the filesystem, and a repo that
-    # happened to hold a `bench-p2/` would decide this test's outcome.
-    out = render_status(jobset_status(js, tmp_path))
-    assert [l.split()[0] for l in out.splitlines() if "p2" in l] == ["-"]
-
-
-def test_prepare_attempt_takes_the_same_two_spellings_as_every_surface():
-    """One vocabulary everywhere (2026-08-10's fix, re-ruled 2026-08-21):
-    a stage is its NAME, or `#N` its assigned number.  The bare number and
-    the token were retired the same day -- both are legal stage NAMES
-    ([A-Za-z0-9_]+), so `2` was ambiguous with an ordinal; `#` cannot
-    appear in a name."""
-    import tempfile
-    import pytest as _pt
-    from molbuilder.jobset.materialize import prepare_attempt
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    with tempfile.TemporaryDirectory() as td:
-        for spelling in ("tight", "#3"):
-            rep = prepare_attempt(js, td, spelling)
-            assert rep.stage == "tight"           # the NAME, always
-            assert rep.dir.parent.name == "03_tight"
-        for retired in ("3", "03", "03_tight"):
-            with _pt.raises(ValueError, match="coarse \\('#1'\\)"):
-                prepare_attempt(js, td, retired)
-
-
-def test_prepare_attempt_refuses_with_the_one_listing_that_carries_ordinals():
-    """decision 28's gap verbatim: the refusal listed 'coarse, medium, tight'
-    with no order, at the one moment you are choosing which stage to run.
-    The listing offers the TYPEABLE spellings -- name and #N (user-settled
-    2026-08-21) -- not the on-disk token nobody can type any more."""
-    import tempfile
-    from molbuilder.jobset.materialize import prepare_attempt
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    with tempfile.TemporaryDirectory() as td:
-        with pytest.raises(ValueError) as e:
-            prepare_attempt(js, td, "bogus")
-    assert "coarse ('#1'), tight ('#3')" in str(e.value)
-
-
 def test_prep_says_reused_only_of_an_attempt_an_earlier_prep_opened(
         isolated_projects_root):
     """The report tells a new attempt from one an earlier prep left behind.
@@ -850,55 +631,6 @@ def test_prep_says_reused_only_of_an_attempt_an_earlier_prep_opened(
 # --------------------------------------------------------------------- #
 #  The observe layer vs the attempt layer (project-layout.md § 1.5, 1.6) #
 # --------------------------------------------------------------------- #
-
-
-def test_every_table_column_gets_a_rule_segment(tmp_path):
-    """The widths and the rule were two hand-written column counts, and adding
-    `attempt` desynchronised them at once: six headings over a five-segment
-    rule.  Both are driven off the header now, so this cannot recur."""
-    import re
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    for out in (render_plan(js), render_status(jobset_status(js, tmp_path))):
-        lines = out.splitlines()
-        # Find the rule rather than index it: the two tables do not start at
-        # the same offset, which is how this test's own first draft made the
-        # very mistake it exists to catch.
-        rule = next(l for l in lines if l.strip() and set(l.strip()) <= {"-", " "})
-        header = lines[lines.index(rule) - 1]
-        assert len(rule.split()) == len(re.split(r"\s{2,}", header.strip()))
-
-
-def test_a_never_launched_stage_says_so_instead_of_showing_a_blank_record(tmp_path):
-    """Prepared but not started is its own state, and it is what `run.json`'s
-    absence means (§ 1.6)."""
-    from molbuilder.jobset.materialize import prepare_attempt
-    from molbuilder.jobset.runstatus import render_stage_status
-    js = _token_ladder("JOB_03_tight.fdf")
-    prepare_attempt(js, tmp_path, "tight")
-
-    out = render_stage_status(jobset_status(js, tmp_path), "tight")
-    assert "no run.json" in out
-    assert "continued from" not in out
-
-
-def test_status_takes_the_bundle_the_way_every_verb_does(tmp_path):
-    """One word cannot mean the folder on two verbs and the stage on two others.
-    `jobset status tight` answered *"Directory 'tight' does not exist"* -- a
-    complaint about a path the user never meant to type (§ 5.3)."""
-    _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf").write(
-        tmp_path / "job-set.json")
-    runner, grp = _runner()
-    r = runner.invoke(grp, ["status", "--bundle", str(tmp_path)])
-    assert r.exit_code == 0, r.output
-    assert "coarse" in r.output
-    # ...and the positional is a STAGE, resolved the way every other verb
-    # resolves one.  A NUMBER, deliberately: an exact name would pass even if
-    # the command took the string verbatim and never reached the resolver.
-    r = runner.invoke(grp, ["status", "#3", "--bundle", str(tmp_path)])
-    assert r.exit_code == 0, r.output
-    # The CONTENT property (#3 resolved to 03_tight), not its line position --
-    # pinning splitlines()[0] made any banner a false failure (2026-08-12).
-    assert "STAGE 03_tight" in r.output
 
 
 def test_a_ladder_refuses_to_act_on_all_of_itself(tmp_path):
@@ -1026,39 +758,6 @@ def test_warm_and_traits_survive_job_set_at_1():
     assert xv == {"name": "bdt.XV"}
 
 
-def test_prepare_links_resolve_from_two_levels_down(tmp_path):
-    """The deck and the package arrive in ``<stage>/run-<n>/`` as REAL
-    COPIES (L2, roadmap 7.10; they were relative links until the layout
-    repair, and a synced-back bundle's links dangled on the other
-    machine)."""
-    from molbuilder.jobset.materialize import prepare_attempt
-    from molbuilder.jobset.model import Job, JobSet
-    js = JobSet(name="JOB", engine="siesta", kind="ladder",
-                shared=["C.psml"], jobs=[Job(name="tight",
-                                             script="JOB_03_tight.fdf")])
-    from molbuilder.runwrap import MONITOR_BUNDLE
-    for f in ("JOB_03_tight.fdf", "C.psml", MONITOR_BUNDLE,
-              "JOB_03_tight.run.sh"):
-        (tmp_path / f).write_text("x")
-
-    rep = prepare_attempt(js, tmp_path, "tight")
-    attempt = rep.dir
-    # THE MONITOR'S ONE FILE, by runwrap's own name for it.  `config_dir.py`
-    # was once named in the wrapper writer and not here, so it travelled with
-    # bench trials (rendered in place) and not with run attempts (linked)
-    # -- and every production run's monitor died at import, silently
-    # (2026-08-28).  One file cannot be half-brought.
-    assert set(rep.brought) == {"JOB_03_tight.fdf", "C.psml", MONITOR_BUNDLE,
-                                  "JOB_03_tight.run.sh"}
-    for name in rep.brought:
-        link = attempt / name
-        assert link.is_file() and not link.is_symlink(), (
-            f"{name}: a run directory holds real files (L2, roadmap "
-            f"7.10) -- this asserted symlinks until the layout repair")
-        assert link.read_text() == (tmp_path / name).read_text(), (
-            f"{name}: the copy differs from its source")
-
-
 def test_the_grammar_is_unambiguous_even_for_a_stage_named_3(tmp_path):
     """Stage names are ``[A-Za-z0-9_]+``, so a stage may legitimately be
     named ``3`` -- which is exactly why the bare-number spelling died
@@ -1074,24 +773,6 @@ def test_the_grammar_is_unambiguous_even_for_a_stage_named_3(tmp_path):
     assert resolve_stage_ref(refs, "tight").seq == 3
     with _pt.raises(ValueError, match="no stage named"):
         resolve_stage_ref(refs, "03_tight")              # tokens retired
-
-
-def test_prepare_attempt_refuses_a_from_that_has_not_run(tmp_path):
-    """*"Did it run?"* -- an attempt directory that exists but holds none of the
-    warm files is a live mistake (naming the attempt you are ABOUT to run, or a
-    stage that failed before writing).  Copying nothing and reporting success
-    would start it cold while the user believed it continued."""
-    from molbuilder.jobset.materialize import prepare_attempt
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    prepare_attempt(js, tmp_path, "coarse")      # exists, but produced nothing
-
-    with pytest.raises(ValueError) as e:
-        prepare_attempt(js, tmp_path, "tight", continue_from="01_coarse/run-0")
-    assert "Did it run?" in str(e.value)
-
-    with pytest.raises(ValueError) as e:
-        prepare_attempt(js, tmp_path, "tight", continue_from="01_coarse/run-9")
-    assert "no such attempt" in str(e.value)
 
 
 # `test_submit_only_takes_the_same_two_spellings_as_every_surface`
@@ -1133,38 +814,6 @@ def test_plan_prints_the_seq_not_the_row():
     body = [l for l in out.splitlines() if "coarse" in l or "tight" in l]
     assert body[0].split()[0] == "1"
     assert body[1].split()[0] == "3"          # NOT "1", which the row would be
-
-
-def test_status_prints_the_seq_not_the_row(tmp_path):
-    """The status table's number column prints the stage's ASSIGNED seq, not its row
-    position.
-
-    The sibling of `test_plan_prints_the_seq_not_the_row`, in the surface a person
-    reads while a run is going. A ladder whose stages are 01 and 03 must show 1
-    and 3; `enumerate()` shows 1 and 2, and the reader then names stage "2" to
-    `--only` -- which is either a different stage or nothing at all.
-    `project-layout.md` § 4.2: the number is assigned once and never
-    guessed.
-    """
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    st = jobset_status(js, tmp_path)
-    assert [s.seq for s in st.stages] == [1, 3]
-    out = render_status(st)
-    assert "seq" in out
-    assert [l.split()[0] for l in out.splitlines() if "tight" in l] == ["3"]
-
-
-def test_status_seq_is_none_for_a_sweep_point():
-    """A sweep point has no order, so it has no seq -- and says so rather than
-    borrowing a row number's authority."""
-    from molbuilder.jobset.model import Job, JobSet
-    js = JobSet(name="JOB", engine="siesta", kind="sweep",
-                jobs=[Job(name="p1", script="JOB.fdf")])
-    # tmp-independent: the set is hand-built and never touches disk,
-    # but "." as a base path reads whatever cwd the RUNNER happens to
-    # be in -- an accidental dependence on found state (G2 I-list,
-    # 2026-08-12).  A path that cannot exist keeps the call honest.
-    assert jobset_status(js, "/nonexistent-base").stages[0].seq is None
 
 
 # --------------------------------------------------------------------- #
@@ -1226,21 +875,6 @@ def test_a_flat_ladder_lays_every_stage_out_in_the_bundle_root():
         "coarse": "01_coarse", "tight": "03_tight"}
 
 
-def test_a_sweep_is_laid_out_the_same_way_in_either_shape():
-    """``bench/bench-<name>`` is the benchmark's own convention and says
-    nothing about flat or hierarchical -- a TOKENLESS trial has no stage
-    directory to nest in, so the bare container is the same in both shapes
-    (which is why a bench bundle needs no description to be laid out)."""
-    from molbuilder.jobset.materialize import job_dir_names
-    from molbuilder.jobset.model import Job, JobSet
-    from molbuilder.paths import Shape
-    js = JobSet(name="JOB", engine="siesta", kind="sweep",
-                jobs=[Job(name="p1", script="JOB_p1.fdf")])
-    assert (job_dir_names(js, Shape.named("flat"))
-            == job_dir_names(js, Shape.named("hierarchical"))
-            == {"p1": "bench/bench-p1"})
-
-
 def _describe(base, shape, names=("coarse", "tight")):
     """Write a real `task.json` beside a bundle, through the one codec."""
     from molbuilder.task import (FILENAME, Stage, StructureRef, Task,
@@ -1275,16 +909,6 @@ def test_the_surfaces_read_the_shape_from_the_description(tmp_path):
     assert shape_of(js, tmp_path).name == "hierarchical"
     assert job_dir_names(js, shape_of(js, tmp_path)) == {
         "coarse": "01_coarse", "tight": "03_tight"}
-
-
-def test_a_sweep_asks_no_description_for_its_shape(tmp_path):
-    """`bench-<name>` is the benchmark's convention in either layout, which is
-    why a bench bundle carries no `task.json` and needs none."""
-    from molbuilder.jobset.materialize import shape_of
-    from molbuilder.jobset.model import Job, JobSet
-    js = JobSet(name="JOB", engine="siesta", kind="sweep",
-                jobs=[Job(name="p1", script="JOB_p1.fdf")])
-    assert shape_of(js, tmp_path) is None          # no description, no problem
 
 
 def test_prepare_attempt_refuses_a_flat_calculation(tmp_path):
@@ -1566,63 +1190,6 @@ def test_resources_fields_equal_the_contracts_list_exactly():
 # --------------------------------------------------------------------- #
 #  G7 — the GPU answer travels; the deck is not re-read for it          #
 # --------------------------------------------------------------------- #
-
-def test_every_directory_prep_makes_says_what_it_is(tmp_path):
-    """Invariant 6b, and the drift half of it.
-
-    `project-layout.md` § 1.4a gives § 1.4's container-or-run rule a
-    mechanism: the code that makes a directory stamps it, because that code
-    is the only one that knows.  Two things have to hold or the mechanism is
-    decoration --
-
-    1. **every directory prep made answers.**  One that does not is read
-       ALONE, which for a directory inside a live calculation is a silently
-       partial answer.
-    2. **the stamp agrees with the naming authority.**  `role` and the
-       directory's name are two statements of one fact; `job_dir_names` is
-       the authority for the second, so a container must be a directory the
-       authority maps a job to, and the run must sit under it.
-
-    Without (2) this test would pass on a writer that stamped everything
-    ``container`` -- the same shape as `_run_ending.py`'s
-    ``set(READERS) == set(run_output_roles())``, which is how two lists in
-    this codebase are made unable to drift.
-
-    MUTATION THIS MUST FAIL AGAINST: stamp only the attempt, or stamp the
-    stage directory ``run``.
-    """
-    from molbuilder import calcdirs
-    from molbuilder.jobset.materialize import (job_dir_names, prepare_attempt,
-                                               shape_of)
-
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    for job in js.jobs:
-        (tmp_path / job.script).write_text("x")
-    rep = prepare_attempt(js, tmp_path, "coarse")
-
-    attempt = rep.dir
-    stage_dir = attempt.parent
-
-    said_run = calcdirs.read(attempt)
-    said_container = calcdirs.read(stage_dir)
-    assert said_run is not None, f"{attempt} carries no calcdir record"
-    assert said_container is not None, (
-        f"{stage_dir} carries no calcdir record -- the attempt was stamped "
-        f"and its container was not, so the level a viewer lands on when it "
-        f"clicks the stage is the one that cannot answer")
-    assert said_run.role == calcdirs.RUN
-    assert said_container.role == calcdirs.CONTAINER
-
-    # (2) the stamp and the name are the same fact, said twice.
-    authority = set(job_dir_names(js, shape_of(js, tmp_path)).values())
-    assert stage_dir.relative_to(tmp_path).as_posix() in authority, (
-        f"stamped {stage_dir.name!r} a container, but the naming authority "
-        f"maps no job to it: {sorted(authority)}")
-
-    # ...and `of` leads back, from either level.
-    for d in (attempt, stage_dir):
-        assert (d / calcdirs.read(d).of).resolve() == tmp_path.resolve()
-
 
 def test_the_progress_channel_ends_up_in_the_run_and_nowhere_else(
         tmp_path, monkeypatch):

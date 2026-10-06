@@ -1686,7 +1686,7 @@ system** adds is submission and routing:
   > and dropped (§ 6.0), and the question shows the same plan before the
   > person has said yes.
 - **Job names read well.** A job's `-J` is `<calculation>/<job>` —
-  `bdt_au/coarse`, `bdt_au/G1K2C4`, `bdt_au/bench-group-cpu` — on every door,
+  `bdt_au/coarse`, `bdt_au/G1K2C4`, `bdt_au/bench-group-cpu-G0K4C1` — on every door,
   so a `squeue` listing tells you which of your calculations each row belongs
   to, not just which stage.
 

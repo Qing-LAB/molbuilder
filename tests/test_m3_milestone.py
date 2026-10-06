@@ -89,7 +89,7 @@ def test_a_two_stage_ladder_answers_the_group_both_ways(h2o):
               execution={"restart": "clean"}),
         Stage(name="tight",  overrides={"mesh_cutoff": 300.0},
               execution={"restart": "continue"}),
-    ])
+    ], label=ID)
 
     # Keyed by FILENAME (`<label>_<stage>.fdf`), not by stage name -- which
     # is itself the § 3.2 rule that anything a stage produced carries
@@ -110,7 +110,7 @@ def test_the_two_stages_are_otherwise_the_same_calculation(h2o):
     decks = _live_ladder_decks(h2o, template, [
         Stage(name="coarse", execution={"restart": "clean"}),
         Stage(name="tight",  execution={"restart": "continue"}),
-    ])
+    ], label=ID)
     # Read as a VALUE, not pinned as text: the emitter pads the key, and this
     # test is about the label being one label, not about its column width.
     labels = {ln.split()[1] for deck in decks.values()

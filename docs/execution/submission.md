@@ -174,8 +174,8 @@ this machine offers:
 
 $ molbuilder jobset launch bench coarse --mem 128G --domain htc
 about to submit:
-  bench-group-cpu
-    sbatch -J AuBDTAu/bench-group-cpu -p htc -q public -n 48 -c 1 -t 0-04:00:00 --mem=128G ... launch/bench-group-cpu.sbatch
+  bench-group-cpu-G0K48C1
+    sbatch -J AuBDTAu/bench-group-cpu-G0K48C1 -p htc -q public -n 48 -c 1 -t 0-04:00:00 --mem=128G ... launch/bench-group-cpu-G0K48C1.sbatch
   bench-group-gpu-G1K48C1
     sbatch -J AuBDTAu/bench-group-gpu-G1K48C1 -p htc -q public -n 48 -c 1 --gres=gpu:1 -t 0-04:00:00 --mem=128G ... launch/bench-group-gpu-G1K48C1.sbatch
   gpu share  48 rank(s) / 1 GPU(s) = 48 rank(s)/GPU

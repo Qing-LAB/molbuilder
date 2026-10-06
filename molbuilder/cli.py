@@ -9,7 +9,6 @@ Subcommands:
     molbuilder jobset init --structure P/structure/in.xyz \
         --bundle P/optimization/calc --engine siesta --shape flat \
         --stage-strategy publishable
-    molbuilder pyscf in.xyz out.py --functional B3LYP
     molbuilder serve start --port 8000
     molbuilder watch parse run.molwatch.log
     molbuilder watch tail run.molwatch.log

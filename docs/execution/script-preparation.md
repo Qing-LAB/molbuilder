@@ -350,7 +350,6 @@ a gap visible:
 | **3.2** data files | which of those are the shared package every job links | `shared_package` | **yes** |
 | **3.3** validate | whether this resolved config is sound | *shared* — `validation.validate` | no |
 | **3.4** identity | the deck's type suffix | `suffix` | no |
-| **3.4** identity | where the label is read | `label_of` | no |
 | **3.4** identity | how the label is written in | `relabel` | no |
 | **3.5** structure | the structure block | `spec.layout` — a `Block` | no |
 | **3.6** parameters | which items, in what order, and how each is spelled | `spec.layout` + `spec.line` | no |
@@ -617,7 +616,7 @@ two doors:
 | sub-step | who | how |
 |:--:|---|---|
 | 3.3 **validate** | **shared** | `validation.validate(struct, cfg, calculation=spec.calculation)` — the engine registry by config type, the KIND registry by the declared fact |
-| 3.4 **identity** | engine, as data | `suffix` · `label_of` · `relabel` |
+| 3.4 **identity** | engine, as data | `suffix` · `relabel` — a deck is named by the calculation's label (`element.label`); `label_of`, which read the engine's own label off the config, left 2026-10-06 when nothing asked it |
 | 3.5 **structure** | engine | a `Block` in `spec.layout` — door 1 |
 | 3.6 **parameters** | **shared walk**, engine syntax | `Section`s in `spec.layout` + `spec.line` — doors 1 and 2 |
 | 3.7 **engine body** | engine | a `Block` in `spec.layout` — door 1 |

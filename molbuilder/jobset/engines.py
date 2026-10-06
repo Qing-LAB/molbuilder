@@ -61,8 +61,6 @@ class EngineSeam:
     spec_for: Callable
     #: The deck's type suffix (``.fdf``).
     suffix: str
-    #: ``config -> the engine's identity literal`` (``SystemLabel`` / ``JOB``).
-    label_of: Callable
     #: ``(config, label) -> config`` — the identity WRITTEN, for a trial's
     #: relabelling.  Filename relabelling alone is not the § 2.3.2
     #: protection: the deck's own ``SystemLabel`` line is what keys the warm
@@ -316,7 +314,6 @@ def engine_seam(engine: str) -> EngineSeam:
         from ..siesta.stages import _traits, _warm_declaration
         return EngineSeam(config_cls=SiestaConfig, spec_for=_siesta_spec,
                           suffix=".fdf",
-                          label_of=lambda cfg: cfg.system_label,
                           relabel=lambda cfg, label: dataclasses.replace(
                               cfg, system_label=label),
                           warm_for=_warm_declaration, traits_for=_traits,
@@ -335,7 +332,6 @@ def engine_seam(engine: str) -> EngineSeam:
         # run beside it, so there is no promise to keep.
         return EngineSeam(config_cls=PySCFConfig, spec_for=_pyscf_spec,
                           suffix=".py",
-                          label_of=lambda cfg: cfg.job_name,
                           relabel=lambda cfg, label: dataclasses.replace(
                               cfg, job_name=label),
                           warm_for=_pyscf_warm, traits_for=_pyscf_traits)

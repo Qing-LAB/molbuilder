@@ -1347,12 +1347,12 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
     sequence.
 
     **The split** (§ 4.3a): trials partition by each trial's GPU request
-    (:func:`sides_of`, the one door) -- a sweep whose trials all
-    answer one way submits the single ``bench-group``; a sweep spanning
-    both submits ``bench-group-cpu`` and ``bench-group-gpu``, so the CPU
-    group's envelope asks no ``gres`` and devices are never held while CPU
-    trials run.  The names come from the SET's composition, not from what
-    is pending, so a side keeps its name across resubmissions.  ``domain``
+    (:func:`sides_of`, the one door), then by their exact ask -- each shelf
+    named in full, ``bench-group-<side>-<cell>`` (``bench-group-cpu-G0K4C1``),
+    so the CPU group's envelope asks no ``gres`` and devices are never held
+    while CPU trials run.  A shelf's name is its side and its cell, never
+    what else the sweep holds, so it keeps its name across resubmissions.
+    ``domain``
     applies to both sides through `scheduler.place`; ``side`` (``"cpu"``/
     ``"gpu"``) sends one side -- and a side this machine cannot launch
     simply stays pending for a later `launch bench`, which is the
@@ -1372,7 +1372,6 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
     sides = sides_of(jobset)
     if side and not sides[side]:
         raise SubmitError(f"this sweep has no {side} trials to submit")
-    mixed = bool(sides["cpu"]) and bool(sides["gpu"])
     plan = LaunchPlan(base, mode, [], tolerant=True)
     # THE TRIALS STILL TO RUN, the one answer the walk here reads too
     # (:func:`_bench_trials`) -- of the sides this launch sends, in the
@@ -1389,16 +1388,18 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
         shelves: dict = {}
         for j in jobs:
             shelves.setdefault(_shelf_key(j), []).append(j)
-        multi = len(shelves) > 1
         for key in sorted(shelves, key=_shelf_width, reverse=True):
             pending = [trials[j.name] for j in shelves[key]
                        if j.name in trials]
             if not pending:
                 continue            # this shelf already rode a group
-            name = ("bench-group"
-                    + (f"-{this}" if mixed else "")
-                    + (f"-{_shelf_token(key, shelves[key])}"
-                       if multi else ""))
+            # THE SHELF'S NAME IN ITS FULL FORM, always -- its side and its
+            # machine cell (`generator.md` § 4.3a): `bench-group-cpu-G0K4C1`.
+            # Until 2026-10-06 the side and the cell were added only when the
+            # sweep needed them to tell shelves apart: one shelf had four
+            # names by what else the sweep held, and a sweep's one shelf sent
+            # to a queue wrote over the walk's own `launch/bench-group.*`.
+            name = f"bench-group-{this}-{_shelf_token(shelves[key])}"
             named = (gpu_domain or domain) if this == "gpu" else domain
             if named is None:
                 why = _no_queue_named(
@@ -1549,41 +1550,29 @@ def _shelf_width(key) -> tuple:
 _MACHINE_AXES = ("G", "K", "C")
 
 
-def _shelf_token(key, jobs=()) -> str:
-    """A shelf's name qualifier -- ``G2K24C1`` -- appended when a side spans
-    more than one shelf (`job-contracts.md` § 6.3: the ``-`` announces a
-    qualifier; the token stays in [A-Za-z0-9_]).
+def _shelf_token(jobs) -> str:
+    """A shelf's machine cell -- ``G2K24C1`` -- in its name
+    (`job-contracts.md` § 6.3: the ``-`` announces a qualifier; the token
+    stays in [A-Za-z0-9_]).
 
-    **THE SAME SPELLING ITS TRIALS CARRY, read off a trial** rather than
-    derived a second way.  This produced ``g2n48c1`` until 2026-08-24 --
-    lowercase, and ``n`` for the TOTAL rank count -- while the very
-    directories that shelf's job launches were named ``bench-G2K24C1…``,
-    where ``K`` is ranks PER GPU.  Same three facts, different letters,
-    different case, sitting side by side in one listing; they coincide only
-    at ``G1``, which is why nothing had misread them yet.  Two vocabularies
-    for one thing is what § 6.3 exists to prevent.
-
-    Every trial on a shelf shares one resource ask by construction, so any
-    member answers -- and the value axes that DO differ between them are
-    dropped, because the shelf is the machine cell, not the point.
-
-    ``jobs`` empty (a hand-built set with no points) falls back to deriving
-    the coordinate from the key, in the same spelling: ranks split evenly
-    over the devices by ELPA's equal-share rule (`tuning.md` § 2.12), which
-    the grid enforces, so ``K = n / g`` is exact where it applies.
-    """
+    **THE SPELLING ITS TRIALS CARRY, read off a trial's own point**: every
+    trial on a shelf shares one resource ask by construction, so any member
+    answers, and the value axes that DO differ between them are dropped --
+    the shelf is the machine cell, not the point.  This produced
+    ``g2n48c1`` until 2026-08-24 -- lowercase, and ``n`` for the TOTAL rank
+    count -- beside directories named ``bench-G2K24C1…``, where ``K`` is
+    ranks PER GPU: two vocabularies for one thing, which § 6.3 exists to
+    prevent.  A trial whose point carries no machine cell is not one prep
+    wrote, and is refused by name -- a cell worked out from the shelf's key
+    stood here for such sets until 2026-10-06, in the ``N`` spelling."""
     from ..resolve import point_token
-    for j in jobs or ():
-        pt = getattr(j, "point", None) or {}
-        if all(a in pt for a in _MACHINE_AXES):
-            return point_token({a: pt[a] for a in _MACHINE_AXES})
-    n, c, g = key
-    if g and n % g:
-        # An uneven split is a bug upstream (the grid drops those cells),
-        # and `n // g` would name a rank count no trial has.  Say the
-        # total instead of quietly rounding it.
-        return point_token({"G": g, "K": 0, "C": c}).replace("K0", f"N{n}")
-    return point_token({"G": g, "K": (n // g) if g else n, "C": c})
+    pt = jobs[0].point
+    if not all(a in pt for a in _MACHINE_AXES):
+        raise SubmitError(
+            f"trial {jobs[0].name!r} carries no machine point "
+            f"({', '.join(_MACHINE_AXES)}) -- not a trial prep wrote, so its "
+            f"shelf cannot be named")
+    return point_token({a: pt[a] for a in _MACHINE_AXES})
 
 
 def _domain_name(prepared) -> Optional[str]:

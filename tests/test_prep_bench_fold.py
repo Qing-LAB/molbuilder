@@ -1029,17 +1029,9 @@ def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
     assert (rung / "run-0" / "run.json").is_file(), res.output
     res = r.invoke(jobset_group, ["status", "--bundle", str(dest)])
     assert res.exit_code == 0, res.output
-    # A hand-built SWEEP whose jobs carry no token still files them in the
-    # bare bench/ container beside their own record (§ 6.3; A-2,
-    # 2026-08-13).  No DESCRIPTION reaches this row any more -- every one
-    # of them has a stage, so every deck has a token -- but the naming
-    # authority is still asked it directly, so it is still pinned.
-    from molbuilder.jobset.materialize import job_dir_names
-    from molbuilder.jobset.model import Job, JobSet, Resources
-    sweep = JobSet(name="X", engine="siesta", kind="sweep",
-                   jobs=[Job(name="G1K1C4", script="job-gpu.fdf",
-                             resources=Resources())])
-    assert job_dir_names(sweep)["G1K1C4"] == "bench/bench-G1K1C4"
+    # (a hand-built sweep whose decks named no stage, filed in a bare
+    # bench/ container, was pinned here until 2026-10-06: such a job is
+    # refused now -- `job_dir_names`)
 
 
 # `test_a_one_stage_calculation_continues_from_its_own_attempt` retired

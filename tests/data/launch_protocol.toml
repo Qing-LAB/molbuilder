@@ -105,11 +105,11 @@ machine = "this"
 queues = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] }]
 allocation = { domain = "cpu", time = "01:00:00", mem = "8G" }
 bench = { mpi_np = [1, 2], omp_threads = [1] }
-sbatch_refuses = "bench-group-G0K2C1"
+sbatch_refuses = "bench-group-cpu-G0K2C1"
 launch = []
 launch_sends = true
 listing = ["Requested node configuration is not available", "stays pending", "submitted"]
-after_launch = { made = ["01_coarse/bench/launch/bench-group-G0K1C1.run.sh", "01_coarse/bench/launch/bench-group-G0K1C1.sbatch", "01_coarse/bench/launch/bench-group-G0K2C1.run.sh", "01_coarse/bench/launch/bench-group-G0K2C1.sbatch", "01_coarse/bench/bench-G0K1C1/run-0/run.json"], made_lacks = ["01_coarse/bench/bench-G0K2C1/run-0/run.json"] }
+after_launch = { made = ["01_coarse/bench/launch/bench-group-cpu-G0K1C1.run.sh", "01_coarse/bench/launch/bench-group-cpu-G0K1C1.sbatch", "01_coarse/bench/launch/bench-group-cpu-G0K2C1.run.sh", "01_coarse/bench/launch/bench-group-cpu-G0K2C1.sbatch", "01_coarse/bench/bench-G0K1C1/run-0/run.json"], made_lacks = ["01_coarse/bench/bench-G0K2C1/run-0/run.json"] }
 
 [[case]]
 name = "...launched again, it passes the trials launched before over -- all of them were, so nothing is sent"

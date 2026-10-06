@@ -276,11 +276,13 @@ def stages_in(root, shape: "Shape", label: str = ""
     return sorted(found)
 
 
-def bench_container(shape: "Shape", token: str = "") -> str:
+def bench_container(shape: "Shape", token: str) -> str:
     """Where a stage's bench state lives, **relative to the calculation root**.
 
     ``<NN>_<stage>/bench`` in the hierarchy; ``bench_<NN>_<stage>`` at the root
-    of a FLAT calculation; bare ``bench`` for a stageless one.
+    of a FLAT calculation.  An empty token is refused: every description has
+    a stage (`engines/stages.md` § 6.5), and a bare ``bench`` stood here for
+    a stageless calculation until 2026-10-06.
     `job-contracts.md` § 6.3: *"benchmark | bench/ inside the stage it
     measures"* -- in flat there IS no stage directory to sit inside, so the
     token qualifies the container's own name instead.
@@ -293,9 +295,12 @@ def bench_container(shape: "Shape", token: str = "") -> str:
     2026-08-13 and the two disagreed in BOTH non-hierarchical layouts, so
     `launch` launched trials in directories the underway-ask never looked at.
     """
-    sd = shape.stage_dir(token) if token else "."
+    if not token:
+        raise ValueError("a benchmark's container is its stage's -- no stage "
+                         "token was given")
+    sd = shape.stage_dir(token)
     if sd == ".":
-        return f"bench_{token}" if token else "bench"
+        return f"bench_{token}"
     return f"{sd}/bench"
 
 

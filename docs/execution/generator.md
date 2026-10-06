@@ -625,10 +625,14 @@ framework rule, not a script patch)*:
   the devices a G1 trial would hold of a `gres:4` one.  The value-axis
   cartesian shares shelves by construction, which is what keeps queue
   waits at #shelves instead of #trials — the point of the 2026-08-20
-  grouping, kept.  Naming: qualifiers appear only when needed —
-  `bench-group`, then `-cpu`/`-gpu` when the sweep spans both sides,
-  then a shelf token (`-G2K16C1`, the same `G`/`K`/`C` spelling its
-  trials carry) when a side spans several shelves.
+  grouping, kept.  Naming, in full always: a shelf is
+  `bench-group-<side>-<cell>` — `bench-group-cpu-G0K4C1`,
+  `bench-group-gpu-G2K16C1`, the cell in the same `G`/`K`/`C` spelling its
+  trials carry — whatever else the sweep holds; the walk of every
+  unlaunched trial here is `bench-group`.  *(The side and the cell were
+  added only when the sweep needed them to tell shelves apart until
+  2026-10-06: one shelf had four names, and a sweep's one shelf sent to a
+  queue wrote over the walk's `launch/bench-group.*`.)*
   The CPU side's groups ask **no `gres`**, so devices are never held
   while CPU trials run — the waste the split exists to stop.  **Routing**: the
   queue is named, never inferred (`submission.md` S5) — the bench's

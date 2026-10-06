@@ -33,29 +33,9 @@ def test_both_composers_ask_the_same_function():
         assert "bench" in got
 
 
-def test_the_two_agree_on_a_real_bundle(tmp_path):
-    """Not just that both call it — that what `prep` writes is what
-    `job_dir_names` later answers. The property the comment asserted and
-    nothing checked."""
-    from molbuilder.jobset.materialize import job_dir_names, trial_dir
-    from molbuilder.jobset.model import Job, JobSet
-    from molbuilder.paths import Shape
-    js = JobSet(name="sweep", kind="sweep", engine="siesta", jobs=[
-        Job(name="G1K4C6", script="lbl_01_coarse.fdf"),
-        Job(name="G2K8C6", script="lbl_01_coarse.fdf")])
-    sh = Shape.named("hierarchical")
-    from molbuilder.jobset.materialize import _trial_stage_token
-    names = job_dir_names(js, sh)
-    for j in js.jobs:
-        # THE TOKEN COMES FROM THE SAME PLACE BOTH SIDES GET IT.  Passing a
-        # token the deck does not carry compares two different questions --
-        # which is how this test first "failed": `job_dir_names` derived
-        # None and took the tokenless branch while the assertion supplied
-        # "01_coarse". The property is that for ONE token they agree.
-        tok = _trial_stage_token(js, j) or ""
-        assert names[j.name] == trial_dir(sh, tok, j.name), (
-            f"{j.name}: prep would write {trial_dir(sh, tok, j.name)} "
-            f"and launch would look in {names[j.name]}")
+# `test_the_two_agree_on_a_real_bundle` retired 2026-10-06 (MEMORY gate 5):
+# a hand-built JobSet whose trial decks are not named as prep names them.
+# The test below preps a REAL benchmark and asks launch where it looks.
 
 
 def test_prep_writes_where_job_dir_names_will_look(tmp_path, monkeypatch):

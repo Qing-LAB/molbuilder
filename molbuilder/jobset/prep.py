@@ -826,7 +826,7 @@ class Resolved:
         § 4.5)."""
         from ..pipeline_log import log_name
         t = self.task
-        return self.record_dir(base) / log_name(t.label, self.token or "",
+        return self.record_dir(base) / log_name(t.label, self.token,
                                                 t.engine, t.shape)
 
 
@@ -880,7 +880,7 @@ def _resolve_stage(stage, *, task, template, template_text, environment,
         raise PrepError(str(exc)) from exc
     return Resolved(task=task, template=Path(template),
                     template_text=template_text, environment=environment,
-                    allocation=allocation, pset=pset, token=token or "",
+                    allocation=allocation, pset=pset, token=token,
                     target=target, sweep=sweep, provenance=provenance,
                     sources=sources)
 
@@ -1024,7 +1024,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     seam = engine_seam(task.engine)
     log.phase("STEP 2 · RESOLVE — the values for this rung")
     log.received(template_path.name, f"{len(pset[0].provenance)} fields")
-    log.received("stage", pset.stage or "(no ladder)")
+    log.received("stage", pset.stage)
     log.received("allocation", _flat_resources(allocation or Resources()))
     for _el in pset:
         _rows = config_rows(_el.values, _el.provenance,
@@ -1105,7 +1105,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     _scope = REPORT_STREAM.set(_once)
     try:
         for element in pset:
-            script = _rf(element.label, seam.suffix, token or None)
+            script = _rf(element.label, seam.suffix, token)
             # WHERE THIS ELEMENT'S FILES GO -- its own directory, never the
             # bundle root (user, 2026-08-24; `project-layout.md` § 1.0 always
             # said it: "only rendered files and copies go down to where the
@@ -1194,7 +1194,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                     with _calling("spec_for", engine=task.engine,
                                   where=script):
                         _spec = seam.spec_for(
-                            rung.struct, _at, stage_token=(token or None),
+                            rung.struct, _at, stage_token=token,
                             calculation=rung.render_kind,
                             **rung.spec_extra(element, cfg),
                             # A TRIAL'S DECK NAMES ITS OWN LAUNCH (plan § 5w
@@ -1223,7 +1223,7 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
             for _seed_dir in ([d for d, _ in rung.points] or [_jdir]):
                 _seed_trajectory_log(rung.struct, cfg, _seed_dir,
                                      engine=task.engine, label=element.label,
-                                     token=(token or None),
+                                     token=token,
                                      frame=spec.engine_frame,
                                      relaxes=(rung.render_kind
                                               == "optimization"),
@@ -1820,8 +1820,8 @@ def _transport_spec(task, stage: str, struct, config, state, volts=None, *,
     with _user_error_as_prep():
         try:
             spec = _siesta_spec_for(struct, cfg,
-                                    stage_token=(stage_home(base, task, stage).token
-                                                 or None),
+                                    stage_token=stage_home(base, task,
+                                                           stage).token,
                                     calculation="transport", state=state)
         except ValueError as exc:
             # `transport_spec` refuses an unknown rung with a message

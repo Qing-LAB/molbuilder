@@ -74,8 +74,9 @@ _W_KIND, _W_NAME, _W_VALUE = 5, 22, 24
 def log_name(label: str, token: str, engine: str, shape: str) -> str:
     """This prep's log file name.
 
-    ``token`` is the stage's ``<NN>_<name>`` and may be empty for a
-    calculation with no ladder.
+    ``token`` is the stage's ``<NN>_<name>`` -- every description has a
+    stage, so an empty one is refused (it named a stageless log until
+    2026-10-06).
 
     THE NAME IS THE CATALOGUE'S (`runfiles.WRITTEN`, job-contracts.md
     § 2.2): the role ``.{engine}.{shape}.pipeline.log`` on the
@@ -85,8 +86,11 @@ def log_name(label: str, token: str, engine: str, shape: str) -> str:
     2026-10-04 the tail was spelled here beside a composed stem, and the
     file was on no list.)*
     """
+    if not token:
+        raise ValueError("a prep's log is its stage's -- no stage token was "
+                         "given")
     return _compose(label, "." + "{engine}.{shape}." + LOG_SUFFIX,
-                    token or None, engine=engine, shape=shape)
+                    token, engine=engine, shape=shape)
 
 
 class PipelineLog:

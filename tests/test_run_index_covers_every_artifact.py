@@ -169,18 +169,18 @@ def test_no_unindexed_monitor_artifact_reaches_the_directory(tmp_path,
 @pytest.mark.parametrize("name", [
     f"{LABEL}-run0.util.csv",
     f"{LABEL}-run17.monitor.log",
-    f"{LABEL}.util.csv",               # written before the index existed
-    f"{LABEL}.monitor.log",
 ])
-def test_the_cold_sweep_claims_both_spellings(name):
+def test_the_cold_sweep_claims_the_monitors_numbered_files(name):
     """`is_ours` decides what a cold restart moves aside.
 
     A name it does not claim is left in place to be appended to or truncated
-    by the next run -- the very failure being fixed.  Both spellings, because
-    a directory can hold artifacts written before the change.
+    by the next run -- the very failure being fixed.  The monitor's files
+    carry the run index, always (`runfiles.WRITTEN`); the unnumbered spelling
+    from before 2026-08-27 was claimed too until 2026-10-06 -- old runs are
+    not a design input.
 
-    MUTATION THIS MUST FAIL AGAINST: drop either the `-run*` pattern or the
-    pre-index one from `OUR_FILE_PATTERNS`.  The retired test asserted four
+    MUTATION THIS MUST FAIL AGAINST: drop the `-run*` pattern from
+    `OUR_FILE_PATTERNS`.  The retired test asserted four
     pattern STRINGS appeared in `identity.py`; it could not tell whether
     `is_ours` consulted them, and `{label}` vs `{label}_*` had already
     silently become `*` once before (the note at `identity.py:212`).

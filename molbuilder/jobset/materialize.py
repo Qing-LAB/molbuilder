@@ -115,9 +115,10 @@ def stage_home(base, task, stage: Optional[str]) -> StageHome:
     the stage from every artifact name (`job-contracts.md` § 6.3)."""
     from .errors import PrepError
     if not stage:
-        # Asked without naming a rung; every ladder has one.
-        return StageHome(name="", seq=0, token="",
-                         dir=Path(base) if base is not None else None)
+        # EVERY LADDER HAS A STAGE TO NAME (`engines/stages.md` § 6.5): a
+        # stageless answer -- an empty token -- stood here until 2026-10-06.
+        raise PrepError("which stage? Every description's ladder has one to "
+                        "name -- none was given.")
     from ..identity import stage_key
     for home in ladder_homes(base, task):
         if stage_key(home.name) == stage_key(stage):
@@ -131,7 +132,7 @@ def stage_home(base, task, stage: Optional[str]) -> StageHome:
 
 
 
-def trial_dir(shape, stage_token: Optional[str], job_name: str) -> str:
+def trial_dir(shape, stage_token: str, job_name: str) -> str:
     """The path from the bundle to ONE trial's directory — **the rule**.
 
     ``<container>/bench-<point>``, where the container is the stage's bench
@@ -214,7 +215,7 @@ def trial_work_dir(container, shape) -> Path:
     return attempt
 
 
-def shape_of(jobset: JobSet, base_dir) -> Optional["Shape"]:
+def shape_of(jobset: JobSet, base_dir) -> "Shape":
     """The layout this bundle uses, read from its description.
 
     **The one place a surface asks.** `engines/stages.md` § 6.7 puts the shape
@@ -222,13 +223,11 @@ def shape_of(jobset: JobSet, base_dir) -> Optional["Shape"]:
     so this reads it, and every layer below takes the answer as an argument
     rather than going looking for it a second time.
 
-    ``None`` only when there is no ``task.json`` to read — bundles produced
-    before 2026-08-10, hand-built JobSets in the tests, and the OLD bench
-    bundle format (which folds away at plan step 6 u5).
-    :func:`job_dir_names` reads ``None`` as the hierarchy, which is what they
-    all are. That fallback is transitional and dies with the last such
-    bundle; it is **not** an inference from data, which § 6.7 forbids, but
-    the absence of a file that is now always written.
+    A folder with no ``task.json`` is not a calculation molbuilder
+    described, and is refused.  ``None`` stood for it until 2026-10-06 --
+    bundles produced before 2026-08-10, hand-built JobSets in the tests, the
+    OLD bench bundle format -- and :func:`job_dir_names` read ``None`` as the
+    hierarchy: a fallback its own note called transitional.
 
     *(This branched on ``kind != "ladder"`` until 2026-08-12 — "a benchmark
     bundle carries no description and needs none" — which `generator.md` § 5
@@ -240,7 +239,9 @@ def shape_of(jobset: JobSet, base_dir) -> Optional["Shape"]:
     from ..paths import Shape
     desc = Path(base_dir) / FILENAME
     if not desc.is_file():
-        return None
+        raise ValueError(f"{base_dir} holds no {FILENAME} -- not a "
+                         f"calculation molbuilder described, so it has no "
+                         f"layout to read (`molbuilder jobset init`)")
     return Shape.named(read_task(desc).shape)
 
 
@@ -321,7 +322,7 @@ def bench_owner(folder) -> "Optional[Tuple[Path, str]]":
     return None
 
 
-def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
+def job_dir_names(jobset: JobSet, shape: "Shape") -> Dict[str, str]:
     """``{job name: directory name}`` for a whole JobSet — the naming authority.
 
     One question, not two kinds (`generator.md` § 5): *does this job have a
@@ -331,19 +332,14 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     |---|---|---|
     | a stage token, job named for the stage | — | ``<NN>_<name>`` — the rung itself |
     | a stage token, job named by coordinate | — | a trial, in the stage's bench CONTAINER (:func:`bench_container`): ``<NN>_<name>/bench/bench-<point>`` hierarchical, ``bench_<NN>_<name>/bench-<point>`` flat |
-    | no token | ``kind="ladder"``, job named AS the set | ``.`` — the bundle root |
-    | no token | ``kind="sweep"`` | ``bench/bench-<name>`` — the trial, in the bare container where its sweep's record already sits (until 2026-08-13 these fell to the root, final review A-2) |
-    | no token | ``kind="ladder"``, job named its own way | ``bench-<name>`` at the root — told apart by name alone |
+    | no token | — | **refused**: not a job prep wrote |
 
-    **No DESCRIPTION reaches the three tokenless rows any more.**  They were
-    written for `engines/stages.md` § 6.5's stage-LESS calculation, which
-    that section retired on 2026-08-16: every description now carries at
-    least one stage, one stage is named and tokened like any other, so every
-    described deck carries a token and takes one of the first two rows.
-    What still arrives here tokenless is a HAND-BUILT :class:`JobSet` — one
-    assembled in code with no description behind it — and the rows stay
-    because the naming authority must answer for those too.  They are no
-    longer a statement about what a calculation can be.
+    **A job whose deck carries no stage token is refused.**  Three rows
+    placed such jobs -- written for `engines/stages.md` § 6.5's stage-LESS
+    calculation, retired 2026-08-16, and kept for JobSets assembled in code
+    with no description behind them -- by the set's name alone, until
+    2026-10-06: every description has a stage, and every deck prep writes
+    carries its token.
 
     Until 2026-08-10 every kind got the trial prefix, so a staged run's
     directories came out ``point-coarse/`` (`worked-example.md` gap 6); until
@@ -358,47 +354,15 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
     exactly what `engines/stages.md` R5 forbids: a number that shifts when the
     ladder changes, silently handing one stage's directory to another.
 
-    **A tokenless job is the one place ``kind`` is consulted, and that is
-    not the branching the paragraph below forbids** (R1, 2026-08-12).  For
-    a TOKENED job the deck already answers, and asking ``kind`` a second
-    time is how directory and deck disagree.  For a tokenless job the deck
-    says nothing — the table's question has the answer *neither* — and
-    ``kind`` is the only data left: a stageless described RUN is the
-    calculation itself (its deck, wrapper and attempts live at the root),
-    while a hand-built SWEEP's points are siblings told apart by name.
-    Until R1 both fell to ``bench-<name>``, which put a stageless
-    calculation's RUN in a directory named for a benchmark, made its
-    attempt unreachable, and broke `engines/stages.md` § 6.5's
-    single-parameter-set form
-    end-to-end.  Inventing a seq for either would still be guessing at the
-    one number that must never be guessed.
-
-    **The conventions meet in one expression**, because :func:`stage_refs`
-    already answered which applies: a job with an ordinal has a token and
-    is named by it; a job without one has no token and falls to the
-    kind-split above.
-
     ``shape`` decides where a **stage** sits: hierarchical gives each one a
     directory, flat is depth 1 and they all sit in the bundle root
     (:class:`~molbuilder.paths.Shape`).  A described trial nests
-    under its stage's directory, so the shape reaches it through the stage;
-    only the tokenless fallback ignores it.
-
-    ``None`` means *hierarchical*, and it now means only one thing: **a ladder
-    with no description to read**. Every surface resolves the shape through
-    :func:`shape_of` and passes it down, so the default is reached by
-    hand-built JobSets (the tests) and by bundles produced before `task.json`
-    was written — both of which are hierarchical, because that is the only
-    shape a JobSet was emitted for.
-
-    It is not an inference from data, which § 6.7 forbids; it is the absence of
-    a file that is now always written. **This paragraph said "no producer emits
-    a flat ladder yet" until 2026-08-10, and that stopped being true in the
-    commit that made flat emit one** — the kind of sentence that survives the
-    change it describes because nothing executes it.
+    under its stage's directory, so the shape reaches it through the stage.
+    It is required: every surface reads it through :func:`shape_of`, and
+    ``None`` -- read as the hierarchy, for a ladder with no description --
+    stood here until 2026-10-06.
     """
-    from ..paths import Shape
-    sh = shape or Shape.named("hierarchical")
+    sh = shape
     refs = stage_refs(jobset)
     out: Dict[str, str] = {}
     for j in jobset.jobs:
@@ -421,21 +385,9 @@ def job_dir_names(jobset: JobSet, shape: "Shape" = None) -> Dict[str, str]:
             # bench_container is now the one spelling for both sides.
             out[j.name] = trial_dir(sh, trial_token, j.name)
             continue
-        # Tokenless: the deck says nothing, so the SET is the only data
-        # left (see the docstring's R1 paragraph -- no DESCRIPTION
-        # reaches these rows any more; what still arrives tokenless is
-        # a HAND-BUILT JobSet).  Such a ladder runs its own-named jobs
-        # as siblings at the root, and such a sweep's points live in the
-        # bare ``bench/`` container beside their own record (A-2,
-        # 2026-08-13).
-        if jobset.kind == "ladder":
-            out[j.name] = ("." if j.name == jobset.name
-                           else _paths_trial_name(j.name))
-        else:
-            # THE SAME RULE with no stage token, so it asks for it too --
-            # a third spelling of `<container>/bench-<point>` is a third
-            # thing to keep in step.
-            out[j.name] = trial_dir(sh, "", j.name)
+        raise ValueError(
+            f"job {j.name!r} ({j.script}): its deck names no stage -- not a "
+            f"job prep wrote, so it has no folder to name")
     return out
 
 

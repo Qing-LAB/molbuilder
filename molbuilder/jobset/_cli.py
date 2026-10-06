@@ -917,7 +917,14 @@ def _stage_bench_dir(base, stage, verb: str = "launch"):
     from ..paths import Shape
     desc = Path(base) / FILENAME
     if not desc.is_file():
-        return None, None                    # hand-built set: no container
+        # A FOLDER NO DESCRIPTION NAMES is not a calculation of ours: its
+        # verbs are refused, as prep's are (`job-system.md` § 5.0's first
+        # checkpoint).  A job set built by hand at the root was loaded in
+        # its place until 2026-10-06.
+        raise click.ClickException(
+            f"{base} holds no {FILENAME} -- not a calculation molbuilder "
+            f"described.  `molbuilder jobset init` describes one "
+            f"(job-system.md § 5.1).")
     task = read_task(desc)
     sh = Shape.named(task.shape)
     # A CALCULATION THAT HAS NO BENCHMARK says so first -- `prep bench`'s own
@@ -973,11 +980,8 @@ def _pick_trial(js, trial):
 
 
 def _load_bench_set(base, stage, verb: str = "launch"):
-    """The stage's OWN sweep record, from its container — or the root
-    job-set for a hand-built (description-less) sweep."""
+    """The stage's OWN sweep record, from its container."""
     container, _ = _stage_bench_dir(base, stage, verb)
-    if container is None:
-        return _load(str(base))              # legacy/hand-built library sets
     jpath = container / _JOBSET_FILE
     if not jpath.is_file():
         from .commands import command

@@ -67,7 +67,8 @@ def _deck(h2: Structure, cfg: SiestaConfig, stage: str,
     -- which is the coupling R5 is about.  The caller says "the tight one";
     this finds it."""
     decks = _live_ladder_decks(
-        h2, cfg, stages if stages is not None else _ladder())
+        h2, cfg, stages if stages is not None else _ladder(),
+        label=cfg.system_label)
     hit = [k for k in decks if k.endswith(f"_{stage}.fdf")]
     assert len(hit) == 1, f"no single deck for stage {stage!r} in {sorted(decks)}"
     return decks[hit[0]]
@@ -141,7 +142,7 @@ def test_the_template_is_not_mutated_by_rendering(h2):
     cfg = _tpl(relax_type="FIRE", relax_steps=1,
                     relax_force_tol=0.99, relax_max_displ=0.99)
     before = dataclasses.asdict(cfg)
-    _live_ladder_decks(h2, cfg, _ladder())
+    _live_ladder_decks(h2, cfg, _ladder(), label=cfg.system_label)
     assert dataclasses.asdict(cfg) == before
 
 
@@ -232,7 +233,8 @@ def test_the_validator_sees_each_stages_resolved_config(h2, monkeypatch):
     cfg = _tpl(mesh_cutoff=150)
     _live_ladder_decks(h2, cfg, [
         Stage(name="coarse", overrides={"mesh_cutoff": 150}),
-        Stage(name="tight", overrides={"mesh_cutoff": 300})])
+        Stage(name="tight", overrides={"mesh_cutoff": 300})],
+        label=cfg.system_label)
 
     assert [c.mesh_cutoff for c in seen] == [150, 300], (
         "the validator saw the template's value, not each stage's -- so a "
@@ -415,7 +417,8 @@ def test_an_error_in_any_stage_blocks_the_whole_produce(h2, monkeypatch):
     with pytest.raises(ValidationError):
         _live_ladder_decks(h2, _tpl(), [
             Stage(name="ok"),
-            Stage(name="bad", overrides={"mesh_cutoff": 999.0})])
+            Stage(name="bad", overrides={"mesh_cutoff": 999.0})],
+            label="JOB")
 
 
 from _ladder_helpers import _live_ladder_decks  # noqa: E402  (U20: the one renderer)
