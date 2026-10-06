@@ -729,8 +729,7 @@ class TestTheRunsOwnCondition:
             alloc, _pins, chosen = prep_run_inputs(
                 calc, task, "coarse", ask)
             assert isinstance(alloc, Resources), ask
-            assert alloc.mpi_np == 2 and alloc.cpus_per_task == 2
-            assert chosen["mpi_np"] == 2
+            assert chosen["mpi_np"] == 2 and chosen["cpus_per_task"] == 2
 
     def test_the_RUN_owns_its_wall_and_queue_and_the_bench_keeps_its_own(
             self, calc):

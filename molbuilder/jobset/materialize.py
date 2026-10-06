@@ -195,8 +195,8 @@ def trial_work_dir(container, shape) -> Path:
     asks its caller for the answer instead of computing a second one.
 
     `resolve_attempt` is the rule, not restated: reuse the last attempt
-    until it has been launched, then open the next.  Preparing twice before
-    launching refreshes ``run-0`` rather than leaking ``run-1``.
+    until it has been launched, then open the next -- a benchmark's sweep is
+    prepped once (`job-system.md` § 5.0), so its prep finds ``run-0``.
 
     **The read-side twin is :func:`run_dir`** — *where does this trial
     actually run*, which needs no shape because by then the directory is
@@ -206,7 +206,10 @@ def trial_work_dir(container, shape) -> Path:
     d = Path(container)
     if shape is None or not shape.keeps_attempts_as_directories:
         return d
-    d.mkdir(parents=True, exist_ok=True)
+    # NOTHING IS MADE HERE: a container not there yet holds no attempt
+    # (`paths.attempts_in`), and the plan makes the folder when it is
+    # written -- a preview or a refused bench left an empty one per trial,
+    # and a stage number taken, until 2026-10-05.
     attempt, _fresh = resolve_attempt(d)
     return attempt
 
@@ -672,13 +675,13 @@ def run_dir(container: Path) -> Path:
 def resolve_attempt(stage_dir: Path) -> Tuple[Path, bool]:
     """The attempt directory to prepare into, and whether it is a fresh one.
 
-    § 1.6: *"Preparing again is safe until the run has been launched.
-    Otherwise splitting the two steps leaks directories — prepare, change your
-    mind, prepare again, and an empty ``run-3`` sits there forever."*
-
-    So the last attempt is REUSED when it has not been launched, and a new one
-    is opened only when the last has. That also makes the numbering mean
-    something: every ``run-<n>`` on disk was actually started.
+    The last attempt is REUSED when it has not been launched -- the one prep
+    opened, which `launch` then runs -- and a new one is opened only when the
+    last has: what a launch of a stage again opens (`job-system.md` § 5.4).
+    That makes the numbering mean something: every ``run-<n>`` on disk but
+    the newest was actually started.  *(It quoted § 1.6's "preparing again is
+    safe until the run has been launched" until 2026-10-05; a stage has been
+    prepped once since 2026-10-02.)*
     """
     existing = attempts_in(stage_dir)
     if existing:
@@ -731,11 +734,10 @@ FLAT_HAS_NO_ATTEMPTS = (
     "to open: runs are told apart by the wrapper's output index "
     "(<label>_<NN>_<name>-run<N>.out) and every stage reads the files the "
     "stage before it left in the one folder (project-layout.md § 1) -- so "
-    "there is no run to name with --from, and a stage starts clean by its "
-    "run card's `restart: clean`, not by --cold.")
+    "there is no run to name with --from, and none to skip with --cold.")
 
 
-def mark_run(base, run_dir, plan=None) -> None:
+def mark_run(base, run_dir, plan) -> None:
     """SAY WHAT EACH DIRECTORY DOWN TO A RUN IS (`project-layout.md` § 1.4a,
     invariant 6b): every directory between the calculation root and the run
     a container, the run itself a run -- written by the code that makes
@@ -748,19 +750,14 @@ def mark_run(base, run_dir, plan=None) -> None:
     run of ours -- plan W56 3b.4.)*
 
     ``plan`` receives the stamps, as :func:`materialize`'s copies."""
-    from .planned import Plan
     base, run_dir = Path(base), Path(run_dir)
     if run_dir.resolve() == base.resolve():
         return
-    own = plan is None
-    plan = Plan() if own else plan
     for c in reversed(run_dir.parents):
         if c == base or base not in c.parents:
             continue
         plan.text(*calcdirs.record(c, role=calcdirs.CONTAINER, root=base))
     plan.text(*calcdirs.record(run_dir, role=calcdirs.RUN, root=base))
-    if own:
-        plan.carry_out()
 
 
 def prepare_attempt(jobset: JobSet, base_dir, stage_name: str, *,

@@ -1255,11 +1255,10 @@ def test_a_bench_grid_answer_that_arrives_late_is_dropped(
         const orig = window.fetch;
         window.__grid = {calls: 0, release: null};
         window.fetch = function (url, opts) {
-            // THE BENCH CARD'S requests -- an axis of several points.  The
-            // run card asks the same door for its grid of one (one point
-            // each, `refreshRunFit`), and those pass through untouched: they
-            // are a different card's answer, and counting them would shift
-            // the order this test controls.
+            // THE REQUESTS THIS TEST'S EDITS MAKE -- an axis of several
+            // points.  Any other passes through untouched, so the order
+            // counted is the edits'.  (The run card's fit panel asked the
+            // same door with a point each until 2026-10-05.)
             let bench = {};
             try { bench = JSON.parse((opts && opts.body) || "{}").bench || {}; }
             catch (e) { bench = {}; }

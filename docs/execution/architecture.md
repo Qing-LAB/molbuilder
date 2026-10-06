@@ -672,7 +672,7 @@ flowchart TB
     SB["<b>5 · the .sbatch</b><br/><code>#SBATCH -n</code> ← the stated <code>mpi_np</code>"]
     WRAP["<b>5 · the wrapper</b><br/><code>_mpi_np_default=</code> ← the same stated value"]
     RUN["<b>6 · run time</b>, inside the wrapper<br/><code>-np flag &gt; MB_NP &gt; SLURM_NTASKS &gt; PBS_NP &gt; the baked default</code><br/><i>and SLURM_NTASKS is what step 5's header asked for</i>"]
-    CARD["<b>A13 · the run card</b><br/>shows the EMITTED value + its source,<br/>through those same producers"]
+    CARD["<b>A13 · the preview</b><br/>shows the EMITTED lines,<br/>read back from the header and the run script it planned"]
 
     CAT --> A1
     CAT --> B1
@@ -721,10 +721,11 @@ be a disastrous surprise. I suggest for the run card/result, we need to always
 explicitly show what would be the end point emitted parameter that at the
 execution time used.")*
 
-> **A13 — the run's surface shows the EMITTED value and its source, for every
-> launch parameter, resolved by the same code that emits it.** Not what you
-> typed; not what the description holds; **what the `.sbatch` will carry and
-> what the wrapper will use.**
+> **A13 — the run's surface shows its END POINT: the launch values as what it
+> will be launched with carries them — the `.sbatch` where a scheduler runs
+> it, else the run script — read back from that text by each writer's own
+> reader.** Not what you typed; not what the description holds; **what the
+> `.sbatch` will carry and what the wrapper will use.**
 
 **Why a run and not a bench.** A benchmark is short by construction and its
 answer is the comparison — a trial that ran at the wrong width is a data point
@@ -740,10 +741,16 @@ description held nothing, and the number appeared two layers below both. Track
 B's chain (above) is correct and complete, and it is still invisible unless a
 surface reads it back out.
 
-**So the card reads the chain back**, per parameter: the value, and which rung
-of § 5.2's ladder supplied it — the run card, `allocation`, or a flag. A field
-left blank is not shown blank; it is shown as **the refusal prep will give**,
-naming where to state it.
+**So the preview reads the chain back** — the prep entry stopped before the
+save ([`job-system.md`](?doc=execution/job-system.md) § 5.0), line for line
+from the text the plan holds: the header's `#SBATCH` lines
+(`scheduler.emit.Directives.lines_of`) where a scheduler runs the job — the
+run script takes its counts from the allocation there — and on a machine
+without one the run script's stated counts (`runwrap.stated_counts`), which it
+runs with. A value stated nowhere is not shown blank: the preview is **the
+refusal prep will give**, naming where to state it. *(Until 2026-10-05
+the run card showed each value with the rung of § 5.2's ladder that supplied
+it, assembled beside the entry.)*
 
 **And it is resolved by the emitter, not re-derived.** A13 is A12 applied to
 display: a surface that computed the emitted value itself would be a second
@@ -915,10 +922,10 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 | **A9** | **two artifacts of one object agree.** Where a single object is rendered into more than one file, the files are checked against **each other**, not only against a test's intent | `test_runwrap_pair` — one `Resources` in, `.run.sh` and `.sbatch` out, ranks · cores · GPU compared across the pair |
 | **A10** | **an anchor is declared, never discovered.** A path molbuilder is handed resolves against an anchor its own **spelling** names; no resolver may pick one by trying candidates and taking whichever happens to exist | `test_psml_anchor` — the eight-spelling matrix, and the refusal names the one place it looked |
 | **A11** | **one home per root and per name molbuilder writes.** Nothing climbs a parent chain to a root, and nothing re-spells a filename molbuilder itself writes | **review** (see the note under this table) — the set of files that climb to the install root must be `{__init__.py}`; the set that spells `job-set.json` / `task.json`, `{jobset/model.py}` / `{task.py}` |
-| **A12** | **one assembly per route.** A route's inputs are composed in **one** function, and every surface calls it — a surface may collect what the person said and may render the answer, and may compose nothing. For `prep` the whole verb is one entry, `jobset/prep.py::prep_stage` | the prep road through both doors — `tests/test_prep_from_the_browser.py` (one prep through each door: the same findings, attempt, agreement and ledger; the question asked on both; the axis-less bench on both) and `tests/test_task_setup_prep_e2e.py` (the tab shows the question and its Confirm) |
+| **A12** | **one assembly per route.** A route's inputs are composed in **one** function, and every surface calls it — a surface may collect what the person said and may render the answer, and may compose nothing. For `prep` the whole verb is one entry, `jobset/prep.py::prep_stage` | the prep road through both doors — `tests/test_prep_from_the_browser.py` (one prep through each door: the same findings, attempt, agreement and ledger; the preview is the entry stopped before the save; the axis-less bench on both) and `tests/test_task_setup_prep_e2e.py` (the tab previews, then preps the plan it showed) |
 | **A14** | **one composer for a run file's name.** `<label>[_<stage>][-run<N>]<role>` is built by `runfiles` and read back by `runfiles.parse`. No call site concatenates a name, spells a role, or invents a counter keyword — see `job-contracts.md` § 2.2a for which door to call | `test_runfile_names` — the generator over the product of its segments: round trip, what each segment refuses, and that every name the catalogue can produce is matched by its globs |
 | **A15** | **one door per fact.** Each fact in § 3.2 is answered by its door alone; a reader asks it and never works the fact out from the files itself | **review**, and each door's case table — a disagreement found is a row of it |
-| **A13** | **a run shows its end point.** Every launch parameter the run will be executed with is displayed with its value and its source, resolved by the emitter — never re-derived by the surface, and never left blank when blank resolves to a number | `test_task_setup_tab` — the run card renders an emitted value for every launch parameter, including the ones the description does not state |
+| **A13** | **a run shows its end point.** The launch values the run will be executed with are displayed as what it is launched with carries them — its header where a scheduler runs it, else its run script — read back by each writer's own reader, never re-derived by the surface; a value stated nowhere is the prep's refusal, never a blank | `test_bench_grid_card.py::test_a_run_preview_carries_its_header_line_for_line`, through the browser's door; `tests/test_task_setup_prep_e2e.py` on the page |
 
 > **A1, A4, A7 and A8 are about the shape of the source** — who may spell a name,
 > who may build an object, who may import whom, who may take one apart — and no
@@ -989,11 +996,12 @@ Each is written so it can be **checked**, because a rule nobody checks is a wish
 >
 > **And the whole VERB is one entry** *(plan W38 F7, built 2026-09-29)*:
 > `jobset/prep.py::prep_stage` does everything a prep does — the preflight,
-> the *already under way* question, the five steps, the attempt, the
-> transport carry, the launch agreement, the ledger — and returns what it
-> found and decided as data; the command line prints it and asks, the Task
-> setup tab shows it and confirms ([`job-system.md`](?doc=execution/job-system.md)
-> § 5.3). A surface that did part of the act itself is how the tab came to
+> the plan, the save, the attempt, the transport carry, the launch
+> agreement, the ledger — and returns what it found and decided as data; the
+> command line prints it, the Task setup tab shows it, its preview the same
+> answer stopped before the save ([`job-system.md`](?doc=execution/job-system.md)
+> § 5.0, § 5.3). *(Its *already under way* question was retired on
+> 2026-10-02: a prepped stage is not prepped again.)* A surface that did part of the act itself is how the tab came to
 > skip four of them. **The assembly lives beside the conductor**, as its own
 > (`jobset/prep_inputs.py`, § 2.1's note): `prep_run_inputs` and
 > `bench_inputs` sat in `jobset/_cli.py` — floor 7 — until the same day, so

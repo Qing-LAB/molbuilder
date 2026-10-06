@@ -1638,14 +1638,15 @@ what the engine does when it finds state under the name it was given.* All
 molbuilder contributes is putting the right file in the right place under the
 right name.
 
-> **A redo is the same instruction.** `--from 02_tight/run-0` — a run of the
-> *same* stage, named by its address like any other — re-runs it starting from
-> where that attempt reached: the coordinates it got to, not the ones it started
-> from. `prep` cannot tell that apart from continuing to the next stage, and
-> does not need to: both are *"copy this finished run's warm files into a new
-> attempt"*. A stage that continues from its own runs needs no prep for it:
-> `launch` it again (`job-system.md` § 5.4). *(This wrote `--from run-0`,
-> which `prep` refuses — a run is named by its address — until 2026-10-01.)*
+> **A redo is the same instruction.** A stage that continues from its own
+> runs is launched again — `launch` opens its next attempt from where the last
+> reached: the coordinates it got to, not the ones it started from — and needs
+> no prep (`job-system.md` § 5.4); both that and continuing to the next stage
+> are *"copy this finished run's warm files into a new attempt"*. A stage
+> prepped is not prepped again: a redo of its prep is the state saved before
+> it, restored ([`job-system.md`](?doc=execution/job-system.md) § 5.0).
+> *(This offered `--from 02_tight/run-0`, a prep of the same stage, until
+> 2026-10-05 — refused since 2026-10-02.)*
 
 #### 2.3.5 What goes in, what comes out
 
@@ -1665,10 +1666,13 @@ right name.
 | `<NN>_<stage>/run-<n>/` | a fresh attempt: its `calcdir.json`, its inputs copied in, warm files copied from the run it continues from |
 | the printed report | what was resolved, measured and copied — the thing you check before submitting |
 
-**Re-running `prep` is safe until the run is launched.** It rebuilds the attempt
-from the same inputs. Once something has been submitted into it — `launch`'s
-`run.json` is what says so (§ 1.6.3) — that attempt is finished with (§ 1.5)
-and the next `prep` makes a new one.
+**A stage is prepped once.** Its prep opens its first attempt; once something
+has been submitted into it — `launch`'s `run.json` is what says so (§ 1.6.3) —
+that attempt is finished with (§ 1.5), and `launch` opens the next. A prep
+again is refused; its redo is the state saved before it, restored
+([`job-system.md`](?doc=execution/job-system.md) § 5.0). *(This said
+re-running `prep` was safe until the run was launched until 2026-10-05; it
+has been refused since 2026-10-02.)*
 
 ### 2.4 The whole sequence, once through
 

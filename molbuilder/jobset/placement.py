@@ -1,5 +1,6 @@
-"""A job's placement -- what it asks a queue for, and whether every value of
-it is stated (`execution/architecture.md` § 5.2, `job-system.md` § 6.0).
+"""A job's placement -- what it asks a queue for, whether every value of it
+is stated, and whether the queue it names can take it
+(`execution/architecture.md` § 5.2, `job-system.md` § 6.0).
 Floor 3 (`execution/architecture.md` § 2.1).
 
 A module of its own since 2026-10-03 (W55 B7): the check that every launch
@@ -122,4 +123,54 @@ def launch_refusal(allocation, *, engine: str, header: bool, shape: bool,
             + "\n".join(where))
 
 
-__all__ = ["AS_RESOURCE", "launch_refusal"]
+def request_of(resources, *, one_process: bool):
+    """THE REQUEST a run makes of its queue (`scheduler.admit.Request`), as
+    its header asks it (`runwrap._render_sbatch_for`): its processes -- a
+    SIESTA run's ranks; ``one_process`` for an engine that runs one (PySCF)
+    -- the cores each runs on, its GPUs (the one door,
+    `model.gpu_request`), its memory and its wall.  An unstated value is
+    ``None``, which never bars (`scheduler.md` R7); prep has refused an
+    unstated one already (:func:`launch_refusal`)."""
+    from ..scheduler import Request, parse_mem_gb
+    from ..scheduler.quantities import parse_walltime
+    from .model import gpu_request
+    r = resources
+    gpus = gpu_request(r)
+    return Request(ranks=1 if one_process else r.mpi_np,
+                   cpus_per_task=r.cpus_per_task,
+                   gpus=gpus.count if gpus.uses else None,
+                   mem_gb=parse_mem_gb(r.mem) if r.mem else None,
+                   walltime_s=(parse_walltime(str(r.time)) if r.time
+                               else None))
+
+
+def admission_refusal(resources, environment, *, one_process: bool,
+                      stage=None):
+    """**Why the queue a run names cannot take it** -- ``None`` when it fits
+    (`job-system.md` § 5.0, checkpoint 4; § 6.0, *the placement*): the
+    run's whole request (:func:`request_of`) admitted on the target's record
+    by the binding launch asks too (`scheduler.place`), so a GPU run naming
+    a queue with no GPUs, more cores or memory than its nodes hold, or a
+    wall longer than it allows is refused at prep, naming what was asked
+    and what the queue offers.  Launch admits what it sends again, against
+    the machine as it stands then (`scheduler.md` R9)."""
+    from ..runtime_config import routing_of
+    from ..scheduler.place import Unplaceable, place
+    from .model import gpu_request
+    named = getattr(resources, "domain", None)
+    try:
+        place(routing_of(environment),
+              request_of(resources, one_process=one_process),
+              prefer_gpu=gpu_request(resources).uses, named=named)
+    except Unplaceable as exc:
+        return (f"{'stage ' + repr(stage) + ' ' if stage else ''}does not "
+                f"fit the queue {named!r} on the target's record:\n    "
+                + "\n    ".join(r.message for r in exc.reasons)
+                + "\n  Ask for less -- the run card's ranks, cores and GPU "
+                  "count; the description's wall and memory -- or name "
+                  "another of the record's queues.")
+    return None
+
+
+__all__ = ["AS_RESOURCE", "admission_refusal", "launch_refusal",
+           "request_of"]

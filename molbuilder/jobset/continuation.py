@@ -9,8 +9,8 @@ stage it names next, so the two never say different things about the same run.
 `status` answered by a rule of its own until the W37 review found it telling a
 person a stage set to start clean would continue, and naming nothing on the
 flat layout, where the next stage continues all the same.  Reads the folder; writes
-nothing; raises nothing -- a refusal is an answer, which `prep` turns into its
-own error and `status` prints.
+nothing; raises nothing the person can fix -- a refusal is an answer, which
+`prep` turns into its own error and `status` prints; a bug raises.
 """
 from __future__ import annotations
 
@@ -159,7 +159,9 @@ def read_run(base: Path, task, stage: str, attempt: Path,
 
 
 def continuation_answer(base, task, stage: str, *, from_attempt=None,
-                        cold: bool = False, verdict: bool = True
+                        cold: bool = False, verdict: bool = True,
+                        template_text: Optional[str] = None,
+                        bench: bool = False
                         ) -> Tuple[Optional[Continuation], Optional[str]]:
     """``(continuation, refusal)`` for ``stage`` (`job-system.md` § 5.4).
 
@@ -177,9 +179,30 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
     layout.  ``(None, None)`` for ``--cold``, a linked kind's default, the
     first stage, a stage that starts clean, and one the description disables
     (prepped by name, it has no stage before it).  ``verdict=False`` leaves
-    the relaxation unread -- for a reader that never prints it."""
+    the relaxation unread -- for a reader that never prints it.
+
+    A force-constant stage with no `relax` before it builds on nothing: the
+    structure as given, when it is stated relaxed -- else refused, whatever
+    was asked (`engines/vibration.md` § 5.2a's table; it was refused only at
+    prep's step 4b until 2026-10-05, so `status` offered the prep that
+    refused).
+
+    ``template_text`` is the template as the caller read it -- prep's, read
+    once (`script-preparation.md` § 3.0); with none it is read here.
+    ``bench`` asks for a benchmark of the stage, which takes no ``--from``
+    and is offered none."""
     from ..identity import command_stage
     base = Path(base)
+    if force_constant_stage(task, stage) and relax_stage_of(task) is None:
+        try:
+            cfg = _stage_config(base, task, stage, template_text)
+        except _unreadable() as exc:
+            return None, (f"what `{stage}` builds on cannot be read: "
+                          f"{exc}")
+        why = unrelaxed_refusal(
+            task, stage, stated=bool(getattr(cfg, "already_relaxed", False)))
+        if why:
+            return None, why
     refused = _cannot_be_named(base, task, stage, from_attempt, cold)
     if refused:
         return None, refused
@@ -198,17 +221,48 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
                             converged=converged,
                             linked=force_constant_stage(task, stage)), None
     try:
-        prev, linked = _source_stage(base, task, stage)
+        prev, linked = _source_stage(base, task, stage, template_text)
         if prev is None:
             return None, None
         return _by_default(base, task, stage, prev, verdict=verdict,
-                           linked=linked)
-    except Exception as exc:                             # noqa: BLE001
-        # RAISES NOTHING, as this module promises: a template prep would
-        # refuse is a refusal here too, said -- `status` printed a traceback
-        # and the Results tab lost its whole ladder over it (W52).
+                           linked=linked, bench=bench)
+    except _unreadable() as exc:
+        # RAISES NOTHING THE PERSON CAN FIX, as this module promises: a
+        # template prep would refuse is a refusal here too, said -- `status`
+        # printed a traceback and the Results tab lost its whole ladder over
+        # it (W52).  A `TypeError` is a bug, and looks like one (it was
+        # caught with the rest until 2026-10-05).
         return None, (f"what `{stage}` continues from cannot be read: "
                       f"{exc}")
+
+
+def _unreadable() -> tuple:
+    """What a description, its template or a run's records raise when they
+    do not read -- the person's to fix, said as a refusal."""
+    from ..resolve import ResolveError
+    from .errors import PrepError
+    return (ValueError, KeyError, OSError, ResolveError, PrepError)
+
+
+def unrelaxed_refusal(task, stage: str, *, stated: bool) -> Optional[str]:
+    """§ 5.2a's row *no enabled `relax`, the structure not stated relaxed*
+    (`engines/vibration.md`): the box says *relax first* and the ladder
+    holds nothing that would, so the description contradicts itself -- refused
+    with the two ways out rather than measured at a geometry nobody chose
+    (§ 2.2).  ``None`` when the ladder holds a `relax`, or the structure is
+    stated relaxed."""
+    from ..pyscf.stages import VIBRATION_RELAX_STAGE
+    if relax_stage_of(task) is not None or stated:
+        return None
+    return (f"the structure is not stated to be relaxed (already_relaxed is "
+            f"false in the template) and this ladder has no enabled "
+            f"`{VIBRATION_RELAX_STAGE}` stage to relax it -- a harmonic "
+            f"analysis off a stationary point reports the wrong frequencies "
+            f"(engines/vibration.md 2.2).  Either add the "
+            f"`{VIBRATION_RELAX_STAGE}` stage before `{stage}` (Task setup, "
+            f"or task.json) and run it first, or state already_relaxed = true "
+            f"in the template; the finish then measures the forces at this "
+            f"geometry and says whether the statement held.")
 
 
 def _cannot_be_named(base: Path, task, stage: str, from_attempt,
@@ -228,14 +282,25 @@ def _cannot_be_named(base: Path, task, stage: str, from_attempt,
     from pathlib import PurePosixPath
     from ..identity import command_stage
     from ..paths import Shape
-    from ..transport.stages import scan_points
     from .materialize import FLAT_HAS_NO_ATTEMPTS
     if not Shape.named(task.shape).keeps_attempts_as_directories:
-        return FLAT_HAS_NO_ATTEMPTS
-    if scan_points(task, stage):
-        return ("--from / --cold name ONE attempt, and a bias scan keeps one "
-                "per point -- per-point continuation is not named yet "
-                "(engines/transport.md).")
+        # A STAGE OF AN INDEPENDENT LADDER starts clean by its run card; a
+        # linked one builds on what its kind says, and is told no way it
+        # does not have.
+        return FLAT_HAS_NO_ATTEMPTS + (
+            "  A stage starts clean by its run card's `restart: clean`."
+            if _independent(task) else "")
+    if getattr(task, "calculation", None) == "transport":
+        # A TRANSPORT RUNG'S INPUTS ARE ITS KIND'S: gathered from the rungs
+        # upstream (`prep.gather_sources`), never named.  `--from` was taken
+        # until 2026-10-05, naming another rung's run, and its carry and the
+        # gather then wrote into one attempt; the same rung's earlier
+        # attempt it was meant for is never there at prep -- a prepped rung
+        # is not prepped again.
+        return ("--from / --cold name what a stage continues from; a "
+                "transport rung takes its inputs from the rungs upstream, "
+                "gathered by its kind (engines/transport.md § 6.1), and is "
+                "not prepped again once prepped (job-system.md § 5.0).")
     if from_attempt:
         p = PurePosixPath(str(from_attempt))
         if p.is_absolute() or ".." in p.parts:
@@ -287,13 +352,13 @@ def _cannot_be_named(base: Path, task, stage: str, from_attempt,
 
 
 def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
-                linked: bool = False
+                linked: bool = False, bench: bool = False
                 ) -> Tuple[Optional[Continuation], Optional[str]]:
     """The default for ``stage``, which builds on ``prev`` -- the stage
     before it, or (``linked``) the `relax` a force-constant stage builds on:
     the newest attempt, or the refusal (`continuation_answer`).  A linked
     stage is offered no start from the structure (`engines/vibration.md`
-    § 5.2a)."""
+    § 5.2a), and a benchmark no earlier run (it takes no ``--from``)."""
     from ..paths import Shape
     from ..paths import attempt_dir as _adir
     from ..runfiles import compose as rf_compose
@@ -368,7 +433,7 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
                "out of time (project-layout.md § 1.6)")
         first = f"Launch it again --\n{launch_prev}"
     other = None
-    if not flat:
+    if not (flat or bench):
         # AN EARLIER RUN THAT CAN STAND IN WHEN ASKED FOR: the newest one
         # to build on, typed out -- never a placeholder.  Its ending is the
         # question, not its relaxation.
@@ -408,14 +473,15 @@ def relax_stage_of(task) -> Optional[str]:
                  and vibration_render_kind(s.name) != "vibration"), None)
 
 
-def _source_stage(base, task, stage: str) -> Tuple[Optional[str], bool]:
+def _source_stage(base, task, stage: str, template_text: Optional[str] = None
+                  ) -> Tuple[Optional[str], bool]:
     """``(the stage whose run ``stage`` builds on by default, linked)``: the
     stage before it in an independent ladder (:func:`_stage_before`), or the
     `relax` a force-constant stage builds on (linked) -- ``(None, ...)``
     when it builds on none."""
     if force_constant_stage(task, stage):
         return relax_stage_of(task), True
-    return _stage_before(base, task, stage), False
+    return _stage_before(base, task, stage, template_text), False
 
 
 def _independent(task) -> bool:
@@ -428,23 +494,41 @@ def _independent(task) -> bool:
             or "optimization") not in KIND_ROLES
 
 
-def _stage_before(base, task, stage: str) -> Optional[str]:
+def _ladder(base, task, template_text: Optional[str] = None) -> list:
+    """``[(stage, resolved config)]`` of the enabled stages, as `prep`
+    resolves them (`resolve.resolved_ladder`: template ⊕ stage overrides ⊕
+    the run card) -- from ``template_text`` as the caller read it, else the
+    template read here; ``[]`` with no template."""
+    from ..resolve import resolved_ladder
+    from .engines import engine_seam
+    if template_text is None:
+        from ..template import find_template
+        tpl = find_template(Path(base), task.label)
+        if tpl is None:
+            return []
+        template_text = tpl.read_text(encoding="utf-8")
+    return resolved_ladder(template_text, task,
+                           engine_seam(str(task.engine)).config_cls)
+
+
+def _stage_config(base, task, stage: str, template_text: Optional[str] = None):
+    """``stage``'s resolved config (:func:`_ladder`), or ``None``."""
+    from ..identity import stage_key
+    return next((c for n, c in _ladder(base, task, template_text)
+                 if stage_key(n) == stage_key(stage)), None)
+
+
+def _stage_before(base, task, stage: str,
+                  template_text: Optional[str] = None) -> Optional[str]:
     """The enabled stage ``stage`` continues from by default -- the one
     before it in the ladder, resolved as `prep` resolves it (template ⊕
     stage overrides ⊕ the run card, so a card's ``restart: clean`` is read)
     -- or ``None``: a linked kind, the first stage, one that starts clean,
     one the description disables."""
     from ..identity import continues
-    from ..resolve import resolved_ladder
-    from ..template import find_template
-    from .engines import engine_seam
     if not _independent(task):
         return None
-    tpl = find_template(Path(base), task.label)
-    if tpl is None:
-        return None
-    ladder = resolved_ladder(tpl.read_text(encoding="utf-8"), task,
-                             engine_seam(str(task.engine)).config_cls)
+    ladder = _ladder(base, task, template_text)
     names = [n for n, _c in ladder]
     if stage not in names:
         return None
@@ -486,6 +570,9 @@ def continue_from_choices(base, task, stage: str) -> Optional[dict]:
             runs.append({"source": str(a.relative_to(base)),
                          "what": _what_it_is(c, s)})
     return {"from_stage": prev,
+            # A FORCE-CONSTANT STAGE builds on its ladder's relaxation, not
+            # always the stage before it -- the page's words follow.
+            "linked": linked,
             "default": (dict(got.as_dict(), line=got.line())
                         if got is not None else None),
             "refused": refused, "runs": runs,

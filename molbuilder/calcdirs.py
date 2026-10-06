@@ -47,7 +47,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple
 
-from .persist import json_text, read_json, write_bytes
+from .persist import json_text, read_json
 
 #: The record's filename.  VISIBLE, not dotted: it sits beside `task.json`,
 #: `job-set.json`, `run.json` and `environment.json`, and a person listing a
@@ -74,9 +74,9 @@ class Placement:
 
 def record(directory, *, role: str, root) -> Tuple[Path, str]:
     """``(path, text)`` of the stamp that says what *directory* is, recording
-    the calculation *root* it belongs to -- what :func:`write` writes, and
-    what `prep` puts in its plan before anything is written
-    (`jobset.planned`).
+    the calculation *root* it belongs to -- what `prep` puts in its plan
+    before anything is written (`jobset.planned`), and `launch` with the
+    attempt it opens.
 
     ``of`` is stored RELATIVE, which is what survives renaming or moving a
     whole calculation — the convention `.gathered-from` already uses.  The
@@ -91,13 +91,6 @@ def record(directory, *, role: str, root) -> Tuple[Path, str]:
     of = os.path.relpath(Path(root).resolve(), directory.resolve())
     return (directory / FILENAME,
             json_text({"schema": SCHEMA, "role": role, "of": of}))
-
-
-def write(directory, *, role: str, root) -> Path:
-    """Stamp *directory* (:func:`record`), now."""
-    target, text = record(directory, role=role, root=root)
-    write_bytes(target, text.encode("utf-8"))
-    return target
 
 
 def read(directory) -> Optional[Placement]:

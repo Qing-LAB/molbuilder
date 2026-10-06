@@ -450,23 +450,20 @@ def prep_run_inputs(base, task, stage, allocation=None):
     sbatch's neighbour and not the deck.  That is the class of bug one
     assembly makes impossible rather than merely unlikely.
     """
-    import dataclasses as _dc
-
     from .model import Resources
 
-    # NEVER NONE (§ 6.0a's contract): the verdict is folded UNDER this field
-    # by field, and there is no field-by-field merge onto nothing.  A surface
-    # with no flags passes an empty ask, not an absent one.
+    # NEVER NONE (§ 6.0a's contract): the run card and the description are
+    # folded UNDER this field by field (step 2), and there is no
+    # field-by-field merge onto nothing.  A surface with no flags passes an
+    # empty ask, not an absent one.
     allocation = allocation if allocation is not None else Resources()
 
     # 1 · THE CONDITION -- the run card, the launch-shape ladder's first rung,
-    #     under a flag (`architecture.md` § 5.2).
+    #     under a flag (`architecture.md` § 5.2) -- folded where the rest of
+    #     the allocation is, once, at step 2 (`prep._under_description`: a
+    #     flag, then the run card, then the description).  *(It was folded
+    #     here too until 2026-10-05, the same answer twice.)*
     chosen, cond_pins = run_inputs(base, task, stage)
-    known = {f.name for f in _dc.fields(Resources)}
-    patch = {k: v for k, v in chosen.items()
-             if k in known and getattr(allocation, k, None) in (None, "")}
-    if patch:
-        allocation = _dc.replace(allocation, **patch)
     # WHETHER A GPU RUN STATES HOW MANY, AND A CPU RUN NONE (`execution/
     # gpu.md` G5) is the prep entry's to ask, of the job it resolves from
     # this assembly, beside the launch values' refusal -- and the Task

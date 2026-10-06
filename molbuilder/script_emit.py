@@ -71,7 +71,7 @@ from .deck_record import (BLOCK_ATOM_METADATA, BLOCK_BENCH_MARKS,
                           BLOCK_ENGINE_OFFSET, BLOCK_HEADER, BLOCK_PARAMETERS,
                           BLOCK_PROVENANCE, BLOCK_USER_CUSTOM, BLOCK_VIBRATION,
                           MARKER_RE, begin_marker, end_marker,
-                          read_json_block)
+                          read_json_block, without_stamps)
 
 if TYPE_CHECKING:                       # annotations only -- `issues`
     from .issues import Issue           # is L1 and imports nothing
@@ -133,20 +133,6 @@ def read_parameters_fence(text: str) -> List[Dict[str, Any]]:
     return rows
 
 
-#: The record fields that change WITHOUT the calculation changing: the
-#: wall-clock moment the deck was generated, the generator's own git sha,
-#: and the atom-metadata fence's ``created_at``.
-#:
-#: Everything else in the record IS the calculation -- the ``regions`` in
-#: that same fence are the partition a transport ladder is built on, so
-#: this masks FIELDS and never whole fences.
-_VOLATILE_RECORD_RE = re.compile(
-    r"^(#\s*generated-at\s+).*$"
-    r"|^(#\s*generator-version\s+).*$"
-    r'|^(#\s*"created_at"\s*:).*$',
-    re.M)
-
-
 def same_calculation(a: str, b: str) -> bool:
     """Do two decks describe the SAME calculation?
 
@@ -164,12 +150,15 @@ def same_calculation(a: str, b: str) -> bool:
     the sha -- made the device's gather refuse with a message blaming the
     junction's contract for a changed timestamp.
 
-    Masking fields rather than dropping fences is deliberate: the
+    The stamps are masked by the one rule a plan's identity is asked by too
+    (`deck_record.without_stamps`): fields, never whole fences -- the
     atom-metadata fence holds the region partition, and two decks that
-    disagree about THAT are emphatically not the same calculation.
+    disagree about THAT are emphatically not the same calculation.  *(A list
+    of its own stood here until 2026-10-05, beside the plan's, and the two
+    disagreed on the generator's version.)*
     """
-    return (_VOLATILE_RECORD_RE.sub(r"\1\2\3", a)
-            == _VOLATILE_RECORD_RE.sub(r"\1\2\3", b))
+    return (without_stamps(a.encode("utf-8"))
+            == without_stamps(b.encode("utf-8")))
 
 
 # --------------------------------------------------------------------- #
@@ -1466,9 +1455,10 @@ def render_deck(spec: "DeckSpec", struct, cfg, *, verbose: bool = True,
                      f"{sum(1 for i in _issues if i.severity != 'error')} warn")
         for i in _issues:
             log.note(f"{i.severity}: [{i.where}] {i.message}")
-    # LOGGED BEFORE REPORTED, so a refusal is IN the file with its reason.
-    # `report` raises on an error-severity issue; a log written afterwards
-    # would be missing exactly the run that most needed explaining.
+    # LOGGED BEFORE REPORTED: `report` raises on an error-severity issue, and
+    # the verdict is in the log the steps hold up to that line.  A refused
+    # prep writes no log (`script-preparation.md` § 4.5); its reasons are in
+    # the refusal.
     _report(_issues)
 
     parts: List[str] = []
@@ -1598,11 +1588,11 @@ _VALIDATION_HEADER = """\
 # method: a warning that does not apply to your case is one to override
 # deliberately, and a clean report is not a guarantee of a correct answer.
 #
-#   error   the deck was written and then failed its own check -- do not
-#           submit it.  (A refusal BEFORE the deck exists writes no deck and
-#           no report; those reasons are on stderr instead.)
-#   warn    the deck was written; worth reading before you spend cluster time
+#   warn    worth reading before you spend cluster time
 #   info    advisory
+#
+# An error refuses the prep, and a refused prep writes nothing -- this file
+# included; its reasons are in the refusal (job-system.md § 5.0).
 #
 # molbuilder never reads this file back.  It travels beside the deck so the
 # two can be opened together months from now.
@@ -1621,15 +1611,11 @@ def write_validation_report(deck_path, findings, *, plan=None) -> "Path":
     ship — write, check, write again, and the second write is unchecked.
     Beside it, the deck is final the moment it is checked.
 
-    Written BEFORE the artifact gate's `report`, for the same reason the log
-    is: that call raises on an error-severity finding, and a deck that was
-    written and then failed its own check is exactly the one whose reasons a
-    person needs on disk.
-
-    **It does not cover every refusal, and the header says so honestly.**  The
-    settings gate (step 3.3) raises before a line of the deck exists, so there
-    is no deck for a companion to be about; those reasons travel in the
-    exception and on stderr.  This file exists wherever a deck does.
+    **It holds no refusal, and the header says so.**  Prep plans it with the
+    deck and writes both only once every step has passed (`job-system.md`
+    § 5.0): an error-severity finding, at either gate, refuses the prep, and
+    its reasons travel in the refusal.  This file exists wherever a deck
+    does.
 
     ``findings`` is both halves — step 3.3's verdict on the settings and step
     3.11's on the artifact — because *"the final validation of the full
@@ -1820,9 +1806,9 @@ def prepare_deck(spec: "DeckSpec", struct, cfg, path, *,
         log.produced("verdict", f"{len(issues)} issue(s)")
         for i in issues:
             log.note(f"{i.severity}: [{i.where}] {i.message}")
-    # The companion file, from BOTH halves of the verdict, and written before
-    # `report` -- which raises on an error, and a refused run is the one whose
-    # reasons most need to be on disk.
+    # The companion file, from BOTH halves of the verdict -- planned with the
+    # deck, and written with it only if `report` below passes: it raises on
+    # an error, and a refused prep writes nothing (`job-system.md` § 5.0).
     write_validation_report(written, list(rendered.findings) + list(issues),
                             plan=plan)
     if findings is not None:

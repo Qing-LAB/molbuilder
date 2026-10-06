@@ -377,10 +377,10 @@ let _fitSeq   = 0;
  *  WHAT BELONGS TO THE OPEN FOLDER -- one object, replaced whole.
  *
  * `web/task-setup.md` § 2.1: *"the page holds no state of its own… no
- * in-progress buffer that outlives a directory change."*  These six are
- * the buffers.  Unlike the facts in groups 1-2, they cannot come from the
- * folder's answer -- two are debounce timers and DOM hosts, the rest are
- * what the person has typed or opened -- so the rule is kept by SCOPING
+ * in-progress buffer that outlives a directory change."*  These are the
+ * buffers.  Unlike the facts in groups 1-2, they cannot come from the
+ * folder's answer -- they are what the person has typed, chosen or opened,
+ * and the answers the page has shown -- so the rule is kept by SCOPING
  * them rather than by fetching them.
  *
  * WHY AN OBJECT AND NOT SIX VARIABLES.  They were six, cleared by
@@ -2312,7 +2312,11 @@ function continueFromChoice(task, name, cf) {
     const wrap = el("div", { class: "ts-continue-from" });
     const sel = el("select", { "aria-label": "continue " + name + " from" });
     const add = (value, text) => sel.appendChild(el("option", { value }, text));
-    add("", "the stage before it, " + cf.from_stage + " — its newest run");
+    // WHAT IT BUILDS ON BY DEFAULT, in its kind's words: a force-constant
+    // stage builds on its ladder's relaxation, which is not always the
+    // stage before it (a displacement sweep's second).
+    add("", (cf.linked ? "the relaxation it builds on, " : "the stage before it, ")
+        + cf.from_stage + " — its newest run");
     for (const r of (cf.runs || [])) add(r.source, r.source + " — " + r.what);
     if (cf.cold) add("--cold", "the calculation's structure (--cold)");
     const choice = _fs.continueChoice[name] || "";
@@ -2447,14 +2451,18 @@ function prepButton(kind, stage) {
     btnPreview.addEventListener("click", async () => {
         const no = blocked();
         if (no) return refuse(no);
-        /* A NEW PREVIEW RETIRES THE LAST ANSWER, and its Confirm with it,
-         * and the last preview's end point (A13): both were to a plan this
-         * preview replaces. */
-        for (const sel of [".ts-prep-answer", ".ts-emitted"]) {
+        /* A NEW PREVIEW RETIRES THE LAST ANSWER, the last preview's end
+         * point (A13) and what it would write -- and the Prep that named its
+         * plan, until this one answers: all were of a plan this preview
+         * replaces (Prep stayed enabled on the old plan, its box gone, until
+         * 2026-10-05). */
+        for (const sel of [".ts-prep-answer", ".ts-emitted", ".ts-prep-writes"]) {
             const stale = wrap.querySelector(sel);
             if (stale) stale.remove();
         }
         delete _fs.answers[kind + ":" + stage];
+        btnWrite.disabled = true;
+        planned = null;
         btnPreview.disabled = true;
         try {
             /* THE ENTRY'S PREVIEW (`job-system.md` § 5.0): the plan, stopped
@@ -2464,8 +2472,13 @@ function prepButton(kind, stage) {
              * a plan prep refuses. */
             const r = await _prepCall(kind, stage, true);
             if (!r.ok) {
-                say.textContent = r.error;
-                say.setAttribute("data-state", "bad");
+                /* THE REFUSAL WITH WHAT IT POINTS AT -- the preflight's
+                 * notes, a bench's crossed-out cells -- through the one
+                 * renderer of an answer (`task-setup.md` § 11.1); only the
+                 * sentence was shown until 2026-10-05, and a refusal that
+                 * pointed at "the crossed-out list above" pointed at
+                 * nothing. */
+                _showPrepAnswer(wrap, say, r);
                 btnWrite.disabled = true;
                 return;
             }
@@ -2510,8 +2523,10 @@ function prepButton(kind, stage) {
                 say.textContent += "  " + r.continuation.line + ".";
             }
 
-            /* A13 -- THE END POINT, as the header and the run script the
-             * plan holds carry it, line for line: nothing worked out again
+            /* A13 -- THE END POINT, as the plan holds it, line for line:
+             * the header where a scheduler runs the job -- the run script
+             * takes its counts from the allocation there -- else the run
+             * script's stated counts.  Nothing worked out again
              * (`architecture.md` § 5.2). */
             const launch = r.launch || {};
             const lines = (launch.header || []).length
@@ -2532,6 +2547,17 @@ function prepButton(kind, stage) {
                 }
                 wrap.appendChild(box);
             }
+            /* WHAT IT WOULD WRITE, every file the plan leaves (`job-system.md`
+             * § 5.0), folded: the count is the glance, the list the check. */
+            const writes = r.writes || [];
+            if (writes.length) {
+                const det = el("details", { class: "ts-prep-writes" });
+                det.appendChild(el("summary", {}, "writes " + writes.length
+                    + " file" + (writes.length === 1 ? "" : "s")));
+                det.appendChild(el("pre", { class: "ts-prep-answer-notes" },
+                                   writes.join("\n")));
+                wrap.appendChild(det);
+            }
 
             btnWrite.disabled = false;
         } finally {
@@ -2548,7 +2574,20 @@ function prepButton(kind, stage) {
         try {
             say.textContent = "Preparing…";
             say.setAttribute("data-state", "ok");
+            /* THE FOLDER IT WAS ASKED OF: an answer that lands after another
+             * folder was opened is that folder's no longer -- the write is
+             * announced for the folder it changed, and nothing of it is kept
+             * or shown here (`task-setup.md` § 2.1; until 2026-10-05 it was
+             * stored under, and shown for, the folder open now). */
+            const dir = _dir;
             const r = await _prepCall(kind, stage, false, planned);
+            if (_dir !== dir) {
+                const p = window.molbuilder && window.molbuilder.projects;
+                if (r.ok && p && typeof p.publishFolderChanged === "function") {
+                    p.publishFolderChanged(dir);
+                }
+                return;
+            }
             _showPrepAnswer(wrap, say, r);
             if (r.ok) {
                 // KEPT, for the re-read below: it rebuilds this panel, and
@@ -2722,13 +2761,14 @@ function _showPrepAnswer(wrap, say, r) {
         line("brought in: " + (a.brought || []).join(", "));
         // WHAT IT STARTS FROM when it continues from no run -- the
         // terminal's own words, off the same answer: a cold start asked
-        // for, a linked stage's input (prep takes it from the stages
-        // before it), or nothing (W52).
-        if (!r.continuation) {
+        // for, the files a transport rung gathered (said below), or nothing
+        // from another run -- a linked stage's too: its kind's first rung,
+        // or the structure as given (W52; "its input is prep's own" stood
+        // here until 2026-10-05, for rungs that take nothing).
+        if (!r.continuation && !(r.gathered || []).length) {
             line(r.cold ? "cold start — nothing copied in"
-                 : r.linked ? "its input is prep's own — taken from the "
-                              + "stages before it, not carried from a run"
-                 : "nothing carried in (the first stage, or one that starts clean)");
+                 : "takes nothing from another run"
+                   + (r.linked ? "" : " (the first stage, or one that starts clean)"));
         }
     }
     for (const p of (r.points || [])) {

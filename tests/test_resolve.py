@@ -285,8 +285,10 @@ def test_the_environment_reaches_the_translation(template):
         return {"gres": f"gpu:{min(p['G'], env['gpus_per_node'])}"}
 
     tr = MachineTranslation(axes=("G",), to_resources=_reads_the_machine)
+    # A GPU TRIAL: one on the CPU asks no GPU, whatever it is handed
+    # (§ 4.1a, `resolve`'s ceiling rule).
     ps = resolve(template, _task(), SiestaConfig, allocation=ALLOC,
-                 sweep=[{"G": 2}], translation=tr,
+                 sweep=[{"G": 2, "use_gpu": True}], translation=tr,
                  environment={"gpus_per_node": 4}, stage=STAGE)
     assert seen["env"] == {"gpus_per_node": 4}
     assert ps[0].resources.gres == "gpu:2"

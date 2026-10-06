@@ -2034,9 +2034,13 @@ a run directory under a git-backed history — text tracked (including the small
 archived by content and deduped:
 
 > **A replacing produce checkpoints the folder before it writes anything.**
-> Having done so, it removes what the description no longer contains, and the
-> folder is exactly the description again. Nothing is lost, because the prior
-> state is a commit — restore it, or branch from it.
+> What the description no longer contains is then marked, never left looking
+> described — a removed stage's folder becomes `NN_name.disabled/`
+> ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2) — and
+> nothing is lost, because the prior state is a commit — restore it, or
+> branch from it. *(This said "removes" until 2026-10-05; nothing in prep
+> removes a stage's files, and the marking is unit 12's,
+> [`plans/plan.md`](?doc=plans/plan.md).)*
 
 A produce that only rewrites decks changes only text, so that half is cheap.
 **The binary half is not, today.** The archive is keyed by commit sha and copies

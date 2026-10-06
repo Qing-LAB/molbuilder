@@ -749,7 +749,10 @@ A calculation is described **once**, and prep only ever reads that description.
 3. **Everything is decided before anything is written** *(W55 B1,
    2026-10-03)*. Prep first makes its whole plan — every check, every value,
    the text of every file, every folder and what goes into it — with nothing
-   written (checkpoints 1–4b). A refusal can only come from there, and it
+   written in the calculation (checkpoints 1–4b; a transport junction's
+   record is round-tripped through its codec in a scratch folder outside it,
+   [`script-preparation.md`](?doc=execution/script-preparation.md) § 3.0). A
+   refusal can only come from there, and it
    writes nothing but its line in the ledger, so there is nothing to put
    back. Then the folder's state is saved (5); then the plan is written, which
    decides nothing and refuses nothing (6). Every refusal says why in your
@@ -778,30 +781,35 @@ A calculation is described **once**, and prep only ever reads that description.
 | 2 | **one stage, named** | a stage of the description, by its name or `#N` — its folder's number (§ 5.3, *The grammar*); for `prep bench`, a calculation the benchmark can measure, and no `--from` / `--cold` (a trial starts from the structure) | refused, listing the stages it takes |
 | 2a | **not prepped before** | the calculation's plan holds no job for the stage — what `status` calls prepped; for `prep bench`, the stage's bench folder holds no sweep (one door, [`architecture.md`](?doc=execution/architecture.md) § 3.2) | refused: a prepped stage is not prepped again. The refusal names the way back — the folder's saved states (`molbuilder checkpoint list`), the one before the stage's prep restored (`molbuilder checkpoint restore`), and the prep anew |
 | 3 | **the description's own checks** — the preflight ([`engines/stages.md`](?doc=engines/stages.md) § 6.6) | no error | refused, with the errors; warnings are shown and carried in the answer |
-| 4 | **the machine, and the job's placement** | the calculation's own copy of its machine's record answers — or, at its first prep, the record of the machine you named (`--target`; the machine you are on when none other is on file); it says how a shell enters an environment there; the stage resolves — its parameters and the job they make, once ([`script-preparation.md`](?doc=execution/script-preparation.md) § 3.0, steps 1–2: the record, the description and the template each read once, and every step after reads what was read); every launch value is stated; and the job **fits** the queue it names — wall, memory, ranks, cores, GPUs (§ 6.0, *the placement*) | refused, naming what is missing or what does not fit: which machine, when several are on file and none is named; the probe that writes a record; the machine the calculation is set to; the setting that does not resolve; the file and key where each value is stated; what was asked and what the queue offers |
+| 4 | **the machine, and the job's placement** | the calculation's own copy of its machine's record answers — or, at its first prep, the record of the machine you named (`--target`; the machine you are on when none other is on file); it says how a shell enters an environment there; the stage resolves — its parameters and the job they make, once ([`script-preparation.md`](?doc=execution/script-preparation.md) § 3.0, steps 1–2: the record, the description and the template each read once, and every step after reads what was read); every launch value is stated; and a run **fits** the queue it names — wall, memory, ranks, cores, GPUs — admitted on the target's record by the binding launch asks too (§ 6.0, *the placement*; a benchmark's cells are admitted where its grid is enumerated, and its queue is named at its launch, [`generator.md`](?doc=execution/generator.md) § 4.3a) | refused, naming what is missing or what does not fit: which machine, when several are on file and none is named; the probe that writes a record; the machine the calculation is set to; the setting that does not resolve; the file and key where each value is stated; what was asked and what the queue offers |
 | 4a | **what the stage builds on** (§ 5.4) — one `Continuation`: the run and what it was; the files it carries are counted where the plan's row is merged (4b), since what a pair carries is the jobs' to say | the stage before it — its newest attempt, which ended on its own with exit code 0 — or the run you name with `--from`, or none with `--cold`. A first stage, or one whose run card says `restart: clean`, starts from the structure; a linked stage's inputs are continuations too — a frequency stage's, a run of `relax`, the newest or the one named ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a's table); a transport rung's, fixed by its kind (`gather_sources`) | refused, naming what to do: launch it, let it finish, or name another run |
 | 4b | **the steps, planned** — the machine's copy, the structure, the decks, the wrappers, the directory ([`script-preparation.md`](?doc=execution/script-preparation.md) § 3) | the structure loads and matches what was described; the data files are there; every deck passes its two gates — **validate** the resolved values, and **check** the text exactly as it will be written, the reader's own section merged in; every wrapper renders; the plan's new row merges; the attempt and what it receives are known; a kind's own steps pass (a transport junction composed, a relaxed geometry read) | refused: the first that fails, in its own words |
 | | ***the save*** | | |
 | 5 | **the save** ([`checkpointing.md`](?doc=execution/checkpointing.md) § 9) | the folder's state is saved, always, once the whole plan stands: a new state when anything changed since the one it stands at — its first when it has none — its note led by the time it was taken (`2026-10-03 14:05:12 · before prep run tight`); nothing new when nothing changed, and the state it stands at is named. Both doors say which | refused when the state cannot be saved: that state is the one a redo restores |
 | | ***the writing — nothing is decided*** | | |
 | 6 | **the plan written** | every file of the plan; the attempt opened ([`project-layout.md`](?doc=execution/project-layout.md) § 1.6.2) with what step 4a decided copied in, never linked; at the calculation's first prep, its copy of the machine's record, naming the machine; the pipeline log; `job-set.json` last — the moment the stage is prepped. A later attempt is `launch`'s: launching the stage again opens the next, continuing from its own latest run | — nothing here refuses. An error writing (a full disk) leaves the stage not prepped, and the state saved at 5 is the way back |
-| 7 | **the record** | the ledger: the preflight's notes, the save, what the stage continues from, the deck's agreement with its launch, *prepped* | — |
+| 7 | **the record** | the ledger, after the save — so the state saved holds no line of this prep: the save, the preflight's notes, what the stage continues from or a transport rung gathered, the deck's agreement with its launch, *prepped* with which config files answered (as read at 4) | — |
 
 **What you get back** is the whole of what was found and decided — the table in
 § 5.3, *One prep, two doors*: the terminal prints it, Task setup shows it.
 
 **A preview is the same entry, stopping before the save** *(W55 B3)*: the
-plan, shown — what it would write, the launch values the wrapper and the header
-would carry (A13, from the text it rendered), what the stage continues from —
-or the refusal prep would give, with nothing saved, written or recorded. Task
-setup's **Preview** is this, and its **Prep** runs the entry again with the
-preview's plan named — its identity, the plan less the moment it was made
-(`jobset.planned.Plan.identity`: every file it would write, its clock readings
-masked, and each copy's source): when the plan it makes now differs — the
-folder changed between — it refuses, saying to preview again. *(Until
-2026-10-05 the tab's preview was assembled by its route from pieces of the
-entry, and disagreed with it on a missing record, an unlisted queue, a GPU run
-with no count and the queue it named.)*
+plan, shown — every file it would write, the launch values the job would be
+launched with (A13, from the text it rendered: the header where a scheduler
+runs it, else the run script), what the stage continues from — or the refusal
+prep would give, with what it found, and
+nothing saved, written or recorded. Task setup's **Preview** is this, and its
+**Prep** runs the entry again with the preview's plan named — its identity,
+the plan less the moment it was made (`jobset.planned.Plan.identity`: every
+file it would write with its stamps masked — when and by which build it was
+written, the rule two decks are compared by — and what each copy or move takes,
+by its file's path, size and time when planned): when the plan it makes now
+differs — the folder, the machine's record or a library file it takes, or
+molbuilder itself, changed between — it refuses, saying to preview again; a
+Prep naming no plan is not taken. *(Until 2026-10-05 the tab's preview was
+assembled by its route from pieces of the entry, and disagreed with it on a
+missing record, an unlisted queue, a GPU run with no count and the queue it
+named.)*
 
 #### After prep
 
@@ -1337,8 +1345,8 @@ starts from**:
 | what they are | one calculation tuned several ways — an optimization's `coarse → medium → tight` | different jobs, each using another's output — a SIESTA vibration's `relax → freq`; transport's seed and leads → device → transmission |
 | the stages | named by you, as many as you like ([`engines/stages.md`](?doc=engines/stages.md) § 2) | the kind's own, each by its role ([`engines/template.md`](?doc=engines/template.md) § 6.4) |
 | what a stage starts from | **the stage before it, by default**: `prep run medium` takes the newest attempt of the stage before it and copies that run's geometry, its density and — for the same optimiser — its history ([`project-layout.md`](?doc=execution/project-layout.md) § 2.3.4). A stage whose `restart` is `clean`, and the first stage, start from the calculation's structure | the stages before it, **taken by `prep` itself**: `freq` builds on `relax`'s newest attempt, which must have ended on its own with exit code 0 — its relaxed coordinates, and its restart files as any hand-over's ([`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a); the device the seed's density and the leads' Hamiltonians, the transmission the device's, each from the newest attempt that ended so and ran the deck that stage renders now ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) |
-| when the stage before has not concluded | `prep` refuses before writing anything, and names what to do: launch it, let it finish, or run it again — or choose: `--from` an earlier run of it that concluded, `--cold` the structure (on the flat layout, the stage's run card's `restart: clean`). One that concluded without converging is taken, with a warning; one that failed is refused | `prep` refuses and names the stage to run first; the preview shows the deck it would write (§ 5.0) |
-| another source | yours to choose — any attempt by `--from` but one in a removed stage's folder (`.disabled`), which is never continued from ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2), none by `--cold` | the frequency stage: a `relax` run you name with `--from`, taken as said (W38 F9) — no other run, and no `--cold`, while the ladder holds a `relax`; or no `relax` at all, the structure stated relaxed (`already_relaxed`) — every case in [`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a's table. A transport rung: none — what it takes is fixed, and to change it you run the stage before again; `--from` and `--cold` still name or skip an earlier attempt of the same rung (a bias scan refuses both) |
+| when the stage before has not concluded | `prep` refuses before writing anything, and names what to do: launch it, let it finish, or run it again — or choose: `--from` an earlier run of it that concluded, `--cold` the structure (on the flat layout, the stage's run card's `restart: clean`). One that concluded without converging is taken, with a warning; one that failed is refused | `prep` refuses before writing anything — its preview gives the same refusal (§ 5.0) — and names the stage to run first |
+| another source | yours to choose — any attempt by `--from` but one in a removed stage's folder (`.disabled`), which is never continued from ([`project-layout.md`](?doc=execution/project-layout.md) § 4.2), none by `--cold` | the frequency stage: a `relax` run you name with `--from`, taken as said (W38 F9) — no other run, and no `--cold`, while the ladder holds a `relax`; or no `relax` at all, the structure stated relaxed (`already_relaxed`) — every case in [`engines/vibration.md`](?doc=engines/vibration.md) § 5.2a's table. A transport rung: none — what it takes is its kind's, gathered from the rungs upstream, and to change it you run the stage before again; `--from` and `--cold` are refused *(until 2026-10-05 they were meant for an earlier attempt of the same rung, which a rung prepped once never has at prep — § 5.0 — and `--from` took another rung's run, whose files and the gather's were copied into one attempt)* |
 
 **One rule for a run to build on, and one record of it** *(W55 B1/B8,
 2026-10-03; user: "yes, … but user can force a structure still")*. Whatever
@@ -1356,16 +1364,23 @@ frequency stage's relax run included; and a structure can be stated relaxed
 (`already_relaxed`, [`engines/vibration.md`](?doc=engines/vibration.md)
 § 2.2), so the frequency stage takes it as given — the record it carries
 (`info.relaxation`) is shown and checked against this calculation, never
-required. And every hand-over is one `Continuation` — the run, what it was, the files
-it carries — decided in prep's plan, written as the attempt's
-`.continued-from` (a transport rung's `.gathered-from`), carried into
-`run.json` at launch and recorded in the ledger; `summarize` reads that record
-rather than picking again. `STAGE-PLAN.md` says it under its table — the line
-both doors print, with the files this prep's hand-over carries — while the
-table lists what each stage declares it may take *(D28: the table alone read
-as what was copied)*. The record has one writer,
-`runrecord.write_continued_from`, and one reader, `read_continued_from` —
-prep's, and launch's when it opens a stage's next attempt.
+required. **What a stage builds on is decided once, in prep's plan, and
+recorded where it lands.** A run it continues from — the stage before it, or a
+force-constant stage's `relax` — is one `Continuation`: the run, what it was,
+the files it carried, written as the attempt's `.continued-from`, copied into
+its `run.json` at launch and recorded in the ledger (`continues`). A transport
+rung's inputs are its kind's gather — each file and the run it came from, per
+attempt — written as `.gathered-from` and recorded in the ledger (`gathers`).
+Nothing picks the source again later: a force-constant stage's deck carries the
+relaxation it was measured at (its `vibration` block,
+[`engines/vibration.md`](?doc=engines/vibration.md) § 5.3), which its finish and
+`summarize` read. `STAGE-PLAN.md` says it under its table — the line both doors
+print, with the files this prep's hand-over carried — while the table lists
+what each stage declares it may take *(D28: the table alone read as what was
+copied)*. `.continued-from` has one writer, `runrecord.write_continued_from`
+(prep's attempt and flat arms, and launch when it opens a stage's next
+attempt), and one reader, `read_continued_from` — launch's, writing
+`run.json`.
 
 **What an independent stage continues from** *(W37, agreed 2026-09-27; built
 2026-10-01)*. **By default** a continuing stage — `restart` is `continue`
@@ -1381,8 +1396,8 @@ the commands; one that concluded without converging is taken, with a warning.
 and refuses only what cannot be done (no such attempt, no restart files in it)
 — and `--cold` starts from the calculation's structure. What cannot be taken is
 refused **before anything is written** too: a run that is not an attempt of
-this calculation, `--from` with `--cold`, either on the flat layout or a bias
-scan, either on a bench — and the attempt is opened once, with what it carries,
+this calculation, `--from` with `--cold`, either on the flat layout or on a
+transport rung, either on a bench — and the attempt is opened once, with what it carries,
 so a refusal leaves an attempt an earlier prep set up as it was *(W52; until
 2026-10-01 these refusals came after the five steps had written, one of them
 after an earlier carry had been taken away)*. Either way `prep` prints which run
@@ -1491,12 +1506,15 @@ else `allocation.domain` (a benchmark's: `prep --domain`, else
 with its source, and **admits the whole request** against the target's record:
 a GPU run naming a queue with no GPUs, a wall longer than the queue allows,
 more memory than its node holds is refused at prep, naming what was asked and
-what the queue offers. The answer and its sources are written on the job in
+what the queue offers (checkpoint 4, `placement.admission_refusal`, built
+2026-10-05). The answer and its sources are written on the job in
 `job-set.json`; the `.sbatch` header, the Task setup card and `launch` read
 it. A launch flag changes one value — admitted again, and recorded in `run.json`
 and the ledger. *(Until 2026-10-03 the header placed the job with an empty
 request — a GPU run's header named a CPU queue — and a run's first fit check
-was at launch.)*
+was at launch, until 2026-10-05. The record on the job, and the readers of it,
+are unit 11's ([`plans/plan.md`](?doc=plans/plan.md)): until it is built the
+header binds the queue the job names, and launch places what it sends again.)*
 
 ### 6.1 On a cluster — SLURM
 

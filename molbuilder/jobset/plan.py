@@ -103,10 +103,14 @@ def render_plan(jobset: JobSet, this_prep: Optional[List[str]] = None) -> str:
         # A staged ladder declares no edges (P7 unit 2) and that is the design,
         # not an omission -- so say what to do rather than leaving a reader to
         # infer that unrelated jobs may all be started at once.
+        # WHAT EACH BUILDS ON is its kind's -- the stage before it in an
+        # optimization's ladder, `relax` for a force-constant stage, the
+        # rungs upstream for transport -- and this prep's is said above; the
+        # first stood here for every kind until 2026-10-05.
         lines.append(f"Order: {len(js.jobs)} stage(s), run ONE AT A TIME -- "
                      "prep a stage, launch it, look at it, then the next "
-                     "(project-layout.md § 1.6); each continues from the "
-                     "stage before it by default (job-system.md § 5.4), and "
+                     "(project-layout.md § 1.6); what each builds on is "
+                     "decided at its prep (job-system.md § 5.4), and "
                      "`molbuilder jobset status` names the next command.")
     else:
         lines.append(f"Order: {len(js.jobs)} independent job(s) -- no ordering "

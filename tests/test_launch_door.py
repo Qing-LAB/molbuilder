@@ -103,11 +103,12 @@ def test_a_stage_is_shown_asked_and_sent_with_its_own_queues_wall(cluster):
     """`launch run coarse --mode submit --domain htc`: before prep it is
     refused, naming the prep; after it, the exact line is shown -- the
     calculation's name first in `-J`, the queue named at launch, the wall
-    the description STATES, the launch-door claim -- and asked about; with
-    no one to answer nothing is sent or recorded.  With `--yes` that very
-    line is sent and recorded.  `prep`'s header named `debug`, the queue
-    that prep named; the wall is the stated hour on either queue, never
-    one queue's ceiling.
+    prep's flag STATED, the launch-door claim -- and asked about; with no
+    one to answer nothing is sent or recorded.  With `--yes` that very line
+    is sent and recorded.  `prep`'s header named `debug`, the queue that
+    prep named, under a wall it admits (prep admits the run on the queue
+    it names, `job-system.md` § 5.0 checkpoint 4); the wall is the stated
+    ten minutes on either queue, never one queue's ceiling.
 
     The question and its answer are written down, a *no* included
     (`job-system.md` § 5.0, agreement 6).
@@ -121,7 +122,7 @@ def test_a_stage_is_shown_asked_and_sent_with_its_own_queues_wall(cluster):
                "--mode", "submit", "--domain", "htc")
     assert r.exit_code != 0 and "prep run coarse" in r.output, r.output
 
-    _prep(bundle, "coarse", "--domain", "debug")
+    _prep(bundle, "coarse", "--domain", "debug", "--time", "10m")
     attempt = bundle / "01_coarse" / "run-0"
     header = next(attempt.glob("*.sbatch")).read_text()
     assert "#SBATCH -q debug" in header, header        # the queue prep named
@@ -133,7 +134,7 @@ def test_a_stage_is_shown_asked_and_sent_with_its_own_queues_wall(cluster):
     assert "about to submit" in r.output, r.output
     assert _flag(shown, "-J") == "H2/coarse", shown
     assert (_flag(shown, "-p"), _flag(shown, "-q")) == ("htc", "public")
-    assert _flag(shown, "-t") == "0-01:00:00", (
+    assert _flag(shown, "-t") == "0-00:10:00", (
         "sent under a wall nobody stated: " + " ".join(shown))
     assert "ALL,MB_LAUNCHED_BY=jobset-launch" in shown, shown
     assert "nothing submitted" in r.output, r.output

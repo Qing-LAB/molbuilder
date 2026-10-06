@@ -3098,6 +3098,12 @@ def render_run_wrapper(script_path: Path, *,
             # count nobody stated (2026-10-02).
             + "# --- OpenMP thread sizing (allocation first) ---\n"
             + _phys_cores_probe_block()
+            # THE STATED COUNT, BY ITS NAME (`_STATED_COUNTS`): what
+            # `stated_counts` reads back for A13 -- the SIESTA script's name
+            # for the same fact.  PySCF runs one process, so it states no
+            # rank count.  It was baked inline in the last rung until
+            # 2026-10-05, and a PySCF run's preview showed no end point.
+            + f"{_STATED_COUNTS[1]}={resolved_omp}\n"
             + 'if [ -n "$_omp_flag" ]; then\n'
               '    _omp_threads="$_omp_flag"; _omp_from="-omp flag"\n'
             # THE SAME RUNGS THE SCRIPT'S OWN CHAIN READS, from the one list
@@ -3114,7 +3120,8 @@ def render_run_wrapper(script_path: Path, *,
                       f'    _omp_threads="${var}"; _omp_from="{var}"\n'
                       for var in THREAD_SOURCES)
             + 'else\n'
-              f'    _omp_threads="{resolved_omp}"; _omp_from="stated at prep"\n'
+              f'    _omp_threads="${_STATED_COUNTS[1]}"; '
+              '_omp_from="stated at prep"\n'
               'fi\n'
               'export OMP_NUM_THREADS="$_omp_threads"\n'
               '\n'
@@ -4425,13 +4432,15 @@ def _bound_queue(resources, domain_pq, env_rec, *, prefer_gpu=False):
     allowed")*.  An unnamed queue is not chosen here -- the menu's first row
     stood in until then, and a named one the record does not list fell back
     to it silently.  Prep refuses both before anything is written
-    (`placement.launch_refusal`).  What can still meet this is the queue
-    the record CAN'T take -- a GPU job naming a queue with no GPUs -- and
-    `place`, the binding, says so.
+    (`placement.launch_refusal`).
 
-    **Asked about CAPABILITY, not fit**: the request is empty.  Whether this
-    job fits the queue is the launch door's to decide against the machine as
-    it stands then (R9).
+    **The binding, not the fit**: the request here is empty.  Whether the
+    run fits the queue it names -- its cores, GPUs, memory and wall -- prep
+    has asked already, at its checkpoint 4, of the same record by the same
+    `place` (`placement.admission_refusal`), and launch asks again of the
+    machine as it stands then (R9).  *(This said `place` refused a GPU job
+    naming a queue with no GPUs here until 2026-10-05: with no request it
+    compares nothing, and nothing did before launch.)*
     """
     from .scheduler.place import Placement, Unplaceable, place
     from .scheduler import Request

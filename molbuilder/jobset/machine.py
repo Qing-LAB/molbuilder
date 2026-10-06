@@ -14,6 +14,13 @@ from typing import Optional
 from .errors import PrepError
 
 
+#: What a prep says when no machine record answers.
+#:
+#: ONE SENTENCE OF WHY, then the command.  The rule is `running-a-job.md`
+#: § 3.1's -- a machine's facts are read from a record and nowhere else, the
+#: local box included -- and the reason it is worth a refusal rather than a
+#: probe is that a probed-on-the-fly number is indistinguishable from a
+#: recorded one once it is in a wrapper.
 _NO_RECORD = (
     "no machine record for this machine, so there is nothing to prep "
     "against.\n"
@@ -26,7 +33,7 @@ _NO_RECORD = (
 
 
 def set_machine(base_dir, target: Optional[str] = None, *,
-                environment=None, plan=None) -> Path:
+                environment=None, plan) -> Path:
     """**Step 1 of the five: resolve the machine** (`project-layout.md`
     § 2.3.1) — read the machine's record (its cores, GPUs, scheduler and
     environment) and snapshot it as ``environment.json`` beside the bundle.
@@ -74,15 +81,16 @@ def set_machine(base_dir, target: Optional[str] = None, *,
     at its checkpoint 4 and checks its activation there (`job-system.md`
     § 5.0); the copy is made from it.  With none it is read here.
 
-    ``plan`` (`jobset.planned.Plan`) receives the copy instead of the disk:
-    `prep` decides everything before it writes (`job-system.md` § 5.0).
+    ``plan`` (`jobset.planned.Plan`) receives the copy, and is read for
+    one it already holds: `prep` decides everything before it writes
+    (`job-system.md` § 5.0).
 
     Returns the path to ``environment.json``.
     """
-    from ..scheduler import machine_for, write_environment
+    from ..scheduler import machine_for
     from ..scheduler.record import calculation_record
     out = calculation_record(base_dir)
-    if plan.is_file(out) if plan is not None else out.is_file():
+    if plan.is_file(out):
         return out
     # `machine_for()` WITHOUT a bundle: the calculation has no record yet (we
     # just early-returned if it did), so this is the MACHINE scope -- what
@@ -104,11 +112,9 @@ def set_machine(base_dir, target: Optional[str] = None, *,
     from dataclasses import replace
     from ..scheduler.record import LOCAL_TARGET
     env = replace(env, machine=target or LOCAL_TARGET)
-    if plan is not None:
-        from ..persist import json_text
-        plan.text(out, json_text(env.to_dict()))
-        return out
-    return write_environment(env, out)
+    from ..persist import json_text
+    plan.text(out, json_text(env.to_dict()))
+    return out
 
 
 def _no_record() -> PrepError:

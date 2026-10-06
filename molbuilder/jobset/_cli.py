@@ -1211,8 +1211,9 @@ def prep_cmd(kind: str, stage, bundle: str, from_attempt, cold: bool, env,
     """
     # THE ONE ENTRY (`job-system.md` § 5.3, plan W38 F7): the Task setup
     # tab's Prep buttons call it too.  This verb collects what the person
-    # said -- the flags -- asks the one question when there is one, and
-    # prints the answer; the act itself is `prep.prep_stage`'s.
+    # said -- the flags -- and prints the answer; the act itself is
+    # `prep.prep_stage`'s, and it asks nothing (its one question, *already
+    # under way*, was retired on 2026-10-02).
     from ..scheduler.quantities import (canonical_mem, canonical_time,
                                         parse_gres_flag)
     from .model import Resources as _Alloc
@@ -1333,18 +1334,18 @@ def _echo_prep_answer(ans, base) -> None:
     # WHAT IT STARTS FROM, said (`job-system.md` § 5.4) -- one line, read off
     # the answer both doors print: the run it continues from (which, by
     # default or named, what it was, what came across); a cold start asked
-    # for; a linked stage's input, which prep takes from the stages before
-    # it (W52: said to be like a first stage's); or nothing.
+    # for; the files a transport rung gathered (said below); or nothing from
+    # another run -- a linked stage's too: its kind's first rung, or the
+    # structure as given ("its input is prep's own" stood here until
+    # 2026-10-05, for rungs that take nothing).
     if ans.continuation is not None:
         click.echo("  " + ans.continuation.line(rep.copied))
     elif ans.cold:
         click.echo("  cold start -- nothing copied in")
-    elif ans.linked:
-        click.echo("  its input is prep's own -- taken from the stages "
-                   "before it, not carried from a run")
-    else:
-        click.echo("  nothing carried in (the first stage, or one that "
-                   "starts clean)")
+    elif not ans.gathered:
+        click.echo("  takes nothing from another run"
+                   + ("" if ans.linked else
+                      " (the first stage, or one that starts clean)"))
     for src, fn in ans.gathered:
         click.echo(f"  gathered: {fn} <- {src}")
     if ans.resources is not None:

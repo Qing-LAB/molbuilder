@@ -282,13 +282,22 @@ def _check_fits(asks: Mapping[str, Any], allocation: Resources) -> None:
     """
     for axis, value in asks.items():
         ceiling = getattr(allocation, axis, None)
+        if axis == "gres":
+            # A GPU COUNT bounds a trial as a rank count does (§ 4.1a: the
+            # allocation is ranks, cores per rank and GPUs), each read as the
+            # count it spells (`quantities.parse_gres_flag`).  It bounded
+            # nothing until 2026-10-05: `gpu:2` is no int.
+            from .scheduler.quantities import parse_gres_flag
+            value, ceiling = (None if v in (None, "") else parse_gres_flag(v)
+                              for v in (value, ceiling))
         if ceiling is None or not isinstance(value, int) \
                 or not isinstance(ceiling, int):
             continue
         if value > ceiling:
+            said = "GPUs" if axis == "gres" else axis
             raise ResolveError(
-                f"this sweep asks for {axis}={value}, which exceeds this "
-                f"prep's allocation of {axis}={ceiling}.\n"
+                f"this sweep asks for {said}={value}, which exceeds this "
+                f"prep's allocation of {said}={ceiling}.\n"
                 f"  A sweep is bounded by what you ASKED FOR, not by what the "
                 f"machine has -- asking for less is often the better choice, "
                 f"because how a job is scheduled depends on how much you ask "
@@ -637,6 +646,13 @@ def resolve(template_text: str, task, config_cls, *,
         if wants_gpu is not None:
             resources = dataclasses.replace(resources,
                                             use_gpu=bool(wants_gpu))
+        # A BENCHMARK'S GPU COUNT IS ITS CEILING (§ 4.1a: the allocation
+        # bounds the sweep, `_check_fits`), never a trial's ask: a trial on
+        # the CPU asks no GPU, whatever the prep was allowed.  It inherited
+        # the count until 2026-10-05, and its wrapper refused a CPU deck that
+        # asked for GPUs (`gpu.md` G5).
+        if point and not resources.use_gpu and resources.gres:
+            resources = dataclasses.replace(resources, gres=None)
 
         elements.append(ResolvedConfig(
             values=values,

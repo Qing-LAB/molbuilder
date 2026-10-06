@@ -265,13 +265,20 @@ def nonstationary_remedy(relaxation_stage: Optional[str],
         # the decks' own wording): this remedy is written into a result and
         # read wherever it was copied, so it names no folder, and says what
         # the mode means rather than leaving a line `launch` refuses (W52).
+        # IN THE ORDER IT CAN BE DONE: a prepped stage is not prepped again
+        # -- a redo is the state saved before its prep, restored
+        # (`job-system.md` § 5.0) -- and restoring it after `relax`'s new
+        # attempt would take that attempt away, so the restore comes first
+        # (it said "launch, then prep this stage again" until 2026-10-05).
         from ..identity import LAUNCH_MODE_NOTE, launch_as_typed
         s = str(relaxation_stage)
-        return (f"Launch the `{s}` stage again from the calculation's "
-                f"folder -- `{launch_as_typed(s)}` {LAUNCH_MODE_NOTE} -- it "
-                f"continues from its newest attempt, at the geometry it "
-                f"stopped at; then prep this stage again once it has "
-                f"concluded.")
+        return (f"Go back to the state saved before this stage's prep "
+                f"(`molbuilder checkpoint list`, then `molbuilder checkpoint "
+                f"restore` with its id); launch the `{s}` stage again from "
+                f"the calculation's folder -- `{launch_as_typed(s)}` "
+                f"{LAUNCH_MODE_NOTE} -- it continues from its newest "
+                f"attempt, at the geometry it stopped at; then prep this "
+                f"stage once it has concluded.")
     first = ("untick `already_relaxed` and add the `relax` stage before "
              "this one (Task setup, or task.json)"
              if str(engine).lower() == "siesta" else

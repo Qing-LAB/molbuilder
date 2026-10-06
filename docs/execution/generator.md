@@ -491,13 +491,16 @@ written into the ask.)*
 > know. Reusing a wheel is right; reusing the **wrong** wheel invents the
 > problem it then solves.
 
-**A condition the machine cannot hold is refused where every other
-over-large ask is** — at `launch`, by the admission door, which is the one
-floor that knows what a queue takes (`submission.md`). `prep` writes what you
-asked for, exactly as it does for `--np 999`; it does not second-guess a
-number on the way past. The Task-setup tab shows the same door's answer
-beside the fields, so the refusal is visible while you type rather than after
-you submit.
+**A condition the queue cannot hold is refused at `prep`**, before anything
+is written — the run's whole request admitted on the target's record by the
+door launch asks too (`scheduler.place`; [`job-system.md`](?doc=execution/job-system.md)
+§ 5.0, checkpoint 4, and § 6.0), naming what was asked and what the queue
+offers — and admitted again at `launch`, against the machine as it stands then
+(`scheduler.md` R9). `prep` never trims a number to fit: what you asked for is
+written, or refused. Task setup's **Preview** is the same entry, so the
+refusal is on the page before **Prep** is offered. *(Until 2026-10-05 this
+said the refusal came at `launch` alone, and the tab's run card showed the
+door's answer beside its fields — a panel retired with the preview.)*
 
 **Precedence gains one rung**, and it is the one above: `execution` is what a
 person asked for, and nothing a machine found sits beside it — a benchmark

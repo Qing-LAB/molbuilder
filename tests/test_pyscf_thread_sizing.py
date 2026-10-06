@@ -125,8 +125,9 @@ def test_the_wrapper_exports_the_thread_count_it_resolved(
     # The allocation is consulted BEFORE the count stated at prep -- the
     # wrapper's last rung since 2026-10-02, when the node's core count
     # stopped standing in for a thread count nobody stated.
+    assert "_omp_threads_default=4" in t
     assert t.index("SLURM_CPUS_PER_TASK") < t.index(
-        '_omp_threads="4"; _omp_from="stated at prep"')
+        '_omp_threads="$_omp_threads_default"; _omp_from="stated at prep"')
     assert '_omp_from="node physical' not in t
 
 

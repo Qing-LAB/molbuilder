@@ -15,9 +15,9 @@ VERB that acted on it appends the line — policy stays at the verb, the
 ledger only records.  A verb with one door appends at that surface; a verb
 whose doors share ONE ENTRY appends in the entry, once, whichever door
 called — `prep`'s, `jobset/prep.prep_stage` (`job-system.md` § 5.3), writes
-its lines (`preflight-report`, `saved`, `prepped`, `continues` or
-`starts-cold`, `launch-agreement`, and `refused`) for the command line and
-the Task setup tab alike.  `launch` writes each question it asks and its
+its lines (`saved`, `preflight-report`, `continues` or `starts-cold`,
+`gathers`, `launch-agreement`, `prepped`, and `refused`) for the command
+line and the Task setup tab alike.  `launch` writes each question it asks and its
 answer (`question`, a *no* too) before what it did.
 What a line consists of, where more than one caller records the same
 decision, lives here as a named function (:func:`prepped`), so the recipe
@@ -62,7 +62,7 @@ def record(base, verb: str, decision: str, **facts) -> None:
         pass                              # the logbook must never break a run
 
 
-def prepped(base, *, kind: str, stage, dirs):
+def prepped(base, *, kind: str, stage, dirs, provenance):
     """Record one ``prep`` — and RETURN the provenance it recorded.
 
     **What a prep line consists of lives here, not in each caller.**  The
@@ -77,18 +77,20 @@ def prepped(base, *, kind: str, stage, dirs):
 
     So the recipe has one home and the entry has one call.
 
-    The provenance comes back because the answer carries it: the command
-    line PRINTS it (`format_provenance`) and the Task setup tab receives it
-    -- the same table, recorded once and displayed from the answer, rather
-    than gathered twice.
+    ``provenance`` is which config files answered, as the prep read them
+    with the machine's record (`prep._resolve_stage`) -- the table
+    `STAGE-PLAN.md` and the pipeline log carry.  It comes back because the
+    answer carries it: the command line PRINTS it (`format_provenance`) and
+    the Task setup tab receives it -- the same table, read once, recorded
+    and displayed from the answer.  *(It was read again here, after the
+    write, until 2026-10-05: at a first prep the record that answered was
+    another file than the one STAGE-PLAN.md named.)*
     """
-    from ..runtime_config import config_provenance
-
     base = Path(base)
-    prov = config_provenance(project_dir=base)
     record(base, "prep", "prepped", kind=kind, stage=stage,
-           job_dirs=sorted(rel_to(base, d) for d in dirs), provenance=prov)
-    return prov
+           job_dirs=sorted(rel_to(base, d) for d in dirs),
+           provenance=provenance)
+    return provenance
 
 
 def rel_to(base, d) -> str:

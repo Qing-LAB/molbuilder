@@ -75,6 +75,29 @@ MARKER_RE = re.compile(
 )
 
 
+#: THE STAMPS a file molbuilder writes carries -- WHEN it was written and BY
+#: WHICH BUILD -- which say nothing of what it computes: every ISO date-time
+#: (a deck's and a wrapper's ``generated-at``, the atom-metadata fence's
+#: ``created_at``, the pipeline log's banner), the ``generator-version``
+#: line's value (``git <sha>``, ``unknown`` when git did not answer in time)
+#: and the progress seed's ``wall_time``.
+_STAMPS = re.compile(
+    rb"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?"
+    rb"|^(?:#[ \t]*generator-version[ \t]).*$"
+    rb"|wall_time: [0-9.]+", re.M)
+
+
+def without_stamps(data: bytes) -> bytes:
+    """``data`` with its :data:`_STAMPS` masked -- what two files are
+    compared on when the question is what they compute, not when they were
+    written: whether two decks are one calculation
+    (`script_emit.same_calculation`), and whether two plans write one thing
+    (`jobset.planned.Plan.identity`).  Fields, never whole fences: the
+    atom-metadata fence that holds ``created_at`` holds the region partition
+    too."""
+    return _STAMPS.sub(b"<stamp>", data)
+
+
 def _brace_delta(line: str) -> int:
     """``{`` minus ``}`` on one line, counting only braces OUTSIDE strings.
 
@@ -198,4 +221,5 @@ __all__ = ["BLOCK_HEADER", "BLOCK_PROVENANCE", "BLOCK_BENCH_MARKS",
            "BLOCK_ATOM_METADATA", "BLOCK_ENGINE_OFFSET", "BLOCK_VIBRATION",
            "BLOCK_USER_CUSTOM", "BLOCK_PARAMETERS", "MARKER_RE",
            "begin_marker", "end_marker", "read_json_block",
-           "extract_engine_offset", "extract_vibration_record"]
+           "extract_engine_offset", "extract_vibration_record",
+           "without_stamps"]

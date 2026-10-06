@@ -572,11 +572,13 @@ inherited value shown as text is indistinguishable from one you typed, and
 value in the field they would write nothing and the field would snap back.
 
 **Whether it fits the machine is the preview's to say** (§ 11.1): the one
-prep entry, stopped before the save, places the job the stage resolves to on
-the target's queues ([`job-system.md`](?doc=execution/job-system.md) § 5.0,
-checkpoint 4) and answers the plan, or the refusal naming what does not fit.
-*(Until 2026-10-05 this card asked the bench grid with one-point axes as you
-typed — a second answer to a question the entry answers; W55 B3.)*
+prep entry, stopped before the save, admits the run the stage resolves to on
+the queue it names — its cores, GPUs, memory and wall, on the target's record
+([`job-system.md`](?doc=execution/job-system.md) § 5.0, checkpoint 4) — and
+answers the plan, or the refusal naming what was asked and what the queue
+offers. *(Until 2026-10-05 this card asked the bench grid with one-point axes
+as you typed — a second answer to a question the entry answers, W55 B3 — and
+for a few hours after, nothing answered it before launch.)*
 
 > **A check that cannot run says so.** *"I don't know, and here is why"* is
 > one of the three answers, beside *fits* and *does not fit* — never a blank.
@@ -760,7 +762,7 @@ sequenceDiagram
     Prep-->>You: the plan: what the SAVED file would launch (A13), what it builds on
     You->>Prep: Prep run here (enabled only by Preview), naming that plan
     Prep->>Disk: the one prep entry (job-system.md § 5.3)
-    alt the folder changed since the preview
+    alt what prep would write now differs from the preview
       Prep-->>You: refused: preview again (nothing written)
     end
     Prep->>Disk: the state saved, then decks + wrappers + run-N/
@@ -1104,8 +1106,8 @@ rung continues from and the machine as chosen, and a launch line per mode
 where this machine's `molbuilder.json` sets no `launch.mode`. The page composed
 them itself until 2026-10-03, and its one launch line, with no mode, was
 refused when typed (D11). **A stage already prepped** shows the prep entry's
-own sentence in place of its two buttons — the way back in it — and its lines
-are its launch, as `jobset status` prints them; a prep of it would be refused
+own sentence under its two buttons, neither enabled — the way back in it — and
+its lines are its launch, as `jobset status` prints them; a prep of it would be refused
 ([`job-system.md`](?doc=execution/job-system.md) § 5.0).
 
 **The directory names come from the producer.** Flat and hierarchical name
@@ -1130,24 +1132,28 @@ one per mode where it sets none.
 **Preview is the one prep entry, stopped before the save**
 ([`job-system.md`](?doc=execution/job-system.md) § 5.0, W55 B3): the plan —
 what the rung builds on, with the run's verdict and the files it carries; what
-the job will be launched with, line for line as the header and the run script
-the plan holds carry it (A13, [`architecture.md`](?doc=execution/architecture.md)
-§ 5.2); the queue, wall and memory asked — or the refusal prep would give, in
-its words, and Prep is not offered. Nothing is saved, written or recorded. A
-stage already prepped says so before any click — the folder's answer carries
-the prep entry's own sentence, the way back in it — and neither button is
-offered. **Prep run here** / **Prep bench here** reach the same entry
+the job will be launched with, line for line as the plan holds it — the header
+where a scheduler runs it, else the run script's stated counts (A13,
+[`architecture.md`](?doc=execution/architecture.md) § 5.2); the queue, wall and memory asked; every file it would write, folded
+under their count — or the refusal prep would give, in its words, with what it
+had found (below), and Prep is not offered. Nothing is saved, written or
+recorded. A new Preview retires the last one's answer, and Prep with it until
+it answers. A stage already prepped says so before any click — the folder's
+answer carries the prep entry's own sentence, the way back in it — and neither
+button is enabled. **Prep run here** / **Prep bench here** reach the same entry
 ([`job-system.md`](?doc=execution/job-system.md) § 5.3) **naming the preview's
-plan**: when the plan it makes now differs — the folder changed between — it is
-refused, saying to preview again. *(Until 2026-10-05 the route assembled its
+plan**: when the plan it makes now differs — the folder, the machine's record or
+a library file it takes, or molbuilder itself, changed between — it is refused,
+saying to preview again; the door takes no Prep that names none. An answer that
+lands after another folder was opened is not shown, nor kept, for that one
+(§ 2.1). *(Until 2026-10-05 the route assembled its
 preview from pieces of the entry, and refused `#N` and a stage name in another
 case, which the entry takes — D15.)* So the tab shows what the terminal prints,
 from the same answer:
 
 * **the description's preflight notes**, each with its severity — an error
   refuses, in its own words, and nothing is written;
-* **what the inputs said** — a run card's value the run does not use, a
-  bench's grid: enumerated, crossed out, kept;
+* **what the inputs said** — a bench's grid: enumerated, crossed out, kept;
 * **the state saved first** — prep saves the folder's state once its checks
   have passed and before it writes, always
   ([`checkpointing.md`](?doc=execution/checkpointing.md) § 9): the state and
@@ -1157,8 +1163,8 @@ from the same answer:
   ([`job-system.md`](?doc=execution/job-system.md) § 5.0);
 * **the folders written**, **what each deck's checks said**, and **the
   attempt** — opened, what was brought in, what it starts from (the
-  run it continues from, a cold start you asked for, a linked stage's input
-  that prep takes from the stages before it, or nothing), what was copied from which
+  run it continues from, a cold start you asked for, what a transport rung
+  gathered, or nothing from another run), what was copied from which
   attempt — or, on a transport bias scan, one attempt per point;
 * **what a transport rung gathered** from the concluded rungs upstream;
 * **the resources** the stage will launch with, and **whether the deck

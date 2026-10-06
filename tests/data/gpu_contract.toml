@@ -93,10 +93,9 @@ launch = ["--domain", "cpu"]
 launch_refused = "its record lists no GPUs"
 
 [[case]]
-name = "one node must hold the GPUs asked for"
+name = "one node must hold the GPUs asked for -- refused at prep, on the queue the run names"
 run = { use_gpu = true, gpu_count = 8, mpi_np = 8 }
-launch = ["--domain", "gpu"]
-launch_refused = "needs 8 GPUs but gpu allows 4 GPUs"
+refused = "needs 8 GPUs but gpu allows 4 GPUs"
 
 [[case]]
 name = "the queue list checks the job's own GPU count"
@@ -111,8 +110,7 @@ listing = ["needs 8 GPUs but gpu allows 4 GPUs",
 [[case]]
 name = "a GPU job's cores fit the widest node that has GPUs"
 run = { use_gpu = true, gpu_count = 1, mpi_np = 64 }
-launch = ["--domain", "gpu"]
-launch_refused = "needs 64 cores but gpu allows 48 cores"
+refused = "needs 64 cores but gpu allows 48 cores"
 
 [[case]]
 name = "a CPU job on the same queue keeps its 128-core nodes"
@@ -130,8 +128,7 @@ name = "a record silent about which nodes hold the GPUs keeps its whole ceiling"
 queues = [{ name = "old", partition = "old", qos = "public", max_time = "1-00:00:00", max_cores = 48, gpu = { a100 = 4 } }]
 allocation = { domain = "old" }
 run = { use_gpu = true, gpu_count = 2, mpi_np = 4096 }
-launch = ["--domain", "old"]
-launch_refused = "needs 4096 cores but old allows 48 cores"
+refused = "needs 4096 cores but old allows 48 cores"
 
 [[case]]
 name = "a hand-written GPU row is read like a probed one"
@@ -144,16 +141,14 @@ line = ["--gres=gpu:4"]
 name = "...and refuses past its count like a probed one"
 queues = [{ name = "gpu", partition = "gpu", qos = "public", max_time = "1-00:00:00", gpu = { type = "a100", per_node = 4 } }]
 run = { use_gpu = true, gpu_count = 5, mpi_np = 5 }
-launch = ["--domain", "gpu"]
-launch_refused = "needs 5 GPUs but gpu allows 4 GPUs"
+refused = "needs 5 GPUs but gpu allows 4 GPUs"
 
 [[case]]
 name = "a node list that names no GPUs keeps its widest node for a GPU job"
 queues = [{ name = "site", partition = "p", qos = "public", max_time = "1-00:00:00", gpu = { type = "a100", per_node = 4 }, node_types = [{ cores = 96, nodes = 2 }] }]
 allocation = { domain = "site" }
 run = { use_gpu = true, gpu_count = 1, mpi_np = 97 }
-launch = ["--domain", "site"]
-launch_refused = "needs 97 cores but site allows 96 cores"
+refused = "needs 97 cores but site allows 96 cores"
 
 [[case]]
 name = "a queue listing several cards holds the most any node holds"
@@ -287,6 +282,18 @@ header = ["#SBATCH -p gpu", "#SBATCH --gres=gpu:1"]
 name = "a benchmark's trials ask their own count"
 bench = { use_gpu = [true], mpi_np = [8], gpu_count = [1, 2] }
 bench_gres = ["gpu:1", "gpu:2"]
+
+[[case]]
+name = "a benchmark's GPU ask bounds its trials, as its rank ask does (generator.md 4.1)"
+bench = { use_gpu = [true], mpi_np = [8], gpu_count = [1, 2] }
+prep = ["--gpus", "1"]
+refused = "asks for GPUs=2, which exceeds this prep's allocation of GPUs=1"
+
+[[case]]
+name = "...and a trial on the CPU asks no GPU, whatever the benchmark was allowed"
+bench = { use_gpu = [false], mpi_np = [8] }
+prep = ["--gpus", "1"]
+bench_header_lacks = ["--gres"]
 
 [[case]]
 name = "the binding turned off reaches the benchmark's trials too"

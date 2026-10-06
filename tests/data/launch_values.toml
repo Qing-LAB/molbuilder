@@ -202,12 +202,13 @@ name = "a PySCF run asks one task and its threads"
 engine = "pyscf"
 run = { threads = 6 }
 header = ["#SBATCH -n 1", "#SBATCH -c 6"]
-run_sh = ['_omp_threads="6"; _omp_from="stated at prep"']
+run_sh = ["_omp_threads_default=6",
+          '_omp_threads="$_omp_threads_default"; _omp_from="stated at prep"']
 
 [[case]]
 name = "the run card's wall and queue beat allocation's"
-run = { time = "02:00:00", domain = "debug" }
-header = ["#SBATCH -t 0-02:00:00", "#SBATCH -q debug"]
+run = { time = "00:10:00", domain = "debug" }
+header = ["#SBATCH -t 0-00:10:00", "#SBATCH -q debug"]
 
 [[case]]
 name = "a prep flag states what the description does not"
@@ -221,10 +222,9 @@ launch = ["--time", "3h"]
 line = ["-t 0-03:00:00", "-p cpu", "-q public"]
 
 [[case]]
-name = "the record checks the wall: one longer than the queue allows is refused"
+name = "the record checks the wall: one longer than the queue allows is refused at prep"
 allocation = { domain = "debug" }
-launch = []
-launch_refused = "debug allows"
+refused = "but debug allows 00:15:00"
 
 [[case]]
 name = "the queues launch lists ask what its door admits -- the wall and memory prep baked, when launch states none"

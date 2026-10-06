@@ -1163,12 +1163,12 @@ vibration:
 | the ladder | asked | the geometry | the files | recorded |
 |---|---|---|---|---|
 | an enabled `relax` — whatever the box says (§ 2.2) | nothing: the default | `relax`'s newest attempt, which must have ended on its own with exit code 0 — refused while it has not (not launched, queued, running, stopped without its marker, failed), naming the command, and the newest earlier run of `relax` that did when there is one | that run's, by the hand-over's rule | `.continued-from`, the ledger's `continues`, `run.json` at launch |
-| | `--from <a run of relax>` | that run, taken as said — prep states what it is (failed, not concluded, not converged: *expect imaginary frequencies*), and refuses only an output that holds no geometry | that run's | the same |
+| | `--from <a run of relax>` | that run, taken as said — prep states what it is (failed, not concluded, not converged: *expect imaginary frequencies*), and refuses only what cannot be done: a run holding none of the files the hand-over carries, an output that holds no geometry, or one whose atoms are not this calculation's in this order | that run's | the same |
 | | `--from` a run of another stage | refused: the stage builds on `relax` | — | — |
 | | `--cold` | refused: the stage measures at the geometry `relax` reached; to measure the structure as given, disable `relax` and state the structure relaxed | — | — |
 | no enabled `relax`, the structure stated relaxed (`already_relaxed`) | nothing, or `--cold` | the structure as given; its relaxation record is shown and checked against this calculation (§ 2.2) | none | none |
 | | `--from` | refused: nothing in this ladder relaxes — the stage measures the structure as given | — | — |
-| no enabled `relax`, the structure not stated relaxed | anything | refused, naming the two ways out — add `relax` before the stage and run it first, or state the structure relaxed: the box says *relax first* and the ladder holds nothing that would, so the description contradicts itself, and it is refused rather than measured at a geometry nobody chose | — | — |
+| no enabled `relax`, the structure not stated relaxed | anything | refused where every hand-over is decided (`continuation.continuation_answer`, so `status` says it before the prep), naming the two ways out — add `relax` before the stage and run it first, or state the structure relaxed: the box says *relax first* and the ladder holds nothing that would, so the description contradicts itself, and it is refused rather than measured at a geometry nobody chose | — | — |
 | the flat layout | nothing (`--from` and `--cold` name attempts, which flat keeps none of) | `relax`'s latest run in the folder, which must have ended on its own with exit code 0 | nothing copied: they lie in the folder | the stage's `<basename>.continued-from` |
 | a benchmark of the stage | — | `relax`'s newest attempt, as a run's default — every trial's deck at that geometry (§ 5.8) | none: a trial measures from its deck | none |
 
@@ -1570,9 +1570,11 @@ not said in those words — the box's two states and the input's record are
 moot once the `relax` stage has run — and the stage is told that stage's
 outcome instead (§ 5.2a): its largest remaining force on the moved atoms
 against this calculation's tolerance, as information when within it and as a
-**warning** when above it, naming the one remedy (`vibrational_analysis.nonstationary_remedy`, the same text the finish writes, § 5.5) — continue the `relax` stage
-from its newest attempt (`prep run relax --from <that attempt>`, then
-`launch run relax`), and prep this stage again once it has concluded; and a
+**warning** when above it, naming the one remedy (`vibrational_analysis.nonstationary_remedy`, the same text the finish writes, § 5.5) — in the order it can be done: go
+back to the state saved before this stage's prep (a prepped stage is not
+prepped again, [`job-system.md`](?doc=execution/job-system.md) § 5.0), launch
+the `relax` stage again — it continues from its newest attempt, at the
+geometry it stopped at — and prep this stage once it has concluded; and a
 held set changed between the two stages, which leaves free atoms that
 relaxation never balanced *(plan V1.36, the user's word 2026-09-29)*. A bench
 trial of that stage is written at the same geometry and told the same

@@ -62,3 +62,30 @@ def test_a_force_constant_stage_builds_on_the_measured_relaxation():
     offered = continue_from_choices(base, task, "freq")
     assert offered["from_stage"] == "relax" and offered["cold"] is False
     assert [r["source"] for r in offered["runs"]] == ["01_relax/run-0"]
+
+
+def test_a_transport_rung_takes_no_from_or_cold(tmp_path):
+    """A transport rung's inputs are its kind's -- gathered from the rungs
+    upstream -- and a rung prepped is not prepped again, so ``--from`` and
+    ``--cold`` name nothing it can take: refused before anything is written
+    (`job-system.md` § 5.4).  ``--from`` naming another rung's run was taken
+    until 2026-10-05, and its carry and the gather wrote into one attempt.
+
+    API-LEVEL: the suite's road describes no transport calculation -- one
+    cites a junction run (`tests/test_transport_prep.py` builds one, below
+    the entry) -- and this is the hand-over door's refusal, asked as prep
+    asks it at checkpoint 4a, before the calculation's own files are read."""
+    from molbuilder.jobset.continuation import continuation_answer
+    from molbuilder.task import Stage, Task, derive_run
+    rungs = ("seed", "electrode_L", "electrode_R", "device", "transmission")
+    task = Task(engine="siesta", shape="hierarchical",
+                run=derive_run("T", "J/x", stage_names=rungs),
+                structure=None, calculation="transport",
+                slots={"junction": "J/x"}, bias=(0.0,), varies=(),
+                execution={}, stages=tuple(
+                    Stage(name=n, enabled=True, overrides={}) for n in rungs))
+    for asked in ({"from_attempt": "01_seed/run-0"}, {"cold": True}):
+        got, refused = continuation_answer(tmp_path, task, "device", **asked)
+        assert got is None and refused and (
+            "takes its inputs from the rungs upstream" in refused), refused
+

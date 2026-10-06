@@ -203,7 +203,7 @@ conductor:
 |---|---|---|
 | **1 · machine** | the record read once (`machine_for`), its activation checked, the job's placement admitted | — |
 | **2 · parameters** | each element resolved (`resolve`): a run is one, a benchmark's grid is N | a benchmark — **grid**: its points, from the declared axes or the machine's proposal |
-| **3 · structure** (*load*) | the structure loaded and checked against what was described | transport — **compose**: the junction and its leads, every rung's structure, composed in memory and kept as the text of the record prep writes; transport — **electronic state**: decided once on the junction, carried into every rung; a SIESTA vibration's frequency stage — **relaxed geometry**: the relax run it builds on (a `Continuation`), its coordinates and the atom order |
+| **3 · structure** (*load*) | the structure loaded and checked against what was described | transport — **compose**: the junction and its leads, every rung's structure, composed and round-tripped through the record's codec in a scratch folder outside the calculation, removed at once — so this prep renders from the record every later one reads — and the record's text kept in the plan; transport — **electronic state**: decided once on the junction, carried into every rung; a SIESTA vibration's frequency stage — **relaxed geometry**: the relax run it builds on (a `Continuation`), its coordinates and the atom order |
 | **3 · decks** (*data files* … *declare*) | the data files listed and screened; each deck rendered, validated, merged with the reader's own section as it stands on disk, and checked — the very text that will be written | transport — **points**: one deck per bias point |
 | **4 · wrappers** | `.run.sh` and `.sbatch` rendered from the deck's text and the job's placement | — |
 | **5 · directory** | the plan's new row merged; `STAGE-PLAN.md`; the attempt to open and what it receives — the `Continuation`'s files | transport — **gather**: each rung's inputs, from the runs upstream it builds on |
@@ -257,7 +257,7 @@ free to disagree with the first.
 
 **There are two gates, and they are separate on purpose** — **validate** (3.3)
 reads the resolved config before anything is written; **check** (3.11) reads the
-file on disk, exactly as the engine will open it. **Neither can do the other's
+file's text exactly as the engine will open it, as the plan holds it. **Neither can do the other's
 job**: the config gate never reads the output, so it cannot see a writer bug —
 the whole class of defect this layer exists to end — and the script check runs
 after the work is done, so it cannot spare you a calculation that was unsound to
@@ -674,8 +674,7 @@ spec is a small form the engine fills in, and it has twelve slots:
 **The second one is the genuinely new capability.** Every other validator in
 this tree takes `(structure, config)` and runs before emission, so **none of
 them can see a writer bug** — the deck is not an input to any of them. That is
-why `check` reads the artifact and why it runs on every route that writes a
-deck, not only on `prep`.
+why `check` reads the artifact, on the one route that writes a deck, `prep`.
 
 #### Why the check needs something besides the file
 
@@ -747,9 +746,10 @@ writer. The deck is in the prep's plan here, and reaches the disk with
 everything else once the whole plan stands (§ 3.0).
 
 **What crosses the seam is the engine's FORM**, and the framework does the rest:
-`prepare_deck` runs validate → render → write → check, and is what every route
-that writes a deck calls — `prep` and both `convert()`s. The order has one
-owner; it was stated once per caller before.
+`prepare_deck` runs validate → render → write → check, and is what the route
+that writes a deck calls — `prep`, the one there is. The order has one owner;
+it was stated once per caller before (the two `convert()`s that also called it
+are gone).
 
 > **Why the form and not the text.** Handed text, the conductor has nothing to
 > pass on, so it performs the write and the check itself — and the ORDER of step
@@ -784,7 +784,7 @@ flowchart TB
       S3["<b>validate</b><br/>the settings gate"]
       S4["<b>render</b><br/><i>walk spec.layout in order</i>"]
       S5["<b>write</b><br/>write_script — merges the reader's block"]
-      S6["<b>check</b><br/>the artifact gate — read the file back"]
+      S6["<b>check</b><br/>the artifact gate — the text as written"]
       S1 --> S2 --> S3 --> S4 --> S5 --> S6
     end
     subgraph HOOKS["the hooks — each engine fills these in, and nothing else"]

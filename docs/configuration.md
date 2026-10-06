@@ -360,10 +360,16 @@ and frequent diagnosis. Two rules make it a readable one:
   Reload button, `jupyter start` and `restart` — so a broken file leaves the
   running process alone (§ 1.0b there).
 - **`config_provenance` lists every scope it consulted** — path, found or
-  absent, and how it was reached — including `environment.json`'s two scopes,
-  and then which file supplied each effective value. It is safe for logs by
-  construction: paths and presence always, values only for the sections flagged
-  printable (§ 4).
+  absent, and how it was reached — including the machine record's scopes in
+  their order (§ 5 M-3: the calculation's copy, the record of the machine a
+  prep names with `--target`, this machine's own), and then which file
+  supplied each effective value. A prep builds it once, with the record it
+  reads at its checkpoint 4 — whose queues it lists — and `STAGE-PLAN.md`,
+  the pipeline log and the ledger's *prepped* line all carry that one table
+  *(each read the files again, at different moments, until 2026-10-05: at a
+  first `prep --target sol` the plan named this machine's record, and never
+  sol's, which had answered)*. It is safe for logs by construction: paths and
+  presence always, values only for the sections flagged printable (§ 4).
 
 ```text
 config:
@@ -374,9 +380,11 @@ config:
   environment.domains: general
 ```
 
-The two `environment` rows are listed in precedence order, so the record that
+The `environment` rows are listed in precedence order, so the record that
 won is the first one marked found — here the calculation's, which is why the
-menu reads `general` rather than the machine record's own.
+menu reads `general` rather than the machine record's own. At a calculation's
+first prep its copy is absent — the prep writes it — and the record named with
+`--target`, or this machine's, is the first found.
 
 ### 2.3 How a file molbuilder writes is written — atomically, and privately when it carries a credential
 

@@ -98,6 +98,16 @@ def _post(client, **body):
     return r.status_code, (r.get_json() or {})
 
 
+def _prep(client, **body):
+    """A Prep as the page makes one: the preview, then the prep naming its
+    plan (`job-system.md` § 5.0) -- the preview's refusal when it refuses,
+    which is the one prep would give."""
+    st, pv = _post(client, plan=True, **body)
+    if st != 200:
+        return st, pv
+    return _post(client, plan_id=pv["plan_id"], **body)
+
+
 def test_it_refuses_a_folder_with_no_description(web_client, described,
                                                  isolated_projects_root):
     bare = isolated_projects_root / "bare"
@@ -150,7 +160,7 @@ def test_a_prep_from_here_is_recorded_in_the_bundle(web_client, described):
     from molbuilder.jobset.ledger import LEDGER_FILE
 
     _make_preppable(Path(described))
-    st, j = _post(web_client, dest=described, kind="run", stage="coarse",
+    st, j = _prep(web_client, dest=described, kind="run", stage="coarse",
                   target=LOCAL_TARGET)
     assert st == 200, j
 
@@ -306,8 +316,9 @@ def test_the_preview_is_the_entry_and_prep_takes_only_the_plan_previewed(
         web_client, described):
     """`job-system.md` § 5.0 (W55 B3): a preview is the same entry, stopped
     before the save -- nothing saved, written or recorded; a Prep naming the
-    preview's plan takes it, and one naming a plan the folder no longer
-    makes is refused, writing nothing but its ledger line.  The stage is the
+    preview's plan takes it, one naming a plan the folder no longer makes is
+    refused, writing nothing but its ledger line, and one naming none is not
+    taken.  The stage is the
     entry's to resolve -- ``#1``, or the name in any case (D15).
 
     API-LEVEL: the browser's door, which no `jobset` verb reaches; what the
@@ -324,8 +335,14 @@ def test_the_preview_is_the_entry_and_prep_takes_only_the_plan_previewed(
 
     st, j = _post(web_client, dest=described, kind="run", stage="COARSE",
                   target=LOCAL_TARGET, plan_id="0" * 64)
-    assert st == 400 and "changed since the preview" in j["error"], j
+    assert st == 400 and "differs from the plan you previewed" in j["error"], j
     assert not (calc / "01_coarse").exists(), "a refused prep wrote"
+    # ...and a Prep that names no plan at all is not taken: nothing is
+    # prepped unseen.
+    st, j = _post(web_client, dest=described, kind="run", stage="coarse",
+                  target=LOCAL_TARGET)
+    assert st == 400 and "preview first" in j["error"], j
+    assert not (calc / "01_coarse").exists(), "an unseen prep wrote"
 
     st, j = _post(web_client, dest=described, kind="run", stage="coarse",
                   target=LOCAL_TARGET, plan_id=pv["plan_id"])
@@ -343,7 +360,7 @@ def test_both_doors_give_the_same_answer_and_record_the_same_decisions(
     twin = _twin(calc, "calc-cli")
 
     # the save, answered up front: no, as the terminal's silence is
-    st, j = _post(web_client, dest=str(calc), kind="run", stage="coarse",
+    st, j = _prep(web_client, dest=str(calc), kind="run", stage="coarse",
                   target=LOCAL_TARGET)
     assert st == 200, j
     r = _cli("prep", "run", "coarse", "--bundle", str(twin),
@@ -394,7 +411,7 @@ def test_every_door_that_changes_the_folder_saves_its_state_first_and_says_so(
     _make_preppable(calc)
     twin, kept = _twin(calc, "calc-cli"), _twin(calc, "calc-save")
 
-    st, j = _post(web_client, dest=str(calc), kind="run", stage="coarse",
+    st, j = _prep(web_client, dest=str(calc), kind="run", stage="coarse",
                   target=LOCAL_TARGET)
     assert st == 200 and j["dirs"], j
     assert j["saved"].startswith("the folder's state was saved first:"), j
@@ -427,7 +444,7 @@ def test_a_bench_with_no_axes_is_the_machines_proposal_on_both_doors(
     calc = Path(described)
     _make_preppable(calc)
     twin = _twin(calc, "calc-cli")
-    st, j = _post(web_client, dest=str(calc), kind="bench", stage="coarse",
+    st, j = _prep(web_client, dest=str(calc), kind="bench", stage="coarse",
                   target=LOCAL_TARGET)
     assert st == 200, j
     r = _cli("prep", "bench", "coarse", "--bundle", str(twin),
@@ -453,7 +470,7 @@ def test_a_refusal_shows_what_it_points_at_on_both_doors(
     desc.write_text(json.dumps(d))
     twin = _twin(calc, "calc-cli")
 
-    st, j = _post(web_client, dest=str(calc), kind="bench", stage="coarse",
+    st, j = _prep(web_client, dest=str(calc), kind="bench", stage="coarse",
                   target=LOCAL_TARGET)
     assert st == 400 and "crossed-out list" in j["error"], j
     assert any("crossed out (1)" in n for n in j["notes"]), j["notes"]
@@ -499,7 +516,7 @@ def test_a_deck_that_makes_no_claim_gets_no_agreement_on_either_door(
     both doors.  A PySCF deck is such a deck."""
     web = _pyscf_calc(isolated_projects_root, "py-web")
     cli = _pyscf_calc(isolated_projects_root, "py-cli")
-    st, j = _post(web_client, dest=str(web), kind="run", stage="coarse",
+    st, j = _prep(web_client, dest=str(web), kind="run", stage="coarse",
                   target=LOCAL_TARGET)
     assert st == 200, j
     assert j["agreement"] is None and j["attempt"], j
@@ -520,9 +537,11 @@ def test_a_preflight_refusal_keeps_its_notes_on_both_doors(
         web_client, described):
     """A description that fails its own preflight -- a physics value in the
     run's `execution` block -- while its ladder also earns a note: each door
-    refuses with the note beside the sentence, and the ledger holds it, as
-    for every other refusal (HEAD's terminal did; the one entry dropped it
-    until review, 2026-09-29)."""
+    refuses with the note beside the sentence.  The terminal's refusal is a
+    decision, and the ledger holds it, as for every other refusal (the one
+    entry dropped it until review, 2026-09-29); the page's comes at its
+    Preview, which records nothing (`job-system.md` § 5.0), and Prep is not
+    offered."""
     from molbuilder.task import FILENAME as TASK_FILENAME
     calc = Path(described)
     _make_preppable(calc)
@@ -533,7 +552,7 @@ def test_a_preflight_refusal_keeps_its_notes_on_both_doors(
     desc.write_text(json.dumps(d))
     twin = _twin(calc, "calc-cli")
 
-    st, j = _post(web_client, dest=str(calc), kind="run", stage="coarse",
+    st, j = _prep(web_client, dest=str(calc), kind="run", stage="coarse",
                   target=LOCAL_TARGET)
     assert st == 400 and "fails its own preflight" in j["error"], j
     assert any("starts clean" in f["message"] for f in j["findings"]), j
@@ -543,8 +562,10 @@ def test_a_preflight_refusal_keeps_its_notes_on_both_doors(
     assert r.output.index("starts clean") < r.output.index(
         "fails its own preflight"), r.output
     # The notes, then the refusal itself -- a decision too (W52).
-    assert (_ledger_decisions(calc) == _ledger_decisions(twin)
-            == [("prep", "preflight-report"), ("prep", "refused")])
+    assert _ledger_decisions(twin) == [("prep", "preflight-report"),
+                                       ("prep", "refused")]
+    from molbuilder.jobset.ledger import LEDGER_FILE
+    assert not (calc / LEDGER_FILE).exists(), "the preview recorded"
 
 
 def test_a_folder_holding_two_templates_is_refused_in_words_on_both_doors(
@@ -556,7 +577,7 @@ def test_a_folder_holding_two_templates_is_refused_in_words_on_both_doors(
     _make_preppable(calc)
     shutil.copy(calc / "JOB.template.toml", calc / "OLD.template.toml")
     twin = _twin(calc, "calc-cli")
-    st, j = _post(web_client, dest=str(calc), kind="run", stage="coarse",
+    st, j = _prep(web_client, dest=str(calc), kind="run", stage="coarse",
                   target=LOCAL_TARGET)
     assert st == 400 and "holds 2 templates" in j["error"], j
     r = _cli("prep", "run", "coarse", "--bundle", str(twin),
@@ -583,7 +604,10 @@ def test_the_page_is_offered_a_bench_only_where_prep_takes_one(
     assert _folder(calc)["bench_refusal"] is None
     why = _folder(py)["bench_refusal"]
     assert why and "only speaks SIESTA" in why, why
+    # The write names a plan, as every Prep does; the entry refuses the
+    # bench before it compares one.
     for plan in (True, False):
         st, j = _post(web_client, dest=str(py), kind="bench", stage="coarse",
-                      target=LOCAL_TARGET, plan=plan)
+                      target=LOCAL_TARGET, plan=plan,
+                      **({} if plan else {"plan_id": "0" * 64}))
         assert st == 400 and j["error"] == why, (plan, j)

@@ -313,10 +313,13 @@ def copy_pseudopotentials(species: Sequence[str], lib: Path,
             print(f"  ok:   {dst.name} (already present)", file=sys.stderr)
             continue
         if plan is not None:
+            # PLANNED, NOT COPIED: the plan is written after the save, or
+            # never -- a preview, a refusal (`job-system.md` § 5.0).
             plan.copy(src, dst)
+            print(f"  ok:   {src} -> {dst} (to copy)", file=sys.stderr)
         else:
             shutil.copyfile(src, dst)
-        print(f"  ok:   {src} -> {dst}", file=sys.stderr)
+            print(f"  ok:   {src} -> {dst}", file=sys.stderr)
     return missing
 
 

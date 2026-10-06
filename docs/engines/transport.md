@@ -1406,10 +1406,12 @@ five decks carries an `MD` block, by design (§ 4.2 stage 1).
 **Why the missing keyword is not the hazard it looks like.** The electrode
 rungs write no restart keyword at all, and SIESTA reads `<label>.DM` whenever
 the file is there whatever the deck omits — so in principle a lead could
-warm-start from stale state without being asked. In practice `prep` opens a
-**fresh `run-<n>`** for every launch, so there is nothing in the directory to
-pick up unless a person explicitly asked for it with `--from`. The exposure is
-a hand-run wrapper inside an already-used attempt, which is outside the ladder.
+warm-start from stale state without being asked. In practice every attempt is
+opened **fresh** — by `prep` once, by `launch` for each launch after — and a
+transport rung takes nothing but its kind's gather, so there is nothing in the
+directory to pick up (a rung takes no `--from`, [`job-system.md`](?doc=execution/job-system.md)
+§ 5.4). The exposure is a hand-run wrapper inside an already-used attempt,
+which is outside the ladder.
 
 **Does the lead need `TS.DE.Save`? No — settled from the source**
 *(`Src/m_ts_options.F90`, SIESTA 5.4.2)*. The binary carries a message this
@@ -2830,7 +2832,7 @@ from ([`job-system.md`](?doc=execution/job-system.md) § 5.0), in
 | gate | what it refuses |
 |---|---|
 | the upstream stage is PREPPED | citing a stage that was never set up |
-| it holds a CONCLUDED attempt **whose deck matches the deck that rung renders NOW** — from the current template, junction and run card, byte for byte but for the generation stamp (`same_calculation`); never the stage folder's last render, which a change since leaves as it was (plan § 5w K11) | integrating a result produced by a *different* deck — the silent-wrong-answer case. A mismatch is a mistake, refused by name |
+| it holds a CONCLUDED attempt **whose deck matches the deck that rung renders NOW** — from the current template, junction and run card, byte for byte but for its stamps — when and by which build it was written (`same_calculation`); never the stage folder's last render, which a change since leaves as it was (plan § 5w K11) | integrating a result produced by a *different* deck — the silent-wrong-answer case. A mismatch is a mistake, refused by name |
 | that attempt actually holds the named file | a run that concluded without writing what it promised |
 
 The newest attempt that passes all three wins, and the copy records its

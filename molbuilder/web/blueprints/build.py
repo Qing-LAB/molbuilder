@@ -1315,6 +1315,14 @@ def api_task_setup_prep():
     if kind not in ("run", "bench"):
         return jsonify({"ok": False,
                         "error": "kind must be 'run' or 'bench'"}), 400
+    # NOTHING IS PREPPED UNSEEN (`job-system.md` § 5.0): a Prep names the
+    # plan its preview showed, and the entry refuses one that differs -- a
+    # Prep naming none was taken, unseen, until 2026-10-05.
+    if not preview and not plan_id:
+        return jsonify({"ok": False,
+                        "error": "a Prep names the plan its preview showed "
+                                 "(plan_id) -- preview first "
+                                 "(job-system.md § 5.0)."}), 400
     if not dest_raw:
         return jsonify({"ok": False,
                         "error": "no calculation folder given"}), 400

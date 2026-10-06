@@ -69,6 +69,23 @@ if TYPE_CHECKING:                      # annotations only
     from ..task import Task
 
 
+def _USER_ERRORS() -> tuple:
+    """The USER-FIXABLE refusal classes the steps raise, which every prep
+    door says as a :class:`PrepError` (:func:`_user_error_as_prep`)."""
+    from ..issues import ValidationError
+    from ..runtime_config import RuntimeConfigError
+    from ..runwrap import WrapperError
+    return (ValidationError, RuntimeConfigError, WrapperError)
+
+
+def _as_prep_error(exc: BaseException) -> PrepError:
+    """``exc`` said as a refusal: its own words, with the hook boundary's
+    attribution carried across (`issues.calling`)."""
+    from ..issues import notes_of
+    note = notes_of(exc)
+    return PrepError(str(exc) + (f"\n  ({note})" if note else ""))
+
+
 @contextmanager
 def _user_error_as_prep():
     """Translate the USER-FIXABLE refusal classes the steps below raise into
@@ -85,23 +102,12 @@ def _user_error_as_prep():
     so a refusal that came out of a named engine hook would arrive at the CLI
     saying what went wrong and not whose it was -- and the note would reach a
     traceback nobody sees."""
-    from ..issues import ValidationError, notes_of
-    from ..runtime_config import RuntimeConfigError
-    from ..runwrap import WrapperError
     try:
         yield
-    except (ValidationError, RuntimeConfigError, WrapperError) as exc:
-        note = notes_of(exc)
-        raise PrepError(str(exc) + (f"\n  ({note})" if note else "")) from exc
+    except _USER_ERRORS() as exc:
+        raise _as_prep_error(exc) from exc
 
 
-#: What a prep says when no machine record answers.
-#:
-#: ONE SENTENCE OF WHY, then the command.  The rule is `running-a-job.md`
-#: § 3.1's -- a machine's facts are read from a record and nowhere else, the
-#: local box included -- and the reason it is worth a refusal rather than a
-#: probe is that a probed-on-the-fly number is indistinguishable from a
-#: recorded one once it is in a wrapper.
 def _flat_continued_from(base: Path, task, stage: str, continuation,
                          plan) -> None:
     """A flat stage's own ``<basename>.continued-from``, for its launch
@@ -131,7 +137,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 emit_sbatch: bool = True, record_dir=None,
                 log=None, machine_record=None,
                 render=None, points=None, plan=None,
-                shape=None, this_prep=None) -> List[Path]:
+                shape=None, this_prep=None, provenance=None) -> List[Path]:
     """Render launchers + lay out the per-job tree under ``base_dir``.
 
     ``plan`` (`jobset.planned.Plan`) receives what this writes, and is read
@@ -142,6 +148,9 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     a layer below takes it (`materialize.shape_of`); with none it is asked
     here.  ``this_prep`` is what this prep's hand-over takes, which
     `STAGE-PLAN.md` says under its table (`plan.render_plan`).
+    ``provenance`` is which config files answered, as the prep read them
+    with the machine's record (`prep._resolve_stage`); with none it is read
+    here.
 
     ``points`` names, per job, the folders that hold a copy of its deck
     written at another point -- a scan's (`Rung.points`) -- each of which
@@ -235,7 +244,9 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
         plan.folder(_jd)
         if jobset.kind == "sweep":
             # A TRIAL'S FOLDERS SAY WHAT THEY ARE, as a stage's attempt
-            # does (`project-layout.md` § 1.4a).
+            # does (`project-layout.md` § 1.4a) -- marked here, once, for
+            # every sweep (the steps marked each a second time until
+            # 2026-10-05).
             from .materialize import mark_run
             mark_run(base, _jd, plan)
         if job.script in rendered:
@@ -385,7 +396,9 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
         _vocab = ""    # an engine without a rules file has no line to print
     plan.text(plan_dir / _PLAN_FILE,
               render_plan(jobset, this_prep) + "\n\n" + _vocab
-              + format_provenance(config_provenance(project_dir=base)) + "\n")
+              + format_provenance(provenance if provenance is not None
+                                  else config_provenance(project_dir=base))
+              + "\n")
     if log is not None:
         log.produced(_PLAN_FILE, str(plan_dir / _PLAN_FILE))
     if own:
@@ -424,7 +437,7 @@ def _vibration_block(stage: str, cfg, relaxed_by, *, criterion) -> dict:
 
 
 def _vibration_stage_geometry(base, task, pset, struct, *, builds_on=None,
-                              log=None):
+                              log=None, template_text=None):
     """``(structure, cell, relaxation)`` a force-constant stage of a SIESTA
     vibration is written with -- `freq`, or any stage after `relax` in a
     displacement sweep, asked of `vibration_render_kind` and never of a name
@@ -448,36 +461,29 @@ def _vibration_stage_geometry(base, task, pset, struct, *, builds_on=None,
     against the real-space grid is not stationary on that grid any more.
     Every other rung comes back unchanged.
 
-    A force-constant stage before `relax` has ended on its own with exit
-    code 0 is refused where that is decided, naming what to do first
-    (`continuation.continuation_answer`, the one door -- asked here too when
-    a caller hands no answer).  Refused here: a stage with no `relax` while
-    the structure is not stated relaxed -- the box says *relax first* and
-    the ladder holds nothing that would, so the description contradicts
-    itself and is refused with the two ways out rather than measured at a
-    geometry nobody chose (§ 2.2) -- and a run whose output holds no
-    geometry this calculation's.
+    What it builds on is decided where every hand-over is, naming what to
+    do first when it cannot be had (`continuation.continuation_answer`, the
+    one door, at prep's checkpoint 4a -- asked here too when a caller hands
+    no answer): `relax`'s run, or -- with no `relax` -- the structure as
+    given when it is stated relaxed, refused when it is not (§ 5.2a's
+    table, `continuation.unrelaxed_refusal`).  Refused here: a run whose
+    output holds no geometry this calculation's.
     """
-    from ..pyscf.stages import VIBRATION_RELAX_STAGE, vibration_render_kind
-    from .continuation import relax_stage_of
+    from ..pyscf.stages import vibration_render_kind
+    from .continuation import relax_stage_of, unrelaxed_refusal
     if vibration_render_kind(pset.stage) != "vibration":
         return struct, None, None
     # THE LADDER'S RELAXATION, by the one role rule -- the name in any case
     # (`engines/stages.md` § 2), never an exact string (plan § 5w K12).
     relax = relax_stage_of(task)
     if relax is None:
-        if not bool(getattr(pset[0].render_config(), "already_relaxed", False)):
-            raise PrepError(
-                f"the structure is not stated to be relaxed (already_relaxed "
-                f"is false in the template) and this ladder has no enabled "
-                f"`{VIBRATION_RELAX_STAGE}` stage to relax it -- a harmonic "
-                f"analysis off a stationary point reports the wrong "
-                f"frequencies (engines/vibration.md 2.2).  Either add the "
-                f"`{VIBRATION_RELAX_STAGE}` stage before "
-                f"`{pset.stage}` (Task setup, or task.json) and run "
-                f"it first, or state already_relaxed = true in the template; "
-                f"the finish then measures the forces at this geometry "
-                f"and says whether the statement held.")
+        # THE STRUCTURE AS GIVEN, stated relaxed -- the entry refused one not
+        # stated at its 4a; asked again of the config in hand for a caller
+        # with no entry.
+        why = unrelaxed_refusal(task, pset.stage, stated=bool(getattr(
+            pset[0].render_config(), "already_relaxed", False)))
+        if why:
+            raise PrepError(why)
         return struct, None, None
     from ..runs import run_of
     if builds_on is None:
@@ -485,7 +491,8 @@ def _vibration_stage_geometry(base, task, pset, struct, *, builds_on=None,
         # 4a asks -- the default, `relax`'s newest attempt that is one to
         # build on, or the refusal naming what to do first.
         from .continuation import continuation_answer
-        builds_on, refused = continuation_answer(base, task, pset.stage)
+        builds_on, refused = continuation_answer(
+            base, task, pset.stage, template_text=template_text)
         if refused:
             raise PrepError(refused)
     token = stage_home(base, task, relax).token
@@ -693,7 +700,8 @@ def _siesta_vibration_rung(base, task, pset, *, seam, template_text, sweep,
                  f"key held-first, {struct.n_atoms} atoms -> {_perm_path.name}")
     render_kind = _rung_kind(task, pset.stage)
     struct, cell, relaxed_by = _vibration_stage_geometry(
-        base, task, pset, struct, builds_on=continuation, log=log)
+        base, task, pset, struct, builds_on=continuation, log=log,
+        template_text=template_text)
     finishes = render_kind == "vibration"
     # THE FINISH'S FORCE CRITERION IS THE RELAXATION'S OWN (plan § 5w K4,
     # M11 SS-C6): `relax_force_tol` is read by the relaxation rung alone, so
@@ -815,6 +823,16 @@ class Resolved:
     environment: "Environment"
     allocation: Resources
     pset: "ParameterSet"
+    #: the stage's token, by the one stage-number door (`stage_home`)
+    token: str = ""
+    #: the machine named at this prep (``--target``), or ``None``
+    target: Optional[str] = None
+    #: a benchmark's grid, or ``None``: a run
+    sweep: object = None
+    #: which config files answered, and what each supplied -- built once,
+    #: from the record read (`runtime_config.config_provenance`): what
+    #: `STAGE-PLAN.md`, the pipeline log and the ledger's *prepped* line say
+    provenance: Optional[dict] = None
 
     @property
     def shape(self):
@@ -823,10 +841,28 @@ class Resolved:
         from ..paths import Shape
         return Shape.named(self.task.shape)
 
+    def record_dir(self, base) -> Path:
+        """Where this prep's record lives -- its job-set, `STAGE-PLAN.md` and
+        pipeline log: the calculation's folder for a run, the stage's bench
+        container for a benchmark (`job-contracts.md` § 6.3)."""
+        from ..paths import Shape, bench_container
+        return (Path(base) / bench_container(Shape.named(self.task.shape),
+                                             self.token)
+                if self.sweep is not None else Path(base))
+
+    def log_path(self, base) -> Path:
+        """The pipeline log this prep writes (`script-preparation.md`
+        § 4.5)."""
+        from ..pipeline_log import log_name
+        t = self.task
+        return self.record_dir(base) / log_name(t.label, self.token or "",
+                                                t.engine, t.shape)
+
 
 def _resolve_stage(stage, *, task, template, template_text, environment,
                    allocation=None, chosen=None, sweep=None, pins=None,
-                   translation=None) -> Resolved:
+                   translation=None, token: str = "", target=None,
+                   provenance=None) -> Resolved:
     """Step 2, once (`script-preparation.md` § 3.0): the allocation folded --
     the caller's ask over the description's, and its reporting policy -- and
     the stage's elements resolved from the template, the stage, the sweep,
@@ -873,7 +909,8 @@ def _resolve_stage(stage, *, task, template, template_text, environment,
         raise PrepError(str(exc)) from exc
     return Resolved(task=task, template=Path(template),
                     template_text=template_text, environment=environment,
-                    allocation=allocation, pset=pset)
+                    allocation=allocation, pset=pset, token=token or "",
+                    target=target, sweep=sweep, provenance=provenance)
 
 
 def _read_and_resolve(base: Path, stage, *, target, allocation, chosen, sweep,
@@ -896,6 +933,7 @@ def _read_and_resolve(base: Path, stage, *, target, allocation, chosen, sweep,
     # named machine's environment is refused before anything is on disk --
     # the snapshot included, or the remedy's re-copied record would then
     # contradict it (W52, and its fix's review).
+    from ..runtime_config import config_provenance
     environment = machine_record(base, target)
     require_activation(target, environment, base=base)
     task = read_task(desc)
@@ -910,7 +948,10 @@ def _read_and_resolve(base: Path, stage, *, target, allocation, chosen, sweep,
         template_text=(template.read_text(encoding="utf-8")
                        if template is not None else None),
         environment=environment, allocation=allocation, chosen=chosen,
-        sweep=sweep, pins=pins, translation=translation)
+        sweep=sweep, pins=pins, translation=translation,
+        token=stage_home(base, task, stage).token, target=target,
+        provenance=config_provenance(project_dir=base, target=target,
+                                     record=environment))
 
 
 def prep_calculation(base_dir, stage: Optional[str] = None, *,
@@ -1001,7 +1042,7 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     try:
         dirs = _plan_calculation(
             base, stage, resolved, env=env, emit_sbatch=emit_sbatch,
-            sweep=sweep, target=target, opened=opened, findings=findings,
+            opened=opened, findings=findings,
             continuation=continuation, gather=gather, plan=plan)
     finally:
         PLANNED.reset(scope)
@@ -1013,8 +1054,6 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
 def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                       *, env: str = None,
                       emit_sbatch: bool = True,
-                      sweep=None,
-                      target: Optional[str] = None,
                       opened: Optional[list] = None,
                       findings: Optional[list] = None,
                       continuation=None,
@@ -1026,16 +1065,16 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     reads none of the description, the template or the record again."""
     from ..pipeline_log import PipelineLog, config_rows
     from ..task import FILENAME as TASK_FILENAME
-    # The container spelling is materialize's (the naming authority): ONE
-    # function places the sweep's record and the trials' directories, so the
-    # two can never disagree (A-1/A-2).  The log's own home is the same
-    # container, spelled by the same function.
-    from ..paths import bench_container
-    from ..paths import Shape
 
     task, environment = resolved.task, resolved.environment
     template_path, pset = resolved.template, resolved.pset
-    allocation = resolved.allocation
+    allocation, sweep, target = (resolved.allocation, resolved.sweep,
+                                 resolved.target)
+    # WHERE THIS PREP'S RECORD LIVES -- its job-set, STAGE-PLAN.md and
+    # pipeline log -- by the one rule the entry asks too (`Resolved.
+    # record_dir`): the sweep's record and its trials' container are one
+    # place by construction (A-1/A-2).
+    record_dir = resolved.record_dir(base)
 
     # ---- 1. the machine: its record, read and checked before this -------- #
     # (`_read_and_resolve`, or the entry's checkpoint 4) -- snapshotted here,
@@ -1047,11 +1086,9 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     # so nothing is lost by writing that phase a moment later than it ran.
     # It is HELD, and written with the rest of the plan once every step has
     # passed (`script-preparation.md` § 4.5): a refused prep writes no log.
-    _token = stage_home(base, task, stage).token
-    _record = (base / bench_container(Shape.named(task.shape), _token)
-               if sweep is not None else base)
-    log = PipelineLog.open(_record, label=task.label, token=_token,
-                           engine=task.engine, shape=task.shape)
+    log = PipelineLog.open(record_dir, label=task.label,
+                           token=resolved.token, engine=task.engine,
+                           shape=task.shape)
     log.phase("STEP 1 · MACHINE — where this job will run")
     log.received("calculation", str(base))
     log.received(TASK_FILENAME, f"{task.label} · {task.engine} · "
@@ -1064,9 +1101,11 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     # facts.  It is also the security boundary: `config_provenance`
     # publishes only the sections marked provenance-safe
     # (`configuration.md` § 4), so nothing else may be printed here.
-    from ..runtime_config import config_provenance, format_provenance
+    # Read once, with the record (`Resolved.provenance`): STAGE-PLAN.md and
+    # the ledger's *prepped* line say the same.
+    from ..runtime_config import format_provenance
     log.produced("config", "which file supplied each setting")
-    log.text(format_provenance(config_provenance(project_dir=base)))
+    log.text(format_provenance(resolved.provenance))
     seam = engine_seam(task.engine)
     log.phase("STEP 2 · RESOLVE — the values for this rung")
     log.received(template_path.name, f"{len(pset[0].provenance)} fields")
@@ -1109,9 +1148,8 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                 "provide_data", engine=task.engine):
             seam.provide_data(rung.struct, pset[0].render_config(), base,
                               plan=plan)
-    token = stage_home(base, task, pset.stage).token
+    token = resolved.token
     jobs: List[Job] = []
-    from ..paths import bench_container
     from .materialize import (trial_dir,
                               trial_work_dir)
     from ..paths import Shape as _Shape
@@ -1184,11 +1222,6 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                 _sd = _shape.stage_dir(token) if token else "."
                 _jdir = base if _sd == "." else base / _sd
             plan.folder(_jdir)
-            if element.is_trial:
-                # WHERE A TRIAL'S DECK IS BORN, ITS FOLDERS SAY WHAT THEY ARE
-                # (`project-layout.md` § 1.4a), as a stage's attempt does.
-                from .materialize import mark_run
-                mark_run(base, _jdir, plan)
             # The deck is rendered from values ⊕ THIS element's allocation, so it
             # records the rank count it actually assumed.  Rendering from the
             # values alone emits `mpi_np auto` and the launch check then refuses a
@@ -1291,10 +1324,12 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     finally:
         REPORT_STREAM.reset(_scope)
     if _once.dropped:
+        # TRUE OF A PREVIEW TOO, which writes nothing: the report is the
+        # deck's, written with it.
         print(f"  (each warning shown once; {_once.dropped} repeat(s) "
-              f"across this prep's other decks suppressed -- every deck's "
-              f"own .validation.txt carries its full findings)",
-              file=_sys.stderr)
+              f"across this prep's other decks suppressed -- each deck's "
+              f"own .validation.txt, written with it, carries its full "
+              f"findings)", file=_sys.stderr)
 
     # ---- 4 + 5, and the record floor 3 leaves behind -------------------- #
     # ``kind`` is INTENT, not length (review 2026-08-12: a one-point grid is
@@ -1311,10 +1346,8 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                                    plan=plan),
                 jobs=jobs)
     if kind == "sweep":
-        record_dir = base / bench_container(Shape.named(task.shape), token)
         plan.folder(record_dir)
     else:
-        record_dir = base
         js = _merge_run_jobset(
             base / JOBSET_FILENAME, js,
             # The CURRENT ladder bounds what the merge keeps.
@@ -1364,7 +1397,8 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
                        render=(None if kind == "sweep"
                                else {j.name for j in jobs}),
                        points={j.name: _points for j in jobs}, plan=plan,
-                       shape=resolved.shape, this_prep=this_prep)
+                       shape=resolved.shape, this_prep=this_prep,
+                       provenance=resolved.provenance)
 
     # ---- THE ATTEMPT, because PREP is what sets a stage up to run ------- #
     #
@@ -1619,10 +1653,12 @@ def _transport_provide_pseudos(struct, cfg, base: Path,
     _screen_pseudos(species, cfg, pdir)
 
 
-def _resolve_transport(base, task, stage: str, allocation,
-                       *, pins=None, log=None):
+def _resolve_transport(task, stage: str, allocation, *, template_text,
+                       pins=None, log=None):
     """Floor 3's step 2 for a transport rung — the template ⊕ its overrides
-    ⊕ its run card's settings (``pins``, `stages.md` § 6.8d).
+    ⊕ its run card's settings (``pins``, `stages.md` § 6.8d) -- from the
+    template's text as the prep read it, once (`script-preparation.md`
+    § 3.0).
 
     **The same `resolve` every other kind uses.** It was unreachable for
     transport until TR1, for a plain reason: `resolve` reads a template and a
@@ -1650,7 +1686,6 @@ def _resolve_transport(base, task, stage: str, allocation,
     """
     from ..config.siesta import SiestaConfig
     from ..resolve import ResolveError, resolve
-    from ..template import find_template
 
     # A SHARED VALUE IS NOT A PER-STAGE OVERRIDE, NOR ONE THE RUNG FIXES --
     # refused by `resolve`, the one door every kind's prep goes through
@@ -1664,24 +1699,11 @@ def _resolve_transport(base, task, stage: str, allocation,
     # by name.  This step asked transport's own copy of it until
     # 2026-09-30.
 
-    try:
-        tmpl = find_template(base, task.label)
-    except ValueError as exc:
-        raise PrepError(str(exc)) from exc
-    if tmpl is None:
-        raise PrepError(
-            f"this transport calculation has no template, so there is "
-            f"nothing to resolve.  `jobset init` has written one since "
-            f"2026-09-16 (TR1) -- a description made before that carries "
-            f"only task.json.  Re-describe it, or write "
-            f"{task.label}.template.toml beside task.json with the "
-            f"electronic values the cited run used.")
     if log is not None:
         log.phase("STEP 2 · RESOLVE — the description becomes a ParameterSet")
-        log.received("template", tmpl.name)
         log.received("stage", stage)
     try:
-        ps = resolve(tmpl.read_text(encoding="utf-8"), task, SiestaConfig,
+        ps = resolve(template_text, task, SiestaConfig,
                      allocation=allocation, stage=stage, pins=pins)
     except ResolveError as exc:
         # `resolve` translates the template's and the overrides' refusals
@@ -1770,14 +1792,15 @@ def _transport_parts(task, stage: str, composed, config):
     return struct, configure, state
 
 
-def _transport_rung(base, task, stage: str, composed, allocation, *,
-                    pins=None, log=None):
+def _transport_rung(task, stage: str, composed, allocation, *,
+                    template_text, pins=None, log=None):
     """``(struct, config, state, element)`` of one transport rung, resolved
     NOW from the current template, junction and run card -- what the gather
     renders an upstream rung from (:func:`_rung_deck_now`): the template ⊕
     the rung's overrides ⊕ its run card (:func:`_resolve_transport`), then
     the parts the conductor's rung reads too (:func:`_transport_parts`)."""
-    element = _resolve_transport(base, task, stage, allocation, pins=pins,
+    element = _resolve_transport(task, stage, allocation,
+                                 template_text=template_text, pins=pins,
                                  log=log)
     struct, configure, state = _transport_parts(task, stage, composed,
                                                 element.render_config())
@@ -1885,7 +1908,7 @@ def _transport_spec(task, stage: str, struct, config, state, volts=None, *,
     return spec, cfg
 
 
-def transport_inputs(base_dir, task, stage: str, *,
+def transport_inputs(base_dir, task, stage: str, *, template_text,
                      bias: Optional[float] = None) -> List[tuple]:
     """What one attempt of ``stage`` takes from the runs upstream -- the
     § 4.2 DAG's inputs, the composite's other half of *"warm files are
@@ -1909,8 +1932,8 @@ def transport_inputs(base_dir, task, stage: str, *,
       (plan § 5w K11).  A mismatch is a mistake: refused by name;
     * the concluded, matching attempt must actually hold the file.
 
-    The newest qualifying attempt wins (identical decks → identical
-    single-point results).  What was taken from where lands in
+    The newest attempt that passes all three wins (identical decks →
+    identical single-point results).  What was taken from where lands in
     ``.gathered-from`` beside the copies, so a result can always say
     which electrode run fed it.
     """
@@ -1980,6 +2003,7 @@ def transport_inputs(base_dir, task, stage: str, *,
         if composed is None:
             composed = _composed_junction(base, task)
         now = _rung_deck_now(base, task, upstream, composed,
+                             template_text=template_text,
                              volts=(bias if upstream in per_point_rungs()
                                     else None))
         matching = [d for d in concluded
@@ -1993,14 +2017,17 @@ def transport_inputs(base_dir, task, stage: str, *,
                 f"template, its junction or its run card changed since "
                 f"they ran, so their {filename} answers a different "
                 f"calculation.  Re-{run_first}")
-        src = matching[0] / filename
-        if not src.is_file():
+        # ...AND HOLDS THE FILE: the newest that passes all three
+        # (`engines/transport.md` § 6.1) -- the third was asked of the newest
+        # matching attempt alone until 2026-10-05.
+        holding = [d for d in matching if (d / filename).is_file()]
+        if not holding:
             raise PrepError(
-                f"{upstream}'s concluded attempt "
-                f"{matching[0].relative_to(base)} did not write "
-                f"{filename} -- the run concluded without producing what "
+                f"{upstream}'s concluded attempt(s) that ran this deck -- "
+                f"newest {matching[0].relative_to(base)} -- did not write "
+                f"{filename}: the run concluded without producing what "
                 f"the {stage} stage consumes.  Re-{run_first}")
-        gathered.append((str(matching[0].relative_to(base)), filename))
+        gathered.append((str(holding[0].relative_to(base)), filename))
     return gathered
 
 
@@ -2032,7 +2059,8 @@ def _composed_junction(base, task):
     return composed
 
 
-def _rung_deck_now(base, task, stage: str, composed, *, volts=None) -> str:
+def _rung_deck_now(base, task, stage: str, composed, *, template_text,
+                   volts=None) -> str:
     """The deck ``stage`` renders NOW -- its text exactly as `prep run`
     writes it, from the current template, junction and the rung's run card
     (`_transport_rung`, `_transport_spec`, `script_emit.render_deck`).
@@ -2043,7 +2071,8 @@ def _rung_deck_now(base, task, stage: str, composed, *, volts=None) -> str:
     # THE RUNG'S PINS, as `prep run` takes them from its card (`run_inputs`).
     _shape, pins = run_inputs(base, task, stage)
     struct, config, state, _element = _transport_rung(
-        base, task, stage, composed, Resources(), pins=pins or None)
+        task, stage, composed, Resources(), template_text=template_text,
+        pins=pins or None)
     spec, cfg = _transport_spec(task, stage, struct, config, state, volts,
                                 base=base)
     with _user_error_as_prep():
@@ -2051,7 +2080,7 @@ def _rung_deck_now(base, task, stage: str, composed, *, volts=None) -> str:
                                dest_dir=base).text
 
 
-def gather_sources(base_dir, task, stage: str
+def gather_sources(base_dir, task, stage: str, *, template_text: str
                    ) -> List[Tuple[Path, Optional[float], List[tuple]]]:
     """What every attempt of this rung takes from the runs upstream --
     ``[(container, volts, [(source attempt, filename), ...]), ...]``, one
@@ -2078,7 +2107,8 @@ def gather_sources(base_dir, task, stage: str
     from ..transport.stages import rung_containers
     base = Path(base_dir)
     return [(Path(container), volts,
-             transport_inputs(base, task, stage, bias=volts))
+             transport_inputs(base, task, stage, bias=volts,
+                              template_text=template_text))
             for container, volts in rung_containers(base, task, stage)]
 
 def _merge_run_jobset(path: Path, new: JobSet,
@@ -2466,9 +2496,9 @@ class PrepAnswer:
     #: (`continuation.Continuation`).
     continuation: Optional[object] = None
     #: A LINKED stage -- its kind gives its rungs roles (`template.KIND_ROLES`)
-    #: -- whose input is prep's own, taken from the stages before it: what
-    #: both doors say in place of "nothing carried in" (W52: a `freq` built
-    #: at `relax`'s geometry was said to be like a first stage).
+    #: -- which builds on what its kind says, never on the stage before it:
+    #: when it takes nothing from another run, both doors say so without
+    #: "the first stage, or one that starts clean".
     linked: bool = False
     #: The person said ``--cold`` (the attempt's own ``cold`` says only that
     #: it started clean, which prep now states whenever nothing continues).
@@ -2662,11 +2692,13 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
     deck_findings: list = []
     recorded: List[bool] = []
 
-    def _finish(answer: PrepAnswer) -> PrepAnswer:
+    def _finish(answer: PrepAnswer, provenance: dict) -> PrepAnswer:
         # THE PREP IS RECORDED WHEN IT HAS FINISHED -- written, the last
-        # line of its record (`job-system.md` § 5.0, checkpoint 7).
+        # line of its record (`job-system.md` § 5.0, checkpoint 7) -- with
+        # which config files answered, as the prep read them.
         answer.provenance = ledger_prepped(base, kind=kind, stage=stage,
-                                           dirs=answer.dirs)
+                                           dirs=answer.dirs,
+                                           provenance=provenance)
         return answer
 
     def _record_preflight():
@@ -2696,11 +2728,10 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
     try:
         # 1 · A DESCRIBED CALCULATION is "a template PLUS task.json"
         #     (project-layout.md § 2.1), and prep builds everything else from
-        #     the two.  A TRANSPORT description passes on task.json alone,
-        #     so that one written before its template existed (2026-09-16,
-        #     TR1) is refused by the transport door in its own words -- how
-        #     to add the template -- rather than told to `init` again.  It has
-        #     carried a template since (`engines/transport.md` § 2a).
+        #     the two -- every kind, transport's included (it has carried a
+        #     template since 2026-09-16, `engines/transport.md` § 2a; one
+        #     written before then passed here on task.json alone until
+        #     2026-10-05, and was refused at checkpoint 4).
         # EACH READ ONCE (W55 B1): the description here, its template beside
         # it -- every step after this reads these, never the files again.
         task = unread = None
@@ -2716,9 +2747,8 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         except ValueError as exc:
             raise PrepError(str(exc)) from exc
         # A description that does not read passes, and its reader refuses it
-        # below in its own words (`read_task`).
-        if not (desc.is_file() and (task is None or is_transport
-                                    or template is not None)):
+        # next, in its own words (`read_task`).
+        if not (desc.is_file() and (task is None or template is not None)):
             # INSIDE A CALCULATION -- one of its stage or attempt folders --
             # the folder says which one it belongs to (`calcdirs.root_of`);
             # `init` there would describe a new calculation inside an
@@ -2736,13 +2766,13 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                 "(project-layout.md § 2.1); run `molbuilder jobset init` "
                 "first.  (Hand-built job-sets remain launchable: `launch` "
                 "and `status` read job-set.json directly.)")
+        if unread is not None:
+            raise unread
         if (from_attempt or cold) and kind == "bench":
             raise PrepError(
                 "--from / --cold choose what a RUN starts from; a bench "
                 "trial measures its point from the structure, always "
                 "(job-system.md § 7).")
-        if unread is not None:
-            raise unread
         template_text = (template.read_text(encoding="utf-8")
                          if template is not None else None)
         if kind == "bench":
@@ -2822,6 +2852,13 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         #     from it.
         environment = machine_record(base, target)
         require_activation(target, environment, base=base)
+        #     ...AND WHICH FILES ANSWERED, as they were read -- what
+        #     STAGE-PLAN.md, the pipeline log and the ledger's *prepped* line
+        #     each say (`configuration.md` § 2.2): built once, here, from the
+        #     record in hand and the scopes it was looked for in.
+        from ..runtime_config import config_provenance
+        provenance = config_provenance(project_dir=base, target=target,
+                                       record=environment)
 
         #     THE INPUTS -- one assembly per kind (`prep_inputs`, A12).  A
         #     bench measures ONE stage's configuration, and there is always a
@@ -2829,15 +2866,10 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         #     just read.
         sweep = pins = translation = None
         chosen: dict = {}
-        container = None
         if kind == "bench":
-            from ..paths import Shape
-            from ..paths import bench_container
             sweep, pins, translation = bench_inputs(
                 base, target, notes=notes, task=task,
                 environment=environment, template_text=template_text)
-            container = base / bench_container(Shape.named(task.shape),
-                                               stage_home(base, task, stage).token)
         else:
             allocation, pins, chosen = prep_run_inputs(
                 base, task, stage, allocation)
@@ -2848,7 +2880,9 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         resolved = _resolve_stage(
             stage, task=task, template=template, template_text=template_text,
             environment=environment, allocation=allocation, chosen=chosen,
-            sweep=sweep, pins=pins, translation=translation)
+            sweep=sweep, pins=pins, translation=translation,
+            token=stage_home(base, task, stage).token, target=target,
+            provenance=provenance)
         if kind == "run":
             #  ...AND ITS GPU REQUEST AGREES WITH ITSELF (`execution/gpu.md`
             #  G5): a run on the GPU states how many, a run on the CPU none
@@ -2867,15 +2901,31 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         #      prep writes a `.sbatch` for states its queue, wall and memory.
         #      The target's record CHECKS an ask -- its queues are shown so
         #      one can be named -- and supplies no value of it.
-        from .placement import launch_refusal
+        from .placement import admission_refusal, launch_refusal
+        header = bool(emit_sbatch and environment.scheduler == "slurm")
         why = launch_refusal(
             resolved.allocation,
             engine=task.engine, shape=(kind == "run"), stage=stage,
-            header=bool(emit_sbatch and environment.scheduler == "slurm"),
+            header=header,
             queues=[d.name for d in (environment.domains or ())],
             base=base, target=target)
         if why:
             raise PrepError(why)
+        #     ...AND THE RUN FITS THE QUEUE IT NAMES -- its whole request,
+        #      cores, GPUs, memory and wall, admitted on the target's record
+        #      by the binding launch asks too (`job-system.md` § 5.0,
+        #      checkpoint 4; § 6.0).  A benchmark's cells are admitted where
+        #      its grid is enumerated, and its queue is named when it is
+        #      launched (`generator.md` § 4.3a).  *(Until 2026-10-05 nothing
+        #      did before launch; the run card's fit panel, retired with the
+        #      preview, had shown it.)*
+        if kind == "run" and header:
+            why = admission_refusal(
+                resolved.pset.elements[0].resources, environment,
+                one_process=engine_seam(task.engine).suffix == ".py",
+                stage=stage)
+            if why:
+                raise PrepError(why)
 
         # 4a · WHAT IT BUILDS ON (`job-system.md` § 5.4, plan W37): the run
         #      a stage continues from -- the stage before it, newest, by
@@ -2893,11 +2943,13 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             # the default, and nothing carried -- a trial measures from its
             # deck.
             continuation, refused = continuation_answer(
-                base, task, stage, from_attempt=from_attempt, cold=cold)
+                base, task, stage, from_attempt=from_attempt, cold=cold,
+                template_text=template_text, bench=(kind == "bench"))
             if refused:
                 raise PrepError(refused)
         if kind == "run" and is_transport:
-            gather = gather_sources(base, task, stage)
+            gather = gather_sources(base, task, stage,
+                                    template_text=template_text)
         if on_found is not None:
             on_found(findings, notes)
 
@@ -2910,8 +2962,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         plan = Plan()
         opened: list = []
         dirs = prep_calculation(base, stage, env=env,
-                                emit_sbatch=emit_sbatch, sweep=sweep,
-                                target=target, opened=opened,
+                                emit_sbatch=emit_sbatch, opened=opened,
                                 findings=deck_findings,
                                 continuation=continuation, gather=gather,
                                 plan=plan, resolved=resolved)
@@ -2921,10 +2972,13 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         # (`job-system.md` § 5.0).
         identity = plan.identity()
         if plan_id is not None and plan_id != identity:
+            # WHAT CHANGED is not known here: the folder, the record or a
+            # library file a copy takes, or molbuilder itself -- anything
+            # the plan is made from.
             raise PrepError(
-                "the folder changed since the preview -- what prep would "
-                "write now is not the plan you looked at.  Preview again "
-                "(job-system.md § 5.0).")
+                "what prep would write now differs from the plan you "
+                "previewed -- something it is made from changed since.  "
+                "Preview again (job-system.md § 5.0).")
 
         # THE ANSWER, from the plan -- what a preview shows and a prep
         # records once it is written.
@@ -2941,11 +2995,8 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                            if not (repr(i.to_json()) in seen
                                    or seen.add(repr(i.to_json())))])
         # THE PIPELINE LOG, which every prep writes (`script-preparation.md`
-        # § 4.5): where this one is.
-        from ..pipeline_log import log_name
-        out.pipeline_log = (container or base) / log_name(
-            task.label, stage_home(base, task, stage).token or "", task.engine,
-            task.shape)
+        # § 4.5): where this one is, by the rule its writer asks.
+        out.pipeline_log = resolved.log_path(base)
         a = resolved.allocation
         out.allocation = {"domain": a.domain, "time": a.time, "mem": a.mem}
         out.bench_axes = ({k: list(v) for k, v in (task.bench or {}).items()}
@@ -2964,7 +3015,6 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             out.linked = (getattr(task, "calculation", None)
                           or "optimization") in KIND_ROLES
             out.cold = bool(cold)
-            out.continuation = continuation
             # WHAT EACH ATTEMPT GATHERED, as decided at 4a: the attempt
             # opened in each container.
             got = [(next((Path(at.dir) for at in opened
@@ -2977,17 +3027,28 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                 run_dir, rep_stage = base, stage
             elif is_transport and scan_points(task, stage):
                 out.points = got
+                # EVERY POINT LAUNCHES THE ONE JOB, with one shape: the first
+                # point's attempt says what it is (A13).
+                run_dir, rep_stage = (got[0][0] if got else None), stage
             else:
                 rep = opened[0]
                 out.attempt = rep
                 out.gathered = [pair for _a, _v, g in got for pair in g]
                 run_dir, rep_stage = rep.dir, rep.stage
+            # WHAT IT BUILDS ON, with the files that came across -- the
+            # attempt's own list, which its line and the ledger's
+            # *continues* read too (on the flat layout none is copied).
+            if continuation is not None:
+                out.continuation = dataclasses.replace(
+                    continuation,
+                    carries=(tuple(out.attempt.copied)
+                             if out.attempt is not None else ()))
             # WHAT IT WILL LAUNCH WITH, and whether the deck agrees: `launch`
             # refuses a deck rendered for another width, and prep is the step
             # that exists so there are no surprises there (`agreement.py`).
             # A13: the end point, as the header and the run script carry it.
             job = next((j for j in js.jobs if j.name == rep_stage), None)
-            if job is not None:
+            if job is not None and run_dir is not None:
                 r = job.resources
                 out.resources = {"mpi_np": r.mpi_np,
                                  "cpus_per_task": r.cpus_per_task,
@@ -3008,21 +3069,25 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             return out
 
         # 5 · THE SAVE -- always, once the whole plan stands and before
-        #     anything is written (`checkpointing.md` § 9; user, 2026-10-03:
-        #     "always save through checkpoint, notify user").  A redo is a
-        #     rollback (2a), and this is the state it restores, so a save
-        #     that fails refuses the prep.
-        _record_preflight()
+        #     anything is written, the ledger included (`checkpointing.md`
+        #     § 9; user, 2026-10-03: "always save through checkpoint, notify
+        #     user").  A redo is a rollback (2a), and this is the state it
+        #     restores, so a save that fails refuses the prep.
         from ..checkpoint import CheckpointError, save_before
         try:
             # A molbuilder.json that does not read is the person's to fix,
-            # said in its own words -- the save is the first to read it.
+            # said in its own words (the save reads it again).
             with _user_error_as_prep():
                 kept = save_before(base, f"prep {kind} {stage}",
                                    engine=str(task.engine))
         except CheckpointError as exc:
             raise PrepError(f"the folder's state could not be saved, so "
                             f"nothing was prepped: {exc}")
+        # 7 · THE RECORD BEGINS with the preflight's notes -- after the save,
+        #     so the state saved holds no line of this prep (it was written
+        #     before the save until 2026-10-05, and a redo's folder was never
+        #     unchanged).  A refusal writes them with its own line.
+        _record_preflight()
         out.saved = kept.said()
         ledger(base, "prep", "saved", stage=stage, state=kept.state.short,
                note=kept.state.note, new=kept.new)
@@ -3045,24 +3110,34 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                        if out.attempt is not None else [])
             elif cold:
                 ledger(base, "prep", "starts-cold", stage=stage)
+            # A TRANSPORT RUNG'S GATHER, as decided at 4a and copied: each
+            # file, the run it came from, the point it was gathered at.
+            took = [{"file": fn, "from": src, "volts": volts}
+                    for _c, volts, inputs in (gather or ())
+                    for src, fn in inputs]
+            if took:
+                ledger(base, "prep", "gathers", stage=stage, inputs=took)
             if out.agreement is not None:
                 ledger(base, "prep", "launch-agreement", stage=rep_stage,
                        verdict=out.agreement.verdict,
                        rendered_for=out.agreement.rendered_text,
                        launching_at=out.agreement.launch_text)
-        return _finish(out)
+        return _finish(out, provenance)
     except PrepError as exc:
         raise _refused(exc)
-    except (UnknownTarget, AmbiguousTarget, ValueError, KeyError) as exc:
+    except (UnknownTarget, AmbiguousTarget, ValueError, KeyError,
+            *_USER_ERRORS()) as exc:
         # WHICH MACHINE is this for -- an answer only the person has
-        # (`preparing-for-another-machine.md` § 4) -- and the plain
+        # (`preparing-for-another-machine.md` § 4) -- the plain
         # `ValueError`/`KeyError` the steps raise for what is the USER'S to
         # fix (a template naming an item its schema does not declare, a
-        # bundle written before a rename), said the same way on both doors;
-        # the Task setup route answered them 400 while the terminal showed a
-        # traceback.  A `TypeError` is not translated: it is a bug, and
-        # should look like one.
-        raise _refused(PrepError(str(exc))) from exc
+        # bundle written before a rename), and the named classes every step
+        # raises for the same (:func:`_user_error_as_prep`: a molbuilder.json
+        # that does not read, a deck refused, a wrapper that cannot render),
+        # said the same way on both doors; the Task setup route answered a
+        # molbuilder.json that does not read with a 500.  A `TypeError` is
+        # not translated: it is a bug, and should look like one.
+        raise _refused(_as_prep_error(exc)) from exc
 
 
 __all__ = ["prep_calculation", "prep_jobset", "prep_stage", "PrepAnswer",

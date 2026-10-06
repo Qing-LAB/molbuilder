@@ -113,8 +113,9 @@ class StageStatus:
     #: never the stage to resume from (§ 5.3).
     enabled: bool = True
     #: What the stage IS, the plan's columns (`plan` folded into
-    #: `status <stage>`, 2026-10-01): its deck, what it would take from a
-    #: run it continues from, and the resources it asks for.
+    #: `status <stage>`, 2026-10-01): its deck, the restart files it declares
+    #: -- what it would take from a run it continues from -- and the
+    #: resources it asks for.
     script: Optional[str] = None
     carries: List[str] = field(default_factory=list)
     resources: Optional[str] = None
@@ -583,7 +584,7 @@ def render_stage_status(status: JobSetStatus, stage_name: str,
     """One stage, in full — the per-stage form `job-system.md` § 5.3 reserves.
 
     The table answers *where is this calculation up to*; this answers *what
-    this stage is* -- its deck, what it carries, its resources, the columns
+    this stage is* -- its deck, what it declares, its resources, the columns
     `plan` printed until it folded in here (2026-10-01) -- and *what happened
     to it*, which is a different question and the one you ask before
     deciding whether to run it again. It is only answerable at all
@@ -621,7 +622,10 @@ def render_stage_status(status: JobSetStatus, stage_name: str,
         # WHAT THE STAGE IS, before what happened to it -- the plan's columns
         # (`plan` folded in here, 2026-10-01; `job-system.md` § 5.3).
         ("deck", s.script or "-"),
-        ("carries", ", ".join(s.carries) or "-"),
+        # WHAT IT DECLARES, never what was copied -- the plan's column
+        # (`STAGE-PLAN.md`, D28): each run's `.continued-from` and
+        # `run.json` say what came across.
+        ("declares", ", ".join(s.carries) or "-"),
         ("resources", s.resources or "-"),
     ]
 

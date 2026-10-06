@@ -1451,7 +1451,9 @@ def machine_config_shadow() -> Optional[str]:
     ])
 
 
-def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
+def config_provenance(project_dir: Optional[Path] = None, *,
+                      target: Optional[str] = None,
+                      record=None) -> Dict[str, Any]:
     """Which config files this process consults, and which one supplied each
     execution-relevant value — the answer to *"where did that setting come
     from?"* at the moment it takes effect (user request, 2026-08-12: the
@@ -1465,7 +1467,13 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     ``sources`` lists each file consulted as ``{scope, path, found}`` -- this
     machine's molbuilder.json, then the machine records; ``effective`` maps
     ``section.key`` to ``{"value": ..., "from": "machine"}``.  ``project_dir``
-    names the calculation whose own machine record is listed.
+    names the calculation whose own machine record is listed; ``target`` the
+    machine a prep names (``--target``), whose record is listed in its
+    place among the scopes (`scheduler.record.record_scopes`, the one
+    statement of their order) -- so the first found is the one that
+    answered.  ``record`` is the record the caller read from them, whose
+    queues are listed (`prep` reads it once, at its checkpoint 4); with none
+    they are asked of :func:`get_routing`.
     """
     machine_path = machine_config_path()
     sources = [{"scope": "machine", "path": str(machine_path.resolve()),
@@ -1503,29 +1511,27 @@ def config_provenance(project_dir: Optional[Path] = None) -> Dict[str, Any]:
     # scopes join `sources`, because "which file supplied this" is the question
     # this function exists to answer and environment.json now answers part of
     # it (`configuration.md` § 5, M-3).
-    # Both scopes come from the record's OWN resolvers.  The calculation scope
-    # used to be `Path(project_dir) / FILENAME` right here -- in the one
-    # function whose whole job is to tell a reader which file answered, and
-    # `calculation_record`'s docstring already said it exists because that join
-    # "lived at three sites, two of them places a reader is TOLD a path".  This
-    # was the fourth, and it was written against a façade that exported
-    # `FILENAME` and hid the door (A11, I2).
-    from .scheduler import calculation_record, machine_scope_path
-    env_machine = machine_scope_path()
-    env_scopes = ([(calculation_record(project_dir), "calculation")]
-                  if project_dir is not None else [])
-    env_scopes.append((env_machine, "machine"))
-    for path, via in env_scopes:
+    # The scopes, and their order, are the record's OWN list (`record_scopes`,
+    # whose paths come from its resolvers -- the calculation scope was a
+    # `Path(project_dir) / FILENAME` join here once, A11 I2) -- a named
+    # target's included: the calculation's and this machine's alone were
+    # listed until 2026-10-05, so a first `prep --target sol` named a record
+    # that had not answered.
+    from .scheduler.record import (AmbiguousTarget, UnknownTarget,
+                                   record_scopes)
+    for via, path in record_scopes(project_dir, target):
         sources.append({"scope": "environment", "path": str(path),
-                        "found": path.is_file(), "via": via})
-    # Through `get_routing`, NOT a second resolution: a display whose whole job
-    # is to say where a value came from must ask the reader that answers it.
-    # One question, one function.
-    from .scheduler.record import AmbiguousTarget, UnknownTarget
-    try:
-        domains = [d.name for d in get_routing(project_dir=project_dir)]
-    except (AmbiguousTarget, UnknownTarget):
-        domains = []               # which machine is not decided yet: no queues
+                        "found": Path(path).is_file(), "via": via})
+    # The record in hand when there is one -- what answered; else through
+    # `get_routing`, NOT a second resolution: a display whose whole job is to
+    # say where a value came from must ask the reader that answers it.
+    if record is not None:
+        domains = [d.name for d in routing_of(record)]
+    else:
+        try:
+            domains = [d.name for d in get_routing(project_dir=project_dir)]
+        except (AmbiguousTarget, UnknownTarget):
+            domains = []           # which machine is not decided yet: no queues
     return {"sources": sources, "effective": effective, "domains": domains,
             "shadow": shadow, "mode_warning": mode_warning}
 

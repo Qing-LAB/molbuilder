@@ -713,7 +713,13 @@
     font-size: var(--text-xs);
     white-space: pre-wrap;
 }
-.ts-prep-answer .btn { margin-top: var(--space-xs); }
+/* What a preview would write (`job-system.md` § 5.0): the count, opened to
+   the list. */
+.ts-prep-writes {
+    flex-basis: 100%;
+    font-size: var(--text-sm);
+    color: var(--text-secondary);
+}
 
 /* Continue from (plan W37, `task-setup.md` § 11): what a stage starts from,
    and under it what that means -- prep's own line, or why prep refuses it,
@@ -835,8 +841,8 @@
     padding-top: var(--space-md);
     border-top: 1px solid var(--border-soft);
 }
-/* COMPOSITION ONLY.  The rows reuse `.ts-row` / `.ts-points` / `.ts-fit`
-   from the grid card -- one value each is the same shape as one point, and
+/* COMPOSITION ONLY.  The rows reuse `.ts-row` / `.ts-points` from the grid
+   card -- one value each is the same shape as one point, and
    giving the run its own row vocabulary would be a second owner for one
    look.  What differs is the block it writes, not how it reads. */
 .ts-runval {
@@ -855,8 +861,9 @@
 
 /* ---------- what the run will be LAUNCHED with (architecture.md A13) ---- */
 /* THE END POINT, not the inputs.  A run is hours or days and a wrong width is
-   found when it finishes, so the header and the run script the preview's plan
-   holds are shown line for line before the second click. */
+   found when it finishes, so what the preview's plan holds -- the header where
+   a scheduler runs the job, else the run script's counts -- is shown line for
+   line before the second click. */
 .ts-emitted {
     margin-top: var(--space-sm);
     padding: var(--space-sm) var(--space-md);

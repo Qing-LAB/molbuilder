@@ -79,3 +79,11 @@ calculation = "vibration"
 stage = "freq"
 prep = ["--cold"]
 refused = ["--cold: `freq` builds on `relax`", "disable `relax` and state the structure relaxed"]
+
+[[case]]
+name = "...and with no relax it measures the structure as given only when stated relaxed: not stated, it is refused by the one hand-over door, so status says so before the prep"
+calculation = "vibration"
+removed = ["relax"]
+stage = "freq"
+refused = ["is not stated to be relaxed", "Either add the `relax` stage before `freq`"]
+status_says = ["its prep refuses for now", "is not stated to be relaxed"]
