@@ -72,13 +72,22 @@ steps:
    [`scheduler.md`](?doc=execution/scheduler.md) R13/R14): each machine fact a
    number or unknown, each queue named whole, each wall one the scheduler takes,
    the answers of one question arriving together. It asserts nothing about what
-   a site's scheduler prints — the probe read that, on the machine. `tests/field/`
-   is collected only when a record is named; tier 1 never sees it.
+   a site's scheduler prints — the probe read that, on the machine. On a
+   cluster, run ON it, it also asks the scheduler about a held H2's line
+   (`launch run --mode ask`): asked once with `--test-only`, the answer read as
+   a start time, nothing submitted or recorded — an `sbatch` that passes a
+   question to the real one and refuses anything else stands first on PATH
+   (`test_ask_the_target.py`). `tests/field/` is collected only when a record
+   is named; tier 1 never sees it, and its own `sbatch` writes each call down
+   and refuses it: what a scheduler answers is read here, never typed into a
+   basic test *(the stand-in answered in SLURM's words until 2026-10-06)*.
 2. **A field run.** The smallest real job, on the road, on the target: `jobset
    init` a held H2, `jobset prep run coarse --target <name>`, then on the target
    `jobset launch run coarse` with its mode, `jobset status`, and the Results tab.
    It shows the run script enters the target's environments, the header is one
-   its scheduler takes, and the run's records read back. A failure here is the
+   its scheduler takes, and the run's records read back -- the job id, the
+   queue, wall and memory it was sent with, `queued as job <id>` while it
+   waits: what the basic tier no longer stages with a scheduler's typed answer. A failure here is the
    target's record or its environments, said by the refusal: fix it there and
    probe again.
 

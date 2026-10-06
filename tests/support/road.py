@@ -17,10 +17,10 @@ from the road it imitates.  The steps live here once.
 * :func:`describe_h2` -- `jobset init` of a held H2 in a box, SIESTA, the
   shipped `publishable` ladder (coarse, medium; tight disabled) -- or
   PySCF's own;
-* :func:`a_queue_that_answers` -- a machine record naming queues, and an
-  `sbatch` on PATH that queues nothing: it writes down every call -- where
-  it was made and what it said -- answers ``--test-only`` the way Sol's
-  did, and otherwise gives a job id;
+* :func:`a_machine_with_queues` -- a machine record naming queues, and an
+  `sbatch` on PATH that writes down every call -- where it was made and
+  what it said -- and refuses it: the basic tests send nothing to a
+  scheduler and assume nothing of its answers (user, 2026-10-06);
 * :func:`sbatch_line` -- the `sbatch` line a launch showed, as its words;
 * :func:`gpus_given` -- the GPUs a machine hands a job, with an
   `nvidia-smi` that knows them;
@@ -34,11 +34,6 @@ import shlex
 from pathlib import Path
 
 import numpy as np
-
-
-#: Sol's own answer to `sbatch --test-only`, verbatim (2026-08-27).
-SOL_PREDICTION = ("sbatch: Job 62266174 to start at 2026-08-27T11:22:03 a "
-                  "using 4 processors on nodes sc078 in partition htc")
 
 
 def jobset(*args, input=None):
@@ -119,14 +114,22 @@ def describe_h2(tmp_path, monkeypatch, *, shape: str = "hierarchical",
     return bundle
 
 
-def a_queue_that_answers(tmp_path, monkeypatch, domains, refuses=None,
-                         **record) -> Path:
+def a_machine_with_queues(tmp_path, monkeypatch, domains,
+                          **record) -> Path:
     """This machine's record names ``domains`` (`scheduler.Domain` rows) --
     and ``record``'s other fields, when given -- and the `sbatch` first on
-    PATH queues nothing; with ``refuses``, a line naming it is refused as
-    Sol refused a node configuration it does not have.  Returns the file
-    each call is written to, one line each: ``<where it was run> | <its
-    arguments>``."""
+    PATH writes down each call and REFUSES it, in molbuilder's words.
+    Returns the file each call is written to, one line each: ``<where it
+    was run> | <its arguments>``.
+
+    NO SCHEDULER TEXT (user, 2026-10-06: *"there should be no assumption
+    what so ever about the text returned by slurm ... the whole default test
+    set should never be based on fabricated text"*): this `sbatch` answered
+    ``--test-only`` with Sol's prediction, refused a named shelf with Sol's
+    error and gave every other line the job id ``4242`` until then.  What a
+    scheduler answers is read where one answers -- the field tier
+    (`tests/field/`, `testing.md` § 0).  Refusing also keeps the basic suite
+    from sending a real job when it runs on a cluster's login node."""
     from conftest import write_machine_record
     write_machine_record(scheduler="slurm", domains=list(domains), **record)
     bin_dir = tmp_path / "scheduler-bin"
@@ -136,13 +139,9 @@ def a_queue_that_answers(tmp_path, monkeypatch, domains, refuses=None,
     f.write_text(
         "#!/bin/sh\n"
         f'echo "$(pwd) | $*" >> "{calls}"\n'
-        'case " $* " in\n'
-        f'  *" --test-only "*) echo "{SOL_PREDICTION}" >&2; exit 0 ;;\n'
-        + (f'  *"{refuses}"*) echo "sbatch: error: Batch job submission '
-           f'failed: Requested node configuration is not available" >&2; '
-           f'exit 1 ;;\n' if refuses else "")
-        + "esac\n"
-        'echo "Submitted batch job 4242"\n')
+        'echo "the basic tests send nothing to a scheduler -- what one '
+        'answers is the field tier\'s (testing.md 0)" >&2\n'
+        "exit 1\n")
     f.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     return calls
@@ -242,7 +241,9 @@ def calls_made(calls: Path):
 #   1. ALLOWED OR REFUSED, in its words -- at prep (`refused`, a sentence or a
 #      list of them; `said`) or at
 #      launch (`launch_refused`, the same; `listing`) -- a dry run, unless
-#      `launch_sends` sends it (answered `--yes`), after `before_launch`, the
+#      `launch_sends` sends it (answered `--yes`) -- a run HERE: the basic
+#      tests send nothing to a scheduler, whose `sbatch` refuses (W57 T1) --
+#      after `before_launch`, the
 #      verbs typed between the row's prep and its launch; what the launch left
 #      (`launch_writes_nothing`: every file under the calculation as it was;
 #      `walk`, `walk_lacks`: the walk it wrote, `launch/<name>.run.sh`;
@@ -277,7 +278,6 @@ def calls_made(calls: Path):
 # `machine` unless the row names one;
 # `record` -- more fields of THIS machine's record; `named_record` -- more
 # fields of the named target's; `queues` -- replaces the table's menu;
-# `sbatch_refuses` -- a word the stand-in `sbatch` refuses a line holding;
 # `probe` -- the record made as a person makes it instead, by `jobset probe
 # --write --yes`, once per list of flags, in order, after `machine_config`
 # and over `record` when the row gives them; a `--name` among the flags names
@@ -406,8 +406,7 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
         Path(machine_scope_path()).unlink(missing_ok=True)
         return "this"
     if where == "this":
-        a_queue_that_answers(tmp_path, monkeypatch, queues,
-                             refuses=case.get("sbatch_refuses"), **record)
+        a_machine_with_queues(tmp_path, monkeypatch, queues, **record)
         return "this"
     write_machine_record(**record)          # this machine: no queue at all
     if where == "workstation":

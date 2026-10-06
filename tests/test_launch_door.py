@@ -41,7 +41,7 @@ import json
 
 import pytest
 
-from support.road import a_queue_that_answers, calls_made, describe_h2, jobset
+from support.road import a_machine_with_queues, calls_made, describe_h2, jobset
 
 
 def _queues(gpu: bool = False):
@@ -72,9 +72,10 @@ def _states_its_wall_and_memory(bundle, **more):
 @pytest.fixture
 def cluster(tmp_path, monkeypatch):
     """A machine whose record names two queues -- `debug` (15 minutes) and
-    `htc` (4 hours) -- a scheduler that answers, and the H2 ladder described
+    `htc` (4 hours) -- an `sbatch` that writes down each call and refuses
+    it (no scheduler text in the basic tests), and the H2 ladder described
     on it, stating its wall and memory: ``(bundle, calls)``."""
-    calls = a_queue_that_answers(tmp_path, monkeypatch, _queues())
+    calls = a_machine_with_queues(tmp_path, monkeypatch, _queues())
     return _states_its_wall_and_memory(describe_h2(tmp_path, monkeypatch)), \
         calls
 
@@ -99,62 +100,13 @@ def _ledger(bundle):
             (bundle / LEDGER_FILE).read_text().splitlines()]
 
 
-def test_a_stage_is_shown_asked_and_sent_with_its_own_queues_wall(cluster):
-    """`launch run coarse --mode submit --domain htc`: before prep it is
-    refused, naming the prep; after it, the exact line is shown -- the
-    calculation's name first in `-J`, the queue named at launch, the wall
-    prep's flag STATED, the launch-door claim -- and asked about; with no
-    one to answer nothing is sent and the launch is REFUSED, written down
-    (`project-layout.md` § 1.6.4: a script is never told it went).  With
-    `--yes` that very line is sent and recorded.  `prep`'s header named `debug`, the queue that
-    prep named, under a wall it admits (prep admits the run on the queue
-    it names, `job-system.md` § 5.0 checkpoint 4); the wall is the stated
-    ten minutes on either queue, never one queue's ceiling.
-
-    The question and its answer are written down (`job-system.md` § 5.0,
-    agreement 6), and so is the refusal.  *(A dry run writing nothing is
-    the launch protocol's rows, `launch_protocol.toml`.)*
-
-    MUTATIONS THIS MUST FAIL AGAINST: the stage's door putting a queue's
-    ceiling in place of the stated wall; sending without asking; a launch
-    with nobody to ask exiting 0, or leaving no line."""
-    bundle, calls = cluster
-    r = jobset("launch", "run", "coarse", "--bundle", bundle,
-               "--mode", "submit", "--domain", "htc")
-    assert r.exit_code != 0 and "prep run coarse" in r.output, r.output
-
-    _prep(bundle, "coarse", "--domain", "debug", "--time", "10m")
-    attempt = bundle / "01_coarse" / "run-0"
-    header = next(attempt.glob("*.sbatch")).read_text()
-    assert "#SBATCH -q debug" in header, header        # the queue prep named
-
-    r = jobset("launch", "run", "coarse", "--bundle", bundle,
-               "--mode", "submit", "--domain", "htc")
-    assert r.exit_code != 0, r.output
-    shown = _line(r.output)
-    assert "about to submit" in r.output, r.output
-    assert _flag(shown, "-J") == "H2/coarse", shown
-    assert (_flag(shown, "-p"), _flag(shown, "-q")) == ("htc", "public")
-    assert _flag(shown, "-t") == "0-00:10:00", (
-        "sent under a wall nobody stated: " + " ".join(shown))
-    assert "ALL,MB_LAUNCHED_BY=jobset-launch" in shown, shown
-    assert "nobody to ask" in r.output, r.output
-    assert calls_made(calls) == [], "sent without the person's yes"
-    assert not (attempt / "run.json").exists()
-    refused = _ledger(bundle)[-1]
-    assert (refused["decision"], "nobody to ask" in refused["reason"]) == (
-        "refused", True), refused
-
-    r = jobset("launch", "run", "coarse", "--bundle", bundle,
-               "--mode", "submit", "--domain", "htc", "--yes")
-    assert r.exit_code == 0, r.output
-    (where, argv), = calls_made(calls)
-    assert where == attempt and argv == shown[1:], (where, argv, shown)
-    record = json.loads((attempt / "run.json").read_text())
-    assert record["job_id"] == "4242", record
-    asked, sent = _ledger(bundle)[-2:]
-    assert (asked["decision"], asked["answer"], sent["decision"]) == (
-        "question", "yes (--yes)", "launched"), (asked, sent)
+# Retired 2026-10-06 (W57 T1, user: "the whole default test set should never
+# be based on fabricated text"): four tests that needed a stand-in `sbatch`
+# to answer in SLURM's words -- a stage shown, asked and SENT (its record's
+# job id 4242); `--mode ask` reading Sol's copied prediction; a relaunch and
+# a flat stage still in the queue, each reached through a first send that
+# 'succeeded'.  A real scheduler's answer is the field tier's
+# (`tests/field/`, testing.md § 0).
 
 
 def test_the_queue_prep_baked_belongs_to_its_own_stage(cluster):
@@ -181,31 +133,6 @@ def test_the_queue_prep_baked_belongs_to_its_own_stage(cluster):
                "--mode", "submit", "--dry-run")
     assert r.exit_code == 0, r.output
     assert _flag(_line(r.output), "-q") == "public", r.output
-
-
-def test_ask_asks_about_the_line_submit_would_send(cluster):
-    """`--mode ask` on a stage whose prep named `htc`: the scheduler is
-    asked once, with `--test-only` in front of exactly the line `submit`
-    would send -- the baked queue on it -- and the line shown as the one to
-    send carries no `--test-only`.  Nothing is recorded.
-
-    MUTATION THIS MUST FAIL AGAINST: the queue resolved for `submit` alone
-    (the question asks about a line naming no queue)."""
-    bundle, calls = cluster
-    _prep(bundle, "coarse", "--domain", "htc")
-    r = jobset("launch", "run", "coarse", "--bundle", bundle,
-               "--mode", "ask")
-    assert r.exit_code == 0, r.output
-    (where, argv), = calls_made(calls)
-    assert argv[0] == "--test-only", argv
-    assert (_flag(argv, "-p"), _flag(argv, "-q")) == ("htc", "public"), argv
-    would = next(ln.split("would send:", 1)[1].split()
-                 for ln in r.output.splitlines() if "would send:" in ln)
-    assert would[0] == "sbatch" and "--test-only" not in would, would
-    assert argv[1:] == would[1:], (argv, would)
-    assert "2026-08-27T11:22:03" in r.output, r.output
-    assert not (bundle / "01_coarse" / "run-0" / "run.json").exists()
-    assert _ledger(bundle)[-1]["decision"] == "asked"
 
 
 def test_memory_is_sent_as_said_and_zero_is_the_whole_node(cluster):
@@ -265,60 +192,11 @@ def test_direct_runs_what_was_typed_and_refuses_what_it_would_not_read(
     assert r.exit_code == 0, r.output
 
 
-def test_a_relaunch_that_cannot_continue_opens_nothing(cluster):
-    """Launched, and it left nothing to continue from (a run that died at
-    startup): launching it again is refused with the story, and no attempt
-    is opened behind the refusal -- and the way on it names is the rollback:
-    a prepped stage is not prepped again (2026-10-02; it named a fresh `prep
-    run` until then).
-
-    MUTATION THIS MUST FAIL AGAINST: the new attempt opened before the
-    continuation is checked."""
-    bundle, calls = cluster
-    # The QUEUE IN THE DESCRIPTION: the remedy is typed back as printed, a
-    # bare `prep run`, so the stage's queue is the file's, not a flag's.
-    _states_its_wall_and_memory(bundle, domain="htc")
-    _prep(bundle, "coarse")
-    assert jobset("launch", "run", "coarse", "--bundle", bundle, "--mode",
-                  "submit", "--domain", "htc", "--yes").exit_code == 0
-    r = jobset("launch", "run", "coarse", "--bundle", bundle,
-               "--mode", "submit", "--domain", "htc", "--yes")
-    assert r.exit_code != 0, r.output
-    assert "impossible here" in r.output, r.output
-    assert not (bundle / "01_coarse" / "run-1").exists()
-    assert len(calls_made(calls)) == 1
-    assert "molbuilder checkpoint list" in r.output, r.output
-
-
-def test_a_flat_stage_still_unconcluded_is_asked_like_an_attempt(
-        tmp_path, monkeypatch):
-    """On the flat layout a stage's launch is its `<basename>.run.json`:
-    launched and not concluded, launching it again asks first, as the
-    hierarchy does -- nothing is sent over a run that may still be going,
-    and with nobody to ask the launch is refused (`project-layout.md`
-    § 1.6.4: "Non-interactive: refused with the same story").
-
-    MUTATION THIS MUST FAIL AGAINST: "was it launched" reading an attempt's
-    `run.json` only (a flat stage always reads never launched)."""
-    calls = a_queue_that_answers(tmp_path, monkeypatch, _queues())
-    bundle = _states_its_wall_and_memory(
-        describe_h2(tmp_path, monkeypatch, shape="flat"))
-    _prep(bundle, "coarse", "--domain", "htc")
-    assert jobset("launch", "run", "coarse", "--bundle", bundle, "--mode",
-                  "submit", "--domain", "htc", "--yes").exit_code == 0
-    assert (bundle / "H2_01_coarse.run.json").is_file()
-    r = jobset("launch", "run", "coarse", "--bundle", bundle,
-               "--mode", "submit", "--domain", "htc")
-    assert r.exit_code != 0 and "nobody to ask" in r.output, r.output
-    assert "never CONCLUDED" in r.output, r.output
-    assert len(calls_made(calls)) == 1, "sent again over a run in the queue"
-
-
 def test_a_send_over_a_folder_changed_since_its_plan_is_refused(cluster):
     """`job-system.md` § 6.0, step 4: the send checks the folder against the
-    one its plan was made from -- a file the plan read, written since, or
-    the stage launched since by another launch, is refused, saying to
-    launch again; nothing is sent, and the refusal is written down.
+    one its plan was made from -- a file the plan read, written since, is
+    refused, saying to launch again; nothing is sent, and the refusal is
+    written down.
 
     API-LEVEL because the road cannot reach it: one `launch` makes its plan
     and sends it in one command, and the folder changes in between only
@@ -353,12 +231,6 @@ def test_a_send_over_a_folder_changed_since_its_plan_is_refused(cluster):
     assert deck.name in said and "Launch again" in said, said
     assert calls_made(calls) == [] and not (attempt / "run.json").exists()
     assert _ledger(bundle)[-1]["decision"] == "refused"
-
-    shown = plan()
-    r = jobset("launch", "run", "coarse", "--bundle", bundle,
-               "--mode", "submit", "--yes")
-    assert r.exit_code == 0, r.output
-    with pytest.raises(SubmitError) as e:
-        send_launch(shown, said=Said(True, "yes (--yes)"))
-    assert "the folder changed since this launch was planned" in str(e.value)
-    assert len(calls_made(calls)) == 1, "the stage was sent twice"
+    # (Its second half -- the stage launched since by another launch, reached
+    # through a send a stand-in `sbatch` answered with a job id -- retired
+    # 2026-10-06, W57 T1: no scheduler text in the basic tests.)

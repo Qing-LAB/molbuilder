@@ -99,34 +99,12 @@ listing = ["G0K1C1", "skipped -- already launched", "[ran]"]
 
 # ---- ...ON A QUEUE: one job per resource shelf (`generator.md` § 4.3a)
 
-[[case]]
-name = "a benchmark sent to a queue goes one job per shelf, every shelf written before any is sent -- one the scheduler refuses keeps its trials pending, and the rest go"
-machine = "this"
-queues = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] }]
-allocation = { domain = "cpu", time = "01:00:00", mem = "8G" }
-bench = { mpi_np = [1, 2], omp_threads = [1] }
-sbatch_refuses = "bench-group-cpu-G0K2C1"
-launch = []
-launch_sends = true
-listing = ["Requested node configuration is not available", "stays pending", "submitted"]
-after_launch = { made = ["01_coarse/bench/launch/bench-group-cpu-G0K1C1.run.sh", "01_coarse/bench/launch/bench-group-cpu-G0K1C1.sbatch", "01_coarse/bench/launch/bench-group-cpu-G0K2C1.run.sh", "01_coarse/bench/launch/bench-group-cpu-G0K2C1.sbatch", "01_coarse/bench/bench-G0K1C1/run-0/run.json"], made_lacks = ["01_coarse/bench/bench-G0K2C1/run-0/run.json"] }
-
-[[case]]
-name = "...launched again, it passes the trials launched before over -- all of them were, so nothing is sent"
-machine = "this"
-queues = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] }]
-allocation = { domain = "cpu", time = "01:00:00", mem = "8G" }
-bench = { mpi_np = [1, 2], omp_threads = [1] }
-before_launch = [["launch", "bench", "coarse", "--mode", "submit", "--yes"]]
-launch = []
-launch_refused = ["all 2 trials are launched"]
-
-[[case]]
-name = "...and its per-trial bound is the shelf's walk's, which runs each trial in its attempt"
-machine = "this"
-queues = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] }]
-allocation = { domain = "cpu", time = "01:00:00", mem = "8G" }
-bench = { mpi_np = [1], omp_threads = [1] }
-launch = ["--trial-timeout", "5"]
-launch_sends = true
-walk = ["per-trial-bound=300s", "timeout -k 30 300 bash", '"bench-G0K1C1/run-0"']
+# Retired 2026-10-06 (W57 T1, user: "the whole default test set should never
+# be based on fabricated text"): a row whose `before_launch` sent every trial to
+# a queue so that none was left (the direct row above passes launched trials
+# over by name), and the two rows that SENT a benchmark's
+# shelves to a queue -- every shelf written before any is sent, one the
+# scheduler refuses keeping its trials pending; the shelf's walk running
+# each trial in its attempt.  Both read what a stand-in `sbatch` answered,
+# in SLURM's words.  A send to a real scheduler is the field tier's
+# (`tests/field/`, testing.md § 0).
