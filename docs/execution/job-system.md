@@ -1415,9 +1415,15 @@ never gathered again; on the flat layout the run again, where its files lie;
 again**: a second launch would start it over, and what it starts from was
 decided at its prep — a force-constant stage's relaxation, a clean stage's
 structure. `launch` refuses it as `status` words it: its redo is the state
-saved before its prep, restored, and a prep anew (§ 5.0). *(Until 2026-10-05
-launch continued a force-constant stage from its own stopped run while status
-told it to prep anew; a flat stage set `restart: clean` was launched again in
+saved before its prep, restored, and a prep anew (§ 5.0). **A transport rung
+follows its own rule** *(user, 2026-10-05;
+[`engines/transport.md`](?doc=engines/transport.md) § 2a.11)*: converged, done;
+otherwise continued in its own run, from its own last density — never in a
+next attempt — and a bias sweep is one run, continued in place, a point the
+person skips (`launch --skip`) passed over; to be built with the transport
+work, until which this paragraph's rule reaches transport rungs too.
+*(Until 2026-10-05 launch continued a force-constant stage from its own stopped
+run while status told it to prep anew; a flat stage set `restart: clean` was launched again in
 place and recorded as continuing; a transport rung's next attempt was opened
 without the inputs its kind gathered.)*
 

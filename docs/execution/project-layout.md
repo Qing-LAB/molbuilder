@@ -574,6 +574,16 @@ which is why there is no migration step and nothing to reindex.
 time — a `--continue`, a redo after a change — makes `run-1`, carrying what it
 needs from `run-0` and leaving `run-0` exactly as it was.
 
+**A transport rung is the one exception, by design** *(user, 2026-10-05;
+[`engines/transport.md`](?doc=engines/transport.md) § 2a.11)*: launching it
+again continues in its run what is not done, from its own last density. A
+bias sweep is one run, its points inside it — the points not done run, or
+continue, in their folders; a point recorded done is never rewritten; a point
+the person skips (`launch --skip`) is marked so in the run's record;
+`launch --cold` opens the next run. Not built yet: until the transport work, a
+transport rung launched again opens its next attempt, and each bias point is
+its own folder of attempts.
+
 You say which attempt it continues from, and its files are copied in — the same
 explicit step you take when moving from one stage to the next (§ 1.6).
 
