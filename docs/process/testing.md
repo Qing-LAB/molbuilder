@@ -12,6 +12,84 @@ constantly; a smaller set drives a real browser. This doc is the map: the pyrami
 where tests go, how the front-end JS is tested without a browser, and the handful
 of Playwright patterns that keep the e2e tests from being flaky.
 
+## 0. Three tiers — what a person runs, in development and in the field
+
+molbuilder is checked in three tiers, each answering its own question. On a new
+installation run them in this order; in development, run the tests your change
+touched (§ 6.1), and a tier whole only when the change reaches that far.
+
+| tier | answers | where | needs | command |
+|---|---|---|---|---|
+| **1 · basic** | is molbuilder installed whole, and does it do what its contracts say? | anywhere — the development box, a fresh install | the `molbuilder` env; no engine, no browser, no scheduler | `python tools/testrun.py run none2e` |
+| **2 · field** | does molbuilder work with **this** target — its scheduler, its queues, its environments? | the target machine, or here with its record | the target's record, made there by `jobset probe --write`; for a field run, its engine environments | `MOLBUILDER_FIELD_RECORD=<record> python tools/testrun.py run field`, then a field run (below) |
+| **3 · e2e** | does the science come out right, and does the whole workflow — the pages, the road, the engines — hold together? | a machine with the engine environments and a browser | `molbuilder-siesta`, `molbuilder-pySCF`, Playwright's Chromium | `python tools/testrun.py run e2e` — on the person's word: it runs real engines |
+
+### Tier 1 — the basic suite: installation and correctness
+
+**What it holds**: molbuilder's own behaviour, driven the way a person drives it —
+the road (`jobset init → prep → launch`; the case tables, § 6), the suite's
+stand-in engine for a run's process, measured fixtures read where they were
+measured (`tests/fixtures/`), and machine records written in molbuilder's own
+format to describe a machine — its cores, its queues and their limits — to the
+logic that reads them.
+
+**What it never holds** *(user, 2026-10-04, 2026-10-06: "the whole default test set
+should never be based on fabricated text")*:
+
+- **fabricated text** — engine output typed into a file (`.out`, a log), a
+  scheduler's answer typed into a parser (`sinfo`, `sacctmgr`, `scontrol`), a
+  command's answer swapped in-process. Text a machine or an engine prints is
+  read where it was printed: tier 2 and tier 3;
+- **a hand-built product** — a job set, a run record or a result made by hand
+  where molbuilder makes it, or a state the road never reaches;
+- **an expectation copied from the code** — an expected value is the
+  contract's; a test that disagrees with the code names the code's defect, and
+  is never edited to match what the code just printed.
+
+**When a basic test fails**, ask first whether it stands on fabricated text or a
+hand-built state: such a test is retired, never updated. Then whether the rule it
+cites holds (§ 3b) — a test is not an authority.
+
+### Tier 2 — the field: molbuilder on the target environment
+
+On each machine molbuilder will run jobs on — a cluster, or a workstation — two
+steps:
+
+1. **Its record, probed there, and read.** On the target: set its `env_init`
+   (`molbuilder envs init-config`), then `molbuilder jobset probe --write` — for a
+   cluster prepared for from elsewhere, `--name <name>`, and its record copied to
+   `~/.config/molbuilder/environments/<name>.json` on the machine you prep from
+   ([`preparing-for-another-machine.md`](?doc=execution/preparing-for-another-machine.md)).
+   Then the field test reads it, here or there:
+
+   ```bash
+   MOLBUILDER_FIELD_RECORD=~/.config/molbuilder/environments/<name>.json \
+       python tools/testrun.py run field
+   ```
+
+   It holds the record to its contract
+   ([`configuration.md`](?doc=configuration.md) M-2,
+   [`scheduler.md`](?doc=execution/scheduler.md) R13/R14): each machine fact a
+   number or unknown, each queue named whole, each wall one the scheduler takes,
+   the answers of one question arriving together. It asserts nothing about what
+   a site's scheduler prints — the probe read that, on the machine. `tests/field/`
+   is collected only when a record is named; tier 1 never sees it.
+2. **A field run.** The smallest real job, on the road, on the target: `jobset
+   init` a held H2, `jobset prep run coarse --target <name>`, then on the target
+   `jobset launch run coarse` with its mode, `jobset status`, and the Results tab.
+   It shows the run script enters the target's environments, the header is one
+   its scheduler takes, and the run's records read back. A failure here is the
+   target's record or its environments, said by the refusal: fix it there and
+   probe again.
+
+### Tier 3 — e2e: the science and the workflow
+
+The `*_e2e.py` batch: real engines — SIESTA, PySCF — on small systems (H2, H2O, a
+minimal junction), their results checked against measured or published values
+(§ 3b, *the one exception: scientific validation*), and the browser walks through
+the pages (Playwright, § 5). It is slow and spends the machine's cores: run it on
+the person's word, after tiers 1 and 2 pass.
+
 ## 1. The pyramid — pick the lowest layer that covers the contract
 
 Tests are marked by **layer**, and the marker is orthogonal to the directory (a
@@ -41,7 +119,8 @@ Config worth knowing (`pyproject.toml`): `testpaths=["tests"]`,
 ## 2. Where tests go, and the one structural invariant
 
 `tests/` is **flat at the top** with a few topic subdirs (`tests/parse/`,
-`tests/spectra/`, `tests/validation/`, `tests/watch/`); fixtures live in
+`tests/spectra/`, `tests/validation/`, `tests/watch/`, and `tests/field/` — the
+field tests, collected only when a probed record is named, § 0); fixtures live in
 `tests/data/`. Naming is `test_*.py`.
 
 The one *structural* rule is **layering**, and **review keeps it, not a test**
@@ -662,8 +741,9 @@ failure list, so you draw conclusions from a fraction of the failures.
 
 ```bash
 python tools/testrun.py run tests/test_a.py tests/test_b.py   # a targeted set
-python tools/testrun.py run none2e   # every non-e2e test
-python tools/testrun.py run e2e      # the Playwright batch
+python tools/testrun.py run none2e   # tier 1: every non-e2e test (§ 0)
+MOLBUILDER_FIELD_RECORD=<record> python tools/testrun.py run field   # tier 2
+python tools/testrun.py run e2e      # tier 3: the engine and browser batch
 python tools/testrun.py run lf       # rerun ONLY the last run's failures
 python tools/testrun.py status              # live summary of every batch
 python tools/testrun.py status --fails      # every failed id + its reason

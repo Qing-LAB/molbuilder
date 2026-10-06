@@ -412,7 +412,7 @@ function freshFolderState() {
         continueChoice: {},       // stage -> the person's choice: "", a run, "--cold"
         answers:      {},         // "<kind>:<stage>" -> the last prep answer shown
         setTo:        null,       // the machine its first prep set, or null (M-3)
-        prepped:      { run: {}, bench: {} },  // kind -> stage -> prep's own sentence
+        prepped:      { run: {}, bench: {}, placed: {} },  // kind -> stage -> prep's own sentence
     };
 }
 
@@ -1292,7 +1292,7 @@ async function loadFolder(projects, dir, opts) {
      * answer (W55 B4): a calculation's machine is its first prep's and does
      * not change (`configuration.md` M-3), so the card shows it fixed. */
     _fs.setTo = said.set_to || null;
-    _fs.prepped = said.prepped || { run: {}, bench: {} };
+    _fs.prepped = said.prepped;
     applySetMachine();
     _shape = String(task.shape || "");
     $("ts-shape-card").hidden = false;
@@ -2623,7 +2623,18 @@ function prepButton(kind, stage) {
      * prepped stage is not prepped again (`job-system.md` § 5.0).  Its lines
      * above are its launch.  It is said over a kept answer, whose lines stay
      * below it: the kept "Prepared for" hid the way back until 2026-10-05. */
-    const prepped = (_fs.prepped[kind] || {})[stage];
+    /* WHICH STAGES ARE PREPPED could not be read -- the folder answer's
+     * own `error` -- so nothing is offered as if none were: a Prep would
+     * meet a stage already prepped, or a folder that does not read.  The
+     * failure read as nothing prepped until 2026-10-06. */
+    const unread = _fs.prepped.error;
+    if (unread) {
+        btnPreview.disabled = true;
+        say.textContent = "Which stages are prepped cannot be read: "
+            + String(unread);
+        say.setAttribute("data-state", "bad");
+    }
+    const prepped = !unread && (_fs.prepped[kind] || {})[stage];
     if (prepped) {
         btnPreview.disabled = true;
         say.textContent = String(prepped);
@@ -2640,7 +2651,7 @@ function prepButton(kind, stage) {
      * write button would hand its enabled-ness a SECOND owner, and picking a
      * machine would enable a write nobody had previewed.  The machine gate
      * still applies to it, through `blocked()`, which both buttons ask. */
-    if (!prepped) _PREP_WIDGETS.push({ btn: btnPreview, say, kind });
+    if (!prepped && !unread) _PREP_WIDGETS.push({ btn: btnPreview, say, kind });
     _syncPrepButtons();
     return wrap;
 }

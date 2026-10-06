@@ -580,7 +580,7 @@ run_status(run_dir, basename, *, launch=<not asked>) -> RunStatus   # parse/dirs
 
 | field | holds |
 |---|---|
-| `state` | `pending` · `queued` · `running` · `finished` · `failed`, a closed set |
+| `state` | `pending` · `queued` · `running` · `finished` · `failed` · `unreadable`, a closed set — `unreadable` when the run's launch record does not read: its state cannot be told, the file is named in `detail`, and nothing follows it *(it read as the files alone until 2026-10-06 — `running` where nothing else was written)* |
 | `detail` | one line for a person (the states, below) |
 | `last_change_at` | the speaking file's mtime, ISO-8601 UTC — shown, never judged |
 | `active_source` | the speaking file's name, or `None` |
@@ -727,7 +727,7 @@ stateDiagram-v2
 | surface | its words | read from |
 |---|---|---|
 | a file — `run_state` ([`model/parse.md`](?doc=model/parse.md) § 2b) | `running` · `ended` · `stopped` · `out_of_memory` · `unknown` | the file's markers |
-| a run directory — `run_status` | `pending` · `queued` · `running` · `finished` · `failed` | `ended` → `finished` — for a job with a finish, once its marker says `rc=0`: a failed finish → `failed`, a finish begun and unconcluded → `running`; `stopped`, `out_of_memory` → `failed`; otherwise the marker, else `running` |
+| a run directory — `run_status` | `pending` · `queued` · `running` · `finished` · `failed` (and `unreadable`, asked through the run door with a launch record that does not read) | `ended` → `finished` — for a job with a finish, once its marker says `rc=0`: a failed finish → `failed`, a finish begun and unconcluded → `running`; `stopped`, `out_of_memory` → `failed`; otherwise the marker, else `running` |
 | the Run panel ([`web/results.md`](?doc=web/results.md) § 3a) | `run_status`'s | the same scan |
 | a ladder row — `jobset status`, the Results ladder ([`web/results.md`](?doc=web/results.md) § 2.4) | `run_status`'s, plus `not-started` (no directory yet) and `unknown` (unreadable) | `jobset/runstatus.py` |
 | the trajectory badge ([`web/trajectory.md`](?doc=web/trajectory.md) § 4) | Running · Finished · Stopped | the open file's `run_state`: `ended` → Finished; `stopped`, `out_of_memory` → Stopped; else Running |

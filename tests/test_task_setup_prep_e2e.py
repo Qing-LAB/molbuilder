@@ -993,7 +993,7 @@ def two_stage_dir(isolated_projects_root):
         # (`configuration.md` M-3): a copy here reads as a calculation
         # already set to its machine, and the choice below would be none.
         write_environment(
-            Environment(scheduler="",
+            Environment(scheduler="workstation",
                         topology=Topology(sockets=2, cores_per_socket=32),
                         env_init={"preamble": "true",
                                            "activation": "conda activate"}),

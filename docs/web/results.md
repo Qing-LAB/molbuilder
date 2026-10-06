@@ -605,7 +605,11 @@ Run panel and `jobset status` give. The server sends it with the file:
 `/api/watch/load`, `/api/watch/data` and `/api/spectra/load` each carry
 `run: {state, detail, live}` for the run the file belongs to — its folder,
 and the run its name reads back to (`runs.run_answer`) — or `null` for
-a file that belongs to no run, an upload. **A viewer never decides from the
+a file that belongs to no run, an upload. A run whose launch record does not
+read is `unreadable`, never live, the file named in its `detail` — the
+viewer stops and says it *(it carried a `problem` no page read beside the
+files' state until 2026-10-06, and a run with no output read `running`
+forever)*. **A viewer never decides from the
 file's own ending**: an output that states its end belongs to a job that may
 still be deriving its result, and one killed mid-step states nothing at all —
 both viewers followed such a run until the page closed, until 2026-10-03.

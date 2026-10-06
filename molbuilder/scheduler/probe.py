@@ -482,9 +482,6 @@ def derive_domains(
         # that reads one must not read the other (submission.md § 1).
         if part.mem_mb:
             kw["max_mem_gb"] = round(part.mem_mb / 1024.0, 1)
-        if part.def_mem_per_cpu_mb:
-            kw["default_mem_per_core_gb"] = round(
-                part.def_mem_per_cpu_mb / 1024.0, 2)
         # THE POLICY CEILING, beside the hardware one (R13).  ``max_cores``
         # says what the widest machine HAS; this says what the partition
         # LETS one job take of it, and the smaller governs -- `lightwork`
@@ -500,6 +497,13 @@ def derive_domains(
         # was asked can settle `lightwork`.
         if part.policy_queried:
             kw["max_cpus_per_node"] = part.max_cpus_per_node
+            # ...AND THE PER-CORE DEFAULT, from the same block: null when
+            # asked and unstated, absent only when never asked (R13) -- it
+            # was written only when stated until 2026-10-06, so a record
+            # could not say whether the question had been asked.
+            kw["default_mem_per_core_gb"] = (
+                round(part.def_mem_per_cpu_mb / 1024.0, 2)
+                if part.def_mem_per_cpu_mb else None)
         # CONSTRUCTED, not assembled.  A column this probe emits that
         # ``Domain`` does not declare is a TypeError HERE, at the line that
         # writes it -- which is what the dict could not do: `Domain(**row)`

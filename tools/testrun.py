@@ -54,6 +54,10 @@ PROGRESS_DIR = os.path.join(REPO, ".test-progress")
 BATCHES = {
     "none2e": ["tests/", "--ignore-glob=*_e2e.py"],
     "e2e":    ["tests/", "-o", "python_files=*_e2e.py"],  # collect only *_e2e.py
+    # THE FIELD TESTS: a record probed on the target machine, named by
+    # MOLBUILDER_FIELD_RECORD (`testing.md` § 0, tier 2) -- collected only
+    # then (`tests/conftest.py`).
+    "field":  ["tests/field/"],
     "all":    ["tests/"],
 }
 
@@ -320,6 +324,12 @@ def cmd_run(args):
         # collected, and in a worker every id carries its group.
         workers = 1
     elif args.batch in BATCHES:
+        if args.batch == "field" and not os.environ.get(
+                "MOLBUILDER_FIELD_RECORD"):
+            print("[testrun] field: name the record probed on the target "
+                  "machine -- MOLBUILDER_FIELD_RECORD=<record> "
+                  "(docs/process/testing.md § 0, tier 2)", file=sys.stderr)
+            return 2
         sel = list(BATCHES[args.batch]) if not extra else list(extra)
         batch_file = args.batch
     else:

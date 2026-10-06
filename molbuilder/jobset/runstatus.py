@@ -645,11 +645,12 @@ def render_stage_status(status: JobSetStatus, stage_name: str,
         cmd = s.launch.get("command")
         if cmd:
             rows.append(("command", " ".join(cmd)))
-        # ABSENT means started from the structure (checkpointing.md S3), which
-        # is a different claim from "continued from nothing" -- so it is only
-        # printed when there is something to print.
-        if s.launch.get("continued_from"):
-            rows.append(("continued from", s.launch["continued_from"]))
+        # SAID EVERY TIME (checkpointing.md S3): the run it continued from,
+        # or null -- it started from the structure.  The row was left out
+        # then until 2026-10-06.
+        src = s.launch.get("continued_from")
+        rows.append(("continued from",
+                     src if src else "nothing -- it started from the structure"))
     else:
         rows.append(("launched", "no  (no run.json -- prepared, not started)"))
     rows.append(("warm files", ", ".join(s.warm_files) or "-"))

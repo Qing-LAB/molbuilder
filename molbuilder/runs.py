@@ -338,8 +338,8 @@ def about(path) -> Dict[str, Any]:
 def run_answer(path) -> Optional[Dict[str, Any]]:
     """``{state, detail, live}`` -- how the run the file at ``path`` belongs
     to is doing, the one door's answer (`parse.dirs.run_state_of`, asked
-    with its launch record), with ``problem`` when that record does not
-    read.  ``live`` -- `job.LIVE_STATES` -- is what a Results viewer follows
+    with its launch record: one that does not read is ``unreadable``, its
+    file named).  ``live`` -- `job.LIVE_STATES` -- is what a Results viewer follows
     (`web/results.md` § 4.1).  ``None`` for a file of no run of ours, as
     for an upload: nothing is asked of a folder no calculation claims
     (`model/parse.md` § 5).  *(It answered for such a file's folder, with
@@ -349,12 +349,9 @@ def run_answer(path) -> Optional[Dict[str, Any]]:
     run = run_of(path)
     if run is None:
         return None
-    st, problem = run_state_of(run.folder, run.basename)
-    said: Dict[str, Any] = {"state": st.state, "detail": st.detail,
-                            "live": st.state in LIVE_STATES}
-    if problem:
-        said["problem"] = problem
-    return said
+    st = run_state_of(run.folder, run.basename)
+    return {"state": st.state, "detail": st.detail,
+            "live": st.state in LIVE_STATES}
 
 
 # --------------------------------------------------------------------- #
@@ -470,9 +467,7 @@ def folder_answer(directory) -> Dict[str, Any]:
             run = run_of(d)
             chosen = _openable(d, run.label, run.stage, calc, attempts)
             if run.stage is not None:
-                st, problem = run_state_of(run.folder, run.basename)
-                if problem:
-                    attempts.append(problem)
+                st = run_state_of(run.folder, run.basename)
                 status = {"state": st.state, "detail": st.detail,
                           "last_change_at": st.last_change_at,
                           "active_source": st.active_source}

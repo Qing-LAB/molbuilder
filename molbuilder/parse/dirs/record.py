@@ -420,11 +420,15 @@ def _launch_record(f: RunFiles) -> Dict[str, Any]:
                           basename=f.deck.stem if f.deck else None) or {}
     # `continued_from`: the run this attempt continued from, as prep took it
     # (`job-system.md` § 5.4, plan W37) -- written by the launch from the
-    # attempt's `.continued-from`.
-    launch = {k: rec[k] for k in ("mode", "command", "job_id", "launched_at",
-                                  "placed_on", "continued_from")
-              if rec.get(k) is not None}
-    return {"computation": {"launch": launch}} if launch else {}
+    # attempt's `.continued-from`.  EVERY KEY AS THE RECORD STATES IT: its
+    # nulls are answers -- no job id for a run here, no queue, started from
+    # the structure (`job-contracts.md` § 6.1) -- not "could not check"
+    # (they were dropped until 2026-10-06).
+    if not rec:
+        return {}
+    return {"computation": {"launch": {
+        k: rec.get(k) for k in ("mode", "command", "job_id", "launched_at",
+                                "placed_on", "continued_from")}}}
 
 
 def _concluded(f: RunFiles) -> Dict[str, Any]:

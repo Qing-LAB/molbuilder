@@ -3078,8 +3078,14 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
                        **continuation.ledger_facts(),
                        copied=list(out.attempt.copied)
                        if out.attempt is not None else [])
-            elif cold:
-                ledger(base, "prep", "starts-cold", stage=stage)
+            elif gather is None:
+                # FROM THE STRUCTURE, said every time (`ledger.py`'s
+                # promise: `continues` or `starts-cold`) -- with `--cold`,
+                # or as its description has it: the first stage, or one
+                # set `restart: clean`.  Only `--cold` was written until
+                # 2026-10-06.  A transport rung's inputs are its `gathers`.
+                ledger(base, "prep", "starts-cold", stage=stage,
+                       asked=bool(cold))
         elif continuation is not None:
             # ...AND A BENCHMARK'S, of a force-constant stage: the relax run
             # its trials are written at, recorded as a run's is.

@@ -145,3 +145,8 @@ launch_mode = "direct"
 launch_sends = true
 launch_refused = "it takes nothing from a run -- it is set `restart: clean`"
 after_launch = { made_lacks = ["H2_01_coarse.continued-from"] }
+
+[[case]]
+name = "a first stage starts from the structure, and its prep's line says so -- as one that continues says what from"
+stage = "coarse"
+ledger_holds = [{ decision = "prep starts-cold", asked = false }]

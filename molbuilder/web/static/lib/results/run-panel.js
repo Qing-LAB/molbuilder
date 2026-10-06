@@ -155,15 +155,19 @@ const FIELDS = {
     cwd:                   { label: "Working directory", style: MONO },
     // launch
     mode:           { label: "Launched" },
-    job_id:         { label: "Job id" },
-    placed_on:      { label: "Placed on" },
+    // A NULL IS AN ANSWER here (`job-contracts.md` § 6.1): a run here has
+    // no job id and no queue, and a run that continued from nothing started
+    // from the structure.
+    job_id:         { label: "Job id", none: "none -- run here" },
+    placed_on:      { label: "Placed on", none: "no queue -- run here" },
     ranks_asked:    { label: "Ranks asked" },
     ranks:          { label: "Ranks the engine ran on" },
     threads:        { label: "Threads per rank" },
     threads_engine: { label: "Threads the engine used" },
     command:        { label: "Command", fmt: (v) => (Array.isArray(v) ? v.join(" ") : String(v)), style: MONO },
     launched_at:    { label: "Launched at", fmt: utc },
-    continued_from: { label: "Continued from", style: MONO },
+    continued_from: { label: "Continued from", style: MONO,
+                      none: "nothing -- it started from the structure" },
     // time
     run_start_local:  { label: "Started (the node's clock)", fmt: local },
     run_end_local:    { label: "Ended (the node's clock)", fmt: local },
@@ -238,7 +242,10 @@ function row(name, value) {
     const d = describe(name);
     const r = el("div", "rp-row");
     r.appendChild(el("span", "rp-key", d.label));
-    const text = d.fmt ? d.fmt(value) : words(value);
+    // A FIELD WHOSE NULL IS AN ANSWER says it (`none`); any other null is
+    // an empty cell.
+    const text = (value === null && d.none) ? d.none
+        : (d.fmt ? d.fmt(value) : words(value));
     r.appendChild(el("span", "rp-val" + (d.style === MONO ? " rp-mono" : ""), text));
     return r;
 }

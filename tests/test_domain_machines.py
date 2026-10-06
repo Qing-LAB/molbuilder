@@ -18,49 +18,53 @@ scalar over them is an opinion.
 """
 from __future__ import annotations
 
-import sys
-from pathlib import Path
+from molbuilder.jobset.ask import Ask, queue_table
+from molbuilder.scheduler.admit import Request, admits
+from molbuilder.scheduler.record import Domain
 
-import pytest
-
-sys.path.insert(0, str(Path(__file__).parent))
-from test_scheduler_probe import _sol                      # noqa: E402
-
-from molbuilder.jobset.ask import Ask, queue_table         # noqa: E402
-from molbuilder.scheduler.admit import Request, admits     # noqa: E402
-from molbuilder.scheduler.probe import derive_domains, parse_sinfo  # noqa: E402
-from molbuilder.scheduler.record import Domain             # noqa: E402
+#: QUEUES IN MOLBUILDER'S OWN RECORD, written out -- the machine's description
+#: the logic below is asked about, as a probed record holds it (the shape of
+#: Sol's `htc`, `debug`, `general`, `highmem`, `lightwork`).  No scheduler
+#: text: what the probe makes of a real machine's answers is the field test's
+#: (`tests/field/`), read from a record probed on that machine.  *(These were
+#: parsed from scheduler text typed into the suite until 2026-10-06 -- user:
+#: "there should be no assumption what so ever about the text returned by
+#: slurm".)*
+_ROWS = [
+    {"name": "debug", "partition": "htc", "qos": "debug",
+     "max_time": "00:15:00", "max_cores": 128, "max_submit_jobs": 2,
+     "gpu": {"a100": 4, "a100.20gb": 16},
+     "node_types": [{"cores": 48, "nodes": 51, "gpu": {"a100": 4}},
+                    {"cores": 64, "nodes": 3, "gpu": {"a100.20gb": 16}},
+                    {"cores": 128, "nodes": 134}]},
+    {"name": "htc", "partition": "htc", "qos": "public",
+     "max_time": "4:00:00", "max_cores": 128,
+     "gpu": {"a100": 4, "a100.20gb": 16},
+     "node_types": [{"cores": 48, "nodes": 51, "gpu": {"a100": 4}},
+                    {"cores": 64, "nodes": 3, "gpu": {"a100.20gb": 16}},
+                    {"cores": 128, "nodes": 134}]},
+    {"name": "lightwork", "partition": "lightwork", "qos": "public",
+     "max_time": "1-00:00:00", "max_cores": 64, "gpu": {"a100.20gb": 16},
+     "node_types": [{"cores": 64, "nodes": 1, "gpu": {"a100.20gb": 16}}]},
+    {"name": "highmem", "partition": "highmem", "qos": "public",
+     "max_time": "7-00:00:00", "max_cores": 128,
+     "node_types": [{"cores": 128, "nodes": 11}]},
+    {"name": "general", "partition": "general", "qos": "public",
+     "max_time": "14-00:00:00", "max_cores": 128, "gpu": {"a100": 4, "l40": 4},
+     "node_types": [{"cores": 48, "nodes": 4, "gpu": {"a100": 4}},
+                    {"cores": 128, "nodes": 61},
+                    {"cores": 64, "nodes": 8, "gpu": {"l40": 4}}]},
+]
 
 
 def _domains():
-    # `derive_domains` returns Domain objects since 2026-09-10 -- this helper
-    # used to re-parse its dicts through `Domain.from_row`, which is the tell
-    # that the dict was friction between two layers that both wanted the type.
-    return {d.name: d for d in derive_domains(*_sol())[0]}
+    return {r["name"]: Domain.from_row(r) for r in _ROWS}
 
 
-# --------------------------------------------------------------------- #
-#  the measurement survives                                              #
-# --------------------------------------------------------------------- #
-
-def test_every_machine_in_the_queue_is_listed(): 
-    htc = _domains()["htc"]
-    assert {(t["cores"], t["nodes"]) for t in htc.node_types} == \
-        {(48, 51), (64, 3), (128, 134)}
-
-
-def test_a_single_shape_queue_lists_exactly_one():
-    assert [(t["cores"], t["nodes"])
-            for t in _domains()["highmem"].node_types] == [(128, 11)]
-
-
-def test_two_domains_over_one_partition_see_the_same_machines():
-    """`debug` and `htc` are two QoS over the partition `htc` — same nodes,
-    different clock. That is what makes a partition a queue."""
-    d = _domains()
-    assert d["debug"].partition == d["htc"].partition == "htc"
-    assert d["debug"].node_types == d["htc"].node_types
-    assert d["debug"].max_time != d["htc"].max_time
+# Three tests of what the probe makes of `sinfo`'s rows -- every machine
+# group listed, a one-shape queue listed once, two QoS over one partition
+# seeing its machines -- retired 2026-10-06 with the scheduler text they
+# parsed: the probe's reading of a real machine is the field test's.
 
 
 # --------------------------------------------------------------------- #

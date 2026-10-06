@@ -173,9 +173,10 @@ class Domain:
     #: that turns 64 cores into a 128 GB ask nobody made.  A DECLARED column
     #: since 2026-08-23, when the probe started measuring it: `asu-sol.md`
     #: § 5.3 has documented it since the row was designed, and it rode in
-    #: ``extra`` until the probe could fill it.  ``None`` means the partition
-    #: does not say, never zero (R3).
-    default_mem_per_core_gb: Optional[float] = None
+    #: ``extra`` until the probe could fill it.  Tri-state like the policy
+    #: ceilings below (R13): ``None`` means *asked; the partition does not
+    #: say* -- never zero (R3) -- and ``UNSET`` that it was never asked.
+    default_mem_per_core_gb: Any = UNSET
     #: POLICY ceilings on one job's cores (`scheduler.md` R13), beside the
     #: hardware one (``max_cores`` = the widest machine).  Both read, the
     #: smaller governs; a hardware ceiling cannot stand in for a policy
@@ -236,7 +237,7 @@ class Domain:
     #: the disk.  Every other ``_KNOWN`` column keeps the record style --
     #: ``None`` says nothing and is not written.
     _NULLABLE = ("max_cpus_per_job", "max_cpus_per_node",
-                 "max_submit_jobs")
+                 "max_submit_jobs", "default_mem_per_core_gb")
 
     @classmethod
     def from_row(cls, row: Mapping[str, Any]) -> Optional["Domain"]:
@@ -381,7 +382,9 @@ class Environment:
     #: through it.  It said ``jobset-prep@1``, from when prep probed, on every
     #: record until 2026-10-02 (R13); ``prep-bench@1``, the deleted verb,
     #: before R10 (2026-08-12).
-    tool:      str = "jobset-probe@1"
+    #: ``None`` for a record that does not say -- never a guessed writer
+    #: (it was read as ``jobset-probe@1`` until 2026-10-06).
+    tool:      Optional[str] = "jobset-probe@1"
     #: THE MACHINE A CALCULATION IS SET TO -- the ``--target`` of its first
     #: prep, ``this`` for the machine it was prepped on -- written by that
     #: prep into the calculation's copy and nowhere else; a probe's record
@@ -389,6 +392,16 @@ class Environment:
     #: it (`configuration.md` M-3; user, 2026-10-02: *"when a machine is set
     #: for a job, it is set, no changing"*).
     machine:   Optional[str] = None
+
+    def __post_init__(self):
+        # THE SCHEDULER IS STATED -- `slurm` or `workstation`, nothing else
+        # (`configuration.md` M-2): a record without one read as a
+        # workstation until 2026-10-06, and withheld every `.sbatch` for a
+        # cluster that had lost the key.
+        if self.scheduler not in ("slurm", "workstation"):
+            raise ValueError(
+                f"the machine record's scheduler is {self.scheduler!r} -- it "
+                f"states slurm or workstation (configuration.md M-2)")
 
     # ----- JSON round-trip (the persisted contract) ----------------- #
 
@@ -432,7 +445,10 @@ class Environment:
                                for r in (d.get("domains") or []))
                    if d is not None]
         return cls(
-            scheduler=str(d.get("scheduler", "workstation")),
+            # AS WRITTEN: a record states its scheduler -- a missing one is
+            # a record that does not read, never a workstation (until
+            # 2026-10-06); a writer it does not name is not guessed.
+            scheduler=d.get("scheduler"),
             topology=topo, site=site, domains=domains,
             env_init={
                 k: str(v) for k, v in
@@ -442,10 +458,7 @@ class Environment:
             env_arch=(str(d["env_arch"]) if d.get("env_arch") else None),
             source=dict(d.get("source") or {}),
             detected_at=d.get("detected_at"),
-            # the default names the LIVE writer; "prep-bench@1" (the deleted
-            # verb) stood here until U19, stamping every re-read record
-            # with a tool that no longer exists
-            tool=str(d.get("tool", "jobset-probe@1")),
+            tool=(str(d["tool"]) if d.get("tool") else None),
             machine=(str(d["machine"]) if d.get("machine") else None),
         )
 
@@ -517,6 +530,11 @@ def _parse_scontrol_node(text: str) -> Topology:
         t.mem_total_gb = round(rm / 1024.0, 1)
     if "Gres" in kv:
         n, gt = _parse_gres(kv["Gres"])
+        # A NODE THAT STATES NO GRES HAS NONE -- measured, so 0, never the
+        # unknown it read as until 2026-10-06 (`configuration.md` M-2: a
+        # consumer tells absent from unknown).
+        if n is None and kv["Gres"].strip().lower() in ("(null)", "none"):
+            n = 0
         t.gpus_per_node, t.gpu_type = n, gt
     return t
 
@@ -1044,6 +1062,9 @@ def known_machines() -> List[Dict[str, object]]:
                 "mem_total_gb": getattr(env.topology, "mem_total_gb", None),
                 "gpus_per_node": getattr(env.topology, "gpus_per_node", None),
                 "gpu_type": getattr(env.topology, "gpu_type", None),
+                # THE PER-CORE DEFAULT AS THE RECORD HOLDS IT (R13): a
+                # number, or null when asked and unstated -- left out only
+                # when the probe never asked.
                 "domains": [{"name": d.name,
                              "partition": d.partition,
                              "qos": d.qos,
@@ -1051,8 +1072,9 @@ def known_machines() -> List[Dict[str, object]]:
                              "max_time_s": domain_ceiling_s(d),
                              "max_cores": d.max_cores,
                              "max_mem_gb": d.max_mem_gb,
-                             "default_mem_per_core_gb":
-                                 d.default_mem_per_core_gb,
+                             **({} if d.default_mem_per_core_gb is UNSET
+                                else {"default_mem_per_core_gb":
+                                      d.default_mem_per_core_gb}),
                              "gpu": bool(d.gpu)}
                             for d in (env.domains or [])]}
 

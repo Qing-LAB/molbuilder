@@ -2257,7 +2257,7 @@ def api_task_setup_folder():
         # the prep entry's own sentence (`prep.prepped_already`), which the
         # page shows in place of a Prep it would refuse.
         "prepped": (_folder_prepped(folder) if described is not None
-                    else {"run": {}, "bench": {}}),
+                    else {"run": {}, "bench": {}, "placed": {}}),
     })
 
 
@@ -2298,7 +2298,11 @@ def _folder_prepped(folder) -> dict:
                     out["placed"][job.name] = placement_line(job.placement)
         return out
     except Exception as exc:                      # noqa: BLE001
-        return {"error": str(exc), "run": {}, "bench": {}}
+        # THE SAME SHAPE, AND THE ERROR IN IT (`web-api.md`: one part
+        # failing carries its own `error`) -- `placed` went missing here
+        # until 2026-10-06, and the page read the failure as nothing
+        # prepped and offered Prep.
+        return {"error": str(exc), "run": {}, "bench": {}, "placed": {}}
 
 
 @bp.route("/api/task-setup/commands", methods=["POST"])

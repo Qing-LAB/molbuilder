@@ -1429,7 +1429,11 @@ reads the trajectory the viewer loads (`web/trajectory.md`).
 
 A plain JSON-ready dict, served as it is. **A field is present only when a file
 in the attempt states it**; a missing field is the record saying it could not
-check, and the panel shows nothing for it rather than a guess.
+check, and the panel shows nothing for it rather than a guess. **The launch
+part is `run.json`'s keys as written**, its nulls answers, never "could not
+check": no job id and no queue for a run here, nothing continued from — it
+started from the structure (`job-contracts.md` § 6.1) — and the panel says
+them *(they were dropped until 2026-10-06)*.
 
 ```text
 record

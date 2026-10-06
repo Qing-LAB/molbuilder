@@ -81,12 +81,20 @@ def write_continued_from(where, run, *, basename: Optional[str] = None,
 
 def read_continued_from(where, basename: Optional[str] = None
                         ) -> Optional[str]:
-    """The run :func:`write_continued_from` recorded, or ``None``."""
+    """The run :func:`write_continued_from` recorded, or ``None`` when
+    there is no marker -- the run started from the structure.  A marker
+    that is there and does not read is a :class:`LaunchRecordError` naming
+    it: read as "no marker" until 2026-10-06, lost provenance was recorded
+    as a start from the structure."""
+    marker = continued_from_marker(where, basename)
     try:
-        text = continued_from_marker(where, basename).read_text(
-            encoding="utf-8")
-    except OSError:
+        text = marker.read_text(encoding="utf-8")
+    except FileNotFoundError:
         return None
+    except OSError as exc:
+        raise LaunchRecordError(
+            f"{marker} does not read ({exc}) -- what this run continues "
+            f"from cannot be told, so it is not launched.") from None
     return text.strip() or None
 
 
@@ -213,9 +221,8 @@ def write_launch(attempt_dir: Path, *, mode: str, command: List[str],
     itself, which the probe never wrote, and the reason S3's check never
     fired.)*
 
-    Absent when there was no placement to record — a direct run, or a machine
-    with no queue at all. **Absent means the question cannot be answered**,
-    which a reader must not mistake for *yes*.
+    ``null`` for a run here, which no queue placed -- written, never left
+    out: a reader tells "no queue" from "not recorded" by the key.
     """
     from datetime import datetime, timezone
     p = launch_record_path(attempt_dir, basename)
@@ -227,16 +234,15 @@ def write_launch(attempt_dir: Path, *, mode: str, command: List[str],
         "launched_at": launched_at or datetime.now(timezone.utc)
                                               .strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
-    # ABSENT, not null, when this run started from the structure.
-    # ``checkpointing.md`` S3 words its test that way -- *"names a directory
-    # that exists or is absent"* -- and the two are different to a reader that
-    # tests for the key rather than for its truthiness.
-    if continued_from:
-        body["continued_from"] = str(continued_from)
-    # Same absent-not-null rule: a direct run has no placement, and a reader
-    # testing for the key learns that rather than reading a null as "nowhere".
-    if placed_on:
-        body["placed_on"] = dict(placed_on)
+    # EVERY KEY, EVERY TIME, its null stated (`checkpointing.md` S3,
+    # `job-contracts.md` § 6.1): ``continued_from`` null -- it started from
+    # the structure; ``placed_on`` null -- a run here, which no queue
+    # placed.  Both were ABSENT in those cases until 2026-10-06, while the
+    # docs gave an absent ``placed_on`` two meanings and the run record read
+    # every absence as "could not check".
+    body["continued_from"] = (str(continued_from) if continued_from
+                              else None)
+    body["placed_on"] = dict(placed_on) if placed_on else None
     return _persist().write_json(p, body)
 
 

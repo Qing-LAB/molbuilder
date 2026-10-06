@@ -277,8 +277,12 @@ def _stderr_of(run_dir: Path, path: Path, logs: Dict[str, Dict[Any, Path]],
 #: ``pending`` and ``queued`` are the states before anything is written --
 #: never launched, and launched and silent -- which a caller holding the
 #: attempt's launch record gets (`run_status`'s ``launch``).
+#: ``unreadable`` is a run whose launch record (`run.json`) does not read:
+#: its state cannot be told -- launched or not -- so it is said, the file
+#: named in its detail, and never followed (it read as the files alone,
+#: ``running`` where nothing else was written, until 2026-10-06).
 RUN_STATES: "tuple[str, ...]" = ("pending", "queued", "running",
-                                 "finished", "failed")
+                                 "finished", "failed", "unreadable")
 
 #: The states in which more can still arrive -- launched and not over.  What a
 #: Results viewer follows (`web/results.md` § 4.1): a run never launched writes

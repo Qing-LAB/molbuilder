@@ -16,6 +16,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+#: THE FIELD TESTS (`tests/field/`) read a record probed on a target machine
+#: and run only when one is named (`docs/process/testing.md` § 0, tier 2):
+#: never in the basic suite, which holds no machine's answers.
+collect_ignore_glob = ([] if os.environ.get("MOLBUILDER_FIELD_RECORD")
+                       else ["field/*"])
+
 from molbuilder import diagnostics
 from molbuilder.structure import Structure
 
@@ -1042,8 +1048,10 @@ def write_machine_record(at=None, **over):
     # -- the probe's copy of `env_init` (`configuration.md` § 4): `conda
     # activate`, behind a preamble that does nothing.  A test that runs a
     # real engine passes its own -- the real conda hook.
-    fields = dict(scheduler="",          # a workstation: no queue system
-                  topology=Topology(sockets=2, cores_per_socket=8),
+    fields = dict(scheduler="workstation",    # no queue system
+                  # ...and no GPU, said -- an unstated count is unknown
+                  topology=Topology(sockets=2, cores_per_socket=8,
+                                    gpus_per_node=0),
                   env_init={"activation": "conda activate",
                                      "preamble": "true"})
     fields.update(over)

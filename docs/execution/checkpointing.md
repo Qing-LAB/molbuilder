@@ -1232,8 +1232,10 @@ quieter.* It has two halves and they are answerable at different times.
 **S3 — a run records what it started from.** `run.json`'s `continued_from` names
 the run directory its files came from — on the flat layout, where every run
 shares the calculation's one folder, the run's own name, `<label>_<NN>_<stage>-run<N>`,
-which each of its files carries — or is absent when it started from the
-structure.
+which each of its files carries — or is `null` when it started from the
+structure: the key is always written *(it was left out until 2026-10-06)*,
+and a `.continued-from` marker that does not read stops the launch rather
+than reading as a start from the structure.
 
 *This survived a design change and its mechanism did not.* When stages chained, an
 inherited file arrived as a symlink and became real when localised — the type

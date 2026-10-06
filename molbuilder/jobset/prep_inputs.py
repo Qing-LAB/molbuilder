@@ -649,7 +649,10 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     from ..runtime_config import routing_of
     menu = routing_of(environment)
     topo = getattr(environment, "topology", None)
-    gpn = getattr(topo, "gpus_per_node", None) or 0
+    # GPUs per node as the record states them -- None when it does not say,
+    # never read as 0 (it was until 2026-10-06; `configuration.md` M-2).
+    node_gpus = getattr(topo, "gpus_per_node", None)
+    gpn = node_gpus or 0
     cps = getattr(topo, "cores_per_socket", None)
 
     if template_text is None:
@@ -727,9 +730,11 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
                 f"this description asks for the GPU (use_gpu = "
                 f"{'a cpu-vs-gpu axis' if mixed else 'true'}), so the "
                 f"benchmark enumerates a GPU grid (G × ranks-per-GPU × "
-                f"cores) -- and the record it reads ({_which}) states no "
-                f"GPU on the node (gpus_per_node={gpn!r}) and no queue with "
-                f"recorded GPUs.  If that machine has "
+                f"cores) -- and the record it reads ({_which}) "
+                + ("does not say how many GPUs a node has"
+                   if node_gpus is None
+                   else "states no GPU on the node (gpus_per_node=0)")
+                + f" and lists no queue with recorded GPUs.  If that machine has "
                 f"one, its record is out of date: {_redo}.  Or prep for the "
                 f"machine that has the GPU (`--target`): the comparison is "
                 f"by node type (asu-sol.md § 5.2).")
