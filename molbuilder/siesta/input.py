@@ -102,11 +102,11 @@ def _auto_block_size(n_atoms: int,
     optimal BlockSize differs on the two solvers.
 
     CPU mode (default)
-      * mpi_np is None or 1: size-only ladder (1, 2, 4, 8 by
-        n_atoms), capped at 8.  No rank count means the per-rank
-        derivation cannot be stated; this conservative baseline
-        predates the contract and is out of its scope (single-rank
-        runs ignore BlockSize anyway).
+      * mpi_np = 1: size-only ladder (1, 2, 4, 8 by n_atoms), capped
+        at 8 -- one rank has nothing to distribute over (single-rank
+        runs ignore BlockSize anyway).  No rank count is refused: the
+        window is derived from it (it took this ladder until
+        2026-10-06).
       * mpi_np >= 2: largest power of 2 satisfying
         ``BlockSize <= min(256, floor(10 * n_atoms / mpi_np))``.
         The 256 ceiling is the LOAD-BALANCE ceiling shared with GPU
@@ -159,18 +159,25 @@ def _auto_block_size(n_atoms: int,
 
     Returns
     -------
-    A positive power of 2.  Safe to use regardless of mpi_np; if
-    SIESTA still crashes at startup with propor IMAX=0, the issue
-    is mpi_np / molecule mismatch, not BlockSize.
+    A positive power of 2.  If SIESTA still crashes at startup with
+    propor IMAX=0, the issue is mpi_np / molecule mismatch, not
+    BlockSize.
     """
+    if mpi_np is None:
+        # NO RANK COUNT, NO WINDOW: the window is derived from the deck's
+        # ranks, and every prepped deck states them (`architecture.md`
+        # § 5.2).  Four ranks were assumed in GPU mode, and a size-only
+        # ladder on the CPU, until 2026-10-06 -- a count nobody stated.
+        raise ValueError(
+            "BlockSize's window is derived from the deck's rank count "
+            "(mpi_np), and this deck states none.")
     if gpu_mode:
         # Orbital-aware cap: ``floor(10 * n_atoms / mpi_np)`` (the
         # 10x is a rough DZP-basis heuristic; underestimates for
         # heavy elements like Au where DZP gives ~25 orb/atom).
         # Since U18 (2026-08-12) the CPU branch below derives from
         # the same orbital estimate per job-contracts.md § 3.2/
-        # § 3.3; GPU keeps its own branch for the floor of 8 and
-        # the mpi_np=None default of 4 (GPU+MPS policy).
+        # § 3.3; GPU keeps its own branch for the floor of 8.
         # Two further caps narrow the choice to a defensible range:
         #
         #   * ``256`` (load-balance ceiling).  With BlockSize > 256
@@ -187,14 +194,14 @@ def _auto_block_size(n_atoms: int,
         # defensible upper bound -- bigger than the historical CPU
         # number, smaller than the kernel limit, and within the
         # range the literature has actually measured.
-        np_ = max(1, int(mpi_np)) if mpi_np else 4  # 4 = GPU+MPS default
+        np_ = max(1, int(mpi_np))
         orbital_estimate = 10 * max(1, n_atoms)
         upper = min(256, 1024, orbital_estimate // np_)
         pow2 = 8
         while pow2 * 2 <= upper:
             pow2 *= 2
         return pow2
-    if not mpi_np or int(mpi_np) <= 1:
+    if int(mpi_np) <= 1:
         # CPU + no rank info -- conservative size-only baseline.
         # Cap at 8 is the historical safety choice; with mpi_np
         # known we remove this ceiling below.
@@ -1092,8 +1099,11 @@ def spec_for(struct: Structure, config: Optional["SiestaConfig"] = None,
             "omp_threads": ("auto" if c.omp_threads is None
                             else str(c.omp_threads)),
         },
+        # THE WINDOW, for a deck that carries a BlockSize: one that does
+        # not drops the row (`_bench_marks_for`), so none is derived.
         bench_marks=lambda st, c: _bench_marks_for(
             st, c, _derived.get("block_size"),
+            None if _derived.get("block_size") is None else
             _block_size_bounds(st.n_atoms, c.mpi_np,
                                gpu_mode=bool(c.use_gpu),
                                emitted=_derived.get("block_size"))),

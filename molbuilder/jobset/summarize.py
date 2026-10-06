@@ -534,7 +534,7 @@ def recommendation_text(res: BenchResult, *, stage: Optional[str] = None
 
     # WHAT TO WRITE -- the `execution` block that would use this winner.
     # `omp_threads` and `gpu_count` are `execution`'s names for what the
-    # record calls `cpus_per_task` and a `gres` string (`placement.AS_RESOURCE`);
+    # record calls `cpus_per_task` and a `gres` string (`model.AS_RESOURCE`);
     # naming them here in the RECORD's vocabulary would hand over a block
     # `task.json` refuses.
     block: Dict = {}

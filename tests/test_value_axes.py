@@ -44,6 +44,7 @@ def _tmp_is_the_projects_tree(tmp_path, monkeypatch):
 #: that THIS is now caught at describe time, not at prep on Sol).
 USERS_MATRIX = {
     "mpi_np": [32, 64, 128],
+    "omp_threads": [1],
     "use_gpu": [True, False],
     "diag_algorithm": ["ELPA-1STAGE", "ELPA-2STAGE"],
     "block_size": [64, 128, 256],
@@ -434,7 +435,7 @@ def test_uneven_split_is_dropped_by_name(sol_calc):
 
 
 def test_gpu_count_beyond_the_record_is_refused(sol_calc):
-    _declare(sol_calc, {"mpi_np": [32], "use_gpu": [True],
+    _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1], "use_gpu": [True],
                         "gpu_count": [8]})
     with pytest.raises(PrepError) as e:
         bench_inputs(sol_calc, None)
@@ -443,7 +444,7 @@ def test_gpu_count_beyond_the_record_is_refused(sol_calc):
 
 
 def test_gpu_count_on_a_cpu_bench_is_refused_not_ignored(sol_calc):
-    _declare(sol_calc, {"mpi_np": [32], "use_gpu": [False],
+    _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1], "use_gpu": [False],
                         "gpu_count": [2]})
     with pytest.raises(PrepError) as e:
         bench_inputs(sol_calc, None)
@@ -451,7 +452,7 @@ def test_gpu_count_on_a_cpu_bench_is_refused_not_ignored(sol_calc):
 
 
 def test_every_cell_uneven_refuses_a_gpu_only_bench(sol_calc):
-    _declare(sol_calc, {"mpi_np": [32], "use_gpu": [True],
+    _declare(sol_calc, {"mpi_np": [32], "omp_threads": [1], "use_gpu": [True],
                         "gpu_count": [3]})
     with pytest.raises(PrepError) as e:
         bench_inputs(sol_calc, None)
@@ -534,7 +535,7 @@ def test_a_duplicated_allocation_point_refuses_at_prep(sol_calc):
     classified allocation entries before checking them, so
     ``mpi_np: [8, 8, 16]`` was refused at describe and ACCEPTED at prep
     -- two identical grid cells measuring one configuration twice."""
-    _declare(sol_calc, {"mpi_np": [8, 8, 16]})
+    _declare(sol_calc, {"mpi_np": [8, 8, 16], "omp_threads": [1]})
     with pytest.raises(PrepError) as e:
         bench_inputs(sol_calc, None)
     assert "repeated point" in str(e.value)

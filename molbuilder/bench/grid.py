@@ -18,10 +18,6 @@ from typing import List, Optional
 from ..scheduler import Topology
 
 
-# Fallback rank-counts when cores-per-socket is unknown (so the sweep is
-# still useful; the adapter notes the missing topology).
-_FALLBACK_KS = (1, 2, 4, 8)
-_FALLBACK_CS = (1, 2, 4)        # cores/rank when cores-per-socket is unknown
 
 
 def _bracket_cs(cps: Optional[int], k: int) -> List[int]:
@@ -30,9 +26,9 @@ def _bracket_cs(cps: Optional[int], k: int) -> List[int]:
     so each K row probes minimal, the conventional full-socket footprint, AND
     a deliberately cross-socket one (the archived design
     record, `docs/archive/old_docs/job-execution.md` § 8.12).  Deduped, >=1.
-    Falls back to ``_FALLBACK_CS`` when cores/socket is unknown."""
-    if not cps:
-        return list(_FALLBACK_CS)
+    The machine's cores per socket are its record's; a grid is never
+    proposed without them (`prep_inputs.bench_inputs` refuses first -- a
+    constant set stood in until 2026-10-06)."""
     return sorted({1, max(1, cps // k), max(1, (2 * cps) // k)})
 
 
@@ -96,7 +92,7 @@ def sweep_K(topo: Topology) -> List[int]:
     cores-per-socket, so every point fully uses the socket (``K*c =
     cores``, ``c = cores // K``); a non-divisor K would leave cores idle
     (§ 8).  Empty when cores-per-socket is unknown -- the caller then
-    falls back to a declared default (``_FALLBACK_KS``)."""
+    proposes no grid."""
     return divisors(topo.cores_per_socket) if topo.cores_per_socket \
         else []
 
@@ -110,4 +106,4 @@ def sweep_K(topo: Topology) -> List[int]:
 # (R8, 2026-08-12: this list still exported six names the fold deleted
 # or moved -- the adapter classes, get_adapter, parse_walltime -- and
 # omitted the two live ones; `import *` raised AttributeError.)
-__all__ = ["divisors", "sweep_grid", "sweep_K", "_FALLBACK_KS"]
+__all__ = ["divisors", "sweep_grid", "sweep_K"]

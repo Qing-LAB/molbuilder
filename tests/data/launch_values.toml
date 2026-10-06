@@ -120,7 +120,7 @@ header_absent = true
 name = "...and launch fills none in: a benchmark's shelf, its header written at launch, states its wall and memory"
 prep = ["--no-sbatch"]
 allocation_unset = ["time", "mem"]
-bench = { mpi_np = [1, 2] }
+bench = { mpi_np = [1, 2], omp_threads = [1] }
 launch = []
 launch_refused = ["states no wall (time), memory (mem)", "--time 2-00:00:00 on this launch"]
 
@@ -209,10 +209,11 @@ header_lacks = ["--mail", "--export", "--gres"]
 run_sh = ["_mpi_np_default=2", "_omp_threads_default=1"]
 
 [[case]]
-name = "a PySCF run asks one task and its threads"
+name = "a PySCF run asks one task and its threads -- and its deck runs on those threads, by hand too"
 engine = "pyscf"
 run = { threads = 6 }
 header = ["#SBATCH -n 1", "#SBATCH -c 6"]
+deck = ["_mb_cap_threads(6)"]
 run_sh = ["_omp_threads_default=6",
           '_omp_threads="$_omp_threads_default"; _omp_from="stated at prep"']
 
@@ -271,10 +272,20 @@ refused = "but debug allows 00:15:00"
 # ten-minute measurement behind everything (the unit 11 review).
 [[case]]
 name = "a benchmark keeps the calculation's wall and queue, never a run card's"
-bench = { mpi_np = [1] }
+bench = { mpi_np = [1], omp_threads = [1] }
 run = { time = "2-00:00:00", domain = "debug" }
 launch = []
 line = ["-t 0-01:00:00", "-p cpu", "-q public"]
+
+[[case]]
+name = "...and --domain at launch beats the queue its prep was told"
+bench = { mpi_np = [1], omp_threads = [1] }
+queues = [
+    { name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] },
+    { name = "long", partition = "long", qos = "public", max_time = "7-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] },
+]
+launch = ["--domain", "long"]
+line = ["-p long", "-q public"]
 
 # A queue named nowhere reaches launch only for a benchmark, whose shelves'
 # queue is named when they are sent: a run prepped for a queue has its
@@ -284,7 +295,7 @@ line = ["-t 0-01:00:00", "-p cpu", "-q public"]
 name = "the queues launch lists ask what its door admits -- the wall and memory prep baked, when launch states none"
 prep = ["--no-sbatch"]
 allocation_unset = ["domain"]
-bench = { mpi_np = [1] }
+bench = { mpi_np = [1], omp_threads = [1] }
 queues = [
     { name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] },
     { name = "debug", partition = "cpu", qos = "debug", max_time = "00:15:00", max_cores = 64, max_mem_gb = 4, node_types = [{ cores = 64, nodes = 2 }] },

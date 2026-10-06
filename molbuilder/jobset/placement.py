@@ -10,16 +10,7 @@ imported it from there -- so launch, floor 5, reached the conductor.
 from __future__ import annotations
 
 
-#: A catalogue launch item's name on `Resources` -- the exchange vocabulary
-#: (`job-contracts.md` § 6.2): PySCF's ``threads`` is SIESTA's
-#: ``omp_threads``, the cores one process runs on; an item missing here keeps
-#: its own name.
-AS_RESOURCE = {
-    "omp_threads": "cpus_per_task",
-    "threads": "cpus_per_task",
-    "gpu_count": "gres",
-    "max_memory_mb": "max_memory_mb",
-}
+from .model import AS_RESOURCE
 
 
 #: The run card's launch-shape items: the catalogue's machine items that size
@@ -271,5 +262,5 @@ def placement_line(placement) -> str:
             + (f" -- {said}" if said else ""))
 
 
-__all__ = ["AS_RESOURCE", "admitted", "launch_refusal", "one_process",
+__all__ = ["admitted", "launch_refusal", "one_process",
            "placement_line", "request_of"]

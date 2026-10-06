@@ -810,12 +810,12 @@ allocation = true
 range = [1, 1024]
 group = "staging"
 label = "MPI ranks (np)"
-null_label = "(single-process)"
+null_label = "(not stated: prep refuses)"
 optional = true
 help = """
-How many MPI processes SIESTA runs on: the N baked into ``mpirun -np N siesta`` in the generated run-wrapper.
-Pick it from your host. Typically N = physical cores; for memory-bound jobs N = sockets x cores_per_socket / 2 is a common rule of thumb. Cluster schedulers (Slurm / PBS) usually set this for you; on a workstation you pick it manually. Leave it blank for the auto default, physical_cores.
-The value only bakes in a default, it is not final. The wrapper accepts ``bash run.sh -np N`` and ``MB_NP=N bash run.sh``, so you can try other rank counts without regenerating. That matters because SIESTA can crash with ``propor: ERROR: IMAX = 0`` for certain mpi_np / molecule combinations: the crash depends on the ProcessorY x ProcessorX grid SIESTA auto-picks for that rank count, which is hard to predict. If you hit propor, retry with a smaller -np (powers of 2 are usually safe). The wrapper prints a focused diagnostic on that crash with specific suggestions.
+How many MPI processes SIESTA runs on: the N in ``mpirun -np N siesta`` the run script launches.
+Every run states it -- on its run card, or with ``prep --np N`` -- and prep refuses a run that does not (architecture.md § 5.2): nothing fills one in, not the machine's cores and not the scheduler.  Typically N = physical cores; for memory-bound jobs N = sockets x cores_per_socket / 2 is a common rule of thumb.
+For a run by hand the run script takes ``bash run.sh -np N``, to try another count without a new prep.  That matters because SIESTA can crash with ``propor: ERROR: IMAX = 0`` for certain mpi_np / molecule combinations: the crash depends on the ProcessorY x ProcessorX grid SIESTA picks for that rank count, which is hard to predict. If you hit propor, retry with a smaller -np (powers of 2 are usually safe). The run script prints a focused diagnostic on that crash with specific suggestions.
 """
 
 [item.gpu_count]
@@ -882,12 +882,12 @@ type = "int"
 allocation = true
 group = "staging"
 label = "OMP threads per rank"
-null_label = "(auto: physical cores)"
+null_label = "(not stated: prep refuses)"
 optional = true
 help = """
-How many OpenMP threads each MPI process gets.
-Left blank it auto-detects physical cores at run time, divided by N_MPI when applicable. Set it explicitly to bench a configuration, or to leave cores free for other jobs.
-The emitted run-wrapper pins BLAS to 1 thread per rank so OMP x BLAS doesn't oversubscribe the node -- the same recipe /spectra and Build PySCF use.
+How many OpenMP threads each MPI process gets -- the cores per rank.
+Every run states it -- on its run card, or with ``prep --cpus-per-task N`` -- and prep refuses a run that does not (architecture.md § 5.2): nothing fills one in.  The deck records it (``# runtime.omp_threads_requested``) and the run script exports it as OMP_NUM_THREADS; for a run by hand, ``bash run.sh -omp N`` overrides it.
+The run script pins BLAS to 1 thread per rank so OMP x BLAS doesn't oversubscribe the node -- the same recipe /spectra and Build PySCF use.
 """
 
 [item.max_memory_mb]
@@ -1626,12 +1626,12 @@ manual = "PySCF 2.13 pyscf.lib.misc 'num_threads()'"
 type = "int"
 group = "staging"
 label = "CPU threads"
-null_label = "(auto: physical cores)"
+null_label = "(not stated: prep refuses)"
 optional = true
 help = """
-How many CPU threads PySCF uses.  Left blank, the run asks what this job was GIVEN before it asks how big the machine is: OMP_NUM_THREADS, then the scheduler's allocation (SLURM_CPUS_PER_TASK / PBS_NCPUS / NSLOTS), and only as a last resort this node's PHYSICAL cores (not logical/HT) -- hyperthreading rarely helps quantum-chemistry kernels and can hurt cache locality.
-Ask the node first instead, and a job holding 8 cores of a 128-core machine starts 128 threads and has them time-sliced onto its 8.
-The emitted script pins BLAS to 1 thread per worker (OPENBLAS_NUM_THREADS=1, MKL_NUM_THREADS=1) so PySCF threads * BLAS threads don't multiply.  Set a number explicitly to bench, or to leave cores free for other jobs.
+How many CPU threads PySCF uses -- its cores; it runs one process.
+Every run states it -- on its run card, or with ``prep --cpus-per-task N`` -- and prep refuses a run that does not (architecture.md § 5.2): nothing fills one in, not the machine's cores and not the scheduler's.  The deck runs on that many, run by hand too, and the run script exports it as OMP_NUM_THREADS.
+The deck pins BLAS to 1 thread per worker (OPENBLAS_NUM_THREADS=1, MKL_NUM_THREADS=1) so PySCF threads * BLAS threads don't multiply.
 """
 
 

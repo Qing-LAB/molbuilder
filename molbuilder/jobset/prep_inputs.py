@@ -352,21 +352,18 @@ def _cell_shape(g, k, c) -> str:
 #: direct map under their own names (they are already `Resources` fields).
 from ..task import LANE_ASKS as _LANE_ASKS
 
-from .placement import AS_RESOURCE
+from .model import AS_RESOURCE
 
 
 def declared_run_shape(base, task, stage=None):
     """The run's LAUNCH SHAPE — the condition's machine items, as `Resources`
     fields.  ``{}`` when the condition states none.
 
-    **A DIRECT MAP, because there is nothing to work out.** Every parameter
-    already has a value: the template carries the physics and the deck knobs
-    (`template.md` § 5), and a machine-answered item that this block does not
-    name is resolved by the wrapper at run time, by the chain
-    `running-a-job.md` § 3.1 states — ``-np`` flag > ``MB_NP`` >
-    ``SLURM_NTASKS`` > the generation default. So an unnamed field is not a
-    gap to fill; it is a field this layer does not write, and the pipeline
-    already answers it.
+    **A DIRECT MAP, because there is nothing to work out.** The template
+    carries the physics and the deck knobs (`template.md` § 5); a launch
+    value this block does not name is stated as a flag, or prep refuses the
+    run (`architecture.md` § 5.2) -- nothing fills one in.  *(An unnamed
+    field was "resolved by the wrapper at run time" until 2026-10-02.)*
 
     > **This went through the grid enumerator for one afternoon**
     > (2026-09-02) on the argument that a run is a sweep of length one. It is
@@ -621,7 +618,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # the command line prints it, the Task setup tab shows it
     # (`prep.prep_stage`, `job-system.md` § 5.3).
     note = notes.append if notes is not None else (lambda _text: None)
-    from ..bench.grid import _FALLBACK_KS, sweep_K, sweep_grid
+    from ..bench.grid import sweep_K, sweep_grid
     from ..resolve import MachineTranslation
     from ..task import FILENAME as TASK_FILENAME, read_task
     from ..template import (find_template, read_template, template_filename,
@@ -758,22 +755,36 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
             f"not know: {', '.join(_unresolvable)}.  The axes a sweep can "
             f"resolve today are {', '.join(_KNOWN_AXES)} "
             f"(generator.md § 4.3a).")
-    sockets = getattr(topo, "sockets", None) or 1
+    sockets = getattr(topo, "sockets", None)
     #: What the LOCAL box holds -- the ceiling only when this machine has
-    #: no queues to answer for it (`_cells_this_machine_holds`).
-    cores_total = (sockets * cps) if cps else None
+    #: no queues to answer for it (`_cells_this_machine_holds`).  Unknown
+    #: when the record does not say both -- never a smaller limit (R3: an
+    #: unknown socket count read as one until 2026-10-06).
+    cores_total = (sockets * cps) if (sockets and cps) else None
     # gpu_count alone does not declare a RANK grid: without mpi_np /
     # omp_threads the K x C half stays the machine's proposal, filtered
     # to the declared device counts below.
     grid_declared = bool(declared.get("mpi_np") or declared.get("omp_threads"))
+    if grid_declared and not (declared.get("mpi_np")
+                              and declared.get("omp_threads")):
+        # BOTH OR NEITHER: a declared grid states its ranks and its cores
+        # per rank -- the one left out was filled with [1] until
+        # 2026-10-06, points nobody declared.
+        said, left = (("mpi_np", "omp_threads")
+                      if declared.get("mpi_np") else ("omp_threads", "mpi_np"))
+        raise PrepError(
+            f"task.json's bench declares {said} and not {left} -- a "
+            f"declared grid states both, the ranks and the cores per rank "
+            f"(generator.md § 4.3a).  Declare {left}'s points too, or "
+            f"neither, for the machine's proposal.")
     if grid_declared:
         # THE DECLARED GRID (§ 4.3a).  ``mpi_np`` is the TOTAL rank count a
         # point runs -- the same meaning it has everywhere else -- and
         # ``omp_threads`` the cores per rank.  A point the machine cannot
         # hold is refused BY NAME, not clamped: a clamped point would
         # measure a configuration nobody declared.
-        ranks = [int(v) for v in declared.get("mpi_np") or [1]]
-        cores = [int(v) for v in declared.get("omp_threads") or [1]]
+        ranks = [int(v) for v in declared["mpi_np"]]
+        cores = [int(v) for v in declared["omp_threads"]]
         # A DECLARED POINT IS NOT REFUSED HERE ANY MORE (2026-08-30).  It
         # was, against ``topology.sockets x cores_per_socket`` -- ONE
         # machine's measurement, taken wherever the probe happened to run.
@@ -837,7 +848,16 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
                                         for r, g in bad))
                 return cells
             return [(0, r, c) for r in ranks for c in cores]
-        ks = sweep_K(topo) or list(_FALLBACK_KS)
+        # THE MACHINE PROPOSES FROM WHAT ITS RECORD SAYS: no cores per
+        # socket, no proposal -- a grid of constants stood in until
+        # 2026-10-06, the machine's word for numbers it never gave.
+        ks = sweep_K(topo)
+        if not ks:
+            raise PrepError(
+                "this machine's record does not say its cores per socket, "
+                "so it proposes no grid -- declare the bench's mpi_np and "
+                "omp_threads in task.json, or re-probe the machine "
+                "(`molbuilder jobset probe --write`).")
         # ONE enumeration, both grids (`bench/grid.py`: the single source
         # of truth for the sweep grid, so no two consumers can define it
         # differently).  On CPU there is no device to range over, so G is

@@ -31,12 +31,20 @@ from typing import Tuple
 
 def policy_of(cfg) -> Tuple[str, int]:
     """``(on_nonconvergence, geom_continue_retries)`` read ONCE, the same way
-    for both decks: the policy lower-cased with ``halt`` for a blank, the
-    retry budget an integer with 0 for a blank.  Each deck spelled its own
-    reading until 2026-09-29 (the K6 review, R13)."""
-    policy = str(getattr(cfg, "on_nonconvergence", "") or "halt").strip().lower()
-    retries = int(getattr(cfg, "geom_continue_retries", 0) or 0)
-    return policy, retries
+    for both decks, as the template states them -- the catalogue gives both
+    their values (``halt``, 1).  A blank is refused: this filled ``halt``
+    and 0 until 2026-10-06, a second table of defaults, its 0 not the
+    catalogue's 1 (`generator.md` § 10.1).  Each deck spelled its own reading
+    until 2026-09-29 (the K6 review, R13)."""
+    policy = getattr(cfg, "on_nonconvergence", None)
+    retries = getattr(cfg, "geom_continue_retries", None)
+    if policy in (None, "") or retries is None:
+        raise ValueError(
+            "on_nonconvergence and geom_continue_retries are stated in the "
+            "template -- this relaxation's leaves "
+            + ("on_nonconvergence" if policy in (None, "")
+               else "geom_continue_retries") + " blank.")
+    return str(policy).strip().lower(), int(retries)
 
 
 def relax(mf, policy, retries, *, keep=None, resumable=False,

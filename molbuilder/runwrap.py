@@ -2312,8 +2312,9 @@ def render_run_wrapper(script_path: Path, *,
     #
     #   * PySCF: the WRAPPER resolves and exports OMP_NUM_THREADS
     #     (P1b, 2026-08-13) -- ``-omp`` flag, else OMP_NUM_THREADS,
-    #     else the scheduler's allocation, else this node's physical
-    #     cores.  No division by a rank count: PySCF is OpenMP-only.
+    #     else the scheduler's allocation, else the count stated at prep
+    #     (it ended at this node's physical cores until 2026-10-02).  No
+    #     division by a rank count: PySCF is OpenMP-only.
     #
     #     It used to leave the variable unset so the script's own
     #     setdefault would win, and the script counted the whole NODE.

@@ -891,7 +891,7 @@ def test_a_check_that_cannot_run_SAYS_SO_rather_than_going_blank(
     tj = Path(filled_dir) / "task.json"
     kept = tj.read_text()
     d = json.loads(kept)
-    d["bench"] = {"mpi_np": [2, 4]}
+    d["bench"] = {"mpi_np": [2, 4], "omp_threads": [1]}
     tj.write_text(json.dumps(d, indent=2))
     try:
         # The door refuses, as it does on a folder whose machine has no
@@ -982,7 +982,7 @@ def two_stage_dir(isolated_projects_root):
         # The axes to measure, declared once for the calculation -- which is
         # exactly why every enabled stage can be measured.
         task = _json.loads((d / "task.json").read_text())
-        task["bench"] = {"mpi_np": [1, 2]}
+        task["bench"] = {"mpi_np": [1, 2], "omp_threads": [1]}
         # ...and the run's shape, stated -- a run states it or is refused.
         task["execution"] = {"mpi_np": 2, "omp_threads": 1}
         (d / "task.json").write_text(_json.dumps(task, indent=2),

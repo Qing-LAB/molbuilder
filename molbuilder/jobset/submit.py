@@ -1267,7 +1267,7 @@ def _group_envelope(jobs) -> "Resources":
     ranks/cores/devices -- and narrower trials idled the difference; the
     max() folds below survive as identities.)*
     """
-    keys = {((j.resources.mpi_np or 1), (j.resources.cpus_per_task or 1),
+    keys = {(j.resources.mpi_np, j.resources.cpus_per_task,
              j.resources.gres or "") for j in jobs}
     if len(keys) > 1:
         raise SubmitError(
@@ -1275,8 +1275,8 @@ def _group_envelope(jobs) -> "Resources":
             f"({sorted(keys)}) -- the per-shelf partition is broken "
             "(generator.md § 4.3a); this is a bug, not a declaration "
             "problem.")
-    n = max((j.resources.mpi_np or 1) for j in jobs)
-    c = max((j.resources.cpus_per_task or 1) for j in jobs)
+    n = max(j.resources.mpi_np for j in jobs)
+    c = max(j.resources.cpus_per_task for j in jobs)
     gres = next((j.resources.gres for j in jobs if j.resources.gres), None)
     exclusive = any(j.resources.exclusive for j in jobs)
     # PREP'S ANSWERS RIDE THE TRIALS (resolve.py: `replace(allocation,
@@ -1520,7 +1520,7 @@ def _shelf_key(job: "Job"):
     trials grouped together must fit ONE allocation with nothing idle, so
     the key is everything the envelope would widen over."""
     r = job.resources
-    return (r.mpi_np or 0, r.cpus_per_task or 0,
+    return (r.mpi_np, r.cpus_per_task,
             _gpus(r, f"trial {job.name!r}").count or 0)
 
 
@@ -1733,6 +1733,15 @@ def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *,
         if isinstance(m, JobResult):
             plan.skipped.append(m)          # measured before
             continue
+        # ITS OWN COUNTS, STATED: a walk hands each trial its -np / -omp,
+        # the shield against an allocation's SLURM_* variables -- a trial
+        # that cannot state them is refused by name, never mis-measured.
+        if not (job.resources.mpi_np and job.resources.cpus_per_task):
+            raise SubmitError(
+                f"trial {job.name!r} states no rank or core count -- a "
+                f"benchmark's walk hands each trial its own (-np/-omp), "
+                f"and a prepped benchmark is not prepped again: "
+                + rollback("the benchmark's prep", base=base))
         # THE GATES GUARD EVERY DOOR (review 2026-08-21): a trial refused
         # when sent by name must not go silently by riding a walk.  And the
         # COLD gate (user, same day: "it is the submission that determines
@@ -1826,23 +1835,6 @@ def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
     construction, so within a group the enumeration (declaration) order
     stands, and the SHELVES submit widest first.
     """
-
-    # THE ENV-INHERITANCE SHIELD (user concern, 2026-08-20).  Inside the
-    # allocation, SLURM_NTASKS / SLURM_CPUS_PER_TASK describe the ENVELOPE
-    # (the widest trial), and the wrappers fall back to SLURM variables when
-    # no flag is passed (running-a-job.md § 3.1-3.2) -- so a trial without
-    # explicit knobs would silently measure the envelope's shape instead of
-    # its own point.  Explicit -np/-omp flags win over every inherited
-    # variable, so the sequencer passes both for every trial, and a trial
-    # that cannot state them is refused BY NAME rather than mis-measured.
-    unshaped = [m.name for m in pending
-                if not (m.job.resources.mpi_np
-                        and m.job.resources.cpus_per_task)]
-    if unshaped:
-        raise SubmitError(
-            "a grouped bench needs every trial's explicit rank/core shape "
-            "(-np/-omp shield the trial from the allocation's SLURM_* "
-            f"envelope); missing on: {', '.join(unshaped)}")
 
     # THE CONTAINER IS THE TRIAL'S PARENT, NOT THE ATTEMPT'S.  With an
     # attempt layer the attempt's parent is `bench-<point>` -- one per

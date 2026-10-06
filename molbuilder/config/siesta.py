@@ -799,7 +799,7 @@ class SiestaConfig:
         "workflow_group": "staging",
         "label":      "MPI ranks (np)",
         "engine_key":  '(molbuilder: .run.sh ``mpirun -np N`` only; not in .fdf)',
-        "null_label": "(single-process)",
+        "null_label": "(not stated: prep refuses)",
         "range":      (1, 1024),
     })
 
@@ -843,13 +843,12 @@ class SiestaConfig:
         "label": "ParallelOverK",
         "engine_key":  'Diag.ParallelOverK',
     })
-    # OpenMP threads per MPI rank.  Controls the run-wrapper's
-    # ``export OMP_NUM_THREADS=<N>`` line (see molbuilder/runwrap.py).
-    # Default None -> auto: physical cores // n_mpi_ranks if MPI is
-    # used (set by runwrap), else physical cores.  The wrapper also
-    # pins BLAS to 1 thread per rank so OMP * BLAS doesn't
-    # oversubscribe -- canonical anti-oversubscription recipe shared
-    # with the PySCF / spectra scripts.
+    # OpenMP threads per MPI rank -- the cores per rank a run states
+    # (`cpus_per_task` on `Resources`, translated at `resolve`).  The run
+    # script exports it as OMP_NUM_THREADS; None is unstated, which prep
+    # refuses (`architecture.md` § 5.2 -- it read "auto: physical cores"
+    # until 2026-10-06).  The run script pins BLAS to 1 thread per rank so
+    # OMP * BLAS doesn't oversubscribe.
     omp_threads: Optional[int] = field(default=None, metadata={
         "category": ("execution",),
         # NOT a template item: a machine fact, which floor 2 must never
@@ -864,7 +863,7 @@ class SiestaConfig:
         # into the .fdf (so the .out parser can recover the requested
         # value when reading the run back via runtime_info).
         "engine_key":  '(molbuilder: .run.sh OMP_NUM_THREADS + .fdf runtime_info comment)',
-        "null_label": "(auto: physical cores)",
+        "null_label": "(not stated: prep refuses)",
     })
     # SIESTA SystemMemory directive: MB cap for the SCF/diag working
     # set.  Not auto-set in the .fdf today; if set here, runtime_info

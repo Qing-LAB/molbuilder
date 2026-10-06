@@ -70,7 +70,7 @@ kept = ["H2_01_coarse.fdf", "H2_01_coarse.run.sh"]
 
 [[case]]
 name = "...a prepped benchmark too"
-bench = { mpi_np = [2] }
+bench = { mpi_np = [2], omp_threads = [1] }
 before = [["prep", "bench", "coarse"]]
 refused = ["the benchmark of stage 'coarse' is already prepped", "molbuilder checkpoint list"]
 
@@ -140,7 +140,7 @@ save_refused = ["shape is fixed once it has produced", "coarse is prepped", "mol
 
 [[case]]
 name = "...a prepped benchmark is a prep too"
-bench = { mpi_np = [2] }
+bench = { mpi_np = [2], omp_threads = [1] }
 saved = { shape = "flat" }
 save_refused = ["shape is fixed once it has produced", "coarse is prepped"]
 
@@ -203,8 +203,8 @@ made_lacks = ["01_extra"]
 # ===================================================================== #
 
 [[case]]
-name = "the stage named is the stage written -- its own values, its token, its header line"
-deck = ["MD.TypeOfRun CG", "MD.MaxForceTol 0.05", "# Stage 01_coarse --"]
+name = "the stage named is the stage written -- its own values, its token, its header line, and the cores per rank its run card states"
+deck = ["MD.TypeOfRun CG", "MD.MaxForceTol 0.05", "# Stage 01_coarse --", "# runtime.omp_threads_requested: 1"]
 
 [[case]]
 name = "...a later stage its own"
@@ -252,3 +252,8 @@ run_sh = ['--notify-channels ""']
 [[case]]
 name = "...and a description without one leaves the run script without one"
 run_sh_lacks = ["--notify-"]
+
+[[case]]
+name = "a benchmark's declared grid states its ranks and its cores per rank -- one alone is refused, never filled"
+bench = { mpi_np = [1, 2] }
+refused = ["declares mpi_np and not omp_threads", "Declare omp_threads's points too"]

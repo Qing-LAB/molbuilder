@@ -480,7 +480,7 @@ def test_a_refusal_shows_what_it_points_at_on_both_doors(
     _make_preppable(calc)
     desc = calc / TASK_FILENAME
     d = json.loads(desc.read_text())
-    d["bench"] = {"mpi_np": [4096]}
+    d["bench"] = {"mpi_np": [4096], "omp_threads": [1]}
     desc.write_text(json.dumps(d))
     twin = _twin(calc, "calc-cli")
 

@@ -63,7 +63,7 @@ after_launch = { ledger_holds = ["launched"] }
 
 [[case]]
 name = "a benchmark run here walks its unlaunched trials in one walk, as a shelf does on a queue"
-bench = { mpi_np = [1, 2] }
+bench = { mpi_np = [1, 2], omp_threads = [1] }
 launch = []
 launch_mode = "direct"
 launch_sends = true
@@ -72,7 +72,7 @@ after_launch = { made = ["01_coarse/bench/launch/bench-group.run.sh", "01_coarse
 
 [[case]]
 name = "...and its per-trial bound is the walk's, here as on a queue"
-bench = { mpi_np = [1, 2] }
+bench = { mpi_np = [1, 2], omp_threads = [1] }
 launch = ["--trial-timeout", "5"]
 launch_mode = "direct"
 launch_sends = true
@@ -81,7 +81,7 @@ walk = ["per-trial-bound=300s", "timeout -k 30 300 bash"]
 
 [[case]]
 name = "...a trial that fails leaves the rest to run, and the walk says how many failed"
-bench = { mpi_np = [1, 2] }
+bench = { mpi_np = [1, 2], omp_threads = [1] }
 stand_in = { rc = 1 }
 launch = []
 launch_mode = "direct"
@@ -90,7 +90,7 @@ walk_log = ["G0K1C1 finished rc=1", "G0K2C1 finished rc=1", "done fails=2"]
 
 [[case]]
 name = "...and launched again, it passes the trials launched before over by name, and runs the rest"
-bench = { mpi_np = [1, 2] }
+bench = { mpi_np = [1, 2], omp_threads = [1] }
 before_launch = [["launch", "bench", "coarse", "G0K1C1", "--mode", "direct", "--yes"]]
 launch = []
 launch_mode = "direct"
@@ -104,7 +104,7 @@ name = "a benchmark sent to a queue goes one job per shelf, every shelf written 
 machine = "this"
 queues = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] }]
 allocation = { domain = "cpu", time = "01:00:00", mem = "8G" }
-bench = { mpi_np = [1, 2] }
+bench = { mpi_np = [1, 2], omp_threads = [1] }
 sbatch_refuses = "bench-group-G0K2C1"
 launch = []
 launch_sends = true
@@ -116,7 +116,7 @@ name = "...launched again, it passes the trials launched before over -- all of t
 machine = "this"
 queues = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] }]
 allocation = { domain = "cpu", time = "01:00:00", mem = "8G" }
-bench = { mpi_np = [1, 2] }
+bench = { mpi_np = [1, 2], omp_threads = [1] }
 before_launch = [["launch", "bench", "coarse", "--mode", "submit", "--yes"]]
 launch = []
 launch_refused = ["all 2 trials are launched"]
@@ -126,7 +126,7 @@ name = "...and its per-trial bound is the shelf's walk's, which runs each trial 
 machine = "this"
 queues = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] }]
 allocation = { domain = "cpu", time = "01:00:00", mem = "8G" }
-bench = { mpi_np = [1] }
+bench = { mpi_np = [1], omp_threads = [1] }
 launch = ["--trial-timeout", "5"]
 launch_sends = true
 walk = ["per-trial-bound=300s", "timeout -k 30 300 bash", '"bench-G0K1C1/run-0"']

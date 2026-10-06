@@ -25,121 +25,25 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 
 import pytest
 
-from molbuilder.jobset.model import Job, JobSet, Resources
+from molbuilder.jobset.model import Job, Resources
 
 
 SLURM_TIME = re.compile(r"^(?:\d+-)?\d+(?::\d{2}){0,2}$")
 SLURM_MEM = re.compile(r"^\d+(?:\.\d+)?[KMGT]?$")
 
 
-def _runner():
-    from click.testing import CliRunner
-    from molbuilder.jobset._cli import jobset_group
-    return CliRunner(), jobset_group
-
-
-def _sweep(domain=None, domains=None):
-    """A two-point sweep, its wall and memory baked as the bundle above
-    stated them.  ``domains`` gives the two jobs different queues."""
-    a, b = (domains or (domain, domain))
-    said = dict(time="0-04:00:00", mem="256G")
-    return JobSet(
-        name="sw", engine="siesta", kind="sweep",
-        jobs=[Job(name="G1K1C4", script="job.fdf",
-                  resources=Resources(mpi_np=1, cpus_per_task=4, domain=a,
-                                      **said)),
-              Job(name="G1K2C4", script="job.fdf",
-                  resources=Resources(mpi_np=2, cpus_per_task=4, domain=b,
-                                      **said))])
-
-
-def _write_domains(where, rows):
-    from molbuilder.scheduler import (FILENAME, Domain, Environment,
-                                      Topology, write_environment)
-    return write_environment(
-        Environment(scheduler="slurm",
-                    topology=Topology(cores_per_socket=64),
-                    domains=[Domain(name=n, partition=p, qos=q, max_time=t)
-                             for n, p, q, t in rows]),
-        Path(where) / FILENAME)
-
-
-@pytest.fixture
-def bundle(tmp_path, monkeypatch, isolated_projects_root):
-    """An isolated bundle with a probed menu and no machine-wide answers.
-
-    `isolated_projects_root` matters: `--bundle` must name a calculation
-    INSIDE the projects tree, and without it the guard points at the
-    developer's real one.
-    """
-    monkeypatch.chdir(tmp_path)
-    b = isolated_projects_root / "proj" / "topic" / "calc"
-    b.mkdir(parents=True)
-    _write_domains(b, [("htc", "htc", "public", "0-04:00:00"),
-                       ("general", "general", "public", "14-00:00:00")])
-    return b
-
-
-def _cfg(b):
-    """Launches go through the scheduler -- this machine's `launch.mode`
-    (`configuration.md` § 4), written through the one writer."""
-    from molbuilder.runtime_config import write_config_scope
-    write_config_scope({"launch": {"mode": "submit"}})
-
-
-class TestTheDomainTheBundleCarries:
-
-    def test_prep_baked_domain_is_used_without_a_flag(self, bundle):
-        """The reported failure, directly: the person chose `htc` in the
-        browser, and `launch` must not ask them again."""
-        _cfg(bundle)
-        _sweep(domain="htc").write(bundle / "job-set.json")
-        runner, grp = _runner()
-        r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
-                                "--dry-run", "--yes"])
-        assert r.exit_code == 0, r.output
-        assert "-p htc" in r.output and "-q public" in r.output
-        assert "no --domain" not in r.output
-
-    def test_an_explicit_flag_beats_the_bundle(self, bundle):
-        """--domain is said about THIS launch, which is more specific
-        still -- and is how a person overrides a bundle they are reusing."""
-        _cfg(bundle)
-        _sweep(domain="htc").write(bundle / "job-set.json")
-        runner, grp = _runner()
-        r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
-                                "--domain", "general", "--dry-run", "--yes"])
-        assert r.exit_code == 0, r.output
-        assert "-p general" in r.output
-
-    def test_two_baked_domains_are_named_not_picked(self, bundle):
-        """A cpu side and a gpu side may want different queues.  Two baked
-        answers are not one answer, so it says which they are rather than
-        choosing -- `--domain`/`--gpu-domain` already model the split."""
-        _cfg(bundle)
-        _sweep(domains=("htc", "general")).write(bundle / "job-set.json")
-        runner, grp = _runner()
-        r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
-                                "--dry-run", "--yes"])
-        assert r.exit_code != 0
-        assert "more than one domain" in r.output
-        assert "htc" in r.output and "general" in r.output
-
-    def test_nothing_answered_still_refuses(self, bundle):
-        """The guard this must not weaken (S5): with no flag and nothing
-        baked, the queue is still NOT guessed -- and no config holds one
-        (`configuration.md` § 4)."""
-        _cfg(bundle)
-        _sweep().write(bundle / "job-set.json")       # no baked domain
-        runner, grp = _runner()
-        r = runner.invoke(grp, ["launch", "bench", "--bundle", str(bundle),
-                                "--dry-run", "--yes"])
-        assert r.exit_code != 0
-        assert "no --domain" in r.output
+# `TestTheDomainTheBundleCarries` retired 2026-10-06: four launches of a
+# hand-built sweep with no trial folders, which a benchmark's walk now
+# refuses -- each trial's run script is checked where it runs, here and on
+# a queue alike.  Their rules are rows down the road
+# (`tests/data/launch_values.toml`): a benchmark sent to the queue its prep
+# was told, with no flag ("a benchmark keeps the calculation's wall and
+# queue"); `--domain` at launch beating it; a queue named nowhere refused,
+# with the queues listed.  Two queues among one calculation's trials is a
+# state the road cannot make (every trial carries the calculation's one).
 
 
 class TestTheRecordHoldsOneSpelling:

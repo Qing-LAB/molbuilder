@@ -199,9 +199,11 @@ class Allocation:
     no home that travelled with the calculation.
 
     **Every field is optional, and absent means UNSTATED** -- never a
-    default wearing a number's clothes (`submission.md` S1).  An unstated
-    wall becomes the target queue's own ceiling at submission; an unstated
-    memory lets the scheduler's default decide, said out loud.
+    default wearing a number's clothes (`submission.md` S1).  A run sent to
+    a queue states its queue, wall and memory, here or as a flag, or prep
+    refuses it (`architecture.md` § 5.2: nothing fills one in -- an unstated
+    wall took the queue's ceiling, and an unstated memory the scheduler's
+    default, until 2026-10-02).
 
     **ONE SPELLING, AND IT IS SLURM'S** -- ``"0-04:00:00"``, ``"128G"``
     (user, 2026-08-24: *"your record should set unified time format while

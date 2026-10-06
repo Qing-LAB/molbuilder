@@ -523,7 +523,7 @@ class PySCFConfig:
         "workflow_group": "staging",
         "label":      "CPU threads",
         "engine_key":  "lib.num_threads(N) + os.environ['OMP_NUM_THREADS']",
-        "null_label": "(auto: physical cores)",
+        "null_label": "(not stated: prep refuses)",
     })
     gpu_count: Optional[int] = field(default=None, metadata={
         "category": ("execution",),

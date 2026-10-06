@@ -71,32 +71,30 @@ def test_render_fdf_dna_4mer():
 
 
 def test_block_size_auto_pick_rule():
-    """Size-only baseline (mpi_np unknown or 1).  With no rank count
-    the per-rank orbital derivation (job-contracts.md § 3.2/§ 3.3)
-    cannot be stated; the conservative ladder capped at 8 applies
-    (single-rank runs ignore BlockSize anyway).  Unchanged by U18
-    (2026-08-12) -- the contract derivation requires mpi_np."""
+    """The single-rank baseline (``mpi_np = 1``): the per-rank orbital
+    derivation (job-contracts.md § 3.2/§ 3.3) has one rank to divide by, so
+    the conservative ladder capped at 8 applies (a single rank ignores
+    BlockSize anyway).  *(A deck stating no rank count took this ladder too
+    until 2026-10-06; every prepped deck states its ranks, and the window
+    refuses one that does not.)*"""
     from molbuilder.siesta.input import _auto_block_size
     # Known thresholds: each step at a power-of-2 boundary.
-    assert _auto_block_size(2)  == 1
-    assert _auto_block_size(3)  == 1
-    assert _auto_block_size(4)  == 2
-    assert _auto_block_size(7)  == 2
-    assert _auto_block_size(8)  == 4
-    assert _auto_block_size(15) == 4
-    assert _auto_block_size(16) == 8
-    assert _auto_block_size(50) == 8
-    assert _auto_block_size(500) == 8
-    # Explicit mpi_np=1 must behave the same as None.  Single-process
-    # has no rank-constraint to apply.
-    assert _auto_block_size(81, None) == 8
-    assert _auto_block_size(81, 1)    == 8
-    # Ladder invariant: the no-rank-info baseline never exceeds
-    # n_atoms (each ladder step sits at/below its threshold).  Note
-    # propor IMAX=0 is NOT a BlockSize trigger -- it is a
-    # matel_table/mpi_np issue (2026-05-28 empirical sweep).
+    assert _auto_block_size(2, 1)  == 1
+    assert _auto_block_size(3, 1)  == 1
+    assert _auto_block_size(4, 1)  == 2
+    assert _auto_block_size(7, 1)  == 2
+    assert _auto_block_size(8, 1)  == 4
+    assert _auto_block_size(15, 1) == 4
+    assert _auto_block_size(16, 1) == 8
+    assert _auto_block_size(50, 1) == 8
+    assert _auto_block_size(500, 1) == 8
+    assert _auto_block_size(81, 1) == 8
+    # Ladder invariant: the single-rank baseline never exceeds n_atoms
+    # (each ladder step sits at/below its threshold).  Note propor IMAX=0
+    # is NOT a BlockSize trigger -- it is a matel_table/mpi_np issue
+    # (2026-05-28 empirical sweep).
     for n in range(1, 64):
-        assert _auto_block_size(n) <= n, n
+        assert _auto_block_size(n, 1) <= n, n
 
 
 def test_block_size_honours_orbital_rank_constraint():

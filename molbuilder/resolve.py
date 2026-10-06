@@ -174,10 +174,25 @@ class ResolvedConfig:
         emitter's argument. Those are different objects, and conflating them is
         what put ``mpi_np`` in the template in the first place.
         """
-        fields = _emitter_fields(type(self.values))
-        machine = {k: v for k, v in dataclasses.asdict(self.resources).items()
-                   if v is not None and k in fields
-                   and hasattr(self.values, k)}
+        # EACH MACHINE FIELD UNDER THE CONFIG'S OWN NAME, through the one
+        # map (`jobset.model.AS_RESOURCE`, `job-contracts.md` § 6.2): a run's
+        # cores per rank are SIESTA's ``omp_threads`` and PySCF's
+        # ``threads``, its GPU count the number in ``gres``.  This matched
+        # names alone until 2026-10-06, so only ``mpi_np`` and
+        # ``max_memory_mb`` arrived: every deck said its threads were
+        # ``auto``, and a PySCF deck run by hand took the node's cores.
+        from .jobset.model import AS_RESOURCE
+        from .scheduler.quantities import parse_gres_flag
+        machine = {}
+        for name in _emitter_fields(type(self.values)):
+            if not hasattr(self.values, name):
+                continue
+            field_ = AS_RESOURCE.get(name, name)
+            value = getattr(self.resources, field_, None)
+            if field_ == "gres" and value not in (None, ""):
+                value = parse_gres_flag(value)
+            if value not in (None, ""):
+                machine[name] = value
         return (dataclasses.replace(self.values, **machine) if machine
                 else self.values)
 

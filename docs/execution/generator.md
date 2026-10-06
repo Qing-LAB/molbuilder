@@ -526,7 +526,12 @@ reports, and a person writes. The full ladder is
 > exactly those trials, a point the machine cannot hold is refused by name
 > (never clamped — a clamped point measures a configuration nobody
 > declared), and an ABSENT declaration keeps the machine's enumeration as
-> the proposal. On a GPU description a declared `mpi_np` is the point's
+> the proposal. A declared grid states **both** its axes, `mpi_np` and
+> `omp_threads` — one alone is refused, never filled (the other was `[1]`
+> until 2026-10-06); and the machine proposes only from what its record
+> says: a record that does not state its cores per socket proposes no grid
+> (constants stood in until then), and an unknown socket count is no
+> ceiling, never one socket (R3). On a GPU description a declared `mpi_np` is the point's
 > total rank count, and the device count is **declared with `gpu_count`**
 > — exactly those counts, one shelf each; an uneven `(mpi_np, G)` pair is
 > dropped by name (the equal-share rule), a count beyond the machine's
@@ -1024,7 +1029,7 @@ floors.
 |---|---|---|---|---|
 | **1 · physics** | `mesh_cutoff`, k-grid, XC functional, basis, `restart` | **describe** (floor 2) | the user, per stage | the **catalogue** — the single source § 3 draws; the template carries the answer |
 | **2 · structure facts** | cell, **vacuum**, frozen atoms, regions | before describe (the structure file), or **at describe** (`--vacuum`) | whoever built the structure | *unset* — a cell is resolved from the structure at render, with a named default and a warning when nobody chose |
-| **3 · machine / allocation** | `mpi_np`, `omp_threads`, `max_memory_mb`, domain, partition, time | **prep** (floor 3), on the machine that runs it | the resolver, from Environment + config + what you asked for | the detected **Environment** and the scheduler config — never the **template** ([`engines/template.md`](?doc=engines/template.md) § 7 forbids a value there). *What you asked for* may be stated in the description: `allocation` for the queue, wall and memory, `execution` for the launch shape (`stages.md` § 6.8d). An item neither names is answered by the wrapper at run time — `running-a-job.md` § 3.1's chain, which is a resolver and not a gap |
+| **3 · machine / allocation** | `mpi_np`, `omp_threads`, `max_memory_mb`, domain, partition, time | **prep** (floor 3), on the machine that runs it | the resolver, from Environment + config + what you asked for | **no default**: every launch value is stated — `allocation` for the queue, wall and memory, `execution` for the launch shape (`stages.md` § 6.8d), or a flag — or prep refuses the run ([`architecture.md`](?doc=execution/architecture.md) § 5.2); the target's record checks an ask and supplies none, and never the **template** ([`engines/template.md`](?doc=engines/template.md) § 7 forbids a value there) *(an item neither named was answered by the wrapper at run time until 2026-10-02)* |
 | **4 · runtime overrides** | `-np` / `-omp` flags, `MB_NP`, `OMP_NUM_THREADS`, `--mps` / `--no-mps` | **launch**, inside the wrapper | the person or scheduler launching | the values class 3 baked; see the chain below |
 | **5 · policy** | `continue_retries`, stage `restart` policy | **describe** (floor 2) | the user | the catalogue, like class 1 — a policy is portable, which is why it is *not* class 3 |
 

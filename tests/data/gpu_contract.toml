@@ -101,7 +101,7 @@ refused = "needs 8 GPUs but gpu allows 4 GPUs"
 # queue is named when they are sent (the unit 11 review, 2026-10-05).
 [[case]]
 name = "the queue list checks the job's own GPU count"
-bench = { use_gpu = [true], gpu_count = [2], mpi_np = [2] }
+bench = { use_gpu = [true], gpu_count = [2], mpi_np = [2], omp_threads = [1] }
 prep = ["--no-sbatch"]
 allocation_unset = ["domain"]
 launch = []
@@ -281,33 +281,33 @@ header = ["#SBATCH -p gpu", "#SBATCH --gres=gpu:1"]
 
 [[case]]
 name = "a benchmark's trials ask their own count"
-bench = { use_gpu = [true], mpi_np = [8], gpu_count = [1, 2] }
+bench = { use_gpu = [true], mpi_np = [8], gpu_count = [1, 2], omp_threads = [1] }
 bench_gres = ["gpu:1", "gpu:2"]
 
 [[case]]
 name = "a benchmark's GPU ask bounds its trials, as its rank ask does: a declared cell past it is crossed out by name (generator.md 4.1, 4.3a)"
-bench = { use_gpu = [true], mpi_np = [8], gpu_count = [1, 2] }
+bench = { use_gpu = [true], mpi_np = [8], gpu_count = [1, 2], omp_threads = [1] }
 prep = ["--gpus", "1"]
 said = ["needs 2 GPUs but this prep's ask allows 1 GPUs"]
 bench_gres = ["gpu:1"]
 
 [[case]]
 name = "...and a cell the machine proposed past it, the same way -- the prep is not refused over a cell nobody declared"
-bench = { use_gpu = [true], mpi_np = [8] }
+bench = { use_gpu = [true], mpi_np = [8], omp_threads = [1] }
 prep = ["--gpus", "2"]
 said = ["needs 4 GPUs but this prep's ask allows 2 GPUs"]
 bench_gres = ["gpu:1", "gpu:2"]
 
 [[case]]
 name = "...and a trial on the CPU asks no GPU, whatever the benchmark was allowed"
-bench = { use_gpu = [false], mpi_np = [8] }
+bench = { use_gpu = [false], mpi_np = [8], omp_threads = [1] }
 prep = ["--gpus", "1"]
 bench_header_lacks = ["--gres"]
 
 [[case]]
 name = "the binding turned off reaches the benchmark's trials too"
 allocation = { gpu_binding = false }
-bench = { use_gpu = [true], mpi_np = [8], gpu_count = [2] }
+bench = { use_gpu = [true], mpi_np = [8], gpu_count = [2], omp_threads = [1] }
 bench_gres = ["gpu:2"]
 bench_header_lacks = ["enforce-binding"]
 launch = ["--gpu-domain", "gpu"]
@@ -318,13 +318,13 @@ line_lacks = ["enforce-binding"]
 name = "a benchmark on GPUs where no queue lists any is refused"
 queues = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 128 }]
 allocation = { domain = "cpu" }
-bench = { use_gpu = [true], mpi_np = [8] }
+bench = { use_gpu = [true], mpi_np = [8], omp_threads = [1] }
 refused = "no queue with recorded GPUs"
 
 [[case]]
 name = "a benchmark on GPUs on a machine with none at all is refused"
 machine = "workstation"
-bench = { use_gpu = [true], mpi_np = [4] }
+bench = { use_gpu = [true], mpi_np = [4], omp_threads = [1] }
 refused = "states no GPU"
 
 # ===================================================================== #

@@ -57,6 +57,21 @@ KIND_LADDER = "ladder"
 _KINDS = (KIND_SWEEP, KIND_LADDER)
 
 
+#: An engine config's spelling of a `Resources` field -- the exchange
+#: vocabulary (`job-contracts.md` § 6.2): PySCF's ``threads`` is SIESTA's
+#: ``omp_threads``, the cores one process runs on; ``gpu_count`` is the count
+#: in ``gres``; a name missing here is the field's own.  Read by the run
+#: card's assembly, the placement's check and `resolve`'s hand-over to the
+#: deck writer -- one map, the three of them (it lived in
+#: `jobset.placement` until 2026-10-06, and the deck writer matched names
+#: alone, so a run's cores per rank never reached its deck).
+AS_RESOURCE = {
+    "omp_threads": "cpus_per_task",
+    "threads": "cpus_per_task",
+    "gpu_count": "gres",
+    "max_memory_mb": "max_memory_mb",
+}
+
 @dataclass
 class Resources:
     """A per-job scheduler ask.  Every field is optional, and ``None``
