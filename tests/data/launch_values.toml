@@ -125,6 +125,12 @@ launch = []
 launch_refused = ["states no wall (time), memory (mem)", "--time 2-00:00:00 on this launch"]
 
 [[case]]
+name = "a machine never probed is refused at prep, naming the probe that records it -- and nothing is written"
+machine = "unprobed"
+refused = ["no machine record for this machine", "molbuilder jobset probe --write"]
+made_lacks = ["environment.json", "01_coarse"]
+
+[[case]]
 name = "a target whose record says nothing of its activation is refused"
 record = { env_init = {} }
 refused = "this machine's record does not say how a shell enters an environment there"

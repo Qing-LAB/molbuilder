@@ -33,10 +33,11 @@ _NO_RECORD = (
 
 
 def set_machine(base_dir, target: Optional[str] = None, *,
-                environment=None, plan) -> Path:
+                environment, plan) -> Path:
     """**Step 1 of the five: resolve the machine** (`project-layout.md`
-    § 2.3.1) — read the machine's record (its cores, GPUs, scheduler and
-    environment) and snapshot it as ``environment.json`` beside the bundle.
+    § 2.3.1) — the machine's record (its cores, GPUs, scheduler and
+    environment), as the prep entry read it, snapshotted as
+    ``environment.json`` beside the bundle.
 
     **This step existed only inside the benchmark until 2026-08-10.**
     `bench/prep.py` did it; `prep_jobset` did not do it at all, so a staged
@@ -66,7 +67,8 @@ def set_machine(base_dir, target: Optional[str] = None, *,
     **IT DOES NOT PROBE.  A machine that has no record is a REFUSAL**
     *(user, 2026-09-02: "all environments have to be explicitly probed and
     stored. no environment json, error")*, and it names the one command that
-    fixes it.
+    fixes it -- the refusal of the record's one reader, :func:`machine_record`,
+    which the prep entry asks before this is called.
 
     This step used to run a fresh probe and write the answer down whenever no
     scope answered — which read as helpful and is the guess
@@ -77,9 +79,11 @@ def set_machine(base_dir, target: Optional[str] = None, *,
     it is the user's to run, so the record is always something they can point
     at and say where it came from.
 
-    ``environment`` is the record the caller read, once -- `prep` reads it
-    at its checkpoint 4 and checks its activation there (`job-system.md`
-    § 5.0); the copy is made from it.  With none it is read here.
+    ``environment`` is the record the prep entry read, once, at its
+    checkpoint 4, and checked the activation of there (`job-system.md`
+    § 5.0); the copy is made from it.  *(With none it was read here until
+    2026-10-06, for the library door below the entry -- which only tests
+    called.)*
 
     ``plan`` (`jobset.planned.Plan`) receives the copy, and is read for
     one it already holds: `prep` decides everything before it writes
@@ -87,31 +91,21 @@ def set_machine(base_dir, target: Optional[str] = None, *,
 
     Returns the path to ``environment.json``.
     """
-    from ..scheduler import machine_for
     from ..scheduler.record import calculation_record
     out = calculation_record(base_dir)
     if plan.is_file(out):
         return out
-    # `machine_for()` WITHOUT a bundle: the calculation has no record yet (we
-    # just early-returned if it did), so this is the MACHINE scope -- what
-    # `jobset probe` wrote.  Snapshotting that answer rather than re-probing
-    # is what makes one probe serve every calculation here
-    # (configuration.md § 5, M-3).  ``target`` names WHICH machine this is
-    # for (P2); an unknown name is `machine_for`'s own error, naming the ones
-    # that exist.
-    #
-    # NO `probe=`.  Nothing here detects anything: a record is read or the
-    # prep stops.
-    env = environment if environment is not None else machine_for(
-        target=target)
-    if env is None:
-        raise _no_record()
+    # THE CALCULATION HAS NO COPY YET (we just early-returned if it did), so
+    # the record handed over is the MACHINE's -- what `jobset probe` wrote,
+    # read by the entry (`machine_record`).  Snapshotting that answer rather
+    # than re-probing is what makes one probe serve every calculation here
+    # (configuration.md § 5, M-3).  Nothing here detects anything.
     # THE MACHINE IT IS SET TO, named in the copy (M-3): a later prep's
     # `--target` is checked against it.  No target is this machine --
     # `machine_for` refuses the question when another is on file.
     from dataclasses import replace
     from ..scheduler.record import LOCAL_TARGET
-    env = replace(env, machine=target or LOCAL_TARGET)
+    env = replace(environment, machine=target or LOCAL_TARGET)
     from ..persist import json_text
     plan.text(out, json_text(env.to_dict()))
     return out

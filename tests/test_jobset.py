@@ -27,7 +27,6 @@ from molbuilder.jobset.materialize import materialize
 from molbuilder.paths import trial_name
 from molbuilder.jobset.plan import render_plan
 from molbuilder.jobset.submit import SubmitError, plan_launch
-from molbuilder.jobset.prep import prep_jobset
 from molbuilder.jobset.runstatus import jobset_status, render_status
 
 
@@ -377,11 +376,11 @@ def test_render_plan_sweep_says_independent():
 #  (step 6 u5) with the producer, which had no production caller.        #
 #  Each property's live home:                                            #
 #    * default ladder shape / schema-refused override -> the described   #
-#      route (test_prep_calculation.py; resolve refuses by name);        #
+#      route (tests/data/prep_protocol.toml; resolve refuses by name);   #
 #    * the .CG carry conditionals -> test_restart_group.py, repointed    #
 #      at the live `_warm_declaration` seam the same day;                #
 #    * no-edges / continue_retries on resources -> carried per element   #
-#      (test_prep_calculation.py::test_the_allocation_reaches_...);      #
+#      (tests/data/launch_values.toml, tests/data/prep_protocol.toml);   #
 #    * invalid-ladder refusal -> task.py at read + resolve._stage_of.    #
 # --------------------------------------------------------------------- #
 
@@ -414,96 +413,15 @@ def _write_fdf(path):
                     "DM.UseSaveDM .false.\nMD.UseSaveXV .false.\n")
 
 
-def _decks_where_prep_writes_them(base, js, write=_write_fdf):
-    """Each distinct deck written where `prep_calculation` writes it -- its
-    first job's own directory, a trial's attempt where the shape keeps one
-    (`project-layout.md` § 1.0) -- the place `prep_jobset` reads it from.  A
-    deck left at the root was adopted until 2026-10-03; nothing writes one
-    there."""
-    from molbuilder.jobset.materialize import (job_dir_names, shape_of,
-                                               trial_work_dir)
-    sh = shape_of(js, base)
-    dirs = job_dir_names(js, sh)
-    done = set()
-    for j in js.jobs:
-        if j.script in done:
-            continue
-        d = base / dirs[j.name]
-        if js.kind == "sweep":
-            d = trial_work_dir(d, sh)
-        d.mkdir(parents=True, exist_ok=True)
-        write(d / j.script)
-        done.add(j.script)
-
-
-def test_prep_renders_real_wrappers_into_each_job_dir(tmp_path):
-    """L1+L2 (roadmap 7.10, user 2026-08-24): every trial directory holds
-    its own REAL deck and wrapper, and the bundle root holds NO rendered
-    file.  This asserted the inverse until the layout repair -- one root
-    render, symlinked into both dirs -- which is the mechanism that put
-    50 rendered files at a real ten-trial bundle's root."""
-    js = _sweep()
-    _decks_where_prep_writes_them(tmp_path, js)
-    prep_jobset(js, tmp_path, env="molbuilder-siesta-gpu", emit_sbatch=False)
-    # nothing rendered is at the root
-    assert not (tmp_path / "job-gpu.run.sh").exists()
-    assert not (tmp_path / "job-gpu.fdf").exists()
-    for name in ("bench-G1K1C4", "bench-G1K2C4"):
-        d = tmp_path / "bench" / name
-        for fn in ("job-gpu.fdf", "job-gpu.run.sh"):
-            f = d / fn
-            assert f.is_file() and not f.is_symlink(), (name, fn)
-
-
-def test_prep_bakes_the_warm_retry_budget_into_the_wrapper(tmp_path):
-    """**The whole road for `continue_retries`, end to end.**
-
-    job-contracts.md § 6.2: the budget rides ``jobset.Resources`` -- the same
-    road ``mpi_np`` and ``omp_threads`` ride -- but becomes no sbatch flag.
-    It is baked into the wrapper's own retry loop at install time
-    (running-a-job.md § 3.5).
-
-    Asserted on the EMITTED TEXT rather than on a call argument, because the
-    defect this closes was exactly a value that travelled correctly and was
-    then dropped at the last hop: `job-system.md § 4.1` recorded the SIESTA
-    ladder as never having implemented `continue`, and prep not passing the
-    field was where it stopped (fixed 2026-08-07, P2 unit 3)."""
-    js = JobSet(name="lad", engine="siesta", kind="ladder",
-                jobs=[Job(name="tight", script="job.fdf",
-                          resources=Resources(mpi_np=1, cpus_per_task=1,
-                                            continue_retries=3))])
-    _decks_where_prep_writes_them(tmp_path, js)
-    prep_jobset(js, tmp_path, env="molbuilder-siesta", emit_sbatch=False)
-
-    wrapper = (tmp_path / "bench-tight" / "job.run.sh").read_text()
-    assert "_siesta_retry_max=3" in wrapper, wrapper
-    # and the wrapper SAYS so to the person reading its banner
-    assert "3" in wrapper and "etry" in wrapper
-
-
-def test_prep_omits_the_retry_loop_when_no_budget_is_asked_for(tmp_path):
-    """The other half: absent means absent.  A wrapper that always carried a
-    retry loop would re-enter SIESTA for jobs nobody asked to retry."""
-    js = JobSet(name="lad", engine="siesta", kind="ladder",
-                jobs=[Job(name="tight", script="job.fdf",
-                          resources=Resources(mpi_np=1, cpus_per_task=1))])
-    _decks_where_prep_writes_them(tmp_path, js)
-    prep_jobset(js, tmp_path, env="molbuilder-siesta", emit_sbatch=False)
-    assert "_siesta_retry_max=" not in (tmp_path / "bench-tight" / "job.run.sh").read_text()
-
-
-def test_prep_rejects_missing_script(tmp_path):
-    """`prep` refuses when a job's deck is not in the bundle, and names what is
-    missing.
-
-    The alternative is a bundle that preps "successfully" and produces a wrapper
-    pointing at a file that is not there -- discovered by SLURM hours later as a
-    failed job with an unhelpful log, after the queue wait has been paid.
-    `PrepError` at the door keeps the diagnosis at the moment of the mistake.
-    """
-    from molbuilder.jobset.errors import PrepError
-    with pytest.raises(PrepError, match="not in"):
-        prep_jobset(_sweep(), tmp_path, emit_sbatch=False)
+# Retired 2026-10-06 with `prep_jobset` as a door of its own -- it takes
+# the prep entry's answer now (`job-system.md` § 5.0) -- five tests that
+# handed it a hand-built job set and decks written by hand.  Each rule is
+# held on the road: every file a stage's prep writes, real and in its own
+# folder (`tests/data/the_catalogue.toml`); the retry budget baked into the
+# run script, and none when none is asked (`tests/data/prep_protocol.toml`);
+# `STAGE-PLAN.md` (`tests/data/hand_overs.toml`'s `plan` rows).  A job
+# whose deck is missing cannot reach the wrapper step: the entry writes the
+# decks it wraps.
 
 
 def test_render_plan_surfaces_per_job_ranks_and_cores():
@@ -603,8 +521,9 @@ def test_cli_prep_is_described_only(tmp_path):
     assert r.exit_code != 0
     assert "not a described calculation" in r.output
     assert "jobset init" in r.output
-    # the library route for laying out a hand-built set is prep_jobset,
-    # pinned by the prep_jobset tests above; nothing was laid out here
+    # nothing lays out a hand-built set: prep is the described route's
+    # alone (its library door, `prep_jobset` called directly, went
+    # 2026-10-06), and nothing was laid out here
     assert not (tmp_path / "bench-G1K1C4").exists()
 
 
@@ -778,16 +697,6 @@ def test_a_wrapper_is_made_of_exactly_these_blocks(tmp_path):
         "§ 2.6 lists blocks no fixture renders -- extend the fixture set "
         f"or retire the rows:\n  {sorted(unrendered)}")
     assert conditional, "the conditional tags vanished from the table"
-
-
-def test_prep_writes_stage_plan_md(tmp_path):
-    """J1 (D3): prep emits STAGE-PLAN.md into the bundle (bench parity)."""
-    js = _sweep()
-    _decks_where_prep_writes_them(tmp_path, js)
-    prep_jobset(js, tmp_path, emit_sbatch=False)
-    plan = tmp_path / "STAGE-PLAN.md"
-    assert plan.is_file()
-    assert "JOB-SET PLAN" in plan.read_text()
 
 
 # --------------------------------------------------------------------- #
@@ -1397,50 +1306,10 @@ def test_prepare_attempt_refuses_a_flat_calculation(tmp_path):
     assert prepare_attempt(js, tmp_path, "tight").dir.name == "run-0"
 
 
-@pytest.mark.parametrize("shape", ["flat", "hierarchical"])
-def test_prep_leaves_every_job_a_readable_deck_and_wrapper(tmp_path, shape):
-    """`job-system.md` decision #2: *"Each job in a JobSet is launched by
-    exactly the `.run.sh` / `.sbatch` wrapper … built by the same function."*
-    A job whose deck or wrapper is a **dangling symlink** is launched by
-    nothing.
-
-    This is M5 pass 1's finding, and it was severe: in the flat shape a job's
-    directory IS the bundle root, so `relink(d, "../<name>", …)` unlinked the
-    real file and pointed at the bundle's PARENT.  A flat prep destroyed its
-    own decks, its wrappers and the monitor — every one of them.
-
-    It was invisible to the check I ran at the time, which asked *"does prep
-    make the right directories?"* (flat: none, correct) and never asked whether
-    the files survived.  So the assertion here is about **what a job can
-    actually open**, in both shapes, which is the obligation rather than the
-    mechanism.
-    """
-    from molbuilder.jobset.materialize import job_dir_names, shape_of
-    from molbuilder.jobset.prep import prep_jobset
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_03_tight.fdf")
-    _describe(tmp_path, shape, names=("coarse", "tight"))
-    _decks_where_prep_writes_them(
-        tmp_path, js, write=lambda p: p.write_text("SystemLabel JOB\n"))
-    (tmp_path / "mb_monitor.py").write_text("# monitor\n")
-
-    prep_jobset(js, tmp_path, emit_sbatch=False)
-
-    dir_of = job_dir_names(js, shape_of(js, tmp_path))
-    for job in js.jobs:
-        d = tmp_path / dir_of[job.name]
-        deck = d / job.script
-        assert deck.exists(), f"{shape}: {job.name}'s deck does not resolve"
-        assert deck.read_text().strip(), f"{shape}: {job.name}'s deck is empty"
-        wrapper = d / (Path(job.script).stem + ".run.sh")
-        assert wrapper.exists(), f"{shape}: {job.name} has no runnable wrapper"
-
-    # ...and nothing anywhere points outside the bundle.  The ONLY dangling
-    # links a correct tree may hold are the hierarchy's carry-forwards, which
-    # are meant to dangle until the producer runs (job-system.md D1).
-    stray = [str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*")
-             if p.is_symlink() and not p.exists()
-             and not p.name.startswith("JOB.")]
-    assert stray == [], f"{shape}: dangling links that are not carry-forwards: {stray}"
+# `test_prep_leaves_every_job_a_readable_deck_and_wrapper` retired
+# 2026-10-06 (a hand-built job set handed to `prep_jobset`): every file a
+# stage's prep writes is there as the card names it, in both shapes, and a
+# launch runs it -- `tests/data/the_catalogue.toml`.
 
 
 def _deck_rendered_for(path, mpi_np):
@@ -1532,29 +1401,10 @@ def test_prep_reports_the_resources_this_stage_will_be_launched_with(tmp_path):
 #  P6 unit 1 -- step ONE of the five, lifted out of the benchmark        #
 # --------------------------------------------------------------------- #
 
-def test_prep_resolves_the_machine_before_anything_else(tmp_path):
-    """`project-layout.md` § 2.3.1 step 1: *"Resolve the machine — detect
-    cores, GPUs, scheduler, conda → environment.json"*, and the order is
-    forced, not chosen.
-
-    **The general `prep` did not do this at all until 2026-08-10.**
-    `bench/prep.py` did; `prep_jobset` went straight to rendering wrappers on
-    a machine nobody had asked about. § 2.3.1a says how to read that: the
-    benchmark is *"the one place this framework is already built"*, built
-    there because that is where the need appeared first — so **the general
-    part is lifted out of it**, not borrowed from it.
-    """
-    from molbuilder.jobset.prep import prep_jobset
-    js = _sweep()
-    _decks_where_prep_writes_them(tmp_path, js)
-    assert not (tmp_path / "environment.json").exists()
-
-    prep_jobset(js, tmp_path, emit_sbatch=False)
-
-    import json
-    env = json.loads((tmp_path / "environment.json").read_text())
-    assert env["schema"] == "molbuilder/environment@2"
-    assert env["topology"]["cores_per_socket"] >= 1     # a real probe ran
+# `test_prep_resolves_the_machine_before_anything_else` retired 2026-10-06
+# (a hand-built job set handed to `prep_jobset`): the calculation's copy of
+# its machine's record is what every verb after prep reads, and a refused
+# prep leaves none (`tests/data/prep_protocol.toml`).
 
 
 def test_the_machine_probe_is_molbuilders_not_the_benchmarks():
@@ -1575,88 +1425,14 @@ def test_the_machine_probe_is_molbuilders_not_the_benchmarks():
     assert importlib.util.find_spec("molbuilder.bench.environment") is None
 
 
-def test_a_machine_WITHOUT_A_RECORD_stops_the_prep(tmp_path, monkeypatch):
-    """**Reversed 2026-09-02.**  It read *"a machine that will not probe does
-    not stop the prep"* -- best-effort, on the reasoning that `prep` has four
-    other steps and the deck/launch agreement is what refuses a wrong launch.
-
-    That was true and is now the wrong trade.  What a best-effort step 1
-    produced was a wrapper whose numbers came from **whichever box happened
-    to run prep**, which for a bundle described at a desk and run on a
-    cluster is the wrong machine -- and the number looks exactly like a right
-    one, so nothing downstream can tell.  A missing *description* becoming a
-    missing *calculation* is the cheaper failure by far: it costs one command
-    *(user, 2026-09-02: "all environments have to be explicitly probed and
-    stored. no environment json, error")*.
-
-    So the probe is gone entirely -- there is nothing left to be
-    best-effort ABOUT -- and a record-less machine is refused, by name, with
-    the command.
-    """
-    from molbuilder.jobset.errors import PrepError
-    from molbuilder.jobset.prep import prep_jobset
-    from molbuilder.scheduler import machine_scope_path
-
-    # NOTHING is probed: the record the suite writes for every test is gone.
-    Path(machine_scope_path()).unlink(missing_ok=True)
-
-    js = _sweep()
-    _write_fdf(tmp_path / "job-gpu.fdf")
-    with pytest.raises(PrepError) as exc:
-        prep_jobset(js, tmp_path, emit_sbatch=False)
-
-    said = str(exc.value)
-    assert "no machine record" in said, said
-    assert "jobset probe --write" in said, (
-        "the refusal does not name the command that fixes it: " + said)
-    assert not (tmp_path / "environment.json").exists(), (
-        "a refused prep left a record behind -- it probed after all")
+# `test_a_machine_WITHOUT_A_RECORD_stops_the_prep` is a row since
+# 2026-10-06: a machine never probed is refused at prep, naming the probe
+# that records it (`tests/data/launch_values.toml`).
 
 
 # --------------------------------------------------------------------- #
 #  P12 unit 3 -- the two environments, pinned on the claim that matters  #
 # --------------------------------------------------------------------- #
-
-def _prep_bundle(base, *, scheduler: bool, monkeypatch):
-    """Prep the same two-stage flat calculation, with and without a cluster.
-
-    A CLUSTER IS ITS RECORD: a scheduler and the queues it lists.  And a run
-    on it STATES its queue, wall and memory (`architecture.md` § 5.2) -- a
-    `scheduler` block in `molbuilder.json` stood in for both until
-    2026-10-02.
-    """
-    import dataclasses
-    from molbuilder.jobset.prep import prep_jobset
-    base.mkdir(parents=True, exist_ok=True)
-    _describe(base, "flat", names=("coarse", "tight"))
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_02_tight.fdf")
-    for j in js.jobs:
-        (base / j.script).write_text("SystemLabel JOB\n")
-        if scheduler:
-            j.resources = dataclasses.replace(
-                j.resources, domain="public", time="0-04:00:00", mem="8G")
-    from molbuilder.scheduler import Domain, Topology
-    monkeypatch.chdir(base)
-    # THE MACHINE'S RECORD, in a config directory of its own: the bundle is
-    # where prep SNAPSHOTS it, so a record written there is the copy, not the
-    # machine.  Until 2026-10-02 the cluster record was written into the
-    # bundle, the config root pointed there too, and the conftest default
-    # then overwrote it -- both arms prepped a workstation, and the claim
-    # below compared a workstation with itself.
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR",
-                       str(base.parent / f"{base.name}-config"))
-    from conftest import write_machine_record
-    write_machine_record(
-        scheduler="slurm" if scheduler else "workstation",
-        topology=Topology(sockets=2, cores_per_socket=64),
-        domains=([Domain(name="public", partition="public",
-                         qos="public", max_time="1-00:00:00")]
-                 if scheduler else []),
-        env_init={"activation": "conda activate",
-                  "preamble": "source /x/conda.sh"})
-    prep_jobset(js, base, env="molbuilder-siesta")
-    return base
-
 
 def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
     """**The claim the whole two-layer split rests on**, and it was asserted
@@ -1667,9 +1443,48 @@ def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
     true then the SAME `.run.sh` runs in both places -- so a run you debugged
     on your laptop is the run the cluster performs.  If it ever stops being
     true, the laptop stops being a rehearsal and this test is how you find out.
+
+    ON THE ROAD, two calculations -- so a function, not a row, which is one:
+    one description by `jobset init`, copied before anything was prepped, and
+    each prepped by `jobset prep` -- for this machine, a workstation, and for
+    `sol`, a cluster whose record names a queue, with the same way into an
+    environment (a hand-built job set handed to `prep_jobset` stood here
+    until 2026-10-06).
     """
-    ws = _prep_bundle(tmp_path / "ws", scheduler=False, monkeypatch=monkeypatch)
-    hpc = _prep_bundle(tmp_path / "hpc", scheduler=True, monkeypatch=monkeypatch)
+    import json
+    import shutil
+    from conftest import write_machine_record
+    from molbuilder.config_dir import ensure_private_dir
+    from molbuilder.scheduler import (Domain, Environment, Topology,
+                                      environments_dir,
+                                      named_environment_path,
+                                      write_environment)
+    from support.road import describe_h2, jobset
+    enters = {"activation": "conda activate",
+              "preamble": "source /x/conda.sh"}
+    write_machine_record(scheduler="workstation", env_init=enters)
+    ensure_private_dir(environments_dir())
+    write_environment(Environment(
+        scheduler="slurm", topology=Topology(sockets=2, cores_per_socket=64),
+        domains=[Domain.from_row({
+            "name": "cpu", "partition": "cpu", "qos": "public",
+            "max_time": "1-00:00:00", "max_cores": 128,
+            "node_types": [{"cores": 128, "nodes": 4}]})],
+        env_init=enters), named_environment_path("sol"))
+    ws = describe_h2(tmp_path, monkeypatch, shape="flat")
+    hpc = ws.parent / "H2-on-sol"
+    shutil.copytree(ws, hpc)
+    # A RUN ON A CLUSTER STATES ITS QUEUE, WALL AND MEMORY
+    # (`architecture.md` § 5.2) -- in the description, as a person states it.
+    task = json.loads((hpc / "task.json").read_text())
+    task["allocation"] = {"domain": "cpu", "time": "04:00:00", "mem": "8G"}
+    (hpc / "task.json").write_text(json.dumps(task, indent=2))
+    for bundle, target in ((ws, "this"), (hpc, "sol")):
+        r = jobset("prep", "run", "coarse", "--bundle", bundle,
+                   "--target", target)
+        assert r.exit_code == 0, r.output
+    assert (hpc / "H2_01_coarse.sbatch").is_file(), "the cluster has no header"
+
     def _logic(text: str) -> str:
         """The script without its PROVENANCE timestamp.
 
@@ -1684,77 +1499,24 @@ def test_the_inner_wrapper_is_byte_identical_on_both(tmp_path, monkeypatch):
         return "\n".join(l for l in text.splitlines()
                           if not l.lstrip("# ").startswith("generated-at"))
 
-    for name in ("JOB_01_coarse.run.sh", "JOB_02_tight.run.sh"):
-        a = _logic((ws / name).read_text())
-        b = _logic((hpc / name).read_text())
-        assert a == b, (
-            f"{name} differs between a workstation and a cluster -- the inner "
-            "wrapper is supposed to be the same file, so a laptop run is a "
-            "rehearsal of the cluster run")
+    name = "H2_01_coarse.run.sh"
+    a = _logic((ws / name).read_text())
+    b = _logic((hpc / name).read_text())
+    assert a == b, (
+        f"{name} differs between a workstation and a cluster -- the inner "
+        "wrapper is supposed to be the same file, so a laptop run is a "
+        "rehearsal of the cluster run")
 
 
 # --------------------------------------------------------------------- #
 #  P12 unit 4 -- the five steps run in their order                       #
 # --------------------------------------------------------------------- #
 
-def test_prep_resolves_the_machine_before_it_writes_anything(tmp_path,
-                                                             monkeypatch):
-    """`project-layout.md` § 2.3.1: the order is forced, not chosen.
-
-    **Step 3 cannot precede step 1.** A deck carries values that depend on how
-    it will be launched -- a block size derived from the rank count, an
-    eigensolver that also picks which environment the wrapper activates -- so a
-    deck written before the machine is known has guessed at them.
-
-    The outcome alone cannot show this: a prep that resolved the machine LAST
-    leaves exactly the same files behind.  So the order is observed directly --
-    the two steps' functions are wrapped and the call order recorded.  Step 1
-    is `machine.set_machine`, step 4 is `write_run_wrapper`; if the wrapper is
-    written first, the deck it accompanies was rendered against nothing.
-    """
-    from molbuilder.jobset import prep as _prep
-
-    base = tmp_path / "b"
-    base.mkdir()
-    _describe(base, "flat", names=("coarse", "tight"))
-    js = _token_ladder("JOB_01_coarse.fdf", "JOB_02_tight.fdf")
-    for j in js.jobs:
-        (base / j.script).write_text("SystemLabel JOB\n")
-    monkeypatch.chdir(base)
-    # THE SANDBOX IS THE CONFIG ROOT.  This config was read through the
-    # working-directory step, which is gone (configuration.md § 2.1a) --
-    # without naming the directory the write lands in a file nothing
-    # opens, and the test passes having configured nothing.
-    monkeypatch.setenv("MOLBUILDER_CONFIG_DIR", str(base))
-    # The record follows the config root: this env var moves the
-    # machine scope, and prep refuses without a record there.
-    from conftest import write_machine_record
-    write_machine_record()
-
-    from molbuilder import runwrap as _rw
-
-    order: list = []
-    real_target, real_wrap = _prep.set_machine, _rw.write_run_wrapper
-
-    def spy_target(*a, **k):
-        order.append("1 machine")
-        return real_target(*a, **k)
-
-    def spy_wrap(*a, **k):
-        order.append("4 wrapper")
-        return real_wrap(*a, **k)
-
-    # `prep_jobset` imports the wrapper writer inside its own body, so the
-    # patch goes on the SOURCE module -- patching `prep` would miss it.
-    monkeypatch.setattr(_prep, "set_machine", spy_target)
-    monkeypatch.setattr(_rw, "write_run_wrapper", spy_wrap)
-    _prep.prep_jobset(js, base, env="molbuilder-siesta")
-
-    assert order[0] == "1 machine", (
-        f"prep wrote a wrapper before resolving the machine: {order}")
-    assert "4 wrapper" in order, "no wrapper was written at all"
-    # ...and the machine is resolved ONCE per bundle, not once per stage.
-    assert order.count("1 machine") == 1, order
+# `test_prep_resolves_the_machine_before_it_writes_anything` retired
+# 2026-10-06: it spied on the order of two calls below the entry.  The
+# entry reads the record at its checkpoint 4 and resolves the stage with it
+# as an argument, so no deck can be written against no machine; and a
+# refused prep writes nothing (`tests/data/prep_protocol.toml`).
 
 
 def test_the_library_itself_refuses_a_whole_ladder(tmp_path):

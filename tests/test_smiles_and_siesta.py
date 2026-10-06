@@ -1023,14 +1023,13 @@ class TestSiestaStageOverlay:
     #
     #   (a) the per-stage tier values (CG vs Broyden, force tol) -- the
     #       preset tables are asserted directly by the tests above, and the
-    #       rendered rung by test_prep_calculation.py::
-    #       test_the_named_stages_overrides_are_what_got_rendered;
+    #       rendered rung on the road -- `tests/data/prep_protocol.toml`'s
+    #       "the stage named is the stage written" rows;
     #   (b) the stage's artifact token reaching the artifact NAMES --
     #       test_trajectory_log_stage_targets.py (repointed the same day);
     #   (c) the token + `# Stage <token> --` header inside the RENDERED deck
-    #       -- test_prep_calculation.py::
-    #       test_the_deck_carries_its_stages_token_and_header, added with
-    #       this retirement so the property never lost a producer-side gate.
+    #       -- the same rows (a test of its own was added with this
+    #       retirement, and became them 2026-10-06).
 
 
 # --------------------------------------------------------------------- #

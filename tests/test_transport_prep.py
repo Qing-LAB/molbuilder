@@ -40,7 +40,7 @@ from conftest import write_pseudos
 from molbuilder.transport.sort import (REGION_BRIDGE, REGION_BUFFER,
                                          REGION_LEFT_ELECTRODE,
                                          REGION_RIGHT_ELECTRODE)
-from molbuilder.jobset.prep import prep_calculation as _prep_calculation
+from support.road import jobset
 from molbuilder.structure import Structure
 from test_transport_compose import _BRIDGE, _LAYERS_L, _LAYERS_R
 
@@ -159,17 +159,6 @@ def _junction_struct(*, order="canonical", buffers=False, across=_ACROSS,
 _RUN_CARD = {"mpi_np": 16, "omp_threads": 1}
 
 
-def prep_calculation(base, stage=None, **kw):
-    """`prep`'s five steps, handed the run card's shape the way the prep
-    entry hands it (`prep_run_inputs` -> ``chosen``, in `Resources`' own
-    words) -- these tests drive the steps below the entry, which reads the
-    card.  A test's own ``chosen`` speaks over it, field by field."""
-    kw["chosen"] = {"mpi_np": _RUN_CARD["mpi_np"],
-                    "cpus_per_task": _RUN_CARD["omp_threads"],
-                    **(kw.get("chosen") or {})}
-    return _prep_calculation(base, stage, **kw)
-
-
 def _describe_transport(root, *, cite, bias=(0.0, 0.2)):
     from molbuilder.task import Stage, Task, derive_run, write_task
     dest = root / "J" / "transport" / "T"
@@ -204,7 +193,8 @@ class TestFormBContract:
     contract is the description's own -- the contract's items are
     ordinary overrides and land in the rendered deck."""
 
-    def test_an_open_contract_field_reaches_the_deck(self, tmp_path):
+    def test_an_open_contract_field_reaches_the_deck(self, tmp_path,
+                                                     monkeypatch):
         """SCIENCE. A form-B citation carries no deck, so nothing dictates its
         electronic description — and the person must still be able to state it.
 
@@ -224,8 +214,10 @@ class TestFormBContract:
 
         Contract: `engines/transport.md` § 3.1 (form A vs form B) + § 2a.7.
         """
+        from molbuilder.projects import PROJECTS_ROOT_ENV
         from molbuilder.workingcopy_structure import StructureCodec
         root = tmp_path / "projects"
+        monkeypatch.setenv(PROJECTS_ROOT_ENV, str(root))
         pair = root / "J" / "structure" / "junc"
         pair.mkdir(parents=True)
         StructureCodec().write(_junction_struct(), pair / "junction.xyz")
@@ -244,7 +236,8 @@ class TestFormBContract:
         tmpl.write_text(_emit(
             [dataclasses.replace(i, value="TZP") if i.name == "basis_size"
              else i for i in parsed.items], engines=("siesta",)))
-        prep_calculation(dest, "seed")
+        r = jobset("prep", "run", "seed", "--bundle", dest)
+        assert r.exit_code == 0, r.output
         deck = (dest / "01_seed" / "T_01_seed.fdf").read_text()
         assert _says(deck, "PAO.BasisSize", "TZP"), (
             "a pair's electronic description is the person's to state, and "

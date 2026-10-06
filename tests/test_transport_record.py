@@ -17,8 +17,6 @@ from pathlib import Path
 import pytest
 
 from molbuilder.transport.record import conductance_g0, parse_avtrans
-# `prep_calculation` from there too: the five steps handed the run card's
-# shape, as the prep entry hands it (`architecture.md` § 5.2).
 
 _DATA = Path(__file__).parent / "data"
 

@@ -21,7 +21,7 @@ from molbuilder.scheduler import Environment, Topology
 from molbuilder.jobset.prep_inputs import bench_inputs
 from molbuilder.jobset.model import Resources
 from molbuilder.jobset.errors import PrepError
-from molbuilder.jobset.prep import prep_calculation
+from molbuilder.jobset.prep import prep_stage
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 from molbuilder.task import Stage
@@ -152,11 +152,11 @@ def calc(tmp_path):
 
 
 def _prep_bench(calc):
-    sweep, pins, translation = bench_inputs(calc, None)
-    prep_calculation(calc, "coarse",
-                     allocation=Resources(mpi_np=8, cpus_per_task=8),
-                     sweep=sweep, pins=pins, translation=translation,
-                     emit_sbatch=False)
+    """`prep bench coarse`, through the one entry -- what the command line
+    and the Task setup tab call -- this prep's ask bounding the cells."""
+    prep_stage(calc, "bench", "coarse",
+               allocation=Resources(mpi_np=8, cpus_per_task=8),
+               emit_sbatch=False)
     # The sweep's OWN record lives in the stage's bench/ container
     # (job-contracts.md § 6.3); the root job-set.json is the RUN plan.
     return json.loads(
@@ -1222,15 +1222,10 @@ def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):
                                       gpus_per_node=1,
                                       gpu_type="a100"),
                     env_init=_ENTERS).to_json() + "\n")
-    sweep, pins, translation = bench_inputs(dest, None)
-    prep_calculation(dest, "coarse",
-                     allocation=Resources(mpi_np=8, cpus_per_task=8),
-                     sweep=sweep, pins=pins, translation=translation,
-                     emit_sbatch=False)
-    prep_calculation(dest, "medium",
-                     allocation=Resources(mpi_np=8, cpus_per_task=8),
-                     sweep=sweep, pins=pins, translation=translation,
-                     emit_sbatch=False)
+    for stage in ("coarse", "medium"):
+        prep_stage(dest, "bench", stage,
+                   allocation=Resources(mpi_np=8, cpus_per_task=8),
+                   emit_sbatch=False)
     coarse = dest / "bench_01_coarse" / "job-set.json"
     medium = dest / "bench_02_medium" / "job-set.json"
     assert coarse.is_file() and medium.is_file()
@@ -1312,14 +1307,12 @@ def test_a_stage_without_an_open_attempt_refuses_to_launch(calc):
     from click.testing import CliRunner
     from molbuilder.jobset._cli import jobset_group
     import shutil
-    from molbuilder.jobset.prep import prep_calculation as _pc
-    # the five steps alone, so the run card's GPU count is said here, as
-    # the prep entry folds it (`execution/gpu.md` G5)
-    _pc(calc, "coarse", allocation=Resources(mpi_np=2, cpus_per_task=2,
-                                             gres="gpu:1"),
-        emit_sbatch=False)
-    # THE STATE IS BUILT, NOT LEFT BEHIND BY PREP.  This used to call
-    # `prep_calculation` and assert no attempt appeared -- "library prep: NO
+    # `prep run coarse`, through the one entry: the run card states the
+    # launch shape and its GPU (`execution/gpu.md` G5)
+    prep_stage(calc, "run", "coarse", allocation=Resources(),
+               emit_sbatch=False)
+    # THE STATE IS BUILT, NOT LEFT BEHIND BY PREP.  This used to prep below
+    # the entry and assert no attempt appeared -- "library prep: NO
     # attempt opened" -- which pinned the half-verb as if it were the design:
     # prep returned a folder `launch` refuses, and every caller that was not
     # the CLI shipped it.  Prep opens the attempt now (2026-09-08), so the
@@ -1338,47 +1331,12 @@ def test_a_stage_without_an_open_attempt_refuses_to_launch(calc):
     assert not (calc / "01_coarse" / "run.json").exists()
 
 
-def test_a_trial_deck_is_forced_cold_not_only_relabelled():
-    """The relabel alone does not cover the case that matters.
-
-    Prep the same trial twice and the second render carries the SAME trial
-    label, so the engine finds the FIRST attempt's ``.XV`` / ``.DM`` under it
-    and warm-starts.  That point measures a continued run while its
-    neighbours measure cold ones, and the timings a benchmark exists to
-    compare stop being comparable.
-
-    So a trial's config is forced to ``restart = "clean"`` however the
-    description was written -- here the description says ``continue``, which
-    is the case the relabel cannot save.
-    """
-    import dataclasses
-    from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.resolve import ResolvedConfig
-    from molbuilder.jobset.model import Resources
-
-    warm = SiestaConfig(system_label="bdt", restart="continue")
-    trial = ResolvedConfig(values=warm, resources=Resources(),
-                           point={"G": 1, "K": 4}, label="bdt-G1K4")
-    run = ResolvedConfig(values=warm, resources=Resources(),
-                         point={}, label="bdt")
-
-    assert trial.is_trial is True
-    assert run.is_trial is False
-
-    # What `prep_calculation` does to each, in the branch under test.
-    def _as_prepped(element):
-        cfg = element.render_config()
-        if element.is_trial:
-            cfg = dataclasses.replace(cfg, system_label=element.label)
-            if hasattr(cfg, "restart"):
-                cfg = dataclasses.replace(cfg, restart="clean")
-        return cfg
-
-    assert _as_prepped(trial).restart == "clean", (
-        "a trial must be forced cold -- a second prep of the same trial would "
-        "otherwise warm-start from its own first attempt")
-    assert _as_prepped(run).restart == "continue", (
-        "a RUN keeps what the description asked for; only trials are forced")
+# `test_a_trial_deck_is_forced_cold_not_only_relabelled` retired 2026-10-06:
+# it asserted a copy of prep's branch written in the test, a hard replace
+# prep stopped making when the measurement pin became the one setter (Q6a,
+# 2026-08-21).  A trial's deck written cold by a real prep, and the
+# submission refusing one that is not: `test_value_axes.py`'s
+# `test_submission_gates_the_cold_start_against_the_deck`.
 
 
 # --------------------------------------------------------------------- #

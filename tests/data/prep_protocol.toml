@@ -194,3 +194,61 @@ stage = "extra"
 prep = ["--cold"]
 made = ["01_coarse/run-0", "02_extra/run-0"]
 made_lacks = ["01_extra"]
+
+# ===================================================================== #
+#  THE STAGE NAMED IS THE STAGE WRITTEN, FROM THE DESCRIPTION           #
+#  (§ 5.0 checkpoints 4 and 4b: the stage resolves once -- the          #
+#  description, its template and the run card read once -- and every    #
+#  deck and run script is written from that answer)                     #
+# ===================================================================== #
+
+[[case]]
+name = "the stage named is the stage written -- its own values, its token, its header line"
+deck = ["MD.TypeOfRun CG", "MD.MaxForceTol 0.05", "# Stage 01_coarse --"]
+
+[[case]]
+name = "...a later stage its own"
+stage = "medium"
+prep = ["--cold"]
+deck = ["MD.TypeOfRun Broyden", "MD.MaxForceTol 0.04", "# Stage 02_medium --"]
+
+[[case]]
+name = "a stage the ladder does not hold is refused by name"
+stage = "nonesuch"
+refused = ["nonesuch"]
+made_lacks = ["job-set.json"]
+
+[[case]]
+name = "a template value no stage varies reaches the deck"
+template = { mesh_cutoff = 275.0 }
+deck = ["MeshCutoff 275.0"]
+
+[[case]]
+name = "the template's retry budget reaches the run script"
+template = { continue_retries = 4 }
+run_sh = ["_siesta_retry_max=4"]
+
+[[case]]
+name = "...the run card's beats it"
+template = { continue_retries = 4 }
+run = { continue_retries = 2 }
+run_sh = ["_siesta_retry_max=2"]
+
+[[case]]
+name = "...and no budget writes no retry loop"
+template = { continue_retries = 0 }
+run_sh_lacks = ["_siesta_retry_max="]
+
+[[case]]
+name = "the description's reporting policy reaches the run script -- when, how often, and where, by name"
+notify = { on_scf_converged = true, every_hours = 4, channels = ["slack", "lab"] }
+run_sh = ["--notify-on-scf", "--notify-every-hours 4", '--notify-channels "slack,lab"']
+
+[[case]]
+name = "...an empty channel list survives -- report to none, never to every channel"
+notify = { on_scf_converged = true, channels = [] }
+run_sh = ['--notify-channels ""']
+
+[[case]]
+name = "...and a description without one leaves the run script without one"
+run_sh_lacks = ["--notify-"]

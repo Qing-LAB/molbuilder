@@ -415,7 +415,7 @@ work, and it is a property of the data model rather than of any surface.
 > to the machine axes and reading the bench's grid as the run's shape.
 
 **Same framework, different arity — and the framework is the pipeline BELOW
-`resolve()`.** Both lanes end in `prep_calculation → resolve() → ParameterSet
+`resolve()`.** Both lanes end in `prep_stage → resolve() → ParameterSet
 → the renderers`, and that is what "one framework" means. What differs is the
 step above it: a bench hands down a sweep and its translation; a run hands
 down one condition, split by the catalogue into the launch shape and the pins

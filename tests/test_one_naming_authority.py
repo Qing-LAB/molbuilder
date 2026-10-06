@@ -64,8 +64,8 @@ def test_prep_writes_where_job_dir_names_will_look(tmp_path, monkeypatch):
     THE PROPERTY THE COMMENT ASSERTED AND NOTHING CHECKED, one layer up from
     `test_the_two_agree_on_a_real_bundle`: that test builds a JobSet by hand
     and compares `job_dir_names` against `trial_dir` -- both sides of
-    materialize, neither of them prep.  This runs `prep_calculation` and
-    looks at the directories that actually appeared.
+    materialize, neither of them prep.  This runs `prep bench` through the
+    one entry and looks at the directories that actually appeared.
 
     That is the 2026-08-27 failure: one side learned about the attempt layer
     (`project-layout.md` § 1.5a) and the other did not, so the deck landed
@@ -79,11 +79,10 @@ def test_prep_writes_where_job_dir_names_will_look(tmp_path, monkeypatch):
     from conftest import write_machine_record, write_pseudos
     from molbuilder import describe as D
     from molbuilder.config.siesta import SiestaConfig
-    from molbuilder.jobset.prep_inputs import bench_inputs
     from molbuilder.jobset.materialize import (job_dir_names, shape_of,
                                                trial_work_dir)
     from molbuilder.jobset.model import JobSet, Resources
-    from molbuilder.jobset.prep import prep_calculation
+    from molbuilder.jobset.prep import prep_stage
     from molbuilder.siesta.stages import default_siesta_stages
     from molbuilder.structure import Structure
     monkeypatch.chdir(tmp_path)
@@ -105,10 +104,8 @@ def test_prep_writes_where_job_dir_names_will_look(tmp_path, monkeypatch):
     write_pseudos(dest, ["H"])
 
     stage = stages[0].name
-    sweep, pins, translation = bench_inputs(dest, None)
-    prep_calculation(dest, stage, allocation=Resources(mpi_np=8),
-                     sweep=sweep, pins=pins, translation=translation,
-                     emit_sbatch=False)
+    prep_stage(dest, "bench", stage, allocation=Resources(mpi_np=8),
+               emit_sbatch=False)
 
     decks = sorted(dest.rglob("job-set.json"))
     assert len(decks) == 1, [str(d.relative_to(dest)) for d in decks]

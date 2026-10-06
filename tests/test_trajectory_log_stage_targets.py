@@ -66,63 +66,52 @@ def xyz(tmp_path):
 
 
 def _staged(xyz, tmp_path, strategy):
-    """Describe a calculation and `prep` every enabled stage of *strategy*.
+    """Describe a calculation and `prep` every enabled stage of *strategy*,
+    each through the one entry and from the structure (`--cold`): what each
+    stage's seeded log says is the question, not what it builds on.
 
-    **Repointed 2026-08-11**, when `molbuilder fdf` was deleted. These tests ran
-    one command that rendered the whole ladder at once; the ladder is now
-    described first and `prep` renders **one stage per call**, on the machine
-    that will run it. The property is unchanged — one
-    ``<label>_<NN>_<name>.molwatch.log`` per enabled stage, beside the deck that
-    writes it — but it is now assembled a stage at a time, which is the split
-    the whole design rests on.
+    **Repointed 2026-08-11**, when `molbuilder fdf` was deleted, to one
+    stage per `prep` call; **and 2026-10-06** to the entry, when the five
+    steps stopped taking a call of their own -- in the hierarchy, where a
+    stage can start from the structure (in the flat shape each builds on
+    the run before it).
     """
     from molbuilder import describe as D
     from molbuilder.workingcopy_structure import StructureCodec
     from molbuilder.config.siesta import SiestaConfig
     from molbuilder.jobset.model import Resources
-    from molbuilder.jobset.prep import prep_calculation
+    from molbuilder.jobset.prep import prep_stage
     from molbuilder.siesta.stages import default_siesta_stages
 
     struct = StructureCodec().load(xyz)
-    # No strategy -> the ordinary ONE-stage ladder.  `engines/stages.md` § 6.5
-    # (2026-08-16): a job always has at least one stage, so "no ladder" is not
-    # a shape a description can have -- the single parameter set IS one stage,
-    # named and tokened like any other.
-    from molbuilder.task import Stage
-    stages = (default_siesta_stages(strategy) if strategy
-              else [Stage(name="coarse", enabled=True, overrides={})])
+    stages = default_siesta_stages(strategy)
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB"), stages,
-                            engine="siesta", shape="flat", name="JOB",
+                            engine="siesta", shape="hierarchical", name="JOB",
                             source=str(xyz)),
         tmp_path)
     from conftest import write_pseudos
     write_pseudos(tmp_path, sorted(set(struct.elements)))
     for s in stages:
         if s.enabled:
-            prep_calculation(tmp_path, s.name,
-                             allocation=Resources(mpi_np=4, cpus_per_task=1))
+            prep_stage(tmp_path, "run", s.name, cold=True,
+                       allocation=Resources(mpi_np=4, cpus_per_task=1))
     return tmp_path
 
 
-def test_multi_stage_cli_emits_per_stage_molwatch_logs(xyz, tmp_path):
-    """Describing with strategy ``vib-quality`` and prepping each stage
-    produces one ``<label>_<NN>_<name>.molwatch.log`` per enabled stage.
+def _log(where, name):
+    """The one progress log of that name the preps seeded -- in its stage's
+    attempt, where its run will write it."""
+    found = list(where.rglob(name))
+    assert len(found) == 1, found
+    return found[0].read_text()
 
-    The names carried a hyphen and a bare position (``JOB-stage1``) until
-    2026-08-10.  Both were wrong: ``-`` announces *a counter follows*
-    (`job-contracts.md` § 6.3), and a log named for a position could not be
-    matched to the deck that wrote it once a user named their stages.  P4
-    units 2-4."""
-    _staged(xyz, tmp_path, "vib-quality")
-    logs = sorted(p.name for p in tmp_path.glob("JOB_*.molwatch.log"))
-    assert logs == ["JOB_01_coarse.molwatch.log",
-                    "JOB_02_medium.molwatch.log",
-                    "JOB_03_tight.molwatch.log"]
-    # And each one sits beside the deck that produced it, sharing its stem --
-    # the whole point of the rename (`engines/stages.md` § 7).
-    for log in logs:
-        assert (tmp_path / log.replace(".molwatch.log", ".fdf")).exists()
+
+# `test_multi_stage_cli_emits_per_stage_molwatch_logs` and
+# `test_two_stage_strategy_emits_only_two_logs` retired 2026-10-06: the
+# log each stage's prep seeds is there, named by the stage's token, as the
+# card names it -- `tests/data/the_catalogue.toml` -- and a disabled stage
+# is never prepped (`tests/data/prep_protocol.toml`).
 
 
 def test_per_stage_molwatch_log_carries_stage_target(xyz, tmp_path):
@@ -143,9 +132,9 @@ def test_per_stage_molwatch_log_carries_stage_target(xyz, tmp_path):
       03_tight:  0.01 (crystal-tight)
     """
     _staged(xyz, tmp_path, "vib-quality")
-    text1 = (tmp_path / "JOB_01_coarse.molwatch.log").read_text()
-    text2 = (tmp_path / "JOB_02_medium.molwatch.log").read_text()
-    text3 = (tmp_path / "JOB_03_tight.molwatch.log").read_text()
+    text1 = _log(tmp_path, "JOB_01_coarse.molwatch.log")
+    text2 = _log(tmp_path, "JOB_02_medium.molwatch.log")
+    text3 = _log(tmp_path, "JOB_03_tight.molwatch.log")
     assert "# convergence.max_force_tol_eV_per_A: 0.05" in text1
     assert "# convergence.max_force_tol_eV_per_A: 0.04" in text2
     assert "# convergence.max_force_tol_eV_per_A: 0.01" in text3
@@ -158,21 +147,12 @@ def test_per_stage_molwatch_log_carries_its_geometry_step_cap(xyz, tmp_path):
     inspector can render the right "progress through the stage"
     indicator.  Defaults: stage1=600, stage2=200, stage3=100."""
     _staged(xyz, tmp_path, "vib-quality")
-    text1 = (tmp_path / "JOB_01_coarse.molwatch.log").read_text()
-    text2 = (tmp_path / "JOB_02_medium.molwatch.log").read_text()
-    text3 = (tmp_path / "JOB_03_tight.molwatch.log").read_text()
+    text1 = _log(tmp_path, "JOB_01_coarse.molwatch.log")
+    text2 = _log(tmp_path, "JOB_02_medium.molwatch.log")
+    text3 = _log(tmp_path, "JOB_03_tight.molwatch.log")
     assert "# convergence.max_geom_iter: 600" in text1
     assert "# convergence.max_geom_iter: 200" in text2
     assert "# convergence.max_geom_iter: 100" in text3
-
-
-def test_two_stage_strategy_emits_only_two_logs(xyz, tmp_path):
-    """``--stage-strategy publishable`` (default: stage1+stage2)
-    produces TWO logs, not three -- stage3 is disabled."""
-    _staged(xyz, tmp_path, "publishable")
-    logs = sorted(p.name for p in tmp_path.glob("JOB_*.molwatch.log"))
-    assert logs == ["JOB_01_coarse.molwatch.log",
-                    "JOB_02_medium.molwatch.log"]
 
 
 def test_every_convergence_key_the_seeder_writes_is_one_the_card_reads():

@@ -6,34 +6,27 @@ what each engine supplies at each step is its § 5.  **It may call, but it
 may never decide** -- a value settled here is a value no floor owns, which
 is the shape of the "stomp" bugs (§ 3.3).
 
-:func:`prep_calculation` is the five entire, on the described route: a
-description plus its template in, one rendered deck and wrapper **per
-element** of the resolved :class:`~molbuilder.resolve.ParameterSet` out.
-:func:`prep_jobset` is steps 4–5 alone, over an existing ``job-set.json`` —
-the shared tail of the described route, and the library surface a
-hand-built set uses directly.  It stopped being a CLI route on 2026-08-12
-(U2/U4): `prep` is described-only, because the pre-made-bundle arm had no
-producer left.
+:func:`prep_stage` is the verb, and the one door: it reads, checks and
+decides, then hands its answer to :func:`prep_calculation` -- the five
+steps, on the described route: a description plus its template in, one
+rendered deck and wrapper **per element** of the resolved
+:class:`~molbuilder.resolve.ParameterSet` out.  :func:`prep_jobset` is steps
+4–5, the tail of those.  Neither reads or decides anything of its own: each
+took a hand-built set or read the calculation itself when called directly,
+which only tests did, until 2026-10-06 -- `prep` has been described-only
+since 2026-08-12 (U2/U4).
 
 The framework here was first built inside the benchmark and the general part
 lifted out (§ 2.3.1a: *benchmarking is `prep` whose parameters are a set
 rather than a point* — the five steps are general, the grid is the
 specialisation).
 
-Wrappers render **once per distinct ``job.script``, in the JOB'S OWN
-DIRECTORY** (L2, roadmap 7.10 -- until 2026-08-24 they rendered in the
-bundle root and were symlinked down, which is how a ten-trial sweep came to
-keep 50 rendered files at its root).  A set that genuinely shares one script
-gets a real copy per directory rather than a second render.  On the described
-route every element renders its own
-deck, so per-script is per-element and each wrapper carries its own
-element's resources.  *(A "legacy sweep whose jobs share one script"
-paragraph stood here promising its own fold "with bench (plan step 6)" —
-the fold landed 2026-08-12 and no producer emits shared-script sets; for a
-HAND-BUILT set that shares one script, the first job's resources still
-become the wrapper defaults and ``launch`` passes each job's own as flags,
-which is now a property of the fallback rather than a design of its own;
-R8.)*
+Wrappers render **once per job, in the JOB'S OWN DIRECTORY** (L2, roadmap
+7.10 -- until 2026-08-24 they rendered in the bundle root and were symlinked
+down, which is how a ten-trial sweep came to keep 50 rendered files at its
+root).  Every element renders its own deck, so each wrapper carries its own
+element's resources.  *(A hand-built set sharing one script got a copy of
+the first job's wrapper until 2026-10-06; nothing builds one.)*
 """
 
 from __future__ import annotations
@@ -47,7 +40,7 @@ import numpy as np
 from typing import TYPE_CHECKING, Callable, List, Optional, Sequence, Tuple
 
 from .. import script_emit as _sc
-from .materialize import (job_dir_names, shape_of, materialize, stage_home,
+from .materialize import (job_dir_names, materialize, stage_home,
                           ladder_homes)
 from ..runrecord import write_gathered_from
 from ..warmfiles import warm_list
@@ -127,24 +120,27 @@ def _flat_continued_from(base: Path, task, stage: str, continuation,
     write_continued_from(base, continuation.run, basename=stem, plan=plan)
 
 
-def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
+def prep_jobset(jobset: JobSet, base_dir, *, plan, shape, provenance,
+                machine_record, env: str = None,
                 emit_sbatch: bool = True, record_dir=None,
-                log=None, machine_record=None,
-                render=None, points=None, plan=None,
-                shape=None, this_prep=None, provenance=None) -> List[Path]:
-    """Render launchers + lay out the per-job tree under ``base_dir``.
+                log=None, render=None, points=None,
+                this_prep=None) -> List[Path]:
+    """Render launchers + lay out the per-job tree under ``base_dir`` --
+    steps 4 and 5 of :func:`prep_calculation`, its one caller, which hands
+    over what the prep entry read and decided.  *(It was a library door of
+    its own until 2026-10-06, over a hand-built job set -- making its own
+    plan, asking the shape, reading the provenance and snapshotting the
+    machine when not handed them; only tests called it so.)*
 
     ``plan`` (`jobset.planned.Plan`) receives what this writes, and is read
-    for the decks it already holds; with none it is made here and carried
-    out at the end (`job-system.md` § 5.0).
+    for the decks it already holds (`job-system.md` § 5.0).
 
-    ``shape`` is the layout as the caller read it from the description --
-    a layer below takes it (`materialize.shape_of`); with none it is asked
-    here.  ``this_prep`` is what this prep's hand-over takes, which
-    `STAGE-PLAN.md` says under its table (`plan.render_plan`).
-    ``provenance`` is which config files answered, as the prep entry read
-    them with the machine's record at its checkpoint 4 (`prep_stage`); with
-    none it is read here.
+    ``shape`` is the layout as the entry read it from the description -- a
+    layer below takes it (`materialize.shape_of`).  ``this_prep`` is what
+    this prep's hand-over takes, which `STAGE-PLAN.md` says under its table
+    (`plan.render_plan`).  ``provenance`` is which config files answered,
+    as the prep entry read them with the machine's record at its
+    checkpoint 4 (`prep_stage`); ``machine_record`` is that record.
 
     ``points`` names, per job, the folders that hold a copy of its deck
     written at another point -- a scan's (`Rung.points`) -- each of which
@@ -162,14 +158,11 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     prep's.
 
     Steps, in order:
-      1. render each **distinct** ``job.script``'s ``.run.sh`` (and
-         ``.sbatch`` when ``emit_sbatch`` and a scheduler is configured)
-         **in that job's own directory**, beside the deck it launches —
-         reusing ``runwrap.write_run_wrapper`` (no reinvention).  The header
-         carries the first-seen job's resources as defaults; ``launch``
-         overrides per job via CLI flags, so the defaults never decide the
-         answer.  A job that SHARES another's script gets a real copy, not a
-         reference: a run directory holds real files.
+      1. render each job's ``.run.sh`` (and ``.sbatch`` when
+         ``emit_sbatch`` and a scheduler is configured) **in that job's own
+         directory**, beside the deck it launches — reusing
+         ``runwrap.write_run_wrapper`` (no reinvention).  Every job has a
+         deck of its own: prep renders one per element.
       2. ``materialize`` — the shared package, as real copies into each job
          directory (what a stage continues from is copied when its attempt
          is opened: ``materialize.prepare_attempt``).
@@ -200,29 +193,18 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
         raise PrepError(
             "cannot prep an invalid JobSet:\n  - " + "\n  - ".join(errs))
     base = Path(base_dir).resolve()
-    if not base.is_dir():
-        raise PrepError(f"bundle root not found: {base}")
-    from .planned import Plan
-    own = plan is None
-    plan = Plan() if own else plan
 
-    # ---- 0. resolve the machine (§ 2.3.1 step ONE) ---------------------- #
-    # Idempotent by contract (set_machine early-returns on an existing
-    # environment.json).  Every production caller is the described route,
-    # whose `prep_calculation` already ran step 1; this call serves a direct
-    # caller of `prep_jobset` (its tests) -- not a re-decision.
-    set_machine(base, plan=plan)
-
-    # ---- 1. render wrappers once per distinct script, IN THE JOB DIR --- #
+    # ---- 1. render each job's wrapper, IN THE JOB DIR ------------------ #
+    # The machine was resolved at step 1 of `prep_calculation`, from the
+    # record the entry read (`set_machine`, once per calculation).
     # Nothing rendered lives at the bundle root (user, 2026-08-24;
     # `project-layout.md` § 1.0).  The deck was born in its directory by
     # `prep_calculation`, and the wrapper is written beside the deck it
     # launches.
     if log is not None:
         log.phase("STEP 4 · WRAPPERS — how each deck is launched")
-    _sh = shape if shape is not None else shape_of(jobset, base_dir)
+    _sh = shape
     _dir_of = job_dir_names(jobset, _sh)
-    rendered: dict = {}
     for job in jobset.jobs:
         if render is not None and job.name not in render:
             continue
@@ -243,26 +225,6 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
             # 2026-10-05).
             from .materialize import mark_run
             mark_run(base, _jd, plan)
-        if job.script in rendered:
-            # A SHARED script (several trials, one deck): each directory
-            # still holds its own real copy (L2) -- under the symlink
-            # model one root render served every dir by reference, and a
-            # directory that references is a directory that does not hold.
-            # `_copy2`, not `shutil as _sh`: `_sh` is this function's SHAPE
-            # (line above), and `import shutil as _sh` here rebound that
-            # function-local for the whole body -- so the second job through
-            # this branch handed the shutil MODULE to `trial_work_dir` as a
-            # shape.  One name, two meanings, in one function.
-            _src_dir = rendered[job.script]
-            _stem0 = Path(job.script).stem
-            for _fn in (job.script, f"{_stem0}.run.sh", f"{_stem0}.sbatch"):
-                if (plan.is_file(_src_dir / _fn)
-                        and not plan.is_file(_jd / _fn)):
-                    plan.copy(_src_dir / _fn, _jd / _fn)
-            if log is not None:
-                log.note(f"{job.name}: shares {job.script}'s wrapper, "
-                         f"copied from {_src_dir.name}/")
-            continue
         script_path = _jd / job.script
         if not plan.is_file(script_path):
             raise PrepError(
@@ -336,7 +298,6 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
             _wrap(script_path)
             for _point in (points or {}).get(job.name, ()):
                 _wrap(Path(_point) / job.script)
-        rendered[job.script] = _jd
         if log is not None:
             _stem = Path(job.script).stem
             log.received(job.script, _flat_resources(job.resources)
@@ -381,7 +342,7 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
     # which files supplied the effective execution settings -- so a
     # behaviour difference between two machines is explained by the bundle
     # itself (user request 2026-08-12; secrets excluded by construction).
-    from ..runtime_config import config_provenance, format_provenance
+    from ..runtime_config import format_provenance
     from .plan import render_plan
     # The plan lands BESIDE the job-set it describes: the run's at the
     # root, a bench's inside its stage's bench/ container -- so a bench
@@ -399,13 +360,9 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
         _vocab = ""    # an engine without a rules file has no line to print
     plan.text(plan_dir / _PLAN_FILE,
               render_plan(jobset, this_prep) + "\n\n" + _vocab
-              + format_provenance(provenance if provenance is not None
-                                  else config_provenance(project_dir=base))
-              + "\n")
+              + format_provenance(provenance) + "\n")
     if log is not None:
         log.produced(_PLAN_FILE, str(plan_dir / _PLAN_FILE))
-    if own:
-        plan.carry_out()
     return dirs
 
 
@@ -883,9 +840,8 @@ def _resolve_stage(stage, *, task, template, template_text, environment,
     the pins and the machine's record.
 
     Asked by the prep entry at its checkpoint 4, where the job it makes is
-    placed (`job-system.md` § 5.0), and by :func:`prep_calculation` for a
-    caller that holds no answer (:func:`_read_and_resolve`).  ``template``
-    ``None`` is refused: the folder is a template PLUS a description."""
+    placed (`job-system.md` § 5.0).  ``template`` ``None`` is refused: the
+    folder is a template PLUS a description."""
     from ..resolve import ResolveError, resolve
     from ..task import FILENAME as TASK_FILENAME
     from ..template import template_filename
@@ -929,59 +885,14 @@ def _resolve_stage(stage, *, task, template, template_text, environment,
                     sources=sources)
 
 
-def _read_and_resolve(base: Path, stage, *, target, allocation, chosen, sweep,
-                      pins, translation) -> Resolved:
-    """Steps 1 and 2 for a caller of :func:`prep_calculation` that holds no
-    answer -- each file read once, here: the machine's record (its
-    activation checked), the description and its template.  The prep entry
-    reads them at its own checkpoints and hands its :class:`Resolved` over."""
-    from ..task import FILENAME as TASK_FILENAME
-    from ..task import read_task
-    from ..template import find_template
-    if not base.is_dir():
-        raise PrepError(f"calculation folder not found: {base}")
-    desc = base / TASK_FILENAME
-    if not desc.is_file():
-        raise PrepError(
-            f"no {TASK_FILENAME} in {base}. `prep` turns a DESCRIPTION into a "
-            f"runnable directory; write one first with `jobset init`.")
-    # READ, CHECK, THEN WRITE.  A record that does not state how to enter the
-    # named machine's environment is refused before anything is on disk --
-    # the snapshot included, or the remedy's re-copied record would then
-    # contradict it (W52, and its fix's review).
-    from ..runtime_config import config_provenance
-    environment = machine_record(base, target)
-    require_activation(target, environment, base=base)
-    task = read_task(desc)
-    # THE one template door (`template.find_template`, architecture.md
-    # § 3.2): the folder's one template, named for the label.
-    try:
-        template = find_template(base, task.label)
-    except ValueError as exc:
-        raise PrepError(str(exc)) from exc
-    return _resolve_stage(
-        stage, task=task, template=template,
-        template_text=(template.read_text(encoding="utf-8")
-                       if template is not None else None),
-        environment=environment, allocation=allocation, chosen=chosen,
-        sweep=sweep, pins=pins, translation=translation,
-        token=stage_home(base, task, stage).token, target=target,
-        provenance=config_provenance(project_dir=base, target=target,
-                                     record=environment))
-
-
-def prep_calculation(base_dir, stage: Optional[str] = None, *,
-                     allocation=None, env: str = None,
+def prep_calculation(base_dir, stage: Optional[str], *,
+                     resolved: "Resolved", plan,
+                     env: str = None,
                      emit_sbatch: bool = True,
-                     sweep=None, pins=None, translation=None,
-                     target: Optional[str] = None,
-                     chosen=None,
                      opened: Optional[list] = None,
                      findings: Optional[list] = None,
                      continuation=None,
-                     gather=None,
-                     plan=None,
-                     resolved: Optional["Resolved"] = None) -> List[Path]:
+                     gather=None) -> List[Path]:
     """**`prep`, entire** — the five steps of `project-layout.md` § 2.3.1, in
     the order it calls *forced rather than chosen*.
 
@@ -1002,10 +913,10 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
 
     -- each file read once, and the stage resolved once (:class:`Resolved`):
     ``resolved`` is the entry's, answered at its own checkpoints and handed
-    over (`prep_stage`, `job-system.md` § 5.0, checkpoint 4); with none,
-    steps 1 and 2 are answered here (:func:`_read_and_resolve`), from
-    ``allocation``, ``chosen``, ``sweep``, ``pins`` and ``translation`` --
-    which a caller handing ``resolved`` has already folded into it;
+    over (`prep_stage`, `job-system.md` § 5.0, checkpoint 4).  The entry is
+    its one caller: a prep that read and resolved on its own, below the
+    entry, was a second door that skipped every check the entry makes --
+    tests called it until 2026-10-06, and it went with them;
     3. **render the deck(s)** — one per element of that set;
     4. **render the wrapper**;
     5. **build the run directory**.
@@ -1035,36 +946,24 @@ def prep_calculation(base_dir, stage: Optional[str] = None, *,
     one prep entry's answer.
 
     ``plan`` (`jobset.planned.Plan`) receives everything this prep writes,
-    and is carried out by the caller -- the entry saves the folder's state
-    between the two (`prep_stage`, `job-system.md` § 5.0); with none, the
-    plan is made here and carried out once it stands.  Either way nothing
-    is written until every step has passed: a refusal writes nothing.
+    and is carried out by the entry, which saves the folder's state between
+    the two (`prep_stage`, `job-system.md` § 5.0): nothing is written until
+    every step has passed, so a refusal writes nothing.
     While the steps plan, every reader of the calculation's pseudopotentials
     reads the folder as the plan will leave it (`pseudos.PLANNED`).
 
     Returns the per-job directories. Raises :class:`PrepError`.
     """
     from ..pseudos import PLANNED
-    from .planned import Plan
     base = Path(base_dir).resolve()
-    if resolved is None:
-        resolved = _read_and_resolve(base, stage, target=target,
-                                     allocation=allocation, chosen=chosen,
-                                     sweep=sweep, pins=pins,
-                                     translation=translation)
-    own = plan is None
-    plan = Plan() if own else plan
     scope = PLANNED.set(plan)
     try:
-        dirs = _plan_calculation(
+        return _plan_calculation(
             base, stage, resolved, env=env, emit_sbatch=emit_sbatch,
             opened=opened, findings=findings,
             continuation=continuation, gather=gather, plan=plan)
     finally:
         PLANNED.reset(scope)
-    if own:
-        plan.carry_out()
-    return dirs
 
 
 def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
@@ -1092,9 +991,9 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
     # place by construction (A-1/A-2).
     record_dir = resolved.record_dir(base)
 
-    # ---- 1. the machine: its record, read and checked before this -------- #
-    # (`_read_and_resolve`, or the entry's checkpoint 4) -- snapshotted here,
-    # the calculation's copy of the record it was handed.
+    # ---- 1. the machine: its record, read and checked at the entry's ------ #
+    # checkpoint 4 -- snapshotted here, the calculation's copy of the record
+    # it was handed.
     set_machine(base, target, environment=environment, plan=plan)
 
     # THE LOG OPENS HERE, and not before: its NAME carries the stage token, and
@@ -3217,5 +3116,4 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         raise _refused(_as_prep_error(exc)) from exc
 
 
-__all__ = ["prep_calculation", "prep_jobset", "prep_stage", "PrepAnswer",
-           "prepped_already", "prepped_stages"]
+__all__ = ["prep_stage", "PrepAnswer", "prepped_already", "prepped_stages"]

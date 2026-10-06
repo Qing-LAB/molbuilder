@@ -27,7 +27,7 @@ from molbuilder.config.pyscf import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
 from molbuilder.jobset.model import Resources
 from molbuilder.jobset.engines import EngineSeam
-from molbuilder.jobset.prep import prep_calculation
+from molbuilder.jobset.prep import prep_stage
 from molbuilder.pipeline_log import log_name
 from molbuilder.pyscf.stages import default_pyscf_stages
 from molbuilder.script_emit import Block, DeckSpec
@@ -76,9 +76,15 @@ def _calculation(tmp_path, engine: str, shape: str, name: str = "BDT"):
     return dest, [s.name for s in stages]
 
 
-def _prep(dest, stage):
-    return prep_calculation(dest, stage,
-                            allocation=Resources(mpi_np=8, cpus_per_task=1))
+def _prep(dest, stage, **ask):
+    """`prep run <stage>`, through the one entry -- what the command line
+    and the Task setup tab call -- the launch shape stated as its flags:
+    SIESTA's ranks and cores per rank, PySCF's threads (it runs one
+    process).  ``ask`` adds to them."""
+    from molbuilder.task import read_task
+    siesta = read_task(dest / "task.json").engine == "siesta"
+    return prep_stage(dest, "run", stage, allocation=Resources(
+        **({"mpi_np": 8} if siesta else {}), cpus_per_task=1, **ask))
 
 
 def _the_log(dest):
@@ -98,23 +104,11 @@ def _the_log(dest):
 #  2. The flat layout's own rule                                         #
 # --------------------------------------------------------------------- #
 
-def test_two_rungs_in_a_flat_calculation_get_two_logs(tmp_path):
-    """**Flat is depth 1**: every stage preps into the bundle root, and the
-    deck's stage TOKEN is what tells them apart (`job-contracts.md` § 6.3).
-    A log named per calculation would have `medium` overwrite `coarse` — and
-    the run whose provenance you wanted would be the one that was destroyed.
-    """
-    dest, stages = _calculation(tmp_path, "siesta", "flat")
-    _prep(dest, stages[0])
-    _prep(dest, stages[1])
-    names = sorted(p.name for p in dest.rglob("*.pipeline.log"))
-    assert names == ["BDT_01_coarse.siesta.flat.pipeline.log",
-                     "BDT_02_medium.siesta.flat.pipeline.log"], names
-    # and each is ITS OWN rung, not two copies of one
-    first = (dest / names[0]).read_text()
-    second = (dest / names[1]).read_text()
-    assert "stage 01_coarse" in first and "stage 02_medium" not in first
-    assert "stage 02_medium" in second and "stage 01_coarse" not in second
+# `test_two_rungs_in_a_flat_calculation_get_two_logs` retired 2026-10-06,
+# when its two preps below the entry went: through the entry a flat stage
+# builds on the run before it, and each stage's log, named by its token, is
+# there beside the other's -- `tests/data/the_catalogue.toml`'s flat row,
+# every name the card gives a stage (the pipeline log among them).
 
 
 def test_the_name_says_engine_and_shape(tmp_path):
@@ -289,9 +283,9 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
     writes nothing (`script-preparation.md` § 4.5).  `relabel` is asked only
     of a TRIAL, so it is reached through a benchmark prep.
 
-    API-level: the hook is swapped in-process on `prep_calculation`, the
-    conductor `jobset prep run` calls; the CLI adds nothing between them for
-    an exception that is not a refusal.  (Whether every hook was wrapped was
+    API-level: the hook is swapped in-process, and the prep goes through
+    the one entry `jobset prep run` calls; the CLI adds nothing between them
+    for an exception that is not a refusal.  (Whether every hook was wrapped was
     read out of `script_emit.py` and `jobset/prep.py` until 2026-09-26.)
 
     MUTATION THIS MUST FAIL AGAINST: any one hook called bare, outside its
@@ -324,10 +318,8 @@ def test_a_hook_that_raises_says_whose_it_was(tmp_path, monkeypatch, hook):
     dest, stages = _calculation(tmp_path, "siesta", "flat")
     with pytest.raises(TypeError) as caught:
         if hook == "relabel":
-            from molbuilder.jobset.prep_inputs import bench_inputs
-            sweep, pins, translation = bench_inputs(dest, None)
-            prep_calculation(dest, stages[0], allocation=Resources(mpi_np=8),
-                             sweep=sweep, pins=pins, translation=translation)
+            prep_stage(dest, "bench", stages[0],
+                       allocation=Resources(mpi_np=8))
         else:
             _prep(dest, stages[0])
 
@@ -374,7 +366,7 @@ def test_an_engines_deliberate_refusal_survives_the_boundary(tmp_path):
     tpl.write_text(head + sep + body.replace("value = false", "value = true", 1)
                    + nxt + rest)
     with pytest.raises((ValueError, PrepError)) as real:
-        _prep(dest, stages[0])
+        _prep(dest, stages[0], gres="gpu:1")    # a GPU run states its GPUs
     assert "ELPA" in str(real.value), real.value
 
 

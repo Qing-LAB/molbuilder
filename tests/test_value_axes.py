@@ -24,7 +24,7 @@ from molbuilder.scheduler import Domain, Environment, Topology
 from molbuilder.jobset.prep_inputs import bench_inputs
 from molbuilder.jobset.materialize import latest_attempt
 from molbuilder.jobset.errors import PrepError
-from molbuilder.jobset.prep import prep_calculation
+from molbuilder.jobset.prep import prep_stage
 from molbuilder.siesta.stages import default_siesta_stages
 from molbuilder.structure import Structure
 
@@ -210,12 +210,11 @@ def _small_matrix():
 
 
 def _prep(calc):
+    """`prep bench coarse`, through the one entry -- what the command line
+    and the Task setup tab call; the folders it prepped."""
     from molbuilder.jobset.model import Resources
-    points, pins, tr = bench_inputs(calc, None)
-    dirs = prep_calculation(calc, "coarse", allocation=Resources(),
-                            emit_sbatch=False, sweep=points, pins=pins,
-                            translation=tr)
-    return points, dirs
+    return prep_stage(calc, "bench", "coarse", allocation=Resources(),
+                      emit_sbatch=False).dirs
 
 
 def test_per_trial_coordinates_reach_the_decks(sol_calc):
@@ -224,7 +223,7 @@ def test_per_trial_coordinates_reach_the_decks(sol_calc):
     deck says ``Diag.ELPA.GPU .false.`` while its GPU sibling says
     ``.true.`` — and `job-set.json` records every trial's point as data."""
     _declare(sol_calc, _small_matrix())
-    points, dirs = _prep(sol_calc)
+    dirs = _prep(sol_calc)
     assert len(dirs) == 2 + 3 * 2       # cpu: 1 cell x2 blocks; gpu: G in 1,2,4
 
     def deck(sub):

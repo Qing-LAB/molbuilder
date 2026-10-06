@@ -12,8 +12,8 @@ Heavy dispatches (smiles needs RDKit, name needs PubChem, watch serve
 binds a port) are tested via mocks where reasonable and via ``--help``
 only otherwise.  ``molbuilder fdf`` was DELETED 2026-08-11 (C1+C2): a
 deck is rendered by `jobset prep` from a description, so SiestaConfig
-no longer meets click at all.  The rendered deck is owned by
-``tests/test_prep_calculation.py``, value fidelity by the template
+no longer meets click at all.  The rendered deck is the prep road's
+(``tests/data/prep_protocol.toml``), value fidelity by the template
 round-trip (``tests/test_template_roundtrip.py``).
 """
 

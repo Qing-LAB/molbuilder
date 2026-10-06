@@ -256,6 +256,7 @@ def calls_made(calls: Path):
 # machine has a scheduler; `run_unset` / `allocation_unset` -- base keys a row
 # takes away; `template` -- values in the template (SIESTA's over the
 # table's `siesta_template`); `bench` -- task.json `bench`, then `prep bench`;
+# `notify` -- task.json `notify`, when the calculation speaks up;
 # `machine_config` -- THIS machine's `molbuilder.json`; `prep` / `launch` --
 # the flags typed (launch
 # with `--mode submit`, unless `launch_mode` names another -- "" for none, so
@@ -263,8 +264,9 @@ def calls_made(calls: Path):
 # `coarse` unless it names another); `machine` -- "this" (this machine IS
 # the target, its record
 # listing `queues`), "named" (this machine is a workstation; the target is a
-# record named `sol` listing `queues`) or "workstation" (no queues at all),
-# the table's own `machine` unless the row names one;
+# record named `sol` listing `queues`), "workstation" (no queues at all) or
+# "unprobed" (this machine never probed: no record at all), the table's own
+# `machine` unless the row names one;
 # `record` -- more fields of THIS machine's record; `named_record` -- more
 # fields of the named target's; `queues` -- replaces the table's menu;
 # `probe` -- the record made as a person makes it instead, by `jobset probe
@@ -386,6 +388,11 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
               for q in case.get("queues", table.get("queues", []))]
     record = dict(case.get("record", {}))
     where = case.get("machine", table.get("machine", "this"))
+    if where == "unprobed":
+        # NEVER PROBED: the record the suite writes for every test, gone.
+        from molbuilder.scheduler import machine_scope_path
+        Path(machine_scope_path()).unlink(missing_ok=True)
+        return "this"
     if where == "this":
         a_queue_that_answers(tmp_path, monkeypatch, queues, **record)
         return "this"
@@ -750,6 +757,7 @@ def _road_describe(table, case, tmp_path, monkeypatch) -> Path:
             table.get("allocation_base") if scheduled else None,
             case.get("allocation"), case.get("allocation_unset")),
         "bench": case.get("bench"),
+        "notify": case.get("notify"),
     }
     for block, value in blocks.items():
         if value:

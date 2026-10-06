@@ -28,7 +28,7 @@ wrapper is perfect. Change what `_run_n` RESOLVES to, so every attempt lands on
 `-run0`, and the test passes while each run destroys the last. The string is
 not the behaviour; it is one spelling the behaviour currently happens to have.
 
-**The directory is built by `prep_jobset`, not by hand** *(user, 2026-09-06:
+**The directory is built by `jobset prep`, not by hand** *(user, 2026-09-06:
 "you should construct run dir with actual backend if you are testing it")*.
 The run index is a property of *a directory that already holds attempts* —
 the wrapper scans for `-runN` and advances past the highest — so a
@@ -58,11 +58,10 @@ from pathlib import Path
 import pytest
 
 from molbuilder.identity import is_ours
-from molbuilder.jobset.model import Job, JobSet, Resources
-from molbuilder.jobset.prep import prep_jobset
 
-LABEL = "J_01_coarse"
-STAGE_DIR = "01_01_coarse"
+#: The stage's files' stem in a flat calculation -- where a run's attempts
+#: are told apart by the index in their names (`project-layout.md` § 1.5a).
+LABEL = "H2_01_coarse"
 
 #: Long enough for the monitor -- started with a 1 s interval below -- to take
 #: at least one sample before the wrapper's cleanup stops it.  A run that ends
@@ -72,32 +71,20 @@ _ENGINE = '#!/bin/bash\nsleep 2\necho "stand-in engine"\n'
 _CONDA = "#!/bin/bash\nexit 0\n"
 
 
-def _a_prepared_calculation(tmp_path: Path, engine: str = _ENGINE) -> Path:
-    """A real one-stage ladder, prepped by the real `prep_jobset`.
+def _a_prepared_calculation(tmp_path: Path, monkeypatch,
+                            engine: str = _ENGINE) -> Path:
+    """A real flat calculation, described by `jobset init` and prepped by
+    `jobset prep` -- the road a person takes.
 
-    Returns the stage directory -- deck, wrapper and the shipped
+    Returns the folder its stage runs in -- deck, wrapper and the shipped
     `mb_monitor.pyz`, exactly as a person would find it after `jobset prep`.
     """
-    root = tmp_path / "calc"
-    root.mkdir()
-    # The activation the wrapper needs is the machine record's -- the
-    # conftest's autouse `write_machine_record`, since 2026-09-02 a
-    # precondition rather than something prep arranges, and what the
-    # generator reads the activation from.  The deck is where
-    # `prep_calculation` writes it, in the stage's own folder
-    # (`project-layout.md` § 1.0) -- `prep_jobset` reads it there.
-    (root / STAGE_DIR).mkdir()
-    (root / STAGE_DIR / f"{LABEL}.fdf").write_text(
-        "SystemName test\nSystemLabel J\nNumberOfAtoms 2\n"
-        "DM.UseSaveDM .false.\nMD.UseSaveXV .false.\n")
-
-    jobset = JobSet(name="J", engine="siesta", kind="ladder",
-                    jobs=[Job(name="01_coarse", script=f"{LABEL}.fdf",
-                              resources=Resources(mpi_np=1,
-                                                  cpus_per_task=1))])
-    prep_jobset(jobset, root, env="molbuilder-siesta", emit_sbatch=False)
-
-    stage = root / STAGE_DIR
+    from support.road import describe_h2, jobset
+    bundle = describe_h2(tmp_path, monkeypatch, shape="flat")
+    r = jobset("prep", "run", "coarse", "--bundle", bundle,
+               "--target", "this")
+    assert r.exit_code == 0, r.output
+    stage = bundle
     assert (stage / "mb_monitor.pyz").exists(), (
         "prep did not ship mb_monitor.pyz -- this test would then be "
         "measuring nothing, so it is a precondition rather than an assertion")
@@ -127,7 +114,7 @@ def _run_the_wrapper(stage: Path) -> None:
 # 1 test here wrote a monitor record over the run's own by hand (`process/testing.md` § 6).
 
 
-def test_a_run_that_printed_nothing_keeps_its_index(tmp_path):
+def test_a_run_that_printed_nothing_keeps_its_index(tmp_path, monkeypatch):
     """An engine that dies before its first line leaves its `-run0.concluded`,
     monitor log and `util.csv` and NO output: the SIESTA tee creates the
     `.out` with the first line it writes.  The next run must still advance,
@@ -136,7 +123,7 @@ def test_a_run_that_printed_nothing_keeps_its_index(tmp_path):
     MUTATION THIS MUST FAIL AGAINST: resolve the index from the outputs
     alone (`"<basename>-run"*<ext>` in the wrapper's resolver).
     """
-    stage = _a_prepared_calculation(tmp_path,
+    stage = _a_prepared_calculation(tmp_path, monkeypatch,
                                     engine="#!/bin/bash\nsleep 2\nexit 3\n")
     _run_the_wrapper(stage)
     marker = stage / f"{LABEL}-run0.concluded"
@@ -152,14 +139,15 @@ def test_a_run_that_printed_nothing_keeps_its_index(tmp_path):
     assert marker.read_text() == first, "the re-run overwrote run 0's marker"
 
 
-def test_no_unindexed_monitor_artifact_reaches_the_directory(tmp_path):
+def test_no_unindexed_monitor_artifact_reaches_the_directory(tmp_path,
+                                                             monkeypatch):
     """The stronger form, asked of the DIRECTORY rather than of the source.
 
     One path writing the indexed name while another writes the bare one is
     invisible to a test that only proves the indexed spelling appears
     somewhere in the file.  Here the bare names simply must not turn up.
     """
-    stage = _a_prepared_calculation(tmp_path)
+    stage = _a_prepared_calculation(tmp_path, monkeypatch)
     _run_the_wrapper(stage)
 
     for bare in (f"{LABEL}.monitor.log", f"{LABEL}.util.csv"):
@@ -200,7 +188,8 @@ def test_the_cold_sweep_claims_both_spellings(name):
     assert is_ours(name, LABEL), f"the cold sweep does not claim {name}"
 
 
-def test_the_wrappers_cold_sweep_names_the_indexed_artifacts(tmp_path):
+def test_the_wrappers_cold_sweep_names_the_indexed_artifacts(tmp_path,
+                                                             monkeypatch):
     """The SECOND consumer of `OUR_FILE_PATTERNS`, and the only one that
     needs its `-run*` rows.
 
@@ -216,7 +205,7 @@ def test_the_wrappers_cold_sweep_names_the_indexed_artifacts(tmp_path):
     Asserted on the RENDERED script, which is generated output: a real
     property of a real product, and what reading text is legitimately for.
     """
-    stage = _a_prepared_calculation(tmp_path)
+    stage = _a_prepared_calculation(tmp_path, monkeypatch)
     script = (stage / f"{LABEL}.run.sh").read_text()
 
     for artifact in ("-run*.util.csv", "-run*.monitor.log"):
