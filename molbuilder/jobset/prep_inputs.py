@@ -330,11 +330,11 @@ def _cell_ranks(fam, g, k) -> int:
     return g * k if (fam and g) else k
 
 
-def _cell_label(g, k, c, *, machine_axes) -> str:
+def _cell_label(g, k, c) -> str:
     """A cell's name, spelled the way its trial directory will be
     (`job-contracts.md` § 6.3) -- so the fit list and the directory
-    listing name the same thing."""
-    return (f"G{g}K{k}C{c}" if "G" in machine_axes else f"K{k}C{c}")
+    listing name the same thing: ``G0`` for a CPU cell, on every machine."""
+    return f"G{g}K{k}C{c}"
 
 
 def _cell_shape(g, k, c) -> str:
@@ -871,7 +871,6 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
         past = _past_the_ask(fam, cell, ask)
         marked.append((fam, cell, () if past else doms, past + list(why)))
     checked = marked
-    _axes = ("G", "K", "C") if (mixed or on_gpu) else ("K", "C")
 
     kept    = [(f, cell, doms) for f, cell, doms, why in checked if not why]
     crossed = [(f, cell, why) for f, cell, doms, why in checked if why]
@@ -883,7 +882,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
     # renderings.
     if report is not None:
         report.extend(
-            {"label": _cell_label(g, k, c, machine_axes=_axes),
+            {"label": _cell_label(g, k, c),
              "shape": _cell_shape(g, k, c),
              "family": "gpu" if fam else "cpu",
              "ranks": _cell_ranks(fam, g, k), "cores_each": c,
@@ -906,7 +905,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
         # is stated at `launch`.  Four names then an ellipsis -- enough to
         # see whether a cell has real room or is riding one queue.
         where = ", ".join(doms[:4]) + (" ..." if len(doms) > 4 else "")
-        note(f"    {_cell_label(g, k, c, machine_axes=_axes):<11} "
+        note(f"    {_cell_label(g, k, c):<11} "
              f"{_cell_shape(g, k, c):<37}"
              + (f"  fits: {where}" if where else ""))
     if crossed:
@@ -921,7 +920,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
             # terminal wants "needs 8192 cores but this machine allows 4".
             # The numbers are fields so callers can read them; the SENTENCE is
             # what a person is shown.
-            note(f"    {_cell_label(g, k, c, machine_axes=_axes):<11} "
+            note(f"    {_cell_label(g, k, c):<11} "
                  f"{_cell_shape(g, k, c):<37}  "
                  f"{why[0].message if hasattr(why[0], 'message') else why[0]}")
 
@@ -980,12 +979,13 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
 
     points = []
     for fam, (g, k, c) in cells:
+        # EVERY TRIAL CARRIES G -- ``G0`` for a CPU trial, on every
+        # machine: a machine with no GPU left it out from 2026-08-21 until
+        # 2026-10-06, a naming change nobody asked for.
         if mixed:
             coord = {"G": g, "K": k, "C": c, "use_gpu": fam}
-        elif on_gpu:
-            coord = {"G": g, "K": k, "C": c}
         else:
-            coord = {"K": k, "C": c}
+            coord = {"G": g, "K": k, "C": c}
         points.extend({**coord, **vc} for vc in combos)
 
     if mixed:
@@ -1007,7 +1007,7 @@ def bench_inputs(base, target, *, bench_override=None, report=None,
                 "gres": f"gpu:{p['G']}"})
     else:
         translation = MachineTranslation(
-            axes=("K", "C"),
+            axes=("G", "K", "C"),
             to_resources=lambda p, _env: {
                 "mpi_np": p["K"], "cpus_per_task": p["C"]})
     # The trial pins -- what `transform_fdf` used to SPLICE into a finished

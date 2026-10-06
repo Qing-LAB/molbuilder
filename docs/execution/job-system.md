@@ -965,8 +965,11 @@ trial's deck names its own launch, `launch bench <stage> <trial>`.
 `jobset/commands.py` for what the verbs and their refusals print — the
 calculation named by its address from the projects root (`--bundle`, quoted
 as a shell needs it) unless the reader stands in it; a launch's mode stated
-where this calculation's config sets none, as one line per mode its machine
-takes — the queue's only where the machine names one; a refusal
+unless the calculation is launched on this machine and this machine's
+`launch.mode` names one — a calculation set to another machine is launched
+there, where this machine's file does not speak *(its lines leaned on it
+until 2026-10-06)* — as one line per mode its machine takes — the queue's
+only where the machine names one; a refusal
 that asks for a stage offering the stages the verb takes (`'#N'` quoted) and
 the command for the first — a bench verb's, the stages with a prepped
 benchmark, and a calculation that has no benchmark says so before it asks; one
@@ -1590,7 +1593,10 @@ binding the name a second time; `launch` sends to it, and the Task setup card
 shows it. One request is asked of a queue, by every caller
 (`placement.request_of`: a SIESTA run's ranks, a PySCF run's one process, the
 cores each runs on, its GPUs, memory and wall). A launch flag changes one
-value — admitted again, and recorded in `run.json` and the ledger. *(Until 2026-10-03 the header placed the job with an empty
+value — admitted again, and recorded: `run.json`'s `placed_on` keeps the
+queue, wall and memory the run was sent with, and the ledger's lines the
+flags as typed *(the wall and memory were in `run.json`'s line alone until
+2026-10-06)*. *(Until 2026-10-03 the header placed the job with an empty
 request — a GPU run's header named a CPU queue — and a run's first fit check
 was at launch, until 2026-10-05. The record on the job, and the readers of it,
 are unit 11's ([`plans/plan.md`](?doc=plans/plan.md)).)* **A benchmark's queue

@@ -78,3 +78,55 @@ launch_mode = "direct"
 launch_sends = true
 listing = ["[ran]"]
 walk = ["per-trial-bound=300s", "timeout -k 30 300 bash"]
+
+[[case]]
+name = "...a trial that fails leaves the rest to run, and the walk says how many failed"
+bench = { mpi_np = [1, 2] }
+stand_in = { rc = 1 }
+launch = []
+launch_mode = "direct"
+launch_sends = true
+walk_log = ["G0K1C1 finished rc=1", "G0K2C1 finished rc=1", "done fails=2"]
+
+[[case]]
+name = "...and launched again, it passes the trials launched before over by name, and runs the rest"
+bench = { mpi_np = [1, 2] }
+before_launch = [["launch", "bench", "coarse", "G0K1C1", "--mode", "direct", "--yes"]]
+launch = []
+launch_mode = "direct"
+launch_sends = true
+listing = ["G0K1C1", "skipped -- already launched", "[ran]"]
+
+# ---- ...ON A QUEUE: one job per resource shelf (`generator.md` § 4.3a)
+
+[[case]]
+name = "a benchmark sent to a queue goes one job per shelf, every shelf written before any is sent -- one the scheduler refuses keeps its trials pending, and the rest go"
+machine = "this"
+queues = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] }]
+allocation = { domain = "cpu", time = "01:00:00", mem = "8G" }
+bench = { mpi_np = [1, 2] }
+sbatch_refuses = "bench-group-G0K2C1"
+launch = []
+launch_sends = true
+listing = ["Requested node configuration is not available", "stays pending", "submitted"]
+after_launch = { made = ["01_coarse/bench/launch/bench-group-G0K1C1.run.sh", "01_coarse/bench/launch/bench-group-G0K1C1.sbatch", "01_coarse/bench/launch/bench-group-G0K2C1.run.sh", "01_coarse/bench/launch/bench-group-G0K2C1.sbatch", "01_coarse/bench/bench-G0K1C1/run-0/run.json"], made_lacks = ["01_coarse/bench/bench-G0K2C1/run-0/run.json"] }
+
+[[case]]
+name = "...launched again, it passes the trials launched before over -- all of them were, so nothing is sent"
+machine = "this"
+queues = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] }]
+allocation = { domain = "cpu", time = "01:00:00", mem = "8G" }
+bench = { mpi_np = [1, 2] }
+before_launch = [["launch", "bench", "coarse", "--mode", "submit", "--yes"]]
+launch = []
+launch_refused = ["all 2 trials are launched"]
+
+[[case]]
+name = "...and its per-trial bound is the shelf's walk's, which runs each trial in its attempt"
+machine = "this"
+queues = [{ name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] }]
+allocation = { domain = "cpu", time = "01:00:00", mem = "8G" }
+bench = { mpi_np = [1] }
+launch = ["--trial-timeout", "5"]
+launch_sends = true
+walk = ["per-trial-bound=300s", "timeout -k 30 300 bash", '"bench-G0K1C1/run-0"']

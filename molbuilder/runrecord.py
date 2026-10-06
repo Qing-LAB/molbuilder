@@ -203,7 +203,9 @@ def write_launch(attempt_dir: Path, *, mode: str, command: List[str],
 
     ``placed_on`` is WHERE IT WAS SENT: the domain name, its partition and
     qos (`scheduler.md` R12 -- the queue half; what it LANDED ON is the
-    monitor's ``[MACHINE]`` line, written on the node).  The placement was
+    monitor's ``[MACHINE]`` line, written on the node) -- and the wall and
+    memory it was sent with, which a launch flag changes
+    (`job-system.md` § 6.0).  The placement was
     already in this file, buried inside the ``sbatch`` argv as ``-p``/``-q``
     — so reading it back meant parsing a command line, which is the
     re-derivation A4 exists to remove.  *(It said "WHERE IT RAN" and

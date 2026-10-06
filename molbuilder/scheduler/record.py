@@ -883,6 +883,19 @@ def calculation_record(bundle_dir) -> Path:
     return Path(bundle_dir) / FILENAME
 
 
+def calculation_machine(bundle_dir) -> Optional[str]:
+    """The machine a calculation is set to -- the name its copy of its
+    machine's record carries (`configuration.md` M-3: set at its first prep,
+    and it does not change), :data:`LOCAL_TARGET` for the machine it was
+    prepped on -- or ``None`` before its first prep, or for a copy that does
+    not read or names none (one written before 2026-10-02).  The one reader
+    of that name: Task setup's folder answer, the launch lines molbuilder
+    prints and a re-probe's remedy ask it (each read the copy itself until
+    2026-10-06)."""
+    env = read_environment(calculation_record(bundle_dir))
+    return getattr(env, "machine", None) if env is not None else None
+
+
 def environments_dir() -> Path:
     """Where NAMED target records live — ``<config dir>/environments/``.
 
@@ -1320,8 +1333,7 @@ def record_and_renewal(bundle_dir=None, target: Optional[str] = None
             if bundle_dir is not None else None)
     if snap is not None and snap.is_file():
         # WHICH machine: the one the copy names (M-3), else the one asked for.
-        held = read_environment(snap)
-        name = (held.machine if held is not None else None) or target
+        name = calculation_machine(bundle_dir) or target
         probe = (f"`{probe_command(None)}` here" if name in (None, LOCAL_TARGET)
                  else f"`{probe_command(name)}` {probe_steps(name)}")
         return ("this calculation's environment.json, snapshotted at its "
@@ -1474,7 +1486,8 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
 
 
 __all__ = [
-    "SCHEMA", "FILENAME", "calculation_record", "Topology", "Site", "Domain", "Environment",
+    "SCHEMA", "FILENAME", "calculation_record", "calculation_machine",
+    "Topology", "Site", "Domain", "Environment",
     "detect_scheduler", "detect_topology", "detect_site",
     "resolve_environment",
     "machine_scope_path", "environments_dir", "named_environments",

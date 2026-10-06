@@ -145,7 +145,7 @@ class TestTheDoorServesTheOneEnumerator:
         d = _post(client, bundle, {"mpi_np": [64], "omp_threads": [1],
                                    "use_gpu": [False]})
         labels = {c["label"] for c in d["cells"]}
-        assert labels == {"K64C1"}, (
+        assert labels == {"G0K64C1"}, (
             f"the in-flight 64 must be the whole grid, and the saved 16 must "
             f"not appear; got {sorted(labels)}")
 

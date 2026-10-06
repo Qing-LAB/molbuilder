@@ -119,11 +119,14 @@ def describe_h2(tmp_path, monkeypatch, *, shape: str = "hierarchical",
     return bundle
 
 
-def a_queue_that_answers(tmp_path, monkeypatch, domains, **record) -> Path:
+def a_queue_that_answers(tmp_path, monkeypatch, domains, refuses=None,
+                         **record) -> Path:
     """This machine's record names ``domains`` (`scheduler.Domain` rows) --
     and ``record``'s other fields, when given -- and the `sbatch` first on
-    PATH queues nothing.  Returns the file each call is written to, one line
-    each: ``<where it was run> | <its arguments>``."""
+    PATH queues nothing; with ``refuses``, a line naming it is refused as
+    Sol refused a node configuration it does not have.  Returns the file
+    each call is written to, one line each: ``<where it was run> | <its
+    arguments>``."""
     from conftest import write_machine_record
     write_machine_record(scheduler="slurm", domains=list(domains), **record)
     bin_dir = tmp_path / "scheduler-bin"
@@ -135,7 +138,10 @@ def a_queue_that_answers(tmp_path, monkeypatch, domains, **record) -> Path:
         f'echo "$(pwd) | $*" >> "{calls}"\n'
         'case " $* " in\n'
         f'  *" --test-only "*) echo "{SOL_PREDICTION}" >&2; exit 0 ;;\n'
-        "esac\n"
+        + (f'  *"{refuses}"*) echo "sbatch: error: Batch job submission '
+           f'failed: Requested node configuration is not available" >&2; '
+           f'exit 1 ;;\n' if refuses else "")
+        + "esac\n"
         'echo "Submitted batch job 4242"\n')
     f.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
@@ -236,9 +242,11 @@ def calls_made(calls: Path):
 #   1. ALLOWED OR REFUSED, in its words -- at prep (`refused`, a sentence or a
 #      list of them; `said`) or at
 #      launch (`launch_refused`, the same; `listing`) -- a dry run, unless
-#      `launch_sends` sends it (answered `--yes`); what the launch left
+#      `launch_sends` sends it (answered `--yes`), after `before_launch`, the
+#      verbs typed between the row's prep and its launch; what the launch left
 #      (`launch_writes_nothing`: every file under the calculation as it was;
 #      `walk`, `walk_lacks`: the walk it wrote, `launch/<name>.run.sh`;
+#      `walk_log`: what that walk wrote as it went, `launch/<name>.log`;
 #      `after_launch`: the after-prep checks below, asked again);
 #   2. WHAT IS PRODUCED -- the `.sbatch` header (`header`, or
 #      `header_absent`), the deck (`deck`), the run script (`run_sh`), the
@@ -269,6 +277,7 @@ def calls_made(calls: Path):
 # `machine` unless the row names one;
 # `record` -- more fields of THIS machine's record; `named_record` -- more
 # fields of the named target's; `queues` -- replaces the table's menu;
+# `sbatch_refuses` -- a word the stand-in `sbatch` refuses a line holding;
 # `probe` -- the record made as a person makes it instead, by `jobset probe
 # --write --yes`, once per list of flags, in order, after `machine_config`
 # and over `record` when the row gives them; a `--name` among the flags names
@@ -317,10 +326,13 @@ def calls_made(calls: Path):
 # folder's saved states, newest first
 # (`saved_states`, their notes -- `{stamp}` standing for the time a note
 # leads with, `2026-10-03 14:05:12`), what `status` says of the calculation
-# (`status_says`, and what it does not, `status_lacks`), and the decisions
+# (`status_says`, and what it does not, `status_lacks`), the decisions
 # its ledger holds and does not hold (`ledger_holds`, `ledger_lacks` -- a
-# decision, or a verb's, `"launch continues"`); a prep that was not refused
-# says nothing of `said_lacks`.
+# decision, or a verb's, `"launch continues"`; in `ledger_holds`, a table
+# names one with its facts, `{decision = "launch launched", time = "3h"}`),
+# and what a stage's newest launch record holds (`run_json`: `stage`, and
+# `holds`, `run.json`'s fields as it nests them); a prep that was not
+# refused says nothing of `said_lacks`.
 # THEN, refused or not: the description saved through Task setup's Save with
 # `saved`'s fields changed (`{shape = "flat"}`) -- refused, with
 # `save_refused`'s words, or taken.  A REFUSED prep, its remedy done: this
@@ -394,7 +406,8 @@ def _road_target(table, case, tmp_path, monkeypatch) -> str:
         Path(machine_scope_path()).unlink(missing_ok=True)
         return "this"
     if where == "this":
-        a_queue_that_answers(tmp_path, monkeypatch, queues, **record)
+        a_queue_that_answers(tmp_path, monkeypatch, queues,
+                             refuses=case.get("sbatch_refuses"), **record)
         return "this"
     write_machine_record(**record)          # this machine: no queue at all
     if where == "workstation":
@@ -630,6 +643,8 @@ def _road_after_prep(case, bundle) -> None:
         _road_speaks(case["speaks"], bundle)
     if "progress_log_holds" in case:
         _road_progress_log_holds(case["progress_log_holds"], bundle)
+    if "run_json" in case:
+        _road_run_json(case["run_json"], bundle)
     if "status_says" in case or "status_lacks" in case:
         st = jobset("status", "--bundle", bundle)
         assert st.exit_code == 0, _one_line(st)
@@ -651,7 +666,33 @@ def _road_after_prep(case, bundle) -> None:
         for decision in case.get("ledger_lacks", []):
             assert decision not in decided, f"the ledger holds: {decided}"
         for decision in case.get("ledger_holds", []):
+            if isinstance(decision, dict):
+                # A DECISION AND ITS FACTS: some line of it holds each.
+                want = dict(decision)
+                name = want.pop("decision")
+                assert any(name in (e["decision"],
+                                    f"{e['verb']} {e['decision']}")
+                           and all(e.get(k) == v for k, v in want.items())
+                           for e in lines), \
+                    f"no {name} line holds {want}: {lines}"
+                continue
             assert decision in decided, f"the ledger holds: {decided}"
+
+
+def _road_run_json(want, bundle) -> None:
+    """What a stage's newest run's launch record holds -- its `run.json`,
+    read by its one door (`runrecord.launch_record`): each field of the
+    row's ``holds``, nested as the file nests it."""
+    from molbuilder.jobset.materialize import run_dir, stage_home
+    from molbuilder.runfiles import stem
+    from molbuilder.runrecord import launch_record
+    from molbuilder.task import read_task
+    task = read_task(bundle / "task.json")
+    home = stage_home(bundle, task, want["stage"])
+    got = (launch_record(bundle, basename=stem(task.label, home.token))
+           if task.shape == "flat" else launch_record(run_dir(home.dir)))
+    assert got is not None, f"{want['stage']} has no launch record"
+    _road_holds(got, want["holds"], "run.json")
 
 
 def _road_card_written(specs, bundle) -> None:
@@ -923,7 +964,10 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
             _road_lines({"h_lacks": case.get("bench_header_lacks", [])}, "h",
                         header.read_text())
     # ...and the `sbatch` line(s) launch shows -- one per shelf of a
-    # benchmark -- or its refusal
+    # benchmark -- or its refusal, after the verbs typed between
+    for words in case.get("before_launch", []):
+        got = jobset(*words, "--bundle", bundle)
+        assert got.exit_code == 0, f"{words}: {_one_line(got)}"
     if "launch" in case:
         mode = case.get("launch_mode", "submit")
         was = _all_written(bundle)
@@ -953,6 +997,11 @@ def run_road_case(table, case, tmp_path, monkeypatch) -> None:
             walks = sorted(bundle.rglob("launch/*.run.sh"))
             assert len(walks) == 1, walks
             _road_lines(case, "walk", walks[0].read_text())
+        if "walk_log" in case:
+            # ...and what it wrote as it walked, `launch/<name>.log`
+            logs = sorted(bundle.rglob("launch/*.log"))
+            assert len(logs) == 1, logs
+            _road_lines(case, "walk_log", logs[0].read_text())
         if "after_launch" in case:
             _road_after_prep(case["after_launch"], bundle)
 

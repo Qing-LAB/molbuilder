@@ -46,7 +46,7 @@ refuses a hierarchical stage with no attempt open — § 1.6.2.)*
     run-0/  run-1/                      <- attempts: prep opens the first and copies its
                                            inputs in, launch each one after; launch writes run.json
       *-run0.out  *-run0.concluded      the output + the conclusion marker (rc inside)
-    bench/bench-K2C1/run-0/             <- a benchmark trial keeps attempts as a stage does (§ 1.5a)
+    bench/bench-G0K2C1/run-0/           <- a benchmark trial keeps attempts as a stage does (§ 1.5a)
   (the report is PRINTED by `summarize`, not written -- § 7.1 of job-system.md)
 ```
 
@@ -857,7 +857,7 @@ Two small files answer the two questions *(the second decided by the user,
 
 | file | written by | when | it says | absent means |
 |---|---|---|---|---|
-| `run.json` (`molbuilder/run-launch@1`) — a flat stage's `<basename>.run.json` | `launch`, into the attempt — or, for a flat stage, beside its deck | when the launch succeeds: `sbatch` accepted it, or the direct process started | *launched* — the mode, the exact command, the scheduler's job id, when, where it was sent, and **what it continued from** | not launched: `launch` runs in this attempt |
+| `run.json` (`molbuilder/run-launch@1`) — a flat stage's `<basename>.run.json` | `launch`, into the attempt — or, for a flat stage, beside its deck | when the launch succeeds: `sbatch` accepted it, or the direct process started | *launched* — the mode, the exact command, the scheduler's job id, when, where it was sent and with what wall and memory, and **what it continued from** | not launched: `launch` runs in this attempt |
 | `<basename>-run<N>.concluded` | the wrapper, on its main line | its last act, after the engine returns — and after the job's finish, when it has one (`engines/vibration.md` § 5.5) — and before it stops the monitor | *the process ended on its own* — the exit code and the time; **when the finish failed, its exit code and the words `finish failed (<bundle>)`** (`parse/dirs/job.FINISH_FAILED`) | still running, or force-stopped: the files cannot tell which |
 | `.continued-from` — a flat stage's `<basename>.continued-from` | `prep`, and `launch` when it opens a stage's next attempt — one writer, `runrecord.write_continued_from` | when it copies warm files in — on the flat layout, when the stage continues from a run whose files lie in the folder | which attempt they came from, for `launch` to write into `run.json` — on the flat layout the run's own name, `<label>_<NN>_<stage>-run<N>`, which every file of it carries (ruled 2026-10-01) | the run starts from the structure |
 

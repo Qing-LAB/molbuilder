@@ -2265,13 +2265,8 @@ def _folder_set_to(folder):
     """The machine the calculation is set to, or ``None`` before its first
     prep -- the name its copy of the record carries, in the tab's words:
     this machine is `(this machine)` there, as every answer here says it."""
-    from molbuilder.scheduler import read_environment
-    from molbuilder.scheduler.record import LOCAL_TARGET, calculation_record
-    try:
-        env = read_environment(calculation_record(folder))
-    except Exception:                             # noqa: BLE001
-        return None
-    name = getattr(env, "machine", None) if env is not None else None
+    from molbuilder.scheduler.record import LOCAL_TARGET, calculation_machine
+    name = calculation_machine(folder)
     return "(this machine)" if name == LOCAL_TARGET else name
 
 

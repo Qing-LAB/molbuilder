@@ -255,6 +255,12 @@ launch = ["--time", "3h"]
 line = ["-t 0-03:00:00", "-p cpu", "-q public"]
 
 [[case]]
+name = "...recorded as a value: run.json keeps the queue, wall and memory the run was sent with, the ledger the flag as typed"
+launch = ["--time", "3h"]
+launch_sends = true
+after_launch = { run_json = { stage = "coarse", holds = { placed_on = { domain = "cpu", partition = "cpu", qos = "public", time = "0-03:00:00", mem = "8G" } } }, ledger_holds = [{ decision = "launch launched", time = "3h" }] }
+
+[[case]]
 name = "the record checks the wall: one longer than the queue allows is refused at prep"
 allocation = { domain = "debug" }
 refused = "but debug allows 00:15:00"

@@ -92,17 +92,30 @@ def takes_a_queue(base, target: Optional[str] = None) -> bool:
     return rec is None or rec.scheduler == "slurm"
 
 
+def launches_here(base, target: Optional[str] = None) -> bool:
+    """Whether the calculation is launched on THIS machine -- the machine
+    it is set to (`scheduler.record.calculation_machine`, M-3), or before
+    its first prep the one named for it (``target``), is this one."""
+    from ..scheduler.record import LOCAL_TARGET, calculation_machine
+    return (calculation_machine(base) or target
+            or LOCAL_TARGET) == LOCAL_TARGET
+
+
 def launch_lines(kind: str, *words, base,
                  target: Optional[str] = None) -> List[str]:
-    """The launch of ``words`` as a person types it: the bare line where this
-    machine's config names a mode -- `launch` takes it -- else one line per
-    mode the calculation's machine takes (:func:`takes_a_queue`), each a
-    command (never ``--mode submit|direct``, which bash reads as a pipe).
-    *(The line to the queue was printed on a machine with none until
-    2026-10-05: typed, its launch was refused -- no header was ever
-    written -- and only a dry run, which planned less than a launch, let it
-    pass.)*"""
-    if configured_mode():
+    """The launch of ``words`` as a person types it: the bare line where the
+    calculation is launched on this machine and this machine's config names
+    a mode -- `launch` takes it -- else one line per mode the calculation's
+    machine takes (:func:`takes_a_queue`), each a command (never
+    ``--mode submit|direct``, which bash reads as a pipe).  A calculation
+    set to another machine is launched there, whose config this one does
+    not read: its lines state their mode *(they leaned on this machine's
+    ``launch.mode`` until 2026-10-06, and typed there were refused for want
+    of ``--mode``)*.  *(The line to the queue was printed on a machine with
+    none until 2026-10-05: typed, its launch was refused -- no header was
+    ever written -- and only a dry run, which planned less than a launch,
+    let it pass.)*"""
+    if configured_mode() and launches_here(base, target):
         return [command("launch", kind, *words, base=base)]
     here = command("launch", kind, *words, base=base,
                    flags=("--mode", "direct")) + "   # here"

@@ -1823,6 +1823,10 @@ def _launch(said: dict, kind: str, stage, trial, bundle: str, mode: str,
     told = dict(kind=kind, stage=stage, trial=trial, mode=mode,
                 mode_source=mode_source, domain=domain,
                 domain_source=domain_source, provenance=prov,
+                # A LAUNCH FLAG'S WALL AND MEMORY, as typed: the values it
+                # changes are recorded in `run.json` too (§ 6.0).
+                **({"time": time_text} if time_text else {}),
+                **({"mem": mem_text} if mem_text else {}),
                 **({"trial_timeout_s": _bound_s, "side": only_side}
                    if grouped else {}))
     plan = plan_launch(js, base, mode=mode, only=only, domain=domain,

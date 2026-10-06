@@ -1361,8 +1361,8 @@ def test_the_declared_grid_is_the_sweep(calc):
     _describe_cpu(calc)
     _declare_bench(calc, {"mpi_np": [1, 2], "omp_threads": [1]})
     sweep, _pins, translation = bench_inputs(calc, None)
-    assert sweep == [{"K": 1, "C": 1}, {"K": 2, "C": 1}]
-    assert translation.axes == ("K", "C")
+    assert sweep == [{"G": 0, "K": 1, "C": 1}, {"G": 0, "K": 2, "C": 1}]
+    assert translation.axes == ("G", "K", "C")
 
 
 def test_a_declared_point_over_capability_is_crossed_out_by_name(calc):
@@ -1389,7 +1389,7 @@ def test_a_declared_point_over_capability_is_crossed_out_by_name(calc):
     assert "crossed out (1)" in shown
     # The CELL, by the name its trial directory would carry, and both
     # numbers -- what was asked and what there is.
-    assert "K4096C2" in shown
+    assert "G0K4096C2" in shown
     # THE NUMBERS, NOT THE VERB.  Refusals became findings on
     # 2026-09-11 and render through one `Refusal.message`, which
     # says "needs 8192 cores but this machine allows 4 cores";
@@ -1571,9 +1571,9 @@ def test_the_summary_closes_with_the_verdict_and_the_commands():
     from molbuilder.bench.result import build_bench_result
     from molbuilder.jobset.summarize import recommendation_text, summary_text
     res = build_bench_result(
-        [_mk_point("K1C1", spi=1.9, knobs={"mpi_np": 1}),
-         _mk_point("K2C1", spi=1.1, knobs={"mpi_np": 2}),
-         _mk_point("K5C1", state="unknown")])
+        [_mk_point("G0K1C1", spi=1.9, knobs={"mpi_np": 1}),
+         _mk_point("G0K2C1", spi=1.1, knobs={"mpi_np": 2}),
+         _mk_point("G0K5C1", state="unknown")])
     out = summary_text(
         res, Path("/x/bench-result.json"),
         report=recommendation_text(res, stage="tight"), stage="tight")
@@ -1591,8 +1591,8 @@ def test_a_verdictless_summary_says_so_with_the_census():
     from pathlib import Path
     from molbuilder.bench.result import build_bench_result
     from molbuilder.jobset.summarize import summary_text
-    res = build_bench_result([_mk_point("K1C1", state="incomplete"),
-                              _mk_point("K2C1", state="unknown")])
+    res = build_bench_result([_mk_point("G0K1C1", state="incomplete"),
+                              _mk_point("G0K2C1", state="unknown")])
     out = summary_text(res, Path("/x/bench-result.json"))
     assert "NO VERDICT" in out
     assert "1 incomplete" in out and "1 unknown" in out
@@ -1622,14 +1622,14 @@ def test_the_table_measures_beside_the_ask_and_gates_gpu_columns():
     from molbuilder.bench.result import BenchPoint, build_bench_result
     from molbuilder.jobset.summarize import _fmt_duration, summary_text
     cpu = BenchPoint(
-        label="K2C1", engine="cpu",
+        label="G0K2C1", engine="cpu",
         knobs={"mpi_np": 2, "cpus_per_task": 1},
         metrics={"s_per_iter": 1.0, "iters_measured": 3, "monitored_elapsed_s": 41,
                  "mem_peak_gb": 24.73, "cpu_mean_pct": 96.2},
         bound="host", state="completed",
         effective={"diag_algorithm": "D&C"})
     out = summary_text(build_bench_result([cpu]), Path("/x/b.json"))
-    row = next(l for l in out.splitlines() if "K2C1" in l)
+    row = next(l for l in out.splitlines() if "G0K2C1" in l)
     for cell in ("2", "1", "D&C", "3", "41s", "24.7G", "96", "host",
                  "completed"):
         assert cell in row.split(), (cell, row)
@@ -1758,16 +1758,16 @@ def test_no_winner_speaks_only_about_the_timed_set():
     from molbuilder.bench.result import build_bench_result
     from molbuilder.jobset.summarize import summary_text
     # Nothing timed at all; one incomplete point carries mismatch data.
-    p = _mk_point("K1C1", state="incomplete")
+    p = _mk_point("G0K1C1", state="incomplete")
     p.mismatch = {"mpi_np": {"asked": 4, "ran": 2}}
-    res = build_bench_result([p, _mk_point("K2C1", state="unknown")])
+    res = build_bench_result([p, _mk_point("G0K2C1", state="unknown")])
     out = summary_text(res, Path("/x/bench-result.json"))
     assert "every timed trial" not in out, (
         "the summary asserts a census of timed trials it never took")
     assert "NO VERDICT" in out
     # And the sentence still fires when the timed set really is all
     # mismatched.
-    q = _mk_point("K4C1", spi=2.0, knobs={"mpi_np": 4})
+    q = _mk_point("G0K4C1", spi=2.0, knobs={"mpi_np": 4})
     q.mismatch = {"mpi_np": {"asked": 4, "ran": 2}}
     res2 = build_bench_result([q])
     out2 = summary_text(res2, Path("/x/bench-result.json"))
@@ -1932,12 +1932,12 @@ def test_a_point_the_machine_cannot_hold_does_not_kill_the_ones_that_fit(
     notes: list = []
     sweep, _pins, _translation = bench_inputs(calc, None, notes=notes)
 
-    assert sweep == [{"K": 2, "C": 1}], (
+    assert sweep == [{"G": 0, "K": 2, "C": 1}], (
         "the point that fits must survive its oversized sibling")
 
     shown = "\n".join(notes)
     assert "2 combination(s) enumerated, 1 fit a queue" in shown
-    assert "K2C1" in shown and "K4096C1" in shown
+    assert "G0K2C1" in shown and "G0K4096C1" in shown
     # The struck one names its numbers (R4), not a verdict word.
     assert "crossed out (1)" in shown
     # THE NUMBERS, NOT THE VERB.  Refusals became findings on
@@ -1951,218 +1951,17 @@ def test_a_point_the_machine_cannot_hold_does_not_kill_the_ones_that_fit(
         f"allowed; it said: {shown!r}")
 
 
-def test_every_shelf_is_written_before_any_is_sent(calc, monkeypatch):
-    """L3's launch/ directory, complete even when the scheduler says no.
-
-    A Sol bench submitted its CPU group, had the next group refused, and
-    the raise unwound the shelf loop -- so the third group's scripts were
-    never written and the obvious recovery (run the printed sbatch by
-    hand) answered *Unable to open file*.  Rendering is now finished for
-    every shelf before the first `sbatch` runs.
-
-    And ONE REFUSAL DOES NOT CANCEL THE REST (user, 2026-08-30): the
-    shelves are independent jobs, so a valid one still goes out, and the
-    refused one's trials keep no launch record and stay pending for the
-    next `launch`.
-    """
-    import types
-    from pathlib import Path
-
-    from molbuilder.jobset._cli import _load_bench_set
-    from molbuilder.jobset.materialize import job_dir_names, shape_of
-    from molbuilder.runrecord import launch_record
-    from molbuilder.jobset.submit import plan_launch, send_launch
-    from molbuilder.jobset.ask import Said
-
-    _describe_cpu(calc)
-    _declare_bench(calc, {"mpi_np": [2, 4], "omp_threads": [1]})
-    _prep_bench(calc)
-    js, base = _load_bench_set(calc, "coarse")
-    dirs = job_dir_names(js, shape_of(js, base))
-
-    # The FIRST shelf sent is refused, exactly as the scheduler refused a
-    # gres type its partition does not stock; the second must still go.
-    seen = []
-
-    def fake_run(cmd, **kw):
-        seen.append((cmd, kw.get("cwd")))
-        first = len(seen) == 1
-        class R:
-            returncode = 1 if first else 0
-            stdout = "" if first else "Submitted batch job 777"
-            stderr = ("sbatch: error: Batch job submission failed: "
-                      "Requested node configuration is not available"
-                      if first else "")
-        return R()
-
-    import molbuilder.jobset.submit as submod
-    monkeypatch.setattr(submod, "subprocess",
-                        types.SimpleNamespace(run=fake_run))
-    # This box has no queue, so the real header render answers None; the
-    # header is not under test here.  The stub takes its name from the
-    # script path the renderer is handed, because a multi-shelf sweep
-    # renders one header PER SHELF.
-    import molbuilder.runwrap as _rw
-    monkeypatch.setattr(_rw, "_render_sbatch_for",
-                        lambda path, **k: "#!/bin/bash\n"
-                        "#SBATCH -o slurm.%j.out\n#SBATCH -e slurm.%j.err\n"
-                        f"bash {Path(path).stem}.run.sh \"$@\"\n")
-
-    results = send_launch(plan_launch(js, base, mode="submit"),
-                said=Said(True, "yes (--yes)"))
-
-    assert len(seen) == 2, (
-        "a refused shelf must not cancel the shelf behind it -- both were "
-        "prepared, so both must be offered to the scheduler")
-
-    refused = [r for r in results if r.status == "sbatch refused"]
-    sent    = [r for r in results if r.status == "submitted"]
-    assert len(refused) == 1 and len(sent) == 1, [r.status for r in results]
-    assert "Requested node configuration" in (refused[0].detail or "")
-    assert sent[0].job_id == "777"
-
-    # EVERY shelf's pair is on disk -- the point of the split.
-    launch = Path(seen[0][1]) / "launch"
-    names = {r.name for r in results if r.command}
-    for n in names:
-        assert (launch / f"{n}.run.sh").is_file(), f"{n}.run.sh missing"
-        assert (launch / f"{n}.sbatch").is_file(), f"{n}.sbatch missing"
-
-    # The refused shelf's trials keep no launch record, so the next
-    # `launch bench` picks up exactly them.
-    pend = [r.name for r in results if r.status == "stays pending"]
-    assert pend
-    for name in pend:
-        assert launch_record(base / dirs[name]) is None, (
-            f"{name} rode a refused group; it must stay pending")
-
-
-def test_the_sequencer_cds_where_the_wrapper_ACTUALLY_is(calc, monkeypatch):
-    """Sol job 62372574: every trial died in 0s with
-
-        bash: siesta-...run.sh: No such file or directory   (rc=127)
-
-    The wrapper lives in the ATTEMPT (`project-layout.md` § 1.6 -- *"where
-    a run happens: inside the attempt directory"*, and § 1.5a gave sweep
-    trials attempts on 2026-08-27), and the sequencer went on naming the
-    trial CONTAINER.  A ``trial_dirs`` list had even been computed for
-    this, carrying the comment *"the sequencer cd's into these, so they
-    are the attempt too"* -- and nothing read it.
-
-    THE PIN IS AGAINST THE DISK, not against a fixture.  The test that
-    covered this sequencer wrote its own stub wrapper into the trial
-    directory -- the very place the bug looked -- so it proved the walk
-    against a layout `prep` does not produce.  This one asks `prep` for
-    the layout and checks that every path the script names is really
-    there, which is true under both shapes without knowing which is in
-    play.
-    """
-    import re
-    import types
-    from pathlib import Path
-
-    from molbuilder.jobset._cli import _load_bench_set
-    from molbuilder.jobset.submit import plan_launch, send_launch
-    from molbuilder.jobset.ask import Said
-
-    _describe_cpu(calc)
-    _declare_bench(calc, {"mpi_np": [2], "omp_threads": [1],
-                          "block_size": [16, 32]})
-    _prep_bench(calc)
-    js, base = _load_bench_set(calc, "coarse")
-
-    seen = {}
-
-    def fake_run(cmd, **kw):
-        seen["cwd"] = kw.get("cwd")
-        class R:
-            returncode = 0
-            stdout = "Submitted batch job 5150"
-            stderr = ""
-        return R()
-
-    import molbuilder.jobset.submit as submod
-    monkeypatch.setattr(submod, "subprocess",
-                        types.SimpleNamespace(run=fake_run))
-    import molbuilder.runwrap as _rw
-    monkeypatch.setattr(_rw, "_render_sbatch_for",
-                        lambda path, **k: "#!/bin/bash\n"
-                        "#SBATCH -o slurm.%j.out\n#SBATCH -e slurm.%j.err\n"
-                        f"bash {Path(path).stem}.run.sh \"$@\"\n")
-
-    send_launch(plan_launch(js, base, mode="submit"),
-                said=Said(True, "yes (--yes)"))
-
-    container = Path(seen["cwd"])
-    scripts = list((container / "launch").glob("*.run.sh"))
-    assert scripts, "no sequencer was written"
-
-    checked = 0
-    for script in scripts:
-        for dir_, wrapper in re.findall(
-                r'^run_trial "[^"]+" "([^"]+)" "([^"]+)"',
-                script.read_text(), re.M):
-            target = container / dir_ / wrapper
-            assert target.is_file(), (
-                f"{script.name} cd's into {dir_!r} and runs {wrapper!r}, "
-                f"but that file is not there.  On disk the wrapper is at "
-                f"{sorted(str(p.relative_to(container)) for p in container.glob(dir_.split('/')[0] + '/**/' + wrapper))}"
-            )
-            checked += 1
-    assert checked, "no run_trial lines to check -- re-anchor this pin"
-
-
-def test_a_grouped_launch_records_where_the_launched_door_LOOKS(calc,
-                                                             monkeypatch):
-    """`run.json` is written where the job RAN and read from the same
-    place, or a re-launch re-submits work that has already measured.
-
-    The grouped path wrote it into the container while the launched check
-    read the attempt (`_trial_run_dir`) -- so every trial read *never
-    launched* forever.  The single-job paths had always resolved this;
-    only this one did not, which is what one shared resolver now prevents.
-    """
-    import types
-    from pathlib import Path
-
-    from molbuilder.jobset._cli import _load_bench_set
-    from molbuilder.jobset.materialize import job_dir_names, shape_of
-    from molbuilder.runrecord import launch_record
-    from molbuilder.jobset.submit import (_trial_run_dir, plan_launch,
-                                          send_launch)
-    from molbuilder.jobset.ask import Said
-
-    _describe_cpu(calc)
-    _declare_bench(calc, {"mpi_np": [2], "omp_threads": [1]})
-    _prep_bench(calc)
-    js, base = _load_bench_set(calc, "coarse")
-    dirs = job_dir_names(js, shape_of(js, base))
-
-    def fake_run(cmd, **kw):
-        class R:
-            returncode = 0
-            stdout = "Submitted batch job 6161"
-            stderr = ""
-        return R()
-
-    import molbuilder.jobset.submit as submod
-    monkeypatch.setattr(submod, "subprocess",
-                        types.SimpleNamespace(run=fake_run))
-    import molbuilder.runwrap as _rw
-    monkeypatch.setattr(_rw, "_render_sbatch_for",
-                        lambda path, **k: "#!/bin/bash\n"
-                        "#SBATCH -o slurm.%j.out\n#SBATCH -e slurm.%j.err\n"
-                        f"bash {Path(path).stem}.run.sh \"$@\"\n")
-
-    send_launch(plan_launch(js, base, mode="submit"),
-                said=Said(True, "yes (--yes)"))
-
-    for job in js.jobs:
-        where = _trial_run_dir(base / dirs[job.name])
-        assert (where / "run.json").is_file(), (
-            f"{job.name}: no run.json at {where} -- the record and the "
-            f"check must name one directory")
-        assert launch_record(where) is not None, f"{job.name} reads as never launched"
+# Three tests retired 2026-10-06 that sent a benchmark's shelves with the
+# scheduler and the header renderer swapped out in-process; their rules are
+# rows down the road, a stand-in `sbatch` refusing one shelf
+# (`tests/data/launch_protocol.toml`): every shelf written before any is
+# sent, one refused keeping its trials pending while the rest go
+# (`test_every_shelf_is_written_before_any_is_sent`); a benchmark launched
+# again passing its launched trials over -- its records where the walk
+# looks (`test_a_grouped_launch_records_where_the_launched_door_LOOKS`);
+# and the walk naming each trial's attempt, here run for real and on a
+# queue read from the walk it wrote
+# (`test_the_sequencer_cds_where_the_wrapper_ACTUALLY_is`).
 
 
 def test_only_a_bench_prefixed_directory_counts_as_a_trial(tmp_path):
@@ -2176,12 +1975,12 @@ def test_only_a_bench_prefixed_directory_counts_as_a_trial(tmp_path):
     """
     from molbuilder.jobset.materialize import trials_in
     from molbuilder.paths import TRIAL_PREFIX
-    (tmp_path / f"{TRIAL_PREFIX}K4C1").mkdir()
-    (tmp_path / f"{TRIAL_PREFIX}K8C1").mkdir()
+    (tmp_path / f"{TRIAL_PREFIX}G0K4C1").mkdir()
+    (tmp_path / f"{TRIAL_PREFIX}G0K8C1").mkdir()
     (tmp_path / "notes").mkdir()                 # a person's own folder
     (tmp_path / "job-set.json").write_text("{}")  # the sweep's record
     assert [d.name for d in trials_in(tmp_path)] == [
-        f"{TRIAL_PREFIX}K4C1", f"{TRIAL_PREFIX}K8C1"]
+        f"{TRIAL_PREFIX}G0K4C1", f"{TRIAL_PREFIX}G0K8C1"]
 
 
 def test_a_container_that_is_not_there_is_empty_not_an_error(tmp_path):

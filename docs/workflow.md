@@ -98,7 +98,7 @@ Six words are used throughout. Each is ordinary once you know what it points at.
 
 Two more you will meet in file names: an **attempt** is one try at running a
 stage (`run-0`, `run-1`), and a **trial** is one point of a benchmark
-(`bench-K16C1`).
+(`bench-G0K16C1`).
 
 ---
 

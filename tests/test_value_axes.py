@@ -359,7 +359,7 @@ def test_the_shelves_submit_widest_first(sol_calc):
     assert "bench-group-G0K4C1" in plans[0] and " -n 4 " in plans[0]
     assert "bench-group-G0K2C1" in plans[1] and " -n 2 " in plans[1]
     riders = [l.split()[1] for l in out.splitlines() if "rides the group" in l]
-    assert riders == ["K4C1", "K2C1"], riders
+    assert riders == ["G0K4C1", "G0K2C1"], riders
 
 
 def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
@@ -377,7 +377,7 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
     # 2026-08-27 the deck lives in the attempt (`project-layout.md`
     # § 1.5a).  The gate this exercises -- submission verifies the deck it
     # is about to launch starts cold -- is unchanged.
-    _c = sol_calc / "01_coarse" / "bench" / "bench-K4C1block_size64"
+    _c = sol_calc / "01_coarse" / "bench" / "bench-G0K4C1block_size64"
     deck = next((latest_attempt(_c) or _c).glob("*.fdf"))
     text = deck.read_text()
     assert "DM.UseSaveDM" in text and ".false." in text
@@ -390,7 +390,7 @@ def test_submission_gates_the_cold_start_against_the_deck(sol_calc):
         jobset_group, ["launch", "bench", "coarse", "--bundle",
                        str(sol_calc), "--mode", "submit", "--dry-run", "--yes", "--domain", "htc"])
     assert r.exit_code != 0
-    assert "WARM-start" in r.output and "K4C1block_size64" in r.output
+    assert "WARM-start" in r.output and "G0K4C1block_size64" in r.output
 
     deck.write_text(re.sub(r"^[ \t]*[A-Za-z.]*UseSave.*$", "",
                            text, flags=re.M))

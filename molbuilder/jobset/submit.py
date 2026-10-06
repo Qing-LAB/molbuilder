@@ -520,6 +520,10 @@ class Submission:
     #: The `Placement` it was admitted on -- ``None`` for a run here, or on a
     #: machine with no menu (R6).
     placement: object = None
+    #: The request as sent -- the job's resources under the launch's
+    #: ``--time`` / ``--mem`` (:func:`_sbatch_request`): the wall and memory
+    #: its ``run.json`` records beside the queue (`job-system.md` § 6.0).
+    sent: Optional[Resources] = None
     #: What each member says in the results when the submission walks
     #: several (``rides the group``, ``rides the chain``); ``None`` for one
     #: run, which is the submission itself.
@@ -549,7 +553,8 @@ class LaunchPlan:
     base: Path
     mode: str
     submissions: List[Submission]
-    #: Trials passed over by name -- measured before -- under direct and ask.
+    #: Trials passed over by name -- measured before -- by a walk, here or
+    #: a queue's shelves, and by a question to the scheduler.
     skipped: List[JobResult] = field(default_factory=list)
     #: What the send writes before anything goes: an attempt a re-launch
     #: opens and what is copied into it (`materialize.prepare_attempt`, the
@@ -657,11 +662,12 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
     opens the next attempt from the latest -- the one source that is never a
     guess -- and the flat layout simply runs again where its files are.  A
     run that never concluded is followed only on the person's judgement.
-    A TRIAL is immutable once launched: a walk here and a question to the
-    scheduler pass the measured ones over by name; one the person NAMED
-    (``named``) is refused when it is sent or run here -- a run here passed
-    it over, exit 0, until 2026-10-05 (the unit 11 review) -- and a
-    question to the scheduler says it already ran.
+    A TRIAL is immutable once launched: a walk -- here, or a queue's
+    shelves -- and a question to the scheduler pass the measured ones over
+    by name; one the person NAMED (``named``) is refused when it is sent or
+    run here -- a run here passed it over, exit 0, until 2026-10-05 (the
+    unit 11 review) -- and a question to the scheduler says it already
+    ran.
     """
     import functools
     from .commands import command
@@ -679,7 +685,7 @@ def _plan_member(jobset: JobSet, base: Path, job, *, mode: str,
                                            run if ns else None)
         if not _launched(where, basename):
             return _member(job, container, run, bool(ns), run)
-        if mode == "ask" or (mode == "direct" and not named):
+        if mode == "ask" or not named:
             return JobResult(job.name, [],
                              "already run" if mode == "ask"
                              else "skipped -- already launched")
@@ -1237,7 +1243,8 @@ def _go(s: Submission, record) -> List[JobResult]:
         # already measured its point.
         where, basename = m.record_at()
         _record_launch(where, mode="submit", command=s.command, job_id=jid,
-                       placement=s.placement, basename=basename)
+                       placement=s.placement, sent=s.sent,
+                       basename=basename)
     record("launched", submission=s.name, command=s.command, job_id=jid,
            domain=s.domain, members=names)
     return ([JobResult(s.name, s.command, "submitted", job_id=jid,
@@ -1353,6 +1360,14 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
         raise SubmitError(f"this sweep has no {side} trials to submit")
     mixed = bool(sides["cpu"]) and bool(sides["gpu"])
     plan = LaunchPlan(base, mode, [], tolerant=True)
+    # THE TRIALS STILL TO RUN, the one answer the walk here reads too
+    # (:func:`_bench_trials`) -- of the sides this launch sends, in the
+    # sweep's order.
+    sent = {j.name for this in ("cpu", "gpu")
+            if not (side and this != side) for j in sides[this]}
+    trials = {m.job.name: m for m in _bench_trials(
+        jobset, base, plan, mode=mode,
+        jobs=[j for j in jobset.jobs if j.name in sent])}
     for this in ("cpu", "gpu"):
         jobs = sides[this]
         if not jobs or (side and this != side):
@@ -1362,9 +1377,8 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
             shelves.setdefault(_shelf_key(j), []).append(j)
         multi = len(shelves) > 1
         for key in sorted(shelves, key=_shelf_width, reverse=True):
-            pending = [j for j in shelves[key]
-                       if not _launched(
-                           _trial_run_dir(base / dirs[j.name]))]
+            pending = [trials[j.name] for j in shelves[key]
+                       if j.name in trials]
             if not pending:
                 continue            # this shelf already rode a group
             name = ("bench-group"
@@ -1374,13 +1388,13 @@ def _plan_shelves(jobset: JobSet, base: Path, *, mode: str,
             named = (gpu_domain or domain) if this == "gpu" else domain
             if named is None:
                 why = _no_queue_named(
-                    base, pending, mem=mem, time_s=time_s,
+                    base, [m.job for m in pending], mem=mem, time_s=time_s,
                     one_proc=one_process(jobset.engine),
                     gpu=(this == "gpu"))
                 if why:
                     raise SubmitError(why)
             plan.submissions.append(_plan_shelf(
-                jobset, base, dirs, pending, name, plan,
+                jobset, base, pending, name, plan,
                 gpu_side=(this == "gpu"),
                 domain=named,
                 trial_timeout_s=trial_timeout_s, mem=mem, time_s=time_s))
@@ -1702,22 +1716,29 @@ def sides_of(jobset: JobSet) -> Dict[str, List[Job]]:
     return sides
 
 
-def _plan_bench_here(jobset: JobSet, base: Path, *,
-                     trial_timeout_s: Optional[int]) -> LaunchPlan:
-    """A benchmark's trials run HERE (``--mode direct``, no trial named):
-    one submission walking every trial not yet launched, in the sweep's
-    order, through the benchmark's walk (:func:`_bench_walk`) -- as a shelf
-    walks its trials on a queue -- each under the per-trial bound when one
-    is given; a trial launched before is passed over by name.  *(Each
-    trial ran as its own process, one after another from Python, until
-    2026-10-05.)*"""
-    plan = LaunchPlan(base, "direct", [])
+def _bench_trials(jobset: JobSet, base: Path, plan: LaunchPlan, *,
+                  mode: str, jobs=None) -> List[_Member]:
+    """A benchmark's walk: its trials still to run -- of ``jobs``, all of
+    them by default -- each through the one member planner
+    (:func:`_plan_member`: where it runs, and whether it was launched) and
+    its gates: its deck agrees with its launch, it starts cold, its run
+    script is where it is run.  The walk here and a queue's shelves both
+    send this answer; a trial launched before is passed over by name
+    (``plan.skipped``).  *(A queue's shelves read whether a trial was
+    launched for themselves, and built its member a second way, until
+    2026-10-06; the two agreed.)*"""
     pending: List[_Member] = []
-    for job in jobset.jobs:
-        m = _plan_member(jobset, base, job, mode="direct", writes=plan.writes)
+    for job in (jobset.jobs if jobs is None else jobs):
+        m = _plan_member(jobset, base, job, mode=mode, writes=plan.writes)
         if isinstance(m, JobResult):
             plan.skipped.append(m)          # measured before
             continue
+        # THE GATES GUARD EVERY DOOR (review 2026-08-21): a trial refused
+        # when sent by name must not go silently by riding a walk.  And the
+        # COLD gate (user, same day: "it is the submission that determines
+        # the actual state of the run"): the pin baked the intent at prep;
+        # here the deck itself is verified -- where it IS, the trial's
+        # attempt (`project-layout.md` § 1.5a).
         try:
             check_launch_matches_deck(m.read_from, job)
             check_trial_starts_cold(m.read_from, job)
@@ -1732,6 +1753,30 @@ def _plan_bench_here(jobset: JobSet, base: Path, *,
         plan.reads += [_as_found(m.read_from / f, base)
                        for f in (job.script, run_name)]
         pending.append(m)
+    return pending
+
+
+def _walk_of(members: List[_Member], container: Path) -> list:
+    """Each trial as a benchmark's walk runs it -- its name, the folder it
+    runs in from the walk's own (its attempt: `project-layout.md` § 1.5a),
+    its run script, and its own counts, the shield against an allocation's
+    SLURM_* variables.  One answer for the walk here and a queue's shelf."""
+    return [(m.name, str(m.run_dir.relative_to(container)),
+             _wrapper_name(m.job.script, ".run.sh"),
+             " ".join(_run_sh_args(m.job.resources))) for m in members]
+
+
+def _plan_bench_here(jobset: JobSet, base: Path, *,
+                     trial_timeout_s: Optional[int]) -> LaunchPlan:
+    """A benchmark's trials run HERE (``--mode direct``, no trial named):
+    one submission walking every trial not yet launched, in the sweep's
+    order, through the benchmark's walk (:func:`_bench_walk`) -- as a shelf
+    walks its trials on a queue -- each under the per-trial bound when one
+    is given; a trial launched before is passed over by name
+    (:func:`_bench_trials`).  *(Each trial ran as its own process, one
+    after another from Python, until 2026-10-05.)*"""
+    plan = LaunchPlan(base, "direct", [])
+    pending = _bench_trials(jobset, base, plan, mode="direct")
     if not pending:
         from .materialize import bench_stage_of, job_dir_names, shape_of
         dirs = job_dir_names(jobset, shape_of(jobset, base))
@@ -1752,9 +1797,7 @@ def _plan_bench_here(jobset: JobSet, base: Path, *,
     name = "bench-group"
     log = f"{LAUNCH_DIR}/{name}.log"
     plan.writes.text(container / LAUNCH_DIR / f"{name}.run.sh", _bench_walk(
-        name, [(m.name, str(m.run_dir.relative_to(container)),
-                _wrapper_name(m.job.script, ".run.sh"),
-                " ".join(_run_sh_args(m.job.resources))) for m in pending],
+        name, _walk_of(pending, container),
         where="this benchmark's unlaunched trials, run here", log=log,
         bound_s=trial_timeout_s))
     plan.submissions.append(Submission(
@@ -1763,12 +1806,15 @@ def _plan_bench_here(jobset: JobSet, base: Path, *,
     return plan
 
 
-def _plan_shelf(jobset: JobSet, base: Path, dirs, pending, name: str,
-                plan: LaunchPlan, *, gpu_side: bool, domain: Optional[str],
+def _plan_shelf(jobset: JobSet, base: Path, pending: List[_Member],
+                name: str, plan: LaunchPlan, *, gpu_side: bool,
+                domain: Optional[str],
                 trial_timeout_s: Optional[int], mem: Optional[str] = None,
                 time_s: Optional[int] = None) -> Submission:
     """One shelf's submission, checked and placed, its sequencer and header
-    planned in ``plan`` -- written by the send, never before.
+    planned in ``plan`` -- written by the send, never before.  ``pending``
+    are its trials still to run, each planned and gated once
+    (:func:`_bench_trials`).
 
     Every gate, the envelope, the placement and both scripts; the `sbatch`
     is the send's (:func:`_go`).  A dry run and an `ask` write nothing
@@ -1789,48 +1835,22 @@ def _plan_shelf(jobset: JobSet, base: Path, dirs, pending, name: str,
     # its own point.  Explicit -np/-omp flags win over every inherited
     # variable, so the sequencer passes both for every trial, and a trial
     # that cannot state them is refused BY NAME rather than mis-measured.
-    unshaped = [j.name for j in pending
-                if not (j.resources.mpi_np and j.resources.cpus_per_task)]
+    unshaped = [m.name for m in pending
+                if not (m.job.resources.mpi_np
+                        and m.job.resources.cpus_per_task)]
     if unshaped:
         raise SubmitError(
             "a grouped bench needs every trial's explicit rank/core shape "
             "(-np/-omp shield the trial from the allocation's SLURM_* "
             f"envelope); missing on: {', '.join(unshaped)}")
 
-    # The deck/launch agreement gate guards THIS door too (review
-    # 2026-08-21): a trial refused when submitted by name must not launch
-    # silently by riding its group.  And the COLD gate (user, same day:
-    # "it is the submission that determines the actual state of the
-    # run"): the pin baked the intent at prep; here the artifact itself
-    # is verified before it is launched.
-    # WHERE THE DECK ACTUALLY IS.  A trial keeps attempts since 2026-08-27
-    # (`project-layout.md` § 1.5a), so the deck sits in `run-<n>` and these
-    # two gates read the container -- where they found NO deck, and
-    # `check_trial_starts_cold`'s own doctrine is that *absence says
-    # nothing*.  So the cold gate passed a WARM deck, silently, on the one
-    # door that submits several trials at once, while the by-name door
-    # still refused it.  Precisely the "guard-only-a-surface-applies"
-    # failure this module names elsewhere; caught by
-    # `test_submission_gates_the_cold_start_against_the_deck`.
-    def _artifacts(j):
-        return _trial_run_dir(base / dirs[j.name])
-
-    for j in pending:
-        try:
-            check_launch_matches_deck(_artifacts(j), j)
-            check_trial_starts_cold(_artifacts(j), j)
-        except DeckLaunchMismatch as e:
-            raise SubmitError(str(e)) from e
-        plan.reads += [_as_found(_artifacts(j) / f, base)
-                       for f in (j.script, _wrapper_name(j.script, ".run.sh"))]
-
     # THE CONTAINER IS THE TRIAL'S PARENT, NOT THE ATTEMPT'S.  With an
-    # attempt layer `_artifacts(j).parent` is `bench-<point>` -- one per
+    # attempt layer the attempt's parent is `bench-<point>` -- one per
     # trial -- so the "they must share one container" check found N and
     # refused every grouped submission.  The container question belongs to
-    # the naming authority (`dirs`), the artifacts question to the attempt;
-    # they are two questions and this asks each of the right thing.
-    containers = {(base / dirs[j.name]).parent for j in pending}
+    # the trial's own folder, the files question to its attempt; they are
+    # two questions and this asks each of the right thing.
+    containers = {m.container.parent for m in pending}
     if len(containers) != 1:
         raise SubmitError(
             "the sweep's trials do not share one container -- a grouped "
@@ -1844,20 +1864,18 @@ def _plan_shelf(jobset: JobSet, base: Path, dirs, pending, name: str,
     # nothing behind, an empty ``launch/`` included (W52).
     launch_dir = container / LAUNCH_DIR
 
-    envelope = _group_envelope(pending)
+    envelope = _group_envelope([m.job for m in pending])
 
     # THE ATTEMPT, NOT THE TRIAL.  The wrapper lives in `run-<n>` since the
     # attempt layer landed (`project-layout.md` § 1.5a, 2026-08-27), and the
     # sequencer went on naming the trial DIRECTORY -- so every grouped bench
     # `cd`ed one level too high and every trial died instantly with *"No
-    # such file or directory"* (rc=127; Sol job 62372574).  `_artifacts` is
-    # the one answer to "where are this trial's files", and the gates above
-    # already ask it.  Each trial is handed its own -np / -omp: the shield
-    # against the envelope's SLURM_* variables.
+    # such file or directory"* (rc=127; Sol job 62372574).  Each member's
+    # ``run_dir`` is the one answer to "where does this trial run", and the
+    # gates asked it (:func:`_bench_trials`).  Each trial is handed its own
+    # -np / -omp: the shield against the envelope's SLURM_* variables.
     script = _bench_walk(
-        name, [(j.name, str(_artifacts(j).relative_to(container)),
-                _wrapper_name(j.script, ".run.sh"),
-                " ".join(_run_sh_args(j.resources))) for j in pending],
+        name, _walk_of(pending, container),
         where="ONE allocation, this shelf's unlaunched trials",
         log=f"{LAUNCH_DIR}/{name}.log", bound_s=trial_timeout_s)
     # THE ONE REQUEST (`_sbatch_request`): prep's envelope, what was said at
@@ -1900,8 +1918,8 @@ def _plan_shelf(jobset: JobSet, base: Path, dirs, pending, name: str,
         # nothing -- refused, saying why (the scheduler's "Unable to open
         # file" stood here until 2026-10-06, the unit 11 review).
         first = pending[0]
-        if not (_artifacts(first)
-                / _wrapper_name(first.script, ".sbatch")).exists():
+        if not (first.read_from
+                / _wrapper_name(first.job.script, ".sbatch")).exists():
             raise SubmitError(
                 f"{name}: there is no header to ask the scheduler about -- "
                 f"the benchmark was prepped with --no-sbatch, and a "
@@ -1916,13 +1934,10 @@ def _plan_shelf(jobset: JobSet, base: Path, dirs, pending, name: str,
             "the ask fits -- the shelves already queued are skipped.")
     first = pending[0]
     return Submission(
-        name, cmd, container, False,
-        [_Member(j, base / dirs[j.name], _artifacts(j),
-                 _artifacts(j) != base / dirs[j.name], _artifacts(j),
-                 kind="sweep", base=base) for j in pending],
-        placement=placement, rides="rides the group",
-        ask_in=_artifacts(first),
-        ask_script=_wrapper_name(first.script, ".sbatch"),
+        name, cmd, container, False, pending,
+        placement=placement, sent=envelope, rides="rides the group",
+        ask_in=first.read_from,
+        ask_script=_wrapper_name(first.job.script, ".sbatch"),
         refusal_hint=hint)
 
 
@@ -2116,14 +2131,17 @@ def _plan_chain(jobset: JobSet, base: Path, task, *, mode: str, stage: str,
                          _into_launch(header, name))
     plan.submissions.append(Submission(
         name, cmd, stage_dir, False, members, placement=placement,
-        rides="rides the chain", ask_in=attempts[0][2],
+        sent=envelope, rides="rides the chain", ask_in=attempts[0][2],
         ask_script=_wrapper_name(job.script, ".sbatch")))
     return plan
 
 
-def _placed_on(placement) -> Optional[dict]:
-    """A `Placement` -> where this run was SENT, or ``None`` when there was
-    no placement (a direct run).
+def _placed_on(placement, sent=None) -> Optional[dict]:
+    """A `Placement` -> where this run was SENT, and with what wall and
+    memory (``sent``, the request as sent: a launch flag changes them,
+    `job-system.md` § 6.0) -- or ``None`` when there was no placement (a
+    direct run).  *(The wall and memory were in the record's line alone
+    until 2026-10-06.)*
 
     The QUEUE half of `scheduler.md` R12: domain, partition, qos -- known
     the moment ``sbatch`` accepts, and reachable before this field only by
@@ -2138,11 +2156,13 @@ def _placed_on(placement) -> Optional[dict]:
     d = getattr(placement, "domain", None)
     return {"domain": getattr(d, "name", None),
             "partition": placement.partition,
-            "qos": placement.qos}
+            "qos": placement.qos,
+            **{f: getattr(sent, f) for f in ("time", "mem")
+               if getattr(sent, f, None) not in (None, "")}}
 
 
 def _record_launch(attempt: Path, *, mode: str, command: List[str],
-                   job_id: Optional[str] = None, placement=None,
+                   job_id: Optional[str] = None, placement=None, sent=None,
                    basename: Optional[str] = None) -> None:
     """Write the launch record where `materialize.launch_record_at` says --
     the attempt's ``run.json``, or with ``basename`` a flat stage's own --
@@ -2158,7 +2178,7 @@ def _record_launch(attempt: Path, *, mode: str, command: List[str],
     from ..runrecord import read_continued_from, write_launch
     src = read_continued_from(attempt, basename)
     write_launch(attempt, mode=mode, command=command, job_id=job_id,
-                 continued_from=src, placed_on=_placed_on(placement),
+                 continued_from=src, placed_on=_placed_on(placement, sent),
                  basename=basename)
 
 
@@ -2245,7 +2265,7 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
                                   gpu=gpu)
             if why:
                 raise SubmitError(why)
-        _env, placement, cmd = _sbatch_request(
+        sent, placement, cmd = _sbatch_request(
             base, envelope=job.resources,
             domain=named,
             mem=mem, time_s=time_s, label=job.name,
@@ -2254,7 +2274,7 @@ def _plan_stage(jobset: JobSet, base: Path, *, mode: str,
             one_process=one_process(jobset.engine))
         plan.submissions.append(Submission(
             m.name, cmd, m.run_dir, False, [m], placement=placement,
-            ask_in=m.read_from))
+            sent=sent, ask_in=m.read_from))
     return plan
 
 
