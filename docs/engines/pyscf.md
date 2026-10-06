@@ -341,8 +341,8 @@ driver catches it, and `geometric_solver.kernel` returns the flag with the geome
 
 - **`halt`** → the run stops with a `RuntimeError` naming the step budget and
   the policy (exit status 1), so no later rung can start from a geometry nobody
-  accepted: a hand-over takes only a run that ended on its own with exit code 0
-  ([`job-system.md`](?doc=execution/job-system.md) § 5.4). **The geometry each
+  accepted: a hand-over takes only a run that finished (exit code 0, its output
+  saying no stop) ([`job-system.md`](?doc=execution/job-system.md) § 5.4). **The geometry each
   step reached is kept** in `_optimized.xyz`, written after every geomeTRIC step
   as SIESTA writes its `.XV` *(user, 2026-10-06)* — so the rung launched again
   continues from where it got to, the step limit's stop and the wall's alike;

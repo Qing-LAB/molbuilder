@@ -1125,7 +1125,8 @@ stage, and that is a hand-over like any other**
 ([`execution/job-system.md`](?doc=execution/job-system.md) § 5.4, W38 F9;
 user, 2026-10-05: *"copy like any hand-over"*): one `Continuation`, decided at
 prep's checkpoint 4a — by default `relax`'s **newest attempt, which must have
-ended on its own with exit code 0** (a `relax` re-launched to tighten is the
+finished** — exit code 0, and nothing in its output saying the engine stopped
+(a `relax` re-launched to tighten is the
 geometry the person means, so an older attempt never stands in for one still
 running), or the `relax` run named with `--from`, taken as said — and recorded
 as the attempt's `.continued-from`, so the run says which relaxation it was
@@ -1162,7 +1163,7 @@ vibration:
 
 | the ladder | asked | the geometry | the files | recorded |
 |---|---|---|---|---|
-| an enabled `relax` — whatever the box says (§ 2.2) | nothing: the default | `relax`'s newest attempt, which must have ended on its own with exit code 0 — refused while it has not (not launched, queued, running, stopped without its marker, failed), naming the command, and the newest earlier run of `relax` that did when there is one | that run's, by the hand-over's rule | `.continued-from`, the ledger's `continues`, `run.json` at launch |
+| an enabled `relax` — whatever the box says (§ 2.2) | nothing: the default | `relax`'s newest attempt, which must have finished — refused while it has not (not launched, queued, running, stopped without its marker, failed), naming the command, and the newest earlier run of `relax` that did when there is one | that run's, by the hand-over's rule | `.continued-from`, the ledger's `continues`, `run.json` at launch |
 | | `--from <a run of relax>` | that run, taken as said — prep states what it is (failed, not concluded, not converged: *expect imaginary frequencies*), and refuses only what cannot be done: a run holding none of the files the hand-over carries, an output that holds no geometry, or one whose atoms are not this calculation's in this order | that run's | the same |
 | | `--from` a run of another stage | refused: the stage builds on `relax` | — | — |
 | | `--cold` | refused: the stage measures at the geometry `relax` reached; to measure the structure as given, disable `relax` and state the structure relaxed | — | — |
@@ -1170,7 +1171,7 @@ vibration:
 | no enabled `relax`, the structure stated relaxed (`already_relaxed`) | nothing, or `--cold` | the structure as given; its relaxation record is shown and checked against this calculation (§ 2.2) | none | none |
 | | `--from` | refused: nothing in this ladder relaxes — the stage measures the structure as given | — | — |
 | no enabled `relax`, the structure not stated relaxed | anything | refused where every hand-over is decided (`continuation.continuation_answer`, so `status` says it before the prep), naming the two ways out — add `relax` before the stage and run it first, or state the structure relaxed: the box says *relax first* and the ladder holds nothing that would, so the description contradicts itself, and it is refused rather than measured at a geometry nobody chose | — | — |
-| the flat layout | nothing (`--from` and `--cold` name attempts, which flat keeps none of) | `relax`'s latest run in the folder, which must have ended on its own with exit code 0 | nothing copied: they lie in the folder | the stage's `<basename>.continued-from` |
+| the flat layout | nothing (`--from` and `--cold` name attempts, which flat keeps none of) | `relax`'s latest run in the folder, which must have finished | nothing copied: they lie in the folder | the stage's `<basename>.continued-from` |
 | a benchmark of the stage | — | `relax`'s newest attempt, as a run's default — every trial's deck at that geometry (§ 5.8) | none: a trial measures from its deck | the ledger's `continues`, and both doors say which run |
 
 A displacement sweep's stages each take the same rows; a stage prepped is not

@@ -47,9 +47,9 @@ def relax(mf, policy, retries, *, keep=None, resumable=False,
 
     ``policy``  ``halt`` · ``continue`` · ``proceed`` (`engines/pyscf.md` § 3):
                 ``halt`` stops the run, an error -- so no later rung builds
-                on it: a hand-over takes only a run that ended on its own
-                with exit code 0 (`job-system.md` § 5.4); ``continue``
-                re-enters from the geometry reached, up
+                on it: a hand-over takes only a run the status door calls
+                finished (`job-system.md` § 5.4); ``continue`` re-enters
+                from the geometry reached, up
                 to ``retries`` more batches, then stops as ``halt`` does;
                 ``proceed`` returns the geometry reached with ``False``.
     ``retries`` further batches of the step budget, under ``continue`` only.

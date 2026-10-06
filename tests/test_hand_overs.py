@@ -34,7 +34,7 @@ def test_what_a_stage_builds_on(case, tmp_path, monkeypatch):
 
 def test_a_force_constant_stage_builds_on_the_measured_relaxation():
     """A vibration's `freq` builds on its `relax` run -- the newest, which
-    ended on its own with exit code 0 -- and is offered every run of `relax`
+    finished (the status door's answer) -- and is offered every run of `relax`
     and no start from the structure (`engines/vibration.md` § 5.2a's table,
     W38 F9).
 

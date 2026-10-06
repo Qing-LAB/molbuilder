@@ -54,7 +54,7 @@ from ..warmfiles import warm_list
 from ..issues import calling as _calling
 from .model import FILENAME as JOBSET_FILENAME, Job, JobSet, Resources
 from .plan import FILENAME as _PLAN_FILE
-from ..runfiles import compose as _rf, stem as _rf_stem
+from ..runfiles import compose as _rf
 from ..pseudos import PSEUDO_DIRNAME
 from .errors import PrepError
 from .machine import machine_record, require_activation, set_machine
@@ -1973,7 +1973,6 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         # converged state (archive/2026-09-01-transport-design.md 4.3); a lead is every
         # point's.  The one door says which folder (`rung_container`).
         up_dir = rung_container(base, task, upstream, bias)
-        stem = _rf_stem(task.label, token)
         current_deck = up_dir / _rf(task.label, ".fdf", token)
         # THE WAYS ON, by what the upstream rung's state says (§ 5.3: what
         # molbuilder prints, you can type): one not prepped is prepped and
@@ -2002,24 +2001,28 @@ def transport_inputs(base_dir, task, stage: str, *, template_text,
         from ..paths import attempt_dir as _adir
         from ..paths import attempts_in as _ain
         attempts = [_adir(up_dir, n) for n in reversed(_ain(up_dir))]
-        # ONE TO BUILD ON -- ended on its own with exit code 0
-        # (`continuation.usable`); one that concluded with an error was
+        # ONE TO BUILD ON -- the one status door says it finished
+        # (`continuation.usable`): exit code 0 and nothing in its output
+        # saying the engine stopped; one that concluded with an error was
         # gathered until 2026-10-03.
-        concluded = [d for d in attempts if usable(d, stem)]
+        concluded = [d for d in attempts
+                     if usable(read_run(base, task, upstream, d, up_dir,
+                                        verdict=False)[1])]
         if not concluded:
             # WORDED BY THE NEWEST ATTEMPT'S STATE, as a stage's own default
             # is (`continuation.state_remedy`).
             newest = attempts[0] if attempts else None
-            c, s, _v = (read_run(base, task, upstream, newest, up_dir,
-                                 verdict=False)
-                        if newest is not None else (None, "pending", None))
+            c, s, _v, d = (read_run(base, task, upstream, newest, up_dir,
+                                    verdict=False)
+                           if newest is not None
+                           else (None, "pending", None, None))
             why, first = state_remedy(
                 c, s, block(launch_lines("run", upstream, base=base)),
-                refused=not_launched_again(base, upstream))
+                refused=not_launched_again(base, upstream), detail=d)
             raise PrepError(
                 f"the {stage} stage consumes {filename} from {upstream}, "
-                f"and {upstream} has no attempt that ended on its own with "
-                f"exit code 0 -- the newest"
+                f"and {upstream} has no attempt that finished: the "
+                f"newest"
                 + (f", {newest.relative_to(base)}," if newest else "")
                 + f" {why}.  {first}{q2}")
         # THE SAME CALCULATION, not the same bytes.  A deck that renders

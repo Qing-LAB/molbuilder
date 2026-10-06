@@ -1239,8 +1239,8 @@ def _emit_optimization(cfg: PySCFConfig,
         # where it got to, and launching it again continues from it -- the
         # `_optimized.xyz` read above.  The converged one is written over
         # it at the end.  A rung that stopped hands nothing to the next: a
-        # hand-over takes only a run that ended on its own with exit code
-        # 0 (`job-system.md` § 5.4).
+        # hand-over takes only a run the status door calls finished
+        # (`job-system.md` § 5.4).
         out.append("        keep = lambda _m: _save_structure("
                    f"_m, _mb_outfile(JOB + {ROLE_OPTIMIZED!r}), "
                    "'Geometry reached (PySCF, relaxing)'),")

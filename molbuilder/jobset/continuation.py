@@ -108,23 +108,30 @@ def _what_it_is(concluded: Optional[str], state: Optional[str]) -> str:
         state, "NOT concluded -- stopped without its conclusion marker")
 
 
-def usable(where, basename: str) -> bool:
+def usable(state: Optional[str]) -> bool:
     """THE RULE FOR A RUN TO BUILD ON (`execution/architecture.md` § 3.2,
-    `job-system.md` § 5.4): it ended on its own with exit code 0
-    (`runrecord.ending`).  The default of every hand-over -- a continuing
-    stage, the frequency stage's geometry, a transport rung's inputs; a run
-    named with ``--from`` is taken as said, and a structure stated relaxed
-    needs no run, so neither asks it.  *(A frequency stage and a transport
-    rung took a run that concluded with an error until 2026-10-03, while an
-    independent stage refused it; user: "yes, for #1".)*"""
-    from ..runrecord import ending
-    return ending(where, basename).ok
+    `job-system.md` § 5.4): the one status door says it FINISHED -- the
+    door `status` asks (`parse.dirs.run_status`, read by :func:`read_run`),
+    from every fact of the run: it ended on its own with exit code 0, and
+    nothing in its output says the engine stopped (user, 2026-10-06: "the
+    handover should call a unified api that tells the true status of
+    previous stage that views all facts from exit code, log etc.").  The
+    default of every hand-over -- a continuing stage, the frequency stage's
+    geometry, a transport rung's inputs; a run named with ``--from`` is
+    taken as said, and a structure stated relaxed needs no run, so neither
+    asks it.  *(It read the exit code alone until 2026-10-06: a run whose
+    output says its engine stopped was built on while `status` called it
+    failed.  A frequency stage and a transport rung took a run that
+    concluded with an error until 2026-10-03; user: "yes, for #1".)*"""
+    return state == "finished"
 
 
 def read_run(base: Path, task, stage: str, attempt: Path,
              container: Path, *, verdict: bool = True
-             ) -> Tuple[Optional[str], Optional[str], Optional[bool]]:
-    """``(concluded, state, converged)`` of one run of ``stage`` -- the
+             ) -> Tuple[Optional[str], Optional[str], Optional[bool],
+                        Optional[str]]:
+    """``(concluded, state, converged, detail)`` of one run of ``stage``
+    -- ``detail`` the status door's own words for the state -- the
     line its conclusion said, through the one door (`runrecord.ending`;
     ``None`` when it has not ended on its own), its state through the one
     door (`parse.dirs.run_status`) and its relaxation's verdict
@@ -148,10 +155,10 @@ def read_run(base: Path, task, stage: str, attempt: Path,
     try:
         launch = (launch_record(attempt) if sh.keeps_attempts_as_directories
                   else launch_record(container, basename=stem))
-        state = run_status(attempt, stem,
-                           launch=launch).state
+        st = run_status(attempt, stem, launch=launch)
+        state, detail = st.state, st.detail
     except Exception:                                    # noqa: BLE001
-        state = None
+        state = detail = None
     rec = None
     if verdict:
         # THIS STAGE'S RUN, the run door's, in either shape -- an attempt's
@@ -172,7 +179,8 @@ def read_run(base: Path, task, stage: str, attempt: Path,
                 rec = None
             if rec is not None:
                 break
-    return concluded, state, (None if rec is None else bool(rec["converged"]))
+    return (concluded, state,
+            None if rec is None else bool(rec["converged"]), detail)
 
 
 def continuation_answer(base, task, stage: str, *, from_attempt=None,
@@ -231,8 +239,8 @@ def continuation_answer(base, task, stage: str, *, from_attempt=None,
         # linked stage's `--from` was copied and neither said nor ledgered).
         attempt = base / from_attempt
         named = command_stage(Path(from_attempt).parts[0])
-        concluded, state, converged = read_run(base, task, named, attempt,
-                                               attempt.parent, verdict=verdict)
+        concluded, state, converged, _ = read_run(
+            base, task, named, attempt, attempt.parent, verdict=verdict)
         return Continuation(stage=named, source=str(Path(from_attempt)),
                             by_default=False, concluded=concluded, state=state,
                             converged=converged,
@@ -390,14 +398,12 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
     from ..paths import attempt_dir as _adir
     from ..runfiles import compose as rf_compose
     from ..paths import attempts_in
-    from ..runfiles import stem as rf_stem
     from .materialize import latest_attempt
     from .engines import engine_seam
     from .materialize import stage_home
     sh = Shape.named(task.shape)
     seam = engine_seam(str(task.engine))
     token = stage_home(base, task, prev).token
-    stem = rf_stem(task.label, token)
     sd = sh.stage_dir(token)
     container = base if sd == "." else base / sd
     flat = not sh.keeps_attempts_as_directories
@@ -440,9 +446,9 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
             return None, (f"{lead}, which has not run yet.  Run it "
                           f"first --\n{run_prev}\n{clean}{rule}")
         attempt, source = latest, str(latest.relative_to(base))
-    concluded, state, converged = read_run(base, task, prev, attempt,
-                                           container, verdict=verdict)
-    if usable(attempt, stem):
+    concluded, state, converged, detail = read_run(
+        base, task, prev, attempt, container, verdict=verdict)
+    if usable(state):
         return Continuation(stage=prev, source=source, by_default=True,
                             concluded=concluded, state=state,
                             converged=converged, linked=linked,
@@ -453,7 +459,8 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
     what = (f"the newest attempt of `{prev}`, {source}," if source
             else f"`{prev}`'s latest run,")
     why, first = state_remedy(concluded, state, launch_prev,
-                              refused=not_launched_again(base, prev))
+                              refused=not_launched_again(base, prev),
+                              detail=detail)
     other = None
     if not (flat or bench):
         # AN EARLIER RUN THAT CAN STAND IN WHEN ASKED FOR: the newest one
@@ -461,10 +468,11 @@ def _by_default(base: Path, task, stage: str, prev: str, *, verdict: bool,
         # question, not its relaxation.
         for n in reversed(attempts_in(container)):
             a = _adir(container, n)
-            if a != attempt and usable(a, stem):
+            if a != attempt and usable(read_run(
+                    base, task, prev, a, container, verdict=False)[1]):
                 other = str(a.relative_to(base))
                 break
-    alt = (f"or continue from an earlier run of `{prev}` that concluded --\n"
+    alt = (f"or continue from an earlier run of `{prev}` that finished --\n"
            + block([command("prep", "run", stage, base=base,
                             flags=("--from", other))]) + "\n"
            if other else "")
@@ -516,13 +524,13 @@ def relaunch(base, task, job) -> Tuple[Optional[Continuation], Optional[str]]:
         latest = latest_attempt(home.dir)
         if latest is None:
             return None, None                        # never launched
-        concluded, state, converged = read_run(base, task, stage, latest,
-                                               home.dir)
+        concluded, state, converged, _ = read_run(base, task, stage,
+                                                  latest, home.dir)
         return Continuation(stage=stage, source=str(latest.relative_to(base)),
                             by_default=True, concluded=concluded, state=state,
                             converged=converged, own=True), None
     n = latest_run(base, task.label, stage=home.token)
-    concluded, state, converged = read_run(base, task, stage, base, base)
+    concluded, state, converged, _ = read_run(base, task, stage, base, base)
     return Continuation(stage=stage, source=None, by_default=True,
                         concluded=concluded, state=state, converged=converged,
                         own=True,
@@ -547,7 +555,8 @@ def not_launched_again(base, stage: str) -> Optional[str]:
 
 def state_remedy(concluded: Optional[str], state: Optional[str],
                  launch_block: str, *,
-                 refused: Optional[str] = None) -> Tuple[str, str]:
+                 refused: Optional[str] = None,
+                 detail: Optional[str] = None) -> Tuple[str, str]:
     """``(why, what to do first)`` for a run a stage would build on and may
     not: worded by what the run's state says, the way on a command you can
     type (`job-system.md` § 5.3) -- the hand-over's default and a transport
@@ -560,8 +569,12 @@ def state_remedy(concluded: Optional[str], state: Optional[str],
     stage until 2026-10-05, launch then refusing it)."""
     again = (f"It is not launched again: {refused}" if refused else
              f"Launch it again --\n{launch_block}")
-    if concluded is not None:
-        return f"which failed ({concluded})", again
+    # FAILED, IN THE STATUS DOOR'S WORDS -- why, as `status` says it: a
+    # run that exited 0 while its output says the engine stopped is one
+    # (`usable`)
+    if concluded is not None or state == "failed":
+        return (f"which failed -- {detail or f'concluded ({concluded})'}",
+                again)
     if state == "pending":
         return "which has not been launched", f"Launch it --\n{launch_block}"
     if state in ("queued", "running"):
@@ -695,8 +708,8 @@ def continue_from_choices(base, task, stage: str) -> Optional[dict]:
         for n in (reversed(attempts_in(container)) if container.is_dir()
                   else ()):
             a = _adir(container, n)
-            c, s, _v = read_run(base, task, prev, a, container,
-                                verdict=False)
+            c, s, _v, _d = read_run(base, task, prev, a, container,
+                                    verdict=False)
             runs.append({"source": str(a.relative_to(base)),
                          "what": _what_it_is(c, s)})
     return {"from_stage": prev,

@@ -35,7 +35,7 @@ stand_in = { rc = 1, leaves_restart = true }
 before = [["prep", "run", "coarse"],
           ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
 stage = "medium"
-refused = "which failed (rc=1"
+refused = ["which failed -- ", "rc=1"]
 
 [[case]]
 name = "a run that ended on its own is built on, and no viewer follows it"
@@ -71,7 +71,7 @@ stand_in = { rc = 1, leaves_restart = true }
 before = [["prep", "run", "relax"],
           ["launch", "run", "relax", "--mode", "direct", "--yes"]]
 stage = "freq"
-refused = ["`freq` builds on the newest attempt of `relax`, 01_relax/run-0, which failed (rc=1"]
+refused = ["`freq` builds on the newest attempt of `relax`, 01_relax/run-0, which failed -- ", "rc=1"]
 
 [[case]]
 name = "...and it never starts from the structure while the ladder holds a relax: --cold refused, saying how to measure the structure as given"

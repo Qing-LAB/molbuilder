@@ -29,5 +29,5 @@ before = [["prep", "run", "coarse"],
           ["launch", "run", "coarse", "--mode", "direct", "--yes"]]
 touched = ["H2_01_coarse-run0.out"]
 stage = "medium"
-refused = "which failed (rc=1"
+refused = ["which failed -- ", "rc=1"]
 speaks = { stage = "coarse", file = "H2_01_coarse-run1.out" }

@@ -124,16 +124,18 @@ class Ending:
 
     @property
     def ok(self) -> bool:
-        """It ended on its own with exit code 0 -- the run every hand-over
-        builds on by default (`jobset.continuation.usable`)."""
+        """It ended on its own with exit code 0 -- one of the facts the
+        status door weighs (`parse.dirs.run_status`); a hand-over builds on
+        that door's answer, never on this alone
+        (`jobset.continuation.usable`)."""
         return self.code == 0
 
 
 def ending(where, basename: str) -> Ending:
     """THE door for *did this run end on its own, and with what exit code?*
     (`execution/architecture.md` § 3.2; plan W38 F3) -- asked by status,
-    whose state is built on it, by every hand-over
-    (`jobset.continuation.usable`), launch's re-launch question and the
+    whose state is built on it and every hand-over builds on
+    (`jobset.continuation.usable`), by launch's re-launch question and the
     transport citation.
 
     ``where`` is the run's folder; ``basename`` its stem, ``<label>_<token>``
