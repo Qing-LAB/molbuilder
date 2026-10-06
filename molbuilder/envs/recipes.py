@@ -1101,14 +1101,10 @@ class Recipe:
         Substring expected in stdout (or stderr) of the verify command,
         checked on top of the exit code.  Every recipe here sets one
         (`env-framework.md` § 5.2): a tool can exit 0 while the thing
-        asked about is missing.
-    verify_ignore_exit_code
-        When ``True``, the verify outcome is determined solely by the
-        ``verify_expect_contains`` substring (ignoring the process
-        exit code).  Required for binaries like ``tleap`` that exit
-        non-zero even when started successfully (tleap exits 1 when
-        there's no script to run, but the banner proves the env is
-        healthy).  Default ``False``: exit code must be 0.
+        asked about is missing.  The exit code is ALWAYS part of the
+        verdict: there is no way to waive it.  A tool that exits
+        non-zero from a healthy start is given input that makes it stop
+        cleanly (see MDtools' ``quit``).
     system_preconditions
         Free-text strings describing host-level requirements (e.g.,
         ``"NVIDIA driver supporting CUDA >= 13"``) that the doctor
@@ -1138,7 +1134,6 @@ class Recipe:
     build_spec: Optional[BuildSpec] = None
     verify_argv: Tuple[str, ...] = ()
     verify_expect_contains: Optional[str] = None
-    verify_ignore_exit_code: bool = False
     system_preconditions: Tuple[str, ...] = ()
 
     @property
@@ -1573,17 +1568,21 @@ _MDTOOLS = Recipe(
     # git: uniform across every env -- see the _HOST recipe for why it is
     # everywhere.
     conda_packages=(_PYTHON_SPEC, "dacase::ambertools-dac=26", "git"),
-    # tleap -f /dev/null prints its banner and exits 1 (no script to
-    # source); the banner "Welcome to LEaP!" is the proof the binary
-    # in this env launched.  See `verify_ignore_exit_code` docstring.
+    # FEED IT A `quit`, SO IT STOPS BY ITSELF.  `tleap -f /dev/null` sourced
+    # an empty script, fell through to its interactive prompt, found no
+    # terminal and exited 1 with "*** Error: tl_getline(): not interactive"
+    # -- printed under a "verify: OK" line on every install.  With `quit` as
+    # the script it exits 0 ("Exiting LEaP: Errors = 0"), so the exit code
+    # counts again, and "LEaP" in the banner proves it was THIS env's tleap.
+    # /dev/stdin, not a temp file: nothing to clean up, and no leap.log is
+    # written into the caller's directory (measured 2026-09-29).
     # ``bash -c`` (no -l) -- we don't need a LOGIN shell here.  -l would
     # source ~/.bash_profile / ~/.profile and pull in user-shell state
     # that can shadow the env's tools (module loads, PATH munging, etc.)
     # The env's bin/ is on PATH because the manager activates the env,
     # which is the only setup tleap needs.
-    verify_argv=("bash", "-c", "tleap -f /dev/null < /dev/null"),
+    verify_argv=("bash", "-c", "echo quit | tleap -f /dev/stdin"),
     verify_expect_contains="LEaP",
-    verify_ignore_exit_code=True,
 )
 
 

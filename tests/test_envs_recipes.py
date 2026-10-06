@@ -143,21 +143,6 @@ def test_recipe_for_category_returns_none_for_unknown():
     assert recipe_for_category("not-a-category") is None
 
 
-def test_verify_ignore_exit_code_field_present():
-    """The MDtools recipe needs this field set to True (tleap exits
-    1 even after a successful start).  Pin so a refactor doesn't
-    silently drop the field and re-introduce the spurious failure."""
-    for r in builtin_recipes():
-        if r.name == "molbuilder-MDtools":
-            assert r.verify_ignore_exit_code is True, (
-                "molbuilder-MDtools must have "
-                "verify_ignore_exit_code=True (tleap exits 1 even "
-                "when the env is healthy)"
-            )
-            return
-    pytest.fail("molbuilder-MDtools recipe not found in registry")
-
-
 # The CUDA version the GPU recipes carry, at each of its three tiers, is
 # `test_the_machine_is_probed_on_first_use.py`'s: read off what `envs install
 # --dry-run` would run, the resolution included (plan W36 ⑥).  Three API-level

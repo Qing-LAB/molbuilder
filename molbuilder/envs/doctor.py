@@ -111,9 +111,7 @@ class EnvReport:
         ``True`` when the step's own accept rule was satisfied -- see
         :meth:`molbuilder.envs.install.InstallStep.accepts`, which is the
         ONE place that rule lives.  Do not restate it here: the copy that
-        stood here said "exited 0 and the substring appeared", which is
-        false for a recipe setting ``verify_ignore_exit_code`` (tleap exits
-        non-zero from a perfectly healthy start).  ``None`` when the env is missing or the
+        stood here had drifted from it once already.  ``None`` when the env is missing or the
         verify command was not run (e.g., the recipe has no
         ``verify_argv`` set).
     verify_output

@@ -740,23 +740,6 @@ def test_run_install_verify_substring_failure_is_fatal(monkeypatch):
     assert "missing expected substring" in verify_step.output
 
 
-def test_run_install_verify_ignore_exit_respects_substring(monkeypatch):
-    """MDtools: verify exits 1 (tleap behaviour) but substring
-    matches -> succeed.  Mirrors the production verify."""
-    _bind()
-    recipe = recipe_by_name("molbuilder-MDtools")
-    monkeypatch.setattr(_diag.subprocess, "run",
-                        lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
-    monkeypatch.setattr(install, "_env_prefix",
-                        lambda env_name, conda_binary: f"/fake/envs/{env_name}")
-    monkeypatch.setattr(install._builds, "run_streaming",
-                        _stream_stub_factory((0, "solving..."),
-                                             (0, "solving..."),
-                                             (1, "Welcome to LEaP!")))
-    result = install.run_install(recipe)
-    assert result.succeeded is True
-
-
 # --------------------------------------------------------------------- #
 #  cmd_bootstrap: full-stack bootstrap subcommand (2026-06-23)          #
 # --------------------------------------------------------------------- #

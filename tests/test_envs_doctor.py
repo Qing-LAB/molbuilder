@@ -95,46 +95,38 @@ def test_report_all_skip_verify_dispatches_nothing(monkeypatch):
 # rule entirely would still pass.
 
 
-@pytest.mark.parametrize("ignore_rc,expect,rc,output,accepted", [
-    # The ordinary rule: the exit code decides.
-    (False, None, 0, "anything", True),
-    (False, None, 1, "anything", False),
+@pytest.mark.parametrize("expect,rc,output,accepted", [
+    # The exit code is always part of the verdict.
+    (None, 0, "anything", True),
+    (None, 1, "anything", False),
     # An expected substring is an ADDITIONAL requirement, so a command
     # that exits 0 while the thing we asked about is absent is a failure.
-    (False, "siesta", 0, "siesta 5.4.2", True),
-    (False, "siesta", 0, "unrelated text", False),
-    (False, "siesta", 1, "siesta 5.4.2", False),
-    # `ignore_exit_code` hands the verdict to the substring ENTIRELY --
-    # tleap exits 1 from a healthy start, so its banner is the signal.
-    (True, "Welcome to LEaP!", 1, "Welcome to LEaP!", True),
-    (True, "Welcome to LEaP!", 0, "no banner here", False),
-    # ...but it never extends to a process that did not run.  Ignoring an
-    # exit code is not ignoring a missing command.
-    (True, "Welcome to LEaP!", None, "", False),
-    (True, None, None, "", False),
-    (False, None, None, "", False),
+    ("siesta", 0, "siesta 5.4.2", True),
+    ("siesta", 0, "unrelated text", False),
+    ("siesta", 1, "siesta 5.4.2", False),
+    # A process that did not run is never a pass.
+    ("siesta", None, "siesta 5.4.2", False),
+    (None, None, "", False),
 ])
-def test_accept_rule(ignore_rc, expect, rc, output, accepted):
+def test_accept_rule(expect, rc, output, accepted):
     step = _install.InstallStep(
-        label="verify", argv=("true",),
-        ignore_exit_code=ignore_rc, expect_contains=expect,
+        label="verify", argv=("true",), expect_contains=expect,
     )
     assert step.accepts(rc, output) is accepted
 
 
 def test_doctor_verify_uses_the_accept_rule(monkeypatch):
-    """MDtools sets verify_ignore_exit_code=True, so a non-zero exit with
-    the banner present is a PASS.  A doctor that decided on the exit code
-    itself -- as it did while it carried its own copy of the rule --
-    reports False here."""
+    """MDtools expects "LEaP" in the output, so exit 0 WITHOUT the banner is
+    a FAIL.  A doctor that decided on the exit code itself -- as it did
+    while it carried its own copy of the rule -- reports True here."""
     _bind(conda_envs=("molbuilder-MDtools",))
     monkeypatch.setattr(_install, "_env_prefix",
                         lambda env_name, conda_binary: f"/fake/envs/{env_name}")
     monkeypatch.setattr(_builds, "run_streaming",
-                        lambda *a, **kw: (1, "Welcome to LEaP!"))
+                        lambda *a, **kw: (0, "command not found"))
     reports = doctor.report_all()
     md = next(r for r in reports if r.recipe.category == "mdtools")
-    assert md.verify_ok is True
+    assert md.verify_ok is False
 
 
 def test_verify_output_trimmed_to_2k(monkeypatch):
