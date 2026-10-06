@@ -45,6 +45,7 @@ import numpy as np
 try:                                        # inside molbuilder
     from ..atom_permutation import Permutation
     from ..constants import HARTREE_BOHR_EV_ANGSTROM_ASE
+    from ..identity import LAUNCH_MODE_NOTE, checkpoint_words, launch_as_typed
     from ..sidecars.spectra import structure_hash_text
     from .methods import extract_citation_keys
     from .normal_modes import (display_form, frequencies_cm1,
@@ -55,6 +56,7 @@ try:                                        # inside molbuilder
 except ImportError:                         # beside a job, in mb_vibration.pyz
     from atom_permutation import Permutation
     from constants import HARTREE_BOHR_EV_ANGSTROM_ASE
+    from identity import LAUNCH_MODE_NOTE, checkpoint_words, launch_as_typed
     from spectra_sidecar import structure_hash_text
     from methods import extract_citation_keys
     from normal_modes import (display_form, frequencies_cm1,
@@ -270,7 +272,9 @@ def nonstationary_remedy(relaxation_stage: Optional[str],
         # (`job-system.md` § 5.0) -- and restoring it after `relax`'s new
         # attempt would take that attempt away, so the restore comes first
         # (it said "launch, then prep this stage again" until 2026-10-05).
-        from ..identity import LAUNCH_MODE_NOTE, launch_as_typed
+        # The words are `identity`'s, imported the module's two ways: this
+        # runs beside the job too, in the finish's `_stationarity` -- a
+        # package-only import here failed there until 2026-10-06.
         s = str(relaxation_stage)
         return (f"If this stage is prepped, first go back to the state saved "
                 f"before its prep{_RESTORE}; launch the `{s}` stage again "
@@ -294,8 +298,7 @@ def nonstationary_remedy(relaxation_stage: Optional[str],
 #: restore is said conditionally (it led unconditionally until 2026-10-05,
 #: and a preview's findings told a person to restore a state that did not
 #: exist yet).
-_RESTORE = (" (`molbuilder checkpoint list`, then `molbuilder checkpoint "
-            "restore` with its id)")
+_RESTORE = f" ({checkpoint_words()})"
 
 
 def _stationarity(reference_forces_ev_ang, n: int, free: Sequence[int],

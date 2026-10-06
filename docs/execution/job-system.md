@@ -964,7 +964,10 @@ trial's deck names its own launch, `launch bench <stage> <trial>`.
 **And every printed command is composed in one place** *(W52, 2026-10-01)*:
 `jobset/commands.py` for what the verbs and their refusals print — the
 calculation named by its address from the projects root (`--bundle`, quoted
-as a shell needs it) unless the reader stands in it; a launch's mode stated
+as a shell needs it) every time, as `checkpoint`'s folder (`-p`) is: a line is
+pasted where its reader is, and an omitted `--bundle` means the working folder
+([`job-contracts.md`](?doc=execution/job-contracts.md) § 2.5b) *(left out when
+the line was printed inside the calculation until 2026-10-06)*; a launch's mode stated
 unless the calculation is launched on this machine and this machine's
 `launch.mode` names one — a calculation set to another machine is launched
 there, where this machine's file does not speak *(its lines leaned on it

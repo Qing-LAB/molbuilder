@@ -4,7 +4,7 @@ printed (`support.road.each_is_taken`).
 
 PINS: ``docs/execution/job-system.md`` § 5.3 (*what molbuilder prints, you
 can type*; every printed command composed in one place -- the calculation
-named unless the reader stands in it, a launch's mode stated unless the
+named every time, a launch's mode stated unless the
 calculation is launched on this machine and its config names one, a
 refusal that asks for a stage offering the stages and
 the command for the first, one command a line, any prose after `#`; a

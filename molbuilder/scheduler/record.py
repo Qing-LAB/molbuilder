@@ -44,6 +44,8 @@ from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
+from ..identity import checkpoint_words
+
 SCHEMA = "molbuilder/environment@2"
 #
 # @1 -> @2 (N2, 2026-08-17): ``domains`` added -- each row carrying the QoS
@@ -1216,13 +1218,13 @@ class UnknownTarget(Exception):
             f"this calculation's record of its machine cannot be read: "
             f"{calculation_record(bundle_dir)}.\n"
             f"  Fix it by hand -- or go back to the state saved before the "
-            f"calculation's first prep (`molbuilder checkpoint list` shows "
-            f"the folder's states, `molbuilder checkpoint restore` takes "
-            f"the one you pick) and prep anew."))
+            f"calculation's first prep ({checkpoint_words(bundle_dir)}) and "
+            f"prep anew."))
         return exc
 
     @classmethod
-    def conflict(cls, name: str, set_to: str) -> "UnknownTarget":
+    def conflict(cls, name: str, set_to: str,
+                 bundle_dir) -> "UnknownTarget":
         """This calculation is set to ANOTHER machine -- the one its first
         prep named, which does not change (`configuration.md` M-3).
 
@@ -1244,9 +1246,8 @@ class UnknownTarget(Exception):
             f"another.\n"
             f"  To go on with it: --target {set_to}.\n"
             f"  To prepare it for {name}: go back to the state saved before "
-            f"its first prep (`molbuilder checkpoint list` shows the "
-            f"folder's states, `molbuilder checkpoint restore` takes the one "
-            f"you pick) and prep again with --target {name}."))
+            f"its first prep ({checkpoint_words(bundle_dir)}) and prep again "
+            f"with --target {name}."))
         return exc
 
 
@@ -1361,9 +1362,8 @@ def record_and_renewal(bundle_dir=None, target: Optional[str] = None
         return ("this calculation's environment.json, snapshotted at its "
                 "first prep",
                 f"re-probe it -- {probe} -- then go back to the state saved "
-                f"before its first prep (`molbuilder checkpoint list` shows "
-                f"the folder's states, `molbuilder checkpoint restore` takes "
-                f"the one you pick) and prep anew: a calculation is set to "
+                f"before its first prep ({checkpoint_words(bundle_dir)}) "
+                f"and prep anew: a calculation is set to "
                 f"the record it was first prepped with (configuration.md "
                 f"M-3)")
     return ("this machine's" if target in (None, LOCAL_TARGET)
@@ -1502,7 +1502,7 @@ def machine_for(bundle_dir=None, *, target: Optional[str] = None,
             # re-probe of Sol refused every calculation set to it -- and
             # skipped `this` (W54 R3).  A copy written before then names no
             # machine, and is read as it is.
-            raise UnknownTarget.conflict(target, env.machine)
+            raise UnknownTarget.conflict(target, env.machine, bundle_dir)
         return env
     return None
 

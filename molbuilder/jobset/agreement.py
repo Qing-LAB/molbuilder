@@ -31,6 +31,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Union
 
+from ..identity import checkpoint_words
+
 
 @dataclass(frozen=True)
 class LaunchAgreement:
@@ -113,7 +115,7 @@ def launch_agreement(job_dir, job, *, text=None) -> LaunchAgreement:
                            rendered_for, launching_at)
 
 
-def disagreement_note(a: LaunchAgreement) -> str:
+def disagreement_note(a: LaunchAgreement, folder) -> str:
     """The ONE wording of why a mismatch matters and what to do — embedded
     by the `prep` warning and the `launch` refusal alike, so the two
     surfaces cannot drift into explaining one fact two ways."""
@@ -122,8 +124,8 @@ def disagreement_note(a: LaunchAgreement) -> str:
             "this one (project-layout.md § 2.3.1: a parameter that depends "
             "on the launch cannot be decided before the launch is known).  "
             f"A prepped stage is not prepped again (job-system.md § 5.0): go "
-            f"back to the state saved before its prep -- `molbuilder "
-            f"checkpoint list` shows the folder's states -- and prep it anew "
+            f"back to the state saved before its prep -- "
+            f"{checkpoint_words(folder)} -- and prep it anew "
             f"for the width it will launch at ({a.launch_text}); `prep` "
             f"renders the deck and the launch together (`--np`, or the run "
             f"card's `mpi_np`), and `launch` takes no width of its own.")
@@ -157,7 +159,8 @@ def check_launch_matches_deck(job_dir, job) -> None:
     raise DeckLaunchMismatch(
         f"job {job.name!r}: this deck ({deck}) was rendered for mpi_np "
         f"{a.rendered_text}, and you are launching it at "
-        f"{a.launch_text}.\n  " + disagreement_note(a) + "\n"
+        f"{a.launch_text}.\n  " + disagreement_note(
+            a, _calculation_of(job_dir)) + "\n"
         "  The deck records what it assumed in its BENCH-MARKS block, "
         "which is what made this checkable.")
 
@@ -167,12 +170,21 @@ __all__ = ["LaunchAgreement", "launch_agreement", "disagreement_note",
            "check_trial_starts_cold"]
 
 
-#: A trial's deck redone: a prepped benchmark is not prepped again, so the
-#: way back is the state saved before its prep (`job-system.md` § 5.0).
-_BENCH_ANEW = ("a prepped benchmark is not prepped again (job-system.md "
-               "§ 5.0): go back to the state saved before its prep -- "
-               "`molbuilder checkpoint list` shows the folder's states -- and "
-               "prep it anew.")
+def _bench_anew(folder) -> str:
+    """A trial's deck redone: a prepped benchmark is not prepped again, so
+    the way back is the state saved before its prep (`job-system.md`
+    § 5.0), the calculation's folder named (`identity.checkpoint_words`)."""
+    return ("a prepped benchmark is not prepped again (job-system.md "
+            "§ 5.0): go back to the state saved before its prep -- "
+            + checkpoint_words(folder) + " -- and prep it anew.")
+
+
+def _calculation_of(job_dir):
+    """The calculation a job's folder belongs to, by the folder's own marks
+    (`calcdirs.root_of`) -- ``None`` when it says none, and a way back then
+    names no folder rather than the wrong one."""
+    from ..calcdirs import root_of
+    return root_of(job_dir)
 
 
 def check_trial_starts_cold(job_dir, job) -> None:
@@ -214,7 +226,7 @@ def check_trial_starts_cold(job_dir, job) -> None:
             f"trial {job.name!r}: {deck.name} carries no restart group at "
             f"all, so its cold start cannot be vouched for (the clean "
             f"group is always written -- a deck without one was edited or "
-            f"predates the pin).  " + _BENCH_ANEW)
+            f"predates the pin).  " + _bench_anew(_calculation_of(job_dir)))
     warm = [k for k, v in saves
             if v.strip().lower().strip(".") in ("t", "true", "yes", "1")]
     # NAME THE DECK'S OWN SPELLING, not the normalised key.  `_parse_fdf`
@@ -233,4 +245,4 @@ def check_trial_starts_cold(job_dir, job) -> None:
             f"trial {job.name!r}: {deck.name} would WARM-start "
             f"({', '.join(warm)} true) -- that measures a continued run, "
             f"not its point (generator.md § 4.3a).  For the cold deck, "
-            + _BENCH_ANEW)
+            + _bench_anew(_calculation_of(job_dir)))

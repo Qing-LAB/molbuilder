@@ -52,7 +52,7 @@ from typing import Optional, Sequence, Tuple
 try:                                   # inside molbuilder
     from .runfiles import patterns as _runfile_patterns
 except ImportError:                    # beside a job -- it travels with the
-    from runfiles import patterns as _runfile_patterns   # monitor (runwrap.MONITOR_COMPANIONS)
+    from runfiles import patterns as _runfile_patterns   # monitor and the vibration finish (runwrap.MONITOR_COMPANIONS, VIBRATION_COMPANIONS)
 
 
 @dataclass(frozen=True)
@@ -277,6 +277,31 @@ def launch_as_typed(stage: str, trial: Optional[str] = None) -> str:
     legal name of another stage (`job-system.md` § 5.3)."""
     return ("molbuilder jobset launch "
             + (f"bench {stage} {trial}" if trial else f"run {stage}"))
+
+
+def checkpoint_as_typed(folder=None) -> Tuple[str, str]:
+    """``(list, restore)`` -- the two checkpoint commands a way back names,
+    the calculation's folder in each (`checkpoint -p`): ONE spelling, which
+    the command composer (`jobset.commands.rollback`) and every layer below
+    it say.  ``folder`` ``None`` is a text read LATER, wherever it was copied
+    -- then the person types them from the calculation's folder, and the
+    sentence around them says so.  *(Four sites below the composer named no
+    folder until 2026-10-06: typed from another calculation, they listed
+    and restored that one.)*"""
+    import shlex
+    p = "" if folder is None else f" -p {shlex.quote(str(folder))}"
+    return (f"molbuilder checkpoint list{p}",
+            f"molbuilder checkpoint restore{p}")
+
+
+def checkpoint_words(folder=None) -> str:
+    """The way back, in a sentence's words: which command shows the
+    folder's saved states and which restores the one picked
+    (:func:`checkpoint_as_typed`)."""
+    shown, restore = checkpoint_as_typed(folder)
+    return (("from the calculation's folder: " if folder is None else "")
+            + f"`{shown}` shows the folder's states, `{restore}` takes the "
+              f"one you pick")
 
 
 def deck_launch(stage_token: Optional[str],
@@ -613,6 +638,7 @@ def run_id(label: str, formula: str = "", *,
 
 __all__ = ["LAUNCH_MODE_NOTE", "MAX_LABEL_BYTES", "OUR_FILE_PATTERNS",
            "RestartGroup", "StageRef", "command_stage", "continues",
+           "checkpoint_as_typed", "checkpoint_words",
            "deck_launch", "is_ours", "launch_as_typed", "normalise_id",
            "render_stage_choices", "render_stage_refs",
            "resolve_stage_ref", "run_id", "seq_text", "stage_key",

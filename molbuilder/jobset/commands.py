@@ -9,8 +9,8 @@ printed ``--mode submit|direct``, which bash runs as a pipe; others ended in a
 ``(note)`` a shell cannot parse, or a ``<stage>`` nobody can type.  A line
 composed here is ONE command:
 
-* the calculation named by its address from the projects root, unless the
-  reader is standing in it (:func:`bundle_flag`);
+* the calculation named by its address from the projects root, every time
+  (:func:`bundle_flag`);
 * a launch's mode stated where this calculation's config sets none -- one
   line per mode its machine takes, each typeable (:func:`launch_lines`);
 * any prose after ``#``.
@@ -31,25 +31,21 @@ PROG = "molbuilder jobset"
 
 
 def bundle_flag(base) -> str:
-    """`` --bundle <address from the projects root>``, or ``""`` when the
-    working directory already IS the calculation -- or when ``base`` is not
-    in the projects tree, where no address names it (a calculation always is,
-    `_cli._resolve_bundle`).
-
-    A printed command has to work where it is pasted.  Naming the calculation
-    is what makes it work from anywhere, and leaving it off when the reader
-    stands in it keeps the common case short (`job-contracts.md` § 2.5b).
-    The address is quoted as the shell needs it: a folder name may hold a
-    space.  *(It was `_cli._bundle_hint`, which only the command line's own
-    next lines asked until 2026-10-01; W52.)*"""
+    """`` --bundle <address from the projects root>`` -- every time.  A line
+    is pasted where its reader is, and the reader moves: an omitted
+    ``--bundle`` means the working folder (`job-contracts.md` § 2.5b), so a
+    line that left it out because it was printed inside the calculation
+    acted on whatever calculation the next shell stood in.  *(It was left
+    out there until 2026-10-06.)*  A folder outside the projects tree is
+    named by its full path, which `--bundle` refuses by name -- never a line
+    with no calculation in it.  The address is quoted as the shell needs
+    it: a folder name may hold a space."""
     from ..projects import projects_root
+    here = Path(base).resolve()
     try:
-        here = Path(base).resolve()
-        if here == Path.cwd().resolve():
-            return ""
         rel = here.relative_to(Path(projects_root()).resolve())
     except (ValueError, OSError):
-        return ""
+        rel = here
     return f" --bundle {shlex.quote(str(rel))}"
 
 
@@ -167,19 +163,14 @@ def rollback(what: str, *, base) -> str:
 
     WHICH STATE is the person's to pick, so it is asked for in words, never
     a ``<state>``; the list that shows them is a command, and both verbs
-    name the folder -- by its path, `checkpoint`'s ``-p`` -- unless the
-    reader stands in it."""
-    here = Path(base).resolve()
-    try:
-        standing = here == Path.cwd().resolve()
-    except OSError:
-        standing = False
-    p = "" if standing else f" -p {shlex.quote(str(here))}"
+    name the folder -- by its path, `checkpoint`'s ``-p`` -- every time,
+    as every printed line names its calculation (:func:`bundle_flag`)."""
+    from ..identity import checkpoint_as_typed
+    shown, restore = checkpoint_as_typed(Path(base).resolve())
     return (f"go back to the state saved before {what}, and prep anew -- "
             f"the folder's saved states:\n"
-            + block([f"molbuilder checkpoint list{p}"])
-            + f"\n  then `molbuilder checkpoint restore{p}` with the id of "
-              f"the one you pick.")
+            + block([shown])
+            + f"\n  then `{restore}` with the id of the one you pick.")
 
 
 def target_flags(base, target: Optional[str]) -> tuple:

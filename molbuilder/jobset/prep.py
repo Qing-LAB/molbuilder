@@ -2511,7 +2511,7 @@ class PrepAnswer:
             "agreement": ({"verdict": g.verdict,
                            "rendered_for": g.rendered_text,
                            "launching_at": g.launch_text,
-                           "note": (disagreement_note(g)
+                           "note": (disagreement_note(g, base)
                                     if g.verdict == "differs" else None)}
                           if g is not None else None),
             "pipeline_log": rel(self.pipeline_log) if self.pipeline_log else None,

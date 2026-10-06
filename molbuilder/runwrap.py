@@ -37,6 +37,8 @@ from .diagnostics import EXTENSION_TO_CATEGORY, get_capabilities
 # have to match.  It cannot import upward -- it ships to a compute node
 # alone -- so it is the end of the exchange that gets to own the rule.
 from .config_dir import is_channel_name
+# The way back a refusal names: the checkpoint commands, the folder in them.
+from .identity import checkpoint_words
 # The thread chain's rungs, one list for the script's chain and the run
 # script's (`running-a-job.md` § 3.2).
 from .runtime_info import THREAD_SOURCES
@@ -1965,6 +1967,28 @@ def stated_counts(run_script_text: str) -> List[str]:
             if ln.split("=", 1)[0].strip() in _STATED_COUNTS]
 
 
+def _thread_chain(default: str) -> str:
+    """The run script's thread count, as one shell expansion: the first of
+    :data:`runtime_info.THREAD_SOURCES` set, else ``default`` -- the count
+    stated at prep (`running-a-job.md` § 3.2)."""
+    expr = default
+    for var in reversed(THREAD_SOURCES):
+        expr = f"${{{var}:-{expr}}}"
+    return expr
+
+
+#: How the ``--dry-run`` report names each rung of :data:`runtime_info.
+#: THREAD_SOURCES` when the count came from it -- the report's own words,
+#: as the rank count's are ("PBS_NP (the qsub reservation)").  A rung added
+#: to the list without words here stops the render by name (KeyError).
+_THREAD_SOURCE_WORDS = {
+    "OMP_NUM_THREADS":     "OMP_NUM_THREADS env",
+    "SLURM_CPUS_PER_TASK": "SLURM_CPUS_PER_TASK (the sbatch -c reservation)",
+    "PBS_NCPUS":           "PBS_NCPUS (the qsub reservation)",
+    "NSLOTS":              "NSLOTS (the SGE reservation)",
+}
+
+
 def render_run_wrapper(script_path: Path, *,
                        label: str = "",
                         resources: "Resources",
@@ -2211,8 +2235,7 @@ def render_run_wrapper(script_path: Path, *,
                "re-probe that machine and prep again -- a calculation is "
                "set to the record of its first prep, so one prepped "
                "before goes back to the state saved before that prep "
-               "first: `molbuilder checkpoint list` shows the folder's "
-               "states).  "
+               "first: " + checkpoint_words(project_dir) + ").  "
                if _rec_envs else "on this machine.  ")
             + f"GPU support is the one thing the packaged "
             f"SIESTA does not have -- its ELPA is built without the GPU "
@@ -2411,9 +2434,9 @@ def render_run_wrapper(script_path: Path, *,
             f"# launch tuning is part of the wrapper contract -- the user\n"
             f"# reserved ``--ntasks=N`` from SLURM, the wrapper honors it.\n"
             f'_mpi_np="${{MB_NP:-${{SLURM_NTASKS:-${{PBS_NP:-$_mpi_np_default}}}}}}"\n'
-            # OMP precedence: -omp flag > OMP_NUM_THREADS env >
-            # SLURM_CPUS_PER_TASK (the sbatch ``-c`` allocation) > the
-            # stated value, baked at prep.  Honoring a user-set OMP_NUM_THREADS matches the
+            # OMP precedence: -omp flag > OMP_NUM_THREADS env > the
+            # scheduler's reservation (SLURM_CPUS_PER_TASK, PBS_NCPUS,
+            # NSLOTS) > the stated value, baked at prep.  Honoring a user-set OMP_NUM_THREADS matches the
             # standard OMP-toolchain convention; the prior wrapper
             # unconditionally clobbered it, which surprised users
             # benching with ``OMP_NUM_THREADS=8 ./run.sh``.  Under sbatch
@@ -2422,8 +2445,11 @@ def render_run_wrapper(script_path: Path, *,
             # Sol allocation drives OMP automatically without a manual
             # -omp (running-a-job.md § 5: reading scheduler env for launch
             # tuning is part of the wrapper contract).
-            f'_omp_threads="${{OMP_NUM_THREADS:-'
-            f'${{SLURM_CPUS_PER_TASK:-$_omp_threads_default}}}}"\n'
+            # THE CHAIN FROM THE ONE LIST (`runtime_info.THREAD_SOURCES`,
+            # `running-a-job.md` § 3.2) -- PySCF's reads it too.  SIESTA's
+            # was spelled by hand with two of its four rungs until
+            # 2026-10-06, and under qsub or SGE skipped the reservation.
+            + f'_omp_threads="{_thread_chain("$_omp_threads_default")}"\n'
             f'_dry_run=0\n'
             # Explicit-flag markers, read by the source report below
             # (`--dry-run` names where each count came from).
@@ -2564,11 +2590,10 @@ def render_run_wrapper(script_path: Path, *,
             'fi\n'
             '_omp_source="stated at prep"\n'
             'if [ "$_omp_from_flag" = "1" ]; then _omp_source="-omp flag"\n'
-            'elif [ -n "${OMP_NUM_THREADS:-}" ]; then '
-            '_omp_source="OMP_NUM_THREADS env"\n'
-            'elif [ -n "${SLURM_CPUS_PER_TASK:-}" ]; then '
-            '_omp_source="SLURM_CPUS_PER_TASK (the sbatch -c reservation)"\n'
-            'fi\n'
+            + "".join(f'elif [ -n "${{{var}:-}}" ]; then '
+                      f'_omp_source="{_THREAD_SOURCE_WORDS[var]}"\n'
+                      for var in THREAD_SOURCES)
+            + 'fi\n'
             f"\n"
             # SIESTA's stdout role, asked rather than taken from a default.
             + _run_index_resolver(basename, ext=_stdout_role_for(".fdf"))
@@ -4072,8 +4097,10 @@ def companion_source(name: str,
 #: (`deck_record`), the ``.FC`` reader and its
 #: error, SIESTA's reading pass with its grammar and rule engine, the
 #: permutation record, the one door for engine atom numbering, the session
-#: log's line with the run-file grammar it is built on (`runfiles`) -- and
-#: the constants all of them convert with.
+#: log's line with the run-file grammar it is built on (`runfiles`), the
+#: commands a remedy names (`identity`: the launch and the way back, as a
+#: text read later says them) -- and the constants all of them convert
+#: with.
 #:
 #: **Each module's own file, imported two ways** (package, or beside the
 #: job), like the monitor's; unlike the monitor's, the set needs **numpy and
@@ -4103,6 +4130,7 @@ VIBRATION_COMPANIONS: Dict[str, str] = {
     "engine_atom_index.py":    "molbuilder.engine_atom_index",
     "wrapper_log.py":          "molbuilder.wrapper_log",
     "runfiles.py":             "molbuilder.runfiles",
+    "identity.py":             "molbuilder.identity",
     "constants.py":            "molbuilder.constants",
 }
 

@@ -1379,7 +1379,7 @@ def _echo_prep_answer(ans, base) -> None:
         click.echo(click.style(
             f"  {ans.deck}: rendered for mpi_np {a.rendered_text}, but this "
             f"launch asks {a.launch_text}\n"
-            f"    launch WILL REFUSE this -- " + disagreement_note(a),
+            f"    launch WILL REFUSE this -- " + disagreement_note(a, base),
             fg="yellow"), err=True)
     _echo_pipeline_log(ans, base)
     say_next(next_line)
