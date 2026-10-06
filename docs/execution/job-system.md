@@ -1589,11 +1589,10 @@ cores each runs on, its GPUs, memory and wall). A launch flag changes one
 value — admitted again, and recorded in `run.json` and the ledger. *(Until 2026-10-03 the header placed the job with an empty
 request — a GPU run's header named a CPU queue — and a run's first fit check
 was at launch, until 2026-10-05. The record on the job, and the readers of it,
-are unit 11's ([`plans/plan.md`](?doc=plans/plan.md)), with a benchmark's
-placement — its trials' headers name the prep's queue, and its sides are named
-again at its launch: until it is built a benchmark's queue is admitted at its
-launch, the header binds the queue a job names, and launch places what it
-sends again.)*
+are unit 11's ([`plans/plan.md`](?doc=plans/plan.md)).)* **A benchmark's queue
+is its launch's**: its shelves' headers are written at launch, and its sides
+are named there (`--domain`, `--gpu-domain`) and admitted there, as what it
+sends (`scheduler.md` R9).
 
 ### 6.1 On a cluster — SLURM
 
