@@ -86,7 +86,7 @@ occasions: the two it ticks, which combine, and its start and its end.
 |---|---|---|---|
 | **it started** | `start` | a `notify` block | once, when the monitor starts watching a run |
 | **a step finished** — its SCF converged | `scf_converged` | `notify.on_scf_converged` | on the first wake after a step finishes (§ 2.2) — one message per wake, however many finished since the last |
-| **every N hours** | `periodic` | `notify.every_hours` — a number of hours; `0` or absent is never | N hours after the last message; the first, N hours after the start |
+| **every N hours** | `periodic` | `notify.every_hours` — a number of hours; `null` is never | N hours after the last message; the first, N hours after the start |
 | **it ended** | `finish` | a `notify` block | when the wrapper stops the monitor at the job's end (SIGTERM — also what a scheduler's walltime or cancel sends), or the watched PID goes |
 
 Every message carries the same report (§ 4.1a): the state and where the run is
@@ -515,22 +515,21 @@ asking for this one report.
 
 ### 3.0 Which channels one run uses
 
-The description names them, and the two ways of saying nothing mean different
-things — the price of letting a checkbox list mean what it looks like:
+The description names them, every block every time
+([`stages.md`](?doc=engines/stages.md) § 6.9):
 
 | `notify.channels` in `task.json` | the run reports to |
 |---|---|
 | no `notify` block | **nothing** — nothing is set up |
-| **absent**, in a `notify` block | **every channel on this machine** — the reading of a description written by hand, or before channels had names; it travels as `--notify-channels "*"`, resolved on the machine that runs the job |
+| `["*"]` | **every channel on this machine** — it travels as `--notify-channels "*"`, resolved on the machine that runs the job |
 | `["slack", "my-listener"]` | those, and only those |
 | `[]` | **nothing.** Not an error: reports off for this calculation, on a machine where they are otherwise set up |
 
-Absent and empty are two spellings only because they are two intentions, so
-the serializer writes `[]` rather than dropping it the way it drops other falsy
-fields — one of the two exceptions to `task.py`'s round-trip rule (S1), the
-other being `notify.report` ([`stages.md`](?doc=engines/stages.md) § 6.9). An
-unticked list quietly meaning *all of them* would send a report to a channel
-the person just unticked.
+*Every channel* was the key left out until 2026-10-06 (plan W57 D6), the same
+bytes as a block that never said; a block that leaves the key out is refused
+by name, and one written before is rewritten by `molbuilder jobset migrate`.
+An unticked list read as *all of them* would send a report to a channel the
+person just unticked, which is why `[]` and `["*"]` are two states.
 
 **A named channel this machine does not have is skipped, and said in the
 monitor log.** That is the travelling case: a description written at a desk,

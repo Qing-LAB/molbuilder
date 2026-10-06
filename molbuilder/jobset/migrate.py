@@ -1,4 +1,16 @@
-"""Rewrite a calculation written before the electronic state's items.
+"""Rewrite a calculation an older molbuilder wrote: its records written whole
+(2026-10-06), and its template's electronic-state items (2026-09-28).
+
+**The records** (`_migrate_records`): `task.json` states its `calculation`
+and a notify block its four values, and every job in a `job-set.json` its
+`point`, `finish`, `resumes` and `placement`, since 2026-10-06 -- the readers
+refuse a file that does not, naming this command (plan W57, decision 7).
+Each key an older file left out is written with the meaning its absence had
+-- `optimization`, every channel and every field (`["*"]`), off, an empty
+point, no finish, resumes, no placement -- and each is printed; the old file
+is kept beside the new as ``<name>.pre-w57``.
+
+**The template**, as follows.
 
 ``docs/plans/plan.md`` § 5s.2, decision 7: *existing templates are migrated,
 not tolerated* -- this is the one-time command that rewrites the old items
@@ -137,22 +149,134 @@ def _map_state(engine: str, vals: Dict[str, Any]
     return out, said
 
 
+#: What a key an older file left out MEANT -- written in its place, so the
+#: rewritten file says what the old one said by omitting it.
+_TASK_ABSENT = {"calculation": "optimization"}
+_NOTIFY_ABSENT = {"on_scf_converged": False, "every_hours": None,
+                  "channels": ["*"], "report": ["*"]}
+_JOB_ABSENT = {"point": {}, "finish": None, "resumes": True,
+               "placement": None}
+
+
+def _never_as_zero(hours) -> bool:
+    """Whether a period is the older spelling of never, ``0``."""
+    return (isinstance(hours, (int, float)) and not isinstance(hours, bool)
+            and hours == 0)
+
+
+def _migrate_records(base: Path):
+    """`task.json` and every `job-set.json` of the calculation, each key an
+    older file left out given the meaning its absence had -- read raw, since
+    the readers refuse such a file, and each rewritten file checked by its
+    reader.  Nothing is written here: returns what changed (a line each), the
+    files to write (``(path, text)``), and the description as rewritten."""
+    from ..persist import json_text, read_json
+    from ..task import FILENAME as TASK_FILENAME
+    from ..task import Task
+    from .materialize import sweep_set_paths
+    from .model import FILENAME as JOBSET_FILENAME, JobSet
+    said: List[str] = []
+    writes: List[Tuple[Path, str]] = []
+
+    task_path = base / TASK_FILENAME
+    obj = read_json(task_path)
+    lines = []
+    for key, meant in _TASK_ABSENT.items():
+        if key not in obj:
+            obj[key] = meant
+            lines.append(f"{key} = {meant!r} (it was left out)")
+    notify = obj.get("notify")
+    if isinstance(notify, dict) and notify:
+        for key, meant in _NOTIFY_ABSENT.items():
+            if key not in notify:
+                notify[key] = meant
+                lines.append(f"notify.{key} = {meant!r} (it was left out)")
+        if _never_as_zero(notify.get("every_hours")):
+            notify["every_hours"] = None
+            lines.append("notify.every_hours = None (0 was never)")
+    try:
+        task = Task.from_dict(obj)
+    except ValueError as exc:
+        raise MigrateError(f"{task_path.name} rewritten would still be "
+                           f"refused, so nothing was written: {exc}")
+    if lines:
+        writes.append((task_path, json_text(task.to_dict())))
+        said += [f"{TASK_FILENAME}: {ln}" for ln in lines]
+
+    for js_path in [base / JOBSET_FILENAME, *sweep_set_paths(base)]:
+        if not js_path.is_file():
+            continue
+        d = read_json(js_path)
+        filled = 0
+        for job in d.get("jobs") or []:
+            gaps = {k: v for k, v in _JOB_ABSENT.items() if k not in job}
+            if gaps:
+                job.update(gaps)
+                filled += 1
+        if filled:
+            try:
+                body = JobSet.from_dict(d).to_dict()
+            except ValueError as exc:
+                raise MigrateError(f"{js_path} rewritten would still be "
+                                   f"refused, so nothing was written: {exc}")
+            writes.append((js_path, json_text(body)))
+            said.append(f"{js_path.relative_to(base)}: {filled} job(s) given "
+                        f"every key -- point, finish, resumes, placement "
+                        f"(those left out, as their absence meant)")
+    return said, writes, task
+
+
 def migrate_state(base) -> List[str]:
-    """Rewrite the calculation in ``base``; return what changed, line by line.
+    """Rewrite the calculation in ``base``; return what changed, line by line
+    -- its records (:func:`_migrate_records`: the readers refuse a file
+    written before they were whole) and its template's electronic-state
+    items, both decided before either is written.  Each old file is kept
+    beside its new one.
 
     Raises :class:`MigrateError` when there is nothing to migrate or it cannot
     be migrated as it stands.
     """
+    base = Path(base)
+    # EVERY DECISION BEFORE ANY WRITE: a refusal of either step leaves the
+    # calculation as it was, never half rewritten.
+    said, writes, task = _migrate_records(base)
+    try:
+        t_said, t_writes = _migrate_template(base, task)
+    except _NothingInTheTemplate:
+        if not said:
+            raise MigrateError(
+                f"{base} holds nothing an older molbuilder wrote -- its "
+                f"records are whole and its template carries no item written "
+                f"before the electronic state's.") from None
+        t_said, t_writes = [], []
+    for path, text, keep in ([(p, x, ".pre-w57") for p, x in writes]
+                             + t_writes):
+        kept = path.with_name(path.name + keep)
+        kept.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        path.write_text(text, encoding="utf-8")
+    said += t_said
+    from . import ledger
+    ledger.record(base, "migrate", "a calculation an older molbuilder "
+                  "wrote, rewritten (plan W57 decision 7; "
+                  "science/chemistry-correctness.md § 2a)", changes=said)
+    return said
+
+
+class _NothingInTheTemplate(MigrateError):
+    """The template carries no item written before the electronic state's."""
+
+
+def _migrate_template(base: Path, task):
+    """The template's charge and spin items, rewritten into the electronic
+    state's -- this module's first migration (2026-09-28).  ``task`` is the
+    description as the records step left it.  Nothing is written here:
+    returns what changed and the write (``(path, text, kept-as suffix)``)."""
     from .. import template as _T
     from ..config.pyscf import PySCFConfig
     from ..config.siesta import SiestaConfig
-    from ..task import FILENAME as TASK_FILENAME
-    from ..task import read_task
 
-    base = Path(base)
-    task = read_task(base / TASK_FILENAME)
     engine = task.engine
-    kind = task.calculation or "optimization"
+    kind = task.calculation
     try:
         tmpl = _T.find_template(base, task.label)
     except ValueError as exc:
@@ -180,9 +304,9 @@ def migrate_state(base) -> List[str]:
                   if k in vals and vals[k] in (_PYSCF_CLASS if k == "method"
                                                else _SIESTA_TREATMENT)}
     if not old_items and not old_values:
-        raise MigrateError(
+        raise _NothingInTheTemplate(
             f"{tmpl.name} carries no item written before the electronic "
-            f"state's -- there is nothing to migrate.")
+            f"state's.")
 
     staged = [(st.name, k) for st in (task.stages or ())
               for k in (st.overrides or {}) if k in _OLD_NAMES
@@ -235,15 +359,8 @@ def migrate_state(base) -> List[str]:
         raise MigrateError(
             f"{tmpl.name} rewritten would still be refused, so nothing was "
             f"written: {exc}") from exc
-    keep = tmpl.with_name(tmpl.name + ".pre-m6")
-    keep.write_text(text, encoding="utf-8")
-    tmpl.write_text(new_text, encoding="utf-8")
-    from . import ledger
-    ledger.record(base, "migrate",
-                  "the template's charge and spin items rewritten into the "
-                  "electronic state's (science/chemistry-correctness.md § 2a)",
-                  changes=said, kept_as=keep.name)
-    return said + [f"the old template is kept as {keep.name}"]
+    return (said + [f"the old template is kept as {tmpl.name}.pre-m6"],
+            [(tmpl, new_text, ".pre-m6")])
 
 
 def _leading_comment(text: str) -> str:

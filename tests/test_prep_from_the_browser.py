@@ -43,7 +43,8 @@ def described(isolated_projects_root, web_client):
     calc.mkdir(parents=True, exist_ok=True)
     (calc / TASK_FILENAME).write_text(json.dumps({
         "schema": "molbuilder/task@1",
-        "engine": {"name": "siesta"}, "shape": "hierarchical",
+        "engine": {"name": "siesta"},
+                   "calculation": "optimization", "shape": "hierarchical",
         "run": {"name": "JOB", "id": "JOB_H2"},
         "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},
         "varies": [],
@@ -509,7 +510,8 @@ def _pyscf_calc(root, name):
     calc.mkdir(parents=True)
     (calc / TASK_FILENAME).write_text(json.dumps({
         "schema": "molbuilder/task@1",
-        "engine": {"name": "pyscf"}, "shape": "hierarchical",
+        "engine": {"name": "pyscf"},
+                   "calculation": "optimization", "shape": "hierarchical",
         "run": {"name": "JOB", "id": "JOB_H2"},
         "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},
         "varies": [],

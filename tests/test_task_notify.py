@@ -33,6 +33,7 @@ from molbuilder.task import SCHEMA, Notify, Task
 _BASE = {
     "schema": SCHEMA,
     "engine": {"name": "siesta"},
+    "calculation": "optimization",
     "shape": "hierarchical",
     "run": {"name": "JOB", "id": "JOB_H2"},
     "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},
@@ -45,12 +46,21 @@ def _task(**extra) -> Task:
     return Task.from_dict({**_BASE, **extra})
 
 
+def _block(**stated) -> dict:
+    """A notify block WHOLE, as every description writes one since
+    2026-10-06 (`run-reports.md` § 3.0): its four values, ``null`` for
+    never, ``["*"]`` for every channel and every field, with ``stated``
+    over them."""
+    return {"on_scf_converged": False, "every_hours": None,
+            "channels": ["*"], "report": ["*"], **stated}
+
+
 # --------------------------------------------------------------------- #
 #  the shape on disk                                                     #
 # --------------------------------------------------------------------- #
 
 def test_both_triggers_round_trip():
-    t = _task(notify={"on_scf_converged": True, "every_hours": 6})
+    t = _task(notify=_block(on_scf_converged=True, every_hours=6))
     assert t.notify == Notify(on_scf_converged=True, every_hours=6.0)
     assert Task.from_dict(t.to_dict()).notify == t.notify
 
@@ -58,10 +68,11 @@ def test_both_triggers_round_trip():
 def test_the_triggers_are_independent_not_a_choice():
     """They combine with OR — checkboxes, not a picker.  Either alone is a
     valid policy, and so is both."""
-    scf_only = _task(notify={"on_scf_converged": True})
-    assert scf_only.notify.on_scf_converged and not scf_only.notify.every_hours
+    scf_only = _task(notify=_block(on_scf_converged=True))
+    assert scf_only.notify.on_scf_converged
+    assert scf_only.notify.every_hours is None
 
-    clock_only = _task(notify={"every_hours": 2})
+    clock_only = _task(notify=_block(every_hours=2))
     assert clock_only.notify.every_hours == 2.0
     assert not clock_only.notify.on_scf_converged
 
@@ -74,17 +85,27 @@ def test_absent_is_a_state_and_writes_no_key():
     or every file written before 2026-08-26 changes on first save and
     "off" acquires a second spelling on disk."""
     t = _task()
-    assert not t.notify
+    assert t.notify is None
     assert "notify" not in t.to_dict()
 
 
-def test_a_policy_that_says_nothing_writes_no_key():
-    """Explicit falsey values are the same state as absent, and must not
-    survive as a block full of zeros -- that is the second spelling again,
-    arriving by a different door."""
-    t = _task(notify={"on_scf_converged": False, "every_hours": 0})
-    assert not t.notify
-    assert "notify" not in t.to_dict()
+def test_a_block_with_every_trigger_off_is_still_a_block():
+    """A block reports the start and the end at least (`run-reports.md`
+    § 2) -- so one whose triggers are all off is a block, kept and written
+    whole, never read as no block.  *(It was read as none until 2026-10-06,
+    `test_a_policy_that_says_nothing_writes_no_key`: `{"every_hours": 0}`
+    meant off, against § 2.)*"""
+    t = _task(notify=_block())
+    assert t.notify is not None
+    assert t.to_dict()["notify"] == _block()
+
+
+def test_a_block_that_leaves_a_key_out_is_refused_naming_it():
+    """A block states all four (2026-10-06) -- an explicit choice and a key
+    left out were the same bytes until then."""
+    with pytest.raises(ValueError, match="'every_hours', 'channels', "
+                                         "'report'"):
+        _task(notify={"on_scf_converged": True})
 
 
 # --------------------------------------------------------------------- #
@@ -108,20 +129,22 @@ def test_a_value_of_the_wrong_type_is_refused_by_name(bad, expect):
     was meant as a checkbox.
     """
     with pytest.raises(ValueError, match=expect):
-        _task(notify=bad)
+        _task(notify=_block(**bad))
 
 
-def test_a_negative_period_is_refused():
-    """There is no reading of "every minus two hours", and a timer armed
-    with one fires on every pass -- which is the noise this block exists
-    to stop."""
-    with pytest.raises(ValueError, match="cannot be negative"):
-        _task(notify={"every_hours": -2})
+@pytest.mark.parametrize("hours", [-2, 0])
+def test_a_period_that_is_not_positive_is_refused(hours):
+    """There is no reading of "every minus two hours" or "every 0 hours",
+    and a timer armed with either fires on every pass -- the noise this
+    block exists to stop.  Never is ``null`` (W57 R10: ``0`` was never until
+    2026-10-06)."""
+    with pytest.raises(ValueError, match="positive number of hours"):
+        _task(notify=_block(every_hours=hours))
 
 
 def test_an_empty_block_is_refused_rather_than_read_as_off():
-    """Absent already means off.  Accepting `{}` as a second way to say it
-    is how one state grows two spellings."""
+    """No block already means no notification.  Accepting `{}` as a second
+    way to say it is how one state grows two spellings."""
     with pytest.raises(ValueError, match="non-empty object"):
         _task(notify={})
 
@@ -131,59 +154,56 @@ def test_a_misspelled_trigger_is_refused_with_the_near_miss():
     typo is a calculation that silently reports nothing while its file
     appears to ask for reports."""
     with pytest.raises(ValueError, match="on_scf_converged"):
-        _task(notify={"on_scf_convrged": True})
+        _task(notify={**_block(), "on_scf_convrged": True})
 
 
 # --------------------------------------------------------------------- #
-#  which channels -- the one field written when falsy                    #
+#  which channels -- every, none, or these                               #
 # --------------------------------------------------------------------- #
 
 def test_names_round_trip_and_are_deduplicated():
     """A name is a label the person chose on the machine that runs the job.
     It grants nothing, so it may travel where an address may not."""
-    t = _task(notify={"channels": ["slack", "lab", "slack"]})
+    t = _task(notify=_block(channels=["slack", "lab", "slack"]))
     assert t.notify.channels == ("slack", "lab")
     assert Task.from_dict(t.to_dict()).notify == t.notify
 
 
-def test_naming_no_channels_writes_no_key():
-    """Absent means *every channel the running machine has*, which is what
-    a description that predates channels has always meant.  Nothing that
-    already worked may start behaving differently."""
-    t = _task(notify={"on_scf_converged": True})
+def test_every_channel_is_written_as_a_star():
+    """*Every channel the running machine has* is written ``["*"]`` and read
+    back as every channel (``None``) -- it was the key left out until
+    2026-10-06 (`test_naming_no_channels_writes_no_key`), the same bytes as
+    a block that never said."""
+    t = _task(notify=_block(on_scf_converged=True))
     assert t.notify.channels is None
-    assert "channels" not in t.to_dict()["notify"]
+    assert t.to_dict()["notify"]["channels"] == ["*"]
+    assert Task.from_dict(t.to_dict()).notify == t.notify
 
 
 def test_an_EMPTY_list_survives_the_round_trip():
-    """**The one exception to S1, and mutation-testing is what found the
-    gap.** Every other falsy field is dropped so that "unstated" has one
-    spelling on disk. This one is not, because `[]` and absent are two
-    INTENTIONS: send this calculation nowhere, versus send it everywhere the
-    running machine can reach (`run-reports.md` § 3.0).
-
-    Dropping it would silently turn the first into the second -- reports to
-    every channel the person had just unticked, from a description that says
-    so in as many words.
+    """`[]` and `["*"]` are two INTENTIONS: send this calculation nowhere,
+    versus send it everywhere the running machine can reach
+    (`run-reports.md` § 3.0).  Read as the other, it would send reports to
+    every channel the person had just unticked, from a description that
+    says so in as many words.
     """
-    t = _task(notify={"channels": []})
+    t = _task(notify=_block(channels=[]))
     assert t.notify.channels == ()
     assert t.to_dict()["notify"]["channels"] == []
     assert Task.from_dict(t.to_dict()).notify.channels == ()
 
 
-def test_channels_alone_is_a_policy_worth_writing():
-    """`Notify.__bool__` has to count them, or a description that ticks
-    channels and no trigger writes no block at all -- and "send nowhere"
-    would be unexpressible for exactly the person who asked for it."""
-    assert bool(_task(notify={"channels": []}).notify)
-    assert bool(_task(notify={"channels": ["slack"]}).notify)
-    assert "notify" in _task(notify={"channels": []}).to_dict()
+# `test_channels_alone_is_a_policy_worth_writing` and
+# `test_a_selection_alone_is_a_policy_worth_writing` retired 2026-10-06: they
+# pinned `Notify.__bool__`, which decided whether a block was there by its
+# values.  A block is there or not (`Task.notify` is None without one), and
+# is written whole.
 
 
 @pytest.mark.parametrize("bad,why", [
     ("slack",          "a bare string, not a list"),
     ([3],              "not a name"),
+    (["*", "slack"],   "every channel stands alone, never beside names"),
     (["has space"],    "would not survive the monitor's command line"),
     (["a/b"],          "a slash means a different thing in a path"),
     ({"slack": True},  "an object, not a list"),
@@ -193,7 +213,7 @@ def test_a_channel_list_that_could_not_travel_is_refused(bad, why):
     into the monitor's command line.  Anything outside the rule would mean
     one thing here and another in the shell."""
     with pytest.raises(ValueError):
-        _task(notify={"channels": bad})
+        _task(notify=_block(channels=bad))
 
 
 def test_the_destination_is_not_a_field_here():
@@ -203,7 +223,7 @@ def test_the_destination_is_not_a_field_here():
     travels anyway."""
     for secret_ish in ("url", "webhook", "token", "notify_url"):
         with pytest.raises(ValueError, match="unknown key"):
-            _task(notify={"on_scf_converged": True, secret_ish: "x"})
+            _task(notify={**_block(on_scf_converged=True), secret_ish: "x"})
 
 
 def test_finish_is_not_settable():
@@ -228,8 +248,8 @@ def test_a_field_selection_survives_the_round_trip():
     tab does on every save.  No error anywhere; the ticks simply were not
     there when you came back.
     """
-    t = _task(notify={"every_hours": 6, "channels": ["lab"],
-                      "report": ["energy", "n_iters"]})
+    t = _task(notify=_block(every_hours=6, channels=["lab"],
+                            report=["energy", "n_iters"]))
     assert t.notify.report == ("energy", "n_iters")
     assert t.to_dict()["notify"]["report"] == ["energy", "n_iters"], (
         "the selection was parsed and then not written: "
@@ -237,38 +257,22 @@ def test_a_field_selection_survives_the_round_trip():
     assert Task.from_dict(t.to_dict()).notify == t.notify
 
 
-def test_ABSENT_is_every_field_and_an_EMPTY_LIST_is_the_summary_alone():
-    """Two states, not one falsy value (§ 6.9).
-
-    Absent means *everything the monitor could determine* -- what every
-    description written before this key existed already meant, and must keep
-    meaning.  `[]` is a real and different answer: the name, the state and
-    the summary line, with no field grid.  Dropping the empty list on the way
-    out would turn the second silently into the first, which is exactly the
-    `channels` rule one field over.
+def test_EVERY_field_is_a_star_and_an_EMPTY_LIST_is_the_summary_alone():
+    """Two states, both written (§ 6.9): ``["*"]`` is *everything the
+    monitor could determine*, ``[]`` the name, the state and the summary
+    line with no field grid.  *(Every field was the key left out until
+    2026-10-06.)*
     """
-    absent = _task(notify={"every_hours": 1})
-    assert absent.notify.report is None
-    assert "report" not in absent.to_dict()["notify"]
+    every = _task(notify=_block(every_hours=1))
+    assert every.notify.report is None
+    assert every.to_dict()["notify"]["report"] == ["*"]
 
-    empty = _task(notify={"every_hours": 1, "report": []})
+    empty = _task(notify=_block(every_hours=1, report=[]))
     assert empty.notify.report == ()
     assert empty.to_dict()["notify"]["report"] == [], (
         "the empty list was dropped, so 'the summary line alone' came back "
         "meaning 'every field'")
     assert Task.from_dict(empty.to_dict()).notify.report == ()
-
-
-def test_a_selection_alone_is_a_policy_worth_writing():
-    """`Notify.__bool__` has to count it, or the block is dropped whole.
-
-    "Send it everywhere this machine has, but only these fields" is an
-    ordinary thing to want -- and it was unwritable, because the one field
-    stated was the one field that decided the block was empty.
-    """
-    t = _task(notify={"report": ["energy"]})
-    assert bool(t.notify)
-    assert t.to_dict()["notify"]["report"] == ["energy"]
 
 
 @pytest.mark.parametrize("bad,why", [
@@ -288,14 +292,14 @@ def test_a_field_that_is_not_a_report_field_is_refused_by_name(bad, why):
     cannot attribute to a job is a notification you have to go and look up.
     """
     with pytest.raises(ValueError):
-        _task(notify={"report": bad})
+        _task(notify=_block(report=bad))
 
 
 def test_the_refusal_names_the_fields_that_do_exist():
     """A refusal that does not say what IS allowed makes the person guess."""
     from molbuilder.report_fields import NAMES
     with pytest.raises(ValueError) as exc:
-        _task(notify={"report": ["nonsense"]})
+        _task(notify=_block(report=["nonsense"]))
     said = str(exc.value)
     for item in NAMES:
         assert item in said, (
@@ -306,5 +310,5 @@ def test_the_refusal_names_the_fields_that_do_exist():
 def test_a_repeated_field_is_kept_once_and_in_order():
     """The same rule the channel names follow -- a list is a set with an
     order, and a duplicate is a slip rather than a second request."""
-    t = _task(notify={"report": ["energy", "n_iters", "energy"]})
+    t = _task(notify=_block(report=["energy", "n_iters", "energy"]))
     assert t.notify.report == ("energy", "n_iters")

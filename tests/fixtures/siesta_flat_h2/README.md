@@ -47,11 +47,21 @@ logs, and the medium stage's progress log, are left out):
   `initial_preview` block, `# frozen_atoms: 0`); SIESTA never writes into it;
 * `H2.source.xyz`, `H2.source.molstruct.json` -- the structure pair the
   calculation was prepped from, named on the run's name;
-* `task.json` -- the description.
+* `task.json` -- the description, as `jobset migrate` rewrites it
+  (2026-10-06, plan W57 decision 7): an optimization's description stated no
+  `calculation` until then, and today's reader refuses one that does not.
+  The rewrite added that one key, `"calculation": "optimization"`, every other
+  byte kept; it was made by the migration's own records step
+  (`jobset/migrate.py`, `_migrate_records`), since the verb itself refuses
+  this folder for the template it leaves out;
+* `task.json.pre-w57` -- the description as the run's `init` wrote it, kept
+  beside the new one as the migration keeps it: the one description of ours
+  written before W57 that the tests hold.
 
 Read in place by the tests, never copied under another name
 (`process/testing.md` § 6): `tests/parse/test_siesta_mdnc.py` (the history
 found by the label the output prints), `tests/test_results_blueprint.py`
 (what the folder answers and opens), `tests/test_structure_info_bridge.py`
-(each run's own deck, and SIESTA's `H2.xyz` opened with its run's box) and
-`tests/test_xv2xyz.py` (`--from-run` on `H2.XV`).
+(each run's own deck, and SIESTA's `H2.xyz` opened with its run's box),
+`tests/test_xv2xyz.py` (`--from-run` on `H2.XV`) and `tests/test_migrate.py`
+(the older description refused, and rewritten every value kept).

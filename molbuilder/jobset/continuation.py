@@ -623,8 +623,7 @@ def _independent(task) -> bool:
     its kind's: a transport rung's gather (`prep.gather_sources`),
     and a force-constant stage builds on `relax` (:func:`_source_stage`)."""
     from ..template import KIND_ROLES
-    return (getattr(task, "calculation", None)
-            or "optimization") not in KIND_ROLES
+    return task.calculation not in KIND_ROLES
 
 
 def _ladder(base, task, template_text: Optional[str] = None) -> list:

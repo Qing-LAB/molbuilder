@@ -138,6 +138,7 @@ def _controls(scf=False, periodic=False, hours="6", every=True, ticks=None):
 
 
 _TASK = {"schema": "molbuilder/task@1", "engine": {"name": "siesta"},
+         "calculation": "optimization",
          "run": {"name": "r", "id": "r"}}
 
 
@@ -146,26 +147,31 @@ _TASK = {"schema": "molbuilder/task@1", "engine": {"name": "siesta"},
 # --------------------------------------------------------------------- #
 
 def test_nothing_ticked_writes_no_key():
-    """Absent-is-a-state, matching `task.Notify`: a description that
-    reports on nothing must round-trip byte-identical, or every file
-    changes the first time somebody opens this tab."""
+    """No block is no notification (`run-reports.md` § 2): nothing set up
+    writes no `notify` key, so a description that reports on nothing
+    round-trips byte-identical."""
     doc = json.loads(_run(_controls(), _TASK, "doc"))
     assert "notify" not in doc
 
 
 def test_each_trigger_alone_is_a_valid_policy():
-    """They combine with OR -- checkboxes, not a picker."""
+    """They combine with OR -- checkboxes, not a picker.  A block is written
+    whole (`stages.md` § 6.9): the trigger not ticked as `false` or `null`
+    (never), every channel and every field as `["*"]`."""
     scf = json.loads(_run(_controls(scf=True), _TASK, "doc"))
-    assert scf["notify"] == {"on_scf_converged": True}
+    assert scf["notify"] == {"on_scf_converged": True, "every_hours": None,
+                             "channels": ["*"], "report": ["*"]}
 
     per = json.loads(_run(_controls(periodic=True, hours="4"), _TASK, "doc"))
-    assert per["notify"] == {"every_hours": 4}
+    assert per["notify"] == {"on_scf_converged": False, "every_hours": 4,
+                             "channels": ["*"], "report": ["*"]}
 
 
 def test_both_together():
     doc = json.loads(_run(_controls(scf=True, periodic=True, hours="2.5"),
                           _TASK, "doc"))
-    assert doc["notify"] == {"on_scf_converged": True, "every_hours": 2.5}
+    assert doc["notify"] == {"on_scf_converged": True, "every_hours": 2.5,
+                             "channels": ["*"], "report": ["*"]}
 
 
 def test_the_hours_box_is_ignored_until_its_row_is_ticked():
@@ -267,14 +273,14 @@ def test_an_unparseable_document_loses_nothing():
 #  which channels -- three states, and they are not two                  #
 # --------------------------------------------------------------------- #
 
-def test_every_channel_writes_no_key_at_all():
-    """The default, and the reading of every description written before
-    channels existed: use whatever is set up wherever this lands.  Writing
-    the names out instead would freeze a travelling description to the
-    machine it happened to be written on."""
+def test_every_channel_is_written_every_never_as_this_machines_names():
+    """The default: use whatever is set up wherever this lands, written
+    `["*"]` (`run-reports.md` § 3.0).  Writing the ticked names out instead
+    would freeze a travelling description to the machine it happened to be
+    written on."""
     doc = json.loads(_run(_controls(scf=True, every=True,
                                     ticks=[("slack", True)]), _TASK, "doc"))
-    assert doc["notify"] == {"on_scf_converged": True}
+    assert doc["notify"]["channels"] == ["*"]
 
 
 def test_a_subset_travels_as_names():
@@ -288,10 +294,9 @@ def test_a_subset_travels_as_names():
 
 
 def test_ticking_nothing_writes_an_EMPTY_LIST_not_nothing():
-    """**The one field written when falsy**, and the reason is the whole
-    point of the control: an unticked list that dropped the key would mean
-    *every channel*, so unticking them all would send reports to every
-    channel the person had just turned off (`run-reports.md` § 3.0)."""
+    """None is `[]`, a state of its own: read as every channel, unticking
+    them all would send reports to every channel the person had just turned
+    off (`run-reports.md` § 3.0)."""
     doc = json.loads(_run(
         _controls(scf=True, every=False,
                   ticks=[("slack", False), ("lab", False)]), _TASK, "doc"))
@@ -462,8 +467,9 @@ def test_a_card_that_could_not_ask_keeps_the_descriptions_report_list():
             "ts-notify-scf":   {{ checked: true }},
         }};
         const $ = (id) => _els[id] || null;
-        let _doc = JSON.stringify({{ notify: {{ on_scf_converged: true,
-                                               report: ["energy", "n_iters"] }} }});
+        let _doc = JSON.stringify({{ notify: {{
+            on_scf_converged: true, every_hours: null, channels: ["*"],
+            report: ["energy", "n_iters"] }} }});
         const _cm = {{ getValue: () => _doc }};
         {fns}
         console.log(JSON.stringify(notifyValues()));
@@ -473,5 +479,5 @@ def test_a_card_that_could_not_ask_keeps_the_descriptions_report_list():
     if proc.returncode != 0:
         pytest.fail(f"node exited {proc.returncode}\n{proc.stderr}")
     got = json.loads(proc.stdout.strip().splitlines()[-1])
-    assert got == {"on_scf_converged": True,
-                   "report": ["energy", "n_iters"]}, got
+    assert got == {"on_scf_converged": True, "every_hours": None,
+                   "channels": ["*"], "report": ["energy", "n_iters"]}, got

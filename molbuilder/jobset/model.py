@@ -424,48 +424,50 @@ class Job:
         return self.resumes and bool(self.warm)
 
     def to_dict(self) -> Dict[str, Any]:
-        d = {
+        # EVERY KEY, EVERY JOB (`job-contracts.md` § 6.1): `point` empty for
+        # a job that is no trial, `finish` and `placement` null where there
+        # is none, `resumes` true or false.  Until 2026-10-06 those four were
+        # left out when empty or true, beside `resources` writing every
+        # field -- two conventions in one job, and an absent `placement`
+        # read two ways.
+        return {
             "name": self.name,
             "script": self.script,
             "resources": self.resources.to_dict(),
             "warm": [w.to_dict() for w in self.warm],
             "traits": dict(self.traits),
+            "point": dict(self.point),
+            "finish": self.finish,
+            "resumes": bool(self.resumes),
+            "placement": ({k: (dict(v) if isinstance(v, dict) else v)
+                           for k, v in self.placement.items()}
+                          if self.placement is not None else None),
         }
-        # ABSENT, not empty, when this is no trial -- same reading as
-        # WarmFile.requires_same above.
-        if self.point:
-            d["point"] = dict(self.point)
-        # ABSENT when the engine finishes its own job -- the same reading.
-        if self.finish:
-            d["finish"] = self.finish
-        # ABSENT when it resumes, the ordinary answer -- written only to say
-        # false.
-        if not self.resumes:
-            d["resumes"] = False
-        # ABSENT with no queue -- written where prep admitted one.
-        if self.placement:
-            d["placement"] = {k: (dict(v) if isinstance(v, dict) else v)
-                              for k, v in self.placement.items()}
-        return d
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "Job":
         # A sweep holds six of these; a refusal that does not say WHICH one
         # is a refusal you have to bisect a file to act on.
+        missing = [k for k in JOB_KEYS if k not in d]
+        if missing:
+            raise WrittenBefore(
+                f"job {d.get('name', '?')!r} has no "
+                f"{', '.join(repr(k) for k in missing)}")
         try:
-            res = Resources.from_dict(d.get("resources"))
+            res = Resources.from_dict(d["resources"])
         except ValueError as exc:
-            raise ValueError(f"job {d.get('name', '?')!r}: {exc}") from None
+            raise ValueError(f"job {d['name']!r}: {exc}") from None
         return cls(
             name=d["name"],
             script=d["script"],
             resources=res,
-            warm=[WarmFile.from_dict(w) for w in (d.get("warm") or [])],
-            traits=dict(d.get("traits") or {}),
-            point=dict(d.get("point") or {}),
-            finish=(str(d["finish"]) if d.get("finish") else None),
-            resumes=bool(d.get("resumes", True)),
-            placement=(dict(d["placement"]) if d.get("placement") else None),
+            warm=[WarmFile.from_dict(w) for w in d["warm"]],
+            traits=dict(d["traits"]),
+            point=dict(d["point"]),
+            finish=(str(d["finish"]) if d["finish"] is not None else None),
+            resumes=bool(d["resumes"]),
+            placement=(dict(d["placement"]) if d["placement"] is not None
+                       else None),
         )
 
 
@@ -535,6 +537,18 @@ def warm_carry(job: "Job", source: Optional["Job"]) -> List[str]:
     return out
 
 
+#: Every key a job in `job-set.json` carries, always (`job-contracts.md`
+#: § 6.1) -- the one list the writer's dict and the reader's check share.
+JOB_KEYS = ("name", "script", "resources", "warm", "traits", "point",
+            "finish", "resumes", "placement")
+
+
+class WrittenBefore(ValueError):
+    """A `job-set.json` written before every job key was (2026-10-06): read
+    by no fallback -- `molbuilder jobset migrate` rewrites it, every value
+    kept (`JobSet.load` names the calculation)."""
+
+
 @dataclass
 class JobSet:
     """A set of related jobs sharing a static package.  ``kind`` is
@@ -571,8 +585,8 @@ class JobSet:
             name=d["name"],
             engine=d["engine"],
             kind=d["kind"],
-            shared=list(d.get("shared") or []),
-            jobs=[Job.from_dict(j) for j in (d.get("jobs") or [])],
+            shared=list(d["shared"]),
+            jobs=[Job.from_dict(j) for j in d["jobs"]],
         )
 
     def write(self, path, *, plan=None) -> Path:
@@ -591,9 +605,26 @@ class JobSet:
     def load(cls, path) -> "JobSet":
         """Read a ``job-set.json`` back into a JobSet (schema checked by name
         and major -- persist.check_schema
-        via ``from_dict``)."""
+        via ``from_dict``).  One written before every job key was is refused
+        naming the command that rewrites it, its calculation by its folder --
+        found where the layout puts it: this folder, or one or two above
+        (a flat stage's bench folder, a hierarchical one's)."""
         from ..persist import read_json
-        return cls.from_dict(read_json(path))
+        from ..runfiles import TASK_FILE
+        from .commands import command
+        path = Path(path)
+        try:
+            return cls.from_dict(read_json(path))
+        except WrittenBefore as exc:
+            calc = next((d for d in (path.parent, *list(path.parents)[1:3])
+                         if (d / TASK_FILE).is_file()), None)
+            way = (f"`{command('migrate', base=calc)}` rewrites it, every "
+                   f"value kept and the old file beside the new"
+                   if calc is not None else
+                   "it lies in no described calculation")
+            raise WrittenBefore(
+                f"{path}: {exc} -- written before every job key was "
+                f"(2026-10-06); {way}.") from None
 
     # ----- structural validation ------------------------------------- #
 

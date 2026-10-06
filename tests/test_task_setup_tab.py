@@ -137,8 +137,8 @@ def test_handover_renders_and_writes_nothing(web_client, isolated_projects_root)
     d = _fresh_calc_dir(isolated_projects_root)
     try:
         r = web_client.post("/api/task-setup/handover", json=dict(
-            _envelope(), engine="siesta", name="probe calc",
-            params={"system_label": "probe"}))
+            _envelope(), engine="siesta", calculation="optimization",
+            name="probe calc", params={"system_label": "probe"}))
         assert r.status_code == 200, r.get_json()
         out = r.get_json()
         assert out["ok"] is True
@@ -182,13 +182,14 @@ def test_save_writes_the_description_and_reports_the_handover(web_client, isolat
     d = _fresh_calc_dir(isolated_projects_root)
     try:
         rendered = web_client.post("/api/task-setup/handover", json=dict(
-            _envelope(), engine="siesta", name="probe",
-            params={"system_label": "probe"})).get_json()
+            _envelope(), engine="siesta", calculation="optimization",
+            name="probe", params={"system_label": "probe"})).get_json()
         # the browser's half, through the file layer
         (d / rendered["handover_name"]).write_text(rendered["handover_text"])
         over = _json.loads(rendered["handover_text"])
 
         proposed = {"schema": "molbuilder/task@1", "engine": over["engine"],
+                    "calculation": over["calculation"],
                     "shape": "flat", "run": over["run"],
                     "structure": over["structure"], "varies": [],
                     "stages": [{"name": "coarse", "enabled": True,
@@ -220,6 +221,7 @@ def test_save_refuses_rather_than_repairs(web_client, isolated_projects_root):
         # complete but for `stages`, so the STAGES refusal is what fires
         from molbuilder.identity import run_id
         no_stages = {"schema": "molbuilder/task@1", "engine": {"name": "siesta"},
+                     "calculation": "optimization",
                      "shape": "flat",
                      "run": {"name": "x", "id": run_id("x", "H2"),
                              "created": "2026-08-16T00:00:00-07:00"},
@@ -336,7 +338,8 @@ def test_the_column_picker_offers_no_run_setting(web_client):
     # rule is about is asserted, so an empty answer cannot pass vacuously.
     assert {"restart", "use_gpu", "diag_algorithm", "mpi_np"} <= run_settings(
         "siesta")
-    j = web_client.get("/api/task-setup/columns?engine=siesta").get_json()
+    j = web_client.get("/api/task-setup/columns?engine=siesta"
+                       "&calculation=optimization").get_json()
     names = [i["name"] for i in j["items"]]
     assert names, "the picker offered nothing at all"
     assert not (run_settings("siesta") & set(names)), sorted(
@@ -367,7 +370,8 @@ def test_the_column_picker_offers_no_run_setting(web_client):
 def test_only_execution_category_parameters_may_be_swept(web_client):
     """`stages.md § 6.8` — sweeping anything else means each point silently
     measures a DIFFERENT calculation."""
-    j = web_client.get("/api/task-setup/sweepable?engine=siesta").get_json()
+    j = web_client.get("/api/task-setup/sweepable?engine=siesta"
+                       "&calculation=optimization").get_json()
     assert j["ok"] and j["items"]
     from molbuilder.template import load_catalogue, read_template, one
     t = read_template(load_catalogue())
@@ -380,7 +384,8 @@ def test_only_execution_category_parameters_may_be_swept(web_client):
 def test_the_sweepable_list_says_which_the_machine_answers(web_client):
     """An allocation resolver means a description may never carry a value
     (`template.md § 6.4`), so those can only ever be measured."""
-    j = web_client.get("/api/task-setup/sweepable?engine=siesta").get_json()
+    j = web_client.get("/api/task-setup/sweepable?engine=siesta"
+                       "&calculation=optimization").get_json()
     by = {i["name"]: i["machine_answers"] for i in j["items"]}
     for machine in ("mpi_np", "omp_threads", "max_memory_mb", "gpu_count"):
         assert by.get(machine) is True, f"{machine} not flagged machine-answered"
@@ -393,7 +398,8 @@ def test_the_presets_come_from_the_shipped_table(web_client):
     """The same table `default_siesta_stages` builds the ladder from, so a
     stage filled here and stage N of that ladder cannot drift.  `tuning.md § 4`
     is the authority for the numbers; this serves them, never restates them."""
-    j = web_client.get("/api/task-setup/presets?engine=siesta").get_json()
+    j = web_client.get("/api/task-setup/presets?engine=siesta"
+                       "&calculation=optimization").get_json()
     assert j["ok"] and len(j["presets"]) == 3
     from molbuilder.config.siesta import SIESTA_STAGE_NAMES, SIESTA_STAGE_PRESETS
     for ps in j["presets"]:
@@ -425,7 +431,8 @@ def test_the_folder_template_is_what_an_empty_cell_names(web_client, isolated_pr
     d = _fresh_calc_dir(isolated_projects_root)
     try:
         rendered = web_client.post("/api/task-setup/handover", json=dict(
-            _envelope(), engine="siesta", name="probe",
+            _envelope(), engine="siesta", calculation="optimization",
+            name="probe",
             params={"system_label": "probe", "kgrid": [4, 4, 1],
                     "mesh_cutoff": 450.0})).get_json()
         # WHAT THE BROWSER WRITES: the hand-over's files, as the route
@@ -569,7 +576,7 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
             regions={"frozen_atoms": [0], "slab": [0, 1]},
             cell=cell)}
         r = web_client.post("/api/task-setup/handover", json=dict(
-            env, engine="siesta", name="chain",
+            env, engine="siesta", calculation="optimization", name="chain",
             params={"system_label": "chain", "kgrid": [8, 8, 1],
                     "kgrid_displacement": [0.5, 0.5, 0.0], "mesh_cutoff": 350.0}))
         assert r.status_code == 200, r.get_json()
@@ -583,6 +590,7 @@ def test_the_whole_chain_from_structure_to_rendered_deck(web_client, tmp_path, i
         # The run card states its launch shape, as a run's must
         # (`architecture.md` § 5.2).
         described = {"schema": "molbuilder/task@1", "engine": over["engine"],
+                     "calculation": over["calculation"],
                      "shape": "flat", "run": over["run"],
                      "structure": over["structure"], "varies": [],
                      "execution": {"mpi_np": 1, "omp_threads": 1},
@@ -671,7 +679,7 @@ def test_a_dispersion_turned_off_on_the_form_is_off_in_the_deck(
         ["O", "H", "H"],
         [[0, 0, 0.117], [0, 0.757, -0.467], [0, -0.757, -0.467]])}
     r = web_client.post("/api/task-setup/handover", json=dict(
-        env, engine="pyscf", name="nodisp",
+        env, engine="pyscf", calculation="optimization", name="nodisp",
         params={"method": "DFT", "dispersion": "none"}))
     assert r.status_code == 200, r.get_json()
     out = r.get_json()
@@ -683,6 +691,7 @@ def test_a_dispersion_turned_off_on_the_form_is_off_in_the_deck(
 
     over = _json.loads(out["handover_text"])
     described = {"schema": "molbuilder/task@1", "engine": over["engine"],
+                 "calculation": over["calculation"],
                  "shape": "flat", "run": over["run"],
                  "structure": over["structure"], "varies": [],
                  "execution": {"threads": 1},
@@ -741,7 +750,7 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path, isolated_p
     try:
         env = _envelope()
         r = web_client.post("/api/task-setup/handover", json=dict(
-            env, engine="siesta", name="grid",
+            env, engine="siesta", calculation="optimization", name="grid",
             params={"system_label": "grid", "mesh_cutoff": 200.0,
                     "use_gpu": False}))
         assert r.status_code == 200, r.get_json()
@@ -752,6 +761,7 @@ def test_a_cpu_description_gets_a_cpu_benchmark(web_client, tmp_path, isolated_p
         over = _json.loads(out["handover_text"])
 
         described = {"schema": "molbuilder/task@1", "engine": over["engine"],
+                     "calculation": over["calculation"],
                      "shape": "hierarchical", "run": over["run"],
                      "structure": over["structure"], "varies": [],
                      "stages": [{"name": "coarse", "enabled": True,
@@ -820,7 +830,8 @@ def test_a_refused_cell_is_the_door_s_400_not_a_500(web_client):
         "engine_offset": None, "axis_kind": None, "vacuum": None,
     }
     r = web_client.post("/api/task-setup/handover", json=dict(
-        env, engine="siesta", name="bad", params={"system_label": "bad"}))
+        env, engine="siesta", calculation="optimization", name="bad",
+        params={"system_label": "bad"}))
     # Two equal rows: a flat box, an ERROR finding (`cell.no_volume`), so the
     # gate refuses and the door answers 400 with that sentence.
     assert r.status_code == 400, (r.status_code, r.get_json())
@@ -853,7 +864,8 @@ def test_both_pickers_payloads_carry_the_value_shape(web_client):
     which births a row at its value in force).  Until 2026-08-20 the
     sweepable payload had no type at all, and every added setting was born
     as the number 1 -- `use_gpu` included."""
-    sw = web_client.get("/api/task-setup/sweepable?engine=siesta").get_json()
+    sw = web_client.get("/api/task-setup/sweepable?engine=siesta"
+                        "&calculation=optimization").get_json()
     items = {i["name"]: i for i in sw["items"]}
     assert items["use_gpu"]["type"] == "bool"
     assert items["diag_algorithm"]["type"] == "enum"
@@ -862,7 +874,8 @@ def test_both_pickers_payloads_carry_the_value_shape(web_client):
     assert items["diag_algorithm"]["default"] == "ScaLAPACK"
 
     from molbuilder.template import catalogue, one
-    cols = web_client.get("/api/task-setup/columns?engine=siesta").get_json()
+    cols = web_client.get("/api/task-setup/columns?engine=siesta"
+                          "&calculation=optimization").get_json()
     citems = {i["name"]: i for i in cols["items"]}
     assert citems["relax_type"]["type"] == "enum"
     assert citems["relax_type"]["choices"] == list(
@@ -911,9 +924,11 @@ def test_another_kinds_items_stay_out_of_the_optimization_surfaces(
     real kind."""
     import json as _json
     schema = _json.dumps(
-        web_client.get("/api/build/schema/pyscf").get_json())
+        web_client.get("/api/build/schema/pyscf"
+                       "?calculation=optimization").get_json())
     cols = _json.dumps(
-        web_client.get("/api/task-setup/columns?engine=pyscf").get_json())
+        web_client.get("/api/task-setup/columns?engine=pyscf"
+                       "&calculation=optimization").get_json())
     for name in ("already_relaxed", "compute_raman", "es_mode_selection",
                  "displacement_amplitude_ang"):
         assert f'"{name}"' not in schema, f"{name} leaked into the form"
@@ -933,6 +948,7 @@ def test_save_runs_gate_three_and_refuses_a_failing_preflight(web_client, isolat
         from molbuilder.identity import run_id
         bad_bounds = {
             "schema": "molbuilder/task@1", "engine": {"name": "siesta"},
+            "calculation": "optimization",
             "shape": "hierarchical",
             "run": {"name": "x", "id": run_id("x", "H2"),
                     "created": "2026-08-16T00:00:00-07:00"},

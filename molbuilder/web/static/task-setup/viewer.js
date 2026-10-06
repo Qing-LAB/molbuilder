@@ -1137,11 +1137,13 @@ async function loadFolder(projects, dir, opts) {
      * else's structure and not its own.  `prep` refuses on that, late; this
      * says it on the page where it can still be fixed. */
     let ref = {};
-    let docKind = "optimization";
+    let docKind = null;
     try {
         const doc = JSON.parse(taskText || overText || "{}");
         ref = (doc && doc.structure) || {};
-        docKind = (doc && doc.calculation) || "optimization";
+        // THE KIND AS THE DESCRIPTION STATES IT -- every kind writes it
+        // (2026-10-06); an optimization's was a default here until then.
+        docKind = doc.calculation;
     } catch (_) { /* a file that does not parse is refused further down */ }
     /* THE COMPOSITE HAS NO STRUCTURE PAIR OF ITS OWN: its structure is the
      * cited junction, composed at prep (`engines/transport.md` § 3.1), so
@@ -1521,8 +1523,7 @@ async function loadColumnChoices(engine) {
     // items beside the shared ones; an optimization's never sees them.
     // The cache is keyed by (engine, kind): a bare `if (_cols)` served an
     // optimization folder's columns to the vibration folder opened next.
-    const kind = (_task && _task.calculation)
-        || (_handover && _handover.calculation) || "optimization";
+    const kind = _kindOf();
     const key = (engine || "siesta") + ":" + kind;
     if (_cols && _colsKey === key) {
         // REFILL `_meta` EVEN ON THE CACHED PATH.  `refreshPickers` clears
@@ -1616,8 +1617,7 @@ async function loadSweepChoices(engine) {
      * PySCF description got SIESTA's machine rows.  And by KIND, as the
      * columns are: a vibration's or a transport's run card was offered
      * `restart`, which neither kind carries (the K5 review's C2). */
-    const kind = (_task && _task.calculation)
-        || (_handover && _handover.calculation) || "optimization";
+    const kind = _kindOf();
     const key = (engine || "siesta") + ":" + kind;
     if (_sweep && _sweepKey === key) {
         _fillSweepMeta(_sweep);      // same reason as the column cache above
@@ -1831,8 +1831,7 @@ async function loadPresets(engine) {
      * APPLIED SIESTA tier values into a PySCF description opened second --
      * and, keyed by engine alone, offered an optimization's tiers on every
      * transport rung of the folder opened next (plan W31, archived 2026-09-29). */
-    const kind = (_task && _task.calculation)
-        || (_handover && _handover.calculation) || "optimization";
+    const kind = _kindOf();
     const key = (engine || "siesta") + ":" + kind;
     if (_presets && _presetsKey === key) return _presets;
     if (_presetsInflight[key]) return _presetsInflight[key];   // one fetch per key
@@ -2918,7 +2917,7 @@ function proposedFromHandover(over, shape, varies, bench) {
     // whose deck relaxes in-process; `relax` then `freq` on SIESTA
     // otherwise, because one SIESTA run cannot relax and take force
     // constants.  An optimization proposes the ordinary `coarse` start.
-    const kind = (over && over.calculation) || "optimization";
+    const kind = over.calculation;
     const engineName = String(_handoverEngine(over) || "siesta").toLowerCase();
     const relaxed = _tmpl.values.already_relaxed === true;
     let stages;
@@ -2942,7 +2941,8 @@ function proposedFromHandover(over, shape, varies, bench) {
         stages:    stages,
         bench:     bench || undefined,
     };
-    if (kind !== "optimization") out.calculation = kind;
+    // EVERY KIND IS WRITTEN (2026-10-06): an optimization's was left out.
+    out.calculation = kind;
     return JSON.stringify(out, null, 2) + "\n";
 }
 
@@ -3474,6 +3474,16 @@ function readAsksFromTask(task) {
 
 /* ---------- when this run should tell you something ---------- */
 
+/** The calculation KIND of the open folder -- its description's, else the
+ *  hand-over's, as each states it (every kind writes `calculation` since
+ *  2026-10-06).  Never a default: a request that carries none is refused by
+ *  the server, which names it (`build._unstated`); three sites here read it
+ *  each with `|| "optimization"` until then. */
+function _kindOf() {
+    return (_task && _task.calculation)
+        || (_handover && _handover.calculation) || "";
+}
+
 /** The policy as `task.json`'s `notify` block carries it.
  *
  * WHEN only.  Where to send it is the user's own file on the machine that
@@ -3488,26 +3498,41 @@ function notifyValues() {
     const scf = $("ts-notify-scf");
     const per = $("ts-notify-periodic");
     const hrs = $("ts-notify-hours");
-    const out = {};
-    if (scf && scf.checked) out.on_scf_converged = true;
+    const scfOn = !!(scf && scf.checked);
+    // `null` is NEVER, as the description writes it (`stages.md` § 6.9).
+    let hours = null;
     if (per && per.checked) {
         const n = parseFloat((hrs || {}).value);
         // A number, in HOURS, on both sides -- `task.py` refuses "6h" and a
         // string, and it is right to: a value that changes meaning crossing
         // a boundary is how "4h" reached sbatch as `-t 4h`.
-        if (isFinite(n) && n > 0) out.every_hours = n;
+        if (isFinite(n) && n > 0) hours = n;
     }
-    // ABSENT AND EMPTY ARE DIFFERENT and only this field is written when
-    // falsy: `[]` says send nowhere, absent says everywhere the running
-    // machine has.  `task.py` carries the same exception for the same
-    // reason (`run-reports.md` 3.0).
+    // `null` from the two pickers is EVERY channel / EVERY field; `[]` is
+    // none -- the summary line alone, for the fields.
     const chans = channelSelection();
-    if (chans !== null) out.channels = chans;
-    // SAME EXCEPTION, SAME REASON (`stages.md` § 6.9): `[]` says "the summary
-    // line alone", absent says "every field the monitor can work out".
     const rep = reportSelection();
-    if (rep !== null) out.report = rep;
-    return out;
+    // NOTHING SET UP WRITES NO BLOCK (`run-reports.md` § 2): no trigger,
+    // and both pickers at "every".
+    if (!scfOn && hours === null && chans === null && rep === null) return {};
+    // A BLOCK IS WRITTEN WHOLE (`run-reports.md` § 3.0, 2026-10-06): its
+    // four values, "every" spelled `["*"]` and "never" `null` -- the falsy
+    // ones and "every" were left out until then, so a choice and silence
+    // were the same bytes.
+    return {
+        on_scf_converged: scfOn,
+        every_hours: hours,
+        channels: chans === null ? ["*"] : chans,
+        report: rep === null ? ["*"] : rep,
+    };
+}
+
+/** A notify list as the description states it -- `["*"]` every (`null`
+ *  here, the pickers' word), else the names: the one reading of both
+ *  lists (`task.py`'s `_every_or_these`). */
+function _everyOrThese(list) {
+    if (!Array.isArray(list)) return null;
+    return (list.length === 1 && list[0] === "*") ? null : list;
 }
 
 /** Write the policy INTO the open `task.json`, which is what save sends.
@@ -3516,8 +3541,8 @@ function notifyValues() {
  * of truth, so a control holding its value beside it would be a second
  * answer -- and the one that never reached disk.
  *
- * Absent-is-a-state, matching `task.Notify`: nothing ticked writes NO key,
- * so a description that reports on nothing round-trips byte-identical.
+ * NO BLOCK IS NO NOTIFICATION, matching `task.py` (`run-reports.md` § 2):
+ * nothing set up writes NO `notify` key, and a block is written whole.
  */
 function applyNotifyToDoc() { applyBlockToDoc("notify", notifyValues); }
 
@@ -3537,16 +3562,17 @@ function readNotifyFromTask(task) {
     // `"channels" in n`, NOT truthiness: an empty array is a real answer and
     // a truthiness test would read it as "the description says nothing" and
     // silently tick every channel back on.
-    const named = (n && Object.prototype.hasOwnProperty.call(n, "channels")
-                   && Array.isArray(n.channels)) ? n.channels : null;
+    // `["*"]` IS EVERY CHANNEL, `[]` NONE -- a block states which
+    // (`run-reports.md` § 3.0); no block reads as every, the card's resting
+    // state.
+    const named = _everyOrThese(n.channels);
     const all = $("ts-notify-all");
     if (all) all.checked = named === null;
     paintChannelTicks(named);
     // `"report" in n` for the same reason `"channels" in n` is used above: an
     // empty array is a real answer, and truthiness would read it as silence
     // and tick every field back on.
-    const rep = (n && Object.prototype.hasOwnProperty.call(n, "report")
-                 && Array.isArray(n.report)) ? n.report : null;
+    const rep = _everyOrThese(n.report);
     const repAll = $("ts-report-all");
     if (repAll) repAll.checked = rep === null;
     paintNotifyNote();
@@ -3554,7 +3580,7 @@ function readNotifyFromTask(task) {
     // offered are the ones its engine and kind can state (§ 6.9).
     const engine = String((task && task.engine && task.engine.name)
                           || "siesta").toLowerCase();
-    const calculation = (task && task.calculation) || "optimization";
+    const calculation = task.calculation;
     loadReportFields(engine, calculation).then(() => {
         paintReportTicks(rep);
         paintReportNote();
@@ -3574,17 +3600,18 @@ function paintNotifyNote() {
     }
     const parts = [];
     if (v.on_scf_converged) parts.push("each SCF convergence");
-    if (v.every_hours) parts.push(`every ${v.every_hours} h`);
+    if (v.every_hours !== null) parts.push(`every ${v.every_hours} h`);
     parts.push("and when it starts and ends");
     let line = parts.length > 1
         ? "Reports " + parts.slice(0, -1).join(", ") + " " + parts[parts.length - 1]
         : "Reports only when it starts and ends";
     // WHERE, in the same sentence as WHEN, because "reports every 6 h" with
     // no channel ticked is a promise the run cannot keep.
-    if (v.channels && !v.channels.length) {
+    const chans = _everyOrThese(v.channels);
+    if (chans && !chans.length) {
         line = "Reports nothing — no channel is ticked";
-    } else if (v.channels) {
-        line += " \u2014 to " + v.channels.join(", ");
+    } else if (chans) {
+        line += " \u2014 to " + chans.join(", ");
     } else {
         line += " \u2014 to every channel on the machine that runs it";
     }
@@ -4141,7 +4168,7 @@ function reportSelection() {
         // A card that could not ask must not rewrite what it was told.
         const t = currentTask();
         const n = t && t.notify;
-        return (n && Array.isArray(n.report)) ? n.report : null;
+        return n ? _everyOrThese(n.report) : null;
     }
     // ORDER IS THE VOCABULARY'S, not the DOM's -- two people who ticked the
     // same boxes must write the same file.

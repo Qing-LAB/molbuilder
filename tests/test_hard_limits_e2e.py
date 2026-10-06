@@ -85,6 +85,7 @@ def test_a_value_outside_its_recommended_range_is_warned_where_it_is_saved(
     d = _fresh_calc_dir(isolated_projects_root)
     described = {
         "schema": "molbuilder/task@1", "engine": {"name": "siesta"},
+        "calculation": "optimization",
         "shape": "hierarchical",
         "run": {"name": "x", "id": run_id("x", "H2"),
                 "created": "2026-09-30T00:00:00-07:00"},
@@ -130,6 +131,7 @@ def test_what_the_save_refuses_it_refuses_once(web_client,
     d = _fresh_calc_dir(isolated_projects_root)
     base = {
         "schema": "molbuilder/task@1", "engine": {"name": "siesta"},
+        "calculation": "optimization",
         "shape": "hierarchical",
         "run": {"name": "x", "id": run_id("x", "H2"),
                 "created": "2026-09-30T00:00:00-07:00"},

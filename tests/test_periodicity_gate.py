@@ -1062,6 +1062,7 @@ class TestTabEmitContract:
             "structure": _env_per(self._XYZ, {"cell": None,
                             "axis_kind": ["isolated"] * 3,
                             "vacuum": [4.0, 4.0, 4.0]}), "engine": "siesta",
+            "calculation": "optimization",
             "params": {"system_label": "pin"},
         })
         assert r.status_code == 200, r.get_json()
@@ -1949,6 +1950,7 @@ class TestARefusedCellIsA400:
             # top-level `periodicity` block beside the envelope -- the legacy
             # request shape, retired 2026-08-04 once nothing sent it.
             "structure": _env_per(self.XYZ, {"cell": self.LEFT_HANDED}), "engine": "siesta",
+            "calculation": "optimization",
             "params": {}}), "/api/build/preflight")
 
     # The /api/spectra/render arm retired with the route (P3);

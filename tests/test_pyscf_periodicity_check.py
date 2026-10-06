@@ -113,7 +113,7 @@ def test_it_reaches_the_tab_before_generate():
     envelope = _struct(("periodic",) * 3).to_dict()
     r = client.post("/api/build/preflight",
                     json={"structure": envelope, "engine": "pyscf",
-                          "params": {}})
+                          "calculation": "optimization", "params": {}})
     assert r.status_code == 200, r.get_json()
     wheres = [i["where"] for i in (r.get_json().get("issues") or [])]
     assert WHERE in wheres, (
@@ -225,7 +225,9 @@ def test_a_gas_phase_script_hears_no_advice_about_a_box_it_does_not_use():
         for engine in ("siesta", "pyscf"):
             r = client.post("/api/build/preflight",
                             json={"structure": water.to_dict(),
-                                  "engine": engine, "params": {}})
+                                  "engine": engine,
+                                  "calculation": "optimization",
+                                  "params": {}})
             assert r.status_code == 200, r.get_json()
             said[engine] = {i["where"] for i in r.get_json()["issues"]
                             if i["where"].startswith("cell.")}

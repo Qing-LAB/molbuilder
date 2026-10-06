@@ -224,9 +224,11 @@ The three prerequisites named here landed with the spectra migration
    Task setup tab proposes that ladder from the template that came over.
 
 **And the hand-over is now exactly what this section predicted**: a Send
-button on the same endpoint. One extension rode along — the body may carry
-`calculation`, and the hand-over file records it **only when it is not
-`optimization`** (absent IS the default state, § 2's economy). The sender
+button on the same endpoint. One extension rode along — the body states
+`calculation`, and the hand-over file records it, every kind *(an
+optimization's was left out until 2026-10-06, plan W57 R10: the description
+states its kind)*; a request that states no engine or no calculation is
+refused by name, never given one. The sender
 itself moved into `lib/task-handover.js` when the second tab arrived: the
 guards, the write order and the notice handling are this procedure's contract,
 and two copies of a contract drift.

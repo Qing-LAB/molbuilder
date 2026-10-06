@@ -351,7 +351,7 @@ register with the runtime):
 
 | Call | What it does |
 |---|---|
-| `fetchSchema(engine, opts)` | Ask the server for a form's shape (`GET /api/build/schema/<engine>`). |
+| `fetchSchema(engine, opts)` | Ask the server for a form's shape (`GET /api/build/schema/<engine>?calculation=<kind>`). `opts.calculation` is required: every caller states its kind, and the server refuses a request that states none rather than giving it one (2026-10-06, plan W57 R10). |
 | `renderForm(host, schema, opts)` | Draw the form from that shape into a host element. `opts.holds = "overrides"` draws a surface of overrides over the template — its fields blank, the template's value their hint (§ 1.1); `opts.foldable` folds the cards (§ 1.3). |
 | `collectForm(host, schema, names?)` | Read what the form holds back into a plain values object (the schema tells it how to read each kind): **every field, a blank as `null`** — not chosen — each value read as its type. A value that will not read is refused: it throws an `Error` naming the field (`err.field`) (§ 1.1). A `locked` field is never read. `names` reads those fields alone. |
 | `heldValues(host, schema, kept)` | What the form holds, **for saving**: `collectForm` field by field, a field that will not read keeping its value in `kept` (the previous save) — one half-typed field never costs the rest of the form its save. The Send reads through `collectForm`, which refuses. |
@@ -428,7 +428,7 @@ un-mapped item never disappears.
 ## 5. A worked example — why the SIESTA form has the fields it has
 
 1. The Build tab, with SIESTA selected, calls
-   `formSchema.fetchSchema("siesta")`.
+   `formSchema.fetchSchema("siesta", {calculation: "optimization"})`.
 2. The server reads the catalogue's SIESTA items
    (`catalogue_to_form_schema`), turns each into a small description (mesh
    cutoff → a number input; the k-grid → three linked inputs), and returns

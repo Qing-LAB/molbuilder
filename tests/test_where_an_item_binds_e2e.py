@@ -38,6 +38,7 @@ def _described(engine, stages, calculation="optimization"):
     ``varies`` what they override."""
     from molbuilder.identity import run_id
     out = {"schema": "molbuilder/task@1", "engine": {"name": engine},
+           "calculation": "optimization",
            "shape": "hierarchical",
            "run": {"name": "x", "id": run_id("x", "H2"),
                    "created": "2026-09-30T00:00:00-07:00"},

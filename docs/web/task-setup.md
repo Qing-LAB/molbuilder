@@ -948,10 +948,12 @@ on the **This machine** tab ([`this-machine.md`](?doc=web/this-machine.md)),
 because they are a fact about the box, not about this calculation.
 
 **What the card asks, and what travels** — the `notify` block,
-[`stages.md`](?doc=engines/stages.md) § 6.9. Nothing ticked writes no block,
-and no block is no report at all; a calculation that reports anything also
-reports its start and its end, so they are not offered
-([`run-reports.md`](?doc=execution/run-reports.md) § 2):
+[`stages.md`](?doc=engines/stages.md) § 6.9. Nothing set up — no tick, and
+both lists at *every* — writes no block, and no block is no report at all; a
+calculation that reports anything also reports its start and its end, so they
+are not offered ([`run-reports.md`](?doc=execution/run-reports.md) § 2). A
+block is written whole: the period not ticked as `null`, *every* channel or
+field as `["*"]`:
 
 | | writes | travels? |
 |---|---|---|
@@ -974,9 +976,10 @@ so nothing on this page *can* see one.
 
 **Ticking nothing means nothing is sent**, and that is a real state rather than
 an oversight ([`run-reports.md`](?doc=execution/run-reports.md) § 3.0): reports
-off for this calculation on a machine where they are otherwise set up. A
-description with **no** `channels` key — one written by hand, say — means
-*every channel on this machine*, so nothing that already worked stops working.
+off for this calculation on a machine where they are otherwise set up, written
+`[]` — and *every channel on this machine* is `["*"]`, never this machine's
+names, so a description that travels keeps meaning every channel where it
+lands.
 
 **A ticked name this machine does not have is shown as such**, not hidden. That
 is the travelling case — a description written at a desk and opened on a

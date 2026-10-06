@@ -820,7 +820,8 @@ def test_the_card_is_offered_exactly_what_a_save_of_that_calculation_accepts(
              "shape": "hierarchical", "run": {"name": "J", "id": "J_H2"},
              "varies": [], "calculation": calculation,
              "stages": [{"name": "s", "enabled": True, "overrides": {}}],
-             "notify": {"report": report}}
+             "notify": {"on_scf_converged": False, "every_hours": None,
+                        "channels": ["*"], "report": report}}
         if calculation == "transport":
             # its identity is the junction it cites (run-identity.md 2.0a)
             d["slots"] = {"junction": "p/optimization/relax"}

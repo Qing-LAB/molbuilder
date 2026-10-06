@@ -957,6 +957,11 @@ rather than inventing a second mechanism.
 
   "engine": { "name": "siesta" },
 
+  // What kind of calculation this is -- stated by every description,
+  // "optimization" included (it was left out for an optimization until
+  // 2026-10-06; `jobset migrate` rewrites such a file).
+  "calculation": "optimization",        // or "vibration", "transport"
+
   // How the calculation's files are kept apart on disk (§ 6.7).
   // Required, and never inferred.
   "shape": "hierarchical",              // or "flat"
@@ -1649,7 +1654,7 @@ The two are different claims and only one of them travels.
 
 **The calculation KINDS this vocabulary serves** *(P0 of the
 spectra-migration plan, 2026-08-20; transport added 2026-08-29)*:
-`optimization` (the default, absent from the file), **`vibration`** — the
+`optimization`, **`vibration`** — the
 described vibrational-spectroscopy job, whose template the catalogue narrows
 by the `calculations` key (`template.md` § 6.3's sibling rule) and whose
 warm-file section `pyscf/warm-files.toml` already declares — and
@@ -1696,12 +1701,20 @@ does ([`run-reports.md`](?doc=execution/run-reports.md) § 1).
            "channels": ["slack"], "report": ["elapsed_s", "energy", "max_force"]}
 ```
 
-| key | type | absent | empty | refused at save |
+| key | type | every / never | none | refused at save |
 |---|---|---|---|---|
-| `on_scf_converged` | boolean | `false` | — | anything but a JSON boolean |
-| `every_hours` | number of hours | never | `0` is never | a string (`"6h"`), a negative or a non-finite number |
-| `channels` | list of channel names | **every channel the running machine has** | `[]` — **none**: reports off for this calculation | a name that is not letters, digits, `-` and `_` |
-| `report` | list of report field names | **every field the run states** | `[]` — the name, the state and the summary line, with no field grid | a name that is not a report field, or one this calculation's runs can never state |
+| `on_scf_converged` | boolean | — | `false` | anything but a JSON boolean |
+| `every_hours` | number of hours | `null` is **never** | — | a string (`"6h"`), `0`, a negative or a non-finite number |
+| `channels` | list of channel names | `["*"]` — **every channel the running machine has** | `[]` — **none**: reports off for this calculation | a name that is not letters, digits, `-` and `_`; `"*"` beside a name |
+| `report` | list of report field names | `["*"]` — **every field the run states** | `[]` — the name, the state and the summary line, with no field grid | a name that is not a report field, or one this calculation's runs can never state; `"*"` beside a name |
+
+**A block states all four keys, every time** *(W57 R10 and D6, 2026-10-06)*:
+a key left out is refused by name. Until then a key was left out for its
+"every" or its "off", so a choice and a block that never said were the same
+bytes, and `{"every_hours": 0}` was read as no block at all; a description
+written before is refused naming `molbuilder jobset migrate --bundle <calc>`,
+which writes each key left out with what its absence meant, and `0` as
+`null`.
 
 What each occasion is and what every message carries are
 [`run-reports.md`](?doc=execution/run-reports.md) § 2 and § 4.1a; which
@@ -1709,10 +1722,9 @@ channels a list selects is § 3.0 there. **No `notify` block is no
 notification**, the start and the end included; a calculation with a block also
 reports its start and its end, so they are not keys. `notify` present but empty
 is refused:
-absent and empty would be two spellings of one state. **Absent and `[]` are two
-states for `channels` and for `report`**, so the serializer writes `[]` rather
-than dropping it: a person who unticked every box asked for something
-different from a person who never looked.
+absent and empty would be two spellings of one state. **`["*"]` and `[]` are
+two states for `channels` and for `report`**: a person who unticked every box
+asked for something different from a person who kept *every*.
 
 **The name is not on the `report` list, because it is not optional.** Every
 report carries the run's name and, under a scheduler, its job id — in a chat

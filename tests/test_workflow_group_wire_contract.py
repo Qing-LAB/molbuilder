@@ -194,7 +194,7 @@ def _assert_workflow_group_enrichment(
 def test_siesta_preflight_issues_carry_workflow_group(web_client):
     body = _post(web_client, "/api/build/preflight", {
         "structure": _env(_BENZENE_XYZ),
-        "engine": "siesta",
+        "engine": "siesta", "calculation": "optimization",
         "params": {"mesh_cutoff": 30},
     })
     assert body.get("ok") is True, body.get("error")
@@ -207,7 +207,7 @@ def test_siesta_preflight_issues_carry_workflow_group(web_client):
 def test_pyscf_preflight_issues_carry_workflow_group(web_client):
     body = _post(web_client, "/api/build/preflight", {
         "structure": _env(_BENZENE_XYZ),
-        "engine": "pyscf",
+        "engine": "pyscf", "calculation": "optimization",
         "params": {"scf_max_cycle": 5},
     })
     assert body.get("ok") is True, body.get("error")
@@ -326,12 +326,13 @@ def test_the_task_setup_save_findings_carry_their_workflow_group(
     # field the schema grows lands here instead of being forgotten.
     over = web_client.post("/api/task-setup/handover", json=dict(
         structure=envelope(["H", "H"], [[0, 0, 0], [0, 0, 0.74]]),
-        engine="siesta", name="probe",
+        engine="siesta", calculation="optimization", name="probe",
         params={"system_label": "probe"})).get_json()
     assert over and over.get("ok"), over
     (d / over["handover_name"]).write_text(over["handover_text"])
     h = _json.loads(over["handover_text"])
     proposed = {"schema": "molbuilder/task@1", "engine": h["engine"],
+                "calculation": h["calculation"],
                 "shape": "flat", "run": h["run"], "structure": h["structure"],
                 # the field must be PROMOTED before a stage may override it
                 # (`engines/stages.md` § 6.2), which the codec enforces before

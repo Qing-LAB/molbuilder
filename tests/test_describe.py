@@ -164,16 +164,17 @@ def test_the_structure_travels_as_the_calculations_own_pair(tmp_path):
     assert _structure_for(task, calc).vacuum == (8.0, 8.0, 8.0)
 
 
-def test_the_calculation_key_is_absent_is_a_state(struct, cfg, tmp_path):
+def test_every_description_states_its_kind(struct, cfg, tmp_path):
     """U0 (warm-files § 4.2a, 2026-08-13): `calculation` keys the engine's
-    warm-file vocabulary.  Absent IS "optimization" (the § 6.5 pattern),
-    so an optimization description writes no key; a non-default type
-    round-trips; a shape-violating value is refused naming the rule.
-    Membership (does the engine have this section?) is NOT checked here —
-    that is the rules file's question, answered where it is read."""
+    warm-file vocabulary, and every description states it, an
+    optimization's included (`job-contracts.md` § 6.1; W57 R10, 2026-10-06
+    -- an optimization's was left out until then); a shape-violating value
+    is refused naming the rule.  Membership (does the engine have this
+    section?) is NOT checked here — that is the rules file's question,
+    answered where it is read."""
     D.write_description(_describe(struct, cfg), tmp_path / "calc")
     raw = json.loads((tmp_path / "calc" / "task.json").read_text())
-    assert "calculation" not in raw
+    assert raw["calculation"] == "optimization"
     assert read_task(tmp_path / "calc" / "task.json").calculation == \
         "optimization"
     # ("vibration" stands in for any non-default kind; "transport" no

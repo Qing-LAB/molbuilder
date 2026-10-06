@@ -39,7 +39,7 @@
  *     structure,    // the envelope from the tab's own MolView exportFile()
  *     engine,       // "siesta" | "pyscf"
  *     params,       // collectForm() output, keyed by catalogue names
- *     calculation,  // optional; omitted or "optimization" sends none
+ *     calculation,  // REQUIRED: "optimization" | "vibration" | "transport"
  *     junction,     // transport only: the citation string
  *     bias,         // transport only: [volts...], 0.0 first
  *     stages,       // transport only: {rung: {catalogue item: value}}, per-rung bags
@@ -192,12 +192,15 @@
             // structure.  The server names the files it writes from the
             // structure that is right here in this body.
         };
-        /* The kind rides only when it is not the default -- the same
-         * economy the hand-over file itself keeps (`handover-procedure.md`
-         * § 6: absent = optimization). */
-        if (o.calculation && o.calculation !== "optimization") {
-            req.calculation = o.calculation;
+        /* THE KIND RIDES EVERY HAND-OVER, stated by the tab that sends it
+         * -- the server refuses one with none (2026-10-06; an optimization's
+         * was left out, read back by a default on both sides, until then). */
+        if (!o.calculation) {
+            throw new Error("task-handover.send: the tab states its "
+                            + "calculation kind (optimization, vibration, "
+                            + "transport)");
         }
+        req.calculation = o.calculation;
         if (isTransport) {
             req.junction  = o.junction;
             req.bias      = o.bias || [0.0];

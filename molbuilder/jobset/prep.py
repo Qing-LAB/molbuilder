@@ -2351,23 +2351,27 @@ def _with_notify(flags, declared) -> "Resources":
     included: reports stay off for everyone who has not asked for them.
     """
     out = flags or Resources()
-    if not declared:
+    # NO BLOCK IS ``None`` (`task.Notify`): a block whose values are all off
+    # still reports the start and the end -- it read as no block, by its
+    # falsiness, until 2026-10-06.
+    if declared is None:
         return out
     import dataclasses as _dc
     patch = {}
     if declared.on_scf_converged and out.notify_on_scf is None:
         patch["notify_on_scf"] = True
-    if declared.every_hours and out.notify_every_hours is None:
+    # A period, or ``None`` for never (`stages.md` § 6.9).
+    if declared.every_hours is not None and out.notify_every_hours is None:
         patch["notify_every_hours"] = declared.every_hours
-    # `is not None`, NOT truthiness -- the other two fields are off when
-    # falsy and this one is not.  An empty tuple says "send this calculation
-    # nowhere", and a truthiness guard here would drop it and hand the job
-    # every channel on the machine instead (`run-reports.md` 3.0).
+    # `is not None`, NOT truthiness: an empty tuple says "send this
+    # calculation nowhere", and a truthiness guard here would drop it and
+    # hand the job every channel on the machine instead (`run-reports.md`
+    # 3.0).
     if out.notify_channels is None:
-        # A BLOCK THAT NAMES NO CHANNELS asks for every channel of the machine
-        # that runs the job, which only that machine knows -- so it travels as
-        # the marker, resolved there (`run-reports.md` § 3.0).  No block at
-        # all is not here: `not declared` returned above, and the wrapper
+        # EVERY CHANNEL (`["*"]`, ``None`` here) is every channel of the
+        # machine that runs the job, which only that machine knows -- so it
+        # travels as the marker, resolved there (`run-reports.md` § 3.0).
+        # No block at all is not here: it returned above, and the wrapper
         # renders no flag, which is nothing sent.
         from ..config_dir import ALL_CHANNELS
         patch["notify_channels"] = (declared.channels
@@ -2987,8 +2991,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
             # undone -- W52).  A later attempt is `launch`'s.  Flat keeps no
             # attempt directories: the run is the calculation's folder.
             from ..template import KIND_ROLES
-            out.linked = (getattr(task, "calculation", None)
-                          or "optimization") in KIND_ROLES
+            out.linked = task.calculation in KIND_ROLES
             out.cold = bool(cold)
             # WHAT EACH ATTEMPT GATHERED, as decided at 4a: the attempt
             # opened in each container.

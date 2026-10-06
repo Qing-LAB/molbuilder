@@ -305,6 +305,7 @@ class TestPickingThisMachineIsAnAnswer:
 
 _PLAN_TASK = {
     "schema": "molbuilder/task@1", "engine": {"name": "siesta"},
+                                              "calculation": "optimization",
     "shape": "hierarchical", "run": {"name": "r", "id": "r_H2"},
     "structure": {"source": "a.xyz", "formula": "H2", "atoms": 2},
     "varies": [],

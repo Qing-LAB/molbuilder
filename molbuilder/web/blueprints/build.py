@@ -841,17 +841,31 @@ def api_build_schema(engine: str):
             ),
         }), 404
     _cls, id_prefix = cls_map[engine]
+    calculation = str(request.args.get("calculation") or "")
+    if not calculation:
+        return _unstated(calculation=calculation)
     # Built from the CATALOGUE (`web/form-schema.md` § 1), not from the config
     # class: a parameter is defined in molbuilder/data/catalogue.template.toml,
     # and the class is a translator on the way OUT to an engine.  The renderer
     # is unchanged -- it takes whatever schema it is handed.
     return jsonify({
         "ok": True,
-        "schema": _catalogue_to_form_schema(
-            engine, id_prefix,
-            calculation=str(request.args.get("calculation")
-                            or "optimization")),
+        "schema": _catalogue_to_form_schema(engine, id_prefix,
+                                            calculation=calculation),
     })
+
+
+def _unstated(**said):
+    """A 400 naming what a request left out.  The engine and the calculation
+    kind are stated by every caller -- the page states both -- and never
+    supplied here: they defaulted to SIESTA and an optimization until
+    2026-10-06 (W57: the description states its kind; `jobset init` its
+    engine)."""
+    missing = [k for k, v in said.items() if not v]
+    return jsonify({"ok": False,
+                    "error": (f"the request states no "
+                              f"{' and no '.join(missing)} -- every caller "
+                              f"states it; nothing is assumed")}), 400
 
 
 @bp.route("/api/build/preflight", methods=["POST"])
@@ -880,12 +894,13 @@ def api_build_preflight():
     body = request.get_json(silent=True) or {}
     engine = (body.get("engine") or "").strip().lower()
     params: Dict[str, Any] = body.get("params") or {}
-    # The calculation KIND rides the same live check (absent =
-    # optimization, as everywhere): validate() composes the kind's own
-    # science from it, so the Spectrum tab's panel shows the SAME
-    # verdict prep's settings gate gives later -- the browser hears it
-    # while the person is still at the form.
-    calculation = str(body.get("calculation") or "optimization")
+    # The calculation KIND rides the same live check, stated by every tab:
+    # validate() composes the kind's own science from it, so the Spectrum
+    # tab's panel shows the SAME verdict prep's settings gate gives later --
+    # the browser hears it while the person is still at the form.
+    calculation = str(body.get("calculation") or "")
+    if not calculation:
+        return _unstated(calculation=calculation)
 
     if engine not in ("siesta", "pyscf"):
         return jsonify({
@@ -1033,15 +1048,17 @@ def api_task_setup_handover():
     ``task.json`` and removes this file.
     """
     body = request.get_json(silent=True) or {}
-    engine = str(body.get("engine") or "siesta").lower()
-    if engine not in ("siesta", "pyscf"):
-        return jsonify({"ok": False,
-                        "error": f"unknown engine {engine!r}"}), 400
+    engine = str(body.get("engine") or "").lower()
     # The hand-over carries the calculation KIND (handover-procedure § 6:
     # "the hand-over is a Send button on the same endpoint" -- landed for
     # the vibration kind, 2026-08-20).  The template narrows by it, and
     # the receiving tab writes it into task.json.
-    calculation = str(body.get("calculation") or "optimization")
+    calculation = str(body.get("calculation") or "")
+    if not engine or not calculation:
+        return _unstated(engine=engine, calculation=calculation)
+    if engine not in ("siesta", "pyscf"):
+        return jsonify({"ok": False,
+                        "error": f"unknown engine {engine!r}"}), 400
     if calculation == "transport":
         # NO HAND-OVER FOR THE COMPOSITE (user ruling 2026-08-29):
         # nothing is awaiting -- the stages, the shape and the identity
@@ -1226,13 +1243,12 @@ def api_task_setup_handover():
         # omitted so a reader of the file knows it is waiting on them.
         "awaiting":  ["shape", "stages"],
     }
-    if calculation != "optimization":
-        # The KIND rides the hand-over (absent = optimization, the same
-        # absent-is-a-state rule task.json itself uses) -- the receiving
-        # tab writes it into task.json and proposes the kind's own ladder
-        # (for a vibration, `relax` then `freq` on SIESTA unless the box says
-        # relaxed, `freq` alone on PySCF) instead of the tier default.
-        handover["calculation"] = calculation
+    # THE KIND RIDES THE HAND-OVER, every kind -- the receiving tab writes
+    # it into task.json and proposes the kind's own ladder (for a vibration,
+    # `relax` then `freq` on SIESTA unless the box says relaxed, `freq` alone
+    # on PySCF) instead of the tier default.  An optimization's was left
+    # out until 2026-10-06, as task.json left it out.
+    handover["calculation"] = calculation
 
     return jsonify({
         "ok":            True,
@@ -1582,7 +1598,9 @@ def api_task_setup_sweepable():
     means a description may never carry a value for it (`template.md` § 6.4),
     so the picker can show it as measurable-only rather than as a choice.
     """
-    engine = str(request.args.get("engine") or "siesta").lower()
+    engine = str(request.args.get("engine") or "").lower()
+    if not engine:
+        return _unstated(engine=engine)
     if engine not in ("siesta", "pyscf"):
         return jsonify({"ok": False, "error": f"unknown engine {engine!r}"}), 400
 
@@ -1592,7 +1610,9 @@ def api_task_setup_sweepable():
     # offers only what that kind carries (`template.md` § 6.3's sibling
     # rule) -- a vibration's or a transport's was offered `restart`, which
     # neither carries, and the deck ignored it (the K5 review's C2).
-    kind = str(request.args.get("calculation") or "") or None
+    kind = str(request.args.get("calculation") or "")
+    if not kind:
+        return _unstated(calculation=kind)
     out = []
     for it in _T.select(parsed, engine=engine, calculation=kind):
         if "execution" not in (it.category or ()):
@@ -1691,12 +1711,14 @@ def api_task_setup_columns():
     `group` rides along because it is still the right answer to a different
     question — which columns the table STARTS with (§ 1.3).
     """
-    engine = str(request.args.get("engine") or "siesta").lower()
+    engine = str(request.args.get("engine") or "").lower()
+    _calc_kind = str(request.args.get("calculation") or "")
+    if not engine or not _calc_kind:
+        return _unstated(engine=engine, calculation=_calc_kind)
     if engine not in ("siesta", "pyscf"):
         return jsonify({"ok": False, "error": f"unknown engine {engine!r}"}), 400
 
     from molbuilder import template as _T
-    _calc_kind = str(request.args.get("calculation") or "optimization")
     out = []
     for it in _column_items(engine, _calc_kind):
         out.append({
@@ -2406,15 +2428,17 @@ def api_task_setup_presets():
     2026-09-24 every transport rung offered `coarse / medium / tight`
     (plan W31, archived 2026-09-29).
     """
-    engine = str(request.args.get("engine") or "siesta").lower()
-    kind = str(request.args.get("calculation") or "optimization")
+    engine = str(request.args.get("engine") or "").lower()
+    kind = str(request.args.get("calculation") or "")
+    if not engine or not kind:
+        return _unstated(engine=engine, calculation=kind)
     out = []
     if engine == "siesta":
         from molbuilder.config.siesta import (SIESTA_STAGE_NAMES,
                                               SIESTA_STAGE_PRESETS)
         for tier in sorted(SIESTA_STAGE_PRESETS):
             out.append({"tier": tier,
-                        "name": SIESTA_STAGE_NAMES.get(tier, f"stage{tier}"),
+                        "name": SIESTA_STAGE_NAMES[tier],
                         "values": dict(SIESTA_STAGE_PRESETS[tier])})
     elif engine == "pyscf":
         # Same source as the shipped PySCF ladder, for the same reason the

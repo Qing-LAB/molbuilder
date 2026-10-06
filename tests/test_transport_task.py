@@ -138,7 +138,8 @@ class TestInitCLI:
 
     def _invoke(self, args):
         from molbuilder.jobset._cli import jobset_group
-        return CliRunner().invoke(jobset_group, ["init"] + args)
+        return CliRunner().invoke(jobset_group,
+                                  ["init", "--engine", "siesta"] + args)
 
     # Retired 2026-10-04 (user: "any fucking faking tests should be retired"):
     # 1 test here cited a relaxation whose `.XV` was written by hand (`process/testing.md` § 6).

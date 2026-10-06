@@ -8,7 +8,6 @@
     "name": "H2",
     "id": "H2_H2"
   },
-  "calculation": "optimization",
   "structure": {
     "source": "H2.source.xyz",
     "formula": "H2",

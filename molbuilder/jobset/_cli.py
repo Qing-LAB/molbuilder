@@ -2131,17 +2131,24 @@ def _probe_consent_merge(before, probed, *, yes: bool):
 
 
 @jobset_group.command("migrate",
-                      short_help="rewrite a pre-2026-09-28 calculation's "
-                                 "charge and spin items")
+                      short_help="rewrite a calculation an older molbuilder "
+                                 "wrote: its records whole, its charge and "
+                                 "spin items")
 @_bundle_option()
 def migrate_cmd(bundle: str) -> None:
-    """Rewrite this calculation's template into the electronic state's items
-    (science/chemistry-correctness.md § 2a): PySCF's `spin` and the R/U inside
-    its `method`, SIESTA's `spin_treatment` spellings and `spin_total`.
+    """Rewrite a calculation an older molbuilder wrote.
 
-    What the run was is KEPT -- every old value becomes a stated one -- and
-    each change is printed.  The old template stays beside the new one as
-    `<name>.pre-m6`.  prep refuses a template that still carries an old item,
+    Its RECORDS (2026-10-06): task.json's `calculation` and a notify block's
+    four values, and every job's `point`, `finish`, `resumes` and
+    `placement` in each job-set.json -- each key the old file left out
+    written with what its absence meant.  Its TEMPLATE (2026-09-28): the
+    electronic state's items (science/chemistry-correctness.md § 2a) --
+    PySCF's `spin` and the R/U inside its `method`, SIESTA's
+    `spin_treatment` spellings and `spin_total`.
+
+    What the calculation was is KEPT -- every old value becomes a stated
+    one -- and each change is printed.  Each old file stays beside the new
+    one (`<name>.pre-w57`, `<name>.pre-m6`).  The readers refuse such a file,
     naming this command."""
     from .migrate import MigrateError, migrate_state
     try:

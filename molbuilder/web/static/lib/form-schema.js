@@ -31,7 +31,7 @@
  *     field is skipped (the recommendation already applies), and so is a
  *     field with no default; there is nothing to reset either to.
  *
- *   * fetchSchema(engine) -- thin wrapper around
+ *   * fetchSchema(engine, {calculation}) -- thin wrapper around
  *     GET /api/build/schema/<engine> that throws on error and
  *     returns the schema body.
  *
@@ -978,11 +978,16 @@
         // stood here for the retired sidecar-prefill flow -- the
         // server dropped the query silently and no route ever
         // emitted the notice; both retired at the U6 close.)
-        const calculation = (opts && opts.calculation) || "";
-        let url = "/api/build/schema/" + encodeURIComponent(engine);
-        if (calculation) {
-            url += "?calculation=" + encodeURIComponent(calculation);
+        // THE KIND IS STATED by every caller (2026-10-06): the server
+        // refuses a schema request with none, and defaulted it to an
+        // optimization until then.
+        const calculation = opts && opts.calculation;
+        if (!calculation) {
+            throw new Error("form-schema.fetchSchema: the calculation kind "
+                            + "is required ({calculation: ...})");
         }
+        const url = "/api/build/schema/" + encodeURIComponent(engine)
+            + "?calculation=" + encodeURIComponent(calculation);
         const r = await fetch(url);
         const body = await r.json();
         if (!r.ok || !body.ok) {

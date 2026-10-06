@@ -21,6 +21,7 @@ from molbuilder.task import SCHEMA, Allocation, Task
 _BASE = {
     "schema": SCHEMA,
     "engine": {"name": "siesta"},
+    "calculation": "optimization",
     "shape": "hierarchical",
     "run": {"name": "JOB", "id": "JOB_H2"},
     "structure": {"source": "h2.xyz", "formula": "H2", "atoms": 2},

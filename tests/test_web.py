@@ -273,7 +273,7 @@ def test_preflight_returns_issues_for_siesta(web_client, peptide_xyz):
     round-trips through the preflight endpoint, keyed to the field."""
     r = web_client.post("/api/build/preflight", json={
         "structure": _env(peptide_xyz),
-        "engine": "siesta",
+        "engine": "siesta", "calculation": "optimization",
         "params": {"spin_treatment": "unrestricted",
                    "unpaired_electrons": 0},
     })
@@ -294,6 +294,7 @@ def test_preflight_rejects_bad_engine(web_client, peptide_xyz):
     r = web_client.post("/api/build/preflight", json={
         "structure": _env(peptide_xyz),
         "engine": "qchem",   # not supported
+        "calculation": "optimization",
         "params": {},
     })
     assert r.status_code == 400
@@ -316,7 +317,7 @@ def test_preflight_bad_params_returned_as_error_issue(web_client, peptide_xyz):
     """
     r = web_client.post("/api/build/preflight", json={
         "structure": _env(peptide_xyz),
-        "engine": "siesta",
+        "engine": "siesta", "calculation": "optimization",
         # kgrid coercion does int(v[i]) -- a non-numeric string here
         # raises ValueError in _siesta_config_from_params, which the
         # endpoint catches as a config-parse error.
@@ -394,7 +395,7 @@ def test_a_blank_is_not_chosen_and_a_value_that_will_not_read_is_refused_by_name
     def preflight(params):
         return web_client.post("/api/build/preflight", json={
             "structure": _env(peptide_xyz), "engine": "siesta",
-            "params": params})
+            "calculation": "optimization", "params": params})
 
     r = preflight({"mesh_cutoff": None, "max_scf_iter": "",
                    "basis_size": None, "kgrid": None})
@@ -413,7 +414,7 @@ def test_a_kgrid_that_is_not_three_numbers_is_still_refused(web_client,
     already says it better -- so this pins that the refusal still arrives."""
     r = web_client.post("/api/build/preflight", json={
         "structure": _env(peptide_xyz),
-        "engine": "siesta",
+        "engine": "siesta", "calculation": "optimization",
         "params": {"kgrid": "4,4"},
     })
     body = r.get_json()
@@ -1387,7 +1388,7 @@ def test_api_build_schema_returns_siesta_schema(web_client):
     CATALOGUE (`web/form-schema.md` § 1).  The wire shape is
     ``{"ok": True, "schema": {...}}``; the schema's id_prefix field is the
     canonical "p" used by the form-field IDs."""
-    r = web_client.get("/api/build/schema/siesta")
+    r = web_client.get("/api/build/schema/siesta?calculation=optimization")
     assert r.status_code == 200
     body = r.get_json()
     assert body["ok"] is True

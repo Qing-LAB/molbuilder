@@ -460,7 +460,7 @@ def resolve(template_text: str, task, config_cls, *,
     from .template import (engine_name, fixed_by_role, role_answers,
                            shared_by_every_stage, why_role, why_shared)
     _engine = engine_name(config_cls)
-    _kind = getattr(task, "calculation", None) or "optimization"
+    _kind = task.calculation
     fixed = fixed_by_role(_engine, _kind)
     answers = role_answers(_engine, _kind, stage_obj.name)
     _refuse_a_stated_answer(template_text, _engine, _kind)
@@ -716,7 +716,7 @@ def resolved_ladder(template_text: str, task, config_cls) -> List[Tuple[str, Any
                            template_fields)
     base = config_from_template(template_text, config_cls)
     engine = engine_name(config_cls)
-    kind = getattr(task, "calculation", None) or "optimization"
+    kind = task.calculation
     known = template_fields(config_cls)
     out: List[Tuple[str, Any]] = []
     for s in (task.stages or ()):

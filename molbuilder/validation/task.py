@@ -577,7 +577,7 @@ def _bias_points_in_range(task) -> List[Issue]:
 
 
 def _kind_of(task) -> str:
-    return str(getattr(task, "calculation", None) or "optimization")
+    return str(task.calculation)
 
 
 def _why_not(task, key: str, value) -> str:

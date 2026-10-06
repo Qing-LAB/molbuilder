@@ -65,6 +65,7 @@ import difflib
 import dataclasses as _dc
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Mapping, NoReturn, Optional, Tuple
 
 from . import report_fields as _report_fields
@@ -263,32 +264,33 @@ class Notify:
     exists: nobody has to be at the cluster at 3am.  What is settable is the
     noise *before* then.
 
-    **Absent-is-a-state**, like :class:`Allocation`: an empty block writes no
-    key, and every description written before 2026-08-26 says exactly what it
-    always said by omitting it.  Absent is no notification at all -- not
-    even the start and the end (user, 2026-09-26): nothing set up, nothing
-    sent (`run-reports.md` § 2).
+    **A block, or none**: ``Task.notify`` is ``None`` with no block -- no
+    notification at all, not even the start and the end (user, 2026-09-26:
+    nothing set up, nothing sent, `run-reports.md` § 2) -- and a ``Notify``
+    is a block, which reports the start and the end at least, its four
+    values written whole (2026-10-06): a block whose values were all off
+    read as no block until then, so `{"every_hours": 0}` was read as off.
+    ``channels`` and ``report`` ``None`` are EVERY channel and EVERY field,
+    written ``["*"]``.
     """
     #: Fire when a step's SCF reaches its criterion -- a relaxation's move, a
     #: force-constant run's displacement (`run-reports.md` § 2.2).  A single
     #: point states no step, and its finish message is the whole report.
     on_scf_converged: bool = False
-    #: Fire every N hours.  ``0`` is off; HOURS, because the point of this is
-    #: reassurance over a long run, not a live feed.
-    every_hours: float = 0.0
+    #: Fire every N hours -- HOURS, because the point of this is reassurance
+    #: over a long run, not a live feed.  ``None`` is never, written
+    #: ``null``; a period is a positive number (W57 R10, 2026-10-06: ``0``
+    #: was "never", and "every 0 hours" reads as anything but).
+    every_hours: Optional[float] = None
     #: WHICH channels, **by name** -- and a name is all that travels.  What
     #: the name resolves to (an address, usually a credential) is the
     #: machine's own file and is never here; that is 1's split, and a label
     #: the person chose is safe to carry where a URL is not.
     #:
-    #: ``None`` means every channel the running machine has, which is what a
-    #: description that says nothing has always meant.  An EMPTY tuple is a
-    #: different state and not a spelling of the same one: reports off for
-    #: this calculation, on a machine where they are set up.  Both are
-    #: writable, so the serializer below carries `()` explicitly instead of
-    #: dropping it the way it drops every other falsy field -- one of S1's
-    #: two exceptions (``report`` is the other), and it is here because the
-    #: alternative is an unticked list quietly meaning *all of them*.
+    #: ``None`` means every channel the running machine has, written
+    #: ``["*"]``.  An EMPTY tuple is a different state and not a spelling of
+    #: the same one: reports off for this calculation, on a machine where
+    #: they are set up, written ``[]``.
     channels: Optional[Tuple[str, ...]] = None
 
     #: WHAT each report carries, beyond the name (`stages.md` § 6.9).
@@ -298,14 +300,6 @@ class Notify:
     #: notification you have to go and look up.
     report: Optional[Tuple[str, ...]] = None
 
-    def __bool__(self) -> bool:
-        # `report` COUNTS.  Every field here is a thing a person stated, and
-        # a block that is falsy is dropped whole by the serializer -- so
-        # leaving `report` out of this made "send everywhere, but only these
-        # fields" unwritable: the one thing stated was the one thing that
-        # decided the block was empty.
-        return bool(self.on_scf_converged or self.every_hours > 0
-                    or self.channels is not None or self.report is not None)
 
 
 @dataclass(frozen=True)
@@ -400,8 +394,8 @@ class Task:
     #: WHEN this calculation should say something (:class:`Notify`).  The
     #: policy only -- the destination and its credential stay on the machine
     #: that runs the job, because this file travels and a token must not.
-    #: Absent-is-a-state: an empty one writes no key and means "off".
-    notify: "Notify" = field(default_factory=lambda: Notify())
+    #: ``None`` with no block, which writes no key: no notification at all.
+    notify: "Optional[Notify]" = None
 
     #: § 6.8 -- WHAT TO MEASURE before committing: field name -> the points to
     #: try.  Empty means no benchmark is planned, which is what every
@@ -769,7 +763,11 @@ def _task_from_dict(obj: Mapping[str, Any]) -> Task:
 
     # the calculation TYPE first this once: whether `structure` is
     # required depends on it (transport's structure IS its citation).
-    calc = obj.get("calculation", "optimization")
+    if "calculation" not in obj:
+        _refuse("names no 'calculation' -- every description states its kind "
+                "(job-contracts.md 6.1; an optimization left it out until "
+                "2026-10-06)")
+    calc = obj["calculation"]
     if not isinstance(calc, str) or not STAGE_NAME_RE.fullmatch(calc):
         _refuse(f"calculation {calc!r} must match [A-Za-z0-9_]+ -- it "
                 "names a section of the engine's warm-file vocabulary "
@@ -968,92 +966,96 @@ def _allocation_from_obj(obj: Mapping[str, Any]) -> "Allocation":
 
 
 def _notify_from_obj(obj: Mapping[str, Any], *, engine: str,
-                     calculation: str) -> "Notify":
-    """``notify`` -> :class:`Notify`; absent is an empty one: no
+                     calculation: str) -> "Optional[Notify]":
+    """``notify`` -> :class:`Notify`, or ``None`` with no block: no
     notification at all (`run-reports.md` § 2).
 
-    Both fields are refused by TYPE rather than coerced.  ``"true"`` is not
-    a boolean and ``"6"`` is not a number, and silently accepting either
+    Both triggers are refused by TYPE rather than coerced.  ``"true"`` is
+    not a boolean and ``"6"`` is not a number, and silently accepting either
     would make a file that reads one way and behaves another -- the class
     it belongs to exists precisely so a person can look at the record and
     know what their job will do.
 
-    A negative or non-finite ``every_hours`` is refused too: there is no
-    reading of "notify me every minus two hours", and letting it through
-    would arm a timer that fires on every pass.
+    A period is a positive, finite number of hours, or ``null`` for never:
+    there is no reading of "every minus two hours" or "every 0 hours", and
+    letting one through would arm a timer that fires on every pass.
     """
     raw = obj.get("notify")
     if raw is None:
-        return Notify()
+        return None
     if not isinstance(raw, Mapping) or not raw:
         _refuse("'notify' is present but not a non-empty object. Omit the "
                 "key when nothing should be reported -- absent and empty "
                 "would be two spellings of one state")
     _check_keys(raw, _NOTIFY_KEYS, where="notify")
+    # A BLOCK STATES ALL FOUR (2026-10-06): "every channel" and "every
+    # field" are written `["*"]`, never a key left out -- an explicit choice
+    # and silence were the same bytes until then.
+    missing = [k for k in _NOTIFY_KEYS if k not in raw]
+    if missing:
+        _refuse(f"notify states no {', '.join(repr(k) for k in missing)} -- "
+                f"a notify block states all four: on_scf_converged, "
+                f"every_hours (null for never), channels ([\"*\"] for every "
+                f"channel), report ([\"*\"] for every field)")
 
-    scf = raw.get("on_scf_converged", False)
+    scf = raw["on_scf_converged"]
     if not isinstance(scf, bool):
         _refuse(f"notify.on_scf_converged must be true or false, not "
                 f"{type(scf).__name__} -- write a JSON boolean, not a string")
 
-    hours = raw.get("every_hours", 0.0)
-    if isinstance(hours, bool) or not isinstance(hours, (int, float)):
-        _refuse(f"notify.every_hours must be a number of HOURS, not "
-                f"{type(hours).__name__} -- write 6, not \"6\" or \"6h\"")
-    hours = float(hours)
-    if hours != hours or hours in (float("inf"), float("-inf")):
-        _refuse("notify.every_hours must be a finite number of hours")
-    if hours < 0:
-        _refuse(f"notify.every_hours cannot be negative (got {hours}) -- "
-                f"use 0, or omit the key, to report nothing periodically")
+    hours = raw["every_hours"]
+    if hours is not None:
+        if isinstance(hours, bool) or not isinstance(hours, (int, float)):
+            _refuse(f"notify.every_hours must be a number of HOURS, not "
+                    f"{type(hours).__name__} -- write 6, not \"6\" or "
+                    f"\"6h\"")
+        hours = float(hours)
+        if hours != hours or hours in (float("inf"), float("-inf")):
+            _refuse("notify.every_hours must be a finite number of hours")
+        if hours <= 0:
+            _refuse(f"notify.every_hours must be a positive number of hours "
+                    f"(got {hours:g}) -- null is never")
 
-    # ABSENT AND EMPTY ARE TWO STATES here and for `report` below
-    # (`run-reports.md` § 3.0, `stages.md` § 6.9).  `None` is every channel the running machine
-    # has; `[]` is none of them.  Which is why the read is `"channels" in
-    # raw` rather than a truthiness test -- the latter would collapse the
-    # two and send a report to a channel the person had just unticked.
-    chans: Optional[Tuple[str, ...]] = None
-    if "channels" in raw:
-        got = raw["channels"]
-        if not isinstance(got, list):
-            _refuse(f"notify.channels must be a list of channel NAMES, not "
-                    f"{type(got).__name__} -- omit the key for every channel "
-                    f"the machine has, or write [] for none")
-        names = []
-        for item in got:
-            if not is_channel_name(item):
-                _refuse(f"notify.channels: {item!r} is not a channel name -- "
-                        f"letters, digits, '-' and '_'. A name is all that "
-                        f"travels; the address and key stay on the machine")
-            if item not in names:
-                names.append(item)
-        chans = tuple(names)
-
-    # ABSENT IS EVERY ITEM, `[]` IS NONE -- two states again, and for the
-    # same reason: a description written before 2026-09-02 says what it
-    # always said by omitting the key, and a person who unticked every field
-    # asked for something different from a person who never looked
-    # (`stages.md` § 6.9).
-    report: Optional[Tuple[str, ...]] = None
-    if "report" in raw:
-        got = raw["report"]
-        if not isinstance(got, list):
-            _refuse(f"notify.report must be a list of report FIELD NAMES, "
-                    f"not {type(got).__name__} -- omit the key for every "
-                    f"field the monitor can determine, or write [] for the "
-                    f"summary line alone")
-        items = []
-        for item in got:
-            # THE ONE DECLARATION answers, for THIS calculation: a field its
-            # runs can never state is refused by name (`stages.md` § 6.9).
-            why = _report_fields.refusal(str(item), engine, calculation)
-            if why is not None:
-                _refuse(f"notify.report: {why}")
-            if item not in items:
-                items.append(item)
-        report = tuple(items)
+    # EVERY, NONE, OR THESE -- three states, each written (`run-reports.md`
+    # § 3.0, `stages.md` § 6.9): `["*"]` is every channel the running
+    # machine has (`None` here), `[]` is none, a list is those.  "Every"
+    # was the key left out until 2026-10-06.
+    chans = _every_or_these(
+        raw["channels"], "channels", "channel NAMES",
+        lambda item: (None if is_channel_name(item) else
+                      f"{item!r} is not a channel name -- letters, digits, "
+                      f"'-' and '_'. A name is all that travels; the address "
+                      f"and key stay on the machine"))
+    # THE ONE DECLARATION answers, for THIS calculation: a field its runs
+    # can never state is refused by name (`stages.md` § 6.9).
+    report = _every_or_these(
+        raw["report"], "report", "report FIELD NAMES",
+        lambda item: _report_fields.refusal(str(item), engine, calculation))
     return Notify(on_scf_converged=scf, every_hours=hours, channels=chans,
                   report=report)
+
+
+def _every_or_these(got, key: str, what: str, refusal
+                    ) -> Optional[Tuple[str, ...]]:
+    """A notify list as written -- ``["*"]`` every (``None``), ``[]`` none,
+    names those -- each name asked of ``refusal`` (a sentence, or ``None``
+    for a name it takes)."""
+    if not isinstance(got, list):
+        _refuse(f"notify.{key} must be a list of {what}, not "
+                f"{type(got).__name__} -- [\"*\"] for every one, [] for none")
+    if "*" in got:
+        if got != ["*"]:
+            _refuse(f"notify.{key}: \"*\" is every one, and stands alone -- "
+                    f"not beside names ({got!r})")
+        return None
+    names = []
+    for item in got:
+        why = refusal(item)
+        if why is not None:
+            _refuse(f"notify.{key}: {why}")
+        if item not in names:
+            names.append(item)
+    return tuple(names)
 
 
 def _execution_from_obj(obj: Mapping[str, Any], *, where: str = "") -> Dict[str, Any]:
@@ -1196,8 +1198,35 @@ def derive_run(name: str, formula: str = "", *, created: str = "",
 
 
 def read_task(path) -> Task:
-    """Read and parse ``task.json``."""
-    return Task.from_dict(read_json(path))
+    """Read and parse ``task.json``.  One written before every description
+    stated its kind and its notify block whole (2026-10-06) is refused naming
+    the command that rewrites it, the calculation by its folder."""
+    obj = read_json(path)
+    if isinstance(obj, Mapping) and _written_before(obj):
+        from .jobset.commands import command
+        raise ValueError(
+            f"{path} was written before every description stated its "
+            f"`calculation`, and its notify block whole with null for never "
+            f"(2026-10-06): `{command('migrate', base=Path(path).parent)}` "
+            f"rewrites it, every value kept and the old file beside the "
+            f"new.")
+    return Task.from_dict(obj)
+
+
+def _written_before(obj: Mapping[str, Any]) -> bool:
+    """Whether a description is written as before 2026-10-06 -- no
+    `calculation`, a notify block short of its four, or a period of ``0``
+    for never (``null`` since)."""
+    raw = obj.get("notify")
+    if "calculation" not in obj:
+        return True
+    # an empty block was refused before as now -- the reader's to refuse
+    if not isinstance(raw, Mapping) or not raw:
+        return False
+    hours = raw.get("every_hours")
+    return (any(k not in raw for k in _NOTIFY_KEYS)
+            or (isinstance(hours, (int, float))
+                and not isinstance(hours, bool) and hours == 0))
 
 
 # --------------------------------------------------------------------- #
@@ -1217,9 +1246,9 @@ def _task_to_dict(task: Task) -> dict:
     }
     if task.run.created:
         out["run"]["created"] = task.run.created
-    # absent-is-a-state: an optimization writes no key (§ 4.2a)
-    if task.calculation != "optimization":
-        out["calculation"] = task.calculation
+    # EVERY DESCRIPTION STATES ITS KIND -- an optimization wrote no key
+    # until 2026-10-06, read back as one by a default in seven page sites.
+    out["calculation"] = task.calculation
     # the composite's inputs ride where the design's example puts them
     # (transport-design.md 4.1): slots, then bias, then the stages.
     if task.slots:
@@ -1254,25 +1283,18 @@ def _task_to_dict(task: Task) -> dict:
         # the one value that changes anything.
         if task.allocation.gpu_binding is not None:
             out["allocation"]["gpu_binding"] = task.allocation.gpu_binding
-    if task.notify:
+    if task.notify is not None:
+        # THE BLOCK WHOLE: its four values, "every" written `["*"]`
+        # (`run-reports.md` § 3.0) -- the falsy ones and "every" were left
+        # out until 2026-10-06, so an explicit choice and silence were the
+        # same bytes.
+        n = task.notify
         out["notify"] = {
-            k: v for k, v in (("on_scf_converged", task.notify.on_scf_converged),
-                              ("every_hours", task.notify.every_hours)) if v}
-        # WRITTEN WHEN FALSY, as `report` is too.  `[]` says "send this
-        # calculation nowhere" and absent says "everywhere this machine
-        # has"; dropping the empty list would silently turn the first into
-        # the second (`run-reports.md` 3.0).
-        if task.notify.channels is not None:
-            out["notify"]["channels"] = list(task.notify.channels)
-        # AND `report`, BY THE SAME RULE AND FOR THE SAME REASON
-        # (`stages.md` § 6.9).  It was parsed by `read_task` and written by
-        # nothing, so a description carrying a field selection lost it on the
-        # first round trip -- read, write, and the person's choice was gone
-        # with no error anywhere.  `[]` is "the summary line alone" and
-        # absent is "every field the monitor can determine", so the empty
-        # tuple is written out rather than dropped, exactly as `channels` is.
-        if task.notify.report is not None:
-            out["notify"]["report"] = list(task.notify.report)
+            "on_scf_converged": bool(n.on_scf_converged),
+            "every_hours": n.every_hours,
+            "channels": ["*"] if n.channels is None else list(n.channels),
+            "report": ["*"] if n.report is None else list(n.report),
+        }
     if task.stages:
         out["varies"] = list(task.varies or ())
         out["stages"] = [

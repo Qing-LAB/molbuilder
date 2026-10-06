@@ -292,7 +292,8 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
                  * atoms -- the preflight has to judge the structure the user is
                  * looking at, not a cell fetched a moment later. */
                 body: JSON.stringify({ structure: _structureForRequest(),
-                                       engine, params }),
+                                       engine, params,
+                                       calculation: "optimization" }),
             }).then(x => x.json());
             /* Rendered whenever issues came back, ok or not (E-A3): the
              * endpoint's bad-params branch answers ok:false WITH the parse
@@ -681,8 +682,8 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
         }
         try {
             const [siesta, pyscf] = await Promise.all([
-                fs.fetchSchema("siesta"),
-                fs.fetchSchema("pyscf"),
+                fs.fetchSchema("siesta", { calculation: "optimization" }),
+                fs.fetchSchema("pyscf",  { calculation: "optimization" }),
             ]);
             formSchemas.siesta = siesta;
             formSchemas.pyscf  = pyscf;
@@ -1452,6 +1453,7 @@ import { molviewFiles } from "/static/lib/projects/molview-doors.js";
             structure: _structureForRequest(),
             engine:    engine,
             params:    params,
+            calculation: "optimization",
         });
     }
 
