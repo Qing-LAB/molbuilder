@@ -54,6 +54,7 @@ from ..scheduler.quantities import slurm_time as _slurm_time
 from .agreement import (DeckLaunchMismatch, check_launch_matches_deck,
                         check_trial_starts_cold)
 from .model import Job, JobSet, Resources
+from .placement import one_process
 from ..paths import attempt_dir
 from ..runfiles import LAUNCH_DIR
 from .commands import command as _cmd, rollback
@@ -214,7 +215,8 @@ def _no_sbatch(what: str, name: str, *, base) -> str:
 def _sbatch_request(base: Path, *, envelope: Resources,
                     domain: Optional[str], mem: Optional[str],
                     time_s: Optional[int], label: str, job_name: str,
-                    script: str, run_args: Sequence[str]
+                    script: str, run_args: Sequence[str],
+                    one_process: bool = False
                     ) -> Tuple[Resources, object, List[str]]:
     """THE ONE REQUEST, for every door that hands work to the scheduler --
     a stage, a grouped bench's shelf, a bias chain (`job-system.md` § 6).
@@ -261,11 +263,15 @@ def _sbatch_request(base: Path, *, envelope: Resources,
     # THE GPU REQUEST is the envelope's own -- whether, and how many (the
     # one door, `model.gpu_request`), never a side a caller passes beside it.
     gpus = _gpus(envelope, label)
-    placement = _place(base, gpu_side=gpus.uses, needed_s=needed_s,
-                       cores=(envelope.mpi_np or 0)
-                             * max(envelope.cpus_per_task or 1, 1) or None,
-                       mem=envelope.mem, gpus=gpus.count,
-                       named=domain, label=label)
+    # THE ONE REQUEST a queue is asked, prep's and launch's alike
+    # (`placement.request_of`): the envelope as it is sent -- its wall the
+    # one stated at launch, else prep's.  Launch built its own until
+    # 2026-10-05, and counted no cores for a PySCF run (``one_process``).
+    from .placement import request_of
+    asked = (dataclasses.replace(envelope, time=_slurm_time(needed_s))
+             if needed_s is not None else envelope)
+    placement = _place(base, request_of(asked, one_process=one_process),
+                       gpu_side=gpus.uses, named=domain, label=label)
     # THE WALL: what was stated at launch, else what prep baked.  The target
     # queue's own ceiling stood in for neither until 2026-10-02 -- a wall
     # nobody stated -- and the scheduler's default would stand in now if
@@ -888,8 +894,8 @@ def submit_bench_group(jobset: JobSet, base_dir, *,
     return results
 
 
-def _place(base: Path, *, gpu_side: bool, needed_s=None, cores=None,
-           mem=None, gpus=None, named=None, label: str = ""):
+def _place(base: Path, want, *, gpu_side: bool, named=None,
+           label: str = ""):
     """This side's placement — `scheduler.place`, walked with THIS machine's
     menu (`execution/scheduler.md` § 5).
 
@@ -907,12 +913,10 @@ def _place(base: Path, *, gpu_side: bool, needed_s=None, cores=None,
     spend a round trip finding out.
     """
     from .. import runtime_config as _rc
-    from ..scheduler import Request, parse_mem_gb
     from ..scheduler.place import place, Unplaceable
-    # THE GPU COUNT, and no card (`scheduler.md` R2a): a GPU job goes to
-    # a queue that has GPUs, where a node holds as many as were asked.
-    want = Request(ranks=cores, cpus_per_task=1, gpus=gpus or None,
-                   mem_gb=parse_mem_gb(mem), walltime_s=needed_s)
+    # ``want`` is THE request (`placement.request_of`): the GPU count and no
+    # card (`scheduler.md` R2a) -- a GPU job goes to a queue that has GPUs,
+    # where a node holds as many as were asked.
     try:
         placed = place(_rc.get_routing(project_dir=base), want,
                        prefer_gpu=gpu_side, named=named)
@@ -1305,7 +1309,8 @@ def _prepare_side_group(jobset: JobSet, base: Path, dirs, pending,
         base, envelope=envelope, domain=domain, mem=mem,
         time_s=time_s, label=name,
         job_name=_scheduler_job_name(jobset, name),
-        script=f"launch/{name}.sbatch", run_args=())
+        script=f"launch/{name}.sbatch", run_args=(),
+        one_process=one_process(jobset.engine))
 
     prepared = _Prepared(name=name, cmd=cmd, container=container,
                          pending=list(pending), placement=placement,
@@ -1587,7 +1592,8 @@ def submit_transport_chain(jobset: JobSet, base_dir, task, *,
         base, envelope=job.resources, domain=domain,
         mem=mem, time_s=time_s, label=name,
         job_name=_scheduler_job_name(jobset, name),
-        script=f"launch/{name}.sbatch", run_args=())
+        script=f"launch/{name}.sbatch", run_args=(),
+        one_process=one_process(jobset.engine))
     domain_name = getattr(getattr(placement, "domain", None), "name", None)
     if mode == "ask":
         return [_ask(name, cmd, attempts[0][1], domain=domain_name,
@@ -1879,7 +1885,8 @@ def submit_jobset(jobset: JobSet, base_dir, *, mode: str,
             domain=(gpu_domain if gpu and gpu_domain else domain),
             mem=mem, time_s=time_s, label=p.job.name,
             job_name=_scheduler_job_name(jobset, p.job.name),
-            script=sbatch_name, run_args=_run_sh_args(p.job.resources))
+            script=sbatch_name, run_args=_run_sh_args(p.job.resources),
+            one_process=one_process(jobset.engine))
 
     def _domain(p):
         return getattr(getattr(p.placement, "domain", None), "name", None)

@@ -1171,6 +1171,7 @@ route — is this, for the whole verb.
 | `continuation` | which run the stage continues from — by default or named — what it was (its conclusion, state and convergence) and the line both doors print (§ 5.4); a benchmark of a force-constant stage, the relax run its trials are written at |
 | `points` | a transport bias scan's attempts instead — one per point, each with what it gathered |
 | `gathered` | a transport rung's inputs, copied into its one attempt from the concluded upstream attempts ([`engines/transport.md`](?doc=engines/transport.md) § 2a.11) |
+| `placement` | a run prepped for a queue: the queue it was admitted on and where each value came from, as its job records it (§ 6.0), and the line both doors print |
 | `resources` · `deck` · `agreement` | what the stage will launch with, its deck, and whether that deck agrees (`launch` refuses a deck rendered for another width); no agreement when the deck makes no claim |
 | `pipeline_log` | the step-by-step record of the plan and the writing — always written, whichever door called ([`script-preparation.md`](?doc=execution/script-preparation.md) § 4.5) |
 
@@ -1513,11 +1514,17 @@ else `allocation.domain` (a benchmark's: `prep --domain`, else
 with its source, and **admits the whole request** against the target's record:
 a GPU run naming a queue with no GPUs, a wall longer than the queue allows,
 more memory than its node holds is refused at prep, naming what was asked and
-what the queue offers (checkpoint 4, `placement.admission_refusal`, built
+what the queue offers (checkpoint 4, `placement.admitted`, built
 2026-10-05). The answer and its sources are written on the job in
-`job-set.json`; the `.sbatch` header, the Task setup card and `launch` read
-it. A launch flag changes one value — admitted again, and recorded in `run.json`
-and the ledger. *(Until 2026-10-03 the header placed the job with an empty
+`job-set.json` — its `placement`: the queue it was admitted on, bound on the
+record (name, partition, qos), and where each value came from, the flag, the
+run card or the description ([`job-contracts.md`](?doc=execution/job-contracts.md)
+§ 6.1) — and both doors say it. The `.sbatch` header renders that queue, never
+binding the name a second time; `launch` sends to it, and the Task setup card
+shows it. One request is asked of a queue, by every caller
+(`placement.request_of`: a SIESTA run's ranks, a PySCF run's one process, the
+cores each runs on, its GPUs, memory and wall). A launch flag changes one
+value — admitted again, and recorded in `run.json` and the ledger. *(Until 2026-10-03 the header placed the job with an empty
 request — a GPU run's header named a CPU queue — and a run's first fit check
 was at launch, until 2026-10-05. The record on the job, and the readers of it,
 are unit 11's ([`plans/plan.md`](?doc=plans/plan.md)), with a benchmark's

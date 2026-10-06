@@ -2291,6 +2291,16 @@ def _folder_prepped(folder) -> dict:
                 why = prepped_already(folder, task, kind, st.name)
                 if why:
                     said[st.name] = why
+        # WHERE EACH PREPPED RUN WAS ADMITTED, as its job records it -- the
+        # line both prep doors print (`job-system.md` § 6.0).
+        from molbuilder.jobset.model import FILENAME as JOBSET_FILENAME
+        from molbuilder.jobset.model import JobSet
+        from molbuilder.jobset.placement import placement_line
+        out["placed"] = {}
+        if (folder / JOBSET_FILENAME).is_file():
+            for job in JobSet.load(folder / JOBSET_FILENAME).jobs:
+                if job.placement and job.name in out["run"]:
+                    out["placed"][job.name] = placement_line(job.placement)
         return out
     except Exception as exc:                      # noqa: BLE001
         return {"error": str(exc), "run": {}, "bench": {}}

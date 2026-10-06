@@ -4242,6 +4242,7 @@ def render_wrappers(script_path: Path, *,
                     emit_sbatch: bool = True,
                     project_dir: Optional[Path] = None,
                     machine_record=None,
+                    domain_pq: Optional[Tuple[str, str]] = None,
                     finish: Optional[str] = None,
                     resumes: bool = True,
                     warm: Optional[Sequence[str]] = None,
@@ -4250,7 +4251,10 @@ def render_wrappers(script_path: Path, *,
 
     ``deck_text`` is the deck as it will be written, for one `prep` has
     planned and not yet written (`jobset.planned`) -- the wrapper is
-    rendered from it, and the file need not exist yet.
+    rendered from it, and the file need not exist yet.  ``domain_pq`` is the
+    queue a run was admitted on at prep -- its job's placement, which the
+    header renders rather than binding the name again (`job-system.md`
+    § 6.0).
 
     **W7 — floor 3 returns text.**  The deck writers hand back a string and the
     conductor writes it; step 4 held the opposite pattern until 2026-08-18,
@@ -4335,6 +4339,7 @@ def render_wrappers(script_path: Path, *,
     if emit_sbatch:
         sbatch = _render_sbatch_for(script_path, resources=r,
                                     project_dir=project_dir,
+                                    domain_pq=domain_pq,
                                     machine_record=machine_record)
         if sbatch is not None:
             _validate_rendered_wrapper(sbatch, script_path)
@@ -4364,6 +4369,7 @@ def write_run_wrapper(script_path: Path, *,
                       emit_sbatch: bool = True,
                       project_dir: Optional[Path] = None,
                       machine_record=None,
+                      domain_pq: Optional[Tuple[str, str]] = None,
                       finish: Optional[str] = None,
                       resumes: bool = True,
                       warm: Optional[Sequence[str]] = None,
@@ -4393,6 +4399,7 @@ def write_run_wrapper(script_path: Path, *,
     rendered = render_wrappers(script_path, label=label, n_atoms=n_atoms,
                                resources=resources,
                                machine_record=machine_record,
+                               domain_pq=domain_pq,
                                env=env, emit_sbatch=emit_sbatch,
                                project_dir=project_dir, finish=finish,
                                resumes=resumes, warm=warm,
@@ -4437,7 +4444,7 @@ def _bound_queue(resources, domain_pq, env_rec, *, prefer_gpu=False):
     **The binding, not the fit**: the request here is empty.  Whether the
     run fits the queue it names -- its cores, GPUs, memory and wall -- prep
     has asked already, at its checkpoint 4, of the same record by the same
-    `place` (`placement.admission_refusal`), and launch asks again of the
+    `place` (`placement.admitted`), and launch asks again of the
     machine as it stands then (R9).  *(This said `place` refused a GPU job
     naming a queue with no GPUs here until 2026-10-05: with no request it
     compares nothing, and nothing did before launch.)*

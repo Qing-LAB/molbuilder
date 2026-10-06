@@ -2628,6 +2628,12 @@ function prepButton(kind, stage) {
         btnPreview.disabled = true;
         say.textContent = String(prepped);
         say.setAttribute("data-state", "warn");
+        /* ...AND WHERE IT WAS ADMITTED, as its job records it -- the line
+         * both prep doors print (`job-system.md` § 6.0). */
+        const placed = (_fs.prepped.placed || {})[stage];
+        if (kind === "run" && placed) {
+            wrap.appendChild(el("div", { class: "hint" }, String(placed)));
+        }
     }
     /* ONLY THE PREVIEW IS REGISTERED.  `_syncPrepButtons` sets
      * `disabled = !machine` on everything it holds -- so registering the
@@ -2781,6 +2787,9 @@ function _showPrepAnswer(wrap, say, r) {
         for (const g of (p.gathered || [])) line(took + g.file + " ← " + g.from);
     }
     for (const g of (r.gathered || [])) line(took + g.file + " ← " + g.from);
+    /* WHERE IT WAS ADMITTED, and where each value came from -- the
+     * server's line, the one the terminal prints (`job-system.md` § 6.0). */
+    if (r.placement && r.placement.line) line(r.placement.line);
     if (r.resources) {
         const rs = r.resources;
         // WHAT IS STATED, and nothing else -- the terminal's line
@@ -3153,16 +3162,10 @@ function renderQueues() {
             + "ceiling \u2014 this machine's own RAM.";
         $("ts-queue-asks").hidden = false;
         _fs.queue = "";
-        // A MACHINE WITH NO QUEUES STILL HAS A MEMORY CEILING (user,
-        // 2026-08-24): its RAM.  The suggestion came only from a QUEUE, so
-        // the one kind of machine that cannot have one got none at all --
-        // while `mem_total_gb` sat measured in its own record.  Time is
-        // genuinely different and correctly stays blank: no scheduler
-        // means no wall to state.
-        const me = _machines.find((x) => x.name === _machine);
-        if (me && me.mem_total_gb) {
-            _fillIfUnanswered($("ts-ask-mem"), _defaultMemMB(me.mem_total_gb));
-        }
+        // A MACHINE WITH NO QUEUES STILL HAS A MEMORY CEILING: its RAM,
+        // shown beside the field (`paintAskNotes`) and written into none --
+        // a value is stated, never proposed (`submission.md` S1, S5; 95 %
+        // of the RAM was written into the field until 2026-10-05, D13).
         paintAskNotes();
         return;
     }
@@ -3200,73 +3203,21 @@ function _fmtGB(gb) {
     return Math.floor(gb) + " GB";
 }
 
-/** The memory a queue's ceiling should DEFAULT to, in exact MB.
- *
- * `MEM_HEADROOM` of the node total, floored (user, 2026-08-24).  Two
- * reasons, and the first is a bug this replaces: the default was
- * `Math.round(max_mem_gb) + "G"`, which on a 503.5 GB queue asked for
- * 504 GB -- MORE than the ceiling -- so every non-integral queue filled
- * itself with a value its own hint then called too large.  The second is
- * why the fix is not merely `floor`: `max_mem_gb` is the node's TOTAL, and
- * a job asking all of it is commonly unschedulable because the OS and
- * SLURM itself need some, so the headroom is what makes the default a
- * value that actually runs.
- *
- * MB, not GB, because that is SLURM's own unit here (`sinfo %m`) and
- * rounding to whole GB is what lost the 0.5 in the first place.
- */
-const MEM_HEADROOM = 0.95;
-
-function _defaultMemMB(gb) {
-    return Math.floor(gb * 1024 * MEM_HEADROOM) + "M";
-}
-
-/** Choosing a queue FILLS the two asks with that queue's ceilings --
- *  its own measured limits, which is the most this job could ask there. */
+/** Choosing a queue names it -- and FILLS NOTHING: its limits are shown
+ *  beside the wall and memory fields (`paintAskNotes`), and an empty field
+ *  stays empty until it is stated (`submission.md` S5).  Until 2026-10-05
+ *  it wrote the queue's ceiling as the wall and 95 % of its memory into the
+ *  description, which a Save made "stated" -- S1's default wearing a
+ *  number's clothes (D13). */
 function setQueue(name) {
     _fs.queue = name;
     for (const b of document.querySelectorAll("#ts-queue-choice .opt")) {
         b.setAttribute("aria-pressed",
                        b.getAttribute("data-queue") === name ? "true" : "false");
     }
-    const d = _queuesOf(_machine).find((x) => x.name === name);
-    // A CEILING FILLS WHAT NOBODY ANSWERED -- it does not overwrite an
-    // answer (user, 2026-08-24).  This assigned unconditionally, so
-    // choosing a queue merely to CHECK a value against it destroyed the
-    // value: a 256G loaded from the folder's own `task.json` became the
-    // queue's 487372M, and a figure just typed by hand went the same way
-    // on the next queue click.  A default is for an empty field; replacing
-    // a stated one is data loss wearing a default's clothes.
-    // Canonical, not "4h": this fills the FIELD, and the field is what
-    // lands in `task.json`.  The human spelling lives on in the note
-    // beneath it (paintAskNotes), which is prose and not a record.
-    _fillIfUnanswered($("ts-ask-time"),
-                      d && d.max_time_s ? _slurmTime(d.max_time_s) : "");
-    _fillIfUnanswered($("ts-ask-mem"),
-                      d && d.max_mem_gb ? _defaultMemMB(d.max_mem_gb) : "");
     paintAskNotes();
     applyAsksToDoc();
     refreshSave();
-}
-
-/** Write a queue's ceiling into a field ONLY if nothing has answered it.
- *
- *  "Answered" means typed by a person or loaded from `task.json`.  A value
- *  this function put there is not an answer -- it is a suggestion -- so the
- *  next queue may replace it, which is what makes the fields track the
- *  queue you are looking at until the moment you disagree with one.
- *
- *  Marked on the element rather than held beside it: the field IS the
- *  state, and a parallel record of what is in it is a second answer to the
- *  same question.
- */
-function _fillIfUnanswered(el, suggested) {
-    if (!el) return;
-    const mine = el.dataset.mbAuto === "1";
-    if (el.value && !mine) return;          // a person answered; leave it
-    el.value = suggested;
-    if (suggested) el.dataset.mbAuto = "1";
-    else delete el.dataset.mbAuto;
 }
 
 /** Say, under each field, what the queue allows and whether this ask
@@ -3496,10 +3447,9 @@ function readAsksFromTask(task) {
     const t = $("ts-ask-time");
     const m = $("ts-ask-mem");
     const b = $("ts-ask-gpu-binding");
-    // Loaded from the DESCRIPTION: a person put these there, so they carry
-    // no auto mark and no queue click may replace them.
-    if (t) { t.value = a.time || ""; delete t.dataset.mbAuto; }
-    if (m) { m.value = a.mem || ""; delete m.dataset.mbAuto; }
+    // Loaded from the DESCRIPTION: a person put these there.
+    if (t) t.value = a.time || "";
+    if (m) m.value = a.mem || "";
     if (b) b.checked = a.gpu_binding !== false;
 }
 
@@ -3797,11 +3747,6 @@ function watchAskControls() {
         if (!el || el.dataset.mbWatched) continue;
         el.dataset.mbWatched = "1";
         el.addEventListener("input", () => {
-            // The moment a person types, the field is THEIRS -- so no
-            // later queue click may overwrite it.  Clearing it hands it
-            // back, and the next queue fills it again.
-            if (el.value) el.dataset.mbAuto = "";
-            else delete el.dataset.mbAuto;
             paintAskNotes();
             refreshSave();
         });

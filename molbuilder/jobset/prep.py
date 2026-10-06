@@ -312,6 +312,11 @@ def prep_jobset(jobset: JobSet, base_dir, *, env: str = None,
                 # already resolved, handed over whole, cannot be forgotten
                 # or answered a second way further down.
                 machine_record=machine_record,
+                # THE QUEUE IT WAS ADMITTED ON at prep, as its job records
+                # it (`job-system.md` § 6.0): the header renders it and binds
+                # no name a second time.
+                domain_pq=((job.placement["partition"], job.placement["qos"])
+                           if job.placement else None),
                 # THE RESTART FILES IN EFFECT for this calculation -- its own
                 # list first (`warmfiles.warm_list`, `job-contracts.md`
                 # § 4.2a): written into the script here, never read by it at
@@ -835,6 +840,13 @@ class Resolved:
     #: from the record read (`runtime_config.config_provenance`): what
     #: `STAGE-PLAN.md`, the pipeline log and the ledger's *prepped* line say
     provenance: Optional[dict] = None
+    #: where each value of ``allocation`` came from -- ``flag``, ``run
+    #: card`` or ``description`` (:func:`_fold_allocation`)
+    sources: Optional[dict] = None
+    #: a run's placement, admitted at checkpoint 4 on the queue it names --
+    #: what its job records and its header renders (`job-system.md` § 6.0);
+    #: ``None`` with no queue (a benchmark, a machine with no scheduler)
+    placement: Optional[dict] = None
 
     @property
     def shape(self):
@@ -895,7 +907,8 @@ def _resolve_stage(stage, *, task, template, template_text, environment,
     # enumerator -- runs with the rest of the inputs before the five steps
     # (A12), so `prep` folds what it is handed and owns no second
     # translation (`generator.md` § 2).
-    allocation = _under_description(allocation, task.allocation, chosen)
+    allocation, sources = _fold_allocation(allocation, task.allocation,
+                                           chosen)
     # AND THE DESCRIPTION'S REPORTING POLICY, at the same seam and for the
     # same reason: the file says when this calculation should speak up, so a
     # prepped bundle needs no flag to know it.  A separate line rather than a
@@ -912,7 +925,8 @@ def _resolve_stage(stage, *, task, template, template_text, environment,
     return Resolved(task=task, template=Path(template),
                     template_text=template_text, environment=environment,
                     allocation=allocation, pset=pset, token=token or "",
-                    target=target, sweep=sweep, provenance=provenance)
+                    target=target, sweep=sweep, provenance=provenance,
+                    sources=sources)
 
 
 def _read_and_resolve(base: Path, stage, *, target, allocation, chosen, sweep,
@@ -1322,7 +1336,11 @@ def _plan_calculation(base: Path, stage: Optional[str], resolved: "Resolved",
             # would be a spectrum of nothing (`engines/vibration.md` § 5.5).
             jobs.append(rung.job_facts(_job_for(
                 element, script, task, pset.stage, seam, base,
-                finish=(None if element.is_trial else spec.finish))))
+                finish=(None if element.is_trial else spec.finish),
+                # WHERE IT WAS ADMITTED (`job-system.md` § 6.0): a run's
+                # queue, recorded on its job.
+                placement=(None if element.is_trial
+                           else resolved.placement))))
     finally:
         REPORT_STREAM.reset(_scope)
     if _once.dropped:
@@ -2298,7 +2316,8 @@ def _seed_trajectory_log(struct, cfg, base: Path, *, engine: str,
 
 def _job_for(element, script: str, task, stage_name: Optional[str],
              seam: EngineSeam, base_dir=None,
-             finish: Optional[str] = None) -> Job:
+             finish: Optional[str] = None,
+             placement: Optional[dict] = None) -> Job:
     """One element of the parameter set as one :class:`Job`.
 
     ``resources`` is **copied from the element**, never re-derived: the element
@@ -2335,7 +2354,7 @@ def _job_for(element, script: str, task, stage_name: Optional[str],
     # (`engines/vibration.md` § 5.5).
     return Job(name=name, script=script, resources=element.resources,
                warm=warm, traits=traits, point=dict(element.point),
-               finish=finish, resumes=resumes)
+               finish=finish, resumes=resumes, placement=placement)
 
 
 def _rung_kind(task, stage_name: Optional[str]) -> str:
@@ -2380,26 +2399,43 @@ def _under_description(flags, declared, chosen=None) -> "Resources":
     every field the condition does not name to the chain that already
     answers it (`running-a-job.md` § 3.1).
     """
+    return _fold_allocation(flags, declared, chosen)[0]
+
+
+def _fold_allocation(flags, declared, chosen=None):
+    """``(Resources, where each value came from)`` -- the fold of
+    :func:`_under_description`, with each field it holds named by its source:
+    ``flag``, ``run card`` or ``description`` -- what a run's placement
+    records beside the queue it was admitted on (`job-system.md` § 6.0).
+    ONE fold: the sources are read off the same precedence that fills the
+    values, never worked out a second way."""
     out = flags or Resources()
     import dataclasses as _dc
+    known = {f.name for f in _dc.fields(Resources)}
+    sources = {f: "flag" for f in known
+               if getattr(out, f, None) not in (None, "")}
     patch = {}
+    said = {}
     if declared:
         for name, val in (("domain", declared.domain),
                           ("time", declared.time),
                           ("mem", declared.mem)):
             if val and getattr(out, name, None) in (None, ""):
                 patch[name] = val
+                said[name] = "description"
         # THE BINDING SWITCH, when said: `False` is the value that matters,
         # so it is not tested for truth (`execution/gpu.md` G9).
         if declared.gpu_binding is not None and out.gpu_binding is None:
             patch["gpu_binding"] = declared.gpu_binding
+            said["gpu_binding"] = "description"
     # ALREADY IN `Resources`' OWN WORDS -- `to_resources` speaks them, so
     # there is no name map here and no second place for one to drift.
-    known = {f.name for f in _dc.fields(Resources)}
     for name, val in sorted((chosen or {}).items()):
         if name in known and getattr(out, name, None) in (None, ""):
             patch[name] = val
-    return _dc.replace(out, **patch) if patch else out
+            said[name] = "run card"
+    sources.update(said)
+    return (_dc.replace(out, **patch) if patch else out), sources
 
 
 def _with_notify(flags, declared) -> "Resources":
@@ -2533,6 +2569,9 @@ class PrepAnswer:
     #: The person said ``--cold`` (the attempt's own ``cold`` says only that
     #: it started clean, which prep now states whenever nothing continues).
     cold: bool = False
+    #: WHERE IT WAS ADMITTED -- a run's placement, as its job records it
+    #: (`job-system.md` § 6.0), or ``None`` with no queue.
+    placement: Optional[dict] = None
     #: A13 -- what the job will be launched with, as its header and its run
     #: script carry it (:func:`_launch_as_written`).  *(The asked queue,
     #: wall and memory, the run card's shape and a bench's axes rode beside
@@ -2550,6 +2589,7 @@ class PrepAnswer:
         """The answer as JSON, paths relative to the calculation folder --
         what the Task setup tab's prep route returns (`web/web-api.md`)."""
         from .agreement import disagreement_note
+        from .placement import placement_line
         base = Path(base)
 
         def rel(p):
@@ -2597,6 +2637,10 @@ class PrepAnswer:
                              if self.continuation is not None else None),
             "linked": self.linked,
             "cold": self.cold,
+            # THE PLACEMENT, and the line both doors say of it.
+            "placement": (dict(self.placement,
+                               line=placement_line(self.placement))
+                          if self.placement else None),
             "launch": self.launch,
             "preview": self.preview,
             "plan_id": self.plan_id,
@@ -2927,7 +2971,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         #      prep writes a `.sbatch` for states its queue, wall and memory.
         #      The target's record CHECKS an ask -- its queues are shown so
         #      one can be named -- and supplies no value of it.
-        from .placement import admission_refusal, launch_refusal
+        from .placement import admitted, launch_refusal, one_process
         header = bool(emit_sbatch and environment.scheduler == "slurm")
         why = launch_refusal(
             resolved.allocation,
@@ -2946,12 +2990,16 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         #      did before launch; the run card's fit panel, retired with the
         #      preview, had shown it.)*
         if kind == "run" and header:
-            why = admission_refusal(
+            placed, why = admitted(
                 resolved.pset.elements[0].resources, environment,
-                one_process=engine_seam(task.engine).suffix == ".py",
-                stage=stage)
+                one_process=one_process(task.engine), stage=stage,
+                sources=resolved.sources)
             if why:
                 raise PrepError(why)
+            # ...AND RECORDED: the queue it was admitted on and where each
+            # value came from, on its job -- what its header renders and
+            # launch sends to (`job-system.md` § 6.0).
+            resolved = dataclasses.replace(resolved, placement=placed)
 
         # 4a · WHAT IT BUILDS ON (`job-system.md` § 5.4, plan W37): the run
         #      a stage continues from -- the stage before it, newest, by
@@ -3032,6 +3080,7 @@ def prep_stage(base, kind: str, stage: Optional[str] = None, *,
         # THE PIPELINE LOG, which every prep writes (`script-preparation.md`
         # § 4.5): where this one is, by the rule its writer asks.
         out.pipeline_log = resolved.log_path(base)
+        out.placement = resolved.placement
         rep_stage = run_dir = job = None
         if kind == "bench" and continuation is not None:
             # A BENCHMARK OF A FORCE-CONSTANT STAGE is written at the

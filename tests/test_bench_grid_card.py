@@ -406,6 +406,13 @@ class TestTheBenchPreviewSaysNothingAboutTheRun:
                    for ln in sb.read_text().splitlines()
                    if ln.startswith("#SBATCH")]
         assert header == written, (header, written)
+        # ...and WHERE IT WAS ADMITTED, as its job records it, read by the
+        # card from the folder (`job-system.md` § 6.0).
+        placed = client.get("/api/task-setup/folder",
+                            query_string={"dir": str(bundle)}).get_json()
+        line = ((placed.get("prepped") or {}).get("placed") or {}).get(
+            "coarse") or ""
+        assert line.startswith("placed on short ("), placed.get("prepped")
 
 
 # `test_the_run_previews_devices_are_its_gpu_request` retired 2026-10-05

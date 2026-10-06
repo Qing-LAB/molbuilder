@@ -413,7 +413,10 @@ each other.
 > **This is about CATALOGUE ITEMS, and the tab also holds something else**
 > *(2026-08-24)*. The queue card ("Where it runs, and what it may use") sets
 > `task.json`'s `allocation` — `domain` / `time` / `mem`, and the GPU binding —
-> and those are **not**
+> choosing a queue names it and fills neither the wall nor the memory: the
+> queue's limits are shown under each field, which stays empty until it is
+> stated (`submission.md` S5; it wrote the ceilings in until 2026-10-05,
+> D13) — and those are **not**
 > points to try. The distinction is the one § 6.8a of
 > [`stages.md`](?doc=engines/stages.md) draws: `max_memory_mb` above is a
 > per-rank `ulimit` the *deck* carries, a machine-answered template parameter;
@@ -1110,8 +1113,10 @@ rung continues from and the machine as chosen, and a launch line per mode
 where this machine's `molbuilder.json` sets no `launch.mode`. The page composed
 them itself until 2026-10-03, and its one launch line, with no mode, was
 refused when typed (D11). **A stage already prepped** shows the prep entry's
-own sentence under its two buttons, neither enabled — the way back in it — and
-its lines are its launch, as `jobset status` prints them; a prep of it would be refused
+own sentence under its two buttons, neither enabled — the way back in it —
+and, for a run prepped for a queue, where it was admitted and where each value
+came from, read from its job's record ([`job-system.md`](?doc=execution/job-system.md)
+§ 6.0); its lines are its launch, as `jobset status` prints them; a prep of it would be refused
 ([`job-system.md`](?doc=execution/job-system.md) § 5.0).
 
 **The directory names come from the producer.** Flat and hierarchical name

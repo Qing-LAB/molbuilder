@@ -1355,6 +1355,11 @@ def _echo_prep_answer(ans, base) -> None:
                           " (the first stage, or one that starts clean)"))
         for src, fn in ans.gathered:
             click.echo(f"  gathered: {fn} <- {src}")
+    if ans.placement:
+        # WHERE IT WAS ADMITTED, and where each value came from
+        # (`job-system.md` § 6.0) -- the line the tab shows too.
+        from .placement import placement_line
+        click.echo("  " + placement_line(ans.placement))
     if ans.resources is not None:
         r = ans.resources
         # WHAT IS STATED, and nothing else: no launch value is left for
@@ -1773,11 +1778,16 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
     # elsewhere may name a queue this machine lacks.
     slurm = mode in ("submit", "ask")
     if slurm and domain is None:
-        _baked = {j.resources.domain for j in launching
-                  if j.resources.domain}
+        # THE QUEUE PREP ADMITTED, as each job records it -- a run's
+        # placement (`job-system.md` § 6.0); a trial's, the domain its
+        # resources carry.
+        _baked = {(j.placement or {}).get("domain") or j.resources.domain
+                  for j in launching}
+        _baked.discard(None)
+        _baked.discard("")
         if len(_baked) == 1:
             domain = _baked.pop()
-            domain_source = "the bundle (prep baked it)"
+            domain_source = "the bundle (prep admitted it)"
         elif len(_baked) > 1:
             raise click.ClickException(
                 "the trials being sent name more than one domain ("
@@ -1798,12 +1808,15 @@ def submit_cmd(kind: str, stage, trial, bundle: str, mode: str, domain,
         if _rows:
             from .ask import Ask, queue_table
             from ..scheduler import parse_mem_gb
-            # THE SAME REQUEST the door will admit -- the cores and the GPU
-            # side included -- so the table cannot say yes where the
-            # submission says no (`submission.md` § 3).
-            _cores = max(((j.resources.mpi_np or 0)
-                          * max(j.resources.cpus_per_task or 1, 1)
-                          for j in launching), default=0) or None
+            # THE SAME REQUEST the door will admit (`placement.request_of`,
+            # prep's and the door's one) -- the cores and the GPU side
+            # included, a PySCF run's one process counted -- so the table
+            # cannot say yes where the submission says no (`submission.md`
+            # § 3).
+            from .placement import one_process, request_of
+            _one = one_process(js.engine)
+            _cores = max((request_of(j.resources, one_process=_one).cores
+                          or 0 for j in launching), default=0) or None
             # ...each job's GPU REQUEST, through the one door the
             # submission asks (`model.gpu_request`) -- whether, and how many;
             # never a stand-in of one.

@@ -127,19 +127,18 @@
         <dl class="ts-facts" id="ts-resolved" hidden></dl>
       </section>
 
-      <!-- THE QUEUE, AND WHAT IT ALLOWS (2026-08-24, user).  A machine's
-           own probed ceilings are what the two asks default to: picking a
-           queue fills them in, and a person lowers them or leaves them.
-           Nothing here is invented -- a queue that states no ceiling
-           leaves the field empty and says so, because an unstated limit
-           is the scheduler's to decide (submission.md S1/S2). -->
+      <!-- THE QUEUE, AND WHAT IT ALLOWS (2026-08-24, user).  Picking a
+           queue names it and fills nothing: its own probed ceilings are
+           shown beside the two asks, which stay empty until a person
+           states them -- a value stated, never proposed (submission.md S1,
+           S5; picking one wrote its ceilings in until 2026-10-05, D13). -->
       <section class="card" id="ts-queue-card" hidden>
         <h2>Where it runs, and what it may use</h2>
-        <p class="hint">Pick a queue and these fill with <strong>what that
-          queue allows</strong> &mdash; the most you can ask for there. Lower
-          them if this job needs less; a smaller ask is usually scheduled
-          sooner. <strong>Left blank, the scheduler decides</strong>, and on
-          many clusters its own default is far below the node.</p>
+        <p class="hint">Pick a queue: <strong>what it allows</strong> is shown
+          under each field &mdash; the most you can ask for there. State what
+          this job needs; a smaller ask is usually scheduled sooner.
+          <strong>Left blank on a machine with a scheduler, prep refuses
+          it</strong>: a wall and a memory are stated, never proposed.</p>
 
         <div class="ts-choice" id="ts-queue-choice"></div>
         <p class="ts-needs" id="ts-queue-needs">Pick a machine first</p>

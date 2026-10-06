@@ -134,7 +134,7 @@ def test_validate_catches_duplicate_names():
     assert any("duplicate" in e for e in js.validate())
 
 
-def test_a_job_declares_exactly_these_eight_things():
+def test_a_job_declares_exactly_these_nine_things():
     """A `Job` is a name, a script, resources, what it would warm-start from,
     the traits a warm-start condition is compared against -- and, for a
     TRIAL, its sweep coordinate as data (``point``, 2026-08-21,
@@ -142,7 +142,9 @@ def test_a_job_declares_exactly_these_eight_things():
     bundle that finishes it (``finish``, 2026-09-28, `engines/vibration.md`
     § 5.5: a SIESTA force-constant run's modes); and whether a re-run of it
     continues from what the last one left (``resumes``, 2026-09-29,
-    `job-contracts.md` § 4.2a: false for a force-constant run).
+    `job-contracts.md` § 4.2a: false for a force-constant run); and, for a
+    run prepped for a queue, where it was admitted and where each value
+    came from (``placement``, 2026-10-05, `job-system.md` § 6.0).
 
     Asserted as an EQUALITY on the field set, in both the dataclass and the
     wire form.  An equality is the whole rule in one line: any field added
@@ -156,7 +158,7 @@ def test_a_job_declares_exactly_these_eight_things():
     import dataclasses
     assert {f.name for f in dataclasses.fields(Job)} == {
         "name", "script", "resources", "warm", "traits", "point", "finish",
-        "resumes"}
+        "resumes", "placement"}
     assert set(_ladder().to_dict()["jobs"][1]) == {
         "name", "script", "resources", "warm", "traits"}
     trial = Job("G1K4C6", "t.fdf", point={"G": 1, "K": 4, "C": 6})

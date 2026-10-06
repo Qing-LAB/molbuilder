@@ -30,11 +30,11 @@ _SHAPE_ITEMS = ("mpi_np", "omp_threads", "threads")
 #: What a person calls each launch value, and the flag that states it -- the
 #: words of the one refusal below.
 _LAUNCH_WORDS = {
-    "mpi_np":        ("ranks", "--np N"),
-    "cpus_per_task": ("cores per rank", "--cpus-per-task N"),
     "domain":        ("queue", "--domain QUEUE"),
     "time":          ("wall", "--time 2-00:00:00"),
     "mem":           ("memory", "--mem 64G"),
+    "mpi_np":        ("ranks", "--np N"),
+    "cpus_per_task": ("cores per rank", "--cpus-per-task N"),
 }
 
 
@@ -156,33 +156,73 @@ def request_of(resources, *, one_process: bool):
                                else None))
 
 
-def admission_refusal(resources, environment, *, one_process: bool,
-                      stage=None):
-    """**Why the queue a run names cannot take it** -- ``None`` when it fits
-    (`job-system.md` § 5.0, checkpoint 4; § 6.0, *the placement*): the
-    run's whole request (:func:`request_of`) admitted on the target's record
-    by the binding launch asks too (`scheduler.place`), so a GPU run naming
-    a queue with no GPUs, more cores or memory than its nodes hold, or a
-    wall longer than it allows is refused at prep, naming what was asked
-    and what the queue offers.  Launch admits what it sends again, against
-    the machine as it stands then (`scheduler.md` R9)."""
+def one_process(engine) -> bool:
+    """Whether ``engine`` runs ONE process -- PySCF, whose deck is a Python
+    script -- so its request asks one task (`runwrap._render_sbatch_for`'s
+    rule, by the same fact: the deck's suffix)."""
+    from .engines import engine_seam
+    return engine_seam(str(engine)).suffix == ".py"
+
+
+#: The values a run's placement records the source of -- its queue, wall
+#: and memory, its ranks, cores per rank and GPUs (`job-system.md` § 6.0).
+_PLACED = ("domain", "time", "mem", "mpi_np", "cpus_per_task", "gres")
+
+
+def admitted(resources, environment, *, one_process: bool, stage=None,
+             sources=None):
+    """``(placement, refusal)`` -- the queue a run names, admitted on the
+    target's record with its whole request (:func:`request_of`) by the
+    binding launch asks too (`scheduler.place`), and what its job records
+    of it: the queue's name, partition and qos, and where each value came
+    from (``sources``, `prep._fold_allocation`) -- or ``(None, why)``: a GPU
+    run naming a queue with no GPUs, more cores or memory than its nodes
+    hold, a wall longer than it allows is refused at prep, naming what was
+    asked and what the queue offers (`job-system.md` § 5.0, checkpoint 4;
+    § 6.0).  Launch admits what it sends again, against the machine as it
+    stands then (`scheduler.md` R9)."""
     from ..runtime_config import routing_of
     from ..scheduler.place import Unplaceable, place
     from .model import gpu_request
     named = getattr(resources, "domain", None)
     try:
-        place(routing_of(environment),
-              request_of(resources, one_process=one_process),
-              prefer_gpu=gpu_request(resources).uses, named=named)
+        bound = place(routing_of(environment),
+                      request_of(resources, one_process=one_process),
+                      prefer_gpu=gpu_request(resources).uses, named=named)
     except Unplaceable as exc:
-        return (f"{'stage ' + repr(stage) + ' ' if stage else ''}does not "
-                f"fit the queue {named!r} on the target's record:\n    "
-                + "\n    ".join(r.message for r in exc.reasons)
-                + "\n  Ask for less -- the run card's ranks, cores and GPU "
-                  "count; the description's wall and memory -- or name "
-                  "another of the record's queues.")
-    return None
+        return None, (f"{'stage ' + repr(stage) + ' ' if stage else ''}does "
+                      f"not fit the queue {named!r} on the target's record:\n    "
+                      + "\n    ".join(r.message for r in exc.reasons)
+                      + "\n  Ask for less -- the run card's ranks, cores and "
+                        "GPU count; the description's wall and memory -- or "
+                        "name another of the record's queues.")
+    if bound is None:
+        return None, None
+    said = sources or {}
+    return ({"domain": named, "partition": bound.partition, "qos": bound.qos,
+             "from": {f: said[f] for f in _PLACED
+                      if getattr(resources, f, None) not in (None, "")
+                      and f in said}}, None)
 
 
-__all__ = ["AS_RESOURCE", "admission_refusal", "launch_refusal",
-           "request_of"]
+def placement_line(placement) -> str:
+    """A run's placement, as both doors say it -- the queue it was admitted
+    on and where each value came from (`job-system.md` § 6.0): ``placed on
+    short (cpu/public) -- queue from the run card; wall, memory from the
+    description; ranks, cores per rank from the run card``."""
+    if not placement:
+        return ""
+    words = dict(_LAUNCH_WORDS, gres=("GPUs", "--gpus N"))
+    by_source: dict = {}
+    for field, source in (placement.get("from") or {}).items():
+        by_source.setdefault(source, []).append(words.get(field, (field,))[0])
+    said = "; ".join(f"{', '.join(fields)} from the {source}"
+                     if source != "flag" else f"{', '.join(fields)} from a flag"
+                     for source, fields in by_source.items())
+    return (f"placed on {placement.get('domain')} "
+            f"({placement.get('partition')}/{placement.get('qos')})"
+            + (f" -- {said}" if said else ""))
+
+
+__all__ = ["AS_RESOURCE", "admitted", "launch_refusal", "one_process",
+           "placement_line", "request_of"]

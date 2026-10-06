@@ -206,6 +206,21 @@ run_sh = ["_omp_threads_default=6",
           '_omp_threads="$_omp_threads_default"; _omp_from="stated at prep"']
 
 [[case]]
+name = "a run's placement is recorded at prep, each value with its source, and said"
+said = ["placed on cpu (cpu/public)", "queue, wall, memory from the description", "ranks, cores per rank from the run card"]
+
+[[case]]
+name = "launch asks a queue the request prep asked: a PySCF run's cores are its threads"
+engine = "pyscf"
+run = { threads = 48 }
+queues = [
+    { name = "cpu", partition = "cpu", qos = "public", max_time = "1-00:00:00", max_cores = 64, node_types = [{ cores = 64, nodes = 10 }] },
+    { name = "small", partition = "small", qos = "public", max_time = "1-00:00:00", max_cores = 16, node_types = [{ cores = 16, nodes = 4 }] },
+]
+launch = ["--domain", "small"]
+launch_refused = "needs 48 cores but small allows 16 cores"
+
+[[case]]
 name = "a PySCF run takes no rank count: it runs one process"
 engine = "pyscf"
 run = { threads = 2 }

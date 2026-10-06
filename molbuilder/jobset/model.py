@@ -389,6 +389,13 @@ class Job:
     #: wrapper, which says a retry of a run that cannot resume repeats it
     #: (`running-a-job.md` § 3.5).  False for a SIESTA force-constant rung.
     resumes:    bool            = True
+    #: WHERE IT WAS ADMITTED: a run prepped for a queue -- the queue its
+    #: request was admitted on at prep (``domain``, ``partition``, ``qos``,
+    #: bound on the target's record) and where each value came from
+    #: (``from``: ``flag``, ``run card`` or ``description``, per field;
+    #: `job-system.md` § 6.0) -- what its header renders and launch sends to.
+    #: ``None`` with no queue: a trial, a machine with no scheduler.
+    placement:  Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         d = {
@@ -409,6 +416,10 @@ class Job:
         # false.
         if not self.resumes:
             d["resumes"] = False
+        # ABSENT with no queue -- written where prep admitted one.
+        if self.placement:
+            d["placement"] = {k: (dict(v) if isinstance(v, dict) else v)
+                              for k, v in self.placement.items()}
         return d
 
     @classmethod
@@ -428,6 +439,7 @@ class Job:
             point=dict(d.get("point") or {}),
             finish=(str(d["finish"]) if d.get("finish") else None),
             resumes=bool(d.get("resumes", True)),
+            placement=(dict(d["placement"]) if d.get("placement") else None),
         )
 
 
