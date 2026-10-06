@@ -618,7 +618,8 @@ def test_prep_says_reused_only_of_an_attempt_an_earlier_prep_opened(
     runner, grp = _runner()
     init = runner.invoke(grp, ["init", "--structure", "P/structure/h2.xyz",
                                "--bundle", "P/optimization/h",
-                               "--shape", "hierarchical", "--engine", "pyscf"])
+                               "--shape", "hierarchical", "--engine", "pyscf",
+                               "--calculation", "optimization"])
     assert init.exit_code == 0, init.output
     prep = ["prep", "run", "coarse", "--bundle", "P/optimization/h",
             "--no-sbatch", "--cpus-per-task", "1"]
@@ -881,7 +882,7 @@ def _describe(base, shape, names=("coarse", "tight")):
                                  derive_run, write_task)
     stages = tuple(Stage(name=n, overrides={"mesh_cutoff": 200}) for n in names)
     write_task(Path(base) / FILENAME, Task(
-        engine="siesta", shape=shape,
+        engine="siesta", shape=shape, calculation="optimization",
         run=derive_run("JOB", "H2", stage_names=names),
         structure=StructureRef(source="h2.xyz", formula="H2", atoms=2),
         varies=("mesh_cutoff",), stages=stages))

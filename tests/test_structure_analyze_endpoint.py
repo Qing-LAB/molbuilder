@@ -77,7 +77,7 @@ def test_unknown_element_returns_400_not_500(web):
     """A symbol that names no element is a clean 400 with the parser's own
     words: the answer is an electron count, and a count with an atom left
     out is a wrong one (`chemistry.resolve_element`)."""
-    r, body = _post_analyze(web, {"structure": {
+    r, body = _post_analyze(web, {"kind": "optimization", "structure": {
         "elements": ["Xx"], "positions": [[0.0, 0.0, 0.0]], "metadata": {}}})
     assert r.status_code == 400
     assert body["ok"] is False

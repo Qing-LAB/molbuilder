@@ -402,7 +402,8 @@ one shell ([`architecture.md § 8.2`](?doc=execution/architecture.md)).
 > ```
 > molbuilder jobset init --structure P/structure/water.xyz \
 >                        --bundle   P/frequency/water-vib \
->                        --shape hierarchical --engine pyscf
+>                        --shape hierarchical --engine pyscf \
+>                        --calculation vibration
 > ```
 >
 > It is the one verb whose `--bundle` may not exist yet — that is what it

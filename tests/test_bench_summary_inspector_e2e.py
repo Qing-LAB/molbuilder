@@ -63,7 +63,9 @@ def sweep(tmp_path, monkeypatch):
                             SiestaConfig(system_label="JOB", use_gpu=True,
                                          diag_algorithm="ELPA-1STAGE"),
                             default_siesta_stages("publishable"),
-                            engine="siesta", shape="hierarchical", name="JOB",
+                            engine="siesta",
+                            calculation="optimization",
+                            shape="hierarchical", name="JOB",
                             source=str(tmp_path / "h2.xyz")),
         calc)
     from conftest import write_pseudos

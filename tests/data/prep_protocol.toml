@@ -241,12 +241,12 @@ run_sh_lacks = ["_siesta_retry_max="]
 
 [[case]]
 name = "the description's reporting policy reaches the run script -- when, how often, and where, by name"
-notify = { on_scf_converged = true, every_hours = 4, channels = ["slack", "lab"] }
+notify = { on_scf_converged = true, every_hours = 4, channels = ["slack", "lab"], report = ["*"] }
 run_sh = ["--notify-on-scf", "--notify-every-hours 4", '--notify-channels "slack,lab"']
 
 [[case]]
 name = "...an empty channel list survives -- report to none, never to every channel"
-notify = { on_scf_converged = true, channels = [] }
+notify = { on_scf_converged = true, every_hours = 6, channels = [], report = ["*"] }
 run_sh = ['--notify-channels ""']
 
 [[case]]

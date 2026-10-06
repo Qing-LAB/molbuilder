@@ -78,7 +78,9 @@ def test_prep_writes_where_job_dir_names_will_look(tmp_path, monkeypatch):
     stages = default_siesta_stages("publishable")
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB"), stages,
-                            engine="siesta", shape="hierarchical", name="JOB",
+                            engine="siesta",
+                            calculation="optimization",
+                            shape="hierarchical", name="JOB",
                             source=str(src)),
         dest)
     write_pseudos(dest, ["H"])

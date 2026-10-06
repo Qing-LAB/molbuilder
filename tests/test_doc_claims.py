@@ -701,6 +701,7 @@ def test_a_folder_holding_two_templates_is_refused_by_the_tab_not_picked(
     r = CliRunner().invoke(jobset_group, [
         "init", "--structure", "P/structure/h2.xyz",
         "--bundle", "P/optimization/H2", "--engine", "pyscf",
+        "--calculation", "optimization",
         "--shape", "flat", "--name", "H2"])
     assert r.exit_code == 0, r.output
     calc = tree / "P" / "optimization" / "H2"

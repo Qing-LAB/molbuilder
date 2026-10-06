@@ -837,14 +837,17 @@ names a machine, so it means the same thing wherever you copy it
 ```bash
 molbuilder jobset init --structure BDT-Au/structure/bdt.xyz \
     --bundle BDT-Au/optimization/bdt-relax --engine siesta \
-    --stage-strategy publishable --shape hierarchical \
-    --psml-lib pseudopotential
+    --calculation optimization --stage-strategy publishable \
+    --shape hierarchical --psml-lib pseudopotential
 ```
 
 Every path is an address from the projects root, so the line works from
 anywhere (`job-contracts.md` § 2.5b) — the pseudopotential library too, which
 lives in the tree. *(The example passed the structure and the folder as
 positionals and the library from `~` until 2026-10-01; `init` takes neither.)*
+**The engine and the kind are stated, every time** (`--engine`, `--calculation`
+— W57, 2026-10-06): a calculation described without one became a SIESTA
+optimization until then, a folder named for a frequency calculation included.
 
 Names and values are validated **here, on your laptop, not on the cluster**
 (design decision #4): a stage name outside `[A-Za-z0-9_]+`, a duplicate stage, an

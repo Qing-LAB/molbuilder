@@ -70,7 +70,8 @@ def calc_dir(isolated_projects_root_module):
                                  calculation="optimization"),
             encoding="utf-8")
         write_task(d / "task.json", Task(
-            engine="siesta", shape="flat", run=derive_run("probe"),
+            engine="siesta", shape="flat", calculation="optimization",
+            run=derive_run("probe"),
             structure=StructureRef(source="probe.source.xyz"),
             varies=("kgrid",),
             stages=(Stage(name="tight", overrides={}),)))
@@ -215,7 +216,8 @@ def bool_column_dir(isolated_projects_root_module):
                                  calculation="optimization"),
             encoding="utf-8")
         write_task(d / "task.json", Task(
-            engine="siesta", shape="flat", run=derive_run("probe"),
+            engine="siesta", shape="flat", calculation="optimization",
+            run=derive_run("probe"),
             structure=StructureRef(source="probe.source.xyz"),
             varies=("write_coor_xmol",),
             stages=(Stage(name="tight", overrides={}),)))

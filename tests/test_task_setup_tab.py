@@ -1327,7 +1327,8 @@ class TestTheFolderDoor:
         D.write_description(D.build_description(
             st, SiestaConfig(system_label="JOB", mesh_cutoff=250.0),
             default_siesta_stages("publishable"),
-            engine="siesta", shape="hierarchical", name="JOB",
+            engine="siesta",
+            calculation="optimization", shape="hierarchical", name="JOB",
             source=str(src)), dest)
         write_pseudos(dest, ["H"])
         from molbuilder.web.app import create_app

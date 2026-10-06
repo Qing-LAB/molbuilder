@@ -100,6 +100,7 @@ class TestCodec:
     def test_slots_and_bias_belong_to_transport_alone(self):
         from molbuilder.task import StructureRef
         base = dict(engine="siesta", shape="hierarchical",
+                    calculation="optimization",
                     run=Run(name="R", id=run_id("R", "H2")),
                     structure=StructureRef(source="x.xyz", formula="H2",
                                            atoms=2),
@@ -182,7 +183,7 @@ class TestInitCLI:
         (tree / "BDT-Au" / "structure" / "j.xyz").write_text(
             "1\n\nH 0 0 0\n")
         r = self._invoke([
-            "--shape", "hierarchical",
+            "--calculation", "optimization", "--shape", "hierarchical",
             "--structure", "BDT-Au/structure/j.xyz",
             "--bundle", "BDT-Au/optimization/X",
             "--slot", f"junction={_CITE}"])

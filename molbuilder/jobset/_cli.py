@@ -557,12 +557,14 @@ def _init_transport(*, out_dir, shape, run_name, engine, slots_opt,
               help="isolation vacuum (A) per side on isolated axes. Needed "
                    "for a flat or linear molecule from a bare XYZ, which "
                    "otherwise has a degenerate cell.")
-@click.option("--calculation", "calculation", default="optimization",
-              show_default=True, metavar="TYPE",
-              help="which KIND of calculation this describes -- the key "
-                   "into the engine's warm-file vocabulary (job-contracts "
-                   "4.2a).  The engine's sections define what is legal, "
-                   "checked where the vocabulary is read.")
+@click.option("--calculation", "calculation", required=True, metavar="TYPE",
+              # STATED, as the engine is: a folder named for a frequency
+              # calculation, described without it, became an optimization
+              # until 2026-10-06 (W57 R10).
+              help="which KIND of calculation this describes -- "
+                   "optimization, vibration or transport; the key into the "
+                   "engine's warm-file vocabulary (job-contracts 4.2a).  "
+                   "REQUIRED -- never assumed.")
 @click.option("--slot", "slots_opt", multiple=True, metavar="NAME=CITATION",
               help="a composite input (transport only): "
                    "--slot junction=<dir> (a directory whose files "

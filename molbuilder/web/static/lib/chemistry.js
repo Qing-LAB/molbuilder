@@ -199,8 +199,9 @@
                 { ok: false, error: "No structure to analyze." });
         }
         opts = opts || {};
-        var body = { structure: structure };
-        if (opts.kind) body.kind = opts.kind;
+        // THE KIND IS STATED by every tab (the server refuses a request
+        // with none; it read an optimization for one until 2026-10-06).
+        var body = { structure: structure, kind: opts.kind };
         if (opts.forms) body.forms = opts.forms;
         var mySeq = ++_seq;
         if (_abort) _abort.abort();

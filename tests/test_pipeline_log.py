@@ -69,7 +69,8 @@ def _calculation(tmp_path, engine: str, shape: str, name: str = "BDT"):
     src.write_text(BDT.to_xyz())
     dest = tmp_path / f"{name}-{engine}-{shape}"
     D.write_description(D.build_description(
-        BDT, cfg, stages, engine=engine, shape=shape, name=name,
+        BDT, cfg, stages, engine=engine,
+        calculation="optimization", shape=shape, name=name,
         source=str(src)), dest)
     if engine == "siesta":
         write_pseudos(dest, ["S", "C", "H"])

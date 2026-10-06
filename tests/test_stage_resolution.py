@@ -270,7 +270,7 @@ def test_two_stages_with_one_name_are_refused_where_the_ladder_is_read():
     with tempfile.TemporaryDirectory() as d:
         p = _P(d) / "task.json"
         write_task(p, Task(
-            engine="siesta", shape="flat",
+            engine="siesta", shape="flat", calculation="optimization",
             run=derive_run("j", stage_names=("tight", "medium")),
             structure=StructureRef(source="h2.xyz"),
             varies=("mesh_cutoff",),

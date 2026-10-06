@@ -40,7 +40,7 @@ def _task(stages=None):
     ladder = (tuple(stages) if stages is not None
               else (Stage(name=STAGE, enabled=True, overrides={}),))
     return Task(
-        engine="siesta", shape="hierarchical",
+        engine="siesta", shape="hierarchical", calculation="optimization",
         run=derive_run("relax", "C3H2S",
                        stage_names=tuple(s.name for s in ladder)),
         structure=StructureRef(source="bdt.xyz", formula="C3H2S", atoms=6),
@@ -418,6 +418,7 @@ def test_a_stage_override_naming_a_run_setting_is_refused(template):
     (`stages.md` § 6.8d, plan § 5w K5, SO-C1)."""
     ladder = (Stage(name="a", overrides={"use_gpu": True}),)
     t = Task(engine="siesta", shape="hierarchical",
+             calculation="optimization",
              run=derive_run("relax", "C3H2S", stage_names=("a",)),
              structure=StructureRef(source="bdt.xyz", formula="C3H2S",
                                     atoms=6),

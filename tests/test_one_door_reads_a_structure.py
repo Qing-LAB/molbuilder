@@ -98,6 +98,7 @@ def test_what_the_author_set_on_the_structure_reaches_the_deck(tmp_path,
 
     r = _jobset("init", "--structure", "P/structure/h4.xyz",
                 "--bundle", "P/optimization/H4", "--engine", "siesta",
+                "--calculation", "optimization",
                 "--shape", "hierarchical", "--name", "H4",
                 "--psml-lib", "pseudopotential")
     assert r.exit_code == 0, r.output

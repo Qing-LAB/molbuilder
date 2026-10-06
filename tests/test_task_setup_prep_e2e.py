@@ -100,7 +100,9 @@ def _a_described_probe(root, execution=None):
                                 SiestaConfig(system_label="probe"),
                                 [Stage(name="coarse",
                                        overrides={"mesh_cutoff": 200})],
-                                engine="siesta", shape="hierarchical",
+                                engine="siesta",
+                                calculation="optimization",
+                                shape="hierarchical",
                                 name="probe", source=str(src)),
             d, struct=struct)
         write_pseudos(d, ["H"])
@@ -403,7 +405,8 @@ def test_a_description_prep_bench_refuses_offers_no_measure_step(
     src.write_text(struct.to_xyz(), encoding="utf-8")
     D.write_description(
         D.build_description(struct, PySCFConfig(), [Stage(name="coarse")],
-                            engine="pyscf", shape="hierarchical",
+                            engine="pyscf",
+                            calculation="optimization", shape="hierarchical",
                             name="pyscf", source=str(src)),
         d, struct=struct)
     _open(page, flask_server, d)
@@ -451,7 +454,9 @@ def filled_dir(isolated_projects_root_module):
                                 SiestaConfig(system_label="filled"),
                                 [Stage(name="coarse",
                                        overrides={"mesh_cutoff": 200})],
-                                engine="siesta", shape="hierarchical",
+                                engine="siesta",
+                                calculation="optimization",
+                                shape="hierarchical",
                                 name="filled", source=str(src)),
             d, struct=struct)
         write_pseudos(d, ["H"])
@@ -513,6 +518,7 @@ def binding_dir(isolated_projects_root_module):
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="binding"),
                             [Stage(name="coarse")], engine="siesta",
+                            calculation="optimization",
                             shape="hierarchical", name="binding",
                             source=str(src)),
         d, struct=struct)
@@ -974,7 +980,9 @@ def two_stage_dir(isolated_projects_root):
                                        overrides={"mesh_cutoff": 200}),
                                  Stage(name="tight",
                                        overrides={"mesh_cutoff": 400})],
-                                engine="siesta", shape="hierarchical",
+                                engine="siesta",
+                                calculation="optimization",
+                                shape="hierarchical",
                                 name="ladder", source=str(src)),
             d, struct=struct)
         write_pseudos(d, ["H"])

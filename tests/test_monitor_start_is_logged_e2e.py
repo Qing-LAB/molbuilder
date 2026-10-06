@@ -83,6 +83,7 @@ def _launched(tmp_path, monkeypatch, *, engine="pyscf", broken_member=None):
                                    f"{os.pathsep}{os.environ['PATH']}")
     r = _jobset("init", "--structure", "P/structure/h2.xyz",
                 "--bundle", "P/optimization/H2", "--engine", engine,
+                "--calculation", "optimization",
                 "--shape", "hierarchical" if siesta else "flat",
                 "--name", "H2",
                 *(("--psml-lib", "pseudopotential") if siesta else ()))

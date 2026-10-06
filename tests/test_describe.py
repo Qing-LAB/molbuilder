@@ -49,6 +49,7 @@ _ONE_STAGE = (Stage(name="coarse", enabled=True, overrides={}),)
 def _describe(struct, cfg, stages=_ONE_STAGE, *, shape="hierarchical",
               name="relax", source="structures/bdt.xyz"):
     return D.build_description(struct, cfg, stages, engine="siesta",
+                               calculation="optimization",
                                shape=shape, name=name, source=source)
 
 
@@ -151,6 +152,7 @@ def test_the_structure_travels_as_the_calculations_own_pair(tmp_path):
         res = CliRunner().invoke(jobset_group, [
             "init", "--structure", "P/structure/h2.xyz",
             "--bundle", "P/optimization/calc", "--engine", "siesta",
+            "--calculation", "optimization",
             "--shape", "hierarchical", "--vacuum", "8", "--name", "JOB"])
     finally:
         os.environ.pop(PROJECTS_ROOT_ENV, None)
@@ -329,6 +331,7 @@ def test_psml_lib_bare_name_resolves_via_the_tree_not_the_cwd(tmp_path):
         res = CliRunner().invoke(jobset_group, [
             "init", "--structure", "P/structure/h2.xyz",
             "--bundle", "P/optimization/calc", "--engine", "siesta",
+            "--calculation", "optimization",
             "--shape", "hierarchical", "--vacuum", "8", "--name", "JOB",
             "--psml-lib", "pseudopotential"])
     finally:
@@ -405,6 +408,7 @@ def test_init_refuses_a_folder_that_already_holds_a_calculation(
     before = (bundle / "task.json").read_bytes()
     r = jobset("init", "--structure", "P/structure/h2.xyz",
                "--bundle", "P/optimization/H2", "--engine", "siesta",
+               "--calculation", "optimization",
                "--shape", "flat", "--name", "H2",
                "--psml-lib", "pseudopotential")
     assert r.exit_code != 0, r.output

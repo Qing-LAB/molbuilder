@@ -25,7 +25,7 @@ def _task(**kw) -> Task:
     # ``derive_run``, not a hand-typed id.  This read
     # ``Run(name="opt", id="opt-0001")`` until 2026-08-09 -- an id nothing
     # derives, which was legal only while ``run.id`` was a free string.
-    base = dict(engine="siesta", shape="flat",
+    base = dict(engine="siesta", shape="flat", calculation="optimization",
                 run=derive_run("opt"),
                 structure=StructureRef(source="h2.xyz"))
     base.update(kw)

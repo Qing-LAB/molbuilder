@@ -146,6 +146,7 @@ def _a_prepped_stage(tree, monkeypatch, *stated):
     monkeypatch.chdir(tree.parent)
     r = _jobset("init", "--structure", "P/structure/h2.xyz",
                 "--bundle", "P/optimization/H2", "--engine", "pyscf",
+                "--calculation", "optimization",
                 "--shape", "hierarchical", "--name", "H2")
     assert r.exit_code == 0, r.output
     bundle = tree / "P" / "optimization" / "H2"

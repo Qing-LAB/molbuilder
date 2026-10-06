@@ -124,7 +124,9 @@ def calc(tmp_path):
                             SiestaConfig(system_label="JOB", use_gpu=True,
                                          diag_algorithm="ELPA-1STAGE"),
                             default_siesta_stages("publishable"),
-                            engine="siesta", shape="hierarchical", name="JOB",
+                            engine="siesta",
+                            calculation="optimization",
+                            shape="hierarchical", name="JOB",
                             source=str(tmp_path / "h2.xyz")),
         dest)
     from conftest import write_pseudos
@@ -973,7 +975,8 @@ def test_a_one_stage_calculation_runs_end_to_end(tmp_path):
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB"),
                             _one_stage(),
-                            engine="siesta", shape="hierarchical",
+                            engine="siesta",
+                            calculation="optimization", shape="hierarchical",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest)
     from conftest import write_pseudos
@@ -1057,7 +1060,8 @@ def test_a_charged_decks_promised_script_ships_with_it(tmp_path):
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB",
                                                  net_charge=1), _one_stage(),
-                            engine="siesta", shape="hierarchical",
+                            engine="siesta",
+                            calculation="optimization", shape="hierarchical",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest, struct=struct)
     from conftest import write_pseudos
@@ -1111,7 +1115,8 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB"),
                             _one_stage(),
-                            engine="siesta", shape="hierarchical",
+                            engine="siesta",
+                            calculation="optimization", shape="hierarchical",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest)
     from conftest import write_pseudos
@@ -1178,7 +1183,8 @@ def test_a_one_stage_calculation_can_be_benchmarked(tmp_path):
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB"),
                             default_siesta_stages("publishable"),
-                            engine="siesta", shape="hierarchical",
+                            engine="siesta",
+                            calculation="optimization", shape="hierarchical",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         ladder)
     res = r.invoke(jobset_group, ["prep", "bench", "--bundle", str(ladder),
@@ -1203,7 +1209,9 @@ def test_two_flat_stages_benchmarks_do_not_collide(tmp_path):
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB"),
                             default_siesta_stages("publishable"),
-                            engine="siesta", shape="flat", name="JOB",
+                            engine="siesta",
+                            calculation="optimization",
+                            shape="flat", name="JOB",
                             source=str(tmp_path / "h2.xyz")),
         dest)
     from conftest import write_pseudos
@@ -1261,7 +1269,8 @@ def test_a_flat_one_stage_calculation_preps_to_completion(tmp_path):
     D.write_description(
         D.build_description(struct, SiestaConfig(system_label="JOB"),
                             _one_stage(),
-                            engine="siesta", shape="flat",
+                            engine="siesta",
+                            calculation="optimization", shape="flat",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest)
     from conftest import write_pseudos
@@ -1617,7 +1626,9 @@ def test_a_pyscf_description_is_refused_by_name_at_the_bench_seam(tmp_path):
     D.write_description(
         D.build_description(struct, PySCFConfig(job_name="JOB"),
                             [Stage(name="only", enabled=True, overrides={})],
-                            engine="pyscf", shape="hierarchical", name="JOB",
+                            engine="pyscf",
+                            calculation="optimization",
+                            shape="hierarchical", name="JOB",
                             source=str(tmp_path / "h2.xyz")),
         dest)
     (dest / "environment.json").write_text(
@@ -1660,7 +1671,9 @@ def test_a_pyscf_runs_threads_reach_the_launch_shape(tmp_path):
         D.build_description(struct, PySCFConfig(job_name="JOB"),
                             [Stage(name="only", enabled=True, overrides={},
                                    execution={"threads": 3})],
-                            engine="pyscf", shape="hierarchical", name="JOB",
+                            engine="pyscf",
+                            calculation="optimization",
+                            shape="hierarchical", name="JOB",
                             source=str(tmp_path / "h2.xyz")),
         dest)
     (dest / "environment.json").write_text(

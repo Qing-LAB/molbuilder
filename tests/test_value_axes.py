@@ -68,7 +68,8 @@ def sol_calc(tmp_path):
                                          use_gpu=False,
                                          diag_algorithm="ELPA-1STAGE"),
                             default_siesta_stages("publishable"),
-                            engine="siesta", shape="hierarchical",
+                            engine="siesta",
+                            calculation="optimization", shape="hierarchical",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest)
     from conftest import write_pseudos
@@ -562,7 +563,8 @@ def flat_sol_calc(tmp_path):
                                          use_gpu=False,
                                          diag_algorithm="ELPA-1STAGE"),
                             default_siesta_stages("publishable"),
-                            engine="siesta", shape="flat",
+                            engine="siesta",
+                            calculation="optimization", shape="flat",
                             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest)
     from conftest import write_pseudos

@@ -146,7 +146,7 @@ def api_structure_analyze():
     Body (JSON)::
 
       "structure": {elements, positions, metadata[, info]}
-      "kind":  "optimization" | "vibration" | "transport"   (default optimization)
+      "kind":  "optimization" | "vibration" | "transport"   (stated by every tab)
       "forms": {"<engine>": {net_charge, spin_treatment,
                              unpaired_electrons, method}}      (optional)
 
@@ -195,7 +195,9 @@ def _analyze_response(struct, body):
     from molbuilder.electronic_state import (KINDS, electronic_state,
                                              engines_for)
 
-    kind = body.get("kind") or "optimization"
+    kind = body.get("kind") or ""
+    if not kind:
+        return _unstated(kind=kind)
     if kind not in KINDS:
         return jsonify({"ok": False,
                         "error": f"kind must be one of {', '.join(KINDS)}, "

@@ -73,9 +73,11 @@ const TASK_HANDOVER = "task.1st.json";
  *
  * `setShape` twelve lines down had always read it correctly.  Two accessors
  * for one field is the shape of this bug; one of them is now gone. */
+/** The engine of the open description or hand-over -- `""` when the page
+ *  holds neither, never a guess: it read SIESTA for that until 2026-10-06. */
 function _handoverEngine(over) {
     const from = (o) => (o && o.engine && o.engine.name) || "";
-    return String(from(over) || from(_handover) || "siesta");
+    return String(from(over) || from(_handover));
 }
 
 function machineAnswers(name) {
@@ -1524,7 +1526,12 @@ async function loadColumnChoices(engine) {
     // The cache is keyed by (engine, kind): a bare `if (_cols)` served an
     // optimization folder's columns to the vibration folder opened next.
     const kind = _kindOf();
-    const key = (engine || "siesta") + ":" + kind;
+    // NOTHING DESCRIBED, NOTHING ASKED: with no description or hand-over
+    // open, the page knows no engine and no kind, and the server refuses a
+    // request that states none (a SIESTA optimization's list was fetched
+    // for it until 2026-10-06).
+    if (!engine || !kind) return [];
+    const key = engine + ":" + kind;
     if (_cols && _colsKey === key) {
         // REFILL `_meta` EVEN ON THE CACHED PATH.  `refreshPickers` clears
         // `_meta` before calling the loaders, so an early return here left
@@ -1548,7 +1555,7 @@ async function loadColumnChoices(engine) {
     const p = (async () => {
         const got = await fetchVocabulary(
             "/api/task-setup/columns?engine="
-            + encodeURIComponent(engine || "siesta")
+            + encodeURIComponent(engine)
             + "&calculation=" + encodeURIComponent(kind), "column list");
         const items = (got.ok && got.body && got.body.items) || [];
         if (_colsKey !== key) return items;      // a newer load owns the slot
@@ -1618,7 +1625,12 @@ async function loadSweepChoices(engine) {
      * columns are: a vibration's or a transport's run card was offered
      * `restart`, which neither kind carries (the K5 review's C2). */
     const kind = _kindOf();
-    const key = (engine || "siesta") + ":" + kind;
+    // NOTHING DESCRIBED, NOTHING ASKED: with no description or hand-over
+    // open, the page knows no engine and no kind, and the server refuses a
+    // request that states none (a SIESTA optimization's list was fetched
+    // for it until 2026-10-06).
+    if (!engine || !kind) return [];
+    const key = engine + ":" + kind;
     if (_sweep && _sweepKey === key) {
         _fillSweepMeta(_sweep);      // same reason as the column cache above
         return _sweep;
@@ -1640,7 +1652,7 @@ async function loadSweepChoices(engine) {
     const p = (async () => {
         const got = await fetchVocabulary(
             "/api/task-setup/sweepable?engine="
-            + encodeURIComponent(engine || "siesta")
+            + encodeURIComponent(engine)
             + "&calculation=" + encodeURIComponent(kind),
             "sweepable settings");
         const items = (got.ok && got.body && got.body.items) || [];
@@ -1832,14 +1844,19 @@ async function loadPresets(engine) {
      * and, keyed by engine alone, offered an optimization's tiers on every
      * transport rung of the folder opened next (plan W31, archived 2026-09-29). */
     const kind = _kindOf();
-    const key = (engine || "siesta") + ":" + kind;
+    // NOTHING DESCRIBED, NOTHING ASKED: with no description or hand-over
+    // open, the page knows no engine and no kind, and the server refuses a
+    // request that states none (a SIESTA optimization's list was fetched
+    // for it until 2026-10-06).
+    if (!engine || !kind) return [];
+    const key = engine + ":" + kind;
     if (_presets && _presetsKey === key) return _presets;
     if (_presetsInflight[key]) return _presetsInflight[key];   // one fetch per key
     _presetsKey = key;
     const p = (async () => {
         const got = await fetchVocabulary(
             "/api/task-setup/presets?engine="
-            + encodeURIComponent(engine || "siesta")
+            + encodeURIComponent(engine)
             + "&calculation=" + encodeURIComponent(kind),
             "tier presets");
         const presets = (got.ok && got.body && got.body.presets) || [];
@@ -2909,8 +2926,8 @@ function removeSetting(name) {
  */
 function proposedFromHandover(over, shape, varies, bench) {
     const run = (over && over.run) || {};
-    // THE KIND rides the hand-over (absent = optimization, the same
-    // absent-is-a-state rule task.json uses).  A vibration hand-over
+    // THE KIND rides the hand-over, every kind, as task.json states it.
+    // A vibration hand-over
     // proposes the kind's own ladder, read from the template that came
     // over with it (`engines/vibration.md` § 2.2, § 5.2a): `freq` alone
     // when the person ticked "already relaxed" or the engine is PySCF,
@@ -2918,7 +2935,7 @@ function proposedFromHandover(over, shape, varies, bench) {
     // otherwise, because one SIESTA run cannot relax and take force
     // constants.  An optimization proposes the ordinary `coarse` start.
     const kind = over.calculation;
-    const engineName = String(_handoverEngine(over) || "siesta").toLowerCase();
+    const engineName = _handoverEngine(over).toLowerCase();
     const relaxed = _tmpl.values.already_relaxed === true;
     let stages;
     if (kind === "vibration") {
@@ -3559,29 +3576,27 @@ function readNotifyFromTask(task) {
     // The box keeps its offered default when the description says nothing,
     // so ticking the row does not first make the user think of a number.
     if (hrs && isFinite(every) && every > 0) hrs.value = String(every);
-    // `"channels" in n`, NOT truthiness: an empty array is a real answer and
-    // a truthiness test would read it as "the description says nothing" and
-    // silently tick every channel back on.
     // `["*"]` IS EVERY CHANNEL, `[]` NONE -- a block states which
     // (`run-reports.md` § 3.0); no block reads as every, the card's resting
-    // state.
+    // state.  `[]` is a real answer: read as silence, every channel would be
+    // ticked back on.
     const named = _everyOrThese(n.channels);
     const all = $("ts-notify-all");
     if (all) all.checked = named === null;
     paintChannelTicks(named);
-    // `"report" in n` for the same reason `"channels" in n` is used above: an
-    // empty array is a real answer, and truthiness would read it as silence
-    // and tick every field back on.
+    // The same three states for the fields.
     const rep = _everyOrThese(n.report);
     const repAll = $("ts-report-all");
     if (repAll) repAll.checked = rep === null;
     paintNotifyNote();
     // THIS CALCULATION'S FIELDS, asked before they are painted: the ticks
-    // offered are the ones its engine and kind can state (§ 6.9).
-    const engine = String((task && task.engine && task.engine.name)
-                          || "siesta").toLowerCase();
-    const calculation = task.calculation;
-    loadReportFields(engine, calculation).then(() => {
+    // offered are the ones its engine and kind can state (§ 6.9) -- and
+    // with no description open, or one mid-edit stating neither, there are
+    // none to ask for (it asked for SIESTA's until 2026-10-06).
+    const engine = (task && task.engine && task.engine.name) || "";
+    const calculation = (task && task.calculation) || "";
+    if (!engine || !calculation) return;
+    loadReportFields(engine.toLowerCase(), calculation).then(() => {
         paintReportTicks(rep);
         paintReportNote();
     });

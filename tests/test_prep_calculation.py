@@ -78,7 +78,9 @@ def calc(tmp_path):
     desc = D.build_description(
         _BDT, SiestaConfig(system_label="calc", mesh_cutoff=300.0),
         default_siesta_stages("publishable"),
-        engine="siesta", shape="hierarchical", name="calc", source=str(src))
+        engine="siesta",
+        calculation="optimization",
+        shape="hierarchical", name="calc", source=str(src))
     D.write_description(desc, dest)
     _pseudos_for(dest, ["S", "C", "H"])
     return dest
@@ -131,7 +133,9 @@ def test_the_folder_wins_over_a_library_that_lacks_a_species(
         _BDT, SiestaConfig(system_label="calc", mesh_cutoff=300.0,
                            psml_lib="pseudopotential"),
         default_siesta_stages("publishable"),
-        engine="siesta", shape="hierarchical", name="calc", source=str(src)),
+        engine="siesta",
+        calculation="optimization",
+        shape="hierarchical", name="calc", source=str(src)),
         dest)
     _pseudos_for(dest, ["S", "C", "H"])            # the folder: all three
     _prep(dest)

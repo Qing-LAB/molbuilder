@@ -82,6 +82,7 @@ def _prep(bundle: str, *extra):
     init = r.invoke(jobset_group, [
         "init", "--structure", "P/structure/h2.xyz", "--bundle", bundle,
         "--shape", "flat", "--engine", "pyscf",
+        "--calculation", "optimization",
         "--stage-strategy", "publishable"])
     assert init.exit_code == 0, init.output
     # EVERY LAUNCH VALUE IS STATED (`architecture.md` § 5.2): the run card's
@@ -157,7 +158,8 @@ class TestTheUserChoosesTheMachine:
         init = r.invoke(jobset_group, [
             "init", "--structure", "P/structure/h2.xyz",
             "--bundle", "P/optimization/wb",
-            "--shape", "flat", "--engine", "siesta"])
+            "--shape", "flat", "--engine", "siesta",
+            "--calculation", "optimization"])
         assert init.exit_code == 0, init.output
         # a bench needs an axis to measure; declare one the way the tab does
         import json as _json

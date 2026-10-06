@@ -333,7 +333,7 @@ def test_the_sequence_warnings_reach_the_prep_surface(tmp_path):
                    execution={"mpi_np": 2, "omp_threads": 1}),
              Stage(name="b", overrides={"mesh_cutoff": 200.0},
                    execution={"restart": "clean"})],
-            engine="siesta", shape="hierarchical",
+            engine="siesta", calculation="optimization", shape="hierarchical",
             name="JOB", source=str(tmp_path / "h2.xyz")),
         dest)
     from conftest import write_pseudos

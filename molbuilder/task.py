@@ -369,16 +369,17 @@ class Task:
     #: ``None`` for exactly one calculation kind: transport, whose
     #: structure IS its junction citation (enforced in __post_init__).
     structure: Optional[StructureRef]
-    varies: Optional[Tuple[str, ...]] = None
-    stages: Optional[Tuple[Stage, ...]] = None
     #: WHICH KIND of calculation this describes -- the key into the
     #: engine's warm-file vocabulary (`job-contracts.md` § 4.2a: [base] +
-    #: one section per type).  Absent-is-a-state, like ``stages``: the
-    #: default IS "optimization", so an optimization description carries
-    #: no key.  Membership (does the engine have this section?) is the
-    #: rules file's question, answered where the file is read -- this
-    #: codec checks only the SHAPE (U0, 2026-08-13).
-    calculation: str = "optimization"
+    #: one section per type).  Stated by every description and every
+    #: producer, never defaulted (W57 R10, 2026-10-06: an optimization's
+    #: was left out, and this field said "optimization" for it).
+    #: Membership (does the engine have this section?) is the rules file's
+    #: question, answered where the file is read -- this codec checks only
+    #: the SHAPE (U0, 2026-08-13).
+    calculation: str
+    varies: Optional[Tuple[str, ...]] = None
+    stages: Optional[Tuple[Stage, ...]] = None
 
     #: WHAT THIS CALCULATION ASKS THE SCHEDULER FOR -- the queue, the wall,
     #: the memory, the GPU binding (:class:`Allocation`).  Absent-is-a-state, like ``bench``:

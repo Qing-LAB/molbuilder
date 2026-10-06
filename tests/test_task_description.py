@@ -492,6 +492,7 @@ def test_a_task_built_in_code_writes_the_same_shape(tmp_path):
     task = Task(
         engine="siesta",
         shape="flat",
+        calculation="optimization",
         # Derived, not retyped.  The literal here was ``h2_relax_h2``, which
         # had been wrong since the id became case-preserving on 2026-08-08
         # and was invisible while nothing checked it.
@@ -540,7 +541,7 @@ def test_a_task_cannot_hold_varies_without_stages():
     check ``to_dict`` drops the varies silently, losing the one thing
     varies exists to carry (§ 6.2)."""
     with pytest.raises(ValueError) as e:
-        Task(engine="siesta", shape="flat",
+        Task(engine="siesta", shape="flat", calculation="optimization",
              run=Run(name="x", id="x"), structure=StructureRef(source="x.xyz"),
              varies=("mesh_cutoff",), stages=None)
     assert "varies" in str(e.value) and "stages" in str(e.value)
@@ -548,7 +549,7 @@ def test_a_task_cannot_hold_varies_without_stages():
 
 def test_a_task_cannot_hold_an_empty_stage_tuple():
     with pytest.raises(ValueError) as e:
-        Task(engine="siesta", shape="flat",
+        Task(engine="siesta", shape="flat", calculation="optimization",
              run=Run(name="x", id="x"), structure=StructureRef(source="x.xyz"),
              varies=(), stages=())
     assert "empty" in str(e.value)
@@ -580,6 +581,7 @@ def _ladder_task(stages):
     from molbuilder.task import Run, StructureRef, Task
     rid = run_id("x", "H2", stage_names=tuple(s.name for s in stages))
     return Task(engine="siesta", shape="hierarchical",
+                calculation="optimization",
                 run=Run(name="x", id=rid),
                 structure=StructureRef(source="h2.xyz", formula="H2",
                                        atoms=2),
